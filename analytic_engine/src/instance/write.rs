@@ -7,7 +7,7 @@ use std::sync::Arc;
 use ceresdbproto::{schema as schema_pb, table_requests};
 use common_types::{
     bytes::ByteVec,
-    row::RowGroup,
+    row::{RowGroup, RowGroupSlicer},
     schema::{IndexInWriterSchema, Schema},
 };
 use common_util::{codec::row, define_result};
@@ -150,6 +150,107 @@ impl EncodeContext {
     }
 }
 
+/// Split the write request into multiple batches whose size is determined by
+/// the `max_bytes_per_batch`.
+struct WriteRowGroupSplitter {
+    /// Max bytes per batch. Actually, the size of a batch is not exactly
+    /// ensured less than this `max_bytes_per_batch`, but it is guaranteed that
+    /// the batch contains at most one more row when its size exceeds this
+    /// `max_bytes_per_batch`.
+    max_bytes_per_batch: usize,
+}
+
+enum SplitResult<'a> {
+    Splitted {
+        encoded_batches: Vec<Vec<ByteVec>>,
+        row_group_batches: Vec<RowGroupSlicer<'a>>,
+    },
+    Integrate {
+        encoded_rows: Vec<ByteVec>,
+        row_group: RowGroupSlicer<'a>,
+    },
+}
+
+impl WriteRowGroupSplitter {
+    pub fn new(max_bytes_per_batch: usize) -> Self {
+        Self {
+            max_bytes_per_batch,
+        }
+    }
+
+    /// Split the write request into multiple batches.
+    ///
+    /// NOTE: The length of the `encoded_rows` should be the same as the number
+    /// of rows in the `row_group`.
+    pub fn split<'a>(
+        &'_ self,
+        encoded_rows: Vec<ByteVec>,
+        row_group: &'a RowGroup,
+    ) -> SplitResult<'a> {
+        let end_row_indexes = self.compute_batches(&encoded_rows);
+        if end_row_indexes.len() <= 1 {
+            // No need to split.
+            return SplitResult::Integrate {
+                encoded_rows,
+                row_group: RowGroupSlicer::from(row_group),
+            };
+        }
+
+        let mut prev_end_row_index = 0;
+        let mut encoded_batches = Vec::with_capacity(end_row_indexes.len());
+        let mut row_group_batches = Vec::with_capacity(end_row_indexes.len());
+        for end_row_index in &end_row_indexes {
+            let end_row_index = *end_row_index;
+            let curr_batch = Vec::with_capacity(end_row_index - prev_end_row_index);
+            encoded_batches.push(curr_batch);
+            let row_group_slicer =
+                RowGroupSlicer::new(prev_end_row_index..end_row_index, row_group);
+            row_group_batches.push(row_group_slicer);
+
+            prev_end_row_index = end_row_index;
+        }
+
+        let mut current_batch_idx = 0;
+        for (row_idx, encoded_row) in encoded_rows.into_iter().enumerate() {
+            if row_idx >= end_row_indexes[current_batch_idx] {
+                current_batch_idx += 1;
+            }
+            encoded_batches[current_batch_idx].push(encoded_row);
+        }
+
+        SplitResult::Splitted {
+            encoded_batches,
+            row_group_batches,
+        }
+    }
+
+    /// Compute the end row indexes in the original `encoded_rows` of each
+    /// batch.
+    fn compute_batches(&self, encoded_rows: &[ByteVec]) -> Vec<usize> {
+        let mut current_batch_size = 0;
+        let mut end_row_indexes = Vec::new();
+        for (row_idx, encoded_row) in encoded_rows.iter().enumerate() {
+            let row_size = encoded_row.len();
+            current_batch_size += row_size;
+
+            // If the current batch size exceeds the `max_bytes_per_batch`, freeze this
+            // batch by recording its end row index.
+            // Note that such check may cause the batch size exceeds the
+            // `max_bytes_per_batch`.
+            if current_batch_size >= self.max_bytes_per_batch {
+                current_batch_size = 0;
+                end_row_indexes.push(row_idx + 1)
+            }
+        }
+
+        if current_batch_size > 0 {
+            end_row_indexes.push(encoded_rows.len());
+        }
+
+        end_row_indexes
+    }
+}
+
 impl Instance {
     /// Write data to the table under give space.
     pub async fn write_to_table(
@@ -206,6 +307,65 @@ impl Instance {
             encoded_rows,
         } = encode_ctx;
 
+        match self.maybe_split_write_request(encoded_rows, &row_group) {
+            SplitResult::Integrate {
+                encoded_rows,
+                row_group,
+            } => {
+                self.write_table_row_group(
+                    worker_local,
+                    table_data,
+                    row_group,
+                    index_in_writer,
+                    encoded_rows,
+                )
+                .await?;
+            }
+            SplitResult::Splitted {
+                encoded_batches,
+                row_group_batches,
+            } => {
+                for (encoded_rows, row_group) in encoded_batches.into_iter().zip(row_group_batches)
+                {
+                    self.write_table_row_group(
+                        worker_local,
+                        table_data,
+                        row_group,
+                        index_in_writer.clone(),
+                        encoded_rows,
+                    )
+                    .await?;
+                }
+            }
+        }
+
+        Ok(row_group.num_rows())
+    }
+
+    fn maybe_split_write_request(
+        self: &Arc<Self>,
+        encoded_rows: Vec<ByteVec>,
+        row_group: &RowGroup,
+    ) -> SplitResult {
+        if self.max_bytes_per_write_batch.is_none() {
+            return SplitResult::Integrate {
+                encoded_rows,
+                row_group: RowGroupSlicer::from(row_group),
+            };
+        }
+
+        let splitter = WriteRowGroupSplitter::new(self.max_bytes_per_write_batch.unwrap());
+        splitter.split(encoded_rows, row_group)
+    }
+
+    async fn write_table_row_group(
+        self: &Arc<Self>,
+        worker_local: &mut WorkerLocal,
+        table_data: &TableDataRef,
+        row_group: RowGroupSlicer<'_>,
+        index_in_writer: IndexInWriterSchema,
+        encoded_rows: Vec<ByteVec>,
+    ) -> Result<()> {
         let sequence = self
             .write_to_wal(worker_local, table_data, encoded_rows)
             .await?;
@@ -242,11 +402,12 @@ impl Instance {
 
         table_data.set_last_sequence(sequence);
 
-        let num_rows = row_group.num_rows();
         // Collect metrics.
-        table_data.metrics.on_write_request_done(num_rows);
+        table_data
+            .metrics
+            .on_write_request_done(row_group.num_rows());
 
-        Ok(num_rows)
+        Ok(())
     }
 
     /// Return Ok if the request is valid, this is done before entering the
@@ -410,7 +571,7 @@ impl Instance {
         worker_local: &WorkerLocal,
         table_data: &TableDataRef,
         sequence: SequenceNumber,
-        row_group: &RowGroup,
+        row_group: &RowGroupSlicer,
         index_in_writer: IndexInWriterSchema,
     ) -> Result<()> {
         if row_group.is_empty() {
@@ -488,5 +649,137 @@ impl Instance {
             .context(FlushTable {
                 table: &table_data.name,
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use common_types::{
+        column_schema::Builder as ColumnSchemaBuilder,
+        datum::{Datum, DatumKind},
+        row::{Row, RowGroupBuilder},
+        schema::Builder as SchemaBuilder,
+        time::Timestamp,
+    };
+
+    use super::*;
+
+    fn generate_rows_for_test(sizes: Vec<usize>) -> (Vec<ByteVec>, RowGroup) {
+        let encoded_rows: Vec<_> = sizes.iter().map(|size| vec![0; *size]).collect();
+        let rows: Vec<_> = sizes
+            .iter()
+            .map(|size| {
+                let datum = Datum::Timestamp(Timestamp::new(*size as i64));
+                Row::from_datums(vec![datum])
+            })
+            .collect();
+
+        let column_schema = ColumnSchemaBuilder::new("ts".to_string(), DatumKind::Timestamp)
+            .build()
+            .unwrap();
+        let schema = SchemaBuilder::new()
+            .add_key_column(column_schema)
+            .unwrap()
+            .build()
+            .unwrap();
+        let row_group = RowGroupBuilder::with_rows(schema, rows).unwrap().build();
+
+        (encoded_rows, row_group)
+    }
+
+    #[test]
+    fn test_write_split_compute_batches() {
+        let cases = vec![
+            (2, vec![1, 2, 3, 4, 5], vec![2, 3, 4, 5]),
+            (100, vec![50, 50, 100, 10], vec![2, 3, 4]),
+            (1000, vec![50, 50, 100, 10], vec![4]),
+            (2, vec![10, 10, 0, 10], vec![1, 2, 4]),
+            (0, vec![10, 10, 0, 10], vec![1, 2, 3, 4]),
+            (0, vec![0, 0], vec![1, 2]),
+            (10, vec![], vec![]),
+        ];
+        for (batch_size, sizes, expected_batch_indexes) in cases {
+            let (encoded_rows, _) = generate_rows_for_test(sizes);
+            let write_row_group_splitter = WriteRowGroupSplitter::new(batch_size);
+            let batch_indexes = write_row_group_splitter.compute_batches(&encoded_rows);
+            assert_eq!(batch_indexes, expected_batch_indexes);
+        }
+    }
+
+    #[test]
+    fn test_write_split_row_group() {
+        let cases = vec![
+            (
+                2,
+                vec![1, 2, 3, 4, 5],
+                vec![vec![1, 2], vec![3], vec![4], vec![5]],
+            ),
+            (
+                100,
+                vec![50, 50, 100, 10],
+                vec![vec![50, 50], vec![100], vec![10]],
+            ),
+            (1000, vec![50, 50, 100, 10], vec![vec![50, 50, 100, 10]]),
+            (
+                2,
+                vec![10, 10, 0, 10],
+                vec![vec![10], vec![10], vec![0, 10]],
+            ),
+            (
+                0,
+                vec![10, 10, 0, 10],
+                vec![vec![10], vec![10], vec![0], vec![10]],
+            ),
+            (0, vec![0, 0], vec![vec![0], vec![0]]),
+            (10, vec![], vec![]),
+        ];
+
+        let check_encoded_rows = |encoded_rows: &[ByteVec], expected_row_sizes: &[usize]| {
+            assert_eq!(encoded_rows.len(), expected_row_sizes.len());
+            for (encoded_row, expected_row_size) in
+                encoded_rows.iter().zip(expected_row_sizes.iter())
+            {
+                assert_eq!(encoded_row.len(), *expected_row_size);
+            }
+        };
+        for (batch_size, sizes, expected_batches) in cases {
+            let (encoded_rows, row_group) = generate_rows_for_test(sizes.clone());
+            let write_row_group_splitter = WriteRowGroupSplitter::new(batch_size);
+            let split_res = write_row_group_splitter.split(encoded_rows, &row_group);
+            if expected_batches.is_empty() {
+                assert!(matches!(split_res, SplitResult::Integrate { .. }));
+            } else if expected_batches.len() == 1 {
+                assert!(matches!(split_res, SplitResult::Integrate { .. }));
+                if let SplitResult::Integrate {
+                    encoded_rows,
+                    row_group,
+                } = split_res
+                {
+                    check_encoded_rows(&encoded_rows, &expected_batches[0]);
+                    assert_eq!(row_group.num_rows(), expected_batches[0].len());
+                }
+            } else {
+                assert!(matches!(split_res, SplitResult::Splitted { .. }));
+                if let SplitResult::Splitted {
+                    encoded_batches,
+                    row_group_batches,
+                } = split_res
+                {
+                    assert_eq!(encoded_batches.len(), row_group_batches.len());
+                    assert_eq!(encoded_batches.len(), expected_batches.len());
+                    let mut batch_start_index = 0;
+                    for ((encoded_batch, row_group_batch), expected_batch) in encoded_batches
+                        .iter()
+                        .zip(row_group_batches.iter())
+                        .zip(expected_batches.iter())
+                    {
+                        check_encoded_rows(encoded_batch, expected_batch);
+                        assert_eq!(row_group_batch.num_rows(), expected_batch.len());
+                        assert_eq!(row_group_batch.slice_range().start, batch_start_index);
+                        batch_start_index += expected_batch.len();
+                    }
+                }
+            }
+        }
     }
 }

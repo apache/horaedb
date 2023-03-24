@@ -94,6 +94,10 @@ impl Instance {
             space_write_buffer_size: ctx.config.space_write_buffer_size,
             replay_batch_size: ctx.config.replay_batch_size,
             write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_bytes() as usize,
+            max_bytes_per_write_batch: ctx
+                .config
+                .max_bytes_per_write_batch
+                .map(|v| v.as_bytes() as usize),
             iter_options,
             remote_engine: remote_engine_ref,
         });
@@ -414,7 +418,7 @@ impl Instance {
                         worker_local,
                         table_data,
                         sequence,
-                        row_group,
+                        &row_group.into(),
                         index_in_writer,
                     )
                     .context(ApplyMemTable {

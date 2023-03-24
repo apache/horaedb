@@ -4,7 +4,7 @@
 
 use std::{
     cmp,
-    ops::{Index, IndexMut},
+    ops::{Index, IndexMut, Range},
 };
 
 use snafu::{ensure, Backtrace, OptionExt, Snafu};
@@ -193,6 +193,54 @@ pub fn check_row_schema(row: &Row, schema: &Schema) -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug)]
+pub struct RowGroupSlicer<'a> {
+    range: Range<usize>,
+    row_group: &'a RowGroup,
+}
+
+impl<'a> From<&'a RowGroup> for RowGroupSlicer<'a> {
+    fn from(value: &'a RowGroup) -> RowGroupSlicer<'a> {
+        Self {
+            range: 0..value.rows.len(),
+            row_group: value,
+        }
+    }
+}
+
+impl<'a> RowGroupSlicer<'a> {
+    pub fn new(range: Range<usize>, row_group: &'a RowGroup) -> Self {
+        Self { range, row_group }
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.range.is_empty()
+    }
+
+    #[inline]
+    pub fn schema(&self) -> &Schema {
+        self.row_group.schema()
+    }
+
+    #[inline]
+    pub fn iter(&self) -> IterRow<'a> {
+        IterRow {
+            iter: self.row_group.rows[self.range.start..self.range.end].iter(),
+        }
+    }
+
+    #[inline]
+    pub fn slice_range(&self) -> Range<usize> {
+        self.range.clone()
+    }
+
+    #[inline]
+    pub fn num_rows(&self) -> usize {
+        self.range.len()
+    }
+}
+
 // TODO(yingwen): For multiple rows that share the same schema, no need to store
 // Datum for each row element, we can store the whole row as a binary and
 // provide more efficent way to convert rows into columns
@@ -347,7 +395,7 @@ pub struct RowGroupBuilder {
     schema: Schema,
     rows: Vec<Row>,
     min_timestamp: Option<Timestamp>,
-    max_timestmap: Timestamp,
+    max_timestamp: Timestamp,
 }
 
 impl RowGroupBuilder {
@@ -362,7 +410,7 @@ impl RowGroupBuilder {
             schema,
             rows: Vec::with_capacity(capacity),
             min_timestamp: None,
-            max_timestmap: Timestamp::new(0),
+            max_timestamp: Timestamp::new(0),
         }
     }
 
@@ -409,7 +457,7 @@ impl RowGroupBuilder {
             schema: self.schema,
             rows: self.rows,
             min_timestamp: self.min_timestamp.unwrap_or_else(|| Timestamp::new(0)),
-            max_timestamp: self.max_timestmap,
+            max_timestamp: self.max_timestamp,
         }
     }
 
@@ -422,7 +470,7 @@ impl RowGroupBuilder {
             Some(min_timestamp) => Some(cmp::min(min_timestamp, row_timestamp)),
             None => Some(row_timestamp),
         };
-        self.max_timestmap = cmp::max(self.max_timestmap, row_timestamp);
+        self.max_timestamp = cmp::max(self.max_timestamp, row_timestamp);
     }
 }
 
