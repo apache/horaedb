@@ -383,21 +383,20 @@ fn iters_to_stream(
     };
 
     let record_batch_stream = try_stream! {
-        let projected_schema = state.projected_schema.clone();
         while let Some(value) = state.fetch_next_batch().await {
             let record_batch = value
                 .box_err()
                 .context(ErrWithSource {
-                    msg: "read record batch",
+                    msg: "Read record batch",
                 })
                 .and_then(|batch_with_key| {
                     // TODO(yingwen): Try to use projector to do this, which pre-compute row
                     // indexes to project.
                     batch_with_key
-                        .try_project(&projected_schema)
+                        .try_project(&state.projected_schema)
                         .box_err()
                         .context(ErrWithSource {
-                            msg: "project record batch",
+                            msg: "Project record batch",
                         })
                 });
             yield record_batch?;
