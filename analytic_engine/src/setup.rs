@@ -462,7 +462,7 @@ fn open_storage(
             }
         };
 
-        if opts.disk_cache_capacity.as_bytes() > 0 {
+        if opts.disk_cache_capacity.as_byte() > 0 {
             let path = Path::new(&opts.disk_cache_dir).join(DISK_CACHE_DIR_NAME);
             tokio::fs::create_dir_all(&path).await.context(CreateDir {
                 path: path.to_string_lossy().into_owned(),
@@ -471,8 +471,8 @@ fn open_storage(
             store = Arc::new(
                 DiskCacheStore::try_new(
                     path.to_string_lossy().into_owned(),
-                    opts.disk_cache_capacity.as_bytes() as usize,
-                    opts.disk_cache_page_size.as_bytes() as usize,
+                    opts.disk_cache_capacity.as_byte() as usize,
+                    opts.disk_cache_page_size.as_byte() as usize,
                     store,
                 )
                 .await
@@ -480,11 +480,11 @@ fn open_storage(
             ) as _;
         }
 
-        if opts.mem_cache_capacity.as_bytes() > 0 {
+        if opts.mem_cache_capacity.as_byte() > 0 {
             let mem_cache = Arc::new(
                 MemCache::try_new(
                     opts.mem_cache_partition_bits,
-                    NonZeroUsize::new(opts.mem_cache_capacity.as_bytes() as usize).unwrap(),
+                    NonZeroUsize::new(opts.mem_cache_capacity.as_byte() as usize).unwrap(),
                 )
                 .context(OpenMemCache)?,
             );

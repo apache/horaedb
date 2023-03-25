@@ -362,7 +362,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             )
             .local_endpoint(Endpoint::new(self.node_addr, self.server_config.grpc_port).to_string())
             .resp_compress_min_length(
-                self.server_config.resp_compress_min_length.as_bytes() as usize
+                self.server_config.resp_compress_min_length.as_byte() as usize
             )
             .runtimes(engine_runtimes)
             .instance(instance.clone())
