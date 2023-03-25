@@ -239,14 +239,14 @@ impl LevelPicker for SizeTieredPicker {
                     segment.to_vec(),
                     opts.bucket_high,
                     opts.bucket_low,
-                    opts.min_sstable_size.as_bytes() as f32,
+                    opts.min_sstable_size.as_byte() as f32,
                 );
 
                 let files = Self::most_interesting_bucket(
                     buckets,
                     opts.min_threshold,
                     opts.max_threshold,
-                    opts.max_input_sstable_size.as_bytes(),
+                    opts.max_input_sstable_size.as_byte(),
                 );
 
                 if files.is_some() {
@@ -497,13 +497,13 @@ impl TimeWindowPicker {
                         bucket.to_vec(),
                         size_tiered_opts.bucket_high,
                         size_tiered_opts.bucket_low,
-                        size_tiered_opts.min_sstable_size.as_bytes() as f32,
+                        size_tiered_opts.min_sstable_size.as_byte() as f32,
                     );
                     let files = SizeTieredPicker::most_interesting_bucket(
                         buckets,
                         size_tiered_opts.min_threshold,
                         size_tiered_opts.max_threshold,
-                        size_tiered_opts.max_input_sstable_size.as_bytes(),
+                        size_tiered_opts.max_input_sstable_size.as_byte(),
                     );
 
                     if files.is_some() {
