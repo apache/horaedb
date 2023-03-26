@@ -55,4 +55,5 @@ warp = "0.3"
 zstd = { workspace = true }
 
 [dev-dependencies]
+json_pretty = "0.1.2"
 sql = { workspace = true, features = ["test"] }

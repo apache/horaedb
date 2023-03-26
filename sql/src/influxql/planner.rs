@@ -19,7 +19,7 @@ use crate::{
     provider::{ContextProviderAdapter, MetaProvider},
 };
 
-const CERESDB_MEASUREMENT_COLUMN_NAME: &str = "ceresdb::measurement";
+pub const CERESDB_MEASUREMENT_COLUMN_NAME: &str = "ceresdb::measurement";
 
 pub(crate) struct Planner<'a, P: MetaProvider> {
     context_provider: ContextProviderAdapter<'a, P>,
