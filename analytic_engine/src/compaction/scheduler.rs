@@ -310,7 +310,7 @@ impl SchedulerImpl {
                 request_buf: RwLock::new(RequestQueue::default()),
             }),
             running: running.clone(),
-            memory_limit: MemoryLimit::new(config.memory_limit.as_bytes() as usize),
+            memory_limit: MemoryLimit::new(config.memory_limit.as_byte() as usize),
         };
 
         let handle = runtime.spawn(async move {
