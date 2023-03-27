@@ -15,7 +15,10 @@ use router::{
 use serde::{Deserialize, Serialize};
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
-use crate::{grpc::forward, http::DEFAULT_MAX_BODY_SIZE};
+use crate::{
+    grpc::{forward, hotspot},
+    http::DEFAULT_MAX_BODY_SIZE,
+};
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
@@ -110,6 +113,9 @@ pub struct ServerConfig {
     /// Whether to create table automatically when data is first written, only
     /// used in gRPC
     pub auto_create_table: bool,
+
+    /// record hotspot query or write requests
+    pub hotspot_config: hotspot::Config,
 }
 
 impl Default for ServerConfig {
@@ -125,6 +131,7 @@ impl Default for ServerConfig {
             resp_compress_min_length: ReadableSize::mb(4),
             forward: forward::Config::default(),
             auto_create_table: true,
+            hotspot_config: hotspot::Config::default(),
         }
     }
 }

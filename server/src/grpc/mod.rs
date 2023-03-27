@@ -34,7 +34,7 @@ use tonic::transport::Server;
 
 use crate::{
     grpc::{
-        forward::Forwarder, meta_event_service::MetaServiceImpl,
+        forward::Forwarder, hotspot::HotspotRecorder, meta_event_service::MetaServiceImpl,
         remote_engine_service::RemoteEngineServiceImpl, storage_service::StorageServiceImpl,
     },
     instance::InstanceRef,
@@ -42,6 +42,8 @@ use crate::{
 };
 
 pub mod forward;
+pub mod hotspot;
+mod hotspot_lru;
 mod meta_event_service;
 mod metrics;
 mod remote_engine_service;
@@ -213,6 +215,7 @@ pub struct Builder<Q> {
     schema_config_provider: Option<SchemaConfigProviderRef>,
     forward_config: Option<forward::Config>,
     auto_create_table: bool,
+    hotspot_config: Option<hotspot::Config>,
 }
 
 impl<Q> Builder<Q> {
@@ -230,6 +233,7 @@ impl<Q> Builder<Q> {
             schema_config_provider: None,
             forward_config: None,
             auto_create_table: true,
+            hotspot_config: None,
         }
     }
 
@@ -282,6 +286,11 @@ impl<Q> Builder<Q> {
 
     pub fn forward_config(mut self, config: forward::Config) -> Self {
         self.forward_config = Some(config);
+        self
+    }
+
+    pub fn hotspot_config(mut self, config: hotspot::Config) -> Self {
+        self.hotspot_config = Some(config);
         self
     }
 
@@ -338,6 +347,9 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             None
         };
         let bg_runtime = runtimes.bg_runtime.clone();
+        let hotspot_recorder = Arc::new(HotspotRecorder::new(
+            self.hotspot_config.unwrap_or_default(),
+        ));
         let storage_service = StorageServiceImpl {
             router,
             instance,
@@ -347,6 +359,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             timeout: self.timeout,
             resp_compress_min_length: self.resp_compress_min_length,
             auto_create_table: self.auto_create_table,
+            hotspot_recorder,
         };
         let rpc_server = StorageServiceServer::new(storage_service);
 

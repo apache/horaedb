@@ -371,6 +371,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .opened_wals(opened_wals)
             .schema_config_provider(provider)
             .forward_config(self.server_config.forward)
+            .hotspot_config(self.server_config.hotspot_config)
             .timeout(self.server_config.timeout.map(|v| v.0))
             .auto_create_table(self.server_config.auto_create_table)
             .build()

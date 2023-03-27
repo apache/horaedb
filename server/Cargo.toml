@@ -19,6 +19,7 @@ bytes = { workspace = true }
 catalog = { workspace = true }
 ceresdbproto = { workspace = true }
 cluster = { workspace = true }
+crossbeam = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
 datafusion = { workspace = true }
@@ -31,6 +32,7 @@ interpreters = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 logger = { workspace = true }
+lru = { workspace = true }
 meta_client = { workspace = true }
 opensrv-mysql = "0.1.0"
 paste = { workspace = true }
@@ -41,9 +43,11 @@ prometheus-static-metric = { workspace = true }
 prost = { workspace = true }
 query_engine = { workspace = true }
 router = { workspace = true }
+scheduled-thread-pool = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
+spin = { workspace = true }
 sql = { workspace = true }
 system_catalog = { workspace = true }
 table_engine = { workspace = true }

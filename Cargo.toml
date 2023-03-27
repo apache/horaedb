@@ -70,6 +70,7 @@ clap = "3.0"
 clru = "0.6.1"
 cluster = { path = "cluster" }
 criterion = "0.3"
+crossbeam = "0.7.1"
 common_types = { path = "common_types" }
 common_util = { path = "common_util" }
 datafusion = "18.0.0"
@@ -102,12 +103,14 @@ rand = "0.7"
 remote_engine_client = { path = "remote_engine_client" }
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "json"] }
 router = { path = "router" }
+scheduled-thread-pool = "0.2.0"
 snafu = { version = "0.6.10", features = ["backtraces"] }
 serde = "1.0"
 serde_json = "1.0.60"
 server = { path = "server" }
 smallvec = "1.6"
 slog = "2.7"
+spin = "0.5.2"
 sql = { path = "sql" }
 sqlparser = { version = "0.30", features = ["serde"] }
 system_catalog = { path = "system_catalog" }

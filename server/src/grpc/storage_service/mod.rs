@@ -35,6 +35,7 @@ use self::{
 use crate::{
     grpc::{
         forward::ForwarderRef,
+        hotspot::HotspotRecorder,
         metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
         storage_service::error::{ErrNoCause, ErrWithCause, Result},
     },
@@ -145,10 +146,11 @@ pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub timeout: Option<Duration>,
     pub resp_compress_min_length: usize,
     pub auto_create_table: bool,
+    pub hotspot_recorder: Arc<HotspotRecorder>,
 }
 
 macro_rules! handle_request {
-    ($mod_name: ident, $handle_fn: ident, $req_ty: ident, $resp_ty: ident) => {
+    ($mod_name: ident, $handle_fn: ident, $req_ty: ident, $resp_ty: ident, $hotspot_record_fn: ident) => {
         paste! {
             async fn [<$mod_name _internal>] (
                 &self,
@@ -163,9 +165,9 @@ macro_rules! handle_request {
                 let timeout = self.timeout;
                 let resp_compress_min_length = self.resp_compress_min_length;
                 let auto_create_table = self.auto_create_table;
+                let hotspot_recorder = self.hotspot_recorder.clone();
 
                 // The future spawned by tokio cannot be executed by other executor/runtime, so
-
                 let runtime = match stringify!($mod_name) {
                     "sql_query" | "prom_query" => &self.runtimes.read_runtime,
                     "write" => &self.runtimes.write_runtime,
@@ -183,6 +185,10 @@ macro_rules! handle_request {
                         }
                         .fail()?
                     }
+
+                    // record hotspot
+                    hotspot_recorder.$hotspot_record_fn(&req);
+
                     let handler_ctx =
                         HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length, auto_create_table);
                     $mod_name::$handle_fn(&handler_ctx, req)
@@ -229,17 +235,36 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
     // `RequestContext` is ensured in `handle_request` macro, so handler
     // can just use it with unwrap()
 
-    handle_request!(route, handle_route, RouteRequest, RouteResponse);
+    handle_request!(
+        route,
+        handle_route,
+        RouteRequest,
+        RouteResponse,
+        inc_route_reqs
+    );
 
-    handle_request!(write, handle_write, WriteRequest, WriteResponse);
+    handle_request!(
+        write,
+        handle_write,
+        WriteRequest,
+        WriteResponse,
+        inc_write_reqs
+    );
 
-    handle_request!(sql_query, handle_query, SqlQueryRequest, SqlQueryResponse);
+    handle_request!(
+        sql_query,
+        handle_query,
+        SqlQueryRequest,
+        SqlQueryResponse,
+        inc_sql_query_reqs
+    );
 
     handle_request!(
         prom_query,
         handle_query,
         PrometheusQueryRequest,
-        PrometheusQueryResponse
+        PrometheusQueryResponse,
+        inc_prom_query_reqs
     );
 
     async fn stream_write_internal(
@@ -390,20 +415,6 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
         self.write_internal(request).await
     }
 
-    async fn sql_query(
-        &self,
-        request: tonic::Request<SqlQueryRequest>,
-    ) -> std::result::Result<tonic::Response<SqlQueryResponse>, tonic::Status> {
-        self.sql_query_internal(request).await
-    }
-
-    async fn prom_query(
-        &self,
-        request: tonic::Request<PrometheusQueryRequest>,
-    ) -> std::result::Result<tonic::Response<PrometheusQueryResponse>, tonic::Status> {
-        self.prom_query_internal(request).await
-    }
-
     async fn stream_write(
         &self,
         request: tonic::Request<tonic::Streaming<WriteRequest>>,
@@ -416,6 +427,13 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
             },
         };
         Ok(tonic::Response::new(resp))
+    }
+
+    async fn sql_query(
+        &self,
+        request: tonic::Request<SqlQueryRequest>,
+    ) -> std::result::Result<tonic::Response<SqlQueryResponse>, tonic::Status> {
+        self.sql_query_internal(request).await
     }
 
     async fn stream_sql_query(
@@ -447,5 +465,12 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
                 Ok(tonic::Response::new(Box::pin(stream)))
             }
         }
+    }
+
+    async fn prom_query(
+        &self,
+        request: tonic::Request<PrometheusQueryRequest>,
+    ) -> std::result::Result<tonic::Response<PrometheusQueryResponse>, tonic::Status> {
+        self.prom_query_internal(request).await
     }
 }
