@@ -7,11 +7,13 @@ use std::sync::Arc;
 use arrow::datatypes::Field as ArrowField;
 use common_types::{column_schema::ColumnSchema, datum::DatumKind, schema::Schema};
 use common_util::error::BoxError;
-use datafusion::sql::planner::ContextProvider;
-use influxql_logical_planner::{
-    provider::{InfluxColumnType, InfluxFieldType, Schema as InfluxSchema, SchemaProvider},
-    DataFusionError, Result as DatafusionResult,
+use datafusion::{
+    error::{DataFusionError, Result as DatafusionResult},
+    sql::planner::ContextProvider,
 };
+use influxql_logical_planner::plan::SchemaProvider;
+use influxql_schema::{InfluxColumnType, InfluxFieldType, Schema as InfluxSchema};
+use log::error;
 
 use crate::{
     influxql::error::*,
@@ -67,62 +69,6 @@ impl InfluxSchemaImpl {
             columns: influx_columns,
             time_column_idx,
         })
-    }
-}
-
-impl InfluxSchema for InfluxSchemaImpl {
-    fn columns(&self) -> Vec<(InfluxColumnType, &ArrowField)> {
-        self.columns
-            .iter()
-            .map(|column| (column.influx_type, &column.arrow_field))
-            .collect()
-    }
-
-    fn tags(&self) -> Vec<&ArrowField> {
-        self.columns
-            .iter()
-            .filter_map(|column| {
-                if matches!(column.influx_type, InfluxColumnType::Tag) {
-                    Some(&column.arrow_field)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    fn fields(&self) -> Vec<&ArrowField> {
-        self.columns
-            .iter()
-            .filter_map(|column| {
-                if matches!(column.influx_type, InfluxColumnType::Field(..)) {
-                    Some(&column.arrow_field)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    fn time(&self) -> &ArrowField {
-        // Time column must exist, has checked it when building.
-        let time_column = &self.columns[self.time_column_idx];
-
-        &time_column.arrow_field
-    }
-
-    fn column(&self, idx: usize) -> (InfluxColumnType, &ArrowField) {
-        let column = &self.columns[idx];
-
-        (column.influx_type, &column.arrow_field)
-    }
-
-    fn find_index_of(&self, name: &str) -> Option<usize> {
-        self.columns
-            .iter()
-            .enumerate()
-            .find(|(_, column)| column.arrow_field.name() == name)
-            .map(|(index, _)| index)
     }
 }
 
@@ -212,42 +158,39 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxSchemaProviderImpl<'a, P> {
     fn get_table_provider(
         &self,
         name: &str,
-    ) -> DatafusionResult<Arc<dyn datafusion_expr::TableSource>> {
+    ) -> DatafusionResult<Arc<dyn datafusion::logical_expr::TableSource>> {
         self.context_provider
             .get_table_provider(name.into())
             .box_err()
             .map_err(|e| DataFusionError::External(e))
     }
 
-    fn table_names(&self) -> DatafusionResult<Vec<&'_ str>> {
-        Err(DataFusionError::NotImplemented(
-            "get all table names".to_string(),
-        ))
+    fn table_names(&self) -> Vec<&'_ str> {
+        // TODO: support
+        Vec::new()
     }
 
-    fn table_schema(
-        &self,
-        name: &str,
-    ) -> DatafusionResult<Option<std::sync::Arc<dyn InfluxSchema>>> {
-        let table_opt = self
-            .context_provider
-            .table(name.into())
-            .box_err()
-            .map_err(|e| DataFusionError::External(e))?;
+    fn table_schema(&self, name: &str) -> Option<InfluxSchema> {
+        let table_opt = match self.context_provider.table(name.into()) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("InfluxSchemaProvider get table failed, table:{name}, err:{e:?}");
+                return None;
+            }
+        };
 
-        Ok(match table_opt {
+        match table_opt {
             Some(table) => {
-                let influx_schema = InfluxSchemaImpl::new(&table.schema())
-                    .box_err()
-                    .map_err(|e| DataFusionError::External(e))?;
-                Some(Arc::new(influx_schema))
+                // let influx_schema = InfluxSchemaImpl::new(&table.schema()).unwrap();
+                // Some(influx_schema)
+                todo!()
             }
             None => None,
-        })
+        }
     }
 
-    fn table_exists(&self, name: &str) -> DatafusionResult<bool> {
-        Ok(self.table_schema(name)?.is_some())
+    fn table_exists(&self, name: &str) -> bool {
+        self.table_schema(name).is_some()
     }
 }
 

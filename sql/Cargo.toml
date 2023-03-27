@@ -27,8 +27,11 @@ datafusion-expr = { workspace = true }
 datafusion-proto = { workspace = true }
 df_operator = { workspace = true }
 hashbrown = { version = "0.12", features = ["raw"] }
-influxql-logical-planner = { git = "https://github.com/Rachelint/influxql-logical-planner.git", rev = "6057f72cd07336b9d641fcfcb98fb69b60fec1eb" }
-influxql-parser = { git = "https://github.com/Rachelint/influxql-parser.git", rev = "6fd5d946843682c3559e1c172cf23a14d61495b9" }
+# influxql-logical-planner = { git = "https://github.com/CeresDB/influxql", branch = "main", package = "iox_query_influxql" }
+# influxql_parser = { git = "https://github.com/CeresDB/influxql", branch = "main", package = "influxdb_influxql_parser" }
+influxql-logical-planner = { path = "/Users/jiacai/code/rust/influxql/iox_query_influxql", package = "iox_query_influxql" }
+influxql-schema = { path = "/Users/jiacai/code/rust/influxql/schema", package = "schema" }
+influxql_parser = { path = "/Users/jiacai/code/rust/influxql/influxdb_influxql_parser", package = "influxdb_influxql_parser" }
 itertools = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }

@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use common_util::error::BoxError;
-use influxql_logical_planner::planner::InfluxQLToLogicalPlan;
+use influxql_logical_planner::plan::InfluxQLToLogicalPlan;
 use influxql_parser::{
     common::{MeasurementName, QualifiedMeasurementName},
     select::{MeasurementSelection, SelectStatement},
