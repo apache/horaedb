@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use arrow::{array::ArrayRef, datatypes::Schema as ArrowSchema};
 use datafusion::{
+    physical_expr::create_physical_expr,
     physical_optimizer::pruning::{PruningPredicate, PruningStatistics},
     prelude::{Column, Expr},
     scalar::ScalarValue,
