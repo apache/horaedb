@@ -177,8 +177,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             // public APIs
             .or(self.metrics())
             .or(self.sql())
-            .or(self.influxdb_write())
-            .or(self.influxdb_query())
+            .or(self.influxdb_api())
             .or(self.prom_api())
             // admin APIs
             .or(self.admin_block())
@@ -255,41 +254,42 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             })
     }
 
-    /// POST `/influxdb/v1/query` and `/influxdb/v1/write`
-    fn influxdb_write(
+    /// for write api:
+    ///     POST `/influxdb/v1/write`
+    ///
+    /// for query api:
+    ///     POST/GET `/influxdb/v1/query`
+    ///
+    ///     It's derived from the influxdb 1.x query api described doc of 1.8:
+    ///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-http-endpoint
+    fn influxdb_api(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        warp::path!("influxdb" / "v1" / "write")
+        let write_api = warp::path!("write")
             .and(warp::post())
-            .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(self.with_context())
             .and(self.with_influxdb())
             .and(warp::body::bytes().map(influxdb::WriteRequest::from))
-            .and_then(influxdb::write)
-    }
+            .and_then(influxdb::write);
 
-    /// POST / GET `/influxdb/v1/query`
-    ///
-    /// It's derived from the influxdb 1.x query api described in doc of 1.8:
-    ///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-http-endpoint
-    fn influxdb_query(
-        &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        warp::path!("influxdb" / "v1" / "query")
+        let query_api = warp::path!("query")
             .and(warp::method())
-            .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(self.with_context())
             .and(self.with_influxdb())
             .and(warp::query::<Parameters>())
             .and(warp::body::form::<HashMap<String, String>>())
-            .and_then(|method, ctx, db, opts, body| async move {
+            .and_then(|method, ctx, db, params, body| async move {
                 if method != Method::POST && method != Method::GET {
                     return Err(reject::reject());
                 }
 
-                let request = InfluxqlRequest::new(method, body, opts).map_err(reject::custom)?;
+                let request = InfluxqlRequest::new(method, body, params).map_err(reject::custom)?;
                 influxdb::query(ctx, db, QueryRequest::Influxql(request)).await
-            })
+            });
+
+        warp::path!("influxdb" / "v1" / ..)
+            .and(warp::body::content_length_limit(self.config.max_body_size))
+            .and(write_api.or(query_api))
     }
 
     // POST /debug/flush_memtable
