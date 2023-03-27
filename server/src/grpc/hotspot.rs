@@ -45,9 +45,10 @@ impl Default for Config {
 }
 
 enum Message {
-    Read(String),
-    // (String, field_num)
-    Write(String, usize),
+    // (ReadKey)
+    Read(ReadKey),
+    // (WriteKey, field_num)
+    Write(WriteKey, usize),
 }
 
 #[derive(Clone)]
@@ -105,14 +106,14 @@ impl HotspotRecorder {
             None
         };
 
-        let recoder = Self {
+        let recorder = Self {
             tx: Arc::new(tx),
             hotspot_read,
             hotspot_write,
         };
 
         if let Some(pool) = dump_pool {
-            let recoder = recoder.clone();
+            let recoder = recorder.clone();
             let interval = config.dump_interval;
             let dump_len = config.auto_dump_len;
             pool.execute_at_fixed_rate(interval * 2, interval, move || {
@@ -130,7 +131,7 @@ impl HotspotRecorder {
                     .for_each(|hot| info!("{} write {}", TAG, hot));
             });
         };
-        recoder
+        recorder
     }
 
     fn key_prefix(context: &RequestContext) -> String {
@@ -271,13 +272,8 @@ mod test {
         thread::sleep(time::Duration::from_millis(100u64));
         let vec = hotspot.pop_read_hots().unwrap();
 
-        assert_eq!(3, vec.len());
-        assert_eq!("0/io", vec.get(0).unwrap().0);
-        assert_eq!(3, vec.get(0).unwrap().1);
-        assert_eq!("0/mem", vec.get(1).unwrap().0);
-        assert_eq!(1, vec.get(1).unwrap().1);
-        assert_eq!("0/disk", vec.get(2).unwrap().0);
-        assert_eq!(1, vec.get(2).unwrap().1);
+        assert_eq!(1, vec.len());
+        assert_eq!("public/table1", vec.get(0).unwrap().0);
     }
 
     #[test]
@@ -339,18 +335,13 @@ mod test {
         } = hotspot.dump();
         assert_eq!(
             vec![
-                "metric=0/io, heats=3",
-                "metric=0/cpu, heats=1",
-                "metric=0/mem, heats=1",
-                "metric=0/disk, heats=1"
+                "metric=public/table1, heats=1"
             ],
             read_hots
         );
         assert_eq!(
             vec![
-                "metric=1/io, heats=6",
-                "metric=1/mem, heats=4",
-                "metric=1/cpu, heats=2",
+                "metric=public/table1, heats=1",
             ],
             write_hots
         );
