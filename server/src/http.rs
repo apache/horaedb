@@ -9,6 +9,7 @@ use std::{
 
 use common_util::error::BoxError;
 use handlers::query::QueryRequest;
+use http::Method;
 use log::{error, info};
 use logger::RuntimeLevel;
 use profile::Profiler;
@@ -33,7 +34,7 @@ use crate::{
     error_util,
     handlers::{
         self,
-        influxdb::{self, InfluxDb, InfluxqlRequest, Options},
+        influxdb::{self, InfluxDb, InfluxqlRequest, Parameters},
         prom::CeresDBStorage,
         query::Request,
     },
@@ -267,19 +268,26 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and_then(influxdb::write)
     }
 
-    /// GET `/influxdb/v1/query`
+    /// POST / GET `/influxdb/v1/query`
+    ///
+    /// It's derived from the influxdb 1.x query api described in doc of 1.8:
+    ///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-http-endpoint
     fn influxdb_query(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         warp::path!("influxdb" / "v1" / "query")
-            .and(warp::get())
+            .and(warp::method())
             .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(self.with_context())
             .and(self.with_influxdb())
-            .and(warp::query::<Options>())
+            .and(warp::query::<Parameters>())
             .and(warp::body::form::<HashMap<String, String>>())
-            .and_then(|ctx, db, opts, body| async move {
-                let request = InfluxqlRequest::new(body, opts).map_err(reject::custom)?;
+            .and_then(|method, ctx, db, opts, body| async move {
+                if method != Method::POST && method != Method::GET {
+                    return Err(reject::reject());
+                }
+
+                let request = InfluxqlRequest::new(method, body, opts).map_err(reject::custom)?;
                 influxdb::query(ctx, db, QueryRequest::Influxql(request)).await
             })
     }

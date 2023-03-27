@@ -23,6 +23,7 @@ use handlers::{
     error::{InfluxDbHandlerNoCause, InfluxDbHandlerWithCause, Result},
     query::QueryRequest,
 };
+use http::Method;
 use influxdb_line_protocol::FieldValue;
 use interpreters::interpreter::Output;
 use log::debug;
@@ -83,21 +84,33 @@ pub type WriteResponse = ();
 
 /// Influxql query request compatible with influxdb 1.8
 ///
-/// It is derived form [query string parameters in influxdb 1.8](https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-string-parameters-1).
+/// It's derived from query string parameters in influxdb 1.8:
+///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-string-parameters-1
+///
+/// NOTE:
+///     - when query by POST method, query(q) should be placed after
+///       `--data-urlencode` like what shown in link above.
+///     - when query by GET method, query should be placed in url
+///       parameters(where `db`, `epoch`, etc are placed in).
 #[derive(Debug)]
 pub struct InfluxqlRequest {
     pub query: String,
+    // TODO: make use of the parameters.
     pub chunked: Option<usize>,
     pub db: String,
-    pub epoch: String,
+    pub epoch: Epoch,
     pub pretty: bool,
 }
 
 impl InfluxqlRequest {
-    pub fn new(mut body: HashMap<String, String>, options: Options) -> Result<Self> {
-        // Extract and check body:
-        //  + q, required
-        //  + params, optional(not support now)
+    pub fn new(
+        method: Method,
+        mut body: HashMap<String, String>,
+        params: Parameters,
+    ) -> Result<Self> {
+        // Extract and check body & parameters.
+        //  - q: required(in body when POST and parameters when GET)
+        //  - chunked,db,epoch,pretty: in parameters
         if body.contains_key("params") {
             return InfluxDbHandlerNoCause {
                 msg: "`params` is not supported now",
@@ -105,12 +118,22 @@ impl InfluxqlRequest {
             .fail();
         }
 
-        let query = body.remove("q").context(InfluxDbHandlerNoCause {
-            msg: "query not found in request",
-        })?;
+        let query = match method {
+            Method::GET => params.q.context(InfluxDbHandlerNoCause {
+                msg: "query not found when query by GET",
+            })?,
+            Method::POST => body.remove("q").context(InfluxDbHandlerNoCause {
+                msg: "query not found when query by POST",
+            })?,
+            other => {
+                return InfluxDbHandlerNoCause {
+                    msg: format!("method not allowed in query, method:{other}"),
+                }
+                .fail()
+            }
+        };
 
-        // Extract and check options.
-        let chunked = match options.chunked.as_str() {
+        let chunked = match params.chunked.as_str() {
             "false" => None,
             "true" => Some(10000),
             other => {
@@ -125,29 +148,62 @@ impl InfluxqlRequest {
             }
         };
 
+        let epoch = params.epoch.as_str().into();
+
         Ok(InfluxqlRequest {
             query,
             chunked,
-            db: options.db,
-            epoch: options.epoch,
-            pretty: options.pretty,
+            db: params.db,
+            epoch,
+            pretty: params.pretty,
         })
+    }
+}
+
+#[derive(Debug)]
+pub enum Epoch {
+    Nanoseconds,
+    Microseconds,
+    Milliseconds,
+    Seconds,
+    Minutes,
+    Hours,
+    Days,
+    Weeks,
+}
+
+impl From<&str> for Epoch {
+    fn from(value: &str) -> Self {
+        match value {
+            "ns" => Epoch::Nanoseconds,
+            "us" => Epoch::Microseconds,
+            "ms" => Epoch::Milliseconds,
+            "s" => Epoch::Seconds,
+            "m" => Epoch::Minutes,
+            "h" => Epoch::Hours,
+            "d" => Epoch::Days,
+            "w" => Epoch::Weeks,
+            // Return the default epoch.
+            _ => Epoch::Nanoseconds,
+        }
     }
 }
 
 // The query parameters for list_todos.
 #[derive(Debug, Deserialize)]
 #[serde(default)]
-pub struct Options {
+pub struct Parameters {
+    pub q: Option<String>,
     pub chunked: String,
     pub db: String,
     pub epoch: String,
     pub pretty: bool,
 }
 
-impl Default for Options {
+impl Default for Parameters {
     fn default() -> Self {
         Self {
+            q: None,
             chunked: "false".to_string(),
             db: "public".to_string(),
             epoch: "ms".to_string(),
