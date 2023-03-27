@@ -37,7 +37,7 @@ impl Default for Config {
         Self {
             read_cap: Some(10_000),
             write_cap: Some(10_000),
-            dump_interval: Duration::from_secs(60),
+            dump_interval: Duration::from_secs(1),
             auto_dump: true,
             auto_dump_len: 10,
         }
@@ -56,6 +56,7 @@ pub struct HotspotRecorder {
     tx: Arc<Sender<Message>>,
     hotspot_read: Option<Arc<SpinMutex<HotspotLru<ReadKey>>>>,
     hotspot_write: Option<Arc<SpinMutex<HotspotLru<WriteKey>>>>,
+    dump_pool: Option<Arc<ScheduledThreadPool>>,
 }
 
 #[derive(Clone)]
@@ -110,9 +111,10 @@ impl HotspotRecorder {
             tx: Arc::new(tx),
             hotspot_read,
             hotspot_write,
+            dump_pool,
         };
 
-        if let Some(pool) = dump_pool {
+        if let Some(pool) = &recorder.dump_pool {
             let recoder = recorder.clone();
             let interval = config.dump_interval;
             let dump_len = config.auto_dump_len;
@@ -131,6 +133,7 @@ impl HotspotRecorder {
                     .for_each(|hot| info!("{} write {}", TAG, hot));
             });
         };
+
         recorder
     }
 
@@ -176,13 +179,9 @@ impl HotspotRecorder {
         }
     }
 
-    pub fn inc_route_reqs(&self, _req: &RouteRequest) {
-        unimplemented!();
-    }
+    pub fn inc_route_reqs(&self, _req: &RouteRequest) {}
 
-    pub fn inc_prom_query_reqs(&self, _req: &PrometheusQueryRequest) {
-        unimplemented!();
-    }
+    pub fn inc_prom_query_reqs(&self, _req: &PrometheusQueryRequest) {}
 
     fn send_msg_or_log(&self, method: &str, msg: Message) {
         if let Err(e) = self.tx.clone().try_send(msg) {
@@ -333,18 +332,8 @@ mod test {
             read_hots,
             write_hots,
         } = hotspot.dump();
-        assert_eq!(
-            vec![
-                "metric=public/table1, heats=1"
-            ],
-            read_hots
-        );
-        assert_eq!(
-            vec![
-                "metric=public/table1, heats=1",
-            ],
-            write_hots
-        );
+        assert_eq!(vec!["metric=public/table1, heats=1"], read_hots);
+        assert_eq!(vec!["metric=public/table1, heats=1",], write_hots);
     }
 
     fn mock_context() -> Option<RequestContext> {
