@@ -8,6 +8,7 @@ use std::{
     task::{Context, Poll},
 };
 
+use async_stream::try_stream;
 use common_types::{
     projected_schema::ProjectedSchema,
     record_batch::{RecordBatch, RecordBatchWithKey},
@@ -375,36 +376,32 @@ fn iters_to_stream(
     iters: Vec<impl RecordBatchWithKeyIterator + 'static>,
     projected_schema: ProjectedSchema,
 ) -> SendableRecordBatchStream {
-    let state = StreamStateOnMultiIters {
+    let mut state = StreamStateOnMultiIters {
         projected_schema: projected_schema.clone(),
         iters,
         curr_iter_idx: 0,
     };
 
-    let record_batch_stream = futures::stream::unfold(state, |mut state| async move {
-        let projected_schema = state.projected_schema.clone();
-        state
-            .fetch_next_batch()
-            .await
-            .map(|record_batch| {
-                record_batch
-                    .box_err()
-                    .context(ErrWithSource {
-                        msg: "read record batch",
-                    })
-                    .and_then(|batch_with_key| {
-                        // TODO(yingwen): Try to use projector to do this, which pre-compute row
-                        // indexes to project.
-                        batch_with_key
-                            .try_project(&projected_schema)
-                            .box_err()
-                            .context(ErrWithSource {
-                                msg: "project record batch",
-                            })
-                    })
-            })
-            .map(|record_batch| (record_batch, state))
-    });
+    let record_batch_stream = try_stream! {
+        while let Some(value) = state.fetch_next_batch().await {
+            let record_batch = value
+                .box_err()
+                .context(ErrWithSource {
+                    msg: "Read record batch",
+                })
+                .and_then(|batch_with_key| {
+                    // TODO(yingwen): Try to use projector to do this, which pre-compute row
+                    // indexes to project.
+                    batch_with_key
+                        .try_project(&state.projected_schema)
+                        .box_err()
+                        .context(ErrWithSource {
+                            msg: "Project record batch",
+                        })
+                });
+            yield record_batch?;
+        }
+    };
 
     let record_schema = projected_schema.to_record_schema();
     let stream_with_schema = RecordBatchStreamWithSchema {
