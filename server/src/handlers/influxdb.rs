@@ -189,7 +189,6 @@ impl From<&str> for Epoch {
     }
 }
 
-// The query parameters for list_todos.
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct Parameters {
