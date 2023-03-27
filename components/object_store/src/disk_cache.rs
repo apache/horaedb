@@ -147,7 +147,7 @@ impl DiskCache {
                 .into_string()
                 .unwrap();
 
-            info!("Remove disk cache, filename:{}.", &file_path);
+            debug!("Remove disk cache, filename:{}.", &file_path);
             if let Err(e) = tokio::fs::remove_file(&file_path).await {
                 error!("Remove disk cache failed, file:{}, err:{}.", file_path, e);
             }

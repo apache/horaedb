@@ -23,7 +23,7 @@ use common_util::{
     time::InstantExt,
 };
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
-use log::{debug, error, info};
+use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask},
@@ -200,7 +200,7 @@ impl<'a> Reader<'a> {
             meta_data.custom().parquet_filter.as_ref(),
         )?;
 
-        info!(
+        debug!(
             "Reader fetch record batches, path:{}, row_groups total:{}, after prune:{}",
             self.path,
             meta_data.parquet().num_row_groups(),
@@ -221,7 +221,7 @@ impl<'a> Reader<'a> {
         let chunks_num = parallelism;
         let chunk_size = target_row_groups.len() / parallelism;
         self.metrics.parallelism = parallelism;
-        info!(
+        debug!(
             "Reader fetch record batches parallelly, parallelism suggest:{}, real:{}, chunk_size:{}",
             suggested_parallelism, parallelism, chunk_size
         );
@@ -482,7 +482,7 @@ impl RecordBatchProjector {
 
 impl Drop for RecordBatchProjector {
     fn drop(&mut self) {
-        info!(
+        debug!(
             "RecordBatchProjector dropped, path:{} rows:{}, cost:{}ms.",
             self.path,
             self.row_num,
