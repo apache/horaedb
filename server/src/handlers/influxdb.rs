@@ -27,8 +27,8 @@ use influxdb_line_protocol::FieldValue;
 use interpreters::interpreter::Output;
 use log::debug;
 use query_engine::executor::Executor as QueryExecutor;
-use serde::Serialize;
-use snafu::{ensure, ResultExt};
+use serde::{Deserialize, Serialize};
+use snafu::{ensure, OptionExt, ResultExt};
 use sql::influxql::planner::CERESDB_MEASUREMENT_COLUMN_NAME;
 use warp::{reject, reply, Rejection, Reply};
 
@@ -80,6 +80,81 @@ impl From<Bytes> for WriteRequest {
 }
 
 pub type WriteResponse = ();
+
+/// Influxql query request compatible with influxdb 1.8
+///
+/// It is derived form [query string parameters in influxdb 1.8](https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-string-parameters-1).
+#[derive(Debug)]
+pub struct InfluxqlRequest {
+    pub query: String,
+    pub chunked: Option<usize>,
+    pub db: String,
+    pub epoch: String,
+    pub pretty: bool,
+}
+
+impl InfluxqlRequest {
+    pub fn new(mut body: HashMap<String, String>, options: Options) -> Result<Self> {
+        // Extract and check body:
+        //  + q, required
+        //  + params, optional(not support now)
+        if body.contains_key("params") {
+            return InfluxDbHandlerNoCause {
+                msg: "`params` is not supported now",
+            }
+            .fail();
+        }
+
+        let query = body.remove("q").context(InfluxDbHandlerNoCause {
+            msg: "query not found in request",
+        })?;
+
+        // Extract and check options.
+        let chunked = match options.chunked.as_str() {
+            "false" => None,
+            "true" => Some(10000),
+            other => {
+                let chunk_size =
+                    other
+                        .parse::<usize>()
+                        .box_err()
+                        .context(InfluxDbHandlerWithCause {
+                            msg: format!("invalid chunked option, chunked:{other}"),
+                        })?;
+                Some(chunk_size)
+            }
+        };
+
+        Ok(InfluxqlRequest {
+            query,
+            chunked,
+            db: options.db,
+            epoch: options.epoch,
+            pretty: options.pretty,
+        })
+    }
+}
+
+// The query parameters for list_todos.
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct Options {
+    pub chunked: String,
+    pub db: String,
+    pub epoch: String,
+    pub pretty: bool,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            chunked: "false".to_string(),
+            db: "public".to_string(),
+            epoch: "ms".to_string(),
+            pretty: false,
+        }
+    }
+}
 
 /// Influxql response organized in the same way with influxdb.
 ///

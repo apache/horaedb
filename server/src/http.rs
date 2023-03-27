@@ -33,7 +33,7 @@ use crate::{
     error_util,
     handlers::{
         self,
-        influxdb::{self, InfluxDb},
+        influxdb::{self, InfluxDb, InfluxqlRequest, Options},
         prom::CeresDBStorage,
         query::Request,
     },
@@ -176,7 +176,8 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             // public APIs
             .or(self.metrics())
             .or(self.sql())
-            .or(self.influxdb_api())
+            .or(self.influxdb_write())
+            .or(self.influxdb_query())
             .or(self.prom_api())
             // admin APIs
             .or(self.admin_block())
@@ -254,24 +255,33 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     }
 
     /// POST `/influxdb/v1/query` and `/influxdb/v1/write`
-    fn influxdb_api(
+    fn influxdb_write(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        let write_api = warp::path!("write")
+        warp::path!("influxdb" / "v1" / "write")
+            .and(warp::post())
+            .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(self.with_context())
             .and(self.with_influxdb())
             .and(warp::body::bytes().map(influxdb::WriteRequest::from))
-            .and_then(influxdb::write);
-        let query_api = warp::path!("query")
+            .and_then(influxdb::write)
+    }
+
+    /// GET `/influxdb/v1/query`
+    fn influxdb_query(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("influxdb" / "v1" / "query")
+            .and(warp::get())
+            .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(self.with_context())
             .and(self.with_influxdb())
-            .and(warp::body::bytes().map(|bytes| QueryRequest::Influxql(Request::from(bytes))))
-            .and_then(influxdb::query);
-
-        warp::path!("influxdb" / "v1" / ..)
-            .and(warp::post())
-            .and(warp::body::content_length_limit(self.config.max_body_size))
-            .and(write_api.or(query_api))
+            .and(warp::query::<Options>())
+            .and(warp::body::form::<HashMap<String, String>>())
+            .and_then(|ctx, db, opts, body| async move {
+                let request = InfluxqlRequest::new(body, opts).map_err(reject::custom)?;
+                influxdb::query(ctx, db, QueryRequest::Influxql(request)).await
+            })
     }
 
     // POST /debug/flush_memtable
