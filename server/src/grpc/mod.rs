@@ -34,8 +34,9 @@ use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
 use crate::{
-    grpc::{ meta_event_service::MetaServiceImpl,
-        remote_engine_service::RemoteEngineServiceImpl, storage_service::StorageServiceImpl,
+    grpc::{
+        meta_event_service::MetaServiceImpl, remote_engine_service::RemoteEngineServiceImpl,
+        storage_service::StorageServiceImpl,
     },
     instance::InstanceRef,
     proxy::{forward, Proxy},

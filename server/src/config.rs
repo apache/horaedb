@@ -15,8 +15,7 @@ use router::{
 use serde::{Deserialize, Serialize};
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
-use crate::{http::DEFAULT_MAX_BODY_SIZE, proxy::forward};
-use crate::grpc::hotspot;
+use crate::{grpc::hotspot, http::DEFAULT_MAX_BODY_SIZE, proxy::forward};
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]

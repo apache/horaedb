@@ -3,9 +3,7 @@
 //! hotspot recorder
 use std::{fmt::Write, sync::Arc, thread, time::Duration};
 
-use ceresdbproto::storage::{
-     RequestContext, SqlQueryRequest, WriteRequest,
-};
+use ceresdbproto::storage::{RequestContext, SqlQueryRequest, WriteRequest};
 use crossbeam::{bounded, Sender};
 use log::{info, warn};
 use scheduled_thread_pool::ScheduledThreadPool;
@@ -46,7 +44,7 @@ impl Default for Config {
 
 enum Message {
     // (ReadKey)
-    Read(ReadKey),
+    SqlQuery(ReadKey),
     // (WriteKey, field_num)
     Write(WriteKey, usize),
 }
@@ -86,7 +84,7 @@ impl HotspotRecorder {
                         break;
                     }
                     Ok(msg) => match msg {
-                        Message::Read(read_key) => {
+                        Message::SqlQuery(read_key) => {
                             if let Some(hotspot) = &hr {
                                 hotspot.lock().inc(&read_key, 1);
                             }
@@ -158,7 +156,7 @@ impl HotspotRecorder {
             for table in &req.tables {
                 self.send_msg_or_log(
                     "inc_read_reqs",
-                    Message::Read(Self::table_hot_key(&req.context.clone().unwrap(), table)),
+                    Message::SqlQuery(Self::table_hot_key(&req.context.clone().unwrap(), table)),
                 );
             }
         }
