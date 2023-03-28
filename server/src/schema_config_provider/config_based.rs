@@ -14,16 +14,24 @@ pub type SchemaConfigs = HashMap<String, SchemaConfig>;
 #[derive(Debug)]
 pub struct ConfigBasedProvider {
     schema_configs: SchemaConfigs,
+    default: SchemaConfig,
 }
 
 impl ConfigBasedProvider {
-    pub fn new(schema_configs: SchemaConfigs) -> Self {
-        Self { schema_configs }
+    pub fn new(schema_configs: SchemaConfigs, default: SchemaConfig) -> Self {
+        Self {
+            schema_configs,
+            default,
+        }
     }
 }
 
 impl SchemaConfigProvider for ConfigBasedProvider {
     fn schema_config(&self, schema_name: &str) -> Result<Option<&SchemaConfig>> {
-        Ok(self.schema_configs.get(schema_name))
+        Ok(Some(
+            self.schema_configs
+                .get(schema_name)
+                .unwrap_or(&self.default),
+        ))
     }
 }

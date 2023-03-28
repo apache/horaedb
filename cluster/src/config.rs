@@ -5,7 +5,7 @@ use meta_client::meta_impl::MetaClientConfig;
 use serde::{Deserialize, Serialize};
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 // TODO: move this to table_engine crates
 pub struct SchemaConfig {
