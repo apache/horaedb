@@ -34,7 +34,7 @@ use crate::{
     error_util,
     handlers::{
         self,
-        influxdb::{self, InfluxDb, InfluxqlRequest, QueryStringParams},
+        influxdb::{self, InfluxDb, InfluxqlParams, InfluxqlRequest, WriteParams, WriteRequest},
         prom::CeresDBStorage,
         query::Request,
     },
@@ -269,14 +269,18 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(warp::post())
             .and(self.with_context())
             .and(self.with_influxdb())
-            .and(warp::body::bytes().map(influxdb::WriteRequest::from))
-            .and_then(influxdb::write);
+            .and(warp::query::<WriteParams>())
+            .and(warp::body::bytes())
+            .and_then(|ctx, db, params, lines| async move {
+                let request = WriteRequest::new(lines, params);
+                influxdb::write(ctx, db, request).await
+            });
 
         let query_api = warp::path!("query")
             .and(warp::method())
             .and(self.with_context())
             .and(self.with_influxdb())
-            .and(warp::query::<QueryStringParams>())
+            .and(warp::query::<InfluxqlParams>())
             .and(warp::body::form::<HashMap<String, String>>())
             .and_then(|method, ctx, db, params, body| async move {
                 if method != Method::POST && method != Method::GET {

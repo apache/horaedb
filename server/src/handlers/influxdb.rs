@@ -46,39 +46,78 @@ pub struct InfluxDb<Q> {
     schema_config_provider: SchemaConfigProviderRef,
 }
 
-/// Line protocol
+/// Influxql write request compatible with influxdb 1.8
+///
+/// It's derived from 1.x write api described in doc of influxdb 1.8:
+///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#write-http-endpoint
 #[derive(Debug)]
 pub struct WriteRequest {
+    /// Data formatted in line protocol
     pub lines: String,
+
+    /// Details about `db`, `precision` can be saw in [WriteParams]
+    // TODO: `db` should be made use of in later.
+    pub db: String,
     pub precision: Precision,
 }
 
-impl From<Bytes> for WriteRequest {
-    fn from(bytes: Bytes) -> Self {
+impl WriteRequest {
+    pub fn new(lines: Bytes, params: WriteParams) -> Self {
+        let lines = String::from_utf8_lossy(&lines).to_string();
+
+        let precision = params.precision.as_str().into();
+
         WriteRequest {
-            lines: String::from_utf8_lossy(&bytes).to_string(),
-            precision: Default::default(),
+            lines,
+            db: params.db,
+            precision,
         }
     }
 }
 
 pub type WriteResponse = ();
 
+/// Query string parameters for write api
+///
+/// It's derived from query string parameters of write described in
+/// doc of influxdb 1.8:
+///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-string-parameters-2
+///
+/// NOTE:
+///     - `db` is not required and default to `public` in CeresDB.
+///     - `precision`'s default value is `ms` but not `ns` in CeresDB.
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct WriteParams {
+    pub db: String,
+    pub precision: String,
+}
+
+impl Default for WriteParams {
+    fn default() -> Self {
+        Self {
+            db: "public".to_string(),
+            precision: "ms".to_string(),
+        }
+    }
+}
+
 /// Influxql query request compatible with influxdb 1.8
 ///
-/// It's derived from query string parameters in influxdb 1.8:
-///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-string-parameters-1
+/// It's derived from 1.x query api described in doc of influxdb 1.8:
+///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-http-endpoint
 ///
 /// NOTE:
 ///     - when query by POST method, query(q) should be placed after
 ///       `--data-urlencode` like what shown in link above.
 ///     - when query by GET method, query should be placed in url
 ///       parameters(where `db`, `epoch`, etc are placed in).
-///     - `chunked` is not supported in CeresDB.
-///     - `epoch`'s default value is `ms` but not `ns` in CeresDB.
 #[derive(Debug)]
 pub struct InfluxqlRequest {
+    /// Query described by influxql
     pub query: String,
+
+    /// Details about `db`, `epoch`, `pretty` can be saw in [InfluxqlParams]
     // TODO: `db`, `epoch`, `pretty` should be made use of in later.
     pub db: String,
     pub epoch: Precision,
@@ -89,7 +128,7 @@ impl InfluxqlRequest {
     pub fn try_new(
         method: Method,
         mut body: HashMap<String, String>,
-        params: QueryStringParams,
+        params: InfluxqlParams,
     ) -> Result<Self> {
         // Extract and check body & parameters.
         //  - q: required(in body when POST and parameters when GET)
@@ -154,8 +193,8 @@ impl Precision {
 impl From<&str> for Precision {
     fn from(value: &str) -> Self {
         match value {
-            "ns" => Precision::Nanosecond,
-            "us" => Precision::Microsecond,
+            "ns" | "n" => Precision::Nanosecond,
+            "u" | "µ" => Precision::Microsecond,
             "ms" => Precision::Millisecond,
             "s" => Precision::Second,
             "m" => Precision::Minute,
@@ -166,19 +205,26 @@ impl From<&str> for Precision {
     }
 }
 
-/// Query string parameters
+/// Query string parameters for query api(by influxql)
 ///
-/// See detail in [InfluxqlRequest].
+/// It's derived from query string parameters of query described in
+/// doc of influxdb 1.8:     
+///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-string-parameters-1
+///
+/// NOTE:
+///     - `db` is not required and default to `public` in CeresDB.
+///     - `chunked` is not supported in CeresDB.
+///     - `epoch`'s default value is `ms` but not `ns` in CeresDB.
 #[derive(Debug, Deserialize)]
 #[serde(default)]
-pub struct QueryStringParams {
+pub struct InfluxqlParams {
     pub q: Option<String>,
     pub db: String,
     pub epoch: String,
     pub pretty: bool,
 }
 
-impl Default for QueryStringParams {
+impl Default for InfluxqlParams {
     fn default() -> Self {
         Self {
             q: None,
@@ -690,6 +736,7 @@ mod tests {
         .to_string();
         let req = WriteRequest {
             lines,
+            db: "public".to_string(),
             precision: Precision::Millisecond,
         };
 
