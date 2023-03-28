@@ -11,15 +11,19 @@ use arrow::{
         Float64Builder as DoubleBuilder, Int16Array, Int16Builder, Int32Array, Int32Builder,
         Int64Array, Int64Builder, Int8Array, Int8Builder, NullArray, StringArray, StringBuilder,
         Time64NanosecondArray as TimeArray, Time64NanosecondBuilder as TimeBuilder,
-        TimestampMillisecondArray, TimestampMillisecondBuilder, TimestampNanosecondArray,
+        TimestampMillisecondArray, TimestampMillisecondBuilder,
         UInt16Array, UInt16Builder, UInt32Array, UInt32Builder, UInt64Array, UInt64Builder,
         UInt8Array, UInt8Builder,
     },
     datatypes::{DataType, TimeUnit},
     error::ArrowError,
 };
+use datafusion::{
+    physical_expr::datetime_expressions::to_timestamp_millis,
+    physical_plan::ColumnarValue,
+};
 use paste::paste;
-use snafu::{Backtrace, OptionExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
     bytes::Bytes,
@@ -69,6 +73,19 @@ pub enum Error {
         data_type: DataType,
         backtrace: Backtrace,
     },
+
+    #[snafu(display(
+        "Failed to cast nanosecond to millisecond, data_type:{}. err:{}",
+        data_type,
+        source,
+    ))]
+    CastTimestamp {
+        data_type: DataType,
+        source: datafusion::error::DataFusionError,
+    },
+
+    #[snafu(display("Operation not yet implemented."))]
+    NotImplemented,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -609,12 +626,14 @@ macro_rules! define_column_block {
                         DatumKind::Null => ColumnBlock::Null(NullColumn::new_null(array.len())),
                         $(
                             DatumKind::$Kind => {
-                                if let DataType::Timestamp(TimeUnit::Nanosecond, None) = array.data_type() {
-                                    ColumnBlock::from_nanosecond_timestamp(array)?
-                                } else {
-                                    let column = cast_array(datum_kind, array)?;
-                                    ColumnBlock::$Kind([<$Kind Column>]::from(column))
-                                }
+                                let data_type = array.data_type();
+                                let array_ref = match data_type {
+                                    DataType::Timestamp(TimeUnit::Nanosecond, None) => cast_nanosecond_to_millis(array)?,
+                                    _ => array.clone(),
+                                };
+
+                                let column = cast_array(datum_kind, &array_ref)?;
+                                ColumnBlock::$Kind([<$Kind Column>]::from(column))
                             }
                         )*
                     };
@@ -661,25 +680,18 @@ impl ColumnBlock {
             _ => None,
         }
     }
+}
 
-    pub fn from_nanosecond_timestamp(array: &ArrayRef) -> Result<Self> {
-        let data = array
-            .as_any()
-            .downcast_ref::<TimestampNanosecondArray>()
-            .with_context(|| InvalidArrayType {
-                datum_kind: DatumKind::Timestamp,
-                data_type: array.data_type().clone(),
-            })?;
-        let array_data = data.data().clone();
-        let array = TimestampNanosecondArray::from(array_data);
-        let len = array.len();
-        let mut builder = TimestampMillisecondBuilder::with_capacity(len);
-        for i in 0..len {
-            builder.append_value(array.value(i));
-        }
-        let mills = builder.finish();
-        Ok(ColumnBlock::Timestamp(TimestampColumn(mills)))
+fn cast_nanosecond_to_millis(array: &ArrayRef) -> Result<ArrayRef> {
+    let array_data = array.clone();
+    let column_value = ColumnarValue::Array(array_data);
+    let millis = to_timestamp_millis(&[column_value]).context(CastTimestamp {
+        data_type: array.data_type().clone(),
+    })?;
+    if let ColumnarValue::Array(array) = millis {
+        return Ok(array);
     }
+    Err(Error::NotImplemented)
 }
 
 fn cast_array<'a, T: 'static>(datum_kind: &DatumKind, array: &'a ArrayRef) -> Result<&'a T> {
