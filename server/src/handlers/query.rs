@@ -23,6 +23,7 @@ use sql::{
     provider::CatalogMetaProvider,
 };
 
+use super::influxdb::InfluxqlRequest;
 use crate::handlers::{
     error::{
         CreatePlan, InterpreterExec, ParseInfluxql, ParseSql, QueryBlock, QueryTimeout, TooMuchStmt,
@@ -110,7 +111,7 @@ impl From<Bytes> for Request {
 pub enum QueryRequest {
     Sql(Request),
     // TODO: influxql include more parameters, we should add it in later.
-    Influxql(Request),
+    Influxql(InfluxqlRequest),
 }
 impl QueryRequest {
     pub fn query(&self) -> &str {

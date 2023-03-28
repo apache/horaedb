@@ -23,12 +23,13 @@ use handlers::{
     error::{InfluxDbHandlerNoCause, InfluxDbHandlerWithCause, Result},
     query::QueryRequest,
 };
+use http::Method;
 use influxdb_line_protocol::FieldValue;
 use interpreters::interpreter::Output;
 use log::debug;
 use query_engine::executor::Executor as QueryExecutor;
-use serde::Serialize;
-use snafu::{ensure, ResultExt};
+use serde::{Deserialize, Serialize};
+use snafu::{ensure, OptionExt, ResultExt};
 use sql::influxql::planner::CERESDB_MEASUREMENT_COLUMN_NAME;
 use warp::{reject, reply, Rejection, Reply};
 
@@ -45,41 +46,194 @@ pub struct InfluxDb<Q> {
     schema_config_provider: SchemaConfigProviderRef,
 }
 
-#[derive(Debug, Default)]
-pub enum Precision {
-    #[default]
-    Millisecond,
-    // TODO: parse precision `second` from HTTP API
-    #[allow(dead_code)]
-    Second,
-}
-
-impl Precision {
-    fn normalize(&self, ts: i64) -> i64 {
-        match self {
-            Self::Millisecond => ts,
-            Self::Second => ts * 1000,
-        }
-    }
-}
-
-/// Line protocol
+/// Influxql write request compatible with influxdb 1.8
+///
+/// It's derived from 1.x write api described in doc of influxdb 1.8:
+///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#write-http-endpoint
 #[derive(Debug)]
 pub struct WriteRequest {
+    /// Data formatted in line protocol
     pub lines: String,
+
+    /// Details about `db`, `precision` can be saw in [WriteParams]
+    // TODO: `db` should be made use of in later.
+    pub db: String,
     pub precision: Precision,
 }
 
-impl From<Bytes> for WriteRequest {
-    fn from(bytes: Bytes) -> Self {
+impl WriteRequest {
+    pub fn new(lines: Bytes, params: WriteParams) -> Self {
+        let lines = String::from_utf8_lossy(&lines).to_string();
+
+        let precision = params.precision.as_str().into();
+
         WriteRequest {
-            lines: String::from_utf8_lossy(&bytes).to_string(),
-            precision: Default::default(),
+            lines,
+            db: params.db,
+            precision,
         }
     }
 }
 
 pub type WriteResponse = ();
+
+/// Query string parameters for write api
+///
+/// It's derived from query string parameters of write described in
+/// doc of influxdb 1.8:
+///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-string-parameters-2
+///
+/// NOTE:
+///     - `db` is not required and default to `public` in CeresDB.
+///     - `precision`'s default value is `ms` but not `ns` in CeresDB.
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct WriteParams {
+    pub db: String,
+    pub precision: String,
+}
+
+impl Default for WriteParams {
+    fn default() -> Self {
+        Self {
+            db: "public".to_string(),
+            precision: "ms".to_string(),
+        }
+    }
+}
+
+/// Influxql query request compatible with influxdb 1.8
+///
+/// It's derived from 1.x query api described in doc of influxdb 1.8:
+///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-http-endpoint
+///
+/// NOTE:
+///     - when query by POST method, query(q) should be placed after
+///       `--data-urlencode` like what shown in link above.
+///     - when query by GET method, query should be placed in url
+///       parameters(where `db`, `epoch`, etc are placed in).
+#[derive(Debug)]
+pub struct InfluxqlRequest {
+    /// Query described by influxql
+    pub query: String,
+
+    /// Details about `db`, `epoch`, `pretty` can be saw in [InfluxqlParams]
+    // TODO: `db`, `epoch`, `pretty` should be made use of in later.
+    pub db: String,
+    pub epoch: Precision,
+    pub pretty: bool,
+}
+
+impl InfluxqlRequest {
+    pub fn try_new(
+        method: Method,
+        mut body: HashMap<String, String>,
+        params: InfluxqlParams,
+    ) -> Result<Self> {
+        // Extract and check body & parameters.
+        //  - q: required(in body when POST and parameters when GET)
+        //  - chunked,db,epoch,pretty: in parameters
+        if body.contains_key("params") {
+            return InfluxDbHandlerNoCause {
+                msg: "`params` is not supported now",
+            }
+            .fail();
+        }
+
+        let query = match method {
+            Method::GET => params.q.context(InfluxDbHandlerNoCause {
+                msg: "query not found when query by GET",
+            })?,
+            Method::POST => body.remove("q").context(InfluxDbHandlerNoCause {
+                msg: "query not found when query by POST",
+            })?,
+            other => {
+                return InfluxDbHandlerNoCause {
+                    msg: format!("method not allowed in query, method:{other}"),
+                }
+                .fail()
+            }
+        };
+
+        let epoch = params.epoch.as_str().into();
+
+        Ok(InfluxqlRequest {
+            query,
+            db: params.db,
+            epoch,
+            pretty: params.pretty,
+        })
+    }
+}
+
+#[derive(Debug, Default)]
+pub enum Precision {
+    #[default]
+    Millisecond,
+    Nanosecond,
+    Microsecond,
+    Second,
+    Minute,
+    Hour,
+}
+
+impl Precision {
+    fn try_normalize(&self, ts: i64) -> Option<i64> {
+        match self {
+            Self::Millisecond => Some(ts),
+            Self::Nanosecond => ts.checked_div(1000 * 1000),
+            Self::Microsecond => ts.checked_div(1000),
+            Self::Second => ts.checked_mul(1000),
+            Self::Minute => ts.checked_mul(1000 * 60),
+            Self::Hour => ts.checked_mul(1000 * 60 * 60),
+        }
+    }
+}
+
+impl From<&str> for Precision {
+    fn from(value: &str) -> Self {
+        match value {
+            "ns" | "n" => Precision::Nanosecond,
+            "u" | "µ" => Precision::Microsecond,
+            "ms" => Precision::Millisecond,
+            "s" => Precision::Second,
+            "m" => Precision::Minute,
+            "h" => Precision::Hour,
+            // Return the default precision.
+            _ => Precision::Millisecond,
+        }
+    }
+}
+
+/// Query string parameters for query api(by influxql)
+///
+/// It's derived from query string parameters of query described in
+/// doc of influxdb 1.8:     
+///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-string-parameters-1
+///
+/// NOTE:
+///     - `db` is not required and default to `public` in CeresDB.
+///     - `chunked` is not supported in CeresDB.
+///     - `epoch`'s default value is `ms` but not `ns` in CeresDB.
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct InfluxqlParams {
+    pub q: Option<String>,
+    pub db: String,
+    pub epoch: String,
+    pub pretty: bool,
+}
+
+impl Default for InfluxqlParams {
+    fn default() -> Self {
+        Self {
+            q: None,
+            db: "public".to_string(),
+            epoch: "ms".to_string(),
+            pretty: false,
+        }
+    }
+}
 
 /// Influxql response organized in the same way with influxdb.
 ///
@@ -416,15 +570,20 @@ impl<Q: QueryExecutor + 'static> InfluxDb<Q> {
 
 fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
     let mut req_by_measurement = HashMap::new();
-    let default_ts = Timestamp::now().as_i64();
     for line in influxdb_line_protocol::parse_lines(&req.lines) {
         let mut line = line.box_err().with_context(|| InfluxDbHandlerWithCause {
             msg: "invalid line",
         })?;
 
-        let timestamp = line
-            .timestamp
-            .map_or_else(|| default_ts, |ts| req.precision.normalize(ts));
+        let timestamp = match line.timestamp {
+            Some(ts) => req
+                .precision
+                .try_normalize(ts)
+                .context(InfluxDbHandlerNoCause {
+                    msg: "time outside range -9223372036854775806 - 9223372036854775806",
+                })?,
+            None => Timestamp::now().as_i64(),
+        };
         let mut tag_set = line.series.tag_set.unwrap_or_default();
         // sort by tag key
         tag_set.sort_unstable_by(|a, b| a.0.cmp(&b.0));
@@ -582,6 +741,7 @@ mod tests {
         .to_string();
         let req = WriteRequest {
             lines,
+            db: "public".to_string(),
             precision: Precision::Millisecond,
         };
 

@@ -245,6 +245,7 @@ impl<T: Backend> CeresDB<T> {
 
 impl<T> CeresDB<T> {
     async fn execute_influxql(query: String, http_client: HttpClient) -> Box<dyn Display> {
+        let query = format!("q={query}");
         let url = format!("http://{}/influxdb/v1/query", http_client.endpoint);
         let resp = http_client
             .client
