@@ -237,7 +237,7 @@ impl HotspotRecorder {
         }
     }
 
-    /// return read / fields read / write metrics / search_series
+    /// return read count / write row count / write field count
     pub fn dump(&self) -> Dump {
         let format_hots = |hots: Vec<(String, u64)>| {
             hots.into_iter()
