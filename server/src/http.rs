@@ -34,7 +34,7 @@ use crate::{
     error_util,
     handlers::{
         self,
-        influxdb::{self, InfluxDb, InfluxqlRequest, Parameters},
+        influxdb::{self, InfluxDb, InfluxqlRequest, QueryStringParams},
         prom::CeresDBStorage,
         query::Request,
     },
@@ -260,7 +260,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     /// for query api:
     ///     POST/GET `/influxdb/v1/query`
     ///
-    ///     It's derived from the influxdb 1.x query api described doc of 1.8:
+    ///     It is derived from the influxdb 1.x query api described doc of 1.8:
     ///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-http-endpoint
     fn influxdb_api(
         &self,
@@ -276,14 +276,14 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(warp::method())
             .and(self.with_context())
             .and(self.with_influxdb())
-            .and(warp::query::<Parameters>())
+            .and(warp::query::<QueryStringParams>())
             .and(warp::body::form::<HashMap<String, String>>())
             .and_then(|method, ctx, db, params, body| async move {
                 if method != Method::POST && method != Method::GET {
                     return Err(reject::reject());
                 }
 
-                let request = InfluxqlRequest::new(method, body, params).map_err(reject::custom)?;
+                let request = InfluxqlRequest::try_new(method, body, params).map_err(reject::custom)?;
                 influxdb::query(ctx, db, QueryRequest::Influxql(request)).await
             });
 

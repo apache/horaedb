@@ -92,21 +92,22 @@ pub type WriteResponse = ();
 ///       `--data-urlencode` like what shown in link above.
 ///     - when query by GET method, query should be placed in url
 ///       parameters(where `db`, `epoch`, etc are placed in).
+///     - `chunked` is not supported in CeresDB.
+///     - `epoch`'s default value is `ms` but not `ns` in CeresDB.
 #[derive(Debug)]
 pub struct InfluxqlRequest {
     pub query: String,
-    // TODO: make use of the parameters.
-    pub chunked: Option<usize>,
+    // TODO: `db`, `epoch`, `pretty` should be made use of in later.
     pub db: String,
     pub epoch: Epoch,
     pub pretty: bool,
 }
 
 impl InfluxqlRequest {
-    pub fn new(
+    pub fn try_new(
         method: Method,
         mut body: HashMap<String, String>,
-        params: Parameters,
+        params: QueryStringParams,
     ) -> Result<Self> {
         // Extract and check body & parameters.
         //  - q: required(in body when POST and parameters when GET)
@@ -133,26 +134,10 @@ impl InfluxqlRequest {
             }
         };
 
-        let chunked = match params.chunked.as_str() {
-            "false" => None,
-            "true" => Some(10000),
-            other => {
-                let chunk_size =
-                    other
-                        .parse::<usize>()
-                        .box_err()
-                        .context(InfluxDbHandlerWithCause {
-                            msg: format!("invalid chunked option, chunked:{other}"),
-                        })?;
-                Some(chunk_size)
-            }
-        };
-
         let epoch = params.epoch.as_str().into();
 
         Ok(InfluxqlRequest {
             query,
-            chunked,
             db: params.db,
             epoch,
             pretty: params.pretty,
@@ -184,26 +169,27 @@ impl From<&str> for Epoch {
             "d" => Epoch::Days,
             "w" => Epoch::Weeks,
             // Return the default epoch.
-            _ => Epoch::Nanoseconds,
+            _ => Epoch::Milliseconds,
         }
     }
 }
 
+/// Query string parameters
+///
+/// See detail in [InfluxqlRequest].
 #[derive(Debug, Deserialize)]
 #[serde(default)]
-pub struct Parameters {
+pub struct QueryStringParams {
     pub q: Option<String>,
-    pub chunked: String,
     pub db: String,
     pub epoch: String,
     pub pretty: bool,
 }
 
-impl Default for Parameters {
+impl Default for QueryStringParams {
     fn default() -> Self {
         Self {
             q: None,
-            chunked: "false".to_string(),
             db: "public".to_string(),
             epoch: "ms".to_string(),
             pretty: false,
