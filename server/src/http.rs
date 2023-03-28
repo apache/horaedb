@@ -9,7 +9,6 @@ use std::{
 
 use common_util::error::BoxError;
 use handlers::query::QueryRequest;
-use http::Method;
 use log::{error, info};
 use logger::RuntimeLevel;
 use profile::Profiler;
@@ -265,8 +264,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     fn influxdb_api(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        let body_limit = warp::body::content_length_limit(self.config.max_body_size);
+
         let write_api = warp::path!("write")
             .and(warp::post())
+            .and(body_limit)
             .and(self.with_context())
             .and(self.with_influxdb())
             .and(warp::query::<WriteParams>())
@@ -276,6 +278,9 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                 influxdb::write(ctx, db, request).await
             });
 
+        // Query support both get and post method, so we can't add `body_limit` here.
+        // Otherwise it will throw `Rejection(LengthRequired)`
+        // TODO: support body limit for POST request
         let query_api = warp::path!("query")
             .and(warp::method())
             .and(self.with_context())
@@ -283,18 +288,12 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(warp::query::<InfluxqlParams>())
             .and(warp::body::form::<HashMap<String, String>>())
             .and_then(|method, ctx, db, params, body| async move {
-                if method != Method::POST && method != Method::GET {
-                    return Err(reject::reject());
-                }
-
                 let request =
                     InfluxqlRequest::try_new(method, body, params).map_err(reject::custom)?;
                 influxdb::query(ctx, db, QueryRequest::Influxql(request)).await
             });
 
-        warp::path!("influxdb" / "v1" / ..)
-            .and(warp::body::content_length_limit(self.config.max_body_size))
-            .and(write_api.or(query_api))
+        warp::path!("influxdb" / "v1" / ..).and(write_api.or(query_api))
     }
 
     // POST /debug/flush_memtable
@@ -630,7 +629,8 @@ async fn handle_rejection(
     } else {
         error!("handle error: {:?}", rejection);
         code = StatusCode::INTERNAL_SERVER_ERROR;
-        message = format!("UNKNOWN_ERROR: {rejection:?}");
+        message = error_util::remove_backtrace_from_err(&format!("UNKNOWN_ERROR: {rejection:?}"))
+            .to_string();
     }
 
     let json = reply::json(&ErrorResponse {
