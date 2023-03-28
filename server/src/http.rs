@@ -260,7 +260,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     /// for query api:
     ///     POST/GET `/influxdb/v1/query`
     ///
-    ///     It is derived from the influxdb 1.x query api described doc of 1.8:
+    /// It's derived from the influxdb 1.x query api described doc of 1.8:
     ///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-http-endpoint
     fn influxdb_api(
         &self,

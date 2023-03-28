@@ -178,14 +178,14 @@ pub enum Precision {
 }
 
 impl Precision {
-    fn normalize(&self, ts: i64) -> i64 {
+    fn try_normalize(&self, ts: i64) -> Option<i64> {
         match self {
-            Self::Millisecond => ts,
-            Self::Nanosecond => ts / 1000 / 1000,
-            Self::Microsecond => ts / 1000,
-            Self::Second => ts * 1000,
-            Self::Minute => ts * 1000 * 60,
-            Self::Hour => ts * 1000 * 60 * 60,
+            Self::Millisecond => Some(ts),
+            Self::Nanosecond => ts.checked_div(1000 * 1000),
+            Self::Microsecond => ts.checked_div(1000),
+            Self::Second => ts.checked_mul(1000),
+            Self::Minute => ts.checked_mul(1000 * 60),
+            Self::Hour => ts.checked_mul(1000 * 60 * 60),
         }
     }
 }
@@ -570,15 +570,20 @@ impl<Q: QueryExecutor + 'static> InfluxDb<Q> {
 
 fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
     let mut req_by_measurement = HashMap::new();
-    let default_ts = Timestamp::now().as_i64();
     for line in influxdb_line_protocol::parse_lines(&req.lines) {
         let mut line = line.box_err().with_context(|| InfluxDbHandlerWithCause {
             msg: "invalid line",
         })?;
 
-        let timestamp = line
-            .timestamp
-            .map_or_else(|| default_ts, |ts| req.precision.normalize(ts));
+        let timestamp = match line.timestamp {
+            Some(ts) => req
+                .precision
+                .try_normalize(ts)
+                .context(InfluxDbHandlerNoCause {
+                    msg: "time outside range -9223372036854775806 - 9223372036854775806",
+                })?,
+            None => Timestamp::now().as_i64(),
+        };
         let mut tag_set = line.series.tag_set.unwrap_or_default();
         // sort by tag key
         tag_set.sort_unstable_by(|a, b| a.0.cmp(&b.0));
