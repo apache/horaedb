@@ -29,6 +29,9 @@ INSERT INTO h2o_feet(time, level_description, location, water_level)
 -- SQLNESS ARG protocol=influxql
 SELECT * FROM "h2o_feet";
 
+-- SQLNESS ARG protocol=influxql method=get
+SELECT * FROM "h2o_feet";
+
 -- SQLNESS ARG protocol=influxql
 SELECT "level_description", location, water_level FROM "h2o_feet" where location = 'santa_monica';
 
