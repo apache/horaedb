@@ -16,6 +16,7 @@ use router::{endpoint::Endpoint, Router};
 use snafu::ResultExt;
 
 use crate::{
+    grpc::{hotspot, hotspot::HotspotRecorder},
     instance::InstanceRef,
     proxy::{
         error::{Internal, Result},
@@ -31,9 +32,12 @@ pub struct Proxy<Q: QueryExecutor + 'static> {
     resp_compress_min_length: usize,
     auto_create_table: bool,
     schema_config_provider: SchemaConfigProviderRef,
+    hotspot_recorder: Arc<HotspotRecorder>,
 }
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
+
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new(
         router: Arc<dyn Router + Send + Sync>,
         instance: InstanceRef<Q>,
@@ -42,6 +46,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         resp_compress_min_length: usize,
         auto_create_table: bool,
         schema_config_provider: SchemaConfigProviderRef,
+        hotspot_config: hotspot::Config,
     ) -> Result<Self> {
         let local_endpoint = Endpoint::from_str(&local_endpoint).with_context(|| Internal {
             msg: format!("invalid local endpoint, input:{local_endpoint}"),
@@ -53,6 +58,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     msg: "fail to init forward",
                 })?,
         );
+        let hotspot_recorder = Arc::new(HotspotRecorder::new(hotspot_config));
         Ok(Self {
             router,
             instance,
@@ -60,6 +66,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             resp_compress_min_length,
             auto_create_table,
             schema_config_provider,
+            hotspot_recorder,
         })
     }
 }

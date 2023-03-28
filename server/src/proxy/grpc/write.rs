@@ -70,6 +70,7 @@ impl WriteContext {
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_write(&self, ctx: Context, req: WriteRequest) -> WriteResponse {
+        self.hotspot_recorder.inc_write_reqs(&req);
         match self.handle_write_internal(ctx, req).await {
             Err(e) => {
                 error!("Failed to handle write, err:{e}");

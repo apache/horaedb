@@ -1,6 +1,8 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Grpc services
+pub mod hotspot;
+pub mod hotspot_lru;
 
 use std::{
     net::{AddrParseError, SocketAddr},
@@ -32,9 +34,8 @@ use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
 use crate::{
-    grpc::{
-        meta_event_service::MetaServiceImpl, remote_engine_service::RemoteEngineServiceImpl,
-        storage_service::StorageServiceImpl,
+    grpc::{ meta_event_service::MetaServiceImpl,
+        remote_engine_service::RemoteEngineServiceImpl, storage_service::StorageServiceImpl,
     },
     instance::InstanceRef,
     proxy::{forward, Proxy},
@@ -334,9 +335,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         };
 
         let forward_config = self.forward_config.unwrap_or_default();
-        let hotspot_recorder = Arc::new(HotspotRecorder::new(
-        self.hotspot_config.unwrap_or_default(),
-        ));
+        let hotspot_config = self.hotspot_config.unwrap_or_default();
         let bg_runtime = runtimes.bg_runtime.clone();
         let proxy = Proxy::try_new(
             router,
@@ -346,6 +345,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             self.resp_compress_min_length,
             self.auto_create_table,
             schema_config_provider,
+            hotspot_config,
         )
         .box_err()
         .context(Internal {

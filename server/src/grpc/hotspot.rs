@@ -4,7 +4,7 @@
 use std::{fmt::Write, sync::Arc, thread, time::Duration};
 
 use ceresdbproto::storage::{
-    PrometheusQueryRequest, RequestContext, RouteRequest, SqlQueryRequest, WriteRequest,
+     RequestContext, SqlQueryRequest, WriteRequest,
 };
 use crossbeam::{bounded, Sender};
 use log::{info, warn};
@@ -140,6 +140,7 @@ impl HotspotRecorder {
     fn key_prefix(context: &RequestContext) -> String {
         let mut prefix = String::new();
 
+        // use database as prefix
         if !context.database.is_empty() {
             write!(prefix, "{}/", context.database).unwrap();
         }
@@ -178,10 +179,6 @@ impl HotspotRecorder {
             }
         }
     }
-
-    pub fn inc_route_reqs(&self, _req: &RouteRequest) {}
-
-    pub fn inc_prom_query_reqs(&self, _req: &PrometheusQueryRequest) {}
 
     fn send_msg_or_log(&self, method: &str, msg: Message) {
         if let Err(e) = self.tx.clone().try_send(msg) {

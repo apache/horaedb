@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
 use crate::{http::DEFAULT_MAX_BODY_SIZE, proxy::forward};
+use crate::grpc::hotspot;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
@@ -133,7 +134,6 @@ impl Default for ServerConfig {
             auto_create_table: true,
             route_cache: router::RouteCacheConfig::default(),
             hotspot_config: hotspot::Config::default(),
-
         }
     }
 }
