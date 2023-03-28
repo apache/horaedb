@@ -19,9 +19,9 @@ bytes = { workspace = true }
 catalog = { workspace = true }
 ceresdbproto = { workspace = true }
 cluster = { workspace = true }
-crossbeam = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
+crossbeam = { workspace = true }
 datafusion = { workspace = true }
 datafusion-expr = { workspace = true }
 df_operator = { workspace = true }
