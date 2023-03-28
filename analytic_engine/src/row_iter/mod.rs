@@ -2,19 +2,12 @@
 
 //! Iterators for row.
 
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-};
-
+use async_stream::try_stream;
 use async_trait::async_trait;
 use common_types::{record_batch::RecordBatchWithKey, schema::RecordSchemaWithKey};
-use common_util::{error::BoxError, runtime::Runtime};
-use futures::stream::Stream;
-use log::{debug, error};
-use tokio::sync::mpsc::{self, Receiver};
+use common_util::error::BoxError;
 
-use crate::sst::writer::{RecordBatchStream, RecordBatchStreamItem};
+use crate::sst::writer::RecordBatchStream;
 
 pub mod chain;
 pub mod dedup;
@@ -23,27 +16,9 @@ pub mod record_batch_stream;
 #[cfg(test)]
 pub mod tests;
 
-const RECORD_BATCH_READ_BUF_SIZE: usize = 10;
-
 #[derive(Debug, Clone)]
 pub struct IterOptions {
     pub batch_size: usize,
-    pub sst_background_read_parallelism: usize,
-}
-
-impl IterOptions {
-    pub fn new(batch_size: usize, sst_background_read_parallelism: usize) -> Self {
-        Self {
-            batch_size,
-            sst_background_read_parallelism,
-        }
-    }
-}
-
-impl Default for IterOptions {
-    fn default() -> Self {
-        Self::new(500, 1)
-    }
 }
 
 /// The iterator for reading RecordBatch from a table.
@@ -59,39 +34,13 @@ pub trait RecordBatchWithKeyIterator: Send {
     async fn next_batch(&mut self) -> std::result::Result<Option<RecordBatchWithKey>, Self::Error>;
 }
 
-struct ReceiverStream {
-    rx: Receiver<RecordBatchStreamItem>,
-}
-
-impl Stream for ReceiverStream {
-    type Item = RecordBatchStreamItem;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let this = self.get_mut();
-        Pin::new(&mut this.rx).poll_recv(cx)
-    }
-}
-
-// TODO(yingwen): This is a hack way to convert an async trait to stream.
-pub fn record_batch_with_key_iter_to_stream<I: RecordBatchWithKeyIterator + 'static>(
+pub fn record_batch_with_key_iter_to_stream<I: RecordBatchWithKeyIterator + Unpin + 'static>(
     mut iter: I,
-    runtime: &Runtime,
 ) -> RecordBatchStream {
-    let (tx, rx) = mpsc::channel(RECORD_BATCH_READ_BUF_SIZE);
-    runtime.spawn(async move {
-        while let Some(record_batch) = iter.next_batch().await.transpose() {
-            let record_batch = record_batch.box_err();
-
-            debug!(
-                "compact table send next record batch, batch:{:?}",
-                record_batch
-            );
-            if tx.send(record_batch).await.is_err() {
-                error!("Failed to send record batch from the merge iterator");
-                break;
-            }
+    let record_batch_stream = try_stream! {
+        while let Some(batch) = iter.next_batch().await.box_err().transpose() {
+            yield batch?;
         }
-    });
-
-    Box::new(ReceiverStream { rx })
+    };
+    Box::new(Box::pin(record_batch_stream))
 }

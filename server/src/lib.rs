@@ -20,6 +20,6 @@ pub mod limiter;
 pub mod local_tables;
 mod metrics;
 mod mysql;
+pub(crate) mod proxy;
 pub mod schema_config_provider;
 pub mod server;
-pub mod table_engine;

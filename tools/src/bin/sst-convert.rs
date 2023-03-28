@@ -6,8 +6,8 @@ use std::{error::Error, sync::Arc};
 
 use analytic_engine::{
     sst::factory::{
-        Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReadHint, SstReadOptions,
-        SstWriteOptions,
+        Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, ScanOptions, SstReadHint,
+        SstReadOptions, SstWriteOptions,
     },
     table_options::{Compression, StorageFormatHint},
 };
@@ -74,16 +74,16 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     let input_path = Path::from(args.input);
     let sst_meta = sst_util::meta_from_sst(&store, &input_path).await;
     let factory = FactoryImpl;
+    let scan_options = ScanOptions::default();
     let reader_opts = SstReadOptions {
-        read_batch_row_num: 8192,
         reverse: false,
         frequency: ReadFrequency::Once,
+        num_rows_per_row_group: 8192,
         projected_schema: ProjectedSchema::no_projection(sst_meta.schema.clone()),
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
+        scan_options,
         runtime,
-        background_read_parallelism: 1,
-        num_rows_per_row_group: 8192,
     };
     let store_picker: ObjectStorePickerRef = Arc::new(store);
     let mut reader = factory
@@ -104,6 +104,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         num_rows_per_row_group: args.batch_size,
         compression: Compression::parse_from(&args.compression)
             .with_context(|| format!("invalid compression:{}", args.compression))?,
+        max_buffer_size: 10 * 1024 * 1024,
     };
     let output = Path::from(args.output);
     let mut writer = factory

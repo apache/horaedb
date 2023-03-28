@@ -49,7 +49,7 @@ use crate::{
     },
     space::SpaceAndTable,
     sst::{
-        factory::{self, ReadFrequency, SstReadOptions, SstWriteOptions},
+        factory::{self, ReadFrequency, ScanOptions, SstReadOptions, SstWriteOptions},
         file::FileMeta,
         meta_data::SstMetaReader,
         writer::{MetaData, RecordBatchStream},
@@ -544,6 +544,7 @@ impl Instance {
             storage_format_hint: table_data.table_options().storage_format_hint,
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
+            max_buffer_size: self.write_sst_max_buffer_size,
         };
 
         for time_range in &time_ranges {
@@ -673,6 +674,7 @@ impl Instance {
             storage_format_hint,
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
+            max_buffer_size: self.write_sst_max_buffer_size,
         };
         let mut writer = self
             .space_store
@@ -724,10 +726,12 @@ impl Instance {
 impl SpaceStore {
     pub(crate) async fn compact_table(
         &self,
-        runtime: Arc<Runtime>,
-        table_data: &TableData,
         request_id: RequestId,
+        table_data: &TableData,
         task: &CompactionTask,
+        scan_options: ScanOptions,
+        sst_write_options: &SstWriteOptions,
+        runtime: Arc<Runtime>,
     ) -> Result<()> {
         debug!(
             "Begin compact table, table_name:{}, id:{}, task:{:?}",
@@ -761,10 +765,12 @@ impl SpaceStore {
 
         for input in &task.compaction_inputs {
             self.compact_input_files(
-                runtime.clone(),
-                table_data,
                 request_id,
+                table_data,
                 input,
+                scan_options.clone(),
+                sst_write_options,
+                runtime.clone(),
                 &mut edit_meta,
             )
             .await?;
@@ -789,12 +795,15 @@ impl SpaceStore {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn compact_input_files(
         &self,
-        runtime: Arc<Runtime>,
-        table_data: &TableData,
         request_id: RequestId,
+        table_data: &TableData,
         input: &CompactionInputFiles,
+        scan_options: ScanOptions,
+        sst_write_options: &SstWriteOptions,
+        runtime: Arc<Runtime>,
         edit_meta: &mut VersionEditMeta,
     ) -> Result<()> {
         debug!(
@@ -834,17 +843,18 @@ impl SpaceStore {
         let table_options = table_data.table_options();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
         let sst_read_options = SstReadOptions {
-            read_batch_row_num: table_options.num_rows_per_row_group,
             reverse: false,
+            num_rows_per_row_group: table_options.num_rows_per_row_group,
             frequency: ReadFrequency::Once,
             projected_schema: projected_schema.clone(),
             predicate: Arc::new(Predicate::empty()),
             meta_cache: self.meta_cache.clone(),
+            scan_options,
             runtime: runtime.clone(),
-            background_read_parallelism: 1,
-            num_rows_per_row_group: table_options.num_rows_per_row_group,
         };
-        let iter_options = IterOptions::default();
+        let iter_options = IterOptions {
+            batch_size: table_options.num_rows_per_row_group,
+        };
         let merge_iter = {
             let space_id = table_data.space_id;
             let table_id = table_data.id;
@@ -876,12 +886,13 @@ impl SpaceStore {
         };
 
         let record_batch_stream = if table_options.need_dedup() {
-            row_iter::record_batch_with_key_iter_to_stream(
-                DedupIterator::new(request_id, merge_iter, iter_options),
-                &runtime,
-            )
+            row_iter::record_batch_with_key_iter_to_stream(DedupIterator::new(
+                request_id,
+                merge_iter,
+                iter_options,
+            ))
         } else {
-            row_iter::record_batch_with_key_iter_to_stream(merge_iter, &runtime)
+            row_iter::record_batch_with_key_iter_to_stream(merge_iter)
         };
 
         let sst_meta = {
@@ -903,18 +914,12 @@ impl SpaceStore {
         let file_id = table_data.alloc_file_id();
         let sst_file_path = table_data.set_sst_file_path(file_id);
 
-        let storage_format_hint = table_data.table_options().storage_format_hint;
-        let sst_write_options = SstWriteOptions {
-            storage_format_hint,
-            num_rows_per_row_group: table_options.num_rows_per_row_group,
-            compression: table_options.compression,
-        };
         let mut sst_writer = self
             .sst_factory
-            .create_writer(&sst_write_options, &sst_file_path, self.store_picker())
+            .create_writer(sst_write_options, &sst_file_path, self.store_picker())
             .await
             .context(CreateSstWriter {
-                storage_format_hint,
+                storage_format_hint: sst_write_options.storage_format_hint,
             })?;
 
         let sst_info = sst_writer

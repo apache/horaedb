@@ -146,7 +146,7 @@ impl ReadableSize {
         self.0 / MIB
     }
 
-    pub const fn as_bytes(self) -> u64 {
+    pub const fn as_byte(self) -> u64 {
         self.0
     }
 }

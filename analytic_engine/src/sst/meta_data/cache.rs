@@ -7,12 +7,10 @@ use std::{
 
 use lru::LruCache;
 use parquet::file::metadata::FileMetaData;
-use snafu::{ensure, OptionExt, ResultExt};
+use snafu::{OptionExt, ResultExt};
 
 use crate::sst::{
-    meta_data::{
-        DecodeCustomMetaData, EmptyCustomMetaData, KvMetaDataNotFound, ParquetMetaDataRef, Result,
-    },
+    meta_data::{DecodeCustomMetaData, KvMetaDataNotFound, ParquetMetaDataRef, Result},
     parquet::encoding,
 };
 
@@ -41,11 +39,14 @@ impl MetaData {
         let kv_metas = file_meta_data
             .key_value_metadata()
             .context(KvMetaDataNotFound)?;
-        ensure!(!kv_metas.is_empty(), EmptyCustomMetaData);
+        let kv_meta = kv_metas
+            .iter()
+            .find(|kv| kv.key == encoding::META_KEY)
+            .context(KvMetaDataNotFound)?;
 
         let custom = {
             let mut sst_meta =
-                encoding::decode_sst_meta_data(&kv_metas[0]).context(DecodeCustomMetaData)?;
+                encoding::decode_sst_meta_data(kv_meta).context(DecodeCustomMetaData)?;
             if ignore_sst_filter {
                 sst_meta.parquet_filter = None;
             }

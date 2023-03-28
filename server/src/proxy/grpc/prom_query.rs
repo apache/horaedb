@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -20,7 +20,7 @@ use common_types::{
 use common_util::error::BoxError;
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
-use log::debug;
+use log::{error, info};
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
 use snafu::{ensure, OptionExt, ResultExt};
 use sql::{
@@ -29,131 +29,142 @@ use sql::{
     provider::CatalogMetaProvider,
 };
 
-use crate::grpc::storage_service::{
+use crate::proxy::{
+    error,
     error::{ErrNoCause, ErrWithCause, Error, Result},
-    HandlerContext,
+    Context, Proxy,
 };
 
-fn is_table_not_found_error(e: &FrontendError) -> bool {
-    matches!(&e, 
-        FrontendError::CreatePlan { 
-            source, 
-        .. }
-        if matches!(source, sql::planner::Error::BuildPromPlanError { source }
-                    if matches!(source, sql::promql::Error::TableNotFound { .. })))
+impl<Q: QueryExecutor + 'static> Proxy<Q> {
+    pub async fn handle_prom_query(
+        &self,
+        ctx: Context,
+        req: PrometheusQueryRequest,
+    ) -> PrometheusQueryResponse {
+        match self.handle_prom_query_internal(ctx, req).await {
+            Err(e) => {
+                error!("Failed to handle prom query, err:{e}");
+                PrometheusQueryResponse {
+                    header: Some(error::build_err_header(e)),
+                    ..Default::default()
+                }
+            }
+            Ok(v) => v,
+        }
+    }
+
+    async fn handle_prom_query_internal(
+        &self,
+        ctx: Context,
+        req: PrometheusQueryRequest,
+    ) -> Result<PrometheusQueryResponse> {
+        let request_id = RequestId::next_id();
+        let begin_instant = Instant::now();
+        let deadline = ctx.timeout.map(|t| begin_instant + t);
+        let req_ctx = req.context.unwrap();
+        let schema = req_ctx.database;
+        let catalog = self.instance.catalog_manager.default_catalog_name();
+
+        info!(
+            "Grpc handle prom query begin, catalog:{catalog}, schema:{schema}, request_id:{request_id}",
+        );
+
+        let provider = CatalogMetaProvider {
+            manager: self.instance.catalog_manager.clone(),
+            default_catalog: catalog,
+            default_schema: &schema,
+            function_registry: &*self.instance.function_registry,
+        };
+        let frontend = Frontend::new(provider);
+
+        let mut sql_ctx = SqlContext::new(request_id, deadline);
+        let expr = frontend
+            .parse_promql(&mut sql_ctx, req.expr)
+            .box_err()
+            .context(ErrWithCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: "Invalid request",
+            })?;
+
+        let (plan, column_name) =
+            frontend
+                .promql_expr_to_plan(&mut sql_ctx, expr)
+                .map_err(|e| {
+                    let code = if is_table_not_found_error(&e) {
+                        StatusCode::NOT_FOUND
+                    } else {
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    };
+                    Error::ErrWithCause {
+                        code,
+                        msg: "Failed to create plan".to_string(),
+                        source: Box::new(e),
+                    }
+                })?;
+
+        self.instance
+            .limiter
+            .try_limit(&plan)
+            .box_err()
+            .context(ErrWithCause {
+                code: StatusCode::FORBIDDEN,
+                msg: "Query is blocked",
+            })?;
+
+        // Execute in interpreter
+        let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
+            // Use current ctx's catalog and schema as default catalog and schema
+            .default_catalog_and_schema(catalog.to_string(), schema)
+            .build();
+        let interpreter_factory = Factory::new(
+            self.instance.query_executor.clone(),
+            self.instance.catalog_manager.clone(),
+            self.instance.table_engine.clone(),
+            self.instance.table_manipulator.clone(),
+        );
+        let interpreter = interpreter_factory
+            .create(interpreter_ctx, plan)
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "Failed to create interpreter",
+            })?;
+
+        let output = if let Some(deadline) = deadline {
+            tokio::time::timeout_at(
+                tokio::time::Instant::from_std(deadline),
+                interpreter.execute(),
+            )
+            .await
+            .box_err()
+            .context(ErrWithCause {
+                code: StatusCode::REQUEST_TIMEOUT,
+                msg: "Query timeout",
+            })?
+        } else {
+            interpreter.execute().await
+        }
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: "Failed to execute interpreter",
+        })?;
+
+        let resp = convert_output(output, column_name)
+            .box_err()
+            .context(ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "Failed to convert output",
+            })?;
+
+        Ok(resp)
+    }
 }
 
-pub async fn handle_query<Q>(
-    ctx: &HandlerContext<'_, Q>,
-    req: PrometheusQueryRequest,
-) -> Result<PrometheusQueryResponse>
-where
-    Q: QueryExecutor + 'static,
-{
-    let request_id = RequestId::next_id();
-    let begin_instant = Instant::now();
-    let deadline = ctx.timeout.map(|t| begin_instant + t);
-    let req_ctx = req.context.unwrap();
-    let schema = req_ctx.database;
-
-    debug!(
-        "Grpc handle query begin, catalog:{}, schema:{}, request_id:{}",
-        ctx.catalog(),
-        &schema,
-        request_id,
-    );
-
-    let instance = &ctx.instance;
-    // TODO(yingwen): Privilege check, cannot access data of other tenant
-    // TODO(yingwen): Maybe move MetaProvider to instance
-    let provider = CatalogMetaProvider {
-        manager: instance.catalog_manager.clone(),
-        default_catalog: ctx.catalog(),
-        default_schema: &schema,
-        function_registry: &*instance.function_registry,
-    };
-    let frontend = Frontend::new(provider);
-
-    let mut sql_ctx = SqlContext::new(request_id, deadline);
-    let expr = frontend
-        .parse_promql(&mut sql_ctx, req.expr)
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::BAD_REQUEST,
-            msg: "invalid request",
-        })?;
-
-    let (plan, column_name) = frontend
-        .promql_expr_to_plan(&mut sql_ctx, expr)
-        .map_err(|e| {
-            let code = if is_table_not_found_error(&e) {
-                StatusCode::NOT_FOUND
-            } else {
-                StatusCode::INTERNAL_SERVER_ERROR
-            };
-            Error::ErrWithCause {
-                code,
-                msg: "Failed to create plan".to_string(),
-                source: Box::new(e),
-            }
-        })?;
-
-    ctx.instance
-        .limiter
-        .try_limit(&plan)
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::FORBIDDEN,
-            msg: "Query is blocked",
-        })?;
-
-    // Execute in interpreter
-    let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
-        // Use current ctx's catalog and schema as default catalog and schema
-        .default_catalog_and_schema(ctx.catalog().to_string(), schema.to_string())
-        .build();
-    let interpreter_factory = Factory::new(
-        instance.query_executor.clone(),
-        instance.catalog_manager.clone(),
-        instance.table_engine.clone(),
-        instance.table_manipulator.clone(),
-    );
-    let interpreter = interpreter_factory
-        .create(interpreter_ctx, plan)
-        .box_err()
-        .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to create interpreter",
-        })?;
-
-    let output = if let Some(deadline) = deadline {
-        tokio::time::timeout_at(
-            tokio::time::Instant::from_std(deadline),
-            interpreter.execute(),
-        )
-        .await
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::REQUEST_TIMEOUT,
-            msg: "Query timeout",
-        })?
-    } else {
-        interpreter.execute().await
-    }
-    .box_err()
-    .with_context(|| ErrWithCause {
-        code: StatusCode::INTERNAL_SERVER_ERROR,
-        msg: "Failed to execute interpreter".to_string(),
-    })?;
-
-    let resp = convert_output(output, column_name)
-        .box_err()
-        .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "failed to convert output",
-        })?;
-
-    Ok(resp)
+fn is_table_not_found_error(e: &FrontendError) -> bool {
+    matches!(&e, FrontendError::CreatePlan { source }
+             if matches!(source, sql::planner::Error::BuildPromPlanError { source }
+                         if matches!(source, sql::promql::Error::TableNotFound { .. })))
 }
 
 fn convert_output(
@@ -238,13 +249,13 @@ impl RecordConverter {
             .index_of(TSID_COLUMN)
             .with_context(|| ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: "failed to find Tsid column".to_string(),
+                msg: "Failed to find Tsid column",
             })?;
         let timestamp_idx = record_schema
             .index_of(&column_name.timestamp)
-            .with_context(|| ErrNoCause {
+            .context(ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: "failed to find Timestamp column".to_string(),
+                msg: "Failed to find Timestamp column",
             })?;
         ensure!(
             record_schema.column(timestamp_idx).data_type == DatumKind::Timestamp,
@@ -350,7 +361,7 @@ mod tests {
     use common_types::{
         column::{ColumnBlock, ColumnBlockBuilder},
         column_schema,
-        datum::Datum,
+        datum::{Datum, DatumKind},
         row::Row,
         schema,
         string::StringBytes,

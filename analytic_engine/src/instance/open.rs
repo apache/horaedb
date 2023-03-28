@@ -38,11 +38,13 @@ use crate::{
     row_iter::IterOptions,
     space::{Space, SpaceContext, SpaceId, SpaceRef},
     sst::{
-        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef},
+        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
     },
     table::data::{TableData, TableDataRef},
 };
+
+const MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ: usize = 64;
 
 impl Instance {
     /// Open a new instance
@@ -65,19 +67,29 @@ impl Instance {
 
         let scheduler_config = ctx.config.compaction_config.clone();
         let bg_runtime = ctx.runtimes.bg_runtime.clone();
+        let scan_options_for_compaction = ScanOptions {
+            background_read_parallelism: 1,
+            max_record_batches_in_flight: MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ,
+        };
         let compaction_scheduler = Arc::new(SchedulerImpl::new(
             space_store.clone(),
             bg_runtime.clone(),
             scheduler_config,
+            ctx.config.write_sst_max_buffer_size.as_byte() as usize,
+            scan_options_for_compaction,
         ));
 
         let file_purger = FilePurger::start(&bg_runtime, store_picker.default_store().clone());
 
-        let iter_options = IterOptions {
-            batch_size: ctx.config.scan_batch_size,
-            sst_background_read_parallelism: ctx.config.sst_background_read_parallelism,
+        let scan_options = ScanOptions {
+            background_read_parallelism: ctx.config.sst_background_read_parallelism,
+            max_record_batches_in_flight: ctx.config.scan_max_record_batches_in_flight,
         };
 
+        let iter_options = ctx
+            .config
+            .scan_batch_size
+            .map(|batch_size| IterOptions { batch_size });
         let instance = Arc::new(Instance {
             space_store,
             runtimes: ctx.runtimes.clone(),
@@ -92,7 +104,13 @@ impl Instance {
             db_write_buffer_size: ctx.config.db_write_buffer_size,
             space_write_buffer_size: ctx.config.space_write_buffer_size,
             replay_batch_size: ctx.config.replay_batch_size,
+            write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_byte() as usize,
+            max_bytes_per_write_batch: ctx
+                .config
+                .max_bytes_per_write_batch
+                .map(|v| v.as_byte() as usize),
             iter_options,
+            scan_options,
             remote_engine: remote_engine_ref,
         });
 
@@ -412,7 +430,7 @@ impl Instance {
                         worker_local,
                         table_data,
                         sequence,
-                        row_group,
+                        &row_group.into(),
                         index_in_writer,
                     )
                     .context(ApplyMemTable {

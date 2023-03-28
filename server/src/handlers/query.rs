@@ -113,7 +113,7 @@ pub enum QueryRequest {
     Influxql(Request),
 }
 impl QueryRequest {
-    fn query(&self) -> &str {
+    pub fn query(&self) -> &str {
         match self {
             QueryRequest::Sql(request) => request.query.as_str(),
             QueryRequest::Influxql(request) => request.query.as_str(),

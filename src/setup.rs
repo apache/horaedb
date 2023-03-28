@@ -30,9 +30,8 @@ use server::{
         cluster_based::ClusterBasedProvider, config_based::ConfigBasedProvider,
     },
     server::Builder,
-    table_engine::{MemoryTableEngine, TableEngineProxy},
 };
-use table_engine::engine::EngineRuntimes;
+use table_engine::{engine::EngineRuntimes, memory::MemoryTableEngine, proxy::TableEngineProxy};
 use tracing_util::{
     self,
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
@@ -215,7 +214,10 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
         .unwrap();
         Arc::new(cluster_impl)
     };
-    let router = Arc::new(ClusterBasedRouter::new(cluster.clone()));
+    let router = Arc::new(ClusterBasedRouter::new(
+        cluster.clone(),
+        config.server.route_cache.clone(),
+    ));
 
     let opened_wals = wal_opener
         .open_wals(&config.analytic.wal, runtimes.clone())

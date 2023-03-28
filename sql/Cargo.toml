@@ -27,7 +27,7 @@ datafusion-expr = { workspace = true }
 datafusion-proto = { workspace = true }
 df_operator = { workspace = true }
 hashbrown = { version = "0.12", features = ["raw"] }
-influxql-logical-planner = { git = "https://github.com/Rachelint/influxql-logical-planner.git", rev = "83d8854004e569b32ddbc66a31f74ea5dee99c7b" }
+influxql-logical-planner = { git = "https://github.com/Rachelint/influxql-logical-planner.git", rev = "6057f72cd07336b9d641fcfcb98fb69b60fec1eb" }
 influxql-parser = { git = "https://github.com/Rachelint/influxql-parser.git", rev = "6fd5d946843682c3559e1c172cf23a14d61495b9" }
 itertools = { workspace = true }
 lazy_static = { workspace = true }

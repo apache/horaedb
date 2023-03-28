@@ -18,6 +18,7 @@ test = ["tempfile"]
 arc-swap = "1.4.0"
 arena = { workspace = true }
 arrow = { workspace = true }
+async-stream = { workspace = true }
 async-trait = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
@@ -54,5 +55,6 @@ xorfilter-rs = { workspace = true }
 common_types = { workspace = true, features = ["test"] }
 common_util = { workspace = true, features = ["test"] }
 env_logger = { workspace = true }
+pin-project-lite = { workspace = true }
 rand = { workspace = true }
 wal = { workspace = true, features = ["test"] }

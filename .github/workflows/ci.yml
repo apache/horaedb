@@ -3,6 +3,7 @@
 name: CI
 
 on:
+  merge_group:
   workflow_dispatch:
   push:
     branches:
@@ -14,8 +15,6 @@ on:
       - '.dockerignore'
       - 'docker/**'
   pull_request:
-    branches:
-      - main
     paths-ignore:
       - 'docs/**'
       - 'etc/**'

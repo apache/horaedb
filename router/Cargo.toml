@@ -18,6 +18,8 @@ common_types = { workspace = true }
 common_util = { workspace = true }
 log = { workspace = true }
 meta_client = { workspace = true }
+moka = { version = "0.10", features = ["future"] }
 serde = { workspace = true }
 snafu = { workspace = true }
+tokio = { workspace = true }
 twox-hash = "1.6"

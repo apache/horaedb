@@ -368,7 +368,7 @@ fn build_column_schema(
     })
 }
 
-fn build_schema_from_write_table_request(
+pub fn build_schema_from_write_table_request(
     schema_config: &SchemaConfig,
     write_table_req: &WriteTableRequest,
 ) -> Result<Schema> {

@@ -355,27 +355,30 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .context(BuildMysqlService)?;
 
         let router = self.router.context(MissingRouter)?;
-        let rpc_services = grpc::Builder::new()
-            .endpoint(
-                Endpoint::new(self.server_config.bind_addr, self.server_config.grpc_port)
-                    .to_string(),
-            )
-            .local_endpoint(Endpoint::new(self.node_addr, self.server_config.grpc_port).to_string())
-            .resp_compress_min_length(
-                self.server_config.resp_compress_min_length.as_bytes() as usize
-            )
-            .runtimes(engine_runtimes)
-            .instance(instance.clone())
-            .router(router)
-            .cluster(self.cluster.clone())
-            .opened_wals(opened_wals)
-            .schema_config_provider(provider)
-            .forward_config(self.server_config.forward)
-            .hotspot_config(self.server_config.hotspot_config)
-            .timeout(self.server_config.timeout.map(|v| v.0))
-            .auto_create_table(self.server_config.auto_create_table)
-            .build()
-            .context(BuildGrpcService)?;
+        let rpc_services =
+            grpc::Builder::new()
+                .endpoint(
+                    Endpoint::new(self.server_config.bind_addr, self.server_config.grpc_port)
+                        .to_string(),
+                )
+                .local_endpoint(
+                    Endpoint::new(self.node_addr, self.server_config.grpc_port).to_string(),
+                )
+                .resp_compress_min_length(
+                    self.server_config.resp_compress_min_length.as_byte() as usize
+                )
+                .runtimes(engine_runtimes)
+                .instance(instance.clone())
+                .router(router)
+                .cluster(self.cluster.clone())
+                .opened_wals(opened_wals)
+                .schema_config_provider(provider)
+                .forward_config(self.server_config.forward)
+                .hotspot_config(self.server_config.hotspot_config)
+                .timeout(self.server_config.timeout.map(|v| v.0))
+                .auto_create_table(self.server_config.auto_create_table)
+                .build()
+                .context(BuildGrpcService)?;
 
         let server = Server {
             http_service,

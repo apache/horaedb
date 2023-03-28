@@ -29,6 +29,7 @@ regex = "1"
 snafu = { workspace = true }
 sql = { workspace = true }
 table_engine = { workspace = true }
+
 [dev-dependencies]
 analytic_engine = { workspace = true, features = ["test"] }
 catalog_impls = { workspace = true }

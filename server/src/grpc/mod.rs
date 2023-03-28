@@ -4,7 +4,6 @@
 
 use std::{
     net::{AddrParseError, SocketAddr},
-    str::FromStr,
     stringify,
     sync::Arc,
     time::Duration,
@@ -20,13 +19,13 @@ use cluster::ClusterRef;
 use common_types::column_schema;
 use common_util::{
     define_result,
-    error::GenericError,
+    error::{BoxError, GenericError},
     runtime::{JoinHandle, Runtime},
 };
 use futures::FutureExt;
 use log::{info, warn};
 use query_engine::executor::Executor as QueryExecutor;
-use router::{endpoint::Endpoint, RouterRef};
+use router::RouterRef;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Sender};
@@ -34,16 +33,14 @@ use tonic::transport::Server;
 
 use crate::{
     grpc::{
-        forward::Forwarder, hotspot::HotspotRecorder, meta_event_service::MetaServiceImpl,
-        remote_engine_service::RemoteEngineServiceImpl, storage_service::StorageServiceImpl,
+        meta_event_service::MetaServiceImpl, remote_engine_service::RemoteEngineServiceImpl,
+        storage_service::StorageServiceImpl,
     },
     instance::InstanceRef,
+    proxy::{forward, Proxy},
     schema_config_provider::{self, SchemaConfigProviderRef},
 };
 
-pub mod forward;
-pub mod hotspot;
-mod hotspot_lru;
 mod meta_event_service;
 mod metrics;
 mod remote_engine_service;
@@ -51,6 +48,9 @@ pub(crate) mod storage_service;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
+    #[snafu(display("Internal error, message:{}, cause:{}", msg, source))]
+    Internal { msg: String, source: GenericError },
+
     #[snafu(display(
         "Failed to keep grpc service, err:{}.\nBacktrace:\n{}",
         source,
@@ -334,32 +334,27 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         };
 
         let forward_config = self.forward_config.unwrap_or_default();
-        let forwarder = if forward_config.enable {
-            let local_endpoint =
-                Endpoint::from_str(&self.local_endpoint.context(MissingLocalEndpoint)?)
-                    .context(InvalidLocalEndpoint)?;
-            let forwarder = Arc::new(
-                Forwarder::try_new(forward_config, router.clone(), local_endpoint)
-                    .context(BuildForwarder)?,
-            );
-            Some(forwarder)
-        } else {
-            None
-        };
-        let bg_runtime = runtimes.bg_runtime.clone();
         let hotspot_recorder = Arc::new(HotspotRecorder::new(
-            self.hotspot_config.unwrap_or_default(),
+        self.hotspot_config.unwrap_or_default(),
         ));
-        let storage_service = StorageServiceImpl {
+        let bg_runtime = runtimes.bg_runtime.clone();
+        let proxy = Proxy::try_new(
             router,
             instance,
-            runtimes,
+            forward_config,
+            self.local_endpoint.context(MissingLocalEndpoint)?,
+            self.resp_compress_min_length,
+            self.auto_create_table,
             schema_config_provider,
-            forwarder,
+        )
+        .box_err()
+        .context(Internal {
+            msg: "fail to init proxy",
+        })?;
+        let storage_service = StorageServiceImpl {
+            proxy: Arc::new(proxy),
+            runtimes,
             timeout: self.timeout,
-            resp_compress_min_length: self.resp_compress_min_length,
-            auto_create_table: self.auto_create_table,
-            hotspot_recorder,
         };
         let rpc_server = StorageServiceServer::new(storage_service);
 
