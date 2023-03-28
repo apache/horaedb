@@ -16,7 +16,7 @@ use ceresdb_client::{
     model::sql_query::{display::CsvFormatter, Request},
     RpcContext,
 };
-use reqwest::ClientBuilder;
+use reqwest::{ClientBuilder, Url};
 use sql::{
     ast::{Statement, TableName},
     parser::Parser,
@@ -212,7 +212,7 @@ impl<T: Send + Sync> Database for CeresDB<T> {
             Protocol::Sql => Self::execute_sql(query, self.db_client.clone()).await,
             Protocol::InfluxQL => {
                 let http_client = self.http_client.clone();
-                Self::execute_influxql(query, http_client).await
+                Self::execute_influxql(query, http_client, context.context).await
             }
         }
     }
@@ -244,16 +244,25 @@ impl<T: Backend> CeresDB<T> {
 }
 
 impl<T> CeresDB<T> {
-    async fn execute_influxql(query: String, http_client: HttpClient) -> Box<dyn Display> {
-        let query = format!("q={query}");
+    async fn execute_influxql(
+        query: String,
+        http_client: HttpClient,
+        params: HashMap<String, String>,
+    ) -> Box<dyn Display> {
         let url = format!("http://{}/influxdb/v1/query", http_client.endpoint);
-        let resp = http_client
-            .client
-            .post(url)
-            .body(query)
-            .send()
-            .await
-            .unwrap();
+        let resp = match params.get("method") {
+            Some(v) if v == "get" => {
+                let url = Url::parse_with_params(&url, &[("q", query)]).unwrap();
+                http_client.client.get(url).send().await.unwrap()
+            }
+            _ => http_client
+                .client
+                .post(url)
+                .form(&[("q", query)])
+                .send()
+                .await
+                .unwrap(),
+        };
         let query_res = match resp.text().await {
             Ok(text) => text,
             Err(e) => format!("Failed to do influxql query, err:{e:?}"),
