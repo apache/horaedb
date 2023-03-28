@@ -46,24 +46,6 @@ pub struct InfluxDb<Q> {
     schema_config_provider: SchemaConfigProviderRef,
 }
 
-#[derive(Debug, Default)]
-pub enum Precision {
-    #[default]
-    Millisecond,
-    // TODO: parse precision `second` from HTTP API
-    #[allow(dead_code)]
-    Second,
-}
-
-impl Precision {
-    fn normalize(&self, ts: i64) -> i64 {
-        match self {
-            Self::Millisecond => ts,
-            Self::Second => ts * 1000,
-        }
-    }
-}
-
 /// Line protocol
 #[derive(Debug)]
 pub struct WriteRequest {
@@ -99,7 +81,7 @@ pub struct InfluxqlRequest {
     pub query: String,
     // TODO: `db`, `epoch`, `pretty` should be made use of in later.
     pub db: String,
-    pub epoch: Epoch,
+    pub epoch: Precision,
     pub pretty: bool,
 }
 
@@ -145,31 +127,41 @@ impl InfluxqlRequest {
     }
 }
 
-#[derive(Debug)]
-pub enum Epoch {
-    Nanoseconds,
-    Microseconds,
-    Milliseconds,
-    Seconds,
-    Minutes,
-    Hours,
-    Days,
-    Weeks,
+#[derive(Debug, Default)]
+pub enum Precision {
+    #[default]
+    Millisecond,
+    Nanosecond,
+    Microsecond,
+    Second,
+    Minute,
+    Hour,
 }
 
-impl From<&str> for Epoch {
+impl Precision {
+    fn normalize(&self, ts: i64) -> i64 {
+        match self {
+            Self::Millisecond => ts,
+            Self::Nanosecond => ts / 1000 / 1000,
+            Self::Microsecond => ts / 1000,
+            Self::Second => ts * 1000,
+            Self::Minute => ts * 1000 * 60,
+            Self::Hour => ts * 1000 * 60 * 60,
+        }
+    }
+}
+
+impl From<&str> for Precision {
     fn from(value: &str) -> Self {
         match value {
-            "ns" => Epoch::Nanoseconds,
-            "us" => Epoch::Microseconds,
-            "ms" => Epoch::Milliseconds,
-            "s" => Epoch::Seconds,
-            "m" => Epoch::Minutes,
-            "h" => Epoch::Hours,
-            "d" => Epoch::Days,
-            "w" => Epoch::Weeks,
-            // Return the default epoch.
-            _ => Epoch::Milliseconds,
+            "ns" => Precision::Nanosecond,
+            "us" => Precision::Microsecond,
+            "ms" => Precision::Millisecond,
+            "s" => Precision::Second,
+            "m" => Precision::Minute,
+            "h" => Precision::Hour,
+            // Return the default precision.
+            _ => Precision::Millisecond,
         }
     }
 }

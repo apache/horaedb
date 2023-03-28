@@ -283,7 +283,8 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     return Err(reject::reject());
                 }
 
-                let request = InfluxqlRequest::try_new(method, body, params).map_err(reject::custom)?;
+                let request =
+                    InfluxqlRequest::try_new(method, body, params).map_err(reject::custom)?;
                 influxdb::query(ctx, db, QueryRequest::Influxql(request)).await
             });
 
