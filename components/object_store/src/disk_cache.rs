@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! An ObjectStore implementation with disk as cache.
 //! The disk cache is a read-through caching, with page as its minimal cache
@@ -169,14 +169,23 @@ impl DiskCache {
         self.update_cache(filename, None).await
     }
 
-    async fn get(&self, key: &str) -> Result<Option<Bytes>> {
+    async fn get(&self, key: &str) -> Option<Bytes> {
         let mut cache = self.cache.lock().await;
         if cache.get(key).is_some() {
             // TODO: release lock when doing IO
-            return self.read_bytes(key).await.map(Some);
+            match self.read_bytes(key).await {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    error!(
+                        "Read disk cache failed but ignored, key:{}, err:{}.",
+                        key, e
+                    );
+                    None
+                }
+            }
+        } else {
+            None
         }
-
-        Ok(None)
     }
 
     async fn persist_bytes(&self, filename: &str, value: Bytes) -> Result<()> {
@@ -437,7 +446,7 @@ impl ObjectStore for DiskCacheStore {
         let mut missing_ranges = Vec::new();
         for range in aligned_ranges {
             let cache_key = Self::cache_key(location, &range);
-            if let Some(bytes) = self.cache.get(&cache_key).await? {
+            if let Some(bytes) = self.cache.get(&cache_key).await {
                 ranged_bytes.insert(range.start, bytes);
             } else {
                 missing_ranges.push(range);
@@ -447,6 +456,7 @@ impl ObjectStore for DiskCacheStore {
         for range in missing_ranges {
             let range_start = range.start;
             let cache_key = Self::cache_key(location, &range);
+            // TODO: we should use get_ranges here.
             let bytes = self.underlying_store.get_range(location, range).await?;
             self.cache.insert(cache_key, bytes.clone()).await?;
             ranged_bytes.insert(range_start, bytes);
@@ -780,6 +790,68 @@ mod test {
         for (input, expect) in testcases {
             let actual = CASTAGNOLI.checksum(input.as_bytes());
             assert_eq!(actual, expect);
+        }
+    }
+
+    #[tokio::test]
+    async fn corrupted_disk_cache() {
+        let StoreWithCacheDir {
+            inner: store,
+            cache_dir,
+        } = prepare_store(16, 1024).await;
+        let test_file_name = "corrupted_disk_cache_file";
+        let test_file_path = Path::from(test_file_name);
+        let test_file_bytes = Bytes::from("corrupted_disk_cache_file_data");
+
+        // Put data into store and get it to let the cache load the data.
+        store
+            .put(&test_file_path, test_file_bytes.clone())
+            .await
+            .unwrap();
+
+        // The data should be in the cache.
+        let got_bytes = store
+            .get_range(&test_file_path, 0..test_file_bytes.len())
+            .await
+            .unwrap();
+        assert_eq!(got_bytes, test_file_bytes);
+
+        // Corrupt files in the cache dir.
+        let mut cache_read_dir = tokio::fs::read_dir(cache_dir.as_ref()).await.unwrap();
+        while let Some(entry) = cache_read_dir.next_entry().await.unwrap() {
+            let path_buf = entry.path();
+            let path = path_buf.to_str().unwrap();
+            if path.contains(test_file_name) {
+                let mut file = tokio::fs::OpenOptions::new()
+                    .write(true)
+                    .open(path)
+                    .await
+                    .unwrap();
+                file.write_all(b"corrupted").await.unwrap();
+            }
+        }
+
+        // The data should be removed from the cache.
+        let got_bytes = store
+            .get_range(&test_file_path, 0..test_file_bytes.len())
+            .await
+            .unwrap();
+        assert_eq!(got_bytes, test_file_bytes);
+        // The cache should be updated.
+        let mut cache_read_dir = tokio::fs::read_dir(cache_dir.as_ref()).await.unwrap();
+        while let Some(entry) = cache_read_dir.next_entry().await.unwrap() {
+            let path_buf = entry.path();
+            let path = path_buf.to_str().unwrap();
+            if path.contains(test_file_name) {
+                let mut file = tokio::fs::OpenOptions::new()
+                    .read(true)
+                    .open(path)
+                    .await
+                    .unwrap();
+                let mut buffer = Vec::new();
+                file.read_to_end(&mut buffer).await.unwrap();
+                assert_ne!(buffer, b"corrupted");
+            }
         }
     }
 }
