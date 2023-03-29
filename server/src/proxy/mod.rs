@@ -7,6 +7,9 @@ pub(crate) mod error;
 #[allow(dead_code)]
 pub mod forward;
 pub(crate) mod grpc;
+pub mod hotspot;
+pub mod hotspot_lru;
+pub mod util;
 
 use std::{str::FromStr, sync::Arc, time::Duration};
 
@@ -16,11 +19,11 @@ use router::{endpoint::Endpoint, Router};
 use snafu::ResultExt;
 
 use crate::{
-    grpc::{hotspot, hotspot::HotspotRecorder},
     instance::InstanceRef,
     proxy::{
         error::{Internal, Result},
         forward::{Forwarder, ForwarderRef},
+        hotspot::HotspotRecorder,
     },
     schema_config_provider::SchemaConfigProviderRef,
 };

@@ -2,21 +2,17 @@
 
 //! hotspot recorder
 use std::{fmt::Write, sync::Arc, time::Duration};
-use tokio::{
-    sync::{
-        mpsc::{self, UnboundedSender},
-    },
+
+use ceresdbproto::storage::{
+    PrometheusQueryRequest, RequestContext, SqlQueryRequest, WriteRequest,
 };
-use ceresdbproto::storage::{RequestContext, SqlQueryRequest, WriteRequest};
-use common_util::{
-    runtime::Runtime,
-    timed_task::{ TimedTask},
-};
+use common_util::{runtime::Runtime, timed_task::TimedTask};
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
 pub use spin::Mutex as SpinMutex;
+use tokio::sync::mpsc::{self, UnboundedSender};
 
-use crate::grpc::hotspot_lru::HotspotLru;
+use crate::proxy::{hotspot_lru::HotspotLru, util};
 
 type ReadKey = String;
 type WriteKey = String;
@@ -49,7 +45,7 @@ impl Default for Config {
 
 enum Message {
     // (ReadKey)
-    SqlQuery(ReadKey),
+    Query(ReadKey),
     // (WriteKey, row_count, field_count)
     Write(WriteKey, usize, usize),
 }
@@ -90,7 +86,7 @@ impl HotspotRecorder {
         );
 
         let (tx, mut rx) = mpsc::unbounded_channel();
-       let recorder =  Self {
+        let recorder = Self {
             tx: Arc::new(tx),
             hotspot_read,
             hotspot_write,
@@ -104,12 +100,12 @@ impl HotspotRecorder {
             let builder = move || {
                 let recorder_in_builder = recorder_clone.clone();
                 async move {
-                    let stat = recorder_in_builder;
                     let Dump {
                         read_hots,
                         write_hots,
                         write_field_hots,
-                    } = stat.dump();
+                    } = recorder_in_builder.dump();
+
                     read_hots
                         .into_iter()
                         .take(dump_len)
@@ -135,17 +131,18 @@ impl HotspotRecorder {
             None
         };
 
-        runtime.spawn(async move { loop {
+        runtime.spawn(async move {
+            loop {
                 match rx.recv().await {
                     None => {
                         warn!("Hotspot recoder sender stopped");
-                        if let Some(handle) =  task_handle {
-                              handle.stop_task().await.unwrap();
+                        if let Some(handle) = task_handle {
+                            handle.stop_task().await.unwrap();
                         }
                         break;
                     }
                     Some(msg) => match msg {
-                        Message::SqlQuery(read_key) => {
+                        Message::Query(read_key) => {
                             if let Some(hotspot) = &hr {
                                 hotspot.lock().inc(&read_key, 1);
                             }
@@ -161,7 +158,8 @@ impl HotspotRecorder {
                         }
                     },
                 }
-            }});
+            }
+        });
 
         recorder
     }
@@ -186,17 +184,15 @@ impl HotspotRecorder {
         if self.hotspot_read.is_some() {
             for table in &req.tables {
                 self.send_msg_or_log(
-                    "inc_read_reqs",
-                    Message::SqlQuery(Self::table_hot_key(&req.context.clone().unwrap(), table)),
+                    "inc_query_reqs",
+                    Message::Query(Self::table_hot_key(&req.context.clone().unwrap(), table)),
                 );
             }
         }
     }
 
     pub fn inc_write_reqs(&self, req: &WriteRequest) {
-        if self.hotspot_write.is_some()
-            && self.hotspot_field_write.is_some()
-        {
+        if self.hotspot_write.is_some() && self.hotspot_field_write.is_some() {
             for table_request in &req.table_requests {
                 let hot_key =
                     Self::table_hot_key(&req.context.clone().unwrap(), &table_request.table);
@@ -212,6 +208,17 @@ impl HotspotRecorder {
                     "inc_write_reqs",
                     Message::Write(hot_key, row_count, field_count),
                 );
+            }
+        }
+    }
+
+    pub fn inc_promql_reqs(&self, req: &PrometheusQueryRequest) {
+        if self.hotspot_read.is_some() {
+            if let Some(expr) = &req.expr {
+                if let Some(table) = util::table_from_expr(expr) {
+                    let hot_key = Self::table_hot_key(&req.context.clone().unwrap(), &table);
+                    self.send_msg_or_log("inc_query_reqs", Message::Query(hot_key))
+                }
             }
         }
     }
@@ -283,7 +290,7 @@ mod test {
 
     fn new_runtime() -> Arc<Runtime> {
         let runtime = Builder::default()
-            .worker_threads(1)
+            .worker_threads(4)
             .enable_all()
             .build()
             .unwrap();
@@ -301,7 +308,7 @@ mod test {
             read_cap,
             write_cap,
             auto_dump: false,
-            dump_interval: Duration::from_millis(5),
+            dump_interval: Duration::from_millis(5000),
             auto_dump_len: 10,
         };
 
@@ -318,9 +325,7 @@ mod test {
 
         recorder.inc_sql_query_reqs(&req);
 
-        thread::sleep(Duration::from_millis(100));
         let vec = recorder.pop_read_hots().unwrap();
-
         assert_eq!(1, vec.len());
         assert_eq!("public/table1", vec.get(0).unwrap().0);
     }
@@ -333,7 +338,7 @@ mod test {
             read_cap,
             write_cap,
             auto_dump: false,
-            dump_interval: Duration::from_millis(1000),
+            dump_interval: Duration::from_millis(5000),
             auto_dump_len: 10,
         };
 
@@ -349,8 +354,8 @@ mod test {
             tables: vec![table.clone()],
             sql: String::from("select * from table1 limit 10"),
         };
-
         recorder.inc_sql_query_reqs(&query_req);
+
         let write_req = WriteRequest {
             context: mock_context(),
             table_requests: vec![WriteTableRequest {
@@ -382,15 +387,14 @@ mod test {
         };
         recorder.inc_write_reqs(&write_req);
 
-        thread::sleep(Duration::from_millis(100u64));
-
+        thread::sleep(Duration::from_millis(100));
         let Dump {
             read_hots,
             write_hots,
             write_field_hots,
         } = recorder.dump();
-        assert_eq!(vec!["metric=public/table1, heats=1"], read_hots);
         assert_eq!(vec!["metric=public/table1, heats=1",], write_hots);
+        assert_eq!(vec!["metric=public/table1, heats=1"], read_hots);
         assert_eq!(vec!["metric=public/table1, heats=2",], write_field_hots);
     }
 

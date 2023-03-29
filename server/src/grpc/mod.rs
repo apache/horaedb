@@ -1,8 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Grpc services
-pub mod hotspot;
-pub mod hotspot_lru;
 
 use std::{
     net::{AddrParseError, SocketAddr},
@@ -39,7 +37,7 @@ use crate::{
         storage_service::StorageServiceImpl,
     },
     instance::InstanceRef,
-    proxy::{forward, Proxy},
+    proxy::{forward, hotspot, Proxy},
     schema_config_provider::{self, SchemaConfigProviderRef},
 };
 

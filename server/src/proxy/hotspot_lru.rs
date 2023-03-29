@@ -1,19 +1,19 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! hotspot LRU
-use std::hash::Hash;
+use std::{hash::Hash, num::NonZeroUsize};
 
-use lru::LruCache;
+use clru::CLruCache;
 
 pub struct HotspotLru<K> {
-    heats: LruCache<K, u64>,
+    heats: CLruCache<K, u64>,
 }
 
 impl<K: Hash + Eq + Clone> HotspotLru<K> {
     /// Creates a new LRU Hotspot that holds at most `cap` items
     pub fn new(cap: usize) -> HotspotLru<K> {
         Self {
-            heats: LruCache::new(cap),
+            heats: CLruCache::new(NonZeroUsize::new(cap).unwrap()),
         }
     }
 
@@ -32,17 +32,18 @@ impl<K: Hash + Eq + Clone> HotspotLru<K> {
     pub fn pop_all(&mut self) -> Vec<(K, u64)> {
         let mut values = Vec::with_capacity(self.heats.len());
 
-        while let Some(value) = self.heats.pop_lru() {
+        while let Some(value) = self.heats.pop_back() {
             values.push(value);
         }
 
+        self.heats.clear();
         values
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::grpc::hotspot_lru::HotspotLru;
+    use crate::proxy::hotspot_lru::HotspotLru;
 
     #[test]
     fn test_inc_and_pop() {

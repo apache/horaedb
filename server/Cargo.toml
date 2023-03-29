@@ -31,7 +31,7 @@ interpreters = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 logger = { workspace = true }
-lru = { workspace = true }
+clru = { workspace = true }
 meta_client = { workspace = true }
 opensrv-mysql = "0.1.0"
 paste = { workspace = true }

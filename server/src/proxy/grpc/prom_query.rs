@@ -41,6 +41,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: PrometheusQueryRequest,
     ) -> PrometheusQueryResponse {
+        self.hotspot_recorder.inc_promql_reqs(&req);
         match self.handle_prom_query_internal(ctx, req).await {
             Err(e) => {
                 error!("Failed to handle prom query, err:{e}");

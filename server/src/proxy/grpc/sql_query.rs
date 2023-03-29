@@ -57,6 +57,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: SqlQueryRequest,
     ) -> BoxStream<'static, SqlQueryResponse> {
+        self.hotspot_recorder.inc_sql_query_reqs(&req);
         match self.clone().handle_stream_query_internal(ctx, req).await {
             Err(e) => stream::once(async {
                 error!("Failed to handle stream sql query, err:{e}");
