@@ -9,42 +9,6 @@ import (
 
 const table = "godemo"
 
-func checkAutoAddColumns(ctx context.Context, client ceresdb.Client) error {
-	timestampName := "timestamp"
-	err := dropTable(ctx, client)
-	if err != nil {
-		return err
-	}
-
-	err = writeAndQuery(ctx, client, timestampName)
-	if err != nil {
-		return err
-	}
-
-	return writeAndQueryWithNewColumns(ctx, client, timestampName)
-}
-
-func checkAutoAddColumnsWithCreateTable(ctx context.Context, client ceresdb.Client) error {
-	timestampName := "t"
-
-	err := dropTable(ctx, client)
-	if err != nil {
-		return err
-	}
-
-	err = createTable(ctx, client, timestampName)
-	if err != nil {
-		return err
-	}
-
-	err = writeAndQuery(ctx, client, timestampName)
-	if err != nil {
-		return err
-	}
-
-	return writeAndQueryWithNewColumns(ctx, client, timestampName)
-}
-
 func createTable(ctx context.Context, client ceresdb.Client, timestampName string) error {
 	_, err := ddl(ctx, client, fmt.Sprintf("create table %s (%s timestamp not null, name string tag, value int64,TIMESTAMP KEY(t))", table, timestampName))
 	return err
