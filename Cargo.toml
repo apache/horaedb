@@ -35,6 +35,7 @@ members = [
     "components/tracing_util",
     "df_operator",
     "integration_tests",
+    "integration_tests/sdk/rust",
     "interpreters",
     "meta_client",
     "query_engine",

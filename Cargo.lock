@@ -5311,6 +5311,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-sdk-test"
+version = "0.1.0"
+dependencies = [
+ "ceresdb-client",
+ "tokio",
+]
+
+[[package]]
 name = "rust_decimal"
 version = "1.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
