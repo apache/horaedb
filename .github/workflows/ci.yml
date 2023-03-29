@@ -213,6 +213,10 @@ jobs:
         working-directory: integration_tests
         run: |
           make run-java
+      - name: Run Rust SDK tests
+        working-directory: integration_tests
+        run: |
+          make run-rust
       - name: Upload Logs
         if: always()
         uses: actions/upload-artifact@v3
