@@ -1,12 +1,18 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! hotspot recorder
-use std::{fmt::Write, sync::Arc, thread, time::Duration};
-
+use std::{fmt::Write, sync::Arc, time::Duration};
+use tokio::{
+    sync::{
+        mpsc::{self, UnboundedSender},
+    },
+};
 use ceresdbproto::storage::{RequestContext, SqlQueryRequest, WriteRequest};
-use crossbeam::{bounded, Sender};
+use common_util::{
+    runtime::Runtime,
+    timed_task::{ TimedTask},
+};
 use log::{info, warn};
-use scheduled_thread_pool::ScheduledThreadPool;
 use serde::{Deserialize, Serialize};
 pub use spin::Mutex as SpinMutex;
 
@@ -15,7 +21,6 @@ use crate::grpc::hotspot_lru::HotspotLru;
 type ReadKey = String;
 type WriteKey = String;
 const TAG: &str = "hotspot autodump";
-const RECODER_CHANNEL_CAP: usize = 64 * 1024;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -51,11 +56,10 @@ enum Message {
 
 #[derive(Clone)]
 pub struct HotspotRecorder {
-    tx: Arc<Sender<Message>>,
+    tx: Arc<UnboundedSender<Message>>,
     hotspot_read: Option<Arc<SpinMutex<HotspotLru<ReadKey>>>>,
     hotspot_write: Option<Arc<SpinMutex<HotspotLru<WriteKey>>>>,
     hotspot_field_write: Option<Arc<SpinMutex<HotspotLru<WriteKey>>>>,
-    dump_pool: Option<Arc<ScheduledThreadPool>>,
 }
 
 #[derive(Clone)]
@@ -66,7 +70,7 @@ pub struct Dump {
 }
 
 impl HotspotRecorder {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config, runtime: Arc<Runtime>) -> Self {
         let hotspot_read = config
             .read_cap
             .map(|cap| Arc::new(SpinMutex::new(HotspotLru::new(cap))));
@@ -84,16 +88,63 @@ impl HotspotRecorder {
             hotspot_write.clone(),
             hotspot_field_write.clone(),
         );
-        let (tx, rx) = bounded(RECODER_CHANNEL_CAP);
-        thread::Builder::new()
-            .name("hotspot-recoder".to_owned())
-            .spawn(move || loop {
-                match rx.recv() {
-                    Err(_) => {
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+       let recorder =  Self {
+            tx: Arc::new(tx),
+            hotspot_read,
+            hotspot_write,
+            hotspot_field_write,
+        };
+
+        let task_handle = if config.auto_dump {
+            let interval = config.dump_interval;
+            let dump_len = config.auto_dump_len;
+            let recorder_clone = recorder.clone();
+            let builder = move || {
+                let recorder_in_builder = recorder_clone.clone();
+                async move {
+                    let stat = recorder_in_builder;
+                    let Dump {
+                        read_hots,
+                        write_hots,
+                        write_field_hots,
+                    } = stat.dump();
+                    read_hots
+                        .into_iter()
+                        .take(dump_len)
+                        .for_each(|hot| info!("{} read {}", TAG, hot));
+                    write_hots
+                        .into_iter()
+                        .take(dump_len)
+                        .for_each(|hot| info!("{} write rows {}", TAG, hot));
+                    write_field_hots
+                        .into_iter()
+                        .take(dump_len)
+                        .for_each(|hot| info!("{} write fields {}", TAG, hot));
+                }
+            };
+
+            Some(TimedTask::start_timed_task(
+                String::from("hotspot_dump"),
+                &runtime,
+                interval,
+                builder,
+            ))
+        } else {
+            None
+        };
+
+        runtime.spawn(async move { loop {
+                match rx.recv().await {
+                    None => {
                         warn!("Hotspot recoder sender stopped");
+                        if let Some(handle) =  task_handle {
+                              handle.stop_task().await.unwrap();
+                        }
                         break;
                     }
-                    Ok(msg) => match msg {
+                    Some(msg) => match msg {
                         Message::SqlQuery(read_key) => {
                             if let Some(hotspot) = &hr {
                                 hotspot.lock().inc(&read_key, 1);
@@ -110,47 +161,7 @@ impl HotspotRecorder {
                         }
                     },
                 }
-            })
-            .expect("Fail to create hotspot-recoder thread");
-
-        let dump_pool = if config.auto_dump {
-            Some(Arc::new(ScheduledThreadPool::with_name("hotspot_dump", 1)))
-        } else {
-            None
-        };
-
-        let recorder = Self {
-            tx: Arc::new(tx),
-            hotspot_read,
-            hotspot_write,
-            hotspot_field_write,
-            dump_pool,
-        };
-
-        if let Some(pool) = &recorder.dump_pool {
-            let recoder = recorder.clone();
-            let interval = config.dump_interval;
-            let dump_len = config.auto_dump_len;
-            pool.execute_at_fixed_rate(interval * 2, interval, move || {
-                let Dump {
-                    read_hots,
-                    write_hots,
-                    write_field_hots,
-                } = recoder.dump();
-                read_hots
-                    .into_iter()
-                    .take(dump_len)
-                    .for_each(|hot| info!("{} read {}", TAG, hot));
-                write_hots
-                    .into_iter()
-                    .take(dump_len)
-                    .for_each(|hot| info!("{} write rows {}", TAG, hot));
-                write_field_hots
-                    .into_iter()
-                    .take(dump_len)
-                    .for_each(|hot| info!("{} write fields {}", TAG, hot));
-            });
-        };
+            }});
 
         recorder
     }
@@ -183,7 +194,9 @@ impl HotspotRecorder {
     }
 
     pub fn inc_write_reqs(&self, req: &WriteRequest) {
-        if self.hotspot_write.is_some() && self.hotspot_field_write.is_some() {
+        if self.hotspot_write.is_some()
+            && self.hotspot_field_write.is_some()
+        {
             for table_request in &req.table_requests {
                 let hot_key =
                     Self::table_hot_key(&req.context.clone().unwrap(), &table_request.table);
@@ -203,13 +216,20 @@ impl HotspotRecorder {
         }
     }
 
-    fn send_msg_or_log(&self, method: &str, msg: Message) {
-        if let Err(e) = self.tx.clone().try_send(msg) {
-            warn!(
-                "HotspotRecoder::{} fail to send \
-                measurement to recoder, err:{}",
-                method, e
-            );
+    /// return read count / write row count / write field count
+    pub fn dump(&self) -> Dump {
+        let format_hots = |hots: Vec<(String, u64)>| {
+            hots.into_iter()
+                .map(|(k, v)| format!("metric={k}, heats={v}"))
+                .collect()
+        };
+
+        Dump {
+            read_hots: self.pop_read_hots().map_or_else(Vec::new, format_hots),
+            write_hots: self.pop_write_hots().map_or_else(Vec::new, format_hots),
+            write_field_hots: self
+                .pop_write_field_hots()
+                .map_or_else(Vec::new, format_hots),
         }
     }
 
@@ -237,20 +257,13 @@ impl HotspotRecorder {
         }
     }
 
-    /// return read count / write row count / write field count
-    pub fn dump(&self) -> Dump {
-        let format_hots = |hots: Vec<(String, u64)>| {
-            hots.into_iter()
-                .map(|(k, v)| format!("metric={k}, heats={v}"))
-                .collect()
-        };
-
-        Dump {
-            read_hots: self.pop_read_hots().map_or_else(Vec::new, format_hots),
-            write_hots: self.pop_write_hots().map_or_else(Vec::new, format_hots),
-            write_field_hots: self
-                .pop_write_field_hots()
-                .map_or_else(Vec::new, format_hots),
+    fn send_msg_or_log(&self, method: &str, msg: Message) {
+        if let Err(e) = self.tx.clone().send(msg) {
+            warn!(
+                "HotspotRecoder::{} fail to send \
+                measurement to recoder, err:{}",
+                method, e
+            );
         }
     }
 }
@@ -266,6 +279,17 @@ mod test {
             WriteTableRequest,
         },
     };
+    use common_util::runtime::Builder;
+
+    fn new_runtime() -> Arc<Runtime> {
+        let runtime = Builder::default()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+
+        Arc::new(runtime)
+    }
 
     use super::*;
 
@@ -281,10 +305,9 @@ mod test {
             auto_dump_len: 10,
         };
 
-        let hotspot = HotspotRecorder::new(options);
-
-        assert!(hotspot.pop_read_hots().unwrap().is_empty());
-        assert!(hotspot.pop_write_hots().unwrap().is_empty());
+        let recorder = HotspotRecorder::new(options, new_runtime());
+        assert!(recorder.pop_read_hots().unwrap().is_empty());
+        assert!(recorder.pop_write_hots().unwrap().is_empty());
         let table = String::from("table1");
         let context = mock_context();
         let req = SqlQueryRequest {
@@ -293,10 +316,10 @@ mod test {
             sql: String::from("select * from table1 limit 10"),
         };
 
-        hotspot.inc_sql_query_reqs(&req);
+        recorder.inc_sql_query_reqs(&req);
 
         thread::sleep(Duration::from_millis(100));
-        let vec = hotspot.pop_read_hots().unwrap();
+        let vec = recorder.pop_read_hots().unwrap();
 
         assert_eq!(1, vec.len());
         assert_eq!("public/table1", vec.get(0).unwrap().0);
@@ -314,10 +337,10 @@ mod test {
             auto_dump_len: 10,
         };
 
-        let hotspot = HotspotRecorder::new(options);
+        let recorder = HotspotRecorder::new(options, new_runtime());
 
-        assert!(hotspot.pop_read_hots().unwrap().is_empty());
-        assert!(hotspot.pop_write_hots().unwrap().is_empty());
+        assert!(recorder.pop_read_hots().unwrap().is_empty());
+        assert!(recorder.pop_write_hots().unwrap().is_empty());
 
         let table = String::from("table1");
         let context = mock_context();
@@ -327,7 +350,7 @@ mod test {
             sql: String::from("select * from table1 limit 10"),
         };
 
-        hotspot.inc_sql_query_reqs(&query_req);
+        recorder.inc_sql_query_reqs(&query_req);
         let write_req = WriteRequest {
             context: mock_context(),
             table_requests: vec![WriteTableRequest {
@@ -357,7 +380,7 @@ mod test {
                 }],
             }],
         };
-        hotspot.inc_write_reqs(&write_req);
+        recorder.inc_write_reqs(&write_req);
 
         thread::sleep(Duration::from_millis(100u64));
 
@@ -365,7 +388,7 @@ mod test {
             read_hots,
             write_hots,
             write_field_hots,
-        } = hotspot.dump();
+        } = recorder.dump();
         assert_eq!(vec!["metric=public/table1, heats=1"], read_hots);
         assert_eq!(vec!["metric=public/table1, heats=1",], write_hots);
         assert_eq!(vec!["metric=public/table1, heats=2",], write_field_hots);

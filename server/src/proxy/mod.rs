@@ -46,6 +46,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         auto_create_table: bool,
         schema_config_provider: SchemaConfigProviderRef,
         hotspot_config: hotspot::Config,
+        runtime: Arc<Runtime>,
     ) -> Result<Self> {
         let local_endpoint = Endpoint::from_str(&local_endpoint).with_context(|| Internal {
             msg: format!("invalid local endpoint, input:{local_endpoint}"),
@@ -57,7 +58,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     msg: "fail to init forward",
                 })?,
         );
-        let hotspot_recorder = Arc::new(HotspotRecorder::new(hotspot_config));
+        let hotspot_recorder = Arc::new(HotspotRecorder::new(hotspot_config, runtime));
         Ok(Self {
             router,
             instance,
