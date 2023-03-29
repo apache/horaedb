@@ -311,8 +311,8 @@ mod test {
             dump_interval: Duration::from_millis(5000),
             auto_dump_len: 10,
         };
-
-        let recorder = HotspotRecorder::new(options, new_runtime());
+        let runtime = new_runtime();
+        let recorder = HotspotRecorder::new(options, runtime.clone());
         assert!(recorder.pop_read_hots().unwrap().is_empty());
         assert!(recorder.pop_write_hots().unwrap().is_empty());
         let table = String::from("table1");
@@ -328,6 +328,7 @@ mod test {
         let vec = recorder.pop_read_hots().unwrap();
         assert_eq!(1, vec.len());
         assert_eq!("public/table1", vec.get(0).unwrap().0);
+        drop(runtime);
     }
 
     #[test]
@@ -342,7 +343,8 @@ mod test {
             auto_dump_len: 10,
         };
 
-        let recorder = HotspotRecorder::new(options, new_runtime());
+        let runtime = new_runtime();
+        let recorder = HotspotRecorder::new(options, runtime.clone());
 
         assert!(recorder.pop_read_hots().unwrap().is_empty());
         assert!(recorder.pop_write_hots().unwrap().is_empty());
@@ -396,6 +398,7 @@ mod test {
         assert_eq!(vec!["metric=public/table1, heats=1",], write_hots);
         assert_eq!(vec!["metric=public/table1, heats=1"], read_hots);
         assert_eq!(vec!["metric=public/table1, heats=2",], write_field_hots);
+        drop(runtime);
     }
 
     fn mock_context() -> Option<RequestContext> {
