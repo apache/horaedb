@@ -209,6 +209,10 @@ jobs:
         working-directory: integration_tests/sdk/go
         run: |
           go run main.go
+      - name: Run Java SDK tests
+        working-directory: integration_tests
+        run: |
+          make run-java
       - name: Upload Logs
         if: always()
         uses: actions/upload-artifact@v3
