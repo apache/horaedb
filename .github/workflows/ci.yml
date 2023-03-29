@@ -206,9 +206,9 @@ jobs:
           nohup ./target/debug/ceresdb-server -c docs/minimal.toml > /tmp/ceresdb-stdout.log &
           sleep 10
       - name: Run Go SDK tests
-        working-directory: integration_tests/sdk/go
+        working-directory: integration_tests
         run: |
-          go run main.go
+          make run-go
       - name: Run Java SDK tests
         working-directory: integration_tests
         run: |

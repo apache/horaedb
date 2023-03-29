@@ -1,0 +1,22 @@
+package main
+
+import (
+	"context"
+
+	"github.com/CeresDB/ceresdb-client-go/ceresdb"
+)
+
+func checkAutoAddColumns(ctx context.Context, client ceresdb.Client) error {
+	timestampName := "timestamp"
+	err := dropTable(ctx, client)
+	if err != nil {
+		return err
+	}
+
+	err = writeAndQuery(ctx, client, timestampName)
+	if err != nil {
+		return err
+	}
+
+	return writeAndQueryWithNewColumns(ctx, client, timestampName)
+}
