@@ -18,8 +18,16 @@ github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03
 github.com/BurntSushi/toml v1.1.0 h1:ksErzDEI1khOiGPgpwuI7x2ebx/uXQNw7xJpn9Eq1+I=
 github.com/BurntSushi/toml v1.1.0/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
+github.com/CeresDB/ceresdbproto v1.0.1-0.20230330080500-1c3bf4e803ef h1:uWHypLA/6JxWGMYY/ohQgQq9j9CgMOJaQTnh3YErQCQ=
+github.com/CeresDB/ceresdbproto v1.0.1-0.20230330080500-1c3bf4e803ef/go.mod h1:6qWvbMz3dvjcyKVZkg1L/yKb6OrD8r+/rk5Q1GWhyWQ=
+github.com/CeresDB/ceresdbproto v1.0.1-0.20230330101212-9add015b62cf h1:RZqP97cwSEW1bg0K/cB9jfwXjY7ykiEd25hl6YgzlQY=
+github.com/CeresDB/ceresdbproto v1.0.1-0.20230330101212-9add015b62cf/go.mod h1:6qWvbMz3dvjcyKVZkg1L/yKb6OrD8r+/rk5Q1GWhyWQ=
 github.com/CeresDB/ceresdbproto/golang v0.0.0-20230116070525-9430fe7d3219 h1:xI3o/UcsSX0S15+NXhhOnoY0tNvlxgBo3g1inXxhmrU=
 github.com/CeresDB/ceresdbproto/golang v0.0.0-20230116070525-9430fe7d3219/go.mod h1:qLTh6jtSu2ZLIFsU3iiDIKvkrQvyY/Csg6Mk0Ub0QZ4=
+github.com/CeresDB/ceresdbproto/golang v0.0.0-20230330080500-1c3bf4e803ef h1:LkT/saqReicelzVPfUcF23kEkJ14cWMi4LBaQ0X/ag8=
+github.com/CeresDB/ceresdbproto/golang v0.0.0-20230330080500-1c3bf4e803ef/go.mod h1:qLTh6jtSu2ZLIFsU3iiDIKvkrQvyY/Csg6Mk0Ub0QZ4=
+github.com/CeresDB/ceresdbproto/golang v0.0.0-20230330101212-9add015b62cf h1:WOLpPZuC5azSCxEyiZ236PMxUXgluGM7u8PwIK6yLXA=
+github.com/CeresDB/ceresdbproto/golang v0.0.0-20230330101212-9add015b62cf/go.mod h1:qLTh6jtSu2ZLIFsU3iiDIKvkrQvyY/Csg6Mk0Ub0QZ4=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
 github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
