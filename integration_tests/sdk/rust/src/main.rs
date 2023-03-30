@@ -22,6 +22,43 @@ struct TestDatas {
     rows: Vec<Vec<Value>>,
 }
 
+impl TestDatas {
+    fn pick_rows_for_write(&self, new_column: bool) -> Vec<Vec<Value>> {
+        if !new_column {
+            self.rows.iter().take(2).cloned().collect::<Vec<_>>()
+        } else {
+            vec![self.rows[2].clone(), self.rows[3].clone()]
+        }
+    }
+
+    fn pick_rows_for_query_check(&self, new_column: bool) -> Vec<Vec<(String, Value)>> {
+        let mut expected_rows = Vec::new();
+        if !new_column {
+            let rows = self
+                .rows
+                .iter()
+                .take(2)
+                .map(|row| row.iter().take(4).cloned().collect::<Vec<_>>());
+
+            for row in rows {
+                let col_names = self.col_names.iter().take(4).cloned();
+                let row = col_names.zip(row.into_iter()).collect::<Vec<_>>();
+                expected_rows.push(row);
+            }
+        } else {
+            let rows = self.rows.iter().cloned();
+
+            for row in rows {
+                let col_names = self.col_names.iter().cloned();
+                let row = col_names.zip(row.into_iter()).collect::<Vec<_>>();
+                expected_rows.push(row);
+            }
+        };
+
+        expected_rows
+    }
+}
+
 #[tokio::main]
 async fn main() {
     println!("Begin test, endpoint:{ENDPOINT}");
@@ -106,30 +143,9 @@ async fn sql_query(
     };
     let resp = client.sql_query(rpc_ctx, &query_req).await.unwrap();
     assert_eq!(resp.affected_rows, 0);
+
     let resp_rows = extract_rows_from_sql_query(&resp);
-    let mut expected_rows = Vec::new();
-    if !new_column {
-        let rows = test_data
-            .rows
-            .iter()
-            .take(2)
-            .map(|row| row.iter().take(4).cloned().collect::<Vec<_>>());
-
-        for row in rows {
-            let col_names = test_data.col_names.iter().take(4).cloned();
-            let row = col_names.zip(row.into_iter()).collect::<Vec<_>>();
-            expected_rows.push(row);
-        }
-    } else {
-        let rows = test_data.rows.iter().cloned();
-
-        for row in rows {
-            let col_names = test_data.col_names.iter().cloned();
-            let row = col_names.zip(row.into_iter()).collect::<Vec<_>>();
-            expected_rows.push(row);
-        }
-    }
-
+    let expected_rows = test_data.pick_rows_for_query_check(new_column);
     let expected = format_rows(&expected_rows);
     let actual = format_rows(&resp_rows);
     assert_eq!(expected, actual);
@@ -146,12 +162,7 @@ async fn write(
     let mut write_req = WriteRequest::default();
     let mut points = Vec::new();
 
-    let rows = if !new_column {
-        test_data.rows.iter().take(2).cloned().collect::<Vec<_>>()
-    } else {
-        vec![test_data.rows[2].clone(), test_data.rows[3].clone()]
-    };
-
+    let rows = test_data.pick_rows_for_write(new_column);
     for row in rows {
         let point = {
             let builder = PointBuilder::new(test_table.clone())
