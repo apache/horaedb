@@ -63,3 +63,11 @@ tsid,t,double_filed,float_filed,str_field,var_field,u64_field,u32_field,u16_fiel
 UInt64(0),Timestamp(1651737067000),Double(100.0),Float(100.0),String("s"),Varbinary([118]),UInt64(100),UInt32(100),UInt16(100),UInt8(100),Int64(100),Int32(100),Int16(100),Int8(100),Boolean(false),
 
 
+DROP TABLE IF EXISTS issue637;
+
+affected_rows: 0
+
+DROP TABLE IF EXISTS issue637_1;
+
+affected_rows: 0
+

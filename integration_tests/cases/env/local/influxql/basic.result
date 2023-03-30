@@ -39,6 +39,11 @@ SELECT "level_description", location, water_level FROM "h2o_feet" where location
 
 {"results":[{"statement_id":0,"series":[{"name":"h2o_feet","columns":["time","level_description","location","water_level"],"values":[[1439827200000,"below 3 feet","santa_monica",2.064],[1439827560000,"below 3 feet","santa_monica",2.116],[1439827620000,"below 3 feet","santa_monica",2.028]]}]}]}
 
+-- SQLNESS ARG protocol=influxql
+show measurements;
+
+{"results":[{"statement_id":0,"series":[{"name":"measurements","columns":["name"],"values":[["h2o_feet"]]}]}]}
+
 DROP TABLE IF EXISTS `h2o_feet`;
 
 affected_rows: 0

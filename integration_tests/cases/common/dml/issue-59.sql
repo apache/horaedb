@@ -16,3 +16,5 @@ GROUP BY id+1;
 explain SELECT id+1, count(distinct(account))
 FROM issue59
 GROUP BY id+1;
+
+DROP TABLE IF EXISTS issue59;
