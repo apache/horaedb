@@ -208,7 +208,7 @@ impl From<&str> for Precision {
 /// Query string parameters for query api(by influxql)
 ///
 /// It's derived from query string parameters of query described in
-/// doc of influxdb 1.8:     
+/// doc of influxdb 1.8:
 ///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-string-parameters-1
 ///
 /// NOTE:
@@ -311,6 +311,8 @@ impl InfluxqlResultBuilder {
             }
         );
 
+        // Query like `show measurements`, there will be not timestamp.
+        let has_timestamp = column_schemas.iter().any(|c| c.data_type.is_timestamp());
         // Find the tags part and columns part from schema.
         let mut group_by_col_idxs = Vec::new();
         let mut value_col_idxs = Vec::new();
@@ -324,7 +326,7 @@ impl InfluxqlResultBuilder {
         });
 
         // The group by tags will be placed after measurement and before time column.
-        let mut searching_group_by_tags = true;
+        let mut searching_group_by_tags = has_timestamp;
         for (idx, col) in col_iter {
             if col.data_type.is_timestamp() {
                 searching_group_by_tags = false;

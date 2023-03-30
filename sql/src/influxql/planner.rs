@@ -9,13 +9,14 @@ use influxql_logical_planner::planner::InfluxQLToLogicalPlan;
 use influxql_parser::{
     common::{MeasurementName, QualifiedMeasurementName},
     select::{MeasurementSelection, SelectStatement},
+    show_measurements::ShowMeasurementsStatement,
     statement::Statement as InfluxqlStatement,
 };
 use snafu::{ensure, ResultExt};
 
 use crate::{
     influxql::{error::*, provider::InfluxSchemaProviderImpl},
-    plan::{Plan, QueryPlan},
+    plan::{Plan, QueryPlan, QueryType, ShowPlan, ShowTablesPlan},
     provider::{ContextProviderAdapter, MetaProvider},
 };
 
@@ -36,15 +37,15 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     /// the [InfluxqlStatement] will be converted to [SqlStatement] first,
     /// and build plan then.
     pub fn statement_to_plan(self, stmt: InfluxqlStatement) -> Result<Plan> {
-        match &stmt {
+        match stmt {
             InfluxqlStatement::Select(_) => self.select_to_plan(stmt),
+            InfluxqlStatement::ShowMeasurements(stmt) => self.show_measurements_to_plan(*stmt),
             InfluxqlStatement::CreateDatabase(_)
             | InfluxqlStatement::ShowDatabases(_)
             | InfluxqlStatement::ShowRetentionPolicies(_)
             | InfluxqlStatement::ShowTagKeys(_)
             | InfluxqlStatement::ShowTagValues(_)
             | InfluxqlStatement::ShowFieldKeys(_)
-            | InfluxqlStatement::ShowMeasurements(_)
             | InfluxqlStatement::Delete(_)
             | InfluxqlStatement::DropMeasurement(_)
             | InfluxqlStatement::Explain(_) => Unimplemented {
@@ -54,7 +55,16 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
         }
     }
 
-    pub fn select_to_plan(self, stmt: InfluxqlStatement) -> Result<Plan> {
+    // TODO: support offset/limit/match in stmt
+    fn show_measurements_to_plan(self, _stmt: ShowMeasurementsStatement) -> Result<Plan> {
+        let plan = ShowTablesPlan {
+            pattern: None,
+            query_type: QueryType::InfluxQL,
+        };
+        Ok(Plan::Show(ShowPlan::ShowTablesPlan(plan)))
+    }
+
+    fn select_to_plan(self, stmt: InfluxqlStatement) -> Result<Plan> {
         if let InfluxqlStatement::Select(select_stmt) = &stmt {
             check_select_statement(select_stmt)?;
         } else {

@@ -32,4 +32,7 @@ SELECT * FROM "h2o_feet";
 -- SQLNESS ARG protocol=influxql
 SELECT "level_description", location, water_level FROM "h2o_feet" where location = 'santa_monica';
 
+-- SQLNESS ARG protocol=influxql
+show measurements;
+
 DROP TABLE IF EXISTS `h2o_feet`;

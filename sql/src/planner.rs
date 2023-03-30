@@ -55,7 +55,8 @@ use crate::{
     partition::PartitionParser,
     plan::{
         AlterTableOperation, AlterTablePlan, CreateTablePlan, DescribeTablePlan, DropTablePlan,
-        ExistsTablePlan, InsertPlan, Plan, QueryPlan, ShowCreatePlan, ShowPlan, ShowTablesPlan,
+        ExistsTablePlan, InsertPlan, Plan, QueryPlan, QueryType, ShowCreatePlan, ShowPlan,
+        ShowTablesPlan,
     },
     promql::{ColumnNames, Expr as PromExpr},
     provider::{ContextProviderAdapter, MetaProvider},
@@ -992,6 +993,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     fn show_tables_to_plan(&self, show_tables: ShowTables) -> Result<Plan> {
         let plan = ShowTablesPlan {
             pattern: show_tables.pattern,
+            query_type: QueryType::Sql,
         };
         Ok(Plan::Show(ShowPlan::ShowTablesPlan(plan)))
     }
@@ -2193,6 +2195,7 @@ mod tests {
     ShowTablesPlan(
         ShowTablesPlan {
             pattern: None,
+            query_type: Sql,
         },
     ),
 )"#,

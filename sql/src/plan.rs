@@ -162,9 +162,16 @@ pub struct ShowCreatePlan {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub enum QueryType {
+    Sql,
+    InfluxQL,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct ShowTablesPlan {
     /// Like pattern
     pub pattern: Option<String>,
+    pub query_type: QueryType,
 }
 
 #[derive(Debug)]
