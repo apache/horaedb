@@ -129,8 +129,11 @@ impl DiskCache {
         }
     }
 
+    /// Update the cache.
+    ///
+    /// The returned value denotes whether succeed.
     // TODO: We now hold lock when doing IO, possible to release it?
-    async fn update_cache(&self, key: String, value: Option<Bytes>) -> Result<()> {
+    async fn update_cache(&self, key: String, value: Option<Bytes>) -> bool {
         let mut cache = self.cache.lock().await;
         debug!(
             "Disk cache update, key:{}, len:{}, cap:{}.",
@@ -139,6 +142,7 @@ impl DiskCache {
             self.cap
         );
 
+        // TODO: remove a batch of files to avoid IO during the following update cache.
         if cache.len() >= self.cap {
             let (filename, _) = cache.pop_lru().unwrap();
             let file_path = std::path::Path::new(&self.root_dir)
@@ -153,19 +157,25 @@ impl DiskCache {
             }
         }
 
+        // Persist the value if needed
         if let Some(value) = value {
-            self.persist_bytes(&key, value).await?;
+            if let Err(e) = self.persist_bytes(&key, value).await {
+                error!("Failed to persist cache, key:{}, err:{}.", key, e);
+                return false;
+            }
         }
+
+        // Update the key
         cache.push(key, ());
 
-        Ok(())
+        true
     }
 
-    async fn insert(&self, key: String, value: Bytes) -> Result<()> {
+    async fn insert(&self, key: String, value: Bytes) -> bool {
         self.update_cache(key, Some(value)).await
     }
 
-    async fn recover(&self, filename: String) -> Result<()> {
+    async fn recover(&self, filename: String) -> bool {
         self.update_cache(filename, None).await
     }
 
@@ -358,7 +368,7 @@ impl DiskCacheStore {
             info!("Disk cache recover_cache, filename:{}.", &filename);
 
             if filename != MANIFEST_FILE {
-                cache.recover(filename).await?;
+                cache.recover(filename).await;
             }
         }
 
@@ -458,7 +468,7 @@ impl ObjectStore for DiskCacheStore {
             let cache_key = Self::cache_key(location, &range);
             // TODO: we should use get_ranges here.
             let bytes = self.underlying_store.get_range(location, range).await?;
-            self.cache.insert(cache_key, bytes.clone()).await?;
+            self.cache.insert(cache_key, bytes.clone()).await;
             ranged_bytes.insert(range_start, bytes);
         }
 
