@@ -128,7 +128,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
     ) -> std::result::Result<Response<GetTableInfoResponse>, Status> {
         let begin_instant = Instant::now();
         let ctx = self.handler_ctx();
-        let handle = self.runtimes.meta_runtime.spawn(async move {
+        let handle = self.runtimes.read_runtime.spawn(async move {
             let request = request.into_inner();
             handle_get_table_info(ctx, request).await
         });
@@ -301,34 +301,34 @@ async fn handle_get_table_info(
     ctx: HandlerContext,
     request: GetTableInfoRequest,
 ) -> Result<GetTableInfoResponse> {
-    let write_request: table_engine::remote::model::GetTableInfoRequest =
+    let request: table_engine::remote::model::GetTableInfoRequest =
         request.try_into().box_err().context(ErrWithCause {
             code: StatusCode::BadRequest,
             msg: "fail to convert get table info request",
         })?;
 
-    let schema = find_schema_by_identifier(&ctx, &write_request.table)?;
+    let schema = find_schema_by_identifier(&ctx, &request.table)?;
     let table = schema
-        .table_by_name(&write_request.table.table)
+        .table_by_name(&request.table.table)
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to get table, table:{}", write_request.table.table),
+            msg: format!("fail to get table, table:{}", request.table.table),
         })?
         .context(ErrNoCause {
             code: StatusCode::NotFound,
-            msg: format!("table is not found, table:{}", write_request.table.table),
+            msg: format!("table is not found, table:{}", request.table.table),
         })?;
 
     Ok(GetTableInfoResponse {
         header: None,
         table_info: Some(ceresdbproto::remote_engine::TableInfo {
-            catalog_name: write_request.table.catalog,
+            catalog_name: request.table.catalog,
             schema_name: schema.name().to_string(),
             schema_id: schema.id().as_u32(),
             table_name: table.name().to_string(),
             table_id: table.id().as_u64(),
-            table_schema: Some(table.schema().into()),
+            table_schema: Some((&table.schema()).into()),
             engine: table.engine_type().to_string(),
             options: table.options(),
             partition_info: table.partition_info().map(Into::into),

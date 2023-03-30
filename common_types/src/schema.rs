@@ -990,12 +990,6 @@ impl From<&Schema> for schema_pb::TableSchema {
     }
 }
 
-impl From<Schema> for schema_pb::TableSchema {
-    fn from(value: Schema) -> Self {
-        (&value).into()
-    }
-}
-
 /// Schema builder
 #[must_use]
 pub struct Builder {
