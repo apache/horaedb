@@ -81,10 +81,28 @@ async fn sql_query(
     test_data: &TestDatas,
     new_column: bool,
 ) {
+    let all_columns = test_data.col_names.clone();
+    let selections = if !new_column {
+        format!(
+            "`{}`,`{}`,`{}`,`{}`",
+            all_columns[0], all_columns[1], all_columns[2], all_columns[3]
+        )
+    } else {
+        format!(
+            "`{}`,`{}`,`{}`,`{}`,`{}`,`{}`",
+            all_columns[0],
+            all_columns[1],
+            all_columns[2],
+            all_columns[3],
+            all_columns[4],
+            all_columns[5]
+        )
+    };
+
     let test_table = format!("test_table_{timestamp}");
     let query_req = SqlQueryRequest {
         tables: vec![test_table.clone()],
-        sql: format!("SELECT * from {test_table}"),
+        sql: format!("SELECT {selections} from {test_table}"),
     };
     let resp = client.sql_query(rpc_ctx, &query_req).await.unwrap();
     assert_eq!(resp.affected_rows, 0);
@@ -136,12 +154,8 @@ async fn write(
 
     for row in rows {
         let point = {
-            let timestamp_val = match &row[0] {
-                Value::Timestamp(val) => *val,
-                _ => unreachable!(),
-            };
             let builder = PointBuilder::new(test_table.clone())
-                .timestamp(timestamp_val)
+                .timestamp(timestamp)
                 .tag(test_data.col_names[1].clone(), row[1].clone())
                 .field(test_data.col_names[2].clone(), row[2].clone())
                 .field(test_data.col_names[3].clone(), row[3].clone());
@@ -223,11 +237,9 @@ fn current_timestamp_ms() -> i64 {
 fn extract_rows_from_sql_query(resp: &SqlQueryResponse) -> Vec<Vec<(String, Value)>> {
     let mut rows = Vec::with_capacity(resp.rows.len());
     for row in &resp.rows {
-        let mut column_iter = row.columns().iter();
-        // In the automatically created table schema, `tsid` column will be added by
-        // CeresDB, we just ignore it.
-        column_iter.next();
-        let col_vals = column_iter
+        let col_vals = row
+            .columns()
+            .iter()
             .map(|col| (col.name().to_string(), col.value().clone()))
             .collect();
         rows.push(col_vals);
