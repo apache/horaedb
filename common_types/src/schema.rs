@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Schema of table
 
@@ -987,6 +987,12 @@ impl From<&Schema> for schema_pb::TableSchema {
             columns,
             primary_key_ids,
         }
+    }
+}
+
+impl From<Schema> for schema_pb::TableSchema {
+    fn from(value: Schema) -> Self {
+        (&value).into()
     }
 }
 
