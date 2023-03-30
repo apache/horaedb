@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Model for remote table engine
 
@@ -226,6 +226,30 @@ impl TryFrom<WriteRequest> for ceresdbproto::remote_engine::WriteRequest {
             table: Some(table_pb),
             row_group: Some(row_group_pb),
         })
+    }
+}
+
+pub struct GetTableInfoRequest {
+    pub table: TableIdentifier,
+}
+
+impl TryFrom<ceresdbproto::remote_engine::GetTableInfoRequest> for GetTableInfoRequest {
+    type Error = Error;
+
+    fn try_from(
+        value: ceresdbproto::remote_engine::GetTableInfoRequest,
+    ) -> std::result::Result<Self, Self::Error> {
+        let table = value.table.context(EmptyTableIdentifier)?.into();
+        Ok(Self { table })
+    }
+}
+
+impl TryFrom<GetTableInfoRequest> for ceresdbproto::remote_engine::GetTableInfoRequest {
+    type Error = Error;
+
+    fn try_from(value: GetTableInfoRequest) -> std::result::Result<Self, Self::Error> {
+        let table = value.table.into();
+        Ok(Self { table: Some(table) })
     }
 }
 
