@@ -324,6 +324,7 @@ mod test {
         };
 
         recorder.inc_sql_query_reqs(&req);
+        thread::sleep(Duration::from_millis(100));
 
         let vec = recorder.pop_read_hots().unwrap();
         assert_eq!(1, vec.len());
