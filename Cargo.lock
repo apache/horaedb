@@ -76,7 +76,7 @@ dependencies = [
 
 [[package]]
 name = "analytic_engine"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "arc-swap 1.5.1",
  "arena",
@@ -96,7 +96,7 @@ dependencies = [
  "log",
  "lru",
  "message_queue",
- "object_store 1.0.0",
+ "object_store 1.1.0",
  "parquet",
  "parquet_ext",
  "pin-project-lite",
@@ -165,7 +165,7 @@ checksum = "983cd8b9d4b02a6dc6ffa557262eb5858a27a0038ffffe21a0f133eaa819a164"
 
 [[package]]
 name = "arena"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "parking_lot 0.11.2",
 ]
@@ -471,7 +471,7 @@ dependencies = [
 
 [[package]]
 name = "arrow_ext"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "arrow 32.0.0",
  "snafu 0.6.10",
@@ -665,7 +665,7 @@ checksum = "a4a4ddaa51a5bc52a6948f74c06d20aaaddb71924eab79b8c97a8c556e942d6a"
 
 [[package]]
 name = "benchmarks"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "analytic_engine",
  "arena",
@@ -679,7 +679,7 @@ dependencies = [
  "env_logger",
  "futures 0.3.25",
  "log",
- "object_store 1.0.0",
+ "object_store 1.1.0",
  "parquet",
  "parquet_ext",
  "pprof",
@@ -961,7 +961,7 @@ checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
 
 [[package]]
 name = "bytes_ext"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "bytes 1.4.0",
  "snafu 0.6.10",
@@ -1027,7 +1027,7 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "catalog"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "common_types",
@@ -1038,7 +1038,7 @@ dependencies = [
 
 [[package]]
 name = "catalog_impls"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "analytic_engine",
  "async-trait",
@@ -1090,7 +1090,7 @@ dependencies = [
 
 [[package]]
 name = "ceresdb"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "analytic_engine",
  "catalog",
@@ -1313,7 +1313,7 @@ checksum = "b8191fa7302e03607ff0e237d4246cc043ff5b3cb9409d995172ba3bea16b807"
 
 [[package]]
 name = "cluster"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "ceresdbproto",
@@ -1361,7 +1361,7 @@ dependencies = [
 
 [[package]]
 name = "common_types"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "arrow 32.0.0",
  "arrow_ext",
@@ -1381,7 +1381,7 @@ dependencies = [
 
 [[package]]
 name = "common_util"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "arrow 32.0.0",
  "backtrace",
@@ -2024,7 +2024,7 @@ dependencies = [
 
 [[package]]
 name = "df_operator"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "arrow 32.0.0",
  "base64 0.13.0",
@@ -2954,7 +2954,7 @@ dependencies = [
 
 [[package]]
 name = "interpreters"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "analytic_engine",
  "arrow 32.0.0",
@@ -3327,7 +3327,7 @@ dependencies = [
 
 [[package]]
 name = "logger"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "log",
@@ -3475,7 +3475,7 @@ dependencies = [
 
 [[package]]
 name = "meta_client"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "ceresdbproto",
@@ -3963,7 +3963,7 @@ dependencies = [
 
 [[package]]
 name = "object_store"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "bytes 1.4.0",
@@ -4218,7 +4218,7 @@ dependencies = [
 
 [[package]]
 name = "parquet_ext"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "arrow 32.0.0",
  "arrow_ext",
@@ -4560,7 +4560,7 @@ dependencies = [
 
 [[package]]
 name = "profile"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "jemalloc-ctl",
  "jemalloc-sys",
@@ -4778,7 +4778,7 @@ dependencies = [
 
 [[package]]
 name = "query_engine"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "arrow 32.0.0",
  "async-trait",
@@ -5138,7 +5138,7 @@ checksum = "456c603be3e8d448b072f410900c09faf164fbce2d480456f50eea6e25f9c848"
 
 [[package]]
 name = "remote_engine_client"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "arrow_ext",
  "async-trait",
@@ -5240,7 +5240,7 @@ dependencies = [
 
 [[package]]
 name = "router"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "ceresdbproto",
@@ -5574,7 +5574,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "analytic_engine",
  "arrow 32.0.0",
@@ -5753,7 +5753,7 @@ dependencies = [
 
 [[package]]
 name = "skiplist"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "arena",
  "bytes 1.4.0",
@@ -5914,7 +5914,7 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "sql"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "arrow 32.0.0",
  "async-trait",
@@ -6143,7 +6143,7 @@ checksum = "20518fe4a4c9acf048008599e464deb21beeae3d3578418951a189c235a7a9a8"
 
 [[package]]
 name = "system_catalog"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "arrow 32.0.0",
  "async-trait",
@@ -6162,7 +6162,7 @@ dependencies = [
 
 [[package]]
 name = "table_engine"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "arrow 32.0.0",
  "arrow_ext",
@@ -6188,7 +6188,7 @@ dependencies = [
 
 [[package]]
 name = "table_kv"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "common_util",
  "log",
@@ -6604,7 +6604,7 @@ dependencies = [
 
 [[package]]
 name = "tools"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "analytic_engine",
  "anyhow",
@@ -6613,7 +6613,7 @@ dependencies = [
  "common_util",
  "env_logger",
  "futures 0.3.25",
- "object_store 1.0.0",
+ "object_store 1.1.0",
  "parquet",
  "parquet_ext",
  "table_engine",
@@ -6673,14 +6673,14 @@ checksum = "b6bc1c9ce2b5135ac7f93c72918fc37feb872bdc6a5533a8b85eb4b86bfdae52"
 
 [[package]]
 name = "trace_metric"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "trace_metric_derive",
 ]
 
 [[package]]
 name = "trace_metric_derive"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6689,7 +6689,7 @@ dependencies = [
 
 [[package]]
 name = "trace_metric_derive_tests"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "trace_metric",
 ]
@@ -6794,7 +6794,7 @@ dependencies = [
 
 [[package]]
 name = "tracing_util"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "lazy_static",
  "serde",
@@ -7009,7 +7009,7 @@ checksum = "9d5b2c62b4012a3e1eca5a7e077d13b3bf498c4073e33ccd58626607748ceeca"
 
 [[package]]
 name = "wal"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "ceresdbproto",
