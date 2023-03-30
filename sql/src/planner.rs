@@ -2195,6 +2195,7 @@ mod tests {
     ShowTablesPlan(
         ShowTablesPlan {
             pattern: None,
+            query_type: Sql,
         },
     ),
 )"#,
