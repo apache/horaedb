@@ -2,6 +2,8 @@
 
 //! Model for remote table engine
 
+use std::collections::HashMap;
+
 use arrow_ext::{
     ipc,
     ipc::{CompressOptions, CompressionMethod},
@@ -13,11 +15,17 @@ use ceresdbproto::{
 use common_types::{
     record_batch::{RecordBatch, RecordBatchWithKeyBuilder},
     row::{RowGroup, RowGroupBuilder},
+    schema::Schema,
 };
 use common_util::error::{BoxError, GenericError};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
-use crate::table::{ReadRequest as TableReadRequest, WriteRequest as TableWriteRequest};
+use crate::{
+    partition::PartitionInfo,
+    table::{
+        ReadRequest as TableReadRequest, SchemaId, TableId, WriteRequest as TableWriteRequest,
+    },
+};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -251,6 +259,27 @@ impl TryFrom<GetTableInfoRequest> for ceresdbproto::remote_engine::GetTableInfoR
         let table = value.table.into();
         Ok(Self { table: Some(table) })
     }
+}
+
+pub struct TableInfo {
+    /// Catalog name
+    pub catalog_name: String,
+    /// Schema name
+    pub schema_name: String,
+    /// Schema id
+    pub schema_id: SchemaId,
+    /// Table name
+    pub table_name: String,
+    /// Table id
+    pub table_id: TableId,
+    /// Table schema
+    pub table_schema: Schema,
+    /// Table engine type
+    pub engine: String,
+    /// Table options
+    pub options: HashMap<String, String>,
+    /// Partition Info
+    pub partition_info: Option<PartitionInfo>,
 }
 
 fn build_row_group_from_record_batch(
