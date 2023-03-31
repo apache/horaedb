@@ -118,7 +118,7 @@ pub struct ServerConfig {
     pub route_cache: router::RouteCacheConfig,
 
     /// record hotspot query or write requests
-    pub hotspot_config: hotspot::Config,
+    pub hotspot: hotspot::Config,
 }
 
 impl Default for ServerConfig {
@@ -135,7 +135,7 @@ impl Default for ServerConfig {
             forward: forward::Config::default(),
             auto_create_table: true,
             route_cache: router::RouteCacheConfig::default(),
-            hotspot_config: hotspot::Config::default(),
+            hotspot: hotspot::Config::default(),
         }
     }
 }

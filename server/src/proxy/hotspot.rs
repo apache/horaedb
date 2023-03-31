@@ -46,7 +46,6 @@ impl Default for Config {
 }
 
 enum Message {
-    // (ReadKey)
     Query(ReadKey),
     // (WriteKey, row_count, field_count)
     Write(WriteKey, usize, usize),
