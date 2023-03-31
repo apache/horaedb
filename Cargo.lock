@@ -1400,7 +1400,7 @@ dependencies = [
  "serde",
  "sql",
  "sqlness",
- "sqlparser 0.30.0",
+ "sqlparser 0.32.0",
  "tokio",
 ]
 
@@ -1642,7 +1642,7 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu 0.6.10",
- "sqlparser 0.30.0",
+ "sqlparser 0.32.0",
 ]
 
 [[package]]
@@ -6400,7 +6400,7 @@ dependencies = [
  "regex",
  "regex-syntax",
  "snafu 0.6.10",
- "sqlparser 0.30.0",
+ "sqlparser 0.32.0",
  "table_engine",
  "tokio",
 ]
@@ -6428,7 +6428,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db67dc6ef36edb658196c3fef0464a80b53dbbc194a904e81f9bd4190f9ecc5b"
 dependencies = [
  "log",
- "serde",
  "sqlparser_derive",
 ]
 
@@ -6439,6 +6438,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0366f270dbabb5cc2e4c88427dc4c08bba144f81e32fbd459a013f26a4d16aa0"
 dependencies = [
  "log",
+ "serde",
  "sqlparser_derive",
 ]
 

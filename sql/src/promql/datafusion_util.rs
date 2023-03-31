@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{any::Any, fmt, sync::Arc};
+use std::{any::Any, fmt, hash::Hasher, sync::Arc};
 
 use common_types::{schema::TSID_COLUMN, time::TimeRange};
 use datafusion::common::DFSchemaRef;
@@ -55,6 +55,10 @@ impl UserDefinedLogicalNode for PromAlignNode {
         self
     }
 
+    fn name(&self) -> &str {
+        "PromAlignNode"
+    }
+
     fn inputs(&self) -> Vec<&LogicalPlan> {
         vec![&self.input]
     }
@@ -102,5 +106,13 @@ impl UserDefinedLogicalNode for PromAlignNode {
             align_param: self.align_param,
             read_parallelism: self.read_parallelism,
         })
+    }
+
+    fn dyn_hash(&self, _state: &mut dyn Hasher) {
+        todo!("This node is not used now")
+    }
+
+    fn dyn_eq(&self, _other: &dyn UserDefinedLogicalNode) -> bool {
+        todo!("This node is not used now")
     }
 }

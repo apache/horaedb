@@ -111,7 +111,7 @@ server = { path = "server" }
 smallvec = "1.6"
 slog = "2.7"
 sql = { path = "sql" }
-sqlparser = { version = "0.30", features = ["serde"] }
+sqlparser = { version = "0.32", features = ["serde"] }
 system_catalog = { path = "system_catalog" }
 table_engine = { path = "table_engine" }
 table_kv = { path = "components/table_kv" }

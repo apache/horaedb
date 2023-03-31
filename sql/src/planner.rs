@@ -872,8 +872,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     .columns()
                     .iter()
                     .map(|column_schema| {
-                        DFField::new(
-                            None,
+                        DFField::new_unqualified(
                             &column_schema.name,
                             column_schema.data_type.to_arrow_data_type(),
                             column_schema.is_nullable,
