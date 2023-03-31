@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Record batch
 
@@ -234,23 +234,33 @@ impl RecordBatch {
         &self.schema
     }
 
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.num_rows() == 0
+    }
+
     // REQUIRE: index is valid
+    #[inline]
     pub fn column(&self, index: usize) -> &ColumnBlock {
         &self.data.column_blocks[index]
     }
 
+    #[inline]
     pub fn num_columns(&self) -> usize {
         self.schema.num_columns()
     }
 
+    #[inline]
     pub fn num_rows(&self) -> usize {
         self.data.num_rows()
     }
 
+    #[inline]
     pub fn as_arrow_record_batch(&self) -> &ArrowRecordBatch {
         &self.data.arrow_record_batch
     }
 
+    #[inline]
     pub fn into_arrow_record_batch(self) -> ArrowRecordBatch {
         self.data.arrow_record_batch
     }
