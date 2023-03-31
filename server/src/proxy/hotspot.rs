@@ -23,13 +23,13 @@ const RECODER_CHANNEL_CAP: usize = 64 * 1024;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
-    // Max items size for read hotspot
+    /// Max items size for read hotspot
     read_cap: Option<usize>,
-    // Max items size for write hotspot
+    /// Max items size for write hotspot
     write_cap: Option<usize>,
     dump_interval: Duration,
     auto_dump: bool,
-    // Max items for dump hotspot
+    /// Max items for dump hotspot
     auto_dump_len: usize,
 }
 
