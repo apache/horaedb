@@ -174,7 +174,7 @@ impl HotspotRecorder {
 
         prefix
     }
-
+#[inline]
     fn table_hot_key(context: &RequestContext, table: &String) -> String {
         let prefix = Self::key_prefix(context);
         prefix + table
