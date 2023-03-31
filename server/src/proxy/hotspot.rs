@@ -9,14 +9,16 @@ use ceresdbproto::storage::{
 use common_util::{runtime::Runtime, timed_task::TimedTask};
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
+use spin::Mutex;
 pub use spin::Mutex as SpinMutex;
-use tokio::sync::mpsc::{self, UnboundedSender};
+use tokio::sync::mpsc::{self, Sender};
 
 use crate::proxy::{hotspot_lru::HotspotLru, util};
 
 type ReadKey = String;
 type WriteKey = String;
 const TAG: &str = "hotspot autodump";
+const RECODER_CHANNEL_CAP: usize = 64 * 1024;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -52,7 +54,7 @@ enum Message {
 
 #[derive(Clone)]
 pub struct HotspotRecorder {
-    tx: Arc<UnboundedSender<Message>>,
+    tx: Arc<Sender<Message>>,
     hotspot_read: Option<Arc<SpinMutex<HotspotLru<ReadKey>>>>,
     hotspot_write: Option<Arc<SpinMutex<HotspotLru<WriteKey>>>>,
     hotspot_field_write: Option<Arc<SpinMutex<HotspotLru<WriteKey>>>>,
@@ -67,30 +69,16 @@ pub struct Dump {
 
 impl HotspotRecorder {
     pub fn new(config: Config, runtime: Arc<Runtime>) -> Self {
-        let hotspot_read = config
-            .read_cap
-            .map(|cap| Arc::new(SpinMutex::new(HotspotLru::new(cap))));
+        let hotspot_read = Self::init_lru(config.read_cap);
+        let hotspot_write = Self::init_lru(config.write_cap);
+        let hotspot_field_write = Self::init_lru(config.write_cap);
 
-        let hotspot_write = config
-            .write_cap
-            .map(|cap| Arc::new(SpinMutex::new(HotspotLru::new(cap))));
-
-        let hotspot_field_write = config
-            .write_cap
-            .map(|cap| Arc::new(SpinMutex::new(HotspotLru::new(cap))));
-
-        let (hr, hw, hwf) = (
-            hotspot_read.clone(),
-            hotspot_write.clone(),
-            hotspot_field_write.clone(),
-        );
-
-        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = mpsc::channel(RECODER_CHANNEL_CAP);
         let recorder = Self {
             tx: Arc::new(tx),
-            hotspot_read,
-            hotspot_write,
-            hotspot_field_write,
+            hotspot_read: hotspot_read.clone(),
+            hotspot_write: hotspot_write.clone(),
+            hotspot_field_write: hotspot_field_write.clone(),
         };
 
         let task_handle = if config.auto_dump {
@@ -143,16 +131,16 @@ impl HotspotRecorder {
                     }
                     Some(msg) => match msg {
                         Message::Query(read_key) => {
-                            if let Some(hotspot) = &hr {
+                            if let Some(hotspot) = &hotspot_read {
                                 hotspot.lock().inc(&read_key, 1);
                             }
                         }
                         Message::Write(write_key, row_count, field_count) => {
-                            if let Some(hotspot) = &hw {
+                            if let Some(hotspot) = &hotspot_write {
                                 hotspot.lock().inc(&write_key, row_count as u64);
                             }
 
-                            if let Some(hotspot) = &hwf {
+                            if let Some(hotspot) = &hotspot_field_write {
                                 hotspot.lock().inc(&write_key, field_count as u64);
                             }
                         }
@@ -164,38 +152,50 @@ impl HotspotRecorder {
         recorder
     }
 
-    fn key_prefix(context: &RequestContext) -> String {
-        let mut prefix = String::new();
+    #[inline]
+    fn init_lru(cap: Option<usize>) -> Option<Arc<Mutex<HotspotLru<ReadKey>>>> {
+          HotspotLru::new(cap?).map(|lru| Arc::new(SpinMutex::new(lru)))
+    }
 
-        // use database as prefix
-        if !context.database.is_empty() {
-            write!(prefix, "{}/", context.database).unwrap();
+    fn key_prefix(context: &Option<RequestContext>) -> String {
+        let mut prefix = String::new();
+        match context {
+            Some(ctx) =>{
+                // use database as prefix
+                if !ctx.database.is_empty() {
+                    write!(prefix, "{}/", ctx.database).unwrap();
+                }
+            },
+            None=>{}
         }
 
         prefix
     }
-#[inline]
-    fn table_hot_key(context: &RequestContext, table: &String) -> String {
+
+    #[inline]
+    fn table_hot_key(context: &Option<RequestContext>, table: &String) -> String {
         let prefix = Self::key_prefix(context);
         prefix + table
     }
 
-    pub fn inc_sql_query_reqs(&self, req: &SqlQueryRequest) {
-        if self.hotspot_read.is_some() {
-            for table in &req.tables {
-                self.send_msg_or_log(
-                    "inc_query_reqs",
-                    Message::Query(Self::table_hot_key(&req.context.clone().unwrap(), table)),
-                );
-            }
+    pub async fn inc_sql_query_reqs(&self, req: &SqlQueryRequest) {
+        if self.hotspot_read.is_none() {
+            return;
+        }
+
+        for table in &req.tables {
+            self.send_msg_or_log(
+                "inc_query_reqs",
+                Message::Query(Self::table_hot_key(&req.context, table)),
+            ).await;
         }
     }
 
-    pub fn inc_write_reqs(&self, req: &WriteRequest) {
+     pub async fn inc_write_reqs(&self, req: &WriteRequest) {
         if self.hotspot_write.is_some() && self.hotspot_field_write.is_some() {
             for table_request in &req.table_requests {
                 let hot_key =
-                    Self::table_hot_key(&req.context.clone().unwrap(), &table_request.table);
+                    Self::table_hot_key(&req.context, &table_request.table);
                 let mut row_count = 0;
                 let mut field_count = 0;
                 for entry in &table_request.entries {
@@ -207,18 +207,20 @@ impl HotspotRecorder {
                 self.send_msg_or_log(
                     "inc_write_reqs",
                     Message::Write(hot_key, row_count, field_count),
-                );
+                ).await;
             }
         }
     }
 
-    pub fn inc_promql_reqs(&self, req: &PrometheusQueryRequest) {
-        if self.hotspot_read.is_some() {
-            if let Some(expr) = &req.expr {
-                if let Some(table) = util::table_from_expr(expr) {
-                    let hot_key = Self::table_hot_key(&req.context.clone().unwrap(), &table);
-                    self.send_msg_or_log("inc_query_reqs", Message::Query(hot_key))
-                }
+    pub async fn inc_promql_reqs(&self, req: &PrometheusQueryRequest) {
+        if self.hotspot_read.is_none() {
+            return;
+        }
+
+        if let Some(expr) = &req.expr {
+            if let Some(table) = util::table_from_expr(expr) {
+                let hot_key = Self::table_hot_key(&req.context, &table);
+                self.send_msg_or_log("inc_query_reqs", Message::Query(hot_key)).await
             }
         }
     }
@@ -264,8 +266,8 @@ impl HotspotRecorder {
         }
     }
 
-    fn send_msg_or_log(&self, method: &str, msg: Message) {
-        if let Err(e) = self.tx.clone().send(msg) {
+     async fn send_msg_or_log(&self, method: &str, msg: Message) {
+        if let Err(e) = self.tx.send(msg).await {
             warn!(
                 "HotspotRecoder::{} fail to send \
                 measurement to recoder, err:{}",
@@ -300,8 +302,8 @@ mod test {
 
     use super::*;
 
-    #[test]
-    fn test_hotspot() {
+    #[tokio::test]
+    async fn test_hotspot() {
         let read_cap: Option<usize> = Some(3);
         let write_cap: Option<usize> = Some(3);
         let options = Config {
@@ -323,7 +325,7 @@ mod test {
             sql: String::from("select * from table1 limit 10"),
         };
 
-        recorder.inc_sql_query_reqs(&req);
+        recorder.inc_sql_query_reqs(&req).await;
         thread::sleep(Duration::from_millis(100));
 
         let vec = recorder.pop_read_hots().unwrap();
@@ -332,8 +334,8 @@ mod test {
         drop(runtime);
     }
 
-    #[test]
-    fn test_hotspot_dump() {
+    #[tokio::test]
+    async fn test_hotspot_dump() {
         let read_cap: Option<usize> = Some(10);
         let write_cap: Option<usize> = Some(10);
         let options = Config {
@@ -357,7 +359,7 @@ mod test {
             tables: vec![table.clone()],
             sql: String::from("select * from table1 limit 10"),
         };
-        recorder.inc_sql_query_reqs(&query_req);
+        recorder.inc_sql_query_reqs(&query_req).await;
 
         let write_req = WriteRequest {
             context: mock_context(),
@@ -388,7 +390,7 @@ mod test {
                 }],
             }],
         };
-        recorder.inc_write_reqs(&write_req);
+        recorder.inc_write_reqs(&write_req).await;
 
         thread::sleep(Duration::from_millis(100));
         let Dump {

@@ -2,7 +2,6 @@
 
 //! hotspot LRU
 use std::{hash::Hash, num::NonZeroUsize};
-
 use clru::CLruCache;
 
 pub struct HotspotLru<K> {
@@ -11,10 +10,10 @@ pub struct HotspotLru<K> {
 
 impl<K: Hash + Eq + Clone> HotspotLru<K> {
     /// Creates a new LRU Hotspot that holds at most `cap` items
-    pub fn new(cap: usize) -> HotspotLru<K> {
-        Self {
-            heats: CLruCache::new(NonZeroUsize::new(cap).unwrap()),
-        }
+    pub fn new(cap: usize) -> Option<HotspotLru<K>> {
+        NonZeroUsize::new(cap).map(|cap|Self {
+            heats: CLruCache::new(cap),
+        })
     }
 
     /// Incs heat into hotspot cache, If the key already exists it
@@ -47,7 +46,7 @@ mod tests {
 
     #[test]
     fn test_inc_and_pop() {
-        let mut hotspot = HotspotLru::new(10);
+        let mut hotspot = HotspotLru::new(10).unwrap();
         hotspot.inc(&"apple", 1);
         hotspot.inc(&"banana", 2);
         hotspot.inc(&"orange", 3);
@@ -65,7 +64,7 @@ mod tests {
 
     #[test]
     fn test_update() {
-        let mut hotspot = HotspotLru::new(1);
+        let mut hotspot = HotspotLru::new(1).unwrap();
 
         hotspot.inc(&"apple", 2);
         hotspot.inc(&"apple", 1);
@@ -77,7 +76,7 @@ mod tests {
 
     #[test]
     fn test_removes_oldest() {
-        let mut hotspot = HotspotLru::new(2);
+        let mut hotspot = HotspotLru::new(2).unwrap();
 
         hotspot.inc(&"apple", 1);
         hotspot.inc(&"banana", 1);
@@ -93,7 +92,7 @@ mod tests {
     fn test_send() {
         use std::thread;
 
-        let mut hotspot = HotspotLru::new(4);
+        let mut hotspot = HotspotLru::new(4).unwrap();
         hotspot.inc(&"apple", 2);
 
         let handle = thread::spawn(move || {
