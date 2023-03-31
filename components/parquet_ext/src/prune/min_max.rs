@@ -4,8 +4,10 @@ use std::sync::Arc;
 
 use arrow::{array::ArrayRef, datatypes::Schema as ArrowSchema};
 use datafusion::{
-    physical_expr::create_physical_expr,
+    common::ToDFSchema,
+    physical_expr::{create_physical_expr, execution_props::ExecutionProps},
     physical_optimizer::pruning::{PruningPredicate, PruningStatistics},
+    physical_plan::PhysicalExpr,
     prelude::{Column, Expr},
     scalar::ScalarValue,
 };
@@ -43,7 +45,7 @@ fn filter_row_groups_inner(
     let mut results = vec![true; row_groups.len()];
     // let arrow_schema: SchemaRef = schema.clone().into_arrow_schema_ref();
     for expr in exprs {
-        match PruningPredicate::try_new(expr.clone(), schema.clone()) {
+        match PruningPredicate::try_new(logical2physical(expr, &schema), schema.clone()) {
             Ok(pruning_predicate) => {
                 trace!("pruning_predicate is:{:?}", pruning_predicate);
 
@@ -65,6 +67,12 @@ fn filter_row_groups_inner(
     }
 
     results
+}
+
+fn logical2physical(expr: &Expr, schema: &ArrowSchema) -> Arc<dyn PhysicalExpr> {
+    let df_schema = schema.clone().to_dfschema().unwrap();
+    let execution_props = ExecutionProps::new();
+    create_physical_expr(expr, &df_schema, schema, &execution_props).unwrap()
 }
 
 fn build_row_group_predicate(
