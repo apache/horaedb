@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Client for accessing remote table engine
 
@@ -18,8 +18,11 @@ use common_types::{
 use common_util::error::BoxError;
 use futures::{Stream, StreamExt};
 use router::RouterRef;
-use snafu::{ensure, ResultExt};
-use table_engine::remote::model::{ReadRequest, TableIdentifier, WriteRequest};
+use snafu::{ensure, OptionExt, ResultExt};
+use table_engine::{
+    remote::model::{GetTableInfoRequest, ReadRequest, TableIdentifier, TableInfo, WriteRequest},
+    table::{SchemaId, TableId},
+};
 use tonic::{transport::Channel, Request, Streaming};
 
 use crate::{cached_router::CachedRouter, config::Config, error::*, status_code};
@@ -46,7 +49,7 @@ impl Client {
         let request_pb = ceresdbproto::remote_engine::ReadRequest::try_from(request)
             .box_err()
             .context(Convert {
-                msg: "convert ReadRequest to pb",
+                msg: "Failed to convert ReadRequest to pb",
             })?;
 
         let result = rpc_client
@@ -54,7 +57,7 @@ impl Client {
             .await
             .with_context(|| Rpc {
                 table_ident: table_ident.clone(),
-                msg: "read from remote",
+                msg: "Failed to read from remote engine",
             });
 
         let response = match result {
@@ -85,7 +88,7 @@ impl Client {
         let request_pb = ceresdbproto::remote_engine::WriteRequest::try_from(request)
             .box_err()
             .context(Convert {
-                msg: "convert WriteRequest to pb failed",
+                msg: "Failed to convert WriteRequest to pb",
             })?;
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
 
@@ -94,7 +97,7 @@ impl Client {
             .await
             .with_context(|| Rpc {
                 table_ident: table_ident.clone(),
-                msg: "write to remote failed",
+                msg: "Failed to write to remote engine",
             });
 
         let response = match result {
@@ -117,6 +120,71 @@ impl Client {
             }.fail()
         } else {
             Ok(response.affected_rows as usize)
+        }
+    }
+
+    pub async fn get_table_info(&self, request: GetTableInfoRequest) -> Result<TableInfo> {
+        // Find the channel from router firstly.
+        let channel = self.cached_router.route(&request.table).await?;
+        let table_ident = request.table.clone();
+        let request_pb = ceresdbproto::remote_engine::GetTableInfoRequest::try_from(request)
+            .box_err()
+            .context(Convert {
+                msg: "Failed to convert GetTableInfoRequest to pb",
+            })?;
+
+        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
+
+        let result = rpc_client
+            .get_table_info(Request::new(request_pb))
+            .await
+            .with_context(|| Rpc {
+                table_ident: table_ident.clone(),
+                msg: "Failed to get table info",
+            });
+
+        let response = match result {
+            Ok(response) => response,
+            Err(e) => {
+                // If occurred error, we simply evict the corresponding channel now.
+                // TODO: evict according to the type of error.
+                self.cached_router.evict(&table_ident).await;
+                return Err(e);
+            }
+        };
+
+        let response = response.into_inner();
+        if let Some(header) = response.header && !status_code::is_ok(header.code) {
+            Server {
+                table_ident: table_ident.clone(),
+                code: header.code,
+                msg: header.error,
+            }.fail()
+        } else {
+            let table_info = response.table_info.context(Server {
+                table_ident: table_ident.clone(),
+                code: status_code::StatusCode::Internal.as_u32(),
+                msg: "Table info is empty",
+            })?;
+
+            Ok(TableInfo {
+                catalog_name: table_info.catalog_name,
+                schema_name: table_info.schema_name,
+                schema_id: SchemaId::from(table_info.schema_id),
+                table_name: table_info.table_name,
+                table_id: TableId::from(table_info.table_id),
+                table_schema: table_info.table_schema.map(TryInto::try_into).transpose().box_err()
+                    .context(Convert { msg: "Failed to covert table schema" })?
+                    .context(Server {
+                        table_ident,
+                        code: status_code::StatusCode::Internal.as_u32(),
+                        msg: "Table schema is empty",
+                    })?,
+                engine: table_info.engine,
+                options: table_info.options,
+                partition_info: table_info.partition_info.map(TryInto::try_into).transpose().box_err()
+                    .context(Convert { msg: "Failed to covert partition info" })?,
+            })
         }
     }
 }

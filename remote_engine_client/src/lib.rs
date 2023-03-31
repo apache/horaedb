@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Remote table engine implementation
 
@@ -25,7 +25,7 @@ use snafu::ResultExt;
 use table_engine::{
     remote::{
         self,
-        model::{ReadRequest, WriteRequest},
+        model::{GetTableInfoRequest, ReadRequest, TableInfo, WriteRequest},
         RemoteEngine,
     },
     stream::{self, ErrWithSource, RecordBatchStream, SendableRecordBatchStream},
@@ -120,6 +120,14 @@ impl RemoteEngine for RemoteEngineImpl {
 
     async fn write(&self, request: WriteRequest) -> remote::Result<usize> {
         self.0.write(request).await.box_err().context(remote::Write)
+    }
+
+    async fn get_table_info(&self, request: GetTableInfoRequest) -> remote::Result<TableInfo> {
+        self.0
+            .get_table_info(request)
+            .await
+            .box_err()
+            .context(remote::GetTableInfo)
     }
 }
 
