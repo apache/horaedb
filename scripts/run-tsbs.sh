@@ -94,7 +94,7 @@ fi
 cat ${BULK_DATA_DIR}/ceresdb-single-groupby-5-8-1-queries.gz | gunzip | ./tsbs_run_queries_ceresdb --ceresdb-addr=${CERESDB_ADDR} | tee ${LOG_DIR}/5-8-1.log
 
 # Clean the result file
-rm -rf ${RESULT_FILE}
+rm ${RESULT_FILE}
 
 # Output write & query result
 echo '# Write' >> ${RESULT_FILE}
