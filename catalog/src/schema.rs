@@ -1,14 +1,11 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Schema contains one or more tables
 
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::{
-    column_schema::ColumnSchema,
-    table::{ClusterVersion, ShardId},
-};
+use common_types::{column_schema::ColumnSchema, table::ShardId};
 use common_util::error::GenericError;
 use snafu::{Backtrace, Snafu};
 use table_engine::{
@@ -206,8 +203,6 @@ pub struct CreateTableRequest {
     pub state: TableState,
     /// Shard id of the table
     pub shard_id: ShardId,
-    /// Cluster version of shard
-    pub cluster_version: ClusterVersion,
     /// Partition info if this is a partitioned table
     pub partition_info: Option<PartitionInfo>,
 }
@@ -225,7 +220,6 @@ impl CreateTableRequest {
             options: self.options,
             state: self.state,
             shard_id: self.shard_id,
-            cluster_version: self.cluster_version,
             partition_info: self.partition_info,
         }
     }

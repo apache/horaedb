@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Implementation of Manifest
 
@@ -691,11 +691,7 @@ mod tests {
 
     use bytes::Bytes;
     use common_types::{
-        column_schema,
-        datum::DatumKind,
-        schema,
-        schema::Schema,
-        table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
+        column_schema, datum::DatumKind, schema, schema::Schema, table::DEFAULT_SHARD_ID,
     };
     use common_util::{runtime, runtime::Runtime, tests::init_log_for_test};
     use futures::future::BoxFuture;
@@ -908,7 +904,6 @@ mod tests {
         ) {
             let shard_info = TableShardInfo {
                 shard_id: DEFAULT_SHARD_ID,
-                cluster_version: DEFAULT_CLUSTER_VERSION,
             };
 
             let add_table =
@@ -932,7 +927,6 @@ mod tests {
         ) {
             let shard_info = TableShardInfo {
                 shard_id: DEFAULT_SHARD_ID,
-                cluster_version: DEFAULT_CLUSTER_VERSION,
             };
 
             let drop_table = self.meta_update_drop_table(table_id);
@@ -955,7 +949,6 @@ mod tests {
         ) {
             let shard_info = TableShardInfo {
                 shard_id: DEFAULT_SHARD_ID,
-                cluster_version: DEFAULT_CLUSTER_VERSION,
             };
 
             let version_edit = self.meta_update_version_edit(table_id, flushed_seq);
@@ -1009,7 +1002,6 @@ mod tests {
 
             let shard_info = TableShardInfo {
                 shard_id: DEFAULT_SHARD_ID,
-                cluster_version: DEFAULT_CLUSTER_VERSION,
             };
 
             let alter_options = self.meta_update_alter_table_options(table_id);
@@ -1032,7 +1024,6 @@ mod tests {
 
             let shard_info = TableShardInfo {
                 shard_id: DEFAULT_SHARD_ID,
-                cluster_version: DEFAULT_CLUSTER_VERSION,
             };
 
             let alter_schema = self.meta_update_alter_table_schema(table_id);

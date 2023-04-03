@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 // Meta event rpc service implementation.
 
@@ -221,16 +221,6 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
                 msg: "fail to open shards in cluster",
             })?;
 
-    let topology = ctx
-        .cluster
-        .fetch_nodes()
-        .await
-        .box_err()
-        .with_context(|| ErrWithCause {
-            code: StatusCode::Internal,
-            msg: format!("fail to get topology while opening shard, request:{request:?}"),
-        })?;
-
     let shard_info = tables_of_shard.shard_info;
     let default_catalog = ctx.default_catalog()?;
     let opts = OpenOptions {
@@ -252,7 +242,6 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
             table_id: TableId::new(table.id),
             engine: ANALYTIC_ENGINE_TYPE.to_string(),
             shard_id: shard_info.id,
-            cluster_version: topology.cluster_topology_version,
         };
         let result = schema.open_table(open_request.clone(), opts.clone()).await;
 
@@ -353,16 +342,6 @@ async fn handle_create_table_on_shard(
             msg: format!("fail to create table on shard in cluster, req:{request:?}"),
         })?;
 
-    let topology = ctx
-        .cluster
-        .fetch_nodes()
-        .await
-        .box_err()
-        .with_context(|| ErrWithCause {
-            code: StatusCode::Internal,
-            msg: format!("fail to get topology while creating table, request:{request:?}"),
-        })?;
-
     let shard_info = request
         .update_shard_info
         .context(ErrNoCause {
@@ -417,7 +396,6 @@ async fn handle_create_table_on_shard(
         options: request.options,
         state: TableState::Stable,
         shard_id: shard_info.id,
-        cluster_version: topology.cluster_topology_version,
         partition_info,
     };
     let create_opts = CreateOptions {
@@ -497,16 +475,6 @@ async fn handle_open_table_on_shard(
             msg: format!("fail to open table on shard in cluster, req:{request:?}"),
         })?;
 
-    let topology = ctx
-        .cluster
-        .fetch_nodes()
-        .await
-        .box_err()
-        .with_context(|| ErrWithCause {
-            code: StatusCode::Internal,
-            msg: format!("fail to get topology while opening table, request:{request:?}"),
-        })?;
-
     let shard_info = request
         .update_shard_info
         .context(ErrNoCause {
@@ -536,7 +504,6 @@ async fn handle_open_table_on_shard(
         // FIXME: the engine type should not use the default one.
         engine: ANALYTIC_ENGINE_TYPE.to_string(),
         shard_id: shard_info.id,
-        cluster_version: topology.cluster_topology_version,
         table_id: TableId::new(table.id),
     };
     let open_opts = OpenOptions {
