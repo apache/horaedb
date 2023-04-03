@@ -1,10 +1,11 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Query handler
 
 use std::{sync::Arc, time::Instant};
 
 use arrow_ext::ipc::{CompressOptions, CompressionMethod, RecordBatchesEncoder};
+use catalog::schema::{CreateOptions, CreateTableRequest};
 use ceresdbproto::{
     common::ResponseHeader,
     storage::{
@@ -12,18 +13,25 @@ use ceresdbproto::{
         ArrowPayload, SqlQueryRequest, SqlQueryResponse,
     },
 };
-use common_types::{record_batch::RecordBatch, request_id::RequestId};
+use common_types::{record_batch::RecordBatch, request_id::RequestId, table::DEFAULT_SHARD_ID};
 use common_util::{error::BoxError, time::InstantExt};
 use futures::{stream, stream::BoxStream, FutureExt, StreamExt};
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::{error, info, warn};
+use meta_client::types::TableInfo;
 use query_engine::executor::Executor as QueryExecutor;
 use router::endpoint::Endpoint;
-use snafu::{ensure, ResultExt};
+use snafu::{ensure, OptionExt, ResultExt};
 use sql::{
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,
+};
+use table_engine::{
+    engine::TableState,
+    partition::{format_sub_partition_table_name, PartitionInfo},
+    remote::model::{GetTableInfoRequest, TableIdentifier},
+    table::TableId,
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -74,12 +82,16 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: SqlQueryRequest,
     ) -> Result<SqlQueryResponse> {
-        let req = match self.maybe_forward_sql_query(&req).await {
-            Some(resp) => return resp,
-            None => req,
+        let (req, table) = match self.maybe_forward_sql_query(&req).await {
+            Some(resp) => match resp {
+                ForwardResult::Forwarded(resp) => return resp,
+                ForwardResult::Original => (req, None),
+                ForwardResult::OriginalPartitionTableInfo(table) => (req, Some(table)),
+            },
+            None => (req, None),
         };
 
-        let output = self.fetch_sql_query_output(ctx, &req).await?;
+        let output = self.fetch_sql_query_output(ctx, &req, table).await?;
         convert_output(&output, self.resp_compress_min_length)
     }
 
@@ -88,18 +100,22 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: SqlQueryRequest,
     ) -> Result<BoxStream<'static, SqlQueryResponse>> {
-        let req = match self
-            .clone()
-            .maybe_forward_stream_sql_query(req.clone())
-            .await
-        {
-            Some(resp) => return resp,
-            None => req,
+        let (req, table) = match self.clone().maybe_forward_stream_sql_query(&req).await {
+            Some(resp) => match resp {
+                ForwardResult::Forwarded(resp) => return resp,
+                ForwardResult::Original => (req, None),
+                ForwardResult::OriginalPartitionTableInfo(table) => (req, Some(table)),
+            },
+            None => (req, None),
         };
+
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let runtime = ctx.runtime.clone();
         let resp_compress_min_length = self.resp_compress_min_length;
-        let output = self.as_ref().fetch_sql_query_output(ctx, &req).await?;
+        let output = self
+            .as_ref()
+            .fetch_sql_query_output(ctx, &req, table)
+            .await?;
         runtime.spawn(async move {
             match output {
                 Output::AffectedRows(rows) => {
@@ -132,7 +148,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     async fn maybe_forward_sql_query(
         &self,
         req: &SqlQueryRequest,
-    ) -> Option<Result<SqlQueryResponse>> {
+    ) -> Option<ForwardResult<SqlQueryResponse, Error>> {
         if req.tables.len() != 1 {
             warn!("Unable to forward sql query without exactly one table, req:{req:?}",);
 
@@ -164,11 +180,9 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             Box::new(query) as _
         };
 
-        match self.forwarder.forward(forward_req, do_query).await {
-            Ok(forward_res) => match forward_res {
-                ForwardResult::Forwarded(v) => Some(v),
-                ForwardResult::Original => None,
-            },
+        let forward_result = self.forwarder.forward(forward_req, do_query).await;
+        match forward_result {
+            Ok(forward_res) => Some(forward_res),
             Err(e) => {
                 error!("Failed to forward sql req but the error is ignored, err:{e}");
                 None
@@ -178,8 +192,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
     async fn maybe_forward_stream_sql_query(
         self: Arc<Self>,
-        req: SqlQueryRequest,
-    ) -> Option<Result<BoxStream<'static, SqlQueryResponse>>> {
+        req: &SqlQueryRequest,
+    ) -> Option<ForwardResult<BoxStream<'static, SqlQueryResponse>, Error>> {
         if req.tables.len() != 1 {
             warn!("Unable to forward sql query without exactly one table, req:{req:?}",);
 
@@ -226,11 +240,10 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             Box::new(query) as _
         };
 
-        match self.forwarder.forward(forward_req, do_query).await {
-            Ok(forward_res) => match forward_res {
-                ForwardResult::Forwarded(v) => Some(v),
-                ForwardResult::Original => None,
-            },
+        let forward_result = self.forwarder.forward(forward_req, do_query).await;
+
+        match forward_result {
+            Ok(forward_res) => Some(forward_res),
             Err(e) => {
                 error!("Failed to forward stream sql req but the error is ignored, err:{e}");
                 None
@@ -238,7 +251,12 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         }
     }
 
-    async fn fetch_sql_query_output(&self, ctx: Context, req: &SqlQueryRequest) -> Result<Output> {
+    async fn fetch_sql_query_output(
+        &self,
+        ctx: Context,
+        req: &SqlQueryRequest,
+        table_info: Option<TableInfo>,
+    ) -> Result<Output> {
         let request_id = RequestId::next_id();
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
@@ -291,6 +309,13 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 ),
             }
         );
+        // Open partition table if needed.
+        if let Some(v) = table_info {
+            if v.partition_info.is_some() {
+                self.open_partition_table_if_not_exist(catalog, schema, v)
+                    .await?;
+            }
+        }
 
         // Create logical plan
         // Note: Remember to store sql in error when creating logical plan
@@ -372,6 +397,100 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     );
 
         Ok(output)
+    }
+
+    async fn open_partition_table_if_not_exist(
+        &self,
+        catalog_name: &str,
+        schema_name: &str,
+        table_info: TableInfo,
+    ) -> Result<()> {
+        let catalog = self
+            .instance
+            .catalog_manager
+            .catalog_by_name(catalog_name)
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!("Failed to find catalog, catalog_name:{catalog_name}"),
+            })?
+            .with_context(|| ErrNoCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: format!("Catalog not found, catalog_name:{catalog_name}"),
+            })?;
+
+        // TODO: support create schema if not exist
+        let schema = catalog
+            .schema_by_name(schema_name)
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!("Failed to find schema, schema_name:{schema_name}"),
+            })?
+            .context(ErrNoCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: format!("Schema not found, schema_name:{schema_name}"),
+            })?;
+        let table = schema
+            .table_by_name(&table_info.name)
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!("Failed to find table, table_name:{}", table_info.name),
+            })?;
+
+        if table.is_some() {
+            return Ok(());
+        }
+
+        // If table not exists, open it.
+        if let Some(v) = &table_info.partition_info {
+            // Get table_schema from first sub partition table.
+            let first_sub_partition_table_name =
+                get_sub_partition_name(&table_info.name, v, 0usize);
+            let table = self
+                .remote_engine_ref
+                .get_table_info(GetTableInfoRequest {
+                    table: TableIdentifier {
+                        catalog: catalog_name.to_string(),
+                        schema: schema_name.to_string(),
+                        table: first_sub_partition_table_name,
+                    },
+                })
+                .await
+                .box_err()
+                .with_context(|| ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: "Failed to get table",
+                })?;
+
+            let create_table_request = CreateTableRequest {
+                catalog_name: catalog_name.to_string(),
+                schema_name: schema_name.to_string(),
+                schema_id: schema.id(),
+                table_name: table_info.name,
+                table_id: Some(TableId::new(table_info.id)),
+                table_schema: table.table_schema,
+                engine: table.engine,
+                options: Default::default(),
+                state: TableState::Stable,
+                shard_id: DEFAULT_SHARD_ID,
+                partition_info: table_info.partition_info,
+            };
+            let create_opts = CreateOptions {
+                table_engine: self.instance.table_engine.clone(),
+                create_if_not_exists: true,
+            };
+            schema
+                .create_table(create_table_request.clone(), create_opts)
+                .await
+                .box_err()
+                .with_context(|| ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: format!("Failed to create table, request:{create_table_request:?}"),
+                })?;
+        }
+        return Ok(());
     }
 }
 
@@ -495,4 +614,9 @@ impl QueryResponseWriter {
 
         Ok(resp)
     }
+}
+
+fn get_sub_partition_name(table_name: &str, partition_info: &PartitionInfo, id: usize) -> String {
+    let partition_name = partition_info.get_definitions()[id].name.clone();
+    format_sub_partition_table_name(table_name, &partition_name)
 }

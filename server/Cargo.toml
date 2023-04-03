@@ -40,6 +40,7 @@ prometheus = { workspace = true }
 prometheus-static-metric = { workspace = true }
 prost = { workspace = true }
 query_engine = { workspace = true }
+remote_engine_client = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

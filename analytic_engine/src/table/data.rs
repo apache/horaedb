@@ -256,7 +256,7 @@ impl TableData {
             dropped: AtomicBool::new(false),
             metrics,
             shard_info: TableShardInfo::new(shard_id),
-            partition_info: add_meta.partition_info,
+            partition_info: None,
         })
     }
 

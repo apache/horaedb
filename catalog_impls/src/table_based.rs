@@ -733,7 +733,7 @@ impl Schema for SchemaImpl {
 
         // Create table
         let table_id = self.alloc_table_id(&request.table_name).await?;
-        let request = request.into_engine_create_request(table_id);
+        let request = request.into_engine_create_request(Some(table_id));
         let table_name = request.table_name.clone();
         let table = opts
             .table_engine

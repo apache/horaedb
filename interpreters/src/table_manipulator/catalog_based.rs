@@ -77,6 +77,7 @@ impl TableManipulator for TableManipulatorImpl {
             schema_name: schema.name().to_string(),
             schema_id: schema.id(),
             table_name: table.clone(),
+            table_id: None,
             table_schema,
             engine,
             options,

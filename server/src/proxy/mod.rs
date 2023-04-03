@@ -12,8 +12,10 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 
 use common_util::{error::BoxError, runtime::Runtime};
 use query_engine::executor::Executor as QueryExecutor;
+use remote_engine_client::RemoteEngineImpl;
 use router::{endpoint::Endpoint, Router};
 use snafu::ResultExt;
+use table_engine::remote::RemoteEngineRef;
 
 use crate::{
     instance::InstanceRef,
@@ -31,6 +33,7 @@ pub struct Proxy<Q: QueryExecutor + 'static> {
     resp_compress_min_length: usize,
     auto_create_table: bool,
     schema_config_provider: SchemaConfigProviderRef,
+    remote_engine_ref: RemoteEngineRef,
 }
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
@@ -38,11 +41,16 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         router: Arc<dyn Router + Send + Sync>,
         instance: InstanceRef<Q>,
         forward_config: forward::Config,
+        remote_engine_client_config: remote_engine_client::config::Config,
         local_endpoint: String,
         resp_compress_min_length: usize,
         auto_create_table: bool,
         schema_config_provider: SchemaConfigProviderRef,
     ) -> Result<Self> {
+        let remote_engine_ref = Arc::new(RemoteEngineImpl::new(
+            remote_engine_client_config,
+            router.clone(),
+        ));
         let local_endpoint = Endpoint::from_str(&local_endpoint).with_context(|| Internal {
             msg: format!("invalid local endpoint, input:{local_endpoint}"),
         })?;
@@ -60,6 +68,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             resp_compress_min_length,
             auto_create_table,
             schema_config_provider,
+            remote_engine_ref,
         })
     }
 }

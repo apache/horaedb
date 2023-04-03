@@ -353,7 +353,7 @@ async fn handle_create_table_on_shard(
             code: StatusCode::BadRequest,
             msg: "current shard info is missing ine CreateTableOnShardRequest",
         })?;
-    let table = request.table_info.context(ErrNoCause {
+    let table_info = request.table_info.context(ErrNoCause {
         code: StatusCode::BadRequest,
         msg: "table info is missing in the CreateTableOnShardRequest",
     })?;
@@ -361,7 +361,7 @@ async fn handle_create_table_on_shard(
     // Create the table by catalog manager afterwards.
     let default_catalog = ctx.default_catalog()?;
 
-    let schema = find_schema(default_catalog, &table.schema_name)?;
+    let schema = find_schema(default_catalog, &table_info.schema_name)?;
 
     let table_schema = SchemaEncoder::default()
         .decode(&request.encoded_schema)
@@ -374,7 +374,7 @@ async fn handle_create_table_on_shard(
             ),
         })?;
 
-    let partition_info = match table.partition_info {
+    let partition_info = match table_info.partition_info {
         Some(v) => Some(
             PartitionInfo::try_from(v.clone())
                 .box_err()
@@ -388,9 +388,10 @@ async fn handle_create_table_on_shard(
 
     let create_table_request = CreateTableRequest {
         catalog_name: ctx.catalog_manager.default_catalog_name().to_string(),
-        schema_name: table.schema_name,
-        schema_id: SchemaId::from_u32(table.schema_id),
-        table_name: table.name,
+        schema_name: table_info.schema_name,
+        schema_id: SchemaId::from_u32(table_info.schema_id),
+        table_name: table_info.name,
+        table_id: Some(TableId::new(table_info.id)),
         table_schema,
         engine: request.engine,
         options: request.options,

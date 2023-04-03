@@ -1,18 +1,18 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! A router based on rules.
 
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use ceresdbproto::storage::{self, Route, RouteRequest};
+use ceresdbproto::storage::RouteRequest;
 use cluster::config::SchemaConfig;
 use log::info;
 use meta_client::types::ShardId;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt};
 
-use crate::{endpoint::Endpoint, hash, Result, RouteNotFound, Router, ShardNotFound};
+use crate::{endpoint::Endpoint, hash, Result, RouteData, RouteNotFound, Router, ShardNotFound};
 
 pub type ShardNodes = HashMap<ShardId, Endpoint>;
 
@@ -138,7 +138,7 @@ impl RuleBasedRouter {
 
 #[async_trait]
 impl Router for RuleBasedRouter {
-    async fn route(&self, req: RouteRequest) -> Result<Vec<Route>> {
+    async fn route(&self, req: RouteRequest) -> Result<Vec<RouteData>> {
         let req_ctx = req.context.unwrap();
         let schema = &req_ctx.database;
         if let Some(shard_nodes) = self.cluster_view.schema_shards.get(schema) {
@@ -150,18 +150,19 @@ impl Router for RuleBasedRouter {
             // TODO(yingwen): Better way to get total shard number
             let total_shards = shard_nodes.len();
             let mut route_results = Vec::with_capacity(req.tables.len());
-            for table in req.tables {
-                let shard_id = Self::route_table(&table, rule_list_opt, total_shards);
+            for table_name in req.tables {
+                let shard_id = Self::route_table(&table_name, rule_list_opt, total_shards);
 
                 let endpoint = shard_nodes.get(&shard_id).with_context(|| ShardNotFound {
                     schema,
-                    table: &table,
+                    table: &table_name,
                 })?;
 
-                let pb_endpoint = storage::Endpoint::from(endpoint.clone());
-                let route = Route {
-                    table,
-                    endpoint: Some(pb_endpoint),
+                // let pb_endpoint = storage::Endpoint::from(endpoint.clone());
+                let route = RouteData {
+                    table_name,
+                    table: None,
+                    endpoint: Some(endpoint.to_owned()),
                 };
                 route_results.push(route);
             }

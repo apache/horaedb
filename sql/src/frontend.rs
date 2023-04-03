@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Frontend
 
@@ -9,6 +9,7 @@ use cluster::config::SchemaConfig;
 use common_types::request_id::RequestId;
 use influxql_parser::statement::Statement as InfluxqlStatement;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use sqlparser::ast::{SetExpr, Statement as SqlStatement, TableFactor};
 use table_engine::table;
 
 use crate::{
@@ -154,5 +155,54 @@ impl<P: MetaProvider> Frontend<P> {
         planner
             .write_req_to_plan(schema_config, write_table)
             .context(CreatePlan)
+    }
+}
+
+pub fn parse_table_name(statements: &StatementVec) -> Option<String> {
+    match &statements[0] {
+        Statement::Standard(s) => match *s.clone() {
+            SqlStatement::Insert { table_name, .. } => Some(table_name.to_string()),
+            SqlStatement::Explain { statement, .. } => {
+                if let SqlStatement::Query(q) = *statement {
+                    match *q.body {
+                        SetExpr::Select(select) => {
+                            if select.from.len() != 1 {
+                                None
+                            } else if let TableFactor::Table { name, .. } = &select.from[0].relation
+                            {
+                                Some(name.to_string())
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            }
+            SqlStatement::Query(q) => match *q.body {
+                SetExpr::Select(select) => {
+                    if select.from.len() != 1 {
+                        None
+                    } else if let TableFactor::Table { name, .. } = &select.from[0].relation {
+                        Some(name.to_string())
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            },
+            _ => None,
+        },
+        Statement::Create(s) => Some(s.table_name.to_string()),
+        Statement::Drop(s) => Some(s.table_name.to_string()),
+        Statement::Describe(s) => Some(s.table_name.to_string()),
+        Statement::AlterModifySetting(s) => Some(s.table_name.to_string()),
+        Statement::AlterAddColumn(s) => Some(s.table_name.to_string()),
+        Statement::ShowCreate(s) => Some(s.table_name.to_string()),
+        Statement::ShowTables(_s) => None,
+        Statement::ShowDatabases => None,
+        Statement::Exists(s) => Some(s.table_name.to_string()),
     }
 }

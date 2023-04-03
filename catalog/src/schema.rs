@@ -193,6 +193,8 @@ pub struct CreateTableRequest {
     pub schema_id: SchemaId,
     /// Table name
     pub table_name: String,
+    /// Table id
+    pub table_id: Option<TableId>,
     /// Table schema
     pub table_schema: common_types::schema::Schema,
     /// Table engine type
@@ -208,7 +210,15 @@ pub struct CreateTableRequest {
 }
 
 impl CreateTableRequest {
-    pub fn into_engine_create_request(self, table_id: TableId) -> engine::CreateTableRequest {
+    pub fn into_engine_create_request(
+        self,
+        table_id: Option<TableId>,
+    ) -> engine::CreateTableRequest {
+        let table_id = match (self.table_id, table_id) {
+            (Some(v), _) => v,
+            (None, Some(v)) => v,
+            (None, None) => TableId::MIN,
+        };
         engine::CreateTableRequest {
             catalog_name: self.catalog_name,
             schema_name: self.schema_name,

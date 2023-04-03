@@ -1,4 +1,4 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Forward for grpc services
 use std::{
@@ -12,7 +12,8 @@ use async_trait::async_trait;
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, RouteRequest,
 };
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
+use meta_client::types::TableInfo;
 use router::{endpoint::Endpoint, RouterRef};
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, ResultExt, Snafu};
@@ -179,6 +180,7 @@ pub struct Forwarder<B> {
 /// If no forwarding happens, [`Original`] can be used.
 pub enum ForwardResult<Resp, Err> {
     Original,
+    OriginalPartitionTableInfo(TableInfo),
     Forwarded(std::result::Result<Resp, Err>),
 }
 
@@ -278,25 +280,46 @@ impl<B: ClientBuilder> Forwarder<B> {
 
         let endpoint = match self.router.route(route_req).await {
             Ok(mut routes) => {
-                if routes.len() != 1 || routes[0].endpoint.is_none() {
+                if routes.len() == 1 {
+                    if routes[0].table.is_none() {
+                        info!("xxxxroute table is none",);
+                        return Ok(ForwardResult::Original);
+                    }
+
+                    let table = routes[0].table.clone().unwrap();
+
+                    if table.partition_info.is_some() {
+                        info!("xxxxroute partition_info is some",);
+                        return Ok(ForwardResult::OriginalPartitionTableInfo(table));
+                    }
+
+                    if routes[0].endpoint.is_none() {
+                        warn!(
+                            "Fail to forward request for empty route results, routes result:{:?}, req:{:?}",
+                            routes, req
+                        );
+                        return Ok(ForwardResult::Original);
+                    }
+                    let endpoint = routes.remove(0).endpoint.unwrap();
+                    if self.is_local_endpoint(&endpoint) {
+                        info!("xxxxroute local endpoint",);
+                        return Ok(ForwardResult::Original);
+                    }
+                    endpoint
+                } else {
                     warn!(
                         "Fail to forward request for multiple or empty route results, routes result:{:?}, req:{:?}",
                         routes, req
                     );
+                    // TODO: shall we return an error?
                     return Ok(ForwardResult::Original);
                 }
-
-                Endpoint::from(routes.remove(0).endpoint.unwrap())
             }
             Err(e) => {
                 error!("Fail to route request, req:{:?}, err:{}", req, e);
                 return Ok(ForwardResult::Original);
             }
         };
-
-        if self.is_local_endpoint(&endpoint) {
-            return Ok(ForwardResult::Original);
-        }
 
         // Update the request.
         {

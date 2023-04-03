@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Grpc services
 
@@ -214,6 +214,7 @@ pub struct Builder<Q> {
     opened_wals: Option<OpenedWals>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
     forward_config: Option<forward::Config>,
+    remote_engine_client_config: remote_engine_client::Config,
     auto_create_table: bool,
 }
 
@@ -231,6 +232,7 @@ impl<Q> Builder<Q> {
             opened_wals: None,
             schema_config_provider: None,
             forward_config: None,
+            remote_engine_client_config: remote_engine_client::config::Config::default(),
             auto_create_table: true,
         }
     }
@@ -287,6 +289,11 @@ impl<Q> Builder<Q> {
         self
     }
 
+    pub fn remote_engine_client_config(mut self, config: remote_engine_client::Config) -> Self {
+        self.remote_engine_client_config = config;
+        self
+    }
+
     pub fn timeout(mut self, timeout: Option<Duration>) -> Self {
         self.timeout = timeout;
         self
@@ -327,11 +334,13 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         };
 
         let forward_config = self.forward_config.unwrap_or_default();
+        let remote_engine_client_config = self.remote_engine_client_config;
         let bg_runtime = runtimes.bg_runtime.clone();
         let proxy = Proxy::try_new(
             router,
             instance,
             forward_config,
+            remote_engine_client_config,
             self.local_endpoint.context(MissingLocalEndpoint)?,
             self.resp_compress_min_length,
             self.auto_create_table,

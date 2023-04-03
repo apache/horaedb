@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Server
 
@@ -174,6 +174,7 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
 #[must_use]
 pub struct Builder<Q> {
     server_config: ServerConfig,
+    remote_engine_client_config: remote_engine_client::config::Config,
     node_addr: String,
     config_content: Option<String>,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
@@ -195,6 +196,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
     pub fn new(config: ServerConfig) -> Self {
         Self {
             server_config: config,
+            remote_engine_client_config: remote_engine_client::Config::default(),
             node_addr: "".to_string(),
             config_content: None,
             engine_runtimes: None,
@@ -374,6 +376,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
                 .opened_wals(opened_wals)
                 .schema_config_provider(provider)
                 .forward_config(self.server_config.forward)
+                .remote_engine_client_config(self.remote_engine_client_config)
                 .timeout(self.server_config.timeout.map(|v| v.0))
                 .auto_create_table(self.server_config.auto_create_table)
                 .build()

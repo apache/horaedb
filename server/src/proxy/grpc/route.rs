@@ -1,6 +1,6 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use ceresdbproto::storage::{RouteRequest, RouteResponse};
+use ceresdbproto::storage::{Route, RouteRequest, RouteResponse};
 use common_util::error::BoxError;
 use http::StatusCode;
 use log::error;
@@ -29,7 +29,16 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             }
             Ok(v) => {
                 resp.header = Some(error::build_ok_header());
-                resp.routes = v;
+
+                resp.routes = v
+                    .into_iter()
+                    .map(|r| {
+                        let mut router = Route::default();
+                        router.table = r.table_name;
+                        router.endpoint = r.endpoint.map(Into::into);
+                        router
+                    })
+                    .collect();
             }
         }
         resp

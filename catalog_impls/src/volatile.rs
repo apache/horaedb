@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! A volatile catalog implementation used for storing information about table
 //! and schema in memory.
@@ -302,19 +302,21 @@ impl Schema for SchemaImpl {
         }
 
         // Do real create table.
-        let table_with_shards = self
-            .shard_tables_cache
-            .find_table_by_name(
-                &request.catalog_name,
-                &request.schema_name,
-                &request.table_name,
-            )
-            .with_context(|| schema::CreateTable {
-                request: request.clone(),
-                msg: "table with shards is not found in the ShardTableManager",
-            })?;
-
-        let request = request.into_engine_create_request(table_with_shards.table_info.id.into());
+        if request.partition_info.is_none() {
+            let _ = self
+                .shard_tables_cache
+                .find_table_by_name(
+                    &request.catalog_name,
+                    &request.schema_name,
+                    &request.table_name,
+                )
+                .with_context(|| schema::CreateTable {
+                    request: request.clone(),
+                    msg: format!("table with shards is not found in the ShardTableManager, catalog_name:{}, schema_name:{}, table_name:{}",
+                                 request.catalog_name,request.schema_name,request.table_name),
+                })?;
+        }
+        let request = request.into_engine_create_request(None);
 
         // Table engine is able to handle duplicate table creation.
         let table = opts

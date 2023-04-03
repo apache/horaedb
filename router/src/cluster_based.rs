@@ -1,20 +1,22 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! A router based on the [`cluster::Cluster`].
 
 use async_trait::async_trait;
-use ceresdbproto::storage::{Route, RouteRequest};
+use ceresdbproto::storage::RouteRequest;
 use cluster::ClusterRef;
 use common_util::error::BoxError;
-use meta_client::types::RouteTablesRequest;
+use meta_client::types::{RouteTablesRequest, TableInfo};
 use moka::future::Cache;
 use snafu::ResultExt;
 
-use crate::{endpoint::Endpoint, OtherWithCause, ParseEndpoint, Result, RouteCacheConfig, Router};
+use crate::{
+    endpoint::Endpoint, OtherWithCause, ParseEndpoint, Result, RouteCacheConfig, RouteData, Router,
+};
 
 pub struct ClusterBasedRouter {
     cluster: ClusterRef,
-    cache: Option<Cache<String, Route>>,
+    cache: Option<Cache<String, RouteData>>,
 }
 
 impl ClusterBasedRouter {
@@ -36,7 +38,7 @@ impl ClusterBasedRouter {
 
     /// route table from local cache, return cache routes and tables which are
     /// not in cache
-    fn route_from_cache(&self, tables: Vec<String>, routes: &mut Vec<Route>) -> Vec<String> {
+    fn route_from_cache(&self, tables: Vec<String>, routes: &mut Vec<RouteData>) -> Vec<String> {
         let mut miss = vec![];
 
         if let Some(cache) = &self.cache {
@@ -56,18 +58,19 @@ impl ClusterBasedRouter {
 }
 
 /// Make a route according to the table name and the raw endpoint.
-fn make_route(table_name: &str, endpoint: &str) -> Result<Route> {
+fn make_route(table: TableInfo, endpoint: &str) -> Result<RouteData> {
     let endpoint: Endpoint = endpoint.parse().context(ParseEndpoint { endpoint })?;
 
-    Ok(Route {
-        table: table_name.to_string(),
+    Ok(RouteData {
+        table_name: table.name.clone(),
+        table: Some(table),
         endpoint: Some(endpoint.into()),
     })
 }
 
 #[async_trait]
 impl Router for ClusterBasedRouter {
-    async fn route(&self, req: RouteRequest) -> Result<Vec<Route>> {
+    async fn route(&self, req: RouteRequest) -> Result<Vec<RouteData>> {
         let req_ctx = req.context.unwrap();
 
         // Firstly route table from local cache.
@@ -96,7 +99,7 @@ impl Router for ClusterBasedRouter {
         for (table_name, route_entry) in route_resp.entries {
             for node_shard in route_entry.node_shards {
                 if node_shard.shard_info.is_leader() {
-                    let route = make_route(&table_name, &node_shard.endpoint)?;
+                    let route = make_route(route_entry.table.clone(), &node_shard.endpoint)?;
                     if let Some(cache) = &self.cache {
                         // There may be data race here, and it is acceptable currently.
                         cache.insert(table_name.clone(), route.clone()).await;
