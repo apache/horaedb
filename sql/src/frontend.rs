@@ -4,6 +4,7 @@
 
 use std::{sync::Arc, time::Instant};
 
+use catalog::manager::{Manager, ManagerRef};
 use ceresdbproto::{prometheus::Expr as PromExpr, storage::WriteTableRequest};
 use cluster::config::SchemaConfig;
 use common_types::request_id::RequestId;
@@ -137,10 +138,22 @@ impl<P: MetaProvider> Frontend<P> {
         &self,
         ctx: &mut Context,
         stmt: InfluxqlStatement,
+        manager: ManagerRef,
     ) -> Result<Plan> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+        let catalog = manager
+            .catalog_by_name(self.provider.default_catalog_name())
+            .unwrap();
+        let catalog = catalog.unwrap();
+        let schema = catalog
+            .schema_by_name(self.provider.default_schema_name())
+            .unwrap()
+            .unwrap();
+        let all_tables = schema.all_tables().unwrap();
 
-        planner.influxql_stmt_to_plan(stmt).context(CreatePlan)
+        planner
+            .influxql_stmt_to_plan(stmt, all_tables)
+            .context(CreatePlan)
     }
 
     pub fn write_req_to_plan(

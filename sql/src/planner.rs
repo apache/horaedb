@@ -330,10 +330,14 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
             .context(BuildPromPlanError)
     }
 
-    pub fn influxql_stmt_to_plan(&self, statement: InfluxqlStatement) -> Result<Plan> {
+    pub fn influxql_stmt_to_plan(
+        &self,
+        statement: InfluxqlStatement,
+        all_tables: Vec<TableRef>,
+    ) -> Result<Plan> {
         let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
 
-        let influxql_planner = crate::influxql::planner::Planner::new(adapter);
+        let influxql_planner = crate::influxql::planner::Planner::new(adapter, all_tables);
         influxql_planner
             .statement_to_plan(statement)
             .context(BuildInfluxqlPlan)
@@ -1170,6 +1174,9 @@ pub fn parse_for_option(value: Value) -> Result<Option<String>> {
         Value::Null
         | Value::Placeholder(_)
         | Value::EscapedStringLiteral(_)
+        | Value::SingleQuotedByteStringLiteral(_)
+        | Value::DoubleQuotedByteStringLiteral(_)
+        | Value::RawStringLiteral(_)
         | Value::DollarQuotedString(_) => None,
     };
 

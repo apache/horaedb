@@ -3,6 +3,7 @@
 use std::{
     any::Any,
     fmt::{Debug, Formatter},
+    hash::Hasher,
     sync::Arc,
 };
 
@@ -153,5 +154,17 @@ impl UserDefinedLogicalNode for TableScanByPrimaryKey {
             asc: self.asc,
             scan_plan: self.scan_plan.clone(),
         })
+    }
+
+    fn name(&self) -> &str {
+        "ScanTableInPrimaryKeyOrder"
+    }
+
+    fn dyn_hash(&self, _: &mut dyn Hasher) {
+        todo!()
+    }
+
+    fn dyn_eq(&self, _: &dyn UserDefinedLogicalNode) -> bool {
+        todo!()
     }
 }
