@@ -15,7 +15,7 @@ use tokio::sync::mpsc::{self, Sender};
 
 use crate::proxy::{hotspot_lru::HotspotLru, util};
 
-type ReadKey = String;
+type QueryKey = String;
 type WriteKey = String;
 const TAG: &str = "hotspot autodump";
 const RECODER_CHANNEL_CAP: usize = 64 * 1024;
@@ -23,8 +23,8 @@ const RECODER_CHANNEL_CAP: usize = 64 * 1024;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
-    /// Max items size for read hotspot
-    read_cap: Option<usize>,
+    /// Max items size for query hotspot
+    query_cap: Option<usize>,
     /// Max items size for write hotspot
     write_cap: Option<usize>,
     dump_interval: Duration,
@@ -36,7 +36,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            read_cap: Some(10_000),
+            query_cap: Some(10_000),
             write_cap: Some(10_000),
             dump_interval: Duration::from_secs(5),
             auto_dump: true,
@@ -46,7 +46,7 @@ impl Default for Config {
 }
 
 enum Message {
-    Query(ReadKey),
+    Query(QueryKey),
     // (WriteKey, row_count, field_count)
     Write(WriteKey, usize, usize),
 }
@@ -54,9 +54,58 @@ enum Message {
 #[derive(Clone)]
 pub struct HotspotRecorder {
     tx: Arc<Sender<Message>>,
-    hotspot_read: Option<Arc<SpinMutex<HotspotLru<ReadKey>>>>,
+    stat: HotspotStat,
+}
+
+#[derive(Clone)]
+pub struct HotspotStat {
+    hotspot_query: Option<Arc<SpinMutex<HotspotLru<QueryKey>>>>,
     hotspot_write: Option<Arc<SpinMutex<HotspotLru<WriteKey>>>>,
     hotspot_field_write: Option<Arc<SpinMutex<HotspotLru<WriteKey>>>>,
+}
+
+
+impl HotspotStat {
+    /// return read count / write row count / write field count
+    pub fn dump(&self) -> Dump {
+        let format_hots = |hots: Vec<(String, u64)>| {
+            hots.into_iter()
+                .map(|(k, v)| format!("metric={k}, heats={v}"))
+                .collect()
+        };
+
+        Dump {
+            read_hots: self.pop_read_hots().map_or_else(Vec::new, format_hots),
+            write_hots: self.pop_write_hots().map_or_else(Vec::new, format_hots),
+            write_field_hots: self
+                .pop_write_field_hots()
+                .map_or_else(Vec::new, format_hots),
+        }
+    }
+
+    fn pop_read_hots(&self) -> Option<Vec<(QueryKey, u64)>> {
+        HotspotStat::pop_hots(&self.hotspot_query)
+    }
+
+    fn pop_write_hots(&self) -> Option<Vec<(WriteKey, u64)>> {
+        HotspotStat::pop_hots(&self.hotspot_write)
+    }
+
+    fn pop_write_field_hots(&self) -> Option<Vec<(WriteKey, u64)>> {
+        HotspotStat::pop_hots(&self.hotspot_field_write)
+    }
+
+    fn pop_hots(target: &Option<Arc<SpinMutex<HotspotLru<String>>>>) -> Option<Vec<(String, u64)>> {
+        match target {
+            Some(hotspot) => {
+                let mut hots = hotspot.lock().pop_all();
+                hots.sort_by(|a, b| b.1.cmp(&a.1));
+
+                Some(hots)
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -68,14 +117,13 @@ pub struct Dump {
 
 impl HotspotRecorder {
     pub fn new(config: Config, runtime: Arc<Runtime>) -> Self {
-        let hotspot_read = Self::init_lru(config.read_cap);
+        let hotspot_query = Self::init_lru(config.query_cap);
         let hotspot_write = Self::init_lru(config.write_cap);
         let hotspot_field_write = Self::init_lru(config.write_cap);
 
         let (tx, mut rx) = mpsc::channel(RECODER_CHANNEL_CAP);
-        let recorder = Self {
-            tx: Arc::new(tx),
-            hotspot_read: hotspot_read.clone(),
+        let stat = HotspotStat{
+            hotspot_query: hotspot_query.clone(),
             hotspot_write: hotspot_write.clone(),
             hotspot_field_write: hotspot_field_write.clone(),
         };
@@ -83,20 +131,20 @@ impl HotspotRecorder {
         let task_handle = if config.auto_dump {
             let interval = config.dump_interval;
             let dump_len = config.auto_dump_len;
-            let recorder_clone = recorder.clone();
+            let stat_clone = stat.clone();
             let builder = move || {
-                let recorder_in_builder = recorder_clone.clone();
+                let stat_in_builder = stat_clone.clone();
                 async move {
                     let Dump {
                         read_hots,
                         write_hots,
                         write_field_hots,
-                    } = recorder_in_builder.dump();
+                    } = stat_in_builder.dump();
 
                     read_hots
                         .into_iter()
                         .take(dump_len)
-                        .for_each(|hot| info!("{} read {}", TAG, hot));
+                        .for_each(|hot| info!("{} query {}", TAG, hot));
                     write_hots
                         .into_iter()
                         .take(dump_len)
@@ -130,7 +178,7 @@ impl HotspotRecorder {
                     }
                     Some(msg) => match msg {
                         Message::Query(read_key) => {
-                            if let Some(hotspot) = &hotspot_read {
+                            if let Some(hotspot) = &hotspot_query {
                                 hotspot.lock().inc(&read_key, 1);
                             }
                         }
@@ -148,11 +196,14 @@ impl HotspotRecorder {
             }
         });
 
-        recorder
+         Self {
+            tx: Arc::new(tx),
+            stat,
+        }
     }
 
     #[inline]
-    fn init_lru(cap: Option<usize>) -> Option<Arc<Mutex<HotspotLru<ReadKey>>>> {
+    fn init_lru(cap: Option<usize>) -> Option<Arc<Mutex<HotspotLru<QueryKey>>>> {
           HotspotLru::new(cap?).map(|lru| Arc::new(SpinMutex::new(lru)))
     }
 
@@ -178,7 +229,7 @@ impl HotspotRecorder {
     }
 
     pub async fn inc_sql_query_reqs(&self, req: &SqlQueryRequest) {
-        if self.hotspot_read.is_none() {
+        if self.stat.hotspot_query.is_none() {
             return;
         }
 
@@ -191,7 +242,7 @@ impl HotspotRecorder {
     }
 
      pub async fn inc_write_reqs(&self, req: &WriteRequest) {
-        if self.hotspot_write.is_some() && self.hotspot_field_write.is_some() {
+        if self.stat.hotspot_write.is_some() && self.stat.hotspot_field_write.is_some() {
             for table_request in &req.table_requests {
                 let hot_key =
                     Self::table_hot_key(&req.context, &table_request.table);
@@ -212,7 +263,7 @@ impl HotspotRecorder {
     }
 
     pub async fn inc_promql_reqs(&self, req: &PrometheusQueryRequest) {
-        if self.hotspot_read.is_none() {
+        if self.stat.hotspot_query.is_none() {
             return;
         }
 
@@ -221,47 +272,6 @@ impl HotspotRecorder {
                 let hot_key = Self::table_hot_key(&req.context, &table);
                 self.send_msg_or_log("inc_query_reqs", Message::Query(hot_key)).await
             }
-        }
-    }
-
-    /// return read count / write row count / write field count
-    pub fn dump(&self) -> Dump {
-        let format_hots = |hots: Vec<(String, u64)>| {
-            hots.into_iter()
-                .map(|(k, v)| format!("metric={k}, heats={v}"))
-                .collect()
-        };
-
-        Dump {
-            read_hots: self.pop_read_hots().map_or_else(Vec::new, format_hots),
-            write_hots: self.pop_write_hots().map_or_else(Vec::new, format_hots),
-            write_field_hots: self
-                .pop_write_field_hots()
-                .map_or_else(Vec::new, format_hots),
-        }
-    }
-
-    fn pop_read_hots(&self) -> Option<Vec<(ReadKey, u64)>> {
-        HotspotRecorder::pop_hots(&self.hotspot_read)
-    }
-
-    fn pop_write_hots(&self) -> Option<Vec<(WriteKey, u64)>> {
-        HotspotRecorder::pop_hots(&self.hotspot_write)
-    }
-
-    fn pop_write_field_hots(&self) -> Option<Vec<(WriteKey, u64)>> {
-        HotspotRecorder::pop_hots(&self.hotspot_field_write)
-    }
-
-    fn pop_hots(target: &Option<Arc<SpinMutex<HotspotLru<String>>>>) -> Option<Vec<(String, u64)>> {
-        match target {
-            Some(hotspot) => {
-                let mut hots = hotspot.lock().pop_all();
-                hots.sort_by(|a, b| b.1.cmp(&a.1));
-
-                Some(hots)
-            }
-            _ => None,
         }
     }
 
@@ -306,7 +316,7 @@ mod test {
         let read_cap: Option<usize> = Some(3);
         let write_cap: Option<usize> = Some(3);
         let options = Config {
-            read_cap,
+            query_cap: read_cap,
             write_cap,
             auto_dump: false,
             dump_interval: Duration::from_millis(5000),
@@ -314,8 +324,8 @@ mod test {
         };
         let runtime = new_runtime();
         let recorder = HotspotRecorder::new(options, runtime.clone());
-        assert!(recorder.pop_read_hots().unwrap().is_empty());
-        assert!(recorder.pop_write_hots().unwrap().is_empty());
+        assert!(recorder.stat.pop_read_hots().unwrap().is_empty());
+        assert!(recorder.stat.pop_write_hots().unwrap().is_empty());
         let table = String::from("table1");
         let context = mock_context();
         let req = SqlQueryRequest {
@@ -327,10 +337,9 @@ mod test {
         recorder.inc_sql_query_reqs(&req).await;
         thread::sleep(Duration::from_millis(100));
 
-        let vec = recorder.pop_read_hots().unwrap();
+        let vec = recorder.stat.pop_read_hots().unwrap();
         assert_eq!(1, vec.len());
         assert_eq!("public/table1", vec.get(0).unwrap().0);
-        drop(runtime);
     }
 
     #[tokio::test]
@@ -338,7 +347,7 @@ mod test {
         let read_cap: Option<usize> = Some(10);
         let write_cap: Option<usize> = Some(10);
         let options = Config {
-            read_cap,
+            query_cap: read_cap,
             write_cap,
             auto_dump: false,
             dump_interval: Duration::from_millis(5000),
@@ -346,10 +355,10 @@ mod test {
         };
 
         let runtime = new_runtime();
-        let recorder = HotspotRecorder::new(options, runtime.clone());
+        let recorder = HotspotRecorder::new(options, runtime);
 
-        assert!(recorder.pop_read_hots().unwrap().is_empty());
-        assert!(recorder.pop_write_hots().unwrap().is_empty());
+        assert!(recorder.stat.pop_read_hots().unwrap().is_empty());
+        assert!(recorder.stat.pop_write_hots().unwrap().is_empty());
 
         let table = String::from("table1");
         let context = mock_context();
@@ -396,11 +405,11 @@ mod test {
             read_hots,
             write_hots,
             write_field_hots,
-        } = recorder.dump();
+        } = recorder.stat.dump();
         assert_eq!(vec!["metric=public/table1, heats=1",], write_hots);
         assert_eq!(vec!["metric=public/table1, heats=1"], read_hots);
         assert_eq!(vec!["metric=public/table1, heats=2",], write_field_hots);
-        drop(runtime);
+        thread::sleep(Duration::from_millis(100));
     }
 
     fn mock_context() -> Option<RequestContext> {
