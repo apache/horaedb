@@ -22,7 +22,7 @@ pub mod table_options;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
-use common_util::config::ReadableDuration;
+use common_util::config::{ReadableDuration, ReadableSize};
 use manifest::details::Options as ManifestOptions;
 use message_queue::kafka::config::Config as KafkaConfig;
 use serde::{Deserialize, Serialize};
@@ -36,7 +36,7 @@ use wal::{
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
 
 /// Config of analytic engine
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
     /// Storage options of the engine
@@ -71,10 +71,21 @@ pub struct Config {
     /// End of global write buffer options.
 
     // Iterator scanning options
-    /// Batch size for iterator
-    pub scan_batch_size: usize,
+    /// Batch size for iterator.
+    ///
+    /// The `num_rows_per_row_group` in `table options` will be used if this is
+    /// not set.
+    pub scan_batch_size: Option<usize>,
+    /// Max record batches in flight when scan
+    pub scan_max_record_batches_in_flight: usize,
     /// Sst background reading parallelism
     pub sst_background_read_parallelism: usize,
+    /// Max buffer size for writing sst
+    pub write_sst_max_buffer_size: ReadableSize,
+    /// Max bytes per write batch.
+    ///
+    /// If this is set, the atomicity of write request will be broken.
+    pub max_bytes_per_write_batch: Option<ReadableSize>,
 
     /// Wal storage config
     ///
@@ -106,8 +117,11 @@ impl Default for Config {
             /// Zero means disabling this param, give a positive value to enable
             /// it.
             db_write_buffer_size: 0,
-            scan_batch_size: 500,
+            scan_batch_size: None,
             sst_background_read_parallelism: 8,
+            scan_max_record_batches_in_flight: 1024,
+            write_sst_max_buffer_size: ReadableSize::mb(10),
+            max_bytes_per_write_batch: None,
             wal: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
         }
@@ -115,7 +129,7 @@ impl Default for Config {
 }
 
 /// Config of wal based on obkv
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ObkvWalConfig {
     /// Obkv client config
@@ -222,7 +236,7 @@ impl From<WalNamespaceConfig> for NamespaceConfig {
 }
 
 /// Config of wal based on obkv
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct KafkaWalConfig {
     /// Kafka client config
@@ -235,7 +249,7 @@ pub struct KafkaWalConfig {
 }
 
 /// Config for wal based on RocksDB
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RocksDBConfig {
     /// Data directory used by RocksDB.
@@ -250,7 +264,7 @@ impl Default for RocksDBConfig {
     }
 }
 /// Options for wal storage backend
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum WalStorageConfig {
     RocksDB(Box<RocksDBConfig>),

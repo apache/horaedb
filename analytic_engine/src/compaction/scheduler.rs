@@ -21,12 +21,12 @@ use common_util::{
     time::DurationExt,
 };
 use log::{debug, error, info, warn};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::{
     sync::{
-        mpsc::{self, error::SendError, Receiver, Sender},
+        mpsc::{self, Receiver, Sender},
         Mutex,
     },
     time,
@@ -38,10 +38,9 @@ use crate::{
         PickerManager, TableCompactionRequest, WaitError, WaiterNotifier,
     },
     instance::{
-        flush_compaction::{self, TableFlushOptions},
-        write_worker::CompactionNotifier,
-        Instance, SpaceStore,
+        flush_compaction::TableFlushOptions, write_worker::CompactionNotifier, Instance, SpaceStore,
     },
+    sst::factory::{ScanOptions, SstWriteOptions},
     table::data::TableDataRef,
     TableOptions,
 };
@@ -54,7 +53,7 @@ pub enum Error {
 
 define_result!(Error);
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct SchedulerConfig {
     pub schedule_channel_len: usize,
@@ -289,6 +288,8 @@ impl SchedulerImpl {
         space_store: Arc<SpaceStore>,
         runtime: Arc<Runtime>,
         config: SchedulerConfig,
+        write_sst_max_buffer_size: usize,
+        scan_options: ScanOptions,
     ) -> Self {
         let (tx, rx) = mpsc::channel(config.schedule_channel_len);
         let running = Arc::new(AtomicBool::new(true));
@@ -302,12 +303,14 @@ impl SchedulerImpl {
             picker_manager: PickerManager::default(),
             max_ongoing_tasks: config.max_ongoing_tasks,
             max_unflushed_duration: config.max_unflushed_duration.0,
+            write_sst_max_buffer_size,
+            scan_options,
             limit: Arc::new(OngoingTaskLimit {
                 ongoing_tasks: AtomicUsize::new(0),
                 request_buf: RwLock::new(RequestQueue::default()),
             }),
             running: running.clone(),
-            memory_limit: MemoryLimit::new(config.memory_limit.as_bytes() as usize),
+            memory_limit: MemoryLimit::new(config.memory_limit.as_byte() as usize),
         };
 
         let handle = runtime.spawn(async move {
@@ -369,6 +372,8 @@ struct ScheduleWorker {
     max_unflushed_duration: Duration,
     picker_manager: PickerManager,
     max_ongoing_tasks: usize,
+    write_sst_max_buffer_size: usize,
+    scan_options: ScanOptions,
     limit: Arc<OngoingTaskLimit>,
     running: Arc<AtomicBool>,
     memory_limit: MemoryLimit,
@@ -464,13 +469,29 @@ impl ScheduleWorker {
 
         let sender = self.sender.clone();
         let request_id = RequestId::next_id();
+        let storage_format_hint = table_data.table_options().storage_format_hint;
+        let sst_write_options = SstWriteOptions {
+            storage_format_hint,
+            num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
+            compression: table_data.table_options().compression,
+            max_buffer_size: self.write_sst_max_buffer_size,
+        };
+        let scan_options = self.scan_options.clone();
+
         // Do actual costly compact job in background.
         self.runtime.spawn(async move {
             // Release the token after compaction finished.
             let _token = token;
 
             let res = space_store
-                .compact_table(runtime, &table_data, request_id, &compaction_task)
+                .compact_table(
+                    request_id,
+                    &table_data,
+                    &compaction_task,
+                    scan_options,
+                    &sst_write_options,
+                    runtime,
+                )
                 .await;
 
             if let Err(e) = &res {
@@ -574,12 +595,11 @@ impl ScheduleWorker {
             None => {
                 // Memory usage exceeds the threshold, let's put pack the
                 // request.
-                debug!(
-                    "Compaction task is ignored, because of high memory usage:{}, task:{:?}",
+                warn!(
+                    "Compaction task is ignored, because of high memory usage:{}, task:{:?}, table:{}",
                     self.memory_limit.usage.load(Ordering::Relaxed),
-                    compaction_task,
+                    compaction_task, table_data.name
                 );
-                self.put_back_compaction_request(compact_req).await;
                 return;
             }
         };
@@ -594,29 +614,6 @@ impl ScheduleWorker {
             waiter_notifier,
             token,
         );
-    }
-
-    async fn put_back_compaction_request(&self, req: TableCompactionRequest) {
-        if let Err(SendError(ScheduleTask::Request(TableCompactionRequest {
-            compaction_notifier,
-            waiter,
-            ..
-        }))) = self.sender.send(ScheduleTask::Request(req)).await
-        {
-            let e = Arc::new(
-                flush_compaction::Other {
-                    msg: "Failed to put back the compaction request for memory usage exceeds",
-                }
-                .build(),
-            );
-            if let Some(notifier) = compaction_notifier {
-                notifier.notify_err(e.clone());
-            }
-
-            let waiter_notifier = WaiterNotifier::new(waiter);
-            let wait_err = WaitError::Compaction { source: e };
-            waiter_notifier.notify_wait_result(Err(wait_err));
-        }
     }
 
     async fn schedule(&mut self) {

@@ -106,7 +106,7 @@ impl FromStr for TimeUnit {
             "minutes" => Ok(TimeUnit::Minutes),
             "hours" => Ok(TimeUnit::Hours),
             "days" => Ok(TimeUnit::Days),
-            _ => Err(format!("unexpect TimeUnit: {tu_str}")),
+            _ => Err(format!("unexpected TimeUnit: {tu_str}")),
         }
     }
 }
@@ -146,7 +146,7 @@ impl ReadableSize {
         self.0 / MIB
     }
 
-    pub const fn as_bytes(self) -> u64 {
+    pub const fn as_byte(self) -> u64 {
         self.0
     }
 }

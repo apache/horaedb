@@ -15,7 +15,7 @@ use analytic_engine::{
     sst::{
         factory::{
             Factory, FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
-            SstReadHint, SstReadOptions, SstWriteOptions,
+            ScanOptions, SstReadHint, SstReadOptions, SstWriteOptions,
         },
         file::FilePurgeQueue,
         manager::FileId,
@@ -51,6 +51,7 @@ async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBa
         storage_format_hint: StorageFormatHint::Auto,
         num_rows_per_row_group: config.num_rows_per_row_group,
         compression: config.compression,
+        max_buffer_size: 1024 * 1024 * 10,
     };
 
     info!(
@@ -77,7 +78,6 @@ async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBa
 pub struct RebuildSstConfig {
     store_path: String,
     input_file_name: String,
-    read_batch_row_num: usize,
     predicate: BenchPredicate,
 
     // Output sst config:
@@ -95,16 +95,19 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
     let sst_meta = util::meta_from_sst(&store, &input_path, &None).await;
 
     let projected_schema = ProjectedSchema::no_projection(sst_meta.schema.clone());
+    let scan_options = ScanOptions {
+        background_read_parallelism: 1,
+        max_record_batches_in_flight: 1024,
+    };
     let sst_read_options = SstReadOptions {
-        read_batch_row_num: config.read_batch_row_num,
         reverse: false,
         frequency: ReadFrequency::Once,
+        num_rows_per_row_group: config.num_rows_per_row_group,
         projected_schema,
         predicate: config.predicate.into_predicate(),
         meta_cache: None,
+        scan_options,
         runtime,
-        background_read_parallelism: 1,
-        num_rows_per_row_group: config.read_batch_row_num,
     };
 
     let record_batch_stream =
@@ -153,7 +156,6 @@ pub struct MergeSstConfig {
     table_id: TableId,
     sst_file_ids: Vec<FileId>,
     dedup: bool,
-    read_batch_row_num: usize,
     predicate: BenchPredicate,
 
     // Output sst config:
@@ -195,8 +197,11 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     let first_sst_path = sst_util::new_sst_file_path(space_id, table_id, config.sst_file_ids[0]);
     let schema = util::schema_from_sst(&store, &first_sst_path, &None).await;
     let iter_options = IterOptions {
-        batch_size: config.read_batch_row_num,
-        sst_background_read_parallelism: 1,
+        batch_size: config.num_rows_per_row_group,
+    };
+    let scan_options = ScanOptions {
+        background_read_parallelism: 1,
+        max_record_batches_in_flight: 1024,
     };
 
     let request_id = RequestId::next_id();
@@ -204,15 +209,14 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     let store_picker: ObjectStorePickerRef = Arc::new(store);
     let projected_schema = ProjectedSchema::no_projection(schema.clone());
     let sst_read_options = SstReadOptions {
-        read_batch_row_num: config.read_batch_row_num,
         reverse: false,
         frequency: ReadFrequency::Once,
+        num_rows_per_row_group: config.num_rows_per_row_group,
         projected_schema: projected_schema.clone(),
         predicate: config.predicate.into_predicate(),
         meta_cache: None,
+        scan_options,
         runtime: runtime.clone(),
-        background_read_parallelism: iter_options.sst_background_read_parallelism,
-        num_rows_per_row_group: config.read_batch_row_num,
     };
     let iter = {
         let space_id = config.space_id;
@@ -244,9 +248,9 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
 
     let record_batch_stream = if config.dedup {
         let iter = DedupIterator::new(request_id, iter, iter_options);
-        row_iter::record_batch_with_key_iter_to_stream(iter, &runtime)
+        row_iter::record_batch_with_key_iter_to_stream(iter)
     } else {
-        row_iter::record_batch_with_key_iter_to_stream(iter, &runtime)
+        row_iter::record_batch_with_key_iter_to_stream(iter)
     };
 
     let sst_meta = {

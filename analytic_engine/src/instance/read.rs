@@ -8,13 +8,16 @@ use std::{
     task::{Context, Poll},
 };
 
+use async_stream::try_stream;
 use common_types::{
-    projected_schema::ProjectedSchema, record_batch::RecordBatch, schema::RecordSchema,
+    projected_schema::ProjectedSchema,
+    record_batch::{RecordBatch, RecordBatchWithKey},
+    schema::RecordSchema,
     time::TimeRange,
 };
-use common_util::{define_result, error::BoxError, runtime::Runtime};
+use common_util::{define_result, error::BoxError};
 use futures::stream::Stream;
-use log::{debug, error, trace};
+use log::debug;
 use snafu::{ResultExt, Snafu};
 use table_engine::{
     stream::{
@@ -22,7 +25,6 @@ use table_engine::{
     },
     table::ReadRequest,
 };
-use tokio::sync::mpsc::{self, Receiver};
 use trace_metric::Metric;
 
 use crate::{
@@ -66,7 +68,6 @@ pub enum Error {
 
 define_result!(Error);
 
-const RECORD_BATCH_READ_BUF_SIZE: usize = 1000;
 const MERGE_SORT_METRIC_NAME: &str = "do_merge_sort";
 const ITER_NUM_METRIC_NAME: &str = "iter_num";
 const MERGE_ITER_METRICS_COLLECTOR_NAME_PREFIX: &str = "merge_iter";
@@ -94,8 +95,6 @@ impl Instance {
         );
 
         let table_data = space_table.table_data();
-
-        let iter_options = self.iter_options.clone();
         let table_options = table_data.table_options();
 
         // Collect metrics.
@@ -108,12 +107,12 @@ impl Instance {
 
         if need_merge_sort {
             let merge_iters = self
-                .build_merge_iters(table_data, &request, iter_options, &table_options)
+                .build_merge_iters(table_data, &request, &table_options)
                 .await?;
             self.build_partitioned_streams(&request, merge_iters)
         } else {
             let chain_iters = self
-                .build_chain_iters(table_data, &request, iter_options, &table_options)
+                .build_chain_iters(table_data, &request, &table_options)
                 .await?;
             self.build_partitioned_streams(&request, chain_iters)
         }
@@ -142,7 +141,7 @@ impl Instance {
 
         let mut streams = Vec::with_capacity(read_parallelism);
         for iters in splitted_iters {
-            let stream = iters_to_stream(iters, self.read_runtime(), &request.projected_schema);
+            let stream = iters_to_stream(iters, request.projected_schema.clone());
             streams.push(stream);
         }
 
@@ -155,27 +154,26 @@ impl Instance {
         &self,
         table_data: &TableData,
         request: &ReadRequest,
-        iter_options: IterOptions,
         table_options: &TableOptions,
     ) -> Result<Vec<DedupIterator<MergeIterator>>> {
         // Current visible sequence
         let sequence = table_data.last_sequence();
         let projected_schema = request.projected_schema.clone();
         let sst_read_options = SstReadOptions {
-            read_batch_row_num: table_options.num_rows_per_row_group,
             reverse: request.order.is_in_desc_order(),
             frequency: ReadFrequency::Frequent,
             projected_schema: projected_schema.clone(),
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
-            background_read_parallelism: iter_options.sst_background_read_parallelism,
             num_rows_per_row_group: table_options.num_rows_per_row_group,
+            scan_options: self.scan_options.clone(),
         };
 
         let time_range = request.predicate.time_range();
         let version = table_data.current_version();
         let read_views = self.partition_ssts_and_memtables(time_range, version, table_options);
+        let iter_options = self.make_iter_options(table_options.num_rows_per_row_group);
 
         let mut iters = Vec::with_capacity(read_views.len());
         for (idx, read_view) in read_views.into_iter().enumerate() {
@@ -226,7 +224,6 @@ impl Instance {
         &self,
         table_data: &TableData,
         request: &ReadRequest,
-        iter_options: IterOptions,
         table_options: &TableOptions,
     ) -> Result<Vec<ChainIterator>> {
         let projected_schema = request.projected_schema.clone();
@@ -234,7 +231,6 @@ impl Instance {
         assert!(request.order.is_out_of_order());
 
         let sst_read_options = SstReadOptions {
-            read_batch_row_num: table_options.num_rows_per_row_group,
             // no need to read in order so just read in asc order by default.
             reverse: false,
             frequency: ReadFrequency::Frequent,
@@ -242,8 +238,8 @@ impl Instance {
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
-            background_read_parallelism: iter_options.sst_background_read_parallelism,
             num_rows_per_row_group: table_options.num_rows_per_row_group,
+            scan_options: self.scan_options.clone(),
         };
 
         let time_range = request.predicate.time_range();
@@ -331,72 +327,105 @@ impl Instance {
 
         read_view_by_time.into_values().collect()
     }
+
+    fn make_iter_options(&self, num_rows_per_row_group: usize) -> IterOptions {
+        self.iter_options.clone().unwrap_or(IterOptions {
+            batch_size: num_rows_per_row_group,
+        })
+    }
 }
 
-// TODO(xikai): this is a hack way to implement SendableRecordBatchStream for
-// MergeIterator.
-fn iters_to_stream<T>(
-    collection: T,
-    runtime: &Runtime,
-    schema: &ProjectedSchema,
-) -> SendableRecordBatchStream
-where
-    T: IntoIterator + Send + 'static,
-    T::Item: RecordBatchWithKeyIterator,
-    T::IntoIter: Send,
-{
-    let (tx, rx) = mpsc::channel(RECORD_BATCH_READ_BUF_SIZE);
-    let projected_schema = schema.clone();
+struct StreamStateOnMultiIters<I> {
+    iters: Vec<I>,
+    curr_iter_idx: usize,
+    projected_schema: ProjectedSchema,
+}
 
-    runtime.spawn(async move {
-        for mut iter in collection {
-            while let Some(record_batch) = iter.next_batch().await.transpose() {
-                let record_batch = record_batch.box_err().context(ErrWithSource {
-                    msg: "read record batch",
-                });
+impl<I: RecordBatchWithKeyIterator + 'static> StreamStateOnMultiIters<I> {
+    fn is_exhausted(&self) -> bool {
+        self.curr_iter_idx >= self.iters.len()
+    }
 
-                // Apply the projection to RecordBatchWithKey and gets the final RecordBatch.
-                let record_batch = record_batch.and_then(|batch_with_key| {
-                    // TODO(yingwen): Try to use projector to do this, which precompute row
+    fn advance(&mut self) {
+        self.curr_iter_idx += 1;
+    }
+
+    fn curr_iter_mut(&mut self) -> &mut I {
+        &mut self.iters[self.curr_iter_idx]
+    }
+
+    async fn fetch_next_batch(
+        &mut self,
+    ) -> Option<std::result::Result<RecordBatchWithKey, I::Error>> {
+        loop {
+            if self.is_exhausted() {
+                return None;
+            }
+
+            let iter = self.curr_iter_mut();
+            if let Some(v) = iter.next_batch().await.transpose() {
+                return Some(v);
+            }
+
+            self.advance();
+        }
+    }
+}
+
+fn iters_to_stream(
+    iters: Vec<impl RecordBatchWithKeyIterator + 'static>,
+    projected_schema: ProjectedSchema,
+) -> SendableRecordBatchStream {
+    let mut state = StreamStateOnMultiIters {
+        projected_schema: projected_schema.clone(),
+        iters,
+        curr_iter_idx: 0,
+    };
+
+    let record_batch_stream = try_stream! {
+        while let Some(value) = state.fetch_next_batch().await {
+            let record_batch = value
+                .box_err()
+                .context(ErrWithSource {
+                    msg: "Read record batch",
+                })
+                .and_then(|batch_with_key| {
+                    // TODO(yingwen): Try to use projector to do this, which pre-compute row
                     // indexes to project.
                     batch_with_key
-                        .try_project(&projected_schema)
+                        .try_project(&state.projected_schema)
                         .box_err()
                         .context(ErrWithSource {
-                            msg: "project record batch",
+                            msg: "Project record batch",
                         })
                 });
-
-                trace!("send next record batch:{:?}", record_batch);
-                if tx.send(record_batch).await.is_err() {
-                    error!("Failed to send record batch from the merge iterator");
-                    break;
-                }
-            }
+            yield record_batch?;
         }
-    });
+    };
 
-    Box::pin(ChannelledRecordBatchStream {
-        schema: schema.to_record_schema(),
-        rx,
-    })
+    let record_schema = projected_schema.to_record_schema();
+    let stream_with_schema = RecordBatchStreamWithSchema {
+        schema: record_schema,
+        inner_stream: Box::pin(Box::pin(record_batch_stream)),
+    };
+    Box::pin(stream_with_schema)
 }
 
-pub struct ChannelledRecordBatchStream {
+pub struct RecordBatchStreamWithSchema {
     schema: RecordSchema,
-    rx: Receiver<stream::Result<RecordBatch>>,
+    inner_stream: Pin<Box<dyn Stream<Item = stream::Result<RecordBatch>> + Send + Unpin>>,
 }
 
-impl Stream for ChannelledRecordBatchStream {
+impl Stream for RecordBatchStreamWithSchema {
     type Item = stream::Result<RecordBatch>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
-        Pin::new(&mut this.rx).poll_recv(cx)
+        this.inner_stream.as_mut().poll_next(cx)
     }
 }
 
-impl RecordBatchStream for ChannelledRecordBatchStream {
+impl RecordBatchStream for RecordBatchStreamWithSchema {
     fn schema(&self) -> &RecordSchema {
         &self.schema
     }

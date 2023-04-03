@@ -18,7 +18,7 @@ use router::{endpoint::Endpoint, Router, RouterRef};
 use serde::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
-use tokio::sync::oneshot::{self, Sender};
+use tokio::sync::oneshot::{self, Receiver, Sender};
 use warp::{
     header,
     http::StatusCode,
@@ -33,7 +33,7 @@ use crate::{
     error_util,
     handlers::{
         self,
-        influxdb::{self, InfluxDb},
+        influxdb::{self, InfluxDb, InfluxqlParams, InfluxqlRequest, WriteParams, WriteRequest},
         prom::CeresDBStorage,
         query::Request,
     },
@@ -63,6 +63,12 @@ pub enum Error {
 
     #[snafu(display("Missing instance to build service.\nBacktrace:\n{}", backtrace))]
     MissingInstance { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Missing server config content to build service.\nBacktrace:\n{}",
+        backtrace
+    ))]
+    MissingServerConfigContent { backtrace: Backtrace },
 
     #[snafu(display("Missing schema config provider.\nBacktrace:\n{}", backtrace))]
     MissingSchemaConfigProvider { backtrace: Backtrace },
@@ -97,6 +103,9 @@ pub enum Error {
         source: Box<dyn StdError + Send + Sync>,
     },
 
+    #[snafu(display("Server already started.\nBacktrace:\n{}", backtrace))]
+    AlreadyStarted { backtrace: Backtrace },
+
     #[snafu(display("Missing router.\nBacktrace:\n{}", backtrace))]
     MissingRouter { backtrace: Backtrace },
 }
@@ -119,14 +128,48 @@ pub struct Service<Q> {
     prom_remote_storage: RemoteStorageRef<RequestContext, crate::handlers::prom::Error>,
     influxdb: Arc<InfluxDb<Q>>,
     tx: Sender<()>,
+    rx: Option<Receiver<()>>,
     config: HttpConfig,
+    config_content: String,
     router: Arc<dyn Router + Send + Sync>,
+
 }
 
-impl<Q> Service<Q> {
-    // TODO(yingwen): Maybe log error or return error
+impl<Q: QueryExecutor + 'static> Service<Q> {
+    pub async fn start(&mut self) -> Result<()> {
+        let ip_addr: IpAddr = self
+            .config
+            .endpoint
+            .addr
+            .parse()
+            .with_context(|| ParseIpAddr {
+                ip: self.config.endpoint.addr.to_string(),
+            })?;
+        let rx = self.rx.take().context(AlreadyStarted)?;
+
+        info!(
+            "HTTP server tries to listen on {}",
+            &self.config.endpoint.to_string()
+        );
+
+        // Register filters to warp and rejection handler
+        let routes = self.routes().recover(handle_rejection);
+        let (_addr, server) = warp::serve(routes).bind_with_graceful_shutdown(
+            (ip_addr, self.config.endpoint.port),
+            async {
+                rx.await.ok();
+            },
+        );
+
+        self.engine_runtimes.bg_runtime.spawn(server);
+
+        Ok(())
+    }
+
     pub fn stop(self) {
-        let _ = self.tx.send(());
+        if let Err(e) = self.tx.send(()) {
+            error!("Failed to send http service stop message, err:{:?}", e);
+        }
     }
 }
 
@@ -147,6 +190,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .or(self.flush_memtable())
             .or(self.update_log_level())
             .or(self.heap_profile())
+            .or(self.server_config())
     }
 
     /// Expose `/prom/v1/read` and `/prom/v1/write` to serve Prometheus remote
@@ -239,25 +283,47 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             })
     }
 
-    /// POST `/influxdb/v1/query` and `/influxdb/v1/write`
+    /// for write api:
+    ///     POST `/influxdb/v1/write`
+    ///
+    /// for query api:
+    ///     POST/GET `/influxdb/v1/query`
+    ///
+    /// It's derived from the influxdb 1.x query api described doc of 1.8:
+    ///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-http-endpoint
     fn influxdb_api(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        let write_api = warp::path!("write")
-            .and(self.with_context())
-            .and(self.with_influxdb())
-            .and(warp::body::bytes().map(influxdb::WriteRequest::from))
-            .and_then(influxdb::write);
-        let query_api = warp::path!("query")
-            .and(self.with_context())
-            .and(self.with_influxdb())
-            .and(warp::body::bytes().map(|bytes| QueryRequest::Influxql(Request::from(bytes))))
-            .and_then(influxdb::query);
+        let body_limit = warp::body::content_length_limit(self.config.max_body_size);
 
-        warp::path!("influxdb" / "v1" / ..)
+        let write_api = warp::path!("write")
             .and(warp::post())
-            .and(warp::body::content_length_limit(self.config.max_body_size))
-            .and(write_api.or(query_api))
+            .and(body_limit)
+            .and(self.with_context())
+            .and(self.with_influxdb())
+            .and(warp::query::<WriteParams>())
+            .and(warp::body::bytes())
+            .and_then(|ctx, db, params, lines| async move {
+                let request = WriteRequest::new(lines, params);
+                influxdb::write(ctx, db, request).await
+            });
+
+        // Query support both get and post method, so we can't add `body_limit` here.
+        // Otherwise it will throw `Rejection(LengthRequired)`
+        // TODO: support body limit for POST request
+        let query_api = warp::path!("query")
+            .and(warp::method())
+            .and(self.with_context())
+            .and(self.with_influxdb())
+            .and(warp::query::<InfluxqlParams>())
+            .and(warp::body::form::<HashMap<String, String>>())
+            .and_then(|method, ctx, db, params, body| async move {
+                let request =
+                    InfluxqlRequest::try_new(method, body, params).map_err(reject::custom)?;
+                influxdb::query(ctx, db, QueryRequest::Influxql(request)).await
+            });
+
+        warp::path!("influxdb" / "v1" / ..).and(write_api.or(query_api))
     }
 
     // POST /debug/flush_memtable
@@ -337,6 +403,16 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     }
                 },
             )
+    }
+
+    // GET /debug/config
+    fn server_config(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        let server_config_content = self.config_content.clone();
+        warp::path!("debug" / "config")
+            .and(warp::get())
+            .map(move || server_config_content.clone())
     }
 
     // PUT /debug/log_level/{level}
@@ -462,6 +538,7 @@ pub struct Builder<Q> {
     log_runtime: Option<Arc<RuntimeLevel>>,
     instance: Option<InstanceRef<Q>>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
+    config_content: Option<String>,
     router: Option<RouterRef>,
 }
 
@@ -473,6 +550,7 @@ impl<Q> Builder<Q> {
             log_runtime: None,
             instance: None,
             schema_config_provider: None,
+            config_content: None,
             router: None,
         }
     }
@@ -497,6 +575,11 @@ impl<Q> Builder<Q> {
         self
     }
 
+    pub fn config_content(mut self, content: String) -> Self {
+        self.config_content = Some(content);
+        self
+    }
+
     pub fn router(mut self, router: RouterRef) -> Self {
         self.router = Some(router);
         self
@@ -506,9 +589,10 @@ impl<Q> Builder<Q> {
 impl<Q: QueryExecutor + 'static> Builder<Q> {
     /// Build and start the service
     pub fn build(self) -> Result<Service<Q>> {
-        let engine_runtime = self.engine_runtimes.context(MissingEngineRuntimes)?;
+        let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let instance = self.instance.context(MissingInstance)?;
+        let config_content = self.config_content.context(MissingInstance)?;
         let schema_config_provider = self
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
@@ -521,36 +605,18 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let (tx, rx) = oneshot::channel();
 
         let service = Service {
-            engine_runtimes: engine_runtime.clone(),
+            engine_runtimes,
             log_runtime,
             instance,
             prom_remote_storage,
             influxdb,
             profiler: Arc::new(Profiler::default()),
             tx,
+            rx: Some(rx),
             config: self.config.clone(),
+            config_content,
             router,
         };
-
-        info!(
-            "HTTP server tries to listen on {}",
-            &self.config.endpoint.to_string()
-        );
-
-        let ip_addr: IpAddr = self.config.endpoint.addr.parse().context(ParseIpAddr {
-            ip: self.config.endpoint.addr,
-        })?;
-
-        // Register filters to warp and rejection handler
-        let routes = service.routes().recover(handle_rejection);
-        let (_addr, server) = warp::serve(routes).bind_with_graceful_shutdown(
-            (ip_addr, self.config.endpoint.port),
-            async {
-                rx.await.ok();
-            },
-        );
-        // Run the service
-        engine_runtime.bg_runtime.spawn(server);
 
         Ok(service)
     }
@@ -578,11 +644,13 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::MissingEngineRuntimes { .. }
         | Error::MissingLogRuntime { .. }
         | Error::MissingInstance { .. }
+        | Error::MissingServerConfigContent { .. }
         | Error::MissingSchemaConfigProvider { .. }
         | Error::ParseIpAddr { .. }
         | Error::ProfileHeap { .. }
         | Error::Internal { .. }
         | Error::JoinAsyncTask { .. }
+        | Error::AlreadyStarted { .. }
         | Error::HandleUpdateLogLevel { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         Error::MissingRouter { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     }
@@ -604,7 +672,8 @@ async fn handle_rejection(
     } else {
         error!("handle error: {:?}", rejection);
         code = StatusCode::INTERNAL_SERVER_ERROR;
-        message = format!("UNKNOWN_ERROR: {rejection:?}");
+        message = error_util::remove_backtrace_from_err(&format!("UNKNOWN_ERROR: {rejection:?}"))
+            .to_string();
     }
 
     let json = reply::json(&ErrorResponse {

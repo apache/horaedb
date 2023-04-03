@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! In-memory table implementations
+//! In-memory table engine implementations
 
 use std::{
     collections::HashMap,
@@ -23,14 +23,18 @@ use futures::stream::Stream;
 use snafu::{OptionExt, ResultExt};
 
 use crate::{
+    engine::{
+        CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest, TableEngine,
+    },
     stream::{
         self, ErrNoSource, ErrWithSource, PartitionedStreams, RecordBatchStream,
         SendableRecordBatchStream,
     },
     table::{
         AlterSchemaRequest, FlushRequest, GetRequest, ReadRequest, Result, Table, TableId,
-        TableStats, UnsupportedMethod, WriteRequest,
+        TableRef, TableStats, UnsupportedMethod, WriteRequest,
     },
+    MEMORY_ENGINE_TYPE,
 };
 
 type RowGroupVec = Vec<RowGroup>;
@@ -249,4 +253,43 @@ fn build_column_block<'a, I: Iterator<Item = &'a Datum>>(
             })?;
     }
     Ok(builder.build())
+}
+
+/// Memory table engine implementation
+// Mainly for test purpose now
+pub struct MemoryTableEngine;
+
+#[async_trait]
+impl TableEngine for MemoryTableEngine {
+    fn engine_type(&self) -> &str {
+        MEMORY_ENGINE_TYPE
+    }
+
+    async fn close(&self) -> crate::engine::Result<()> {
+        Ok(())
+    }
+
+    async fn create_table(&self, request: CreateTableRequest) -> crate::engine::Result<TableRef> {
+        Ok(Arc::new(MemoryTable::new(
+            request.table_name,
+            request.table_id,
+            request.table_schema,
+            MEMORY_ENGINE_TYPE.to_string(),
+        )))
+    }
+
+    async fn drop_table(&self, _request: DropTableRequest) -> crate::engine::Result<bool> {
+        Ok(true)
+    }
+
+    async fn open_table(
+        &self,
+        _request: OpenTableRequest,
+    ) -> crate::engine::Result<Option<TableRef>> {
+        Ok(None)
+    }
+
+    async fn close_table(&self, _request: CloseTableRequest) -> crate::engine::Result<()> {
+        Ok(())
+    }
 }

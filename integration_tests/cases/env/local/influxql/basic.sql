@@ -4,7 +4,7 @@ CREATE TABLE `h2o_feet` (
     `time` timestamp NOT NULL,
     `level_description` string TAG,
     `location` string TAG,
-    `water_level` double NOT NULL,
+    `water_level` double,
     timestamp KEY (time)) ENGINE = Analytic WITH (
     enable_ttl = 'false'
 );
@@ -29,7 +29,13 @@ INSERT INTO h2o_feet(time, level_description, location, water_level)
 -- SQLNESS ARG protocol=influxql
 SELECT * FROM "h2o_feet";
 
+-- SQLNESS ARG protocol=influxql method=get
+SELECT * FROM "h2o_feet";
+
 -- SQLNESS ARG protocol=influxql
 SELECT "level_description", location, water_level FROM "h2o_feet" where location = 'santa_monica';
+
+-- SQLNESS ARG protocol=influxql
+show measurements;
 
 DROP TABLE IF EXISTS `h2o_feet`;

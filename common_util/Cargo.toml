@@ -26,14 +26,14 @@ lazy_static = { workspace = true }
 libc = "0.2"
 log = { workspace = true }
 logger = { workspace = true }
-pin-project-lite = "0.2.8"
+pin-project-lite = { workspace = true }
 prometheus = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
-time = "0.1"
+time = "0.3"
 tokio = { workspace = true }
-toml = "0.5"
+toml = { workspace = true }
 
 [dev-dependencies.slog-global]
 version = "0.1"

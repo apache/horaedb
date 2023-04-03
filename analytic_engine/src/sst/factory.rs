@@ -95,18 +95,31 @@ pub struct SstReadHint {
 }
 
 #[derive(Debug, Clone)]
+pub struct ScanOptions {
+    /// The suggested parallelism while reading sst
+    pub background_read_parallelism: usize,
+    /// The max record batches in flight
+    pub max_record_batches_in_flight: usize,
+}
+
+impl Default for ScanOptions {
+    fn default() -> Self {
+        Self {
+            background_read_parallelism: 1,
+            max_record_batches_in_flight: 64,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SstReadOptions {
-    pub read_batch_row_num: usize,
     pub reverse: bool,
     pub frequency: ReadFrequency,
+    pub num_rows_per_row_group: usize,
     pub projected_schema: ProjectedSchema,
     pub predicate: PredicateRef,
     pub meta_cache: Option<MetaCacheRef>,
-
-    /// The max number of rows in one row group
-    pub num_rows_per_row_group: usize,
-    /// The suggested parallelism while reading sst
-    pub background_read_parallelism: usize,
+    pub scan_options: ScanOptions,
 
     pub runtime: Arc<Runtime>,
 }
@@ -116,6 +129,7 @@ pub struct SstWriteOptions {
     pub storage_format_hint: StorageFormatHint,
     pub num_rows_per_row_group: usize,
     pub compression: Compression,
+    pub max_buffer_size: usize,
 }
 
 #[derive(Debug, Default)]
@@ -151,7 +165,8 @@ impl Factory for FactoryImpl {
                 let reader = ThreadedReader::new(
                     reader,
                     options.runtime.clone(),
-                    options.background_read_parallelism,
+                    options.scan_options.background_read_parallelism,
+                    options.scan_options.max_record_batches_in_flight,
                 );
                 Ok(Box::new(reader))
             }

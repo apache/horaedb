@@ -5,7 +5,7 @@ repos:
       - id: check-yaml
       - id: check-toml
   - repo: https://github.com/Lucas-C/pre-commit-hooks
-    rev: v1.3.1
+    rev: v1.4.2
     hooks:
       - id: insert-license
         files: \.rs$
@@ -14,6 +14,7 @@ repos:
           - scripts/license-header.txt
           - --comment-style
           - //
+          - --use-current-year
   - repo: local
     hooks:
       - id: cargo-sort
@@ -24,4 +25,3 @@ repos:
         types: [file, toml]
         files: Cargo\.toml
         pass_filenames: false
-

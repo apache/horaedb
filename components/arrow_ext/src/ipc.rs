@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Utilities for `RecordBatch` serialization using Arrow IPC
 
@@ -109,6 +109,7 @@ impl RecordBatchesEncoder {
         let stream_writer = if let Some(v) = &mut self.stream_writer {
             v
         } else {
+            // TODO: pre-allocate the buffer.
             let buffer: Vec<u8> = Vec::new();
             let stream_writer =
                 StreamWriter::try_new(buffer, &batch.schema()).context(ArrowError)?;

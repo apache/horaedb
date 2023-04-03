@@ -12,25 +12,25 @@ use router::{
     endpoint::Endpoint,
     rule_based::{ClusterView, RuleList},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
-use crate::{grpc::forward, http::DEFAULT_MAX_BODY_SIZE};
+use crate::{http::DEFAULT_MAX_BODY_SIZE, proxy::forward};
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct StaticRouteConfig {
     pub rules: RuleList,
     pub topology: StaticTopologyConfig,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ShardView {
     pub shard_id: ShardId,
     pub endpoint: Endpoint,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct SchemaShardView {
     pub schema: String,
@@ -59,7 +59,7 @@ impl From<SchemaShardView> for SchemaConfig {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct StaticTopologyConfig {
     pub schema_shards: Vec<SchemaShardView>,
@@ -89,7 +89,7 @@ impl From<&StaticTopologyConfig> for ClusterView {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ServerConfig {
     /// The address to listen.
@@ -110,12 +110,17 @@ pub struct ServerConfig {
     /// Whether to create table automatically when data is first written, only
     /// used in gRPC
     pub auto_create_table: bool,
+
+    pub default_schema_config: SchemaConfig,
+
+    // Config of route
+    pub route_cache: router::RouteCacheConfig,
 }
 
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            bind_addr: String::from("0.0.0.0"),
+            bind_addr: String::from("127.0.0.1"),
             http_port: 5440,
             mysql_port: 3307,
             grpc_port: 8831,
@@ -125,6 +130,8 @@ impl Default for ServerConfig {
             resp_compress_min_length: ReadableSize::mb(4),
             forward: forward::Config::default(),
             auto_create_table: true,
+            default_schema_config: Default::default(),
+            route_cache: router::RouteCacheConfig::default(),
         }
     }
 }

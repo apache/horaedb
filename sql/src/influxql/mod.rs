@@ -3,8 +3,7 @@
 //! Influxql processing
 
 pub mod planner;
-pub(crate) mod select;
-pub(crate) mod util;
+pub(crate) mod provider;
 
 pub mod error {
     use common_util::error::GenericError;
@@ -14,32 +13,28 @@ pub mod error {
     #[snafu(visibility = "pub")]
     pub enum Error {
         #[snafu(display(
-            "Unimplemented influxql statement, msg: {}.\nBacktrace:{}",
+            "Failed to build influxdb schema, msg:{}.\nBacktrace:{}",
             msg,
             backtrace
         ))]
-        Unimplemented { msg: String, backtrace: Backtrace },
+        BuildSchema { msg: String, backtrace: Backtrace },
 
         #[snafu(display(
-            "Failed to rewrite influxql from statement with cause, msg:{}, source:{}",
+            "Failed to build influxql plan with cause, msg:{}, err:{}",
             msg,
             source
         ))]
-        RewriteWithCause { msg: String, source: GenericError },
+        BuildPlanWithCause { msg: String, source: GenericError },
 
         #[snafu(display(
-            "Failed to rewrite influxql from statement no cause, msg:{}.\nBacktrace:{}",
+            "Failed to build influxql plan with no cause, msg:{}.\nBacktrace:{}",
             msg,
             backtrace
         ))]
-        RewriteNoCause { msg: String, backtrace: Backtrace },
+        BuildPlanNoCause { msg: String, backtrace: Backtrace },
 
-        #[snafu(display(
-            "Failed to convert to sql statement, msg:{}.\nBacktrace:{}",
-            msg,
-            backtrace
-        ))]
-        Convert { msg: String, backtrace: Backtrace },
+        #[snafu(display("Unimplemented influxql statement, msg:{}", msg))]
+        Unimplemented { msg: String },
     }
     define_result!(Error);
 }

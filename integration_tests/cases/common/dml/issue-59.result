@@ -28,3 +28,7 @@ String("logical_plan"),String("Projection: issue59.id + Int64(1), COUNT(DISTINCT
 String("physical_plan"),String("ProjectionExec: expr=[issue59.id + Int64(1)@0 as issue59.id + Int64(1), COUNT(DISTINCT issue59.account)@1 as COUNT(DISTINCT issue59.account)]\n  ProjectionExec: expr=[group_alias_0@0 as issue59.id + Int64(1), COUNT(alias1)@1 as COUNT(DISTINCT issue59.account)]\n    AggregateExec: mode=FinalPartitioned, gby=[group_alias_0@0 as group_alias_0], aggr=[COUNT(alias1)]\n      CoalesceBatchesExec: target_batch_size=8192\n        RepartitionExec: partitioning=Hash([Column { name: \"group_alias_0\", index: 0 }], 8), input_partitions=8\n          AggregateExec: mode=Partial, gby=[group_alias_0@0 as group_alias_0], aggr=[COUNT(alias1)]\n            AggregateExec: mode=FinalPartitioned, gby=[group_alias_0@0 as group_alias_0, alias1@1 as alias1], aggr=[]\n              CoalesceBatchesExec: target_batch_size=8192\n                RepartitionExec: partitioning=Hash([Column { name: \"group_alias_0\", index: 0 }, Column { name: \"alias1\", index: 1 }], 8), input_partitions=8\n                  AggregateExec: mode=Partial, gby=[CAST(id@0 AS Int64) + 1 as group_alias_0, account@1 as alias1], aggr=[]\n                    ScanTable: table=issue59, parallelism=8, order=None, \n"),
 
 
+DROP TABLE IF EXISTS issue59;
+
+affected_rows: 0
+

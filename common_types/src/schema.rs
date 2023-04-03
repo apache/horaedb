@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Schema of table
 
@@ -322,7 +322,7 @@ impl ToString for ArrowSchemaMetaKey {
 pub type Version = u32;
 
 /// Mapping column index in table schema to column index in writer schema
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct IndexInWriterSchema(Vec<Option<usize>>);
 
 impl IndexInWriterSchema {

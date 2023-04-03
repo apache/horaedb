@@ -9,7 +9,8 @@ use analytic_engine::{
     space::SpaceId,
     sst::{
         factory::{
-            Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReadHint, SstReadOptions,
+            Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, ScanOptions, SstReadHint,
+            SstReadOptions,
         },
         file::{FileHandle, FileMeta, FilePurgeQueue},
         manager::FileId,
@@ -100,16 +101,19 @@ pub async fn load_sst_to_memtable(
     memtable: &MemTableRef,
     runtime: Arc<Runtime>,
 ) {
+    let scan_options = ScanOptions {
+        background_read_parallelism: 1,
+        max_record_batches_in_flight: 1024,
+    };
     let sst_read_options = SstReadOptions {
-        read_batch_row_num: 500,
         reverse: false,
         frequency: ReadFrequency::Frequent,
+        num_rows_per_row_group: 8192,
         projected_schema: ProjectedSchema::no_projection(schema.clone()),
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
+        scan_options,
         runtime,
-        background_read_parallelism: 1,
-        num_rows_per_row_group: 500,
     };
     let sst_factory = FactoryImpl;
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());

@@ -36,7 +36,7 @@ use datafusion::{
         ResolvedTableReference,
     },
 };
-use influxdb_influxql_parser::statement::Statement as InfluxqlStatement;
+use influxql_parser::statement::Statement as InfluxqlStatement;
 use log::{debug, trace};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
@@ -55,7 +55,8 @@ use crate::{
     partition::PartitionParser,
     plan::{
         AlterTableOperation, AlterTablePlan, CreateTablePlan, DescribeTablePlan, DropTablePlan,
-        ExistsTablePlan, InsertPlan, Plan, QueryPlan, ShowCreatePlan, ShowPlan, ShowTablesPlan,
+        ExistsTablePlan, InsertPlan, Plan, QueryPlan, QueryType, ShowCreatePlan, ShowPlan,
+        ShowTablesPlan,
     },
     promql::{ColumnNames, Expr as PromExpr},
     provider::{ContextProviderAdapter, MetaProvider},
@@ -254,7 +255,9 @@ pub enum Error {
     InvalidWriteEntry { msg: String },
 
     #[snafu(display("Failed to build influxql plan, err:{}", source))]
-    BuildInfluxqlPlan { source: GenericError },
+    BuildInfluxqlPlan {
+        source: crate::influxql::error::Error,
+    },
 }
 
 define_result!(Error);
@@ -329,10 +332,11 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
 
     pub fn influxql_stmt_to_plan(&self, statement: InfluxqlStatement) -> Result<Plan> {
         let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
-        let planner = PlannerDelegate::new(adapter);
 
-        let influxql_planner = crate::influxql::planner::Planner::new(planner);
-        influxql_planner.statement_to_plan(statement)
+        let influxql_planner = crate::influxql::planner::Planner::new(adapter);
+        influxql_planner
+            .statement_to_plan(statement)
+            .context(BuildInfluxqlPlan)
     }
 
     pub fn write_req_to_plan(
@@ -365,7 +369,7 @@ fn build_column_schema(
     })
 }
 
-fn build_schema_from_write_table_request(
+pub fn build_schema_from_write_table_request(
     schema_config: &SchemaConfig,
     write_table_req: &WriteTableRequest,
 ) -> Result<Schema> {
@@ -989,6 +993,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     fn show_tables_to_plan(&self, show_tables: ShowTables) -> Result<Plan> {
         let plan = ShowTablesPlan {
             pattern: show_tables.pattern,
+            query_type: QueryType::Sql,
         };
         Ok(Plan::Show(ShowPlan::ShowTablesPlan(plan)))
     }
@@ -2190,6 +2195,7 @@ mod tests {
     ShowTablesPlan(
         ShowTablesPlan {
             pattern: None,
+            query_type: Sql,
         },
     ),
 )"#,

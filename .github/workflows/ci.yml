@@ -3,6 +3,7 @@
 name: CI
 
 on:
+  merge_group:
   workflow_dispatch:
   push:
     branches:
@@ -14,8 +15,6 @@ on:
       - '.dockerignore'
       - 'docker/**'
   pull_request:
-    branches:
-      - main
     paths-ignore:
       - 'docs/**'
       - 'etc/**'
@@ -130,17 +129,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - name: Download CeresMeta Code
-        uses: actions/checkout@v3
-        with:
-          repository: CeresDB/ceresmeta
-          ref: refs/heads/main
-      - name: Build CeresMeta Docker image
-        run: docker build -t ${CERESMETA_IMAGE_NAME} .
-      - name: Add CeresDB Hosts
-        run: |
-          sudo echo "127.0.0.1 ceresdb0" | sudo tee -a /etc/hosts
-          sudo echo "127.0.0.1 ceresdb1" | sudo tee -a /etc/hosts
       - uses: actions/checkout@v3
         with:
           submodules: true
@@ -166,14 +154,6 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
-      - name: Build CeresDB
-        run: |
-          make build-debug
-      - name: Copy Target
-        run: |
-          cp ./target/debug/ceresdb-server ./ceresdb-server
-      - name: Build CeresDB Docker Image
-        run: docker build -f ./Dockerfile-CI -t ${CERESDB_IMAGE_NAME} .
       - name: Run black-box tests
         run: |
           make integration-test
@@ -186,7 +166,9 @@ jobs:
           name: CI-${{ github.head_ref }}.${{ github.sha }}
           path: |
             /tmp/ceresdb-stdout.log
-            /tmp/ceresdb-stderr.log
+            /tmp/ceresmeta.log
+            /tmp/ceresdb-stdout-0.log
+            /tmp/ceresdb-stdout-1.log
 
   sdk-test:
     name: sdk-test
@@ -224,9 +206,17 @@ jobs:
           nohup ./target/debug/ceresdb-server -c docs/minimal.toml > /tmp/ceresdb-stdout.log &
           sleep 10
       - name: Run Go SDK tests
-        working-directory: integration_tests/sdk/go
+        working-directory: integration_tests
         run: |
-          go run main.go
+          make run-go
+      - name: Run Java SDK tests
+        working-directory: integration_tests
+        run: |
+          make run-java
+      - name: Run Rust SDK tests
+        working-directory: integration_tests
+        run: |
+          make run-rust
       - name: Upload Logs
         if: always()
         uses: actions/upload-artifact@v3

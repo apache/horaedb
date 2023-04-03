@@ -1,14 +1,13 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
-    borrow::Cow,
     collections::HashMap,
     env,
     fmt::Display,
     fs::File,
-    path::Path,
     process::{Child, Command},
     sync::Arc,
+    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -17,7 +16,7 @@ use ceresdb_client::{
     model::sql_query::{display::CsvFormatter, Request},
     RpcContext,
 };
-use reqwest::ClientBuilder;
+use reqwest::{ClientBuilder, Url};
 use sql::{
     ast::{Statement, TableName},
     parser::Parser,
@@ -25,18 +24,21 @@ use sql::{
 use sqlness::{Database, QueryContext};
 use sqlparser::ast::{SetExpr, Statement as SqlStatement, TableFactor};
 
-const BINARY_PATH_ENV: &str = "CERESDB_BINARY_PATH";
 const SERVER_GRPC_ENDPOINT_ENV: &str = "CERESDB_SERVER_GRPC_ENDPOINT";
 const SERVER_HTTP_ENDPOINT_ENV: &str = "CERESDB_SERVER_HTTP_ENDPOINT";
-const CLUSTER_SERVER_ENDPOINT_ENV: &str = "CERESDB_CLUSTER_SERVER_ENDPOINT";
-const CERESDB_STDOUT_FILE: &str = "CERESDB_STDOUT_FILE";
-const CERESDB_STDERR_FILE: &str = "CERESDB_STDERR_FILE";
+const CERESDB_BINARY_PATH_ENV: &str = "CERESDB_BINARY_PATH";
+const CERESDB_STDOUT_FILE_ENV: &str = "CERESDB_STDOUT_FILE";
+const CERESDB_CONFIG_FILE_ENV: &str = "CERESDB_CONFIG_FILE";
 
-#[derive(Debug, Clone, Copy)]
-pub enum DeployMode {
-    Standalone,
-    Cluster,
-}
+const CERESMETA_BINARY_PATH_ENV: &str = "CERESMETA_BINARY_PATH";
+const CERESMETA_CONFIG_ENV: &str = "CERESMETA_CONFIG_PATH";
+const CERESMETA_STDOUT_FILE_ENV: &str = "CERESMETA_STDOUT_FILE";
+const CERESDB_CONFIG_FILE_0_ENV: &str = "CERESDB_CONFIG_FILE_0";
+const CERESDB_CONFIG_FILE_1_ENV: &str = "CERESDB_CONFIG_FILE_1";
+const CLUSTER_CERESDB_STDOUT_FILE_0_ENV: &str = "CLUSTER_CERESDB_STDOUT_FILE_0";
+const CLUSTER_CERESDB_STDOUT_FILE_1_ENV: &str = "CLUSTER_CERESDB_STDOUT_FILE_1";
+
+const CERESDB_SERVER_ADDR: &str = "CERESDB_SERVER_ADDR";
 
 // Used to access CeresDB by http service.
 #[derive(Clone)]
@@ -54,12 +56,119 @@ impl HttpClient {
     }
 }
 
-pub struct CeresDB {
-    server_process: Option<Child>,
+pub trait Backend {
+    fn start() -> Self;
+    fn wait_for_ready(&self);
+    fn stop(&mut self);
+}
+
+pub struct CeresDBServer {
+    server_process: Child,
+}
+
+pub struct CeresDBCluster {
+    server0: CeresDBServer,
+    server1: CeresDBServer,
+    ceresmeta_process: Child,
+}
+
+impl CeresDBServer {
+    fn spawn(bin: String, config: String, stdout: String) -> Self {
+        let local_ip = local_ip_address::local_ip()
+            .expect("fail to get local ip")
+            .to_string();
+        println!("Start server at {bin} with config {config} and stdout {stdout}, with local ip:{local_ip}");
+
+        let stdout = File::create(stdout).expect("Failed to create stdout file");
+        let server_process = Command::new(&bin)
+            .env(CERESDB_SERVER_ADDR, local_ip)
+            .args(["--config", &config])
+            .stdout(stdout)
+            .spawn()
+            .unwrap_or_else(|_| panic!("Failed to start server at {bin:?}"));
+        Self { server_process }
+    }
+}
+
+impl Backend for CeresDBServer {
+    fn start() -> Self {
+        let config = env::var(CERESDB_CONFIG_FILE_ENV).expect("Cannot parse ceresdb config env");
+        let bin = env::var(CERESDB_BINARY_PATH_ENV).expect("Cannot parse binary path env");
+        let stdout = env::var(CERESDB_STDOUT_FILE_ENV).expect("Cannot parse stdout env");
+        Self::spawn(bin, config, stdout)
+    }
+
+    fn wait_for_ready(&self) {
+        std::thread::sleep(Duration::from_secs(5));
+    }
+
+    fn stop(&mut self) {
+        self.server_process.kill().expect("Failed to kill server");
+    }
+}
+
+impl Backend for CeresDBCluster {
+    fn start() -> Self {
+        let ceresmeta_bin =
+            env::var(CERESMETA_BINARY_PATH_ENV).expect("Cannot parse ceresdb binary path env");
+        let ceresmeta_config =
+            env::var(CERESMETA_CONFIG_ENV).expect("Cannot parse ceresmeta config path env");
+        let ceresmeta_stdout =
+            env::var(CERESMETA_STDOUT_FILE_ENV).expect("Cannot parse ceresmeta stdout env");
+        println!("Start ceresmeta at {ceresmeta_bin} with config {ceresmeta_config} and stdout {ceresmeta_stdout}");
+
+        let ceresmeta_stdout =
+            File::create(ceresmeta_stdout).expect("Cannot create ceresmeta stdout");
+        let ceresmeta_process = Command::new(&ceresmeta_bin)
+            .args(["--config", &ceresmeta_config])
+            .stdout(ceresmeta_stdout)
+            .spawn()
+            .expect("Failed to spawn process to start server");
+
+        println!("wait for ceresmeta ready...\n");
+        std::thread::sleep(Duration::from_secs(10));
+
+        let ceresdb_bin =
+            env::var(CERESDB_BINARY_PATH_ENV).expect("Cannot parse ceresdb binary path env");
+        let ceresdb_config_0 =
+            env::var(CERESDB_CONFIG_FILE_0_ENV).expect("Cannot parse ceresdb0 config env");
+        let ceresdb_config_1 =
+            env::var(CERESDB_CONFIG_FILE_1_ENV).expect("Cannot parse ceresdb1 config env");
+        let stdout0 =
+            env::var(CLUSTER_CERESDB_STDOUT_FILE_0_ENV).expect("Cannot parse ceresdb0 stdout env");
+        let stdout1 =
+            env::var(CLUSTER_CERESDB_STDOUT_FILE_1_ENV).expect("Cannot parse ceresdb1 stdout env");
+
+        let server0 = CeresDBServer::spawn(ceresdb_bin.clone(), ceresdb_config_0, stdout0);
+        let server1 = CeresDBServer::spawn(ceresdb_bin, ceresdb_config_1, stdout1);
+
+        Self {
+            server0,
+            server1,
+            ceresmeta_process,
+        }
+    }
+
+    fn wait_for_ready(&self) {
+        println!("wait for cluster service ready...\n");
+        std::thread::sleep(Duration::from_secs(20));
+    }
+
+    fn stop(&mut self) {
+        self.server0.stop();
+        self.server1.stop();
+        self.ceresmeta_process
+            .kill()
+            .expect("Failed to kill ceresmeta");
+    }
+}
+
+pub struct CeresDB<T> {
+    backend: T,
     db_client: Arc<dyn DbClient>,
     // FIXME: Currently, the new protocol does not support by the dbclient but is exposed by http
     // service. And remove this client when the new protocol is supported by the dbclient.
-    http_client: Option<HttpClient>,
+    http_client: HttpClient,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -93,7 +202,7 @@ impl ProtocolParser {
 }
 
 #[async_trait]
-impl Database for CeresDB {
+impl<T: Send + Sync> Database for CeresDB<T> {
     async fn query(&self, context: QueryContext, query: String) -> Box<dyn Display> {
         let protocol = ProtocolParser
             .parse_from_ctx(&context.context)
@@ -102,84 +211,58 @@ impl Database for CeresDB {
         match protocol {
             Protocol::Sql => Self::execute_sql(query, self.db_client.clone()).await,
             Protocol::InfluxQL => {
-                let http_client = self
-                    .http_client
-                    .clone()
-                    .expect("http client is not initialized for execute influxql");
-                Self::execute_influxql(query, http_client).await
+                let http_client = self.http_client.clone();
+                Self::execute_influxql(query, http_client, context.context).await
             }
         }
     }
 }
 
-impl CeresDB {
-    pub fn new(config: Option<&Path>, mode: DeployMode) -> Self {
-        let config = config.unwrap().to_string_lossy();
-        let bin = env::var(BINARY_PATH_ENV).expect("Cannot parse binary path env");
-        let stdout_file = env::var(CERESDB_STDOUT_FILE).expect("Cannot parse stdout env");
-        let stderr_file = env::var(CERESDB_STDERR_FILE).expect("Cannot parse stderr env");
-        let stdout = File::create(stdout_file).expect("Cannot create stdout");
-        let stderr = File::create(stderr_file).expect("Cannot create stderr");
+impl<T: Backend> CeresDB<T> {
+    pub fn create() -> CeresDB<T> {
+        let backend = T::start();
+        backend.wait_for_ready();
 
-        println!("Start {bin} with {config}...");
+        let endpoint = env::var(SERVER_GRPC_ENDPOINT_ENV).unwrap_or_else(|_| {
+            panic!("Cannot read server endpoint from env {SERVER_GRPC_ENDPOINT_ENV:?}")
+        });
+        let db_client = Builder::new(endpoint, Mode::Proxy).build();
+        let http_endpoint = env::var(SERVER_HTTP_ENDPOINT_ENV).unwrap_or_else(|_| {
+            panic!("Cannot read server endpoint from env {SERVER_HTTP_ENDPOINT_ENV:?}")
+        });
 
-        match mode {
-            DeployMode::Standalone => {
-                let server_process = Self::start_standalone(stdout, stderr, bin, config);
-                // Wait for a while
-                std::thread::sleep(std::time::Duration::from_secs(5));
-                let endpoint = env::var(SERVER_GRPC_ENDPOINT_ENV).unwrap_or_else(|_| {
-                    panic!("Cannot read server endpoint from env {SERVER_GRPC_ENDPOINT_ENV:?}")
-                });
-                let db_client = Builder::new(endpoint, Mode::Proxy).build();
-                let http_endpoint = env::var(SERVER_HTTP_ENDPOINT_ENV).unwrap_or_else(|_| {
-                    panic!("Cannot read server endpoint from env {SERVER_HTTP_ENDPOINT_ENV:?}")
-                });
-                CeresDB {
-                    server_process: Some(server_process),
-                    db_client,
-                    http_client: Some(HttpClient::new(http_endpoint)),
-                }
-            }
-            DeployMode::Cluster => {
-                Self::start_cluster(stdout, stderr);
-                // Wait for a while
-                std::thread::sleep(std::time::Duration::from_secs(10));
-                let endpoint = env::var(CLUSTER_SERVER_ENDPOINT_ENV).unwrap_or_else(|_| {
-                    panic!("Cannot read server endpoint from env {CLUSTER_SERVER_ENDPOINT_ENV:?}")
-                });
-                let db_client = Builder::new(endpoint, Mode::Proxy).build();
-                CeresDB {
-                    server_process: None,
-                    db_client,
-                    http_client: None,
-                }
-            }
+        CeresDB {
+            backend,
+            db_client,
+            http_client: HttpClient::new(http_endpoint),
         }
     }
 
-    pub fn stop(self, mode: DeployMode) {
-        match mode {
-            DeployMode::Standalone => self.stop_standalone(),
-            DeployMode::Cluster => {
-                let stdout = env::var(CERESDB_STDOUT_FILE).expect("Cannot parse stdout env");
-                let stderr = env::var(CERESDB_STDERR_FILE).expect("Cannot parse stderr env");
-                let stdout = File::open(stdout).expect("Cannot create stdout");
-                let stderr = File::open(stderr).expect("Cannot create stderr");
-                Self::stop_cluster(stdout, stderr)
-            }
-        }
+    pub fn stop(&mut self) {
+        self.backend.stop();
     }
+}
 
-    async fn execute_influxql(query: String, http_client: HttpClient) -> Box<dyn Display> {
+impl<T> CeresDB<T> {
+    async fn execute_influxql(
+        query: String,
+        http_client: HttpClient,
+        params: HashMap<String, String>,
+    ) -> Box<dyn Display> {
         let url = format!("http://{}/influxdb/v1/query", http_client.endpoint);
-        let resp = http_client
-            .client
-            .post(url)
-            .body(query)
-            .send()
-            .await
-            .unwrap();
+        let resp = match params.get("method") {
+            Some(v) if v == "get" => {
+                let url = Url::parse_with_params(&url, &[("q", query)]).unwrap();
+                http_client.client.get(url).send().await.unwrap()
+            }
+            _ => http_client
+                .client
+                .post(url)
+                .form(&[("q", query)])
+                .send()
+                .await
+                .unwrap(),
+        };
         let query_res = match resp.text().await {
             Ok(text) => text,
             Err(e) => format!("Failed to do influxql query, err:{e:?}"),
@@ -218,38 +301,6 @@ impl CeresDB {
             }
             Err(e) => format!("Failed to execute query, err: {e:?}"),
         })
-    }
-
-    fn start_standalone(stdout: File, stderr: File, bin: String, config: Cow<str>) -> Child {
-        let server_process = Command::new(&bin)
-            .args(["--config", &config])
-            .stdout(stdout)
-            .stderr(stderr)
-            .spawn()
-            .unwrap_or_else(|_| panic!("Failed to start server at {bin:?}"));
-        server_process
-    }
-
-    fn stop_standalone(self) {
-        self.server_process.unwrap().kill().unwrap()
-    }
-
-    fn start_cluster(stdout: File, stderr: File) {
-        Command::new("docker-compose")
-            .args(["up", "-d"])
-            .stdout(stdout)
-            .stderr(stderr)
-            .spawn()
-            .unwrap_or_else(|_| panic!("Failed to start server"));
-    }
-
-    fn stop_cluster(stdout: File, stderr: File) {
-        Command::new("docker-compose")
-            .args(["rm", "-fsv"])
-            .stdout(stdout)
-            .stderr(stderr)
-            .spawn()
-            .unwrap_or_else(|_| panic!("Failed to stop server"));
     }
 
     fn parse_table_name(query: &str) -> Option<String> {

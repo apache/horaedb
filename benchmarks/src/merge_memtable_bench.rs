@@ -18,7 +18,7 @@ use analytic_engine::{
     sst::{
         factory::{
             FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
-            SstReadOptions,
+            ScanOptions, SstReadOptions,
         },
         meta_data::cache::MetaCacheRef,
     },
@@ -129,14 +129,15 @@ impl MergeMemTableBench {
         self.dedup = dedup;
     }
 
-    // TODO(xikai): add benchmark for merge in reverse order.
     pub fn run_bench(&self) {
         let space_id = self.space_id;
         let table_id = self.table_id;
         let sequence = u64::MAX;
-        let iter_options = IterOptions::default();
         let projected_schema = self.projected_schema.clone();
         let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
+        let iter_options = IterOptions {
+            batch_size: self.sst_read_options.num_rows_per_row_group,
+        };
 
         let request_id = RequestId::next_id();
         let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
@@ -195,15 +196,18 @@ fn mock_sst_read_options(
     projected_schema: ProjectedSchema,
     runtime: Arc<Runtime>,
 ) -> SstReadOptions {
+    let scan_options = ScanOptions {
+        background_read_parallelism: 1,
+        max_record_batches_in_flight: 1024,
+    };
     SstReadOptions {
-        read_batch_row_num: 500,
         reverse: false,
         frequency: ReadFrequency::Frequent,
+        num_rows_per_row_group: 500,
         projected_schema,
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
+        scan_options,
         runtime,
-        background_read_parallelism: 1,
-        num_rows_per_row_group: 500,
     }
 }

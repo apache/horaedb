@@ -22,9 +22,14 @@ pub mod error {
     #[derive(Debug, Snafu)]
     #[snafu(visibility(pub))]
     pub enum Error {
-        #[snafu(display("Failed to perform storage operation, err:{}", source))]
+        #[snafu(display(
+            "Failed to perform storage operation, err:{}.\nBacktrace:\n{}",
+            source,
+            backtrace
+        ))]
         Storage {
             source: object_store::ObjectStoreError,
+            backtrace: Backtrace,
         },
 
         #[snafu(display("Failed to encode meta data, err:{}", source))]

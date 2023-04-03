@@ -7,7 +7,7 @@ use std::{sync::Arc, time::Instant};
 use ceresdbproto::{prometheus::Expr as PromExpr, storage::WriteTableRequest};
 use cluster::config::SchemaConfig;
 use common_types::request_id::RequestId;
-use influxdb_influxql_parser::statement::Statement as InfluxqlStatement;
+use influxql_parser::statement::Statement as InfluxqlStatement;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table;
 
@@ -43,7 +43,7 @@ pub enum Error {
     #[snafu(display("invalid influxql, influxql:{}, err:{}", influxql, parse_err))]
     InvalidInfluxql {
         influxql: String,
-        parse_err: influxdb_influxql_parser::common::ParseError,
+        parse_err: influxql_parser::common::ParseError,
     },
 }
 
@@ -105,7 +105,7 @@ impl<P> Frontend<P> {
         _ctx: &mut Context,
         influxql: &str,
     ) -> Result<Vec<InfluxqlStatement>> {
-        match influxdb_influxql_parser::parse_statements(influxql) {
+        match influxql_parser::parse_statements(influxql) {
             Ok(stmts) => Ok(stmts),
             Err(e) => Err(Error::InvalidInfluxql {
                 influxql: influxql.to_string(),

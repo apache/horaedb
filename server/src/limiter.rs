@@ -29,9 +29,11 @@ define_result!(Error);
 #[derive(Clone, Copy, Deserialize, Debug, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
 pub enum BlockRule {
     QueryWithoutPredicate,
+    AnyQuery,
+    AnyInsert,
 }
 
-#[derive(Default, Clone, Deserialize, Debug)]
+#[derive(Default, Clone, Deserialize, Debug, Serialize)]
 #[serde(default)]
 pub struct LimiterConfig {
     pub write_block_list: Vec<String>,
@@ -43,6 +45,8 @@ impl BlockRule {
     fn should_limit(&self, plan: &Plan) -> bool {
         match self {
             BlockRule::QueryWithoutPredicate => self.is_query_without_predicate(plan),
+            BlockRule::AnyQuery => matches!(plan, Plan::Query(_)),
+            BlockRule::AnyInsert => matches!(plan, Plan::Insert(_)),
         }
     }
 
@@ -270,6 +274,16 @@ mod tests {
         let insert="INSERT INTO test_table(key1, key2, field1, field2) VALUES('tagk', 1638428434000, 100, 'hello3')";
         let insert_plan = sql_to_plan(&mock, insert);
         assert!(limiter.try_limit(&insert_plan).is_ok());
+
+        let (mock, limiter) = prepare_limiter_with_rules(vec![BlockRule::AnyQuery]);
+        let query = "select * from test_table";
+        let query_plan = sql_to_plan(&mock, query);
+        assert!(limiter.try_limit(&query_plan).is_err());
+
+        let (mock, limiter) = prepare_limiter_with_rules(vec![BlockRule::AnyInsert]);
+        let insert="INSERT INTO test_table(key1, key2, field1, field2) VALUES('tagk', 1638428434000, 100, 'hello3')";
+        let insert_plan = sql_to_plan(&mock, insert);
+        assert!(limiter.try_limit(&insert_plan).is_err());
     }
 
     #[test]

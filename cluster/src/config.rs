@@ -2,10 +2,10 @@
 
 use common_types::schema::TIMESTAMP_COLUMN;
 use meta_client::meta_impl::MetaClientConfig;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 // TODO: move this to table_engine crates
 pub struct SchemaConfig {
@@ -22,7 +22,7 @@ impl Default for SchemaConfig {
     }
 }
 
-#[derive(Default, Clone, Deserialize, Debug)]
+#[derive(Default, Clone, Deserialize, Debug, Serialize)]
 #[serde(default)]
 pub struct ClusterConfig {
     pub cmd_channel_buffer_size: usize,

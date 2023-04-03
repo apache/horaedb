@@ -203,7 +203,7 @@ impl TableData {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(space_id, request.table_id);
         let current_version = TableVersion::new(purge_queue);
-        let metrics = Metrics::new(&request.table_name);
+        let metrics = Metrics::default();
 
         Ok(Self {
             id: request.table_id,
@@ -241,7 +241,7 @@ impl TableData {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
         let current_version = TableVersion::new(purge_queue);
-        let metrics = Metrics::new(&add_meta.table_name);
+        let metrics = Metrics::default();
 
         Ok(Self {
             id: add_meta.table_id,
@@ -522,7 +522,7 @@ pub struct TableLocation {
 pub type TableDataRef = Arc<TableData>;
 
 /// Manages TableDataRef
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TableDataSet {
     /// Name to table data
     table_datas: HashMap<String, TableDataRef>,
@@ -533,10 +533,7 @@ pub struct TableDataSet {
 impl TableDataSet {
     /// Create an empty TableDataSet
     pub fn new() -> Self {
-        Self {
-            table_datas: HashMap::new(),
-            id_to_tables: HashMap::new(),
-        }
+        Self::default()
     }
 
     /// Insert if absent, if successfully inserted, return true and return
@@ -593,12 +590,6 @@ impl TableDataSet {
         for table_data in self.table_datas.values().cloned() {
             tables.push(table_data);
         }
-    }
-}
-
-impl Default for TableDataSet {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

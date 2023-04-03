@@ -910,7 +910,7 @@ mod tests {
             schema.to_record_schema_with_key(),
             streams,
             Vec::new(),
-            IterOptions::default(),
+            IterOptions { batch_size: 500 },
             false,
             Metrics::new(1, 1, None),
         );
@@ -963,7 +963,7 @@ mod tests {
             schema.to_record_schema_with_key(),
             streams,
             Vec::new(),
-            IterOptions::default(),
+            IterOptions { batch_size: 500 },
             true,
             Metrics::new(1, 1, None),
         );

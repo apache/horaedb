@@ -26,7 +26,7 @@ datafusion-expr = { workspace = true }
 df_operator = { workspace = true }
 futures = { workspace = true }
 http = "0.2"
-influxdb_line_protocol = { git = "https://github.com/jiacai2050/influxdb_line_protocol" }
+influxdb-line-protocol = "1.0"
 interpreters = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
@@ -55,4 +55,5 @@ warp = "0.3"
 zstd = { workspace = true }
 
 [dev-dependencies]
+json_pretty = "0.1.2"
 sql = { workspace = true, features = ["test"] }

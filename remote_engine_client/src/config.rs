@@ -5,9 +5,9 @@
 use std::str::FromStr;
 
 use common_util::config::ReadableDuration;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
     pub connect_timeout: ReadableDuration,
