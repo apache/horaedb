@@ -85,5 +85,5 @@ ensure-disk-quota:
 	# ensure the target directory not to exceed 40GB
 	python3 ./scripts/clean-large-folder.py ./target 42949672960
 
-tsbs: build-slim
+tsbs: build
 	cd $(DIR); sh scripts/run-tsbs.sh
