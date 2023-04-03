@@ -950,6 +950,7 @@ mod tests {
             schema_name: schema.name().to_string(),
             schema_id: schema.id(),
             table_name: table_name.to_string(),
+            table_id: None,
             table_schema: common_types::tests::build_schema(),
             engine: ANALYTIC_ENGINE_TYPE.to_string(),
             options: HashMap::new(),

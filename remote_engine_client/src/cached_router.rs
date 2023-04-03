@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Cached router
 
@@ -120,7 +120,6 @@ impl CachedRouter {
                 msg: "no endpoint in route info",
             })?;
 
-        let endpoint = endpoint.into();
         let channel = self.channel_pool.get(&endpoint).await?;
 
         Ok(channel)

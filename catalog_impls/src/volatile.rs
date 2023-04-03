@@ -302,6 +302,7 @@ impl Schema for SchemaImpl {
         }
 
         // Do real create table.
+        // Partition table is not stored in ShardTableManager.
         if request.partition_info.is_none() {
             let _ = self
                 .shard_tables_cache

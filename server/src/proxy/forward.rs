@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, RouteRequest,
 };
-use log::{debug, error, info, warn};
+use log::{debug, error, warn};
 use meta_client::types::TableInfo;
 use router::{endpoint::Endpoint, RouterRef};
 use serde::{Deserialize, Serialize};
@@ -281,16 +281,11 @@ impl<B: ClientBuilder> Forwarder<B> {
         let endpoint = match self.router.route(route_req).await {
             Ok(mut routes) => {
                 if routes.len() == 1 {
-                    if routes[0].table.is_none() {
-                        info!("xxxxroute table is none",);
-                        return Ok(ForwardResult::Original);
-                    }
-
-                    let table = routes[0].table.clone().unwrap();
-
-                    if table.partition_info.is_some() {
-                        info!("xxxxroute partition_info is some",);
-                        return Ok(ForwardResult::OriginalPartitionTableInfo(table));
+                    if routes[0].table.is_some() {
+                        let table = routes[0].table.clone().unwrap();
+                        if table.partition_info.is_some() {
+                            return Ok(ForwardResult::OriginalPartitionTableInfo(table));
+                        }
                     }
 
                     if routes[0].endpoint.is_none() {
@@ -302,7 +297,6 @@ impl<B: ClientBuilder> Forwarder<B> {
                     }
                     let endpoint = routes.remove(0).endpoint.unwrap();
                     if self.is_local_endpoint(&endpoint) {
-                        info!("xxxxroute local endpoint",);
                         return Ok(ForwardResult::Original);
                     }
                     endpoint
@@ -370,9 +364,9 @@ impl<B: ClientBuilder> Forwarder<B> {
 #[cfg(test)]
 mod tests {
     use catalog::consts::DEFAULT_SCHEMA;
-    use ceresdbproto::storage::{Route, SqlQueryRequest, SqlQueryResponse};
+    use ceresdbproto::storage::{SqlQueryRequest, SqlQueryResponse};
     use futures::FutureExt;
-    use router::Router;
+    use router::{RouteData, Router};
     use tonic::IntoRequest;
 
     use super::*;
@@ -403,13 +397,14 @@ mod tests {
 
     #[async_trait]
     impl Router for MockRouter {
-        async fn route(&self, req: RouteRequest) -> router::Result<Vec<Route>> {
+        async fn route(&self, req: RouteRequest) -> router::Result<Vec<RouteData>> {
             let endpoint = self.routing_tables.get(&req.tables[0]);
             match endpoint {
                 None => Ok(vec![]),
-                Some(v) => Ok(vec![Route {
-                    table: req.tables[0].clone(),
-                    endpoint: Some(v.clone().into()),
+                Some(v) => Ok(vec![RouteData {
+                    table_name: req.tables[0].clone(),
+                    table: None,
+                    endpoint: Some(v.clone()),
                 }]),
             }
         }

@@ -490,7 +490,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     msg: format!("Failed to create table, request:{create_table_request:?}"),
                 })?;
         }
-        return Ok(());
+        Ok(())
     }
 }
 

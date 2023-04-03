@@ -289,7 +289,7 @@ impl TryFrom<meta_service_pb::TablesOfShard> for TablesOfShard {
                 .tables
                 .into_iter()
                 .map(TryInto::<TableInfo>::try_into)
-                .collect::<Result<Vec<TableInfo>>>()?,
+                .collect::<Result<Vec<_>>>()?,
         })
     }
 }

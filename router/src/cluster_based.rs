@@ -64,7 +64,7 @@ fn make_route(table: TableInfo, endpoint: &str) -> Result<RouteData> {
     Ok(RouteData {
         table_name: table.name.clone(),
         table: Some(table),
-        endpoint: Some(endpoint.into()),
+        endpoint: Some(endpoint),
     })
 }
 
@@ -188,6 +188,7 @@ mod tests {
                             name: table.clone(),
                             schema_name: String::from("public"),
                             schema_id: 0,
+                            partition_info: None,
                         },
                         node_shards: vec![NodeShard {
                             endpoint: String::from("127.0.0.1:8831"),
@@ -250,7 +251,7 @@ mod tests {
         let mut routes = Vec::with_capacity(tables.len());
         let miss = router.route_from_cache(tables, &mut routes);
         assert_eq!(routes.len(), 1);
-        assert_eq!(routes[0].table, table1.to_string());
+        assert_eq!(routes[0].table_name, table1.to_string());
         assert_eq!(miss.len(), 0);
 
         // sleep 1.5s, table2 will be evicted, and table1 in cache
@@ -259,7 +260,7 @@ mod tests {
         let mut routes = Vec::with_capacity(tables.len());
         let miss = router.route_from_cache(tables, &mut routes);
         assert_eq!(routes.len(), 1);
-        assert_eq!(routes[0].table, table1.to_string());
+        assert_eq!(routes[0].table_name, table1.to_string());
         assert_eq!(miss.len(), 1);
         assert_eq!(miss[0], table2.to_string());
     }

@@ -158,7 +158,6 @@ impl Router for RuleBasedRouter {
                     table: &table_name,
                 })?;
 
-                // let pb_endpoint = storage::Endpoint::from(endpoint.clone());
                 let route = RouteData {
                     table_name,
                     table: None,

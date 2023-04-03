@@ -33,10 +33,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 resp.routes = v
                     .into_iter()
                     .map(|r| {
-                        let mut router = Route::default();
-                        router.table = r.table_name;
-                        router.endpoint = r.endpoint.map(Into::into);
-                        router
+                        Route {
+                            table: r.table_name,
+                            endpoint: r.endpoint.map(Into::into),
+                        }
+                        // let mut router = Route::default();
+                        // router.table = r.table_name;
+                        // router.endpoint = r.endpoint.map(Into::into);
+                        // router
                     })
                     .collect();
             }

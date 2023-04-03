@@ -13,7 +13,7 @@ use sqlparser::ast::{SetExpr, Statement as SqlStatement, TableFactor};
 use table_engine::table;
 
 use crate::{
-    ast::Statement,
+    ast::{Statement, TableName},
     parser::Parser,
     plan::Plan,
     planner::Planner,
@@ -161,7 +161,9 @@ impl<P: MetaProvider> Frontend<P> {
 pub fn parse_table_name(statements: &StatementVec) -> Option<String> {
     match &statements[0] {
         Statement::Standard(s) => match *s.clone() {
-            SqlStatement::Insert { table_name, .. } => Some(table_name.to_string()),
+            SqlStatement::Insert { table_name, .. } => {
+                Some(TableName::from(table_name).to_string())
+            }
             SqlStatement::Explain { statement, .. } => {
                 if let SqlStatement::Query(q) = *statement {
                     match *q.body {
@@ -170,7 +172,7 @@ pub fn parse_table_name(statements: &StatementVec) -> Option<String> {
                                 None
                             } else if let TableFactor::Table { name, .. } = &select.from[0].relation
                             {
-                                Some(name.to_string())
+                                Some(TableName::from(name.clone()).to_string())
                             } else {
                                 None
                             }
@@ -186,7 +188,7 @@ pub fn parse_table_name(statements: &StatementVec) -> Option<String> {
                     if select.from.len() != 1 {
                         None
                     } else if let TableFactor::Table { name, .. } = &select.from[0].relation {
-                        Some(name.to_string())
+                        Some(TableName::from(name.clone()).to_string())
                     } else {
                         None
                     }
@@ -204,5 +206,41 @@ pub fn parse_table_name(statements: &StatementVec) -> Option<String> {
         Statement::ShowTables(_s) => None,
         Statement::ShowDatabases => None,
         Statement::Exists(s) => Some(s.table_name.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{frontend::parse_table_name, parser::Parser};
+
+    #[test]
+    fn test_parse_table_name() {
+        let table = "test_parse_table_name";
+        let test_cases=vec![
+                            format!("INSERT INTO {table} (t, name, value) VALUES (1651737067000, 'ceresdb', 100)"),
+                            format!("INSERT INTO `{table}` (t, name, value) VALUES (1651737067000,'ceresdb', 100)"),
+                            format!("select * from {table}"),
+                            format!("select * from `{table}`"),
+                            format!("explain select * from {table}"),
+                            format!("explain select * from `{table}`"),
+                            format!("CREATE TABLE {table} (`name`string TAG,`value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t))"),
+                            format!("CREATE TABLE `{table}` (`name`string TAG,`value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t))"),
+                            format!("drop table {table}"),
+                            format!("drop table `{table}`"),
+                            format!("describe table {table}"),
+                            format!("describe table `{table}`"),
+                            format!("alter table {table} modify setting enable_ttl='false'"),
+                            format!("alter table `{table}` modify setting enable_ttl='false'"),
+                            format!("alter table {table} add column c1 int"),
+                            format!("alter table `{table}` add column c1 int"),
+                            format!("show create table {table}"),
+                            format!("show create table `{table}`"),
+                            format!("exists table {table}"),
+                            format!("exists table `{table}`"),
+        ];
+        for sql in test_cases {
+            let statements = Parser::parse_sql(&sql).unwrap();
+            assert_eq!(parse_table_name(&statements), Some(table.to_string()));
+        }
     }
 }

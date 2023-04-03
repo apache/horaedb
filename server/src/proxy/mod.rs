@@ -37,6 +37,7 @@ pub struct Proxy<Q: QueryExecutor + 'static> {
 }
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new(
         router: Arc<dyn Router + Send + Sync>,
         instance: InstanceRef<Q>,
