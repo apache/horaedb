@@ -132,7 +132,6 @@ pub struct Service<Q> {
     config: HttpConfig,
     config_content: String,
     router: Arc<dyn Router + Send + Sync>,
-
 }
 
 impl<Q: QueryExecutor + 'static> Service<Q> {
