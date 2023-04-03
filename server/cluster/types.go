@@ -12,6 +12,11 @@ const (
 	HeartbeatKeepAliveIntervalSec uint64 = 15
 )
 
+type Snapshot struct {
+	Topology        Topology
+	RegisteredNodes []RegisteredNode
+}
+
 type TableInfo struct {
 	ID            storage.TableID
 	Name          string

@@ -41,6 +41,7 @@ type Manager interface {
 
 	RegisterNode(ctx context.Context, clusterName string, registeredNode RegisteredNode) error
 	GetRegisteredNode(ctx context.Context, clusterName string, node string) (RegisteredNode, error)
+	ListRegisterNodes(ctx context.Context, clusterName string) ([]RegisteredNode, error)
 }
 
 type managerImpl struct {
@@ -168,7 +169,7 @@ func (m *managerImpl) GetTables(clusterName, nodeName string, shardIDs []storage
 		return nil, errors.WithMessage(err, "get cluster")
 	}
 
-	shardTables := cluster.GetShardTables(shardIDs, nodeName)
+	shardTables := cluster.GetShardTables(shardIDs)
 	return shardTables, nil
 }
 
@@ -221,6 +222,17 @@ func (m *managerImpl) GetRegisteredNode(_ context.Context, clusterName string, n
 	}
 
 	return registeredNode, nil
+}
+
+func (m *managerImpl) ListRegisterNodes(_ context.Context, clusterName string) ([]RegisteredNode, error) {
+	cluster, err := m.getCluster(clusterName)
+	if err != nil {
+		log.Error("get cluster", zap.Error(err), zap.String("clusterName", clusterName))
+		return []RegisteredNode{}, errors.WithMessage(err, "get cluster")
+	}
+
+	nodes := cluster.GetRegisteredNodes()
+	return nodes, nil
 }
 
 func (m *managerImpl) getCluster(clusterName string) (*Cluster, error) {

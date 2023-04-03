@@ -8,7 +8,6 @@ import (
 	"math/big"
 
 	"github.com/CeresDB/ceresmeta/server/cluster"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/pkg/errors"
 )
 
@@ -51,7 +50,7 @@ func (p *RandomBalancedShardPicker) PickShards(ctx context.Context, clusterName 
 
 	if !enableDuplicateNode {
 		if len(nodeShardsMapping) < expectShardNum {
-			return []cluster.ShardNodeWithVersion{}, errors.WithMessagef(procedure.ErrNodeNumberNotEnough, "number of nodes is:%d, expecet number of shards is:%d", len(nodeShardsMapping), expectShardNum)
+			return []cluster.ShardNodeWithVersion{}, errors.WithMessagef(ErrNodeNumberNotEnough, "number of nodes is:%d, expecet number of shards is:%d", len(nodeShardsMapping), expectShardNum)
 		}
 	}
 

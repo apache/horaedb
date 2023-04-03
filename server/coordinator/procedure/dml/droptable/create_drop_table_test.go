@@ -54,7 +54,7 @@ func TestCreateAndDropTable(t *testing.T) {
 	for i := 0; i < test.DefaultShardTotal; i++ {
 		shardIDs = append(shardIDs, storage.ShardID(i))
 	}
-	shardTables := c.GetShardTables(shardIDs, test.NodeName0)
+	shardTables := c.GetShardTables(shardIDs)
 	tableTotal := 0
 	for _, v := range shardTables {
 		tableTotal += len(v.Tables)
@@ -75,7 +75,7 @@ func TestCreateAndDropTable(t *testing.T) {
 	}
 
 	// Check tables by node.
-	shardTables = c.GetShardTables(shardIDs, test.NodeName0)
+	shardTables = c.GetShardTables(shardIDs)
 	tableTotal = 0
 	for _, v := range shardTables {
 		tableTotal += len(v.Tables)

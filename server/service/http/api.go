@@ -163,7 +163,7 @@ func (a *API) getShardTables(writer http.ResponseWriter, req *http.Request) {
 		shardIDs = append(shardIDs, storage.ShardID(shardID))
 	}
 
-	shardTables := c.GetShardTables(shardIDs, getShardTables.NodeName)
+	shardTables := c.GetShardTables(shardIDs)
 	a.respond(writer, shardTables)
 }
 

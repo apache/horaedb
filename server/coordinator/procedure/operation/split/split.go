@@ -215,7 +215,11 @@ func openNewShardMetadataCallback(event *fsm.Event) {
 	}
 
 	// Validate tables.
-	shardTables := req.cluster.GetShardTables([]storage.ShardID{req.shardID}, req.targetNodeName)[req.shardID]
+	shardTables, exists := req.cluster.GetShardTables([]storage.ShardID{req.shardID})[req.shardID]
+	if !exists {
+		procedure.CancelEventWithLog(event, cluster.ErrShardNotFound, "shard not found", zap.Uint64("shardID", uint64(req.shardID)))
+		return
+	}
 	var tableNames []string
 	for _, table := range shardTables.Tables {
 		if req.schemaName == table.SchemaName {

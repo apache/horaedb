@@ -66,7 +66,7 @@ func TestSplit(t *testing.T) {
 	re.NotNil(splitNodeShard)
 	re.NotNil(newNodeShard)
 
-	shardTables := c.GetShardTables([]storage.ShardID{targetShardNode.ID, storage.ShardID(newShardID)}, targetShardNode.NodeName)
+	shardTables := c.GetShardTables([]storage.ShardID{targetShardNode.ID, storage.ShardID(newShardID)})
 	splitShardTables := shardTables[targetShardNode.ID]
 	newShardTables := shardTables[storage.ShardID(newShardID)]
 	re.NotNil(splitShardTables)
