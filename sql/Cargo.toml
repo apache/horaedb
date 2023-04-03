@@ -30,6 +30,9 @@ hashbrown = { version = "0.12", features = ["raw"] }
 influxql-logical-planner = { git = "https://github.com/CeresDB/influxql", package = "iox_query_influxql" }
 influxql-parser = { git = "https://github.com/CeresDB/influxql", package = "influxdb_influxql_parser" }
 influxql-schema = { git = "https://github.com/CeresDB/influxql", package = "schema" }
+# influxql-logical-planner = { path = "/Users/jiacai/code/rust/influxql/iox_query_influxql", package = "iox_query_influxql" }
+# influxql-parser = { path = "/Users/jiacai/code/rust/influxql/influxdb_influxql_parser", package = "influxdb_influxql_parser" }
+# influxql-schema = { path = "/Users/jiacai/code/rust/influxql/schema", package = "schema" }
 itertools = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
