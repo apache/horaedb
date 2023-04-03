@@ -340,6 +340,7 @@ mod test {
         let vec = recorder.stat.pop_read_hots().unwrap();
         assert_eq!(1, vec.len());
         assert_eq!("public/table1", vec.get(0).unwrap().0);
+        drop(runtime);
     }
 
     #[tokio::test]
@@ -355,7 +356,7 @@ mod test {
         };
 
         let runtime = new_runtime();
-        let recorder = HotspotRecorder::new(options, runtime);
+        let recorder = HotspotRecorder::new(options, runtime.clone());
 
         assert!(recorder.stat.pop_read_hots().unwrap().is_empty());
         assert!(recorder.stat.pop_write_hots().unwrap().is_empty());
@@ -410,6 +411,7 @@ mod test {
         assert_eq!(vec!["metric=public/table1, heats=1"], read_hots);
         assert_eq!(vec!["metric=public/table1, heats=2",], write_field_hots);
         thread::sleep(Duration::from_millis(100));
+        drop(runtime);
     }
 
     fn mock_context() -> Option<RequestContext> {
