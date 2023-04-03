@@ -4,6 +4,8 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use arrow::datatypes::{Field, Schema as ArrowSchema};
+use common_types::datum::DatumKind;
 use common_util::error::BoxError;
 use datafusion::{
     datasource::DefaultTableSource, error::DataFusionError, sql::planner::ContextProvider,
@@ -27,7 +29,10 @@ use crate::{
     provider::{ContextProviderAdapter, MetaProvider},
 };
 
-pub const CERESDB_MEASUREMENT_COLUMN_NAME: &str = "ceresdb::measurement";
+// Same with iox
+const MEASUREMENT_METADATA_KEY: &str = "iox::measurement::name";
+const COLUMN_METADATA_KEY: &str = "iox::column::type";
+pub const CERESDB_MEASUREMENT_COLUMN_NAME: &str = "iox::measurement";
 
 struct InfluxQLSchemaProvider<'a, P: MetaProvider> {
     context_provider: ContextProviderAdapter<'a, P>,
@@ -59,30 +64,98 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
     }
 }
 
+fn convert_influxql_schema(ceresdb_schema: common_types::schema::Schema) -> Result<Schema> {
+    let tags_idx = (0..ceresdb_schema.columns().len())
+        .filter(|i| ceresdb_schema.is_tag_column(*i))
+        .collect::<Vec<_>>();
+    let time_idx = ceresdb_schema.timestamp_index();
+    let tsid_idx = ceresdb_schema.index_of_tsid();
+    let arrow_schema = ceresdb_schema.into_arrow_schema_ref();
+    let metadata = arrow_schema.metadata().clone();
+
+    let influxql_fields = arrow_schema
+        .fields
+        .iter()
+        .enumerate()
+        .filter_map(|(i, f)| {
+            // if tsid_idx == Some(i) {
+            //     // return None;
+            //     return Some("iox::column_type::field::uinteger");
+            // }
+
+            let data_type = f.data_type();
+            let influxql_col_type = if i == time_idx {
+                "iox::column_type::timestamp"
+            } else if tags_idx.contains(&i) {
+                "iox::column_type::tag"
+            } else {
+                if tsid_idx == Some(i) {
+                    "iox::column_type::field::uinteger"
+                } else {
+                    match DatumKind::from_data_type(data_type).unwrap() {
+                        DatumKind::Double => "iox::column_type::field::float",
+                        DatumKind::String => "iox::column_type::field::string",
+                        DatumKind::Boolean => "iox::column_type::field::boolean",
+                        DatumKind::UInt64 => "iox::column_type::field::uinteger",
+                        DatumKind::Int64 => "iox::column_type::field::integer",
+                        _ => "iox::column_type::field::string",
+                    }
+                }
+            };
+
+            let data_type = if i == time_idx {
+                influxql_schema::TIME_DATA_TYPE()
+            } else {
+                data_type.clone()
+            };
+            let nullable = if tsid_idx == Some(i) {
+                true
+            } else {
+                f.is_nullable()
+            };
+            let field = Field::new(f.name(), data_type, nullable);
+            Some(field.with_metadata(common_util::hash_map! {
+                COLUMN_METADATA_KEY.to_string() => influxql_col_type.to_string()
+            }))
+        })
+        .collect::<Vec<_>>();
+
+    log::info!("infields:{:?}", influxql_fields);
+    Schema::try_from(Arc::new(ArrowSchema::new_with_metadata(
+        influxql_fields,
+        metadata,
+    )))
+    .box_err()
+    .context(BuildPlanWithCause {
+        msg: "build influxql schema",
+    })
+}
+
 pub(crate) struct Planner<'a, P: MetaProvider> {
     schema_provider: InfluxQLSchemaProvider<'a, P>,
 }
 
 impl<'a, P: MetaProvider> Planner<'a, P> {
-    pub fn new(context_provider: ContextProviderAdapter<'a, P>, all_tables: Vec<TableRef>) -> Self {
+    pub fn try_new(
+        context_provider: ContextProviderAdapter<'a, P>,
+        all_tables: Vec<TableRef>,
+    ) -> Result<Self> {
         let tables = all_tables
             .into_iter()
             .map(|t| {
                 let table_name = t.name().to_string();
-                let arrow_schema = t.schema().into_arrow_schema_ref();
+                let schema = convert_influxql_schema(t.schema())?;
                 let table_source = context_provider.table_source(t);
-                (
-                    table_name,
-                    (table_source, Schema::try_from(arrow_schema).unwrap()),
-                )
+                Ok((table_name, (table_source, schema)))
             })
-            .collect::<HashMap<_, _>>();
-        Self {
+            .collect::<Result<HashMap<_, _>>>()?;
+
+        Ok(Self {
             schema_provider: InfluxQLSchemaProvider {
                 context_provider,
                 tables,
             },
-        }
+        })
     }
 
     /// Build sql logical plan from [InfluxqlStatement].
@@ -97,7 +170,8 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
             .box_err()
             .context(BuildPlanWithCause {
                 msg: "planner stmt to plan",
-            })?;
+            })
+            .unwrap();
         let tables = Arc::new(
             self.schema_provider
                 .context_provider
