@@ -312,107 +312,116 @@ mod test {
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_hotspot() {
-        let read_cap: Option<usize> = Some(3);
-        let write_cap: Option<usize> = Some(3);
-        let options = Config {
-            query_cap: read_cap,
-            write_cap,
-            auto_dump: false,
-            dump_interval: Duration::from_millis(5000),
-            auto_dump_len: 10,
-        };
-        let runtime = new_runtime();
-        let recorder = HotspotRecorder::new(options, runtime.clone());
-        assert!(recorder.stat.pop_read_hots().unwrap().is_empty());
-        assert!(recorder.stat.pop_write_hots().unwrap().is_empty());
-        let table = String::from("table1");
-        let context = mock_context();
-        let req = SqlQueryRequest {
-            context,
-            tables: vec![table],
-            sql: String::from("select * from table1 limit 10"),
-        };
+    #[test]
+    #[allow(clippy::redundant_clone)]
+    fn test_hotspot() {
+        let hotspot_runtime = new_runtime();
+        let basic_runtime = new_runtime();
+        let runtime = hotspot_runtime.clone();
+        basic_runtime.block_on(async move {
+            let read_cap: Option<usize> = Some(3);
+            let write_cap: Option<usize> = Some(3);
+            let options = Config {
+                query_cap: read_cap,
+                write_cap,
+                auto_dump: false,
+                dump_interval: Duration::from_millis(5000),
+                auto_dump_len: 10,
+            };
+            let recorder = HotspotRecorder::new(options, runtime.clone());
+            assert!(recorder.stat.pop_read_hots().unwrap().is_empty());
+            assert!(recorder.stat.pop_write_hots().unwrap().is_empty());
+            let table = String::from("table1");
+            let context = mock_context();
+            let req = SqlQueryRequest {
+                context,
+                tables: vec![table],
+                sql: String::from("select * from table1 limit 10"),
+            };
 
-        recorder.inc_sql_query_reqs(&req).await;
-        thread::sleep(Duration::from_millis(100));
+            recorder.inc_sql_query_reqs(&req).await;
+            thread::sleep(Duration::from_millis(100));
 
-        let vec = recorder.stat.pop_read_hots().unwrap();
-        assert_eq!(1, vec.len());
-        assert_eq!("public/table1", vec.get(0).unwrap().0);
-        drop(runtime);
+            let vec = recorder.stat.pop_read_hots().unwrap();
+            assert_eq!(1, vec.len());
+            assert_eq!("public/table1", vec.get(0).unwrap().0);
+        })
     }
 
-    #[tokio::test]
-    async fn test_hotspot_dump() {
-        let read_cap: Option<usize> = Some(10);
-        let write_cap: Option<usize> = Some(10);
-        let options = Config {
-            query_cap: read_cap,
-            write_cap,
-            auto_dump: false,
-            dump_interval: Duration::from_millis(5000),
-            auto_dump_len: 10,
-        };
+    #[test]
+    #[allow(clippy::redundant_clone)]
+    fn test_hotspot_dump() {
+        let hotspot_runtime = new_runtime();
+        let basic_runtime = new_runtime();
+        let runtime = hotspot_runtime.clone();
+        basic_runtime.block_on(async move {
+            let read_cap: Option<usize> = Some(10);
+            let write_cap: Option<usize> = Some(10);
+            let options = Config {
+                query_cap: read_cap,
+                write_cap,
+                auto_dump: false,
+                dump_interval: Duration::from_millis(5000),
+                auto_dump_len: 10,
+            };
 
-        let runtime = new_runtime();
-        let recorder = HotspotRecorder::new(options, runtime.clone());
+            let recorder = HotspotRecorder::new(options, runtime.clone());
 
-        assert!(recorder.stat.pop_read_hots().unwrap().is_empty());
-        assert!(recorder.stat.pop_write_hots().unwrap().is_empty());
+            assert!(recorder.stat.pop_read_hots().unwrap().is_empty());
+            assert!(recorder.stat.pop_write_hots().unwrap().is_empty());
 
-        let table = String::from("table1");
-        let context = mock_context();
-        let query_req = SqlQueryRequest {
-            context,
-            tables: vec![table.clone()],
-            sql: String::from("select * from table1 limit 10"),
-        };
-        recorder.inc_sql_query_reqs(&query_req).await;
+            let table = String::from("table1");
+            let context = mock_context();
+            let query_req = SqlQueryRequest {
+                context,
+                tables: vec![table.clone()],
+                sql: String::from("select * from table1 limit 10"),
+            };
+            recorder.inc_sql_query_reqs(&query_req).await;
 
-        let write_req = WriteRequest {
-            context: mock_context(),
-            table_requests: vec![WriteTableRequest {
-                table,
-                tag_names: vec![String::from("name")],
-                field_names: vec![String::from("value1"), String::from("value2")],
-                entries: vec![WriteSeriesEntry {
-                    tags: vec![storage::Tag {
-                        name_index: 0,
-                        value: Some(Value {
-                            value: Some(StringValue(String::from("name1"))),
-                        }),
-                    }],
-                    field_groups: vec![FieldGroup {
-                        timestamp: 1679647020000,
-                        fields: vec![
-                            Field {
-                                name_index: 0,
-                                value: Some(Value { value: None }),
-                            },
-                            Field {
-                                name_index: 1,
-                                value: Some(Value { value: None }),
-                            },
-                        ],
+            let write_req = WriteRequest {
+                context: mock_context(),
+                table_requests: vec![WriteTableRequest {
+                    table,
+                    tag_names: vec![String::from("name")],
+                    field_names: vec![String::from("value1"), String::from("value2")],
+                    entries: vec![WriteSeriesEntry {
+                        tags: vec![storage::Tag {
+                            name_index: 0,
+                            value: Some(Value {
+                                value: Some(StringValue(String::from("name1"))),
+                            }),
+                        }],
+                        field_groups: vec![FieldGroup {
+                            timestamp: 1679647020000,
+                            fields: vec![
+                                Field {
+                                    name_index: 0,
+                                    value: Some(Value { value: None }),
+                                },
+                                Field {
+                                    name_index: 1,
+                                    value: Some(Value { value: None }),
+                                },
+                            ],
+                        }],
                     }],
                 }],
-            }],
-        };
-        recorder.inc_write_reqs(&write_req).await;
+            };
+            recorder.inc_write_reqs(&write_req).await;
 
-        thread::sleep(Duration::from_millis(100));
-        let Dump {
-            read_hots,
-            write_hots,
-            write_field_hots,
-        } = recorder.stat.dump();
-        assert_eq!(vec!["metric=public/table1, heats=1",], write_hots);
-        assert_eq!(vec!["metric=public/table1, heats=1"], read_hots);
-        assert_eq!(vec!["metric=public/table1, heats=2",], write_field_hots);
-        thread::sleep(Duration::from_millis(100));
-        drop(runtime);
+            thread::sleep(Duration::from_millis(100));
+            let Dump {
+                read_hots,
+                write_hots,
+                write_field_hots,
+            } = recorder.stat.dump();
+            assert_eq!(vec!["metric=public/table1, heats=1",], write_hots);
+            assert_eq!(vec!["metric=public/table1, heats=1"], read_hots);
+            assert_eq!(vec!["metric=public/table1, heats=2",], write_field_hots);
+            thread::sleep(Duration::from_millis(100));
+        });
+        drop(hotspot_runtime);
     }
 
     fn mock_context() -> Option<RequestContext> {
