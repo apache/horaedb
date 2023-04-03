@@ -1,11 +1,11 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use async_trait::async_trait;
 use catalog::{
     manager::ManagerRef,
     schema::{CreateOptions, CreateTableRequest, DropOptions, DropTableRequest},
 };
-use common_types::table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID};
+use common_types::table::DEFAULT_SHARD_ID;
 use log::warn;
 use snafu::{ensure, OptionExt, ResultExt};
 use sql::plan::{CreateTablePlan, DropTablePlan};
@@ -82,7 +82,6 @@ impl TableManipulator for TableManipulatorImpl {
             options,
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
-            cluster_version: DEFAULT_CLUSTER_VERSION,
             partition_info: None,
         };
 
