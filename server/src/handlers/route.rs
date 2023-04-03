@@ -11,11 +11,6 @@ use router::endpoint::Endpoint;
 
 use crate::handlers::{error::RouteHandler, prelude::*};
 
-#[derive(Debug, Deserialize)]
-pub struct RouteHttpRequest {
-    pub tables: Vec<String>,
-}
-
 #[derive(Serialize)]
 pub struct RouteResponse {
     routes: Vec<RouteItem>,
@@ -30,9 +25,9 @@ pub struct RouteItem {
 pub async fn handle_route<Q: QueryExecutor + 'static>(
     ctx: &RequestContext,
     _: InstanceRef<Q>,
-    req: &RouteHttpRequest,
+    table: &str,
 ) -> Result<RouteResponse> {
-    if req.tables.is_empty() {
+    if table.is_empty() {
         return Ok(RouteResponse { routes: vec![] });
     }
 
@@ -41,14 +36,14 @@ pub async fn handle_route<Q: QueryExecutor + 'static>(
         context: Some(ceresdbproto::storage::RequestContext {
             database: ctx.schema.clone(),
         }),
-        tables: req.tables.clone(),
+        tables: vec![table.to_string()],
     };
 
     let routes = ctx.router.route(route_req).await.context(RouteHandler {
-        tables: req.tables.clone(),
+        table: table.to_string(),
     })?;
 
-    let mut route_items = Vec::with_capacity(req.tables.len());
+    let mut route_items = Vec::with_capacity(1);
     for route in routes {
         route_items.push(RouteItem {
             table: route.table,
@@ -57,8 +52,8 @@ pub async fn handle_route<Q: QueryExecutor + 'static>(
     }
 
     debug!(
-        "Route handler finished, tables:{:?}, cost:{}ms",
-        req.tables,
+        "Route handler finished, table:{}, cost:{}ms",
+        table,
         begin_instant.saturating_elapsed().as_millis(),
     );
 

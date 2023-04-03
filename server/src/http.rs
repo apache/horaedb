@@ -260,19 +260,17 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
     // GET /route
     fn route(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        warp::path!("route")
+        warp::path!("route" / String)
             .and(warp::get())
-            .and(warp::body::content_length_limit(self.config.max_body_size))
-            .and(warp::body::json())
             .and(self.with_context())
             .and(self.with_instance())
-            .and_then(|req, ctx, instance| async move {
-                let result = handlers::route::handle_route(&ctx, instance, &req)
+            .and_then(|table: String, ctx, instance| async move {
+                let result = handlers::route::handle_route(&ctx, instance, &table)
                     .await
                     .map_err(|e| {
                         error!(
-                            "Http service Failed to find route of tables:{:?}, err:{:?}",
-                            &req.tables, e
+                            "Http service Failed to find route of table:{}, err:{:?}",
+                            table, e
                         );
                         Box::new(e)
                     })
