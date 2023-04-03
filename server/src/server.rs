@@ -328,7 +328,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let config_content = self.config_content.expect("Missing config content");
-        let router = self.router.context(MissingRouter)?;
+        let router = self.router.clone().context(MissingRouter)?;
 
         let provider = self
             .schema_config_provider
@@ -357,7 +357,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .build()
             .context(BuildMysqlService)?;
 
-        let router = self.router.context(MissingRouter)?;
+        let router = self.router.clone().context(MissingRouter)?;
         let rpc_services =
             grpc::Builder::new()
                 .endpoint(
