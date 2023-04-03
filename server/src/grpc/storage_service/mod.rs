@@ -144,13 +144,13 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let req = req.into_inner();
         let proxy = self.proxy.clone();
         let ctx = Context {
-            runtime: self.runtimes.meta_runtime.clone(),
+            runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
         };
 
         let join_handle = self
             .runtimes
-            .meta_runtime
+            .read_runtime
             .spawn(async move { proxy.handle_route(ctx, req).await });
 
         let resp = match join_handle.await {

@@ -455,6 +455,10 @@ impl QueryResponseWriter {
     }
 
     pub fn write(&mut self, batch: &RecordBatch) -> Result<()> {
+        if batch.is_empty() {
+            return Ok(());
+        }
+
         self.encoder
             .write(batch.as_arrow_record_batch())
             .box_err()

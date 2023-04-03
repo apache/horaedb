@@ -114,6 +114,8 @@ pub struct ServerConfig {
     /// used in gRPC
     pub auto_create_table: bool,
 
+    pub default_schema_config: SchemaConfig,
+
     // Config of route
     pub route_cache: router::RouteCacheConfig,
 
@@ -124,7 +126,7 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            bind_addr: String::from("0.0.0.0"),
+            bind_addr: String::from("127.0.0.1"),
             http_port: 5440,
             mysql_port: 3307,
             grpc_port: 8831,
@@ -134,6 +136,7 @@ impl Default for ServerConfig {
             resp_compress_min_length: ReadableSize::mb(4),
             forward: forward::Config::default(),
             auto_create_table: true,
+            default_schema_config: Default::default(),
             route_cache: router::RouteCacheConfig::default(),
             hotspot: hotspot::Config::default(),
         }

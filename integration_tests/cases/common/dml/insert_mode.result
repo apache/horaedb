@@ -201,3 +201,7 @@ UInt64(0),Timestamp(2),UInt32(20),String("123"),UInt32(21),UInt32(22),UInt32(4),
 UInt64(0),Timestamp(3),UInt32(30),String("123"),UInt32(31),UInt32(32),UInt32(5),
 
 
+DROP TABLE IF EXISTS `03_dml_insert_mode_table4`;
+
+affected_rows: 0
+

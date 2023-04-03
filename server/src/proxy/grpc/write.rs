@@ -556,10 +556,17 @@ fn find_new_columns(
     let columns = new_schema.columns();
     let old_columns = schema.columns();
 
+    // find new columns:
+    // 1. timestamp column can't be a new column;
+    // 2. column not in old schema is a new column.
     let new_columns = columns
         .iter()
-        .filter(|column| !old_columns.iter().any(|c| c.name == column.name))
-        .cloned()
+        .enumerate()
+        .filter(|(idx, column)| {
+            *idx != new_schema.timestamp_index()
+                && !old_columns.iter().any(|c| c.name == column.name)
+        })
+        .map(|(_, column)| column.clone())
         .collect();
     Ok(new_columns)
 }

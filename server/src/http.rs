@@ -33,7 +33,7 @@ use crate::{
     error_util,
     handlers::{
         self,
-        influxdb::{self, InfluxDb},
+        influxdb::{self, InfluxDb, InfluxqlParams, InfluxqlRequest, WriteParams, WriteRequest},
         prom::CeresDBStorage,
         query::Request,
     },
@@ -253,25 +253,47 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             })
     }
 
-    /// POST `/influxdb/v1/query` and `/influxdb/v1/write`
+    /// for write api:
+    ///     POST `/influxdb/v1/write`
+    ///
+    /// for query api:
+    ///     POST/GET `/influxdb/v1/query`
+    ///
+    /// It's derived from the influxdb 1.x query api described doc of 1.8:
+    ///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-http-endpoint
     fn influxdb_api(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        let write_api = warp::path!("write")
-            .and(self.with_context())
-            .and(self.with_influxdb())
-            .and(warp::body::bytes().map(influxdb::WriteRequest::from))
-            .and_then(influxdb::write);
-        let query_api = warp::path!("query")
-            .and(self.with_context())
-            .and(self.with_influxdb())
-            .and(warp::body::bytes().map(|bytes| QueryRequest::Influxql(Request::from(bytes))))
-            .and_then(influxdb::query);
+        let body_limit = warp::body::content_length_limit(self.config.max_body_size);
 
-        warp::path!("influxdb" / "v1" / ..)
+        let write_api = warp::path!("write")
             .and(warp::post())
-            .and(warp::body::content_length_limit(self.config.max_body_size))
-            .and(write_api.or(query_api))
+            .and(body_limit)
+            .and(self.with_context())
+            .and(self.with_influxdb())
+            .and(warp::query::<WriteParams>())
+            .and(warp::body::bytes())
+            .and_then(|ctx, db, params, lines| async move {
+                let request = WriteRequest::new(lines, params);
+                influxdb::write(ctx, db, request).await
+            });
+
+        // Query support both get and post method, so we can't add `body_limit` here.
+        // Otherwise it will throw `Rejection(LengthRequired)`
+        // TODO: support body limit for POST request
+        let query_api = warp::path!("query")
+            .and(warp::method())
+            .and(self.with_context())
+            .and(self.with_influxdb())
+            .and(warp::query::<InfluxqlParams>())
+            .and(warp::body::form::<HashMap<String, String>>())
+            .and_then(|method, ctx, db, params, body| async move {
+                let request =
+                    InfluxqlRequest::try_new(method, body, params).map_err(reject::custom)?;
+                influxdb::query(ctx, db, QueryRequest::Influxql(request)).await
+            });
+
+        warp::path!("influxdb" / "v1" / ..).and(write_api.or(query_api))
     }
 
     // POST /debug/flush_memtable
@@ -607,7 +629,8 @@ async fn handle_rejection(
     } else {
         error!("handle error: {:?}", rejection);
         code = StatusCode::INTERNAL_SERVER_ERROR;
-        message = format!("UNKNOWN_ERROR: {rejection:?}");
+        message = error_util::remove_backtrace_from_err(&format!("UNKNOWN_ERROR: {rejection:?}"))
+            .to_string();
     }
 
     let json = reply::json(&ErrorResponse {

@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 // Remote engine rpc service implementation.
 
@@ -6,11 +6,12 @@ use std::{sync::Arc, time::Instant};
 
 use arrow_ext::ipc::{self, CompressOptions, CompressOutput, CompressionMethod};
 use async_trait::async_trait;
-use catalog::manager::ManagerRef;
+use catalog::{manager::ManagerRef, schema::SchemaRef};
 use ceresdbproto::{
     remote_engine::{
         read_response::Output::Arrow, remote_engine_service_server::RemoteEngineService,
-        ReadRequest, ReadResponse, WriteRequest, WriteResponse,
+        GetTableInfoRequest, GetTableInfoResponse, ReadRequest, ReadResponse, WriteRequest,
+        WriteResponse,
     },
     storage::{arrow_payload, ArrowPayload},
 };
@@ -31,9 +32,7 @@ use tonic::{Request, Response, Status};
 use crate::{
     grpc::{
         metrics::REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
-        remote_engine_service::error::{
-            build_ok_header, ErrNoCause, ErrWithCause, Result, StatusCode,
-        },
+        remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
     },
     instance::InstanceRef,
 };
@@ -123,6 +122,39 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
         Ok(Response::new(resp))
     }
 
+    async fn get_table_info_internal(
+        &self,
+        request: Request<GetTableInfoRequest>,
+    ) -> std::result::Result<Response<GetTableInfoResponse>, Status> {
+        let begin_instant = Instant::now();
+        let ctx = self.handler_ctx();
+        let handle = self.runtimes.read_runtime.spawn(async move {
+            let request = request.into_inner();
+            handle_get_table_info(ctx, request).await
+        });
+
+        let res = handle.await.box_err().context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: "fail to join task",
+        });
+
+        let mut resp = GetTableInfoResponse::default();
+        match res {
+            Ok(Ok(v)) => {
+                resp.header = Some(error::build_ok_header());
+                resp.table_info = v.table_info;
+            }
+            Ok(Err(e)) | Err(e) => {
+                resp.header = Some(error::build_err_header(e));
+            }
+        };
+
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .get_table_info
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
+        Ok(Response::new(resp))
+    }
+
     fn handler_ctx(&self) -> HandlerContext {
         HandlerContext {
             catalog_manager: self.instance.catalog_manager.clone(),
@@ -170,7 +202,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                                 };
 
                                 ReadResponse {
-                                    header: Some(build_ok_header()),
+                                    header: Some(error::build_ok_header()),
                                     output: Some(Arrow(ArrowPayload {
                                         record_batches: vec![payload],
                                         compression: compression as i32,
@@ -208,6 +240,13 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
         request: Request<WriteRequest>,
     ) -> std::result::Result<Response<WriteResponse>, Status> {
         self.write_internal(request).await
+    }
+
+    async fn get_table_info(
+        &self,
+        request: Request<GetTableInfoRequest>,
+    ) -> std::result::Result<Response<GetTableInfoResponse>, Status> {
+        self.get_table_info_internal(request).await
     }
 }
 
@@ -258,10 +297,68 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
     })
 }
 
+async fn handle_get_table_info(
+    ctx: HandlerContext,
+    request: GetTableInfoRequest,
+) -> Result<GetTableInfoResponse> {
+    let request: table_engine::remote::model::GetTableInfoRequest =
+        request.try_into().box_err().context(ErrWithCause {
+            code: StatusCode::BadRequest,
+            msg: "fail to convert get table info request",
+        })?;
+
+    let schema = find_schema_by_identifier(&ctx, &request.table)?;
+    let table = schema
+        .table_by_name(&request.table.table)
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: format!("fail to get table, table:{}", request.table.table),
+        })?
+        .context(ErrNoCause {
+            code: StatusCode::NotFound,
+            msg: format!("table is not found, table:{}", request.table.table),
+        })?;
+
+    Ok(GetTableInfoResponse {
+        header: None,
+        table_info: Some(ceresdbproto::remote_engine::TableInfo {
+            catalog_name: request.table.catalog,
+            schema_name: schema.name().to_string(),
+            schema_id: schema.id().as_u32(),
+            table_name: table.name().to_string(),
+            table_id: table.id().as_u64(),
+            table_schema: Some((&table.schema()).into()),
+            engine: table.engine_type().to_string(),
+            options: table.options(),
+            partition_info: table.partition_info().map(Into::into),
+        }),
+    })
+}
+
 fn find_table_by_identifier(
     ctx: &HandlerContext,
     table_identifier: &TableIdentifier,
 ) -> Result<TableRef> {
+    let schema = find_schema_by_identifier(ctx, table_identifier)?;
+
+    schema
+        .table_by_name(&table_identifier.table)
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: format!("fail to get table, table:{}", table_identifier.table),
+        })?
+        .context(ErrNoCause {
+            code: StatusCode::NotFound,
+            msg: format!("table is not found, table:{}", table_identifier.table),
+        })
+}
+
+fn find_schema_by_identifier(
+    ctx: &HandlerContext,
+    table_identifier: &TableIdentifier,
+) -> Result<SchemaRef> {
     let catalog = ctx
         .catalog_manager
         .catalog_by_name(&table_identifier.catalog)
@@ -274,7 +371,7 @@ fn find_table_by_identifier(
             code: StatusCode::NotFound,
             msg: format!("catalog is not found, catalog:{}", table_identifier.catalog),
         })?;
-    let schema = catalog
+    catalog
         .schema_by_name(&table_identifier.schema)
         .box_err()
         .context(ErrWithCause {
@@ -290,17 +387,5 @@ fn find_table_by_identifier(
                 "schema of table is not found, schema:{}",
                 table_identifier.schema
             ),
-        })?;
-
-    schema
-        .table_by_name(&table_identifier.table)
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::Internal,
-            msg: format!("fail to get table, table:{}", table_identifier.table),
-        })?
-        .context(ErrNoCause {
-            code: StatusCode::NotFound,
-            msg: format!("table is not found, table:{}", table_identifier.table),
         })
 }

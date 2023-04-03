@@ -311,7 +311,10 @@ async fn build_without_meta<Q: Executor + 'static, T: WalsOpener>(
         cluster_view,
         static_route_config.rules.clone(),
     ));
-    let schema_config_provider = Arc::new(ConfigBasedProvider::new(schema_configs));
+    let schema_config_provider = Arc::new(ConfigBasedProvider::new(
+        schema_configs,
+        config.server.default_schema_config.clone(),
+    ));
 
     builder
         .table_engine(engine_proxy)

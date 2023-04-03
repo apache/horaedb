@@ -1,3 +1,7 @@
+DROP TABLE IF EXISTS issue302;
+
+affected_rows: 0
+
 CREATE TABLE `issue302` (`name` string TAG NULL, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='false');
 
 affected_rows: 0
@@ -11,4 +15,8 @@ select `t`, count(distinct name) from issue302 group by `t`;
 issue302.t,COUNT(DISTINCT issue302.name),
 Timestamp(1651737067000),Int64(0),
 
+
+DROP TABLE IF EXISTS issue302;
+
+affected_rows: 0
 
