@@ -899,6 +899,10 @@ impl Schema for SchemaImpl {
             .cloned()
             .collect())
     }
+
+    fn register_table(&self, table: TableRef) {
+        self.insert_table_into_memory(table.id(), table);
+    }
 }
 
 #[cfg(any(test, feature = "test"))]

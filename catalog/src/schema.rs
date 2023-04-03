@@ -325,4 +325,7 @@ pub trait Schema {
 
     /// All tables
     fn all_tables(&self) -> Result<Vec<TableRef>>;
+
+    /// Register the opened table into schema.
+    fn register_table(&self, table: TableRef);
 }

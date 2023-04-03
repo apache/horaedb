@@ -435,4 +435,8 @@ impl Schema for SchemaImpl {
             .map(|(_, v)| v.clone())
             .collect())
     }
+
+    fn register_table(&self, table: TableRef) {
+        self.add_table(table);
+    }
 }

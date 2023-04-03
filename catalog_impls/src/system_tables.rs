@@ -118,6 +118,10 @@ impl Schema for SystemTables {
             .map(|(_, v)| v.clone() as TableRef)
             .collect())
     }
+
+    fn register_table(&self, table: TableRef) {
+        warn!("try to register table in the system tables");
+    }
 }
 
 #[async_trait]

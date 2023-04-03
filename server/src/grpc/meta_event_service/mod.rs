@@ -2,7 +2,7 @@
 
 // Meta event rpc service implementation.
 
-use std::{sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use analytic_engine::setup::OpenedWals;
 use async_trait::async_trait;
@@ -23,16 +23,16 @@ use ceresdbproto::meta_event::{
     SplitShardResponse,
 };
 use cluster::ClusterRef;
-use common_types::schema::SchemaEncoder;
+use common_types::{schema::SchemaEncoder, table};
 use common_util::{error::BoxError, runtime::Runtime, time::InstantExt};
 use log::{error, info};
 use paste::paste;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
-    engine::{CloseTableRequest, TableEngineRef, TableState},
+    engine::{CloseTableRequest, TableEngine, TableEngineRef, TableState},
     partition::PartitionInfo,
-    table::{SchemaId, TableId},
+    table::{SchemaId, TableId, TableRef},
     ANALYTIC_ENGINE_TYPE,
 };
 use tonic::Response;
@@ -233,49 +233,60 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
 
     let shard_info = tables_of_shard.shard_info;
     let default_catalog = ctx.default_catalog()?;
-    let opts = OpenOptions {
-        table_engine: ctx.table_engine,
-    };
 
-    let mut success = 0;
-    let mut no_table_count = 0;
-    let mut open_err_count = 0;
+    // Generate open requests.
+    let schemas_and_requests = tables_of_shard
+        .tables
+        .into_iter()
+        .map(|table| {
+            let schema_res = find_schema(default_catalog.clone(), &table.schema_name);
 
-    for table in tables_of_shard.tables {
-        let schema = find_schema(default_catalog.clone(), &table.schema_name)?;
+            schema_res.map(|schema| {
+                let request = OpenTableRequest {
+                    catalog_name: ctx.catalog_manager.default_catalog_name().to_string(),
+                    schema_name: table.schema_name,
+                    schema_id: SchemaId::from(table.schema_id),
+                    table_name: table.name.clone(),
+                    table_id: TableId::new(table.id),
+                    engine: ANALYTIC_ENGINE_TYPE.to_string(),
+                    shard_id: shard_info.id,
+                    cluster_version: topology.cluster_topology_version,
+                };
 
-        let open_request = OpenTableRequest {
-            catalog_name: ctx.catalog_manager.default_catalog_name().to_string(),
-            schema_name: table.schema_name,
-            schema_id: SchemaId::from(table.schema_id),
-            table_name: table.name.clone(),
-            table_id: TableId::new(table.id),
-            engine: ANALYTIC_ENGINE_TYPE.to_string(),
-            shard_id: shard_info.id,
-            cluster_version: topology.cluster_topology_version,
-        };
-        let result = schema.open_table(open_request.clone(), opts.clone()).await;
+                (schema, request)
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let (schemas, requests): (Vec<_>, Vec<_>) = schemas_and_requests.into_iter().unzip();
 
-        match result {
-            Ok(Some(_)) => {
-                success += 1;
+    // Open tables by table engine.
+    let open_res = open_tables_of_shard(ctx.table_engine.clone(), requests).await;
+
+    // Check and register successful opened table into schema.
+    let mut success_count = 0_u32;
+    let mut no_table_count = 0_u32;
+    let mut open_err_count = 0_u32;
+
+    for (schema, open_res) in schemas.into_iter().zip(open_res.into_iter()) {
+        match open_res {
+            OpenResult::Success(table) => {
+                schema.register_table(table);
+                success_count += 1;
             }
-            Ok(None) => {
+            OpenResult::NoTablel => {
                 no_table_count += 1;
-                error!("no table is opened, open_request:{open_request:?}");
             }
-            Err(e) => {
+            OpenResult::OpenErr => {
                 open_err_count += 1;
-                error!("fail to open table, open_request:{open_request:?}, err:{e}");
             }
-        };
+        }
     }
 
     info!(
         "Open shard finish, shard id:{}, cost:{}ms, successful count:{}, no table is opened count:{}, open error count:{}",
         shard_info.id,
         instant.saturating_elapsed().as_millis(),
-        success,
+        success_count,
         no_table_count,
         open_err_count
     );
@@ -291,6 +302,41 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
             ),
         })
     }
+}
+
+enum OpenResult {
+    Success(TableRef),
+    NoTablel,
+    OpenErr,
+}
+
+async fn open_tables_of_shard(
+    table_engine: TableEngineRef,
+    open_requests: Vec<OpenTableRequest>,
+) -> Vec<OpenResult> {
+    if open_requests.is_empty() {
+        return Vec::new();
+    }
+
+    let mut open_results = Vec::with_capacity(open_requests.len());
+    for request in open_requests {
+        let result = table_engine.open_table(request.clone()).await;
+
+        match result {
+            Ok(Some(table)) => {
+                open_results.push(OpenResult::Success(table));
+            }
+            Ok(None) => {
+                open_results.push(OpenResult::NoTablel);
+            }
+            Err(e) => {
+                error!("fail to open table, open_request:{request:?}, err:{e}");
+                open_results.push(OpenResult::OpenErr);
+            }
+        };
+    }
+
+    open_results
 }
 
 async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> Result<()> {
