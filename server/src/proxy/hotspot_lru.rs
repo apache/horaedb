@@ -2,6 +2,7 @@
 
 //! hotspot LRU
 use std::{hash::Hash, num::NonZeroUsize};
+
 use clru::CLruCache;
 
 pub struct HotspotLru<K> {
@@ -11,7 +12,7 @@ pub struct HotspotLru<K> {
 impl<K: Hash + Eq + Clone> HotspotLru<K> {
     /// Creates a new LRU Hotspot that holds at most `cap` items
     pub fn new(cap: usize) -> Option<HotspotLru<K>> {
-        NonZeroUsize::new(cap).map(|cap|Self {
+        NonZeroUsize::new(cap).map(|cap| Self {
             heats: CLruCache::new(cap),
         })
     }

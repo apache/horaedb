@@ -64,7 +64,6 @@ pub struct HotspotStat {
     hotspot_field_write: Option<Arc<SpinMutex<HotspotLru<WriteKey>>>>,
 }
 
-
 impl HotspotStat {
     /// return read count / write row count / write field count
     pub fn dump(&self) -> Dump {
@@ -122,7 +121,7 @@ impl HotspotRecorder {
         let hotspot_field_write = Self::init_lru(config.write_cap);
 
         let (tx, mut rx) = mpsc::channel(RECODER_CHANNEL_CAP);
-        let stat = HotspotStat{
+        let stat = HotspotStat {
             hotspot_query: hotspot_query.clone(),
             hotspot_write: hotspot_write.clone(),
             hotspot_field_write: hotspot_field_write.clone(),
@@ -196,7 +195,7 @@ impl HotspotRecorder {
             }
         });
 
-         Self {
+        Self {
             tx: Arc::new(tx),
             stat,
         }
@@ -204,19 +203,19 @@ impl HotspotRecorder {
 
     #[inline]
     fn init_lru(cap: Option<usize>) -> Option<Arc<Mutex<HotspotLru<QueryKey>>>> {
-          HotspotLru::new(cap?).map(|lru| Arc::new(SpinMutex::new(lru)))
+        HotspotLru::new(cap?).map(|lru| Arc::new(SpinMutex::new(lru)))
     }
 
     fn key_prefix(context: &Option<RequestContext>) -> String {
         let mut prefix = String::new();
         match context {
-            Some(ctx) =>{
+            Some(ctx) => {
                 // use database as prefix
                 if !ctx.database.is_empty() {
                     write!(prefix, "{}/", ctx.database).unwrap();
                 }
-            },
-            None=>{}
+            }
+            None => {}
         }
 
         prefix
@@ -237,15 +236,15 @@ impl HotspotRecorder {
             self.send_msg_or_log(
                 "inc_query_reqs",
                 Message::Query(Self::table_hot_key(&req.context, table)),
-            ).await;
+            )
+            .await;
         }
     }
 
-     pub async fn inc_write_reqs(&self, req: &WriteRequest) {
+    pub async fn inc_write_reqs(&self, req: &WriteRequest) {
         if self.stat.hotspot_write.is_some() && self.stat.hotspot_field_write.is_some() {
             for table_request in &req.table_requests {
-                let hot_key =
-                    Self::table_hot_key(&req.context, &table_request.table);
+                let hot_key = Self::table_hot_key(&req.context, &table_request.table);
                 let mut row_count = 0;
                 let mut field_count = 0;
                 for entry in &table_request.entries {
@@ -257,7 +256,8 @@ impl HotspotRecorder {
                 self.send_msg_or_log(
                     "inc_write_reqs",
                     Message::Write(hot_key, row_count, field_count),
-                ).await;
+                )
+                .await;
             }
         }
     }
@@ -270,12 +270,13 @@ impl HotspotRecorder {
         if let Some(expr) = &req.expr {
             if let Some(table) = util::table_from_expr(expr) {
                 let hot_key = Self::table_hot_key(&req.context, &table);
-                self.send_msg_or_log("inc_query_reqs", Message::Query(hot_key)).await
+                self.send_msg_or_log("inc_query_reqs", Message::Query(hot_key))
+                    .await
             }
         }
     }
 
-     async fn send_msg_or_log(&self, method: &str, msg: Message) {
+    async fn send_msg_or_log(&self, method: &str, msg: Message) {
         if let Err(e) = self.tx.send(msg).await {
             warn!(
                 "HotspotRecoder::{} fail to send \
