@@ -88,7 +88,7 @@ impl Builder {
         self
     }
 
-    pub fn router(mut self, router: Arc<dyn Router + Send + Sync>) -> Self {
+    pub fn router(mut self, router: RouterRef) -> Self {
         self.router = Some(router);
         self
     }
