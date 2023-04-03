@@ -79,9 +79,9 @@ pub enum Error {
     #[snafu(display("InfluxDb handler failed, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     InfluxDbHandlerNoCause { msg: String, backtrace: Backtrace },
 
-    #[snafu(display("Route handler failed, table:{}, source:{}", table, source))]
+    #[snafu(display("Route handler failed, table:{:?}, source:{}", tables, source))]
     RouteHandler {
-        table: String,
+        tables: Vec<String>,
         source: router::Error,
     },
 }

@@ -5,7 +5,7 @@
 use std::{sync::Arc, time::Duration};
 
 use common_util::runtime::Runtime;
-use router::Router;
+use router::{Router, RouterRef};
 use snafu::{ensure, Backtrace, OptionExt, Snafu};
 
 #[allow(clippy::enum_variant_names)]
@@ -88,7 +88,7 @@ impl Builder {
         self
     }
 
-    pub fn router(mut self, router: Arc<dyn Router + Send + Sync>) -> Self {
+    pub fn router(mut self, router: RouterRef) -> Self {
         self.router = Some(router);
         self
     }

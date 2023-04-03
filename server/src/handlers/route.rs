@@ -2,50 +2,67 @@
 
 //! route request handler
 
-use std::{collections::HashMap, time::Instant};
+use std::time::Instant;
 
 use ceresdbproto::storage::RouteRequest;
 use common_util::time::InstantExt;
-use log::info;
+use log::debug;
+use router::endpoint::Endpoint;
 
 use crate::handlers::{error::RouteHandler, prelude::*};
 
+#[derive(Debug, Deserialize)]
+pub struct RouteHttpRequest {
+    pub tables: Vec<String>,
+}
+
 #[derive(Serialize)]
 pub struct RouteResponse {
-    routes: HashMap<String, String>,
+    routes: Vec<RouteItem>,
+}
+
+#[derive(Serialize)]
+pub struct RouteItem {
+    pub table: String,
+    pub endpoint: Option<Endpoint>,
 }
 
 pub async fn handle_route<Q: QueryExecutor + 'static>(
     ctx: &RequestContext,
     _: InstanceRef<Q>,
-    table: String,
+    req: &RouteHttpRequest,
 ) -> Result<RouteResponse> {
-    let mut route_map = HashMap::new();
-    if table.is_empty() {
-        return Ok(RouteResponse { routes: route_map });
+    if req.tables.is_empty() {
+        return Ok(RouteResponse { routes: vec![] });
     }
 
     let begin_instant = Instant::now();
-    info!("Route handler try to find route for table:{table}");
-    let req = RouteRequest {
+    let route_req = RouteRequest {
         context: Some(ceresdbproto::storage::RequestContext {
             database: ctx.schema.clone(),
         }),
-        tables: vec![table.clone()],
+        tables: req.tables.clone(),
     };
-    let routes = ctx.router.route(req).await.context(RouteHandler {
-        table: table.clone(),
+
+    let routes = ctx.router.route(route_req).await.context(RouteHandler {
+        tables: req.tables.clone(),
     })?;
+
+    let mut route_items = Vec::with_capacity(req.tables.len());
     for route in routes {
-        if let Some(endpoint) = route.endpoint {
-            route_map.insert(route.table, format!("{}:{}", endpoint.ip, endpoint.port));
-        }
+        route_items.push(RouteItem {
+            table: route.table,
+            endpoint: route.endpoint.map(|endpoint| endpoint.into()),
+        });
     }
-    info!(
-        "Route handler finished, cost:{}ms, table:{}",
+
+    debug!(
+        "Route handler finished, tables:{:?}, cost:{}ms",
+        req.tables,
         begin_instant.saturating_elapsed().as_millis(),
-        table
     );
 
-    Ok(RouteResponse { routes: route_map })
+    Ok(RouteResponse {
+        routes: route_items,
+    })
 }
