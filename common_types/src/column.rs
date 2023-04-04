@@ -695,7 +695,9 @@ pub fn cast_nanosecond_to_mills(array: &ArrayRef) -> Result<Arc<dyn Array>> {
     let len = array.len();
     let mut builder = TimestampMillisecondBuilder::with_capacity(len);
     for i in 0..len {
-        builder.append_value(array.value(i));
+        if let Some(time) = array.value_as_datetime(i) {
+            builder.append_value(time.timestamp_millis());
+        }
     }
     let mills = builder.finish();
     Ok(Arc::new(mills))
