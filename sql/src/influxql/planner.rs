@@ -29,8 +29,11 @@ use crate::{
 // Same with iox
 pub const CERESDB_MEASUREMENT_COLUMN_NAME: &str = "iox::measurement";
 
+// Port from https://github.com/ceresdb/influxql/blob/36fc4d873e/iox_query_influxql/src/frontend/planner.rs#L28
 struct InfluxQLSchemaProvider<'a, P: MetaProvider> {
     context_provider: ContextProviderAdapter<'a, P>,
+    // TODO: avoid load all tables.
+    // if we can ensure `table_names` is only called once, then load tables lazily is better.
     tables: HashMap<String, (Arc<dyn TableSource>, Schema)>,
 }
 
