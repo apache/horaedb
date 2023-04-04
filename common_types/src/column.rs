@@ -622,12 +622,18 @@ macro_rules! define_column_block {
                         DatumKind::Null => ColumnBlock::Null(NullColumn::new_null(array.len())),
                         $(
                             DatumKind::$Kind => {
-                                if let DataType::Timestamp(TimeUnit::Nanosecond, None) = array.data_type() {
-                                    from_nanosecond_timestamp(array)?
-                                } else {
-                                    let column = cast_array(datum_kind, array)?;
-                                    ColumnBlock::$Kind([<$Kind Column>]::from(column))
-                                }
+                                let mills_array;
+                                let cast_column = match array.data_type() {
+                                    DataType::Timestamp(TimeUnit::Nanosecond, None) =>  {
+                                        mills_array = cast_nanosecond_to_mills(array)?;
+                                        cast_array(datum_kind, &mills_array)?
+                                    },
+                                    _ => {
+                                        cast_array(datum_kind, array)?
+                                    }
+                                };
+
+                                ColumnBlock::$Kind([<$Kind Column>]::from(cast_column))
                             }
                         )*
                     };
@@ -676,7 +682,7 @@ impl ColumnBlock {
     }
 }
 
-fn from_nanosecond_timestamp(array: &ArrayRef) -> Result<ColumnBlock> {
+pub fn cast_nanosecond_to_mills(array: &ArrayRef) -> Result<Arc<dyn Array>> {
     let data = array
         .as_any()
         .downcast_ref::<TimestampNanosecondArray>()
@@ -692,7 +698,7 @@ fn from_nanosecond_timestamp(array: &ArrayRef) -> Result<ColumnBlock> {
         builder.append_value(array.value(i));
     }
     let mills = builder.finish();
-    Ok(ColumnBlock::Timestamp(TimestampColumn(mills)))
+    Ok(Arc::new(mills))
 }
 
 fn cast_array<'a, T: 'static>(datum_kind: &DatumKind, array: &'a ArrayRef) -> Result<&'a T> {
