@@ -48,10 +48,10 @@ pub enum Error {
         parse_err: influxql_parser::common::ParseError,
     },
 
-    #[snafu(display("Failed to influxql plan, msg:{}, err:{}", msg, source))]
+    #[snafu(display("Failed to build influxql plan, msg:{}, err:{}", msg, source))]
     InfluxqlPlanWithCause { msg: String, source: GenericError },
 
-    #[snafu(display("Failed to influxql plan, msg:{}", msg,))]
+    #[snafu(display("Failed to build influxql plan, msg:{}", msg,))]
     InfluxqlPlan { msg: String },
 }
 
