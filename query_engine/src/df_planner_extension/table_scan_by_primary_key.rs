@@ -3,7 +3,7 @@
 use std::{
     any::Any,
     fmt::{Debug, Formatter},
-    hash::Hasher,
+    hash::{Hash, Hasher},
     sync::Arc,
 };
 
@@ -51,7 +51,7 @@ impl ExtensionPlanner for Planner {
 /// It differs from the default [`TableScan`] in its corresponding
 /// [`ExecutionPlan`] is a special [`ScanTable`] which can controls the scan
 /// order.
-#[derive(Clone)]
+#[derive(Clone, Hash, PartialEq)]
 pub struct TableScanByPrimaryKey {
     asc: bool,
     scan_plan: Arc<LogicalPlan>,
@@ -160,11 +160,15 @@ impl UserDefinedLogicalNode for TableScanByPrimaryKey {
         "ScanTableInPrimaryKeyOrder"
     }
 
-    fn dyn_hash(&self, _: &mut dyn Hasher) {
-        todo!()
+    fn dyn_hash(&self, state: &mut dyn Hasher) {
+        let mut s = state;
+        self.hash(&mut s);
     }
 
-    fn dyn_eq(&self, _: &dyn UserDefinedLogicalNode) -> bool {
-        todo!()
+    fn dyn_eq(&self, other: &dyn UserDefinedLogicalNode) -> bool {
+        match other.as_any().downcast_ref::<Self>() {
+            Some(o) => self == o,
+            None => false,
+        }
     }
 }

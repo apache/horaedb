@@ -1,6 +1,11 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{any::Any, fmt, hash::Hasher, sync::Arc};
+use std::{
+    any::Any,
+    fmt,
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 use common_types::{schema::TSID_COLUMN, time::TimeRange};
 use datafusion::common::DFSchemaRef;
@@ -11,7 +16,7 @@ use datafusion_expr::{
 use crate::promql::pushdown::{AlignParameter, Func};
 
 /// ColumnNames represents meaning of columns in one table.
-#[derive(Debug)]
+#[derive(Debug, Hash, PartialEq)]
 pub struct ColumnNames {
     pub timestamp: String,
     pub tag_keys: Vec<String>,
@@ -35,6 +40,7 @@ pub fn default_sort_exprs(timestamp_column: &str) -> Vec<DataFusionExpr> {
     ]
 }
 
+#[derive(Hash, PartialEq)]
 pub struct PromAlignNode {
     pub input: LogicalPlan,
     pub column_name: Arc<ColumnNames>,
@@ -108,11 +114,15 @@ impl UserDefinedLogicalNode for PromAlignNode {
         })
     }
 
-    fn dyn_hash(&self, _state: &mut dyn Hasher) {
-        todo!("This node is not used now")
+    fn dyn_hash(&self, state: &mut dyn Hasher) {
+        let mut s = state;
+        self.hash(&mut s);
     }
 
-    fn dyn_eq(&self, _other: &dyn UserDefinedLogicalNode) -> bool {
-        todo!("This node is not used now")
+    fn dyn_eq(&self, other: &dyn UserDefinedLogicalNode) -> bool {
+        match other.as_any().downcast_ref::<Self>() {
+            Some(o) => self == o,
+            None => false,
+        }
     }
 }

@@ -13,7 +13,7 @@ pub enum Error {
 
 define_result!(Error);
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq)]
 pub enum Func {
     Instant, // used to simulate instant query
     Rate,
@@ -40,7 +40,7 @@ impl TryFrom<&str> for Func {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq)]
 pub struct AlignParameter {
     pub align_range: TimeRange,
     pub step: Timestamp,
