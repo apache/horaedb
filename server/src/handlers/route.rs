@@ -1,12 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! route request handler
-
-use std::time::Instant;
-
 use ceresdbproto::storage::RouteRequest;
-use common_util::time::InstantExt;
-use log::debug;
 use router::endpoint::Endpoint;
 
 use crate::handlers::{error::RouteHandler, prelude::*};
@@ -31,7 +26,6 @@ pub async fn handle_route<Q: QueryExecutor + 'static>(
         return Ok(RouteResponse { routes: vec![] });
     }
 
-    let begin_instant = Instant::now();
     let route_req = RouteRequest {
         context: Some(ceresdbproto::storage::RequestContext {
             database: ctx.schema.clone(),
