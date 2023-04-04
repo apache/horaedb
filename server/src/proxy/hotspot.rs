@@ -69,19 +69,23 @@ pub struct HotspotStat {
 impl HotspotStat {
     /// return read count / write row count / write field count
     pub fn dump(&self) -> Dump {
-        let format_hots = |hots: Vec<(String, u64)>| {
-            hots.into_iter()
-                .map(|(k, v)| format!("metric={k}, heats={v}"))
-                .collect()
-        };
-
         Dump {
-            read_hots: self.pop_read_hots().map_or_else(Vec::new, format_hots),
-            write_hots: self.pop_write_hots().map_or_else(Vec::new, format_hots),
+            read_hots: self
+                .pop_read_hots()
+                .map_or_else(Vec::new, HotspotStat::format_hots),
+            write_hots: self
+                .pop_write_hots()
+                .map_or_else(Vec::new, HotspotStat::format_hots),
             write_field_hots: self
                 .pop_write_field_hots()
-                .map_or_else(Vec::new, format_hots),
+                .map_or_else(Vec::new, HotspotStat::format_hots),
         }
+    }
+
+    fn format_hots(hots: Vec<(String, u64)>) -> Vec<String> {
+        hots.into_iter()
+            .map(|(k, v)| format!("metric={k}, heats={v}"))
+            .collect()
     }
 
     fn pop_read_hots(&self) -> Option<Vec<(QueryKey, u64)>> {
@@ -97,7 +101,7 @@ impl HotspotStat {
     }
 
     fn pop_hots(target: &Option<Arc<SpinMutex<HotspotLru<String>>>>) -> Option<Vec<(String, u64)>> {
-        target.clone().map(|hotspot| {
+        target.as_ref().map(|hotspot| {
             let mut hots = hotspot.lock().pop_all();
             hots.sort_by(|a, b| b.1.cmp(&a.1));
             hots
