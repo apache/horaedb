@@ -31,6 +31,7 @@ pub struct TypeConversion;
 
 impl OptimizerRule for TypeConversion {
     #[allow(clippy::only_used_in_recursion)]
+    #[allow(deprecated)]
     fn try_optimize(
         &self,
         plan: &LogicalPlan,
@@ -374,13 +375,12 @@ mod tests {
         Arc::new(
             DFSchema::new_with_metadata(
                 vec![
-                    DFField::new(None, "c1", DataType::Utf8, true),
-                    DFField::new(None, "c2", DataType::Int64, true),
-                    DFField::new(None, "c3", DataType::Float64, true),
-                    DFField::new(None, "c4", DataType::Float32, true),
-                    DFField::new(None, "c5", DataType::Boolean, true),
-                    DFField::new(
-                        None,
+                    DFField::new_unqualified("c1", DataType::Utf8, true),
+                    DFField::new_unqualified("c2", DataType::Int64, true),
+                    DFField::new_unqualified("c3", DataType::Float64, true),
+                    DFField::new_unqualified("c4", DataType::Float32, true),
+                    DFField::new_unqualified("c5", DataType::Boolean, true),
+                    DFField::new_unqualified(
                         "c6",
                         DataType::Timestamp(TimeUnit::Millisecond, None),
                         false,

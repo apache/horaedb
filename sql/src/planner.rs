@@ -337,10 +337,8 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     ) -> Result<Plan> {
         let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
 
-        let influxql_planner =
-            crate::influxql::planner::Planner::try_new(adapter, all_tables).unwrap();
-        influxql_planner
-            .statement_to_plan(statement)
+        crate::influxql::planner::Planner::try_new(adapter, all_tables)
+            .and_then(|planner| planner.statement_to_plan(statement))
             .context(BuildInfluxqlPlan)
     }
 

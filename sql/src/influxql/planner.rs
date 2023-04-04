@@ -4,14 +4,12 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use arrow::datatypes::{Field, Schema as ArrowSchema};
-use common_types::datum::DatumKind;
 use common_util::error::BoxError;
-use datafusion::{
-    datasource::DefaultTableSource, error::DataFusionError, sql::planner::ContextProvider,
-};
+use datafusion::{error::DataFusionError, sql::planner::ContextProvider};
 use datafusion_expr::TableSource;
-use influxql_logical_planner::plan::{InfluxQLToLogicalPlan, SchemaProvider};
+use influxql_logical_planner::plan::{
+    ceresdb_schema_to_influxdb, InfluxQLToLogicalPlan, SchemaProvider,
+};
 use influxql_parser::{
     common::{MeasurementName, QualifiedMeasurementName},
     select::{MeasurementSelection, SelectStatement},
@@ -19,9 +17,8 @@ use influxql_parser::{
     statement::Statement as InfluxqlStatement,
 };
 use influxql_schema::Schema;
-use log::error;
 use snafu::{ensure, ResultExt};
-use table_engine::{provider::TableProviderAdapter, table::TableRef};
+use table_engine::table::TableRef;
 
 use crate::{
     influxql::error::*,
@@ -30,8 +27,6 @@ use crate::{
 };
 
 // Same with iox
-const MEASUREMENT_METADATA_KEY: &str = "iox::measurement::name";
-const COLUMN_METADATA_KEY: &str = "iox::column::type";
 pub const CERESDB_MEASUREMENT_COLUMN_NAME: &str = "iox::measurement";
 
 struct InfluxQLSchemaProvider<'a, P: MetaProvider> {
@@ -64,75 +59,18 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
     }
 }
 
-fn convert_influxql_schema(ceresdb_schema: common_types::schema::Schema) -> Result<Schema> {
-    let tags_idx = (0..ceresdb_schema.columns().len())
-        .filter(|i| ceresdb_schema.is_tag_column(*i))
-        .collect::<Vec<_>>();
-    let time_idx = ceresdb_schema.timestamp_index();
-    let tsid_idx = ceresdb_schema.index_of_tsid();
-    let arrow_schema = ceresdb_schema.into_arrow_schema_ref();
-    let metadata = arrow_schema.metadata().clone();
-
-    let influxql_fields = arrow_schema
-        .fields
-        .iter()
-        .enumerate()
-        .filter_map(|(i, f)| {
-            // if tsid_idx == Some(i) {
-            //     // return None;
-            //     return Some("iox::column_type::field::uinteger");
-            // }
-
-            let data_type = f.data_type();
-            let influxql_col_type = if i == time_idx {
-                "iox::column_type::timestamp"
-            } else if tags_idx.contains(&i) {
-                "iox::column_type::tag"
-            } else {
-                if tsid_idx == Some(i) {
-                    "iox::column_type::field::uinteger"
-                } else {
-                    match DatumKind::from_data_type(data_type).unwrap() {
-                        DatumKind::Double => "iox::column_type::field::float",
-                        DatumKind::String => "iox::column_type::field::string",
-                        DatumKind::Boolean => "iox::column_type::field::boolean",
-                        DatumKind::UInt64 => "iox::column_type::field::uinteger",
-                        DatumKind::Int64 => "iox::column_type::field::integer",
-                        _ => "iox::column_type::field::string",
-                    }
-                }
-            };
-
-            let data_type = if i == time_idx {
-                influxql_schema::TIME_DATA_TYPE()
-            } else {
-                data_type.clone()
-            };
-            let nullable = if tsid_idx == Some(i) {
-                true
-            } else {
-                f.is_nullable()
-            };
-            let field = Field::new(f.name(), data_type, nullable);
-            Some(field.with_metadata(common_util::hash_map! {
-                COLUMN_METADATA_KEY.to_string() => influxql_col_type.to_string()
-            }))
-        })
-        .collect::<Vec<_>>();
-
-    log::info!("infields:{:?}", influxql_fields);
-    Schema::try_from(Arc::new(ArrowSchema::new_with_metadata(
-        influxql_fields,
-        metadata,
-    )))
-    .box_err()
-    .context(BuildPlanWithCause {
-        msg: "build influxql schema",
-    })
-}
-
 pub(crate) struct Planner<'a, P: MetaProvider> {
     schema_provider: InfluxQLSchemaProvider<'a, P>,
+}
+
+fn convert_influxql_schema(ceresdb_schema: common_types::schema::Schema) -> Result<Schema> {
+    let arrow_schema = ceresdb_schema.into_arrow_schema_ref();
+    ceresdb_schema_to_influxdb(arrow_schema)
+        .box_err()
+        .and_then(|s| Schema::try_from(s).box_err())
+        .context(BuildPlanWithCause {
+            msg: "build influxql schema",
+        })
 }
 
 impl<'a, P: MetaProvider> Planner<'a, P> {
@@ -164,24 +102,31 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     /// the [InfluxqlStatement] will be converted to [SqlStatement] first,
     /// and build plan then.
     pub fn statement_to_plan(self, stmt: InfluxqlStatement) -> Result<Plan> {
-        let planner = InfluxQLToLogicalPlan::new(&self.schema_provider);
-        let df_plan = planner
-            .statement_to_plan(stmt)
-            .box_err()
-            .context(BuildPlanWithCause {
-                msg: "planner stmt to plan",
-            })
-            .unwrap();
-        let tables = Arc::new(
-            self.schema_provider
-                .context_provider
-                .try_into_container()
-                .box_err()
-                .context(BuildPlanWithCause {
-                    msg: "get tables from context_provider",
-                })?,
-        );
-        Ok(Plan::Query(QueryPlan { df_plan, tables }))
+        match stmt {
+            // TODO: show measurement is a temp workaround, it should be implemented in influxql
+            // crates.
+            InfluxqlStatement::ShowMeasurements(stmt) => self.show_measurements_to_plan(*stmt),
+            _ => {
+                let planner = InfluxQLToLogicalPlan::new(&self.schema_provider);
+                let df_plan =
+                    planner
+                        .statement_to_plan(stmt)
+                        .box_err()
+                        .context(BuildPlanWithCause {
+                            msg: "planner stmt to plan",
+                        })?;
+                let tables = Arc::new(
+                    self.schema_provider
+                        .context_provider
+                        .try_into_container()
+                        .box_err()
+                        .context(BuildPlanWithCause {
+                            msg: "get tables from context_provider",
+                        })?,
+                );
+                Ok(Plan::Query(QueryPlan { df_plan, tables }))
+            }
+        }
     }
 
     // TODO: support offset/limit/match in stmt
