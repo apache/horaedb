@@ -28,57 +28,46 @@ use table_engine::{
         ReadRequest, Result, Scan, Table, TableId, TableStats, UnexpectedWithMsg,
         UnsupportedMethod, Write, WriteRequest,
     },
-    PARTITION_TABLE_ENGINE_TYPE,
 };
 
 use crate::metrics::{
     PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM, PARTITION_TABLE_WRITE_DURATION_HISTOGRAM,
 };
 
+#[derive(Debug)]
+pub struct TableData {
+    pub catalog_name: String,
+    pub schema_name: String,
+    pub table_name: String,
+    pub table_id: TableId,
+    pub table_schema: Schema,
+    pub partition_info: PartitionInfo,
+    pub options: HashMap<String, String>,
+    pub engine_type: String,
+}
+
 /// Table trait implementation
 pub struct PartitionTableImpl {
-    catalog_name: String,
-    schema_name: String,
-    table_name: String,
-    table_id: TableId,
-    table_schema: Schema,
-    partition_info: PartitionInfo,
-    options: HashMap<String, String>,
-    engine_type: String,
+    table_data: TableData,
     remote_engine: RemoteEngineRef,
 }
 
 impl PartitionTableImpl {
-    pub fn new(
-        catalog_name: String,
-        schema_name: String,
-        table_name: String,
-        table_id: TableId,
-        table_schema: Schema,
-        partition_info: PartitionInfo,
-        options: HashMap<String, String>,
-        engine_type: String,
-        remote_engine: RemoteEngineRef,
-    ) -> Result<Self> {
+    pub fn new(table_data: TableData, remote_engine: RemoteEngineRef) -> Result<Self> {
         Ok(Self {
-            catalog_name,
-            schema_name,
-            table_name,
-            table_id,
-            table_schema,
-            partition_info,
-            options,
-            engine_type,
+            table_data,
             remote_engine,
         })
     }
 
     fn get_sub_table_ident(&self, id: usize) -> TableIdentifier {
-        let partition_name = self.partition_info.get_definitions()[id].name.clone();
+        let partition_name = self.table_data.partition_info.get_definitions()[id]
+            .name
+            .clone();
         TableIdentifier {
-            catalog: self.catalog_name.clone(),
-            schema: self.schema_name.clone(),
-            table: format_sub_partition_table_name(&self.table_name, &partition_name),
+            catalog: self.table_data.catalog_name.clone(),
+            schema: self.table_data.schema_name.clone(),
+            table: format_sub_partition_table_name(&self.table_data.table_name, &partition_name),
         }
     }
 }
@@ -86,10 +75,7 @@ impl PartitionTableImpl {
 impl fmt::Debug for PartitionTableImpl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PartitionTableImpl")
-            .field("catalog_name", &self.catalog_name)
-            .field("schema_name", &self.schema_name)
-            .field("table_name", &self.table_name)
-            .field("table_id", &self.table_id)
+            .field("table_data", &self.table_data)
             .finish()
     }
 }
@@ -97,28 +83,28 @@ impl fmt::Debug for PartitionTableImpl {
 #[async_trait]
 impl Table for PartitionTableImpl {
     fn name(&self) -> &str {
-        &self.table_name
+        &self.table_data.table_name
     }
 
     fn id(&self) -> TableId {
-        self.table_id
+        self.table_data.table_id
     }
 
     fn schema(&self) -> Schema {
-        self.table_schema.clone()
+        self.table_data.table_schema.clone()
     }
 
     // TODO: get options from sub partition table with remote engine
     fn options(&self) -> HashMap<String, String> {
-        self.options.clone()
+        self.table_data.options.clone()
     }
 
     fn partition_info(&self) -> Option<PartitionInfo> {
-        Some(self.partition_info.clone())
+        Some(self.table_data.partition_info.clone())
     }
 
     fn engine_type(&self) -> &str {
-        &self.engine_type
+        &self.table_data.engine_type
     }
 
     fn stats(&self) -> TableStats {
@@ -136,9 +122,11 @@ impl Table for PartitionTableImpl {
                 msg: "partition table partition info can't be empty",
             }
             .fail()?,
-            Some(partition_info) => DfPartitionRuleAdapter::new(partition_info, &self.table_schema)
-                .box_err()
-                .context(CreatePartitionRule)?,
+            Some(partition_info) => {
+                DfPartitionRuleAdapter::new(partition_info, &self.table_data.table_schema)
+                    .box_err()
+                    .context(CreatePartitionRule)?
+            }
         };
 
         // Split write request.
@@ -219,9 +207,11 @@ impl Table for PartitionTableImpl {
                 msg: "partition table partition info can't be empty",
             }
             .fail()?,
-            Some(partition_info) => DfPartitionRuleAdapter::new(partition_info, &self.table_schema)
-                .box_err()
-                .context(CreatePartitionRule)?,
+            Some(partition_info) => {
+                DfPartitionRuleAdapter::new(partition_info, &self.table_data.table_schema)
+                    .box_err()
+                    .context(CreatePartitionRule)?
+            }
         };
 
         // Evaluate expr and locate partition.

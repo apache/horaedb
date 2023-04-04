@@ -21,7 +21,7 @@ use table_engine::{
     PARTITION_TABLE_ENGINE_TYPE,
 };
 
-use crate::partition::PartitionTableImpl;
+use crate::partition::{PartitionTableImpl, TableData};
 
 /// Partition table engine implementation.
 pub struct PartitionTableEngine {
@@ -45,22 +45,22 @@ impl TableEngine for PartitionTableEngine {
     }
 
     async fn create_table(&self, request: CreateTableRequest) -> Result<TableRef> {
+        let table_data = TableData {
+            catalog_name: request.catalog_name,
+            schema_name: request.schema_name,
+            table_name: request.table_name,
+            table_id: request.table_id,
+            table_schema: request.table_schema,
+            partition_info: request.partition_info.context(UnexpectedNoCause {
+                msg: "partition info not found",
+            })?,
+            options: request.options,
+            engine_type: request.engine,
+        };
         Ok(Arc::new(
-            PartitionTableImpl::new(
-                request.catalog_name,
-                request.schema_name,
-                request.table_name,
-                request.table_id,
-                request.table_schema,
-                request.partition_info.context(UnexpectedNoCause {
-                    msg: "partition info not found",
-                })?,
-                request.options,
-                request.engine,
-                self.remote_engine_ref.clone(),
-            )
-            .box_err()
-            .context(Unexpected)?,
+            PartitionTableImpl::new(table_data, self.remote_engine_ref.clone())
+                .box_err()
+                .context(Unexpected)?,
         ))
     }
 

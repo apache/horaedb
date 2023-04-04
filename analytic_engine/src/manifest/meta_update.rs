@@ -160,6 +160,7 @@ impl From<AddTableMeta> for manifest_pb::AddTableMeta {
             table_name: v.table_name,
             schema: Some(schema_pb::TableSchema::from(&v.schema)),
             options: Some(manifest_pb::TableOptions::from(v.opts)),
+            // Deprecated.
             partition_info: None,
         }
     }
