@@ -1442,9 +1442,7 @@ fn purge_buckets<T: TableKv>(
         // Delete all tables of this bucket.
         for table_name in &bucket.wal_shard_names {
             let _ = table_kv.drop_table(table_name).map_err(|e| {
-                error!(
-                    "Purge buckets drop table failed, table:{table_name}, err:{e}",
-                );
+                error!("Purge buckets drop table failed, table:{table_name}, err:{e}");
             });
         }
 
