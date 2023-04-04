@@ -335,7 +335,6 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
         let forward_config = self.forward_config.unwrap_or_default();
         let hotspot_config = self.hotspot_config.unwrap_or_default();
-        let bg_runtime = runtimes.bg_runtime.clone();
         let runtime = runtimes.bg_runtime.clone();
         let proxy = Proxy::try_new(
             router,
@@ -346,7 +345,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             self.auto_create_table,
             schema_config_provider,
             hotspot_config,
-            bg_runtime,
+            runtime.clone(),
         )
         .box_err()
         .context(Internal {

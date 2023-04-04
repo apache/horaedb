@@ -110,7 +110,7 @@ serde_json = "1.0.60"
 server = { path = "server" }
 smallvec = "1.6"
 slog = "2.7"
-spin = "0.5.2"
+spin = "0.9.6"
 sql = { path = "sql" }
 sqlparser = { version = "0.30", features = ["serde"] }
 system_catalog = { path = "system_catalog" }

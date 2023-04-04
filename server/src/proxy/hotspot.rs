@@ -9,8 +9,7 @@ use ceresdbproto::storage::{
 use common_util::{runtime::Runtime, timed_task::TimedTask};
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
-use spin::Mutex;
-pub use spin::Mutex as SpinMutex;
+use spin::Mutex as SpinMutex;
 use tokio::sync::mpsc::{self, Sender};
 
 use crate::proxy::{hotspot_lru::HotspotLru, util};
@@ -28,7 +27,7 @@ pub struct Config {
     /// Max items size for write hotspot
     write_cap: Option<usize>,
     dump_interval: Duration,
-    auto_dump: bool,
+    auto_dump_interval: bool,
     /// Max items for dump hotspot
     auto_dump_len: usize,
 }
@@ -39,7 +38,7 @@ impl Default for Config {
             query_cap: Some(10_000),
             write_cap: Some(10_000),
             dump_interval: Duration::from_secs(5),
-            auto_dump: true,
+            auto_dump_interval: true,
             auto_dump_len: 10,
         }
     }
@@ -47,8 +46,11 @@ impl Default for Config {
 
 enum Message {
     Query(QueryKey),
-    // (WriteKey, row_count, field_count)
-    Write(WriteKey, usize, usize),
+    Write {
+        key: WriteKey,
+        row_count: usize,
+        field_count: usize,
+    },
 }
 
 #[derive(Clone)]
@@ -95,15 +97,11 @@ impl HotspotStat {
     }
 
     fn pop_hots(target: &Option<Arc<SpinMutex<HotspotLru<String>>>>) -> Option<Vec<(String, u64)>> {
-        match target {
-            Some(hotspot) => {
-                let mut hots = hotspot.lock().pop_all();
-                hots.sort_by(|a, b| b.1.cmp(&a.1));
-
-                Some(hots)
-            }
-            _ => None,
-        }
+        target.clone().map(|hotspot| {
+            let mut hots = hotspot.lock().pop_all();
+            hots.sort_by(|a, b| b.1.cmp(&a.1));
+            hots
+        })
     }
 }
 
@@ -120,14 +118,13 @@ impl HotspotRecorder {
         let hotspot_write = Self::init_lru(config.write_cap);
         let hotspot_field_write = Self::init_lru(config.write_cap);
 
-        let (tx, mut rx) = mpsc::channel(RECODER_CHANNEL_CAP);
         let stat = HotspotStat {
             hotspot_query: hotspot_query.clone(),
             hotspot_write: hotspot_write.clone(),
             hotspot_field_write: hotspot_field_write.clone(),
         };
 
-        let task_handle = if config.auto_dump {
+        let task_handle = if config.auto_dump_interval {
             let interval = config.dump_interval;
             let dump_len = config.auto_dump_len;
             let stat_clone = stat.clone();
@@ -165,6 +162,7 @@ impl HotspotRecorder {
             None
         };
 
+        let (tx, mut rx) = mpsc::channel(RECODER_CHANNEL_CAP);
         runtime.spawn(async move {
             loop {
                 match rx.recv().await {
@@ -181,13 +179,17 @@ impl HotspotRecorder {
                                 hotspot.lock().inc(&read_key, 1);
                             }
                         }
-                        Message::Write(write_key, row_count, field_count) => {
+                        Message::Write {
+                            key,
+                            row_count,
+                            field_count,
+                        } => {
                             if let Some(hotspot) = &hotspot_write {
-                                hotspot.lock().inc(&write_key, row_count as u64);
+                                hotspot.lock().inc(&key, row_count as u64);
                             }
 
                             if let Some(hotspot) = &hotspot_field_write {
-                                hotspot.lock().inc(&write_key, field_count as u64);
+                                hotspot.lock().inc(&key, field_count as u64);
                             }
                         }
                     },
@@ -202,7 +204,7 @@ impl HotspotRecorder {
     }
 
     #[inline]
-    fn init_lru(cap: Option<usize>) -> Option<Arc<Mutex<HotspotLru<QueryKey>>>> {
+    fn init_lru(cap: Option<usize>) -> Option<Arc<SpinMutex<HotspotLru<QueryKey>>>> {
         HotspotLru::new(cap?).map(|lru| Arc::new(SpinMutex::new(lru)))
     }
 
@@ -255,7 +257,11 @@ impl HotspotRecorder {
                 }
                 self.send_msg_or_log(
                     "inc_write_reqs",
-                    Message::Write(hot_key, row_count, field_count),
+                    Message::Write {
+                        key: hot_key,
+                        row_count,
+                        field_count,
+                    },
                 )
                 .await;
             }
@@ -324,7 +330,7 @@ mod test {
             let options = Config {
                 query_cap: read_cap,
                 write_cap,
-                auto_dump: false,
+                auto_dump_interval: false,
                 dump_interval: Duration::from_millis(5000),
                 auto_dump_len: 10,
             };
@@ -360,7 +366,7 @@ mod test {
             let options = Config {
                 query_cap: read_cap,
                 write_cap,
-                auto_dump: false,
+                auto_dump_interval: false,
                 dump_interval: Duration::from_millis(5000),
                 auto_dump_len: 10,
             };
