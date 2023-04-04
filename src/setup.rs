@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Setup server
 
@@ -225,7 +225,6 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
         .expect("Failed to setup analytic engine");
     let engine_builder = EngineBuilder {
         config: &config.analytic,
-        router: Some(router.clone()),
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
     };
@@ -265,7 +264,6 @@ async fn build_without_meta<Q: Executor + 'static, T: WalsOpener>(
         .expect("Failed to setup analytic engine");
     let engine_builder = EngineBuilder {
         config: &config.analytic,
-        router: None,
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
     };

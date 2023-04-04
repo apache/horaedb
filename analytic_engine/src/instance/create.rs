@@ -105,32 +105,29 @@ impl Instance {
             return Ok(table_data);
         };
 
-        // Partition table is not stored in manifest.
-        if table_data.partition_info.is_none() {
-            // Store table info into meta
-            let update_req = {
-                let meta_update = MetaUpdate::AddTable(AddTableMeta {
-                    space_id: space.id,
-                    table_id: table_data.id,
-                    table_name: table_data.name.clone(),
-                    schema: table_data.schema(),
-                    opts: table_data.table_options().as_ref().clone(),
-                });
-                MetaUpdateRequest {
-                    shard_info: table_data.shard_info,
-                    meta_update,
-                }
-            };
-            self.space_store
-                .manifest
-                .store_update(update_req)
-                .await
-                .context(WriteManifest {
-                    space_id: space.id,
-                    table: &table_data.name,
-                    table_id: table_data.id,
-                })?;
-        }
+        // Store table info into meta
+        let update_req = {
+            let meta_update = MetaUpdate::AddTable(AddTableMeta {
+                space_id: space.id,
+                table_id: table_data.id,
+                table_name: table_data.name.clone(),
+                schema: table_data.schema(),
+                opts: table_data.table_options().as_ref().clone(),
+            });
+            MetaUpdateRequest {
+                shard_info: table_data.shard_info,
+                meta_update,
+            }
+        };
+        self.space_store
+            .manifest
+            .store_update(update_req)
+            .await
+            .context(WriteManifest {
+                space_id: space.id,
+                table: &table_data.name,
+                table_id: table_data.id,
+            })?;
 
         space.insert_table(table_data.clone());
         Ok(table_data)

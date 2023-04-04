@@ -27,7 +27,7 @@ use common_util::define_result;
 use log::{debug, info};
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_engine::{engine::CreateTableRequest, partition::PartitionInfo, table::TableId};
+use table_engine::{engine::CreateTableRequest, table::TableId};
 
 use crate::{
     instance::write_worker::{choose_worker, WorkerLocal, WriteHandle},
@@ -146,9 +146,6 @@ pub struct TableData {
 
     /// Shard id
     pub shard_info: TableShardInfo,
-
-    /// Partition info
-    pub partition_info: Option<PartitionInfo>,
 }
 
 impl fmt::Debug for TableData {
@@ -164,7 +161,6 @@ impl fmt::Debug for TableData {
             .field("last_file_id", &self.last_file_id)
             .field("dropped", &self.dropped.load(Ordering::Relaxed))
             .field("shard_info", &self.shard_info)
-            .field("partition_info", &self.partition_info)
             .finish()
     }
 }
@@ -219,7 +215,6 @@ impl TableData {
             dropped: AtomicBool::new(false),
             metrics,
             shard_info: TableShardInfo::new(request.shard_id),
-            partition_info: request.partition_info,
         })
     }
 
@@ -256,7 +251,6 @@ impl TableData {
             dropped: AtomicBool::new(false),
             metrics,
             shard_info: TableShardInfo::new(shard_id),
-            partition_info: None,
         })
     }
 

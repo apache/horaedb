@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! A table engine instance
 //!
@@ -27,7 +27,7 @@ use common_util::{define_result, runtime::Runtime};
 use log::info;
 use mem_collector::MemUsageCollector;
 use snafu::{ResultExt, Snafu};
-use table_engine::{engine::EngineRuntimes, remote::RemoteEngineRef};
+use table_engine::engine::EngineRuntimes;
 use wal::manager::{WalLocation, WalManagerRef};
 
 use crate::{
@@ -177,7 +177,6 @@ pub struct Instance {
     /// Options for scanning sst
     pub(crate) scan_options: ScanOptions,
     pub(crate) iter_options: Option<IterOptions>,
-    pub(crate) remote_engine: Option<RemoteEngineRef>,
 }
 
 impl Instance {

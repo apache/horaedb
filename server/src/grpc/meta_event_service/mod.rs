@@ -172,6 +172,7 @@ impl<Q: QueryExecutor + 'static> MetaServiceImpl<Q> {
             cluster: self.cluster.clone(),
             catalog_manager: self.instance.catalog_manager.clone(),
             table_engine: self.instance.table_engine.clone(),
+            partition_table_engine: self.instance.partition_table_engine.clone(),
             wal_region_closer: self.wal_region_closer.clone(),
         }
     }
@@ -182,6 +183,7 @@ struct HandlerContext {
     cluster: ClusterRef,
     catalog_manager: ManagerRef,
     table_engine: TableEngineRef,
+    partition_table_engine: TableEngineRef,
     wal_region_closer: WalRegionCloserRef,
 }
 
@@ -386,6 +388,12 @@ async fn handle_create_table_on_shard(
         None => None,
     };
 
+    let table_engine = if partition_info.is_some() {
+        ctx.partition_table_engine.clone()
+    } else {
+        ctx.table_engine.clone()
+    };
+
     let create_table_request = CreateTableRequest {
         catalog_name: ctx.catalog_manager.default_catalog_name().to_string(),
         schema_name: table_info.schema_name,
@@ -399,8 +407,9 @@ async fn handle_create_table_on_shard(
         shard_id: shard_info.id,
         partition_info,
     };
+
     let create_opts = CreateOptions {
-        table_engine: ctx.table_engine,
+        table_engine,
         create_if_not_exists: request.create_if_not_exist,
     };
 

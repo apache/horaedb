@@ -38,6 +38,7 @@ members = [
     "integration_tests/sdk/rust",
     "interpreters",
     "meta_client",
+    "partition_table_engine",
     "query_engine",
     "remote_engine_client",
     "router",
@@ -91,6 +92,7 @@ interpreters = { path = "interpreters" }
 itertools = "0.10.5"
 meta_client = { path = "meta_client" }
 object_store = { path = "components/object_store" }
+partition_table_engine = { path = "partition_table_engine" }
 parquet_ext = { path = "components/parquet_ext" }
 parquet = { version = "32.0.0" }
 paste = "1.0"

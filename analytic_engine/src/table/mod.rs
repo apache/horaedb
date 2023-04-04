@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table implementation
 
@@ -32,7 +32,6 @@ use crate::{
 
 pub mod data;
 pub mod metrics;
-pub mod partition;
 pub mod sst_util;
 pub mod version;
 pub mod version_edit;
@@ -103,7 +102,7 @@ impl Table for TableImpl {
     }
 
     fn partition_info(&self) -> Option<PartitionInfo> {
-        self.table_data.partition_info.clone()
+        None
     }
 
     fn engine_type(&self) -> &str {

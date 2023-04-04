@@ -33,6 +33,7 @@ log = { workspace = true }
 logger = { workspace = true }
 meta_client = { workspace = true }
 opensrv-mysql = "0.1.0"
+partition_table_engine = { workspace = true }
 paste = { workspace = true }
 profile = { workspace = true }
 prom-remote-api = { version = "0.2.1", features = ["warp"] }

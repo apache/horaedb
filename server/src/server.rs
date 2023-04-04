@@ -11,7 +11,9 @@ use df_operator::registry::FunctionRegistryRef;
 use interpreters::table_manipulator::TableManipulatorRef;
 use log::{info, warn};
 use logger::RuntimeLevel;
+use partition_table_engine::PartitionTableEngine;
 use query_engine::executor::Executor as QueryExecutor;
+use remote_engine_client::RemoteEngineImpl;
 use router::{endpoint::Endpoint, RouterRef};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
@@ -302,15 +304,25 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let table_manipulator = self.table_manipulator.context(MissingTableManipulator)?;
         let function_registry = self.function_registry.context(MissingFunctionRegistry)?;
         let opened_wals = self.opened_wals.context(MissingWals)?;
+        let router = self.router.context(MissingRouter)?;
+
+        let remote_engine_ref = Arc::new(RemoteEngineImpl::new(
+            self.remote_engine_client_config.clone(),
+            router.clone(),
+        ));
+
+        let partition_table_engine = Arc::new(PartitionTableEngine::new(remote_engine_ref.clone()));
 
         let instance = {
             let instance = Instance {
                 catalog_manager,
                 query_executor,
                 table_engine,
+                partition_table_engine,
                 function_registry,
                 limiter: self.limiter,
                 table_manipulator,
+                remote_engine_ref,
             };
             InstanceRef::new(instance)
         };
@@ -356,7 +368,6 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .build()
             .context(BuildMysqlService)?;
 
-        let router = self.router.context(MissingRouter)?;
         let rpc_services =
             grpc::Builder::new()
                 .endpoint(
@@ -376,7 +387,6 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
                 .opened_wals(opened_wals)
                 .schema_config_provider(provider)
                 .forward_config(self.server_config.forward)
-                .remote_engine_client_config(self.remote_engine_client_config)
                 .timeout(self.server_config.timeout.map(|v| v.0))
                 .auto_create_table(self.server_config.auto_create_table)
                 .build()

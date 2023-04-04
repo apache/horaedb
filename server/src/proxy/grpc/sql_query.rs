@@ -449,6 +449,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             let first_sub_partition_table_name =
                 get_sub_partition_name(&table_info.name, v, 0usize);
             let table = self
+                .instance
                 .remote_engine_ref
                 .get_table_info(GetTableInfoRequest {
                     table: TableIdentifier {
@@ -478,7 +479,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 partition_info: table_info.partition_info,
             };
             let create_opts = CreateOptions {
-                table_engine: self.instance.table_engine.clone(),
+                table_engine: self.instance.partition_table_engine.clone(),
                 create_if_not_exists: true,
             };
             schema
