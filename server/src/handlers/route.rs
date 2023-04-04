@@ -51,12 +51,6 @@ pub async fn handle_route<Q: QueryExecutor + 'static>(
         });
     }
 
-    debug!(
-        "Route handler finished, table:{}, cost:{}ms",
-        table,
-        begin_instant.saturating_elapsed().as_millis(),
-    );
-
     Ok(RouteResponse {
         routes: route_items,
     })
