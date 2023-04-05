@@ -1,19 +1,39 @@
-use std::result;
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use table_engine::{ANALYTIC_ENGINE_TYPE, engine::{OpenShardRequest, CloseShardRequest, TableEngineRef}, table::TableRef};
+use std::time::Instant;
 
-use crate::{manager::ManagerRef, CatalogRef, schema::{OpenOptions, NameRef, SchemaRef, CloseOptions, CloseTableRequest, OpenTableRequest, CreateOptions, CreateTableRequest, DropTableRequest, DropOptions}};
+use common_util::{error::BoxError, time::InstantExt};
+use log::{error, info};
+use snafu::{OptionExt, ResultExt};
+use table_engine::{
+    engine::{CloseShardRequest, OpenShardRequest, TableEngineRef},
+    table::{SchemaId, TableRef},
+};
 
-use crate::Result;
-/// Table operator 
-/// 
-/// Encapsulate all operation about tables rather than placing them everywhere(e.g. duplicated codes in `Interpreters` and `MetaEventService`). 
+use crate::{
+    manager::ManagerRef,
+    schema::{
+        CloseOptions, CloseTableRequest, CreateOptions, CreateTableRequest, DropOptions,
+        DropTableRequest, OpenOptions, OpenTableRequest, SchemaRef,
+    },
+    Result, TableOperatorNoCause, TableOperatorWithCause,
+};
+/// Table operator
+///
+/// Encapsulate all operation about tables rather than placing them
+/// everywhere(e.g. duplicated codes in `Interpreters` and `MetaEventService`).
+#[derive(Clone)]
 pub struct TableOperator {
     catalog_manager: ManagerRef,
 }
 
 impl TableOperator {
-    pub fn open_tables_of_shard(&self, request: OpenShardRequest, opts: OpenOptions) {
+    pub fn new(catalog_manager: ManagerRef) -> Self {
+        Self { catalog_manager }
+    }
+
+    pub async fn open_shard(&self, request: OpenShardRequest, opts: OpenOptions) -> Result<()> {
+        let instant = Instant::now();
         let table_engine = opts.table_engine;
         let shard_id = request.shard_id;
 
@@ -33,7 +53,6 @@ impl TableOperator {
                         table_id: table.table_id,
                         engine: request.engine.clone(),
                         shard_id: request.shard_id,
-                        cluster_version: 0,
                     };
 
                     (schema, request)
@@ -44,7 +63,7 @@ impl TableOperator {
 
         // Open tables by table engine.
         // TODO: add the `open_shard` method into table engine.
-        let open_res = open_tables_of_shard(opts.table_engine.clone(), requests).await;
+        let open_res = open_tables_of_shard(table_engine, requests).await;
 
         // Check and register successful opened table into schema.
         let mut success_count = 0_u32;
@@ -79,26 +98,24 @@ impl TableOperator {
         if no_table_count == 0 && open_err_count == 0 {
             Ok(())
         } else {
-            Err(Error::ErrNoCause {
-                code: StatusCode::Internal,
-                msg: format!(
-                    "Failed to open shard, some tables open failed, no table is shard id:{}, opened count:{}, open error count:{}",
-                    shard_id, no_table_count, open_err_count
-                ),
-            })
+            TableOperatorNoCause {
+                msg:  format!(
+                            "Failed to open shard, some tables open failed, no table is shard id:{}, opened count:{}, open error count:{}",
+                            shard_id, no_table_count, open_err_count),
+            }.fail()
         }
-
-        Ok(())
     }
 
-    async fn close_tables_of_shard(&self, request: CloseShardRequest, opts: CloseOptions) -> Result<()> {
+    pub async fn close_shard(&self, request: CloseShardRequest, opts: CloseOptions) -> Result<()> {
+        let instant = Instant::now();
         let table_engine = opts.table_engine;
+        let shard_id = request.shard_id;
 
         // Generate open requests.
         let table_infos = request.table_infos;
         let schemas_and_requests = table_infos
             .into_iter()
-            .filter(|table| {
+            .map(|table| {
                 let schema_res = self.schema_by_name(&table.catalog_name, &table.schema_name);
 
                 schema_res.map(|schema| {
@@ -116,7 +133,7 @@ impl TableOperator {
             })
             .collect::<Result<Vec<_>>>()?;
         let (schemas, requests): (Vec<_>, Vec<_>) = schemas_and_requests.into_iter().unzip();
-        
+
         //  Close tables by table engine.
         // TODO: add the `close_shard` method into table engine.
         let results = close_tables_of_shard(table_engine, requests).await;
@@ -127,10 +144,10 @@ impl TableOperator {
 
         for (schema, result) in schemas.into_iter().zip(results.into_iter()) {
             match result {
-                Ok(()) => {
-                    schema.register_table(table);
+                Ok(table_name) => {
+                    schema.unregister_table(&table_name);
                     success_count += 1;
-                },
+                }
                 Err(_) => {
                     close_err_count += 1;
                 }
@@ -142,81 +159,132 @@ impl TableOperator {
             shard_id,
             instant.saturating_elapsed().as_millis(),
             success_count,
-            open_err_count
+            close_err_count
         );
 
         if close_err_count == 0 {
             Ok(())
         } else {
-            Err(Error::ErrNoCause {
-                code: StatusCode::Internal,
+            TableOperatorNoCause {
                 msg: format!(
-                    "Failed to close shard, some tables open failed, no table is shard id:{}, close_err_count:{}",
-                    shard_id, close_err_count
+                    "Failed to close shard, shard id:{}, success_count:{}, close_err_count:{}",
+                    shard_id, success_count, close_err_count
                 ),
-            })
+            }
+            .fail()
         }
-
-        Ok(())
     }
 
-    async fn open_table_on_shard(&self, request: OpenTableRequest, opts: OpenOptions) {
+    pub async fn open_table_on_shard(
+        &self,
+        request: OpenTableRequest,
+        opts: OpenOptions,
+    ) -> Result<()> {
         let table_engine = opts.table_engine;
-        let schema = self.schema_by_name(&request.catalog_name, &request.schema_name).unwrap();
+        let schema = self.schema_by_name(&request.catalog_name, &request.schema_name)?;
 
-        let table = table_engine.open_table(request).await.unwrap().unwrap();
+        let table = table_engine
+            .open_table(request.clone())
+            .await
+            .box_err()
+            .context(TableOperatorWithCause {
+                msg: format!("failed to open table on shard, request:{request:?}"),
+            })?
+            .context(TableOperatorNoCause {
+                msg: format!("table engine returns none when opening table, request:{request:?}"),
+            })?;
         schema.register_table(table);
 
         Ok(())
     }
 
-    async fn close_table_on_shard(&self, request: CloseTableRequest, opts: CloseOptions) {
+    pub async fn close_table_on_shard(
+        &self,
+        request: CloseTableRequest,
+        opts: CloseOptions,
+    ) -> Result<()> {
         let table_engine = opts.table_engine;
-        let schema = self.schema_by_name(&request.catalog_name, &request.schema_name).unwrap();
+        let schema = self.schema_by_name(&request.catalog_name, &request.schema_name)?;
         let table_name = request.table_name.clone();
 
-        table_engine.close_table(request).await.unwrap().unwrap();
-        schema.unregister_table(&table);
-
-        Ok(())
-    }
-
-    async fn create_table_on_shard(&self, request: CreateTableRequest, opts: CreateOptions) {
-        let table_engine = opts.table_engine;
-        let schema = self.schema_by_name(&request.catalog_name, &request.schema_name).unwrap();
-
-        table_engine.create_table(request).await.unwrap().unwrap();
-        schema.register_table(&table);
-
-        Ok(())
-    }
-
-    async fn drop_table_on_shard(&self, request: DropTableRequest, opts: DropOptions) {
-        let table_engine = opts.table_engine;
-        let schema = self.schema_by_name(&request.catalog_name, &request.schema_name).unwrap();
-        let table_name = request.table_name.clone();
-
-        table_engine.drop_table(request).await.unwrap().unwrap();
+        table_engine
+            .close_table(request.clone())
+            .await
+            .box_err()
+            .context(TableOperatorWithCause {
+                msg: format!("failed to close table on shard, request:{request:?}"),
+            })?;
         schema.unregister_table(&table_name);
 
         Ok(())
     }
 
-    fn schema_by_name(&self, catalog_name: &str, schema_name:&str) -> Result<SchemaRef> {
+    pub async fn create_table_on_shard(
+        &self,
+        request: CreateTableRequest,
+        opts: CreateOptions,
+    ) -> Result<TableRef> {
+        let schema = self.schema_by_name(&request.catalog_name, &request.schema_name)?;
+
+        // TODO: we should create table directly by table engine, and register table
+        // into schema like opening.
+        schema
+            .create_table(request.clone(), opts)
+            .await
+            .box_err()
+            .context(TableOperatorWithCause {
+                msg: format!("failed to create table on shard, request:{request:?}"),
+            })
+    }
+
+    pub async fn drop_table_on_shard(
+        &self,
+        request: DropTableRequest,
+        opts: DropOptions,
+    ) -> Result<()> {
+        let schema = self.schema_by_name(&request.catalog_name, &request.schema_name)?;
+
+        // TODO: we should drop table directly by table engine, and unregister table
+        // from schema like closing.
+        let has_dropped = schema
+            .drop_table(request.clone(), opts)
+            .await
+            .box_err()
+            .context(TableOperatorWithCause {
+                msg: format!("failed to create table on shard, request:{request:?}"),
+            })?;
+
+        if has_dropped {
+            Ok(())
+        } else {
+            TableOperatorNoCause {
+                msg: format!("table is not dropped, request:{request:?}"),
+            }
+            .fail()
+        }
+    }
+
+    fn schema_by_name(&self, catalog_name: &str, schema_name: &str) -> Result<SchemaRef> {
         let catalog = self
             .catalog_manager
-            .catalog_by_name(catalog_name).unwrap().unwrap();
-            // .box_err()
-            // .context(ErrWithCause {
-            //     code: StatusCode::Internal,
-            //     msg: "fail to get default catalog",
-            // })?
-            // .context(ErrNoCause {
-            //     code: StatusCode::NotFound,
-            //     msg: "default catalog is not found",
-            // })?;
+            .catalog_by_name(catalog_name)
+            .box_err()
+            .context(TableOperatorWithCause {
+                msg: format!("failed to find catalog, catalog_name:{catalog_name}"),
+            })?
+            .context(TableOperatorNoCause {
+                msg: format!("catalog not found, catalog_name:{catalog_name}"),
+            })?;
 
-         Ok(catalog.schema_by_name(schema_name).unwrap().unwrap())
+        Ok(catalog
+            .schema_by_name(schema_name)
+            .box_err()
+            .context(TableOperatorWithCause {
+                msg: format!("failed to find schema, schema_name:{schema_name}"),
+            })?
+            .context(TableOperatorNoCause {
+                msg: format!("schema not found, schema_name:{schema_name}"),
+            })?)
     }
 }
 
@@ -230,17 +298,21 @@ async fn open_tables_of_shard(
 
     let mut open_results = Vec::with_capacity(open_requests.len());
     for request in open_requests {
-        let result = table_engine.open_table(request.clone()).await
-        .map_err(|e| {
-            error!("Failed to open table, open_request:{request:?}, err:{e}");
-            e
-        })
-        .map(|table_opt| {
-            if table_opt.is_none() {
-                error!("Table engine returns none when opening table, open_request:{request:?}");
-            }
-            table_opt
-        });
+        let result = table_engine
+            .open_table(request.clone())
+            .await
+            .map_err(|e| {
+                error!("Failed to open table, open_request:{request:?}, err:{e}");
+                e
+            })
+            .map(|table_opt| {
+                if table_opt.is_none() {
+                    error!(
+                        "Table engine returns none when opening table, open_request:{request:?}"
+                    );
+                }
+                table_opt
+            });
 
         open_results.push(result);
     }
@@ -251,18 +323,21 @@ async fn open_tables_of_shard(
 async fn close_tables_of_shard(
     table_engine: TableEngineRef,
     close_requests: Vec<CloseTableRequest>,
-) -> Vec<table_engine::engine::Result<()>> {
+) -> Vec<table_engine::engine::Result<String>> {
     if close_requests.is_empty() {
         return Vec::new();
     }
 
     let mut close_results = Vec::with_capacity(close_requests.len());
     for request in close_requests {
-        let result = table_engine.open_table(request.clone()).await
-        .map_err(|e| {
-            error!("Failed to close table, close_request:{request:?}, err:{e}");
-            e
-        });
+        let result = table_engine
+            .close_table(request.clone())
+            .await
+            .map_err(|e| {
+                error!("Failed to close table, close_request:{request:?}, err:{e}");
+                e
+            })
+            .map(|_| request.table_name);
 
         close_results.push(result);
     }

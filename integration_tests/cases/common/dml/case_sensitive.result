@@ -97,3 +97,7 @@ DESC `CASE_SENSITIVE_TABLE1`;
 
 Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: DESC `CASE_SENSITIVE_TABLE1`;. Caused by: Failed to create plan, err:Table not found, table:CASE_SENSITIVE_TABLE1" })
 
+DROP TABLE IF EXISTS case_SENSITIVE_table1;
+
+affected_rows: 0
+

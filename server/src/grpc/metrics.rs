@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 // Grpc server metrics
 
@@ -24,6 +24,7 @@ make_auto_flush_static_metric! {
     pub label_enum RemoteEngineTypeKind {
         stream_read,
         write,
+        get_table_info,
     }
 
     pub struct RemoteEngineGrpcHandlerDurationHistogramVec: LocalHistogram {

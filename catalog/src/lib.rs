@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Common traits and types about catalog (schema)
 
@@ -8,6 +8,7 @@ extern crate common_util;
 pub mod consts;
 pub mod manager;
 pub mod schema;
+pub mod table_operator;
 
 use std::sync::Arc;
 
@@ -48,6 +49,12 @@ pub enum Error {
 
     #[snafu(display("Unsupported method, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     UnSupported { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Failed to operate table, msg:{}, err:{}", msg, source))]
+    TableOperatorWithCause { msg: String, source: GenericError },
+
+    #[snafu(display("Failed to operate table, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    TableOperatorNoCause { msg: String, backtrace: Backtrace },
 }
 
 define_result!(Error);

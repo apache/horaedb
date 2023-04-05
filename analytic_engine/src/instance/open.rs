@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Open logic of instance
 
@@ -291,7 +291,6 @@ impl Instance {
                 &self.file_purger,
                 space.mem_usage_collector.clone(),
                 request.shard_id,
-                request.cluster_version,
             )
             .context(RecoverTableData {
                 space_id: table_meta.space_id,

@@ -1,11 +1,11 @@
 [package]
 name = "ceresdb"
-version = "1.0.0"
+version = "1.1.0"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
 
 [workspace.package]
-version = "1.0.0"
+version = "1.1.0"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
 
@@ -35,6 +35,7 @@ members = [
     "components/tracing_util",
     "df_operator",
     "integration_tests",
+    "integration_tests/sdk/rust",
     "interpreters",
     "meta_client",
     "query_engine",
@@ -65,7 +66,6 @@ bytes = "1.1.0"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-ceresdbproto = "1.0.1"
 chrono = "0.4"
 clap = "3.0"
 clru = "0.6.1"
@@ -149,6 +149,10 @@ sort = "0.8.5"
 table_engine = { workspace = true }
 toml = { workspace = true }
 tracing_util = { workspace = true }
+
+[workspace.dependencies.ceresdbproto]
+git = "https://github.com/CeresDB/ceresdbproto.git"
+rev = "1c3bf4e803ef8b7a1fbc8c3d4a07fdd372e1830b"
 
 [build-dependencies]
 vergen = { version = "7", default-features = false, features = ["build", "git", "rustc"] }
