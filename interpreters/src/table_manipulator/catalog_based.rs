@@ -2,13 +2,11 @@
 
 use async_trait::async_trait;
 use catalog::{
-    manager::ManagerRef,
     schema::{CreateOptions, CreateTableRequest, DropOptions, DropTableRequest},
     table_operator::TableOperator,
 };
 use common_types::table::DEFAULT_SHARD_ID;
-use log::warn;
-use snafu::{ensure, OptionExt, ResultExt};
+use snafu::{ensure, ResultExt};
 use sql::plan::{CreateTablePlan, DropTablePlan};
 use table_engine::engine::{TableEngineRef, TableState};
 
@@ -16,9 +14,7 @@ use crate::{
     context::Context,
     interpreter::Output,
     table_manipulator::{
-        CatalogNotExists, FindCatalog, FindSchema, PartitionTableNotSupported, Result,
-        SchemaCreateTable, SchemaDropTable, SchemaNotExists, TableManipulator,
-        TableOperator as TableOperatorErr,
+        PartitionTableNotSupported, Result, TableManipulator, TableOperator as TableOperatorErr,
     },
 };
 

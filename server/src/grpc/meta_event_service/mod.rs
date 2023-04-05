@@ -7,13 +7,11 @@ use std::{sync::Arc, time::Instant};
 use analytic_engine::setup::OpenedWals;
 use async_trait::async_trait;
 use catalog::{
-    manager::ManagerRef,
     schema::{
-        CloseOptions, CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef,
-        OpenOptions, OpenTableRequest, SchemaRef,
+        CloseOptions, CreateOptions, CreateTableRequest, DropOptions, DropTableRequest,
+        OpenOptions, OpenTableRequest,
     },
     table_operator::TableOperator,
-    CatalogRef,
 };
 use ceresdbproto::meta_event::{
     meta_event_service_server::MetaEventService, ChangeShardRoleRequest, ChangeShardRoleResponse,
@@ -26,7 +24,6 @@ use ceresdbproto::meta_event::{
 use cluster::ClusterRef;
 use common_types::schema::SchemaEncoder;
 use common_util::{error::BoxError, runtime::Runtime, time::InstantExt};
-use futures::TryFutureExt;
 use log::{error, info};
 use paste::paste;
 use query_engine::executor::Executor as QueryExecutor;
@@ -43,7 +40,7 @@ use self::shard_operation::WalCloserAdapter;
 use crate::{
     grpc::{
         meta_event_service::{
-            error::{ErrNoCause, ErrWithCause, Error, Result, StatusCode},
+            error::{ErrNoCause, ErrWithCause, Result, StatusCode},
             shard_operation::WalRegionCloserRef,
         },
         metrics::META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
@@ -236,7 +233,7 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("failed to open shard"),
+            msg: "failed to open shard",
         })
 }
 
@@ -278,7 +275,7 @@ async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> 
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("failed to close shard"),
+            msg: "failed to close shard",
         })?;
 
     // try to close wal region

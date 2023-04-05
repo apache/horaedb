@@ -9,9 +9,7 @@ use analytic_engine::{
     setup::{EngineBuilder, KafkaWalsOpener, ObkvWalsOpener, RocksDBWalsOpener, WalsOpener},
     WalStorageConfig,
 };
-use catalog::{
-    manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator, CatalogRef,
-};
+use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{
     cluster_impl::ClusterImpl, config::ClusterConfig, shard_tables_cache::ShardTablesCache,

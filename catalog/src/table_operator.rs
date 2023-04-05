@@ -7,7 +7,7 @@ use log::{error, info, warn};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{CloseShardRequest, OpenShardRequest, TableEngineRef},
-    table::{SchemaId, TableRef},
+    table::TableRef,
 };
 
 use crate::{
@@ -101,8 +101,7 @@ impl TableOperator {
         } else {
             TableOperatorNoCause {
                 msg:  format!(
-                            "Failed to open shard, some tables open failed, no table is shard id:{}, opened count:{}, open error count:{}",
-                            shard_id, no_table_count, open_err_count),
+                            "Failed to open shard, some tables open failed, no table is shard id:{shard_id}, opened count:{no_table_count}, open error count:{open_err_count}"),
             }.fail()
         }
     }
@@ -168,8 +167,7 @@ impl TableOperator {
         } else {
             TableOperatorNoCause {
                 msg: format!(
-                    "Failed to close shard, shard id:{}, success_count:{}, close_err_count:{}",
-                    shard_id, success_count, close_err_count
+                    "Failed to close shard, shard id:{shard_id}, success_count:{success_count}, close_err_count:{close_err_count}",
                 ),
             }
             .fail()
@@ -277,7 +275,7 @@ impl TableOperator {
                 msg: format!("catalog not found, catalog_name:{catalog_name}"),
             })?;
 
-        Ok(catalog
+        catalog
             .schema_by_name(schema_name)
             .box_err()
             .context(TableOperatorWithCause {
@@ -285,7 +283,7 @@ impl TableOperator {
             })?
             .context(TableOperatorNoCause {
                 msg: format!("schema not found, schema_name:{schema_name}"),
-            })?)
+            })
     }
 }
 

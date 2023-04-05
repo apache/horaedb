@@ -6,7 +6,7 @@ use analytic_engine::tests::util::{EngineBuildContext, RocksDBEngineBuildContext
 use catalog::{
     consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA},
     manager::ManagerRef,
-    table_operator::{self, TableOperator},
+    table_operator::TableOperator,
 };
 use catalog_impls::table_based::TableBasedManager;
 use common_types::request_id::RequestId;

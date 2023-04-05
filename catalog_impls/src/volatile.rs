@@ -443,6 +443,6 @@ impl Schema for SchemaImpl {
     }
 
     fn unregister_table(&self, table_name: &str) {
-        todo!()
+        let _ = self.remove_table(table_name);
     }
 }

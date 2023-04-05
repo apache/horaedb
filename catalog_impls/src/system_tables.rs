@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Contains System tables, such as system.public.tables
 
@@ -119,12 +119,12 @@ impl Schema for SystemTables {
             .collect())
     }
 
-    fn register_table(&self, table: TableRef) {
-        warn!("try to register table in the system tables");
+    fn register_table(&self, _table: TableRef) {
+        warn!("Try to register table in the system tables");
     }
 
-    fn unregister_table(&self, table_name: &str) {
-        todo!()
+    fn unregister_table(&self, _table_name: &str) {
+        warn!("Try to unregister table in the system tables");
     }
 }
 

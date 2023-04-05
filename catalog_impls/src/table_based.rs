@@ -604,6 +604,12 @@ impl SchemaImpl {
         tables.insert(table_id, table);
     }
 
+    /// Remove table in memory, wont check existence
+    fn remove_table_in_memory(&self, table_name: &str) {
+        let mut tables = self.tables.write().unwrap();
+        tables.remove(table_name);
+    }
+
     /// Check table existence in read lock
     ///
     /// If table exists:
@@ -906,7 +912,7 @@ impl Schema for SchemaImpl {
     }
 
     fn unregister_table(&self, table_name: &str) {
-        todo!()
+        self.remove_table_in_memory(table_name);
     }
 }
 
