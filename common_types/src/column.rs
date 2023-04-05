@@ -682,6 +682,7 @@ impl ColumnBlock {
     }
 }
 
+/// FIXME: it should call datafusion's built-in conversion function
 pub fn cast_nanosecond_to_mills(array: &ArrayRef) -> Result<Arc<dyn Array>> {
     let data = array
         .as_any()
