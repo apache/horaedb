@@ -287,16 +287,17 @@ async fn build_without_meta<Q: Executor + 'static, T: WalsOpener>(
 
     let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));
     let table_operator = TableOperator::new(catalog_manager.clone());
-    let table_manipulator = Arc::new(catalog_based::TableManipulatorImpl::new(table_operator));
+    let table_manipulator = Arc::new(catalog_based::TableManipulatorImpl::new(
+        table_operator.clone(),
+    ));
 
     // Iterate the table infos to recover.
-    let default_catalog = default_catalog(catalog_manager.clone());
     let open_opts = OpenOptions {
         table_engine: engine_proxy.clone(),
     };
 
     // Create local tables recoverer.
-    let local_tables_recoverer = LocalTablesRecoverer::new(table_infos, default_catalog, open_opts);
+    let local_tables_recoverer = LocalTablesRecoverer::new(table_infos, table_operator, open_opts);
 
     // Create schema in default catalog.
     create_static_topology_schema(
@@ -346,12 +347,4 @@ async fn create_static_topology_schema(
             &schema_shard_view.schema
         );
     }
-}
-
-fn default_catalog(catalog_manager: ManagerRef) -> CatalogRef {
-    let default_catalog_name = catalog_manager.default_catalog_name();
-    catalog_manager
-        .catalog_by_name(default_catalog_name)
-        .expect("fail to get default catalog")
-        .expect("default catalog is not found")
 }
