@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::sync::Arc;
 
@@ -6,6 +6,7 @@ use analytic_engine::tests::util::{EngineBuildContext, RocksDBEngineBuildContext
 use catalog::{
     consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA},
     manager::ManagerRef,
+    table_operator::{self, TableOperator},
 };
 use catalog_impls::table_based::TableBasedManager;
 use common_types::request_id::RequestId;
@@ -209,7 +210,8 @@ where
         let ctx = Context::builder(RequestId::next_id(), None)
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .build();
-        let table_manipulator = Arc::new(TableManipulatorImpl::new(catalog_manager.clone()));
+        let table_operator = TableOperator::new(catalog_manager.clone());
+        let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
         let insert_factory = Factory::new(
             ExecutorImpl::new(QueryConfig::default()),
             catalog_manager.clone(),
@@ -348,7 +350,8 @@ async fn test_interpreters<T: EngineBuildContext>(engine_context: T) {
     let mock = MockMetaProvider::default();
     let engine = test_ctx.clone_engine();
     let catalog_manager = Arc::new(build_catalog_manager(engine.clone()).await);
-    let table_manipulator = Arc::new(TableManipulatorImpl::new(catalog_manager.clone()));
+    let table_operator = TableOperator::new(catalog_manager.clone());
+    let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
 
     let env = Env {
         engine: test_ctx.clone_engine(),

@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Setup server
 
@@ -9,7 +9,9 @@ use analytic_engine::{
     setup::{EngineBuilder, KafkaWalsOpener, ObkvWalsOpener, RocksDBWalsOpener, WalsOpener},
     WalStorageConfig,
 };
-use catalog::{manager::ManagerRef, schema::OpenOptions, CatalogRef};
+use catalog::{
+    manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator, CatalogRef,
+};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{
     cluster_impl::ClusterImpl, config::ClusterConfig, shard_tables_cache::ShardTablesCache,
@@ -284,9 +286,8 @@ async fn build_without_meta<Q: Executor + 'static, T: WalsOpener>(
         .expect("Failed to fetch table infos for opening");
 
     let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));
-    let table_manipulator = Arc::new(catalog_based::TableManipulatorImpl::new(
-        catalog_manager.clone(),
-    ));
+    let table_operator = TableOperator::new(catalog_manager.clone());
+    let table_manipulator = Arc::new(catalog_based::TableManipulatorImpl::new(table_operator));
 
     // Iterate the table infos to recover.
     let default_catalog = default_catalog(catalog_manager.clone());

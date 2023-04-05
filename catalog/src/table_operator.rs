@@ -3,7 +3,7 @@
 use std::time::Instant;
 
 use common_util::{error::BoxError, time::InstantExt};
-use log::{error, info};
+use log::{error, info, warn};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{CloseShardRequest, OpenShardRequest, TableEngineRef},
@@ -18,6 +18,7 @@ use crate::{
     },
     Result, TableOperatorNoCause, TableOperatorWithCause,
 };
+
 /// Table operator
 ///
 /// Encapsulate all operation about tables rather than placing them
@@ -38,7 +39,7 @@ impl TableOperator {
         let shard_id = request.shard_id;
 
         // Generate open requests.
-        let table_infos = request.table_infos;
+        let table_infos = request.table_defs;
         let schemas_and_requests = table_infos
             .into_iter()
             .map(|table| {
@@ -48,9 +49,9 @@ impl TableOperator {
                     let request = OpenTableRequest {
                         catalog_name: table.catalog_name,
                         schema_name: table.schema_name,
-                        schema_id: SchemaId::from(table.schema_id),
-                        table_name: table.table_name.clone(),
-                        table_id: table.table_id,
+                        schema_id: schema.id(),
+                        table_name: table.name.clone(),
+                        table_id: table.id,
                         engine: request.engine.clone(),
                         shard_id: request.shard_id,
                     };
@@ -112,19 +113,19 @@ impl TableOperator {
         let shard_id = request.shard_id;
 
         // Generate open requests.
-        let table_infos = request.table_infos;
-        let schemas_and_requests = table_infos
+        let table_defs = request.table_defs;
+        let schemas_and_requests = table_defs
             .into_iter()
-            .map(|table| {
-                let schema_res = self.schema_by_name(&table.catalog_name, &table.schema_name);
+            .map(|def| {
+                let schema_res = self.schema_by_name(&def.catalog_name, &def.schema_name);
 
                 schema_res.map(|schema| {
                     let request = CloseTableRequest {
-                        catalog_name: table.catalog_name,
-                        schema_name: table.schema_name,
-                        schema_id: SchemaId::from(table.schema_id),
-                        table_name: table.table_name.clone(),
-                        table_id: table.table_id,
+                        catalog_name: def.catalog_name,
+                        schema_name: def.schema_name,
+                        schema_id: schema.id(),
+                        table_name: def.name.clone(),
+                        table_id: def.id,
                         engine: request.engine.clone(),
                     };
 
@@ -255,13 +256,13 @@ impl TableOperator {
             })?;
 
         if has_dropped {
-            Ok(())
-        } else {
-            TableOperatorNoCause {
-                msg: format!("table is not dropped, request:{request:?}"),
-            }
-            .fail()
+            warn!(
+                "Table has been dropped already, table_name:{}",
+                request.table_name
+            );
         }
+
+        Ok(())
     }
 
     fn schema_by_name(&self, catalog_name: &str, schema_name: &str) -> Result<SchemaRef> {

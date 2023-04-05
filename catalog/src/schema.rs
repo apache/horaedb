@@ -189,8 +189,6 @@ pub struct CreateTableRequest {
     pub catalog_name: String,
     /// Schema name
     pub schema_name: String,
-    /// Schema id
-    pub schema_id: SchemaId,
     /// Table name
     pub table_name: String,
     /// Table schema
@@ -208,11 +206,15 @@ pub struct CreateTableRequest {
 }
 
 impl CreateTableRequest {
-    pub fn into_engine_create_request(self, table_id: TableId) -> engine::CreateTableRequest {
+    pub fn into_engine_create_request(
+        self,
+        table_id: TableId,
+        schema_id: SchemaId,
+    ) -> engine::CreateTableRequest {
         engine::CreateTableRequest {
             catalog_name: self.catalog_name,
             schema_name: self.schema_name,
-            schema_id: self.schema_id,
+            schema_id,
             table_name: self.table_name,
             table_id,
             table_schema: self.table_schema,
@@ -236,8 +238,30 @@ pub struct CreateOptions {
     pub create_if_not_exists: bool,
 }
 
-pub type DropTableRequest = engine::DropTableRequest;
+/// Drop table request
+#[derive(Debug, Clone)]
+pub struct DropTableRequest {
+    /// Catalog name
+    pub catalog_name: String,
+    /// Schema name
+    pub schema_name: String,
+    /// Table name
+    pub table_name: String,
+    /// Table engine type
+    pub engine: String,
+}
 
+impl DropTableRequest {
+    pub fn into_engine_drop_request(self, schema_id: SchemaId) -> engine::DropTableRequest {
+        engine::DropTableRequest {
+            catalog_name: self.catalog_name,
+            schema_name: self.schema_name,
+            schema_id,
+            table_name: self.table_name,
+            engine: self.engine,
+        }
+    }
+}
 /// Drop table options.
 #[derive(Clone)]
 pub struct DropOptions {

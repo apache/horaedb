@@ -733,7 +733,7 @@ impl Schema for SchemaImpl {
 
         // Create table
         let table_id = self.alloc_table_id(&request.table_name).await?;
-        let request = request.into_engine_create_request(table_id);
+        let request = request.into_engine_create_request(table_id, self.schema_id);
         let table_name = request.table_name.clone();
         let table = opts
             .table_engine
@@ -786,6 +786,7 @@ impl Schema for SchemaImpl {
         // Determine the real engine type of the table to drop.
         // FIXME(xikai): the engine should not be part of the DropRequest.
         request.engine = table.engine_type().to_string();
+        let request = request.into_engine_drop_request(self.schema_id);
 
         // Prepare to drop table info in the sys_catalog.
         self.catalog_table
@@ -956,7 +957,6 @@ mod tests {
         CreateTableRequest {
             catalog_name: DEFAULT_CATALOG.to_string(),
             schema_name: schema.name().to_string(),
-            schema_id: schema.id(),
             table_name: table_name.to_string(),
             table_schema: common_types::tests::build_schema(),
             engine: ANALYTIC_ENGINE_TYPE.to_string(),
@@ -1117,7 +1117,6 @@ mod tests {
         let drop_table_request = DropTableRequest {
             catalog_name: DEFAULT_CATALOG.to_string(),
             schema_name: schema.name().to_string(),
-            schema_id: schema.id(),
             table_name: table_name.to_string(),
             engine: engine_name.to_string(),
         };

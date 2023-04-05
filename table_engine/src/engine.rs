@@ -259,10 +259,18 @@ pub struct OpenShardRequest {
     pub shard_id: ShardId,
 
     /// Table infos
-    pub table_infos: Vec<TableInfo>,
+    pub table_defs: Vec<TableDef>,
 
     /// Table engine type
     pub engine: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct TableDef {
+    pub catalog_name: String,
+    pub schema_name: String,
+    pub id: TableId,
+    pub name: String,
 }
 
 pub type CloseShardRequest = OpenShardRequest;

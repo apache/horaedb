@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! A volatile catalog implementation used for storing information about table
 //! and schema in memory.
@@ -314,7 +314,8 @@ impl Schema for SchemaImpl {
                 msg: "table with shards is not found in the ShardTableManager",
             })?;
 
-        let request = request.into_engine_create_request(table_with_shards.table_info.id.into());
+        let request = request
+            .into_engine_create_request(table_with_shards.table_info.id.into(), self.schema_id);
 
         // Table engine is able to handle duplicate table creation.
         let table = opts
@@ -358,6 +359,7 @@ impl Schema for SchemaImpl {
         };
 
         // Drop the table in the engine first.
+        let request = request.into_engine_drop_request(self.schema_id);
         let real_dropped = opts
             .table_engine
             .drop_table(request)
