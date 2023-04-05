@@ -903,6 +903,10 @@ impl Schema for SchemaImpl {
     fn register_table(&self, table: TableRef) {
         self.insert_table_into_memory(table.id(), table);
     }
+
+    fn unregister_table(&self, table_name: &str) {
+        todo!()
+    }
 }
 
 #[cfg(any(test, feature = "test"))]

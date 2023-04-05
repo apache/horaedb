@@ -439,4 +439,8 @@ impl Schema for SchemaImpl {
     fn register_table(&self, table: TableRef) {
         self.add_table(table);
     }
+
+    fn unregister_table(&self, table_name: &str) {
+        todo!()
+    }
 }

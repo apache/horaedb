@@ -328,4 +328,7 @@ pub trait Schema {
 
     /// Register the opened table into schema.
     fn register_table(&self, table: TableRef);
+
+    /// Unregister table
+    fn unregister_table(&self, table_name: &str);
 }

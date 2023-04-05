@@ -122,6 +122,10 @@ impl Schema for SystemTables {
     fn register_table(&self, table: TableRef) {
         warn!("try to register table in the system tables");
     }
+
+    fn unregister_table(&self, table_name: &str) {
+        todo!()
+    }
 }
 
 #[async_trait]

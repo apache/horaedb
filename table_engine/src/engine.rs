@@ -259,6 +259,20 @@ pub struct CloseTableRequest {
     pub engine: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct OpenShardRequest {
+    /// Shard id
+    pub shard_id: ShardId,
+
+    /// Table infos
+    pub table_infos: Vec<TableInfo>,
+
+    /// Table engine type
+    pub engine: String,
+}
+
+pub type CloseShardRequest = OpenShardRequest;
+
 /// Table engine
 // TODO(yingwen): drop table support to release resource owned by the table
 #[async_trait]
