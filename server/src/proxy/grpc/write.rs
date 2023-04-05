@@ -20,7 +20,7 @@ use common_types::{
 };
 use common_util::error::BoxError;
 use http::StatusCode;
-use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
+use interpreters::interpreter::Output;
 use log::{debug, error, info};
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{ensure, OptionExt, ResultExt};
@@ -37,7 +37,7 @@ use crate::{
     proxy::{
         error,
         error::{build_ok_header, ErrNoCause, ErrWithCause, Result},
-        Context, Proxy,
+        execute_plan, Context, Proxy,
     },
 };
 
@@ -590,47 +590,6 @@ async fn execute_add_columns_plan<Q: QueryExecutor + 'static>(
 
     info!("Add columns success, request_id:{request_id}, table:{table_name}");
     Ok(())
-}
-
-async fn execute_plan<Q: QueryExecutor + 'static>(
-    request_id: RequestId,
-    catalog: &str,
-    schema: &str,
-    instance: InstanceRef<Q>,
-    plan: Plan,
-    deadline: Option<Instant>,
-) -> Result<Output> {
-    instance
-        .limiter
-        .try_limit(&plan)
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Request is blocked",
-        })?;
-
-    let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
-        // Use current ctx's catalog and schema as default catalog and schema
-        .default_catalog_and_schema(catalog.to_string(), schema.to_string())
-        .build();
-    let interpreter_factory = Factory::new(
-        instance.query_executor.clone(),
-        instance.catalog_manager.clone(),
-        instance.table_engine.clone(),
-        instance.table_manipulator.clone(),
-    );
-    let interpreter = interpreter_factory
-        .create(interpreter_ctx, plan)
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to create interpreter",
-        })?;
-
-    interpreter.execute().await.box_err().context(ErrWithCause {
-        code: StatusCode::INTERNAL_SERVER_ERROR,
-        msg: "Failed to execute interpreter",
-    })
 }
 
 #[cfg(test)]
