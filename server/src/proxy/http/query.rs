@@ -2,6 +2,7 @@
 
 use std::time::Instant;
 
+use ceresdbproto::storage::{RequestContext as GrpcRequestContext, SqlQueryRequest};
 use common_types::{
     bytes::Bytes,
     datum::{Datum, DatumKind},
@@ -27,7 +28,9 @@ use crate::{
     handlers::influxdb::InfluxqlRequest,
     proxy::{
         error::{ErrNoCause, ErrWithCause, Result},
-        execute_plan, Proxy,
+        execute_plan,
+        util::convert_sql_response_to_output,
+        Proxy,
     },
 };
 
@@ -86,6 +89,18 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                         ),
                     }
                 );
+
+                let sql_query_request = SqlQueryRequest {
+                    context: Some(GrpcRequestContext {
+                        database: ctx.schema.clone(),
+                    }),
+                    tables: vec![],
+                    sql: request.query.clone(),
+                };
+
+                if let Some(resp) = self.maybe_forward_sql_query(&sql_query_request).await {
+                    return convert_sql_response_to_output(resp?);
+                }
 
                 // Create logical plan
                 // Note: Remember to store sql in error when creating logical plan

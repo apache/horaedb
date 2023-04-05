@@ -3,7 +3,7 @@
 use ceresdbproto::common::ResponseHeader;
 use common_util::error::GenericError;
 use http::StatusCode;
-use snafu::Snafu;
+use snafu::{Backtrace, Snafu};
 
 use crate::error_util;
 
@@ -12,8 +12,11 @@ define_result!(Error);
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub))]
 pub enum Error {
-    #[snafu(display("Internal error, message:{}, err:{}", msg, source))]
+    #[snafu(display("Internal error, msg:{}, err:{}", msg, source))]
     Internal { msg: String, source: GenericError },
+
+    #[snafu(display("Internal error, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    InternalNoCause { msg: String, backtrace: Backtrace },
 
     #[snafu(display("Rpc error, code:{:?}, err:{}", code, msg))]
     ErrNoCause { code: StatusCode, msg: String },
@@ -31,7 +34,9 @@ impl Error {
         match *self {
             Error::ErrNoCause { code, .. } => code,
             Error::ErrWithCause { code, .. } => code,
-            Error::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::Internal { .. } | Error::InternalNoCause { .. } => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
         }
     }
 
@@ -45,7 +50,7 @@ impl Error {
                 let first_line = error_util::remove_backtrace_from_err(&err_string);
                 format!("{msg}. Caused by: {first_line}")
             }
-            Error::Internal { msg, .. } => msg.clone(),
+            Error::Internal { msg, .. } | Error::InternalNoCause { msg, .. } => msg.clone(),
         }
     }
 }

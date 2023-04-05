@@ -8,6 +8,7 @@ pub(crate) mod error;
 pub mod forward;
 pub(crate) mod grpc;
 pub(crate) mod http;
+pub(crate) mod util;
 
 use std::{
     sync::Arc,
@@ -15,19 +16,26 @@ use std::{
 };
 
 use ::http::StatusCode;
+use ceresdbproto::storage::{
+    storage_service_client::StorageServiceClient, SqlQueryRequest, SqlQueryResponse,
+};
 use common_types::request_id::RequestId;
 use common_util::{error::BoxError, runtime::Runtime};
+use futures::FutureExt;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
+use log::{error, warn};
 use query_engine::executor::Executor as QueryExecutor;
 use router::{endpoint::Endpoint, Router};
 use snafu::ResultExt;
 use sql::plan::Plan;
+use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
     instance::InstanceRef,
     proxy::{
         error::{ErrWithCause, Result},
-        forward::{Forwarder, ForwarderRef},
+        forward::{ForwardRequest, ForwardResult, Forwarder, ForwarderRef},
+        util::parse_table_name_with_sql,
     },
     schema_config_provider::SchemaConfigProviderRef,
 };
@@ -68,6 +76,54 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
     pub fn instance(&self) -> InstanceRef<Q> {
         self.instance.clone()
+    }
+
+    async fn maybe_forward_sql_query(
+        &self,
+        req: &SqlQueryRequest,
+    ) -> Option<Result<SqlQueryResponse>> {
+        let table_name = parse_table_name_with_sql(&req.sql);
+        if table_name.is_none() {
+            warn!("Unable to forward sql query without table name, req:{req:?}",);
+            return None;
+        }
+        let table_name = table_name.unwrap();
+
+        let req_ctx = req.context.as_ref().unwrap();
+        let forward_req = ForwardRequest {
+            schema: req_ctx.database.clone(),
+            table: table_name,
+            req: req.clone().into_request(),
+        };
+        let do_query = |mut client: StorageServiceClient<Channel>,
+                        request: tonic::Request<SqlQueryRequest>,
+                        _: &Endpoint| {
+            let query = async move {
+                client
+                    .sql_query(request)
+                    .await
+                    .map(|resp| resp.into_inner())
+                    .box_err()
+                    .context(ErrWithCause {
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        msg: "Forwarded sql query failed",
+                    })
+            }
+            .boxed();
+
+            Box::new(query) as _
+        };
+
+        match self.forwarder.forward(forward_req, do_query).await {
+            Ok(forward_res) => match forward_res {
+                ForwardResult::Forwarded(v) => Some(v),
+                ForwardResult::Original => None,
+            },
+            Err(e) => {
+                error!("Failed to forward sql req but the error is ignored, err:{e}");
+                None
+            }
+        }
     }
 }
 

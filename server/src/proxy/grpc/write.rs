@@ -21,7 +21,7 @@ use common_types::{
 use common_util::error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
-use log::{debug, error, info};
+use log::{debug, info};
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{ensure, OptionExt, ResultExt};
 use sql::{

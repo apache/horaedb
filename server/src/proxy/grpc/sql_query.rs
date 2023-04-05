@@ -129,53 +129,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         Ok(ReceiverStream::new(rx).boxed())
     }
 
-    async fn maybe_forward_sql_query(
-        &self,
-        req: &SqlQueryRequest,
-    ) -> Option<Result<SqlQueryResponse>> {
-        if req.tables.len() != 1 {
-            warn!("Unable to forward sql query without exactly one table, req:{req:?}",);
-
-            return None;
-        }
-
-        let req_ctx = req.context.as_ref().unwrap();
-        let forward_req = ForwardRequest {
-            schema: req_ctx.database.clone(),
-            table: req.tables[0].clone(),
-            req: req.clone().into_request(),
-        };
-        let do_query = |mut client: StorageServiceClient<Channel>,
-                        request: tonic::Request<SqlQueryRequest>,
-                        _: &Endpoint| {
-            let query = async move {
-                client
-                    .sql_query(request)
-                    .await
-                    .map(|resp| resp.into_inner())
-                    .box_err()
-                    .context(ErrWithCause {
-                        code: StatusCode::INTERNAL_SERVER_ERROR,
-                        msg: "Forwarded sql query failed",
-                    })
-            }
-            .boxed();
-
-            Box::new(query) as _
-        };
-
-        match self.forwarder.forward(forward_req, do_query).await {
-            Ok(forward_res) => match forward_res {
-                ForwardResult::Forwarded(v) => Some(v),
-                ForwardResult::Original => None,
-            },
-            Err(e) => {
-                error!("Failed to forward sql req but the error is ignored, err:{e}");
-                None
-            }
-        }
-    }
-
     async fn maybe_forward_stream_sql_query(
         self: Arc<Self>,
         req: SqlQueryRequest,
