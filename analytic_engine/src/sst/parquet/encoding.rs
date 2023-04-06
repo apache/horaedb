@@ -556,12 +556,11 @@ impl HybridRecordDecoder {
         let values_num = *value_offsets.last().unwrap() as usize;
         let offset_slices = array_ref.data().buffers()[0].as_slice();
         let value_slices = array_ref.data().buffers()[1].as_slice();
-        let null_bitmap = array_ref.data().null_bitmap();
+        let nulls = array_ref.data().nulls();
         trace!(
-            "raw buffer slice, offsets:{:#02x?}, values:{:#02x?}, bitmap:{:#02x?}",
+            "raw buffer slice, offsets:{:#02x?}, values:{:#02x?}",
             offset_slices,
             value_slices,
-            null_bitmap.map(|v| v.buffer_ref().as_slice())
         );
 
         let i32_offsets = Self::get_array_offsets(offset_slices);
@@ -585,8 +584,8 @@ impl HybridRecordDecoder {
             let value_len = current - prev;
             let value_num = value_offsets[idx + 1] - value_offsets[idx];
 
-            if let Some(bitmap) = null_bitmap {
-                if !bitmap.is_set(idx) {
+            if let Some(nulls) = nulls {
+                if nulls.is_valid(idx) {
                     for i in 0..value_num {
                         bit_util::unset_bit(null_slice, bitmap_length_so_far + i as usize);
                     }
@@ -632,7 +631,7 @@ impl HybridRecordDecoder {
 
         let values_num = *value_offsets.last().unwrap() as usize;
         let old_values_buffer = array_ref.data().buffers()[0].as_slice();
-        let old_null_bitmap = array_ref.data().null_bitmap();
+        let old_nulls = array_ref.data().nulls();
 
         let mut new_values_buffer = MutableBuffer::new(value_size * values_num);
         let mut new_null_buffer = hybrid::new_ones_buffer(values_num);
@@ -641,8 +640,8 @@ impl HybridRecordDecoder {
 
         for (idx, offset) in (0..old_values_buffer.len()).step_by(value_size).enumerate() {
             let value_num = (value_offsets[idx + 1] - value_offsets[idx]) as usize;
-            if let Some(bitmap) = old_null_bitmap {
-                if !bitmap.is_set(idx) {
+            if let Some(nulls) = old_nulls {
+                if nulls.is_valid(idx) {
                     for i in 0..value_num {
                         bit_util::unset_bit(null_slice, length_so_far + i);
                     }
@@ -980,7 +979,7 @@ mod tests {
             &meta_data.schema,
             100,
             0,
-            Compression::ZSTD,
+            Compression::ZSTD(Default::default()),
         )
         .unwrap();
         encoder

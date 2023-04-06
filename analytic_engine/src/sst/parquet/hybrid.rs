@@ -7,8 +7,7 @@ use arrow::{
         Array, ArrayData, ArrayDataBuilder, ArrayRef, BinaryArray, ListArray, StringArray,
         UInt64Array,
     },
-    bitmap::Bitmap,
-    buffer::MutableBuffer,
+    buffer::{MutableBuffer, NullBuffer},
     datatypes::Schema as ArrowSchema,
     record_batch::RecordBatch as ArrowRecordBatch,
     util::bit_util,
@@ -79,8 +78,8 @@ impl ArrayHandle {
         self.array.data().buffers()[0].as_slice()
     }
 
-    fn null_bitmap(&self) -> Option<&Bitmap> {
-        self.array.data().null_bitmap()
+    fn nulls(&self) -> Option<&NullBuffer> {
+        self.array.data().nulls()
     }
 }
 
@@ -212,17 +211,17 @@ impl ListArrayBuilder {
         let mut length_so_far: i32 = 0;
         for arrays in &self.multi_row_arrays {
             for array_handle in arrays {
-                let null_bitmap = array_handle.null_bitmap();
+                let nulls = array_handle.nulls();
 
                 for slice_arg in &array_handle.slice_args {
                     let offset = slice_arg.offset;
                     let length = slice_arg.length;
-                    if let Some(bitmap) = null_bitmap {
+                    if let Some(nulls) = nulls {
                         // TODO: We now set bitmap one by one, a more complicated but efficient way
                         // is to operate on bitmap buffer bits directly,
                         // like what we do with values(slice and shift)
                         for i in 0..length {
-                            if !bitmap.is_set(i + offset) {
+                            if nulls.is_valid(i + offset) {
                                 bit_util::unset_bit(null_slice, length_so_far as usize + i);
                             }
                         }
