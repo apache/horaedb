@@ -12,15 +12,15 @@ use catalog::{
     self, consts,
     manager::{self, Manager},
     schema::{
-        self, AllocateTableId, CatalogMismatch, CloseOptions, CloseTableRequest, CreateExistTable,
-        CreateOptions, CreateTableRequest, CreateTableWithCause, DropOptions, DropTableRequest,
-        DropTableWithCause, NameRef, OpenOptions, OpenTableRequest, Schema, SchemaMismatch,
-        SchemaRef, TooManyTable, WriteTableMeta,
+        self, AllocateTableId, CatalogMismatch, CreateExistTable, CreateOptions,
+        CreateTableRequest, CreateTableWithCause, DropOptions, DropTableRequest,
+        DropTableWithCause, NameRef, Schema, SchemaMismatch, SchemaRef, TooManyTable,
+        WriteTableMeta,
     },
     Catalog, CatalogRef,
 };
 use common_util::{define_result, error::BoxError};
-use log::{debug, error, info};
+use log::{debug, info};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use system_catalog::sys_catalog_table::{
     self, CreateCatalogRequest, CreateSchemaRequest, SysCatalogTable, VisitOptions,
@@ -835,65 +835,6 @@ impl Schema for SchemaImpl {
         );
 
         return Ok(true);
-    }
-
-    async fn open_table(
-        &self,
-        request: OpenTableRequest,
-        opts: OpenOptions,
-    ) -> schema::Result<Option<TableRef>> {
-        debug!(
-            "Table based catalog manager open table, request:{:?}",
-            request
-        );
-
-        self.validate_schema_info(&request.catalog_name, &request.schema_name)?;
-
-        // Do opening work.
-        let table_name = request.table_name.clone();
-        let table_id = request.table_id;
-        let table_opt = opts
-            .table_engine
-            .open_table(request.clone())
-            .await
-            .box_err()
-            .context(schema::OpenTableWithCause)?;
-
-        match table_opt {
-            Some(table) => {
-                self.insert_table_into_memory(table_id, table.clone());
-
-                Ok(Some(table))
-            }
-
-            None => {
-                // Now we ignore the error that table not in engine but in catalog.
-                error!(
-                    "Visitor found table not in engine, table_name:{:?}, table_id:{}",
-                    table_name, table_id,
-                );
-
-                Ok(None)
-            }
-        }
-    }
-
-    async fn close_table(
-        &self,
-        request: CloseTableRequest,
-        _opts: CloseOptions,
-    ) -> schema::Result<()> {
-        debug!(
-            "Table based catalog manager close table, request:{:?}",
-            request
-        );
-
-        self.validate_schema_info(&request.catalog_name, &request.schema_name)?;
-
-        schema::UnSupported {
-            msg: "close table is not supported",
-        }
-        .fail()
     }
 
     fn all_tables(&self) -> schema::Result<Vec<TableRef>> {

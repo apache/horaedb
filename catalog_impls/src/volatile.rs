@@ -14,10 +14,9 @@ use catalog::{
     self, consts,
     manager::{self, Manager},
     schema::{
-        self, CatalogMismatch, CloseOptions, CloseTableRequest, CloseTableWithCause, CreateOptions,
-        CreateTableRequest, CreateTableWithCause, DropOptions, DropTableRequest,
-        DropTableWithCause, NameRef, OpenOptions, OpenTableRequest, OpenTableWithCause, Schema,
-        SchemaMismatch, SchemaRef,
+        self, CatalogMismatch, CreateOptions, CreateTableRequest, CreateTableWithCause,
+        DropOptions, DropTableRequest, DropTableWithCause, NameRef, Schema, SchemaMismatch,
+        SchemaRef,
     },
     Catalog, CatalogRef, CreateSchemaWithCause,
 };
@@ -370,62 +369,6 @@ impl Schema for SchemaImpl {
         // Remove the table from the memory.
         self.remove_table(table.name());
         Ok(real_dropped)
-    }
-
-    async fn open_table(
-        &self,
-        request: OpenTableRequest,
-        opts: OpenOptions,
-    ) -> schema::Result<Option<TableRef>> {
-        let table = self.get_table(
-            &request.catalog_name,
-            &request.schema_name,
-            &request.table_name,
-        )?;
-        if table.is_some() {
-            return Ok(table);
-        }
-
-        let table = opts
-            .table_engine
-            .open_table(request)
-            .await
-            .box_err()
-            .context(OpenTableWithCause)?;
-
-        if let Some(table) = &table {
-            self.add_table(table.clone());
-        }
-
-        Ok(table)
-    }
-
-    async fn close_table(
-        &self,
-        request: CloseTableRequest,
-        opts: CloseOptions,
-    ) -> schema::Result<()> {
-        if self
-            .get_table(
-                &request.catalog_name,
-                &request.schema_name,
-                &request.table_name,
-            )?
-            .is_none()
-        {
-            return Ok(());
-        }
-
-        let table_name = request.table_name.clone();
-        opts.table_engine
-            .close_table(request)
-            .await
-            .box_err()
-            .context(CloseTableWithCause)?;
-
-        self.remove_table(&table_name);
-
-        Ok(())
     }
 
     fn all_tables(&self) -> schema::Result<Vec<TableRef>> {

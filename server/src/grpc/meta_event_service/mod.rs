@@ -8,8 +8,8 @@ use analytic_engine::setup::OpenedWals;
 use async_trait::async_trait;
 use catalog::{
     schema::{
-        CloseOptions, CreateOptions, CreateTableRequest, DropOptions, DropTableRequest,
-        OpenOptions, OpenTableRequest,
+        CloseOptions, CloseTableRequest, CreateOptions, CreateTableRequest, DropOptions,
+        DropTableRequest, OpenOptions, OpenTableRequest,
     },
     table_operator::TableOperator,
 };
@@ -29,9 +29,9 @@ use paste::paste;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
-    engine::{CloseTableRequest, TableDef, TableEngineRef, TableState},
+    engine::{TableDef, TableEngineRef, TableState},
     partition::PartitionInfo,
-    table::{SchemaId, TableId},
+    table::TableId,
     ANALYTIC_ENGINE_TYPE,
 };
 use tonic::Response;
@@ -448,7 +448,6 @@ async fn handle_open_table_on_shard(
     let open_table_request = OpenTableRequest {
         catalog_name,
         schema_name: table_info.schema_name,
-        schema_id: SchemaId::from_u32(table_info.schema_id),
         table_name: table_info.name,
         // FIXME: the engine type should not use the default one.
         engine: ANALYTIC_ENGINE_TYPE.to_string(),
@@ -493,7 +492,6 @@ async fn handle_close_table_on_shard(
     let close_table_request = CloseTableRequest {
         catalog_name: catalog_name.clone(),
         schema_name: table_info.schema_name,
-        schema_id: SchemaId::from_u32(table_info.schema_id),
         table_name: table_info.name,
         table_id: TableId::new(table_info.id),
         // FIXME: the engine type should not use the default one.

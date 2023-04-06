@@ -46,7 +46,7 @@ impl TableOperator {
                 let schema_res = self.schema_by_name(&table.catalog_name, &table.schema_name);
 
                 schema_res.map(|schema| {
-                    let request = OpenTableRequest {
+                    let request = table_engine::engine::OpenTableRequest {
                         catalog_name: table.catalog_name,
                         schema_name: table.schema_name,
                         schema_id: schema.id(),
@@ -119,7 +119,7 @@ impl TableOperator {
                 let schema_res = self.schema_by_name(&def.catalog_name, &def.schema_name);
 
                 schema_res.map(|schema| {
-                    let request = CloseTableRequest {
+                    let request = table_engine::engine::CloseTableRequest {
                         catalog_name: def.catalog_name,
                         schema_name: def.schema_name,
                         schema_id: schema.id(),
@@ -183,7 +183,7 @@ impl TableOperator {
         let schema = self.schema_by_name(&request.catalog_name, &request.schema_name)?;
 
         let table = table_engine
-            .open_table(request.clone())
+            .open_table(request.clone().into_engine_open_request(schema.id()))
             .await
             .box_err()
             .context(TableOperatorWithCause {
@@ -207,7 +207,7 @@ impl TableOperator {
         let table_name = request.table_name.clone();
 
         table_engine
-            .close_table(request.clone())
+            .close_table(request.clone().into_engine_close_request(schema.id()))
             .await
             .box_err()
             .context(TableOperatorWithCause {
@@ -289,7 +289,7 @@ impl TableOperator {
 
 async fn open_tables_of_shard(
     table_engine: TableEngineRef,
-    open_requests: Vec<OpenTableRequest>,
+    open_requests: Vec<table_engine::engine::OpenTableRequest>,
 ) -> Vec<table_engine::engine::Result<Option<TableRef>>> {
     if open_requests.is_empty() {
         return Vec::new();
@@ -321,7 +321,7 @@ async fn open_tables_of_shard(
 
 async fn close_tables_of_shard(
     table_engine: TableEngineRef,
-    close_requests: Vec<CloseTableRequest>,
+    close_requests: Vec<table_engine::engine::CloseTableRequest>,
 ) -> Vec<table_engine::engine::Result<String>> {
     if close_requests.is_empty() {
         return Vec::new();

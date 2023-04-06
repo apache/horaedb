@@ -8,8 +8,8 @@ use async_trait::async_trait;
 use catalog::{
     consts::{SYSTEM_CATALOG, SYSTEM_CATALOG_SCHEMA},
     schema::{
-        CloseOptions, CloseTableRequest, CreateOptions, CreateTableRequest, DropOptions,
-        DropTableRequest, NameRef, OpenOptions, OpenTableRequest, Schema, SchemaRef,
+        CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, Schema,
+        SchemaRef,
     },
     Catalog,
 };
@@ -91,24 +91,6 @@ impl Schema for SystemTables {
             msg: UNSUPPORTED_MSG,
         }
         .fail()
-    }
-
-    async fn open_table(
-        &self,
-        _request: OpenTableRequest,
-        _opts: OpenOptions,
-    ) -> catalog::schema::Result<Option<TableRef>> {
-        warn!("try to open table in the system tables");
-        Ok(None)
-    }
-
-    async fn close_table(
-        &self,
-        _request: CloseTableRequest,
-        _opts: CloseOptions,
-    ) -> catalog::schema::Result<()> {
-        warn!("try to close table in the system tables");
-        Ok(())
     }
 
     fn all_tables(&self) -> catalog::schema::Result<Vec<TableRef>> {
