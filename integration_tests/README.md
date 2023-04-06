@@ -2,9 +2,16 @@
 
 ## Running test
 
-There exists a Makefile command to run integration test
+There are three Makefile commands to run integration test:
 ```sh
+# All envs
 make run
+
+# Only local env
+make run-local
+
+# Only cluster env
+make run-cluster
 ```
 
 `ceresdb-test` will recursively find all the files end with `.sql` and run it. Each file will be treated as a case. A file can contain multiple SQLs. When finished it will tell how many cases it run, and display the diff set if there is any. An example with one case:

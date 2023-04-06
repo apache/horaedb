@@ -63,8 +63,8 @@ impl EnvController for CeresDBController {
 #[tokio::main]
 async fn main() -> Result<()> {
     let case_dir = env::var(CASE_ROOT_PATH_ENV)?;
-    let controller = CeresDBController;
     let env_filter = env::var(ENV_FILTER_ENV).unwrap_or_else(|_| ".*".to_string());
+    let controller = CeresDBController;
     let config = sqlness::ConfigBuilder::default()
         .case_dir(case_dir)
         .env_filter(env_filter)
