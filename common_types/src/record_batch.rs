@@ -296,38 +296,38 @@ fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch>
         return Ok(source);
     }
     let columns = source.columns();
-    match &columns[0].data_type() {
-        DataType::Timestamp(TimeUnit::Nanosecond, None) => {
-            let mut column_list = vec![];
-            for column in columns {
-                let mills_column = cast_nanosecond_to_mills(column).context(AppendDatum)?;
-                column_list.push(mills_column);
+    let mut column_list = vec![];
+    for column in columns {
+        let column = match column.data_type() {
+            DataType::Timestamp(TimeUnit::Nanosecond, None) => {
+                cast_nanosecond_to_mills(column).context(AppendDatum)?
             }
-
-            let schema = source.schema();
-            let fields = schema.all_fields();
-            let mills_fileds = fields
-                .iter()
-                .map(|field| {
-                    let mut f = Field::new(
-                        field.name(),
-                        DataType::Timestamp(TimeUnit::Millisecond, None),
-                        field.is_nullable(),
-                    );
-                    f.set_metadata(field.metadata().clone());
-                    f
-                })
-                .collect::<Vec<_>>();
-            let mills_schema = Schema {
-                fields: mills_fileds,
-                metadata: schema.metadata().clone(),
-            };
-            let result = ArrowRecordBatch::try_new(Arc::new(mills_schema), column_list)
-                .context(CreateArrow)?;
-            Ok(result)
-        }
-        _ => Ok(source),
+            _ => column.clone(),
+        };
+        column_list.push(column);
     }
+
+    let schema = source.schema();
+    let fields = schema.all_fields();
+    let mills_fileds = fields
+        .iter()
+        .map(|field| {
+            let mut f = Field::new(
+                field.name(),
+                DataType::Timestamp(TimeUnit::Millisecond, None),
+                field.is_nullable(),
+            );
+            f.set_metadata(field.metadata().clone());
+            f
+        })
+        .collect::<Vec<_>>();
+    let mills_schema = Schema {
+        fields: mills_fileds,
+        metadata: schema.metadata().clone(),
+    };
+    let result =
+        ArrowRecordBatch::try_new(Arc::new(mills_schema), column_list).context(CreateArrow)?;
+    Ok(result)
 }
 
 #[derive(Debug)]

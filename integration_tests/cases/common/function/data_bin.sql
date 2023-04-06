@@ -18,9 +18,8 @@ VALUES
     (1659484800000, 5),
     (1656777600000, 6);
 
-SELECT DATE_BIN(INTERVAL '30' second, `timestamp`, TIMESTAMP '2001-01-01T00:00:00Z') as `time` FROM `02_function_date_bin_table`;
-SELECT DATE_BIN(INTERVAL '15' minute, `timestamp`, TIMESTAMP '2001-01-01T00:00:00Z') as `time` FROM `02_function_date_bin_table`;
-SELECT DATE_BIN(INTERVAL '2' hour, `timestamp`, TIMESTAMP '2001-01-01T00:00:00Z') as `time` FROM `02_function_date_bin_table`;
-
+SELECT `timestamp`, DATE_BIN(INTERVAL '30' second, `timestamp`, TIMESTAMP '2001-01-01T00:00:00Z') as `time` FROM `02_function_date_bin_table` order by `timestamp`;
+SELECT `timestamp`, DATE_BIN(INTERVAL '15' minute, `timestamp`, TIMESTAMP '2001-01-01T00:00:00Z') as `time` FROM `02_function_date_bin_table` order by `timestamp`;
+SELECT `timestamp`, DATE_BIN(INTERVAL '2' hour, `timestamp`, TIMESTAMP '2001-01-01T00:00:00Z') as `time` FROM `02_function_date_bin_table` order by `timestamp`;
 
 DROP TABLE `02_function_date_bin_table`;
