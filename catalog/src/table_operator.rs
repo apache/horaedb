@@ -21,8 +21,8 @@ use crate::{
 
 /// Table operator
 ///
-/// Encapsulate all operation about tables rather than placing them
-/// everywhere(e.g. duplicated codes in `Interpreters` and `MetaEventService`).
+/// Encapsulate all operations about tables, including create/drop, open/close
+/// and etc.
 #[derive(Clone)]
 pub struct TableOperator {
     catalog_manager: ManagerRef,
