@@ -5,7 +5,11 @@
 use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 
 use common_types::SequenceNumber;
-use common_util::{define_result, runtime::Runtime};
+use common_util::{
+    define_result,
+    runtime::Runtime,
+    timed_task::{TaskHandle, TimedTask},
+};
 use log::{debug, error, info};
 use message_queue::{ConsumeIterator, MessageQueue};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -22,7 +26,6 @@ use crate::{
         encoding::MetaEncoding,
         region::{self, MessageQueueLogIterator, Region},
     },
-    table_kv_impl::timed_task::{TaskHandle, TimedTask},
 };
 
 #[derive(Debug, Snafu)]
