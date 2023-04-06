@@ -15,6 +15,7 @@ use common_util::{
     define_result,
     error::{BoxError, GenericError},
     runtime::Runtime,
+    timed_task::{TaskHandle, TimedTask},
 };
 use log::{debug, error, info, trace, warn};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -33,7 +34,6 @@ use crate::{
         consts, encoding,
         model::{BucketEntry, NamespaceConfig, NamespaceEntry},
         table_unit::{TableLogIterator, TableUnit, TableUnitRef},
-        timed_task::{TaskHandle, TimedTask},
         WalRuntimes,
     },
 };

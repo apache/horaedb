@@ -3,7 +3,6 @@
 //! Influxql processing
 
 pub mod planner;
-pub(crate) mod provider;
 
 pub mod error {
     use common_util::error::GenericError;

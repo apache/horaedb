@@ -4,7 +4,6 @@
 
 use std::{future::Future, time::Duration};
 
-use common_util::runtime::{JoinHandle, Runtime};
 use log::info;
 use tokio::{
     sync::{
@@ -13,6 +12,8 @@ use tokio::{
     },
     time,
 };
+
+use crate::runtime::{JoinHandle, Runtime};
 
 /// A task to run periodically.
 pub struct TimedTask<B> {
@@ -78,7 +79,7 @@ pub struct TaskHandle {
 
 impl TaskHandle {
     /// Explicit stop the task and wait util the task exits.
-    pub async fn stop_task(&self) -> std::result::Result<(), common_util::runtime::Error> {
+    pub async fn stop_task(&self) -> std::result::Result<(), crate::runtime::Error> {
         self.notify_exit();
 
         let handle = self.handle.lock().await.take();
@@ -109,9 +110,8 @@ mod tests {
         Arc,
     };
 
-    use common_util::runtime::Builder;
-
     use super::*;
+    use crate::runtime::Builder;
 
     #[test]
     fn test_timed_task() {

@@ -147,6 +147,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
         };
+
         let join_handle = self
             .runtimes
             .read_runtime
@@ -176,6 +177,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             runtime: self.runtimes.write_runtime.clone(),
             timeout: self.timeout,
         };
+
         let join_handle = self.runtimes.write_runtime.spawn(async move {
             if req.context.is_none() {
                 return WriteResponse {

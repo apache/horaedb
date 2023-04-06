@@ -18,6 +18,7 @@ async-trait = { workspace = true }
 bytes = { workspace = true }
 catalog = { workspace = true }
 ceresdbproto = { workspace = true }
+clru = { workspace = true }
 cluster = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
@@ -44,6 +45,7 @@ router = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
+spin = { workspace = true }
 sql = { workspace = true }
 system_catalog = { workspace = true }
 table_engine = { workspace = true }

@@ -6,6 +6,7 @@ use common_util::runtime::JoinHandle;
 use log::{error, info};
 use opensrv_mysql::AsyncMysqlIntermediary;
 use query_engine::executor::Executor as QueryExecutor;
+use router::RouterRef;
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Receiver, Sender};
 
@@ -17,6 +18,7 @@ use crate::{
 pub struct MysqlService<Q> {
     instance: InstanceRef<Q>,
     runtimes: Arc<EngineRuntimes>,
+    router: RouterRef,
     socket_addr: SocketAddr,
     join_handler: Option<JoinHandle<()>>,
     tx: Option<Sender<()>>,
@@ -27,12 +29,14 @@ impl<Q> MysqlService<Q> {
     pub fn new(
         instance: Arc<Instance<Q>>,
         runtimes: Arc<EngineRuntimes>,
+        router: RouterRef,
         socket_addr: SocketAddr,
         timeout: Option<Duration>,
     ) -> MysqlService<Q> {
         Self {
             instance,
             runtimes,
+            router,
             socket_addr,
             join_handler: None,
             tx: None,
@@ -53,6 +57,7 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
         self.join_handler = Some(rt.bg_runtime.spawn(Self::loop_accept(
             self.instance.clone(),
             self.runtimes.clone(),
+            self.router.clone(),
             self.socket_addr,
             self.timeout,
             rx,
@@ -69,6 +74,7 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
     async fn loop_accept(
         instance: InstanceRef<Q>,
         runtimes: Arc<EngineRuntimes>,
+        router: RouterRef,
         socket_addr: SocketAddr,
         timeout: Option<Duration>,
         mut rx: Receiver<()>,
@@ -90,10 +96,11 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
                     };
                     let instance = instance.clone();
                     let runtimes = runtimes.clone();
+                    let router = router.clone();
 
                     let rt = runtimes.read_runtime.clone();
                     rt.spawn(AsyncMysqlIntermediary::run_on(
-                        MysqlWorker::new(instance, runtimes, timeout),
+                        MysqlWorker::new(instance, runtimes, router, timeout),
                         stream,
                     ));
                 },

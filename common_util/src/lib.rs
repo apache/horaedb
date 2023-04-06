@@ -18,6 +18,7 @@ pub mod partitioned_lock;
 pub mod record_batch;
 pub mod runtime;
 pub mod time;
+pub mod timed_task;
 pub mod toml;
 
 #[cfg(any(test, feature = "test"))]
