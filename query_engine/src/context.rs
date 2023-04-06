@@ -57,7 +57,7 @@ impl Context {
             )
             .with_target_partitions(config.read_parallelism);
         df_session_config
-            .config_options_mut()
+            .options_mut()
             .extensions
             .insert(ceresdb_options);
 

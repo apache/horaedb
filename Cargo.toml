@@ -54,8 +54,8 @@ name = "ceresdb-server"
 path = "src/bin/ceresdb-server.rs"
 
 [workspace.dependencies]
-arrow = { version = "32.0.0", features = ["prettyprint"] }
-arrow_ipc = { version = "32.0.0" }
+arrow = { version = "34.0.0", features = ["prettyprint"] }
+arrow_ipc = { version = "34.0.0" }
 arrow_ext = { path = "components/arrow_ext" }
 analytic_engine = { path = "analytic_engine" }
 arena = { path = "components/arena" }
@@ -73,10 +73,10 @@ cluster = { path = "cluster" }
 criterion = "0.3"
 common_types = { path = "common_types" }
 common_util = { path = "common_util" }
-datafusion = "18.0.0"
-datafusion-expr = "18.0.0"
-datafusion-optimizer = "18.0.0"
-datafusion-proto = "18.0.0"
+datafusion = { git = "https://github.com/apache/arrow-datafusion.git", rev = "26e1b20ea3362ea62cb713004a0636b8af6a16d7" }
+datafusion-expr = { git = "https://github.com/apache/arrow-datafusion.git", rev = "26e1b20ea3362ea62cb713004a0636b8af6a16d7" }
+datafusion-optimizer = { git = "https://github.com/apache/arrow-datafusion.git", rev = "26e1b20ea3362ea62cb713004a0636b8af6a16d7" }
+datafusion-proto = { git = "https://github.com/apache/arrow-datafusion.git", rev = "26e1b20ea3362ea62cb713004a0636b8af6a16d7" }
 df_operator = { path = "df_operator" }
 env_logger = "0.6"
 futures = "0.3"
@@ -92,7 +92,7 @@ itertools = "0.10.5"
 meta_client = { path = "meta_client" }
 object_store = { path = "components/object_store" }
 parquet_ext = { path = "components/parquet_ext" }
-parquet = { version = "32.0.0" }
+parquet = { version = "34.0.0" }
 paste = "1.0"
 pin-project-lite = "0.2.8"
 profile = { path = "components/profile" }
@@ -111,7 +111,7 @@ server = { path = "server" }
 smallvec = "1.6"
 slog = "2.7"
 sql = { path = "sql" }
-sqlparser = { version = "0.30", features = ["serde"] }
+sqlparser = { version = "0.32", features = ["serde"] }
 system_catalog = { path = "system_catalog" }
 table_engine = { path = "table_engine" }
 table_kv = { path = "components/table_kv" }

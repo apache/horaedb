@@ -419,6 +419,7 @@ impl<'a> TimeRangeExtractor<'a> {
             | Expr::QualifiedWildcard { .. }
             | Expr::GroupingSet(_)
             | Expr::GetIndexedField { .. }
+            | Expr::OuterReferenceColumn { .. }
             | Expr::Placeholder { .. } => TimeRange::min_to_max(),
         }
     }
