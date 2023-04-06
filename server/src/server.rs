@@ -328,6 +328,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let config_content = self.config_content.expect("Missing config content");
+        let router = self.router.clone().context(MissingRouter)?;
+
         let provider = self
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
@@ -337,6 +339,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .instance(instance.clone())
             .schema_config_provider(provider.clone())
             .config_content(config_content)
+            .router(router.clone())
             .build()
             .context(HttpService {
                 msg: "build failed",

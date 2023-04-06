@@ -14,7 +14,7 @@ use logger::RuntimeLevel;
 use profile::Profiler;
 use prom_remote_api::{types::RemoteStorageRef, web};
 use query_engine::executor::Executor as QueryExecutor;
-use router::endpoint::Endpoint;
+use router::{endpoint::Endpoint, Router, RouterRef};
 use serde::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
@@ -105,6 +105,9 @@ pub enum Error {
 
     #[snafu(display("Server already started.\nBacktrace:\n{}", backtrace))]
     AlreadyStarted { backtrace: Backtrace },
+
+    #[snafu(display("Missing router.\nBacktrace:\n{}", backtrace))]
+    MissingRouter { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -128,6 +131,7 @@ pub struct Service<Q> {
     rx: Option<Receiver<()>>,
     config: HttpConfig,
     config_content: String,
+    router: Arc<dyn Router + Send + Sync>,
 }
 
 impl<Q: QueryExecutor + 'static> Service<Q> {
@@ -178,6 +182,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .or(self.sql())
             .or(self.influxdb_api())
             .or(self.prom_api())
+            .or(self.route())
             // admin APIs
             .or(self.admin_block())
             // debug APIs
@@ -243,6 +248,30 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     .map_err(|e| {
                         // TODO(yingwen): Maybe truncate and print the sql
                         error!("Http service Failed to handle sql, err:{}", e);
+                        Box::new(e)
+                    })
+                    .context(HandleRequest);
+                match result {
+                    Ok(res) => Ok(reply::json(&res)),
+                    Err(e) => Err(reject::custom(e)),
+                }
+            })
+    }
+
+    // GET /route
+    fn route(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("route" / String)
+            .and(warp::get())
+            .and(self.with_context())
+            .and(self.with_instance())
+            .and_then(|table: String, ctx, instance| async move {
+                let result = handlers::route::handle_route(&ctx, instance, &table)
+                    .await
+                    .map_err(|e| {
+                        error!(
+                            "Http service Failed to find route of table:{}, err:{:?}",
+                            table, e
+                        );
                         Box::new(e)
                     })
                     .context(HandleRequest);
@@ -446,6 +475,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         //TODO(boyan) use read/write runtime by sql type.
         let runtime = self.engine_runtimes.bg_runtime.clone();
         let timeout = self.config.timeout;
+        let router = self.router.clone();
 
         header::optional::<String>(consts::CATALOG_HEADER)
             .and(header::optional::<String>(consts::SCHEMA_HEADER))
@@ -456,6 +486,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     let default_catalog = default_catalog.clone();
                     let runtime = runtime.clone();
                     let schema = schema.unwrap_or_else(|| default_schema.clone());
+                    let router = router.clone();
                     async move {
                         RequestContext::builder()
                             .catalog(catalog.unwrap_or(default_catalog))
@@ -463,6 +494,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                             .runtime(runtime)
                             .timeout(timeout)
                             .enable_partition_table_access(true)
+                            .router(router)
                             .build()
                             .context(CreateContext)
                             .map_err(reject::custom)
@@ -506,6 +538,7 @@ pub struct Builder<Q> {
     instance: Option<InstanceRef<Q>>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
     config_content: Option<String>,
+    router: Option<RouterRef>,
 }
 
 impl<Q> Builder<Q> {
@@ -517,6 +550,7 @@ impl<Q> Builder<Q> {
             instance: None,
             schema_config_provider: None,
             config_content: None,
+            router: None,
         }
     }
 
@@ -544,6 +578,11 @@ impl<Q> Builder<Q> {
         self.config_content = Some(content);
         self
     }
+
+    pub fn router(mut self, router: RouterRef) -> Self {
+        self.router = Some(router);
+        self
+    }
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -556,6 +595,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let schema_config_provider = self
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
+        let router = self.router.context(MissingRouter)?;
         let prom_remote_storage = Arc::new(CeresDBStorage::new(
             instance.clone(),
             schema_config_provider.clone(),
@@ -574,6 +614,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             rx: Some(rx),
             config: self.config.clone(),
             config_content,
+            router,
         };
 
         Ok(service)
@@ -610,6 +651,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::JoinAsyncTask { .. }
         | Error::AlreadyStarted { .. }
         | Error::HandleUpdateLogLevel { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        Error::MissingRouter { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 
