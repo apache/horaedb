@@ -2,6 +2,8 @@ SHELL = /bin/bash
 
 DIR=$(shell pwd)
 
+.DEFAULT_GOAL := integration-test
+
 init:
 	echo "init"
 	echo "Git branch: $GITBRANCH"
