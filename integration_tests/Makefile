@@ -55,3 +55,6 @@ run-go:
 
 run-rust:
 	cd sdk/rust && cargo run
+
+run-mysql:
+	cd mysql && ./basic.sh

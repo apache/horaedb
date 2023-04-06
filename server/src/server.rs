@@ -354,6 +354,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let mysql_service = mysql::Builder::new(mysql_config)
             .runtimes(engine_runtimes.clone())
             .instance(instance.clone())
+            .router(router.clone())
             .build()
             .context(BuildMysqlService)?;
 
