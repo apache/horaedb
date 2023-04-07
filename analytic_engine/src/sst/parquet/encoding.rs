@@ -585,7 +585,7 @@ impl HybridRecordDecoder {
             let value_num = value_offsets[idx + 1] - value_offsets[idx];
 
             if let Some(nulls) = nulls {
-                if nulls.is_valid(idx) {
+                if nulls.is_null(idx) {
                     for i in 0..value_num {
                         bit_util::unset_bit(null_slice, bitmap_length_so_far + i as usize);
                     }
@@ -641,7 +641,7 @@ impl HybridRecordDecoder {
         for (idx, offset) in (0..old_values_buffer.len()).step_by(value_size).enumerate() {
             let value_num = (value_offsets[idx + 1] - value_offsets[idx]) as usize;
             if let Some(nulls) = old_nulls {
-                if nulls.is_valid(idx) {
+                if nulls.is_null(idx) {
                     for i in 0..value_num {
                         bit_util::unset_bit(null_slice, length_so_far + i);
                     }

@@ -221,7 +221,7 @@ impl ListArrayBuilder {
                         // is to operate on bitmap buffer bits directly,
                         // like what we do with values(slice and shift)
                         for i in 0..length {
-                            if nulls.is_valid(i + offset) {
+                            if nulls.is_null(i + offset) {
                                 bit_util::unset_bit(null_slice, length_so_far as usize + i);
                             }
                         }
