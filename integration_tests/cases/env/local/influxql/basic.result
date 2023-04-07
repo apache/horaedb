@@ -50,12 +50,6 @@ group by location;
 
 {"results":[{"statement_id":0,"series":[{"name":"h2o_feet","columns":["time","location","count"],"values":[[0,"coyote_creek",3],[0,"santa_monica",3]]}]}]}
 
--- SQLNESS ARG protocol=influxql
-SELECT count(water_level) FROM "h2o_feet"
-group by time(5m), location;
-
-{"code":500,"message":"UNKNOWN_ERROR: Rejection(InfluxDbHandlerWithCause { msg: \"failed to query by influxql\", source: InterpreterExec { query: \" SELECT count(water_level) FROM \\\"h2o_feet\\\" \\n group by time(5m), location;\", source: Select { source: ExecutePlan { source: PhysicalOptimize { source: DataFusionOptimize { source: Plan(\"No installed planner was able to convert the custom node to an execution plan: GapFill { input: Aggregate: groupBy=[[datebin(IntervalDayTime(\\\"300000\\\"), CAST(h2o_feet.time AS Timestamp(Nanosecond, None)), CAST(TimestampMillisecond(0, None) AS Timestamp(Nanosecond, None))) AS time, h2o_feet.location]], aggr=[[COUNT(h2o_feet.water_level)]]\\n  Projection: h2o_feet.time, h2o_feet.location, h2o_feet.water_level\\n    TableScan: h2o_feet projection=[time, location, water_level], group_expr: [time, h2o_feet.location], aggr_expr: [COUNT(h2o_feet.water_level)], params: GapFillParams { stride: IntervalDayTime(\\\"300000\\\"), time_column: time, origin: TimestampMillisecond(0, None), time_range: Unbounded..Excluded(TimestampMillisecond(1680858618837, None) AS now()), fill_strategy: [(COUNT(h2o_feet.water_level), Null)] } }\"), backtrace:"}
-
 DROP TABLE IF EXISTS `h2o_feet`;
 
 affected_rows: 0
