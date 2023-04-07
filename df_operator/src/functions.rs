@@ -123,16 +123,9 @@ impl ColumnarValue {
     fn try_from_df_columnar_value(df_value: &DfColumnarValue) -> Result<Self> {
         let columnar_value = match df_value {
             DfColumnarValue::Array(array) => {
-                println!("array type is:{}", array.data_type());
-                if let Some(_array) = array.as_any().downcast_ref::<TimestampNanosecondArray>() {
-                    let array_data = array.data_ref().clone();
-                    let array = TimestampMillisecondArray::from(array_data);
-                    ColumnarValue::Array(ColumnBlock::Timestamp(array.into()))
-                } else {
-                    let column_block =
-                        ColumnBlock::try_cast_arrow_array_ref(array).context(InvalidArray)?;
-                    ColumnarValue::Array(column_block)
-                }
+                let column_block =
+                    ColumnBlock::try_cast_arrow_array_ref(array).context(InvalidArray)?;
+                ColumnarValue::Array(column_block)
             }
             DfColumnarValue::Scalar(v) => {
                 ColumnarValue::Scalar(ScalarValue::from_df_scalar_value(v))

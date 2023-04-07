@@ -955,7 +955,7 @@ pub mod arrow_convert {
         pub fn from_data_type(data_type: &DataType) -> Option<Self> {
             match data_type {
                 DataType::Null => Some(Self::Null),
-                DataType::Timestamp(_, None) => Some(Self::Timestamp),
+                DataType::Timestamp(TimeUnit::Millisecond, None) => Some(Self::Timestamp),
                 DataType::Float64 => Some(Self::Double),
                 DataType::Float32 => Some(Self::Float),
                 DataType::Binary => Some(Self::Varbinary),

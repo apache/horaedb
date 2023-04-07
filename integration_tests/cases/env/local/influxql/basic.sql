@@ -43,6 +43,7 @@ SELECT count(water_level) FROM "h2o_feet"
 group by location;
 
 -- SQLNESS ARG protocol=influxql
-SELECT count(water_level) FROM "h2o_feet" group by time(5m), location;
+SELECT count(water_level) FROM "h2o_feet"
+group by time(5m), location;
 
 DROP TABLE IF EXISTS `h2o_feet`;
