@@ -181,16 +181,16 @@ impl WalsOpener for RocksDBWalsOpener {
         let write_runtime = engine_runtimes.write_runtime.clone();
         let data_path = Path::new(&rocksdb_wal_config.data_dir);
         let wal_path = data_path.join(WAL_DIR_NAME);
-        let data_wal =
-            RocksWalBuilder::with_default_rocksdb_config(wal_path, write_runtime.clone())
-                .build()
-                .context(OpenWal)?;
+        let data_wal = RocksWalBuilder::new(wal_path, write_runtime.clone())
+            .max_background_jobs(rocksdb_wal_config.sst_max_background_jobs)
+            .build()
+            .context(OpenWal)?;
 
         let manifest_path = data_path.join(MANIFEST_DIR_NAME);
-        let manifest_wal =
-            RocksWalBuilder::with_default_rocksdb_config(manifest_path, write_runtime)
-                .build()
-                .context(OpenManifestWal)?;
+        let manifest_wal = RocksWalBuilder::new(manifest_path, write_runtime)
+            .max_background_jobs(rocksdb_wal_config.manifest_max_background_jobs)
+            .build()
+            .context(OpenManifestWal)?;
         let opened_wals = OpenedWals {
             data_wal: Arc::new(data_wal),
             manifest_wal: Arc::new(manifest_wal),

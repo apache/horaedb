@@ -254,12 +254,18 @@ pub struct KafkaWalConfig {
 pub struct RocksDBConfig {
     /// Data directory used by RocksDB.
     pub data_dir: String,
+    pub sst_max_background_jobs: i32,
+    pub manifest_max_background_jobs: i32,
 }
 
 impl Default for RocksDBConfig {
     fn default() -> Self {
         Self {
             data_dir: "/tmp/ceresdb".to_string(),
+            // Same with rocksdb
+            // https://github.com/facebook/rocksdb/blob/v6.4.6/include/rocksdb/options.h#L537
+            sst_max_background_jobs: 2,
+            manifest_max_background_jobs: 2,
         }
     }
 }
