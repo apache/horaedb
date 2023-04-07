@@ -50,12 +50,6 @@ group by location;
 
 {"results":[{"statement_id":0,"series":[{"name":"h2o_feet","columns":["time","location","count"],"values":[[0,"coyote_creek",3],[0,"santa_monica",3]]}]}]}
 
--- SQLNESS ARG protocol=influxql
-SELECT count(water_level) FROM "h2o_feet"
-group by time(5m), location;
-
-{"code":500,"message":"UNKNOWN_ERROR: Rejection(InfluxDbHandlerWithCause { msg: \"failed to query by influxql\", source: CreatePlan { query: \" SELECT count(water_level) FROM \\\"h2o_feet\\\" \\n group by time(5m), location;\", source: CreatePlan { source: BuildInfluxqlPlan { source: BuildPlanWithCause { msg: \"planner stmt to plan\", source: NotImplemented(\"FILL(NULL)\") } } } } })"}
-
 DROP TABLE IF EXISTS `h2o_feet`;
 
 affected_rows: 0

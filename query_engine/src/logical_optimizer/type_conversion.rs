@@ -6,14 +6,16 @@ use arrow::{compute, compute::kernels::cast_utils::string_to_timestamp_nanos, er
 use chrono::{Local, LocalResult, NaiveDateTime, TimeZone, Utc};
 use datafusion::{
     arrow::datatypes::DataType,
-    common::DFSchemaRef,
+    common::{
+        tree_node::{TreeNode, TreeNodeRewriter},
+        DFSchemaRef,
+    },
     error::{DataFusionError, Result},
     optimizer::{optimizer::OptimizerRule, OptimizerConfig},
     scalar::ScalarValue,
 };
 use datafusion_expr::{
     expr::Expr,
-    expr_rewriter::{ExprRewritable, ExprRewriter},
     logical_plan::{Filter, LogicalPlan, TableScan},
     utils, Between, BinaryExpr, ExprSchemable, Operator,
 };
@@ -94,7 +96,6 @@ impl OptimizerRule for TypeConversion {
             | LogicalPlan::Values { .. }
             | LogicalPlan::Analyze { .. }
             | LogicalPlan::Distinct { .. }
-            | LogicalPlan::SetVariable { .. }
             | LogicalPlan::Prepare { .. }
             | LogicalPlan::DescribeTable { .. }
             | LogicalPlan::Dml { .. } => {
@@ -116,6 +117,7 @@ impl OptimizerRule for TypeConversion {
                 Ok(Some(utils::from_plan(plan, &expr, &new_inputs)?))
             }
             LogicalPlan::Subquery(_)
+            | LogicalPlan::Statement { .. }
             | LogicalPlan::SubqueryAlias(_)
             | LogicalPlan::CreateView(_)
             | LogicalPlan::CreateCatalogSchema(_)
@@ -214,7 +216,9 @@ impl<'a> TypeRewriter<'a> {
     }
 }
 
-impl<'a> ExprRewriter for TypeRewriter<'a> {
+impl<'a> TreeNodeRewriter for TypeRewriter<'a> {
+    type N = Expr;
+
     fn mutate(&mut self, expr: Expr) -> Result<Expr> {
         let new_expr = match expr {
             Expr::BinaryExpr(BinaryExpr { left, op, right }) => match op {
