@@ -12,6 +12,7 @@ use arrow::{
     record_batch::RecordBatch as ArrowRecordBatch,
 };
 use arrow_ext::operation;
+use datafusion::physical_plan::expressions::cast_column;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -312,11 +313,14 @@ fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch>
     let mills_fileds = fields
         .iter()
         .map(|field| {
-            let mut f = Field::new(
-                field.name(),
-                DataType::Timestamp(TimeUnit::Millisecond, None),
-                field.is_nullable(),
-            );
+            let mut f = match field.data_type() {
+                DataType::Timestamp(TimeUnit::Millisecond, None) => Field::new(
+                    field.name(),
+                    DataType::Timestamp(TimeUnit::Millisecond, None),
+                    field.is_nullable(),
+                ),
+                _ => Field::new(field.name(), field.data_type().clone(), field.is_nullable()),
+            };
             f.set_metadata(field.metadata().clone());
             f
         })

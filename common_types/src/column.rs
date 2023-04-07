@@ -18,8 +18,12 @@ use arrow::{
     datatypes::{DataType, TimeUnit},
     error::ArrowError,
 };
+use datafusion::physical_plan::{
+    expressions::{cast_column, DEFAULT_DATAFUSION_CAST_OPTIONS},
+    ColumnarValue,
+};
 use paste::paste;
-use snafu::{Backtrace, OptionExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
     bytes::Bytes,
@@ -684,24 +688,20 @@ impl ColumnBlock {
 
 /// FIXME: it should call datafusion's built-in conversion function
 pub fn cast_nanosecond_to_mills(array: &ArrayRef) -> Result<Arc<dyn Array>> {
-    let data = array
-        .as_any()
-        .downcast_ref::<TimestampNanosecondArray>()
-        .with_context(|| InvalidArrayType {
-            datum_kind: DatumKind::Timestamp,
-            data_type: array.data_type().clone(),
-        })?;
-    let array_data = data.data().clone();
-    let array = TimestampNanosecondArray::from(array_data);
-    let len = array.len();
-    let mut builder = TimestampMillisecondBuilder::with_capacity(len);
-    for i in 0..len {
-        if let Some(time) = array.value_as_datetime(i) {
-            builder.append_value(time.timestamp_millis());
-        }
+    let column = ColumnarValue::Array(array.clone());
+    let mills_column = cast_column(
+        &column,
+        &DataType::Timestamp(TimeUnit::Millisecond, None),
+        &DEFAULT_DATAFUSION_CAST_OPTIONS,
+    )
+    .with_context(|| CastTimestamp {
+        data_type: DataType::Timestamp(TimeUnit::Millisecond, None),
+    })?;
+
+    match mills_column {
+        ColumnarValue::Array(array) => Ok(array),
+        _ => Err(Error::NotImplemented),
     }
-    let mills = builder.finish();
-    Ok(Arc::new(mills))
 }
 
 fn cast_array<'a, T: 'static>(datum_kind: &DatumKind, array: &'a ArrayRef) -> Result<&'a T> {
