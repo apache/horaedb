@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use analytic_engine::setup::OpenedWals;
 use common_util::error::BoxError;
 use handlers::query::QueryRequest;
 use log::{error, info};
@@ -108,6 +109,9 @@ pub enum Error {
 
     #[snafu(display("Missing router.\nBacktrace:\n{}", backtrace))]
     MissingRouter { backtrace: Backtrace },
+
+    #[snafu(display("Missing wal.\nBacktrace:\n{}", backtrace))]
+    MissingWal { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -132,6 +136,7 @@ pub struct Service<Q> {
     config: HttpConfig,
     config_content: String,
     router: Arc<dyn Router + Send + Sync>,
+    opened_wals: OpenedWals,
 }
 
 impl<Q: QueryExecutor + 'static> Service<Q> {
@@ -190,6 +195,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .or(self.update_log_level())
             .or(self.heap_profile())
             .or(self.server_config())
+            .or(self.stats())
     }
 
     /// Expose `/prom/v1/read` and `/prom/v1/write` to serve Prometheus remote
@@ -414,6 +420,30 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .map(move || server_config_content.clone())
     }
 
+    // GET /debug/stats
+    fn stats(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        let opened_wals = self.opened_wals.clone();
+        warp::path!("debug" / "stats")
+            .and(warp::get())
+            .map(move || {
+                [
+                    "Data wal stats:",
+                    &opened_wals
+                        .data_wal
+                        .get_statistics()
+                        .clone()
+                        .unwrap_or_else(|| "Unknown".to_string()),
+                    "Manifest wal stats:",
+                    &opened_wals
+                        .manifest_wal
+                        .get_statistics()
+                        .clone()
+                        .unwrap_or_else(|| "Unknown".to_string()),
+                ]
+                .join("\n")
+            })
+    }
+
     // PUT /debug/log_level/{level}
     fn update_log_level(
         &self,
@@ -539,6 +569,7 @@ pub struct Builder<Q> {
     schema_config_provider: Option<SchemaConfigProviderRef>,
     config_content: Option<String>,
     router: Option<RouterRef>,
+    opened_wals: Option<OpenedWals>,
 }
 
 impl<Q> Builder<Q> {
@@ -551,6 +582,7 @@ impl<Q> Builder<Q> {
             schema_config_provider: None,
             config_content: None,
             router: None,
+            opened_wals: None,
         }
     }
 
@@ -583,6 +615,11 @@ impl<Q> Builder<Q> {
         self.router = Some(router);
         self
     }
+
+    pub fn opened_wals(mut self, opened_wals: OpenedWals) -> Self {
+        self.opened_wals = Some(opened_wals);
+        self
+    }
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -596,6 +633,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
         let router = self.router.context(MissingRouter)?;
+        let opened_wals = self.opened_wals.context(MissingWal)?;
         let prom_remote_storage = Arc::new(CeresDBStorage::new(
             instance.clone(),
             schema_config_provider.clone(),
@@ -615,6 +653,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             config: self.config.clone(),
             config_content,
             router,
+            opened_wals,
         };
 
         Ok(service)
@@ -650,8 +689,9 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::Internal { .. }
         | Error::JoinAsyncTask { .. }
         | Error::AlreadyStarted { .. }
+        | Error::MissingRouter { .. }
+        | Error::MissingWal { .. }
         | Error::HandleUpdateLogLevel { .. } => StatusCode::INTERNAL_SERVER_ERROR,
-        Error::MissingRouter { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 

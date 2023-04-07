@@ -340,6 +340,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .schema_config_provider(provider.clone())
             .config_content(config_content)
             .router(router.clone())
+            .opened_wals(opened_wals.clone())
             .build()
             .context(HttpService {
                 msg: "build failed",

@@ -524,6 +524,7 @@ pub struct Builder {
     wal_path: String,
     runtime: Arc<Runtime>,
     max_background_jobs: Option<i32>,
+    enable_statistics: Option<bool>,
 }
 
 impl Builder {
@@ -533,11 +534,17 @@ impl Builder {
             wal_path: wal_path.to_str().unwrap().to_owned(),
             runtime,
             max_background_jobs: None,
+            enable_statistics: None,
         }
     }
 
-    pub fn max_background_jobs(mut self, n: i32) -> Self {
-        self.max_background_jobs = Some(n);
+    pub fn max_background_jobs(mut self, v: i32) -> Self {
+        self.max_background_jobs = Some(v);
+        self
+    }
+
+    pub fn enable_statistics(mut self, v: bool) -> Self {
+        self.enable_statistics = Some(v);
         self
     }
 
@@ -545,8 +552,11 @@ impl Builder {
         let mut rocksdb_config = DBOptions::default();
         rocksdb_config.create_if_missing(true);
 
-        if let Some(n) = self.max_background_jobs {
-            rocksdb_config.set_max_background_jobs(n);
+        if let Some(v) = self.max_background_jobs {
+            rocksdb_config.set_max_background_jobs(v);
+        }
+        if let Some(v) = self.enable_statistics {
+            rocksdb_config.enable_statistics(v);
         }
 
         let db = DB::open(rocksdb_config, &self.wal_path)
@@ -789,6 +799,10 @@ impl WalManager for RocksImpl {
             self.runtime.clone(),
             ctx.batch_size,
         ))
+    }
+
+    fn get_statistics(&self) -> Option<String> {
+        self.db.get_statistics()
     }
 }
 
