@@ -30,7 +30,7 @@ use storage_options::StorageOptions;
 use table_kv::config::ObkvConfig;
 use wal::{
     message_queue_impl::config::Config as MessageQueueWalConfig,
-    table_kv_impl::model::NamespaceConfig,
+    rocks_impl::config::Config as RocksDBWalConfig, table_kv_impl::model::NamespaceConfig,
 };
 
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
@@ -254,18 +254,17 @@ pub struct KafkaWalConfig {
 pub struct RocksDBConfig {
     /// Data directory used by RocksDB.
     pub data_dir: String,
-    pub sst_max_background_jobs: i32,
-    pub manifest_max_background_jobs: i32,
+
+    pub data_namespace: RocksDBWalConfig,
+    pub meta_namespace: RocksDBWalConfig,
 }
 
 impl Default for RocksDBConfig {
     fn default() -> Self {
         Self {
             data_dir: "/tmp/ceresdb".to_string(),
-            // Same with rocksdb
-            // https://github.com/facebook/rocksdb/blob/v6.4.6/include/rocksdb/options.h#L537
-            sst_max_background_jobs: 2,
-            manifest_max_background_jobs: 2,
+            data_namespace: Default::default(),
+            meta_namespace: Default::default(),
         }
     }
 }
