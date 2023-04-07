@@ -431,13 +431,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     &opened_wals
                         .data_wal
                         .get_statistics()
-                        .clone()
                         .unwrap_or_else(|| "Unknown".to_string()),
                     "Manifest wal stats:",
                     &opened_wals
                         .manifest_wal
                         .get_statistics()
-                        .clone()
                         .unwrap_or_else(|| "Unknown".to_string()),
                 ]
                 .join("\n")
