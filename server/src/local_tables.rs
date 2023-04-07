@@ -1,17 +1,18 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Recover tables in standalone mode
 
-use catalog::{
-    schema::{OpenOptions, OpenTableRequest},
-    CatalogRef,
-};
+use catalog::{schema::OpenOptions, table_operator::TableOperator};
+use common_types::table::DEFAULT_SHARD_ID;
 use common_util::{
     define_result,
     error::{BoxError, GenericError},
 };
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_engine::table::TableInfo;
+use snafu::{Backtrace, ResultExt, Snafu};
+use table_engine::{
+    engine::{OpenShardRequest, TableDef},
+    table::TableInfo,
+};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -35,45 +36,56 @@ define_result!(Error);
 /// Local tables recoverer
 pub struct LocalTablesRecoverer {
     table_infos: Vec<TableInfo>,
-    catalog: CatalogRef,
+    table_operator: TableOperator,
     open_opts: OpenOptions,
 }
 
 impl LocalTablesRecoverer {
-    pub fn new(table_infos: Vec<TableInfo>, catalog: CatalogRef, open_opts: OpenOptions) -> Self {
+    pub fn new(
+        table_infos: Vec<TableInfo>,
+        table_operator: TableOperator,
+        open_opts: OpenOptions,
+    ) -> Self {
         Self {
             table_infos,
-            catalog,
+            table_operator,
             open_opts,
         }
     }
 
     pub async fn recover(&self) -> Result<()> {
-        let opts = self.open_opts.clone();
-        for table_info in &self.table_infos {
-            let schema = self
-                .catalog
-                .schema_by_name(&table_info.schema_name)
-                .box_err()
-                .context(RecoverWithCause {
-                    msg: format!("failed to get schema of table, table_info:{table_info:?}"),
-                })?
-                .with_context(|| RecoverNoCause {
-                    msg: format!("schema of table not found, table_info:{table_info:?}"),
-                })?;
-
-            let open_request = OpenTableRequest::from(table_info.clone());
-            schema
-                .open_table(open_request.clone(), opts.clone())
-                .await
-                .box_err()
-                .context(RecoverWithCause {
-                    msg: format!("failed to open table, open_request:{open_request:?}"),
-                })?
-                .with_context(|| RecoverNoCause {
-                    msg: format!("no table is opened, open_request:{open_request:?}"),
-                })?;
+        if self.table_infos.is_empty() {
+            return Ok(());
         }
+
+        let engine = self.table_infos[0].engine.clone();
+        let table_defs = self
+            .table_infos
+            .iter()
+            .map(|info| TableDef {
+                catalog_name: info.catalog_name.clone(),
+                schema_name: info.schema_name.clone(),
+                id: info.table_id,
+                name: info.table_name.clone(),
+            })
+            .collect();
+        let request = OpenShardRequest {
+            shard_id: DEFAULT_SHARD_ID,
+            table_defs,
+            engine,
+        };
+        let opts = self.open_opts.clone();
+
+        self.table_operator
+            .open_shard(request, opts)
+            .await
+            .box_err()
+            .context(RecoverWithCause {
+                msg: format!(
+                    "failed to recover tables, table_info:{:?}",
+                    self.table_infos
+                ),
+            })?;
 
         Ok(())
     }

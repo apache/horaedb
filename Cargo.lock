@@ -1134,6 +1134,7 @@ dependencies = [
  "async-trait",
  "common_types",
  "common_util",
+ "log",
  "snafu 0.6.10",
  "table_engine",
 ]
