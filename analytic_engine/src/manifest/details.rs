@@ -789,10 +789,9 @@ mod tests {
         }
 
         async fn open_manifest(&self) -> ManifestImpl {
-            let manifest_wal =
-                WalBuilder::with_default_rocksdb_config(self.dir.clone(), self.runtime.clone())
-                    .build()
-                    .unwrap();
+            let manifest_wal = WalBuilder::new(self.dir.clone(), self.runtime.clone())
+                .build()
+                .unwrap();
 
             let object_store = LocalFileSystem::new_with_prefix(&self.dir).unwrap();
             ManifestImpl::open(

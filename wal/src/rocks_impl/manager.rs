@@ -522,36 +522,44 @@ impl RocksImpl {
 /// Builder for `RocksImpl`.
 pub struct Builder {
     wal_path: String,
-    rocksdb_config: DBOptions,
     runtime: Arc<Runtime>,
+    max_background_jobs: Option<i32>,
+    enable_statistics: Option<bool>,
 }
 
 impl Builder {
-    pub fn with_default_rocksdb_config(
-        wal_path: impl Into<PathBuf>,
-        runtime: Arc<Runtime>,
-    ) -> Self {
-        let mut rocksdb_config = DBOptions::default();
-        // TODO(yingwen): Move to another function?
-        rocksdb_config.create_if_missing(true);
-        Self::new(wal_path, runtime, rocksdb_config)
-    }
-
-    pub fn new(
-        wal_path: impl Into<PathBuf>,
-        runtime: Arc<Runtime>,
-        rocksdb_config: DBOptions,
-    ) -> Self {
+    pub fn new(wal_path: impl Into<PathBuf>, runtime: Arc<Runtime>) -> Self {
         let wal_path: PathBuf = wal_path.into();
         Self {
             wal_path: wal_path.to_str().unwrap().to_owned(),
-            rocksdb_config,
             runtime,
+            max_background_jobs: None,
+            enable_statistics: None,
         }
     }
 
+    pub fn max_background_jobs(mut self, v: i32) -> Self {
+        self.max_background_jobs = Some(v);
+        self
+    }
+
+    pub fn enable_statistics(mut self, v: bool) -> Self {
+        self.enable_statistics = Some(v);
+        self
+    }
+
     pub fn build(self) -> Result<RocksImpl> {
-        let db = DB::open(self.rocksdb_config, &self.wal_path)
+        let mut rocksdb_config = DBOptions::default();
+        rocksdb_config.create_if_missing(true);
+
+        if let Some(v) = self.max_background_jobs {
+            rocksdb_config.set_max_background_jobs(v);
+        }
+        if let Some(v) = self.enable_statistics {
+            rocksdb_config.enable_statistics(v);
+        }
+
+        let db = DB::open(rocksdb_config, &self.wal_path)
             .map_err(|e| e.into())
             .context(Open {
                 wal_path: self.wal_path.clone(),
@@ -791,6 +799,10 @@ impl WalManager for RocksImpl {
             self.runtime.clone(),
             ctx.batch_size,
         ))
+    }
+
+    fn get_statistics(&self) -> Option<String> {
+        self.db.get_statistics()
     }
 }
 
