@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Sst file and storage info
 
@@ -203,6 +203,11 @@ impl FileHandle {
     #[inline]
     pub fn storage_format(&self) -> StorageFormat {
         self.inner.meta.storage_format
+    }
+
+    #[inline]
+    pub fn meta(&self) -> FileMeta {
+        self.inner.meta.clone()
     }
 }
 
