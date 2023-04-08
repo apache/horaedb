@@ -12,7 +12,6 @@ use arrow::{
     record_batch::RecordBatch as ArrowRecordBatch,
 };
 use arrow_ext::operation;
-use datafusion::physical_plan::expressions::cast_column;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -314,7 +313,7 @@ fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch>
         .iter()
         .map(|field| {
             let mut f = match field.data_type() {
-                DataType::Timestamp(TimeUnit::Millisecond, None) => Field::new(
+                DataType::Timestamp(TimeUnit::Nanosecond, None) => Field::new(
                     field.name(),
                     DataType::Timestamp(TimeUnit::Millisecond, None),
                     field.is_nullable(),

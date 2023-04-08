@@ -26,15 +26,36 @@ affected_rows: 6
 
 SELECT `timestamp`, DATE_BIN(INTERVAL '30' second, `timestamp`, TIMESTAMP '2001-01-01T00:00:00Z') as `time` FROM `02_function_date_bin_table` order by `timestamp`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, sql: SELECT `timestamp`, DATE_BIN(INTERVAL '30' second, `timestamp`, TIMESTAMP '2001-01-01T00:00:00Z') as `time` FROM `02_function_date_bin_table` order by `timestamp`;. Caused by: Failed to execute select, err:Failed to execute logical plan, err:Failed to collect record batch stream, err:Stream error, msg:convert from arrow record batch, err:Failed to create arrow record batch, err:Invalid argument error: column types must match schema types, expected Timestamp(Nanosecond, None) but found Timestamp(Millisecond, None) at column index 1." })
+timestamp,time,
+Timestamp(1656777600000),Timestamp(1656777600000),
+Timestamp(1659484800000),Timestamp(1659484800000),
+Timestamp(1659571200000),Timestamp(1659571200000),
+Timestamp(1659577320000),Timestamp(1659577320000),
+Timestamp(1659577422000),Timestamp(1659577410000),
+Timestamp(1659577423000),Timestamp(1659577410000),
+
 
 SELECT `timestamp`, DATE_BIN(INTERVAL '15' minute, `timestamp`, TIMESTAMP '2001-01-01T00:00:00Z') as `time` FROM `02_function_date_bin_table` order by `timestamp`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, sql: SELECT `timestamp`, DATE_BIN(INTERVAL '15' minute, `timestamp`, TIMESTAMP '2001-01-01T00:00:00Z') as `time` FROM `02_function_date_bin_table` order by `timestamp`;. Caused by: Failed to execute select, err:Failed to execute logical plan, err:Failed to collect record batch stream, err:Stream error, msg:convert from arrow record batch, err:Failed to create arrow record batch, err:Invalid argument error: column types must match schema types, expected Timestamp(Nanosecond, None) but found Timestamp(Millisecond, None) at column index 1." })
+timestamp,time,
+Timestamp(1656777600000),Timestamp(1656777600000),
+Timestamp(1659484800000),Timestamp(1659484800000),
+Timestamp(1659571200000),Timestamp(1659571200000),
+Timestamp(1659577320000),Timestamp(1659576600000),
+Timestamp(1659577422000),Timestamp(1659576600000),
+Timestamp(1659577423000),Timestamp(1659576600000),
+
 
 SELECT `timestamp`, DATE_BIN(INTERVAL '2' hour, `timestamp`, TIMESTAMP '2001-01-01T00:00:00Z') as `time` FROM `02_function_date_bin_table` order by `timestamp`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, sql: SELECT `timestamp`, DATE_BIN(INTERVAL '2' hour, `timestamp`, TIMESTAMP '2001-01-01T00:00:00Z') as `time` FROM `02_function_date_bin_table` order by `timestamp`;. Caused by: Failed to execute select, err:Failed to execute logical plan, err:Failed to collect record batch stream, err:Stream error, msg:convert from arrow record batch, err:Failed to create arrow record batch, err:Invalid argument error: column types must match schema types, expected Timestamp(Nanosecond, None) but found Timestamp(Millisecond, None) at column index 1." })
+timestamp,time,
+Timestamp(1656777600000),Timestamp(1656777600000),
+Timestamp(1659484800000),Timestamp(1659484800000),
+Timestamp(1659571200000),Timestamp(1659571200000),
+Timestamp(1659577320000),Timestamp(1659571200000),
+Timestamp(1659577422000),Timestamp(1659571200000),
+Timestamp(1659577423000),Timestamp(1659571200000),
+
 
 DROP TABLE `02_function_date_bin_table`;
 
