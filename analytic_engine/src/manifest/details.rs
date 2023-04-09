@@ -191,24 +191,18 @@ impl TableSnapshotProvider for TableSnapshotProviderImpl {
         let table_data = spaces
             .get_by_id(space_id)
             .context(BuildSnapshotNoCause {
-                msg: format!(
-                    "space not exist, space_id:{}, table_id:{}",
-                    space_id, table_id
-                ),
+                msg: format!("space not exist, space_id:{space_id}, table_id:{table_id}",),
             })?
             .find_table_by_id(table_id)
             .context(BuildSnapshotNoCause {
-                msg: format!(
-                    "table data not exist, space_id:{}, table_id:{}",
-                    space_id, table_id
-                ),
+                msg: format!("table data not exist, space_id:{space_id}, table_id:{table_id}",),
             })?;
 
         let table_meta = AddTableMeta {
             space_id,
             table_id,
             table_name: table_data.name.to_string(),
-            schema: table_data.schema().clone(),
+            schema: table_data.schema(),
             opts: table_data.table_options().as_ref().clone(),
             partition_info: table_data.partition_info.clone(),
         };
@@ -250,7 +244,8 @@ where
     SnapshotStore: MetaUpdateSnapshotStore + Send + Sync,
 {
     async fn create_latest_snapshot_with_prev(&self, prev_snapshot: Snapshot) -> Result<Snapshot> {
-        let log_start_boundary = ReadBoundary::Excluded(prev_snapshot.end_seq);
+        // let log_start_boundary = ReadBoundary::Included(prev_snapshot.end_seq);
+        let log_start_boundary = ReadBoundary::Min;
         let mut reader = self.log_store.scan(log_start_boundary).await?;
 
         let mut num_logs = 0usize;
@@ -348,9 +343,9 @@ where
         // Delete the expired logs after saving the snapshot.
         // TODO: Actually this operation can be performed background, and the failure of
         // it can be ignored.
-        self.log_store.delete_up_to(snapshot.end_seq).await?;
+        self.log_store.delete_up_to(dbg!(snapshot.end_seq)).await?;
 
-        Ok(Some(snapshot))
+        Ok(Some(dbg!(snapshot)))
     }
 }
 
@@ -429,7 +424,11 @@ impl ManifestImpl {
             location,
             wal_manager: self.wal_manager.clone(),
         };
-        log_store.append(meta_update).await
+        let latest_sequence = log_store.append(meta_update).await?;
+        self.num_updates_since_snapshot
+            .fetch_add(1, Ordering::Relaxed);
+
+        Ok(latest_sequence)
     }
 
     /// Do snapshot if no other snapshot is triggered.
@@ -443,9 +442,7 @@ impl ManifestImpl {
         force: bool,
     ) -> Result<Option<Snapshot>> {
         if !force {
-            let num_updates = self
-                .num_updates_since_snapshot
-                .fetch_add(1, Ordering::Relaxed);
+            let num_updates = self.num_updates_since_snapshot.load(Ordering::Relaxed);
             if num_updates < self.opts.snapshot_every_n_updates {
                 return Ok(None);
             }
@@ -472,7 +469,7 @@ impl ManifestImpl {
                 snapshot_builder: memory_snapshot_builder,
             };
             let snapshot = snapshotter.snapshot().await?.map(|v| {
-                self.decrease_num_updates(v.original_logs_num);
+                self.decrease_num_updates();
                 v
             });
             Ok(snapshot)
@@ -483,8 +480,10 @@ impl ManifestImpl {
     }
 
     // with snapshot guard held
-    fn decrease_num_updates(&self, num: usize) {
-        if num > self.num_updates_since_snapshot.load(Ordering::Relaxed) {
+    fn decrease_num_updates(&self) {
+        if self.opts.snapshot_every_n_updates
+            > self.num_updates_since_snapshot.load(Ordering::Relaxed)
+        {
             self.num_updates_since_snapshot.store(0, Ordering::Relaxed);
         } else {
             self.num_updates_since_snapshot
@@ -503,10 +502,11 @@ impl Manifest for ManifestImpl {
         let location = WalLocation::new(shard_id as u64, table_id.as_u64());
         let space_id = request.meta_update.space_id();
         let table_id = request.meta_update.table_id();
-        self.store_update_to_wal(request.meta_update, location)
-            .await?;
 
         self.maybe_do_snapshot(space_id, table_id, location, false)
+            .await?;
+
+        self.store_update_to_wal(request.meta_update, location)
             .await?;
 
         Ok(())
@@ -1306,7 +1306,7 @@ mod tests {
             let load_req = LoadRequest {
                 space_id: ctx.schema_id.as_u32(),
                 table_id,
-                shard_id: table_id.as_u64() as u32,
+                shard_id: DEFAULT_SHARD_ID,
             };
             let mut manifest_data_builder = TableManifestDataBuilder::default();
             let manifest = ctx.open_manifest().await;
@@ -1458,10 +1458,9 @@ mod tests {
     //     input_updates: Vec<MetaUpdate>,
     //     updates_after_snapshot: Vec<MetaUpdate>,
     // ) {
-    //     let location = WalLocation::new(DEFAULT_SHARD_ID as u64,
-    // table_id.as_u64());     let log_store =
-    // MemLogStore::from_updates(&input_updates);     let snapshot_store =
-    // MemSnapshotStore::new();
+    //     let location = WalLocation::new(DEFAULT_SHARD_ID as u64, table_id.as_u64());
+    //     let log_store = MemLogStore::from_updates(&input_updates);
+    //     let snapshot_store = MemSnapshotStore::new();
 
     //     ctx.runtime.block_on(async move {
     //         let snapshotter = Snapshotter {
@@ -1475,8 +1474,7 @@ mod tests {
     //         for update in &input_updates {
     //             manifest_builder.apply_update(update.clone()).unwrap();
     //         }
-    //         let expect_table_manifest_data =
-    // manifest_builder.clone().build();
+    //         let expect_table_manifest_data = manifest_builder.clone().build();
 
     //         // Do snapshot and check the snapshot result
     //         let snapshot = snapshotter.snapshot().await.unwrap();
@@ -1487,13 +1485,12 @@ mod tests {
     //             let snapshot = snapshot.unwrap();
     //             assert_eq!(input_updates.len(), snapshot.original_logs_num);
     //             assert_eq!(snapshot.data, expect_table_manifest_data);
-    //             assert_eq!(snapshot.end_seq, snapshotter.log_store.next_seq()
-    // - 1);         }
+    //             assert_eq!(snapshot.end_seq, snapshotter.log_store.next_seq() - 1);
+    //         }
 
     //         // The logs in the log store should be cleared after snapshot.
-    //         let updates_in_log_store =
-    // snapshotter.log_store.to_meta_updates().await;         assert!
-    // (updates_in_log_store.is_empty());
+    //         let updates_in_log_store = snapshotter.log_store.to_meta_updates().await;
+    //         assert!(updates_in_log_store.is_empty());
 
     //         // Write the updates after snapshot.
     //         for update in &updates_after_snapshot {
@@ -1504,19 +1501,19 @@ mod tests {
     //         // Do snapshot and check the snapshot result again.
     //         let snapshot = snapshotter.snapshot().await.unwrap();
 
-    //         if input_updates.is_empty() && updates_after_snapshot.is_empty()
-    // {             assert!(snapshot.is_none());
+    //         if input_updates.is_empty() && updates_after_snapshot.is_empty() {
+    //             assert!(snapshot.is_none());
     //         } else {
     //             assert!(snapshot.is_some());
     //             let snapshot = snapshot.unwrap();
-    //             assert_eq!(updates_after_snapshot.len(),
-    // snapshot.original_logs_num);             assert_eq!(snapshot.data,
-    // expect_table_manifest_data);             assert_eq!(snapshot.end_seq,
-    // snapshotter.log_store.next_seq() - 1);         }
+    //             assert_eq!(updates_after_snapshot.len(), snapshot.original_logs_num);
+    //             assert_eq!(snapshot.data, expect_table_manifest_data);
+    //             assert_eq!(snapshot.end_seq, snapshotter.log_store.next_seq() - 1);
+    //         }
     //         // The logs in the log store should be cleared after snapshot.
-    //         let updates_in_log_store =
-    // snapshotter.log_store.to_meta_updates().await;         assert!
-    // (updates_in_log_store.is_empty());     });
+    //         let updates_in_log_store = snapshotter.log_store.to_meta_updates().await;
+    //         assert!(updates_in_log_store.is_empty());
+    //     });
     // }
 
     // #[test]
@@ -1567,6 +1564,6 @@ mod tests {
     //         ctx.meta_update_version_edit(table_id, Some(8)),
     //     ];
 
-    //     run_snapshot_test(ctx, table_id, input_updates,
-    // updates_after_snapshot); }
+    //     run_snapshot_test(ctx, table_id, input_updates, updates_after_snapshot);
+    // }
 }

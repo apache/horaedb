@@ -749,7 +749,6 @@ impl TableVersion {
         let levels = &inner.levels;
         let num_levels = levels.num_levels();
         let files = (0..num_levels)
-            .into_iter()
             .flat_map(|level| {
                 let ssts = levels.iter_ssts_at_level(level);
                 ssts.map(move |file| {
