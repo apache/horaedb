@@ -52,7 +52,7 @@ impl Instance {
         sst_factory: SstFactoryRef,
     ) -> Result<Arc<Self>> {
         let space_store = Arc::new(SpaceStore {
-            spaces: RwLock::new(Spaces::default()),
+            spaces: Arc::new(RwLock::new(Spaces::default())),
             manifest,
             wal_manager: wal_manager.clone(),
             store_picker: store_picker.clone(),

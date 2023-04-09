@@ -16,14 +16,14 @@ use ceresdbproto::manifest as manifest_pb;
 use common_util::{
     config::ReadableDuration,
     define_result,
-    error::{BoxError, GenericResult},
+    error::{BoxError, GenericError, GenericResult},
 };
 use log::{debug, info, warn};
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
 use prost::Message;
 use serde::{Deserialize, Serialize};
-use snafu::{Backtrace, ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::Mutex;
 use wal::{
@@ -36,6 +36,7 @@ use wal::{
 };
 
 use crate::{
+    instance::SpacesRef,
     manifest::{
         meta_data::{TableManifestData, TableManifestDataBuilder},
         meta_update::{
@@ -45,7 +46,7 @@ use crate::{
         LoadRequest, Manifest, SnapshotRequest,
     },
     space::SpaceId,
-    table::version::TableVersionMeta,
+    table::version::{TableVersionMeta, TableVersionSnapshot},
 };
 
 #[derive(Debug, Snafu)]
@@ -111,6 +112,12 @@ pub enum Error {
         source: prost::DecodeError,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Failed to build snapshot, msg:{}.\nBacktrace:\n{:?}", msg, backtrace))]
+    BuildSnapshotNoCause { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Failed to build snapshot, msg:{}, err:{}", msg, source))]
+    BuildSnapshotWithCause { msg: String, source: GenericError },
 }
 
 define_result!(Error);
@@ -152,6 +159,65 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
                 Ok(None)
             }
         }
+    }
+}
+
+pub(crate) trait TableSnapshotProvider {
+    fn get_table_snapshot(&self, space_id: SpaceId, table_id: TableId)
+        -> Result<TableManifestData>;
+}
+
+pub(crate) struct TableSnapshotProviderImpl {
+    spaces: SpacesRef,
+}
+
+impl TableSnapshotProvider for TableSnapshotProviderImpl {
+    fn get_table_snapshot(
+        &self,
+        space_id: SpaceId,
+        table_id: TableId,
+    ) -> Result<TableManifestData> {
+        let spaces = self.spaces.read().unwrap();
+        let table_data = spaces
+            .get_by_id(space_id)
+            .context(BuildSnapshotNoCause {
+                msg: format!(
+                    "space not exist, space_id:{}, table_id:{}",
+                    space_id, table_id
+                ),
+            })?
+            .find_table_by_id(table_id)
+            .context(BuildSnapshotNoCause {
+                msg: format!(
+                    "table data not exist, space_id:{}, table_id:{}",
+                    space_id, table_id
+                ),
+            })?;
+
+        let table_meta = AddTableMeta {
+            space_id,
+            table_id,
+            table_name: table_data.name.to_string(),
+            schema: table_data.schema().clone(),
+            opts: table_data.table_options().as_ref().clone(),
+            partition_info: table_data.partition_info.clone(),
+        };
+
+        let version_snapshot = table_data.current_version().snapshot();
+        let TableVersionSnapshot {
+            flushed_sequence,
+            files,
+        } = version_snapshot;
+        let version_meta = TableVersionMeta {
+            flushed_sequence,
+            files,
+            max_file_id: table_data.last_file_id(),
+        };
+
+        Ok(TableManifestData {
+            table_meta,
+            version_meta: Some(version_meta),
+        })
     }
 }
 

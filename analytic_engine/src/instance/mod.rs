@@ -72,7 +72,7 @@ define_result!(Error);
 
 /// Spaces states
 #[derive(Default)]
-struct Spaces {
+pub(crate) struct Spaces {
     /// Id to space
     id_to_space: HashMap<SpaceId, SpaceRef>,
 }
@@ -84,7 +84,7 @@ impl Spaces {
         self.id_to_space.insert(space_id, space);
     }
 
-    fn get_by_id(&self, id: SpaceId) -> Option<&SpaceRef> {
+    pub(crate) fn get_by_id(&self, id: SpaceId) -> Option<&SpaceRef> {
         self.id_to_space.get(&id)
     }
 
@@ -102,9 +102,11 @@ impl Spaces {
     }
 }
 
+pub(crate) type SpacesRef = Arc<RwLock<Spaces>>;
+
 pub struct SpaceStore {
     /// All spaces of the engine.
-    spaces: RwLock<Spaces>,
+    spaces: SpacesRef,
     /// Manifest (or meta) stores meta data of the engine instance.
     manifest: ManifestRef,
     /// Wal of all tables
