@@ -205,6 +205,11 @@ pub enum Error {
         backtrace,
     ))]
     CreateOpenFailedTable { table: String, backtrace: Backtrace },
+
+    #[snafu(display("Failed to open manifest, err:{}", source))]
+    OpenManifest {
+        source: crate::manifest::details::Error,
+    },
 }
 
 define_result!(Error);
@@ -234,7 +239,8 @@ impl From<Error> for table_engine::engine::Error {
             | Error::StoreVersionEdit { .. }
             | Error::EncodePayloads { .. }
             | Error::CreateOpenFailedTable { .. }
-            | Error::DoManifestSnapshot { .. } => Self::Unexpected {
+            | Error::DoManifestSnapshot { .. }
+            | Error::OpenManifest { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
         }
