@@ -2,17 +2,20 @@
 
 //! Record batch
 
-use std::{cmp, convert::TryFrom, mem};
+use std::{cmp, convert::TryFrom, mem, sync::Arc};
 
 use arrow::{
-    array::BooleanArray, compute, datatypes::SchemaRef as ArrowSchemaRef, error::ArrowError,
+    array::BooleanArray,
+    compute,
+    datatypes::{DataType, Field, Schema, SchemaRef as ArrowSchemaRef, TimeUnit},
+    error::ArrowError,
     record_batch::RecordBatch as ArrowRecordBatch,
 };
 use arrow_ext::operation;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
-    column::{ColumnBlock, ColumnBlockBuilder},
+    column::{cast_nanosecond_to_mills, ColumnBlock, ColumnBlockBuilder},
     datum::DatumKind,
     projected_schema::{ProjectedSchema, RowProjector},
     row::{
@@ -276,6 +279,7 @@ impl TryFrom<ArrowRecordBatch> for RecordBatch {
         let column_blocks =
             build_column_blocks_from_arrow_record_batch(&arrow_record_batch, &record_schema)?;
 
+        let arrow_record_batch = cast_arrow_record_batch(arrow_record_batch)?;
         Ok(Self {
             schema: record_schema,
             data: RecordBatchData {
@@ -284,6 +288,49 @@ impl TryFrom<ArrowRecordBatch> for RecordBatch {
             },
         })
     }
+}
+
+fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch> {
+    let row_count = source.num_columns();
+    if row_count == 0 {
+        return Ok(source);
+    }
+    let columns = source.columns();
+    let mut casted_columns = Vec::with_capacity(columns.len());
+    for column in columns {
+        let column = match column.data_type() {
+            DataType::Timestamp(TimeUnit::Nanosecond, None) => {
+                cast_nanosecond_to_mills(column).context(AppendDatum)?
+            }
+            _ => column.clone(),
+        };
+        casted_columns.push(column);
+    }
+
+    let schema = source.schema();
+    let fields = schema.all_fields();
+    let mills_fileds = fields
+        .iter()
+        .map(|field| {
+            let mut f = match field.data_type() {
+                DataType::Timestamp(TimeUnit::Nanosecond, None) => Field::new(
+                    field.name(),
+                    DataType::Timestamp(TimeUnit::Millisecond, None),
+                    field.is_nullable(),
+                ),
+                _ => Field::new(field.name(), field.data_type().clone(), field.is_nullable()),
+            };
+            f.set_metadata(field.metadata().clone());
+            f
+        })
+        .collect::<Vec<_>>();
+    let mills_schema = Schema {
+        fields: mills_fileds,
+        metadata: schema.metadata().clone(),
+    };
+    let result =
+        ArrowRecordBatch::try_new(Arc::new(mills_schema), casted_columns).context(CreateArrow)?;
+    Ok(result)
 }
 
 #[derive(Debug)]
