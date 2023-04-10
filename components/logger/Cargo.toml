@@ -22,4 +22,3 @@ serde = { workspace = true }
 slog = { workspace = true }
 slog-async = "2.6"
 slog-term = "2.8"
-slog_derive = "0.2"
