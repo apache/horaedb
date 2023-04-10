@@ -35,6 +35,7 @@ logger = { workspace = true }
 meta_client = { workspace = true }
 opensrv-mysql = "0.1.0"
 paste = { workspace = true }
+pprof = { version = "0.11.1", features = ["flamegraph"] }
 profile = { workspace = true }
 prom-remote-api = { version = "0.2.1", features = ["warp"] }
 prometheus = { workspace = true }
