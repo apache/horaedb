@@ -3,8 +3,8 @@
 //! Http service
 
 use std::{
-    collections::HashMap, convert::Infallible, error::Error as StdError, net::IpAddr, sync::Arc,
-    time::Duration,
+    collections::HashMap, convert::Infallible, error::Error as StdError, fs::File, net::IpAddr,
+    sync::Arc, thread, time::Duration,
 };
 
 use analytic_engine::setup::OpenedWals;
@@ -194,6 +194,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .or(self.flush_memtable())
             .or(self.update_log_level())
             .or(self.heap_profile())
+            .or(self.cpu_profile())
             .or(self.server_config())
             .or(self.stats())
     }
@@ -408,6 +409,40 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     }
                 },
             )
+    }
+
+    // GET /debug/cpu_profile/{seconds}
+    fn cpu_profile(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("debug" / "cpu_profile" / ..)
+            .and(warp::path::param::<u64>())
+            .and(warp::get())
+            .and(self.with_context())
+            .and_then(|duration_sec: u64, ctx: RequestContext| async move {
+                let handle = ctx.runtime.spawn_blocking(move || -> Result<()> {
+                    let guard = pprof::ProfilerGuardBuilder::default()
+                        .frequency(100)
+                        .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+                        .build()
+                        .box_err()
+                        .context(Internal)?;
+
+                    thread::sleep(Duration::from_secs(duration_sec));
+
+                    let report = guard.report().build().box_err().context(Internal)?;
+                    let file = File::create("/tmp/flamegraph.svg")
+                        .box_err()
+                        .context(Internal)?;
+                    report.flamegraph(file).box_err().context(Internal)?;
+                    Ok(())
+                });
+                let result = handle.await.context(JoinAsyncTask);
+                match result {
+                    Ok(_) => Ok("ok"),
+                    Err(e) => Err(reject::custom(e)),
+                }
+            })
     }
 
     // GET /debug/config
