@@ -27,7 +27,7 @@ pub enum Error {
     #[snafu(display("Table already exists, table:{}.\nBacktrace:\n{}", table, backtrace))]
     TableExists { table: String, backtrace: Backtrace },
 
-    #[snafu(display("Invalid arguments, table:{table}, err:{}", source))]
+    #[snafu(display("Invalid arguments, table:{table}, err:{source}"))]
     InvalidArguments { table: String, source: GenericError },
 
     #[snafu(display("Failed to write meta data, err:{}", source))]

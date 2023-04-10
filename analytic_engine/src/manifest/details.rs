@@ -831,17 +831,6 @@ mod tests {
             })
         }
 
-        fn meta_update_add_table_with_partition_info(&self, table_id: TableId) -> MetaUpdate {
-            let table_name = Self::table_name_from_id(table_id);
-            MetaUpdate::AddTable(AddTableMeta {
-                space_id: self.schema_id.as_u32(),
-                table_id,
-                table_name,
-                schema: common_types::tests::build_schema(),
-                opts: TableOptions::default(),
-            })
-        }
-
         fn meta_update_drop_table(&self, table_id: TableId) -> MetaUpdate {
             let table_name = Self::table_name_from_id(table_id);
             MetaUpdate::DropTable(DropTableMeta {
@@ -895,7 +884,7 @@ mod tests {
                 shard_id: DEFAULT_SHARD_ID,
             };
 
-            let add_table = self.meta_update_add_table_with_partition_info(table_id);
+            let add_table = self.meta_update_add_table(table_id);
             let update_req = {
                 MetaUpdateRequest {
                     shard_info,

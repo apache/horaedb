@@ -17,7 +17,7 @@ use ceresdb_client::{
     RpcContext,
 };
 use reqwest::{ClientBuilder, Url};
-use sql::{frontend::parse_table_name, parser::Parser};
+use sql::{frontend, parser::Parser};
 use sqlness::{Database, QueryContext};
 
 const SERVER_GRPC_ENDPOINT_ENV: &str = "CERESDB_SERVER_GRPC_ENDPOINT";
@@ -272,7 +272,7 @@ impl<T> CeresDB<T> {
             timeout: None,
         };
         let statements = Parser::parse_sql(&query).unwrap();
-        let table_name = parse_table_name(&statements);
+        let table_name = frontend::parse_table_name(&statements);
 
         let query_req = match table_name {
             Some(table_name) => Request {
