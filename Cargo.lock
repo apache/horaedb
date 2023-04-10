@@ -5280,6 +5280,7 @@ dependencies = [
  "moka",
  "serde",
  "snafu 0.6.10",
+ "table_engine",
  "tokio",
  "twox-hash",
 ]

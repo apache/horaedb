@@ -214,11 +214,7 @@ impl CreateTableRequest {
         self,
         table_id: Option<TableId>,
     ) -> engine::CreateTableRequest {
-        let table_id = match (self.table_id, table_id) {
-            (Some(v), _) => v,
-            (None, Some(v)) => v,
-            (None, None) => TableId::MIN,
-        };
+        let table_id = self.table_id.unwrap_or(table_id.unwrap_or(TableId::MIN));
         engine::CreateTableRequest {
             catalog_name: self.catalog_name,
             schema_name: self.schema_name,

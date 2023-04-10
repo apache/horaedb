@@ -1,4 +1,4 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 pub mod cluster_based;
 pub mod endpoint;
@@ -7,15 +7,14 @@ pub mod rule_based;
 use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use ceresdbproto::storage::RouteRequest;
+use ceresdbproto::storage::{Route, RouteRequest};
 pub use cluster_based::ClusterBasedRouter;
+use common_types::{schema::SchemaId, table::TableId};
 use common_util::{config::ReadableDuration, define_result};
-use meta_client::types::TableInfo;
 pub use rule_based::{RuleBasedRouter, RuleList};
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, Snafu};
-
-use crate::endpoint::Endpoint;
+use table_engine::partition::PartitionInfo;
 
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub))]
@@ -62,16 +61,23 @@ define_result!(Error);
 
 pub type RouterRef = Arc<dyn Router + Sync + Send>;
 
-#[derive(Debug, Clone)]
-pub struct RouteData {
-    pub table_name: String,
-    pub table: Option<TableInfo>,
-    pub endpoint: Option<Endpoint>,
+#[derive(Clone, Debug)]
+pub struct PartitionTableInfo {
+    pub id: TableId,
+    pub name: String,
+    pub schema_id: SchemaId,
+    pub schema_name: String,
+    pub partition_info: PartitionInfo,
 }
 
 #[async_trait]
 pub trait Router {
-    async fn route(&self, req: RouteRequest) -> Result<Vec<RouteData>>;
+    async fn route(&self, req: RouteRequest) -> Result<Vec<Route>>;
+    async fn fetch_partition_table_info(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Option<PartitionTableInfo>>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

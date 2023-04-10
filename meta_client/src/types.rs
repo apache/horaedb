@@ -401,7 +401,7 @@ pub struct NodeShard {
 
 #[derive(Debug, Clone)]
 pub struct RouteEntry {
-    pub table: TableInfo,
+    pub table_info: TableInfo,
     pub node_shards: Vec<NodeShard>,
 }
 
@@ -457,7 +457,7 @@ impl TryFrom<meta_service_pb::RouteEntry> for RouteEntry {
             msg: "table info is missing in route entry",
         })?;
         Ok(RouteEntry {
-            table: TableInfo::try_from(table_info)?,
+            table_info: TableInfo::try_from(table_info)?,
             node_shards,
         })
     }
