@@ -330,12 +330,15 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
             .context(BuildPromPlanError)
     }
 
-    pub fn influxql_stmt_to_plan(&self, statement: InfluxqlStatement) -> Result<Plan> {
+    pub fn influxql_stmt_to_plan(
+        &self,
+        statement: InfluxqlStatement,
+        all_tables: Vec<TableRef>,
+    ) -> Result<Plan> {
         let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
 
-        let influxql_planner = crate::influxql::planner::Planner::new(adapter);
-        influxql_planner
-            .statement_to_plan(statement)
+        crate::influxql::planner::Planner::try_new(adapter, all_tables)
+            .and_then(|planner| planner.statement_to_plan(statement))
             .context(BuildInfluxqlPlan)
     }
 
@@ -872,8 +875,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     .columns()
                     .iter()
                     .map(|column_schema| {
-                        DFField::new(
-                            None,
+                        DFField::new_unqualified(
                             &column_schema.name,
                             column_schema.data_type.to_arrow_data_type(),
                             column_schema.is_nullable,
@@ -1171,6 +1173,9 @@ pub fn parse_for_option(value: Value) -> Result<Option<String>> {
         Value::Null
         | Value::Placeholder(_)
         | Value::EscapedStringLiteral(_)
+        | Value::SingleQuotedByteStringLiteral(_)
+        | Value::DoubleQuotedByteStringLiteral(_)
+        | Value::RawStringLiteral(_)
         | Value::DollarQuotedString(_) => None,
     };
 

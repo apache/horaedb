@@ -2,4 +2,5 @@
 
 //! WalManager implementation based on RocksDB
 
+pub mod config;
 pub mod manager;

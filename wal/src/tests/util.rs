@@ -53,8 +53,7 @@ impl WalBuilder for RocksWalBuilder {
     type Wal = RocksImpl;
 
     async fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
-        let wal_builder =
-            rocks_impl::manager::Builder::with_default_rocksdb_config(data_path, runtime);
+        let wal_builder = rocks_impl::manager::Builder::new(data_path, runtime);
 
         Arc::new(
             wal_builder

@@ -48,6 +48,7 @@ const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_sql_query(&self, ctx: Context, req: SqlQueryRequest) -> SqlQueryResponse {
+        self.hotspot_recorder.inc_sql_query_reqs(&req).await;
         match self.handle_sql_query_internal(ctx, req).await {
             Err(e) => {
                 error!("Failed to handle sql query, err:{e}");
@@ -65,6 +66,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: SqlQueryRequest,
     ) -> BoxStream<'static, SqlQueryResponse> {
+        self.hotspot_recorder.inc_sql_query_reqs(&req).await;
         match self.clone().handle_stream_query_internal(ctx, req).await {
             Err(e) => stream::once(async {
                 error!("Failed to handle stream sql query, err:{e}");
@@ -457,7 +459,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     DropTableRequest {
                         catalog_name: catalog_name.to_string(),
                         schema_name: schema_name.to_string(),
-                        schema_id: schema.id(),
                         table_name: table_name.to_string(),
                         engine: PARTITION_TABLE_ENGINE_TYPE.to_string(),
                     },
@@ -501,7 +502,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let create_table_request = CreateTableRequest {
             catalog_name: catalog_name.to_string(),
             schema_name: schema_name.to_string(),
-            schema_id: schema.id(),
             table_name: partition_table_info.name,
             table_id: Some(TableId::new(partition_table_info.id)),
             table_schema: table.table_schema,

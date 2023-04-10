@@ -434,6 +434,7 @@ impl Builder {
             },
             wal: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
                 data_dir: dir.path().to_str().unwrap().to_string(),
+                ..Default::default()
             })),
             ..Default::default()
         };
@@ -494,6 +495,7 @@ impl Default for RocksDBEngineBuildContext {
 
             wal: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
                 data_dir: dir.path().to_str().unwrap().to_string(),
+                ..Default::default()
             })),
             ..Default::default()
         };
@@ -521,6 +523,7 @@ impl Clone for RocksDBEngineBuildContext {
         config.storage = storage;
         config.wal = WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
             data_dir: dir.path().to_str().unwrap().to_string(),
+            ..Default::default()
         }));
 
         Self { config }

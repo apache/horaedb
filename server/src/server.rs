@@ -342,6 +342,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let config_content = self.config_content.expect("Missing config content");
+
         let provider = self
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
@@ -351,6 +352,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .instance(instance.clone())
             .schema_config_provider(provider.clone())
             .config_content(config_content)
+            .router(router.clone())
+            .opened_wals(opened_wals.clone())
             .build()
             .context(HttpService {
                 msg: "build failed",
@@ -365,6 +368,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let mysql_service = mysql::Builder::new(mysql_config)
             .runtimes(engine_runtimes.clone())
             .instance(instance.clone())
+            .router(router.clone())
             .build()
             .context(BuildMysqlService)?;
 
@@ -387,6 +391,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
                 .opened_wals(opened_wals)
                 .schema_config_provider(provider)
                 .forward_config(self.server_config.forward)
+                .hotspot_config(self.server_config.hotspot)
                 .timeout(self.server_config.timeout.map(|v| v.0))
                 .auto_create_table(self.server_config.auto_create_table)
                 .build()

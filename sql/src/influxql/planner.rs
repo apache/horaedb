@@ -1,34 +1,102 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Influxql planner
+//! InfluxQL planner
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use common_util::error::BoxError;
-use influxql_logical_planner::planner::InfluxQLToLogicalPlan;
+use datafusion::{error::DataFusionError, sql::planner::ContextProvider};
+use datafusion_expr::TableSource;
+use influxql_logical_planner::plan::{
+    ceresdb_schema_to_influxdb, InfluxQLToLogicalPlan, SchemaProvider,
+};
 use influxql_parser::{
     common::{MeasurementName, QualifiedMeasurementName},
     select::{MeasurementSelection, SelectStatement},
     show_measurements::ShowMeasurementsStatement,
     statement::Statement as InfluxqlStatement,
 };
+use influxql_schema::Schema;
 use snafu::{ensure, ResultExt};
+use table_engine::table::TableRef;
 
 use crate::{
-    influxql::{error::*, provider::InfluxSchemaProviderImpl},
+    influxql::error::*,
     plan::{Plan, QueryPlan, QueryType, ShowPlan, ShowTablesPlan},
     provider::{ContextProviderAdapter, MetaProvider},
 };
 
-pub const CERESDB_MEASUREMENT_COLUMN_NAME: &str = "ceresdb::measurement";
+// Same with iox
+pub const CERESDB_MEASUREMENT_COLUMN_NAME: &str = "iox::measurement";
+
+// Port from https://github.com/ceresdb/influxql/blob/36fc4d873e/iox_query_influxql/src/frontend/planner.rs#L28
+struct InfluxQLSchemaProvider<'a, P: MetaProvider> {
+    context_provider: ContextProviderAdapter<'a, P>,
+    // TODO: avoid load all tables.
+    // if we can ensure `table_names` is only called once, then load tables lazily is better.
+    tables: HashMap<String, (Arc<dyn TableSource>, Schema)>,
+}
+
+impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
+    fn get_table_provider(&self, name: &str) -> datafusion::error::Result<Arc<dyn TableSource>> {
+        self.tables
+            .get(name)
+            .map(|(t, _)| Arc::clone(t))
+            .ok_or_else(|| DataFusionError::Plan(format!("measurement does not exist: {name}")))
+    }
+
+    fn get_function_meta(&self, name: &str) -> Option<Arc<datafusion_expr::ScalarUDF>> {
+        self.context_provider.get_function_meta(name)
+    }
+
+    fn get_aggregate_meta(&self, name: &str) -> Option<Arc<datafusion_expr::AggregateUDF>> {
+        self.context_provider.get_aggregate_meta(name)
+    }
+
+    fn table_names(&self) -> Vec<&'_ str> {
+        self.tables.keys().map(|k| k.as_str()).collect::<Vec<_>>()
+    }
+
+    fn table_schema(&self, name: &str) -> Option<Schema> {
+        self.tables.get(name).map(|(_, s)| s.clone())
+    }
+}
 
 pub(crate) struct Planner<'a, P: MetaProvider> {
-    context_provider: ContextProviderAdapter<'a, P>,
+    schema_provider: InfluxQLSchemaProvider<'a, P>,
+}
+
+fn convert_influxql_schema(ceresdb_schema: common_types::schema::Schema) -> Result<Schema> {
+    let arrow_schema = ceresdb_schema.into_arrow_schema_ref();
+    ceresdb_schema_to_influxdb(arrow_schema)
+        .box_err()
+        .and_then(|s| Schema::try_from(s).box_err())
+        .context(BuildPlanWithCause {
+            msg: "build influxql schema",
+        })
 }
 
 impl<'a, P: MetaProvider> Planner<'a, P> {
-    pub fn new(context_provider: ContextProviderAdapter<'a, P>) -> Self {
-        Self { context_provider }
+    pub fn try_new(
+        context_provider: ContextProviderAdapter<'a, P>,
+        all_tables: Vec<TableRef>,
+    ) -> Result<Self> {
+        let tables = all_tables
+            .into_iter()
+            .map(|t| {
+                let table_name = t.name().to_string();
+                let schema = convert_influxql_schema(t.schema())?;
+                let table_source = context_provider.table_source(t);
+                Ok((table_name, (table_source, schema)))
+            })
+            .collect::<Result<HashMap<_, _>>>()?;
+
+        Ok(Self {
+            schema_provider: InfluxQLSchemaProvider {
+                context_provider,
+                tables,
+            },
+        })
     }
 
     /// Build sql logical plan from [InfluxqlStatement].
@@ -38,20 +106,29 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     /// and build plan then.
     pub fn statement_to_plan(self, stmt: InfluxqlStatement) -> Result<Plan> {
         match stmt {
-            InfluxqlStatement::Select(_) => self.select_to_plan(stmt),
+            // TODO: show measurement is a temp workaround, it should be implemented in influxql
+            // crates.
             InfluxqlStatement::ShowMeasurements(stmt) => self.show_measurements_to_plan(*stmt),
-            InfluxqlStatement::CreateDatabase(_)
-            | InfluxqlStatement::ShowDatabases(_)
-            | InfluxqlStatement::ShowRetentionPolicies(_)
-            | InfluxqlStatement::ShowTagKeys(_)
-            | InfluxqlStatement::ShowTagValues(_)
-            | InfluxqlStatement::ShowFieldKeys(_)
-            | InfluxqlStatement::Delete(_)
-            | InfluxqlStatement::DropMeasurement(_)
-            | InfluxqlStatement::Explain(_) => Unimplemented {
-                msg: stmt.to_string(),
+            _ => {
+                let planner = InfluxQLToLogicalPlan::new(&self.schema_provider);
+                let df_plan =
+                    planner
+                        .statement_to_plan(stmt)
+                        .box_err()
+                        .context(BuildPlanWithCause {
+                            msg: "planner stmt to plan",
+                        })?;
+                let tables = Arc::new(
+                    self.schema_provider
+                        .context_provider
+                        .try_into_container()
+                        .box_err()
+                        .context(BuildPlanWithCause {
+                            msg: "get tables from context_provider",
+                        })?,
+                );
+                Ok(Plan::Query(QueryPlan { df_plan, tables }))
             }
-            .fail(),
         }
     }
 
@@ -62,39 +139,6 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
             query_type: QueryType::InfluxQL,
         };
         Ok(Plan::Show(ShowPlan::ShowTablesPlan(plan)))
-    }
-
-    fn select_to_plan(self, stmt: InfluxqlStatement) -> Result<Plan> {
-        if let InfluxqlStatement::Select(select_stmt) = &stmt {
-            check_select_statement(select_stmt)?;
-        } else {
-            unreachable!("select statement here has been ensured by caller");
-        }
-
-        let influx_schema_provider = InfluxSchemaProviderImpl {
-            context_provider: &self.context_provider,
-        };
-        let influxql_logical_planner = InfluxQLToLogicalPlan::new(
-            &influx_schema_provider,
-            CERESDB_MEASUREMENT_COLUMN_NAME.to_string(),
-        );
-
-        let df_plan = influxql_logical_planner
-            .statement_to_plan(stmt)
-            .box_err()
-            .context(BuildPlanWithCause {
-                msg: "build df plan for influxql select statement",
-            })?;
-        let tables = Arc::new(
-            self.context_provider
-                .try_into_container()
-                .box_err()
-                .context(BuildPlanWithCause {
-                    msg: "get tables from df plan of select",
-                })?,
-        );
-
-        Ok(Plan::Query(QueryPlan { df_plan, tables }))
     }
 }
 

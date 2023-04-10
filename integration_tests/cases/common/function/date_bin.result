@@ -1,0 +1,63 @@
+DROP TABLE IF EXISTS `02_function_date_bin_table`;
+
+affected_rows: 0
+
+CREATE TABLE `02_function_date_bin_table` (
+  `timestamp` timestamp NOT NULL,
+  `value` int,
+  timestamp KEY (timestamp)) ENGINE=Analytic
+WITH(
+	 enable_ttl='false'
+);
+
+affected_rows: 0
+
+INSERT INTO `02_function_date_bin_table`
+(`timestamp`, `value`)
+VALUES
+    (1659577423000, 1),
+    (1659577422000, 2),
+    (1659577320000, 3),
+    (1659571200000, 4),
+    (1659484800000, 5),
+    (1656777600000, 6);
+
+affected_rows: 6
+
+SELECT `timestamp`, DATE_BIN(INTERVAL '30' second, `timestamp`, TIMESTAMP '2001-01-01T00:00:00Z') as `time` FROM `02_function_date_bin_table` order by `timestamp`;
+
+timestamp,time,
+Timestamp(1656777600000),Timestamp(1656777600000),
+Timestamp(1659484800000),Timestamp(1659484800000),
+Timestamp(1659571200000),Timestamp(1659571200000),
+Timestamp(1659577320000),Timestamp(1659577320000),
+Timestamp(1659577422000),Timestamp(1659577410000),
+Timestamp(1659577423000),Timestamp(1659577410000),
+
+
+SELECT `timestamp`, DATE_BIN(INTERVAL '15' minute, `timestamp`, TIMESTAMP '2001-01-01T00:00:00Z') as `time` FROM `02_function_date_bin_table` order by `timestamp`;
+
+timestamp,time,
+Timestamp(1656777600000),Timestamp(1656777600000),
+Timestamp(1659484800000),Timestamp(1659484800000),
+Timestamp(1659571200000),Timestamp(1659571200000),
+Timestamp(1659577320000),Timestamp(1659576600000),
+Timestamp(1659577422000),Timestamp(1659576600000),
+Timestamp(1659577423000),Timestamp(1659576600000),
+
+
+SELECT `timestamp`, DATE_BIN(INTERVAL '2' hour, `timestamp`, TIMESTAMP '2001-01-01T00:00:00Z') as `time` FROM `02_function_date_bin_table` order by `timestamp`;
+
+timestamp,time,
+Timestamp(1656777600000),Timestamp(1656777600000),
+Timestamp(1659484800000),Timestamp(1659484800000),
+Timestamp(1659571200000),Timestamp(1659571200000),
+Timestamp(1659577320000),Timestamp(1659571200000),
+Timestamp(1659577422000),Timestamp(1659571200000),
+Timestamp(1659577423000),Timestamp(1659571200000),
+
+
+DROP TABLE `02_function_date_bin_table`;
+
+affected_rows: 0
+

@@ -13,6 +13,6 @@ local-ip-address = "0.5"
 reqwest = { workspace = true }
 serde = { workspace = true }
 sql = { workspace = true }
-sqlness = "0.4.0"
+sqlness = "0.4.3"
 sqlparser = { workspace = true }
 tokio = { workspace = true }

@@ -11,7 +11,6 @@ pub mod model;
 mod namespace;
 
 mod table_unit;
-pub mod timed_task;
 
 pub mod wal;
 

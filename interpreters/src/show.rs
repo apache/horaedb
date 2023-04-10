@@ -145,7 +145,7 @@ impl ShowInterpreter {
             QueryType::InfluxQL => {
                 // TODO: refactor those constants
                 let schema = DataSchema::new(vec![
-                    Field::new("ceresdb::measurement", DataType::Utf8, false),
+                    Field::new("iox::measurement", DataType::Utf8, false),
                     Field::new("name", DataType::Utf8, false),
                 ]);
 

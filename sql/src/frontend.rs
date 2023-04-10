@@ -4,9 +4,11 @@
 
 use std::{sync::Arc, time::Instant};
 
+use catalog::manager::ManagerRef;
 use ceresdbproto::{prometheus::Expr as PromExpr, storage::WriteTableRequest};
 use cluster::config::SchemaConfig;
 use common_types::request_id::RequestId;
+use common_util::error::{BoxError, GenericError};
 use influxql_parser::statement::Statement as InfluxqlStatement;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{SetExpr, Statement as SqlStatement, TableFactor};
@@ -46,6 +48,12 @@ pub enum Error {
         influxql: String,
         parse_err: influxql_parser::common::ParseError,
     },
+
+    #[snafu(display("Failed to build influxql plan, msg:{}, err:{}", msg, source))]
+    InfluxqlPlanWithCause { msg: String, source: GenericError },
+
+    #[snafu(display("Failed to build influxql plan, msg:{}", msg,))]
+    InfluxqlPlan { msg: String },
 }
 
 define_result!(Error);
@@ -138,10 +146,39 @@ impl<P: MetaProvider> Frontend<P> {
         &self,
         ctx: &mut Context,
         stmt: InfluxqlStatement,
+        manager: ManagerRef,
     ) -> Result<Plan> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+        let catalog_name = self.provider.default_catalog_name();
+        let catalog = manager
+            .catalog_by_name(catalog_name)
+            .box_err()
+            .context(InfluxqlPlanWithCause {
+                msg: format!("get catalog failed, value:{catalog_name}"),
+            })?
+            .context(InfluxqlPlan {
+                msg: format!("catalog is none, value:{catalog_name}"),
+            })?;
+        let schema_name = self.provider.default_schema_name();
+        let schema = catalog
+            .schema_by_name(schema_name)
+            .box_err()
+            .context(InfluxqlPlanWithCause {
+                msg: format!("get schema failed, value:{schema_name}"),
+            })?
+            .context(InfluxqlPlan {
+                msg: format!("schema is none, value:{schema_name}"),
+            })?;
+        let all_tables = schema
+            .all_tables()
+            .box_err()
+            .context(InfluxqlPlanWithCause {
+                msg: format!("get all tables failed, catalog:{catalog_name}, schema:{schema_name}"),
+            })?;
 
-        planner.influxql_stmt_to_plan(stmt).context(CreatePlan)
+        planner
+            .influxql_stmt_to_plan(stmt, all_tables)
+            .context(CreatePlan)
     }
 
     pub fn write_req_to_plan(
