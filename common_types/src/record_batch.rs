@@ -296,7 +296,7 @@ fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch>
         return Ok(source);
     }
     let columns = source.columns();
-    let mut column_list = vec![];
+    let mut casted_columns = Vec::with_capacity(columns.len());
     for column in columns {
         let column = match column.data_type() {
             DataType::Timestamp(TimeUnit::Nanosecond, None) => {
@@ -304,7 +304,7 @@ fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch>
             }
             _ => column.clone(),
         };
-        column_list.push(column);
+        casted_columns.push(column);
     }
 
     let schema = source.schema();
@@ -329,7 +329,7 @@ fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch>
         metadata: schema.metadata().clone(),
     };
     let result =
-        ArrowRecordBatch::try_new(Arc::new(mills_schema), column_list).context(CreateArrow)?;
+        ArrowRecordBatch::try_new(Arc::new(mills_schema), casted_columns).context(CreateArrow)?;
     Ok(result)
 }
 

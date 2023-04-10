@@ -685,7 +685,9 @@ impl ColumnBlock {
     }
 }
 
-/// FIXME: it should call datafusion's built-in conversion function
+// TODO: This is a temp workaround to support nanoseconds, a better way
+// is to support nanoseconds natively.
+// This is also required for influxql.
 pub fn cast_nanosecond_to_mills(array: &ArrayRef) -> Result<Arc<dyn Array>> {
     let column = ColumnarValue::Array(array.clone());
     let mills_column = cast_column(
