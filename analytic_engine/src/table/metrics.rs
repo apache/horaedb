@@ -30,8 +30,8 @@ lazy_static! {
     .unwrap();
 
     static ref TABLE_WRITE_BATCH_HISTGRAM: Histogram = register_histogram!(
-        "table_write_batch",
-        "Histgram of write row batch",
+        "table_write_batch_size",
+        "Histgram of write batch size",
         vec![10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0]
     )
     .unwrap();
