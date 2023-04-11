@@ -12,7 +12,9 @@ use meta_client::types::ShardId;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt};
 
-use crate::{endpoint::Endpoint, hash, Result, RouteNotFound, Router, ShardNotFound};
+use crate::{
+    endpoint::Endpoint, hash, PartitionTableInfo, Result, RouteNotFound, Router, ShardNotFound,
+};
 
 pub type ShardNodes = HashMap<ShardId, Endpoint>;
 
@@ -169,5 +171,13 @@ impl Router for RuleBasedRouter {
         }
 
         Ok(Vec::new())
+    }
+
+    async fn fetch_partition_table_info(
+        &self,
+        _schema: &str,
+        _table: &str,
+    ) -> Result<Option<PartitionTableInfo>> {
+        return Ok(None);
     }
 }

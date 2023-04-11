@@ -9,10 +9,12 @@ use std::{sync::Arc, time::Duration};
 use async_trait::async_trait;
 use ceresdbproto::storage::{Route, RouteRequest};
 pub use cluster_based::ClusterBasedRouter;
+use common_types::{schema::SchemaId, table::TableId};
 use common_util::{config::ReadableDuration, define_result};
 pub use rule_based::{RuleBasedRouter, RuleList};
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, Snafu};
+use table_engine::partition::PartitionInfo;
 
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub))]
@@ -59,9 +61,23 @@ define_result!(Error);
 
 pub type RouterRef = Arc<dyn Router + Sync + Send>;
 
+#[derive(Clone, Debug)]
+pub struct PartitionTableInfo {
+    pub id: TableId,
+    pub name: String,
+    pub schema_id: SchemaId,
+    pub schema_name: String,
+    pub partition_info: PartitionInfo,
+}
+
 #[async_trait]
 pub trait Router {
     async fn route(&self, req: RouteRequest) -> Result<Vec<Route>>;
+    async fn fetch_partition_table_info(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Option<PartitionTableInfo>>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

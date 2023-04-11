@@ -349,7 +349,7 @@ mod tests {
     use catalog::consts::DEFAULT_SCHEMA;
     use ceresdbproto::storage::{Route, SqlQueryRequest, SqlQueryResponse};
     use futures::FutureExt;
-    use router::Router;
+    use router::{PartitionTableInfo, Router};
     use tonic::IntoRequest;
 
     use super::*;
@@ -389,6 +389,14 @@ mod tests {
                     endpoint: Some(v.clone().into()),
                 }]),
             }
+        }
+
+        async fn fetch_partition_table_info(
+            &self,
+            _schema: &str,
+            _table: &str,
+        ) -> router::Result<Option<PartitionTableInfo>> {
+            return Ok(None);
         }
     }
 

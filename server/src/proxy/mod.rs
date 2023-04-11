@@ -62,6 +62,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 })?,
         );
         let hotspot_recorder = Arc::new(HotspotRecorder::new(hotspot_config, runtime));
+
         Ok(Self {
             router,
             instance,

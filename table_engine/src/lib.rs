@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table engine facade, provides read/write interfaces of table
 
@@ -20,3 +20,4 @@ pub const OPTION_KEY_ENABLE_TTL: &str = "enable_ttl";
 
 pub const MEMORY_ENGINE_TYPE: &str = "Memory";
 pub const ANALYTIC_ENGINE_TYPE: &str = "Analytic";
+pub const PARTITION_TABLE_ENGINE_TYPE: &str = "PartitionTable";

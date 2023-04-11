@@ -18,7 +18,7 @@ use std::{
 use async_trait::async_trait;
 use common_types::{record_batch::RecordBatch, schema::RecordSchema};
 use common_util::error::BoxError;
-use config::Config;
+pub use config::Config;
 use futures::{Stream, StreamExt};
 use router::RouterRef;
 use snafu::ResultExt;

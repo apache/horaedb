@@ -56,6 +56,7 @@ impl TableManipulator for TableManipulatorImpl {
             catalog_name: default_catalog.to_string(),
             schema_name: default_schema.to_string(),
             table_name: table.clone(),
+            table_id: None,
             table_schema,
             engine,
             options,

@@ -4715,6 +4715,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "partition_table_engine"
+version = "1.1.0"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "common_types",
+ "common_util",
+ "futures 0.3.28",
+ "lazy_static",
+ "prometheus 0.12.0",
+ "remote_engine_client",
+ "snafu 0.6.10",
+ "table_engine",
+]
+
+[[package]]
 name = "paste"
 version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5923,6 +5939,7 @@ dependencies = [
  "moka",
  "serde",
  "snafu 0.6.10",
+ "table_engine",
  "tokio",
  "twox-hash",
 ]
@@ -6299,6 +6316,7 @@ dependencies = [
  "logger",
  "meta_client",
  "opensrv-mysql",
+ "partition_table_engine",
  "paste 1.0.12",
  "pprof 0.11.1",
  "profile",
@@ -6307,6 +6325,7 @@ dependencies = [
  "prometheus-static-metric",
  "prost",
  "query_engine",
+ "remote_engine_client",
  "router",
  "serde",
  "serde_json",

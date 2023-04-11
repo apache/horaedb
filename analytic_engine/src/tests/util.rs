@@ -130,7 +130,6 @@ impl<T: WalsOpener> TestContext<T> {
 
         let engine_builder = EngineBuilder {
             config: &self.config,
-            router: None,
             engine_runtimes: self.runtimes.clone(),
             opened_wals: opened_wals.clone(),
         };

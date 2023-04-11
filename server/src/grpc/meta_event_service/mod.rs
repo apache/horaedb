@@ -176,6 +176,7 @@ impl<Q: QueryExecutor + 'static> MetaServiceImpl<Q> {
                 .to_string(),
             table_operator: TableOperator::new(self.instance.catalog_manager.clone()),
             table_engine: self.instance.table_engine.clone(),
+            partition_table_engine: self.instance.partition_table_engine.clone(),
             wal_region_closer: self.wal_region_closer.clone(),
         }
     }
@@ -187,6 +188,7 @@ struct HandlerContext {
     default_catalog: String,
     table_operator: TableOperator,
     table_engine: TableEngineRef,
+    partition_table_engine: TableEngineRef,
     wal_region_closer: WalRegionCloserRef,
 }
 
@@ -314,7 +316,7 @@ async fn handle_create_table_on_shard(
             code: StatusCode::BadRequest,
             msg: "current shard info is missing ine CreateTableOnShardRequest",
         })?;
-    let table = request.table_info.context(ErrNoCause {
+    let table_info = request.table_info.context(ErrNoCause {
         code: StatusCode::BadRequest,
         msg: "table info is missing in the CreateTableOnShardRequest",
     })?;
@@ -331,23 +333,25 @@ async fn handle_create_table_on_shard(
             ),
         })?;
 
-    let partition_info = match table.partition_info {
-        Some(v) => Some(
-            PartitionInfo::try_from(v.clone())
-                .box_err()
-                .with_context(|| ErrWithCause {
+    let (table_engine, partition_info) = match table_info.partition_info {
+        Some(v) => {
+            let partition_info = Some(PartitionInfo::try_from(v.clone()).box_err().with_context(
+                || ErrWithCause {
                     code: StatusCode::BadRequest,
                     msg: format!("fail to parse partition info, partition_info:{v:?}"),
-                })?,
-        ),
-        None => None,
+                },
+            )?);
+            (ctx.partition_table_engine.clone(), partition_info)
+        }
+        None => (ctx.table_engine.clone(), None),
     };
 
     // Build create table request and options.
     let create_table_request = CreateTableRequest {
         catalog_name: catalog_name.clone(),
-        schema_name: table.schema_name,
-        table_name: table.name,
+        schema_name: table_info.schema_name,
+        table_name: table_info.name,
+        table_id: Some(TableId::new(table_info.id)),
         table_schema,
         engine: request.engine,
         options: request.options,
@@ -355,8 +359,9 @@ async fn handle_create_table_on_shard(
         shard_id: shard_info.id,
         partition_info,
     };
+
     let create_opts = CreateOptions {
-        table_engine: ctx.table_engine,
+        table_engine,
         create_if_not_exists: request.create_if_not_exist,
     };
 

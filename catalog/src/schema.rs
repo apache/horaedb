@@ -191,6 +191,9 @@ pub struct CreateTableRequest {
     pub schema_name: String,
     /// Table name
     pub table_name: String,
+    /// Table id
+    // TODO: remove this field
+    pub table_id: Option<TableId>,
     /// Table schema
     pub table_schema: common_types::schema::Schema,
     /// Table engine type
@@ -208,9 +211,11 @@ pub struct CreateTableRequest {
 impl CreateTableRequest {
     pub fn into_engine_create_request(
         self,
-        table_id: TableId,
+        table_id: Option<TableId>,
         schema_id: SchemaId,
     ) -> engine::CreateTableRequest {
+        let table_id = self.table_id.unwrap_or(table_id.unwrap_or(TableId::MIN));
+
         engine::CreateTableRequest {
             catalog_name: self.catalog_name,
             schema_name: self.schema_name,

@@ -1,5 +1,5 @@
 [package]
-name = "router"
+name = "partition_table_engine"
 
 [package.version]
 workspace = true
@@ -11,16 +11,13 @@ workspace = true
 workspace = true
 
 [dependencies]
+async-stream = { workspace = true }
 async-trait = { workspace = true }
-ceresdbproto = { workspace = true }
-cluster = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
-log = { workspace = true }
-meta_client = { workspace = true }
-moka = { version = "0.10", features = ["future"] }
-serde = { workspace = true }
+futures = { workspace = true }
+lazy_static = { workspace = true }
+prometheus = { workspace = true }
+remote_engine_client = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
-tokio = { workspace = true }
-twox-hash = "1.6"

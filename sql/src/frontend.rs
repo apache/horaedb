@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Frontend
 
@@ -11,10 +11,11 @@ use common_types::request_id::RequestId;
 use common_util::error::{BoxError, GenericError};
 use influxql_parser::statement::Statement as InfluxqlStatement;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use sqlparser::ast::{SetExpr, Statement as SqlStatement, TableFactor};
 use table_engine::table;
 
 use crate::{
-    ast::Statement,
+    ast::{Statement, TableName},
     parser::Parser,
     plan::Plan,
     planner::Planner,
@@ -191,5 +192,93 @@ impl<P: MetaProvider> Frontend<P> {
         planner
             .write_req_to_plan(schema_config, write_table)
             .context(CreatePlan)
+    }
+}
+
+pub fn parse_table_name(statements: &StatementVec) -> Option<String> {
+    match &statements[0] {
+        Statement::Standard(s) => match *s.clone() {
+            SqlStatement::Insert { table_name, .. } => {
+                Some(TableName::from(table_name).to_string())
+            }
+            SqlStatement::Explain { statement, .. } => {
+                if let SqlStatement::Query(q) = *statement {
+                    match *q.body {
+                        SetExpr::Select(select) => {
+                            if select.from.len() != 1 {
+                                None
+                            } else if let TableFactor::Table { name, .. } = &select.from[0].relation
+                            {
+                                Some(TableName::from(name.clone()).to_string())
+                            } else {
+                                None
+                            }
+                        }
+                        // TODO: return unsupported error rather than none.
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            }
+            SqlStatement::Query(q) => match *q.body {
+                SetExpr::Select(select) => {
+                    if select.from.len() != 1 {
+                        None
+                    } else if let TableFactor::Table { name, .. } = &select.from[0].relation {
+                        Some(TableName::from(name.clone()).to_string())
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            },
+            _ => None,
+        },
+        Statement::Create(s) => Some(s.table_name.to_string()),
+        Statement::Drop(s) => Some(s.table_name.to_string()),
+        Statement::Describe(s) => Some(s.table_name.to_string()),
+        Statement::AlterModifySetting(s) => Some(s.table_name.to_string()),
+        Statement::AlterAddColumn(s) => Some(s.table_name.to_string()),
+        Statement::ShowCreate(s) => Some(s.table_name.to_string()),
+        Statement::ShowTables(_s) => None,
+        Statement::ShowDatabases => None,
+        Statement::Exists(s) => Some(s.table_name.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{frontend::parse_table_name, parser::Parser};
+
+    #[test]
+    fn test_parse_table_name() {
+        let table = "test_parse_table_name";
+        let test_cases = vec![
+                            format!("INSERT INTO {table} (t, name, value) VALUES (1651737067000, 'ceresdb', 100)"),
+                            format!("INSERT INTO `{table}` (t, name, value) VALUES (1651737067000,'ceresdb', 100)"),
+                            format!("select * from {table}"),
+                            format!("select * from `{table}`"),
+                            format!("explain select * from {table}"),
+                            format!("explain select * from `{table}`"),
+                            format!("CREATE TABLE {table} (`name`string TAG,`value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t))"),
+                            format!("CREATE TABLE `{table}` (`name`string TAG,`value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t))"),
+                            format!("drop table {table}"),
+                            format!("drop table `{table}`"),
+                            format!("describe table {table}"),
+                            format!("describe table `{table}`"),
+                            format!("alter table {table} modify setting enable_ttl='false'"),
+                            format!("alter table `{table}` modify setting enable_ttl='false'"),
+                            format!("alter table {table} add column c1 int"),
+                            format!("alter table `{table}` add column c1 int"),
+                            format!("show create table {table}"),
+                            format!("show create table `{table}`"),
+                            format!("exists table {table}"),
+                            format!("exists table `{table}`"),
+        ];
+        for sql in test_cases {
+            let statements = Parser::parse_sql(&sql).unwrap();
+            assert_eq!(parse_table_name(&statements), Some(table.to_string()));
+        }
     }
 }

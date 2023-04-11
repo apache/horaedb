@@ -739,7 +739,7 @@ impl Schema for SchemaImpl {
 
         // Create table
         let table_id = self.alloc_table_id(&request.table_name).await?;
-        let request = request.into_engine_create_request(table_id, self.schema_id);
+        let request = request.into_engine_create_request(Some(table_id), self.schema_id);
         let table_name = request.table_name.clone();
         let table = opts
             .table_engine
@@ -905,6 +905,7 @@ mod tests {
             catalog_name: DEFAULT_CATALOG.to_string(),
             schema_name: schema.name().to_string(),
             table_name: table_name.to_string(),
+            table_id: None,
             table_schema: common_types::tests::build_schema(),
             engine: ANALYTIC_ENGINE_TYPE.to_string(),
             options: HashMap::new(),
