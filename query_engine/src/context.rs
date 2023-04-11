@@ -65,6 +65,7 @@ impl Context {
         let state = default_session_builder(df_session_config)
             .with_query_planner(Arc::new(QueryPlannerAdapter))
             .with_optimizer_rules(logical_optimize_rules);
+        let state = iox_query::logical_optimizer::register_iox_logical_optimizers(state);
         let physical_optimizer =
             Self::apply_adapters_for_physical_optimize_rules(state.physical_optimizers());
         SessionContext::with_state(state.with_physical_optimizer_rules(physical_optimizer))

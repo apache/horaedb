@@ -30,6 +30,7 @@ impl QueryPlanner for QueryPlannerAdapter {
         let extension_planners: Vec<Arc<dyn ExtensionPlanner + Send + Sync>> = vec![
             Arc::new(table_scan_by_primary_key::Planner),
             Arc::new(prom_align::PromAlignPlanner),
+            Arc::new(iox_query::exec::context::IOxExtensionPlanner {}),
         ];
 
         let physical_planner = DefaultPhysicalPlanner::with_extension_planners(extension_planners);

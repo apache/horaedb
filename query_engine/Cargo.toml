@@ -21,6 +21,7 @@ datafusion = { workspace = true }
 datafusion-expr = { workspace = true }
 df_operator = { workspace = true }
 futures = { workspace = true }
+iox_query = { git = "https://github.com/jiacai2050/influxdb_iox", branch = "ceresdb" }
 log = { workspace = true }
 serde = { workspace = true }
 snafu = { workspace = true }
