@@ -32,7 +32,7 @@ lazy_static! {
     static ref TABLE_WRITE_BATCH_HISTGRAM: Histogram = register_histogram!(
         "table_write_batch",
         "Histgram of write row batch",
-        vec![10, 50, 100, 500, 1000, 5000],
+        vec![10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0]
     )
     .unwrap();
 
@@ -165,7 +165,7 @@ impl Metrics {
 
     #[inline]
     pub fn on_write_request_done(&self, num_rows: usize) {
-        TABLE_WRITE_ROWS_HISTGRAM.observe(num_rows as f64);
+        TABLE_WRITE_BATCH_HISTGRAM.observe(num_rows as f64);
     }
 
     #[inline]
