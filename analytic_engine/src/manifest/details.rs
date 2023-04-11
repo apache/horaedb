@@ -166,8 +166,11 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
 ///
 /// Mainly for getting the [TableManifestData] from memory.
 pub(crate) trait TableSnapshotProvider: fmt::Debug + Send + Sync {
-    fn get_table_snapshot(&self, space_id: SpaceId, table_id: TableId)
-        -> Result<Option<TableManifestData>>;
+    fn get_table_snapshot(
+        &self,
+        space_id: SpaceId,
+        table_id: TableId,
+    ) -> Result<Option<TableManifestData>>;
 }
 
 #[derive(Clone)]
@@ -197,7 +200,7 @@ impl TableSnapshotProvider for TableSnapshotProviderImpl {
             .context(BuildSnapshotNoCause {
                 msg: format!("table data not exist, space_id:{space_id}, table_id:{table_id}",),
             })?;
-        
+
         // When table has been dropped, we should return None.
         let table_manifest_data_opt = if !table_data.is_dropped() {
             let table_meta = AddTableMeta {
@@ -223,9 +226,7 @@ impl TableSnapshotProvider for TableSnapshotProviderImpl {
             Some(TableManifestData {
                 table_meta,
                 version_meta: Some(version_meta),
-                }
-            )
-
+            })
         } else {
             None
         };
@@ -253,11 +254,9 @@ where
     SnapshotStore: MetaUpdateSnapshotStore + Send + Sync,
 {
     async fn create_latest_snapshot_with_prev(&self, prev_snapshot: Snapshot) -> Result<Snapshot> {
-        // let log_start_boundary = ReadBoundary::Included(prev_snapshot.end_seq);
-        let log_start_boundary = ReadBoundary::Min;
+        let log_start_boundary = ReadBoundary::Excluded(prev_snapshot.end_seq);
         let mut reader = self.log_store.scan(log_start_boundary).await?;
 
-        let mut num_logs = 0usize;
         let mut latest_seq = prev_snapshot.end_seq;
         let mut manifest_data_builder = if let Some(v) = prev_snapshot.data {
             TableManifestDataBuilder::new(Some(v.table_meta), v.version_meta)
@@ -266,14 +265,12 @@ where
         };
         while let Some((seq, update)) = reader.next_update().await? {
             latest_seq = seq;
-            num_logs += 1;
             manifest_data_builder
                 .apply_update(update)
                 .context(ApplyUpdate)?;
         }
         Ok(Snapshot {
             end_seq: latest_seq,
-            original_logs_num: num_logs,
             data: manifest_data_builder.build(),
         })
     }
@@ -281,26 +278,19 @@ where
     async fn create_latest_snapshot_without_prev(&self) -> Result<Option<Snapshot>> {
         let mut reader = self.log_store.scan(ReadBoundary::Min).await?;
 
-        let mut num_logs = 0usize;
         let mut latest_seq = SequenceNumber::MIN;
         let mut manifest_data_builder = TableManifestDataBuilder::default();
         while let Some((seq, update)) = reader.next_update().await? {
             latest_seq = seq;
-            num_logs += 1;
             manifest_data_builder
                 .apply_update(update)
                 .context(ApplyUpdate)?;
         }
 
-        if num_logs > 0 {
-            Ok(Some(Snapshot {
-                end_seq: latest_seq,
-                original_logs_num: num_logs,
-                data: manifest_data_builder.build(),
-            }))
-        } else {
-            Ok(None)
-        }
+        Ok(Some(Snapshot {
+            end_seq: latest_seq,
+            data: manifest_data_builder.build(),
+        }))
     }
 }
 
@@ -343,7 +333,6 @@ where
             .get_table_snapshot(self.space_id, self.table_id)?;
         let snapshot = Snapshot {
             end_seq: self.end_seq,
-            original_logs_num: 0,
             data: snapshot_data,
         };
 
@@ -732,9 +721,6 @@ struct Snapshot {
     /// Basically it is the latest sequence number of the logs when creating a
     /// new snapshot.
     pub end_seq: SequenceNumber,
-    /// The number of the original logs(excluding previous snapshot log) that
-    /// this snapshot covers.
-    pub original_logs_num: usize,
     /// The data of the snapshot.
     /// None means the table not exists(maybe dropped or not created yet).
     pub data: Option<TableManifestData>,
@@ -768,7 +754,6 @@ impl TryFrom<manifest_pb::Snapshot> for Snapshot {
         });
         Ok(Self {
             end_seq: src.end_seq,
-            original_logs_num: 0,
             data: table_manifest_data,
         })
     }
