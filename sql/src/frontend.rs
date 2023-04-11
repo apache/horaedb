@@ -247,9 +247,17 @@ pub fn parse_table_name(statements: &StatementVec) -> Option<String> {
     }
 }
 
+pub fn parse_table_name_with_sql(sql: &str) -> Option<String> {
+    if let Ok(v) = Parser::parse_sql(sql) {
+        parse_table_name(&v)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{frontend::parse_table_name, parser::Parser};
+    use crate::frontend::parse_table_name_with_sql;
 
     #[test]
     fn test_parse_table_name() {
@@ -277,8 +285,7 @@ mod tests {
                             format!("exists table `{table}`"),
         ];
         for sql in test_cases {
-            let statements = Parser::parse_sql(&sql).unwrap();
-            assert_eq!(parse_table_name(&statements), Some(table.to_string()));
+            assert_eq!(parse_table_name_with_sql(&sql), Some(table.to_string()));
         }
     }
 }

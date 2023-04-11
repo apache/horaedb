@@ -116,7 +116,7 @@ pub enum Error {
         source: column_schema::Error,
     },
 
-    #[snafu(display("Invalid column:{} schema, err:{}", column_name, source))]
+    #[snafu(display("Invalid column schema, column:{}, err:{}", column_name, source))]
     InvalidColumnSchema {
         column_name: String,
         source: column_schema::Error,

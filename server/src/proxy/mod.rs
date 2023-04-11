@@ -8,7 +8,7 @@ pub(crate) mod error;
 pub mod forward;
 pub(crate) mod grpc;
 pub mod hotspot;
-pub mod hotspot_lru;
+mod hotspot_lru;
 pub(crate) mod http;
 pub(crate) mod util;
 
@@ -29,7 +29,7 @@ use log::{error, warn};
 use query_engine::executor::Executor as QueryExecutor;
 use router::{endpoint::Endpoint, Router};
 use snafu::ResultExt;
-use sql::plan::Plan;
+use sql::{frontend, plan::Plan};
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
@@ -38,7 +38,6 @@ use crate::{
         error::{ErrWithCause, Error, Result},
         forward::{ForwardRequest, ForwardResult, Forwarder, ForwarderRef},
         hotspot::HotspotRecorder,
-        util::parse_table_name_with_sql,
     },
     schema_config_provider::SchemaConfigProviderRef,
 };
@@ -54,6 +53,7 @@ pub struct Proxy<Q> {
 }
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         router: Arc<dyn Router + Send + Sync>,
         instance: InstanceRef<Q>,
@@ -91,7 +91,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         &self,
         req: &SqlQueryRequest,
     ) -> Option<ForwardResult<SqlQueryResponse, Error>> {
-        let table_name = parse_table_name_with_sql(&req.sql);
+        let table_name = frontend::parse_table_name_with_sql(&req.sql);
         if table_name.is_none() {
             warn!("Unable to forward sql query without table name, req:{req:?}",);
             return None;

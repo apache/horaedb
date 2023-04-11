@@ -99,17 +99,13 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     sql: request.query.clone(),
                 };
 
-                // if let Some(resp) = self.maybe_forward_sql_query(&sql_query_request).await {
-                //     return convert_sql_response_to_output(resp?);
-                // }
-                match self.maybe_forward_sql_query(&sql_query_request).await {
-                    Some(resp) => match resp {
+                if let Some(resp) = self.maybe_forward_sql_query(&sql_query_request).await {
+                    match resp {
                         ForwardResult::Forwarded(resp) => {
                             return convert_sql_response_to_output(resp?)
                         }
                         ForwardResult::Original => (),
-                    },
-                    None => (),
+                    }
                 };
 
                 // Create logical plan
