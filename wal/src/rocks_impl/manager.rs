@@ -559,7 +559,9 @@ impl Builder {
         }
 
         let stats = if self.enable_statistics.unwrap_or_default() {
-            Some(Statistics::new())
+            let stats = Statistics::new();
+            rocksdb_config.set_statistics(&stats);
+            Some(stats)
         } else {
             None
         };
