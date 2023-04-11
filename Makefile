@@ -100,7 +100,7 @@ dev-setup:
 		echo "Detected Ubuntu system..."; \
 		echo "Installing dependencies using apt-get..."; \
 		sudo apt-get update; \
-		sudo apt install git curl gcc g++ libssl-dev pkg-config protobuf-compiler cmake; \
+		sudo apt install -y git curl gcc g++ libssl-dev pkg-config protobuf-compiler cmake; \
 	else \
 		echo "Error: Unsupported Linux distribution. Exiting..."; \
 		exit 1; \
