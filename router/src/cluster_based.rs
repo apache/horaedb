@@ -17,7 +17,6 @@ use crate::{
 
 #[derive(Clone)]
 struct RouteData {
-    table_name: String,
     table_info: TableInfo,
     endpoint: Option<Endpoint>,
 }
@@ -46,19 +45,19 @@ impl ClusterBasedRouter {
 
     /// route table from local cache, return cache routes and tables which are
     /// not in cache
-    fn route_from_cache(&self, tables: Vec<String>, routes: &mut Vec<RouteData>) -> Vec<String> {
+    fn route_from_cache(&self, tables: &[String], routes: &mut Vec<RouteData>) -> Vec<String> {
         let mut miss = vec![];
 
         if let Some(cache) = &self.cache {
             for table in tables {
-                if let Some(route) = cache.get(&table) {
+                if let Some(route) = cache.get(table) {
                     routes.push(route.clone());
                 } else {
                     miss.push(table.clone());
                 }
             }
         } else {
-            miss = tables;
+            miss = tables.to_vec();
         }
 
         miss
@@ -66,7 +65,7 @@ impl ClusterBasedRouter {
 
     async fn route_with_cache(
         &self,
-        tables: Vec<String>,
+        tables: &Vec<String>,
         database: String,
     ) -> Result<Vec<RouteData>> {
         // Firstly route table from local cache.
@@ -93,12 +92,13 @@ impl ClusterBasedRouter {
         for (table_name, route_entry) in route_resp.entries {
             for node_shard in route_entry.node_shards {
                 if node_shard.shard_info.is_leader() {
-                    let route = make_route(route_entry.table_info.clone(), &node_shard.endpoint)?;
+                    let route = make_route(route_entry.table_info, &node_shard.endpoint)?;
                     if let Some(cache) = &self.cache {
                         // There may be data race here, and it is acceptable currently.
                         cache.insert(table_name.clone(), route.clone()).await;
                     }
                     routes.push(route);
+                    break;
                 }
             }
         }
@@ -111,7 +111,6 @@ fn make_route(table_info: TableInfo, endpoint: &str) -> Result<RouteData> {
     let endpoint: Endpoint = endpoint.parse().context(ParseEndpoint { endpoint })?;
 
     Ok(RouteData {
-        table_name: table_info.name.clone(),
         table_info,
         endpoint: Some(endpoint),
     })
@@ -121,11 +120,11 @@ fn make_route(table_info: TableInfo, endpoint: &str) -> Result<RouteData> {
 impl Router for ClusterBasedRouter {
     async fn route(&self, req: RouteRequest) -> Result<Vec<Route>> {
         let req_ctx = req.context.unwrap();
-        let route_data_vec = self.route_with_cache(req.tables, req_ctx.database).await?;
+        let route_data_vec = self.route_with_cache(&req.tables, req_ctx.database).await?;
         Ok(route_data_vec
             .into_iter()
             .map(|v| Route {
-                table: v.table_name,
+                table: v.table_info.name,
                 endpoint: v.endpoint.map(Into::into),
             })
             .collect())
@@ -137,7 +136,7 @@ impl Router for ClusterBasedRouter {
         table: &str,
     ) -> Result<Option<PartitionTableInfo>> {
         let mut route_data_vec = self
-            .route_with_cache(vec![table.to_string()], schema.to_string())
+            .route_with_cache(&vec![table.to_string()], schema.to_string())
             .await?;
         if route_data_vec.is_empty() {
             return Ok(None);
@@ -288,7 +287,7 @@ mod tests {
         assert_eq!(result.unwrap().len(), 2);
 
         let mut routes = Vec::with_capacity(tables.len());
-        let miss = router.route_from_cache(tables, &mut routes);
+        let miss = router.route_from_cache(&tables, &mut routes);
         assert_eq!(routes.len(), 2);
         assert_eq!(miss.len(), 0);
         sleep(Duration::from_secs(1));
@@ -296,18 +295,18 @@ mod tests {
         // try to get table1
         let tables = vec![table1.to_string()];
         let mut routes = Vec::with_capacity(tables.len());
-        let miss = router.route_from_cache(tables, &mut routes);
+        let miss = router.route_from_cache(&tables, &mut routes);
         assert_eq!(routes.len(), 1);
-        assert_eq!(routes[0].table_name, table1.to_string());
+        assert_eq!(routes[0].table_info.name, table1.to_string());
         assert_eq!(miss.len(), 0);
 
         // sleep 1.5s, table2 will be evicted, and table1 in cache
         sleep(Duration::from_millis(1500));
         let tables = vec![table1.to_string(), table2.to_string()];
         let mut routes = Vec::with_capacity(tables.len());
-        let miss = router.route_from_cache(tables, &mut routes);
+        let miss = router.route_from_cache(&tables, &mut routes);
         assert_eq!(routes.len(), 1);
-        assert_eq!(routes[0].table_name, table1.to_string());
+        assert_eq!(routes[0].table_info.name, table1.to_string());
         assert_eq!(miss.len(), 1);
         assert_eq!(miss[0], table2.to_string());
     }

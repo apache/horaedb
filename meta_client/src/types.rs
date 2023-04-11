@@ -94,16 +94,15 @@ impl TryFrom<meta_service_pb::TableInfo> for TableInfo {
     type Error = Error;
 
     fn try_from(pb_table_info: meta_service_pb::TableInfo) -> Result<Self> {
-        let partition_info = match pb_table_info.partition_info {
-            Some(partition_info) => Some(
-                PartitionInfo::try_from(partition_info)
-                    .box_err()
-                    .context(Convert {
-                        msg: "Failed to parse partition",
-                    })?,
-            ),
-            None => None,
-        };
+        let partition_info = pb_table_info
+            .partition_info
+            .map(|v| {
+                PartitionInfo::try_from(v).box_err().context(Convert {
+                    msg: "Failed to parse partition",
+                })
+            })
+            .transpose()?;
+
         Ok(TableInfo {
             id: pb_table_info.id,
             name: pb_table_info.name,

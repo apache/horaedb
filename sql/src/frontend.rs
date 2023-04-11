@@ -214,6 +214,7 @@ pub fn parse_table_name(statements: &StatementVec) -> Option<String> {
                                 None
                             }
                         }
+                        // TODO: return unsupported error rather than none.
                         _ => None,
                     }
                 } else {
