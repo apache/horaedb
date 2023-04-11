@@ -65,7 +65,7 @@ fn build_engine_runtimes(config: &RuntimeConfig) -> EngineRuntimes {
     EngineRuntimes {
         read_runtime: Arc::new(build_runtime("ceres-read", config.read_thread_num)),
         write_runtime: Arc::new(build_runtime("ceres-write", config.write_thread_num)),
-        compaction_runtime: Arc::new(build_runtime("ceres-compact", config.compact_thread_num)),
+        compact_runtime: Arc::new(build_runtime("ceres-compact", config.compact_thread_num)),
         meta_runtime: Arc::new(build_runtime("ceres-meta", config.meta_thread_num)),
         default_runtime: Arc::new(build_runtime("ceres-default", config.default_thread_num)),
     }

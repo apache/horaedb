@@ -454,6 +454,7 @@ impl Builder {
                 read_runtime: runtime.clone(),
                 write_runtime: runtime.clone(),
                 meta_runtime: runtime.clone(),
+                compact_runtime: runtime.clone(),
                 default_runtime: runtime,
             }),
         }

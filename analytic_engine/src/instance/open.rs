@@ -69,10 +69,10 @@ impl Instance {
             background_read_parallelism: 1,
             max_record_batches_in_flight: MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ,
         };
-        let compaction_runtime = ctx.runtimes.compaction_runtime.clone();
+        let compaction_runtime = ctx.runtimes.compact_runtime.clone();
         let compaction_scheduler = Arc::new(SchedulerImpl::new(
             space_store.clone(),
-            compaction_runtime.clone(),
+            compaction_runtime,
             scheduler_config,
             ctx.config.write_sst_max_buffer_size.as_byte() as usize,
             scan_options_for_compaction,
