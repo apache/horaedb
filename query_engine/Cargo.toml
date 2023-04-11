@@ -27,3 +27,4 @@ snafu = { workspace = true }
 sql = { workspace = true }
 table_engine = { workspace = true }
 tokio = { workspace = true }
+iox_query = { git = "https://github.com/jiacai2050/influxdb_iox", branch = "ceresdb" }
