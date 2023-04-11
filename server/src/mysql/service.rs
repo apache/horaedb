@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
@@ -54,7 +54,7 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
 
         info!("MySQL server tries to listen on {}", self.socket_addr);
 
-        self.join_handler = Some(rt.bg_runtime.spawn(Self::loop_accept(
+        self.join_handler = Some(rt.default_runtime.spawn(Self::loop_accept(
             self.instance.clone(),
             self.runtimes.clone(),
             self.router.clone(),

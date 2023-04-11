@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! utilities for testing wal module.
 
@@ -88,7 +88,7 @@ impl WalBuilder for MemoryTableWalBuilder {
         let wal_runtimes = WalRuntimes {
             read_runtime: runtime.clone(),
             write_runtime: runtime.clone(),
-            bg_runtime: runtime.clone(),
+            default_runtime: runtime.clone(),
         };
         let namespace_wal =
             WalNamespaceImpl::open(self.table_kv.clone(), wal_runtimes, WAL_NAMESPACE, config)

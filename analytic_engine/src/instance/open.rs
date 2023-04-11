@@ -65,20 +65,21 @@ impl Instance {
         });
 
         let scheduler_config = ctx.config.compaction_config.clone();
-        let bg_runtime = ctx.runtimes.bg_runtime.clone();
         let scan_options_for_compaction = ScanOptions {
             background_read_parallelism: 1,
             max_record_batches_in_flight: MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ,
         };
+        let compaction_runtime = ctx.runtimes.compact_runtime.clone();
         let compaction_scheduler = Arc::new(SchedulerImpl::new(
             space_store.clone(),
-            bg_runtime.clone(),
+            compaction_runtime,
             scheduler_config,
             ctx.config.write_sst_max_buffer_size.as_byte() as usize,
             scan_options_for_compaction,
         ));
 
-        let file_purger = FilePurger::start(&bg_runtime, store_picker.default_store().clone());
+        let default_runtime = ctx.runtimes.default_runtime.clone();
+        let file_purger = FilePurger::start(&default_runtime, store_picker.default_store().clone());
 
         let scan_options = ScanOptions {
             background_read_parallelism: ctx.config.sst_background_read_parallelism,

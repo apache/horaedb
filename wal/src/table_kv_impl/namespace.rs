@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Wal namespace.
 
@@ -349,7 +349,7 @@ impl<T: TableKv> NamespaceInner<T> {
         let namespace = self.name().to_string();
         let meta_table_name = self.meta_table_name.clone();
         let table_kv = self.table_kv.clone();
-        self.runtimes.bg_runtime.spawn_blocking(move || {
+        self.runtimes.default_runtime.spawn_blocking(move || {
             let outdated_buckets = outdated_buckets.into_iter().map(Arc::new).collect();
             if let Err(e) = purge_buckets(outdated_buckets, &namespace, &meta_table_name, &table_kv)
             {
@@ -1031,7 +1031,7 @@ impl<T: TableKv> Namespace<T> {
 
             // Has ttl, we need to periodically create/purge buckets.
             monitor_handle = Some(start_bucket_monitor(
-                &runtimes.bg_runtime,
+                &runtimes.default_runtime,
                 BUCKET_MONITOR_PERIOD,
                 inner.clone(),
             ));
@@ -1040,7 +1040,7 @@ impl<T: TableKv> Namespace<T> {
 
             // Start a cleaner if wal has no ttl.
             cleaner_handle = Some(start_log_cleaner(
-                &runtimes.bg_runtime,
+                &runtimes.default_runtime,
                 LOG_CLEANER_PERIOD,
                 inner.clone(),
             ));
@@ -1495,7 +1495,7 @@ mod tests {
         WalRuntimes {
             read_runtime: runtime.clone(),
             write_runtime: runtime.clone(),
-            bg_runtime: runtime,
+            default_runtime: runtime,
         }
     }
 

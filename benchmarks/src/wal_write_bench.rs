@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! WalManager write  bench.
 
@@ -62,7 +62,7 @@ impl WalWriteBench {
             let runtimes = WalRuntimes {
                 read_runtime: self.runtime.clone(),
                 write_runtime: self.runtime.clone(),
-                bg_runtime: self.runtime.clone(),
+                default_runtime: self.runtime.clone(),
             };
 
             let wal = WalNamespaceImpl::open(

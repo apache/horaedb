@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Wal based on namespace.
 
@@ -53,7 +53,7 @@ impl<T: TableKv> WalNamespaceImpl<T> {
         name: &str,
         config: NamespaceConfig,
     ) -> Result<NamespaceRef<T>> {
-        let rt = runtimes.bg_runtime.clone();
+        let rt = runtimes.default_runtime.clone();
         let table_kv = table_kv.clone();
         let namespace_name = name.to_string();
 
