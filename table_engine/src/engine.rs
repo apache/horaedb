@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table factory trait
 
@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use ceresdbproto::sys_catalog as sys_catalog_pb;
 use common_types::{
     schema::Schema,
-    table::{ClusterVersion, ShardId, DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
+    table::{ShardId, DEFAULT_SHARD_ID},
 };
 use common_util::{error::GenericError, runtime::Runtime};
 use snafu::{ensure, Backtrace, Snafu};
@@ -27,7 +27,7 @@ pub enum Error {
     #[snafu(display("Table already exists, table:{}.\nBacktrace:\n{}", table, backtrace))]
     TableExists { table: String, backtrace: Backtrace },
 
-    #[snafu(display("Invalid arguments, err:{}", source))]
+    #[snafu(display("Invalid arguments, table:{table}, err:{source}"))]
     InvalidArguments { table: String, source: GenericError },
 
     #[snafu(display("Failed to write meta data, err:{}", source))]
@@ -36,7 +36,7 @@ pub enum Error {
     #[snafu(display("Unexpected error, err:{}", source))]
     Unexpected { source: GenericError },
 
-    #[snafu(display("Unexpected error, :msg{}", msg))]
+    #[snafu(display("Unexpected error, msg:{}", msg))]
     UnexpectedNoCause { msg: String },
 
     #[snafu(display(
@@ -153,9 +153,6 @@ pub struct CreateTableRequest {
     /// It will be assigned the default value in standalone mode,
     /// and just be useful in cluster mode
     pub shard_id: ShardId,
-    /// Cluster version of shard, it will change while cluster's topology
-    /// changes.
-    pub cluster_version: ClusterVersion,
     /// Partition info if this is a partitioned table
     pub partition_info: Option<PartitionInfo>,
 }
@@ -221,8 +218,6 @@ pub struct OpenTableRequest {
     pub engine: String,
     /// Shard id, shard is the table set about scheduling from nodes
     pub shard_id: ShardId,
-    /// Cluster version, same as the one in [CreateTableRequest]
-    pub cluster_version: ClusterVersion,
 }
 
 impl From<TableInfo> for OpenTableRequest {
@@ -238,7 +233,6 @@ impl From<TableInfo> for OpenTableRequest {
             table_id: table_info.table_id,
             engine: table_info.engine,
             shard_id: DEFAULT_SHARD_ID,
-            cluster_version: DEFAULT_CLUSTER_VERSION,
         }
     }
 }
@@ -258,6 +252,28 @@ pub struct CloseTableRequest {
     /// Table engine type
     pub engine: String,
 }
+
+#[derive(Debug, Clone)]
+pub struct OpenShardRequest {
+    /// Shard id
+    pub shard_id: ShardId,
+
+    /// Table infos
+    pub table_defs: Vec<TableDef>,
+
+    /// Table engine type
+    pub engine: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct TableDef {
+    pub catalog_name: String,
+    pub schema_name: String,
+    pub id: TableId,
+    pub name: String,
+}
+
+pub type CloseShardRequest = OpenShardRequest;
 
 /// Table engine
 // TODO(yingwen): drop table support to release resource owned by the table

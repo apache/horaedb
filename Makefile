@@ -2,6 +2,8 @@ SHELL = /bin/bash
 
 DIR=$(shell pwd)
 
+.DEFAULT_GOAL := integration-test
+
 init:
 	echo "init"
 	echo "Git branch: $GITBRANCH"
@@ -84,6 +86,9 @@ miri:
 ensure-disk-quota:
 	# ensure the target directory not to exceed 40GB
 	python3 ./scripts/clean-large-folder.py ./target 42949672960
+
+tsbs: build
+	cd $(DIR); sh scripts/run-tsbs.sh
 
 # install dev dependencies
 ifeq ($(shell uname), Darwin)

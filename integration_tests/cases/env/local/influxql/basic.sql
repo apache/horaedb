@@ -38,4 +38,18 @@ SELECT "level_description", location, water_level FROM "h2o_feet" where location
 -- SQLNESS ARG protocol=influxql
 show measurements;
 
+-- SQLNESS ARG protocol=influxql
+SELECT count(water_level) FROM "h2o_feet"
+group by location;
+
+-- SQLNESS ARG protocol=influxql
+SELECT count(water_level) FROM "h2o_feet"
+where time < 1439828400000ms
+group by location, time(5m);
+
+-- SQLNESS ARG protocol=influxql
+SELECT count(water_level) FROM "h2o_feet"
+where time < 1439828400000ms
+group by location, time(5m) fill(666);
+
 DROP TABLE IF EXISTS `h2o_feet`;

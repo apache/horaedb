@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
     sync::{Arc, Mutex, RwLock},
@@ -33,7 +33,7 @@ use tokio::{
 
 use crate::{
     config::ClusterConfig, shard_tables_cache::ShardTablesCache, topology::ClusterTopology,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, OpenShard,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, Internal, MetaClientFailure, OpenShard,
     OpenShardWithCause, Result, ShardNotFound, TableNotFound,
 };
 
@@ -287,7 +287,11 @@ impl Inner {
         self.shard_tables_cache.try_insert_table_to_shard(
             update_shard_info.prev_version,
             ShardInfo::from(curr_shard_info),
-            TableInfo::from(table_info),
+            TableInfo::try_from(table_info)
+                .box_err()
+                .context(Internal {
+                    msg: "Failed to parse tableInfo",
+                })?,
         )
     }
 
@@ -309,7 +313,11 @@ impl Inner {
         self.shard_tables_cache.try_remove_table_from_shard(
             update_shard_info.prev_version,
             ShardInfo::from(curr_shard_info),
-            TableInfo::from(table_info),
+            TableInfo::try_from(table_info)
+                .box_err()
+                .context(Internal {
+                    msg: "Failed to parse tableInfo",
+                })?,
         )
     }
 }

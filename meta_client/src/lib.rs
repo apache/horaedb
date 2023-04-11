@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::sync::Arc;
 
@@ -18,6 +18,9 @@ pub mod types;
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
 pub enum Error {
+    #[snafu(display("{msg}, err:{source}"))]
+    Convert { msg: String, source: GenericError },
+
     #[snafu(display("Missing shard info, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     MissingShardInfo { msg: String, backtrace: Backtrace },
 

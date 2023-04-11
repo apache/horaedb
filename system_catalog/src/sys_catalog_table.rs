@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table to store system catalog
 
@@ -16,7 +16,7 @@ use common_types::{
     request_id::RequestId,
     row::{Row, RowGroup, RowGroupBuilder},
     schema::{self, Schema},
-    table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
+    table::DEFAULT_SHARD_ID,
     time::Timestamp,
 };
 use common_util::{
@@ -271,7 +271,6 @@ impl SysCatalogTable {
             table_id: SYS_CATALOG_TABLE_ID,
             engine: table_engine.engine_type().to_string(),
             shard_id: DEFAULT_SHARD_ID,
-            cluster_version: DEFAULT_CLUSTER_VERSION,
         };
 
         let table_opt = table_engine
@@ -312,7 +311,6 @@ impl SysCatalogTable {
             options,
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
-            cluster_version: DEFAULT_CLUSTER_VERSION,
         };
 
         let table = table_engine

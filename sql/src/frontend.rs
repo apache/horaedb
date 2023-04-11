@@ -1,18 +1,21 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Frontend
 
 use std::{sync::Arc, time::Instant};
 
+use catalog::manager::ManagerRef;
 use ceresdbproto::{prometheus::Expr as PromExpr, storage::WriteTableRequest};
 use cluster::config::SchemaConfig;
 use common_types::request_id::RequestId;
+use common_util::error::{BoxError, GenericError};
 use influxql_parser::statement::Statement as InfluxqlStatement;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use sqlparser::ast::{SetExpr, Statement as SqlStatement, TableFactor};
 use table_engine::table;
 
 use crate::{
-    ast::Statement,
+    ast::{Statement, TableName},
     parser::Parser,
     plan::Plan,
     planner::Planner,
@@ -45,6 +48,12 @@ pub enum Error {
         influxql: String,
         parse_err: influxql_parser::common::ParseError,
     },
+
+    #[snafu(display("Failed to build influxql plan, msg:{}, err:{}", msg, source))]
+    InfluxqlPlanWithCause { msg: String, source: GenericError },
+
+    #[snafu(display("Failed to build influxql plan, msg:{}", msg,))]
+    InfluxqlPlan { msg: String },
 }
 
 define_result!(Error);
@@ -137,10 +146,39 @@ impl<P: MetaProvider> Frontend<P> {
         &self,
         ctx: &mut Context,
         stmt: InfluxqlStatement,
+        manager: ManagerRef,
     ) -> Result<Plan> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+        let catalog_name = self.provider.default_catalog_name();
+        let catalog = manager
+            .catalog_by_name(catalog_name)
+            .box_err()
+            .context(InfluxqlPlanWithCause {
+                msg: format!("get catalog failed, value:{catalog_name}"),
+            })?
+            .context(InfluxqlPlan {
+                msg: format!("catalog is none, value:{catalog_name}"),
+            })?;
+        let schema_name = self.provider.default_schema_name();
+        let schema = catalog
+            .schema_by_name(schema_name)
+            .box_err()
+            .context(InfluxqlPlanWithCause {
+                msg: format!("get schema failed, value:{schema_name}"),
+            })?
+            .context(InfluxqlPlan {
+                msg: format!("schema is none, value:{schema_name}"),
+            })?;
+        let all_tables = schema
+            .all_tables()
+            .box_err()
+            .context(InfluxqlPlanWithCause {
+                msg: format!("get all tables failed, catalog:{catalog_name}, schema:{schema_name}"),
+            })?;
 
-        planner.influxql_stmt_to_plan(stmt).context(CreatePlan)
+        planner
+            .influxql_stmt_to_plan(stmt, all_tables)
+            .context(CreatePlan)
     }
 
     pub fn write_req_to_plan(
@@ -154,5 +192,93 @@ impl<P: MetaProvider> Frontend<P> {
         planner
             .write_req_to_plan(schema_config, write_table)
             .context(CreatePlan)
+    }
+}
+
+pub fn parse_table_name(statements: &StatementVec) -> Option<String> {
+    match &statements[0] {
+        Statement::Standard(s) => match *s.clone() {
+            SqlStatement::Insert { table_name, .. } => {
+                Some(TableName::from(table_name).to_string())
+            }
+            SqlStatement::Explain { statement, .. } => {
+                if let SqlStatement::Query(q) = *statement {
+                    match *q.body {
+                        SetExpr::Select(select) => {
+                            if select.from.len() != 1 {
+                                None
+                            } else if let TableFactor::Table { name, .. } = &select.from[0].relation
+                            {
+                                Some(TableName::from(name.clone()).to_string())
+                            } else {
+                                None
+                            }
+                        }
+                        // TODO: return unsupported error rather than none.
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            }
+            SqlStatement::Query(q) => match *q.body {
+                SetExpr::Select(select) => {
+                    if select.from.len() != 1 {
+                        None
+                    } else if let TableFactor::Table { name, .. } = &select.from[0].relation {
+                        Some(TableName::from(name.clone()).to_string())
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            },
+            _ => None,
+        },
+        Statement::Create(s) => Some(s.table_name.to_string()),
+        Statement::Drop(s) => Some(s.table_name.to_string()),
+        Statement::Describe(s) => Some(s.table_name.to_string()),
+        Statement::AlterModifySetting(s) => Some(s.table_name.to_string()),
+        Statement::AlterAddColumn(s) => Some(s.table_name.to_string()),
+        Statement::ShowCreate(s) => Some(s.table_name.to_string()),
+        Statement::ShowTables(_s) => None,
+        Statement::ShowDatabases => None,
+        Statement::Exists(s) => Some(s.table_name.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{frontend::parse_table_name, parser::Parser};
+
+    #[test]
+    fn test_parse_table_name() {
+        let table = "test_parse_table_name";
+        let test_cases = vec![
+                            format!("INSERT INTO {table} (t, name, value) VALUES (1651737067000, 'ceresdb', 100)"),
+                            format!("INSERT INTO `{table}` (t, name, value) VALUES (1651737067000,'ceresdb', 100)"),
+                            format!("select * from {table}"),
+                            format!("select * from `{table}`"),
+                            format!("explain select * from {table}"),
+                            format!("explain select * from `{table}`"),
+                            format!("CREATE TABLE {table} (`name`string TAG,`value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t))"),
+                            format!("CREATE TABLE `{table}` (`name`string TAG,`value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t))"),
+                            format!("drop table {table}"),
+                            format!("drop table `{table}`"),
+                            format!("describe table {table}"),
+                            format!("describe table `{table}`"),
+                            format!("alter table {table} modify setting enable_ttl='false'"),
+                            format!("alter table `{table}` modify setting enable_ttl='false'"),
+                            format!("alter table {table} add column c1 int"),
+                            format!("alter table `{table}` add column c1 int"),
+                            format!("show create table {table}"),
+                            format!("show create table `{table}`"),
+                            format!("exists table {table}"),
+                            format!("exists table `{table}`"),
+        ];
+        for sql in test_cases {
+            let statements = Parser::parse_sql(&sql).unwrap();
+            assert_eq!(parse_table_name(&statements), Some(table.to_string()));
+        }
     }
 }

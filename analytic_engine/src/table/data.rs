@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table data
 
@@ -19,7 +19,7 @@ use arena::CollectorRef;
 use common_types::{
     self,
     schema::{Schema, Version},
-    table::{ClusterVersion, ShardId},
+    table::ShardId,
     time::{TimeRange, Timestamp},
     SequenceNumber,
 };
@@ -27,7 +27,7 @@ use common_util::define_result;
 use log::{debug, info};
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_engine::{engine::CreateTableRequest, partition::PartitionInfo, table::TableId};
+use table_engine::{engine::CreateTableRequest, table::TableId};
 
 use crate::{
     instance::write_worker::{choose_worker, WorkerLocal, WriteHandle},
@@ -78,15 +78,11 @@ pub type MemTableId = u64;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TableShardInfo {
     pub shard_id: ShardId,
-    pub cluster_version: ClusterVersion,
 }
 
 impl TableShardInfo {
-    pub fn new(shard_id: ShardId, cluster_version: ClusterVersion) -> Self {
-        Self {
-            shard_id,
-            cluster_version,
-        }
+    pub fn new(shard_id: ShardId) -> Self {
+        Self { shard_id }
     }
 }
 
@@ -150,9 +146,6 @@ pub struct TableData {
 
     /// Shard id
     pub shard_info: TableShardInfo,
-
-    /// Partition info
-    pub partition_info: Option<PartitionInfo>,
 }
 
 impl fmt::Debug for TableData {
@@ -168,7 +161,6 @@ impl fmt::Debug for TableData {
             .field("last_file_id", &self.last_file_id)
             .field("dropped", &self.dropped.load(Ordering::Relaxed))
             .field("shard_info", &self.shard_info)
-            .field("partition_info", &self.partition_info)
             .finish()
     }
 }
@@ -222,8 +214,7 @@ impl TableData {
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
-            shard_info: TableShardInfo::new(request.shard_id, request.cluster_version),
-            partition_info: request.partition_info,
+            shard_info: TableShardInfo::new(request.shard_id),
         })
     }
 
@@ -236,7 +227,6 @@ impl TableData {
         purger: &FilePurger,
         mem_usage_collector: CollectorRef,
         shard_id: ShardId,
-        cluster_version: ClusterVersion,
     ) -> Result<Self> {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
@@ -260,8 +250,7 @@ impl TableData {
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
-            shard_info: TableShardInfo::new(shard_id, cluster_version),
-            partition_info: add_meta.partition_info,
+            shard_info: TableShardInfo::new(shard_id),
         })
     }
 
@@ -598,10 +587,7 @@ pub mod tests {
     use std::sync::Arc;
 
     use arena::NoopCollector;
-    use common_types::{
-        datum::DatumKind,
-        table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
-    };
+    use common_types::{datum::DatumKind, table::DEFAULT_SHARD_ID};
     use common_util::config::ReadableDuration;
     use table_engine::{engine::TableState, table::SchemaId};
 
@@ -647,7 +633,6 @@ pub mod tests {
         table_id: TableId,
         table_name: String,
         shard_id: ShardId,
-        cluster_version: ClusterVersion,
         write_handle: Option<WriteHandle>,
     }
 
@@ -664,11 +649,6 @@ pub mod tests {
 
         pub fn shard_id(mut self, shard_id: ShardId) -> Self {
             self.shard_id = shard_id;
-            self
-        }
-
-        pub fn cluster_version(mut self, cluster_version: ClusterVersion) -> Self {
-            self.cluster_version = cluster_version;
             self
         }
 
@@ -691,7 +671,6 @@ pub mod tests {
                 options: HashMap::new(),
                 state: TableState::Stable,
                 shard_id: self.shard_id,
-                cluster_version: self.cluster_version,
                 partition_info: None,
             };
 
@@ -721,7 +700,6 @@ pub mod tests {
                 table_id: table::new_table_id(2, 1),
                 table_name: "mocked_table".to_string(),
                 shard_id: DEFAULT_SHARD_ID,
-                cluster_version: DEFAULT_CLUSTER_VERSION,
                 write_handle: None,
             }
         }
@@ -732,20 +710,15 @@ pub mod tests {
         let table_id = table::new_table_id(100, 30);
         let table_name = "new_table".to_string();
         let shard_id = 42;
-        let cluster_version = 1;
         let table_data = TableDataMocker::default()
             .table_id(table_id)
             .table_name(table_name.clone())
             .shard_id(shard_id)
-            .cluster_version(cluster_version)
             .build();
 
         assert_eq!(table_id, table_data.id);
         assert_eq!(table_name, table_data.name);
-        assert_eq!(
-            TableShardInfo::new(shard_id, cluster_version),
-            table_data.shard_info
-        );
+        assert_eq!(TableShardInfo::new(shard_id), table_data.shard_info);
         assert_eq!(0, table_data.last_sequence());
         assert!(!table_data.is_dropped());
         assert_eq!(0, table_data.last_file_id());

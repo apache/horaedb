@@ -37,7 +37,7 @@ use crate::{
         storage_service::StorageServiceImpl,
     },
     instance::InstanceRef,
-    proxy::{forward, Proxy},
+    proxy::{forward, hotspot, Proxy},
     schema_config_provider::{self, SchemaConfigProviderRef},
 };
 
@@ -215,6 +215,7 @@ pub struct Builder<Q> {
     schema_config_provider: Option<SchemaConfigProviderRef>,
     forward_config: Option<forward::Config>,
     auto_create_table: bool,
+    hotspot_config: Option<hotspot::Config>,
 }
 
 impl<Q> Builder<Q> {
@@ -232,6 +233,7 @@ impl<Q> Builder<Q> {
             schema_config_provider: None,
             forward_config: None,
             auto_create_table: true,
+            hotspot_config: None,
         }
     }
 
@@ -287,6 +289,11 @@ impl<Q> Builder<Q> {
         self
     }
 
+    pub fn hotspot_config(mut self, config: hotspot::Config) -> Self {
+        self.hotspot_config = Some(config);
+        self
+    }
+
     pub fn timeout(mut self, timeout: Option<Duration>) -> Self {
         self.timeout = timeout;
         self
@@ -327,7 +334,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         };
 
         let forward_config = self.forward_config.unwrap_or_default();
-        let bg_runtime = runtimes.bg_runtime.clone();
+        let hotspot_config = self.hotspot_config.unwrap_or_default();
+        let runtime = runtimes.bg_runtime.clone();
         let proxy = Proxy::try_new(
             router,
             instance,
@@ -336,6 +344,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             self.resp_compress_min_length,
             self.auto_create_table,
             schema_config_provider,
+            hotspot_config,
+            runtime.clone(),
         )
         .box_err()
         .context(Internal {
@@ -355,7 +365,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             rpc_server,
             meta_rpc_server,
             remote_engine_server,
-            runtime: bg_runtime,
+            runtime,
             stop_tx: None,
             join_handle: None,
         })

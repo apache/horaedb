@@ -6,6 +6,7 @@ use interpreters::interpreter::Output;
 use log::{error, info};
 use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaWriter};
 use query_engine::executor::Executor as QueryExecutor;
+use router::RouterRef;
 use snafu::ResultExt;
 use table_engine::engine::EngineRuntimes;
 
@@ -26,6 +27,7 @@ pub struct MysqlWorker<W: std::io::Write + Send + Sync, Q> {
     generic_hold: PhantomData<W>,
     instance: Arc<Instance<Q>>,
     runtimes: Arc<EngineRuntimes>,
+    router: RouterRef,
     timeout: Option<Duration>,
 }
 
@@ -37,12 +39,14 @@ where
     pub fn new(
         instance: Arc<Instance<Q>>,
         runtimes: Arc<EngineRuntimes>,
+        router: RouterRef,
         timeout: Option<Duration>,
     ) -> Self {
         Self {
             generic_hold: PhantomData::default(),
             instance,
             runtimes,
+            router,
             timeout,
         }
     }
@@ -144,6 +148,7 @@ where
             .runtime(runtime)
             .enable_partition_table_access(false)
             .timeout(self.timeout)
+            .router(self.router.clone())
             .build()
             .context(CreateContext)
     }

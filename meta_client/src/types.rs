@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -8,12 +8,12 @@ use common_types::{
     schema::{SchemaId, SchemaName},
     table::{TableId, TableName},
 };
-use common_util::config::ReadableDuration;
+use common_util::{config::ReadableDuration, error::BoxError};
 use serde::Deserialize;
-use snafu::OptionExt;
+use snafu::{OptionExt, ResultExt};
 use table_engine::partition::PartitionInfo;
 
-use crate::{Error, MissingShardInfo, MissingTableInfo, Result};
+use crate::{Convert, Error, MissingShardInfo, MissingTableInfo, Result};
 pub type ClusterNodesRef = Arc<Vec<NodeShard>>;
 
 #[derive(Debug, Clone)]
@@ -87,16 +87,29 @@ pub struct TableInfo {
     pub name: String,
     pub schema_id: SchemaId,
     pub schema_name: String,
+    pub partition_info: Option<PartitionInfo>,
 }
 
-impl From<meta_service_pb::TableInfo> for TableInfo {
-    fn from(pb_table_info: meta_service_pb::TableInfo) -> Self {
-        TableInfo {
+impl TryFrom<meta_service_pb::TableInfo> for TableInfo {
+    type Error = Error;
+
+    fn try_from(pb_table_info: meta_service_pb::TableInfo) -> Result<Self> {
+        let partition_info = pb_table_info
+            .partition_info
+            .map(|v| {
+                PartitionInfo::try_from(v).box_err().context(Convert {
+                    msg: "Failed to parse partition",
+                })
+            })
+            .transpose()?;
+
+        Ok(TableInfo {
             id: pb_table_info.id,
             name: pb_table_info.name,
             schema_id: pb_table_info.schema_id,
             schema_name: pb_table_info.schema_name,
-        }
+            partition_info,
+        })
     }
 }
 
@@ -274,8 +287,8 @@ impl TryFrom<meta_service_pb::TablesOfShard> for TablesOfShard {
             tables: pb_tables_of_shard
                 .tables
                 .into_iter()
-                .map(Into::into)
-                .collect(),
+                .map(TryInto::<TableInfo>::try_into)
+                .collect::<Result<Vec<_>>>()?,
         })
     }
 }
@@ -340,7 +353,7 @@ impl TryFrom<meta_service_pb::CreateTableResponse> for CreateTableResponse {
         })?;
 
         Ok(Self {
-            created_table: TableInfo::from(pb_table_info),
+            created_table: TableInfo::try_from(pb_table_info)?,
             shard_info: ShardInfo::from(pb_shard_info),
         })
     }
@@ -363,11 +376,13 @@ impl From<DropTableRequest> for meta_service_pb::DropTableRequest {
     }
 }
 
-impl From<meta_service_pb::DropTableResponse> for DropTableResponse {
-    fn from(pb_resp: meta_service_pb::DropTableResponse) -> Self {
-        Self {
-            dropped_table: pb_resp.dropped_table.map(TableInfo::from),
-        }
+impl TryFrom<meta_service_pb::DropTableResponse> for DropTableResponse {
+    type Error = Error;
+
+    fn try_from(pb_resp: meta_service_pb::DropTableResponse) -> Result<Self> {
+        Ok(Self {
+            dropped_table: pb_resp.dropped_table.map(TableInfo::try_from).transpose()?,
+        })
     }
 }
 
@@ -385,7 +400,7 @@ pub struct NodeShard {
 
 #[derive(Debug, Clone)]
 pub struct RouteEntry {
-    pub table: TableInfo,
+    pub table_info: TableInfo,
     pub node_shards: Vec<NodeShard>,
 }
 
@@ -441,7 +456,7 @@ impl TryFrom<meta_service_pb::RouteEntry> for RouteEntry {
             msg: "table info is missing in route entry",
         })?;
         Ok(RouteEntry {
-            table: TableInfo::from(table_info),
+            table_info: TableInfo::try_from(table_info)?,
             node_shards,
         })
     }

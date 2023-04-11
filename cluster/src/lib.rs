@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Cluster sub-crate includes serval functionalities for supporting CeresDB
 //! server to running in the distribute mode. Including:
@@ -34,6 +34,9 @@ pub mod topology;
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
 pub enum Error {
+    #[snafu(display("{msg}, err:{source}"))]
+    Internal { msg: String, source: GenericError },
+
     #[snafu(display("Build meta client failed, err:{}.", source))]
     BuildMetaClient { source: meta_client::Error },
 

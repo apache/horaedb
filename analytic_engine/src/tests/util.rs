@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Test utils.
 
@@ -8,7 +8,7 @@ use common_types::{
     datum::Datum,
     record_batch::RecordBatch,
     row::{Row, RowGroup},
-    table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
+    table::DEFAULT_SHARD_ID,
     time::Timestamp,
 };
 use common_util::{
@@ -130,7 +130,6 @@ impl<T: WalsOpener> TestContext<T> {
 
         let engine_builder = EngineBuilder {
             config: &self.config,
-            router: None,
             engine_runtimes: self.runtimes.clone(),
             opened_wals: opened_wals.clone(),
         };
@@ -186,7 +185,6 @@ impl<T: WalsOpener> TestContext<T> {
                 table_id,
                 engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
                 shard_id: DEFAULT_SHARD_ID,
-                cluster_version: DEFAULT_CLUSTER_VERSION,
             })
             .await
             .unwrap()
@@ -210,7 +208,6 @@ impl<T: WalsOpener> TestContext<T> {
                 table_id,
                 engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
                 shard_id: DEFAULT_SHARD_ID,
-                cluster_version: DEFAULT_CLUSTER_VERSION,
             })
             .await?;
 
@@ -437,6 +434,7 @@ impl Builder {
             },
             wal: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
                 data_dir: dir.path().to_str().unwrap().to_string(),
+                ..Default::default()
             })),
             ..Default::default()
         };
@@ -497,6 +495,7 @@ impl Default for RocksDBEngineBuildContext {
 
             wal: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
                 data_dir: dir.path().to_str().unwrap().to_string(),
+                ..Default::default()
             })),
             ..Default::default()
         };
@@ -524,6 +523,7 @@ impl Clone for RocksDBEngineBuildContext {
         config.storage = storage;
         config.wal = WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
             data_dir: dir.path().to_str().unwrap().to_string(),
+            ..Default::default()
         }));
 
         Self { config }

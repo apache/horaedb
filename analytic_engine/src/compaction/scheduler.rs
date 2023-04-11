@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 // Compaction scheduler.
 
@@ -26,7 +26,7 @@ use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::{
     sync::{
-        mpsc::{self, Receiver, Sender},
+        mpsc::{self, error::TrySendError, Receiver, Sender},
         Mutex,
     },
     time,
@@ -93,7 +93,7 @@ pub trait CompactionScheduler {
     async fn stop_scheduler(&self) -> Result<()>;
 
     /// Schedule a compaction job to background workers.
-    async fn schedule_table_compaction(&self, request: TableCompactionRequest);
+    async fn schedule_table_compaction(&self, request: TableCompactionRequest) -> bool;
 }
 
 // A FIFO queue that remove duplicate values by key.
@@ -339,11 +339,19 @@ impl CompactionScheduler for SchedulerImpl {
         Ok(())
     }
 
-    async fn schedule_table_compaction(&self, request: TableCompactionRequest) {
-        let send_res = self.sender.send(ScheduleTask::Request(request)).await;
+    async fn schedule_table_compaction(&self, request: TableCompactionRequest) -> bool {
+        let send_res = self.sender.try_send(ScheduleTask::Request(request));
 
-        if let Err(e) = send_res {
-            error!("Compaction scheduler failed to send request, err:{}", e);
+        match send_res {
+            Err(TrySendError::Full(_)) => {
+                debug!("Compaction scheduler is busy, drop compaction request");
+                false
+            }
+            Err(TrySendError::Closed(_)) => {
+                error!("Compaction scheduler is closed, drop compaction request");
+                false
+            }
+            Ok(_) => true,
         }
     }
 }

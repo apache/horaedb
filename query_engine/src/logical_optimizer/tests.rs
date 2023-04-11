@@ -136,7 +136,7 @@ impl LogicalPlanNodeBuilder {
         let projected_schema = self.df_schema_ref();
 
         let plan = LogicalPlan::TableScan(TableScan {
-            table_name: self.table_name.clone(),
+            table_name: self.table_name.clone().into(),
             source: Arc::new(provider),
             projection: None,
             projected_schema,

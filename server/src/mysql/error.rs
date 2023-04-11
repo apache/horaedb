@@ -12,6 +12,9 @@ pub enum Error {
     #[snafu(display("Missing instance to build service.\nBacktrace:\n{}", backtrace))]
     MissingInstance { backtrace: Backtrace },
 
+    #[snafu(display("Missing router to build service.\nBacktrace:\n{}", backtrace))]
+    MissingRouter { backtrace: Backtrace },
+
     #[snafu(display(
         "Failed to parse ip addr, ip:{}, err:{}.\nBacktrace:\n{}",
         ip,

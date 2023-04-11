@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Setup server
 
@@ -9,7 +9,7 @@ use analytic_engine::{
     setup::{EngineBuilder, KafkaWalsOpener, ObkvWalsOpener, RocksDBWalsOpener, WalsOpener},
     WalStorageConfig,
 };
-use catalog::{manager::ManagerRef, schema::OpenOptions, CatalogRef};
+use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{
     cluster_impl::ClusterImpl, config::ClusterConfig, shard_tables_cache::ShardTablesCache,
@@ -225,7 +225,6 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
         .expect("Failed to setup analytic engine");
     let engine_builder = EngineBuilder {
         config: &config.analytic,
-        router: Some(router.clone()),
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
     };
@@ -265,7 +264,6 @@ async fn build_without_meta<Q: Executor + 'static, T: WalsOpener>(
         .expect("Failed to setup analytic engine");
     let engine_builder = EngineBuilder {
         config: &config.analytic,
-        router: None,
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
     };
@@ -284,18 +282,18 @@ async fn build_without_meta<Q: Executor + 'static, T: WalsOpener>(
         .expect("Failed to fetch table infos for opening");
 
     let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));
+    let table_operator = TableOperator::new(catalog_manager.clone());
     let table_manipulator = Arc::new(catalog_based::TableManipulatorImpl::new(
-        catalog_manager.clone(),
+        table_operator.clone(),
     ));
 
     // Iterate the table infos to recover.
-    let default_catalog = default_catalog(catalog_manager.clone());
     let open_opts = OpenOptions {
         table_engine: engine_proxy.clone(),
     };
 
     // Create local tables recoverer.
-    let local_tables_recoverer = LocalTablesRecoverer::new(table_infos, default_catalog, open_opts);
+    let local_tables_recoverer = LocalTablesRecoverer::new(table_infos, table_operator, open_opts);
 
     // Create schema in default catalog.
     create_static_topology_schema(
@@ -345,12 +343,4 @@ async fn create_static_topology_schema(
             &schema_shard_view.schema
         );
     }
-}
-
-fn default_catalog(catalog_manager: ManagerRef) -> CatalogRef {
-    let default_catalog_name = catalog_manager.default_catalog_name();
-    catalog_manager
-        .catalog_by_name(default_catalog_name)
-        .expect("fail to get default catalog")
-        .expect("default catalog is not found")
 }

@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Distributed Table implementation
 
@@ -11,7 +11,7 @@ use common_types::{
 };
 use common_util::error::BoxError;
 use futures::future::try_join_all;
-use snafu::{ensure, ResultExt};
+use snafu::ResultExt;
 use table_engine::{
     partition::{
         format_sub_partition_table_name, rule::df_adapter::DfPartitionRuleAdapter, PartitionInfo,
@@ -30,58 +30,44 @@ use table_engine::{
     },
 };
 
-use crate::{
-    space::SpaceAndTable,
-    table::metrics::{
-        PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM,
-        PARTITION_TABLE_WRITE_DURATION_HISTOGRAM,
-    },
+use crate::metrics::{
+    PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM, PARTITION_TABLE_WRITE_DURATION_HISTOGRAM,
 };
+
+#[derive(Debug)]
+pub struct TableData {
+    pub catalog_name: String,
+    pub schema_name: String,
+    pub table_name: String,
+    pub table_id: TableId,
+    pub table_schema: Schema,
+    pub partition_info: PartitionInfo,
+    pub options: HashMap<String, String>,
+    pub engine_type: String,
+}
 
 /// Table trait implementation
 pub struct PartitionTableImpl {
-    /// Space table
-    space_table: SpaceAndTable,
-    /// Remote engine
+    table_data: TableData,
     remote_engine: RemoteEngineRef,
-    /// Engine type
-    engine_type: String,
 }
 
 impl PartitionTableImpl {
-    pub fn new(
-        remote_engine: RemoteEngineRef,
-        engine_type: String,
-        space_table: SpaceAndTable,
-    ) -> Result<Self> {
-        ensure!(
-            space_table.table_data().partition_info.is_some(),
-            UnexpectedWithMsg {
-                msg: "partition table partition info can't be empty"
-            }
-        );
+    pub fn new(table_data: TableData, remote_engine: RemoteEngineRef) -> Result<Self> {
         Ok(Self {
-            space_table,
+            table_data,
             remote_engine,
-            engine_type,
         })
     }
 
     fn get_sub_table_ident(&self, id: usize) -> TableIdentifier {
-        let partition_name = self
-            .space_table
-            .table_data()
-            .partition_info
-            .as_ref()
-            .map(|v| v.get_definitions()[id].name.clone())
-            .unwrap();
+        let partition_name = self.table_data.partition_info.get_definitions()[id]
+            .name
+            .clone();
         TableIdentifier {
-            catalog: self.space_table.space().context.catalog_name.clone(),
-            schema: self.space_table.space().context.schema_name.clone(),
-            table: format_sub_partition_table_name(
-                &self.space_table.table_data().name,
-                &partition_name,
-            ),
+            catalog: self.table_data.catalog_name.clone(),
+            schema: self.table_data.schema_name.clone(),
+            table: format_sub_partition_table_name(&self.table_data.table_name, &partition_name),
         }
     }
 }
@@ -89,8 +75,7 @@ impl PartitionTableImpl {
 impl fmt::Debug for PartitionTableImpl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PartitionTableImpl")
-            .field("space_id", &self.space_table.space().id)
-            .field("table_id", &self.space_table.table_data().id)
+            .field("table_data", &self.table_data)
             .finish()
     }
 }
@@ -98,31 +83,32 @@ impl fmt::Debug for PartitionTableImpl {
 #[async_trait]
 impl Table for PartitionTableImpl {
     fn name(&self) -> &str {
-        &self.space_table.table_data().name
+        &self.table_data.table_name
     }
 
     fn id(&self) -> TableId {
-        self.space_table.table_data().id
+        self.table_data.table_id
     }
 
     fn schema(&self) -> Schema {
-        self.space_table.table_data().schema()
+        self.table_data.table_schema.clone()
     }
 
+    // TODO: get options from sub partition table with remote engine
     fn options(&self) -> HashMap<String, String> {
-        self.space_table.table_data().table_options().to_raw_map()
+        self.table_data.options.clone()
     }
 
     fn partition_info(&self) -> Option<PartitionInfo> {
-        self.space_table.table_data().partition_info.clone()
+        Some(self.table_data.partition_info.clone())
     }
 
     fn engine_type(&self) -> &str {
-        &self.engine_type
+        &self.table_data.engine_type
     }
 
     fn stats(&self) -> TableStats {
-        self.space_table.table_data().metrics.table_stats()
+        TableStats::default()
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {
@@ -137,7 +123,7 @@ impl Table for PartitionTableImpl {
             }
             .fail()?,
             Some(partition_info) => {
-                DfPartitionRuleAdapter::new(partition_info, &self.space_table.table_data().schema())
+                DfPartitionRuleAdapter::new(partition_info, &self.table_data.table_schema)
                     .box_err()
                     .context(CreatePartitionRule)?
             }
@@ -222,7 +208,7 @@ impl Table for PartitionTableImpl {
             }
             .fail()?,
             Some(partition_info) => {
-                DfPartitionRuleAdapter::new(partition_info, &self.space_table.table_data().schema())
+                DfPartitionRuleAdapter::new(partition_info, &self.table_data.table_schema)
                     .box_err()
                     .context(CreatePartitionRule)?
             }

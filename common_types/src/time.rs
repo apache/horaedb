@@ -152,7 +152,7 @@ impl From<&i64> for Timestamp {
 ///
 /// The start time is inclusive and the end time is exclusive: [start, end).
 /// The range is empty if start equals end.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct TimeRange {
     /// The start timestamp (inclusive)
     inclusive_start: Timestamp,

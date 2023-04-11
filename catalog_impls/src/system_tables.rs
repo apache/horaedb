@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Contains System tables, such as system.public.tables
 
@@ -8,8 +8,8 @@ use async_trait::async_trait;
 use catalog::{
     consts::{SYSTEM_CATALOG, SYSTEM_CATALOG_SCHEMA},
     schema::{
-        CloseOptions, CloseTableRequest, CreateOptions, CreateTableRequest, DropOptions,
-        DropTableRequest, NameRef, OpenOptions, OpenTableRequest, Schema, SchemaRef,
+        CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, Schema,
+        SchemaRef,
     },
     Catalog,
 };
@@ -93,30 +93,20 @@ impl Schema for SystemTables {
         .fail()
     }
 
-    async fn open_table(
-        &self,
-        _request: OpenTableRequest,
-        _opts: OpenOptions,
-    ) -> catalog::schema::Result<Option<TableRef>> {
-        warn!("try to open table in the system tables");
-        Ok(None)
-    }
-
-    async fn close_table(
-        &self,
-        _request: CloseTableRequest,
-        _opts: CloseOptions,
-    ) -> catalog::schema::Result<()> {
-        warn!("try to close table in the system tables");
-        Ok(())
-    }
-
     fn all_tables(&self) -> catalog::schema::Result<Vec<TableRef>> {
         Ok(self
             .tables
             .iter()
             .map(|(_, v)| v.clone() as TableRef)
             .collect())
+    }
+
+    fn register_table(&self, _table: TableRef) {
+        warn!("Try to register table in the system tables");
+    }
+
+    fn unregister_table(&self, _table_name: &str) {
+        warn!("Try to unregister table in the system tables");
     }
 }
 

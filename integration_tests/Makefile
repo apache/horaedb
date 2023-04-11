@@ -23,6 +23,7 @@ export CERESDB_CONFIG_FILE_0 ?= $(ROOT)/config/ceresdb-cluster-0.toml
 export CERESDB_CONFIG_FILE_1 ?= $(ROOT)/config/ceresdb-cluster-1.toml
 export CLUSTER_CERESDB_STDOUT_FILE_0 ?= /tmp/ceresdb-stdout-0.log
 export CLUSTER_CERESDB_STDOUT_FILE_1 ?= /tmp/ceresdb-stdout-1.log
+export RUST_BACKTRACE=1
 
 clean:
 	rm -rf $(CERESDB_DATA_DIR) $(CERESDB_DATA_DIR_0) $(CERESDB_DATA_DIR_1) $(CERESMETA_DATA_DIR)
@@ -42,8 +43,16 @@ kill-old-process:
 	killall ceresdb-server | true
 	killall ceresmeta | true
 
-run: clean build kill-old-process
-	RUST_BACKTRACE=1 $(CERESDB_TEST_BINARY)
+prepare: clean build kill-old-process
+
+run: prepare
+	$(CERESDB_TEST_BINARY)
+
+run-local: prepare
+	CERESDB_ENV_FILTER=local $(CERESDB_TEST_BINARY)
+
+run-cluster: prepare
+	CERESDB_ENV_FILTER=cluster $(CERESDB_TEST_BINARY)
 
 run-java:
 	java -version
@@ -55,3 +64,6 @@ run-go:
 
 run-rust:
 	cd sdk/rust && cargo run
+
+run-mysql:
+	cd mysql && ./basic.sh

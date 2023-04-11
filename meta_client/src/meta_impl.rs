@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::sync::Arc;
 
@@ -153,7 +153,7 @@ impl MetaClient for MetaClientImpl {
         info!("Meta client finish dropping table, resp:{:?}", pb_resp);
 
         check_response_header(&pb_resp.header)?;
-        Ok(DropTableResponse::from(pb_resp))
+        DropTableResponse::try_from(pb_resp)
     }
 
     async fn get_tables_of_shards(
