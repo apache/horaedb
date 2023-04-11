@@ -47,6 +47,7 @@ serde_json = { workspace = true }
 snafu = { workspace = true }
 spin = { workspace = true }
 sql = { workspace = true }
+system_catalog = { workspace = true }
 table_engine = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["net"] }
