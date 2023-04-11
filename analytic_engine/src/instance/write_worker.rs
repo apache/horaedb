@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Write workers
 
@@ -956,7 +956,12 @@ impl WriteWorker {
             waiter,
         };
 
-        self.instance.schedule_table_compaction(request).await;
+        let table = request.table_data.name.clone();
+        let succeed = self.instance.schedule_table_compaction(request).await;
+        if !succeed {
+            error!("Failed to schedule compaction, table:{table}");
+        }
+
         if let Err(_res) = tx.send(Ok(())) {
             error!("handle compact table failed to send result");
         }
