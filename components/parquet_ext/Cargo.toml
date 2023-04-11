@@ -20,5 +20,4 @@ datafusion = { workspace = true }
 datafusion-expr = { workspace = true }
 log = { workspace = true }
 parquet = { workspace = true }
-thrift = "0.13"
 tokio = { workspace = true }
