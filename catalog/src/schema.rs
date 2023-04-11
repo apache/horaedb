@@ -192,6 +192,7 @@ pub struct CreateTableRequest {
     /// Table name
     pub table_name: String,
     /// Table id
+    // TODO: remove this field
     pub table_id: Option<TableId>,
     /// Table schema
     pub table_schema: common_types::schema::Schema,

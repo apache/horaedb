@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! A router based on the [`cluster::Cluster`].
 
@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
 use common_util::error::BoxError;
-use meta_client::types::RouteTablesRequest;
+use meta_client::types::{RouteTablesRequest, TableInfo};
 use moka::future::Cache;
 use snafu::ResultExt;
 
@@ -15,9 +15,16 @@ use crate::{
     RouteCacheConfig, Router,
 };
 
+#[derive(Clone)]
+struct RouteData {
+    table_name: String,
+    table_info: TableInfo,
+    endpoint: Option<Endpoint>,
+}
+
 pub struct ClusterBasedRouter {
     cluster: ClusterRef,
-    cache: Option<Cache<String, Route>>,
+    cache: Option<Cache<String, RouteData>>,
 }
 
 impl ClusterBasedRouter {
@@ -39,7 +46,7 @@ impl ClusterBasedRouter {
 
     /// route table from local cache, return cache routes and tables which are
     /// not in cache
-    fn route_from_cache(&self, tables: Vec<String>, routes: &mut Vec<Route>) -> Vec<String> {
+    fn route_from_cache(&self, tables: Vec<String>, routes: &mut Vec<RouteData>) -> Vec<String> {
         let mut miss = vec![];
 
         if let Some(cache) = &self.cache {
@@ -56,33 +63,20 @@ impl ClusterBasedRouter {
 
         miss
     }
-}
 
-/// Make a route according to the table name and the raw endpoint.
-fn make_route(table_name: &str, endpoint: &str) -> Result<Route> {
-    let endpoint: Endpoint = endpoint.parse().context(ParseEndpoint { endpoint })?;
-
-    Ok(Route {
-        table: table_name.to_string(),
-        endpoint: Some(endpoint.into()),
-    })
-}
-
-#[async_trait]
-impl Router for ClusterBasedRouter {
-    async fn route(&self, req: RouteRequest) -> Result<Vec<Route>> {
-        let req_ctx = req.context.unwrap();
-
+    async fn route_with_cache(
+        &self,
+        tables: Vec<String>,
+        database: String,
+    ) -> Result<Vec<RouteData>> {
         // Firstly route table from local cache.
-        let mut routes = Vec::with_capacity(req.tables.len());
-        let miss = self.route_from_cache(req.tables, &mut routes);
-
+        let mut routes = Vec::with_capacity(tables.len());
+        let miss = self.route_from_cache(tables, &mut routes);
         if miss.is_empty() {
             return Ok(routes);
         }
-
         let route_tables_req = RouteTablesRequest {
-            schema_name: req_ctx.database,
+            schema_name: database,
             table_names: miss,
         };
 
@@ -99,7 +93,7 @@ impl Router for ClusterBasedRouter {
         for (table_name, route_entry) in route_resp.entries {
             for node_shard in route_entry.node_shards {
                 if node_shard.shard_info.is_leader() {
-                    let route = make_route(&table_name, &node_shard.endpoint)?;
+                    let route = make_route(route_entry.table_info.clone(), &node_shard.endpoint)?;
                     if let Some(cache) = &self.cache {
                         // There may be data race here, and it is acceptable currently.
                         cache.insert(table_name.clone(), route.clone()).await;
@@ -108,7 +102,33 @@ impl Router for ClusterBasedRouter {
                 }
             }
         }
-        return Ok(routes);
+        Ok(routes)
+    }
+}
+
+/// Make a route according to the table_info and the raw endpoint.
+fn make_route(table_info: TableInfo, endpoint: &str) -> Result<RouteData> {
+    let endpoint: Endpoint = endpoint.parse().context(ParseEndpoint { endpoint })?;
+
+    Ok(RouteData {
+        table_name: table_info.name.clone(),
+        table_info,
+        endpoint: Some(endpoint),
+    })
+}
+
+#[async_trait]
+impl Router for ClusterBasedRouter {
+    async fn route(&self, req: RouteRequest) -> Result<Vec<Route>> {
+        let req_ctx = req.context.unwrap();
+        let route_data_vec = self.route_with_cache(req.tables, req_ctx.database).await?;
+        Ok(route_data_vec
+            .into_iter()
+            .map(|v| Route {
+                table: v.table_name,
+                endpoint: v.endpoint.map(Into::into),
+            })
+            .collect())
     }
 
     async fn fetch_partition_table_info(
@@ -116,35 +136,25 @@ impl Router for ClusterBasedRouter {
         schema: &str,
         table: &str,
     ) -> Result<Option<PartitionTableInfo>> {
-        let route_tables_req = RouteTablesRequest {
-            schema_name: schema.to_string(),
-            table_names: vec![table.to_string()],
-        };
-        let route_resp = self
-            .cluster
-            .route_tables(&route_tables_req)
-            .await
-            .box_err()
-            .with_context(|| OtherWithCause {
-                msg: format!("Failed to route tables by cluster, req:{route_tables_req:?}"),
-            })?;
-
-        let table_info = route_resp
-            .entries
-            .get(table)
-            .map(|entry| entry.table_info.clone());
-        if let Some(v) = table_info {
-            if v.partition_info.is_some() {
-                let partition_table_info = PartitionTableInfo {
-                    id: v.id,
-                    name: v.name,
-                    schema_id: v.schema_id,
-                    schema_name: v.schema_name,
-                    partition_info: v.partition_info.unwrap(),
-                };
-                return Ok(Some(partition_table_info));
-            }
+        let mut route_data_vec = self
+            .route_with_cache(vec![table.to_string()], schema.to_string())
+            .await?;
+        if route_data_vec.is_empty() {
+            return Ok(None);
         }
+
+        let route_data = route_data_vec.remove(0);
+        let table_info = route_data.table_info;
+        if table_info.partition_info.is_some() {
+            return Ok(Some(PartitionTableInfo {
+                id: table_info.id,
+                name: table_info.name,
+                schema_id: table_info.schema_id,
+                schema_name: table_info.schema_name,
+                partition_info: table_info.partition_info.unwrap(),
+            }));
+        }
+
         Ok(None)
     }
 }
@@ -288,7 +298,7 @@ mod tests {
         let mut routes = Vec::with_capacity(tables.len());
         let miss = router.route_from_cache(tables, &mut routes);
         assert_eq!(routes.len(), 1);
-        assert_eq!(routes[0].table, table1.to_string());
+        assert_eq!(routes[0].table_name, table1.to_string());
         assert_eq!(miss.len(), 0);
 
         // sleep 1.5s, table2 will be evicted, and table1 in cache
@@ -297,7 +307,7 @@ mod tests {
         let mut routes = Vec::with_capacity(tables.len());
         let miss = router.route_from_cache(tables, &mut routes);
         assert_eq!(routes.len(), 1);
-        assert_eq!(routes[0].table, table1.to_string());
+        assert_eq!(routes[0].table_name, table1.to_string());
         assert_eq!(miss.len(), 1);
         assert_eq!(miss[0], table2.to_string());
     }

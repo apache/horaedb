@@ -306,7 +306,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         // Open partition table if needed.
         let table_name = frontend::parse_table_name(&stmts);
         if let Some(table_name) = table_name {
-            self.open_partition_table_if_not_exist(catalog, schema, &table_name)
+            self.maybe_open_partition_table_if_not_exist(catalog, schema, &table_name)
                 .await?;
         }
 
@@ -392,7 +392,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         Ok(output)
     }
 
-    async fn open_partition_table_if_not_exist(
+    async fn maybe_open_partition_table_if_not_exist(
         &self,
         catalog_name: &str,
         schema_name: &str,

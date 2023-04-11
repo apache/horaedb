@@ -333,22 +333,17 @@ async fn handle_create_table_on_shard(
             ),
         })?;
 
-    let partition_info = match table_info.partition_info {
-        Some(v) => Some(
-            PartitionInfo::try_from(v.clone())
-                .box_err()
-                .with_context(|| ErrWithCause {
+    let (table_engine, partition_info) = match table_info.partition_info {
+        Some(v) => {
+            let partition_info = Some(PartitionInfo::try_from(v.clone()).box_err().with_context(
+                || ErrWithCause {
                     code: StatusCode::BadRequest,
                     msg: format!("fail to parse partition info, partition_info:{v:?}"),
-                })?,
-        ),
-        None => None,
-    };
-
-    let table_engine = if partition_info.is_some() {
-        ctx.partition_table_engine.clone()
-    } else {
-        ctx.table_engine.clone()
+                },
+            )?);
+            (ctx.partition_table_engine.clone(), partition_info)
+        }
+        None => (ctx.table_engine.clone(), None),
     };
 
     // Build create table request and options.

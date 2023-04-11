@@ -313,7 +313,7 @@ impl Schema for SchemaImpl {
                 .with_context(|| schema::CreateTable {
                     request: request.clone(),
                     msg: format!("table with shards is not found in the ShardTableManager, catalog_name:{}, schema_name:{}, table_name:{}",
-                                 request.catalog_name,request.schema_name,request.table_name),
+                                 request.catalog_name, request.schema_name, request.table_name),
                 })?;
         }
         let request = request.into_engine_create_request(None, self.schema_id);
