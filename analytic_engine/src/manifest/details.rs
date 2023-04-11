@@ -167,7 +167,7 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
 /// Mainly for getting the [TableManifestData] from memory.
 pub(crate) trait TableSnapshotProvider: fmt::Debug + Send + Sync {
     fn get_table_snapshot(&self, space_id: SpaceId, table_id: TableId)
-        -> Result<TableManifestData>;
+        -> Result<Option<TableManifestData>>;
 }
 
 #[derive(Clone)]
@@ -186,7 +186,7 @@ impl TableSnapshotProvider for TableSnapshotProviderImpl {
         &self,
         space_id: SpaceId,
         table_id: TableId,
-    ) -> Result<TableManifestData> {
+    ) -> Result<Option<TableManifestData>> {
         let spaces = self.spaces.read().unwrap();
         let table_data = spaces
             .get_by_id(space_id)
@@ -197,31 +197,40 @@ impl TableSnapshotProvider for TableSnapshotProviderImpl {
             .context(BuildSnapshotNoCause {
                 msg: format!("table data not exist, space_id:{space_id}, table_id:{table_id}",),
             })?;
+        
+        // When table has been dropped, we should return None.
+        let table_manifest_data_opt = if !table_data.is_dropped() {
+            let table_meta = AddTableMeta {
+                space_id,
+                table_id,
+                table_name: table_data.name.to_string(),
+                schema: table_data.schema(),
+                opts: table_data.table_options().as_ref().clone(),
+                partition_info: table_data.partition_info.clone(),
+            };
 
-        let table_meta = AddTableMeta {
-            space_id,
-            table_id,
-            table_name: table_data.name.to_string(),
-            schema: table_data.schema(),
-            opts: table_data.table_options().as_ref().clone(),
-            partition_info: table_data.partition_info.clone(),
+            let version_snapshot = table_data.current_version().snapshot();
+            let TableVersionSnapshot {
+                flushed_sequence,
+                files,
+            } = version_snapshot;
+            let version_meta = TableVersionMeta {
+                flushed_sequence,
+                files,
+                max_file_id: table_data.last_file_id(),
+            };
+
+            Some(TableManifestData {
+                table_meta,
+                version_meta: Some(version_meta),
+                }
+            )
+
+        } else {
+            None
         };
 
-        let version_snapshot = table_data.current_version().snapshot();
-        let TableVersionSnapshot {
-            flushed_sequence,
-            files,
-        } = version_snapshot;
-        let version_meta = TableVersionMeta {
-            flushed_sequence,
-            files,
-            max_file_id: table_data.last_file_id(),
-        };
-
-        Ok(TableManifestData {
-            table_meta,
-            version_meta: Some(version_meta),
-        })
+        Ok(table_manifest_data_opt)
     }
 }
 
@@ -335,7 +344,7 @@ where
         let snapshot = Snapshot {
             end_seq: self.end_seq,
             original_logs_num: 0,
-            data: Some(snapshot_data),
+            data: snapshot_data,
         };
 
         // Update the current snapshot to the new one.
@@ -887,9 +896,9 @@ mod tests {
             &self,
             _space_id: SpaceId,
             _table_id: TableId,
-        ) -> Result<TableManifestData> {
+        ) -> Result<Option<TableManifestData>> {
             let builder = self.builder.lock().unwrap();
-            Ok(builder.clone().build().unwrap())
+            Ok(builder.clone().build())
         }
     }
 
