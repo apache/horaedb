@@ -509,7 +509,7 @@ dependencies = [
 [[package]]
 name = "arrow_util"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "ahash 0.8.3",
  "arrow 36.0.0",
@@ -1968,7 +1968,7 @@ dependencies = [
 [[package]]
 name = "data_types"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "croaring",
  "influxdb-line-protocol 1.0.0 (git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb)",
@@ -2161,7 +2161,7 @@ dependencies = [
 [[package]]
 name = "datafusion_util"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "async-trait",
  "datafusion",
@@ -2404,7 +2404,7 @@ checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 [[package]]
 name = "executor"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "futures 0.3.28",
  "libc",
@@ -2778,7 +2778,7 @@ checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
 [[package]]
 name = "generated_types"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "base64 0.21.0",
  "bytes 1.4.0",
@@ -3224,7 +3224,7 @@ dependencies = [
 [[package]]
 name = "influxdb-line-protocol"
 version = "1.0.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "bytes 1.4.0",
  "log",
@@ -3236,7 +3236,7 @@ dependencies = [
 [[package]]
 name = "influxdb_influxql_parser"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -3320,7 +3320,7 @@ dependencies = [
 [[package]]
 name = "iox_query"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "arrow 36.0.0",
  "arrow_util",
@@ -3352,7 +3352,7 @@ dependencies = [
 [[package]]
 name = "iox_query_influxql"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "arrow 36.0.0",
  "chrono",
@@ -3376,7 +3376,7 @@ dependencies = [
 [[package]]
 name = "iox_time"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "chrono",
  "parking_lot 0.12.1",
@@ -4466,7 +4466,7 @@ dependencies = [
 [[package]]
 name = "observability_deps"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "tracing",
  "workspace-hack",
@@ -4677,7 +4677,7 @@ dependencies = [
 [[package]]
 name = "parquet_file"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "arrow 36.0.0",
  "base64 0.21.0",
@@ -4995,7 +4995,7 @@ checksum = "5b40af805b3121feab8a3c29f04d8ad262fa8e0561883e7653e024ae4479e6de"
 [[package]]
 name = "predicate"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "arrow 36.0.0",
  "chrono",
@@ -5411,6 +5411,7 @@ dependencies = [
  "datafusion-expr",
  "df_operator",
  "futures 0.3.28",
+ "iox_query",
  "log",
  "serde",
  "snafu 0.6.10",
@@ -5422,7 +5423,7 @@ dependencies = [
 [[package]]
 name = "query_functions"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "arrow 36.0.0",
  "chrono",
@@ -6142,7 +6143,7 @@ dependencies = [
 [[package]]
 name = "schema"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "arrow 36.0.0",
  "hashbrown 0.13.2",
@@ -7544,7 +7545,7 @@ checksum = "b6bc1c9ce2b5135ac7f93c72918fc37feb872bdc6a5533a8b85eb4b86bfdae52"
 [[package]]
 name = "trace"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "chrono",
  "observability_deps",
@@ -7753,8 +7754,8 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 1.0.0",
- "rand 0.8.5",
+ "cfg-if 0.1.10",
+ "rand 0.3.23",
  "static_assertions 1.1.0",
 ]
 
@@ -8354,7 +8355,7 @@ dependencies = [
 [[package]]
 name = "workspace-hack"
 version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#43134dd3331471ab8d4605db5eb6a388b8278099"
+source = "git+https://github.com/jiacai2050/influxdb_iox?branch=ceresdb#04da8923e6617a1fe8b78ce050522ea41217fbde"
 dependencies = [
  "ahash 0.8.3",
  "arrow 36.0.0",
