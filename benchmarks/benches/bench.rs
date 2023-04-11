@@ -1,11 +1,10 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Benchmarks
 
 use std::sync::Once;
 
 use benchmarks::{
-    arrow2_bench::Arrow2Bench,
     config::{self, BenchConfig},
     merge_memtable_bench::MergeMemTableBench,
     merge_sst_bench::MergeSstBench,
@@ -171,33 +170,6 @@ fn bench_merge_memtable(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_arrow2_iter(b: &mut Bencher<'_>, bench: &Arrow2Bench) {
-    b.iter(|| bench.run_bench())
-}
-
-fn bench_arrow2(c: &mut Criterion) {
-    let config = init_bench();
-
-    let mut group = c.benchmark_group("read_arrow2");
-
-    group.measurement_time(config.sst_bench.bench_measurement_time.0);
-    group.sample_size(config.sst_bench.bench_sample_size);
-
-    let mut bench = Arrow2Bench::new(config.sst_bench);
-
-    for i in 0..bench.num_benches() {
-        bench.init_for_bench(i);
-
-        group.bench_with_input(
-            BenchmarkId::new("read_arrow2", format!("{}/{}", bench.sst_file_name, i)),
-            &bench,
-            bench_arrow2_iter,
-        );
-    }
-
-    group.finish();
-}
-
 fn bench_wal_write_iter(b: &mut Bencher<'_>, bench: &WalWriteBench) {
     b.iter(|| bench.run_bench())
 }
@@ -229,7 +201,6 @@ criterion_group!(
     bench_merge_sst,
     bench_scan_memtable,
     bench_merge_memtable,
-    bench_arrow2,
     bench_wal_write,
 );
 
