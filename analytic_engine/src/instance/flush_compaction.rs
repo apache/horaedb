@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 // Flush and compaction logic of instance
 
@@ -339,6 +339,7 @@ impl Instance {
         if opts.compact_after_flush {
             // Schedule compaction if flush completed successfully.
             let on_flush_success = async move {
+                // Here we don't care whether it is scheduled successfully or not.
                 instance.schedule_table_compaction(compact_req).await;
             };
 
@@ -716,10 +717,10 @@ impl Instance {
 
     /// Schedule table compaction request to background workers and return
     /// immediately.
-    pub async fn schedule_table_compaction(&self, compact_req: TableCompactionRequest) {
+    pub async fn schedule_table_compaction(&self, compact_req: TableCompactionRequest) -> bool {
         self.compaction_scheduler
             .schedule_table_compaction(compact_req)
-            .await;
+            .await
     }
 }
 
