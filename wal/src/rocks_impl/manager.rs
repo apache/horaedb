@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! WalManager implementation based on RocksDB
 
@@ -19,7 +19,7 @@ use common_types::{
 };
 use common_util::{error::BoxError, runtime::Runtime};
 use log::{debug, info, warn};
-use rocksdb::{DBIterator, DBOptions, ReadOptions, SeekKey, Writable, WriteBatch, DB};
+use rocksdb::{DBIterator, DBOptions, ReadOptions, SeekKey, Statistics, Writable, WriteBatch, DB};
 use snafu::ResultExt;
 use tokio::sync::Mutex;
 
@@ -235,6 +235,8 @@ pub struct RocksImpl {
     max_seq_meta_encoding: MaxSeqMetaEncoding,
     /// Table units
     table_units: RwLock<HashMap<TableId, Arc<TableUnit>>>,
+    /// Stats of underlying rocksdb
+    stats: Option<Statistics>,
 }
 
 impl Drop for RocksImpl {
@@ -555,9 +557,14 @@ impl Builder {
         if let Some(v) = self.max_background_jobs {
             rocksdb_config.set_max_background_jobs(v);
         }
-        if let Some(v) = self.enable_statistics {
-            rocksdb_config.enable_statistics(v);
-        }
+
+        let stats = if self.enable_statistics.unwrap_or_default() {
+            let stats = Statistics::new();
+            rocksdb_config.set_statistics(&stats);
+            Some(stats)
+        } else {
+            None
+        };
 
         let db = DB::open(rocksdb_config, &self.wal_path)
             .map_err(|e| e.into())
@@ -571,6 +578,7 @@ impl Builder {
             log_encoding: CommonLogEncoding::newest(),
             max_seq_meta_encoding: MaxSeqMetaEncoding::newest(),
             table_units: RwLock::new(HashMap::new()),
+            stats,
         };
         rocks_impl.build_table_units()?;
 
@@ -802,7 +810,11 @@ impl WalManager for RocksImpl {
     }
 
     fn get_statistics(&self) -> Option<String> {
-        self.db.get_statistics()
+        if let Some(stats) = &self.stats {
+            stats.to_string()
+        } else {
+            None
+        }
     }
 }
 

@@ -1231,7 +1231,6 @@ dependencies = [
  "serde",
  "server",
  "signal-hook",
- "sort",
  "table_engine",
  "toml 0.7.3",
  "tracing_util",
@@ -1455,7 +1454,6 @@ dependencies = [
  "common_util",
  "log",
  "meta_client",
- "rust-fsm",
  "serde",
  "serde_json",
  "snafu 0.6.10",
@@ -1580,12 +1578,6 @@ name = "constant_time_eq"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13418e745008f7349ec7e449155f419a61b92b58a99cc3616942b926825ec76b"
-
-[[package]]
-name = "convert_case"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
 
 [[package]]
 name = "core-foundation-sys"
@@ -2220,19 +2212,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f0314b72bed045f3a68671b3c86328386762c93f82d98c65c3cb5e5f573dd68"
 dependencies = [
  "derive_builder_core",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "derive_more"
-version = "0.99.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fb810d30a7c1953f91334de7244731fc3f3c10d7fe163338a35b9f640960321"
-dependencies = [
- "convert_case",
- "proc-macro2",
- "quote",
- "rustc_version 0.4.0",
  "syn 1.0.109",
 ]
 
@@ -3640,7 +3619,7 @@ checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
 [[package]]
 name = "librocksdb_sys"
 version = "0.1.0"
-source = "git+https://github.com/tikv/rust-rocksdb.git?rev=084102f7e4d1901cbe3f2782c5c63cb7af628bac#084102f7e4d1901cbe3f2782c5c63cb7af628bac"
+source = "git+https://github.com/tikv/rust-rocksdb.git?rev=a9fbe325939c166ffc5f80e63066f5d8594a1fff#a9fbe325939c166ffc5f80e63066f5d8594a1fff"
 dependencies = [
  "bindgen 0.57.0",
  "bzip2-sys",
@@ -3668,7 +3647,7 @@ dependencies = [
 [[package]]
 name = "libtitan_sys"
 version = "0.0.1"
-source = "git+https://github.com/tikv/rust-rocksdb.git?rev=084102f7e4d1901cbe3f2782c5c63cb7af628bac#084102f7e4d1901cbe3f2782c5c63cb7af628bac"
+source = "git+https://github.com/tikv/rust-rocksdb.git?rev=a9fbe325939c166ffc5f80e63066f5d8594a1fff#a9fbe325939c166ffc5f80e63066f5d8594a1fff"
 dependencies = [
  "bzip2-sys",
  "cc",
@@ -3749,7 +3728,6 @@ dependencies = [
  "slog-async",
  "slog-global",
  "slog-term",
- "slog_derive",
 ]
 
 [[package]]
@@ -4442,7 +4420,6 @@ dependencies = [
  "log",
  "lru",
  "object_store 0.5.6",
- "oss-rust-sdk",
  "prometheus 0.12.0",
  "prometheus-static-metric",
  "prost",
@@ -4564,25 +4541,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ceedf44fb00f2d1984b0bc98102627ce622e083e49a5bacdb3e514fa4238e267"
 
 [[package]]
-name = "oss-rust-sdk"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0d9aab6ebed77bd0998c728fbef20d6afc63db38c8fe85e0923b624c1b6bfab"
-dependencies = [
- "async-trait",
- "base64 0.13.1",
- "bytes 1.4.0",
- "chrono",
- "derive_more",
- "hmac",
- "httpdate",
- "log",
- "quick-xml 0.27.1",
- "reqwest",
- "sha1 0.10.5",
-]
-
-[[package]]
 name = "overload"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4676,15 +4634,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "parquet-format"
-version = "4.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f0c06cdcd5460967c485f9c40a821746f5955ad81990533c7fae95dbd9bc0b5"
-dependencies = [
- "thrift 0.13.0",
-]
-
-[[package]]
 name = "parquet-format-async-temp"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4720,9 +4669,7 @@ dependencies = [
  "datafusion",
  "datafusion-expr",
  "log",
- "lru",
  "parquet",
- "parquet-format",
  "thrift 0.13.0",
  "tokio",
 ]
@@ -5186,7 +5133,6 @@ dependencies = [
  "jemalloc-sys",
  "jemallocator",
  "log",
- "tempfile",
 ]
 
 [[package]]
@@ -5492,15 +5438,6 @@ name = "quick-xml"
 version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f50b1c63b38611e7d4d7f68b82d3ad0cc71a2ad2e7f61fc10f1328d917c93cd"
-dependencies = [
- "memchr",
-]
-
-[[package]]
-name = "quick-xml"
-version = "0.27.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffc053f057dd768a56f62cd7e434c42c831d296968997e9ac1f76ea7c2d14c41"
 dependencies = [
  "memchr",
 ]
@@ -5852,7 +5789,6 @@ dependencies = [
  "arrow_ext",
  "async-trait",
  "ceresdbproto 1.0.1 (git+https://github.com/CeresDB/ceresdbproto.git?rev=1c3bf4e803ef8b7a1fbc8c3d4a07fdd372e1830b)",
- "clru",
  "common_types",
  "common_util",
  "futures 0.3.28",
@@ -5967,7 +5903,7 @@ dependencies = [
 [[package]]
 name = "rocksdb"
 version = "0.3.0"
-source = "git+https://github.com/tikv/rust-rocksdb.git?rev=084102f7e4d1901cbe3f2782c5c63cb7af628bac#084102f7e4d1901cbe3f2782c5c63cb7af628bac"
+source = "git+https://github.com/tikv/rust-rocksdb.git?rev=a9fbe325939c166ffc5f80e63066f5d8594a1fff#a9fbe325939c166ffc5f80e63066f5d8594a1fff"
 dependencies = [
  "libc",
  "librocksdb_sys",
@@ -6024,25 +5960,6 @@ dependencies = [
  "rand 0.3.23",
  "rustc-serialize",
  "time 0.1.43",
-]
-
-[[package]]
-name = "rust-fsm"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "021d7de715253e45ad24a2fbb0725a0f7f271fd8d3163b130bd65ce2816a860d"
-dependencies = [
- "rust-fsm-dsl",
-]
-
-[[package]]
-name = "rust-fsm-dsl"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a66b1273014079e4cf2b04aad1f3a2849e26e9a106f0411be2b1c15c23a791a"
-dependencies = [
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]
@@ -6605,17 +6522,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "slog_derive"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a945ec7f7ce853e89ffa36be1e27dce9a43e82ff9093bf3461c30d5da74ed11b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "smallvec"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6690,12 +6596,6 @@ dependencies = [
  "libc",
  "winapi",
 ]
-
-[[package]]
-name = "sort"
-version = "0.8.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79b736394cbcbad245669dc12a0caff9b2570e9ad81ce9906f5d7831551cb0c5"
 
 [[package]]
 name = "spin"
