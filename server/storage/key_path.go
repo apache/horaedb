@@ -5,6 +5,7 @@ package storage
 import (
 	"fmt"
 	"path"
+	"strings"
 )
 
 const (
@@ -56,6 +57,10 @@ func makeClusterViewKey(rootPath string, clusterID uint32, latestVersion string)
 	return path.Join(rootPath, version, cluster, fmtID(uint64(clusterID)), clusterView, latestVersion)
 }
 
+func makeShardViewVersionKey(rootPath string, clusterID uint32) string {
+	return path.Join(rootPath, version, cluster, fmtID(uint64(clusterID)), shardView)
+}
+
 // makeShardViewLatestVersionKey returns the latest version info key path of shard.
 func makeShardViewLatestVersionKey(rootPath string, clusterID uint32, shardID uint32) string {
 	// Example:
@@ -63,6 +68,12 @@ func makeShardViewLatestVersionKey(rootPath string, clusterID uint32, shardID ui
 	//	v1/cluster/1/shard_view/2/latest_version -> pb.ShardLatestVersion
 	//	v1/cluster/1/shard_view/3/latest_version -> pb.ShardLatestVersion
 	return path.Join(rootPath, version, cluster, fmtID(uint64(clusterID)), shardView, fmtID(uint64(shardID)), latestVersion)
+}
+
+func decodeShardViewVersionKey(key string) (string, error) {
+	sequences := strings.Split(key, "/")
+	shardID := sequences[len(sequences)-2]
+	return shardID, nil
 }
 
 // makeShardViewKey returns the shard meta info key path.

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
 )
@@ -23,12 +23,12 @@ func TestRandomNodePicker(t *testing.T) {
 
 	nodePicker := NewRandomNodePicker()
 
-	var nodes []cluster.RegisteredNode
+	var nodes []metadata.RegisteredNode
 	_, err := nodePicker.PickNode(ctx, nodes)
 	re.Error(err)
 
 	for i := 0; i < nodeLength; i++ {
-		nodes = append(nodes, cluster.RegisteredNode{
+		nodes = append(nodes, metadata.RegisteredNode{
 			Node:       storage.Node{Name: strconv.Itoa(i), State: storage.NodeStateOffline},
 			ShardInfos: nil,
 		})
@@ -38,7 +38,7 @@ func TestRandomNodePicker(t *testing.T) {
 
 	nodes = nodes[:0]
 	for i := 0; i < nodeLength; i++ {
-		nodes = append(nodes, cluster.RegisteredNode{
+		nodes = append(nodes, metadata.RegisteredNode{
 			Node:       storage.Node{Name: strconv.Itoa(i), State: storage.NodeStateOnline},
 			ShardInfos: nil,
 		})
@@ -48,7 +48,7 @@ func TestRandomNodePicker(t *testing.T) {
 
 	nodes = nodes[:0]
 	for i := 0; i < nodeLength; i++ {
-		nodes = append(nodes, cluster.RegisteredNode{
+		nodes = append(nodes, metadata.RegisteredNode{
 			Node:       storage.Node{Name: strconv.Itoa(i), State: storage.NodeStateOffline},
 			ShardInfos: nil,
 		})

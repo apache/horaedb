@@ -8,13 +8,13 @@ import (
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/dml/createpartitiontable"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/dml/createtable"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/dml/droppartitiontable"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/dml/droptable"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/operation/scatter"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/ddl/createpartitiontable"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/ddl/createtable"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/ddl/droppartitiontable"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/ddl/droptable"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/operation/split"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/operation/transferleader"
 	"github.com/CeresDB/ceresmeta/server/id"
@@ -37,15 +37,15 @@ type Factory struct {
 }
 
 type ScatterRequest struct {
-	Cluster  *cluster.Cluster
+	Cluster  *metadata.ClusterMetadata
 	ShardIDs []storage.ShardID
 }
 
 type CreateTableRequest struct {
-	Cluster   *cluster.Cluster
+	Cluster   *metadata.ClusterMetadata
 	SourceReq *metaservicepb.CreateTableRequest
 
-	OnSucceeded func(cluster.CreateTableResult) error
+	OnSucceeded func(metadata.CreateTableResult) error
 	OnFailed    func(error) error
 }
 
@@ -54,10 +54,10 @@ func (request *CreateTableRequest) isPartitionTable() bool {
 }
 
 type DropTableRequest struct {
-	Cluster   *cluster.Cluster
+	Cluster   *metadata.ClusterMetadata
 	SourceReq *metaservicepb.DropTableRequest
 
-	OnSucceeded func(cluster.TableInfo) error
+	OnSucceeded func(metadata.TableInfo) error
 	OnFailed    func(error) error
 }
 
@@ -66,10 +66,10 @@ func (d DropTableRequest) IsPartitionTable() bool {
 }
 
 type TransferLeaderRequest struct {
-	ClusterName       string
 	ShardID           storage.ShardID
 	OldLeaderNodeName string
 	NewLeaderNodeName string
+	ShardVersion      uint64
 	ClusterVersion    uint64
 }
 
@@ -84,33 +84,23 @@ type SplitRequest struct {
 }
 
 type CreatePartitionTableRequest struct {
-	Cluster   *cluster.Cluster
+	Cluster   *metadata.ClusterMetadata
 	SourceReq *metaservicepb.CreateTableRequest
 
 	PartitionTableRatioOfNodes float32
 
-	OnSucceeded func(cluster.CreateTableResult) error
+	OnSucceeded func(metadata.CreateTableResult) error
 	OnFailed    func(error) error
 }
 
-func NewFactory(allocator id.Allocator, dispatch eventdispatch.Dispatch, storage procedure.Storage, manager cluster.Manager, partitionTableProportionOfNodes float32) *Factory {
+func NewFactory(allocator id.Allocator, dispatch eventdispatch.Dispatch, storage procedure.Storage, partitionTableProportionOfNodes float32) *Factory {
 	return &Factory{
 		idAllocator:                     allocator,
 		dispatch:                        dispatch,
 		storage:                         storage,
-		clusterManager:                  manager,
 		shardPicker:                     NewRandomBalancedShardPicker(manager),
 		partitionTableProportionOfNodes: partitionTableProportionOfNodes,
 	}
-}
-
-func (f *Factory) CreateScatterProcedure(ctx context.Context, request ScatterRequest) (procedure.Procedure, error) {
-	id, err := f.allocProcedureID(ctx)
-	if err != nil {
-		return nil, err
-	}
-	procedure := scatter.NewProcedure(f.dispatch, request.Cluster, id, request.ShardIDs)
-	return procedure, nil
 }
 
 func (f *Factory) MakeCreateTableProcedure(ctx context.Context, request CreateTableRequest) (procedure.Procedure, error) {
@@ -145,13 +135,15 @@ func (f *Factory) makeCreateTableProcedure(ctx context.Context, request CreateTa
 	}
 
 	procedure := createtable.NewProcedure(createtable.ProcedureRequest{
-		Dispatch:    f.dispatch,
-		Cluster:     request.Cluster,
-		ID:          id,
-		ShardID:     shards[0].ShardInfo.ID,
-		Req:         request.SourceReq,
-		OnSucceeded: request.OnSucceeded,
-		OnFailed:    request.OnFailed,
+		Dispatch:       f.dispatch,
+		Cluster:        request.Cluster,
+		ID:             id,
+		ShardID:        shards[0].ShardInfo.ID,
+		ShardVersion:   shards[0].ShardInfo.Version,
+		ClusterVersion: request.Cluster.GetClusterViewVersion(),
+		Req:            request.SourceReq,
+		OnSucceeded:    request.OnSucceeded,
+		OnFailed:       request.OnFailed,
 	})
 	return procedure, nil
 }
@@ -230,14 +222,9 @@ func (f *Factory) CreateTransferLeaderProcedure(ctx context.Context, request Tra
 		return nil, err
 	}
 
-	c, err := f.clusterManager.GetCluster(ctx, request.ClusterName)
-	if err != nil {
-		log.Error("cluster not found", zap.String("clusterName", request.ClusterName))
-		return nil, cluster.ErrClusterNotFound
-	}
-
-	return transferleader.NewProcedure(f.dispatch, c, f.storage,
-		request.ShardID, request.OldLeaderNodeName, request.NewLeaderNodeName, id)
+	return transferleader.NewProcedure(f.dispatch, f.storage,
+		request.ShardID, request.OldLeaderNodeName, request.NewLeaderNodeName,
+		request.ShardVersion, request.ClusterVersion, id)
 }
 
 func (f *Factory) CreateSplitProcedure(ctx context.Context, request SplitRequest) (procedure.Procedure, error) {
@@ -249,7 +236,7 @@ func (f *Factory) CreateSplitProcedure(ctx context.Context, request SplitRequest
 	c, err := f.clusterManager.GetCluster(ctx, request.ClusterName)
 	if err != nil {
 		log.Error("cluster not found", zap.String("clusterName", request.ClusterName))
-		return nil, cluster.ErrClusterNotFound
+		return nil, metadata.ErrClusterNotFound
 	}
 
 	procedure := split.NewProcedure(id, f.dispatch, f.storage, c, request.SchemaName, request.ShardID, request.NewShardID, request.TableNames, request.TargetNodeName)

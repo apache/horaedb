@@ -15,8 +15,8 @@ import (
 	"github.com/CeresDB/ceresmeta/pkg/coderr"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/member"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"go.uber.org/zap"
@@ -43,9 +43,6 @@ func NewService(opTimeout time.Duration, h Handler) *Service {
 type Handler interface {
 	GetClusterManager() cluster.Manager
 	GetLeader(ctx context.Context) (*member.GetLeaderResp, error)
-	GetProcedureFactory() *coordinator.Factory
-	GetProcedureManager() procedure.Manager
-
 	// TODO: define the methods for handling other grpc requests.
 }
 
@@ -61,12 +58,12 @@ func (s *Service) NodeHeartbeat(ctx context.Context, req *metaservicepb.NodeHear
 		return ceresmetaClient.NodeHeartbeat(ctx, req)
 	}
 
-	shardInfos := make([]cluster.ShardInfo, 0, len(req.Info.ShardInfos))
+	shardInfos := make([]metadata.ShardInfo, 0, len(req.Info.ShardInfos))
 	for _, shardInfo := range req.Info.ShardInfos {
-		shardInfos = append(shardInfos, cluster.ConvertShardsInfoPB(shardInfo))
+		shardInfos = append(shardInfos, metadata.ConvertShardsInfoPB(shardInfo))
 	}
 
-	registeredNode := cluster.RegisteredNode{
+	registeredNode := metadata.RegisteredNode{
 		Node: storage.Node{
 			Name: req.Info.Endpoint,
 			NodeStats: storage.NodeStats{
@@ -158,8 +155,6 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 	log.Info("[CreateTable]", zap.String("schemaName", req.SchemaName), zap.String("clusterName", req.GetHeader().ClusterName), zap.String("tableName", req.GetName()))
 
 	clusterManager := s.h.GetClusterManager()
-	f := s.h.GetProcedureFactory()
-	manager := s.h.GetProcedureManager()
 	c, err := clusterManager.GetCluster(ctx, req.GetHeader().GetClusterName())
 	if err != nil {
 		log.Error("fail to create table", zap.Error(err))
@@ -167,9 +162,9 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 	}
 
 	errorCh := make(chan error, 1)
-	resultCh := make(chan cluster.CreateTableResult, 1)
+	resultCh := make(chan metadata.CreateTableResult, 1)
 
-	onSucceeded := func(ret cluster.CreateTableResult) error {
+	onSucceeded := func(ret metadata.CreateTableResult) error {
 		resultCh <- ret
 		return nil
 	}
@@ -178,8 +173,8 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 		return nil
 	}
 
-	p, err := f.MakeCreateTableProcedure(ctx, coordinator.CreateTableRequest{
-		Cluster:     c,
+	p, err := c.GetProcedureFactory().MakeCreateTableProcedure(ctx, coordinator.CreateTableRequest{
+		Cluster:     c.GetMetadata(),
 		SourceReq:   req,
 		OnSucceeded: onSucceeded,
 		OnFailed:    onFailed,
@@ -189,7 +184,7 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
 	}
 
-	err = manager.Submit(ctx, p)
+	err = c.GetProcedureManager().Submit(ctx, p)
 	if err != nil {
 		log.Error("fail to create table, manager submit procedure", zap.Error(err))
 		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
@@ -231,8 +226,6 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 	log.Info("[DropTable]", zap.String("schemaName", req.SchemaName), zap.String("clusterName", req.GetHeader().ClusterName), zap.String("tableName", req.Name))
 
 	clusterManager := s.h.GetClusterManager()
-	f := s.h.GetProcedureFactory()
-	manager := s.h.GetProcedureManager()
 	c, err := clusterManager.GetCluster(ctx, req.GetHeader().GetClusterName())
 	if err != nil {
 		log.Error("fail to drop table", zap.Error(err))
@@ -240,9 +233,9 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 	}
 
 	errorCh := make(chan error, 1)
-	resultCh := make(chan cluster.TableInfo, 1)
+	resultCh := make(chan metadata.TableInfo, 1)
 
-	onSucceeded := func(ret cluster.TableInfo) error {
+	onSucceeded := func(ret metadata.TableInfo) error {
 		resultCh <- ret
 		return nil
 	}
@@ -251,8 +244,8 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 		return nil
 	}
 
-	procedure, err := f.CreateDropTableProcedure(ctx, coordinator.DropTableRequest{
-		Cluster:     c,
+	procedure, err := c.GetProcedureFactory().CreateDropTableProcedure(ctx, coordinator.DropTableRequest{
+		Cluster:     c.GetMetadata(),
 		SourceReq:   req,
 		OnSucceeded: onSucceeded,
 		OnFailed:    onFailed,
@@ -261,7 +254,7 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 		log.Error("fail to drop table", zap.Error(err))
 		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table")}, nil
 	}
-	err = manager.Submit(ctx, procedure)
+	err = c.GetProcedureManager().Submit(ctx, procedure)
 	if err != nil {
 		log.Error("fail to drop table, manager submit procedure", zap.Error(err))
 		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table")}, nil
@@ -271,7 +264,7 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 	case ret := <-resultCh:
 		return &metaservicepb.DropTableResponse{
 			Header:       okResponseHeader(),
-			DroppedTable: cluster.ConvertTableInfoToPB(ret),
+			DroppedTable: metadata.ConvertTableInfoToPB(ret),
 		}, nil
 	case err = <-errorCh:
 		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table")}, nil
@@ -323,15 +316,15 @@ func (s *Service) GetNodes(ctx context.Context, req *metaservicepb.GetNodesReque
 	return convertToGetNodesResponse(nodesResult), nil
 }
 
-func convertToGetTablesOfShardsResponse(shardTables map[storage.ShardID]cluster.ShardTables) *metaservicepb.GetTablesOfShardsResponse {
+func convertToGetTablesOfShardsResponse(shardTables map[storage.ShardID]metadata.ShardTables) *metaservicepb.GetTablesOfShardsResponse {
 	tablesByShard := make(map[uint32]*metaservicepb.TablesOfShard, len(shardTables))
 	for id, shardTable := range shardTables {
 		tables := make([]*metaservicepb.TableInfo, 0, len(shardTable.Tables))
 		for _, table := range shardTable.Tables {
-			tables = append(tables, cluster.ConvertTableInfoToPB(table))
+			tables = append(tables, metadata.ConvertTableInfoToPB(table))
 		}
 		tablesByShard[uint32(id)] = &metaservicepb.TablesOfShard{
-			ShardInfo: cluster.ConvertShardsInfoToPB(shardTable.Shard),
+			ShardInfo: metadata.ConvertShardsInfoToPB(shardTable.Shard),
 			Tables:    tables,
 		}
 	}
@@ -341,7 +334,7 @@ func convertToGetTablesOfShardsResponse(shardTables map[storage.ShardID]cluster.
 	}
 }
 
-func convertRouteTableResult(routeTablesResult cluster.RouteTablesResult) *metaservicepb.RouteTablesResponse {
+func convertRouteTableResult(routeTablesResult metadata.RouteTablesResult) *metaservicepb.RouteTablesResponse {
 	entries := make(map[string]*metaservicepb.RouteEntry, len(routeTablesResult.RouteEntries))
 	for tableName, entry := range routeTablesResult.RouteEntries {
 		nodeShards := make([]*metaservicepb.NodeShard, 0, len(entry.NodeShards))
@@ -356,7 +349,7 @@ func convertRouteTableResult(routeTablesResult cluster.RouteTablesResult) *metas
 		}
 
 		entries[tableName] = &metaservicepb.RouteEntry{
-			Table:      cluster.ConvertTableInfoToPB(entry.Table),
+			Table:      metadata.ConvertTableInfoToPB(entry.Table),
 			NodeShards: nodeShards,
 		}
 	}
@@ -368,7 +361,7 @@ func convertRouteTableResult(routeTablesResult cluster.RouteTablesResult) *metas
 	}
 }
 
-func convertToGetNodesResponse(nodesResult cluster.GetNodeShardsResult) *metaservicepb.GetNodesResponse {
+func convertToGetNodesResponse(nodesResult metadata.GetNodeShardsResult) *metaservicepb.GetNodesResponse {
 	nodeShards := make([]*metaservicepb.NodeShard, 0, len(nodesResult.NodeShards))
 	for _, shardNodeWithVersion := range nodesResult.NodeShards {
 		nodeShards = append(nodeShards, &metaservicepb.NodeShard{

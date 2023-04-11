@@ -8,7 +8,7 @@ import (
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaeventpb"
 	"github.com/CeresDB/ceresmeta/pkg/coderr"
-	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/service"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -30,7 +30,7 @@ func (d *DispatchImpl) OpenShard(ctx context.Context, addr string, request OpenS
 		return err
 	}
 	resp, err := client.OpenShard(ctx, &metaeventpb.OpenShardRequest{
-		Shard: cluster.ConvertShardsInfoToPB(request.Shard),
+		Shard: metadata.ConvertShardsInfoToPB(request.Shard),
 	})
 	if err != nil {
 		return errors.WithMessagef(err, "open shard, addr:%s, request:%v", addr, request)
@@ -144,7 +144,7 @@ func (d *DispatchImpl) getMetaEventClient(ctx context.Context, addr string) (met
 func convertCreateTableOnShardRequestToPB(request CreateTableOnShardRequest) *metaeventpb.CreateTableOnShardRequest {
 	return &metaeventpb.CreateTableOnShardRequest{
 		UpdateShardInfo:  convertUpdateShardInfoToPB(request.UpdateShardInfo),
-		TableInfo:        cluster.ConvertTableInfoToPB(request.TableInfo),
+		TableInfo:        metadata.ConvertTableInfoToPB(request.TableInfo),
 		EncodedSchema:    request.EncodedSchema,
 		Engine:           request.Engine,
 		CreateIfNotExist: request.CreateIfNotExist,
@@ -155,27 +155,27 @@ func convertCreateTableOnShardRequestToPB(request CreateTableOnShardRequest) *me
 func convertDropTableOnShardRequestToPB(request DropTableOnShardRequest) *metaeventpb.DropTableOnShardRequest {
 	return &metaeventpb.DropTableOnShardRequest{
 		UpdateShardInfo: convertUpdateShardInfoToPB(request.UpdateShardInfo),
-		TableInfo:       cluster.ConvertTableInfoToPB(request.TableInfo),
+		TableInfo:       metadata.ConvertTableInfoToPB(request.TableInfo),
 	}
 }
 
 func convertCloseTableOnShardRequestToPB(request CloseTableOnShardRequest) *metaeventpb.CloseTableOnShardRequest {
 	return &metaeventpb.CloseTableOnShardRequest{
 		UpdateShardInfo: convertUpdateShardInfoToPB(request.UpdateShardInfo),
-		TableInfo:       cluster.ConvertTableInfoToPB(request.TableInfo),
+		TableInfo:       metadata.ConvertTableInfoToPB(request.TableInfo),
 	}
 }
 
 func convertOpenTableOnShardRequestToPB(request OpenTableOnShardRequest) *metaeventpb.OpenTableOnShardRequest {
 	return &metaeventpb.OpenTableOnShardRequest{
 		UpdateShardInfo: convertUpdateShardInfoToPB(request.UpdateShardInfo),
-		TableInfo:       cluster.ConvertTableInfoToPB(request.TableInfo),
+		TableInfo:       metadata.ConvertTableInfoToPB(request.TableInfo),
 	}
 }
 
 func convertUpdateShardInfoToPB(updateShardInfo UpdateShardInfo) *metaeventpb.UpdateShardInfo {
 	return &metaeventpb.UpdateShardInfo{
-		CurrShardInfo: cluster.ConvertShardsInfoToPB(updateShardInfo.CurrShardInfo),
+		CurrShardInfo: metadata.ConvertShardsInfoToPB(updateShardInfo.CurrShardInfo),
 		PrevVersion:   updateShardInfo.PrevVersion,
 	}
 }

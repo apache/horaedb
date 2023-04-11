@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package cluster
+package metadata
 
 import (
 	"context"
@@ -41,6 +41,8 @@ type TopologyManager interface {
 	InitClusterView(ctx context.Context) error
 	// UpdateClusterView update cluster view with shardNodes.
 	UpdateClusterView(ctx context.Context, state storage.ClusterState, shardNodes []storage.ShardNode) error
+	// UpdateClusterViewByNode update cluster view with target shardNodes, it will only update shardNodes corresponding the node name.
+	UpdateClusterViewByNode(ctx context.Context, shardNodes map[string][]storage.ShardNode) error
 	// GetClusterView return current cluster view.
 	GetClusterView() storage.ClusterView
 	// CreateShardViews create shardViews.
@@ -408,6 +410,10 @@ func (m *TopologyManagerImpl) UpdateClusterView(ctx context.Context, state stora
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
+	return m.updateClusterViewWithLock(ctx, state, shardNodes)
+}
+
+func (m *TopologyManagerImpl) updateClusterViewWithLock(ctx context.Context, state storage.ClusterState, shardNodes []storage.ShardNode) error {
 	// Update cluster view in storage.
 	newClusterView := storage.ClusterView{
 		ClusterID:  m.clusterID,
@@ -429,6 +435,25 @@ func (m *TopologyManagerImpl) UpdateClusterView(ctx context.Context, state stora
 		return errors.WithMessage(err, "load cluster view")
 	}
 	return nil
+}
+
+func (m *TopologyManagerImpl) UpdateClusterViewByNode(ctx context.Context, shardNodes map[string][]storage.ShardNode) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	newShardNodes := make([]storage.ShardNode, 0, len(m.clusterView.ShardNodes))
+	for _, shardNode := range shardNodes {
+		newShardNodes = append(newShardNodes, shardNode...)
+	}
+
+	originShardNodes := m.clusterView.ShardNodes
+	for _, shardNode := range originShardNodes {
+		if _, exists := shardNodes[shardNode.NodeName]; !exists {
+			newShardNodes = append(newShardNodes, shardNode)
+		}
+	}
+
+	return m.updateClusterViewWithLock(ctx, m.clusterView.State, newShardNodes)
 }
 
 func (m *TopologyManagerImpl) GetClusterView() storage.ClusterView {

@@ -5,7 +5,7 @@ package scheduler
 import (
 	"context"
 
-	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
 	"github.com/CeresDB/ceresmeta/server/storage"
 )
@@ -27,9 +27,9 @@ func NewAssignShardScheduler(factory *coordinator.Factory, nodePicker coordinato
 	}
 }
 
-func (a AssignShardScheduler) Schedule(ctx context.Context, clusterSnapshot cluster.Snapshot) (ScheduleResult, error) {
+func (a AssignShardScheduler) Schedule(ctx context.Context, clusterSnapshot metadata.Snapshot) (ScheduleResult, error) {
 	if clusterSnapshot.Topology.ClusterView.State != storage.ClusterStateStable {
-		return ScheduleResult{}, cluster.ErrClusterStateInvalid
+		return nil, nil
 	}
 
 	// Check whether there is a shard without node mapping.
@@ -44,12 +44,11 @@ func (a AssignShardScheduler) Schedule(ctx context.Context, clusterSnapshot clus
 			return ScheduleResult{}, err
 		}
 		// Shard exists and ShardNode not exists.
-		// TODO: ClusterName is no longer need in procedure, replace it with shardNodes.
 		p, err := a.factory.CreateTransferLeaderProcedure(ctx, coordinator.TransferLeaderRequest{
-			ClusterName:       "",
 			ShardID:           shardView.ShardID,
 			OldLeaderNodeName: "",
 			NewLeaderNodeName: newLeaderNode.Node.Name,
+			ShardVersion:      shardView.Version,
 			ClusterVersion:    clusterSnapshot.Topology.ClusterView.Version,
 		})
 		if err != nil {

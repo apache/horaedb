@@ -7,34 +7,34 @@ import (
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
-	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
 )
 
-func CreateTableMetadata(ctx context.Context, c *cluster.Cluster, schemaName string, tableName string, shardID storage.ShardID, partitionInfo *clusterpb.PartitionInfo) (cluster.CreateTableResult, error) {
+func CreateTableMetadata(ctx context.Context, c *metadata.ClusterMetadata, schemaName string, tableName string, shardID storage.ShardID, partitionInfo *clusterpb.PartitionInfo) (metadata.CreateTableResult, error) {
 	_, exists, err := c.GetTable(schemaName, tableName)
 	if err != nil {
-		return cluster.CreateTableResult{}, errors.WithMessage(err, "cluster get table")
+		return metadata.CreateTableResult{}, errors.WithMessage(err, "cluster get table")
 	}
 	if exists {
-		return cluster.CreateTableResult{}, errors.WithMessagef(ErrTableAlreadyExists, "create an existing table, schemaName:%s, tableName:%s", schemaName, tableName)
+		return metadata.CreateTableResult{}, errors.WithMessagef(ErrTableAlreadyExists, "create an existing table, schemaName:%s, tableName:%s", schemaName, tableName)
 	}
 
-	createTableResult, err := c.CreateTable(ctx, cluster.CreateTableRequest{
+	createTableResult, err := c.CreateTable(ctx, metadata.CreateTableRequest{
 		ShardID:       shardID,
 		SchemaName:    schemaName,
 		TableName:     tableName,
 		PartitionInfo: storage.PartitionInfo{Info: partitionInfo},
 	})
 	if err != nil {
-		return cluster.CreateTableResult{}, errors.WithMessage(err, "create table")
+		return metadata.CreateTableResult{}, errors.WithMessage(err, "create table")
 	}
 	return createTableResult, nil
 }
 
-func CreateTableOnShard(ctx context.Context, c *cluster.Cluster, dispatch eventdispatch.Dispatch, shardID storage.ShardID, request eventdispatch.CreateTableOnShardRequest) error {
+func CreateTableOnShard(ctx context.Context, c *metadata.ClusterMetadata, dispatch eventdispatch.Dispatch, shardID storage.ShardID, request eventdispatch.CreateTableOnShardRequest) error {
 	shardNodes, err := c.GetShardNodesByShardID(shardID)
 	if err != nil {
 		return errors.WithMessage(err, "cluster get shardNode by id")
@@ -60,10 +60,10 @@ func CreateTableOnShard(ctx context.Context, c *cluster.Cluster, dispatch eventd
 	return nil
 }
 
-func BuildCreateTableRequest(createTableResult cluster.CreateTableResult, req *metaservicepb.CreateTableRequest, partitionInfo *clusterpb.PartitionInfo) eventdispatch.CreateTableOnShardRequest {
+func BuildCreateTableRequest(createTableResult metadata.CreateTableResult, req *metaservicepb.CreateTableRequest, partitionInfo *clusterpb.PartitionInfo) eventdispatch.CreateTableOnShardRequest {
 	return eventdispatch.CreateTableOnShardRequest{
 		UpdateShardInfo: eventdispatch.UpdateShardInfo{
-			CurrShardInfo: cluster.ShardInfo{
+			CurrShardInfo: metadata.ShardInfo{
 				ID: createTableResult.ShardVersionUpdate.ShardID,
 				// TODO: dispatch CreateTableOnShard to followers?
 				Role:    storage.ShardRoleLeader,
@@ -71,7 +71,7 @@ func BuildCreateTableRequest(createTableResult cluster.CreateTableResult, req *m
 			},
 			PrevVersion: createTableResult.ShardVersionUpdate.PrevVersion,
 		},
-		TableInfo: cluster.TableInfo{
+		TableInfo: metadata.TableInfo{
 			ID:            createTableResult.Table.ID,
 			Name:          createTableResult.Table.Name,
 			SchemaID:      createTableResult.Table.SchemaID,

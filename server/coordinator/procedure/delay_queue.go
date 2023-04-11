@@ -1,6 +1,6 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package queue
+package procedure
 
 import (
 	"container/heap"
@@ -8,12 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/pkg/errors"
 )
 
 type procedureScheduleEntry struct {
-	procedure procedure.Procedure
+	procedure Procedure
 	runAfter  time.Time
 }
 
@@ -87,7 +86,7 @@ func (q *ProcedureDelayQueue) Len() int {
 	return q.heapQueue.Len()
 }
 
-func (q *ProcedureDelayQueue) Push(p procedure.Procedure, delay time.Duration) error {
+func (q *ProcedureDelayQueue) Push(p Procedure, delay time.Duration) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
@@ -108,7 +107,7 @@ func (q *ProcedureDelayQueue) Push(p procedure.Procedure, delay time.Duration) e
 	return nil
 }
 
-func (q *ProcedureDelayQueue) Pop() procedure.Procedure {
+func (q *ProcedureDelayQueue) Pop() Procedure {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 

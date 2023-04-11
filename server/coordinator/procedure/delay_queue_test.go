@@ -1,24 +1,31 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package queue
+package procedure
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/stretchr/testify/require"
 )
 
 type TestProcedure struct{ id uint64 }
 
+func (t TestProcedure) RelatedVersionInfo() RelatedVersionInfo {
+	return RelatedVersionInfo{}
+}
+
+func (t TestProcedure) Priority() Priority {
+	return PriorityLow
+}
+
 func (t TestProcedure) ID() uint64 {
 	return t.id
 }
 
-func (t TestProcedure) Typ() procedure.Typ {
-	return procedure.CreateTable
+func (t TestProcedure) Typ() Typ {
+	return CreateTable
 }
 
 func (t TestProcedure) Start(_ context.Context) error {
@@ -29,8 +36,8 @@ func (t TestProcedure) Cancel(_ context.Context) error {
 	return nil
 }
 
-func (t TestProcedure) State() procedure.State {
-	return procedure.StateInit
+func (t TestProcedure) State() State {
+	return StateInit
 }
 
 func TestDelayQueue(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"math/big"
 
 	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/pkg/errors"
 )
 
@@ -17,7 +18,7 @@ import (
 // If enableDuplicateNode is true, pick shard will return shards on the same node.
 // TODO: Consider refactor this interface, abstracts the parameters of PickShards as PickStrategy.
 type ShardPicker interface {
-	PickShards(ctx context.Context, clusterName string, expectShardNum int, enableDuplicateNode bool) ([]cluster.ShardNodeWithVersion, error)
+	PickShards(ctx context.Context, clusterName string, expectShardNum int, enableDuplicateNode bool) ([]metadata.ShardNodeWithVersion, error)
 }
 
 // RandomBalancedShardPicker randomly pick up shards that are not on the same node in the current cluster.
@@ -32,17 +33,17 @@ func NewRandomBalancedShardPicker(manager cluster.Manager) ShardPicker {
 }
 
 // PickShards will pick a specified number of shards as expectShardNum.
-func (p *RandomBalancedShardPicker) PickShards(ctx context.Context, clusterName string, expectShardNum int, enableDuplicateNode bool) ([]cluster.ShardNodeWithVersion, error) {
+func (p *RandomBalancedShardPicker) PickShards(ctx context.Context, clusterName string, expectShardNum int, enableDuplicateNode bool) ([]metadata.ShardNodeWithVersion, error) {
 	getNodeShardResult, err := p.clusterManager.GetNodeShards(ctx, clusterName)
 	if err != nil {
-		return []cluster.ShardNodeWithVersion{}, errors.WithMessage(err, "get node shards")
+		return []metadata.ShardNodeWithVersion{}, errors.WithMessage(err, "get node shards")
 	}
 
-	nodeShardsMapping := make(map[string][]cluster.ShardNodeWithVersion, 0)
+	nodeShardsMapping := make(map[string][]metadata.ShardNodeWithVersion, 0)
 	for _, nodeShard := range getNodeShardResult.NodeShards {
 		_, exists := nodeShardsMapping[nodeShard.ShardNode.NodeName]
 		if !exists {
-			nodeShards := []cluster.ShardNodeWithVersion{}
+			nodeShards := []metadata.ShardNodeWithVersion{}
 			nodeShardsMapping[nodeShard.ShardNode.NodeName] = nodeShards
 		}
 		nodeShardsMapping[nodeShard.ShardNode.NodeName] = append(nodeShardsMapping[nodeShard.ShardNode.NodeName], nodeShard)
@@ -50,14 +51,14 @@ func (p *RandomBalancedShardPicker) PickShards(ctx context.Context, clusterName 
 
 	if !enableDuplicateNode {
 		if len(nodeShardsMapping) < expectShardNum {
-			return []cluster.ShardNodeWithVersion{}, errors.WithMessagef(ErrNodeNumberNotEnough, "number of nodes is:%d, expecet number of shards is:%d", len(nodeShardsMapping), expectShardNum)
+			return []metadata.ShardNodeWithVersion{}, errors.WithMessagef(ErrNodeNumberNotEnough, "number of nodes is:%d, expecet number of shards is:%d", len(nodeShardsMapping), expectShardNum)
 		}
 	}
 
 	// Try to make shards on different nodes.
-	result := []cluster.ShardNodeWithVersion{}
+	result := []metadata.ShardNodeWithVersion{}
 	totalShardLength := len(getNodeShardResult.NodeShards)
-	tempNodeShardMapping := make(map[string][]cluster.ShardNodeWithVersion, len(nodeShardsMapping))
+	tempNodeShardMapping := make(map[string][]metadata.ShardNodeWithVersion, len(nodeShardsMapping))
 	for {
 		nodeNames := []string{}
 		for nodeName := range nodeShardsMapping {
@@ -67,7 +68,7 @@ func (p *RandomBalancedShardPicker) PickShards(ctx context.Context, clusterName 
 		// Reset node shards when shard is all picked.
 		if len(result)%totalShardLength == 0 {
 			for nodeName, nodeShard := range nodeShardsMapping {
-				tempNodeShard := make([]cluster.ShardNodeWithVersion, len(nodeShard))
+				tempNodeShard := make([]metadata.ShardNodeWithVersion, len(nodeShard))
 				copy(tempNodeShard, nodeShard)
 				tempNodeShardMapping[nodeName] = tempNodeShard
 			}
@@ -80,7 +81,7 @@ func (p *RandomBalancedShardPicker) PickShards(ctx context.Context, clusterName 
 
 			selectNodeIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(nodeNames))))
 			if err != nil {
-				return []cluster.ShardNodeWithVersion{}, errors.WithMessage(err, "generate random node index")
+				return []metadata.ShardNodeWithVersion{}, errors.WithMessage(err, "generate random node index")
 			}
 
 			nodeShards := tempNodeShardMapping[nodeNames[selectNodeIndex.Int64()]]

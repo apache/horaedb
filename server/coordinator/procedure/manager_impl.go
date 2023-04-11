@@ -5,51 +5,66 @@ package procedure
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/CeresDB/ceresmeta/pkg/log"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
+	"github.com/CeresDB/ceresmeta/server/coordinator/lock"
+	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
 const (
-	queueSize         = 10
-	metaListBatchSize = 100
+	metaListBatchSize                = 100
+	defaultWaitingQueueDelay         = time.Millisecond * 500
+	defaultPromoteDelay              = time.Millisecond * 100
+	defaultProcedureWorkerChanBufSiz = 10
 )
 
 type ManagerImpl struct {
-	// This lock is used to protect the field `procedures` and `running`.
-	lock       sync.RWMutex
-	procedures []Procedure
-	running    bool
-
 	storage  Storage
 	dispatch eventdispatch.Dispatch
+	metadata *metadata.ClusterMetadata
 
-	procedureQueue chan Procedure
+	// ProcedureShardLock is used to ensure the consistency of procedures' concurrent running on shard, that is to say, only one procedure is allowed to run on a specific shard.
+	procedureShardLock *lock.EntryLock
+	// All procedure will be put into waiting queue first, when runningProcedure is empty, try to promote some waiting procedures to new running procedures.
+	waitingProcedures *ProcedureDelayQueue
+	// ProcedureWorkerChan is used to notify that a procedure has been submitted or completed, and the manager will perform promote after receiving the signal.
+	procedureWorkerChan chan struct{}
+
+	// This lock is used to protect the following fields.
+	lock    sync.RWMutex
+	running bool
+	// There is only one procedure running for every shard.
+	// It will be removed when the procedure is finished or failed.
+	runningProcedures map[storage.ShardID]Procedure
 }
 
 func (m *ManagerImpl) Start(ctx context.Context) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
+
 	if m.running {
-		log.Warn("cluster manager has already been started")
+		log.Warn("procedure manager has already been started")
 		return nil
 	}
-	m.procedureQueue = make(chan Procedure, queueSize)
-	go m.startProcedureWorker(ctx, m.procedureQueue)
-	err := m.retryAll(ctx)
-	if err != nil {
-		return errors.WithMessage(err, "retry all running procedure failed")
-	}
+
+	m.procedureWorkerChan = make(chan struct{}, defaultProcedureWorkerChanBufSiz)
+	go m.startProcedurePromote(ctx, m.procedureWorkerChan)
+
+	m.running = true
+
 	return nil
 }
 
 func (m *ManagerImpl) Stop(ctx context.Context) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	close(m.procedureQueue)
-	for _, procedure := range m.procedures {
+
+	for _, procedure := range m.runningProcedures {
 		if procedure.State() == StateRunning {
 			err := procedure.Cancel(ctx)
 			log.Error("cancel procedure failed", zap.Error(err), zap.Uint64("procedureID", procedure.ID()))
@@ -57,35 +72,31 @@ func (m *ManagerImpl) Stop(ctx context.Context) error {
 			return err
 		}
 	}
+
+	m.running = false
+
 	return nil
 }
 
 func (m *ManagerImpl) Submit(_ context.Context, procedure Procedure) error {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-	m.procedures = append(m.procedures, procedure)
-	m.procedureQueue <- procedure
-	return nil
-}
+	if err := m.waitingProcedures.Push(procedure, 0); err != nil {
+		return err
+	}
 
-func (m *ManagerImpl) Cancel(ctx context.Context, procedureID uint64) error {
-	procedure := m.removeProcedure(procedureID)
-	if procedure == nil {
-		log.Error("procedure not found", zap.Uint64("procedureID", procedureID))
-		return ErrProcedureNotFound
+	select {
+	case m.procedureWorkerChan <- struct{}{}:
+	default:
 	}
-	err := procedure.Cancel(ctx)
-	if err != nil {
-		return errors.WithMessagef(ErrProcedureNotFound, "cancel procedure failed, procedureID:%d", procedureID)
-	}
+
 	return nil
 }
 
 func (m *ManagerImpl) ListRunningProcedure(_ context.Context) ([]*Info, error) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
-	var procedureInfos []*Info
-	for _, procedure := range m.procedures {
+
+	procedureInfos := make([]*Info, 0, len(m.runningProcedures))
+	for _, procedure := range m.runningProcedures {
 		if procedure.State() == StateRunning {
 			procedureInfos = append(procedureInfos, &Info{
 				ID:    procedure.ID(),
@@ -97,10 +108,11 @@ func (m *ManagerImpl) ListRunningProcedure(_ context.Context) ([]*Info, error) {
 	return procedureInfos, nil
 }
 
-func NewManagerImpl(storage Storage) (Manager, error) {
+func NewManagerImpl(s Storage, metadata *metadata.ClusterMetadata) (Manager, error) {
 	manager := &ManagerImpl{
-		storage:  storage,
+		storage:  s,
 		dispatch: eventdispatch.NewDispatchImpl(),
+		metadata: metadata,
 	}
 	return manager, nil
 }
@@ -123,34 +135,63 @@ func (m *ManagerImpl) retryAll(ctx context.Context) error {
 	return nil
 }
 
-func (m *ManagerImpl) startProcedureWorker(ctx context.Context, procedures <-chan Procedure) {
-	for procedure := range procedures {
-		err := procedure.Start(ctx)
-		if err != nil {
-			log.Error("procedure start failed", zap.Error(err))
+func (m *ManagerImpl) startProcedurePromote(ctx context.Context, procedureWorkerChan chan struct{}) {
+	ticker := time.NewTicker(defaultPromoteDelay)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			m.startProcedurePromoteInternal(ctx, procedureWorkerChan)
+		case <-procedureWorkerChan:
+			m.startProcedurePromoteInternal(ctx, procedureWorkerChan)
+		case <-ctx.Done():
+			return
 		}
-
-		m.removeProcedure(procedure.ID())
 	}
 }
 
-func (m *ManagerImpl) removeProcedure(id uint64) Procedure {
-	m.lock.Lock()
-	defer m.lock.Unlock()
+func (m *ManagerImpl) startProcedurePromoteInternal(ctx context.Context, procedureWorkerChan chan struct{}) {
+	newProcedures, err := m.promoteProcedure(ctx)
+	if err != nil {
+		log.Error("promote procedure failed", zap.Error(err))
+		return
+	}
 
-	index := -1
-	for i, p := range m.procedures {
-		if p.ID() == id {
-			index = i
-			break
+	m.lock.Lock()
+	for _, newProcedure := range newProcedures {
+		for shardID := range newProcedure.RelatedVersionInfo().ShardWithVersion {
+			m.runningProcedures[shardID] = newProcedure
 		}
 	}
-	if index != -1 {
-		result := m.procedures[index]
-		m.procedures = append(m.procedures[:index], m.procedures[index+1:]...)
-		return result
+	m.lock.Unlock()
+
+	for _, newProcedure := range newProcedures {
+		log.Info("promote procedure", zap.Uint64("procedureID", newProcedure.ID()))
+		m.startProcedureWorker(ctx, newProcedure, procedureWorkerChan)
 	}
-	return nil
+}
+
+func (m *ManagerImpl) startProcedureWorker(ctx context.Context, newProcedure Procedure, procedureWorkerChan chan struct{}) {
+	go func() {
+		log.Info("procedure start", zap.Uint64("procedureID", newProcedure.ID()))
+		err := newProcedure.Start(ctx)
+		if err != nil {
+			log.Error("procedure start failed", zap.Error(err))
+		}
+		log.Info("procedure finish", zap.Uint64("procedureID", newProcedure.ID()))
+		for shardID := range newProcedure.RelatedVersionInfo().ShardWithVersion {
+			m.lock.Lock()
+			delete(m.runningProcedures, shardID)
+			m.lock.Unlock()
+
+			m.procedureShardLock.UnLock([]uint64{uint64(shardID)})
+		}
+		select {
+		case procedureWorkerChan <- struct{}{}:
+		default:
+		}
+		return
+	}()
 }
 
 func (m *ManagerImpl) retry(ctx context.Context, procedure Procedure) error {
@@ -159,6 +200,50 @@ func (m *ManagerImpl) retry(ctx context.Context, procedure Procedure) error {
 		return errors.WithMessagef(err, "start procedure failed, procedureID:%d", procedure.ID())
 	}
 	return nil
+}
+
+// Whether a waiting procedure could be running procedure.
+func (m *ManagerImpl) checkValid(ctx context.Context, procedure Procedure, cluster *metadata.ClusterMetadata) bool {
+	// ClusterVersion and ShardVersion in this procedure must be same with current cluster topology.
+	// TODO: Version verification is an important issue, implement it in another pull request.
+	return true
+}
+
+// Promote a waiting procedure to be a running procedure.
+// One procedure may be related with multiple shards.
+func (m *ManagerImpl) promoteProcedure(ctx context.Context) ([]Procedure, error) {
+	// Get waiting procedures, it has been sorted in queue.
+	queue := m.waitingProcedures
+
+	var readyProcs []Procedure
+	// Find next valid procedure.
+	for {
+		p := queue.Pop()
+		if p == nil {
+			return readyProcs, nil
+		}
+
+		if !m.checkValid(ctx, p, m.metadata) {
+			// This procedure is invalid, just remove it.
+			continue
+		}
+
+		// Try to get shard locks.
+		shardIDs := make([]uint64, 0, len(p.RelatedVersionInfo().ShardWithVersion))
+		for shardID := range p.RelatedVersionInfo().ShardWithVersion {
+			shardIDs = append(shardIDs, uint64(shardID))
+		}
+		lockResult := m.procedureShardLock.TryLock(shardIDs)
+		if lockResult {
+			// Get lock success, procedure will be executed.
+			readyProcs = append(readyProcs, p)
+		} else {
+			// Get lock failed, procedure will be put back into the queue.
+			if err := queue.Push(p, defaultWaitingQueueDelay); err != nil {
+				return nil, err
+			}
+		}
+	}
 }
 
 // Load meta and restore procedure.

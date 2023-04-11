@@ -7,12 +7,12 @@ import (
 	"crypto/rand"
 	"math/big"
 
-	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/pkg/errors"
 )
 
 type NodePicker interface {
-	PickNode(ctx context.Context, registerNodes []cluster.RegisteredNode) (cluster.RegisteredNode, error)
+	PickNode(ctx context.Context, registerNodes []metadata.RegisteredNode) (metadata.RegisteredNode, error)
 }
 
 type RandomNodePicker struct{}
@@ -21,7 +21,7 @@ func NewRandomNodePicker() NodePicker {
 	return &RandomNodePicker{}
 }
 
-func (p *RandomNodePicker) PickNode(_ context.Context, registeredNodes []cluster.RegisteredNode) (cluster.RegisteredNode, error) {
+func (p *RandomNodePicker) PickNode(_ context.Context, registeredNodes []metadata.RegisteredNode) (metadata.RegisteredNode, error) {
 	onlineNodeLength := 0
 	for _, registeredNode := range registeredNodes {
 		if registeredNode.IsOnline() {
@@ -30,12 +30,12 @@ func (p *RandomNodePicker) PickNode(_ context.Context, registeredNodes []cluster
 	}
 
 	if onlineNodeLength == 0 {
-		return cluster.RegisteredNode{}, errors.WithMessage(ErrNodeNumberNotEnough, "online node length must bigger than 0")
+		return metadata.RegisteredNode{}, errors.WithMessage(ErrNodeNumberNotEnough, "online node length must bigger than 0")
 	}
 
 	randSelectedIdx, err := rand.Int(rand.Reader, big.NewInt(int64(onlineNodeLength)))
 	if err != nil {
-		return cluster.RegisteredNode{}, errors.WithMessage(err, "generate random node index")
+		return metadata.RegisteredNode{}, errors.WithMessage(err, "generate random node index")
 	}
 	selectIdx := int(randSelectedIdx.Int64())
 	curOnlineIdx := -1
@@ -48,5 +48,5 @@ func (p *RandomNodePicker) PickNode(_ context.Context, registeredNodes []cluster
 		}
 	}
 
-	return cluster.RegisteredNode{}, errors.WithMessage(ErrPickNode, "pick node failed")
+	return metadata.RegisteredNode{}, errors.WithMessage(ErrPickNode, "pick node failed")
 }

@@ -24,6 +24,18 @@ func Get(ctx context.Context, client *clientv3.Client, key string) (string, erro
 	return string(resp.Kvs[0].Value), nil
 }
 
+func List(ctx context.Context, client *clientv3.Client, prefix string) ([]string, error) {
+	resp, err := client.Get(ctx, prefix, clientv3.WithPrefix(), clientv3.WithKeysOnly())
+	if err != nil {
+		return []string{}, ErrEtcdKVGet.WithCause(err)
+	}
+	var result []string
+	for _, kv := range resp.Kvs {
+		result = append(result, string(kv.Key))
+	}
+	return result, nil
+}
+
 func Scan(ctx context.Context, client *clientv3.Client, startKey, endKey string, batchSize int, do func(key string, val []byte) error) error {
 	withRange := clientv3.WithRange(endKey)
 	withLimit := clientv3.WithLimit(int64(batchSize))

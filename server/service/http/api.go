@@ -7,14 +7,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"io"
 	"net/http"
 
 	"github.com/CeresDB/ceresmeta/pkg/coderr"
 	"github.com/CeresDB/ceresmeta/pkg/log"
-	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"go.uber.org/zap"
 )
@@ -27,19 +27,15 @@ const (
 )
 
 type API struct {
-	clusterManager   cluster.Manager
-	procedureManager procedure.Manager
-	procedureFactory *coordinator.Factory
+	clusterManager cluster.Manager
 
 	forwardClient *ForwardClient
 }
 
-func NewAPI(procedureManager procedure.Manager, procedureFactory *coordinator.Factory, clusterManager cluster.Manager, forwardClient *ForwardClient) *API {
+func NewAPI(clusterManager cluster.Manager, forwardClient *ForwardClient) *API {
 	return &API{
-		procedureManager: procedureManager,
-		procedureFactory: procedureFactory,
-		clusterManager:   clusterManager,
-		forwardClient:    forwardClient,
+		clusterManager: clusterManager,
+		forwardClient:  forwardClient,
 	}
 }
 
@@ -323,7 +319,7 @@ func (a *API) split(writer http.ResponseWriter, req *http.Request) {
 	c, err := a.clusterManager.GetCluster(ctx, splitRequest.ClusterName)
 	if err != nil {
 		log.Error("cluster not found", zap.String("clusterName", splitRequest.ClusterName), zap.Error(err))
-		a.respondError(writer, cluster.ErrClusterNotFound, "cluster not found")
+		a.respondError(writer, metadata.ErrClusterNotFound, "cluster not found")
 		return
 	}
 

@@ -5,7 +5,7 @@ package eventdispatch
 import (
 	"context"
 
-	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 )
 
 type Dispatch interface {
@@ -18,7 +18,7 @@ type Dispatch interface {
 }
 
 type OpenShardRequest struct {
-	Shard cluster.ShardInfo
+	Shard metadata.ShardInfo
 }
 
 type CloseShardRequest struct {
@@ -26,13 +26,13 @@ type CloseShardRequest struct {
 }
 
 type UpdateShardInfo struct {
-	CurrShardInfo cluster.ShardInfo
+	CurrShardInfo metadata.ShardInfo
 	PrevVersion   uint64
 }
 
 type CreateTableOnShardRequest struct {
 	UpdateShardInfo  UpdateShardInfo
-	TableInfo        cluster.TableInfo
+	TableInfo        metadata.TableInfo
 	EncodedSchema    []byte
 	Engine           string
 	CreateIfNotExist bool
@@ -41,15 +41,15 @@ type CreateTableOnShardRequest struct {
 
 type DropTableOnShardRequest struct {
 	UpdateShardInfo UpdateShardInfo
-	TableInfo       cluster.TableInfo
+	TableInfo       metadata.TableInfo
 }
 
 type OpenTableOnShardRequest struct {
 	UpdateShardInfo UpdateShardInfo
-	TableInfo       cluster.TableInfo
+	TableInfo       metadata.TableInfo
 }
 
 type CloseTableOnShardRequest struct {
 	UpdateShardInfo UpdateShardInfo
-	TableInfo       cluster.TableInfo
+	TableInfo       metadata.TableInfo
 }

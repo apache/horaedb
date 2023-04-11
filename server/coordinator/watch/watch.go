@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package coordinator
+package watch
 
 import (
 	"context"
@@ -25,11 +25,13 @@ const (
 )
 
 type ShardRegisterEvent struct {
+	clusterName   string
 	ShardID       storage.ShardID
 	NewLeaderNode string
 }
 
 type ShardExpireEvent struct {
+	clusterName   string
 	ShardID       storage.ShardID
 	OldLeaderNode string
 }
@@ -41,6 +43,7 @@ type ShardEventCallback interface {
 
 // ShardWatch used to watch the distributed lock of shard, and provide the corresponding callback function.
 type ShardWatch struct {
+	clusterName    string
 	rootPath       string
 	etcdClient     *clientv3.Client
 	eventCallbacks []ShardEventCallback
@@ -50,8 +53,9 @@ type ShardWatch struct {
 	cancel    context.CancelFunc
 }
 
-func NewWatch(rootPath string, client *clientv3.Client) *ShardWatch {
+func NewWatch(clusterName string, rootPath string, client *clientv3.Client) *ShardWatch {
 	return &ShardWatch{
+		clusterName:    clusterName,
 		rootPath:       rootPath,
 		etcdClient:     client,
 		eventCallbacks: []ShardEventCallback{},
@@ -66,7 +70,7 @@ func (w *ShardWatch) Start(ctx context.Context) error {
 		return nil
 	}
 
-	shardKeyPrefix := encodeShardKeyPrefix(w.rootPath, shardPath)
+	shardKeyPrefix := encodeShardKeyPrefix(w.rootPath, shardPath, w.clusterName)
 	if err := w.startWatch(ctx, shardKeyPrefix); err != nil {
 		return errors.WithMessage(err, "etcd register watch failed")
 	}
@@ -119,6 +123,7 @@ func (w *ShardWatch) processEvent(event *clientv3.Event) error {
 		log.Info("receive delete event", zap.String("preKV", fmt.Sprintf("%v", event.PrevKv)), zap.String("event", fmt.Sprintf("%v", event)), zap.Uint64("shardID", shardID), zap.String("oldLeader", shardLockValue.NodeName))
 		for _, callback := range w.eventCallbacks {
 			if err := callback.OnShardExpired(ShardExpireEvent{
+				clusterName:   w.clusterName,
 				ShardID:       storage.ShardID(shardID),
 				OldLeaderNode: shardLockValue.NodeName,
 			}); err != nil {
@@ -137,6 +142,7 @@ func (w *ShardWatch) processEvent(event *clientv3.Event) error {
 		log.Info("receive put event", zap.String("event", fmt.Sprintf("%v", event)), zap.Uint64("shardID", shardID), zap.String("oldLeader", shardLockValue.NodeName))
 		for _, callback := range w.eventCallbacks {
 			if err := callback.OnShardRegistered(ShardRegisterEvent{
+				clusterName:   w.clusterName,
 				ShardID:       storage.ShardID(shardID),
 				NewLeaderNode: shardLockValue.NodeName,
 			}); err != nil {
@@ -156,12 +162,12 @@ func decodeShardKey(keyPath string) (uint64, error) {
 	return shardID, nil
 }
 
-func encodeShardKeyPrefix(rootPath, shardPath string) string {
-	return strings.Join([]string{rootPath, shardPath}, keySep)
+func encodeShardKeyPrefix(rootPath, shardPath, clusterName string) string {
+	return strings.Join([]string{rootPath, shardPath, clusterName}, keySep)
 }
 
-func encodeShardKey(rootPath string, shardPath string, shardID uint64) string {
-	shardKeyPrefix := encodeShardKeyPrefix(rootPath, shardPath)
+func encodeShardKey(rootPath, shardPath, clusterName string, shardID uint64) string {
+	shardKeyPrefix := encodeShardKeyPrefix(rootPath, shardPath, clusterName)
 	return strings.Join([]string{shardKeyPrefix, strconv.FormatUint(shardID, 10)}, keySep)
 }
 

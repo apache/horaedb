@@ -1,7 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 // nolint
-package cluster
+package metadata
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
+	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
@@ -50,11 +51,11 @@ func newTestStorage(t *testing.T) (storage.Storage, clientv3.KV, etcdutil.CloseF
 	return storage, client, closeSrv
 }
 
-func newClusterManagerWithStorage(storage storage.Storage, kv clientv3.KV) (Manager, error) {
-	return NewManagerImpl(storage, kv, testRootPath, defaultIDAllocatorStep)
+func newClusterManagerWithStorage(storage storage.Storage, kv clientv3.KV) (cluster.Manager, error) {
+	return cluster.NewManagerImpl(storage, kv, testRootPath, defaultIDAllocatorStep)
 }
 
-func newTestClusterManager(t *testing.T) (Manager, etcdutil.CloseFn) {
+func newTestClusterManager(t *testing.T) (cluster.Manager, etcdutil.CloseFn) {
 	re := require.New(t)
 	storage, kv, closeSrv := newTestStorage(t)
 	manager, err := newClusterManagerWithStorage(storage, kv)
@@ -141,7 +142,7 @@ func TestManagerMultiThread(t *testing.T) {
 	wg.Wait()
 }
 
-func testCluster(ctx context.Context, re *require.Assertions, manager Manager, clusterName string) {
+func testCluster(ctx context.Context, re *require.Assertions, manager cluster.Manager, clusterName string) {
 	testCreateCluster(ctx, re, manager, clusterName)
 
 	testRegisterNode(ctx, re, manager, clusterName, node1)
@@ -156,7 +157,7 @@ func testCluster(ctx context.Context, re *require.Assertions, manager Manager, c
 	testAllocTableIDMultiThread(ctx, re, manager, clusterName, tableID2)
 }
 
-func testCreateCluster(ctx context.Context, re *require.Assertions, manager Manager, clusterName string) {
+func testCreateCluster(ctx context.Context, re *require.Assertions, manager cluster.Manager, clusterName string) {
 	_, err := manager.CreateCluster(ctx, clusterName, CreateClusterOpts{
 		NodeCount:         defaultNodeCount,
 		ReplicationFactor: defaultReplicationFactor,
@@ -165,7 +166,7 @@ func testCreateCluster(ctx context.Context, re *require.Assertions, manager Mana
 	re.NoError(err)
 }
 
-func testRegisterNode(ctx context.Context, re *require.Assertions, manager Manager,
+func testRegisterNode(ctx context.Context, re *require.Assertions, manager cluster.Manager,
 	clusterName, nodeName string,
 ) {
 	err := manager.RegisterNode(ctx, clusterName, RegisteredNode{
@@ -178,7 +179,7 @@ func testRegisterNode(ctx context.Context, re *require.Assertions, manager Manag
 	re.NoError(err)
 }
 
-func testAllocSchemaID(ctx context.Context, re *require.Assertions, manager Manager,
+func testAllocSchemaID(ctx context.Context, re *require.Assertions, manager cluster.Manager,
 	cluster, schema string, schemaID uint32,
 ) {
 	id, _, err := manager.AllocSchemaID(ctx, cluster, schema)
@@ -186,12 +187,12 @@ func testAllocSchemaID(ctx context.Context, re *require.Assertions, manager Mana
 	re.Equal(schemaID, id)
 }
 
-func testCreateTable(ctx context.Context, re *require.Assertions, manager Manager,
+func testCreateTable(ctx context.Context, re *require.Assertions, manager cluster.Manager,
 	clusterName, schema, tableName string, shardID storage.ShardID, tableID uint64,
 ) {
 	c, err := manager.GetCluster(ctx, clusterName)
 	re.NoError(err)
-	table, err := c.CreateTable(ctx, CreateTableRequest{
+	table, err := c.GetMetadata().CreateTable(ctx, CreateTableRequest{
 		ShardID:       shardID,
 		SchemaName:    schema,
 		TableName:     tableName,
@@ -201,7 +202,7 @@ func testCreateTable(ctx context.Context, re *require.Assertions, manager Manage
 	re.Equal(tableID, table.Table.ID)
 }
 
-func testGetTables(re *require.Assertions, manager Manager, node, cluster string, num int) {
+func testGetTables(re *require.Assertions, manager cluster.Manager, node, cluster string, num int) {
 	shardIDs := make([]storage.ShardID, 0, defaultShardTotal)
 	for i := 0; i < defaultShardTotal; i++ {
 		shardIDs = append(shardIDs, storage.ShardID(i))
@@ -218,7 +219,7 @@ func testGetTables(re *require.Assertions, manager Manager, node, cluster string
 	re.Equal(num, tableNum)
 }
 
-func testRouteTables(ctx context.Context, re *require.Assertions, manager Manager, cluster, schema string, tableNames []string) {
+func testRouteTables(ctx context.Context, re *require.Assertions, manager cluster.Manager, cluster, schema string, tableNames []string) {
 	ret, err := manager.RouteTables(ctx, cluster, schema, tableNames)
 	re.NoError(err)
 	re.Equal(uint64(0), ret.ClusterViewVersion)
@@ -229,12 +230,12 @@ func testRouteTables(ctx context.Context, re *require.Assertions, manager Manage
 	}
 }
 
-func testDropTable(ctx context.Context, re *require.Assertions, manager Manager, clusterName string, schemaName string, tableName string) {
+func testDropTable(ctx context.Context, re *require.Assertions, manager cluster.Manager, clusterName string, schemaName string, tableName string) {
 	err := manager.DropTable(ctx, clusterName, schemaName, tableName)
 	re.NoError(err)
 }
 
-func testAllocSchemaIDMultiThread(ctx context.Context, re *require.Assertions, manager Manager, clusterName string, schemaName string, schemaID uint32) {
+func testAllocSchemaIDMultiThread(ctx context.Context, re *require.Assertions, manager cluster.Manager, clusterName string, schemaName string, schemaID uint32) {
 	wg := sync.WaitGroup{}
 	for i := 0; i < defaultThreadNum; i++ {
 		wg.Add(1)
@@ -247,7 +248,7 @@ func testAllocSchemaIDMultiThread(ctx context.Context, re *require.Assertions, m
 	wg.Wait()
 }
 
-func testAllocTableIDMultiThread(ctx context.Context, re *require.Assertions, manager Manager, clusterName string, tableID uint64) {
+func testAllocTableIDMultiThread(ctx context.Context, re *require.Assertions, manager cluster.Manager, clusterName string, tableID uint64) {
 	wg := sync.WaitGroup{}
 	for i := 0; i < defaultThreadNum; i++ {
 		wg.Add(1)
@@ -261,7 +262,7 @@ func testAllocTableIDMultiThread(ctx context.Context, re *require.Assertions, ma
 	wg.Wait()
 }
 
-func testGetNodes(ctx context.Context, re *require.Assertions, manager Manager, cluster string) {
+func testGetNodes(ctx context.Context, re *require.Assertions, manager cluster.Manager, cluster string) {
 	getNodesResult, err := manager.GetNodeShards(ctx, cluster)
 	re.NoError(err)
 	re.Equal(defaultShardTotal, len(getNodesResult.NodeShards))

@@ -13,13 +13,10 @@ import (
 	"github.com/CeresDB/ceresmeta/pkg/coderr"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/config"
-	"github.com/CeresDB/ceresmeta/server/coordinator"
-	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
-	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler"
+	"github.com/CeresDB/ceresmeta/server/coordinator/watch"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
-	"github.com/CeresDB/ceresmeta/server/id"
 	"github.com/CeresDB/ceresmeta/server/member"
 	metagrpc "github.com/CeresDB/ceresmeta/server/service/grpc"
 	"github.com/CeresDB/ceresmeta/server/service/http"
@@ -31,11 +28,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-const (
-	defaultProcedurePrefixKey = "procedure"
-	defaultAllocStep          = 5
-)
-
 type Server struct {
 	isClosed int32
 
@@ -45,12 +37,8 @@ type Server struct {
 	// The fields below are initialized after Run of server is called.
 	clusterManager cluster.Manager
 
-	// procedureFactory create procedure for all cluster.
-	procedureFactory *coordinator.Factory
-	// procedureManager process procedure for all cluster.
-	procedureManager procedure.Manager
-	// schedulerManager manages schedulers for all cluster.
-	schedulerManager scheduler.Manager
+	// shardWatch used to watch shard lock event.
+	shardWatch *watch.ShardWatch
 
 	// member describes membership in ceresmeta cluster.
 	member  *member.Member
@@ -169,24 +157,13 @@ func (srv *Server) startServer(_ context.Context) error {
 		MaxScanLimit: srv.cfg.MaxScanLimit, MinScanLimit: srv.cfg.MinScanLimit,
 	})
 
-	manager, err := cluster.NewManagerImpl(storage, srv.etcdCli, srv.cfg.StorageRootPath, srv.cfg.IDAllocatorStep)
+	manager, err := cluster.NewManagerImpl(storage, srv.etcdCli, srv.cfg.StorageRootPath, srv.cfg.IDAllocatorStep, srv.cfg.DefaultPartitionTableProportionOfNodes)
 	if err != nil {
 		return errors.WithMessage(err, "start server")
 	}
 	srv.clusterManager = manager
 
-	procedureStorage := procedure.NewEtcdStorageImpl(srv.etcdCli, srv.cfg.StorageRootPath)
-	procedureManager, err := procedure.NewManagerImpl(procedureStorage)
-	if err != nil {
-		return errors.WithMessage(err, "start server")
-	}
-	srv.procedureManager = procedureManager
-	dispatch := eventdispatch.NewDispatchImpl()
-	procedureFactory := coordinator.NewFactory(id.NewAllocatorImpl(srv.etcdCli, defaultProcedurePrefixKey, defaultAllocStep), dispatch, procedureStorage, manager, srv.cfg.DefaultPartitionTableProportionOfNodes)
-	srv.procedureFactory = procedureFactory
-	srv.schedulerManager = scheduler.NewManager(procedureManager, srv.clusterManager, procedureFactory)
-
-	api := http.NewAPI(procedureManager, procedureFactory, manager, http.NewForwardClient(srv.member, srv.cfg.HTTPPort))
+	api := http.NewAPI(manager, http.NewForwardClient(srv.member, srv.cfg.HTTPPort))
 	httpService := http.NewHTTPService(srv.cfg.HTTPPort, time.Second*10, time.Second*10, api.NewAPIRouter())
 	go func() {
 		err := httpService.Start()
@@ -245,40 +222,37 @@ func (srv *Server) createDefaultCluster(ctx context.Context) error {
 	// Create default cluster by the leader.
 	if leaderResp.IsLocal {
 		defaultCluster, err := srv.clusterManager.CreateCluster(ctx, srv.cfg.DefaultClusterName,
-			cluster.CreateClusterOpts{
+			metadata.CreateClusterOpts{
 				NodeCount:         uint32(srv.cfg.DefaultClusterNodeCount),
 				ReplicationFactor: uint32(srv.cfg.DefaultClusterReplicationFactor),
 				ShardTotal:        uint32(srv.cfg.DefaultClusterShardTotal),
 			})
 		if err != nil {
 			log.Warn("create default cluster failed", zap.Error(err))
-			if coderr.Is(err, cluster.ErrClusterAlreadyExists.Code()) {
+			if coderr.Is(err, metadata.ErrClusterAlreadyExists.Code()) {
 				defaultCluster, err = srv.clusterManager.GetCluster(ctx, srv.cfg.DefaultClusterName)
 				if err != nil {
 					return errors.WithMessage(err, "get default cluster failed")
 				}
 			}
 		} else {
-			log.Info("create default cluster succeed", zap.String("cluster", defaultCluster.Name()))
+			log.Info("create default cluster succeed", zap.String("cluster", defaultCluster.GetMetadata().Name()))
 		}
-		// Create ShardView
-		if defaultCluster.GetClusterState() == storage.ClusterStateEmpty {
-			var createShardViews []cluster.CreateShardView
-			for i := uint32(0); i < defaultCluster.GetTotalShardNum(); i++ {
-				shardID, err := defaultCluster.AllocShardID(ctx)
+		// Create ShardView, shardViews will be assigned to nodes by scheduler.
+		if defaultCluster.GetMetadata().GetClusterState() == storage.ClusterStateEmpty {
+			var createShardViews []metadata.CreateShardView
+			for i := uint32(0); i < defaultCluster.GetMetadata().GetTotalShardNum(); i++ {
+				shardID, err := defaultCluster.GetMetadata().AllocShardID(ctx)
 				if err != nil {
 					return errors.WithMessage(err, "alloc shard id failed")
 				}
-				createShardViews = append(createShardViews, cluster.CreateShardView{
+				createShardViews = append(createShardViews, metadata.CreateShardView{
 					ShardID: storage.ShardID(shardID),
 					Tables:  []storage.TableID{},
 				})
 			}
-			if err := defaultCluster.CreateShardViews(ctx, createShardViews); err != nil {
+			if err := defaultCluster.GetMetadata().CreateShardViews(ctx, createShardViews); err != nil {
 				log.Error("create default shard views failed", zap.Error(err))
-			}
-			if err := defaultCluster.UpdateClusterView(ctx, storage.ClusterStateStable, []storage.ShardNode{}); err != nil {
-				log.Error("update cluster view failed", zap.Error(err))
 			}
 			log.Info("create shard view finish")
 		}
@@ -306,14 +280,6 @@ func (srv *Server) GetLeader(ctx context.Context) (*member.GetLeaderResp, error)
 	return srv.member.GetLeader(ctx)
 }
 
-func (srv *Server) GetProcedureFactory() *coordinator.Factory {
-	return srv.procedureFactory
-}
-
-func (srv *Server) GetProcedureManager() procedure.Manager {
-	return srv.procedureManager
-}
-
 type leadershipEventCallbacks struct {
 	srv *Server
 }
@@ -322,26 +288,13 @@ func (c *leadershipEventCallbacks) AfterElected(ctx context.Context) {
 	if err := c.srv.clusterManager.Start(ctx); err != nil {
 		panic(fmt.Sprintf("cluster manager fail to start, err:%v", err))
 	}
-	if err := c.srv.procedureManager.Start(ctx); err != nil {
-		panic(fmt.Sprintf("procedure manager fail to start, err:%v", err))
-	}
 	if err := c.srv.createDefaultCluster(ctx); err != nil {
 		panic(fmt.Sprintf("create default cluster failed, err:%v", err))
-	}
-	if err := c.srv.schedulerManager.Start(ctx); err != nil {
-		panic(fmt.Sprintf("scheduler manager fail to start, err:%v", err))
 	}
 }
 
 func (c *leadershipEventCallbacks) BeforeTransfer(ctx context.Context) {
 	if err := c.srv.clusterManager.Stop(ctx); err != nil {
 		panic(fmt.Sprintf("cluster manager fail to stop, err:%v", err))
-	}
-
-	if err := c.srv.procedureManager.Stop(ctx); err != nil {
-		panic(fmt.Sprintf("procedure manager fail to stop, err:%v", err))
-	}
-	if err := c.srv.schedulerManager.Stop(ctx); err != nil {
-		panic(fmt.Sprintf("scheduler manager fail to stop, err:%v", err))
 	}
 }
