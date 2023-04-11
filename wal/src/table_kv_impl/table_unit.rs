@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table unit in wal.
 
@@ -209,7 +209,7 @@ impl TableUnit {
     ) -> Result<Option<TableUnit>> {
         let table_kv = table_kv.clone();
         let table_unit_meta_table = table_unit_meta_table.to_string();
-        let rt = runtimes.bg_runtime.clone();
+        let rt = runtimes.default_runtime.clone();
 
         rt.spawn_blocking(move || {
             // Load of create table unit entry.
@@ -264,7 +264,7 @@ impl TableUnit {
     ) -> Result<TableUnit> {
         let table_kv = table_kv.clone();
         let table_unit_meta_table = table_unit_meta_table.to_string();
-        let rt = runtimes.bg_runtime.clone();
+        let rt = runtimes.default_runtime.clone();
 
         rt.spawn_blocking(move || {
             // Load of create table unit entry.

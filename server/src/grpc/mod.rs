@@ -274,7 +274,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             RemoteEngineServiceServer::new(service)
         };
 
-        let bg_runtime = runtimes.bg_runtime.clone();
+        let runtime = runtimes.default_runtime.clone();
 
         let storage_service = StorageServiceImpl {
             proxy,
@@ -290,7 +290,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             rpc_server,
             meta_rpc_server,
             remote_engine_server,
-            runtime: bg_runtime,
+            runtime,
             stop_tx: None,
             join_handle: None,
         })

@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Wal implementation based on TableKv.
 
@@ -26,5 +26,5 @@ mod consts {
 pub struct WalRuntimes {
     pub read_runtime: Arc<Runtime>,
     pub write_runtime: Arc<Runtime>,
-    pub bg_runtime: Arc<Runtime>,
+    pub default_runtime: Arc<Runtime>,
 }

@@ -303,8 +303,14 @@ pub type TableEngineRef = Arc<dyn TableEngine>;
 
 #[derive(Clone, Debug)]
 pub struct EngineRuntimes {
+    /// Runtime for reading data
     pub read_runtime: Arc<Runtime>,
+    /// Runtime for writing data
     pub write_runtime: Arc<Runtime>,
+    /// Runtime for compacting data
+    pub compact_runtime: Arc<Runtime>,
+    /// Runtime for ceresmeta communication
     pub meta_runtime: Arc<Runtime>,
-    pub bg_runtime: Arc<Runtime>,
+    /// Runtime for some other tasks which are not so important
+    pub default_runtime: Arc<Runtime>,
 }

@@ -568,7 +568,7 @@ impl Instance {
             let sst_write_options = sst_write_options.clone();
 
             // spawn build sst
-            let handler = self.runtimes.bg_runtime.spawn(async move {
+            let handler = self.runtimes.write_runtime.spawn(async move {
                 let mut writer = store
                     .sst_factory
                     .create_writer(&sst_write_options, &sst_file_path, store.store_picker())

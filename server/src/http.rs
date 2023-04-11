@@ -163,7 +163,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             },
         );
 
-        self.engine_runtimes.bg_runtime.spawn(server);
+        self.engine_runtimes.default_runtime.spawn(server);
 
         Ok(())
     }
@@ -538,7 +538,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .default_schema_name()
             .to_string();
         //TODO(boyan) use read/write runtime by sql type.
-        let runtime = self.engine_runtimes.bg_runtime.clone();
+        let runtime = self.engine_runtimes.default_runtime.clone();
         let timeout = self.config.timeout;
         let router = self.router.clone();
 
