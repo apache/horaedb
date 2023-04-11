@@ -345,7 +345,7 @@ where
         // it can be ignored.
         self.log_store.delete_up_to(dbg!(snapshot.end_seq)).await?;
 
-        Ok(Some(dbg!(snapshot)))
+        Ok(Some(snapshot))
     }
 }
 
@@ -717,7 +717,7 @@ struct Snapshotter<Builder> {
 }
 
 /// The snapshot for the current logs.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct Snapshot {
     /// The end sequence of the logs that this snapshot covers.
     /// Basically it is the latest sequence number of the logs when creating a
@@ -1352,9 +1352,9 @@ mod tests {
         });
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     struct MemLogStore {
-        logs: std::sync::Mutex<Vec<Option<MetaUpdate>>>,
+        logs: Arc<std::sync::Mutex<Vec<Option<MetaUpdate>>>>,
     }
 
     impl MemLogStore {
@@ -1362,7 +1362,7 @@ mod tests {
             let mut buf = Vec::with_capacity(updates.len());
             buf.extend(updates.iter().map(|v| Some(v.clone())));
             Self {
-                logs: std::sync::Mutex::new(buf),
+                logs: Arc::new(std::sync::Mutex::new(buf)),
             }
         }
 
@@ -1425,15 +1425,15 @@ mod tests {
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     struct MemSnapshotStore {
-        curr_snapshot: Mutex<Option<Snapshot>>,
+        curr_snapshot: Arc<Mutex<Option<Snapshot>>>,
     }
 
     impl MemSnapshotStore {
         fn new() -> Self {
             Self {
-                curr_snapshot: Mutex::new(None),
+                curr_snapshot: Arc::new(Mutex::new(None)),
             }
         }
     }
@@ -1452,118 +1452,166 @@ mod tests {
         }
     }
 
-    // fn run_snapshot_test(
-    //     ctx: Arc<TestContext>,
-    //     table_id: TableId,
-    //     input_updates: Vec<MetaUpdate>,
-    //     updates_after_snapshot: Vec<MetaUpdate>,
-    // ) {
-    //     let location = WalLocation::new(DEFAULT_SHARD_ID as u64, table_id.as_u64());
-    //     let log_store = MemLogStore::from_updates(&input_updates);
-    //     let snapshot_store = MemSnapshotStore::new();
+    fn run_snapshot_test(
+        ctx: Arc<TestContext>,
+        table_id: TableId,
+        input_updates: Vec<MetaUpdate>,
+        updates_after_snapshot: Vec<MetaUpdate>,
+    ) {
+        let log_store = MemLogStore::from_updates(&input_updates);
+        let snapshot_store = MemSnapshotStore::new();
+        let snapshot_data_provider = ctx.mock_provider.clone();
 
-    //     ctx.runtime.block_on(async move {
-    //         let snapshotter = Snapshotter {
-    //             location,
-    //             log_store,
-    //             snapshot_store,
-    //         };
+        ctx.runtime.block_on(async move {
+            let log_store = log_store;
+            let snapshot_store = snapshot_store;
+            let snapshot_provider = snapshot_data_provider;
 
-    //         // Create and check the latest snapshot first.
-    //         let mut manifest_builder = TableManifestDataBuilder::default();
-    //         for update in &input_updates {
-    //             manifest_builder.apply_update(update.clone()).unwrap();
-    //         }
-    //         let expect_table_manifest_data = manifest_builder.clone().build();
+            // 1. Test write and do snapshot
+            // Create and check the latest snapshot first.
+            let mut manifest_builder = TableManifestDataBuilder::default();
+            for update in &input_updates {
+                manifest_builder.apply_update(update.clone()).unwrap();
+                snapshot_provider.apply_update(update.clone());
+            }
+            let expect_table_manifest_data = manifest_builder.clone().build();
 
-    //         // Do snapshot and check the snapshot result
-    //         let snapshot = snapshotter.snapshot().await.unwrap();
-    //         if input_updates.is_empty() {
-    //             assert!(snapshot.is_none());
-    //         } else {
-    //             assert!(snapshot.is_some());
-    //             let snapshot = snapshot.unwrap();
-    //             assert_eq!(input_updates.len(), snapshot.original_logs_num);
-    //             assert_eq!(snapshot.data, expect_table_manifest_data);
-    //             assert_eq!(snapshot.end_seq, snapshotter.log_store.next_seq() - 1);
-    //         }
+            // Do snapshot from memory and check the snapshot result.
+            let snapshot = build_and_store_snapshot(
+                &log_store,
+                &snapshot_store,
+                snapshot_provider.clone(),
+                table_id,
+            )
+            .await;
+            if input_updates.is_empty() {
+                assert!(snapshot.is_none());
+            } else {
+                assert!(snapshot.is_some());
+                let snapshot = snapshot.unwrap();
+                assert_eq!(snapshot.data, expect_table_manifest_data);
+                assert_eq!(snapshot.end_seq, log_store.next_seq() - 1);
 
-    //         // The logs in the log store should be cleared after snapshot.
-    //         let updates_in_log_store = snapshotter.log_store.to_meta_updates().await;
-    //         assert!(updates_in_log_store.is_empty());
+                let recovered_snapshot = recover_snapshot(&log_store, &snapshot_store).await;
+                assert_eq!(snapshot, recovered_snapshot.unwrap());
+            }
+            // The logs in the log store should be cleared after snapshot.
+            let updates_in_log_store = log_store.to_meta_updates().await;
+            assert!(updates_in_log_store.is_empty());
 
-    //         // Write the updates after snapshot.
-    //         for update in &updates_after_snapshot {
-    //             manifest_builder.apply_update(update.clone()).unwrap();
-    //             snapshotter.log_store.append(update.clone()).await.unwrap();
-    //         }
-    //         let expect_table_manifest_data = manifest_builder.build();
-    //         // Do snapshot and check the snapshot result again.
-    //         let snapshot = snapshotter.snapshot().await.unwrap();
+            // 2. Test write after snapshot, and do snapshot again
+            // Write the updates after snapshot.
+            for update in &updates_after_snapshot {
+                manifest_builder.apply_update(update.clone()).unwrap();
+                log_store.append(update.clone()).await.unwrap();
+                snapshot_provider.apply_update(update.clone());
+            }
+            let expect_table_manifest_data = manifest_builder.build();
+            // Do snapshot and check the snapshot result again.
+            let snapshot =
+                build_and_store_snapshot(&log_store, &snapshot_store, snapshot_provider, table_id)
+                    .await;
 
-    //         if input_updates.is_empty() && updates_after_snapshot.is_empty() {
-    //             assert!(snapshot.is_none());
-    //         } else {
-    //             assert!(snapshot.is_some());
-    //             let snapshot = snapshot.unwrap();
-    //             assert_eq!(updates_after_snapshot.len(), snapshot.original_logs_num);
-    //             assert_eq!(snapshot.data, expect_table_manifest_data);
-    //             assert_eq!(snapshot.end_seq, snapshotter.log_store.next_seq() - 1);
-    //         }
-    //         // The logs in the log store should be cleared after snapshot.
-    //         let updates_in_log_store = snapshotter.log_store.to_meta_updates().await;
-    //         assert!(updates_in_log_store.is_empty());
-    //     });
-    // }
+            if input_updates.is_empty() && updates_after_snapshot.is_empty() {
+                assert!(snapshot.is_none());
+            } else {
+                assert!(snapshot.is_some());
+                let snapshot = snapshot.unwrap();
+                assert_eq!(snapshot.data, expect_table_manifest_data);
+                assert_eq!(snapshot.end_seq, log_store.next_seq() - 1);
 
-    // #[test]
-    // fn test_simple_snapshot() {
-    //     let ctx = Arc::new(TestContext::new(
-    //         "snapshot_merge_no_snapshot",
-    //         SchemaId::from_u32(0),
-    //     ));
-    //     let table_id = ctx.alloc_table_id();
-    //     let input_updates = vec![
-    //         ctx.meta_update_add_table(table_id),
-    //         ctx.meta_update_version_edit(table_id, Some(1)),
-    //         ctx.meta_update_version_edit(table_id, Some(3)),
-    //     ];
+                let recovered_snapshot = recover_snapshot(&log_store, &snapshot_store).await;
+                assert_eq!(snapshot, recovered_snapshot.unwrap());
+            }
+            // The logs in the log store should be cleared after snapshot.
+            let updates_in_log_store = log_store.to_meta_updates().await;
+            assert!(updates_in_log_store.is_empty());
+        });
+    }
 
-    //     run_snapshot_test(ctx, table_id, input_updates, vec![]);
-    // }
+    async fn build_and_store_snapshot(
+        log_store: &MemLogStore,
+        snapshot_store: &MemSnapshotStore,
+        snapshot_provider: Arc<MockProviderImpl>,
+        table_id: TableId,
+    ) -> Option<Snapshot> {
+        let end_seq = log_store.next_seq() - 1;
+        let memory_builder = MemorySnapshotBuilder {
+            log_store: log_store.clone(),
+            snapshot_store: snapshot_store.clone(),
+            end_seq,
+            snapshot_data_provider: snapshot_provider,
+            space_id: 0,
+            table_id,
+        };
+        let snapshotter = Snapshotter {
+            snapshot_builder: memory_builder,
+        };
+        snapshotter.snapshot().await.unwrap()
+    }
 
-    // #[test]
-    // fn test_snapshot_drop_table() {
-    //     let ctx = Arc::new(TestContext::new(
-    //         "snapshot_drop_table",
-    //         SchemaId::from_u32(0),
-    //     ));
-    //     let table_id = ctx.alloc_table_id();
-    //     let input_updates = vec![
-    //         ctx.meta_update_add_table(table_id),
-    //         ctx.meta_update_drop_table(table_id),
-    //     ];
+    async fn recover_snapshot(
+        log_store: &MemLogStore,
+        snapshot_store: &MemSnapshotStore,
+    ) -> Option<Snapshot> {
+        let storage_builder = StorageSnapshotBuilder {
+            log_store: log_store.clone(),
+            snapshot_store: snapshot_store.clone(),
+        };
+        let snapshotter = Snapshotter {
+            snapshot_builder: storage_builder,
+        };
+        snapshotter.snapshot().await.unwrap()
+    }
 
-    //     run_snapshot_test(ctx, table_id, input_updates, vec![]);
-    // }
+    #[test]
+    fn test_simple_snapshot() {
+        let ctx = Arc::new(TestContext::new(
+            "snapshot_merge_no_snapshot",
+            SchemaId::from_u32(0),
+        ));
+        let table_id = ctx.alloc_table_id();
+        let input_updates = vec![
+            ctx.meta_update_add_table(table_id),
+            ctx.meta_update_version_edit(table_id, Some(1)),
+            ctx.meta_update_version_edit(table_id, Some(3)),
+        ];
 
-    // #[test]
-    // fn test_snapshot_twice() {
-    //     let ctx = Arc::new(TestContext::new(
-    //         "snapshot_merge_no_snapshot",
-    //         SchemaId::from_u32(0),
-    //     ));
-    //     let table_id = ctx.alloc_table_id();
-    //     let input_updates = vec![
-    //         ctx.meta_update_add_table(table_id),
-    //         ctx.meta_update_version_edit(table_id, Some(1)),
-    //         ctx.meta_update_version_edit(table_id, Some(3)),
-    //     ];
-    //     let updates_after_snapshot = vec![
-    //         ctx.meta_update_version_edit(table_id, Some(4)),
-    //         ctx.meta_update_version_edit(table_id, Some(8)),
-    //     ];
+        run_snapshot_test(ctx, table_id, input_updates, vec![]);
+    }
 
-    //     run_snapshot_test(ctx, table_id, input_updates, updates_after_snapshot);
-    // }
+    #[test]
+    fn test_snapshot_drop_table() {
+        let ctx = Arc::new(TestContext::new(
+            "snapshot_drop_table",
+            SchemaId::from_u32(0),
+        ));
+        let table_id = ctx.alloc_table_id();
+        let input_updates = vec![
+            ctx.meta_update_add_table(table_id),
+            ctx.meta_update_drop_table(table_id),
+        ];
+
+        run_snapshot_test(ctx, table_id, input_updates, vec![]);
+    }
+
+    #[test]
+    fn test_snapshot_twice() {
+        let ctx = Arc::new(TestContext::new(
+            "snapshot_merge_no_snapshot",
+            SchemaId::from_u32(0),
+        ));
+        let table_id = ctx.alloc_table_id();
+        let input_updates = vec![
+            ctx.meta_update_add_table(table_id),
+            ctx.meta_update_version_edit(table_id, Some(1)),
+            ctx.meta_update_version_edit(table_id, Some(3)),
+        ];
+        let updates_after_snapshot = vec![
+            ctx.meta_update_version_edit(table_id, Some(4)),
+            ctx.meta_update_version_edit(table_id, Some(8)),
+        ];
+
+        run_snapshot_test(ctx, table_id, input_updates, updates_after_snapshot);
+    }
 }
