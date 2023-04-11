@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Grpc services
 
@@ -335,7 +335,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
         let forward_config = self.forward_config.unwrap_or_default();
         let hotspot_config = self.hotspot_config.unwrap_or_default();
-        let runtime = runtimes.bg_runtime.clone();
+        let runtime = runtimes.default_runtime.clone();
         let proxy = Proxy::try_new(
             router,
             instance,

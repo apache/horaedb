@@ -409,7 +409,7 @@ impl TestEnv {
     }
 
     pub fn block_on<F: Future>(&self, future: F) -> F::Output {
-        self.runtimes.bg_runtime.block_on(future)
+        self.runtimes.default_runtime.block_on(future)
     }
 }
 
@@ -454,7 +454,7 @@ impl Builder {
                 read_runtime: runtime.clone(),
                 write_runtime: runtime.clone(),
                 meta_runtime: runtime.clone(),
-                bg_runtime: runtime,
+                default_runtime: runtime,
             }),
         }
     }

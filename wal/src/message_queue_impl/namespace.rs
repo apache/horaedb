@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Namespace of wal on message queue
 
@@ -152,12 +152,15 @@ impl<M: MessageQueue> Namespace<M> {
     pub fn open(
         namespace: String,
         message_queue: Arc<M>,
-        bg_runtime: Arc<Runtime>,
+        default_runtime: Arc<Runtime>,
         config: Config,
     ) -> Self {
         let inner = Arc::new(NamespaceInner::new(namespace, message_queue));
-        let cleaner_handle =
-            start_log_cleaner(bg_runtime.as_ref(), config.clean_period.0, inner.clone());
+        let cleaner_handle = start_log_cleaner(
+            default_runtime.as_ref(),
+            config.clean_period.0,
+            inner.clone(),
+        );
 
         Self {
             inner,

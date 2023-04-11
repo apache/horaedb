@@ -288,7 +288,7 @@ impl WalsOpener for KafkaWalsOpener {
             }
         };
 
-        let bg_runtime = &engine_runtimes.bg_runtime;
+        let default_runtime = &engine_runtimes.default_runtime;
 
         let kafka = KafkaImpl::new(kafka_wal_config.kafka.clone())
             .await
@@ -296,14 +296,14 @@ impl WalsOpener for KafkaWalsOpener {
         let data_wal = MessageQueueImpl::new(
             WAL_DIR_NAME.to_string(),
             kafka.clone(),
-            bg_runtime.clone(),
+            default_runtime.clone(),
             kafka_wal_config.data_namespace,
         );
 
         let manifest_wal = MessageQueueImpl::new(
             MANIFEST_DIR_NAME.to_string(),
             kafka,
-            bg_runtime.clone(),
+            default_runtime.clone(),
             kafka_wal_config.meta_namespace,
         );
 
@@ -322,7 +322,7 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
     let runtimes = WalRuntimes {
         read_runtime: engine_runtimes.read_runtime.clone(),
         write_runtime: engine_runtimes.write_runtime.clone(),
-        bg_runtime: engine_runtimes.bg_runtime.clone(),
+        default_runtime: engine_runtimes.default_runtime.clone(),
     };
 
     let data_wal = WalNamespaceImpl::open(

@@ -65,8 +65,9 @@ fn build_engine_runtimes(config: &RuntimeConfig) -> EngineRuntimes {
     EngineRuntimes {
         read_runtime: Arc::new(build_runtime("ceres-read", config.read_thread_num)),
         write_runtime: Arc::new(build_runtime("ceres-write", config.write_thread_num)),
+        compaction_runtime: Arc::new(build_runtime("ceres-compact", config.compact_thread_num)),
         meta_runtime: Arc::new(build_runtime("ceres-meta", config.meta_thread_num)),
-        bg_runtime: Arc::new(build_runtime("ceres-bg", config.background_thread_num)),
+        default_runtime: Arc::new(build_runtime("ceres-default", config.default_thread_num)),
     }
 }
 
@@ -78,7 +79,7 @@ pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
 
     info!("Server starts up, config:{:#?}", config);
 
-    runtimes.bg_runtime.block_on(async {
+    runtimes.default_runtime.block_on(async {
         match config.analytic.wal {
             WalStorageConfig::RocksDB(_) => {
                 run_server_with_runtimes::<RocksDBWalsOpener>(config, engine_runtimes, log_runtime)
