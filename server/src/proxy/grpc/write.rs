@@ -118,7 +118,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             request_id,
             deadline,
             catalog: catalog.to_string(),
-            schema: schema.to_string(),
+            schema: schema.clone(),
             auto_create_table: self.auto_create_table,
         };
 
@@ -129,6 +129,15 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             write_context,
         )
         .await?;
+
+        for insert_plan in &plan_vec {
+            self.maybe_open_partition_table_if_not_exist(
+                catalog,
+                &schema,
+                insert_plan.table.name(),
+            )
+            .await?;
+        }
 
         let mut success = 0;
         for insert_plan in plan_vec {

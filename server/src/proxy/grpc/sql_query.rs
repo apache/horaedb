@@ -5,7 +5,6 @@
 use std::{sync::Arc, time::Instant};
 
 use arrow_ext::ipc::{CompressOptions, CompressionMethod, RecordBatchesEncoder};
-use catalog::schema::{CreateOptions, CreateTableRequest, DropOptions, DropTableRequest};
 use ceresdbproto::{
     common::ResponseHeader,
     storage::{
@@ -13,7 +12,7 @@ use ceresdbproto::{
         ArrowPayload, SqlQueryRequest, SqlQueryResponse,
     },
 };
-use common_types::{record_batch::RecordBatch, request_id::RequestId, table::DEFAULT_SHARD_ID};
+use common_types::{record_batch::RecordBatch, request_id::RequestId};
 use common_util::{error::BoxError, time::InstantExt};
 use futures::{stream, stream::BoxStream, FutureExt, StreamExt};
 use http::StatusCode;
@@ -21,18 +20,11 @@ use interpreters::{context::Context as InterpreterContext, factory::Factory, int
 use log::{error, info, warn};
 use query_engine::executor::Executor as QueryExecutor;
 use router::endpoint::Endpoint;
-use snafu::{ensure, OptionExt, ResultExt};
+use snafu::{ensure, ResultExt};
 use sql::{
     frontend,
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,
-};
-use table_engine::{
-    engine::TableState,
-    partition::{format_sub_partition_table_name, PartitionInfo},
-    remote::model::{GetTableInfoRequest, TableIdentifier},
-    table::TableId,
-    PARTITION_TABLE_ENGINE_TYPE,
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -346,140 +338,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         Ok(output)
     }
-
-    async fn maybe_open_partition_table_if_not_exist(
-        &self,
-        catalog_name: &str,
-        schema_name: &str,
-        table_name: &str,
-    ) -> Result<()> {
-        let partition_table_info = self
-            .router
-            .fetch_partition_table_info(schema_name, table_name)
-            .await?;
-        if partition_table_info.is_none() {
-            return Ok(());
-        }
-
-        let partition_table_info = partition_table_info.unwrap();
-
-        let catalog = self
-            .instance
-            .catalog_manager
-            .catalog_by_name(catalog_name)
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to find catalog, catalog_name:{catalog_name}"),
-            })?
-            .with_context(|| ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: format!("Catalog not found, catalog_name:{catalog_name}"),
-            })?;
-
-        // TODO: support create schema if not exist
-        let schema = catalog
-            .schema_by_name(schema_name)
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to find schema, schema_name:{schema_name}"),
-            })?
-            .context(ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: format!("Schema not found, schema_name:{schema_name}"),
-            })?;
-        let table = schema
-            .table_by_name(&partition_table_info.name)
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!(
-                    "Failed to find table, table_name:{}",
-                    partition_table_info.name
-                ),
-            })?;
-
-        if let Some(table) = table {
-            if table.id().as_u64() == partition_table_info.id {
-                return Ok(());
-            }
-
-            // Drop partition table if table id not match.
-            let opts = DropOptions {
-                table_engine: self.instance.partition_table_engine.clone(),
-            };
-            schema
-                .drop_table(
-                    DropTableRequest {
-                        catalog_name: catalog_name.to_string(),
-                        schema_name: schema_name.to_string(),
-                        table_name: table_name.to_string(),
-                        engine: PARTITION_TABLE_ENGINE_TYPE.to_string(),
-                    },
-                    opts,
-                )
-                .await
-                .box_err()
-                .with_context(|| ErrWithCause {
-                    code: StatusCode::INTERNAL_SERVER_ERROR,
-                    msg: format!("Failed to drop partition table, table_name:{table_name}"),
-                })?;
-        }
-
-        // If table not exists, open it.
-        // Get table_schema from first sub partition table.
-        let first_sub_partition_table_name = get_sub_partition_name(
-            &partition_table_info.name,
-            &partition_table_info.partition_info,
-            0usize,
-        );
-        let table = self
-            .instance
-            .remote_engine_ref
-            .get_table_info(GetTableInfoRequest {
-                table: TableIdentifier {
-                    catalog: catalog_name.to_string(),
-                    schema: schema_name.to_string(),
-                    table: first_sub_partition_table_name,
-                },
-            })
-            .await
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to get table",
-            })?;
-
-        // Partition table is a virtual table, so we need to create it manually.
-        // Partition info is stored in ceresmeta, so we need to use create_table_request
-        // to create it.
-        let create_table_request = CreateTableRequest {
-            catalog_name: catalog_name.to_string(),
-            schema_name: schema_name.to_string(),
-            table_name: partition_table_info.name,
-            table_id: Some(TableId::new(partition_table_info.id)),
-            table_schema: table.table_schema,
-            engine: table.engine,
-            options: Default::default(),
-            state: TableState::Stable,
-            shard_id: DEFAULT_SHARD_ID,
-            partition_info: Some(partition_table_info.partition_info),
-        };
-        let create_opts = CreateOptions {
-            table_engine: self.instance.partition_table_engine.clone(),
-            create_if_not_exists: true,
-        };
-        schema
-            .create_table(create_table_request.clone(), create_opts)
-            .await
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to create table, request:{create_table_request:?}"),
-            })?;
-        Ok(())
-    }
 }
 
 // TODO(chenxiang): Output can have both `rows` and `affected_rows`
@@ -602,9 +460,4 @@ impl QueryResponseWriter {
 
         Ok(resp)
     }
-}
-
-fn get_sub_partition_name(table_name: &str, partition_info: &PartitionInfo, id: usize) -> String {
-    let partition_name = partition_info.get_definitions()[id].name.clone();
-    format_sub_partition_table_name(table_name, &partition_name)
 }

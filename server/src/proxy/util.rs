@@ -6,6 +6,16 @@ use ceresdbproto::prometheus::{
     sub_expr::OperatorType,
     Expr, SubExpr,
 };
+use table_engine::partition::{format_sub_partition_table_name, PartitionInfo};
+
+pub fn get_sub_partition_name(
+    table_name: &str,
+    partition_info: &PartitionInfo,
+    id: usize,
+) -> String {
+    let partition_name = partition_info.get_definitions()[id].name.clone();
+    format_sub_partition_table_name(table_name, &partition_name)
+}
 
 fn table_from_sub_expr(expr: &SubExpr) -> Option<String> {
     if expr.op_type == OperatorType::Aggr as i32 || expr.op_type == OperatorType::Func as i32 {
