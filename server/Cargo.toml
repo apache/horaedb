@@ -50,7 +50,6 @@ serde_json = { workspace = true }
 snafu = { workspace = true }
 spin = { workspace = true }
 sql = { workspace = true }
-system_catalog = { workspace = true }
 table_engine = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["net"] }
@@ -62,3 +61,4 @@ zstd = { workspace = true }
 [dev-dependencies]
 json_pretty = "0.1.2"
 sql = { workspace = true, features = ["test"] }
+system_catalog = { workspace = true }
