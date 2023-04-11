@@ -38,6 +38,7 @@ members = [
     "integration_tests/sdk/rust",
     "interpreters",
     "meta_client",
+    "partition_table_engine",
     "query_engine",
     "remote_engine_client",
     "router",
@@ -54,8 +55,8 @@ name = "ceresdb-server"
 path = "src/bin/ceresdb-server.rs"
 
 [workspace.dependencies]
-arrow = { version = "32.0.0", features = ["prettyprint"] }
-arrow_ipc = { version = "32.0.0" }
+arrow = { version = "36.0.0", features = ["prettyprint"] }
+arrow_ipc = { version = "36.0.0" }
 arrow_ext = { path = "components/arrow_ext" }
 analytic_engine = { path = "analytic_engine" }
 arena = { path = "components/arena" }
@@ -73,10 +74,10 @@ cluster = { path = "cluster" }
 criterion = "0.3"
 common_types = { path = "common_types" }
 common_util = { path = "common_util" }
-datafusion = "18.0.0"
-datafusion-expr = "18.0.0"
-datafusion-optimizer = "18.0.0"
-datafusion-proto = "18.0.0"
+datafusion = { git = "https://github.com/apache/arrow-datafusion.git", rev = "b87871fdd1f4ce64201eb1f7c79a0547627f37e9" }
+datafusion-expr = { git = "https://github.com/apache/arrow-datafusion.git", rev = "b87871fdd1f4ce64201eb1f7c79a0547627f37e9" }
+datafusion-optimizer = { git = "https://github.com/apache/arrow-datafusion.git", rev = "b87871fdd1f4ce64201eb1f7c79a0547627f37e9" }
+datafusion-proto = { git = "https://github.com/apache/arrow-datafusion.git", rev = "b87871fdd1f4ce64201eb1f7c79a0547627f37e9" }
 df_operator = { path = "df_operator" }
 env_logger = "0.6"
 futures = "0.3"
@@ -91,8 +92,9 @@ interpreters = { path = "interpreters" }
 itertools = "0.10.5"
 meta_client = { path = "meta_client" }
 object_store = { path = "components/object_store" }
+partition_table_engine = { path = "partition_table_engine" }
 parquet_ext = { path = "components/parquet_ext" }
-parquet = { version = "32.0.0" }
+parquet = { version = "36.0.0" }
 paste = "1.0"
 pin-project-lite = "0.2.8"
 profile = { path = "components/profile" }
@@ -110,8 +112,9 @@ serde_json = "1.0.60"
 server = { path = "server" }
 smallvec = "1.6"
 slog = "2.7"
+spin = "0.9.6"
 sql = { path = "sql" }
-sqlparser = { version = "0.30", features = ["serde"] }
+sqlparser = { version = "0.32", features = ["serde"] }
 system_catalog = { path = "system_catalog" }
 table_engine = { path = "table_engine" }
 table_kv = { path = "components/table_kv" }
@@ -145,7 +148,6 @@ router = { workspace = true }
 serde = { workspace = true }
 server = { workspace = true }
 signal-hook = "0.3"
-sort = "0.8.5"
 table_engine = { workspace = true }
 toml = { workspace = true }
 tracing_util = { workspace = true }

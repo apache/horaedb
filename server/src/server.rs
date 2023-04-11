@@ -11,7 +11,9 @@ use df_operator::registry::FunctionRegistryRef;
 use interpreters::table_manipulator::TableManipulatorRef;
 use log::{info, warn};
 use logger::RuntimeLevel;
+use partition_table_engine::PartitionTableEngine;
 use query_engine::executor::Executor as QueryExecutor;
+use remote_engine_client::RemoteEngineImpl;
 use router::{endpoint::Endpoint, RouterRef};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
@@ -175,6 +177,7 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
 #[must_use]
 pub struct Builder<Q> {
     server_config: ServerConfig,
+    remote_engine_client_config: remote_engine_client::config::Config,
     node_addr: String,
     config_content: Option<String>,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
@@ -196,6 +199,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
     pub fn new(config: ServerConfig) -> Self {
         Self {
             server_config: config,
+            remote_engine_client_config: remote_engine_client::Config::default(),
             node_addr: "".to_string(),
             config_content: None,
             engine_runtimes: None,
@@ -305,15 +309,27 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let provider = self
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
+        let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
+        let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
+        let config_content = self.config_content.expect("Missing config content");
+
+        let remote_engine_ref = Arc::new(RemoteEngineImpl::new(
+            self.remote_engine_client_config.clone(),
+            router.clone(),
+        ));
+
+        let partition_table_engine = Arc::new(PartitionTableEngine::new(remote_engine_ref.clone()));
 
         let instance = {
             let instance = Instance {
                 catalog_manager,
                 query_executor,
                 table_engine,
+                partition_table_engine,
                 function_registry,
                 limiter: self.limiter,
                 table_manipulator,
+                remote_engine_ref,
             };
             InstanceRef::new(instance)
         };
@@ -336,18 +352,16 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         };
 
         let proxy = Arc::new(Proxy::new(
-            router,
+            router.clone(),
             instance.clone(),
             self.server_config.forward,
             Endpoint::new(self.node_addr, self.server_config.grpc_port),
             self.server_config.resp_compress_min_length.as_byte() as usize,
             self.server_config.auto_create_table,
             provider.clone(),
+            self.server_config.hotspot,
+            engine_runtimes.bg_runtime.clone(),
         ));
-
-        let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
-        let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
-        let config_content = self.config_content.expect("Missing config content");
 
         let http_service = http::Builder::new(http_config)
             .engine_runtimes(engine_runtimes.clone())
@@ -356,6 +370,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .schema_config_provider(provider.clone())
             .config_content(config_content)
             .proxy(proxy.clone())
+            .router(router.clone())
+            .opened_wals(opened_wals.clone())
             .build()
             .context(HttpService {
                 msg: "build failed",
@@ -370,6 +386,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let mysql_service = mysql::Builder::new(mysql_config)
             .runtimes(engine_runtimes.clone())
             .instance(instance.clone())
+            .router(router.clone())
             .build()
             .context(BuildMysqlService)?;
 

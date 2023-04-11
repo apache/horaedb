@@ -3,10 +3,11 @@
 //! Http service
 
 use std::{
-    collections::HashMap, convert::Infallible, error::Error as StdError, net::IpAddr, sync::Arc,
-    time::Duration,
+    collections::HashMap, convert::Infallible, error::Error as StdError, fs::File, net::IpAddr,
+    sync::Arc, thread, time::Duration,
 };
 
+use analytic_engine::setup::OpenedWals;
 use common_util::error::{BoxError, GenericError};
 use handlers::query::QueryRequest as HandlerQueryRequest;
 use log::{error, info};
@@ -14,7 +15,7 @@ use logger::RuntimeLevel;
 use profile::Profiler;
 use prom_remote_api::{types::RemoteStorageRef, web};
 use query_engine::executor::Executor as QueryExecutor;
-use router::endpoint::Endpoint;
+use router::{endpoint::Endpoint, Router, RouterRef};
 use serde::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
@@ -103,6 +104,12 @@ pub enum Error {
 
     #[snafu(display("Server already started.\nBacktrace:\n{}", backtrace))]
     AlreadyStarted { backtrace: Backtrace },
+
+    #[snafu(display("Missing router.\nBacktrace:\n{}", backtrace))]
+    MissingRouter { backtrace: Backtrace },
+
+    #[snafu(display("Missing wal.\nBacktrace:\n{}", backtrace))]
+    MissingWal { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -126,6 +133,8 @@ pub struct Service<Q> {
     rx: Option<Receiver<()>>,
     config: HttpConfig,
     config_content: String,
+    router: Arc<dyn Router + Send + Sync>,
+    opened_wals: OpenedWals,
 }
 
 impl<Q: QueryExecutor + 'static> Service<Q> {
@@ -176,13 +185,16 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .or(self.sql())
             .or(self.influxdb_api())
             .or(self.prom_api())
+            .or(self.route())
             // admin APIs
             .or(self.admin_block())
             // debug APIs
             .or(self.flush_memtable())
             .or(self.update_log_level())
             .or(self.heap_profile())
+            .or(self.cpu_profile())
             .or(self.server_config())
+            .or(self.stats())
     }
 
     /// Expose `/prom/v1/read` and `/prom/v1/write` to serve Prometheus remote
@@ -243,6 +255,30 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     .map_err(|e| {
                         // TODO(yingwen): Maybe truncate and print the sql
                         error!("Http service Failed to handle sql, err:{}", e);
+                        Box::new(e) as _
+                    })
+                    .context(HandleRequest);
+                match result {
+                    Ok(res) => Ok(reply::json(&res)),
+                    Err(e) => Err(reject::custom(e)),
+                }
+            })
+    }
+
+    // GET /route
+    fn route(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("route" / String)
+            .and(warp::get())
+            .and(self.with_context())
+            .and(self.with_instance())
+            .and_then(|table: String, ctx, instance| async move {
+                let result = handlers::route::handle_route(&ctx, instance, &table)
+                    .await
+                    .map_err(|e| {
+                        error!(
+                            "Http service Failed to find route of table:{}, err:{:?}",
+                            table, e
+                        );
                         Box::new(e) as _
                     })
                     .context(HandleRequest);
@@ -375,6 +411,40 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             )
     }
 
+    // GET /debug/cpu_profile/{seconds}
+    fn cpu_profile(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("debug" / "cpu_profile" / ..)
+            .and(warp::path::param::<u64>())
+            .and(warp::get())
+            .and(self.with_context())
+            .and_then(|duration_sec: u64, ctx: RequestContext| async move {
+                let handle = ctx.runtime.spawn_blocking(move || -> Result<()> {
+                    let guard = pprof::ProfilerGuardBuilder::default()
+                        .frequency(100)
+                        .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+                        .build()
+                        .box_err()
+                        .context(Internal)?;
+
+                    thread::sleep(Duration::from_secs(duration_sec));
+
+                    let report = guard.report().build().box_err().context(Internal)?;
+                    let file = File::create("/tmp/flamegraph.svg")
+                        .box_err()
+                        .context(Internal)?;
+                    report.flamegraph(file).box_err().context(Internal)?;
+                    Ok(())
+                });
+                let result = handle.await.context(JoinAsyncTask);
+                match result {
+                    Ok(_) => Ok("ok"),
+                    Err(e) => Err(reject::custom(e)),
+                }
+            })
+    }
+
     // GET /debug/config
     fn server_config(
         &self,
@@ -383,6 +453,28 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::path!("debug" / "config")
             .and(warp::get())
             .map(move || server_config_content.clone())
+    }
+
+    // GET /debug/stats
+    fn stats(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        let opened_wals = self.opened_wals.clone();
+        warp::path!("debug" / "stats")
+            .and(warp::get())
+            .map(move || {
+                [
+                    "Data wal stats:",
+                    &opened_wals
+                        .data_wal
+                        .get_statistics()
+                        .unwrap_or_else(|| "Unknown".to_string()),
+                    "Manifest wal stats:",
+                    &opened_wals
+                        .manifest_wal
+                        .get_statistics()
+                        .unwrap_or_else(|| "Unknown".to_string()),
+                ]
+                .join("\n")
+            })
     }
 
     // PUT /debug/log_level/{level}
@@ -448,6 +540,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         //TODO(boyan) use read/write runtime by sql type.
         let runtime = self.engine_runtimes.bg_runtime.clone();
         let timeout = self.config.timeout;
+        let router = self.router.clone();
 
         header::optional::<String>(consts::CATALOG_HEADER)
             .and(header::optional::<String>(consts::SCHEMA_HEADER))
@@ -458,6 +551,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     let default_catalog = default_catalog.clone();
                     let runtime = runtime.clone();
                     let schema = schema.unwrap_or_else(|| default_schema.clone());
+                    let router = router.clone();
                     async move {
                         RequestContext::builder()
                             .catalog(catalog.unwrap_or(default_catalog))
@@ -465,6 +559,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                             .runtime(runtime)
                             .timeout(timeout)
                             .enable_partition_table_access(true)
+                            .router(router)
                             .build()
                             .context(CreateContext)
                             .map_err(reject::custom)
@@ -514,6 +609,8 @@ pub struct Builder<Q> {
     schema_config_provider: Option<SchemaConfigProviderRef>,
     config_content: Option<String>,
     proxy: Option<Arc<Proxy<Q>>>,
+    router: Option<RouterRef>,
+    opened_wals: Option<OpenedWals>,
 }
 
 impl<Q> Builder<Q> {
@@ -526,6 +623,8 @@ impl<Q> Builder<Q> {
             schema_config_provider: None,
             config_content: None,
             proxy: None,
+            router: None,
+            opened_wals: None,
         }
     }
 
@@ -558,6 +657,16 @@ impl<Q> Builder<Q> {
         self.proxy = Some(proxy);
         self
     }
+
+    pub fn router(mut self, router: RouterRef) -> Self {
+        self.router = Some(router);
+        self
+    }
+
+    pub fn opened_wals(mut self, opened_wals: OpenedWals) -> Self {
+        self.opened_wals = Some(opened_wals);
+        self
+    }
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -571,6 +680,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let schema_config_provider = self
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
+        let router = self.router.context(MissingRouter)?;
+        let opened_wals = self.opened_wals.context(MissingWal)?;
         let prom_remote_storage = Arc::new(CeresDBStorage::new(
             instance.clone(),
             schema_config_provider.clone(),
@@ -589,6 +700,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             rx: Some(rx),
             config: self.config.clone(),
             config_content,
+            router,
+            opened_wals,
         };
 
         Ok(service)
@@ -624,6 +737,8 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::Internal { .. }
         | Error::JoinAsyncTask { .. }
         | Error::AlreadyStarted { .. }
+        | Error::MissingRouter { .. }
+        | Error::MissingWal { .. }
         | Error::HandleUpdateLogLevel { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }

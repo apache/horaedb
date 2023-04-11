@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::sync::Arc;
 
@@ -62,6 +62,9 @@ pub enum Error {
 
     #[snafu(display("Failed to create partition table without ceresmeta, table:{}", table))]
     PartitionTableNotSupported { table: String },
+
+    #[snafu(display("Failed to operate table, err:{}", source))]
+    TableOperator { source: catalog::Error },
 }
 
 define_result!(Error);

@@ -7,6 +7,8 @@ pub(crate) mod error;
 #[allow(dead_code)]
 pub mod forward;
 pub(crate) mod grpc;
+pub mod hotspot;
+pub mod hotspot_lru;
 pub(crate) mod http;
 pub(crate) mod util;
 
@@ -33,8 +35,9 @@ use tonic::{transport::Channel, IntoRequest};
 use crate::{
     instance::InstanceRef,
     proxy::{
-        error::{ErrWithCause, Result},
+        error::{ErrWithCause, Error, Result},
         forward::{ForwardRequest, ForwardResult, Forwarder, ForwarderRef},
+        hotspot::HotspotRecorder,
         util::parse_table_name_with_sql,
     },
     schema_config_provider::SchemaConfigProviderRef,
@@ -47,6 +50,7 @@ pub struct Proxy<Q> {
     resp_compress_min_length: usize,
     auto_create_table: bool,
     schema_config_provider: SchemaConfigProviderRef,
+    hotspot_recorder: Arc<HotspotRecorder>,
 }
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
@@ -58,12 +62,16 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         resp_compress_min_length: usize,
         auto_create_table: bool,
         schema_config_provider: SchemaConfigProviderRef,
+        hotspot_config: hotspot::Config,
+        runtime: Arc<Runtime>,
     ) -> Self {
         let forwarder = Arc::new(Forwarder::new(
             forward_config,
             router.clone(),
             local_endpoint,
         ));
+        let hotspot_recorder = Arc::new(HotspotRecorder::new(hotspot_config, runtime));
+
         Self {
             router,
             instance,
@@ -71,6 +79,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             resp_compress_min_length,
             auto_create_table,
             schema_config_provider,
+            hotspot_recorder,
         }
     }
 
@@ -81,18 +90,17 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     async fn maybe_forward_sql_query(
         &self,
         req: &SqlQueryRequest,
-    ) -> Option<Result<SqlQueryResponse>> {
+    ) -> Option<ForwardResult<SqlQueryResponse, Error>> {
         let table_name = parse_table_name_with_sql(&req.sql);
         if table_name.is_none() {
             warn!("Unable to forward sql query without table name, req:{req:?}",);
             return None;
         }
-        let table_name = table_name.unwrap();
 
         let req_ctx = req.context.as_ref().unwrap();
         let forward_req = ForwardRequest {
             schema: req_ctx.database.clone(),
-            table: table_name,
+            table: table_name.unwrap(),
             req: req.clone().into_request(),
         };
         let do_query = |mut client: StorageServiceClient<Channel>,
@@ -114,11 +122,9 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             Box::new(query) as _
         };
 
-        match self.forwarder.forward(forward_req, do_query).await {
-            Ok(forward_res) => match forward_res {
-                ForwardResult::Forwarded(v) => Some(v),
-                ForwardResult::Original => None,
-            },
+        let forward_result = self.forwarder.forward(forward_req, do_query).await;
+        match forward_result {
+            Ok(forward_res) => Some(forward_res),
             Err(e) => {
                 error!("Failed to forward sql req but the error is ignored, err:{e}");
                 None

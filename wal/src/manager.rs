@@ -314,6 +314,11 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
 
     /// Scan all logs from a `Region`.
     async fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter>;
+
+    /// Get statistics
+    fn get_statistics(&self) -> Option<String> {
+        None
+    }
 }
 
 #[derive(Debug)]

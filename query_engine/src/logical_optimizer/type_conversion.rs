@@ -6,14 +6,16 @@ use arrow::{compute, compute::kernels::cast_utils::string_to_timestamp_nanos, er
 use chrono::{Local, LocalResult, NaiveDateTime, TimeZone, Utc};
 use datafusion::{
     arrow::datatypes::DataType,
-    common::DFSchemaRef,
+    common::{
+        tree_node::{TreeNode, TreeNodeRewriter},
+        DFSchemaRef,
+    },
     error::{DataFusionError, Result},
     optimizer::{optimizer::OptimizerRule, OptimizerConfig},
     scalar::ScalarValue,
 };
 use datafusion_expr::{
     expr::Expr,
-    expr_rewriter::{ExprRewritable, ExprRewriter},
     logical_plan::{Filter, LogicalPlan, TableScan},
     utils, Between, BinaryExpr, ExprSchemable, Operator,
 };
@@ -31,6 +33,7 @@ pub struct TypeConversion;
 
 impl OptimizerRule for TypeConversion {
     #[allow(clippy::only_used_in_recursion)]
+    #[allow(deprecated)]
     fn try_optimize(
         &self,
         plan: &LogicalPlan,
@@ -93,7 +96,6 @@ impl OptimizerRule for TypeConversion {
             | LogicalPlan::Values { .. }
             | LogicalPlan::Analyze { .. }
             | LogicalPlan::Distinct { .. }
-            | LogicalPlan::SetVariable { .. }
             | LogicalPlan::Prepare { .. }
             | LogicalPlan::DescribeTable { .. }
             | LogicalPlan::Dml { .. } => {
@@ -115,6 +117,7 @@ impl OptimizerRule for TypeConversion {
                 Ok(Some(utils::from_plan(plan, &expr, &new_inputs)?))
             }
             LogicalPlan::Subquery(_)
+            | LogicalPlan::Statement { .. }
             | LogicalPlan::SubqueryAlias(_)
             | LogicalPlan::CreateView(_)
             | LogicalPlan::CreateCatalogSchema(_)
@@ -213,7 +216,9 @@ impl<'a> TypeRewriter<'a> {
     }
 }
 
-impl<'a> ExprRewriter for TypeRewriter<'a> {
+impl<'a> TreeNodeRewriter for TypeRewriter<'a> {
+    type N = Expr;
+
     fn mutate(&mut self, expr: Expr) -> Result<Expr> {
         let new_expr = match expr {
             Expr::BinaryExpr(BinaryExpr { left, op, right }) => match op {
@@ -374,13 +379,12 @@ mod tests {
         Arc::new(
             DFSchema::new_with_metadata(
                 vec![
-                    DFField::new(None, "c1", DataType::Utf8, true),
-                    DFField::new(None, "c2", DataType::Int64, true),
-                    DFField::new(None, "c3", DataType::Float64, true),
-                    DFField::new(None, "c4", DataType::Float32, true),
-                    DFField::new(None, "c5", DataType::Boolean, true),
-                    DFField::new(
-                        None,
+                    DFField::new_unqualified("c1", DataType::Utf8, true),
+                    DFField::new_unqualified("c2", DataType::Int64, true),
+                    DFField::new_unqualified("c3", DataType::Float64, true),
+                    DFField::new_unqualified("c4", DataType::Float32, true),
+                    DFField::new_unqualified("c5", DataType::Boolean, true),
+                    DFField::new_unqualified(
                         "c6",
                         DataType::Timestamp(TimeUnit::Millisecond, None),
                         false,

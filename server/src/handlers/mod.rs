@@ -7,6 +7,7 @@ pub mod error;
 pub mod influxdb;
 pub mod prom;
 pub mod query;
+pub mod route;
 
 mod prelude {
     pub use catalog::manager::Manager as CatalogManager;

@@ -189,10 +189,11 @@ pub struct CreateTableRequest {
     pub catalog_name: String,
     /// Schema name
     pub schema_name: String,
-    /// Schema id
-    pub schema_id: SchemaId,
     /// Table name
     pub table_name: String,
+    /// Table id
+    // TODO: remove this field
+    pub table_id: Option<TableId>,
     /// Table schema
     pub table_schema: common_types::schema::Schema,
     /// Table engine type
@@ -208,11 +209,17 @@ pub struct CreateTableRequest {
 }
 
 impl CreateTableRequest {
-    pub fn into_engine_create_request(self, table_id: TableId) -> engine::CreateTableRequest {
+    pub fn into_engine_create_request(
+        self,
+        table_id: Option<TableId>,
+        schema_id: SchemaId,
+    ) -> engine::CreateTableRequest {
+        let table_id = self.table_id.unwrap_or(table_id.unwrap_or(TableId::MIN));
+
         engine::CreateTableRequest {
             catalog_name: self.catalog_name,
             schema_name: self.schema_name,
-            schema_id: self.schema_id,
+            schema_id,
             table_name: self.table_name,
             table_id,
             table_schema: self.table_schema,
@@ -236,17 +243,67 @@ pub struct CreateOptions {
     pub create_if_not_exists: bool,
 }
 
-pub type DropTableRequest = engine::DropTableRequest;
+/// Drop table request
+#[derive(Debug, Clone)]
+pub struct DropTableRequest {
+    /// Catalog name
+    pub catalog_name: String,
+    /// Schema name
+    pub schema_name: String,
+    /// Table name
+    pub table_name: String,
+    /// Table engine type
+    pub engine: String,
+}
 
-/// Drop table options.
+impl DropTableRequest {
+    pub fn into_engine_drop_request(self, schema_id: SchemaId) -> engine::DropTableRequest {
+        engine::DropTableRequest {
+            catalog_name: self.catalog_name,
+            schema_name: self.schema_name,
+            schema_id,
+            table_name: self.table_name,
+            engine: self.engine,
+        }
+    }
+}
+/// Drop table options
 #[derive(Clone)]
 pub struct DropOptions {
     /// Table engine
     pub table_engine: TableEngineRef,
 }
 
-pub type OpenTableRequest = engine::OpenTableRequest;
+/// Open table request
+#[derive(Debug, Clone)]
+pub struct OpenTableRequest {
+    /// Catalog name
+    pub catalog_name: String,
+    /// Schema name
+    pub schema_name: String,
+    /// Table name
+    pub table_name: String,
+    /// Table id
+    pub table_id: TableId,
+    /// Table engine type
+    pub engine: String,
+    /// Shard id, shard is the table set about scheduling from nodes
+    pub shard_id: ShardId,
+}
 
+impl OpenTableRequest {
+    pub fn into_engine_open_request(self, schema_id: SchemaId) -> engine::OpenTableRequest {
+        engine::OpenTableRequest {
+            catalog_name: self.catalog_name,
+            schema_name: self.schema_name,
+            schema_id,
+            table_name: self.table_name,
+            table_id: self.table_id,
+            engine: self.engine,
+            shard_id: self.shard_id,
+        }
+    }
+}
 /// Open table options.
 #[derive(Clone)]
 pub struct OpenOptions {
@@ -254,7 +311,33 @@ pub struct OpenOptions {
     pub table_engine: TableEngineRef,
 }
 
-pub type CloseTableRequest = engine::CloseTableRequest;
+/// Close table request
+#[derive(Clone, Debug)]
+pub struct CloseTableRequest {
+    /// Catalog name
+    pub catalog_name: String,
+    /// Schema name
+    pub schema_name: String,
+    /// Table name
+    pub table_name: String,
+    /// Table id
+    pub table_id: TableId,
+    /// Table engine type
+    pub engine: String,
+}
+
+impl CloseTableRequest {
+    pub fn into_engine_close_request(self, schema_id: SchemaId) -> engine::CloseTableRequest {
+        engine::CloseTableRequest {
+            catalog_name: self.catalog_name,
+            schema_name: self.schema_name,
+            schema_id,
+            table_name: self.table_name,
+            table_id: self.table_id,
+            engine: self.engine,
+        }
+    }
+}
 
 /// Close table options.
 #[derive(Clone)]
@@ -291,6 +374,7 @@ pub trait Schema {
     /// Find table by name.
     fn table_by_name(&self, name: NameRef) -> Result<Option<TableRef>>;
 
+    /// TODO: remove this method afterwards.
     /// Create table according to `request`.
     async fn create_table(
         &self,
@@ -298,25 +382,18 @@ pub trait Schema {
         opts: CreateOptions,
     ) -> Result<TableRef>;
 
+    /// TODO: remove this method afterwards.
     /// Drop table according to `request`.
     ///
     /// Returns true if the table is really dropped.
     async fn drop_table(&self, request: DropTableRequest, opts: DropOptions) -> Result<bool>;
 
-    /// Open the table according to `request`.
-    ///
-    /// Return None if table does not exist.
-    async fn open_table(
-        &self,
-        request: OpenTableRequest,
-        opts: OpenOptions,
-    ) -> Result<Option<TableRef>>;
-
-    /// Close the table according to `request`.
-    ///
-    /// Return false if table does not exist.
-    async fn close_table(&self, request: CloseTableRequest, opts: CloseOptions) -> Result<()>;
-
     /// All tables
     fn all_tables(&self) -> Result<Vec<TableRef>>;
+
+    /// Register the opened table into schema.
+    fn register_table(&self, table: TableRef);
+
+    /// Unregister table
+    fn unregister_table(&self, table_name: &str);
 }

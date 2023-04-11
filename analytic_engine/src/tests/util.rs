@@ -130,7 +130,6 @@ impl<T: WalsOpener> TestContext<T> {
 
         let engine_builder = EngineBuilder {
             config: &self.config,
-            router: None,
             engine_runtimes: self.runtimes.clone(),
             opened_wals: opened_wals.clone(),
         };
@@ -435,6 +434,7 @@ impl Builder {
             },
             wal: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
                 data_dir: dir.path().to_str().unwrap().to_string(),
+                ..Default::default()
             })),
             ..Default::default()
         };
@@ -495,6 +495,7 @@ impl Default for RocksDBEngineBuildContext {
 
             wal: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
                 data_dir: dir.path().to_str().unwrap().to_string(),
+                ..Default::default()
             })),
             ..Default::default()
         };
@@ -522,6 +523,7 @@ impl Clone for RocksDBEngineBuildContext {
         config.storage = storage;
         config.wal = WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
             data_dir: dir.path().to_str().unwrap().to_string(),
+            ..Default::default()
         }));
 
         Self { config }

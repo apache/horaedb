@@ -29,6 +29,7 @@ use crate::{
     proxy::{
         error::{ErrNoCause, ErrWithCause, Result},
         execute_plan,
+        forward::ForwardResult,
         util::convert_sql_response_to_output,
         Proxy,
     },
@@ -98,9 +99,18 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     sql: request.query.clone(),
                 };
 
-                if let Some(resp) = self.maybe_forward_sql_query(&sql_query_request).await {
-                    return convert_sql_response_to_output(resp?);
-                }
+                // if let Some(resp) = self.maybe_forward_sql_query(&sql_query_request).await {
+                //     return convert_sql_response_to_output(resp?);
+                // }
+                match self.maybe_forward_sql_query(&sql_query_request).await {
+                    Some(resp) => match resp {
+                        ForwardResult::Forwarded(resp) => {
+                            return convert_sql_response_to_output(resp?)
+                        }
+                        ForwardResult::Original => (),
+                    },
+                    None => (),
+                };
 
                 // Create logical plan
                 // Note: Remember to store sql in error when creating logical plan
@@ -139,7 +149,11 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 );
 
                 frontend
-                    .influxql_stmt_to_plan(&mut sql_ctx, stmts.remove(0))
+                    .influxql_stmt_to_plan(
+                        &mut sql_ctx,
+                        stmts.remove(0),
+                        self.instance.catalog_manager.clone(),
+                    )
                     .box_err()
                     .with_context(|| ErrWithCause {
                         code: StatusCode::BAD_REQUEST,

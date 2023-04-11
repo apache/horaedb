@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
     collections::HashMap,
@@ -17,12 +17,8 @@ use ceresdb_client::{
     RpcContext,
 };
 use reqwest::{ClientBuilder, Url};
-use sql::{
-    ast::{Statement, TableName},
-    parser::Parser,
-};
+use sql::{frontend, parser::Parser};
 use sqlness::{Database, QueryContext};
-use sqlparser::ast::{SetExpr, Statement as SqlStatement, TableFactor};
 
 const SERVER_GRPC_ENDPOINT_ENV: &str = "CERESDB_SERVER_GRPC_ENDPOINT";
 const SERVER_HTTP_ENDPOINT_ENV: &str = "CERESDB_SERVER_HTTP_ENDPOINT";
@@ -275,8 +271,8 @@ impl<T> CeresDB<T> {
             database: Some("public".to_string()),
             timeout: None,
         };
-
-        let table_name = Self::parse_table_name(&query);
+        let statements = Parser::parse_sql(&query).unwrap();
+        let table_name = frontend::parse_table_name(&statements);
 
         let query_req = match table_name {
             Some(table_name) => Request {
@@ -301,59 +297,5 @@ impl<T> CeresDB<T> {
             }
             Err(e) => format!("Failed to execute query, err: {e:?}"),
         })
-    }
-
-    fn parse_table_name(query: &str) -> Option<String> {
-        let statements = Parser::parse_sql(query).unwrap();
-
-        match &statements[0] {
-            Statement::Standard(s) => match *s.clone() {
-                SqlStatement::Insert { table_name, .. } => {
-                    Some(TableName::from(table_name).to_string())
-                }
-                SqlStatement::Explain { statement, .. } => {
-                    if let SqlStatement::Query(q) = *statement {
-                        match *q.body {
-                            SetExpr::Select(select) => {
-                                if select.from.len() != 1 {
-                                    None
-                                } else if let TableFactor::Table { name, .. } =
-                                    &select.from[0].relation
-                                {
-                                    Some(TableName::from(name.clone()).to_string())
-                                } else {
-                                    None
-                                }
-                            }
-                            _ => None,
-                        }
-                    } else {
-                        None
-                    }
-                }
-                SqlStatement::Query(q) => match *q.body {
-                    SetExpr::Select(select) => {
-                        if select.from.len() != 1 {
-                            None
-                        } else if let TableFactor::Table { name, .. } = &select.from[0].relation {
-                            Some(TableName::from(name.clone()).to_string())
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                },
-                _ => None,
-            },
-            Statement::Create(s) => Some(s.table_name.to_string()),
-            Statement::Drop(s) => Some(s.table_name.to_string()),
-            Statement::Describe(s) => Some(s.table_name.to_string()),
-            Statement::AlterModifySetting(s) => Some(s.table_name.to_string()),
-            Statement::AlterAddColumn(s) => Some(s.table_name.to_string()),
-            Statement::ShowCreate(s) => Some(s.table_name.to_string()),
-            Statement::ShowTables(_s) => None,
-            Statement::ShowDatabases => None,
-            Statement::Exists(s) => Some(s.table_name.to_string()),
-        }
     }
 }

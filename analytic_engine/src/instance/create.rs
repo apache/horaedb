@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Create table logic of instance
 
@@ -113,7 +113,6 @@ impl Instance {
                 table_name: table_data.name.clone(),
                 schema: table_data.schema(),
                 opts: table_data.table_options().as_ref().clone(),
-                partition_info: table_data.partition_info.clone(),
             });
             MetaUpdateRequest {
                 shard_info: table_data.shard_info,

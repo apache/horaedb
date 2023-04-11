@@ -689,17 +689,13 @@ where
 mod tests {
     use std::{path::PathBuf, sync::Arc, vec};
 
-    use bytes::Bytes;
     use common_types::{
         column_schema, datum::DatumKind, schema, schema::Schema, table::DEFAULT_SHARD_ID,
     };
     use common_util::{runtime, runtime::Runtime, tests::init_log_for_test};
     use futures::future::BoxFuture;
     use object_store::LocalFileSystem;
-    use table_engine::{
-        partition::{HashPartitionInfo, PartitionDefinition, PartitionInfo},
-        table::{SchemaId, TableId, TableSeqGenerator},
-    };
+    use table_engine::table::{SchemaId, TableId, TableSeqGenerator};
     use wal::rocks_impl::manager::Builder as WalBuilder;
 
     use super::*;
@@ -789,10 +785,9 @@ mod tests {
         }
 
         async fn open_manifest(&self) -> ManifestImpl {
-            let manifest_wal =
-                WalBuilder::with_default_rocksdb_config(self.dir.clone(), self.runtime.clone())
-                    .build()
-                    .unwrap();
+            let manifest_wal = WalBuilder::new(self.dir.clone(), self.runtime.clone())
+                .build()
+                .unwrap();
 
             let object_store = LocalFileSystem::new_with_prefix(&self.dir).unwrap();
             ManifestImpl::open(
@@ -832,23 +827,6 @@ mod tests {
                 table_name,
                 schema: common_types::tests::build_schema(),
                 opts: TableOptions::default(),
-                partition_info: None,
-            })
-        }
-
-        fn meta_update_add_table_with_partition_info(
-            &self,
-            table_id: TableId,
-            partition_info: Option<PartitionInfo>,
-        ) -> MetaUpdate {
-            let table_name = Self::table_name_from_id(table_id);
-            MetaUpdate::AddTable(AddTableMeta {
-                space_id: self.schema_id.as_u32(),
-                table_id,
-                table_name,
-                schema: common_types::tests::build_schema(),
-                opts: TableOptions::default(),
-                partition_info,
             })
         }
 
@@ -898,7 +876,6 @@ mod tests {
         async fn add_table_with_manifest(
             &self,
             table_id: TableId,
-            partition_info: Option<PartitionInfo>,
             manifest_data_builder: &mut TableManifestDataBuilder,
             manifest: &ManifestImpl,
         ) {
@@ -906,8 +883,7 @@ mod tests {
                 shard_id: DEFAULT_SHARD_ID,
             };
 
-            let add_table =
-                self.meta_update_add_table_with_partition_info(table_id, partition_info);
+            let add_table = self.meta_update_add_table(table_id);
             let update_req = {
                 MetaUpdateRequest {
                     shard_info,
@@ -968,7 +944,7 @@ mod tests {
             manifest_data_builder: &mut TableManifestDataBuilder,
         ) {
             let manifest = self.open_manifest().await;
-            self.add_table_with_manifest(table_id, None, manifest_data_builder, &manifest)
+            self.add_table_with_manifest(table_id, manifest_data_builder, &manifest)
                 .await;
         }
 
@@ -1129,26 +1105,11 @@ mod tests {
 
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
-            let default_version = 0;
-            let partition_info = Some(PartitionInfo::Hash(HashPartitionInfo {
-                version: default_version,
-                definitions: vec![PartitionDefinition {
-                    name: "p0".to_string(),
-                    origin_name: Some("region0".to_string()),
-                }],
-                expr: Bytes::from("test"),
-                linear: false,
-            }));
             let location = WalLocation::new(DEFAULT_SHARD_ID as u64, table_id.as_u64());
             let mut manifest_data_builder = TableManifestDataBuilder::default();
             let manifest = ctx.open_manifest().await;
-            ctx.add_table_with_manifest(
-                table_id,
-                partition_info,
-                &mut manifest_data_builder,
-                &manifest,
-            )
-            .await;
+            ctx.add_table_with_manifest(table_id, &mut manifest_data_builder, &manifest)
+                .await;
 
             manifest
                 .maybe_do_snapshot(ctx.schema_id.as_u32(), table_id, location, true)
@@ -1189,7 +1150,7 @@ mod tests {
             };
             let mut manifest_data_builder = TableManifestDataBuilder::default();
             let manifest = ctx.open_manifest().await;
-            ctx.add_table_with_manifest(table_id, None, &mut manifest_data_builder, &manifest)
+            ctx.add_table_with_manifest(table_id, &mut manifest_data_builder, &manifest)
                 .await;
 
             for i in 0..500 {

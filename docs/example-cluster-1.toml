@@ -1,12 +1,14 @@
 [node]
 addr = "ceresdb1"
 
+[logger]
+level = "info"
+
 [server]
 bind_addr = "0.0.0.0"
 http_port = 5441
 grpc_port = 8832
 mysql_port = 13307
-log_level = "info"
 deploy_mode = "Cluster"
 
 [server.forward]

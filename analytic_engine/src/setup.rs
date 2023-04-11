@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Setup the analytic engine
 
@@ -16,13 +16,8 @@ use object_store::{
     prefix::StoreWithPrefix,
     LocalFileSystem, ObjectStoreRef,
 };
-use remote_engine_client::RemoteEngineImpl;
-use router::RouterRef;
 use snafu::{Backtrace, ResultExt, Snafu};
-use table_engine::{
-    engine::{EngineRuntimes, TableEngineRef},
-    remote::RemoteEngineRef,
-};
+use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 use wal::{
     manager::{self, WalManagerRef},
@@ -110,7 +105,6 @@ const DISK_CACHE_DIR_NAME: &str = "sst_cache";
 #[derive(Clone)]
 pub struct EngineBuilder<'a> {
     pub config: &'a Config,
-    pub router: Option<RouterRef>,
     pub engine_runtimes: Arc<EngineRuntimes>,
     pub opened_wals: OpenedWals,
 }
@@ -132,7 +126,6 @@ impl<'a> EngineBuilder<'a> {
             self.opened_wals.data_wal,
             Arc::new(manifest),
             Arc::new(opened_storages),
-            self.router,
         )
         .await?;
         Ok(Arc::new(TableEngineImpl::new(instance)))
@@ -181,16 +174,18 @@ impl WalsOpener for RocksDBWalsOpener {
         let write_runtime = engine_runtimes.write_runtime.clone();
         let data_path = Path::new(&rocksdb_wal_config.data_dir);
         let wal_path = data_path.join(WAL_DIR_NAME);
-        let data_wal =
-            RocksWalBuilder::with_default_rocksdb_config(wal_path, write_runtime.clone())
-                .build()
-                .context(OpenWal)?;
+        let data_wal = RocksWalBuilder::new(wal_path, write_runtime.clone())
+            .max_background_jobs(rocksdb_wal_config.data_namespace.max_background_jobs)
+            .enable_statistics(rocksdb_wal_config.data_namespace.enable_statistics)
+            .build()
+            .context(OpenWal)?;
 
         let manifest_path = data_path.join(MANIFEST_DIR_NAME);
-        let manifest_wal =
-            RocksWalBuilder::with_default_rocksdb_config(manifest_path, write_runtime)
-                .build()
-                .context(OpenManifestWal)?;
+        let manifest_wal = RocksWalBuilder::new(manifest_path, write_runtime)
+            .max_background_jobs(rocksdb_wal_config.meta_namespace.max_background_jobs)
+            .enable_statistics(rocksdb_wal_config.meta_namespace.enable_statistics)
+            .build()
+            .context(OpenManifestWal)?;
         let opened_wals = OpenedWals {
             data_wal: Arc::new(data_wal),
             manifest_wal: Arc::new(manifest_wal),
@@ -360,17 +355,7 @@ async fn open_instance(
     wal_manager: WalManagerRef,
     manifest: ManifestRef,
     store_picker: ObjectStorePickerRef,
-    router: Option<RouterRef>,
 ) -> Result<InstanceRef> {
-    let remote_engine_ref: Option<RemoteEngineRef> = if let Some(v) = router {
-        Some(Arc::new(RemoteEngineImpl::new(
-            config.remote_engine_client.clone(),
-            v,
-        )))
-    } else {
-        None
-    };
-
     let meta_cache: Option<MetaCacheRef> = config
         .sst_meta_cache_cap
         .map(|cap| Arc::new(MetaCache::new(cap)));
@@ -387,7 +372,6 @@ async fn open_instance(
         wal_manager,
         store_picker,
         Arc::new(FactoryImpl::default()),
-        remote_engine_ref,
     )
     .await
     .context(OpenInstance)?;

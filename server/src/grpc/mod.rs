@@ -275,6 +275,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         };
 
         let bg_runtime = runtimes.bg_runtime.clone();
+
         let storage_service = StorageServiceImpl {
             proxy,
             runtimes,

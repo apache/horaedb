@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Implements the TableEngine trait
 
@@ -7,21 +7,17 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use common_util::error::BoxError;
 use log::info;
-use snafu::{OptionExt, ResultExt};
+use snafu::ResultExt;
 use table_engine::{
     engine::{
         Close, CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest, Result,
-        TableEngine, Unexpected, UnexpectedNoCause,
+        TableEngine,
     },
     table::{SchemaId, TableRef},
     ANALYTIC_ENGINE_TYPE,
 };
 
-use crate::{
-    instance::InstanceRef,
-    space::SpaceId,
-    table::{partition::PartitionTableImpl, TableImpl},
-};
+use crate::{instance::InstanceRef, space::SpaceId, table::TableImpl};
 
 /// TableEngine implementation
 pub struct TableEngineImpl {
@@ -76,30 +72,14 @@ impl TableEngine for TableEngineImpl {
 
         let space_table = self.instance.create_table(space_id, request).await?;
 
-        let table_impl: TableRef = match &space_table.table_data().partition_info {
-            None => Arc::new(TableImpl::new(
-                self.instance.clone(),
-                ANALYTIC_ENGINE_TYPE.to_string(),
-                space_id,
-                space_table.table_data().id,
-                space_table.table_data().clone(),
-                space_table,
-            )),
-            Some(_v) => Arc::new(
-                PartitionTableImpl::new(
-                    self.instance
-                        .remote_engine
-                        .clone()
-                        .context(UnexpectedNoCause {
-                            msg: "remote engine not found",
-                        })?,
-                    ANALYTIC_ENGINE_TYPE.to_string(),
-                    space_table,
-                )
-                .box_err()
-                .context(Unexpected)?,
-            ),
-        };
+        let table_impl: TableRef = Arc::new(TableImpl::new(
+            self.instance.clone(),
+            ANALYTIC_ENGINE_TYPE.to_string(),
+            space_id,
+            space_table.table_data().id,
+            space_table.table_data().clone(),
+            space_table,
+        ));
 
         Ok(table_impl)
     }
@@ -128,30 +108,14 @@ impl TableEngine for TableEngineImpl {
             None => return Ok(None),
         };
 
-        let table_impl: TableRef = match &space_table.table_data().partition_info {
-            None => Arc::new(TableImpl::new(
-                self.instance.clone(),
-                ANALYTIC_ENGINE_TYPE.to_string(),
-                space_id,
-                space_table.table_data().id,
-                space_table.table_data().clone(),
-                space_table,
-            )),
-            Some(_v) => Arc::new(
-                PartitionTableImpl::new(
-                    self.instance
-                        .remote_engine
-                        .clone()
-                        .context(UnexpectedNoCause {
-                            msg: "remote engine is empty",
-                        })?,
-                    ANALYTIC_ENGINE_TYPE.to_string(),
-                    space_table,
-                )
-                .box_err()
-                .context(Unexpected)?,
-            ),
-        };
+        let table_impl = Arc::new(TableImpl::new(
+            self.instance.clone(),
+            ANALYTIC_ENGINE_TYPE.to_string(),
+            space_id,
+            space_table.table_data().id,
+            space_table.table_data().clone(),
+            space_table,
+        ));
 
         Ok(Some(table_impl))
     }

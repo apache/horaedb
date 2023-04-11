@@ -215,7 +215,7 @@ impl From<Compression> for ParquetCompression {
             Compression::Uncompressed => ParquetCompression::UNCOMPRESSED,
             Compression::Lz4 => ParquetCompression::LZ4,
             Compression::Snappy => ParquetCompression::SNAPPY,
-            Compression::Zstd => ParquetCompression::ZSTD,
+            Compression::Zstd => ParquetCompression::ZSTD(Default::default()),
         }
     }
 }

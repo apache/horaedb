@@ -909,7 +909,7 @@ mod tests {
         let arrow_schema = schema.to_arrow_schema_ref();
         let fields = arrow_schema.fields.to_owned();
         let measurement_field = ArrowField::new(
-            "ceresdb::measurement".to_string(),
+            CERESDB_MEASUREMENT_COLUMN_NAME.to_string(),
             schema::DataType::Utf8,
             false,
         );

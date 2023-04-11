@@ -13,6 +13,7 @@ use crate::database::{CeresDBCluster, CeresDBServer};
 mod database;
 
 const CASE_ROOT_PATH_ENV: &str = "CERESDB_TEST_CASE_PATH";
+const ENV_FILTER_ENV: &str = "CERESDB_ENV_FILTER";
 
 struct CeresDBController;
 struct UntypedCeresDB {
@@ -62,12 +63,14 @@ impl EnvController for CeresDBController {
 #[tokio::main]
 async fn main() -> Result<()> {
     let case_dir = env::var(CASE_ROOT_PATH_ENV)?;
-    let env = CeresDBController;
+    let env_filter = env::var(ENV_FILTER_ENV).unwrap_or_else(|_| ".*".to_string());
+    let controller = CeresDBController;
     let config = sqlness::ConfigBuilder::default()
         .case_dir(case_dir)
+        .env_filter(env_filter)
         .follow_links(true)
         .build()?;
-    let runner = Runner::new_with_config(config, env).await?;
+    let runner = Runner::new_with_config(config, controller).await?;
     runner.run().await?;
 
     Ok(())

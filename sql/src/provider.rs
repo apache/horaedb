@@ -190,7 +190,7 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
         }
     }
 
-    fn table_source(&self, table_ref: TableRef) -> Arc<(dyn TableSource + 'static)> {
+    pub fn table_source(&self, table_ref: TableRef) -> Arc<(dyn TableSource + 'static)> {
         let table_adapter = Arc::new(TableProviderAdapter::new(table_ref));
 
         Arc::new(DefaultTableSource {

@@ -27,7 +27,7 @@ pub enum Error {
     #[snafu(display("Table already exists, table:{}.\nBacktrace:\n{}", table, backtrace))]
     TableExists { table: String, backtrace: Backtrace },
 
-    #[snafu(display("Invalid arguments, err:{}", source))]
+    #[snafu(display("Invalid arguments, table:{table}, err:{source}"))]
     InvalidArguments { table: String, source: GenericError },
 
     #[snafu(display("Failed to write meta data, err:{}", source))]
@@ -36,7 +36,7 @@ pub enum Error {
     #[snafu(display("Unexpected error, err:{}", source))]
     Unexpected { source: GenericError },
 
-    #[snafu(display("Unexpected error, :msg{}", msg))]
+    #[snafu(display("Unexpected error, msg:{}", msg))]
     UnexpectedNoCause { msg: String },
 
     #[snafu(display(
@@ -252,6 +252,28 @@ pub struct CloseTableRequest {
     /// Table engine type
     pub engine: String,
 }
+
+#[derive(Debug, Clone)]
+pub struct OpenShardRequest {
+    /// Shard id
+    pub shard_id: ShardId,
+
+    /// Table infos
+    pub table_defs: Vec<TableDef>,
+
+    /// Table engine type
+    pub engine: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct TableDef {
+    pub catalog_name: String,
+    pub schema_name: String,
+    pub id: TableId,
+    pub name: String,
+}
+
+pub type CloseShardRequest = OpenShardRequest;
 
 /// Table engine
 // TODO(yingwen): drop table support to release resource owned by the table
