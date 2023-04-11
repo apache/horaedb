@@ -956,12 +956,10 @@ impl WriteWorker {
             waiter,
         };
 
+        let table = request.table_data.name.clone();
         let succeed = self.instance.schedule_table_compaction(request).await;
         if !succeed {
-            error!(
-                "Failed to schedule compaction, table:{}",
-                request.table_data.name
-            );
+            error!("Failed to schedule compaction, table:{table}");
         }
 
         if let Err(_res) = tx.send(Ok(())) {
