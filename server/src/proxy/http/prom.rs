@@ -1,10 +1,10 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! This module implements prometheus remote storage API.
 //! It converts write request to gRPC write request, and
 //! translates query request to SQL for execution.
 
-use std::{collections::HashMap, time::Instant};
+use std::{collections::HashMap, result::Result as StdResult, time::Instant};
 
 use async_trait::async_trait;
 use ceresdbproto::storage::{
@@ -15,6 +15,7 @@ use common_types::{
     request_id::RequestId,
     schema::{RecordSchema, TIMESTAMP_COLUMN, TSID_COLUMN},
 };
+use common_util::error::BoxError;
 use interpreters::interpreter::Output;
 use log::debug;
 use prom_remote_api::types::{
@@ -22,219 +23,27 @@ use prom_remote_api::types::{
     WriteRequest,
 };
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
-use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{ensure, OptionExt, ResultExt};
 use warp::reject;
 
-use super::query::QueryRequest;
 use crate::{
     context::RequestContext,
-    handlers,
-    instance::InstanceRef,
-    proxy::grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
-    schema_config_provider::SchemaConfigProviderRef,
+    proxy::{
+        error::{Error, Internal, InternalNoCause, Result},
+        grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
+        http::query::{QueryRequest, Request},
+        Proxy,
+    },
 };
-
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display("Metric name is not found.\nBacktrace:\n{}", backtrace))]
-    MissingName { backtrace: Backtrace },
-
-    #[snafu(display("Invalid matcher type, value:{}.\nBacktrace:\n{}", value, backtrace))]
-    InvalidMatcherType { value: i32, backtrace: Backtrace },
-
-    #[snafu(display("Read response must be Rows.\nBacktrace:\n{}", backtrace))]
-    ResponseMustRows { backtrace: Backtrace },
-
-    #[snafu(display("TSID column is missing in query response.\nBacktrace:\n{}", backtrace))]
-    MissingTSID { backtrace: Backtrace },
-
-    #[snafu(display(
-        "Timestamp column is missing in query response.\nBacktrace:\n{}",
-        backtrace
-    ))]
-    MissingTimestamp { backtrace: Backtrace },
-
-    #[snafu(display(
-        "Value column is missing in query response.\nBacktrace:\n{}",
-        backtrace
-    ))]
-    MissingValue { backtrace: Backtrace },
-
-    #[snafu(display("Handle sql failed, err:{}.", source))]
-    SqlHandle {
-        source: Box<crate::handlers::error::Error>,
-    },
-
-    #[snafu(display("Tsid must be u64, current:{}.\nBacktrace:\n{}", kind, backtrace))]
-    TsidMustU64 {
-        kind: DatumKind,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display("Timestamp wrong type, current:{}.\nBacktrace:\n{}", kind, backtrace))]
-    MustTimestamp {
-        kind: DatumKind,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display(
-        "Value must be f64 compatible type, current:{}.\nBacktrace:\n{}",
-        kind,
-        backtrace
-    ))]
-    F64Castable {
-        kind: DatumKind,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display(
-        "Tag must be string type, current:{}.\nBacktrace:\n{}",
-        kind,
-        backtrace
-    ))]
-    TagMustString {
-        kind: DatumKind,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display("Failed to write via gRPC, source:{}.", source))]
-    GRPCWriteError { source: crate::proxy::error::Error },
-
-    #[snafu(display("Failed to get schema, source:{}.", source))]
-    SchemaError {
-        source: crate::schema_config_provider::Error,
-    },
-}
-
-define_result!(Error);
-
-impl reject::Reject for Error {}
 
 const NAME_LABEL: &str = "__name__";
 const VALUE_COLUMN: &str = "value";
 
-pub struct CeresDBStorage<Q> {
-    instance: InstanceRef<Q>,
-    schema_config_provider: SchemaConfigProviderRef,
-}
+impl reject::Reject for Error {}
 
-impl<Q: QueryExecutor + 'static> CeresDBStorage<Q> {
-    pub fn new(instance: InstanceRef<Q>, schema_config_provider: SchemaConfigProviderRef) -> Self {
-        Self {
-            instance,
-            schema_config_provider,
-        }
-    }
-}
-
-impl<Q> CeresDBStorage<Q> {
-    /// Separate metric from labels, and sort labels by name.
-    fn normalize_labels(mut labels: Vec<Label>) -> Result<(String, Vec<Label>)> {
-        let metric_idx = labels
-            .iter()
-            .position(|label| label.name == NAME_LABEL)
-            .context(MissingName)?;
-        let metric = labels.swap_remove(metric_idx).value;
-        labels.sort_unstable_by(|a, b| a.name.cmp(&b.name));
-
-        Ok((metric, labels))
-    }
-
-    /// Separate metric from matchers, and convert remaining matchers to sql
-    /// filters.
-    fn normalize_matchers(mut matchers: Vec<LabelMatcher>) -> Result<(String, Vec<String>)> {
-        let metric_idx = matchers
-            .iter()
-            .position(|m| m.name == NAME_LABEL)
-            .context(MissingName)?;
-
-        let metric = matchers.swap_remove(metric_idx).value;
-        let filters = matchers
-            .iter()
-            .map(|m| match m.r#type() {
-                label_matcher::Type::Eq => format!("{} = '{}'", m.name, m.value),
-                label_matcher::Type::Neq => format!("{} != '{}'", m.name, m.value),
-                // https://github.com/prometheus/prometheus/blob/2ce94ac19673a3f7faf164e9e078a79d4d52b767/model/labels/regexp.go#L29
-                label_matcher::Type::Re => format!("{} ~ '^(?:{})'", m.name, m.value),
-                label_matcher::Type::Nre => format!("{} !~ '^(?:{})'", m.name, m.value),
-            })
-            .collect();
-
-        Ok((metric, filters))
-    }
-
-    fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
-        let mut req_by_metric = HashMap::new();
-        for timeseries in req.timeseries {
-            let (metric, labels) = Self::normalize_labels(timeseries.labels)?;
-            let (tag_names, tag_values): (Vec<_>, Vec<_>) = labels
-                .into_iter()
-                .map(|label| (label.name, label.value))
-                .unzip();
-
-            req_by_metric
-                .entry(metric.to_string())
-                .or_insert_with(|| WriteTableRequest {
-                    table: metric,
-                    tag_names,
-                    field_names: vec![VALUE_COLUMN.to_string()],
-                    entries: Vec::new(),
-                })
-                .entries
-                .push(WriteSeriesEntry {
-                    tags: tag_values
-                        .into_iter()
-                        .enumerate()
-                        .map(|(idx, v)| Tag {
-                            name_index: idx as u32,
-                            value: Some(Value {
-                                value: Some(value::Value::StringValue(v)),
-                            }),
-                        })
-                        .collect(),
-                    field_groups: timeseries
-                        .samples
-                        .into_iter()
-                        .map(|sample| FieldGroup {
-                            timestamp: sample.timestamp,
-                            fields: vec![Field {
-                                name_index: 0,
-                                value: Some(Value {
-                                    value: Some(value::Value::Float64Value(sample.value)),
-                                }),
-                            }],
-                        })
-                        .collect(),
-                });
-        }
-
-        Ok(req_by_metric.into_values().collect())
-    }
-
-    fn convert_query_result(metric: String, resp: Output) -> Result<QueryResult> {
-        let record_batches = match resp {
-            Output::AffectedRows(_) => return ResponseMustRows {}.fail(),
-            Output::Records(v) => v,
-        };
-
-        let converter = match record_batches.first() {
-            None => {
-                return Ok(QueryResult::default());
-            }
-            Some(batch) => Converter::try_new(batch.schema())?,
-        };
-
-        converter.convert(metric, record_batches)
-    }
-}
-
-#[async_trait]
-impl<Q: QueryExecutor + 'static> RemoteStorage for CeresDBStorage<Q> {
-    type Context = RequestContext;
-    type Err = Error;
-
+impl<Q: QueryExecutor + 'static> Proxy<Q> {
     /// Write samples to remote storage
-    async fn write(&self, ctx: Self::Context, req: WriteRequest) -> Result<()> {
+    async fn prom_write(&self, ctx: RequestContext, req: WriteRequest) -> Result<()> {
         let request_id = RequestId::next_id();
         let deadline = ctx.timeout.map(|t| Instant::now() + t);
         let catalog = &ctx.catalog;
@@ -243,17 +52,23 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for CeresDBStorage<Q> {
         let schema_config = self
             .schema_config_provider
             .schema_config(schema)
-            .context(SchemaError)?;
+            .box_err()
+            .context(Internal {
+                msg: "Failed to get schema",
+            })?;
         let write_context =
             WriteContext::new(request_id, deadline, catalog.clone(), schema.clone());
         let plans = write_request_to_insert_plan(
             self.instance.clone(),
-            Self::convert_write_request(req)?,
+            convert_write_request(req)?,
             schema_config,
             write_context,
         )
         .await
-        .context(GRPCWriteError)?;
+        .box_err()
+        .context(Internal {
+            msg: "Failed to write via gRPC",
+        })?;
 
         let mut success = 0;
         for insert_plan in plans {
@@ -266,7 +81,10 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for CeresDBStorage<Q> {
                 deadline,
             )
             .await
-            .context(GRPCWriteError)?;
+            .box_err()
+            .context(Internal {
+                msg: "Failed to write via gRPC",
+            })?;
         }
         debug!(
             "Remote write finished, catalog:{}, schema:{}, success:{}",
@@ -277,8 +95,8 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for CeresDBStorage<Q> {
     }
 
     /// Process one query within ReadRequest.
-    async fn process_query(&self, ctx: &Self::Context, q: Query) -> Result<QueryResult> {
-        let (metric, mut filters) = Self::normalize_matchers(q.matchers)?;
+    async fn prom_process_query(&self, ctx: &RequestContext, q: Query) -> Result<QueryResult> {
+        let (metric, mut filters) = normalize_matchers(q.matchers)?;
         filters.push(format!(
             "{} between {} AND {}",
             TIMESTAMP_COLUMN, q.start_timestamp_ms, q.end_timestamp_ms
@@ -292,13 +110,34 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for CeresDBStorage<Q> {
             TIMESTAMP_COLUMN
         );
 
-        let request = QueryRequest::Sql(sql.into());
-        let result = handlers::query::handle_query(ctx, self.instance.clone(), request)
+        let request = QueryRequest::Sql(Request { query: sql });
+        let result = self
+            .handle_query(ctx, request)
             .await
-            .map_err(Box::new)
-            .context(SqlHandle)?;
+            .box_err()
+            .context(Internal {
+                msg: "Handle sql failed",
+            })?;
 
-        Self::convert_query_result(metric, result)
+        convert_query_result(metric, result)
+    }
+}
+
+#[async_trait]
+impl<Q: QueryExecutor + 'static> RemoteStorage for Proxy<Q> {
+    type Context = RequestContext;
+    type Err = Error;
+
+    async fn write(&self, ctx: Self::Context, req: WriteRequest) -> StdResult<(), Self::Err> {
+        Ok(self.prom_write(ctx, req).await?)
+    }
+
+    async fn process_query(
+        &self,
+        ctx: &Self::Context,
+        q: Query,
+    ) -> StdResult<QueryResult, Self::Err> {
+        Ok(self.prom_process_query(ctx, q).await?)
     }
 }
 
@@ -313,11 +152,15 @@ struct Converter {
 
 impl Converter {
     fn try_new(schema: &RecordSchema) -> Result<Self> {
-        let tsid_idx = schema.index_of(TSID_COLUMN).context(MissingTSID)?;
-        let timestamp_idx = schema
-            .index_of(TIMESTAMP_COLUMN)
-            .context(MissingTimestamp)?;
-        let value_idx = schema.index_of(VALUE_COLUMN).context(MissingValue)?;
+        let tsid_idx = schema.index_of(TSID_COLUMN).context(InternalNoCause {
+            msg: "TSID column is missing in query response",
+        })?;
+        let timestamp_idx = schema.index_of(TIMESTAMP_COLUMN).context(InternalNoCause {
+            msg: "Timestamp column is missing in query response",
+        })?;
+        let value_idx = schema.index_of(VALUE_COLUMN).context(InternalNoCause {
+            msg: "Value column is missing in query response",
+        })?;
         let tags = schema
             .columns()
             .iter()
@@ -326,8 +169,8 @@ impl Converter {
             .map(|(i, col)| {
                 ensure!(
                     matches!(col.data_type, DatumKind::String),
-                    TagMustString {
-                        kind: col.data_type
+                    InternalNoCause {
+                        msg: format!("Tag must be string type, current:{}", col.data_type)
                     }
                 );
 
@@ -337,20 +180,29 @@ impl Converter {
 
         ensure!(
             matches!(schema.column(tsid_idx).data_type, DatumKind::UInt64),
-            TsidMustU64 {
-                kind: schema.column(tsid_idx).data_type
+            InternalNoCause {
+                msg: format!(
+                    "Tsid must be u64, current:{}",
+                    schema.column(tsid_idx).data_type
+                )
             }
         );
         ensure!(
             schema.column(timestamp_idx).data_type.is_timestamp(),
-            MustTimestamp {
-                kind: schema.column(timestamp_idx).data_type
+            InternalNoCause {
+                msg: format!(
+                    "Timestamp wrong type, current:{}",
+                    schema.column(timestamp_idx).data_type
+                )
             }
         );
         ensure!(
             schema.column(value_idx).data_type.is_f64_castable(),
-            F64Castable {
-                kind: schema.column(value_idx).data_type
+            InternalNoCause {
+                msg: format!(
+                    "Value must be f64 compatible type, current:{}",
+                    schema.column(value_idx).data_type
+                )
             }
         );
 
@@ -425,6 +277,115 @@ impl Converter {
     }
 }
 
+/// Separate metric from labels, and sort labels by name.
+fn normalize_labels(mut labels: Vec<Label>) -> Result<(String, Vec<Label>)> {
+    let metric_idx = labels
+        .iter()
+        .position(|label| label.name == NAME_LABEL)
+        .context(InternalNoCause {
+            msg: "Metric name is not found",
+        })?;
+    let metric = labels.swap_remove(metric_idx).value;
+    labels.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+
+    Ok((metric, labels))
+}
+
+/// Separate metric from matchers, and convert remaining matchers to sql
+/// filters.
+fn normalize_matchers(mut matchers: Vec<LabelMatcher>) -> Result<(String, Vec<String>)> {
+    let metric_idx =
+        matchers
+            .iter()
+            .position(|m| m.name == NAME_LABEL)
+            .context(InternalNoCause {
+                msg: "Metric name is not found",
+            })?;
+
+    let metric = matchers.swap_remove(metric_idx).value;
+    let filters = matchers
+        .iter()
+        .map(|m| match m.r#type() {
+            label_matcher::Type::Eq => format!("{} = '{}'", m.name, m.value),
+            label_matcher::Type::Neq => format!("{} != '{}'", m.name, m.value),
+            // https://github.com/prometheus/prometheus/blob/2ce94ac19673a3f7faf164e9e078a79d4d52b767/model/labels/regexp.go#L29
+            label_matcher::Type::Re => format!("{} ~ '^(?:{})'", m.name, m.value),
+            label_matcher::Type::Nre => format!("{} !~ '^(?:{})'", m.name, m.value),
+        })
+        .collect();
+
+    Ok((metric, filters))
+}
+
+fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
+    let mut req_by_metric = HashMap::new();
+    for timeseries in req.timeseries {
+        let (metric, labels) = normalize_labels(timeseries.labels)?;
+        let (tag_names, tag_values): (Vec<_>, Vec<_>) = labels
+            .into_iter()
+            .map(|label| (label.name, label.value))
+            .unzip();
+
+        req_by_metric
+            .entry(metric.to_string())
+            .or_insert_with(|| WriteTableRequest {
+                table: metric,
+                tag_names,
+                field_names: vec![VALUE_COLUMN.to_string()],
+                entries: Vec::new(),
+            })
+            .entries
+            .push(WriteSeriesEntry {
+                tags: tag_values
+                    .into_iter()
+                    .enumerate()
+                    .map(|(idx, v)| Tag {
+                        name_index: idx as u32,
+                        value: Some(Value {
+                            value: Some(value::Value::StringValue(v)),
+                        }),
+                    })
+                    .collect(),
+                field_groups: timeseries
+                    .samples
+                    .into_iter()
+                    .map(|sample| FieldGroup {
+                        timestamp: sample.timestamp,
+                        fields: vec![Field {
+                            name_index: 0,
+                            value: Some(Value {
+                                value: Some(value::Value::Float64Value(sample.value)),
+                            }),
+                        }],
+                    })
+                    .collect(),
+            });
+    }
+
+    Ok(req_by_metric.into_values().collect())
+}
+
+fn convert_query_result(metric: String, resp: Output) -> Result<QueryResult> {
+    let record_batches = match resp {
+        Output::AffectedRows(_) => {
+            return InternalNoCause {
+                msg: "Read response must be Rows",
+            }
+            .fail()
+        }
+        Output::Records(v) => v,
+    };
+
+    let converter = match record_batches.first() {
+        None => {
+            return Ok(QueryResult::default());
+        }
+        Some(batch) => Converter::try_new(batch.schema())?,
+    };
+
+    converter.convert(metric, record_batches)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -475,14 +436,14 @@ mod tests {
             ("yy", "vy"),
         ]);
 
-        let (metric, labels) = CeresDBStorage::<()>::normalize_labels(labels).unwrap();
+        let (metric, labels) = normalize_labels(labels).unwrap();
         assert_eq!("cpu", metric);
         assert_eq!(
             make_labels(vec![("aa", "va"), ("yy", "vy"), ("zz", "vz")]),
             labels
         );
 
-        assert!(CeresDBStorage::<()>::normalize_labels(vec![]).is_err());
+        assert!(normalize_labels(vec![]).is_err());
     }
 
     #[test]
@@ -495,14 +456,14 @@ mod tests {
             (NAME_LABEL, "cpu", Type::Eq),
         ]);
 
-        let (metric, filters) = CeresDBStorage::<()>::normalize_matchers(matchers).unwrap();
+        let (metric, filters) = normalize_matchers(matchers).unwrap();
         assert_eq!("cpu", metric);
         assert_eq!(
             vec!["a = '1'", "b != '2'", "c ~ '^(?:3)'", "d !~ '^(?:4)'"],
             filters
         );
 
-        assert!(CeresDBStorage::<()>::normalize_matchers(vec![]).is_err());
+        assert!(normalize_matchers(vec![]).is_err());
     }
 
     // Build a schema with

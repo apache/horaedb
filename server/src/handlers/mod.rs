@@ -1,11 +1,10 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Request handlers
 
 pub mod admin;
 pub mod error;
 pub mod influxdb;
-pub mod prom;
 pub mod query;
 pub mod route;
 

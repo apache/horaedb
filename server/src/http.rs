@@ -14,7 +14,7 @@ use handlers::query::QueryRequest as HandlerQueryRequest;
 use log::{error, info};
 use logger::RuntimeLevel;
 use profile::Profiler;
-use prom_remote_api::{types::RemoteStorageRef, web};
+use prom_remote_api::web;
 use query_engine::executor::Executor as QueryExecutor;
 use router::{endpoint::Endpoint, Router, RouterRef};
 use serde::Serialize;
@@ -36,7 +36,6 @@ use crate::{
     handlers::{
         self,
         influxdb::{self, InfluxDb, InfluxqlParams, InfluxqlRequest, WriteParams, WriteRequest},
-        prom::CeresDBStorage,
     },
     instance::InstanceRef,
     metrics,
@@ -128,7 +127,6 @@ pub struct Service<Q> {
     engine_runtimes: Arc<EngineRuntimes>,
     log_runtime: Arc<RuntimeLevel>,
     profiler: Arc<Profiler>,
-    prom_remote_storage: RemoteStorageRef<RequestContext, crate::handlers::prom::Error>,
     influxdb: Arc<InfluxDb<Q>>,
     tx: Sender<()>,
     rx: Option<Receiver<()>>,
@@ -204,16 +202,12 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         let write_api = warp::path!("write")
-            .and(web::warp::with_remote_storage(
-                self.prom_remote_storage.clone(),
-            ))
+            .and(web::warp::with_remote_storage(self.proxy.clone()))
             .and(self.with_context())
             .and(web::warp::protobuf_body())
             .and_then(web::warp::write);
         let query_api = warp::path!("read")
-            .and(web::warp::with_remote_storage(
-                self.prom_remote_storage.clone(),
-            ))
+            .and(web::warp::with_remote_storage(self.proxy.clone()))
             .and(self.with_context())
             .and(web::warp::protobuf_body())
             .and_then(web::warp::read);
@@ -684,10 +678,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .context(MissingSchemaConfigProvider)?;
         let router = self.router.context(MissingRouter)?;
         let opened_wals = self.opened_wals.context(MissingWal)?;
-        let prom_remote_storage = Arc::new(CeresDBStorage::new(
-            instance.clone(),
-            schema_config_provider.clone(),
-        ));
+
         let influxdb = Arc::new(InfluxDb::new(instance, schema_config_provider));
         let (tx, rx) = oneshot::channel();
 
@@ -695,7 +686,6 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             proxy,
             engine_runtimes,
             log_runtime,
-            prom_remote_storage,
             influxdb,
             profiler: Arc::new(Profiler::default()),
             tx,
