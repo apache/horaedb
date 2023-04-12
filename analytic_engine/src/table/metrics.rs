@@ -169,11 +169,11 @@ impl Default for Metrics {
             table_write_preprocess_duration: TABLE_WRITE_DURATION_HISTOGRAM
                 .with_label_values(&["preprocess"]),
             table_write_space_flush_wait_duration: TABLE_WRITE_DURATION_HISTOGRAM
-                .with_label_values(&["space_flush_wait"]),
+                .with_label_values(&["wait_space_flush"]),
             table_write_instance_flush_wait_duration: TABLE_WRITE_DURATION_HISTOGRAM
-                .with_label_values(&["instance_flush_wait"]),
+                .with_label_values(&["wait_instance_flush"]),
             table_write_flush_wait_duration: TABLE_WRITE_DURATION_HISTOGRAM
-                .with_label_values(&["flush_wait"]),
+                .with_label_values(&["wait_flush"]),
         }
     }
 }
