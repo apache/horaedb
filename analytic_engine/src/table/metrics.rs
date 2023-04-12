@@ -29,9 +29,10 @@ lazy_static! {
     )
     .unwrap();
 
-    static ref TABLE_WRITE_ROWS_COUNTER: IntCounter = register_int_counter!(
-        "table_write_rows_counter",
-        "Number of rows wrote to table"
+    static ref TABLE_WRITE_BATCH_HISTGRAM: Histogram = register_histogram!(
+        "table_write_batch_size",
+        "Histgram of write batch size",
+        vec![10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0]
     )
     .unwrap();
 
@@ -164,7 +165,7 @@ impl Metrics {
 
     #[inline]
     pub fn on_write_request_done(&self, num_rows: usize) {
-        TABLE_WRITE_ROWS_COUNTER.inc_by(num_rows as u64);
+        TABLE_WRITE_BATCH_HISTGRAM.observe(num_rows as f64);
     }
 
     #[inline]
