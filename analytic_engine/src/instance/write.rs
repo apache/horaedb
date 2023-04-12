@@ -292,6 +292,7 @@ impl Instance {
         table_data: &TableDataRef,
         request: WriteRequest,
     ) -> Result<usize> {
+        let _timer = table_data.metrics.start_table_write_timer();
         let mut encode_ctx = EncodeContext::new(request.row_group);
 
         self.preprocess_write(worker_local, space, table_data, &mut encode_ctx)
@@ -443,7 +444,7 @@ impl Instance {
         table_data: &TableDataRef,
         encode_ctx: &mut EncodeContext,
     ) -> Result<()> {
-        let _timer = table_data.metrics.start_table_write_preprocess_timer();
+        let _total_timer = table_data.metrics.start_table_write_preprocess_timer();
         ensure!(
             !table_data.is_dropped(),
             WriteDroppedTable {

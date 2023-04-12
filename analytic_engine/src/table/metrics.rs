@@ -144,6 +144,7 @@ pub struct Metrics {
     table_write_space_flush_wait_duration: Histogram,
     table_write_instance_flush_wait_duration: Histogram,
     table_write_flush_wait_duration: Histogram,
+    table_write_total_duration: Histogram,
 }
 
 impl Default for Metrics {
@@ -174,6 +175,8 @@ impl Default for Metrics {
                 .with_label_values(&["wait_instance_flush"]),
             table_write_flush_wait_duration: TABLE_WRITE_DURATION_HISTOGRAM
                 .with_label_values(&["wait_flush"]),
+            table_write_total_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["total"]),
         }
     }
 }
@@ -204,6 +207,11 @@ impl Metrics {
     pub fn on_write_stall(&self, duration: Duration) {
         self.table_write_stall_duration
             .observe(duration.as_secs_f64());
+    }
+
+    #[inline]
+    pub fn start_table_write_timer(&self) -> HistogramTimer {
+        self.table_write_total_duration.start_timer()
     }
 
     #[inline]
