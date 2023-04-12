@@ -2,14 +2,14 @@
 
 //! Distributed Table implementation
 
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::{
     row::{Row, RowGroupBuilder},
     schema::Schema,
 };
-use common_util::error::BoxError;
+use common_util::{error::BoxError, runtime::Runtime};
 use futures::future::try_join_all;
 use snafu::ResultExt;
 use table_engine::{
@@ -50,13 +50,19 @@ pub struct TableData {
 pub struct PartitionTableImpl {
     table_data: TableData,
     remote_engine: RemoteEngineRef,
+    io_runtime: Arc<Runtime>,
 }
 
 impl PartitionTableImpl {
-    pub fn new(table_data: TableData, remote_engine: RemoteEngineRef) -> Result<Self> {
+    pub fn new(
+        table_data: TableData,
+        remote_engine: RemoteEngineRef,
+        io_runtime: Arc<Runtime>,
+    ) -> Result<Self> {
         Ok(Self {
             table_data,
             remote_engine,
+            io_runtime,
         })
     }
 
@@ -158,23 +164,30 @@ impl Table for PartitionTableImpl {
                     table: self.get_sub_table_ident(partition).table,
                 })?
                 .build();
-            futures.push(async move {
-                self.remote_engine
-                    .write(RemoteWriteRequest {
-                        table: self.get_sub_table_ident(partition),
-                        write_request: WriteRequest { row_group },
-                    })
-                    .await
-            });
+
+            let request = RemoteWriteRequest {
+                table: self.get_sub_table_ident(partition),
+                write_request: WriteRequest { row_group },
+            };
+            let remote_engine = self.remote_engine.clone();
+            futures.push(async move { remote_engine.write(request).await });
         }
 
         let result = {
             let _remote_timer = PARTITION_TABLE_WRITE_DURATION_HISTOGRAM
                 .with_label_values(&["remote_write"])
                 .start_timer();
-            try_join_all(futures).await.box_err().context(Write {
-                table: self.name().to_string(),
-            })?
+            let handle = self.io_runtime.spawn(try_join_all(futures));
+            handle
+                .await
+                .box_err()
+                .context(Write {
+                    table: self.name().to_string(),
+                })?
+                .box_err()
+                .context(Write {
+                    table: self.name().to_string(),
+                })?
         };
 
         Ok(result.into_iter().sum())

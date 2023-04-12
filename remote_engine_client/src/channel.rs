@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Channel pool
 
@@ -35,10 +35,7 @@ impl ChannelPool {
             }
         }
 
-        let channel = self
-            .builder
-            .build(endpoint.clone().to_string().as_str())
-            .await?;
+        let channel = self.builder.build(&endpoint.to_string()).await?;
         let mut inner = self.channels.write().unwrap();
         // Double check here.
         if let Some(channel) = inner.get(endpoint) {

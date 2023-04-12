@@ -87,6 +87,8 @@ pub struct RuntimeConfig {
     pub compact_thread_num: usize,
     /// Runtime for other tasks which may not important
     pub default_thread_num: usize,
+    /// Runtime for io
+    pub io_thread_num: usize,
 }
 
 impl Default for RuntimeConfig {
@@ -97,6 +99,7 @@ impl Default for RuntimeConfig {
             meta_thread_num: 2,
             compact_thread_num: 4,
             default_thread_num: 8,
+            io_thread_num: 4,
         }
     }
 }
