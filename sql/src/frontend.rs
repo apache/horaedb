@@ -52,7 +52,7 @@ pub enum Error {
     #[snafu(display("Failed to build influxql plan, msg:{}, err:{}", msg, source))]
     InfluxqlPlanWithCause { msg: String, source: GenericError },
 
-    #[snafu(display("Failed to build influxql plan, msg:{}", msg,))]
+    #[snafu(display("Failed to build influxql plan, msg:{}", msg))]
     InfluxqlPlan { msg: String },
 }
 
@@ -247,17 +247,15 @@ pub fn parse_table_name(statements: &StatementVec) -> Option<String> {
     }
 }
 
-pub fn parse_table_name_with_sql(sql: &str) -> Option<String> {
-    if let Ok(v) = Parser::parse_sql(sql) {
-        parse_table_name(&v)
-    } else {
-        None
-    }
+pub fn parse_table_name_with_sql(sql: &str) -> Result<Option<String>> {
+    Ok(parse_table_name(
+        &Parser::parse_sql(sql).context(InvalidSql { sql })?,
+    ))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::frontend::parse_table_name_with_sql;
+    use crate::frontend;
 
     #[test]
     fn test_parse_table_name() {
@@ -285,7 +283,10 @@ mod tests {
                             format!("exists table `{table}`"),
         ];
         for sql in test_cases {
-            assert_eq!(parse_table_name_with_sql(&sql), Some(table.to_string()));
+            assert_eq!(
+                frontend::parse_table_name_with_sql(&sql).unwrap(),
+                Some(table.to_string())
+            );
         }
     }
 }

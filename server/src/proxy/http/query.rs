@@ -1,11 +1,15 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::time::Instant;
+use std::{io::Cursor, time::Instant};
 
-use ceresdbproto::storage::{RequestContext as GrpcRequestContext, SqlQueryRequest};
+use arrow::{ipc::reader::StreamReader, record_batch::RecordBatch as ArrowRecordBatch};
+use ceresdbproto::storage::{
+    arrow_payload::Compression, sql_query_response::Output as OutputPb, ArrowPayload,
+    RequestContext as GrpcRequestContext, SqlQueryRequest, SqlQueryResponse,
+};
 use common_types::{
-    bytes::Bytes,
     datum::{Datum, DatumKind},
+    record_batch::RecordBatch,
     request_id::RequestId,
 };
 use common_util::{error::BoxError, time::InstantExt};
@@ -17,7 +21,7 @@ use serde::{
     ser::{SerializeMap, SerializeSeq},
     Deserialize, Serialize,
 };
-use snafu::{ensure, ResultExt};
+use snafu::{ensure, OptionExt, ResultExt};
 use sql::{
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,
@@ -27,10 +31,9 @@ use crate::{
     context::RequestContext,
     handlers::influxdb::InfluxqlRequest,
     proxy::{
-        error::{ErrNoCause, ErrWithCause, Result},
+        error::{ErrNoCause, ErrWithCause, Internal, InternalNoCause, Result},
         execute_plan,
         forward::ForwardResult,
-        util::convert_sql_response_to_output,
         Proxy,
     },
 };
@@ -99,7 +102,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     sql: request.query.clone(),
                 };
 
-                if let Some(resp) = self.maybe_forward_sql_query(&sql_query_request).await {
+                if let Some(resp) = self.maybe_forward_sql_query(&sql_query_request).await? {
                     match resp {
                         ForwardResult::Forwarded(resp) => {
                             return convert_sql_response_to_output(resp?)
@@ -188,7 +191,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 }
 #[derive(Debug, Deserialize)]
 pub struct Request {
-    query: String,
+    pub query: String,
 }
 
 // TODO(yingwen): Improve serialize performance
@@ -250,18 +253,6 @@ impl Serialize for ResponseRows {
     }
 }
 
-impl From<String> for Request {
-    fn from(query: String) -> Self {
-        Self { query }
-    }
-}
-
-impl From<Bytes> for Request {
-    fn from(bytes: Bytes) -> Self {
-        Request::from(String::from_utf8_lossy(&bytes).to_string())
-    }
-}
-
 #[derive(Debug)]
 pub enum QueryRequest {
     Sql(Request),
@@ -320,4 +311,79 @@ fn convert_records(records: RecordBatchVec) -> Response {
         column_names,
         data: column_data,
     })
+}
+
+fn convert_sql_response_to_output(sql_query_response: SqlQueryResponse) -> Result<Output> {
+    let output_pb = sql_query_response.output.context(InternalNoCause {
+        msg: "Output is empty in sql query response".to_string(),
+    })?;
+    let output = match output_pb {
+        OutputPb::AffectedRows(affected) => Output::AffectedRows(affected as usize),
+        OutputPb::Arrow(arrow_payload) => {
+            let arrow_record_batches = decode_arrow_payload(arrow_payload)?;
+            let rows_group: Vec<RecordBatch> = arrow_record_batches
+                .into_iter()
+                .map(TryInto::<RecordBatch>::try_into)
+                .map(|v| {
+                    v.box_err().context(Internal {
+                        msg: "decode arrow payload",
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            Output::Records(rows_group)
+        }
+    };
+
+    Ok(output)
+}
+
+fn decode_arrow_payload(arrow_payload: ArrowPayload) -> Result<Vec<ArrowRecordBatch>> {
+    let compression = arrow_payload.compression();
+    let byte_batches = arrow_payload.record_batches;
+
+    // Maybe unzip payload bytes firstly.
+    let unzip_byte_batches = byte_batches
+        .into_iter()
+        .map(|bytes_batch| match compression {
+            Compression::None => Ok(bytes_batch),
+            Compression::Zstd => zstd::stream::decode_all(Cursor::new(bytes_batch))
+                .box_err()
+                .context(Internal {
+                    msg: "decode arrow payload",
+                }),
+        })
+        .collect::<Result<Vec<Vec<u8>>>>()?;
+
+    // Decode the byte batches to record batches, multiple record batches may be
+    // included in one byte batch.
+    let record_batches_group = unzip_byte_batches
+        .into_iter()
+        .map(|byte_batch| {
+            // Decode bytes to `RecordBatch`.
+            let stream_reader = match StreamReader::try_new(Cursor::new(byte_batch), None)
+                .box_err()
+                .context(Internal {
+                    msg: "decode arrow payload",
+                }) {
+                Ok(reader) => reader,
+                Err(e) => return Err(e),
+            };
+
+            stream_reader
+                .into_iter()
+                .map(|decode_result| {
+                    decode_result.box_err().context(Internal {
+                        msg: "decode arrow payload",
+                    })
+                })
+                .collect::<Result<Vec<_>>>()
+        })
+        .collect::<Result<Vec<Vec<_>>>>()?;
+
+    let record_batches = record_batches_group
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+
+    Ok(record_batches)
 }

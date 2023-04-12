@@ -35,7 +35,7 @@ use tonic::{transport::Channel, IntoRequest};
 use crate::{
     instance::InstanceRef,
     proxy::{
-        error::{ErrWithCause, Error, Result},
+        error::{ErrWithCause, Error, Internal, Result},
         forward::{ForwardRequest, ForwardResult, Forwarder, ForwarderRef},
         hotspot::HotspotRecorder,
     },
@@ -90,11 +90,15 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     async fn maybe_forward_sql_query(
         &self,
         req: &SqlQueryRequest,
-    ) -> Option<ForwardResult<SqlQueryResponse, Error>> {
-        let table_name = frontend::parse_table_name_with_sql(&req.sql);
+    ) -> Result<Option<ForwardResult<SqlQueryResponse, Error>>> {
+        let table_name = frontend::parse_table_name_with_sql(&req.sql)
+            .box_err()
+            .with_context(|| Internal {
+                msg: format!("Failed to parse table name with sql, sql:{}", req.sql),
+            })?;
         if table_name.is_none() {
             warn!("Unable to forward sql query without table name, req:{req:?}",);
-            return None;
+            return Ok(None);
         }
 
         let req_ctx = req.context.as_ref().unwrap();
@@ -123,13 +127,13 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         };
 
         let forward_result = self.forwarder.forward(forward_req, do_query).await;
-        match forward_result {
+        Ok(match forward_result {
             Ok(forward_res) => Some(forward_res),
             Err(e) => {
                 error!("Failed to forward sql req but the error is ignored, err:{e}");
                 None
             }
-        }
+        })
     }
 }
 

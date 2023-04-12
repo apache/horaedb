@@ -85,7 +85,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: SqlQueryRequest,
     ) -> Result<SqlQueryResponse> {
-        let req = match self.maybe_forward_sql_query(&req).await {
+        let req = match self.maybe_forward_sql_query(&req).await? {
             Some(resp) => match resp {
                 ForwardResult::Forwarded(resp) => return resp,
                 ForwardResult::Original => req,

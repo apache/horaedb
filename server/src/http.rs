@@ -8,6 +8,7 @@ use std::{
 };
 
 use analytic_engine::setup::OpenedWals;
+use common_types::bytes::Bytes;
 use common_util::error::{BoxError, GenericError};
 use handlers::query::QueryRequest as HandlerQueryRequest;
 use log::{error, info};
@@ -236,7 +237,9 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     fn sql(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         // accept json or plain text
         let extract_request = warp::body::json()
-            .or(warp::body::bytes().map(Request::from))
+            .or(warp::body::bytes().map(|v: Bytes| Request {
+                query: String::from_utf8_lossy(&v).to_string(),
+            }))
             .unify();
 
         warp::path!("sql")
@@ -244,9 +247,8 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(extract_request)
             .and(self.with_context())
-            .and(self.with_instance())
             .and(self.with_proxy())
-            .and_then(|req, ctx, _instance, proxy: Arc<Proxy<Q>>| async move {
+            .and_then(|req, ctx, proxy: Arc<Proxy<Q>>| async move {
                 let req = QueryRequest::Sql(req);
                 let result = proxy
                     .handle_query(&ctx, req)
