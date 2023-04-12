@@ -29,9 +29,9 @@ lazy_static! {
     )
     .unwrap();
 
-    static ref TABLE_WRITE_BATCH_HISTGRAM: Histogram = register_histogram!(
+    static ref TABLE_WRITE_BATCH_HISTOGRAM: Histogram = register_histogram!(
         "table_write_batch_size",
-        "Histgram of write batch size",
+        "Histogram of write batch size",
         vec![10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0]
     )
     .unwrap();
@@ -96,9 +96,10 @@ lazy_static! {
     ).unwrap();
 
     // Buckets: 0, 0.01, .., 0.01 * 2^12
-    static ref TABLE_WRITE_STALL_DURATION_HISTOGRAM: Histogram = register_histogram!(
-        "table_write_stall_duration",
+    static ref TABLE_WRITE_DURATION_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        "table_write_duration",
         "Histogram for write stall duration of the table in seconds",
+        &["type"],
         exponential_buckets(0.01, 2.0, 13).unwrap()
     ).unwrap();
 
@@ -134,6 +135,16 @@ pub struct Metrics {
     compaction_output_sst_size_histogram: Histogram,
     compaction_input_sst_row_num_histogram: Histogram,
     compaction_output_sst_row_num_histogram: Histogram,
+
+    table_write_stall_duration: Histogram,
+    table_write_encode_duration: Histogram,
+    table_write_wal_duration: Histogram,
+    table_write_memtable_duration: Histogram,
+    table_write_preprocess_duration: Histogram,
+    table_write_space_flush_wait_duration: Histogram,
+    table_write_instance_flush_wait_duration: Histogram,
+    table_write_flush_wait_duration: Histogram,
+    table_write_total_duration: Histogram,
 }
 
 impl Default for Metrics {
@@ -148,6 +159,24 @@ impl Default for Metrics {
                 .with_label_values(&["input"]),
             compaction_output_sst_row_num_histogram: TABLE_COMPACTION_SST_ROW_NUM_HISTOGRAM
                 .with_label_values(&["output"]),
+
+            table_write_stall_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["stall"]),
+            table_write_encode_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["encode"]),
+            table_write_wal_duration: TABLE_WRITE_DURATION_HISTOGRAM.with_label_values(&["wal"]),
+            table_write_memtable_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["memtable"]),
+            table_write_preprocess_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["preprocess"]),
+            table_write_space_flush_wait_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["wait_space_flush"]),
+            table_write_instance_flush_wait_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["wait_instance_flush"]),
+            table_write_flush_wait_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["wait_flush"]),
+            table_write_total_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["total"]),
         }
     }
 }
@@ -165,7 +194,7 @@ impl Metrics {
 
     #[inline]
     pub fn on_write_request_done(&self, num_rows: usize) {
-        TABLE_WRITE_BATCH_HISTGRAM.observe(num_rows as f64);
+        TABLE_WRITE_BATCH_HISTOGRAM.observe(num_rows as f64);
     }
 
     #[inline]
@@ -176,7 +205,48 @@ impl Metrics {
 
     #[inline]
     pub fn on_write_stall(&self, duration: Duration) {
-        TABLE_WRITE_STALL_DURATION_HISTOGRAM.observe(duration.as_secs_f64());
+        self.table_write_stall_duration
+            .observe(duration.as_secs_f64());
+    }
+
+    #[inline]
+    pub fn start_table_write_timer(&self) -> HistogramTimer {
+        self.table_write_total_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_encode_timer(&self) -> HistogramTimer {
+        self.table_write_encode_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_memtable_timer(&self) -> HistogramTimer {
+        self.table_write_memtable_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_wal_timer(&self) -> HistogramTimer {
+        self.table_write_wal_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_preprocess_timer(&self) -> HistogramTimer {
+        self.table_write_preprocess_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_space_flush_wait_timer(&self) -> HistogramTimer {
+        self.table_write_space_flush_wait_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_instance_flush_wait_timer(&self) -> HistogramTimer {
+        self.table_write_instance_flush_wait_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_flush_wait_timer(&self) -> HistogramTimer {
+        self.table_write_flush_wait_duration.start_timer()
     }
 
     #[inline]
