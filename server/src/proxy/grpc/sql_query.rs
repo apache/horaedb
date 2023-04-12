@@ -85,7 +85,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: SqlQueryRequest,
     ) -> Result<SqlQueryResponse> {
-        let req = match self.maybe_forward_sql_query(&req).await {
+        let req = match self.maybe_forward_sql_query(&req).await? {
             Some(resp) => match resp {
                 ForwardResult::Forwarded(resp) => return resp,
                 ForwardResult::Original => req,
@@ -141,51 +141,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             Ok::<(), Error>(())
         });
         Ok(ReceiverStream::new(rx).boxed())
-    }
-
-    async fn maybe_forward_sql_query(
-        &self,
-        req: &SqlQueryRequest,
-    ) -> Option<ForwardResult<SqlQueryResponse, Error>> {
-        if req.tables.len() != 1 {
-            warn!("Unable to forward sql query without exactly one table, req:{req:?}",);
-
-            return None;
-        }
-
-        let req_ctx = req.context.as_ref().unwrap();
-        let forward_req = ForwardRequest {
-            schema: req_ctx.database.clone(),
-            table: req.tables[0].clone(),
-            req: req.clone().into_request(),
-        };
-        let do_query = |mut client: StorageServiceClient<Channel>,
-                        request: tonic::Request<SqlQueryRequest>,
-                        _: &Endpoint| {
-            let query = async move {
-                client
-                    .sql_query(request)
-                    .await
-                    .map(|resp| resp.into_inner())
-                    .box_err()
-                    .context(ErrWithCause {
-                        code: StatusCode::INTERNAL_SERVER_ERROR,
-                        msg: "Forwarded sql query failed",
-                    })
-            }
-            .boxed();
-
-            Box::new(query) as _
-        };
-
-        let forward_result = self.forwarder.forward(forward_req, do_query).await;
-        match forward_result {
-            Ok(forward_res) => Some(forward_res),
-            Err(e) => {
-                error!("Failed to forward sql req but the error is ignored, err:{e}");
-                None
-            }
-        }
     }
 
     async fn maybe_forward_stream_sql_query(

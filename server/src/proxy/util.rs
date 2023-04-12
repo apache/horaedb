@@ -35,6 +35,8 @@ pub fn table_from_expr(expr: &Expr) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::{assert_eq, vec};
+
     use ceresdbproto::prometheus::{expr, operand::Value::Selector, Expr, Operand};
 
     use crate::proxy::util::table_from_expr;

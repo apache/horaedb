@@ -20,7 +20,7 @@ use common_types::{
 use common_util::error::BoxError;
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
-use log::{error, info};
+use log::info;
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
 use snafu::{ensure, OptionExt, ResultExt};
 use sql::{

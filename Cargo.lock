@@ -6207,6 +6207,7 @@ dependencies = [
  "snafu 0.6.10",
  "spin 0.9.8",
  "sql",
+ "sqlparser",
  "system_catalog",
  "table_engine",
  "tokio",

@@ -27,6 +27,7 @@ use crate::{
     local_tables::{self, LocalTablesRecoverer},
     mysql,
     mysql::error::Error as MysqlError,
+    proxy::Proxy,
     schema_config_provider::SchemaConfigProviderRef,
 };
 
@@ -305,6 +306,12 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let function_registry = self.function_registry.context(MissingFunctionRegistry)?;
         let opened_wals = self.opened_wals.context(MissingWals)?;
         let router = self.router.context(MissingRouter)?;
+        let provider = self
+            .schema_config_provider
+            .context(MissingSchemaConfigProvider)?;
+        let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
+        let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
+        let config_content = self.config_content.expect("Missing config content");
 
         let remote_engine_ref = Arc::new(RemoteEngineImpl::new(
             self.remote_engine_client_config.clone(),
@@ -327,31 +334,42 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             InstanceRef::new(instance)
         };
 
+        let grpc_endpoint = Endpoint {
+            addr: self.server_config.bind_addr.clone(),
+            port: self.server_config.grpc_port,
+        };
+
         // Create http config
-        let endpoint = Endpoint {
+        let http_endpoint = Endpoint {
             addr: self.server_config.bind_addr.clone(),
             port: self.server_config.http_port,
         };
 
         let http_config = HttpConfig {
-            endpoint,
+            endpoint: http_endpoint,
             max_body_size: self.server_config.http_max_body_size,
             timeout: self.server_config.timeout.map(|v| v.0),
         };
 
-        let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
-        let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
-        let config_content = self.config_content.expect("Missing config content");
+        let proxy = Arc::new(Proxy::new(
+            router.clone(),
+            instance.clone(),
+            self.server_config.forward,
+            Endpoint::new(self.node_addr, self.server_config.grpc_port),
+            self.server_config.resp_compress_min_length.as_byte() as usize,
+            self.server_config.auto_create_table,
+            provider.clone(),
+            self.server_config.hotspot,
+            engine_runtimes.default_runtime.clone(),
+        ));
 
-        let provider = self
-            .schema_config_provider
-            .context(MissingSchemaConfigProvider)?;
         let http_service = http::Builder::new(http_config)
             .engine_runtimes(engine_runtimes.clone())
             .log_runtime(log_runtime)
             .instance(instance.clone())
             .schema_config_provider(provider.clone())
             .config_content(config_content)
+            .proxy(proxy.clone())
             .router(router.clone())
             .opened_wals(opened_wals.clone())
             .build()
@@ -372,30 +390,16 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .build()
             .context(BuildMysqlService)?;
 
-        let rpc_services =
-            grpc::Builder::new()
-                .endpoint(
-                    Endpoint::new(self.server_config.bind_addr, self.server_config.grpc_port)
-                        .to_string(),
-                )
-                .local_endpoint(
-                    Endpoint::new(self.node_addr, self.server_config.grpc_port).to_string(),
-                )
-                .resp_compress_min_length(
-                    self.server_config.resp_compress_min_length.as_byte() as usize
-                )
-                .runtimes(engine_runtimes)
-                .instance(instance.clone())
-                .router(router)
-                .cluster(self.cluster.clone())
-                .opened_wals(opened_wals)
-                .schema_config_provider(provider)
-                .forward_config(self.server_config.forward)
-                .hotspot_config(self.server_config.hotspot)
-                .timeout(self.server_config.timeout.map(|v| v.0))
-                .auto_create_table(self.server_config.auto_create_table)
-                .build()
-                .context(BuildGrpcService)?;
+        let rpc_services = grpc::Builder::new()
+            .endpoint(grpc_endpoint.to_string())
+            .runtimes(engine_runtimes)
+            .instance(instance.clone())
+            .cluster(self.cluster.clone())
+            .opened_wals(opened_wals)
+            .timeout(self.server_config.timeout.map(|v| v.0))
+            .proxy(proxy)
+            .build()
+            .context(BuildGrpcService)?;
 
         let server = Server {
             http_service,
