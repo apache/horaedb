@@ -36,11 +36,6 @@ type Factory struct {
 	partitionTableProportionOfNodes float32
 }
 
-type ScatterRequest struct {
-	Cluster  *metadata.ClusterMetadata
-	ShardIDs []storage.ShardID
-}
-
 type CreateTableRequest struct {
 	Cluster   *metadata.ClusterMetadata
 	SourceReq *metaservicepb.CreateTableRequest
@@ -66,21 +61,20 @@ func (d DropTableRequest) IsPartitionTable() bool {
 }
 
 type TransferLeaderRequest struct {
+	Snapshot          metadata.Snapshot
 	ShardID           storage.ShardID
 	OldLeaderNodeName string
 	NewLeaderNodeName string
-	ShardVersion      uint64
-	ClusterVersion    uint64
 }
 
 type SplitRequest struct {
 	ClusterName    string
 	SchemaName     string
 	TableNames     []string
+	Snapshot       metadata.Snapshot
 	ShardID        storage.ShardID
 	NewShardID     storage.ShardID
 	TargetNodeName string
-	ClusterVersion uint64
 }
 
 type CreatePartitionTableRequest struct {
@@ -222,9 +216,15 @@ func (f *Factory) CreateTransferLeaderProcedure(ctx context.Context, request Tra
 		return nil, err
 	}
 
-	return transferleader.NewProcedure(f.dispatch, f.storage,
-		request.ShardID, request.OldLeaderNodeName, request.NewLeaderNodeName,
-		request.ShardVersion, request.ClusterVersion, id)
+	return transferleader.NewProcedure(
+		f.dispatch,
+		request.Snapshot,
+		f.storage,
+		request.ShardID,
+		request.OldLeaderNodeName,
+		request.NewLeaderNodeName,
+		id,
+	)
 }
 
 func (f *Factory) CreateSplitProcedure(ctx context.Context, request SplitRequest) (procedure.Procedure, error) {
@@ -239,8 +239,18 @@ func (f *Factory) CreateSplitProcedure(ctx context.Context, request SplitRequest
 		return nil, metadata.ErrClusterNotFound
 	}
 
-	procedure := split.NewProcedure(id, f.dispatch, f.storage, c, request.SchemaName, request.ShardID, request.NewShardID, request.TableNames, request.TargetNodeName)
-	return procedure, nil
+	return split.NewProcedure(
+		id,
+		f.dispatch,
+		f.storage,
+		c.GetMetadata(),
+		request.Snapshot,
+		request.SchemaName,
+		request.ShardID,
+		request.NewShardID,
+		request.TableNames,
+		request.TargetNodeName,
+	)
 }
 
 func (f *Factory) allocProcedureID(ctx context.Context) (uint64, error) {

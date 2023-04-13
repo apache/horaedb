@@ -7,13 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/CeresDB/ceresmeta/server/cluster"
-	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"io"
 	"net/http"
 
 	"github.com/CeresDB/ceresmeta/pkg/coderr"
 	"github.com/CeresDB/ceresmeta/pkg/log"
+	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"go.uber.org/zap"
@@ -159,7 +159,7 @@ func (a *API) getShardTables(writer http.ResponseWriter, req *http.Request) {
 		shardIDs = append(shardIDs, storage.ShardID(shardID))
 	}
 
-	shardTables := c.GetShardTables(shardIDs)
+	shardTables := c.GetMetadata().GetShardTables(shardIDs)
 	a.respond(writer, shardTables)
 }
 
@@ -180,8 +180,14 @@ func (a *API) transferLeader(writer http.ResponseWriter, req *http.Request) {
 	}
 	log.Info("transfer leader request", zap.String("request", fmt.Sprintf("%+v", transferLeaderRequest)))
 
-	transferLeaderProcedure, err := a.procedureFactory.CreateTransferLeaderProcedure(req.Context(), coordinator.TransferLeaderRequest{
-		ClusterName:       transferLeaderRequest.ClusterName,
+	c, err := a.clusterManager.GetCluster(req.Context(), transferLeaderRequest.ClusterName)
+	if err != nil {
+		log.Error("get cluster failed", zap.String("clusterName", transferLeaderRequest.ClusterName), zap.Error(err))
+		a.respondError(writer, ErrGetCluster, fmt.Sprintf("get cluster failed, clusterName:%s", transferLeaderRequest.ClusterName))
+		return
+	}
+
+	transferLeaderProcedure, err := c.GetProcedureFactory().CreateTransferLeaderProcedure(req.Context(), coordinator.TransferLeaderRequest{
 		ShardID:           storage.ShardID(transferLeaderRequest.ShardID),
 		OldLeaderNodeName: transferLeaderRequest.OldLeaderNodeName,
 		NewLeaderNodeName: transferLeaderRequest.NewLeaderNodeName,
@@ -191,7 +197,7 @@ func (a *API) transferLeader(writer http.ResponseWriter, req *http.Request) {
 		a.respondError(writer, ErrCreateProcedure, "create transfer leader procedure")
 		return
 	}
-	err = a.procedureManager.Submit(req.Context(), transferLeaderProcedure)
+	err = c.GetProcedureManager().Submit(req.Context(), transferLeaderProcedure)
 	if err != nil {
 		log.Error("submit transfer leader procedure", zap.Error(err))
 		a.respondError(writer, ErrSubmitProcedure, "submit transfer leader procedure")
@@ -323,17 +329,18 @@ func (a *API) split(writer http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	newShardID, err := c.AllocShardID(ctx)
+	newShardID, err := c.GetMetadata().AllocShardID(ctx)
 	if err != nil {
 		log.Error("alloc shard id failed")
 		a.respondError(writer, ErrAllocShardID, "alloc shard id failed")
 		return
 	}
 
-	splitProcedure, err := a.procedureFactory.CreateSplitProcedure(ctx, coordinator.SplitRequest{
+	splitProcedure, err := c.GetProcedureFactory().CreateSplitProcedure(ctx, coordinator.SplitRequest{
 		ClusterName:    splitRequest.ClusterName,
 		SchemaName:     splitRequest.SchemaName,
 		TableNames:     splitRequest.SplitTables,
+		Snapshot:       metadata.Snapshot{},
 		ShardID:        storage.ShardID(splitRequest.ShardID),
 		NewShardID:     storage.ShardID(newShardID),
 		TargetNodeName: splitRequest.NodeName,
@@ -344,7 +351,7 @@ func (a *API) split(writer http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := a.procedureManager.Submit(ctx, splitProcedure); err != nil {
+	if err := c.GetProcedureManager().Submit(ctx, splitProcedure); err != nil {
 		log.Error("submit split procedure", zap.Error(err))
 		a.respondError(writer, ErrSubmitProcedure, "submit split procedure")
 		return

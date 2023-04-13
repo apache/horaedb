@@ -5,11 +5,10 @@ package split
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"sync"
 
 	"github.com/CeresDB/ceresmeta/pkg/log"
-	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/storage"
@@ -18,60 +17,72 @@ import (
 	"go.uber.org/zap"
 )
 
+// Fsm state change: begin -> CreateNewShardView -> UpdateShardTables -> OpenNewShard -> Finish
+// CreateNewShardView will create new shard metadata.
+// UpdateShardTables will update shard tables mapping between the old and new shard.
+// OpenNewShard will send open shard request to new shard leader.
 const (
-	eventCreateNewShardMetadata = "EventCreateNewShardMetadata"
-	eventCreateNewShardView     = "EventCreateNewShardView"
-	eventUpdateShardTables      = "EventUpdateShardTables"
-	eventOpenNewShard           = "EventOpenNewShard"
-	eventFinish                 = "EventFinish"
+	eventCreateNewShardView = "EventCreateNewShardView"
+	eventUpdateShardTables  = "EventUpdateShardTables"
+	eventOpenNewShard       = "EventOpenNewShard"
+	eventFinish             = "EventFinish"
 
-	stateBegin                  = "StateBegin"
-	stateCreateNewShardMetadata = "StateCreateNewShardMetadata"
-	stateCreateNewShardView     = "StateCreateNewShardView"
-	stateUpdateShardTables      = "StateUpdateShardTables"
-	stateOpenNewShard           = "StateOpenNewShard"
-	stateFinish                 = "StateFinish"
+	stateBegin              = "StateBegin"
+	stateCreateNewShardView = "StateCreateNewShardView"
+	stateUpdateShardTables  = "StateUpdateShardTables"
+	stateOpenNewShard       = "StateOpenNewShard"
+	stateFinish             = "StateFinish"
 )
 
 var (
 	splitEvents = fsm.Events{
-		{Name: eventCreateNewShardMetadata, Src: []string{stateBegin}, Dst: stateCreateNewShardMetadata},
-		{Name: eventCreateNewShardView, Src: []string{stateCreateNewShardMetadata}, Dst: stateCreateNewShardView},
+		{Name: eventCreateNewShardView, Src: []string{stateBegin}, Dst: stateCreateNewShardView},
 		{Name: eventUpdateShardTables, Src: []string{stateCreateNewShardView}, Dst: stateUpdateShardTables},
 		{Name: eventOpenNewShard, Src: []string{stateUpdateShardTables}, Dst: stateOpenNewShard},
 		{Name: eventFinish, Src: []string{stateOpenNewShard}, Dst: stateFinish},
 	}
 	splitCallbacks = fsm.Callbacks{
-		eventCreateNewShardMetadata: openNewShardMetadataCallback,
-		eventCreateNewShardView:     createShardViewCallback,
-		eventUpdateShardTables:      updateShardTablesCallback,
-		eventOpenNewShard:           openShardCallback,
-		eventFinish:                 finishCallback,
+		eventCreateNewShardView: createShardViewCallback,
+		eventUpdateShardTables:  updateShardTablesCallback,
+		eventOpenNewShard:       openShardCallback,
+		eventFinish:             finishCallback,
 	}
 )
 
-// Procedure fsm: Update ShardTable Metadata -> OpenNewShard -> CloseTable
 type Procedure struct {
-	id uint64
-
-	fsm *fsm.FSM
-
-	cluster  *cluster.Cluster
-	dispatch eventdispatch.Dispatch
-	storage  procedure.Storage
-
-	shardID        storage.ShardID
-	newShardID     storage.ShardID
-	tableNames     []string
-	targetNodeName string
-	schemaName     string
+	fsm                *fsm.FSM
+	params             ProcedureParams
+	relatedVersionInfo procedure.RelatedVersionInfo
 
 	// Protect the state.
 	lock  sync.RWMutex
 	state procedure.State
 }
 
-func NewProcedure(id uint64, dispatch eventdispatch.Dispatch, storage procedure.Storage, c *cluster.Cluster, schemaName string, shardID storage.ShardID, newShardID storage.ShardID, tableNames []string, targetNodeName string) *Procedure {
+type ProcedureParams struct {
+	Id uint64
+
+	Dispatch eventdispatch.Dispatch
+	Storage  procedure.Storage
+
+	ClusterMetadata *metadata.ClusterMetadata
+	ClusterSnapShot metadata.Snapshot
+
+	ShardID    storage.ShardID
+	NewShardID storage.ShardID
+
+	SchemaName     string
+	TableNames     []string
+	TargetNodeName string
+}
+
+func NewProcedure(params ProcedureParams) (procedure.Procedure, error) {
+	if err := validateClusterTopology(params.ClusterSnapShot.Topology, params.ShardID); err != nil {
+		return nil, err
+	}
+
+	relatedVersionInfo := buildRelatedVersionInfo(params)
+
 	splitFsm := fsm.NewFSM(
 		stateBegin,
 		splitEvents,
@@ -79,65 +90,94 @@ func NewProcedure(id uint64, dispatch eventdispatch.Dispatch, storage procedure.
 	)
 
 	return &Procedure{
-		fsm:            splitFsm,
-		id:             id,
-		cluster:        c,
-		dispatch:       dispatch,
-		shardID:        shardID,
-		newShardID:     newShardID,
-		targetNodeName: targetNodeName,
-		tableNames:     tableNames,
-		schemaName:     schemaName,
-		storage:        storage,
+		fsm:                splitFsm,
+		relatedVersionInfo: relatedVersionInfo,
+		params:             params,
+		state:              procedure.StateInit,
+	}, nil
+}
+
+func buildRelatedVersionInfo(params ProcedureParams) procedure.RelatedVersionInfo {
+	shardWithVersion := make(map[storage.ShardID]uint64, 0)
+	for _, shardView := range params.ClusterSnapShot.Topology.ShardViews {
+		if shardView.ShardID == params.ShardID {
+			shardWithVersion[params.ShardID] = shardView.Version
+		}
 	}
+	shardWithVersion[params.NewShardID] = 0
+	relatedVersionInfo := procedure.RelatedVersionInfo{
+		ClusterID:        params.ClusterSnapShot.Topology.ClusterView.ClusterID,
+		ShardWithVersion: shardWithVersion,
+		ClusterVersion:   params.ClusterSnapShot.Topology.ClusterView.Version,
+	}
+	return relatedVersionInfo
+}
+
+func validateClusterTopology(topology metadata.Topology, shardID storage.ShardID) error {
+	// Validate cluster state.
+	curState := topology.ClusterView.State
+	if curState != storage.ClusterStateStable {
+		log.Error("cluster state must be stable", zap.Error(metadata.ErrClusterStateInvalid))
+		return metadata.ErrClusterStateInvalid
+	}
+
+	found := false
+	for _, shardView := range topology.ShardViews {
+		if shardView.ShardID == shardID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		log.Error("shard not found", zap.Uint64("shardID", uint64(shardID)), zap.Error(metadata.ErrShardNotFound))
+		return metadata.ErrShardNotFound
+	}
+
+	found = false
+	for _, shardNode := range topology.ClusterView.ShardNodes {
+		if shardNode.ShardRole == storage.ShardRoleLeader {
+			found = true
+		}
+	}
+	if !found {
+		log.Error("shard leader not found", zap.Error(procedure.ErrShardLeaderNotFound))
+		return procedure.ErrShardLeaderNotFound
+	}
+	return nil
 }
 
 type callbackRequest struct {
 	ctx context.Context
-
-	cluster  *cluster.Cluster
-	dispatch eventdispatch.Dispatch
-
-	shardID        storage.ShardID
-	newShardID     storage.ShardID
-	schemaName     string
-	tableNames     []string
-	targetNodeName string
+	p   *Procedure
 }
 
 func (p *Procedure) ID() uint64 {
-	return p.id
+	return p.params.Id
 }
 
 func (p *Procedure) Typ() procedure.Typ {
 	return procedure.Split
 }
 
+func (p *Procedure) RelatedVersionInfo() procedure.RelatedVersionInfo {
+	return p.relatedVersionInfo
+}
+
+func (p *Procedure) Priority() procedure.Priority {
+	return procedure.PriorityHigh
+}
+
 func (p *Procedure) Start(ctx context.Context) error {
 	p.updateStateWithLock(procedure.StateRunning)
 
 	splitCallbackRequest := callbackRequest{
-		ctx:            ctx,
-		cluster:        p.cluster,
-		dispatch:       p.dispatch,
-		shardID:        p.shardID,
-		newShardID:     p.newShardID,
-		schemaName:     p.schemaName,
-		tableNames:     p.tableNames,
-		targetNodeName: p.targetNodeName,
+		ctx: ctx,
+		p:   p,
 	}
 
 	for {
 		switch p.fsm.Current() {
 		case stateBegin:
-			if err := p.persist(ctx); err != nil {
-				return errors.WithMessage(err, "split procedure persist")
-			}
-			if err := p.fsm.Event(eventCreateNewShardMetadata, splitCallbackRequest); err != nil {
-				p.updateStateWithLock(procedure.StateFailed)
-				return errors.WithMessage(err, "split procedure create new shard metadata")
-			}
-		case stateCreateNewShardMetadata:
 			if err := p.persist(ctx); err != nil {
 				return errors.WithMessage(err, "split procedure persist")
 			}
@@ -198,93 +238,15 @@ func (p *Procedure) updateStateWithLock(state procedure.State) {
 	p.state = state
 }
 
-// openNewShardMetadataCallback create new shard and update metadata, table mapping will be updated in splitCloseTableCallback & splitOpenTableCallback callbacks.
-func openNewShardMetadataCallback(event *fsm.Event) {
+func createShardViewCallback(event *fsm.Event) {
 	req, err := procedure.GetRequestFromEvent[callbackRequest](event)
 	if err != nil {
 		procedure.CancelEventWithLog(event, err, "get request from event")
 		return
 	}
-	ctx := req.ctx
 
-	// Validate cluster state.
-	curState := req.cluster.GetClusterState()
-	if curState != storage.ClusterStateStable {
-		procedure.CancelEventWithLog(event, cluster.ErrClusterStateInvalid, "cluster state must be stable")
-		return
-	}
-
-	// Validate tables.
-	shardTables, exists := req.cluster.GetShardTables([]storage.ShardID{req.shardID})[req.shardID]
-	if !exists {
-		procedure.CancelEventWithLog(event, cluster.ErrShardNotFound, "shard not found", zap.Uint64("shardID", uint64(req.shardID)))
-		return
-	}
-	var tableNames []string
-	for _, table := range shardTables.Tables {
-		if req.schemaName == table.SchemaName {
-			tableNames = append(tableNames, table.Name)
-		}
-	}
-
-	if !procedure.IsSubSlice(req.tableNames, tableNames) {
-		procedure.CancelEventWithLog(event, cluster.ErrTableNotFound, "split tables not found in shard", zap.String("requestTableNames", strings.Join(req.tableNames, ",")), zap.String("tableNames", strings.Join(tableNames, ",")))
-		return
-	}
-
-	shardNodes, err := req.cluster.GetShardNodesByShardID(req.shardID)
-	if err != nil {
-		procedure.CancelEventWithLog(event, err, "cluster get shardNode by id")
-		return
-	}
-
-	var leaderShardNode storage.ShardNode
-	found := false
-	for _, shardNode := range shardNodes {
-		if shardNode.ShardRole == storage.ShardRoleLeader {
-			leaderShardNode = shardNode
-			found = true
-		}
-	}
-	if !found {
-		procedure.CancelEventWithLog(event, procedure.ErrShardLeaderNotFound, "shard leader not found")
-		return
-	}
-
-	// Create a new shard on origin node.
-	getNodeShardResult, err := req.cluster.GetNodeShards(ctx)
-	if err != nil {
-		procedure.CancelEventWithLog(event, err, "get node shards failed")
-		return
-	}
-
-	var updateShardNodes []storage.ShardNode
-	for _, shardNodeWithVersion := range getNodeShardResult.NodeShards {
-		updateShardNodes = append(updateShardNodes, shardNodeWithVersion.ShardNode)
-	}
-	updateShardNodes = append(updateShardNodes, storage.ShardNode{
-		ID:        req.newShardID,
-		ShardRole: storage.ShardRoleLeader,
-		NodeName:  leaderShardNode.NodeName,
-	})
-
-	// Update cluster view metadata.
-	if err = req.cluster.UpdateClusterView(ctx, storage.ClusterStateStable, updateShardNodes); err != nil {
-		procedure.CancelEventWithLog(event, err, "update cluster view failed")
-		return
-	}
-}
-
-func createShardViewCallback(event *fsm.Event) {
-	request, err := procedure.GetRequestFromEvent[callbackRequest](event)
-	if err != nil {
-		procedure.CancelEventWithLog(event, err, "get request from event")
-		return
-	}
-	ctx := request.ctx
-
-	if err := request.cluster.CreateShardViews(ctx, []cluster.CreateShardView{{
-		ShardID: request.newShardID,
+	if err := req.p.params.ClusterMetadata.CreateShardViews(req.ctx, []metadata.CreateShardView{{
+		ShardID: req.p.params.ShardID,
 		Tables:  []storage.TableID{},
 	}}); err != nil {
 		procedure.CancelEventWithLog(event, err, "create shard views")
@@ -299,11 +261,11 @@ func updateShardTablesCallback(event *fsm.Event) {
 		return
 	}
 
-	if err := request.cluster.MigrateTable(request.ctx, cluster.MigrateTableRequest{
-		SchemaName: request.schemaName,
-		TableNames: request.tableNames,
-		OldShardID: request.shardID,
-		NewShardID: request.newShardID,
+	if err := request.p.params.ClusterMetadata.MigrateTable(request.ctx, metadata.MigrateTableRequest{
+		SchemaName: request.p.params.SchemaName,
+		TableNames: request.p.params.TableNames,
+		OldShardID: request.p.params.ShardID,
+		NewShardID: request.p.params.NewShardID,
 	}); err != nil {
 		procedure.CancelEventWithLog(event, err, "update shard tables")
 		return
@@ -319,9 +281,9 @@ func openShardCallback(event *fsm.Event) {
 	ctx := request.ctx
 
 	// Send open new shard request to CSE.
-	if err := request.dispatch.OpenShard(ctx, request.targetNodeName, eventdispatch.OpenShardRequest{
-		Shard: cluster.ShardInfo{
-			ID:      request.newShardID,
+	if err := request.p.params.Dispatch.OpenShard(ctx, request.p.params.TargetNodeName, eventdispatch.OpenShardRequest{
+		Shard: metadata.ShardInfo{
+			ID:      request.p.params.NewShardID,
 			Role:    storage.ShardRoleLeader,
 			Version: 0,
 		},
@@ -337,7 +299,7 @@ func finishCallback(event *fsm.Event) {
 		procedure.CancelEventWithLog(event, err, "get request from event")
 		return
 	}
-	log.Info("split procedure finish", zap.Uint32("shardID", uint32(request.shardID)), zap.Uint32("newShardID", uint32(request.newShardID)))
+	log.Info("split procedure finish", zap.Uint32("shardID", uint32(request.p.params.ShardID)), zap.Uint32("newShardID", uint32(request.p.params.NewShardID)))
 }
 
 func (p *Procedure) persist(ctx context.Context) error {
@@ -345,7 +307,7 @@ func (p *Procedure) persist(ctx context.Context) error {
 	if err != nil {
 		return errors.WithMessage(err, "convert to meta")
 	}
-	err = p.storage.CreateOrUpdate(ctx, meta)
+	err = p.params.Storage.CreateOrUpdate(ctx, meta)
 	if err != nil {
 		return errors.WithMessage(err, "createOrUpdate procedure storage")
 	}
@@ -365,19 +327,19 @@ func (p *Procedure) convertToMeta() (procedure.Meta, error) {
 	defer p.lock.RUnlock()
 
 	rawData := rawData{
-		SchemaName:     p.schemaName,
-		TableNames:     p.tableNames,
-		ShardID:        uint32(p.shardID),
-		NewShardID:     uint32(p.newShardID),
-		TargetNodeName: p.targetNodeName,
+		SchemaName:     p.params.SchemaName,
+		TableNames:     p.params.TableNames,
+		ShardID:        uint32(p.params.ShardID),
+		NewShardID:     uint32(p.params.NewShardID),
+		TargetNodeName: p.params.TargetNodeName,
 	}
 	rawDataBytes, err := json.Marshal(rawData)
 	if err != nil {
-		return procedure.Meta{}, procedure.ErrEncodeRawData.WithCausef("marshal raw data, procedureID:%v, err:%v", p.shardID, err)
+		return procedure.Meta{}, procedure.ErrEncodeRawData.WithCausef("marshal raw data, procedureID:%v, err:%v", p.params.ShardID, err)
 	}
 
 	meta := procedure.Meta{
-		ID:    p.id,
+		ID:    p.params.Id,
 		Typ:   procedure.Split,
 		State: p.state,
 
