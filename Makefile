@@ -89,3 +89,29 @@ ensure-disk-quota:
 
 tsbs: build
 	cd $(DIR); sh scripts/run-tsbs.sh
+
+# install dev dependencies
+ifeq ($(shell uname), Darwin)
+dev-setup:
+	echo "Detecting macOS system..."
+	brew --version >/dev/null 2>&1 || { echo "Error: Homebrew is not installed. Exiting..."; exit 1; }
+	echo "Installing dependencies using Homebrew..."
+	brew install git curl openssl protobuf cmake
+else ifeq ($(shell uname), Linux)
+dev-setup:
+	echo "Detecting Linux system..."
+	os_id=$(shell awk -F= '/^ID=/{print $$2}' /etc/os-release) && \
+	if [ "$$os_id" = "ubuntu" ]; then \
+		echo "Detected Ubuntu system..."; \
+		echo "Installing dependencies using apt-get..."; \
+		sudo apt-get update; \
+		sudo apt install -y git curl gcc g++ libssl-dev pkg-config protobuf-compiler cmake; \
+	else \
+		echo "Error: Unsupported Linux distribution. Exiting..."; \
+		exit 1; \
+	fi
+else
+dev-setup:
+	echo "Error: Unsupported OS. Exiting..."
+	exit 1
+endif

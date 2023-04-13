@@ -190,12 +190,12 @@ pub struct ForwardRequest<Req> {
 }
 
 impl Forwarder<DefaultClientBuilder> {
-    pub fn try_new(config: Config, router: RouterRef, local_endpoint: Endpoint) -> Result<Self> {
+    pub fn new(config: Config, router: RouterRef, local_endpoint: Endpoint) -> Self {
         let client_builder = DefaultClientBuilder {
             config: config.clone(),
         };
 
-        Self::try_new_with_client_builder(config, router, local_endpoint, client_builder)
+        Self::new_with_client_builder(config, router, local_endpoint, client_builder)
     }
 }
 
@@ -230,19 +230,19 @@ impl<B> Forwarder<B> {
 }
 
 impl<B: ClientBuilder> Forwarder<B> {
-    pub fn try_new_with_client_builder(
+    pub fn new_with_client_builder(
         config: Config,
         router: RouterRef,
         local_endpoint: Endpoint,
         client_builder: B,
-    ) -> Result<Self> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             config,
             local_endpoint,
             router,
             clients: RwLock::new(HashMap::new()),
             client_builder,
-        })
+        }
     }
 
     /// Forward the request according to the configured router.
@@ -440,13 +440,12 @@ mod tests {
         let mock_router = Arc::new(mock_router);
 
         let local_endpoint = test_endpoint3.clone();
-        let forwarder = Forwarder::try_new_with_client_builder(
+        let forwarder = Forwarder::new_with_client_builder(
             config,
             mock_router.clone() as _,
             local_endpoint.clone(),
             MockClientBuilder,
-        )
-        .unwrap();
+        );
 
         let make_forward_req = |table: &str| {
             let query_request = SqlQueryRequest {

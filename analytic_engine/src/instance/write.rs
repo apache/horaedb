@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Write logic of instance
 
@@ -292,14 +292,17 @@ impl Instance {
         table_data: &TableDataRef,
         request: WriteRequest,
     ) -> Result<usize> {
+        let _timer = table_data.metrics.start_table_write_timer();
         let mut encode_ctx = EncodeContext::new(request.row_group);
 
         self.preprocess_write(worker_local, space, table_data, &mut encode_ctx)
             .await?;
 
-        // let table_data = space_table.table_data();
-        let schema = table_data.schema();
-        encode_ctx.encode_rows(&schema)?;
+        {
+            let _timer = table_data.metrics.start_table_write_encode_timer();
+            let schema = table_data.schema();
+            encode_ctx.encode_rows(&schema)?;
+        }
 
         let EncodeContext {
             row_group,
@@ -441,6 +444,7 @@ impl Instance {
         table_data: &TableDataRef,
         encode_ctx: &mut EncodeContext,
     ) -> Result<()> {
+        let _total_timer = table_data.metrics.start_table_write_preprocess_timer();
         ensure!(
             !table_data.is_dropped(),
             WriteDroppedTable {
@@ -486,6 +490,10 @@ impl Instance {
                           space.id,
                           self.db_write_buffer_size,
                     );
+
+                    let _timer = table_data
+                        .metrics
+                        .start_table_write_instance_flush_wait_timer();
                     self.handle_memtable_flush(worker_local, &table).await?;
                 }
             }
@@ -499,11 +507,16 @@ impl Instance {
                       space.id,
                       space.write_buffer_size,
                 );
+
+                let _timer = table_data
+                    .metrics
+                    .start_table_write_space_flush_wait_timer();
                 self.handle_memtable_flush(worker_local, &table).await?;
             }
         }
 
         if table_data.should_flush_table(worker_local) {
+            let _timer = table_data.metrics.start_table_write_flush_wait_timer();
             self.handle_memtable_flush(worker_local, table_data).await?;
         }
 
@@ -517,6 +530,8 @@ impl Instance {
         table_data: &TableData,
         encoded_rows: Vec<ByteVec>,
     ) -> Result<SequenceNumber> {
+        let _timer = table_data.metrics.start_table_write_wal_timer();
+
         worker_local
             .ensure_permission(
                 &table_data.name,
@@ -574,6 +589,8 @@ impl Instance {
         row_group: &RowGroupSlicer,
         index_in_writer: IndexInWriterSchema,
     ) -> Result<()> {
+        let _timer = table_data.metrics.start_table_write_memtable_timer();
+
         if row_group.is_empty() {
             return Ok(());
         }

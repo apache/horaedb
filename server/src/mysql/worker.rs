@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
@@ -140,7 +140,7 @@ where
             .catalog_manager
             .default_schema_name()
             .to_string();
-        let runtime = self.runtimes.bg_runtime.clone();
+        let runtime = self.runtimes.default_runtime.clone();
 
         RequestContext::builder()
             .catalog(default_catalog)

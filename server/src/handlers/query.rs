@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! SQL request handler
 
@@ -12,7 +12,6 @@ use common_types::{
 use common_util::time::InstantExt;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::info;
-use query_engine::executor::RecordBatchVec;
 use serde::{
     ser::{SerializeMap, SerializeSeq},
     Serialize,
@@ -34,14 +33,6 @@ use crate::handlers::{
 #[derive(Debug, Deserialize)]
 pub struct Request {
     query: String,
-}
-
-// TODO(yingwen): Improve serialize performance
-#[derive(Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Response {
-    AffectedRows(usize),
-    Rows(ResponseRows),
 }
 
 pub struct ResponseRows {
@@ -258,55 +249,4 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
     );
 
     Ok(output)
-}
-
-// Convert output to json
-pub fn convert_output(output: Output) -> Response {
-    match output {
-        Output::AffectedRows(n) => Response::AffectedRows(n),
-        Output::Records(records) => convert_records(records),
-    }
-}
-
-fn convert_records(records: RecordBatchVec) -> Response {
-    if records.is_empty() {
-        return Response::Rows(ResponseRows {
-            column_names: Vec::new(),
-            data: Vec::new(),
-        });
-    }
-
-    let mut column_names = vec![];
-    let mut column_data = vec![];
-
-    for record_batch in records {
-        let num_cols = record_batch.num_columns();
-        let num_rows = record_batch.num_rows();
-        let schema = record_batch.schema();
-
-        for col_idx in 0..num_cols {
-            let column_schema = schema.column(col_idx).clone();
-            column_names.push(ResponseColumn {
-                name: column_schema.name,
-                data_type: column_schema.data_type,
-            });
-        }
-
-        for row_idx in 0..num_rows {
-            let mut row_data = Vec::with_capacity(num_cols);
-            for col_idx in 0..num_cols {
-                let column = record_batch.column(col_idx);
-                let column = column.datum(row_idx);
-
-                row_data.push(column);
-            }
-
-            column_data.push(row_data);
-        }
-    }
-
-    Response::Rows(ResponseRows {
-        column_names,
-        data: column_data,
-    })
 }

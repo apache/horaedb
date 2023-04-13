@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Http service
 
@@ -8,8 +8,9 @@ use std::{
 };
 
 use analytic_engine::setup::OpenedWals;
-use common_util::error::BoxError;
-use handlers::query::QueryRequest;
+use common_types::bytes::Bytes;
+use common_util::error::{BoxError, GenericError};
+use handlers::query::QueryRequest as HandlerQueryRequest;
 use log::{error, info};
 use logger::RuntimeLevel;
 use profile::Profiler;
@@ -36,10 +37,13 @@ use crate::{
         self,
         influxdb::{self, InfluxDb, InfluxqlParams, InfluxqlRequest, WriteParams, WriteRequest},
         prom::CeresDBStorage,
-        query::Request,
     },
     instance::InstanceRef,
     metrics,
+    proxy::{
+        http::query::{convert_output, QueryRequest, Request},
+        Proxy,
+    },
     schema_config_provider::SchemaConfigProviderRef,
 };
 
@@ -49,9 +53,7 @@ pub enum Error {
     CreateContext { source: crate::context::Error },
 
     #[snafu(display("Failed to handle request, err:{}", source))]
-    HandleRequest {
-        source: Box<crate::handlers::error::Error>,
-    },
+    HandleRequest { source: GenericError },
 
     #[snafu(display("Failed to handle update log level, err:{}", msg))]
     HandleUpdateLogLevel { msg: String },
@@ -65,14 +67,11 @@ pub enum Error {
     #[snafu(display("Missing instance to build service.\nBacktrace:\n{}", backtrace))]
     MissingInstance { backtrace: Backtrace },
 
-    #[snafu(display(
-        "Missing server config content to build service.\nBacktrace:\n{}",
-        backtrace
-    ))]
-    MissingServerConfigContent { backtrace: Backtrace },
-
     #[snafu(display("Missing schema config provider.\nBacktrace:\n{}", backtrace))]
     MissingSchemaConfigProvider { backtrace: Backtrace },
+
+    #[snafu(display("Missing proxy.\nBacktrace:\n{}", backtrace))]
+    MissingProxy { backtrace: Backtrace },
 
     #[snafu(display(
         "Fail to do heap profiling, err:{}.\nBacktrace:\n{}",
@@ -125,9 +124,9 @@ pub const DEFAULT_MAX_BODY_SIZE: u64 = 64 * 1024;
 /// Endpoints beginning with /debug are for internal use, and may subject to
 /// breaking changes.
 pub struct Service<Q> {
+    proxy: Arc<Proxy<Q>>,
     engine_runtimes: Arc<EngineRuntimes>,
     log_runtime: Arc<RuntimeLevel>,
-    instance: InstanceRef<Q>,
     profiler: Arc<Profiler>,
     prom_remote_storage: RemoteStorageRef<RequestContext, crate::handlers::prom::Error>,
     influxdb: Arc<InfluxDb<Q>>,
@@ -165,7 +164,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             },
         );
 
-        self.engine_runtimes.bg_runtime.spawn(server);
+        self.engine_runtimes.default_runtime.spawn(server);
 
         Ok(())
     }
@@ -238,7 +237,9 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     fn sql(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         // accept json or plain text
         let extract_request = warp::body::json()
-            .or(warp::body::bytes().map(Request::from))
+            .or(warp::body::bytes().map(|v: Bytes| Request {
+                query: String::from_utf8_lossy(&v).to_string(),
+            }))
             .unify();
 
         warp::path!("sql")
@@ -246,16 +247,17 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(extract_request)
             .and(self.with_context())
-            .and(self.with_instance())
-            .and_then(|req, ctx, instance| async move {
+            .and(self.with_proxy())
+            .and_then(|req, ctx, proxy: Arc<Proxy<Q>>| async move {
                 let req = QueryRequest::Sql(req);
-                let result = handlers::query::handle_query(&ctx, instance, req)
+                let result = proxy
+                    .handle_query(&ctx, req)
                     .await
-                    .map(handlers::query::convert_output)
+                    .map(convert_output)
                     .map_err(|e| {
                         // TODO(yingwen): Maybe truncate and print the sql
                         error!("Http service Failed to handle sql, err:{}", e);
-                        Box::new(e)
+                        Box::new(e) as _
                     })
                     .context(HandleRequest);
                 match result {
@@ -279,7 +281,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                             "Http service Failed to find route of table:{}, err:{:?}",
                             table, e
                         );
-                        Box::new(e)
+                        Box::new(e) as _
                     })
                     .context(HandleRequest);
                 match result {
@@ -326,7 +328,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and_then(|method, ctx, db, params, body| async move {
                 let request =
                     InfluxqlRequest::try_new(method, body, params).map_err(reject::custom)?;
-                influxdb::query(ctx, db, QueryRequest::Influxql(request)).await
+                influxdb::query(ctx, db, HandlerQueryRequest::Influxql(request)).await
             });
 
         warp::path!("influxdb" / "v1" / ..).and(write_api.or(query_api))
@@ -511,7 +513,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     .await
                     .map_err(|e| {
                         error!("Http service failed to handle admin block, err:{}", e);
-                        Box::new(e)
+                        Box::new(e) as _
                     })
                     .context(HandleRequest);
 
@@ -526,17 +528,19 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         &self,
     ) -> impl Filter<Extract = (RequestContext,), Error = warp::Rejection> + Clone {
         let default_catalog = self
-            .instance
+            .proxy
+            .instance()
             .catalog_manager
             .default_catalog_name()
             .to_string();
         let default_schema = self
-            .instance
+            .proxy
+            .instance()
             .catalog_manager
             .default_schema_name()
             .to_string();
         //TODO(boyan) use read/write runtime by sql type.
-        let runtime = self.engine_runtimes.bg_runtime.clone();
+        let runtime = self.engine_runtimes.default_runtime.clone();
         let timeout = self.config.timeout;
         let router = self.router.clone();
 
@@ -571,6 +575,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::any().map(move || profiler.clone())
     }
 
+    fn with_proxy(&self) -> impl Filter<Extract = (Arc<Proxy<Q>>,), Error = Infallible> + Clone {
+        let proxy = self.proxy.clone();
+        warp::any().map(move || proxy.clone())
+    }
+
     fn with_influxdb(
         &self,
     ) -> impl Filter<Extract = (Arc<InfluxDb<Q>>,), Error = Infallible> + Clone {
@@ -581,7 +590,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     fn with_instance(
         &self,
     ) -> impl Filter<Extract = (InstanceRef<Q>,), Error = Infallible> + Clone {
-        let instance = self.instance.clone();
+        let instance = self.proxy.instance();
         warp::any().map(move || instance.clone())
     }
 
@@ -601,6 +610,7 @@ pub struct Builder<Q> {
     instance: Option<InstanceRef<Q>>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
     config_content: Option<String>,
+    proxy: Option<Arc<Proxy<Q>>>,
     router: Option<RouterRef>,
     opened_wals: Option<OpenedWals>,
 }
@@ -614,6 +624,7 @@ impl<Q> Builder<Q> {
             instance: None,
             schema_config_provider: None,
             config_content: None,
+            proxy: None,
             router: None,
             opened_wals: None,
         }
@@ -644,6 +655,11 @@ impl<Q> Builder<Q> {
         self
     }
 
+    pub fn proxy(mut self, proxy: Arc<Proxy<Q>>) -> Self {
+        self.proxy = Some(proxy);
+        self
+    }
+
     pub fn router(mut self, router: RouterRef) -> Self {
         self.router = Some(router);
         self
@@ -662,6 +678,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let instance = self.instance.context(MissingInstance)?;
         let config_content = self.config_content.context(MissingInstance)?;
+        let proxy = self.proxy.context(MissingProxy)?;
         let schema_config_provider = self
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
@@ -671,13 +688,13 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             instance.clone(),
             schema_config_provider.clone(),
         ));
-        let influxdb = Arc::new(InfluxDb::new(instance.clone(), schema_config_provider));
+        let influxdb = Arc::new(InfluxDb::new(instance, schema_config_provider));
         let (tx, rx) = oneshot::channel();
 
         let service = Service {
+            proxy,
             engine_runtimes,
             log_runtime,
-            instance,
             prom_remote_storage,
             influxdb,
             profiler: Arc::new(Profiler::default()),
@@ -715,8 +732,8 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::MissingEngineRuntimes { .. }
         | Error::MissingLogRuntime { .. }
         | Error::MissingInstance { .. }
-        | Error::MissingServerConfigContent { .. }
         | Error::MissingSchemaConfigProvider { .. }
+        | Error::MissingProxy { .. }
         | Error::ParseIpAddr { .. }
         | Error::ProfileHeap { .. }
         | Error::Internal { .. }

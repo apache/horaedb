@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Wal based on message queue
 
@@ -29,13 +29,13 @@ impl<M: MessageQueue> MessageQueueImpl<M> {
     pub fn new(
         namespace: String,
         message_queue: M,
-        bg_runtime: Arc<Runtime>,
+        default_runtime: Arc<Runtime>,
         config: Config,
     ) -> Self {
         MessageQueueImpl(Namespace::open(
             namespace,
             Arc::new(message_queue),
-            bg_runtime,
+            default_runtime,
             config,
         ))
     }

@@ -3,7 +3,6 @@
 use ceresdbproto::storage::{RouteRequest, RouteResponse};
 use common_util::error::BoxError;
 use http::StatusCode;
-use log::error;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::ResultExt;
 

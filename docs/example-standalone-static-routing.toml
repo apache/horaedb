@@ -9,7 +9,8 @@ level = "info"
 [runtime]
 read_thread_num = 4
 write_thread_num = 4
-background_thread_num = 4
+compact_thread_num = 2
+default_thread_num = 4
 
 [analytic]
 write_group_worker_num = 4
