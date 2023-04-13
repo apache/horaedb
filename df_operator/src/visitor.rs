@@ -2,7 +2,7 @@
 
 //! Helper function and struct to find input columns for an Expr;
 
-use datafusion_expr::expr::Expr as DfLogicalExpr;
+use datafusion::logical_expr::expr::Expr as DfLogicalExpr;
 
 pub fn find_columns_by_expr(expr: &DfLogicalExpr) -> Vec<String> {
     expr.to_columns()

@@ -11,7 +11,7 @@ use std::{
 
 use common_types::{column_schema::ColumnSchema, row::RowGroup, schema::Schema};
 use common_util::define_result;
-use datafusion_expr::{
+use datafusion::logical_expr::{
     expr::Expr as DfLogicalExpr, logical_plan::LogicalPlan as DataFusionLogicalPlan,
 };
 use snafu::Snafu;

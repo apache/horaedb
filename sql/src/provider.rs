@@ -11,10 +11,10 @@ use datafusion::{
     common::DataFusionError,
     config::ConfigOptions,
     datasource::{DefaultTableSource, TableProvider},
+    logical_expr::TableSource,
     physical_plan::{udaf::AggregateUDF, udf::ScalarUDF},
     sql::planner::ContextProvider,
 };
-use datafusion_expr::TableSource;
 use df_operator::{registry::FunctionRegistry, scalar::ScalarUdf, udaf::AggregateUdf};
 use snafu::{ResultExt, Snafu};
 use table_engine::{provider::TableProviderAdapter, table::TableRef};

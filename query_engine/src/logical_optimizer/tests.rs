@@ -11,11 +11,11 @@ use datafusion::{
     common::{DFSchemaRef, ToDFSchema},
     datasource::TableProvider,
     execution::context::SessionState,
+    logical_expr::{
+        Expr, Extension, Filter, Limit, LogicalPlan, Projection, Sort, TableScan, TableSource,
+        TableType,
+    },
     physical_plan::ExecutionPlan,
-};
-use datafusion_expr::{
-    Expr, Extension, Filter, Limit, LogicalPlan, Projection, Sort, TableScan, TableSource,
-    TableType,
 };
 
 use crate::df_planner_extension::table_scan_by_primary_key::TableScanByPrimaryKey;

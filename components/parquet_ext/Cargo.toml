@@ -17,7 +17,6 @@ async-trait = { workspace = true }
 bytes = { workspace = true }
 common_util = { workspace = true }
 datafusion = { workspace = true }
-datafusion-expr = { workspace = true }
 log = { workspace = true }
 parquet = { workspace = true }
 tokio = { workspace = true }

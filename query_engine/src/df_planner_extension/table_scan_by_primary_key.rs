@@ -12,12 +12,12 @@ use datafusion::{
     common::DFSchemaRef,
     error::DataFusionError,
     execution::context::SessionState,
+    logical_expr::{
+        expr_rewriter,
+        logical_plan::{LogicalPlan, TableScan, UserDefinedLogicalNode},
+        Expr,
+    },
     physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner},
-};
-use datafusion_expr::{
-    expr_rewriter,
-    logical_plan::{LogicalPlan, TableScan, UserDefinedLogicalNode},
-    Expr,
 };
 use table_engine::{provider::TableProviderAdapter, table::ReadOrder};
 

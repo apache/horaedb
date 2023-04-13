@@ -5,8 +5,9 @@
 use std::{collections::HashMap, sync::Arc};
 
 use common_util::error::BoxError;
-use datafusion::{error::DataFusionError, sql::planner::ContextProvider};
-use datafusion_expr::TableSource;
+use datafusion::{
+    error::DataFusionError, logical_expr::TableSource, sql::planner::ContextProvider,
+};
 use influxql_logical_planner::plan::{
     ceresdb_schema_to_influxdb, InfluxQLToLogicalPlan, SchemaProvider,
 };
@@ -45,11 +46,14 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
             .ok_or_else(|| DataFusionError::Plan(format!("measurement does not exist: {name}")))
     }
 
-    fn get_function_meta(&self, name: &str) -> Option<Arc<datafusion_expr::ScalarUDF>> {
+    fn get_function_meta(&self, name: &str) -> Option<Arc<datafusion::logical_expr::ScalarUDF>> {
         self.context_provider.get_function_meta(name)
     }
 
-    fn get_aggregate_meta(&self, name: &str) -> Option<Arc<datafusion_expr::AggregateUDF>> {
+    fn get_aggregate_meta(
+        &self,
+        name: &str,
+    ) -> Option<Arc<datafusion::logical_expr::AggregateUDF>> {
         self.context_provider.get_aggregate_meta(name)
     }
 

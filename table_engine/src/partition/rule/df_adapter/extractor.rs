@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 
 use common_types::datum::Datum;
-use datafusion_expr::{Expr, Operator};
+use datafusion::logical_expr::{Expr, Operator};
 use df_operator::visitor::find_columns_by_expr;
 
 use crate::partition::rule::filter::{PartitionCondition, PartitionFilter};
@@ -59,7 +59,7 @@ impl FilterExtractor for KeyExtractor {
             // (Actually, there is type conversion on high-level, but when converted data
             // is overflow, it may take no effect).
             let partition_filter = match filter.clone() {
-                Expr::BinaryExpr(datafusion_expr::BinaryExpr { left, op, right }) => {
+                Expr::BinaryExpr(datafusion::logical_expr::BinaryExpr { left, op, right }) => {
                     match (*left, op, *right) {
                         (Expr::Column(col), Operator::Eq, Expr::Literal(val))
                         | (Expr::Literal(val), Operator::Eq, Expr::Column(col)) => {
@@ -114,8 +114,10 @@ pub type FilterExtractorRef = Box<dyn FilterExtractor>;
 
 #[cfg(test)]
 mod tests {
-    use datafusion::scalar::ScalarValue;
-    use datafusion_expr::{col, Expr::Literal};
+    use datafusion::{
+        logical_expr::{col, Expr::Literal},
+        scalar::ScalarValue,
+    };
 
     use super::*;
 

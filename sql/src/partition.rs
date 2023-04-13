@@ -3,8 +3,7 @@
 //! Parse partition statement to partition info
 
 use common_util::error::BoxError;
-use datafusion::prelude::Column;
-use datafusion_expr::Expr;
+use datafusion::{logical_expr::Expr, prelude::Column};
 use datafusion_proto::bytes::Serializeable;
 use snafu::ResultExt;
 use sqlparser::ast::Expr as SqlExpr;

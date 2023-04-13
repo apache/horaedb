@@ -6,9 +6,9 @@ use async_trait::async_trait;
 use datafusion::{
     error::DataFusionError,
     execution::context::SessionState,
+    logical_expr::logical_plan::{LogicalPlan, UserDefinedLogicalNode},
     physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner},
 };
-use datafusion_expr::logical_plan::{LogicalPlan, UserDefinedLogicalNode};
 use snafu::Snafu;
 use sql::promql::PromAlignNode;
 

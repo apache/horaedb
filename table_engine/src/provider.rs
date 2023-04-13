@@ -17,6 +17,7 @@ use datafusion::{
     datasource::datasource::{TableProvider, TableProviderFilterPushDown},
     error::{DataFusionError, Result},
     execution::context::{SessionState, TaskContext},
+    logical_expr::{Expr, TableSource, TableType},
     physical_expr::PhysicalSortExpr,
     physical_plan::{
         metrics::{Count, MetricValue, MetricsSet},
@@ -24,7 +25,6 @@ use datafusion::{
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
-use datafusion_expr::{Expr, TableSource, TableType};
 use df_operator::visitor;
 use log::debug;
 use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector};
@@ -437,8 +437,10 @@ mod test {
         datum::DatumKind,
         schema::{Builder, Schema},
     };
-    use datafusion::scalar::ScalarValue;
-    use datafusion_expr::{col, Expr};
+    use datafusion::{
+        logical_expr::{col, Expr},
+        scalar::ScalarValue,
+    };
 
     use super::*;
     use crate::{memory::MemoryTable, table::TableId};

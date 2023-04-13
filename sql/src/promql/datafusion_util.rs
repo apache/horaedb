@@ -8,9 +8,11 @@ use std::{
 };
 
 use common_types::{schema::TSID_COLUMN, time::TimeRange};
-use datafusion::common::DFSchemaRef;
-use datafusion_expr::{
-    col, lit, Between, Expr as DataFusionExpr, Expr, LogicalPlan, UserDefinedLogicalNode,
+use datafusion::{
+    common::DFSchemaRef,
+    logical_expr::{
+        col, lit, Between, Expr as DataFusionExpr, Expr, LogicalPlan, UserDefinedLogicalNode,
+    },
 };
 
 use crate::promql::pushdown::{AlignParameter, Func};

@@ -1,8 +1,11 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use arrow::datatypes::SchemaRef;
-use datafusion::{common::Column, scalar::ScalarValue};
-use datafusion_expr::{self, Expr, Operator};
+use datafusion::{
+    common::Column,
+    logical_expr::{Expr, Operator},
+    scalar::ScalarValue,
+};
 
 const MAX_ELEMS_IN_LIST_FOR_FILTER: usize = 100;
 
@@ -99,7 +102,7 @@ impl EqPruner {
     }
 }
 
-/// The normalized expression based on [`datafusion_expr::Expr`].
+/// The normalized expression based on [`datafusion::logical_expr::Expr`].
 ///
 /// It only includes these kinds of `And`, `Or`, `Eq`, `NotEq` and `True`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -149,7 +152,7 @@ fn normalize_predicate_expression(expr: &Expr) -> NormalizedExpr {
     let unhandled = NormalizedExpr::True;
 
     match expr {
-        Expr::BinaryExpr(datafusion_expr::BinaryExpr { left, op, right }) => match op {
+        Expr::BinaryExpr(datafusion::logical_expr::BinaryExpr { left, op, right }) => match op {
             Operator::And => {
                 let left = normalize_predicate_expression(left);
                 let right = normalize_predicate_expression(right);

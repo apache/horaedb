@@ -2,7 +2,7 @@
 
 use std::{collections::HashSet, sync::RwLock};
 
-use datafusion_expr::logical_plan::LogicalPlan;
+use datafusion::logical_expr::logical_plan::LogicalPlan;
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, Snafu};
 use sql::plan::Plan;

@@ -23,7 +23,6 @@ cluster = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
 datafusion = { workspace = true }
-datafusion-expr = { workspace = true }
 datafusion-proto = { workspace = true }
 df_operator = { workspace = true }
 hashbrown = { version = "0.12", features = ["raw"] }
