@@ -170,27 +170,36 @@ impl Table for PartitionTableImpl {
                 write_request: WriteRequest { row_group },
             };
             let remote_engine = self.remote_engine.clone();
-            futures.push(async move { remote_engine.write(request).await });
+            let write_handle = self
+                .io_runtime
+                .spawn(async move { remote_engine.write(request).await });
+            futures.push(write_handle);
         }
 
-        let result = {
+        let write_results = {
+            // TODO: make it as local timer
             let _remote_timer = PARTITION_TABLE_WRITE_DURATION_HISTOGRAM
                 .with_label_values(&["remote_write"])
                 .start_timer();
+
             let handle = self.io_runtime.spawn(try_join_all(futures));
             handle
                 .await
                 .box_err()
-                .context(Write {
-                    table: self.name().to_string(),
-                })?
+                .context(Write { table: self.name() })?
                 .box_err()
-                .context(Write {
-                    table: self.name().to_string(),
-                })?
+                .context(Write { table: self.name() })?
         };
 
-        Ok(result.into_iter().sum())
+        let mut total_rows = 0;
+        for write_result in write_results {
+            let written_rows = write_result
+                .box_err()
+                .context(Write { table: self.name() })?;
+            total_rows += written_rows;
+        }
+
+        Ok(total_rows)
     }
 
     async fn read(&self, _request: ReadRequest) -> Result<SendableRecordBatchStream> {
