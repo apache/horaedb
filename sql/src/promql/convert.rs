@@ -11,12 +11,14 @@ use common_types::{
     time::{TimeRange, Timestamp},
 };
 use datafusion::{
-    error::DataFusionError, optimizer::utils::conjunction, sql::planner::ContextProvider,
-};
-use datafusion_expr::{
-    avg, col, count, lit,
-    logical_plan::{Extension, LogicalPlan, LogicalPlanBuilder},
-    max, min, sum, Expr as DataFusionExpr,
+    error::DataFusionError,
+    logical_expr::{
+        avg, col, count, lit,
+        logical_plan::{Extension, LogicalPlan, LogicalPlanBuilder},
+        max, min, sum, Expr as DataFusionExpr,
+    },
+    optimizer::utils::conjunction,
+    sql::planner::ContextProvider,
 };
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 

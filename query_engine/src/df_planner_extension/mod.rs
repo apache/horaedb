@@ -6,12 +6,12 @@ use std::sync::Arc;
 
 use datafusion::{
     execution::context::{QueryPlanner, SessionState},
+    logical_expr::logical_plan::LogicalPlan,
     physical_plan::{
         planner::{DefaultPhysicalPlanner, ExtensionPlanner},
         ExecutionPlan, PhysicalPlanner,
     },
 };
-use datafusion_expr::logical_plan::LogicalPlan;
 
 pub mod prom_align;
 pub mod table_scan_by_primary_key;

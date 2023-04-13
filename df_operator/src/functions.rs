@@ -11,12 +11,13 @@ use arrow::datatypes::DataType;
 use common_types::{column::ColumnBlock, datum::DatumKind};
 use common_util::{define_result, error::GenericError};
 use datafusion::{
-    error::DataFusionError, physical_plan::ColumnarValue as DfColumnarValue,
+    error::DataFusionError,
+    logical_expr::{
+        AccumulatorFunctionImplementation, ReturnTypeFunction, ScalarFunctionImplementation,
+        Signature as DfSignature, StateTypeFunction, TypeSignature as DfTypeSignature, Volatility,
+    },
+    physical_plan::ColumnarValue as DfColumnarValue,
     scalar::ScalarValue as DfScalarValue,
-};
-use datafusion_expr::{
-    AccumulatorFunctionImplementation, ReturnTypeFunction, ScalarFunctionImplementation,
-    Signature as DfSignature, StateTypeFunction, TypeSignature as DfTypeSignature, Volatility,
 };
 use smallvec::SmallVec;
 use snafu::{ResultExt, Snafu};

@@ -7,7 +7,7 @@ use arrow::{
     datatypes::{DataType, Field, Schema},
     record_batch::RecordBatch,
 };
-use datafusion_expr::Expr;
+use datafusion::logical_expr::Expr;
 use datafusion_proto::bytes::Serializeable;
 use log::error;
 use query_engine::executor::RecordBatchVec;
@@ -181,7 +181,7 @@ impl ShowCreateInterpreter {
 mod test {
     use std::ops::Add;
 
-    use datafusion_expr::col;
+    use datafusion::logical_expr::col;
     use datafusion_proto::bytes::Serializeable;
     use table_engine::partition::{
         HashPartitionInfo, KeyPartitionInfo, PartitionDefinition, PartitionInfo,

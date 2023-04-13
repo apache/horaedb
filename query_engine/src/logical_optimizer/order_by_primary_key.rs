@@ -5,11 +5,11 @@ use std::{convert::TryFrom, sync::Arc};
 use common_types::schema::Schema;
 use datafusion::{
     common::DFSchemaRef,
+    logical_expr::{
+        expr::{Expr, Sort as ExprSort},
+        logical_plan::{Extension, Filter, Limit, LogicalPlan, Projection, Sort, TableScan},
+    },
     optimizer::{optimizer::OptimizerRule, OptimizerConfig},
-};
-use datafusion_expr::{
-    expr::{Expr, Sort as ExprSort},
-    logical_plan::{Extension, Filter, Limit, LogicalPlan, Projection, Sort, TableScan},
 };
 use log::info;
 
@@ -235,8 +235,7 @@ struct RewriteContext {
 #[cfg(test)]
 mod tests {
     use common_types::{column_schema, datum::DatumKind, schema};
-    use datafusion::{common::Column, scalar::ScalarValue};
-    use datafusion_expr::expr::Sort as ExprSort;
+    use datafusion::{common::Column, logical_expr::expr::Sort as ExprSort, scalar::ScalarValue};
 
     use super::*;
     use crate::logical_optimizer::tests::LogicalPlanNodeBuilder;

@@ -11,13 +11,13 @@ use datafusion::{
         DFSchemaRef,
     },
     error::{DataFusionError, Result},
+    logical_expr::{
+        expr::Expr,
+        logical_plan::{Filter, LogicalPlan, TableScan},
+        utils, Between, BinaryExpr, ExprSchemable, Operator,
+    },
     optimizer::{optimizer::OptimizerRule, OptimizerConfig},
     scalar::ScalarValue,
-};
-use datafusion_expr::{
-    expr::Expr,
-    logical_plan::{Filter, LogicalPlan, TableScan},
-    utils, Between, BinaryExpr, ExprSchemable, Operator,
 };
 use log::debug;
 

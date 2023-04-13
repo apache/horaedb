@@ -21,13 +21,12 @@ use common_util::codec::{compact::MemCompactEncoder, Encoder};
 use datafusion::{
     common::ToDFSchema,
     error::DataFusionError,
-    logical_expr::ColumnarValue as DfColumnarValue,
+    logical_expr::{expr::Expr as DfLogicalExpr, ColumnarValue as DfColumnarValue},
+    optimizer::simplify_expressions::{ExprSimplifier, SimplifyContext},
     physical_expr::{
         create_physical_expr, execution_props::ExecutionProps, expressions::TryCastExpr,
     },
 };
-use datafusion_expr::expr::Expr as DfLogicalExpr;
-use datafusion_optimizer::simplify_expressions::{ExprSimplifier, SimplifyContext};
 use df_operator::visitor::find_columns_by_expr;
 use snafu::{OptionExt, ResultExt, Snafu};
 use sql::plan::InsertPlan;
