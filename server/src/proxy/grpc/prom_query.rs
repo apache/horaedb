@@ -36,6 +36,7 @@ use crate::proxy::{
 };
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
+    /// Implement prometheus query in grpc service.
     pub async fn handle_prom_query(
         &self,
         ctx: Context,
