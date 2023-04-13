@@ -12,7 +12,7 @@ use model::{ReadRequest, WriteRequest};
 use snafu::Snafu;
 
 use crate::{
-    remote::model::{GetTableInfoRequest, TableInfo},
+    remote::model::{GetTableInfoRequest, TableInfo, WriteBatchResult},
     stream::SendableRecordBatchStream,
 };
 
@@ -39,6 +39,8 @@ pub trait RemoteEngine: Send + Sync {
 
     /// Write to the remote engine.
     async fn write(&self, request: WriteRequest) -> Result<usize>;
+
+    async fn write_batch(&self, requests: Vec<WriteRequest>) -> Result<Vec<WriteBatchResult>>;
 
     async fn get_table_info(&self, request: GetTableInfoRequest) -> Result<TableInfo>;
 }

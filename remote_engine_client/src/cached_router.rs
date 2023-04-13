@@ -6,10 +6,10 @@ use std::{collections::HashMap, sync::RwLock};
 
 use ceresdbproto::storage::{self, RequestContext};
 use log::debug;
-use router::RouterRef;
+use router::{endpoint::Endpoint, RouterRef};
 use snafu::{OptionExt, ResultExt};
 use table_engine::remote::model::TableIdentifier;
-use tonic::transport::Channel;
+use tonic::transport::Channel as TonicChannel;
 
 use crate::{channel::ChannelPool, config::Config, error::*};
 
@@ -23,6 +23,12 @@ pub struct CachedRouter {
 
     /// Channel pool
     channel_pool: ChannelPool,
+}
+
+#[derive(Clone)]
+pub struct Channel {
+    pub channel_inner: TonicChannel,
+    pub endpoint: Endpoint,
 }
 
 impl CachedRouter {
@@ -77,9 +83,11 @@ impl CachedRouter {
         }
     }
 
-    pub async fn evict(&self, table_ident: &TableIdentifier) {
+    pub async fn evict(&self, table_idents: &[TableIdentifier]) {
         let mut cache = self.cache.write().unwrap();
-        let _ = cache.remove(table_ident);
+        for table_ident in table_idents {
+            let _ = cache.remove(table_ident);
+        }
     }
 
     async fn do_route(&self, table_ident: &TableIdentifier) -> Result<Channel> {
@@ -121,6 +129,9 @@ impl CachedRouter {
         let endpoint = endpoint.into();
         let channel = self.channel_pool.get(&endpoint).await?;
 
-        Ok(channel)
+        Ok(Channel {
+            channel_inner: channel,
+            endpoint,
+        })
     }
 }

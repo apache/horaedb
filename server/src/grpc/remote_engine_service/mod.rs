@@ -248,6 +248,14 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
     ) -> std::result::Result<Response<GetTableInfoResponse>, Status> {
         self.get_table_info_internal(request).await
     }
+
+    async fn write_batch(
+        &self,
+        _: tonic::Request<ceresdbproto::remote_engine::WriteBatchRequest>,
+    ) -> std::result::Result<Response<ceresdbproto::remote_engine::WriteBatchResponse>, Status>
+    {
+        todo!()
+    }
 }
 
 async fn handle_stream_read(

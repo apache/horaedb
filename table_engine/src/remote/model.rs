@@ -9,6 +9,7 @@ use arrow_ext::{
     ipc::{CompressOptions, CompressionMethod},
 };
 use ceresdbproto::{
+    remote_engine,
     remote_engine::row_group::Rows::Arrow,
     storage::{arrow_payload, ArrowPayload},
 };
@@ -17,7 +18,7 @@ use common_types::{
     row::{RowGroup, RowGroupBuilder},
     schema::Schema,
 };
-use common_util::error::{BoxError, GenericError};
+use common_util::error::{BoxError, GenericError, GenericResult};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -137,6 +138,41 @@ impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::ReadRequest {
     }
 }
 
+#[derive(Default)]
+pub struct WriteBatchRequest {
+    pub batch: Vec<WriteRequest>,
+}
+
+impl TryFrom<ceresdbproto::remote_engine::WriteBatchRequest> for WriteBatchRequest {
+    type Error = Error;
+
+    fn try_from(
+        pb: ceresdbproto::remote_engine::WriteBatchRequest,
+    ) -> std::result::Result<Self, Self::Error> {
+        let batch = pb
+            .batch
+            .into_iter()
+            .map(|req| WriteRequest::try_from(req))
+            .collect::<std::result::Result<Vec<_>, Self::Error>>()?;
+
+        Ok(WriteBatchRequest { batch })
+    }
+}
+
+impl TryFrom<WriteBatchRequest> for ceresdbproto::remote_engine::WriteBatchRequest {
+    type Error = Error;
+
+    fn try_from(batch_request: WriteBatchRequest) -> std::result::Result<Self, Self::Error> {
+        let batch = batch_request
+            .batch
+            .into_iter()
+            .map(|req| remote_engine::WriteRequest::try_from(req))
+            .collect::<std::result::Result<Vec<_>, Self::Error>>()?;
+
+        Ok(remote_engine::WriteBatchRequest { batch })
+    }
+}
+
 pub struct WriteRequest {
     pub table: TableIdentifier,
     pub write_request: TableWriteRequest,
@@ -235,6 +271,16 @@ impl TryFrom<WriteRequest> for ceresdbproto::remote_engine::WriteRequest {
             row_group: Some(row_group_pb),
         })
     }
+}
+
+pub struct WriteBatchResult {
+    pub table_idents: Vec<TableIdentifier>,
+    pub result: GenericResult<WriteBatchStatus>,
+}
+
+pub struct WriteBatchStatus {
+    pub success: u64,
+    pub failed: u64,
 }
 
 pub struct GetTableInfoRequest {

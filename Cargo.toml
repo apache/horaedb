@@ -151,8 +151,9 @@ toml = { workspace = true }
 tracing_util = { workspace = true }
 
 [workspace.dependencies.ceresdbproto]
-git = "https://github.com/CeresDB/ceresdbproto.git"
-rev = "1c3bf4e803ef8b7a1fbc8c3d4a07fdd372e1830b"
+git = "https://github.com/Rachelint/ceresdbproto.git"
+#rev = "1c3bf4e803ef8b7a1fbc8c3d4a07fdd372e1830b"
+rev = "e39526cf180cbd89c30a014a910484d50b4d8776"
 
 [build-dependencies]
 vergen = { version = "7", default-features = false, features = ["build", "git", "rustc"] }
