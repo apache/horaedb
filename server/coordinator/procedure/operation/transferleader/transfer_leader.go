@@ -60,7 +60,7 @@ type rawData struct {
 	FsmState string
 	State    procedure.State
 
-	snapShot          metadata.Snapshot
+	snapshot          metadata.Snapshot
 	ShardID           storage.ShardID
 	OldLeaderNodeName string
 	NewLeaderNodeName string
@@ -301,7 +301,7 @@ func (p *Procedure) convertToMeta() (procedure.Meta, error) {
 		ID:                p.params.ID,
 		FsmState:          p.fsm.Current(),
 		ShardID:           p.params.ShardID,
-		snapShot:          p.params.ClusterSnapShot,
+		snapshot:          p.params.ClusterSnapShot,
 		OldLeaderNodeName: p.params.OldLeaderNodeName,
 		NewLeaderNodeName: p.params.NewLeaderNodeName,
 		State:             p.state,
