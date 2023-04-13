@@ -10,14 +10,17 @@ use catalog::{manager::ManagerRef, schema::SchemaRef};
 use ceresdbproto::{
     remote_engine::{
         read_response::Output::Arrow, remote_engine_service_server::RemoteEngineService,
-        GetTableInfoRequest, GetTableInfoResponse, ReadRequest, ReadResponse, WriteRequest,
-        WriteResponse,
+        GetTableInfoRequest, GetTableInfoResponse, ReadRequest, ReadResponse, WriteBatchRequest,
+        WriteRequest, WriteResponse,
     },
     storage::{arrow_payload, ArrowPayload},
 };
 use common_types::record_batch::RecordBatch;
 use common_util::{error::BoxError, time::InstantExt};
-use futures::stream::{self, BoxStream, StreamExt};
+use futures::{
+    future::{join_all, try_join_all},
+    stream::{self, BoxStream, StreamExt},
+};
 use log::error;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
@@ -41,6 +44,11 @@ pub(crate) mod error;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
+
+struct TableWriteResult {
+    table_ident: TableIdentifier,
+    result: Result<WriteResponse>,
+}
 
 #[derive(Clone)]
 pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {
@@ -155,6 +163,45 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
         Ok(Response::new(resp))
     }
 
+    async fn write_batch_internal(
+        &self,
+        request: Request<WriteBatchRequest>,
+    ) -> std::result::Result<Response<WriteResponse>, Status> {
+        let begin_instant = Instant::now();
+        let request = request.into_inner();
+        let mut write_table_futures = Vec::with_capacity(request.batch.len());
+        for one_request in request.batch {
+            let ctx = self.handler_ctx();
+            write_table_futures.push(async move { handle_write(ctx, one_request).await });
+        }
+
+        let handle = self
+            .runtimes
+            .write_runtime
+            .spawn(try_join_all(write_table_futures));
+        let batch_result = handle.await.box_err().context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: "fail to run the join task",
+        });
+
+        let mut batch_resp = WriteResponse::default();
+        match batch_result {
+            Ok(Ok(v)) => {
+                batch_resp.header = Some(error::build_ok_header());
+                batch_resp.affected_rows = v.into_iter().map(|resp| resp.affected_rows).sum();
+            }
+            Ok(Err(e)) | Err(e) => {
+                batch_resp.header = Some(error::build_err_header(e));
+            }
+        };
+
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .write_batch
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
+
+        Ok(Response::new(batch_resp))
+    }
+
     fn handler_ctx(&self) -> HandlerContext {
         HandlerContext {
             catalog_manager: self.instance.catalog_manager.clone(),
@@ -163,6 +210,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
 }
 
 /// Context for handling all kinds of remote engine service.
+#[derive(Clone)]
 struct HandlerContext {
     catalog_manager: ManagerRef,
 }
@@ -251,10 +299,9 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
 
     async fn write_batch(
         &self,
-        _: tonic::Request<ceresdbproto::remote_engine::WriteBatchRequest>,
-    ) -> std::result::Result<Response<ceresdbproto::remote_engine::WriteBatchResponse>, Status>
-    {
-        todo!()
+        request: Request<WriteBatchRequest>,
+    ) -> std::result::Result<Response<WriteResponse>, Status> {
+        self.write_batch_internal(request).await
     }
 }
 

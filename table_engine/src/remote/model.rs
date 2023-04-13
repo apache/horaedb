@@ -152,7 +152,7 @@ impl TryFrom<ceresdbproto::remote_engine::WriteBatchRequest> for WriteBatchReque
         let batch = pb
             .batch
             .into_iter()
-            .map(|req| WriteRequest::try_from(req))
+            .map(WriteRequest::try_from)
             .collect::<std::result::Result<Vec<_>, Self::Error>>()?;
 
         Ok(WriteBatchRequest { batch })
@@ -166,7 +166,7 @@ impl TryFrom<WriteBatchRequest> for ceresdbproto::remote_engine::WriteBatchReque
         let batch = batch_request
             .batch
             .into_iter()
-            .map(|req| remote_engine::WriteRequest::try_from(req))
+            .map(remote_engine::WriteRequest::try_from)
             .collect::<std::result::Result<Vec<_>, Self::Error>>()?;
 
         Ok(remote_engine::WriteBatchRequest { batch })
@@ -275,12 +275,7 @@ impl TryFrom<WriteRequest> for ceresdbproto::remote_engine::WriteRequest {
 
 pub struct WriteBatchResult {
     pub table_idents: Vec<TableIdentifier>,
-    pub result: GenericResult<WriteBatchStatus>,
-}
-
-pub struct WriteBatchStatus {
-    pub success: u64,
-    pub failed: u64,
+    pub result: GenericResult<u64>,
 }
 
 pub struct GetTableInfoRequest {

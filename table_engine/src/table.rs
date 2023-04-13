@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table abstraction
 
@@ -84,7 +84,7 @@ pub enum Error {
     #[snafu(display("Invalid arguments, err:{}", source))]
     InvalidArguments { table: String, source: GenericError },
 
-    #[snafu(display("Failed to write table, table:{}, err:{}", table, source))]
+    #[snafu(display("Failed to write tables, table:{}, err:{}", table, source))]
     Write { table: String, source: GenericError },
 
     #[snafu(display("Failed to scan table, table:{}, err:{}", table, source))]
@@ -128,6 +128,12 @@ pub enum Error {
 
     #[snafu(display("Failed to locate partitions, err:{}", source))]
     LocatePartitions { source: GenericError },
+
+    #[snafu(display("Failed to write tables in batch, tables:{:?}, err:{}", tables, source))]
+    WriteBatch {
+        tables: Vec<String>,
+        source: GenericError,
+    },
 }
 
 define_result!(Error);

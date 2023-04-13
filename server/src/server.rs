@@ -316,6 +316,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let remote_engine_ref = Arc::new(RemoteEngineImpl::new(
             self.remote_engine_client_config.clone(),
             router.clone(),
+            engine_runtimes.io_runtime.clone(),
         ));
 
         let partition_table_engine = Arc::new(PartitionTableEngine::new(

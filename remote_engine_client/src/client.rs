@@ -5,7 +5,6 @@
 use std::{
     collections::HashMap,
     pin::Pin,
-    result,
     sync::Arc,
     task::{Context, Poll},
 };
@@ -19,13 +18,13 @@ use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatch, schema::RecordSchema,
 };
 use common_util::{error::BoxError, runtime::Runtime};
-use futures::{future::try_join_all, Stream, StreamExt};
+use futures::{future::join_all, Stream, StreamExt};
 use router::RouterRef;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
     remote::model::{
         GetTableInfoRequest, ReadRequest, TableIdentifier, TableInfo, WriteBatchRequest,
-        WriteBatchResult, WriteBatchStatus, WriteRequest,
+        WriteBatchResult, WriteRequest,
     },
     table::{SchemaId, TableId},
 };
@@ -154,21 +153,21 @@ impl Client {
 
         // Merge according to endpoint.
         let mut remote_writes = Vec::with_capacity(write_batch_contexts_by_endpoint.len());
+        let mut written_tables = Vec::with_capacity(write_batch_contexts_by_endpoint.len());
         for (_, context) in write_batch_contexts_by_endpoint {
+            // Write to remote.
+            let WriteBatchContext {
+                table_idents,
+                request,
+                channel,
+            } = context;
             let handle = self.worker_runtime.spawn(async move {
-                // Write to remote.
-                let WriteBatchContext {
-                    table_idents,
-                    request,
-                    channel,
-                } = context;
-
                 let batch_request_pb =
                     match ceresdbproto::remote_engine::WriteBatchRequest::try_from(request)
                         .box_err()
                     {
                         Ok(pb) => pb,
-                        Err(e) => return (table_idents, Err(e)),
+                        Err(e) => return Err(e),
                     };
 
                 let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
@@ -177,21 +176,35 @@ impl Client {
                     .await
                     .box_err();
 
-                (table_idents, rpc_result)
+                rpc_result
             });
 
             remote_writes.push(handle);
+            written_tables.push(table_idents);
         }
 
-        let remote_write_results = try_join_all(remote_writes).await.unwrap();
+        let remote_write_results = join_all(remote_writes).await;
         let mut results = Vec::with_capacity(remote_write_results.len());
-        for (table_idents, batch_result) in remote_write_results {
-            let response = match batch_result {
+        for (table_idents, batch_result) in written_tables.into_iter().zip(remote_write_results) {
+            // If it's runtime error, don't evict entires from route cache.
+            let remote_write_result = match batch_result.box_err() {
+                Ok(result) => result,
+                Err(e) => {
+                    results.push(WriteBatchResult {
+                        table_idents,
+                        result: Err(e),
+                    });
+                    continue;
+                }
+            };
+
+            // Check remote write result then.
+            let remote_write_response = match remote_write_result {
                 Ok(response) => response,
 
                 Err(e) => {
-                    // If occurred error, we simply evict the corresponding channel now.
-                    // TODO: evict according to the type of error.
+                    // If occurred error of remote write, we simply evict the corresponding channel
+                    // now. TODO: evict according to the type of error.
                     self.cached_router.evict(&table_idents).await;
                     results.push(WriteBatchResult {
                         table_idents,
@@ -201,8 +214,9 @@ impl Client {
                 }
             };
 
-            let response = response.into_inner();
-            if let Some(header) = response.header && !status_code::is_ok(header.code) {
+            // Check response finally.
+            let remote_write_response = remote_write_response.into_inner();
+            if let Some(header) = remote_write_response.header && !status_code::is_ok(header.code) {
                 let err = Server {
                     code: header.code,
                     msg: header.error,
@@ -214,10 +228,7 @@ impl Client {
             } else {
                 results.push(WriteBatchResult {
                     table_idents,
-                    result: Ok(WriteBatchStatus {
-                        success: response.success,
-                        failed: response.failed,
-                    }),
+                    result: Ok(remote_write_response.affected_rows),
                 });
             }
         }
