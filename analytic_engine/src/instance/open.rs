@@ -8,10 +8,9 @@ use std::{
 };
 
 use common_types::schema::IndexInWriterSchema;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, trace};
 use snafu::ResultExt;
 use table_engine::engine::OpenTableRequest;
-use tokio::sync::oneshot;
 use wal::{
     log_batch::LogEntry,
     manager::{ReadBoundary, ReadContext, ReadRequest, WalManagerRef},
@@ -23,14 +22,11 @@ use crate::{
     engine,
     instance::{
         self,
-        engine::{
-            ApplyMemTable, FlushTable, OperateByWriteWorker, ReadMetaUpdate, ReadWal,
-            RecoverTableData, Result,
-        },
+        engine::{ApplyMemTable, FlushTable, ReadMetaUpdate, ReadWal, RecoverTableData, Result},
         flush_compaction::TableFlushOptions,
         mem_collector::MemUsageCollector,
-        write_worker,
-        write_worker::{RecoverTableCommand, WorkerLocal, WriteGroup},
+        serializer::TableOpSerializer,
+        write::MemTableWriter,
         Instance, SpaceStore, Spaces,
     },
     manifest::{meta_data::TableManifestData, LoadRequest, ManifestRef},
@@ -95,8 +91,6 @@ impl Instance {
             runtimes: ctx.runtimes.clone(),
             table_opts: ctx.config.table_opts.clone(),
 
-            write_group_worker_num: ctx.config.write_group_worker_num,
-            write_group_command_channel_cap: ctx.config.write_group_command_channel_cap,
             compaction_scheduler,
             file_purger,
             meta_cache: ctx.meta_cache.clone(),
@@ -136,16 +130,11 @@ impl Instance {
             return Ok(space.clone());
         }
 
-        // space is not opened yet and try to open it
-        let write_group_opts = self.write_group_options(space_id);
-        let write_group = WriteGroup::new(write_group_opts, self.clone());
-
         // Add this space to instance.
         let space = Arc::new(Space::new(
             space_id,
             context,
             self.space_write_buffer_size,
-            write_group,
             self.mem_usage_collector.clone(),
         ));
         spaces.insert(space.clone());
@@ -167,58 +156,21 @@ impl Instance {
             None => return Ok(None),
         };
 
-        let (tx, rx) = oneshot::channel();
-        let cmd = RecoverTableCommand {
-            space,
-            table_data: table_data.clone(),
-            tx,
-            replay_batch_size: self.replay_batch_size,
-        };
-
-        // Send recover request to write worker, actual works done in
-        // Self::recover_table_from_wal()
-        write_worker::process_command_in_write_worker(cmd.into_command(), &table_data, rx)
-            .await
-            .context(OperateByWriteWorker {
-                space_id: table_data.space_id,
-                table: &table_data.name,
-                table_id: table_data.id,
-            })
-    }
-
-    /// Recover the table data.
-    ///
-    /// Return None if the table data does not exist.
-    pub async fn process_recover_table_command(
-        self: &Arc<Self>,
-        worker_local: &mut WorkerLocal,
-        space: SpaceRef,
-        table_data: TableDataRef,
-        replay_batch_size: usize,
-    ) -> Result<Option<TableDataRef>> {
-        if let Some(exist_table_data) = space.find_table_by_id(table_data.id) {
-            warn!("Open a opened table, table:{}", table_data.name);
-            return Ok(Some(exist_table_data));
-        }
-
         let read_ctx = ReadContext {
-            batch_size: replay_batch_size,
+            batch_size: self.replay_batch_size,
             ..Default::default()
         };
 
-        self.recover_table_from_wal(
-            worker_local,
-            table_data.clone(),
-            replay_batch_size,
-            &read_ctx,
-        )
-        .await
-        .map_err(|e| {
-            error!("Recovery table from wal failed, table_data:{table_data:?}, err:{e}");
-            space.insert_open_failed_table(table_data.name.to_string());
-            e
-        })?;
+        self.recover_table_from_wal(table_data.clone(), self.replay_batch_size, &read_ctx)
+            .await
+            .map_err(|e| {
+                error!("Recovery table from wal failed, table_data:{table_data:?}, err:{e}");
+                space.insert_open_failed_table(table_data.name.to_string());
+                e
+            })?;
 
+        // All data has been recovered, insert the table into space to allow following
+        // access.
         space.insert_table(table_data.clone());
         Ok(Some(table_data))
     }
@@ -277,25 +229,23 @@ impl Instance {
         };
         let space = self.open_space(table_meta.space_id, context).await?;
 
-        let (table_id, table_name) = (table_meta.table_id, table_meta.table_name.clone());
-        // Choose write worker for this table
-        let write_handle = space.write_group.choose_worker(table_id);
+        let table_name = table_meta.table_name.clone();
 
         debug!("Instance apply add table, meta :{:?}", table_meta);
 
         let table_data = Arc::new(
             TableData::recover_from_add(
-                table_meta.clone(),
-                write_handle,
+                table_meta,
                 &self.file_purger,
                 space.mem_usage_collector.clone(),
                 request.shard_id,
             )
             .context(RecoverTableData {
-                space_id: table_meta.space_id,
+                space_id: space.id,
                 table: &table_name,
             })?,
         );
+
         // Apply version meta to the table.
         if let Some(version_meta) = version_meta {
             let max_file_id = version_meta.max_file_id_to_add();
@@ -314,7 +264,6 @@ impl Instance {
     /// Called by write worker
     pub(crate) async fn recover_table_from_wal(
         self: &Arc<Self>,
-        worker_local: &mut WorkerLocal,
         table_data: TableDataRef,
         replay_batch_size: usize,
         read_ctx: &ReadContext,
@@ -341,6 +290,7 @@ impl Instance {
             .await
             .context(ReadWal)?;
 
+        let mut serializer = table_data.serializer.lock().await;
         let mut log_entry_buf = VecDeque::with_capacity(replay_batch_size);
         loop {
             // fetch entries to log_entry_buf
@@ -351,7 +301,7 @@ impl Instance {
                 .context(ReadWal)?;
 
             // Replay all log entries of current table
-            self.replay_table_log_entries(worker_local, &table_data, &log_entry_buf)
+            self.replay_table_log_entries(&mut serializer, &table_data, &log_entry_buf)
                 .await?;
 
             // No more entries.
@@ -366,7 +316,7 @@ impl Instance {
     /// Replay all log entries into memtable and flush if necessary.
     async fn replay_table_log_entries(
         self: &Arc<Self>,
-        worker_local: &mut WorkerLocal,
+        serializer: &mut TableOpSerializer,
         table_data: &TableDataRef,
         log_entries: &VecDeque<LogEntry<ReadPayload>>,
     ) -> Result<()> {
@@ -424,27 +374,25 @@ impl Instance {
 
                     let index_in_writer =
                         IndexInWriterSchema::for_same_schema(row_group.schema().num_columns());
-                    Self::write_to_memtable(
-                        worker_local,
-                        table_data,
-                        sequence,
-                        &row_group.into(),
-                        index_in_writer,
-                    )
-                    .context(ApplyMemTable {
-                        space_id: table_data.space_id,
-                        table: &table_data.name,
-                        table_id: table_data.id,
-                    })?;
+                    let memtable_writer = MemTableWriter::make(table_data.clone(), serializer);
+                    memtable_writer
+                        .write(sequence, &row_group.into(), index_in_writer)
+                        .context(ApplyMemTable {
+                            space_id: table_data.space_id,
+                            table: &table_data.name,
+                            table_id: table_data.id,
+                        })?;
 
                     // Flush the table if necessary.
-                    if table_data.should_flush_table(worker_local) {
+                    if table_data.should_flush_table() {
                         let opts = TableFlushOptions {
                             res_sender: None,
-                            compact_after_flush: false,
-                            block_on_write_thread: false,
+                            compact_after_flush: None,
                         };
-                        self.flush_table_in_worker(worker_local, table_data, opts)
+                        let flusher = self.make_flusher();
+                        let flush_scheduler = serializer.flush_scheduler();
+                        flusher
+                            .schedule_flush(flush_scheduler, table_data, opts)
                             .await
                             .context(FlushTable {
                                 space_id: table_data.space_id,

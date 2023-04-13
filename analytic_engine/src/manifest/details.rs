@@ -35,7 +35,6 @@ use wal::{
     },
 };
 
-use super::SnapshotRequest;
 use crate::{
     manifest::{
         meta_data::{TableManifestData, TableManifestDataBuilder},
@@ -43,7 +42,7 @@ use crate::{
             AddTableMeta, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload, MetaUpdateRequest,
             VersionEditMeta,
         },
-        LoadRequest, Manifest,
+        LoadRequest, Manifest, SnapshotRequest,
     },
     space::SpaceId,
     table::version::TableVersionMeta,

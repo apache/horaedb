@@ -447,13 +447,13 @@ impl SysCatalogTable {
             table_info
         );
 
-        let table_writer = TableWriter {
+        let serializer = TableWriter {
             catalog_table: self.table.clone(),
             table_to_write: table_info,
             typ,
         };
 
-        table_writer.write().await?;
+        serializer.write().await?;
 
         Ok(())
     }

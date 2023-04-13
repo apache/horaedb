@@ -20,12 +20,11 @@ use table_engine::{
         Result, Scan, Table, TableId, TableStats, Write, WriteRequest,
     },
 };
-use tokio::sync::oneshot;
 use trace_metric::MetricsCollector;
 
 use self::data::TableDataRef;
 use crate::{
-    instance::{flush_compaction::TableFlushOptions, Instance, InstanceRef},
+    instance::{alter::Alterer, write::Writer, InstanceRef},
     space::{SpaceAndTable, SpaceId},
 };
 
@@ -113,9 +112,15 @@ impl Table for TableImpl {
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {
-        let num_rows = self
-            .instance
-            .write_to_table(&self.space_table, request)
+        let mut serializer = self.table_data.serializer.lock().await;
+        let mut writer = Writer::make(
+            self.instance.clone(),
+            self.space_table.clone(),
+            &mut serializer,
+        );
+
+        let num_rows = writer
+            .write(request)
             .await
             .box_err()
             .context(Write { table: self.name() })?;
@@ -226,8 +231,16 @@ impl Table for TableImpl {
     }
 
     async fn alter_schema(&self, request: AlterSchemaRequest) -> Result<usize> {
-        self.instance
-            .alter_schema_of_table(&self.space_table, request)
+        let mut serializer = self.table_data.serializer.lock().await;
+        let mut alterer = Alterer::make(
+            self.table_data.clone(),
+            &mut serializer,
+            self.instance.clone(),
+        )
+        .await;
+
+        alterer
+            .alter_schema_of_table(request)
             .await
             .box_err()
             .context(AlterSchema { table: self.name() })?;
@@ -235,8 +248,16 @@ impl Table for TableImpl {
     }
 
     async fn alter_options(&self, options: HashMap<String, String>) -> Result<usize> {
-        self.instance
-            .alter_options_of_table(&self.space_table, options)
+        let mut serializer = self.table_data.serializer.lock().await;
+        let alterer = Alterer::make(
+            self.table_data.clone(),
+            &mut serializer,
+            self.instance.clone(),
+        )
+        .await;
+
+        alterer
+            .alter_options_of_table(options)
             .await
             .box_err()
             .context(AlterOptions { table: self.name() })?;
@@ -244,33 +265,16 @@ impl Table for TableImpl {
     }
 
     async fn flush(&self, request: FlushRequest) -> Result<()> {
-        let mut rx_opt = None;
-        let flush_opts = TableFlushOptions {
-            compact_after_flush: request.compact_after_flush,
-            // Never block write thread
-            block_on_write_thread: false,
-            res_sender: if request.sync {
-                let (tx, rx) = oneshot::channel();
-                rx_opt = Some(rx);
-                Some(tx)
-            } else {
-                None
-            },
-        };
-
-        Instance::flush_table(self.space_table.table_data().clone(), flush_opts)
+        self.instance
+            .manual_flush_table(&self.table_data, request)
             .await
             .box_err()
-            .context(Flush { table: self.name() })?;
-        if let Some(rx) = rx_opt {
-            rx.await.box_err().context(Flush { table: self.name() })??;
-        }
-        Ok(())
+            .context(Flush { table: self.name() })
     }
 
     async fn compact(&self) -> Result<()> {
         self.instance
-            .manual_compact_table(&self.space_table)
+            .manual_compact_table(&self.table_data)
             .await
             .box_err()
             .context(Compact { table: self.name() })?;

@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table engine logic of instance
 
@@ -14,7 +14,7 @@ use table_engine::{
 use wal::manager::WalLocation;
 
 use crate::{
-    instance::{write_worker::WriteGroup, Instance},
+    instance::{close::Closer, drop::Dropper, Instance},
     space::{Space, SpaceAndTable, SpaceContext, SpaceId, SpaceRef},
 };
 
@@ -65,20 +65,6 @@ pub enum Error {
         table: String,
         table_id: TableId,
         source: crate::instance::write::Error,
-    },
-
-    #[snafu(display(
-        "Failed to operate table through write worker, space_id:{}, table:{}, table_id:{}, err:{}",
-        space_id,
-        table,
-        table_id,
-        source,
-    ))]
-    OperateByWriteWorker {
-        space_id: SpaceId,
-        table: String,
-        table_id: TableId,
-        source: crate::instance::write_worker::Error,
     },
 
     #[snafu(display(
@@ -244,7 +230,6 @@ impl From<Error> for table_engine::engine::Error {
             | Error::RecoverTableData { .. }
             | Error::ReadWal { .. }
             | Error::ApplyMemTable { .. }
-            | Error::OperateByWriteWorker { .. }
             | Error::FlushTable { .. }
             | Error::StoreVersionEdit { .. }
             | Error::EncodePayloads { .. }
@@ -273,19 +258,14 @@ impl Instance {
         if let Some(space) = spaces.get_by_id(space_id) {
             return Ok(space.clone());
         }
-        // Now we are the one responsible to create and persist the space info into meta
 
-        // Create write group for the space
-        // TODO(yingwen): Expose options
-        let write_group_opts = self.write_group_options(space_id);
-        let write_group = WriteGroup::new(write_group_opts, self.clone());
+        // Now we are the one responsible to create and persist the space info into meta
 
         // Create space
         let space = Arc::new(Space::new(
             space_id,
             context,
             self.space_write_buffer_size,
-            write_group,
             self.mem_usage_collector.clone(),
         ));
 
@@ -366,8 +346,13 @@ impl Instance {
             space_id,
             table: &request.table_name,
         })?;
+        let dropper = Dropper {
+            space,
+            space_store: self.space_store.clone(),
+            flusher: self.make_flusher(),
+        };
 
-        self.do_drop_table(space, request).await
+        dropper.drop(request).await
     }
 
     /// Close the table under given space by its table name
@@ -381,6 +366,12 @@ impl Instance {
             table: &request.table_name,
         })?;
 
-        self.do_close_table(space, request).await
+        let closer = Closer {
+            space,
+            manifest: self.space_store.manifest.clone(),
+            flusher: self.make_flusher(),
+        };
+
+        closer.close(request).await
     }
 }

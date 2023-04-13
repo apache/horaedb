@@ -8,15 +8,10 @@ use common_util::error::BoxError;
 use log::info;
 use snafu::ResultExt;
 use table_engine::engine::CreateTableRequest;
-use tokio::sync::oneshot;
 
 use crate::{
     instance::{
-        engine::{
-            CreateOpenFailedTable, CreateTableData, InvalidOptions, OperateByWriteWorker, Result,
-            WriteManifest,
-        },
-        write_worker::{self, CreateTableCommand, WorkerLocal},
+        engine::{CreateOpenFailedTable, CreateTableData, InvalidOptions, Result, WriteManifest},
         Instance,
     },
     manifest::meta_update::{AddTableMeta, MetaUpdate, MetaUpdateRequest},
@@ -57,14 +52,12 @@ impl Instance {
         }
 
         // Choose a write worker for this table
-        let write_handle = space.write_group.choose_worker(request.table_id);
         let (table_name, table_id) = (request.table_name.clone(), request.table_id);
 
         let table_data = Arc::new(
             TableData::new(
                 space.id,
                 request,
-                write_handle,
                 table_opts,
                 &self.file_purger,
                 space.mem_usage_collector.clone(),
@@ -75,35 +68,6 @@ impl Instance {
                 table_id,
             })?,
         );
-
-        let space_id = space.id;
-        let (tx, rx) = oneshot::channel();
-        let cmd = CreateTableCommand {
-            space,
-            table_data: table_data.clone(),
-            tx,
-        };
-        write_worker::process_command_in_write_worker(cmd.into_command(), &table_data, rx)
-            .await
-            .context(OperateByWriteWorker {
-                space_id,
-                table: table_name,
-                table_id: table_data.id,
-            })
-    }
-
-    /// Do the actual create table job, must be called by write worker in write
-    /// thread sequentially.
-    pub(crate) async fn process_create_table_command(
-        self: &Arc<Self>,
-        _worker_local: &mut WorkerLocal,
-        space: SpaceRef,
-        table_data: TableDataRef,
-    ) -> Result<TableDataRef> {
-        if let Some(table_data) = space.find_table_by_id(table_data.id) {
-            // Use the table data from the space instead of the table_data in params.
-            return Ok(table_data);
-        };
 
         // Store table info into meta
         let update_req = {

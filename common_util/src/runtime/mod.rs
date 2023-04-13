@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! A multi-threaded runtime that supports running Futures
 use std::{
@@ -43,6 +43,8 @@ pub enum Error {
 }
 
 define_result!(Error);
+
+pub type RuntimeRef = Arc<Runtime>;
 
 /// A runtime to run future tasks
 #[derive(Debug)]

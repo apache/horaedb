@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Compaction.
 
@@ -11,7 +11,6 @@ use tokio::sync::oneshot;
 
 use crate::{
     compaction::picker::{CommonCompactionPicker, CompactionPickerRef},
-    instance::write_worker::CompactionNotifier,
     sst::file::{FileHandle, Level},
     table::data::TableDataRef,
     table_options::COMPACTION_STRATEGY,
@@ -429,18 +428,13 @@ impl Drop for WaiterNotifier {
 /// Request to compact single table.
 pub struct TableCompactionRequest {
     pub table_data: TableDataRef,
-    pub compaction_notifier: Option<CompactionNotifier>,
     pub waiter: Option<oneshot::Sender<WaitResult<()>>>,
 }
 
 impl TableCompactionRequest {
-    pub fn no_waiter(
-        table_data: TableDataRef,
-        compaction_notifier: Option<CompactionNotifier>,
-    ) -> Self {
+    pub fn no_waiter(table_data: TableDataRef) -> Self {
         TableCompactionRequest {
             table_data,
-            compaction_notifier,
             waiter: None,
         }
     }

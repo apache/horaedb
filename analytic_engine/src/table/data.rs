@@ -30,7 +30,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::CreateTableRequest, table::TableId};
 
 use crate::{
-    instance::write_worker::{choose_worker, WorkerLocal, WriteHandle},
+    instance::serializer::TableOpSerializer,
     manifest::meta_update::AddTableMeta,
     memtable::{
         factory::{FactoryRef as MemTableFactoryRef, Options as MemTableOptions},
@@ -119,8 +119,7 @@ pub struct TableData {
     /// single writer, but reads are allowed to be done concurrently without
     /// mutex protected
     last_sequence: AtomicU64,
-    /// Handle to the write worker
-    pub write_handle: WriteHandle,
+
     /// Auto incremented id to track memtable, reset on engine open
     ///
     /// Allocating memtable id should be guarded by write lock
@@ -144,8 +143,11 @@ pub struct TableData {
     /// Metrics of this table
     pub metrics: Metrics,
 
-    /// Shard id
+    /// Shard info of the table
     pub shard_info: TableShardInfo,
+
+    /// The table operation serializer
+    pub serializer: tokio::sync::Mutex<TableOpSerializer>,
 }
 
 impl fmt::Debug for TableData {
@@ -184,7 +186,6 @@ impl TableData {
     pub fn new(
         space_id: SpaceId,
         request: CreateTableRequest,
-        write_handle: WriteHandle,
         table_opts: TableOptions,
         purger: &FilePurger,
         mem_usage_collector: CollectorRef,
@@ -208,13 +209,13 @@ impl TableData {
             mem_usage_collector,
             current_version,
             last_sequence: AtomicU64::new(0),
-            write_handle,
             last_memtable_id: AtomicU64::new(0),
             last_file_id: AtomicU64::new(0),
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
             shard_info: TableShardInfo::new(request.shard_id),
+            serializer: tokio::sync::Mutex::new(TableOpSerializer::new(request.table_id)),
         })
     }
 
@@ -223,7 +224,6 @@ impl TableData {
     /// This wont recover sequence number, which will be set after wal replayed
     pub fn recover_from_add(
         add_meta: AddTableMeta,
-        write_handle: WriteHandle,
         purger: &FilePurger,
         mem_usage_collector: CollectorRef,
         shard_id: ShardId,
@@ -244,13 +244,13 @@ impl TableData {
             mem_usage_collector,
             current_version,
             last_sequence: AtomicU64::new(0),
-            write_handle,
             last_memtable_id: AtomicU64::new(0),
             last_file_id: AtomicU64::new(0),
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
             shard_info: TableShardInfo::new(shard_id),
+            serializer: tokio::sync::Mutex::new(TableOpSerializer::new(add_meta.table_id)),
         })
     }
 
@@ -305,10 +305,8 @@ impl TableData {
     }
 
     /// Update table options.
-    ///
-    /// REQUIRE: The write lock is held.
     #[inline]
-    pub fn set_table_options(&self, _write_lock: &WorkerLocal, opts: TableOptions) {
+    pub fn set_table_options(&self, opts: TableOptions) {
         self.mutable_limit
             .store(get_mutable_limit(&opts), Ordering::Relaxed);
         self.opts.store(Arc::new(opts))
@@ -336,11 +334,8 @@ impl TableData {
     /// If the memtable schema is outdated, switch all memtables and create the
     /// needed mutable memtable by current schema. The returned memtable is
     /// guaranteed to have same schema of current table
-    ///
-    /// REQUIRE: The write lock is held
     pub fn find_or_create_mutable(
         &self,
-        write_lock: &WorkerLocal,
         timestamp: Timestamp,
         table_schema: &Schema,
     ) -> Result<MemTableForWrite> {
@@ -349,7 +344,7 @@ impl TableData {
 
         if let Some(mem) = self
             .current_version
-            .memtable_for_write(write_lock, timestamp, schema_version)
+            .memtable_for_write(timestamp, schema_version)
             .context(FindMemTable)?
         {
             return Ok(mem);
@@ -404,7 +399,7 @@ impl TableData {
     /// Returns true if the memory usage of this table reaches flush threshold
     ///
     /// REQUIRE: Do in write worker
-    pub fn should_flush_table(&self, _worker_local: &WorkerLocal) -> bool {
+    pub fn should_flush_table(&self) -> bool {
         // Fallback to usize::MAX if Failed to convert arena_block_size into
         // usize (overflow)
         let max_write_buffer_size = self
@@ -560,16 +555,10 @@ impl TableDataSet {
         self.table_datas.len()
     }
 
-    /// Find the table that the current WorkerLocal belongs to and consumes the
-    /// largest memtable memory usage.
-    pub fn find_maximum_memory_usage_table(
-        &self,
-        worker_num: usize,
-        worker_index: usize,
-    ) -> Option<TableDataRef> {
+    pub fn find_maximum_memory_usage_table(&self) -> Option<TableDataRef> {
+        // TODO: Possible performance issue here when there are too many tables.
         self.table_datas
             .values()
-            .filter(|t| choose_worker(t.id.as_u64() as usize, worker_num) == worker_index)
             .max_by_key(|t| t.memtable_memory_usage())
             .cloned()
     }
@@ -593,7 +582,6 @@ pub mod tests {
 
     use super::*;
     use crate::{
-        instance::write_worker::tests::WriteHandleMocker,
         memtable::{factory::Factory, MemTableRef},
         sst::file::tests::FilePurgerMocker,
         table_options,
@@ -633,7 +621,6 @@ pub mod tests {
         table_id: TableId,
         table_name: String,
         shard_id: ShardId,
-        write_handle: Option<WriteHandle>,
     }
 
     impl TableDataMocker {
@@ -649,11 +636,6 @@ pub mod tests {
 
         pub fn shard_id(mut self, shard_id: ShardId) -> Self {
             self.shard_id = shard_id;
-            self
-        }
-
-        pub fn write_handle(mut self, write_handle: WriteHandle) -> Self {
-            self.write_handle = Some(write_handle);
             self
         }
 
@@ -674,23 +656,11 @@ pub mod tests {
                 partition_info: None,
             };
 
-            let write_handle = self.write_handle.unwrap_or_else(|| {
-                let mocked_write_handle = WriteHandleMocker::default().space_id(space_id).build();
-                mocked_write_handle.write_handle
-            });
             let table_opts = TableOptions::default();
             let purger = FilePurgerMocker::mock();
             let collector = Arc::new(NoopCollector);
 
-            TableData::new(
-                space_id,
-                create_request,
-                write_handle,
-                table_opts,
-                &purger,
-                collector,
-            )
-            .unwrap()
+            TableData::new(space_id, create_request, table_opts, &purger, collector).unwrap()
         }
     }
 
@@ -700,7 +670,6 @@ pub mod tests {
                 table_id: table::new_table_id(2, 1),
                 table_name: "mocked_table".to_string(),
                 shard_id: DEFAULT_SHARD_ID,
-                write_handle: None,
             }
         }
     }
@@ -728,20 +697,12 @@ pub mod tests {
 
     #[test]
     fn test_find_or_create_mutable() {
-        let mocked_write_handle = WriteHandleMocker::default()
-            .space_id(DEFAULT_SPACE_ID)
-            .build();
-        let table_data = TableDataMocker::default()
-            .write_handle(mocked_write_handle.write_handle)
-            .build();
-        let worker_local = mocked_write_handle.worker_local;
+        let table_data = TableDataMocker::default().build();
         let schema = table_data.schema();
 
         // Create sampling memtable.
         let zero_ts = Timestamp::new(0);
-        let mutable = table_data
-            .find_or_create_mutable(&worker_local, zero_ts, &schema)
-            .unwrap();
+        let mutable = table_data.find_or_create_mutable(zero_ts, &schema).unwrap();
         assert!(mutable.accept_timestamp(zero_ts));
         let sampling_mem = mutable.as_sampling();
         let sampling_id = sampling_mem.id;
@@ -749,9 +710,7 @@ pub mod tests {
 
         // Test memtable is reused.
         let now_ts = Timestamp::now();
-        let mutable = table_data
-            .find_or_create_mutable(&worker_local, now_ts, &schema)
-            .unwrap();
+        let mutable = table_data.find_or_create_mutable(now_ts, &schema).unwrap();
         assert!(mutable.accept_timestamp(now_ts));
         let sampling_mem = mutable.as_sampling();
         // Use same sampling memtable.
@@ -762,14 +721,12 @@ pub mod tests {
         let mut table_opts = (*table_data.table_options()).clone();
         table_opts.segment_duration =
             Some(ReadableDuration(table_options::DEFAULT_SEGMENT_DURATION));
-        table_data.set_table_options(&worker_local, table_opts);
+        table_data.set_table_options(table_opts);
         // Freeze sampling memtable.
-        current_version.freeze_sampling(&worker_local);
+        current_version.freeze_sampling();
 
         // A new mutable memtable should be created.
-        let mutable = table_data
-            .find_or_create_mutable(&worker_local, now_ts, &schema)
-            .unwrap();
+        let mutable = table_data.find_or_create_mutable(now_ts, &schema).unwrap();
         assert!(mutable.accept_timestamp(now_ts));
         let mem_state = mutable.as_normal();
         assert_eq!(2, mem_state.id);

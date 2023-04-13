@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table space
 //!
@@ -14,7 +14,7 @@ use arena::CollectorRef;
 use table_engine::table::TableId;
 
 use crate::{
-    instance::{mem_collector::MemUsageCollector, write_worker::WriteGroup},
+    instance::mem_collector::MemUsageCollector,
     table::data::{TableDataRef, TableDataSet},
 };
 
@@ -97,8 +97,6 @@ pub struct Space {
     // TODO: engine should provide a repair method to fix those failed tables.
     open_failed_tables: RwLock<Vec<String>>,
 
-    /// Write workers
-    pub write_group: WriteGroup,
     /// Space memtable memory usage collector
     pub mem_usage_collector: Arc<MemUsageCollector>,
     /// The maximum write buffer size used for single space.
@@ -110,13 +108,11 @@ impl Space {
         id: SpaceId,
         context: SpaceContext,
         write_buffer_size: usize,
-        write_group: WriteGroup,
         engine_mem_collector: CollectorRef,
     ) -> Self {
         Self {
             id,
             context,
-            write_group,
             table_datas: Default::default(),
             open_failed_tables: Default::default(),
             mem_usage_collector: Arc::new(MemUsageCollector::with_parent(engine_mem_collector)),
@@ -134,22 +130,16 @@ impl Space {
     /// Find the table whose memtable consumes the most memory in the space by
     /// specifying Worker.
     #[inline]
-    pub fn find_maximum_memory_usage_table(&self, worker_index: usize) -> Option<TableDataRef> {
-        let worker_num = self.write_group.worker_num();
+    pub fn find_maximum_memory_usage_table(&self) -> Option<TableDataRef> {
         self.table_datas
             .read()
             .unwrap()
-            .find_maximum_memory_usage_table(worker_num, worker_index)
+            .find_maximum_memory_usage_table()
     }
 
     #[inline]
     pub fn memtable_memory_usage(&self) -> usize {
         self.mem_usage_collector.total_memory_allocated()
-    }
-
-    pub async fn close(&self) {
-        // Stop the write group.
-        self.write_group.stop().await;
     }
 
     /// Insert table data into space memory state if the table is

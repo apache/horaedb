@@ -14,8 +14,8 @@ pub mod flush_compaction;
 pub(crate) mod mem_collector;
 pub mod open;
 mod read;
+pub(crate) mod serializer;
 pub(crate) mod write;
-pub mod write_worker;
 
 use std::{
     collections::HashMap,
@@ -23,15 +23,21 @@ use std::{
 };
 
 use common_types::table::TableId;
-use common_util::{define_result, runtime::Runtime};
-use log::info;
+use common_util::{
+    define_result,
+    error::{BoxError, GenericError},
+    runtime::Runtime,
+};
+use log::{error, info};
 use mem_collector::MemUsageCollector;
 use snafu::{ResultExt, Snafu};
-use table_engine::engine::EngineRuntimes;
+use table_engine::{engine::EngineRuntimes, table::FlushRequest};
+use tokio::sync::oneshot::{self, error::RecvError};
 use wal::manager::{WalLocation, WalManagerRef};
 
+use self::flush_compaction::{Flusher, TableFlushOptions};
 use crate::{
-    compaction::scheduler::CompactionSchedulerRef,
+    compaction::{scheduler::CompactionSchedulerRef, TableCompactionRequest},
     manifest::ManifestRef,
     row_iter::IterOptions,
     space::{SpaceId, SpaceRef},
@@ -54,6 +60,12 @@ pub enum Error {
     StopScheduler {
         source: crate::compaction::scheduler::Error,
     },
+
+    #[snafu(display("Failed to flush table manually, table:{}, err:{}", table, source))]
+    ManualFlush { table: String, source: GenericError },
+
+    #[snafu(display("Failed to receive flush result, table:{}, err:{}", table, source))]
+    RecvFlushResult { table: String, source: RecvError },
 }
 
 define_result!(Error);
@@ -105,6 +117,8 @@ pub struct SpaceStore {
     meta_cache: Option<MetaCacheRef>,
 }
 
+pub type SpaceStoreRef = Arc<SpaceStore>;
+
 impl Drop for SpaceStore {
     fn drop(&mut self) {
         info!("SpaceStore dropped");
@@ -113,12 +127,7 @@ impl Drop for SpaceStore {
 
 impl SpaceStore {
     async fn close(&self) -> Result<()> {
-        let spaces = self.spaces.read().unwrap().list_all_spaces();
-        for space in spaces {
-            // Close all spaces.
-            space.close().await;
-        }
-
+        // TODO: close all background jobs.
         Ok(())
     }
 }
@@ -147,19 +156,16 @@ impl SpaceStore {
 /// Manages all spaces, also contains needed resources shared across all table
 pub struct Instance {
     /// Space storage
-    space_store: Arc<SpaceStore>,
+    space_store: SpaceStoreRef,
     /// Runtime to execute async tasks.
     runtimes: Arc<EngineRuntimes>,
     /// Global table options, overwrite mutable options in each table's
     /// TableOptions.
     table_opts: TableOptions,
 
-    // Write group options:
-    write_group_worker_num: usize,
-    write_group_command_channel_cap: usize,
     // End of write group options.
-    compaction_scheduler: CompactionSchedulerRef,
     file_purger: FilePurger,
+    compaction_scheduler: CompactionSchedulerRef,
 
     meta_cache: Option<MetaCacheRef>,
     /// Engine memtable memory usage collector
@@ -191,6 +197,65 @@ impl Instance {
             .await
             .context(StopScheduler)
     }
+
+    pub async fn manual_flush_table(
+        &self,
+        table_data: &TableDataRef,
+        request: FlushRequest,
+    ) -> Result<()> {
+        let mut rx_opt = None;
+        let compaction_scheduler = if request.compact_after_flush {
+            Some(self.compaction_scheduler.clone())
+        } else {
+            None
+        };
+        let flush_opts = TableFlushOptions {
+            compact_after_flush: compaction_scheduler,
+            res_sender: if request.sync {
+                let (tx, rx) = oneshot::channel();
+                rx_opt = Some(rx);
+                Some(tx)
+            } else {
+                None
+            },
+        };
+
+        let flusher = self.make_flusher();
+        let mut serializer = table_data.serializer.lock().await;
+        let flush_scheduler = serializer.flush_scheduler();
+        flusher
+            .schedule_flush(flush_scheduler, table_data, flush_opts)
+            .await
+            .box_err()
+            .context(ManualFlush {
+                table: &table_data.name,
+            })?;
+
+        if let Some(rx) = rx_opt {
+            rx.await
+                .context(RecvFlushResult {
+                    table: &table_data.name,
+                })?
+                .box_err()
+                .context(ManualFlush {
+                    table: &table_data.name,
+                })?;
+        }
+        Ok(())
+    }
+
+    pub async fn manual_compact_table(&self, table_data: &TableDataRef) -> Result<()> {
+        let request = TableCompactionRequest::no_waiter(table_data.clone());
+        let succeed = self
+            .compaction_scheduler
+            .schedule_table_compaction(request)
+            .await;
+        if !succeed {
+            error!("Failed to schedule compaction, table:{}", table_data.name);
+        }
+
+        Ok(())
+    }
 }
 
 // TODO(yingwen): Instance builder
@@ -199,16 +264,6 @@ impl Instance {
     fn get_space_by_read_lock(&self, space: SpaceId) -> Option<SpaceRef> {
         let spaces = self.space_store.spaces.read().unwrap();
         spaces.get_by_id(space).cloned()
-    }
-
-    /// Returns options to create a write group for given space
-    fn write_group_options(&self, space_id: SpaceId) -> write_worker::Options {
-        write_worker::Options {
-            space_id,
-            worker_num: self.write_group_worker_num,
-            runtime: self.write_runtime().clone(),
-            command_channel_capacity: self.write_group_command_channel_cap,
-        }
     }
 
     /// Returns true when engine instance's total memtable memory usage reaches
@@ -225,8 +280,13 @@ impl Instance {
     }
 
     #[inline]
-    fn write_runtime(&self) -> &Arc<Runtime> {
-        &self.runtimes.write_runtime
+    fn make_flusher(&self) -> Flusher {
+        Flusher {
+            space_store: self.space_store.clone(),
+            // Do flush in write runtime
+            runtime: self.runtimes.write_runtime.clone(),
+            write_sst_max_buffer_size: self.write_sst_max_buffer_size,
+        }
     }
 }
 
