@@ -42,8 +42,8 @@ const VALUE_COLUMN: &str = "value";
 impl reject::Reject for Error {}
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
-    /// Write samples to remote storage
-    async fn prom_write(&self, ctx: RequestContext, req: WriteRequest) -> Result<()> {
+    /// Handle write samples to remote storage with remote storage protocol.
+    async fn handle_prom_write(&self, ctx: RequestContext, req: WriteRequest) -> Result<()> {
         let request_id = RequestId::next_id();
         let deadline = ctx.timeout.map(|t| Instant::now() + t);
         let catalog = &ctx.catalog;
@@ -86,6 +86,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 msg: "Failed to write via gRPC",
             })?;
         }
+
         debug!(
             "Remote write finished, catalog:{}, schema:{}, success:{}",
             catalog, schema, success
@@ -94,12 +95,16 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         Ok(())
     }
 
-    /// Process one query within ReadRequest.
-    async fn prom_process_query(&self, ctx: &RequestContext, q: Query) -> Result<QueryResult> {
-        let (metric, mut filters) = normalize_matchers(q.matchers)?;
+    /// Handle one query with remote storage protocol.
+    async fn handle_prom_process_query(
+        &self,
+        ctx: &RequestContext,
+        query: Query,
+    ) -> Result<QueryResult> {
+        let (metric, mut filters) = normalize_matchers(query.matchers)?;
         filters.push(format!(
             "{} between {} AND {}",
-            TIMESTAMP_COLUMN, q.start_timestamp_ms, q.end_timestamp_ms
+            TIMESTAMP_COLUMN, query.start_timestamp_ms, query.end_timestamp_ms
         ));
 
         let sql = format!(
@@ -129,15 +134,15 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for Proxy<Q> {
     type Err = Error;
 
     async fn write(&self, ctx: Self::Context, req: WriteRequest) -> StdResult<(), Self::Err> {
-        Ok(self.prom_write(ctx, req).await?)
+        self.handle_prom_write(ctx, req).await
     }
 
     async fn process_query(
         &self,
         ctx: &Self::Context,
-        q: Query,
+        query: Query,
     ) -> StdResult<QueryResult, Self::Err> {
-        Ok(self.prom_process_query(ctx, q).await?)
+        self.handle_prom_process_query(ctx, query).await
     }
 }
 
