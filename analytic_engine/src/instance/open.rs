@@ -374,7 +374,7 @@ impl Instance {
 
                     let index_in_writer =
                         IndexInWriterSchema::for_same_schema(row_group.schema().num_columns());
-                    let memtable_writer = MemTableWriter::make(table_data.clone(), serializer);
+                    let memtable_writer = MemTableWriter::new(table_data.clone(), serializer);
                     memtable_writer
                         .write(sequence, &row_group.into(), index_in_writer)
                         .context(ApplyMemTable {

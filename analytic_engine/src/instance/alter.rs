@@ -35,7 +35,7 @@ pub struct Alterer<'a> {
 }
 
 impl<'a> Alterer<'a> {
-    pub async fn make(
+    pub async fn new(
         table_data: TableDataRef,
         serializer: &'a mut TableOpSerializer,
         instance: InstanceRef,

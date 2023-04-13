@@ -113,7 +113,7 @@ impl Table for TableImpl {
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {
         let mut serializer = self.table_data.serializer.lock().await;
-        let mut writer = Writer::make(
+        let mut writer = Writer::new(
             self.instance.clone(),
             self.space_table.clone(),
             &mut serializer,
@@ -232,7 +232,7 @@ impl Table for TableImpl {
 
     async fn alter_schema(&self, request: AlterSchemaRequest) -> Result<usize> {
         let mut serializer = self.table_data.serializer.lock().await;
-        let mut alterer = Alterer::make(
+        let mut alterer = Alterer::new(
             self.table_data.clone(),
             &mut serializer,
             self.instance.clone(),
@@ -249,7 +249,7 @@ impl Table for TableImpl {
 
     async fn alter_options(&self, options: HashMap<String, String>) -> Result<usize> {
         let mut serializer = self.table_data.serializer.lock().await;
-        let alterer = Alterer::make(
+        let alterer = Alterer::new(
             self.table_data.clone(),
             &mut serializer,
             self.instance.clone(),

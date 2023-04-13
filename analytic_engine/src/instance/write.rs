@@ -246,7 +246,7 @@ pub struct Writer<'a> {
 }
 
 impl<'a> Writer<'a> {
-    pub fn make(
+    pub fn new(
         instance: InstanceRef,
         space_table: SpaceAndTable,
         serializer: &'a mut TableOpSerializer,
@@ -268,7 +268,7 @@ pub(crate) struct MemTableWriter<'a> {
 }
 
 impl<'a> MemTableWriter<'a> {
-    pub fn make(table_data: TableDataRef, serializer: &'a mut TableOpSerializer) -> Self {
+    pub fn new(table_data: TableDataRef, serializer: &'a mut TableOpSerializer) -> Self {
         Self {
             table_data,
             _serializer: serializer,
@@ -425,7 +425,7 @@ impl<'a> Writer<'a> {
         encoded_rows: Vec<ByteVec>,
     ) -> Result<()> {
         let sequence = self.write_to_wal(encoded_rows).await?;
-        let memtable_writer = MemTableWriter::make(table_data.clone(), self.serializer);
+        let memtable_writer = MemTableWriter::new(table_data.clone(), self.serializer);
 
         memtable_writer
             .write(sequence, &row_group, index_in_writer)
