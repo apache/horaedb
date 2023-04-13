@@ -268,10 +268,12 @@ impl Table for PartitionTableImpl {
         .fail()
     }
 
+    // Partition table is a virtual table, so it don't need to flush.
     async fn flush(&self, _request: FlushRequest) -> Result<()> {
         Ok(())
     }
 
+    // Partition table is a virtual table, so it don't need to compact.
     async fn compact(&self) -> Result<()> {
         Ok(())
     }

@@ -16,8 +16,8 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use ::http::StatusCode;
 
+use ::http::StatusCode;
 use catalog::schema::{CreateOptions, CreateTableRequest, DropOptions, DropTableRequest};
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, SqlQueryRequest, SqlQueryResponse,
