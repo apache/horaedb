@@ -58,7 +58,6 @@ run-java:
 	java -version
 	cd sdk/java && MAVEN_OPTS="--add-opens=java.base/java.nio=ALL-UNNAMED" mvn clean compile exec:java
 
-
 run-go:
 	cd sdk/go && go run .
 

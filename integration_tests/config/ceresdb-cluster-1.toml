@@ -1,3 +1,6 @@
+[logger]
+level = "info"
+
 [server]
 bind_addr = "0.0.0.0"
 http_port = 15440

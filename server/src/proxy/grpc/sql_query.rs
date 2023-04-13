@@ -80,7 +80,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let req = match self.maybe_forward_sql_query(&req).await? {
             Some(resp) => match resp {
                 ForwardResult::Forwarded(resp) => return resp,
-                ForwardResult::Original => req,
+                ForwardResult::Local => req,
             },
             None => req,
         };
@@ -97,7 +97,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let req = match self.clone().maybe_forward_stream_sql_query(&req).await {
             Some(resp) => match resp {
                 ForwardResult::Forwarded(resp) => return resp,
-                ForwardResult::Original => req,
+                ForwardResult::Local => req,
             },
             None => req,
         };

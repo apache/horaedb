@@ -7,7 +7,8 @@ use std::{
 
 use bytes::Bytes;
 use ceresdbproto::storage::{
-    value, WriteRequest, WriteResponse, WriteSeriesEntry, WriteTableRequest,
+    storage_service_client::StorageServiceClient, value, RouteRequest, WriteRequest, WriteResponse,
+    WriteSeriesEntry, WriteTableRequest,
 };
 use cluster::config::SchemaConfig;
 use common_types::{
@@ -19,10 +20,16 @@ use common_types::{
     time::Timestamp,
 };
 use common_util::error::BoxError;
+use futures::{
+    future::{try_join_all, BoxFuture},
+    FutureExt,
+};
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, info};
 use query_engine::executor::Executor as QueryExecutor;
+use router::endpoint::Endpoint;
+use snafu::{ensure, OptionExt, ResultExt};
 use query_frontend::{
     frontend::{Context as FrontendContext, Frontend},
     plan::{AlterTableOperation, AlterTablePlan, InsertPlan, Plan},
@@ -31,13 +38,16 @@ use query_frontend::{
 };
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::table::TableRef;
+use tonic::transport::Channel;
 
 use crate::{
     instance::InstanceRef,
     proxy::{
         error,
-        error::{build_ok_header, ErrNoCause, ErrWithCause, Result},
-        execute_plan, Context, Proxy,
+        error::{build_ok_header, ErrNoCause, ErrWithCause, InternalNoCause, Result},
+        execute_plan,
+        forward::ForwardResult,
+        Context, Proxy,
     },
 };
 
@@ -89,11 +99,45 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
+        let database = req
+            .context
+            .clone()
+            .context(ErrNoCause {
+                msg: "Missing context",
+                code: StatusCode::BAD_REQUEST,
+            })?
+            .database;
+        let (write_request_to_local, mut futures) = self.maybe_forward_write(req).await?;
+
+        // Write to local.
+        if !write_request_to_local.table_requests.is_empty() {
+            let local_future =
+                async move { self.write_to_local(ctx, write_request_to_local).await };
+            futures.push(local_future.boxed());
+        }
+
+        let resps = try_join_all(futures).await?;
+        let success = resps.iter().map(|r| r.success).sum();
+        debug!(
+            "Grpc handle write finished, schema:{}, resps:{:?}",
+            database, resps
+        );
+        Ok(WriteResponse {
+            success,
+            header: Some(build_ok_header()),
+            ..Default::default()
+        })
+    }
+
+    async fn write_to_local(&self, ctx: Context, req: WriteRequest) -> Result<WriteResponse> {
         let request_id = RequestId::next_id();
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
-        let req_ctx = req.context.unwrap();
+        let req_ctx = req.context.context(ErrNoCause {
+            msg: "Missing context",
+            code: StatusCode::BAD_REQUEST,
+        })?;
         let schema = req_ctx.database;
         let schema_config = self
             .schema_config_provider
@@ -157,13 +201,112 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             header: Some(build_ok_header()),
             ..Default::default()
         };
-
-        debug!(
-            "Grpc handle write finished, catalog:{}, schema:{}, resp:{:?}",
-            catalog, schema, resp
-        );
-
         Ok(resp)
+    }
+
+    async fn maybe_forward_write(
+        &self,
+        req: WriteRequest,
+    ) -> Result<(WriteRequest, Vec<BoxFuture<Result<WriteResponse>>>)> {
+        // Split write request into multiple requests, each request contains table
+        // belong to one remote engine.
+        let tables = req
+            .table_requests
+            .iter()
+            .map(|table_request| table_request.table.clone())
+            .collect();
+        let route_data = self
+            .router
+            .route(RouteRequest {
+                context: req.context.clone(),
+                tables,
+            })
+            .await?;
+        let forwarded_table_route = route_data
+            .into_iter()
+            .filter(|route| route.endpoint.is_some())
+            .map(|route| (route.table, route.endpoint.unwrap().into()))
+            .filter(|router| !self.forwarder.is_local_endpoint(&router.1))
+            .collect::<HashMap<_, _>>();
+
+        let mut table_requests_to_local = WriteRequest {
+            table_requests: Vec::with_capacity(req.table_requests.len()),
+            ..req.clone()
+        };
+        let mut table_requests_to_forward = HashMap::with_capacity(req.table_requests.len());
+
+        let write_context = req.context.clone();
+        for table_request in req.table_requests {
+            let table = table_request.table.clone();
+            match forwarded_table_route.get(&table) {
+                Some(endpoint) => {
+                    let table_requests = table_requests_to_forward
+                        .entry(endpoint.clone().into())
+                        .or_insert_with(Vec::new);
+                    table_requests.push(table_request);
+                }
+                _ => {
+                    table_requests_to_local.table_requests.push(table_request);
+                }
+            }
+        }
+
+        let mut futures = Vec::with_capacity(table_requests_to_forward.len() + 1);
+        for (endpoint, table_requests) in table_requests_to_forward {
+            let new_table_write_request = WriteRequest {
+                context: write_context.clone(),
+                table_requests,
+            };
+            let forwarder = self.forwarder.clone();
+            let write_future = async move {
+                let do_write = |mut client: StorageServiceClient<Channel>,
+                                request: tonic::Request<WriteRequest>,
+                                _: &Endpoint| {
+                    let write = async move {
+                        client
+                            .write(request)
+                            .await
+                            .map(|resp| resp.into_inner())
+                            .box_err()
+                            .context(ErrWithCause {
+                                code: StatusCode::INTERNAL_SERVER_ERROR,
+                                msg: "Forwarded write request failed",
+                            })
+                    }
+                    .boxed();
+
+                    Box::new(write) as _
+                };
+                let forward_result = forwarder
+                    .forward_with_endpoint(
+                        endpoint,
+                        tonic::Request::new(new_table_write_request),
+                        do_write,
+                    )
+                    .await;
+                let forward_res = forward_result
+                    .map_err(|e| {
+                        error!("Failed to forward sql req but the error is ignored, err:{e}");
+                        e
+                    })
+                    .box_err()
+                    .context(ErrWithCause {
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        msg: "Original response is not expected",
+                    })?;
+
+                match forward_res {
+                    ForwardResult::Forwarded(resp) => resp,
+                    ForwardResult::Local => InternalNoCause {
+                        msg: "Local response is not expected".to_string(),
+                    }
+                    .fail(),
+                }
+            };
+
+            futures.push(write_future.boxed());
+        }
+        Ok((table_requests_to_local, futures))
     }
 }
 

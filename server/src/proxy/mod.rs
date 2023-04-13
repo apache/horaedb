@@ -257,7 +257,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             table_id: Some(TableId::new(partition_table_info.id)),
             table_schema: table.table_schema,
             engine: table.engine,
-            options: Default::default(),
+            options: table.options,
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
             partition_info: Some(partition_table_info.partition_info),

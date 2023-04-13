@@ -168,7 +168,7 @@ pub struct Forwarder<B> {
 ///
 /// If no forwarding happens, [`Original`] can be used.
 pub enum ForwardResult<Resp, Err> {
-    Original,
+    Local,
     Forwarded(std::result::Result<Resp, Err>),
 }
 
@@ -199,7 +199,7 @@ impl<B> Forwarder<B> {
     }
 
     /// Check whether the target endpoint is the same as the local endpoint.
-    fn is_local_endpoint(&self, target: &Endpoint) -> bool {
+    pub fn is_local_endpoint(&self, target: &Endpoint) -> bool {
         if &self.local_endpoint == target {
             return true;
         }
@@ -255,11 +255,7 @@ impl<B: ClientBuilder> Forwarder<B> {
         >,
         Req: std::fmt::Debug + Clone,
     {
-        let ForwardRequest {
-            schema,
-            table,
-            mut req,
-        } = forward_req;
+        let ForwardRequest { schema, table, req } = forward_req;
 
         let route_req = RouteRequest {
             context: Some(RequestContext { database: schema }),
@@ -273,19 +269,38 @@ impl<B: ClientBuilder> Forwarder<B> {
                         "Fail to forward request for multiple or empty route results, routes result:{:?}, req:{:?}",
                         routes, req
                     );
-                    return Ok(ForwardResult::Original);
+                    return Ok(ForwardResult::Local);
                 }
 
                 Endpoint::from(routes.remove(0).endpoint.unwrap())
             }
             Err(e) => {
                 error!("Fail to route request, req:{:?}, err:{}", req, e);
-                return Ok(ForwardResult::Original);
+                return Ok(ForwardResult::Local);
             }
         };
 
+        self.forward_with_endpoint(endpoint, req, do_rpc).await
+    }
+
+    pub async fn forward_with_endpoint<Req, Resp, Err, F>(
+        &self,
+        endpoint: Endpoint,
+        mut req: tonic::Request<Req>,
+        do_rpc: F,
+    ) -> Result<ForwardResult<Resp, Err>>
+    where
+        F: FnOnce(
+            StorageServiceClient<Channel>,
+            tonic::Request<Req>,
+            &Endpoint,
+        ) -> Box<
+            dyn std::future::Future<Output = std::result::Result<Resp, Err>> + Send + Unpin,
+        >,
+        Req: std::fmt::Debug + Clone,
+    {
         if self.is_local_endpoint(&endpoint) {
-            return Ok(ForwardResult::Original);
+            return Ok(ForwardResult::Local);
         }
 
         // Update the request.
@@ -472,7 +487,7 @@ mod tests {
             if endpoint == &local_endpoint {
                 assert!(forwarder.is_local_endpoint(endpoint));
                 assert!(
-                    matches!(forward_res, ForwardResult::Original),
+                    matches!(forward_res, ForwardResult::Local),
                     "endpoint is:{endpoint:?}"
                 );
             } else {

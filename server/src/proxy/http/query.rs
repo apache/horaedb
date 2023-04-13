@@ -107,7 +107,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                         ForwardResult::Forwarded(resp) => {
                             return convert_sql_response_to_output(resp?)
                         }
-                        ForwardResult::Original => (),
+                        ForwardResult::Local => (),
                     }
                 };
 
