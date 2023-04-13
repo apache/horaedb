@@ -350,8 +350,6 @@ impl<'a> MemTableWriter<'a> {
 }
 
 impl<'a> Writer<'a> {
-    /// Do the actual write, must called by write worker in write thread
-    /// sequentially.
     pub(crate) async fn write(&mut self, request: WriteRequest) -> Result<usize> {
         let _timer = self.table_data.metrics.start_table_write_timer();
         self.table_data.metrics.on_write_request_begin();

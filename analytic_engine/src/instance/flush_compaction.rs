@@ -26,7 +26,7 @@ use futures::{
 };
 use log::{debug, error, info};
 use snafu::{Backtrace, ResultExt, Snafu};
-use table_engine::{predicate::Predicate, table::Result as TableResult};
+use table_engine::predicate::Predicate;
 use tokio::sync::oneshot;
 use wal::manager::WalLocation;
 
@@ -137,7 +137,7 @@ pub struct TableFlushOptions {
     /// Flush result sender.
     ///
     /// Default is None.
-    pub res_sender: Option<oneshot::Sender<TableResult<()>>>,
+    pub res_sender: Option<oneshot::Sender<Result<()>>>,
     /// Schedule a compaction request after flush if it is not [None].
     ///
     /// If it is [None], no compaction will be scheduled.
@@ -274,7 +274,6 @@ impl Flusher {
         block_on: bool,
     ) -> Result<()> {
         let table_data = flush_req.table_data.clone();
-        let table = table_data.name.clone();
 
         let flush_task = FlushTask {
             table_data: table_data.clone(),
@@ -299,25 +298,23 @@ impl Flusher {
 
             flush_scheduler
                 .flush_sequentially(
-                    table,
-                    &table_data.metrics,
                     flush_job,
                     on_flush_success,
                     block_on,
-                    &self.runtime,
                     opts.res_sender,
+                    &self.runtime,
+                    &table_data.metrics,
                 )
                 .await
         } else {
             flush_scheduler
                 .flush_sequentially(
-                    table,
-                    &table_data.metrics,
                     flush_job,
                     async {},
                     block_on,
-                    &self.runtime,
                     opts.res_sender,
+                    &self.runtime,
+                    &table_data.metrics,
                 )
                 .await
         }

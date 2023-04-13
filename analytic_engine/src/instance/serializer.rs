@@ -1,38 +1,62 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
-    sync::{Arc, Condvar, Mutex},
+    sync::{Arc, Mutex},
     time::Instant,
 };
 
 use common_util::{runtime::Runtime, time::InstantExt};
 use futures::Future;
 use log::error;
-use table_engine::table::{Error as TableError, Result as TableResult, TableId};
-use tokio::sync::oneshot;
+use table_engine::table::TableId;
+use tokio::sync::{
+    oneshot,
+    watch::{self, Receiver, Sender},
+};
 
 use crate::{
-    instance::flush_compaction::{self, BackgroundFlushFailed},
+    instance::flush_compaction::{BackgroundFlushFailed, Other, Result},
     table::metrics::Metrics,
 };
 
 #[derive(Default)]
 enum FlushState {
     #[default]
-    Ok,
+    Ready,
     Flushing,
     Failed {
         err_msg: String,
     },
 }
 
-type ScheduleLock = Arc<(Mutex<FlushState>, Condvar)>;
+type ScheduleSyncRef = Arc<ScheduleSync>;
 
-#[derive(Default)]
-pub struct TableFlushScheduler {
-    schedule_lock: ScheduleLock,
+struct ScheduleSync {
+    state: Mutex<FlushState>,
+    notifier: Sender<()>,
 }
 
+pub struct TableFlushScheduler {
+    schedule_sync: ScheduleSyncRef,
+    state_watcher: Receiver<()>,
+}
+
+impl Default for TableFlushScheduler {
+    fn default() -> Self {
+        let (tx, rx) = watch::channel(());
+        let schedule_sync = ScheduleSync {
+            state: Mutex::new(FlushState::Ready),
+            notifier: tx,
+        };
+        Self {
+            schedule_sync: Arc::new(schedule_sync),
+            state_watcher: rx,
+        }
+    }
+}
+
+/// All operations on tables must hold the mutable reference of this serializer.
+///
 /// To ensure the consistency of a table's data, these rules are required:
 /// - The write procedure (write wal + write memtable) should be serialized as a
 ///   whole, that is to say, it is not allowed to write wal and memtable
@@ -70,31 +94,33 @@ impl TableFlushScheduler {
     /// sequential.
     ///
     /// REQUIRE: should only be called by the write thread.
-    #[allow(clippy::too_many_arguments)]
     pub async fn flush_sequentially<F, T>(
         &mut self,
-        table: String,
-        metrics: &Metrics,
         flush_job: F,
         on_flush_success: T,
         block_on_write_thread: bool,
+        res_sender: Option<oneshot::Sender<Result<()>>>,
         runtime: &Runtime,
-        res_sender: Option<oneshot::Sender<TableResult<()>>>,
-    ) -> flush_compaction::Result<()>
+        metrics: &Metrics,
+    ) -> Result<()>
     where
-        F: Future<Output = flush_compaction::Result<()>> + Send + 'static,
+        F: Future<Output = Result<()>> + Send + 'static,
         T: Future<Output = ()> + Send + 'static,
     {
         // If flush operation is running, then we need to wait for it to complete first.
         // Actually, the loop waiting ensures the multiple flush procedures to be
         // sequential, that is to say, at most one flush is being executed at
         // the same time.
-        {
-            let mut stall_begin: Option<Instant> = None;
-            let mut flush_state = self.schedule_lock.0.lock().unwrap();
-            loop {
+        let mut stall_begin: Option<Instant> = None;
+        loop {
+            {
+                // Check if the flush procedure is running and the lock will be dropped when
+                // leaving the block.
+                let mut flush_state = self.schedule_sync.state.lock().unwrap();
                 match &*flush_state {
-                    FlushState::Ok => {
+                    FlushState::Ready => {
+                        // Mark the worker is flushing.
+                        *flush_state = FlushState::Flushing;
                         break;
                     }
                     FlushState::Flushing => (),
@@ -106,40 +132,33 @@ impl TableFlushScheduler {
                 if stall_begin.is_none() {
                     stall_begin = Some(Instant::now());
                 }
-                flush_state = self.schedule_lock.1.wait(flush_state).unwrap();
-            }
-            if let Some(stall_begin) = stall_begin {
-                metrics.on_write_stall(stall_begin.saturating_elapsed());
             }
 
-            // TODO(yingwen): Store pending flush requests and retry flush on recoverable
-            // error,  or try to recover from background error.
-
-            // Mark the worker is flushing.
-            *flush_state = FlushState::Flushing;
+            if self.state_watcher.changed().await.is_err() {
+                return Other {
+                    msg: "State notifier is dropped unexpectedly",
+                }
+                .fail();
+            }
         }
 
-        let schedule_lock = self.schedule_lock.clone();
+        // Record the write stall cost.
+        if let Some(stall_begin) = stall_begin {
+            metrics.on_write_stall(stall_begin.saturating_elapsed());
+        }
+
+        // TODO(yingwen): Store pending flush requests and retry flush on
+        // recoverable error,  or try to recover from background
+        // error.
+
+        let schedule_sync = self.schedule_sync.clone();
         let task = async move {
             let flush_res = flush_job.await;
-            on_flush_finished(schedule_lock, &flush_res);
-
-            match flush_res {
-                Ok(()) => {
-                    on_flush_success.await;
-                    send_flush_result(res_sender, Ok(()));
-                }
-                Err(e) => {
-                    let e = Arc::new(e);
-                    send_flush_result(
-                        res_sender,
-                        Err(TableError::Flush {
-                            source: Box::new(e),
-                            table,
-                        }),
-                    );
-                }
+            on_flush_finished(schedule_sync, &flush_res);
+            if flush_res.is_ok() {
+                on_flush_success.await;
             }
+            send_flush_result(res_sender, flush_res);
         };
 
         if block_on_write_thread {
@@ -152,21 +171,26 @@ impl TableFlushScheduler {
     }
 }
 
-fn on_flush_finished(schedule_lock: ScheduleLock, res: &flush_compaction::Result<()>) {
-    let mut flush_state = schedule_lock.0.lock().unwrap();
-    match res {
-        Ok(()) => {
-            *flush_state = FlushState::Ok;
-        }
-        Err(e) => {
-            let err_msg = e.to_string();
-            *flush_state = FlushState::Failed { err_msg };
+fn on_flush_finished(schedule_sync: ScheduleSyncRef, res: &Result<()>) {
+    {
+        let mut flush_state = schedule_sync.state.lock().unwrap();
+        match res {
+            Ok(()) => {
+                *flush_state = FlushState::Ready;
+            }
+            Err(e) => {
+                let err_msg = e.to_string();
+                *flush_state = FlushState::Failed { err_msg };
+            }
         }
     }
-    schedule_lock.1.notify_all();
+
+    if schedule_sync.notifier.send(()).is_err() {
+        error!("Fail to notify flush state change, flush_res:{res:?}");
+    }
 }
 
-fn send_flush_result(res_sender: Option<oneshot::Sender<TableResult<()>>>, res: TableResult<()>) {
+fn send_flush_result(res_sender: Option<oneshot::Sender<Result<()>>>, res: Result<()>) {
     if let Some(tx) = res_sender {
         if let Err(send_res) = tx.send(res) {
             error!("Fail to send flush result, send_res:{:?}", send_res);
