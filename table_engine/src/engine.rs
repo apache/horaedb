@@ -313,4 +313,6 @@ pub struct EngineRuntimes {
     pub meta_runtime: Arc<Runtime>,
     /// Runtime for some other tasks which are not so important
     pub default_runtime: Arc<Runtime>,
+    /// Runtime for io task
+    pub io_runtime: Arc<Runtime>,
 }

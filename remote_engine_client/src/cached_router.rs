@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Cached router
 
@@ -43,14 +43,14 @@ impl CachedRouter {
             cache.get(table_ident).cloned()
         };
 
-        let channel = if let Some(channel) = channel_opt {
+        if let Some(channel) = channel_opt {
             // If found, return it.
             debug!(
                 "CachedRouter found channel in cache, table_ident:{:?}",
                 table_ident
             );
 
-            channel
+            Ok(channel)
         } else {
             // If not found, do real route work, and try to put it into cache(may have been
             // put by other threads).
@@ -63,7 +63,7 @@ impl CachedRouter {
             {
                 let mut cache = self.cache.write().unwrap();
                 // Double check here, if still not found, we put it.
-                let channel_opt = cache.get(table_ident).cloned();
+                let channel_opt = cache.get(table_ident);
                 if channel_opt.is_none() {
                     debug!(
                         "CachedRouter put the new channel to cache, table_ident:{:?}",
@@ -73,10 +73,8 @@ impl CachedRouter {
                 }
             }
 
-            channel
-        };
-
-        Ok(channel)
+            Ok(channel)
+        }
     }
 
     pub async fn evict(&self, table_ident: &TableIdentifier) {
