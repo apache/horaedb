@@ -152,7 +152,7 @@ tracing_util = { workspace = true }
 
 [workspace.dependencies.ceresdbproto]
 git = "https://github.com/CeresDB/ceresdbproto.git"
-rev = "1c3bf4e803ef8b7a1fbc8c3d4a07fdd372e1830b"
+rev = "9e0e70f6574e4e1e2b3f7f45c0a055c54327fb4a"
 
 [build-dependencies]
 vergen = { version = "7", default-features = false, features = ["build", "git", "rustc"] }

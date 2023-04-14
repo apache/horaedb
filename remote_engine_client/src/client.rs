@@ -3,7 +3,9 @@
 //! Client for accessing remote table engine
 
 use std::{
+    collections::HashMap,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
 
@@ -15,37 +17,51 @@ use ceresdbproto::{
 use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatch, schema::RecordSchema,
 };
-use common_util::error::BoxError;
-use futures::{Stream, StreamExt};
+use common_util::{error::BoxError, runtime::Runtime};
+use futures::{future::join_all, Stream, StreamExt};
+use log::info;
 use router::RouterRef;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
-    remote::model::{GetTableInfoRequest, ReadRequest, TableIdentifier, TableInfo, WriteRequest},
+    remote::model::{
+        GetTableInfoRequest, ReadRequest, TableIdentifier, TableInfo, WriteBatchRequest,
+        WriteBatchResult, WriteRequest,
+    },
     table::{SchemaId, TableId},
 };
 use tonic::{transport::Channel, Request, Streaming};
 
 use crate::{cached_router::CachedRouter, config::Config, error::*, status_code};
 
+struct WriteBatchContext {
+    table_idents: Vec<TableIdentifier>,
+    request: WriteBatchRequest,
+    channel: Channel,
+}
+
 pub struct Client {
-    cached_router: CachedRouter,
+    cached_router: Arc<CachedRouter>,
+    io_runtime: Arc<Runtime>,
 }
 
 impl Client {
-    pub fn new(config: Config, router: RouterRef) -> Self {
+    pub fn new(config: Config, router: RouterRef, io_runtime: Arc<Runtime>) -> Self {
         let cached_router = CachedRouter::new(router, config);
 
-        Self { cached_router }
+        Self {
+            cached_router: Arc::new(cached_router),
+            io_runtime,
+        }
     }
 
     pub async fn read(&self, request: ReadRequest) -> Result<ClientReadRecordBatchStream> {
         // Find the channel from router firstly.
-        let channel = self.cached_router.route(&request.table).await?;
+        let route_context = self.cached_router.route(&request.table).await?;
 
         // Read from remote.
         let table_ident = request.table.clone();
         let projected_schema = request.read_request.projected_schema.clone();
-        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
+        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
         let request_pb = ceresdbproto::remote_engine::ReadRequest::try_from(request)
             .box_err()
             .context(Convert {
@@ -56,7 +72,7 @@ impl Client {
             .read(Request::new(request_pb))
             .await
             .with_context(|| Rpc {
-                table_ident: table_ident.clone(),
+                table_idents: vec![table_ident.clone()],
                 msg: "Failed to read from remote engine",
             });
 
@@ -66,7 +82,7 @@ impl Client {
             Err(e) => {
                 // If occurred error, we simply evict the corresponding channel now.
                 // TODO: evict according to the type of error.
-                self.cached_router.evict(&table_ident).await;
+                self.evict_route_from_cache(&[table_ident]).await;
                 return Err(e);
             }
         };
@@ -80,7 +96,7 @@ impl Client {
 
     pub async fn write(&self, request: WriteRequest) -> Result<usize> {
         // Find the channel from router firstly.
-        let channel = self.cached_router.route(&request.table).await?;
+        let route_context = self.cached_router.route(&request.table).await?;
 
         // Write to remote.
         let table_ident = request.table.clone();
@@ -90,13 +106,13 @@ impl Client {
             .context(Convert {
                 msg: "Failed to convert WriteRequest to pb",
             })?;
-        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
+        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
 
         let result = rpc_client
             .write(Request::new(request_pb))
             .await
             .with_context(|| Rpc {
-                table_ident: table_ident.clone(),
+                table_idents: vec![table_ident.clone()],
                 msg: "Failed to write to remote engine",
             });
 
@@ -106,7 +122,7 @@ impl Client {
             Err(e) => {
                 // If occurred error, we simply evict the corresponding channel now.
                 // TODO: evict according to the type of error.
-                self.cached_router.evict(&table_ident).await;
+                self.evict_route_from_cache(&[table_ident]).await;
                 return Err(e);
             }
         };
@@ -114,7 +130,7 @@ impl Client {
         let response = response.into_inner();
         if let Some(header) = response.header && !status_code::is_ok(header.code) {
             Server {
-                table_ident: table_ident.clone(),
+                table_idents: vec![table_ident.clone()],
                 code: header.code,
                 msg: header.error,
             }.fail()
@@ -123,9 +139,110 @@ impl Client {
         }
     }
 
+    pub async fn write_batch(&self, requests: Vec<WriteRequest>) -> Result<Vec<WriteBatchResult>> {
+        // Find the channels from router firstly.
+        let mut write_batch_contexts_by_endpoint = HashMap::new();
+        for request in requests {
+            let route_context = self.cached_router.route(&request.table).await?;
+            let write_batch_context = write_batch_contexts_by_endpoint
+                .entry(route_context.endpoint)
+                .or_insert(WriteBatchContext {
+                    table_idents: Vec::new(),
+                    request: WriteBatchRequest::default(),
+                    channel: route_context.channel,
+                });
+            write_batch_context.table_idents.push(request.table.clone());
+            write_batch_context.request.batch.push(request);
+        }
+
+        // Merge according to endpoint.
+        let mut remote_writes = Vec::with_capacity(write_batch_contexts_by_endpoint.len());
+        let mut written_tables = Vec::with_capacity(write_batch_contexts_by_endpoint.len());
+        for (_, context) in write_batch_contexts_by_endpoint {
+            // Write to remote.
+            let WriteBatchContext {
+                table_idents,
+                request,
+                channel,
+            } = context;
+            let handle = self.io_runtime.spawn(async move {
+                let batch_request_pb =
+                    match ceresdbproto::remote_engine::WriteBatchRequest::try_from(request)
+                        .box_err()
+                    {
+                        Ok(pb) => pb,
+                        Err(e) => return Err(e),
+                    };
+
+                let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
+                let rpc_result = rpc_client
+                    .write_batch(Request::new(batch_request_pb))
+                    .await
+                    .box_err();
+
+                rpc_result
+            });
+
+            remote_writes.push(handle);
+            written_tables.push(table_idents);
+        }
+
+        let remote_write_results = join_all(remote_writes).await;
+        let mut results = Vec::with_capacity(remote_write_results.len());
+        for (table_idents, batch_result) in written_tables.into_iter().zip(remote_write_results) {
+            // If it's runtime error, don't evict entires from route cache.
+            let remote_write_result = match batch_result.box_err() {
+                Ok(result) => result,
+                Err(e) => {
+                    results.push(WriteBatchResult {
+                        table_idents,
+                        result: Err(e),
+                    });
+                    continue;
+                }
+            };
+
+            // Check remote write result then.
+            let remote_write_response = match remote_write_result {
+                Ok(response) => response,
+
+                Err(e) => {
+                    // If occurred error of remote write, we simply evict the corresponding channel
+                    // now. TODO: evict according to the type of error.
+                    self.evict_route_from_cache(&table_idents).await;
+                    results.push(WriteBatchResult {
+                        table_idents,
+                        result: Err(e),
+                    });
+                    continue;
+                }
+            };
+
+            // Check response finally.
+            let remote_write_response = remote_write_response.into_inner();
+            if let Some(header) = remote_write_response.header && !status_code::is_ok(header.code) {
+                let err = Server {
+                    table_idents: table_idents.clone(),
+                    code: header.code,
+                    msg: header.error,
+                }.fail().box_err();
+                results.push(WriteBatchResult {
+                    table_idents,
+                    result: err,
+                });
+            } else {
+                results.push(WriteBatchResult {
+                    table_idents,
+                    result: Ok(remote_write_response.affected_rows),
+                });
+            }
+        }
+        Ok(results)
+    }
+
     pub async fn get_table_info(&self, request: GetTableInfoRequest) -> Result<TableInfo> {
         // Find the channel from router firstly.
-        let channel = self.cached_router.route(&request.table).await?;
+        let route_context = self.cached_router.route(&request.table).await?;
         let table_ident = request.table.clone();
         let request_pb = ceresdbproto::remote_engine::GetTableInfoRequest::try_from(request)
             .box_err()
@@ -133,13 +250,13 @@ impl Client {
                 msg: "Failed to convert GetTableInfoRequest to pb",
             })?;
 
-        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
+        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
 
         let result = rpc_client
             .get_table_info(Request::new(request_pb))
             .await
             .with_context(|| Rpc {
-                table_ident: table_ident.clone(),
+                table_idents: vec![table_ident.clone()],
                 msg: "Failed to get table info",
             });
 
@@ -148,7 +265,7 @@ impl Client {
             Err(e) => {
                 // If occurred error, we simply evict the corresponding channel now.
                 // TODO: evict according to the type of error.
-                self.cached_router.evict(&table_ident).await;
+                self.evict_route_from_cache(&[table_ident]).await;
                 return Err(e);
             }
         };
@@ -156,13 +273,13 @@ impl Client {
         let response = response.into_inner();
         if let Some(header) = response.header && !status_code::is_ok(header.code) {
             Server {
-                table_ident: table_ident.clone(),
+                table_idents: vec![table_ident],
                 code: header.code,
                 msg: header.error,
             }.fail()
         } else {
             let table_info = response.table_info.context(Server {
-                table_ident: table_ident.clone(),
+                table_idents: vec![table_ident.clone()],
                 code: status_code::StatusCode::Internal.as_u32(),
                 msg: "Table info is empty",
             })?;
@@ -174,9 +291,9 @@ impl Client {
                 table_name: table_info.table_name,
                 table_id: TableId::from(table_info.table_id),
                 table_schema: table_info.table_schema.map(TryInto::try_into).transpose().box_err()
-                    .context(Convert { msg: "Failed to covert table schema" })?
-                    .context(Server {
-                        table_ident,
+                    .with_context(|| Convert { msg: "Failed to covert table schema" })?
+                    .with_context(|| Server {
+                        table_idents: vec![table_ident],
                         code: status_code::StatusCode::Internal.as_u32(),
                         msg: "Table schema is empty",
                     })?,
@@ -186,6 +303,14 @@ impl Client {
                     .context(Convert { msg: "Failed to covert partition info" })?,
             })
         }
+    }
+
+    async fn evict_route_from_cache(&self, table_idents: &[TableIdentifier]) {
+        info!(
+            "Remote engine client evict route from cache, table_ident:{:?}",
+            table_idents
+        );
+        self.cached_router.evict(table_idents).await;
     }
 }
 
@@ -222,7 +347,7 @@ impl Stream for ClientReadRecordBatchStream {
                 // Check header.
                 if let Some(header) = response.header && !status_code::is_ok(header.code) {
                     return Poll::Ready(Some(Server {
-                        table_ident: this.table_ident.clone(),
+                        table_idents: vec![this.table_ident.clone()],
                         code: header.code,
                         msg: header.error,
                     }.fail()));
@@ -280,7 +405,7 @@ impl Stream for ClientReadRecordBatchStream {
             }
 
             Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e).context(Rpc {
-                table_ident: this.table_ident.clone(),
+                table_idents: vec![this.table_ident.clone()],
                 msg: "poll read response",
             }))),
 

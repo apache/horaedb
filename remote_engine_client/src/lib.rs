@@ -12,12 +12,13 @@ mod status_code;
 
 use std::{
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
 
 use async_trait::async_trait;
 use common_types::{record_batch::RecordBatch, schema::RecordSchema};
-use common_util::error::BoxError;
+use common_util::{error::BoxError, runtime::Runtime};
 pub use config::Config;
 use futures::{Stream, StreamExt};
 use router::RouterRef;
@@ -25,7 +26,7 @@ use snafu::ResultExt;
 use table_engine::{
     remote::{
         self,
-        model::{GetTableInfoRequest, ReadRequest, TableInfo, WriteRequest},
+        model::{GetTableInfoRequest, ReadRequest, TableInfo, WriteBatchResult, WriteRequest},
         RemoteEngine,
     },
     stream::{self, ErrWithSource, RecordBatchStream, SendableRecordBatchStream},
@@ -62,25 +63,25 @@ pub mod error {
         Convert { msg: String, source: GenericError },
 
         #[snafu(display(
-            "Failed to connect, table_ident:{:?}, msg:{}, err:{}",
-            table_ident,
+            "Failed to connect, table_idents:{:?}, msg:{}, err:{}",
+            table_idents,
             msg,
             source
         ))]
         Rpc {
-            table_ident: TableIdentifier,
+            table_idents: Vec<TableIdentifier>,
             msg: String,
             source: tonic::Status,
         },
 
         #[snafu(display(
-            "Failed to query from table in server, table_ident:{:?}, code:{}, msg:{}",
-            table_ident,
+            "Failed to query from table in server, table_idents:{:?}, code:{}, msg:{}",
+            table_idents,
             code,
             msg
         ))]
         Server {
-            table_ident: TableIdentifier,
+            table_idents: Vec<TableIdentifier>,
             code: u32,
             msg: String,
         },
@@ -104,8 +105,8 @@ pub mod error {
 pub struct RemoteEngineImpl(Client);
 
 impl RemoteEngineImpl {
-    pub fn new(config: Config, router: RouterRef) -> Self {
-        let client = Client::new(config, router);
+    pub fn new(config: Config, router: RouterRef, worker_runtime: Arc<Runtime>) -> Self {
+        let client = Client::new(config, router, worker_runtime);
 
         Self(client)
     }
@@ -120,6 +121,17 @@ impl RemoteEngine for RemoteEngineImpl {
 
     async fn write(&self, request: WriteRequest) -> remote::Result<usize> {
         self.0.write(request).await.box_err().context(remote::Write)
+    }
+
+    async fn write_batch(
+        &self,
+        requests: Vec<WriteRequest>,
+    ) -> remote::Result<Vec<WriteBatchResult>> {
+        self.0
+            .write_batch(requests)
+            .await
+            .box_err()
+            .context(remote::Write)
     }
 
     async fn get_table_info(&self, request: GetTableInfoRequest) -> remote::Result<TableInfo> {

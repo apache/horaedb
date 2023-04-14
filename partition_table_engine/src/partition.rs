@@ -2,14 +2,14 @@
 
 //! Distributed Table implementation
 
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{collections::HashMap, fmt};
 
 use async_trait::async_trait;
 use common_types::{
     row::{Row, RowGroupBuilder},
     schema::Schema,
 };
-use common_util::{error::BoxError, runtime::Runtime};
+use common_util::error::BoxError;
 use futures::future::try_join_all;
 use snafu::ResultExt;
 use table_engine::{
@@ -18,7 +18,8 @@ use table_engine::{
     },
     remote::{
         model::{
-            ReadRequest as RemoteReadRequest, TableIdentifier, WriteRequest as RemoteWriteRequest,
+            ReadRequest as RemoteReadRequest, TableIdentifier, WriteBatchResult,
+            WriteRequest as RemoteWriteRequest,
         },
         RemoteEngineRef,
     },
@@ -26,7 +27,7 @@ use table_engine::{
     table::{
         AlterSchemaRequest, CreatePartitionRule, FlushRequest, GetRequest, LocatePartitions,
         ReadRequest, Result, Scan, Table, TableId, TableStats, UnexpectedWithMsg,
-        UnsupportedMethod, Write, WriteRequest,
+        UnsupportedMethod, Write, WriteBatch, WriteRequest,
     },
 };
 
@@ -50,19 +51,13 @@ pub struct TableData {
 pub struct PartitionTableImpl {
     table_data: TableData,
     remote_engine: RemoteEngineRef,
-    io_runtime: Arc<Runtime>,
 }
 
 impl PartitionTableImpl {
-    pub fn new(
-        table_data: TableData,
-        remote_engine: RemoteEngineRef,
-        io_runtime: Arc<Runtime>,
-    ) -> Result<Self> {
+    pub fn new(table_data: TableData, remote_engine: RemoteEngineRef) -> Result<Self> {
         Ok(Self {
             table_data,
             remote_engine,
-            io_runtime,
         })
     }
 
@@ -156,50 +151,49 @@ impl Table for PartitionTableImpl {
         }
 
         // Insert split write request through remote engine.
-        let mut futures = Vec::with_capacity(split_rows.len());
+        let mut request_batch = Vec::with_capacity(split_rows.len());
         for (partition, rows) in split_rows {
+            let sub_table_ident = self.get_sub_table_ident(partition);
             let row_group = RowGroupBuilder::with_rows(schema.clone(), rows)
                 .box_err()
-                .context(Write {
-                    table: self.get_sub_table_ident(partition).table,
+                .with_context(|| Write {
+                    table: sub_table_ident.table.clone(),
                 })?
                 .build();
 
             let request = RemoteWriteRequest {
-                table: self.get_sub_table_ident(partition),
+                table: sub_table_ident,
                 write_request: WriteRequest { row_group },
             };
-            let remote_engine = self.remote_engine.clone();
-            let write_handle = self
-                .io_runtime
-                .spawn(async move { remote_engine.write(request).await });
-            futures.push(write_handle);
+            request_batch.push(request);
         }
 
-        let write_results = {
-            // TODO: make it as local timer
-            let _remote_timer = PARTITION_TABLE_WRITE_DURATION_HISTOGRAM
-                .with_label_values(&["remote_write"])
-                .start_timer();
-
-            let handle = self.io_runtime.spawn(try_join_all(futures));
-            handle
-                .await
-                .box_err()
-                .context(Write { table: self.name() })?
-                .box_err()
-                .context(Write { table: self.name() })?
-        };
-
+        let batch_results = self
+            .remote_engine
+            .write_batch(request_batch)
+            .await
+            .box_err()
+            .context(WriteBatch {
+                tables: vec![self.table_data.table_name.clone()],
+            })?;
         let mut total_rows = 0;
-        for write_result in write_results {
-            let written_rows = write_result
-                .box_err()
-                .context(Write { table: self.name() })?;
+        for batch_result in batch_results {
+            let WriteBatchResult {
+                table_idents,
+                result,
+            } = batch_result;
+
+            let written_rows = result.with_context(|| {
+                let tables = table_idents
+                    .into_iter()
+                    .map(|ident| ident.table)
+                    .collect::<Vec<_>>();
+                WriteBatch { tables }
+            })?;
             total_rows += written_rows;
         }
 
-        Ok(total_rows)
+        Ok(total_rows as usize)
     }
 
     async fn read(&self, _request: ReadRequest) -> Result<SendableRecordBatchStream> {
