@@ -319,10 +319,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             engine_runtimes.io_runtime.clone(),
         ));
 
-        let partition_table_engine = Arc::new(PartitionTableEngine::new(
-            remote_engine_ref.clone(),
-            engine_runtimes.io_runtime.clone(),
-        ));
+        let partition_table_engine = Arc::new(PartitionTableEngine::new(remote_engine_ref.clone()));
 
         let instance = {
             let instance = Instance {

@@ -62,11 +62,29 @@ pub mod error {
         #[snafu(display("Failed to convert msg:{}, err:{}", msg, source))]
         Convert { msg: String, source: GenericError },
 
-        #[snafu(display("Failed to connect, msg:{}, err:{}", msg, source))]
-        Rpc { msg: String, source: tonic::Status },
+        #[snafu(display(
+            "Failed to connect, table_idents:{:?}, msg:{}, err:{}",
+            table_idents,
+            msg,
+            source
+        ))]
+        Rpc {
+            table_idents: Vec<TableIdentifier>,
+            msg: String,
+            source: tonic::Status,
+        },
 
-        #[snafu(display("Failed to query from table in server, code:{}, msg:{}", code, msg))]
-        Server { code: u32, msg: String },
+        #[snafu(display(
+            "Failed to query from table in server, table_idents:{:?}, code:{}, msg:{}",
+            table_idents,
+            code,
+            msg
+        ))]
+        Server {
+            table_idents: Vec<TableIdentifier>,
+            code: u32,
+            msg: String,
+        },
 
         #[snafu(display("Failed to route table, table_ident:{:?}, err:{}", table_ident, source,))]
         RouteWithCause {

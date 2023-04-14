@@ -9,7 +9,7 @@ mod partition;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_util::{error::BoxError, runtime::Runtime};
+use common_util::error::BoxError;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{
@@ -26,15 +26,11 @@ use crate::partition::{PartitionTableImpl, TableData};
 /// Partition table engine implementation.
 pub struct PartitionTableEngine {
     remote_engine_ref: RemoteEngineRef,
-    io_runtime: Arc<Runtime>,
 }
 
 impl PartitionTableEngine {
-    pub fn new(remote_engine_ref: RemoteEngineRef, io_runtime: Arc<Runtime>) -> Self {
-        Self {
-            remote_engine_ref,
-            io_runtime,
-        }
+    pub fn new(remote_engine_ref: RemoteEngineRef) -> Self {
+        Self { remote_engine_ref }
     }
 }
 
@@ -62,13 +58,9 @@ impl TableEngine for PartitionTableEngine {
             engine_type: request.engine,
         };
         Ok(Arc::new(
-            PartitionTableImpl::new(
-                table_data,
-                self.remote_engine_ref.clone(),
-                self.io_runtime.clone(),
-            )
-            .box_err()
-            .context(Unexpected)?,
+            PartitionTableImpl::new(table_data, self.remote_engine_ref.clone())
+                .box_err()
+                .context(Unexpected)?,
         ))
     }
 

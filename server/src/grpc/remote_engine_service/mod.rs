@@ -18,7 +18,7 @@ use ceresdbproto::{
 use common_types::record_batch::RecordBatch;
 use common_util::{error::BoxError, time::InstantExt};
 use futures::{
-    future::{join_all, try_join_all},
+    future::try_join_all,
     stream::{self, BoxStream, StreamExt},
 };
 use log::error;
@@ -44,11 +44,6 @@ pub(crate) mod error;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
-
-struct TableWriteResult {
-    table_ident: TableIdentifier,
-    result: Result<WriteResponse>,
-}
 
 #[derive(Clone)]
 pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {

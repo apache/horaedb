@@ -60,7 +60,7 @@ impl Client {
         // Read from remote.
         let table_ident = request.table.clone();
         let projected_schema = request.read_request.projected_schema.clone();
-        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel.channel_inner);
+        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel.channel);
         let request_pb = ceresdbproto::remote_engine::ReadRequest::try_from(request)
             .box_err()
             .context(Convert {
@@ -71,6 +71,7 @@ impl Client {
             .read(Request::new(request_pb))
             .await
             .with_context(|| Rpc {
+                table_idents: vec![table_ident.clone()],
                 msg: "Failed to read from remote engine",
             });
 
@@ -104,12 +105,13 @@ impl Client {
             .context(Convert {
                 msg: "Failed to convert WriteRequest to pb",
             })?;
-        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel.channel_inner);
+        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel.channel);
 
         let result = rpc_client
             .write(Request::new(request_pb))
             .await
             .with_context(|| Rpc {
+                table_idents: vec![table_ident.clone()],
                 msg: "Failed to write to remote engine",
             });
 
@@ -127,6 +129,7 @@ impl Client {
         let response = response.into_inner();
         if let Some(header) = response.header && !status_code::is_ok(header.code) {
             Server {
+                table_idents: vec![table_ident.clone()],
                 code: header.code,
                 msg: header.error,
             }.fail()
@@ -145,7 +148,7 @@ impl Client {
                 .or_insert(WriteBatchContext {
                     table_idents: Vec::new(),
                     request: WriteBatchRequest::default(),
-                    channel: channel.channel_inner,
+                    channel: channel.channel,
                 });
             write_batch_context.table_idents.push(request.table.clone());
             write_batch_context.request.batch.push(request);
@@ -218,6 +221,7 @@ impl Client {
             let remote_write_response = remote_write_response.into_inner();
             if let Some(header) = remote_write_response.header && !status_code::is_ok(header.code) {
                 let err = Server {
+                    table_idents: table_idents.clone(),
                     code: header.code,
                     msg: header.error,
                 }.fail().box_err();
@@ -245,12 +249,13 @@ impl Client {
                 msg: "Failed to convert GetTableInfoRequest to pb",
             })?;
 
-        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel.channel_inner);
+        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel.channel);
 
         let result = rpc_client
             .get_table_info(Request::new(request_pb))
             .await
             .with_context(|| Rpc {
+                table_idents: vec![table_ident.clone()],
                 msg: "Failed to get table info",
             });
 
@@ -267,11 +272,13 @@ impl Client {
         let response = response.into_inner();
         if let Some(header) = response.header && !status_code::is_ok(header.code) {
             Server {
+                table_idents: vec![table_ident],
                 code: header.code,
                 msg: header.error,
             }.fail()
         } else {
             let table_info = response.table_info.context(Server {
+                table_idents: vec![table_ident.clone()],
                 code: status_code::StatusCode::Internal.as_u32(),
                 msg: "Table info is empty",
             })?;
@@ -285,6 +292,7 @@ impl Client {
                 table_schema: table_info.table_schema.map(TryInto::try_into).transpose().box_err()
                     .context(Convert { msg: "Failed to covert table schema" })?
                     .context(Server {
+                        table_idents: vec![table_ident],
                         code: status_code::StatusCode::Internal.as_u32(),
                         msg: "Table schema is empty",
                     })?,
@@ -330,6 +338,7 @@ impl Stream for ClientReadRecordBatchStream {
                 // Check header.
                 if let Some(header) = response.header && !status_code::is_ok(header.code) {
                     return Poll::Ready(Some(Server {
+                        table_idents: vec![this.table_ident.clone()],
                         code: header.code,
                         msg: header.error,
                     }.fail()));
@@ -387,6 +396,7 @@ impl Stream for ClientReadRecordBatchStream {
             }
 
             Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e).context(Rpc {
+                table_idents: vec![this.table_ident.clone()],
                 msg: "poll read response",
             }))),
 

@@ -2,14 +2,14 @@
 
 //! Distributed Table implementation
 
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{collections::HashMap, fmt};
 
 use async_trait::async_trait;
 use common_types::{
     row::{Row, RowGroupBuilder},
     schema::Schema,
 };
-use common_util::{error::BoxError, runtime::Runtime};
+use common_util::error::BoxError;
 use futures::future::try_join_all;
 use snafu::ResultExt;
 use table_engine::{
@@ -51,19 +51,13 @@ pub struct TableData {
 pub struct PartitionTableImpl {
     table_data: TableData,
     remote_engine: RemoteEngineRef,
-    io_runtime: Arc<Runtime>,
 }
 
 impl PartitionTableImpl {
-    pub fn new(
-        table_data: TableData,
-        remote_engine: RemoteEngineRef,
-        io_runtime: Arc<Runtime>,
-    ) -> Result<Self> {
+    pub fn new(table_data: TableData, remote_engine: RemoteEngineRef) -> Result<Self> {
         Ok(Self {
             table_data,
             remote_engine,
-            io_runtime,
         })
     }
 
