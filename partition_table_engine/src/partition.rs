@@ -151,17 +151,18 @@ impl Table for PartitionTableImpl {
         }
 
         // Insert split write request through remote engine.
-        let mut request_batch = Vec::new();
+        let mut request_batch = Vec::with_capacity(split_rows.len());
         for (partition, rows) in split_rows {
+            let sub_table_ident = self.get_sub_table_ident(partition);
             let row_group = RowGroupBuilder::with_rows(schema.clone(), rows)
                 .box_err()
-                .context(Write {
-                    table: self.get_sub_table_ident(partition).table,
+                .with_context(|| Write {
+                    table: sub_table_ident.table.clone(),
                 })?
                 .build();
 
             let request = RemoteWriteRequest {
-                table: self.get_sub_table_ident(partition),
+                table: sub_table_ident,
                 write_request: WriteRequest { row_group },
             };
             request_batch.push(request);
@@ -181,12 +182,14 @@ impl Table for PartitionTableImpl {
                 table_idents,
                 result,
             } = batch_result;
-            let tables = table_idents
-                .into_iter()
-                .map(|ident| ident.table)
-                .collect::<Vec<_>>();
 
-            let written_rows = result.context(WriteBatch { tables })?;
+            let written_rows = result.with_context(|| {
+                let tables = table_idents
+                    .into_iter()
+                    .map(|ident| ident.table)
+                    .collect::<Vec<_>>();
+                WriteBatch { tables }
+            })?;
             total_rows += written_rows;
         }
 
