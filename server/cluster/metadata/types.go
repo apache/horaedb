@@ -48,6 +48,16 @@ type CreateClusterOpts struct {
 	ShardTotal        uint32
 }
 
+type CreateTableMetadataRequest struct {
+	SchemaName    string
+	TableName     string
+	PartitionInfo storage.PartitionInfo
+}
+
+type CreateTableMetadataResult struct {
+	Table storage.Table
+}
+
 type CreateTableRequest struct {
 	ShardID       storage.ShardID
 	SchemaName    string

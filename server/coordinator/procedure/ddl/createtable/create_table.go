@@ -8,9 +8,10 @@ import (
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
-	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/ddl"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/looplab/fsm"
 	"github.com/pkg/errors"
@@ -46,14 +47,15 @@ func prepareCallback(event *fsm.Event) {
 		procedure.CancelEventWithLog(event, err, "get request from event")
 		return
 	}
+	params := req.p.params
 
-	createTableResult, err := procedure.CreateTableMetadata(req.ctx, req.cluster, req.sourceReq.GetSchemaName(), req.sourceReq.GetName(), req.shardID, nil)
+	createTableResult, err := ddl.CreateTableMetadata(req.ctx, params.ClusterMetadata, params.SourceReq.GetSchemaName(), params.SourceReq.GetName(), params.ShardID, nil)
 	if err != nil {
 		procedure.CancelEventWithLog(event, err, "create table metadata")
 		return
 	}
 
-	if err = procedure.CreateTableOnShard(req.ctx, req.cluster, req.dispatch, createTableResult.ShardVersionUpdate.ShardID, procedure.BuildCreateTableRequest(createTableResult, req.sourceReq, req.sourceReq.GetPartitionTableInfo().GetPartitionInfo())); err != nil {
+	if err = ddl.CreateTableOnShard(req.ctx, params.ClusterMetadata, params.Dispatch, createTableResult.ShardVersionUpdate.ShardID, ddl.BuildCreateTableRequest(createTableResult, params.SourceReq, params.SourceReq.GetPartitionTableInfo().GetPartitionInfo())); err != nil {
 		procedure.CancelEventWithLog(event, err, "dispatch create table on shard")
 		return
 	}
@@ -68,7 +70,7 @@ func successCallback(event *fsm.Event) {
 		return
 	}
 
-	if err := req.onSucceeded(req.createTableResult); err != nil {
+	if err := req.p.params.OnSucceeded(req.createTableResult); err != nil {
 		log.Error("exec success callback failed")
 	}
 }
@@ -80,75 +82,70 @@ func failedCallback(event *fsm.Event) {
 		return
 	}
 
-	if err := req.onFailed(event.Err); err != nil {
+	if err := req.p.params.OnFailed(event.Err); err != nil {
 		log.Error("exec failed callback failed")
 	}
 }
 
 // callbackRequest is fsm callbacks param.
 type callbackRequest struct {
-	ctx      context.Context
-	cluster  *cluster.Cluster
-	dispatch eventdispatch.Dispatch
-
-	sourceReq *metaservicepb.CreateTableRequest
-	shardID   storage.ShardID
-
-	onSucceeded func(cluster.CreateTableResult) error
-	onFailed    func(error) error
-
-	createTableResult cluster.CreateTableResult
+	ctx               context.Context
+	p                 *Procedure
+	createTableResult metadata.CreateTableResult
 }
 
-type ProcedureRequest struct {
-	Dispatch    eventdispatch.Dispatch
-	Cluster     *cluster.Cluster
-	ID          uint64
-	ShardID     storage.ShardID
-	Req         *metaservicepb.CreateTableRequest
-	OnSucceeded func(cluster.CreateTableResult) error
-	OnFailed    func(error) error
+type ProcedureParams struct {
+	Dispatch        eventdispatch.Dispatch
+	ClusterMetadata *metadata.ClusterMetadata
+	ClusterSnapshot metadata.Snapshot
+	ID              uint64
+	ShardID         storage.ShardID
+	SourceReq       *metaservicepb.CreateTableRequest
+	OnSucceeded     func(metadata.CreateTableResult) error
+	OnFailed        func(error) error
 }
 
-func NewProcedure(req ProcedureRequest) procedure.Procedure {
+func NewProcedure(params ProcedureParams) procedure.Procedure {
 	fsm := fsm.NewFSM(
 		stateBegin,
 		createTableEvents,
 		createTableCallbacks,
 	)
 	return &Procedure{
-		id:          req.ID,
-		fsm:         fsm,
-		cluster:     req.Cluster,
-		dispatch:    req.Dispatch,
-		shardID:     req.ShardID,
-		req:         req.Req,
-		state:       procedure.StateInit,
-		onSucceeded: req.OnSucceeded,
-		onFailed:    req.OnFailed,
+		fsm:    fsm,
+		params: params,
+		state:  procedure.StateInit,
 	}
 }
 
 type Procedure struct {
-	id       uint64
-	fsm      *fsm.FSM
-	cluster  *cluster.Cluster
-	dispatch eventdispatch.Dispatch
-
-	shardID storage.ShardID
-
-	req *metaservicepb.CreateTableRequest
-
-	onSucceeded func(cluster.CreateTableResult) error
-	onFailed    func(error) error
-
+	fsm    *fsm.FSM
+	params ProcedureParams
 	// Protect the state.
 	lock  sync.RWMutex
 	state procedure.State
 }
 
+func (p *Procedure) RelatedVersionInfo() procedure.RelatedVersionInfo {
+	shardWithVersion := make(map[storage.ShardID]uint64, 1)
+	for _, shardView := range p.params.ClusterSnapshot.Topology.ShardViews {
+		if shardView.ShardID == p.params.ShardID {
+			shardWithVersion[p.params.ShardID] = shardView.Version
+		}
+	}
+	return procedure.RelatedVersionInfo{
+		ClusterID:        p.params.ClusterSnapshot.Topology.ClusterView.ClusterID,
+		ShardWithVersion: shardWithVersion,
+		ClusterVersion:   p.params.ClusterSnapshot.Topology.ClusterView.Version,
+	}
+}
+
+func (p *Procedure) Priority() procedure.Priority {
+	return procedure.PriorityLow
+}
+
 func (p *Procedure) ID() uint64 {
-	return p.id
+	return p.params.ID
 }
 
 func (p *Procedure) Typ() procedure.Typ {
@@ -159,13 +156,8 @@ func (p *Procedure) Start(ctx context.Context) error {
 	p.updateState(procedure.StateRunning)
 
 	req := &callbackRequest{
-		cluster:     p.cluster,
-		ctx:         ctx,
-		dispatch:    p.dispatch,
-		shardID:     p.shardID,
-		sourceReq:   p.req,
-		onSucceeded: p.onSucceeded,
-		onFailed:    p.onFailed,
+		ctx: ctx,
+		p:   p,
 	}
 
 	if err := p.fsm.Event(eventPrepare, req); err != nil {

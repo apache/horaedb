@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package procedure
+package ddl
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
 )
@@ -19,7 +20,7 @@ func CreateTableMetadata(ctx context.Context, c *metadata.ClusterMetadata, schem
 		return metadata.CreateTableResult{}, errors.WithMessage(err, "cluster get table")
 	}
 	if exists {
-		return metadata.CreateTableResult{}, errors.WithMessagef(ErrTableAlreadyExists, "create an existing table, schemaName:%s, tableName:%s", schemaName, tableName)
+		return metadata.CreateTableResult{}, errors.WithMessagef(procedure.ErrTableAlreadyExists, "create an existing table, schemaName:%s, tableName:%s", schemaName, tableName)
 	}
 
 	createTableResult, err := c.CreateTable(ctx, metadata.CreateTableRequest{
@@ -50,7 +51,7 @@ func CreateTableOnShard(ctx context.Context, c *metadata.ClusterMetadata, dispat
 		}
 	}
 	if !found {
-		return errors.WithMessagef(ErrShardLeaderNotFound, "shard node can't find leader, shardID:%d", shardID)
+		return errors.WithMessagef(procedure.ErrShardLeaderNotFound, "shard node can't find leader, shardID:%d", shardID)
 	}
 
 	err = dispatch.CreateTableOnShard(ctx, leader.NodeName, request)

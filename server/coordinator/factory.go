@@ -37,8 +37,8 @@ type Factory struct {
 }
 
 type CreateTableRequest struct {
-	Cluster   *metadata.ClusterMetadata
-	SourceReq *metaservicepb.CreateTableRequest
+	ClusterMetadata *metadata.ClusterMetadata
+	SourceReq       *metaservicepb.CreateTableRequest
 
 	OnSucceeded func(metadata.CreateTableResult) error
 	OnFailed    func(error) error
@@ -49,8 +49,8 @@ func (request *CreateTableRequest) isPartitionTable() bool {
 }
 
 type DropTableRequest struct {
-	Cluster   *metadata.ClusterMetadata
-	SourceReq *metaservicepb.DropTableRequest
+	ClusterMetadata *metadata.ClusterMetadata
+	SourceReq       *metaservicepb.DropTableRequest
 
 	OnSucceeded func(metadata.TableInfo) error
 	OnFailed    func(error) error
@@ -102,7 +102,7 @@ func (f *Factory) MakeCreateTableProcedure(ctx context.Context, request CreateTa
 
 	if isPartitionTable {
 		return f.makeCreatePartitionTableProcedure(ctx, CreatePartitionTableRequest{
-			Cluster:                    request.Cluster,
+			Cluster:                    request.ClusterMetadata,
 			SourceReq:                  request.SourceReq,
 			PartitionTableRatioOfNodes: f.partitionTableProportionOfNodes,
 			OnSucceeded:                request.OnSucceeded,
@@ -118,6 +118,8 @@ func (f *Factory) makeCreateTableProcedure(ctx context.Context, request CreateTa
 	if err != nil {
 		return nil, err
 	}
+	snapshot := request.ClusterMetadata.GetClusterSnapshot()
+
 	shards, err := f.shardPicker.PickShards(ctx, request.Cluster.Name(), 1, false)
 	if err != nil {
 		log.Error("pick table shard", zap.Error(err))
@@ -129,15 +131,14 @@ func (f *Factory) makeCreateTableProcedure(ctx context.Context, request CreateTa
 	}
 
 	procedure := createtable.NewProcedure(createtable.ProcedureRequest{
-		Dispatch:       f.dispatch,
-		Cluster:        request.Cluster,
-		ID:             id,
-		ShardID:        shards[0].ShardInfo.ID,
-		ShardVersion:   shards[0].ShardInfo.Version,
-		ClusterVersion: request.Cluster.GetClusterViewVersion(),
-		Req:            request.SourceReq,
-		OnSucceeded:    request.OnSucceeded,
-		OnFailed:       request.OnFailed,
+		Dispatch:        f.dispatch,
+		ClusterMetadata: request.ClusterMetadata,
+		ClusterSnapshot: snapshot,
+		ID:              id,
+		ShardID:         shards[0].ShardInfo.ID,
+		Req:             request.SourceReq,
+		OnSucceeded:     request.OnSucceeded,
+		OnFailed:        request.OnFailed,
 	})
 	return procedure, nil
 }
@@ -205,7 +206,7 @@ func (f *Factory) CreateDropTableProcedure(ctx context.Context, request DropTabl
 		return procedure, nil
 	}
 
-	procedure := droptable.NewDropTableProcedure(f.dispatch, request.Cluster, id,
+	procedure := droptable.NewDropTableProcedure(f.dispatch, request.ClusterMetadata, id,
 		request.SourceReq, request.OnSucceeded, request.OnFailed)
 	return procedure, nil
 }

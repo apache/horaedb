@@ -9,7 +9,7 @@ import (
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
-	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/storage"
@@ -48,24 +48,25 @@ func prepareCallback(event *fsm.Event) {
 		procedure.CancelEventWithLog(event, err, "get request from event")
 		return
 	}
+	params := req.p.params
 
-	table, exists, err := req.cluster.GetTable(req.rawReq.GetSchemaName(), req.rawReq.GetName())
+	table, exists, err := params.ClusterMetadata.GetTable(params.SourceReq.GetSchemaName(), params.SourceReq.GetName())
 	if err != nil {
 		procedure.CancelEventWithLog(event, err, "cluster get table")
 		return
 	}
 	if !exists {
-		log.Warn("drop non-existing table", zap.String("schema", req.rawReq.GetSchemaName()), zap.String("table", req.rawReq.GetName()))
+		log.Warn("drop non-existing table", zap.String("schema", params.SourceReq.GetSchemaName()), zap.String("table", params.SourceReq.GetName()))
 		return
 	}
 
-	shardNodesResult, err := req.cluster.GetShardNodeByTableIDs([]storage.TableID{table.ID})
+	shardNodesResult, err := params.ClusterMetadata.GetShardNodeByTableIDs([]storage.TableID{table.ID})
 	if err != nil {
 		procedure.CancelEventWithLog(event, err, "cluster get shard by table id")
 		return
 	}
 
-	result, err := req.cluster.DropTable(req.ctx, req.rawReq.GetSchemaName(), req.rawReq.GetName())
+	result, err := params.ClusterMetadata.DropTable(req.ctx, params.SourceReq.GetSchemaName(), params.SourceReq.GetName())
 	if err != nil {
 		procedure.CancelEventWithLog(event, err, "cluster drop table")
 		return
@@ -98,15 +99,15 @@ func prepareCallback(event *fsm.Event) {
 		return
 	}
 
-	tableInfo := cluster.TableInfo{
+	tableInfo := metadata.TableInfo{
 		ID:         table.ID,
 		Name:       table.Name,
 		SchemaID:   table.SchemaID,
-		SchemaName: req.rawReq.GetSchemaName(),
+		SchemaName: params.SourceReq.GetSchemaName(),
 	}
-	err = req.dispatch.DropTableOnShard(req.ctx, leader.NodeName, eventdispatch.DropTableOnShardRequest{
+	err = params.Dispatch.DropTableOnShard(req.ctx, leader.NodeName, eventdispatch.DropTableOnShardRequest{
 		UpdateShardInfo: eventdispatch.UpdateShardInfo{
-			CurrShardInfo: cluster.ShardInfo{
+			CurrShardInfo: metadata.ShardInfo{
 				ID:      result.ShardVersionUpdate[0].ShardID,
 				Role:    storage.ShardRoleLeader,
 				Version: result.ShardVersionUpdate[0].CurrVersion,
@@ -126,7 +127,7 @@ func prepareCallback(event *fsm.Event) {
 func successCallback(event *fsm.Event) {
 	req := event.Args[0].(*callbackRequest)
 
-	if err := req.onSucceeded(req.ret); err != nil {
+	if err := req.p.params.OnSucceeded(req.ret); err != nil {
 		log.Error("exec success callback failed")
 	}
 }
@@ -134,59 +135,109 @@ func successCallback(event *fsm.Event) {
 func failedCallback(event *fsm.Event) {
 	req := event.Args[0].(*callbackRequest)
 
-	if err := req.onFailed(event.Err); err != nil {
+	if err := req.p.params.OnFailed(event.Err); err != nil {
 		log.Error("exec failed callback failed")
 	}
 }
 
 // callbackRequest is fsm callbacks param.
 type callbackRequest struct {
-	ctx      context.Context
-	cluster  *cluster.Cluster
-	dispatch eventdispatch.Dispatch
+	ctx context.Context
+	p   *Procedure
 
-	rawReq *metaservicepb.DropTableRequest
-
-	onSucceeded func(cluster.TableInfo) error
-	onFailed    func(error) error
-
-	ret cluster.TableInfo
+	ret metadata.TableInfo
 }
 
-func NewDropTableProcedure(dispatch eventdispatch.Dispatch, cluster *cluster.Cluster, id uint64, req *metaservicepb.DropTableRequest, onSucceeded func(cluster.TableInfo) error, onFailed func(error) error) procedure.Procedure {
+type ProcedureParams struct {
+	ID              uint64
+	Dispatch        eventdispatch.Dispatch
+	ClusterMetadata *metadata.ClusterMetadata
+	ClusterSnapshot metadata.Snapshot
+
+	SourceReq   *metaservicepb.DropTableRequest
+	OnSucceeded func(metadata.TableInfo) error
+	OnFailed    func(error) error
+}
+
+func NewDropTableProcedure(params ProcedureParams) (procedure.Procedure, error) {
+	shardID, err := validateTable(params)
+	if err != nil {
+		return nil, err
+	}
+
+	relatedVersionInfo := buildRelatedVersionInfo(params, shardID)
+
 	fsm := fsm.NewFSM(
 		stateBegin,
 		dropTableEvents,
 		dropTableCallbacks,
 	)
+
 	return &Procedure{
-		id:          id,
-		fsm:         fsm,
-		cluster:     cluster,
-		dispatch:    dispatch,
-		req:         req,
-		onSucceeded: onSucceeded,
-		onFailed:    onFailed,
-		state:       procedure.StateInit,
+		fsm:                fsm,
+		shardID:            shardID,
+		relatedVersionInfo: relatedVersionInfo,
+		params:             params,
+		state:              procedure.StateInit,
+	}, nil
+}
+
+func buildRelatedVersionInfo(params ProcedureParams, shardID storage.ShardID) procedure.RelatedVersionInfo {
+	shardWithVersion := make(map[storage.ShardID]uint64, 1)
+	for _, shardView := range params.ClusterSnapshot.Topology.ShardViews {
+		if shardView.ShardID == shardID {
+			shardWithVersion[shardID] = shardView.Version
+		}
+	}
+	return procedure.RelatedVersionInfo{
+		ClusterID:        params.ClusterSnapshot.Topology.ClusterView.ClusterID,
+		ShardWithVersion: shardWithVersion,
+		ClusterVersion:   params.ClusterSnapshot.Topology.ClusterView.Version,
 	}
 }
 
-type Procedure struct {
-	id       uint64
-	fsm      *fsm.FSM
-	cluster  *cluster.Cluster
-	dispatch eventdispatch.Dispatch
-	req      *metaservicepb.DropTableRequest
+func validateTable(params ProcedureParams) (storage.ShardID, error) {
+	table, exists, err := params.ClusterMetadata.GetTable(params.SourceReq.GetSchemaName(), params.SourceReq.GetName())
+	if err != nil {
+		log.Error("get table", zap.Error(err))
+		return 0, err
+	}
+	if !exists {
+		log.Error("drop non-existing table", zap.String("schema", params.SourceReq.GetSchemaName()), zap.String("table", params.SourceReq.GetName()))
+		return 0, err
+	}
 
-	onSucceeded func(cluster.TableInfo) error
-	onFailed    func(error) error
+	for _, shardView := range params.ClusterSnapshot.Topology.ShardViews {
+		for _, tableID := range shardView.TableIDs {
+			if table.ID == tableID {
+				return shardView.ShardID, nil
+			}
+		}
+	}
+
+	return 0, errors.WithMessagef(metadata.ErrShardNotFound, "The shard corresponding to the table was not found, schema:%s, table:%s", params.SourceReq.GetSchemaName(), params.SourceReq.GetName())
+}
+
+type Procedure struct {
+	fsm                *fsm.FSM
+	shardID            storage.ShardID
+	relatedVersionInfo procedure.RelatedVersionInfo
+	params             ProcedureParams
 
 	lock  sync.RWMutex
 	state procedure.State
 }
 
+func (p *Procedure) RelatedVersionInfo() procedure.RelatedVersionInfo {
+	return p.relatedVersionInfo
+}
+
+func (p *Procedure) Priority() procedure.Priority {
+	return procedure.PriorityLow
+}
+
 func (p *Procedure) ID() uint64 {
-	return p.id
+	return p.params.ID
 }
 
 func (p *Procedure) Typ() procedure.Typ {
@@ -197,12 +248,8 @@ func (p *Procedure) Start(ctx context.Context) error {
 	p.updateState(procedure.StateRunning)
 
 	req := &callbackRequest{
-		cluster:     p.cluster,
-		ctx:         ctx,
-		dispatch:    p.dispatch,
-		rawReq:      p.req,
-		onSucceeded: p.onSucceeded,
-		onFailed:    p.onFailed,
+		ctx: ctx,
+		p:   p,
 	}
 
 	if err := p.fsm.Event(eventPrepare, req); err != nil {
