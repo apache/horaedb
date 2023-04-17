@@ -209,7 +209,6 @@ impl TableSnapshotProvider for TableSnapshotProviderImpl {
                 table_name: table_data.name.to_string(),
                 schema: table_data.schema(),
                 opts: table_data.table_options().as_ref().clone(),
-                partition_info: table_data.partition_info.clone(),
             };
 
             let version_snapshot = table_data.current_version().snapshot();
@@ -328,12 +327,12 @@ where
     /// Create a latest snapshot of the current logs.
     async fn build(&self) -> Result<Option<Snapshot>> {
         // Get snapshot data from memory.
-        let snapshot_data = self
+        let table_snapshot_opt = self
             .snapshot_data_provider
             .get_table_snapshot(self.space_id, self.table_id)?;
         let snapshot = Snapshot {
             end_seq: self.end_seq,
-            data: snapshot_data,
+            data: table_snapshot_opt,
         };
 
         // Update the current snapshot to the new one.
@@ -341,7 +340,7 @@ where
         // Delete the expired logs after saving the snapshot.
         // TODO: Actually this operation can be performed background, and the failure of
         // it can be ignored.
-        self.log_store.delete_up_to(dbg!(snapshot.end_seq)).await?;
+        self.log_store.delete_up_to(snapshot.end_seq).await?;
 
         Ok(Some(snapshot))
     }

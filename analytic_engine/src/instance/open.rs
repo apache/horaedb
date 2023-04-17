@@ -8,7 +8,7 @@ use std::{
 };
 
 use common_types::schema::IndexInWriterSchema;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, trace};
 use object_store::ObjectStoreRef;
 use snafu::ResultExt;
 use table_engine::engine::OpenTableRequest;
@@ -24,8 +24,8 @@ use crate::{
     instance::{
         self,
         engine::{
-            ApplyMemTable, FlushTable, OpenManifest, OperateByWriteWorker, ReadMetaUpdate, ReadWal,
-            RecoverTableData, Result,
+            ApplyMemTable, FlushTable, OpenManifest, ReadMetaUpdate, ReadWal, RecoverTableData,
+            Result,
         },
         flush_compaction::TableFlushOptions,
         mem_collector::MemUsageCollector,
