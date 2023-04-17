@@ -97,6 +97,7 @@ impl Instance {
             mem_usage_collector: Arc::new(MemUsageCollector::default()),
             db_write_buffer_size: ctx.config.db_write_buffer_size,
             space_write_buffer_size: ctx.config.space_write_buffer_size,
+            preflush_write_buffer_size_ratio: ctx.config.preflush_write_buffer_size_ratio,
             replay_batch_size: ctx.config.replay_batch_size,
             write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_byte() as usize,
             max_bytes_per_write_batch: ctx
@@ -237,8 +238,9 @@ impl Instance {
             TableData::recover_from_add(
                 table_meta,
                 &self.file_purger,
-                space.mem_usage_collector.clone(),
                 request.shard_id,
+                self.preflush_write_buffer_size_ratio,
+                space.mem_usage_collector.clone(),
             )
             .context(RecoverTableData {
                 space_id: space.id,
@@ -383,15 +385,14 @@ impl Instance {
                             table_id: table_data.id,
                         })?;
 
-                    let flush_scheduler = serial_exec.flush_scheduler();
-                    let in_flush = flush_scheduler.is_in_flush();
                     // Flush the table if necessary.
-                    if table_data.should_flush_table(in_flush) {
+                    if table_data.should_flush_table(serial_exec) {
                         let opts = TableFlushOptions {
                             res_sender: None,
                             compact_after_flush: None,
                         };
                         let flusher = self.make_flusher();
+                        let flush_scheduler = serial_exec.flush_scheduler();
                         flusher
                             .schedule_flush(flush_scheduler, table_data, opts)
                             .await

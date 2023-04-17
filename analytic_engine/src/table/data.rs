@@ -99,6 +99,9 @@ pub struct TableData {
 
     /// Mutable memtable memory size limitation
     mutable_limit: AtomicU32,
+    /// Mutable memtable memory usage ratio of the write buffer size.
+    mutable_limit_write_buffer_ratio: f32,
+
     /// Options of this table
     ///
     /// Most modification to `opts` can be done by replacing the old options
@@ -174,8 +177,17 @@ impl Drop for TableData {
 }
 
 #[inline]
-fn get_mutable_limit(opts: &TableOptions) -> u32 {
-    opts.write_buffer_size * 5 / 8
+fn compute_mutable_limit(
+    write_buffer_size: u32,
+    mutable_limit_write_buffer_size_ratio: f32,
+) -> u32 {
+    assert!(
+        mutable_limit_write_buffer_size_ratio > 0.0 && mutable_limit_write_buffer_size_ratio <= 1.0
+    );
+
+    let limit = write_buffer_size as f32 * mutable_limit_write_buffer_size_ratio;
+    // This is safe because the limit won't be larger than the write_buffer_size.
+    limit as u32
 }
 
 impl TableData {
@@ -188,6 +200,7 @@ impl TableData {
         request: CreateTableRequest,
         table_opts: TableOptions,
         purger: &FilePurger,
+        preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
     ) -> Result<Self> {
         // FIXME(yingwen): Validate TableOptions, such as bucket_duration >=
@@ -197,13 +210,18 @@ impl TableData {
         let purge_queue = purger.create_purge_queue(space_id, request.table_id);
         let current_version = TableVersion::new(purge_queue);
         let metrics = Metrics::default();
+        let mutable_limit = AtomicU32::new(compute_mutable_limit(
+            table_opts.write_buffer_size,
+            preflush_write_buffer_size_ratio,
+        ));
 
         Ok(Self {
             id: request.table_id,
             name: request.table_name,
             schema: Mutex::new(request.table_schema),
             space_id,
-            mutable_limit: AtomicU32::new(get_mutable_limit(&table_opts)),
+            mutable_limit,
+            mutable_limit_write_buffer_ratio: preflush_write_buffer_size_ratio,
             opts: ArcSwap::new(Arc::new(table_opts)),
             memtable_factory,
             mem_usage_collector,
@@ -225,20 +243,26 @@ impl TableData {
     pub fn recover_from_add(
         add_meta: AddTableMeta,
         purger: &FilePurger,
-        mem_usage_collector: CollectorRef,
         shard_id: ShardId,
+        preflush_write_buffer_size_ratio: f32,
+        mem_usage_collector: CollectorRef,
     ) -> Result<Self> {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
         let current_version = TableVersion::new(purge_queue);
         let metrics = Metrics::default();
+        let mutable_limit = AtomicU32::new(compute_mutable_limit(
+            add_meta.opts.write_buffer_size,
+            preflush_write_buffer_size_ratio,
+        ));
 
         Ok(Self {
             id: add_meta.table_id,
             name: add_meta.table_name,
             schema: Mutex::new(add_meta.schema),
             space_id: add_meta.space_id,
-            mutable_limit: AtomicU32::new(get_mutable_limit(&add_meta.opts)),
+            mutable_limit,
+            mutable_limit_write_buffer_ratio: preflush_write_buffer_size_ratio,
             opts: ArcSwap::new(Arc::new(add_meta.opts)),
             memtable_factory,
             mem_usage_collector,
@@ -307,8 +331,11 @@ impl TableData {
     /// Update table options.
     #[inline]
     pub fn set_table_options(&self, opts: TableOptions) {
-        self.mutable_limit
-            .store(get_mutable_limit(&opts), Ordering::Relaxed);
+        let mutable_limit = compute_mutable_limit(
+            opts.write_buffer_size,
+            self.mutable_limit_write_buffer_ratio,
+        );
+        self.mutable_limit.store(mutable_limit, Ordering::Relaxed);
         self.opts.store(Arc::new(opts))
     }
 
@@ -399,7 +426,7 @@ impl TableData {
     /// Returns true if the memory usage of this table reaches flush threshold
     ///
     /// REQUIRE: Do in write worker
-    pub fn should_flush_table(&self, in_flush: bool) -> bool {
+    pub fn should_flush_table(&self, serial_exec: &mut TableOpSerialExecutor) -> bool {
         // Fallback to usize::MAX if Failed to convert arena_block_size into
         // usize (overflow)
         let max_write_buffer_size = self
@@ -416,6 +443,7 @@ impl TableData {
         let mutable_usage = self.current_version.mutable_memory_usage();
         let total_usage = self.current_version.total_memory_usage();
 
+        let in_flush = serial_exec.flush_scheduler().is_in_flush();
         // Inspired by https://github.com/facebook/rocksdb/blob/main/include/rocksdb/write_buffer_manager.h#L94
         if mutable_usage > mutable_limit && !in_flush {
             info!(
@@ -660,7 +688,15 @@ pub mod tests {
             let purger = FilePurgerMocker::mock();
             let collector = Arc::new(NoopCollector);
 
-            TableData::new(space_id, create_request, table_opts, &purger, collector).unwrap()
+            TableData::new(
+                space_id,
+                create_request,
+                table_opts,
+                &purger,
+                0.75,
+                collector,
+            )
+            .unwrap()
         }
     }
 
@@ -733,5 +769,34 @@ pub mod tests {
         let time_range =
             TimeRange::bucket_of(now_ts, table_options::DEFAULT_SEGMENT_DURATION).unwrap();
         assert_eq!(time_range, mem_state.time_range);
+    }
+
+    #[test]
+    fn test_compute_mutable_limit() {
+        // Build the cases for compute_mutable_limit.
+        let cases = vec![
+            (80, 0.8, 64),
+            (80, 0.5, 40),
+            (80, 0.1, 8),
+            (80, 0.0, 0),
+            (80, 1.0, 80),
+            (0, 0.8, 0),
+            (0, 0.5, 0),
+            (0, 0.1, 0),
+            (0, 0.0, 0),
+            (0, 1.0, 0),
+        ];
+
+        for (write_buffer_size, ratio, expected) in cases {
+            let limit = compute_mutable_limit(write_buffer_size, ratio);
+            assert_eq!(expected, limit);
+        }
+    }
+
+    #[should_panic]
+    #[test]
+    fn test_compute_mutable_limit_panic() {
+        compute_mutable_limit(80, 1.1);
+        compute_mutable_limit(80, -0.1);
     }
 }
