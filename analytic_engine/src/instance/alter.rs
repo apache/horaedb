@@ -1,14 +1,13 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Alter [Schema] and [TableOptions] logic of instance.
 
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use common_util::error::BoxError;
 use log::info;
 use snafu::{ensure, ResultExt};
 use table_engine::table::AlterSchemaRequest;
-use tokio::sync::oneshot;
 use wal::{kv_encoder::LogBatchEncoder, manager::WriteContext};
 
 use crate::{
@@ -16,66 +15,50 @@ use crate::{
         self,
         engine::{
             AlterDroppedTable, EncodePayloads, FlushTable, InvalidOptions, InvalidPreVersion,
-            InvalidSchemaVersion, OperateByWriteWorker, Result, WriteManifest, WriteWal,
+            InvalidSchemaVersion, Result, WriteManifest, WriteWal,
         },
         flush_compaction::TableFlushOptions,
-        write_worker,
-        write_worker::{AlterOptionsCommand, AlterSchemaCommand, WorkerLocal},
-        Instance,
+        serial_executor::TableOpSerialExecutor,
+        InstanceRef,
     },
     manifest::meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate, MetaUpdateRequest},
     payload::WritePayload,
-    space::SpaceAndTable,
     table::data::TableDataRef,
     table_options,
 };
 
-impl Instance {
+pub struct Alterer<'a> {
+    table_data: TableDataRef,
+    serial_exec: &'a mut TableOpSerialExecutor,
+
+    instance: InstanceRef,
+}
+
+impl<'a> Alterer<'a> {
+    pub async fn new(
+        table_data: TableDataRef,
+        serial_exec: &'a mut TableOpSerialExecutor,
+        instance: InstanceRef,
+    ) -> Alterer<'a> {
+        assert_eq!(table_data.id, serial_exec.table_id());
+        Self {
+            table_data,
+            serial_exec,
+            instance,
+        }
+    }
+}
+
+impl<'a> Alterer<'a> {
     // Alter schema need to be handled by write worker.
-    pub async fn alter_schema_of_table(
-        &self,
-        space_table: &SpaceAndTable,
-        request: AlterSchemaRequest,
-    ) -> Result<()> {
+    pub async fn alter_schema_of_table(&mut self, request: AlterSchemaRequest) -> Result<()> {
         info!(
-            "Instance alter schema, space_table:{:?}, request:{:?}",
-            space_table, request
+            "Instance alter schema, table:{:?}, request:{:?}",
+            self.table_data.name, request
         );
 
-        // Create a oneshot channel to send/receive alter schema result.
-        let (tx, rx) = oneshot::channel();
-        let cmd = AlterSchemaCommand {
-            // space_table: space_table.clone(),
-            table_data: space_table.table_data().clone(),
-            request,
-            tx,
-        };
-
-        // Send alter schema request to write worker, actual works done in
-        // Self::process_alter_schema_command()
-        write_worker::process_command_in_write_worker(
-            cmd.into_command(),
-            space_table.table_data(),
-            rx,
-        )
-        .await
-        .context(OperateByWriteWorker {
-            space_id: space_table.space().id,
-            table: &space_table.table_data().name,
-            table_id: space_table.table_data().id,
-        })
-    }
-
-    /// Do the actual alter schema job, must called by write worker in write
-    /// thread sequentially.
-    pub(crate) async fn process_alter_schema_command(
-        self: &Arc<Self>,
-        worker_local: &mut WorkerLocal,
-        table_data: &TableDataRef,
-        request: AlterSchemaRequest,
-    ) -> Result<()> {
         // Validate alter schema request.
-        self.validate_before_alter(table_data, &request)?;
+        self.validate_before_alter(&request)?;
 
         // Now we can persist and update the schema, since this function is called by
         // write worker, so there is no other concurrent writer altering the
@@ -83,22 +66,22 @@ impl Instance {
 
         // First trigger a flush before alter schema, to ensure ensure all wal entries
         // with old schema are flushed
-        let opts = TableFlushOptions {
-            block_on_write_thread: true,
-            ..Default::default()
-        };
-        self.flush_table_in_worker(worker_local, table_data, opts)
+        let opts = TableFlushOptions::default();
+        let flush_scheduler = self.serial_exec.flush_scheduler();
+        let flusher = self.instance.make_flusher();
+        flusher
+            .do_flush(flush_scheduler, &self.table_data, opts)
             .await
             .context(FlushTable {
-                space_id: table_data.space_id,
-                table: &table_data.name,
-                table_id: table_data.id,
+                space_id: self.table_data.space_id,
+                table: &self.table_data.name,
+                table_id: self.table_data.id,
             })?;
 
         // Build alter op
         let manifest_update = AlterSchemaMeta {
-            space_id: table_data.space_id,
-            table_id: table_data.id,
+            space_id: self.table_data.space_id,
+            table_id: self.table_data.id,
             schema: request.schema.clone(),
             pre_schema_version: request.pre_schema_version,
         };
@@ -108,26 +91,27 @@ impl Instance {
         let payload = WritePayload::AlterSchema(&alter_schema_pb);
 
         // Encode payloads
-        let table_location = table_data.table_location();
+        let table_location = self.table_data.table_location();
         let wal_location =
             instance::create_wal_location(table_location.id, table_location.shard_info);
         let log_batch_encoder = LogBatchEncoder::create(wal_location);
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
-            table: &table_data.name,
+            table: &self.table_data.name,
             wal_location,
         })?;
 
         // Write log batch
         let write_ctx = WriteContext::default();
-        self.space_store
+        self.instance
+            .space_store
             .wal_manager
             .write(&write_ctx, &log_batch)
             .await
             .box_err()
             .context(WriteWal {
-                space_id: table_data.space_id,
-                table: &table_data.name,
-                table_id: table_data.id,
+                space_id: self.table_data.space_id,
+                table: &self.table_data.name,
+                table_id: self.table_data.id,
             })?;
 
         info!(
@@ -139,45 +123,42 @@ impl Instance {
         let update_req = {
             let meta_update = MetaUpdate::AlterSchema(manifest_update);
             MetaUpdateRequest {
-                shard_info: table_data.shard_info,
+                shard_info: self.table_data.shard_info,
                 meta_update,
             }
         };
-        self.space_store
+        self.instance
+            .space_store
             .manifest
             .store_update(update_req)
             .await
             .context(WriteManifest {
-                space_id: table_data.space_id,
-                table: &table_data.name,
-                table_id: table_data.id,
+                space_id: self.table_data.space_id,
+                table: &self.table_data.name,
+                table_id: self.table_data.id,
             })?;
 
         // Update schema in memory.
-        table_data.set_schema(request.schema);
+        self.table_data.set_schema(request.schema);
 
         Ok(())
     }
 
     // Most validation should be done by catalog module, so we don't do too much
     // duplicate check here, especially the schema compatibility.
-    fn validate_before_alter(
-        &self,
-        table_data: &TableDataRef,
-        request: &AlterSchemaRequest,
-    ) -> Result<()> {
+    fn validate_before_alter(&self, request: &AlterSchemaRequest) -> Result<()> {
         ensure!(
-            !table_data.is_dropped(),
+            !self.table_data.is_dropped(),
             AlterDroppedTable {
-                table: &table_data.name,
+                table: &self.table_data.name,
             }
         );
 
-        let current_version = table_data.schema_version();
+        let current_version = self.table_data.schema_version();
         ensure!(
             current_version < request.schema.version(),
             InvalidSchemaVersion {
-                table: &table_data.name,
+                table: &self.table_data.name,
                 current_version,
                 given_version: request.schema.version(),
             }
@@ -186,7 +167,7 @@ impl Instance {
         ensure!(
             current_version == request.pre_schema_version,
             InvalidPreVersion {
-                table: &table_data.name,
+                table: &self.table_data.name,
                 current_version,
                 pre_version: request.pre_schema_version,
             }
@@ -197,73 +178,41 @@ impl Instance {
 
     pub async fn alter_options_of_table(
         &self,
-        space_table: &SpaceAndTable,
         // todo: encapsulate this into a struct like other functions.
         options: HashMap<String, String>,
     ) -> Result<()> {
         info!(
-            "Instance alter options of table, space_table:{:?}, options:{:?}",
-            space_table, options
+            "Instance alter options of table, table:{:?}, options:{:?}",
+            self.table_data.name, options
         );
 
-        // Create a oneshot channel to send/receive alter options result.
-        let (tx, rx) = oneshot::channel();
-        let cmd = AlterOptionsCommand {
-            table_data: space_table.table_data().clone(),
-            options,
-            tx,
-        };
-
-        // Send alter options request to write worker, actual works done in
-        // Self::process_alter_options_command()
-        write_worker::process_command_in_write_worker(
-            cmd.into_command(),
-            space_table.table_data(),
-            rx,
-        )
-        .await
-        .context(OperateByWriteWorker {
-            space_id: space_table.space().id,
-            table: &space_table.table_data().name,
-            table_id: space_table.table_data().id,
-        })
-    }
-
-    /// Do the actual alter options job, must called by write worker in write
-    /// thread sequentially.
-    pub(crate) async fn process_alter_options_command(
-        self: &Arc<Self>,
-        worker_local: &mut WorkerLocal,
-        table_data: &TableDataRef,
-        options: HashMap<String, String>,
-    ) -> Result<()> {
         ensure!(
-            !table_data.is_dropped(),
+            !self.table_data.is_dropped(),
             AlterDroppedTable {
-                table: &table_data.name,
+                table: &self.table_data.name,
             }
         );
 
         // AlterOptions doesn't need a flush.
 
         // Generate options after alter op
-        let current_table_options = table_data.table_options();
+        let current_table_options = self.table_data.table_options();
         info!(
             "Instance alter options, space_id:{}, tables:{:?}, old_table_opts:{:?}, options:{:?}",
-            table_data.space_id, table_data.name, current_table_options, options
+            self.table_data.space_id, self.table_data.name, current_table_options, options
         );
         let mut table_opts =
             table_options::merge_table_options_for_alter(&options, &current_table_options)
                 .box_err()
                 .context(InvalidOptions {
-                    space_id: table_data.space_id,
-                    table: &table_data.name,
-                    table_id: table_data.id,
+                    space_id: self.table_data.space_id,
+                    table: &self.table_data.name,
+                    table_id: self.table_data.id,
                 })?;
         table_opts.sanitize();
         let manifest_update = AlterOptionsMeta {
-            space_id: table_data.space_id,
-            table_id: table_data.id,
+            space_id: self.table_data.space_id,
+            table_id: self.table_data.id,
             options: table_opts.clone(),
         };
 
@@ -276,48 +225,51 @@ impl Instance {
         let payload = WritePayload::AlterOption(&alter_options_pb);
 
         // Encode payload
-        let table_location = table_data.table_location();
+        let table_location = self.table_data.table_location();
         let wal_location =
             instance::create_wal_location(table_location.id, table_location.shard_info);
         let log_batch_encoder = LogBatchEncoder::create(wal_location);
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
-            table: &table_data.name,
+            table: &self.table_data.name,
             wal_location,
         })?;
 
         // Write log batch
         let write_ctx = WriteContext::default();
-        self.space_store
+        self.instance
+            .space_store
             .wal_manager
             .write(&write_ctx, &log_batch)
             .await
             .box_err()
             .context(WriteWal {
-                space_id: table_data.space_id,
-                table: &table_data.name,
-                table_id: table_data.id,
+                space_id: self.table_data.space_id,
+                table: &self.table_data.name,
+                table_id: self.table_data.id,
             })?;
 
         // Write to Manifest
         let update_req = {
             let meta_update = MetaUpdate::AlterOptions(manifest_update);
             MetaUpdateRequest {
-                shard_info: table_data.shard_info,
+                shard_info: self.table_data.shard_info,
                 meta_update,
             }
         };
-        self.space_store
+        self.instance
+            .space_store
             .manifest
             .store_update(update_req)
             .await
             .context(WriteManifest {
-                space_id: table_data.space_id,
-                table: &table_data.name,
-                table_id: table_data.id,
+                space_id: self.table_data.space_id,
+                table: &self.table_data.name,
+                table_id: self.table_data.id,
             })?;
 
         // Update memory status
-        table_data.set_table_options(worker_local, table_opts);
+        self.table_data.set_table_options(table_opts);
+
         Ok(())
     }
 }

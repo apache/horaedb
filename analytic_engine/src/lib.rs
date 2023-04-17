@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Analytic table engine implementations
 
@@ -46,10 +46,7 @@ pub struct Config {
     pub replay_batch_size: usize,
     /// Batch size to replay tables
     pub max_replay_tables_per_batch: usize,
-    // Write group options:
-    pub write_group_worker_num: usize,
-    pub write_group_command_channel_cap: usize,
-    // End of write group options.
+
     /// Default options for table
     pub table_opts: TableOptions,
 
@@ -104,8 +101,6 @@ impl Default for Config {
             storage: Default::default(),
             replay_batch_size: 500,
             max_replay_tables_per_batch: 64,
-            write_group_worker_num: 8,
-            write_group_command_channel_cap: 128,
             table_opts: TableOptions::default(),
             compaction_config: SchedulerConfig::default(),
             sst_meta_cache_cap: Some(1000),

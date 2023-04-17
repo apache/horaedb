@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
     alloc::Layout,
@@ -15,7 +15,7 @@ use std::{
 use arena::{Arena, BasicStats};
 use rand::Rng;
 
-use super::{slice::ArenaSlice, KeyComparator, MAX_HEIGHT};
+use crate::{slice::ArenaSlice, KeyComparator, MAX_HEIGHT};
 
 const HEIGHT_INCREASE: u32 = u32::MAX / 3;
 

@@ -10,7 +10,7 @@ use common_types::{
     schema::Schema,
     table::{ShardId, DEFAULT_SHARD_ID},
 };
-use common_util::{error::GenericError, runtime::Runtime};
+use common_util::{error::GenericError, runtime::RuntimeRef};
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{
@@ -304,15 +304,15 @@ pub type TableEngineRef = Arc<dyn TableEngine>;
 #[derive(Clone, Debug)]
 pub struct EngineRuntimes {
     /// Runtime for reading data
-    pub read_runtime: Arc<Runtime>,
+    pub read_runtime: RuntimeRef,
     /// Runtime for writing data
-    pub write_runtime: Arc<Runtime>,
+    pub write_runtime: RuntimeRef,
     /// Runtime for compacting data
-    pub compact_runtime: Arc<Runtime>,
+    pub compact_runtime: RuntimeRef,
     /// Runtime for ceresmeta communication
-    pub meta_runtime: Arc<Runtime>,
+    pub meta_runtime: RuntimeRef,
     /// Runtime for some other tasks which are not so important
-    pub default_runtime: Arc<Runtime>,
+    pub default_runtime: RuntimeRef,
     /// Runtime for io task
-    pub io_runtime: Arc<Runtime>,
+    pub io_runtime: RuntimeRef,
 }

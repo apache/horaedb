@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table version
 
@@ -25,7 +25,6 @@ use crate::{
         picker::{self, CompactionPickerRef, PickerContext},
         CompactionTask, ExpiredFiles,
     },
-    instance::write_worker::WorkerLocal,
     memtable::{self, key::KeySequence, MemTableRef, PutContext},
     sampler::{DefaultSampler, SamplerRef},
     sst::{
@@ -512,11 +511,7 @@ struct TableVersionInner {
 }
 
 impl TableVersionInner {
-    fn memtable_for_write(
-        &self,
-        _write_lock: &WorkerLocal,
-        timestamp: Timestamp,
-    ) -> Option<MemTableForWrite> {
+    fn memtable_for_write(&self, timestamp: Timestamp) -> Option<MemTableForWrite> {
         if let Some(mem) = self.memtable_view.sampling_mem.clone() {
             if !mem.freezed {
                 // If sampling memtable is not freezed.
@@ -579,10 +574,7 @@ impl TableVersion {
     /// Returns a duration if a sampled segment duration needs to be persisted.
     ///
     /// REQUIRE: Do in write worker
-    pub fn switch_memtables_or_suggest_duration(
-        &self,
-        _worker_local: &WorkerLocal,
-    ) -> Option<Duration> {
+    pub fn switch_memtables_or_suggest_duration(&self) -> Option<Duration> {
         self.inner
             .write()
             .unwrap()
@@ -593,7 +585,7 @@ impl TableVersion {
     /// Stop timestamp sampling and freezed the sampling memtable.
     ///
     /// REQUIRE: Do in write worker
-    pub fn freeze_sampling(&self, _worker_local: &WorkerLocal) {
+    pub fn freeze_sampling(&self) {
         self.inner
             .write()
             .unwrap()
@@ -617,16 +609,11 @@ impl TableVersion {
     /// different schema.
     pub fn memtable_for_write(
         &self,
-        write_lock: &WorkerLocal,
         timestamp: Timestamp,
         schema_version: schema::Version,
     ) -> Result<Option<MemTableForWrite>> {
         // Find memtable by timestamp
-        let memtable = self
-            .inner
-            .read()
-            .unwrap()
-            .memtable_for_write(write_lock, timestamp);
+        let memtable = self.inner.read().unwrap().memtable_for_write(timestamp);
         let mutable = match memtable {
             Some(v) => v,
             None => return Ok(None),
@@ -800,7 +787,6 @@ impl TableVersionMeta {
 mod tests {
     use super::*;
     use crate::{
-        instance::write_worker::tests::WriteHandleMocker,
         sst::file::tests::FilePurgerMocker,
         table::{data::tests::MemTableMocker, version_edit::tests::AddFileMocker},
         table_options,
@@ -815,8 +801,6 @@ mod tests {
 
     #[test]
     fn test_empty_table_version() {
-        let mocked_write_handle = WriteHandleMocker::default().build();
-        let worker_local = mocked_write_handle.worker_local;
         let version = new_table_version();
 
         let ts = Timestamp::now();
@@ -848,13 +832,11 @@ mod tests {
         }
 
         let now = Timestamp::now();
-        let mutable = version.memtable_for_write(&worker_local, now, 1).unwrap();
+        let mutable = version.memtable_for_write(now, 1).unwrap();
         assert!(mutable.is_none());
 
         // Nothing to switch.
-        assert!(version
-            .switch_memtables_or_suggest_duration(&worker_local)
-            .is_none());
+        assert!(version.switch_memtables_or_suggest_duration().is_none());
     }
 
     fn check_flushable_mem_with_sampling(
@@ -871,8 +853,6 @@ mod tests {
 
     #[test]
     fn test_table_version_sampling() {
-        let mocked_write_handle = WriteHandleMocker::default().build();
-        let worker_local = mocked_write_handle.worker_local;
         let version = new_table_version();
 
         let memtable = MemTableMocker::default().build();
@@ -886,14 +866,14 @@ mod tests {
         // Should write to sampling memtable.
         let now = Timestamp::now();
         let mutable = version
-            .memtable_for_write(&worker_local, now, schema.version())
+            .memtable_for_write(now, schema.version())
             .unwrap()
             .unwrap();
         let actual_memtable = mutable.as_sampling();
         assert_eq!(memtable_id, actual_memtable.id);
 
         let mutable = version
-            .memtable_for_write(&worker_local, Timestamp::new(1234), schema.version())
+            .memtable_for_write(Timestamp::new(1234), schema.version())
             .unwrap()
             .unwrap();
         let actual_memtable = mutable.as_sampling();
@@ -911,7 +891,6 @@ mod tests {
 
     #[test]
     fn test_table_version_sampling_switch() {
-        let worker_local = WriteHandleMocker::default().build().worker_local;
         let version = new_table_version();
 
         let memtable = MemTableMocker::default().build();
@@ -923,9 +902,7 @@ mod tests {
 
         version.set_sampling(sampling_mem);
 
-        let duration = version
-            .switch_memtables_or_suggest_duration(&worker_local)
-            .unwrap();
+        let duration = version.switch_memtables_or_suggest_duration().unwrap();
         assert_eq!(table_options::DEFAULT_SEGMENT_DURATION, duration);
 
         // Flushable memtables only contains sampling memtable.
@@ -935,7 +912,7 @@ mod tests {
         // Write to memtable after switch and before freezed.
         let now = Timestamp::now();
         let mutable = version
-            .memtable_for_write(&worker_local, now, schema.version())
+            .memtable_for_write(now, schema.version())
             .unwrap()
             .unwrap();
         // Still write to sampling memtable.
@@ -943,9 +920,7 @@ mod tests {
         assert_eq!(memtable_id, actual_memtable.id);
 
         // Switch still return duration before freezed.
-        let duration = version
-            .switch_memtables_or_suggest_duration(&worker_local)
-            .unwrap();
+        let duration = version.switch_memtables_or_suggest_duration().unwrap();
         assert_eq!(table_options::DEFAULT_SEGMENT_DURATION, duration);
 
         // Flushable memtables only contains sampling memtable before sampling
@@ -956,7 +931,6 @@ mod tests {
 
     #[test]
     fn test_table_version_sampling_freeze() {
-        let worker_local = WriteHandleMocker::default().build().worker_local;
         let version = new_table_version();
 
         let memtable = MemTableMocker::default().build();
@@ -969,18 +943,16 @@ mod tests {
         version.set_sampling(sampling_mem);
         assert_eq!(
             table_options::DEFAULT_SEGMENT_DURATION,
-            version
-                .switch_memtables_or_suggest_duration(&worker_local)
-                .unwrap()
+            version.switch_memtables_or_suggest_duration().unwrap()
         );
 
         // Freeze the sampling memtable.
-        version.freeze_sampling(&worker_local);
+        version.freeze_sampling();
 
         // No memtable after switch and freezed.
         let now = Timestamp::now();
         assert!(version
-            .memtable_for_write(&worker_local, now, schema.version())
+            .memtable_for_write(now, schema.version())
             .unwrap()
             .is_none());
 
@@ -1009,7 +981,7 @@ mod tests {
 
         // Write to mutable memtable.
         let mutable = version
-            .memtable_for_write(&worker_local, now, schema.version())
+            .memtable_for_write(now, schema.version())
             .unwrap()
             .unwrap();
         let mutable = mutable.as_normal();
@@ -1023,13 +995,11 @@ mod tests {
         assert_eq!(memtable_id2, read_view.memtables[0].id);
 
         // Switch mutable memtable.
-        assert!(version
-            .switch_memtables_or_suggest_duration(&worker_local)
-            .is_none());
+        assert!(version.switch_memtables_or_suggest_duration().is_none());
         // No memtable after switch.
         let now = Timestamp::now();
         assert!(version
-            .memtable_for_write(&worker_local, now, schema.version())
+            .memtable_for_write(now, schema.version())
             .unwrap()
             .is_none());
 
@@ -1042,7 +1012,6 @@ mod tests {
 
     #[test]
     fn test_table_version_sampling_apply_edit() {
-        let worker_local = WriteHandleMocker::default().build().worker_local;
         let version = new_table_version();
 
         let memtable = MemTableMocker::default().build();
@@ -1052,7 +1021,7 @@ mod tests {
 
         // Prepare sampling memtable.
         version.set_sampling(sampling_mem);
-        version.freeze_sampling(&worker_local);
+        version.freeze_sampling();
 
         let now = Timestamp::now();
         let time_range =
@@ -1070,9 +1039,7 @@ mod tests {
         version.insert_mutable(mem_state);
 
         // Switch memtable.
-        assert!(version
-            .switch_memtables_or_suggest_duration(&worker_local)
-            .is_none());
+        assert!(version.switch_memtables_or_suggest_duration().is_none());
 
         let max_sequence = 120;
         let file_id = 13;

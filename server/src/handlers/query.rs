@@ -22,11 +22,11 @@ use sql::{
     provider::CatalogMetaProvider,
 };
 
-use super::influxdb::InfluxqlRequest;
 use crate::handlers::{
     error::{
         CreatePlan, InterpreterExec, ParseInfluxql, ParseSql, QueryBlock, QueryTimeout, TooMuchStmt,
     },
+    influxdb::InfluxqlRequest,
     prelude::*,
 };
 
