@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
 use common_util::error::BoxError;
-use log::{debug, trace, warn};
+use log::trace;
 use meta_client::types::{RouteTablesRequest, TableInfo};
 use moka::future::Cache;
 use snafu::ResultExt;
@@ -94,25 +94,28 @@ impl ClusterBasedRouter {
 
         // Now we pick up the nodes who own the leader shard for the route response.
         for (table_name, route_entry) in route_resp.entries {
-            if route_entry.node_shards.is_empty() {
-                let route = make_route(route_entry.table_info, None)?;
+            let route = if route_entry.node_shards.is_empty() {
+                Some(make_route(route_entry.table_info, None)?)
+            } else {
+                let mut route = None;
+                for node_shard in route_entry.node_shards {
+                    if node_shard.shard_info.is_leader() {
+                        route = Some(make_route(
+                            route_entry.table_info,
+                            Some(&node_shard.endpoint),
+                        )?);
+                        break;
+                    }
+                }
+                route
+            };
+
+            if let Some(route) = route {
                 if let Some(cache) = &self.cache {
                     // There may be data race here, and it is acceptable currently.
                     cache.insert(table_name.clone(), route.clone()).await;
                 }
                 routes.push(route);
-            } else {
-                for node_shard in route_entry.node_shards {
-                    if node_shard.shard_info.is_leader() {
-                        let route = make_route(route_entry.table_info, Some(&node_shard.endpoint))?;
-                        if let Some(cache) = &self.cache {
-                            // There may be data race here, and it is acceptable currently.
-                            cache.insert(table_name.clone(), route.clone()).await;
-                        }
-                        routes.push(route);
-                        break;
-                    }
-                }
             }
         }
         Ok(routes)

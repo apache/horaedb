@@ -166,7 +166,7 @@ pub struct Forwarder<B> {
 
 /// The result of forwarding.
 ///
-/// If no forwarding happens, [`Original`] can be used.
+/// If no forwarding happens, [`Local`] can be used.
 pub enum ForwardResult<Resp, Err> {
     Local,
     Forwarded(std::result::Result<Resp, Err>),

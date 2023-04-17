@@ -118,10 +118,12 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         let resps = try_join_all(futures).await?;
         let success = resps.iter().map(|r| r.success).sum();
+
         debug!(
             "Grpc handle write finished, schema:{}, resps:{:?}",
             database, resps
         );
+
         Ok(WriteResponse {
             success,
             header: Some(build_ok_header()),
@@ -149,15 +151,13 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             })?;
 
         debug!(
-        "Grpc handle write begin, catalog:{}, schema:{}, request_id:{}, first_table:{:?}, num_tables:{}",
-        catalog,
-        schema,
-        request_id,
-        req.table_requests
-            .first()
-            .map(|m| (&m.table, &m.tag_names, &m.field_names)),
-        req.table_requests.len(),
-    );
+            "Grpc handle write begin, catalog:{catalog}, schema:{schema}, request_id:{request_id}, first_table:{:?}, num_tables:{}",
+            req.table_requests
+                .first()
+                .map(|m| (&m.table, &m.tag_names, &m.field_names)),
+            req.table_requests.len(),
+        );
+
         let write_context = WriteContext {
             request_id,
             deadline,
@@ -196,12 +196,11 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .await?;
         }
 
-        let resp = WriteResponse {
+        Ok(WriteResponse {
             success: success as u32,
             header: Some(build_ok_header()),
             ..Default::default()
-        };
-        Ok(resp)
+        })
     }
 
     async fn maybe_forward_write(
@@ -215,6 +214,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .iter()
             .map(|table_request| table_request.table.clone())
             .collect();
+
         let route_data = self
             .router
             .route(RouteRequest {
@@ -241,7 +241,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             match forwarded_table_route.get(&table) {
                 Some(endpoint) => {
                     let table_requests = table_requests_to_forward
-                        .entry(endpoint.clone().into())
+                        .entry(endpoint.clone())
                         .or_insert_with(Vec::new);
                     table_requests.push(table_request);
                 }
@@ -251,9 +251,9 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             }
         }
 
-        let mut futures = Vec::with_capacity(table_requests_to_forward.len() + 1);
+        let mut futures = Vec::with_capacity(table_requests_to_forward.len());
         for (endpoint, table_requests) in table_requests_to_forward {
-            let new_table_write_request = WriteRequest {
+            let table_write_request = WriteRequest {
                 context: write_context.clone(),
                 table_requests,
             };
@@ -277,10 +277,11 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
                     Box::new(write) as _
                 };
+
                 let forward_result = forwarder
                     .forward_with_endpoint(
                         endpoint,
-                        tonic::Request::new(new_table_write_request),
+                        tonic::Request::new(table_write_request),
                         do_write,
                     )
                     .await;
@@ -292,7 +293,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     .box_err()
                     .context(ErrWithCause {
                         code: StatusCode::INTERNAL_SERVER_ERROR,
-                        msg: "Original response is not expected",
+                        msg: "Local response is not expected",
                     })?;
 
                 match forward_res {
@@ -306,6 +307,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
             futures.push(write_future.boxed());
         }
+
         Ok((table_requests_to_local, futures))
     }
 }

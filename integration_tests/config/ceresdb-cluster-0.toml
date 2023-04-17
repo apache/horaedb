@@ -1,5 +1,5 @@
 [logger]
-level = "info"
+level = "debug"
 
 [server]
 bind_addr = "0.0.0.0"
