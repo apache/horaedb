@@ -182,7 +182,8 @@ fn compute_mutable_limit(
     mutable_limit_write_buffer_size_ratio: f32,
 ) -> u32 {
     assert!(
-        mutable_limit_write_buffer_size_ratio > 0.0 && mutable_limit_write_buffer_size_ratio <= 1.0
+        mutable_limit_write_buffer_size_ratio >= 0.0
+            && mutable_limit_write_buffer_size_ratio <= 1.0
     );
 
     let limit = write_buffer_size as f32 * mutable_limit_write_buffer_size_ratio;
