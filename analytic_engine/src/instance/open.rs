@@ -383,14 +383,15 @@ impl Instance {
                             table_id: table_data.id,
                         })?;
 
+                    let flush_scheduler = serial_exec.flush_scheduler();
+                    let in_flush = flush_scheduler.is_in_flush();
                     // Flush the table if necessary.
-                    if table_data.should_flush_table() {
+                    if table_data.should_flush_table(in_flush) {
                         let opts = TableFlushOptions {
                             res_sender: None,
                             compact_after_flush: None,
                         };
                         let flusher = self.make_flusher();
-                        let flush_scheduler = serial_exec.flush_scheduler();
                         flusher
                             .schedule_flush(flush_scheduler, table_data, opts)
                             .await

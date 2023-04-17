@@ -91,6 +91,11 @@ impl TableOpSerialExecutor {
 }
 
 impl TableFlushScheduler {
+    pub fn is_in_flush(&self) -> bool {
+        let state = self.schedule_sync.state.lock().unwrap();
+        matches!(&*state, FlushState::Flushing)
+    }
+
     /// Control the flush procedure and ensure multiple flush procedures to be
     /// sequential.
     ///

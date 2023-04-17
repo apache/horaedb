@@ -175,7 +175,7 @@ impl Drop for TableData {
 
 #[inline]
 fn get_mutable_limit(opts: &TableOptions) -> u32 {
-    opts.write_buffer_size / 8 * 7
+    opts.write_buffer_size * 5 / 8
 }
 
 impl TableData {
@@ -399,7 +399,7 @@ impl TableData {
     /// Returns true if the memory usage of this table reaches flush threshold
     ///
     /// REQUIRE: Do in write worker
-    pub fn should_flush_table(&self) -> bool {
+    pub fn should_flush_table(&self, in_flush: bool) -> bool {
         // Fallback to usize::MAX if Failed to convert arena_block_size into
         // usize (overflow)
         let max_write_buffer_size = self
@@ -417,7 +417,7 @@ impl TableData {
         let total_usage = self.current_version.total_memory_usage();
 
         // Inspired by https://github.com/facebook/rocksdb/blob/main/include/rocksdb/write_buffer_manager.h#L94
-        if mutable_usage > mutable_limit {
+        if mutable_usage > mutable_limit && !in_flush {
             info!(
                 "TableData should flush, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
                 self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size
