@@ -60,6 +60,7 @@ impl Instance {
                 request,
                 table_opts,
                 &self.file_purger,
+                self.preflush_write_buffer_size_ratio,
                 space.mem_usage_collector.clone(),
             )
             .context(CreateTableData {

@@ -535,7 +535,7 @@ impl<'a> Writer<'a> {
             }
         }
 
-        if self.table_data.should_flush_table() {
+        if self.table_data.should_flush_table(self.serial_exec) {
             let table_data = self.table_data.clone();
             let _timer = table_data.metrics.start_table_write_flush_wait_timer();
             self.handle_memtable_flush(&table_data).await?;

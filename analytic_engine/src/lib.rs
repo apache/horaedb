@@ -60,12 +60,13 @@ pub struct Config {
     /// Manifest options
     pub manifest: ManifestOptions,
 
-    // Global write buffer options:
     /// The maximum write buffer size used for single space.
     pub space_write_buffer_size: usize,
     /// The maximum size of all Write Buffers across all spaces.
     pub db_write_buffer_size: usize,
-    /// End of global write buffer options.
+    /// The ratio of table's write buffer size to trigger preflush, and it
+    /// should be in the range (0, 1].
+    pub preflush_write_buffer_size_ratio: f32,
 
     // Iterator scanning options
     /// Batch size for iterator.
@@ -112,6 +113,7 @@ impl Default for Config {
             /// Zero means disabling this param, give a positive value to enable
             /// it.
             db_write_buffer_size: 0,
+            preflush_write_buffer_size_ratio: 0.75,
             scan_batch_size: None,
             sst_background_read_parallelism: 8,
             scan_max_record_batches_in_flight: 1024,
