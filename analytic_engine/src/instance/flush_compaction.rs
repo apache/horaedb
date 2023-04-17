@@ -35,7 +35,7 @@ use crate::{
         scheduler::CompactionSchedulerRef, CompactionInputFiles, CompactionTask, ExpiredFiles,
         TableCompactionRequest,
     },
-    instance::{self, serializer::TableFlushScheduler, SpaceStore, SpaceStoreRef},
+    instance::{self, serial_executor::TableFlushScheduler, SpaceStore, SpaceStoreRef},
     manifest::meta_update::{AlterOptionsMeta, MetaUpdate, MetaUpdateRequest, VersionEditMeta},
     memtable::{ColumnarIterPtr, MemTableRef, ScanContext, ScanRequest},
     row_iter::{

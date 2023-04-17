@@ -20,7 +20,9 @@ use wal::{
 
 use crate::{
     instance,
-    instance::{flush_compaction::TableFlushOptions, serializer::TableOpSerializer, InstanceRef},
+    instance::{
+        flush_compaction::TableFlushOptions, serial_executor::TableOpSerialExecutor, InstanceRef,
+    },
     memtable::{key::KeySequence, PutContext},
     payload::WritePayload,
     space::{SpaceAndTable, SpaceRef},
@@ -242,36 +244,36 @@ pub struct Writer<'a> {
     instance: InstanceRef,
     space: SpaceRef,
     table_data: TableDataRef,
-    serializer: &'a mut TableOpSerializer,
+    serial_exec: &'a mut TableOpSerialExecutor,
 }
 
 impl<'a> Writer<'a> {
     pub fn new(
         instance: InstanceRef,
         space_table: SpaceAndTable,
-        serializer: &'a mut TableOpSerializer,
+        serial_exec: &'a mut TableOpSerialExecutor,
     ) -> Writer<'a> {
-        assert_eq!(space_table.table_data().id, serializer.table_id());
+        assert_eq!(space_table.table_data().id, serial_exec.table_id());
 
         Self {
             instance,
             space: space_table.space().clone(),
             table_data: space_table.table_data().clone(),
-            serializer,
+            serial_exec,
         }
     }
 }
 
 pub(crate) struct MemTableWriter<'a> {
     table_data: TableDataRef,
-    _serializer: &'a mut TableOpSerializer,
+    _serial_exec: &'a mut TableOpSerialExecutor,
 }
 
 impl<'a> MemTableWriter<'a> {
-    pub fn new(table_data: TableDataRef, serializer: &'a mut TableOpSerializer) -> Self {
+    pub fn new(table_data: TableDataRef, serial_exec: &'a mut TableOpSerialExecutor) -> Self {
         Self {
             table_data,
-            _serializer: serializer,
+            _serial_exec: serial_exec,
         }
     }
 
@@ -425,7 +427,7 @@ impl<'a> Writer<'a> {
         encoded_rows: Vec<ByteVec>,
     ) -> Result<()> {
         let sequence = self.write_to_wal(encoded_rows).await?;
-        let memtable_writer = MemTableWriter::new(table_data.clone(), self.serializer);
+        let memtable_writer = MemTableWriter::new(table_data.clone(), self.serial_exec);
 
         memtable_writer
             .write(sequence, &row_group, index_in_writer)
@@ -591,7 +593,7 @@ impl<'a> Writer<'a> {
         let opts = TableFlushOptions::default();
         let flusher = self.instance.make_flusher();
         if table_data.id == self.table_data.id {
-            let flush_scheduler = self.serializer.flush_scheduler();
+            let flush_scheduler = self.serial_exec.flush_scheduler();
             // Set `block_on_write_thread` to false and let flush do in background.
             return flusher
                 .schedule_flush(flush_scheduler, table_data, opts)
@@ -605,9 +607,9 @@ impl<'a> Writer<'a> {
             "Try to trigger flush of other table:{} from the write procedure of table:{}",
             table_data.name, self.table_data.name
         );
-        match table_data.serializer.try_lock() {
-            Ok(mut serializer) => {
-                let flush_scheduler = serializer.flush_scheduler();
+        match table_data.serial_exec.try_lock() {
+            Ok(mut serial_exec) => {
+                let flush_scheduler = serial_exec.flush_scheduler();
                 // Set `block_on_write_thread` to false and let flush do in background.
                 flusher
                     .schedule_flush(flush_scheduler, table_data, opts)

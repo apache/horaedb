@@ -25,7 +25,7 @@ use crate::{
         engine::{ApplyMemTable, FlushTable, ReadMetaUpdate, ReadWal, RecoverTableData, Result},
         flush_compaction::TableFlushOptions,
         mem_collector::MemUsageCollector,
-        serializer::TableOpSerializer,
+        serial_executor::TableOpSerialExecutor,
         write::MemTableWriter,
         Instance, SpaceStore, Spaces,
     },
@@ -290,7 +290,7 @@ impl Instance {
             .await
             .context(ReadWal)?;
 
-        let mut serializer = table_data.serializer.lock().await;
+        let mut serial_exec = table_data.serial_exec.lock().await;
         let mut log_entry_buf = VecDeque::with_capacity(replay_batch_size);
         loop {
             // fetch entries to log_entry_buf
@@ -301,7 +301,7 @@ impl Instance {
                 .context(ReadWal)?;
 
             // Replay all log entries of current table
-            self.replay_table_log_entries(&mut serializer, &table_data, &log_entry_buf)
+            self.replay_table_log_entries(&mut serial_exec, &table_data, &log_entry_buf)
                 .await?;
 
             // No more entries.
@@ -316,7 +316,7 @@ impl Instance {
     /// Replay all log entries into memtable and flush if necessary.
     async fn replay_table_log_entries(
         self: &Arc<Self>,
-        serializer: &mut TableOpSerializer,
+        serial_exec: &mut TableOpSerialExecutor,
         table_data: &TableDataRef,
         log_entries: &VecDeque<LogEntry<ReadPayload>>,
     ) -> Result<()> {
@@ -374,7 +374,7 @@ impl Instance {
 
                     let index_in_writer =
                         IndexInWriterSchema::for_same_schema(row_group.schema().num_columns());
-                    let memtable_writer = MemTableWriter::new(table_data.clone(), serializer);
+                    let memtable_writer = MemTableWriter::new(table_data.clone(), serial_exec);
                     memtable_writer
                         .write(sequence, &row_group.into(), index_in_writer)
                         .context(ApplyMemTable {
@@ -390,7 +390,7 @@ impl Instance {
                             compact_after_flush: None,
                         };
                         let flusher = self.make_flusher();
-                        let flush_scheduler = serializer.flush_scheduler();
+                        let flush_scheduler = serial_exec.flush_scheduler();
                         flusher
                             .schedule_flush(flush_scheduler, table_data, opts)
                             .await

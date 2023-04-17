@@ -36,7 +36,7 @@ impl Dropper {
             }
         };
 
-        let mut serializer = table_data.serializer.lock().await;
+        let mut serial_exec = table_data.serial_exec.lock().await;
 
         if table_data.is_dropped() {
             warn!(
@@ -50,7 +50,7 @@ impl Dropper {
         //  is marked for deletable. However, the overhead of the flushing can
         //  be avoided.
         let opts = TableFlushOptions::default();
-        let flush_scheduler = serializer.flush_scheduler();
+        let flush_scheduler = serial_exec.flush_scheduler();
         self.flusher
             .do_flush(flush_scheduler, &table_data, opts)
             .await

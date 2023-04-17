@@ -37,8 +37,8 @@ impl Closer {
 
         // Flush table.
         let opts = TableFlushOptions::default();
-        let mut serializer = table_data.serializer.lock().await;
-        let flush_scheduler = serializer.flush_scheduler();
+        let mut serial_exec = table_data.serial_exec.lock().await;
+        let flush_scheduler = serial_exec.flush_scheduler();
 
         self.flusher
             .do_flush(flush_scheduler, &table_data, opts)

@@ -18,7 +18,7 @@ use crate::{
             InvalidSchemaVersion, Result, WriteManifest, WriteWal,
         },
         flush_compaction::TableFlushOptions,
-        serializer::TableOpSerializer,
+        serial_executor::TableOpSerialExecutor,
         InstanceRef,
     },
     manifest::meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate, MetaUpdateRequest},
@@ -29,7 +29,7 @@ use crate::{
 
 pub struct Alterer<'a> {
     table_data: TableDataRef,
-    serializer: &'a mut TableOpSerializer,
+    serial_exec: &'a mut TableOpSerialExecutor,
 
     instance: InstanceRef,
 }
@@ -37,13 +37,13 @@ pub struct Alterer<'a> {
 impl<'a> Alterer<'a> {
     pub async fn new(
         table_data: TableDataRef,
-        serializer: &'a mut TableOpSerializer,
+        serial_exec: &'a mut TableOpSerialExecutor,
         instance: InstanceRef,
     ) -> Alterer<'a> {
-        assert_eq!(table_data.id, serializer.table_id());
+        assert_eq!(table_data.id, serial_exec.table_id());
         Self {
             table_data,
-            serializer,
+            serial_exec,
             instance,
         }
     }
@@ -67,7 +67,7 @@ impl<'a> Alterer<'a> {
         // First trigger a flush before alter schema, to ensure ensure all wal entries
         // with old schema are flushed
         let opts = TableFlushOptions::default();
-        let flush_scheduler = self.serializer.flush_scheduler();
+        let flush_scheduler = self.serial_exec.flush_scheduler();
         let flusher = self.instance.make_flusher();
         flusher
             .do_flush(flush_scheduler, &self.table_data, opts)

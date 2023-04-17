@@ -55,7 +55,8 @@ impl Default for TableFlushScheduler {
     }
 }
 
-/// All operations on tables must hold the mutable reference of this serializer.
+/// All operations on tables must hold the mutable reference of this
+/// [TableOpSerialExecutor].
 ///
 /// To ensure the consistency of a table's data, these rules are required:
 /// - The write procedure (write wal + write memtable) should be serialized as a
@@ -64,12 +65,12 @@ impl Default for TableFlushScheduler {
 /// - Any operation that may change the data of a table should be serialized,
 ///   including altering table schema, dropping table, etc;
 /// - The flush procedure of a table should be serialized;
-pub struct TableOpSerializer {
+pub struct TableOpSerialExecutor {
     table_id: TableId,
     flush_scheduler: TableFlushScheduler,
 }
 
-impl TableOpSerializer {
+impl TableOpSerialExecutor {
     pub fn new(table_id: TableId) -> Self {
         Self {
             table_id,
@@ -83,7 +84,7 @@ impl TableOpSerializer {
     }
 }
 
-impl TableOpSerializer {
+impl TableOpSerialExecutor {
     pub fn flush_scheduler(&mut self) -> &mut TableFlushScheduler {
         &mut self.flush_scheduler
     }

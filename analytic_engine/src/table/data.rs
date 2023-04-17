@@ -30,7 +30,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::CreateTableRequest, table::TableId};
 
 use crate::{
-    instance::serializer::TableOpSerializer,
+    instance::serial_executor::TableOpSerialExecutor,
     manifest::meta_update::AddTableMeta,
     memtable::{
         factory::{FactoryRef as MemTableFactoryRef, Options as MemTableOptions},
@@ -146,8 +146,8 @@ pub struct TableData {
     /// Shard info of the table
     pub shard_info: TableShardInfo,
 
-    /// The table operation serializer
-    pub serializer: tokio::sync::Mutex<TableOpSerializer>,
+    /// The table operation serial_exec
+    pub serial_exec: tokio::sync::Mutex<TableOpSerialExecutor>,
 }
 
 impl fmt::Debug for TableData {
@@ -215,7 +215,7 @@ impl TableData {
             dropped: AtomicBool::new(false),
             metrics,
             shard_info: TableShardInfo::new(request.shard_id),
-            serializer: tokio::sync::Mutex::new(TableOpSerializer::new(request.table_id)),
+            serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(request.table_id)),
         })
     }
 
@@ -250,7 +250,7 @@ impl TableData {
             dropped: AtomicBool::new(false),
             metrics,
             shard_info: TableShardInfo::new(shard_id),
-            serializer: tokio::sync::Mutex::new(TableOpSerializer::new(add_meta.table_id)),
+            serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(add_meta.table_id)),
         })
     }
 

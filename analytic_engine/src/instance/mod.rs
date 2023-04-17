@@ -14,7 +14,7 @@ pub mod flush_compaction;
 pub(crate) mod mem_collector;
 pub mod open;
 mod read;
-pub(crate) mod serializer;
+pub(crate) mod serial_executor;
 pub(crate) mod write;
 
 use std::{
@@ -221,8 +221,8 @@ impl Instance {
         };
 
         let flusher = self.make_flusher();
-        let mut serializer = table_data.serializer.lock().await;
-        let flush_scheduler = serializer.flush_scheduler();
+        let mut serial_exec = table_data.serial_exec.lock().await;
+        let flush_scheduler = serial_exec.flush_scheduler();
         flusher
             .schedule_flush(flush_scheduler, table_data, flush_opts)
             .await
