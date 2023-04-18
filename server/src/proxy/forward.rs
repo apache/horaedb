@@ -290,7 +290,6 @@ impl<B: ClientBuilder> Forwarder<B> {
 
         // Update the request.
         {
-            // TODO: we should use the timeout from the original request.
             if let Some(timeout) = self.config.forward_timeout {
                 req.set_timeout(timeout.0);
             }
