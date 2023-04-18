@@ -5,13 +5,13 @@ use std::{
     collections::HashMap,
     net::Ipv4Addr,
     sync::{Arc, RwLock},
-    time::Duration,
 };
 
 use async_trait::async_trait;
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, RouteRequest,
 };
+use common_util::config::ReadableDuration;
 use log::{debug, error, warn};
 use router::{endpoint::Endpoint, RouterRef};
 use serde::{Deserialize, Serialize};
@@ -77,38 +77,27 @@ pub type ForwarderRef = Arc<Forwarder<DefaultClientBuilder>>;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
-    /// Thread num for grpc polling
-    pub thread_num: usize,
-    /// -1 means unlimited
-    pub max_send_msg_len: i32,
-    /// -1 means unlimited
-    pub max_recv_msg_len: i32,
     /// Sets an interval for HTTP2 Ping frames should be sent to keep a
     /// connection alive.
-    pub keep_alive_interval: Duration,
+    pub keep_alive_interval: ReadableDuration,
     /// A timeout for receiving an acknowledgement of the keep-alive ping
     /// If the ping is not acknowledged within the timeout, the connection will
     /// be closed
-    pub keep_alive_timeout: Duration,
+    pub keep_alive_timeout: ReadableDuration,
     /// default keep http2 connections alive while idle
     pub keep_alive_while_idle: bool,
-    pub connect_timeout: Duration,
-    pub forward_timeout: Duration,
+    pub connect_timeout: ReadableDuration,
+    pub forward_timeout: Option<ReadableDuration>,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            thread_num: 4,
-            // 20MB
-            max_send_msg_len: 20 * (1 << 20),
-            // 1GB
-            max_recv_msg_len: 1 << 30,
-            keep_alive_interval: Duration::from_secs(60 * 10),
-            keep_alive_timeout: Duration::from_secs(3),
+            keep_alive_interval: ReadableDuration::secs(60 * 10),
+            keep_alive_timeout: ReadableDuration::secs(3),
             keep_alive_while_idle: true,
-            connect_timeout: Duration::from_secs(3),
-            forward_timeout: Duration::from_secs(60),
+            connect_timeout: ReadableDuration::secs(3),
+            forward_timeout: None,
         }
     }
 }
@@ -140,19 +129,20 @@ impl ClientBuilder for DefaultClientBuilder {
 
         let configured_endpoint = match self.config.keep_alive_while_idle {
             true => configured_endpoint
-                .connect_timeout(self.config.connect_timeout)
-                .keep_alive_timeout(self.config.keep_alive_timeout)
+                .connect_timeout(self.config.connect_timeout.0)
+                .keep_alive_timeout(self.config.keep_alive_timeout.0)
                 .keep_alive_while_idle(true)
-                .http2_keep_alive_interval(self.config.keep_alive_interval),
+                .http2_keep_alive_interval(self.config.keep_alive_interval.0),
             false => configured_endpoint
-                .connect_timeout(self.config.connect_timeout)
+                .connect_timeout(self.config.connect_timeout.0)
                 .keep_alive_while_idle(false),
         };
         let channel = configured_endpoint.connect().await.context(Connect {
             endpoint: &endpoint_with_scheme,
         })?;
 
-        Ok(StorageServiceClient::new(channel))
+        let client = StorageServiceClient::new(channel);
+        Ok(client)
     }
 }
 
@@ -301,7 +291,9 @@ impl<B: ClientBuilder> Forwarder<B> {
         // Update the request.
         {
             // TODO: we should use the timeout from the original request.
-            req.set_timeout(self.config.forward_timeout);
+            if let Some(timeout) = self.config.forward_timeout {
+                req.set_timeout(timeout.0);
+            }
         }
 
         // TODO: add metrics to record the forwarding.
