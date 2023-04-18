@@ -224,15 +224,24 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .await?;
         let forwarded_table_route = route_data
             .into_iter()
-            .filter(|route| route.endpoint.is_some())
-            .map(|route| (route.table, route.endpoint.unwrap().into()))
+            .filter_map(|router| {
+                router
+                    .endpoint
+                    .map(|endpoint| (router.table, endpoint.into()))
+            })
             .filter(|router| !self.forwarder.is_local_endpoint(&router.1))
             .collect::<HashMap<_, _>>();
 
+        // No table need to be forwarded.
+        if forwarded_table_route.is_empty() {
+            return Ok((req, vec![]));
+        }
+
         let mut table_requests_to_local = WriteRequest {
             table_requests: Vec::with_capacity(req.table_requests.len()),
-            ..req.clone()
+            context: req.context.clone(),
         };
+
         let mut table_requests_to_forward = HashMap::with_capacity(req.table_requests.len());
 
         let write_context = req.context.clone();

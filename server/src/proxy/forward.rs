@@ -73,6 +73,13 @@ pub enum Error {
 define_result!(Error);
 
 pub type ForwarderRef = Arc<Forwarder<DefaultClientBuilder>>;
+pub trait ForwarderRpc<Req, Resp, Err> = FnOnce(
+    StorageServiceClient<Channel>,
+    tonic::Request<Req>,
+    &Endpoint,
+) -> Box<
+    dyn std::future::Future<Output = std::result::Result<Resp, Err>> + Send + Unpin,
+>;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -246,13 +253,7 @@ impl<B: ClientBuilder> Forwarder<B> {
         do_rpc: F,
     ) -> Result<ForwardResult<Resp, Err>>
     where
-        F: FnOnce(
-            StorageServiceClient<Channel>,
-            tonic::Request<Req>,
-            &Endpoint,
-        ) -> Box<
-            dyn std::future::Future<Output = std::result::Result<Resp, Err>> + Send + Unpin,
-        >,
+        F: ForwarderRpc<Req, Resp, Err>,
         Req: std::fmt::Debug + Clone,
     {
         let ForwardRequest { schema, table, req } = forward_req;
@@ -290,13 +291,7 @@ impl<B: ClientBuilder> Forwarder<B> {
         do_rpc: F,
     ) -> Result<ForwardResult<Resp, Err>>
     where
-        F: FnOnce(
-            StorageServiceClient<Channel>,
-            tonic::Request<Req>,
-            &Endpoint,
-        ) -> Box<
-            dyn std::future::Future<Output = std::result::Result<Resp, Err>> + Send + Unpin,
-        >,
+        F: ForwarderRpc<Req, Resp, Err>,
         Req: std::fmt::Debug + Clone,
     {
         if self.is_local_endpoint(&endpoint) {
