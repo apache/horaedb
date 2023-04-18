@@ -1,4 +1,4 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Cluster sub-crate includes serval functionalities for supporting CeresDB
 //! server to running in the distribute mode. Including:
@@ -28,6 +28,7 @@ pub mod config;
 pub mod shard_tables_cache;
 // FIXME: Remove this lint ignore derive when topology about schema tables is
 // finished.
+pub mod shard_lock_manager;
 #[allow(dead_code)]
 pub mod topology;
 
@@ -60,6 +61,12 @@ pub enum Error {
 
     #[snafu(display("Fail to open shard, source:{}.", source))]
     OpenShardWithCause {
+        shard_id: ShardId,
+        source: GenericError,
+    },
+
+    #[snafu(display("Fail to close shard, source:{}.", source))]
+    CloseShardWithCause {
         shard_id: ShardId,
         source: GenericError,
     },

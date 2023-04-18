@@ -201,9 +201,14 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
         binary_version: config.node.binary_version.clone(),
     };
     let meta_client =
-        meta_impl::build_meta_client(cluster_config.meta_client.clone(), node_meta_info)
+        meta_impl::build_meta_client(cluster_config.meta_client.clone(), node_meta_info.clone())
             .await
             .expect("fail to build meta client");
+    info!("node_meta_info, {:?}", node_meta_info.clone());
+
+    let etcd_client = etcd_client::Client::connect(["localhost:2379"], None)
+        .await
+        .expect("fail to build etcd client");
 
     let shard_tables_cache = ShardTablesCache::default();
     let cluster = {
@@ -212,6 +217,9 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
             meta_client.clone(),
             cluster_config.clone(),
             runtimes.meta_runtime.clone(),
+            etcd_client,
+            config.node.addr.clone(),
+            config.server.grpc_port,
         )
         .unwrap();
         Arc::new(cluster_impl)

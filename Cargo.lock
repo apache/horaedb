@@ -1115,6 +1115,7 @@ dependencies = [
  "cluster",
  "common_util",
  "df_operator",
+ "etcd-client",
  "interpreters",
  "log",
  "logger",
@@ -1334,8 +1335,10 @@ dependencies = [
  "ceresdbproto",
  "common_types",
  "common_util",
+ "etcd-client",
  "log",
  "meta_client",
+ "prost",
  "serde",
  "serde_json",
  "snafu 0.6.10",
@@ -2186,6 +2189,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d2f06b9cac1506ece98fe3231e3cc9c4410ec3d5b1f24ae1c8946f0742cdefc"
 dependencies = [
  "version_check",
+]
+
+[[package]]
+name = "etcd-client"
+version = "0.10.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4319dc0fb739a6e84cb8678b8cf50c9bcfa4712ae826b33ecf00cc0850550a58"
+dependencies = [
+ "http",
+ "prost",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-build",
+ "tower",
+ "tower-service",
 ]
 
 [[package]]

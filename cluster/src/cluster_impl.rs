@@ -1,4 +1,4 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
     sync::{Arc, Mutex, RwLock},
@@ -32,8 +32,9 @@ use tokio::{
 };
 
 use crate::{
-    config::ClusterConfig, shard_tables_cache::ShardTablesCache, topology::ClusterTopology,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, Internal, MetaClientFailure, OpenShard,
+    config::ClusterConfig, shard_lock_manager::ShardLockManager,
+    shard_tables_cache::ShardTablesCache, topology::ClusterTopology, CloseShardWithCause, Cluster,
+    ClusterNodesNotFound, ClusterNodesResp, Internal, MetaClientFailure, OpenShard,
     OpenShardWithCause, Result, ShardNotFound, TableNotFound,
 };
 
@@ -49,6 +50,7 @@ pub struct ClusterImpl {
     config: ClusterConfig,
     heartbeat_handle: Mutex<Option<JoinHandle<()>>>,
     stop_heartbeat_tx: Mutex<Option<Sender<()>>>,
+    shard_lock_manager: Arc<ShardLockManager>,
 }
 
 impl ClusterImpl {
@@ -57,15 +59,25 @@ impl ClusterImpl {
         meta_client: MetaClientRef,
         config: ClusterConfig,
         runtime: Arc<Runtime>,
+        etcd_client: etcd_client::Client,
+        endpoint: String,
+        gprc_port: u16,
     ) -> Result<Self> {
-        let inner = Inner::new(shard_tables_cache, meta_client)?;
-
+        let cache_ref = Arc::new(shard_tables_cache);
+        let inner = Arc::new(Inner::new(cache_ref, meta_client)?);
+        let shard_lock_manager = ShardLockManager::new(
+            config.meta_client.cluster_name.clone(),
+            endpoint,
+            gprc_port,
+            etcd_client,
+        );
         Ok(Self {
-            inner: Arc::new(inner),
+            inner,
             runtime,
             config,
             heartbeat_handle: Mutex::new(None),
             stop_heartbeat_tx: Mutex::new(None),
+            shard_lock_manager: Arc::new(shard_lock_manager),
         })
     }
 
@@ -115,13 +127,13 @@ impl ClusterImpl {
 }
 
 struct Inner {
-    shard_tables_cache: ShardTablesCache,
+    shard_tables_cache: Arc<ShardTablesCache>,
     meta_client: MetaClientRef,
     topology: RwLock<ClusterTopology>,
 }
 
 impl Inner {
-    fn new(shard_tables_cache: ShardTablesCache, meta_client: MetaClientRef) -> Result<Self> {
+    fn new(shard_tables_cache: Arc<ShardTablesCache>, meta_client: MetaClientRef) -> Result<Self> {
         Ok(Self {
             shard_tables_cache,
             meta_client,
@@ -223,6 +235,11 @@ impl Inner {
                 shard_id: shard_info.id,
             })?;
 
+        info!(
+            "get tables of shards,shard {}, result {:?}",
+            shard_info.id, resp
+        );
+
         ensure!(
             resp.tables_by_shard.len() == 1,
             OpenShard {
@@ -231,13 +248,13 @@ impl Inner {
             }
         );
 
-        let tables_of_shard = resp
-            .tables_by_shard
-            .remove(&shard_info.id)
-            .context(OpenShard {
-                shard_id: shard_info.id,
-                msg: "shard tables are missing from the response",
-            })?;
+        let mut tables_of_shard =
+            resp.tables_by_shard
+                .remove(&shard_info.id)
+                .context(OpenShard {
+                    shard_id: shard_info.id,
+                    msg: "shard tables are missing from the response",
+                })?;
 
         self.shard_tables_cache
             .insert_or_update(tables_of_shard.clone());
@@ -356,11 +373,58 @@ impl Cluster for ClusterImpl {
     }
 
     async fn open_shard(&self, req: &OpenShardRequest) -> Result<TablesOfShard> {
+        let shard_id = req.shard.clone().unwrap().id;
+
+        let inner = self.inner.clone();
+        let callback = move |shard_id| {
+            let result = inner.close_shard(&CloseShardRequest { shard_id });
+            match result {
+                Ok(_) => Ok(true),
+                Err(e) => Err(e),
+            }
+        };
+
+        let grant_result = self
+            .shard_lock_manager
+            .clone()
+            .grant_lock(shard_id, callback)
+            .await
+            .box_err()
+            .context(OpenShardWithCause { shard_id })?;
+
+        ensure!(
+            grant_result,
+            OpenShard {
+                shard_id,
+                msg: format!("open a shard failed, shardID:{shard_id:?}"),
+            }
+        );
+
+        info!("Get shard lock finish");
         self.inner.open_shard(req).await
     }
 
     async fn close_shard(&self, req: &CloseShardRequest) -> Result<TablesOfShard> {
-        self.inner.close_shard(req)
+        let close_result = self.inner.close_shard(req);
+        match close_result {
+            Ok(_) => {
+                let revoke_result = self
+                    .shard_lock_manager
+                    .clone()
+                    .revoke_lock(req.shard_id)
+                    .await
+                    .box_err()
+                    .context(CloseShardWithCause {
+                        shard_id: req.shard_id,
+                    });
+
+                match revoke_result {
+                    Ok(()) => close_result,
+                    Err(e) => Err(e),
+                }
+            }
+            Err(_) => close_result,
+        }
     }
 
     async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()> {

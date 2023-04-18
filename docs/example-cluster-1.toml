@@ -1,5 +1,5 @@
 [node]
-addr = "ceresdb1"
+addr = "127.0.0.1"
 
 [logger]
 level = "info"
@@ -12,7 +12,7 @@ mysql_port = 13307
 deploy_mode = "Cluster"
 
 [server.forward]
-enable = true
+enable = false
 
 [analytic.storage]
 mem_cache_capacity = '1G'
