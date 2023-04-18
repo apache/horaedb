@@ -17,7 +17,7 @@ export LOG_DIR=${LOG_DIR:-${CURR_DIR}/logs}
 export CERESDB_ADDR=${CERESDB_ADDR:-127.0.0.1:8831}
 export CERESDB_PID_FILE=${CURR_DIR}/ceresdb-server.pid
 export WRITE_WORKER_NUM=${WRITE_WORKER_NUM:-36}
-export WRITE_BATCH_SIZE=${WRITE_BATCH_SIZE:500}
+export WRITE_BATCH_SIZE=${WRITE_BATCH_SIZE:-500}
 # Where generated data stored
 export DATA_FILE=${DATA_FILE:-data.out}
 # How many values in host tag
@@ -87,8 +87,7 @@ fi
 
 
 # Write data to ceresdb
-./tsbs_load_ceresdb --ceresdb-addr=${CERESDB_ADDR} --file ${DATA_FILE} --batch-size ${WRITE_BATH_SIZE} --workers ${WRITE_WORKER_NUM} | tee ${LOG_DIR}/write.log
-    
+./tsbs_load_ceresdb --ceresdb-addr=${CERESDB_ADDR} --file ${DATA_FILE} --batch-size ${WRITE_BATCH_SIZE} --workers ${WRITE_WORKER_NUM} | tee ${LOG_DIR}/write.log
 
 # Generate queries for query
 ./scripts/generate_queries.sh
