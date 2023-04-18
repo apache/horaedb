@@ -1,6 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
+    cmp::max,
     collections::{BTreeMap, HashMap},
     time::Instant,
 };
@@ -20,10 +21,7 @@ use common_types::{
     time::Timestamp,
 };
 use common_util::error::BoxError;
-use futures::{
-    future::{try_join_all, BoxFuture},
-    FutureExt,
-};
+use futures::{future::try_join_all, FutureExt};
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, info};
@@ -46,7 +44,7 @@ use crate::{
         error,
         error::{build_ok_header, ErrNoCause, ErrWithCause, InternalNoCause, Result},
         execute_plan,
-        forward::ForwardResult,
+        forward::{ForwardResult, ForwarderRef},
         Context, Proxy,
     },
 };
@@ -99,36 +97,103 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
-        let database = req
-            .context
-            .clone()
-            .context(ErrNoCause {
-                msg: "Missing context",
-                code: StatusCode::BAD_REQUEST,
-            })?
-            .database;
-        let (write_request_to_local, mut futures) = self.maybe_forward_write(req).await?;
+        let write_context = req.context.clone().context(ErrNoCause {
+            msg: "Missing context",
+            code: StatusCode::BAD_REQUEST,
+        })?;
+
+        let (write_request_to_local, write_requests_to_forward) =
+            self.split_write_request(req).await?;
+
+        let mut futures = Vec::with_capacity(write_requests_to_forward.len() + 1);
+
+        // Write to remote.
+        for (endpoint, table_write_request) in write_requests_to_forward {
+            let forwarder = self.forwarder.clone();
+            let write_handle = self.engine_runtimes.io_runtime.spawn(async move {
+                Self::write_to_remote(forwarder, endpoint, table_write_request).await
+            });
+
+            futures.push(write_handle.boxed());
+        }
 
         // Write to local.
         if !write_request_to_local.table_requests.is_empty() {
-            let local_future =
-                async move { self.write_to_local(ctx, write_request_to_local).await };
-            futures.push(local_future.boxed());
+            let local_handle =
+                async move { Ok(self.write_to_local(ctx, write_request_to_local).await) };
+            futures.push(local_handle.boxed());
         }
 
-        let resps = try_join_all(futures).await?;
-        let success = resps.iter().map(|r| r.success).sum();
+        let resps = try_join_all(futures)
+            .await
+            .box_err()
+            .context(ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "Failed to join task",
+            })?;
 
         debug!(
             "Grpc handle write finished, schema:{}, resps:{:?}",
-            database, resps
+            write_context.database, resps
         );
+
+        let mut success = 0;
+        for resp in resps {
+            success += resp?.success;
+        }
 
         Ok(WriteResponse {
             success,
             header: Some(build_ok_header()),
             ..Default::default()
         })
+    }
+
+    async fn write_to_remote(
+        forwarder: ForwarderRef,
+        endpoint: Endpoint,
+        table_write_request: WriteRequest,
+    ) -> Result<WriteResponse> {
+        let do_write = |mut client: StorageServiceClient<Channel>,
+                        request: tonic::Request<WriteRequest>,
+                        _: &Endpoint| {
+            let write = async move {
+                client
+                    .write(request)
+                    .await
+                    .map(|resp| resp.into_inner())
+                    .box_err()
+                    .context(ErrWithCause {
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        msg: "Forwarded write request failed",
+                    })
+            }
+            .boxed();
+
+            Box::new(write) as _
+        };
+
+        let forward_result = forwarder
+            .forward_with_endpoint(endpoint, tonic::Request::new(table_write_request), do_write)
+            .await;
+        let forward_res = forward_result
+            .map_err(|e| {
+                error!("Failed to forward sql req but the error is ignored, err:{e}");
+                e
+            })
+            .box_err()
+            .context(ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "Local response is not expected",
+            })?;
+
+        match forward_res {
+            ForwardResult::Forwarded(resp) => resp,
+            ForwardResult::Local => InternalNoCause {
+                msg: "Local response is not expected".to_string(),
+            }
+            .fail(),
+        }
     }
 
     async fn write_to_local(&self, ctx: Context, req: WriteRequest) -> Result<WriteResponse> {
@@ -203,10 +268,10 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         })
     }
 
-    async fn maybe_forward_write(
+    async fn split_write_request(
         &self,
         req: WriteRequest,
-    ) -> Result<(WriteRequest, Vec<BoxFuture<Result<WriteResponse>>>)> {
+    ) -> Result<(WriteRequest, HashMap<Endpoint, WriteRequest>)> {
         // Split write request into multiple requests, each request contains table
         // belong to one remote engine.
         let tables = req
@@ -222,7 +287,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 tables,
             })
             .await?;
-        let forwarded_table_route = route_data
+        let forwarded_table_routes = route_data
             .into_iter()
             .filter_map(|router| {
                 router
@@ -233,91 +298,39 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .collect::<HashMap<_, _>>();
 
         // No table need to be forwarded.
-        if forwarded_table_route.is_empty() {
-            return Ok((req, vec![]));
+        if forwarded_table_routes.is_empty() {
+            return Ok((req, HashMap::default()));
         }
 
         let mut table_requests_to_local = WriteRequest {
-            table_requests: Vec::with_capacity(req.table_requests.len()),
+            table_requests: Vec::with_capacity(max(
+                req.table_requests.len() - forwarded_table_routes.len(),
+                0,
+            )),
             context: req.context.clone(),
         };
 
-        let mut table_requests_to_forward = HashMap::with_capacity(req.table_requests.len());
+        let mut table_requests_to_forward = HashMap::with_capacity(forwarded_table_routes.len());
 
-        let write_context = req.context.clone();
+        let write_context = req.context;
         for table_request in req.table_requests {
-            let table = table_request.table.clone();
-            match forwarded_table_route.get(&table) {
+            let route = forwarded_table_routes.get(&table_request.table);
+            match route {
                 Some(endpoint) => {
                     let table_requests = table_requests_to_forward
                         .entry(endpoint.clone())
-                        .or_insert_with(Vec::new);
-                    table_requests.push(table_request);
+                        .or_insert_with(|| WriteRequest {
+                            context: write_context.clone(),
+                            table_requests: Vec::new(),
+                        });
+                    table_requests.table_requests.push(table_request);
                 }
                 _ => {
                     table_requests_to_local.table_requests.push(table_request);
                 }
             }
         }
-
-        let mut futures = Vec::with_capacity(table_requests_to_forward.len());
-        for (endpoint, table_requests) in table_requests_to_forward {
-            let table_write_request = WriteRequest {
-                context: write_context.clone(),
-                table_requests,
-            };
-            let forwarder = self.forwarder.clone();
-            let write_future = async move {
-                let do_write = |mut client: StorageServiceClient<Channel>,
-                                request: tonic::Request<WriteRequest>,
-                                _: &Endpoint| {
-                    let write = async move {
-                        client
-                            .write(request)
-                            .await
-                            .map(|resp| resp.into_inner())
-                            .box_err()
-                            .context(ErrWithCause {
-                                code: StatusCode::INTERNAL_SERVER_ERROR,
-                                msg: "Forwarded write request failed",
-                            })
-                    }
-                    .boxed();
-
-                    Box::new(write) as _
-                };
-
-                let forward_result = forwarder
-                    .forward_with_endpoint(
-                        endpoint,
-                        tonic::Request::new(table_write_request),
-                        do_write,
-                    )
-                    .await;
-                let forward_res = forward_result
-                    .map_err(|e| {
-                        error!("Failed to forward sql req but the error is ignored, err:{e}");
-                        e
-                    })
-                    .box_err()
-                    .context(ErrWithCause {
-                        code: StatusCode::INTERNAL_SERVER_ERROR,
-                        msg: "Local response is not expected",
-                    })?;
-
-                match forward_res {
-                    ForwardResult::Forwarded(resp) => resp,
-                    ForwardResult::Local => InternalNoCause {
-                        msg: "Local response is not expected".to_string(),
-                    }
-                    .fail(),
-                }
-            };
-
-            futures.push(write_future.boxed());
-        }
-
-        Ok((table_requests_to_local, futures))
+        Ok((table_requests_to_local, table_requests_to_forward))
     }
 }
 

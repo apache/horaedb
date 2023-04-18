@@ -328,12 +328,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         })?;
 
         info!(
-        "Handle sql query success, catalog:{}, schema:{}, request_id:{}, cost:{}ms, request:{:?}",
-        catalog,
-        schema,
-        request_id,
+        "Handle sql query success, catalog:{catalog}, schema:{schema}, request_id:{request_id}, cost:{}ms, request:{req:?}",
         begin_instant.saturating_elapsed().as_millis(),
-        req,
     );
 
         Ok(output)

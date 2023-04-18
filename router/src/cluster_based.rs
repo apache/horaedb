@@ -97,17 +97,14 @@ impl ClusterBasedRouter {
             let route = if route_entry.node_shards.is_empty() {
                 Some(make_route(route_entry.table_info, None)?)
             } else {
-                let mut route = None;
-                for node_shard in route_entry.node_shards {
-                    if node_shard.shard_info.is_leader() {
-                        route = Some(make_route(
-                            route_entry.table_info,
-                            Some(&node_shard.endpoint),
-                        )?);
-                        break;
-                    }
-                }
-                route
+                route_entry
+                    .node_shards
+                    .into_iter()
+                    .find(|node_shard| node_shard.shard_info.is_leader())
+                    .map(|node_shard| {
+                        make_route(route_entry.table_info, Some(&node_shard.endpoint))
+                    })
+                    .transpose()?
             };
 
             if let Some(route) = route {

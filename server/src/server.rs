@@ -361,7 +361,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             self.server_config.auto_create_table,
             provider.clone(),
             self.server_config.hotspot,
-            engine_runtimes.default_runtime.clone(),
+            engine_runtimes.clone(),
         ));
 
         let http_service = http::Builder::new(http_config)
