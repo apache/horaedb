@@ -100,9 +100,7 @@ impl CommonCompactionPicker {
         levels_controller: &LevelsController,
         expire_time: Option<Timestamp>,
     ) -> Option<CompactionInputFiles> {
-        let num_levels = levels_controller.num_levels();
-        for level in 0..num_levels {
-            let level = Level::from(level);
+        for level in levels_controller.levels() {
             if let Some(files) = self.level_picker.pick_candidates_at_level(
                 ctx,
                 levels_controller,

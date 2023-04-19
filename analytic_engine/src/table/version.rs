@@ -503,7 +503,7 @@ struct TableVersionInner {
     /// All memtables
     memtable_view: MemTableView,
     /// All ssts
-    levels: LevelsController,
+    levels_controller: LevelsController,
 
     /// The earliest sequence number of the entries already flushed (inclusive).
     /// All log entry with sequence <= `flushed_sequence` can be deleted
@@ -544,7 +544,7 @@ impl TableVersion {
         Self {
             inner: RwLock::new(TableVersionInner {
                 memtable_view: MemTableView::new(),
-                levels: LevelsController::new(purge_queue),
+                levels_controller: LevelsController::new(purge_queue),
                 flushed_sequence: 0,
             }),
         }
@@ -662,13 +662,15 @@ impl TableVersion {
 
         // Add sst files to level first.
         for add_file in edit.files_to_add {
-            inner.levels.add_sst_to_level(add_file.level, add_file.file);
+            inner
+                .levels_controller
+                .add_sst_to_level(add_file.level, add_file.file);
         }
 
         // Remove ssts from level.
         for delete_file in edit.files_to_delete {
             inner
-                .levels
+                .levels_controller
                 .remove_ssts_from_level(delete_file.level, &[delete_file.file_id]);
         }
 
@@ -685,7 +687,9 @@ impl TableVersion {
         inner.flushed_sequence = cmp::max(inner.flushed_sequence, meta.flushed_sequence);
 
         for add_file in meta.files.into_values() {
-            inner.levels.add_sst_to_level(add_file.level, add_file.file);
+            inner
+                .levels_controller
+                .add_sst_to_level(add_file.level, add_file.file);
         }
     }
 
@@ -703,9 +707,11 @@ impl TableVersion {
                 .memtables_for_read(time_range, &mut memtables, &mut sampling_mem);
 
             // Pick ssts for read.
-            inner.levels.pick_ssts(time_range, |level, ssts| {
-                leveled_ssts[level.as_usize()].extend_from_slice(ssts)
-            });
+            inner
+                .levels_controller
+                .pick_ssts(time_range, |level, ssts| {
+                    leveled_ssts[level.as_usize()].extend_from_slice(ssts)
+                });
         }
 
         ReadView {
@@ -723,19 +729,19 @@ impl TableVersion {
     ) -> picker::Result<CompactionTask> {
         let inner = self.inner.read().unwrap();
 
-        picker.pick_compaction(picker_ctx, &inner.levels)
+        picker.pick_compaction(picker_ctx, &inner.levels_controller)
     }
 
     pub fn has_expired_sst(&self, expire_time: Option<Timestamp>) -> bool {
         let inner = self.inner.read().unwrap();
 
-        inner.levels.has_expired_sst(expire_time)
+        inner.levels_controller.has_expired_sst(expire_time)
     }
 
     pub fn expired_ssts(&self, expire_time: Option<Timestamp>) -> Vec<ExpiredFiles> {
         let inner = self.inner.read().unwrap();
 
-        inner.levels.expired_ssts(expire_time)
+        inner.levels_controller.expired_ssts(expire_time)
     }
 
     pub fn flushed_sequence(&self) -> SequenceNumber {
@@ -746,12 +752,12 @@ impl TableVersion {
 
     pub fn snapshot(&self) -> TableVersionSnapshot {
         let inner = self.inner.read().unwrap();
-        let levels = &inner.levels;
-        let num_levels = levels.num_levels();
-        let files = (0..num_levels)
+        let controller = &inner.levels_controller;
+        let files = controller
+            .levels()
+            .into_iter()
             .flat_map(|level| {
-                let level = Level::from(level);
-                let ssts = levels.iter_ssts_at_level(level);
+                let ssts = controller.iter_ssts_at_level(level);
                 ssts.map(move |file| {
                     let add_file = AddFile {
                         level,
