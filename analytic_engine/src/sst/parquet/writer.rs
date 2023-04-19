@@ -15,6 +15,7 @@ use tokio::io::AsyncWrite;
 use crate::{
     sst::{
         factory::{ObjectStorePickerRef, SstWriteOptions},
+        file::Level,
         parquet::{
             encoding::ParquetEncoder,
             meta_data::{ParquetFilter, ParquetMetaData, RowGroupFilterBuilder},
@@ -32,6 +33,7 @@ use crate::{
 pub struct ParquetSstWriter<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
+    level: Level,
     hybrid_encoding: bool,
     /// The storage where the data is persist.
     store: &'a ObjectStoreRef,
@@ -44,6 +46,7 @@ pub struct ParquetSstWriter<'a> {
 impl<'a> ParquetSstWriter<'a> {
     pub fn new(
         path: &'a Path,
+        level: Level,
         hybrid_encoding: bool,
         store_picker: &'a ObjectStorePickerRef,
         options: &SstWriteOptions,
@@ -51,6 +54,7 @@ impl<'a> ParquetSstWriter<'a> {
         let store = store_picker.default_store();
         Self {
             path,
+            level,
             hybrid_encoding,
             store,
             num_rows_per_row_group: options.num_rows_per_row_group,
@@ -74,6 +78,7 @@ struct RecordBatchGroupWriter {
     /// The filter for the parquet file, and it will be updated during
     /// generating the parquet file.
     parquet_filter: ParquetFilter,
+    level: Level,
 }
 
 impl RecordBatchGroupWriter {
@@ -190,7 +195,9 @@ impl RecordBatchGroupWriter {
                 break;
             }
 
-            self.update_parquet_filter(&row_group)?;
+            if !self.level.is_smallest() {
+                self.update_parquet_filter(&row_group)?;
+            }
 
             let num_batches = row_group.len();
             for record_batch in row_group {
@@ -285,6 +292,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             compression: self.compression,
             meta_data: meta.clone(),
             parquet_filter: ParquetFilter::default(),
+            level: self.level,
         };
 
         let (aborter, sink) =
@@ -542,6 +550,7 @@ mod tests {
             },
             max_buffer_size: 0,
             parquet_filter: ParquetFilter::default(),
+            level: Level::default(),
         };
 
         let mut prev_record_batch = None;

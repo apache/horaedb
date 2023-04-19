@@ -14,6 +14,7 @@ use trace_metric::MetricsCollector;
 
 use crate::{
     sst::{
+        file::Level,
         header,
         header::HeaderParser,
         meta_data::cache::MetaCacheRef,
@@ -74,6 +75,7 @@ pub trait Factory: Send + Sync + Debug {
         options: &SstWriteOptions,
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
+        level: Level,
     ) -> Result<Box<dyn SstWriter + Send + 'a>>;
 }
 
@@ -178,6 +180,7 @@ impl Factory for FactoryImpl {
         options: &SstWriteOptions,
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
+        level: Level,
     ) -> Result<Box<dyn SstWriter + Send + 'a>> {
         let hybrid_encoding = match options.storage_format_hint {
             StorageFormatHint::Specific(format) => matches!(format, StorageFormat::Hybrid),
@@ -187,6 +190,7 @@ impl Factory for FactoryImpl {
 
         Ok(Box::new(ParquetSstWriter::new(
             path,
+            level,
             hybrid_encoding,
             store_picker,
             options,
