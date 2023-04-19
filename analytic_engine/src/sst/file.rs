@@ -14,7 +14,6 @@ use std::{
     },
 };
 
-use arrow::datatypes::ArrowNativeTypeOp;
 use common_types::{
     time::{TimeRange, Timestamp},
     SequenceNumber,
@@ -51,6 +50,7 @@ impl Level {
     // Currently there are only two levels: 0, 1.
     pub const MAX: Self = Self(1);
     pub const MIN: Self = Self(0);
+    pub const TOTAL_NUM: usize = 2;
 
     pub fn next(&self) -> Self {
         Self::MAX.0.min(self.0 + 1).into()

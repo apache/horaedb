@@ -11,8 +11,6 @@ use crate::{
 
 /// Id for a sst file
 pub type FileId = u64;
-/// We use two level merge tree, the max level should less than u16::MAX
-pub const MAX_LEVEL: usize = 2;
 
 /// A table level manager that manages all the sst files of the table
 pub struct LevelsController {

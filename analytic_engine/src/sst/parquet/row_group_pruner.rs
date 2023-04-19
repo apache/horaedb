@@ -60,7 +60,7 @@ impl<'a> RowGroupPruner<'a> {
     ) -> Result<Self> {
         if let Some(f) = parquet_filter {
             ensure!(f.len() == row_groups.len(), OtherNoCause {
-                msg: format!("expect the same number of ss_filter as the number of row groups, num_parquet_filters:{}, num_row_groups:{}", f.len(), row_groups.len()),
+                msg: format!("expect sst_filters.len() == row_groups.len(), num_sst_filters:{}, num_row_groups:{}", f.len(), row_groups.len()),
             });
         }
 
