@@ -30,7 +30,6 @@ impl LevelsController {
     pub fn new(purge_queue: FilePurgeQueue) -> Self {
         Self {
             levels: (Level::MIN.as_u16()..=Level::MAX.as_u16())
-                .into_iter()
                 .map(|v| LevelHandler::new(v.into()))
                 .collect::<Vec<_>>(),
             purge_queue,
@@ -105,7 +104,6 @@ impl LevelsController {
     pub fn expired_ssts(&self, expire_time: Option<Timestamp>) -> Vec<ExpiredFiles> {
         let num_levels = self.num_levels();
         (0..num_levels)
-            .into_iter()
             .map(|level| {
                 let level = Level::from(level);
                 let files = self.collect_expired_at_level(level, expire_time);

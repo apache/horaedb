@@ -245,7 +245,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             reverse: false,
         });
         builder
-            .mut_ssts_of_level(Level::MAX)
+            .mut_ssts_of_level(Level::MIN)
             .extend_from_slice(&file_handles);
 
         builder.build().await.unwrap()

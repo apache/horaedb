@@ -662,16 +662,14 @@ impl TableVersion {
 
         // Add sst files to level first.
         for add_file in edit.files_to_add {
-            inner
-                .levels
-                .add_sst_to_level(add_file.level.into(), add_file.file);
+            inner.levels.add_sst_to_level(add_file.level, add_file.file);
         }
 
         // Remove ssts from level.
         for delete_file in edit.files_to_delete {
             inner
                 .levels
-                .remove_ssts_from_level(delete_file.level.into(), &[delete_file.file_id]);
+                .remove_ssts_from_level(delete_file.level, &[delete_file.file_id]);
         }
 
         // Remove immutable memtables.
@@ -687,9 +685,7 @@ impl TableVersion {
         inner.flushed_sequence = cmp::max(inner.flushed_sequence, meta.flushed_sequence);
 
         for add_file in meta.files.into_values() {
-            inner
-                .levels
-                .add_sst_to_level(add_file.level.into(), add_file.file);
+            inner.levels.add_sst_to_level(add_file.level, add_file.file);
         }
     }
 
@@ -754,6 +750,7 @@ impl TableVersion {
         let num_levels = levels.num_levels();
         let files = (0..num_levels)
             .flat_map(|level| {
+                let level = Level::from(level);
                 let ssts = levels.iter_ssts_at_level(level);
                 ssts.map(move |file| {
                     let add_file = AddFile {
