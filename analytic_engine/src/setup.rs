@@ -111,13 +111,6 @@ pub struct EngineBuilder<'a> {
 impl<'a> EngineBuilder<'a> {
     pub async fn build(self) -> Result<TableEngineRef> {
         let opened_storages = open_storage(self.config.storage.clone()).await?;
-        // let manifest = ManifestImpl::open(
-        //     self.config.manifest.clone(),
-        //     self.opened_wals.manifest_wal.clone(),
-        //     opened_storages.default_store().clone(),
-        // )
-        // .await
-        // .context(OpenManifest)?;
         let manifest_storages = ManifestStorages {
             wal_manager: self.opened_wals.manifest_wal.clone(),
             oss_storage: opened_storages.default_store().clone(),

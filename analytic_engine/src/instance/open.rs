@@ -51,8 +51,8 @@ use crate::{
 const MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ: usize = 64;
 
 pub(crate) struct ManifestStorages {
-    pub(crate) wal_manager: WalManagerRef,
-    pub(crate) oss_storage: ObjectStoreRef,
+    pub wal_manager: WalManagerRef,
+    pub oss_storage: ObjectStoreRef,
 }
 
 impl Instance {
