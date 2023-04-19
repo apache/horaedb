@@ -42,13 +42,13 @@ prometheus = { workspace = true }
 prometheus-static-metric = { workspace = true }
 prost = { workspace = true }
 query_engine = { workspace = true }
+query_frontend = { workspace = true }
 remote_engine_client = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 spin = { workspace = true }
-sql = { workspace = true }
 sqlparser = { workspace = true }
 system_catalog = { workspace = true }
 table_engine = { workspace = true }
@@ -61,5 +61,5 @@ zstd = { workspace = true }
 
 [dev-dependencies]
 json_pretty = "0.1.2"
-sql = { workspace = true, features = ["test"] }
+query_frontend = { workspace = true, features = ["test"] }
 system_catalog = { workspace = true }

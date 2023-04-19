@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 // Copy from IOx
 // https://github.com/influxdata/influxdb_iox/blob/d0f588d3b800894fe0ebd06b6f9a184ca6a603d7/predicate/src/regex.rs

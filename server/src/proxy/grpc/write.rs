@@ -23,13 +23,13 @@ use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, info};
 use query_engine::executor::Executor as QueryExecutor;
-use snafu::{ensure, OptionExt, ResultExt};
-use sql::{
+use query_frontend::{
     frontend::{Context as FrontendContext, Frontend},
     plan::{AlterTableOperation, AlterTablePlan, InsertPlan, Plan},
     planner::build_schema_from_write_table_request,
     provider::CatalogMetaProvider,
 };
+use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::table::TableRef;
 
 use crate::{

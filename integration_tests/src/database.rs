@@ -16,8 +16,8 @@ use ceresdb_client::{
     model::sql_query::{display::CsvFormatter, Request},
     RpcContext,
 };
+use query_frontend::{frontend, parser::Parser};
 use reqwest::{ClientBuilder, Url};
-use sql::{frontend, parser::Parser};
 use sqlness::{Database, QueryContext};
 
 const SERVER_GRPC_ENDPOINT_ENV: &str = "CERESDB_SERVER_GRPC_ENDPOINT";

@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_util::error::GenericError;
+use query_frontend::plan::{CreateTablePlan, DropTablePlan};
 use snafu::{Backtrace, Snafu};
-use sql::plan::{CreateTablePlan, DropTablePlan};
 use table_engine::engine::TableEngineRef;
 
 use crate::{context::Context, interpreter::Output};

@@ -28,9 +28,9 @@ use futures::FutureExt;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::{error, warn};
 use query_engine::executor::Executor as QueryExecutor;
+use query_frontend::{frontend, plan::Plan};
 use router::{endpoint::Endpoint, Router};
 use snafu::{OptionExt, ResultExt};
-use sql::{frontend, plan::Plan};
 use table_engine::{
     engine::TableState,
     remote::model::{GetTableInfoRequest, TableIdentifier},

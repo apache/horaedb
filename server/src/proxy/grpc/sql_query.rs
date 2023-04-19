@@ -19,13 +19,13 @@ use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::{error, info, warn};
 use query_engine::executor::Executor as QueryExecutor;
-use router::endpoint::Endpoint;
-use snafu::{ensure, ResultExt};
-use sql::{
+use query_frontend::{
     frontend,
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,
 };
+use router::endpoint::Endpoint;
+use snafu::{ensure, ResultExt};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Channel, IntoRequest};

@@ -12,15 +12,15 @@ use common_types::{
 use common_util::time::InstantExt;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::info;
+use query_frontend::{
+    frontend::{Context as SqlContext, Frontend},
+    provider::CatalogMetaProvider,
+};
 use serde::{
     ser::{SerializeMap, SerializeSeq},
     Serialize,
 };
 use snafu::{ensure, ResultExt};
-use sql::{
-    frontend::{Context as SqlContext, Frontend},
-    provider::CatalogMetaProvider,
-};
 
 use crate::handlers::{
     error::{

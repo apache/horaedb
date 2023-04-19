@@ -1,10 +1,10 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Interpreter for drop statements
 
 use async_trait::async_trait;
+use query_frontend::plan::DropTablePlan;
 use snafu::{ResultExt, Snafu};
-use sql::plan::DropTablePlan;
 use table_engine::engine::TableEngineRef;
 
 use crate::{

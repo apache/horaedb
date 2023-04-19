@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{convert::TryInto, sync::Arc};
 
@@ -9,12 +9,12 @@ use arrow::{
 };
 use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::Schema, Catalog};
-use regex::Regex;
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use sql::{
+use query_frontend::{
     ast::ShowCreateObject,
     plan::{QueryType, ShowCreatePlan, ShowPlan, ShowTablesPlan},
 };
+use regex::Regex;
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
     context::Context,

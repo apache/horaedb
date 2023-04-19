@@ -17,15 +17,15 @@ use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::info;
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
+use query_frontend::{
+    frontend::{Context as SqlContext, Frontend},
+    provider::CatalogMetaProvider,
+};
 use serde::{
     ser::{SerializeMap, SerializeSeq},
     Deserialize, Serialize,
 };
 use snafu::{ensure, OptionExt, ResultExt};
-use sql::{
-    frontend::{Context as SqlContext, Frontend},
-    provider::CatalogMetaProvider,
-};
 
 use crate::{
     context::RequestContext,

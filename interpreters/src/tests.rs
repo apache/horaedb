@@ -11,7 +11,7 @@ use catalog::{
 use catalog_impls::table_based::TableBasedManager;
 use common_types::request_id::RequestId;
 use query_engine::{executor::ExecutorImpl, Config as QueryConfig};
-use sql::{
+use query_frontend::{
     parser::Parser, plan::Plan, planner::Planner, provider::MetaProvider, tests::MockMetaProvider,
 };
 use table_engine::engine::TableEngineRef;
