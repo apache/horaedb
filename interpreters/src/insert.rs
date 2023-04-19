@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Interpreter for insert statement
 
@@ -28,8 +28,8 @@ use datafusion::{
     },
 };
 use df_operator::visitor::find_columns_by_expr;
+use query_frontend::plan::InsertPlan;
 use snafu::{OptionExt, ResultExt, Snafu};
-use sql::plan::InsertPlan;
 use table_engine::table::{TableRef, WriteRequest};
 
 use crate::{

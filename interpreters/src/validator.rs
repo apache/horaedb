@@ -1,6 +1,6 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use sql::plan::{Plan, ShowPlan};
+use query_frontend::plan::{Plan, ShowPlan};
 use table_engine::partition;
 
 use crate::interpreter::{PermissionDenied, Result};

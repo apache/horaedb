@@ -1157,9 +1157,9 @@ dependencies = [
  "async-trait",
  "ceresdb-client",
  "local-ip-address",
+ "query_frontend",
  "reqwest",
  "serde",
- "sql",
  "sqlness",
  "sqlparser",
  "tokio",
@@ -2963,9 +2963,9 @@ dependencies = [
  "log",
  "meta_client",
  "query_engine",
+ "query_frontend",
  "regex",
  "snafu 0.6.10",
- "sql",
  "table_engine",
  "tokio",
 ]
@@ -4888,9 +4888,39 @@ dependencies = [
  "futures 0.3.28",
  "iox_query",
  "log",
+ "query_frontend",
  "serde",
  "snafu 0.6.10",
- "sql",
+ "table_engine",
+ "tokio",
+]
+
+[[package]]
+name = "query_frontend"
+version = "1.1.0"
+dependencies = [
+ "arrow 36.0.0",
+ "async-trait",
+ "catalog",
+ "ceresdbproto 1.0.1 (git+https://github.com/CeresDB/ceresdbproto.git?rev=9e0e70f6574e4e1e2b3f7f45c0a055c54327fb4a)",
+ "cluster",
+ "common_types",
+ "common_util",
+ "datafusion",
+ "datafusion-proto",
+ "df_operator",
+ "hashbrown 0.12.3",
+ "influxdb_influxql_parser",
+ "iox_query_influxql",
+ "itertools",
+ "lazy_static",
+ "log",
+ "paste 1.0.12",
+ "regex",
+ "regex-syntax",
+ "schema",
+ "snafu 0.6.10",
+ "sqlparser",
  "table_engine",
  "tokio",
 ]
@@ -5771,13 +5801,13 @@ dependencies = [
  "prometheus-static-metric",
  "prost",
  "query_engine",
+ "query_frontend",
  "remote_engine_client",
  "router",
  "serde",
  "serde_json",
  "snafu 0.6.10",
  "spin 0.9.8",
- "sql",
  "sqlparser",
  "system_catalog",
  "table_engine",
@@ -6070,36 +6100,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 dependencies = [
  "lock_api",
-]
-
-[[package]]
-name = "sql"
-version = "1.1.0"
-dependencies = [
- "arrow 36.0.0",
- "async-trait",
- "catalog",
- "ceresdbproto 1.0.1 (git+https://github.com/CeresDB/ceresdbproto.git?rev=9e0e70f6574e4e1e2b3f7f45c0a055c54327fb4a)",
- "cluster",
- "common_types",
- "common_util",
- "datafusion",
- "datafusion-proto",
- "df_operator",
- "hashbrown 0.12.3",
- "influxdb_influxql_parser",
- "iox_query_influxql",
- "itertools",
- "lazy_static",
- "log",
- "paste 1.0.12",
- "regex",
- "regex-syntax",
- "schema",
- "snafu 0.6.10",
- "sqlparser",
- "table_engine",
- "tokio",
 ]
 
 [[package]]

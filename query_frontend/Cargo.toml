@@ -1,5 +1,5 @@
 [package]
-name = "sql"
+name = "query_frontend"
 
 [package.version]
 workspace = true

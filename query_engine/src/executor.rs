@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Query executor
 
@@ -10,8 +10,8 @@ use common_util::time::InstantExt;
 use datafusion::prelude::SessionContext;
 use futures::TryStreamExt;
 use log::{debug, info};
+use query_frontend::{plan::QueryPlan, provider::CatalogProviderAdapter};
 use snafu::{Backtrace, ResultExt, Snafu};
-use sql::{plan::QueryPlan, provider::CatalogProviderAdapter};
 use table_engine::stream::SendableRecordBatchStream;
 
 use crate::{

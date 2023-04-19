@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Physical query optimizer
 
@@ -9,8 +9,8 @@ use datafusion::{
     error::DataFusionError, physical_optimizer::optimizer::PhysicalOptimizerRule,
     prelude::SessionContext,
 };
+use query_frontend::plan::QueryPlan;
 use snafu::{Backtrace, ResultExt, Snafu};
-use sql::plan::QueryPlan;
 
 use crate::{
     physical_optimizer::{

@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Error of handlers
 
@@ -14,15 +14,19 @@ use crate::limiter;
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display("Failed to parse sql, err:{}", source))]
-    ParseSql { source: sql::frontend::Error },
+    ParseSql {
+        source: query_frontend::frontend::Error,
+    },
 
     #[snafu(display("Failed to parse influxql, err:{}", source))]
-    ParseInfluxql { source: sql::frontend::Error },
+    ParseInfluxql {
+        source: query_frontend::frontend::Error,
+    },
 
     #[snafu(display("Failed to create plan, query:{}, err:{}", query, source))]
     CreatePlan {
         query: String,
-        source: sql::frontend::Error,
+        source: query_frontend::frontend::Error,
     },
 
     #[snafu(display(

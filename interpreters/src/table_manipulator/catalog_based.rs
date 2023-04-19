@@ -6,8 +6,8 @@ use catalog::{
     table_operator::TableOperator,
 };
 use common_types::table::DEFAULT_SHARD_ID;
+use query_frontend::plan::{CreateTablePlan, DropTablePlan};
 use snafu::{ensure, ResultExt};
-use sql::plan::{CreateTablePlan, DropTablePlan};
 use table_engine::engine::{TableEngineRef, TableState};
 
 use crate::{

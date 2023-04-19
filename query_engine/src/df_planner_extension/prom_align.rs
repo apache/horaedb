@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::sync::Arc;
 
@@ -9,8 +9,8 @@ use datafusion::{
     logical_expr::logical_plan::{LogicalPlan, UserDefinedLogicalNode},
     physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner},
 };
+use query_frontend::promql::PromAlignNode;
 use snafu::Snafu;
-use sql::promql::PromAlignNode;
 
 use crate::df_execution_extension::prom_align::{Error as ExecError, PromAlignExec};
 

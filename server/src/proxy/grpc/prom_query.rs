@@ -22,12 +22,12 @@ use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::info;
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
-use snafu::{ensure, OptionExt, ResultExt};
-use sql::{
+use query_frontend::{
     frontend::{Context as SqlContext, Error as FrontendError, Frontend},
     promql::ColumnNames,
     provider::CatalogMetaProvider,
 };
+use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::proxy::{
     error,
@@ -165,8 +165,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
 fn is_table_not_found_error(e: &FrontendError) -> bool {
     matches!(&e, FrontendError::CreatePlan { source }
-             if matches!(source, sql::planner::Error::BuildPromPlanError { source }
-                         if matches!(source, sql::promql::Error::TableNotFound { .. })))
+             if matches!(source, query_frontend::planner::Error::BuildPromPlanError { source }
+                         if matches!(source, query_frontend::promql::Error::TableNotFound { .. })))
 }
 
 fn convert_output(

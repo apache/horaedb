@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
     any::Any,
@@ -31,8 +31,8 @@ use datafusion::{
 };
 use futures::{Stream, StreamExt};
 use log::debug;
+use query_frontend::promql::{AlignParameter, ColumnNames, Func as PromFunc};
 use snafu::{OptionExt, ResultExt, Snafu};
-use sql::promql::{AlignParameter, ColumnNames, Func as PromFunc};
 
 #[derive(Debug, Snafu)]
 pub enum Error {

@@ -40,10 +40,10 @@ members = [
     "meta_client",
     "partition_table_engine",
     "query_engine",
+    "query_frontend",
     "remote_engine_client",
     "router",
     "server",
-    "sql",
     "system_catalog",
     "table_engine",
     "tools",
@@ -111,7 +111,7 @@ server = { path = "server" }
 smallvec = "1.6"
 slog = "2.7"
 spin = "0.9.6"
-sql = { path = "sql" }
+query_frontend = { path = "query_frontend" }
 sqlparser = { version = "0.32", features = ["serde"] }
 system_catalog = { path = "system_catalog" }
 table_engine = { path = "table_engine" }

@@ -1,11 +1,11 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{collections::HashSet, sync::RwLock};
 
 use datafusion::logical_expr::logical_plan::LogicalPlan;
+use query_frontend::plan::Plan;
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, Snafu};
-use sql::plan::Plan;
 
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub))]
@@ -108,7 +108,7 @@ impl Limiter {
                     .try_for_each(|blocked_table| {
                         if query
                             .tables
-                            .get(sql::planner::get_table_ref(blocked_table))
+                            .get(query_frontend::planner::get_table_ref(blocked_table))
                             .is_some()
                         {
                             BlockedTable {
@@ -226,7 +226,7 @@ impl Limiter {
 #[cfg(test)]
 mod tests {
     use common_types::request_id::RequestId;
-    use sql::{parser::Parser, plan::Plan, planner::Planner, tests::MockMetaProvider};
+    use query_frontend::{parser::Parser, plan::Plan, planner::Planner, tests::MockMetaProvider};
 
     use super::{BlockRule, LimiterConfig};
     use crate::limiter::Limiter;

@@ -23,13 +23,13 @@ df_operator = { workspace = true }
 log = { workspace = true }
 meta_client = { workspace = true }
 query_engine = { workspace = true }
+query_frontend = { workspace = true }
 regex = "1"
 snafu = { workspace = true }
-sql = { workspace = true }
 table_engine = { workspace = true }
 
 [dev-dependencies]
 analytic_engine = { workspace = true, features = ["test"] }
 catalog_impls = { workspace = true }
-sql = { workspace = true, features = ["test"] }
+query_frontend = { workspace = true, features = ["test"] }
 tokio = { workspace = true }

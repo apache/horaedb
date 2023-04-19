@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! This module implements [write][1] and [query][2] for InfluxDB.
 //! [1]: https://docs.influxdata.com/influxdb/v1.8/tools/api/#write-http-endpoint
@@ -28,9 +28,9 @@ use influxdb_line_protocol::FieldValue;
 use interpreters::interpreter::Output;
 use log::debug;
 use query_engine::executor::Executor as QueryExecutor;
+use query_frontend::influxql::planner::CERESDB_MEASUREMENT_COLUMN_NAME;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt, ResultExt};
-use sql::influxql::planner::CERESDB_MEASUREMENT_COLUMN_NAME;
 use warp::{reject, reply, Rejection, Reply};
 
 use crate::{

@@ -1,10 +1,10 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Interpreter for create statements
 
 use async_trait::async_trait;
+use query_frontend::plan::CreateTablePlan;
 use snafu::{ResultExt, Snafu};
-use sql::plan::CreateTablePlan;
 use table_engine::engine::TableEngineRef;
 
 use crate::{
