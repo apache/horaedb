@@ -67,6 +67,7 @@ bytes = "1.1.0"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
+ceresdbproto = "1.0.2"
 chrono = "0.4"
 clap = "3.0"
 clru = "0.6.1"
@@ -149,10 +150,6 @@ signal-hook = "0.3"
 table_engine = { workspace = true }
 toml = { workspace = true }
 tracing_util = { workspace = true }
-
-[workspace.dependencies.ceresdbproto]
-git = "https://github.com/CeresDB/ceresdbproto.git"
-rev = "9e0e70f6574e4e1e2b3f7f45c0a055c54327fb4a"
 
 [build-dependencies]
 vergen = { version = "7", default-features = false, features = ["build", "git", "rustc"] }
