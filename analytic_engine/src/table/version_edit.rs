@@ -170,7 +170,7 @@ pub mod tests {
 
         pub fn build(&self) -> AddFile {
             AddFile {
-                level: 0,
+                level: Level::MIN,
                 file: FileMeta {
                     id: self.file_id,
                     size: 0,

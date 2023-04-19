@@ -195,7 +195,7 @@ impl RecordBatchGroupWriter {
                 break;
             }
 
-            if !self.level.is_smallest() {
+            if !self.level.is_min() {
                 self.update_parquet_filter(&row_group)?;
             }
 
@@ -420,7 +420,12 @@ mod tests {
             }));
 
             let mut writer = sst_factory
-                .create_writer(&sst_write_options, &sst_file_path, &store_picker)
+                .create_writer(
+                    &sst_write_options,
+                    &sst_file_path,
+                    &store_picker,
+                    Level::MAX,
+                )
                 .await
                 .unwrap();
             let sst_info = writer

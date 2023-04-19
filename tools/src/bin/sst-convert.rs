@@ -5,9 +5,12 @@
 use std::{error::Error, sync::Arc};
 
 use analytic_engine::{
-    sst::factory::{
-        Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, ScanOptions, SstReadHint,
-        SstReadOptions, SstWriteOptions,
+    sst::{
+        factory::{
+            Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, ScanOptions, SstReadHint,
+            SstReadOptions, SstWriteOptions,
+        },
+        file::Level,
     },
     table_options::{Compression, StorageFormatHint},
 };
@@ -108,7 +111,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     };
     let output = Path::from(args.output);
     let mut writer = factory
-        .create_writer(&builder_opts, &output, &store_picker)
+        .create_writer(&builder_opts, &output, &store_picker, Level::MAX)
         .await
         .expect("no sst writer found");
     let sst_stream = reader

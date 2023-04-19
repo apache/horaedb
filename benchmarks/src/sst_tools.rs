@@ -17,7 +17,7 @@ use analytic_engine::{
             Factory, FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
             ScanOptions, SstReadHint, SstReadOptions, SstWriteOptions,
         },
-        file::FilePurgeQueue,
+        file::{FilePurgeQueue, Level},
         manager::FileId,
         meta_data::SstMetaReader,
         writer::{MetaData, RecordBatchStream},
@@ -65,7 +65,12 @@ async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBa
     let sst_file_path = Path::from(config.sst_file_name);
 
     let mut writer = sst_factory
-        .create_writer(&sst_write_options, &sst_file_path, &store_picker)
+        .create_writer(
+            &sst_write_options,
+            &sst_file_path,
+            &store_picker,
+            Level::MAX,
+        )
         .await
         .unwrap();
     writer
@@ -240,7 +245,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             reverse: false,
         });
         builder
-            .mut_ssts_of_level(0)
+            .mut_ssts_of_level(Level::MAX)
             .extend_from_slice(&file_handles);
 
         builder.build().await.unwrap()

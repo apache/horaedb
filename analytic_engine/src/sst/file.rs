@@ -56,8 +56,8 @@ impl Level {
         Self::MAX.0.min(self.0 + 1).into()
     }
 
-    pub fn is_smallest(&self) -> bool {
-        self.0.is_zero()
+    pub fn is_min(&self) -> bool {
+        self == &Self::MIN
     }
 
     pub fn as_usize(&self) -> usize {
@@ -112,7 +112,7 @@ impl LevelHandler {
     }
 
     pub fn pick_ssts(&self, time_range: TimeRange) -> Vec<FileHandle> {
-        if self.level.is_smallest() {
+        if self.level.is_min() {
             self.files.files_by_time_range(time_range)
         } else {
             Vec::new()
