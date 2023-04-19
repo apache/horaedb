@@ -29,8 +29,7 @@ use wal::{
 use crate::{
     context::OpenContext,
     engine::TableEngineImpl,
-    instance::{Instance, InstanceRef},
-    manifest::{details::ManifestImpl, ManifestRef},
+    instance::{open::ManifestStorages, Instance, InstanceRef},
     sst::{
         factory::{FactoryImpl, ObjectStorePicker, ObjectStorePickerRef, ReadFrequency},
         meta_data::cache::{MetaCache, MetaCacheRef},
@@ -112,19 +111,16 @@ pub struct EngineBuilder<'a> {
 impl<'a> EngineBuilder<'a> {
     pub async fn build(self) -> Result<TableEngineRef> {
         let opened_storages = open_storage(self.config.storage.clone()).await?;
-        let manifest = ManifestImpl::open(
-            self.config.manifest.clone(),
-            self.opened_wals.manifest_wal.clone(),
-            opened_storages.default_store().clone(),
-        )
-        .await
-        .context(OpenManifest)?;
+        let manifest_storages = ManifestStorages {
+            wal_manager: self.opened_wals.manifest_wal.clone(),
+            oss_storage: opened_storages.default_store().clone(),
+        };
 
         let instance = open_instance(
             self.config.clone(),
             self.engine_runtimes,
             self.opened_wals.data_wal,
-            Arc::new(manifest),
+            manifest_storages,
             Arc::new(opened_storages),
         )
         .await?;
@@ -353,7 +349,7 @@ async fn open_instance(
     config: Config,
     engine_runtimes: Arc<EngineRuntimes>,
     wal_manager: WalManagerRef,
-    manifest: ManifestRef,
+    manifest_storages: ManifestStorages,
     store_picker: ObjectStorePickerRef,
 ) -> Result<InstanceRef> {
     let meta_cache: Option<MetaCacheRef> = config
@@ -368,7 +364,7 @@ async fn open_instance(
 
     let instance = Instance::open(
         open_ctx,
-        manifest,
+        manifest_storages,
         wal_manager,
         store_picker,
         Arc::new(FactoryImpl::default()),

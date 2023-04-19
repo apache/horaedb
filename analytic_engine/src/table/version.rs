@@ -743,6 +743,34 @@ impl TableVersion {
 
         inner.flushed_sequence
     }
+
+    pub fn snapshot(&self) -> TableVersionSnapshot {
+        let inner = self.inner.read().unwrap();
+        let levels = &inner.levels;
+        let num_levels = levels.num_levels();
+        let files = (0..num_levels)
+            .flat_map(|level| {
+                let ssts = levels.iter_ssts_at_level(level);
+                ssts.map(move |file| {
+                    let add_file = AddFile {
+                        level,
+                        file: file.meta(),
+                    };
+                    (file.id(), add_file)
+                })
+            })
+            .collect();
+
+        TableVersionSnapshot {
+            flushed_sequence: inner.flushed_sequence,
+            files,
+        }
+    }
+}
+
+pub struct TableVersionSnapshot {
+    pub flushed_sequence: SequenceNumber,
+    pub files: HashMap<FileId, AddFile>,
 }
 
 /// During recovery, we apply all version edit to [TableVersionMeta] first, then
@@ -751,8 +779,8 @@ impl TableVersion {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TableVersionMeta {
     pub flushed_sequence: SequenceNumber,
-    files: HashMap<FileId, AddFile>,
-    max_file_id: FileId,
+    pub files: HashMap<FileId, AddFile>,
+    pub max_file_id: FileId,
 }
 
 impl TableVersionMeta {

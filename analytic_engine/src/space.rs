@@ -6,16 +6,26 @@
 //! different space can use same table name
 
 use std::{
+    collections::HashMap,
     fmt,
     sync::{Arc, RwLock},
 };
 
 use arena::CollectorRef;
+use snafu::OptionExt;
 use table_engine::table::TableId;
 
 use crate::{
     instance::mem_collector::MemUsageCollector,
-    table::data::{TableDataRef, TableDataSet},
+    manifest::{
+        details::{BuildSnapshotNoCause, TableSnapshotProvider},
+        meta_data::TableManifestData,
+        meta_update::AddTableMeta,
+    },
+    table::{
+        data::{TableDataRef, TableDataSet},
+        version::{TableVersionMeta, TableVersionSnapshot},
+    },
 };
 
 /// Holds references to the table data and its space
@@ -191,3 +201,98 @@ impl Space {
 
 /// A reference to space
 pub type SpaceRef = Arc<Space>;
+
+/// Spaces states
+#[derive(Default)]
+pub(crate) struct Spaces {
+    /// Id to space
+    id_to_space: HashMap<SpaceId, SpaceRef>,
+}
+
+impl Spaces {
+    /// Insert space by name, and also insert id to space mapping
+    pub fn insert(&mut self, space: SpaceRef) {
+        let space_id = space.id;
+        self.id_to_space.insert(space_id, space);
+    }
+
+    pub fn get_by_id(&self, id: SpaceId) -> Option<&SpaceRef> {
+        self.id_to_space.get(&id)
+    }
+
+    /// List all tables of all spaces
+    pub fn list_all_tables(&self, tables: &mut Vec<TableDataRef>) {
+        let total_tables = self.id_to_space.values().map(|s| s.table_num()).sum();
+        tables.reserve(total_tables);
+        for space in self.id_to_space.values() {
+            space.list_all_tables(tables);
+        }
+    }
+
+    pub fn list_all_spaces(&self) -> Vec<SpaceRef> {
+        self.id_to_space.values().cloned().collect()
+    }
+}
+
+pub(crate) type SpacesRef = Arc<RwLock<Spaces>>;
+
+#[derive(Clone)]
+pub(crate) struct TableSnapshotProviderImpl {
+    pub(crate) spaces: SpacesRef,
+}
+
+impl fmt::Debug for TableSnapshotProviderImpl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("spaces table snapshot provider")
+    }
+}
+
+impl TableSnapshotProvider for TableSnapshotProviderImpl {
+    fn get_table_snapshot(
+        &self,
+        space_id: SpaceId,
+        table_id: TableId,
+    ) -> crate::manifest::details::Result<Option<TableManifestData>> {
+        let spaces = self.spaces.read().unwrap();
+        let table_data = spaces
+            .get_by_id(space_id)
+            .context(BuildSnapshotNoCause {
+                msg: format!("space not exist, space_id:{space_id}, table_id:{table_id}",),
+            })?
+            .find_table_by_id(table_id)
+            .context(BuildSnapshotNoCause {
+                msg: format!("table data not exist, space_id:{space_id}, table_id:{table_id}",),
+            })?;
+
+        // When table has been dropped, we should return None.
+        let table_manifest_data_opt = if !table_data.is_dropped() {
+            let table_meta = AddTableMeta {
+                space_id,
+                table_id,
+                table_name: table_data.name.to_string(),
+                schema: table_data.schema(),
+                opts: table_data.table_options().as_ref().clone(),
+            };
+
+            let version_snapshot = table_data.current_version().snapshot();
+            let TableVersionSnapshot {
+                flushed_sequence,
+                files,
+            } = version_snapshot;
+            let version_meta = TableVersionMeta {
+                flushed_sequence,
+                files,
+                max_file_id: table_data.last_file_id(),
+            };
+
+            Some(TableManifestData {
+                table_meta,
+                version_meta: Some(version_meta),
+            })
+        } else {
+            None
+        };
+
+        Ok(table_manifest_data_opt)
+    }
+}

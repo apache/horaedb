@@ -9,6 +9,7 @@ use std::{
 
 use common_types::schema::IndexInWriterSchema;
 use log::{debug, error, info, trace};
+use object_store::ObjectStoreRef;
 use snafu::ResultExt;
 use table_engine::engine::OpenTableRequest;
 use wal::{
@@ -22,17 +23,20 @@ use crate::{
     engine,
     instance::{
         self,
-        engine::{ApplyMemTable, FlushTable, ReadMetaUpdate, ReadWal, RecoverTableData, Result},
+        engine::{
+            ApplyMemTable, FlushTable, OpenManifest, ReadMetaUpdate, ReadWal, RecoverTableData,
+            Result,
+        },
         flush_compaction::TableFlushOptions,
         mem_collector::MemUsageCollector,
         serial_executor::TableOpSerialExecutor,
         write::MemTableWriter,
-        Instance, SpaceStore, Spaces,
+        Instance, SpaceStore,
     },
-    manifest::{meta_data::TableManifestData, LoadRequest, ManifestRef},
+    manifest::{details::ManifestImpl, meta_data::TableManifestData, LoadRequest},
     payload::{ReadPayload, WalDecoder},
     row_iter::IterOptions,
-    space::{Space, SpaceContext, SpaceId, SpaceRef},
+    space::{Space, SpaceContext, SpaceId, SpaceRef, Spaces, TableSnapshotProviderImpl},
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
@@ -42,18 +46,36 @@ use crate::{
 
 const MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ: usize = 64;
 
+pub(crate) struct ManifestStorages {
+    pub wal_manager: WalManagerRef,
+    pub oss_storage: ObjectStoreRef,
+}
+
 impl Instance {
     /// Open a new instance
-    pub async fn open(
+    pub(crate) async fn open(
         ctx: OpenContext,
-        manifest: ManifestRef,
+        manifest_storages: ManifestStorages,
         wal_manager: WalManagerRef,
         store_picker: ObjectStorePickerRef,
         sst_factory: SstFactoryRef,
     ) -> Result<Arc<Self>> {
+        let spaces: Arc<RwLock<Spaces>> = Arc::new(RwLock::new(Spaces::default()));
+        let table_snapshot_provider = Arc::new(TableSnapshotProviderImpl {
+            spaces: spaces.clone(),
+        });
+        let manifest = ManifestImpl::open(
+            ctx.config.manifest.clone(),
+            manifest_storages.wal_manager,
+            manifest_storages.oss_storage,
+            table_snapshot_provider,
+        )
+        .await
+        .context(OpenManifest)?;
+
         let space_store = Arc::new(SpaceStore {
-            spaces: RwLock::new(Spaces::default()),
-            manifest,
+            spaces,
+            manifest: Arc::new(manifest),
             wal_manager: wal_manager.clone(),
             store_picker: store_picker.clone(),
             sst_factory,
