@@ -113,8 +113,6 @@ type Config struct {
 	AdvertiseClientUrls string `toml:"advertise-client-urls" env:"ADVERTISE_CLIENT_URLS"`
 	AdvertisePeerUrls   string `toml:"advertise-peer-urls" env:"ADVERTISE_PEER_URLS"`
 
-	DefaultPartitionTableProportionOfNodes float32 `toml:"default-partition_table_proportion_of_nodes" env:"DEFAULT_PARTITION_TABLE_PROPORTION_OF_NODES"`
-
 	HTTPPort int `toml:"default-http-port" env:"DEFAULT_HTTP_PORT"`
 }
 
@@ -267,11 +265,10 @@ func MakeConfigParser() (*Parser, error) {
 		MinScanLimit:            defaultMinScanLimit,
 		IDAllocatorStep:         defaultIDAllocatorStep,
 
-		DefaultClusterName:                     defaultClusterName,
-		DefaultClusterNodeCount:                defaultClusterNodeCount,
-		DefaultClusterReplicationFactor:        defaultClusterReplicationFactor,
-		DefaultClusterShardTotal:               defaultClusterShardTotal,
-		DefaultPartitionTableProportionOfNodes: defaultPartitionTableProportionOfNodes,
+		DefaultClusterName:              defaultClusterName,
+		DefaultClusterNodeCount:         defaultClusterNodeCount,
+		DefaultClusterReplicationFactor: defaultClusterReplicationFactor,
+		DefaultClusterShardTotal:        defaultClusterShardTotal,
 
 		HTTPPort: defaultHTTPPort,
 	}

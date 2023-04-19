@@ -50,5 +50,4 @@ func (l *EntryLock) UnLock(locks []uint64) {
 	for _, lock := range locks {
 		delete(l.entryLocks, lock)
 	}
-
 }

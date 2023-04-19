@@ -49,26 +49,25 @@ type managerImpl struct {
 	running  bool
 	clusters map[string]*Cluster
 
-	storage                         storage.Storage
-	kv                              clientv3.KV
-	client                          *clientv3.Client
-	alloc                           id.Allocator
-	rootPath                        string
-	idAllocatorStep                 uint
-	partitionTableProportionOfNodes float32
+	storage         storage.Storage
+	kv              clientv3.KV
+	client          *clientv3.Client
+	alloc           id.Allocator
+	rootPath        string
+	idAllocatorStep uint
 }
 
-func NewManagerImpl(storage storage.Storage, kv clientv3.KV, rootPath string, idAllocatorStep uint, partitionTableProportionOfNodes float32) (Manager, error) {
+func NewManagerImpl(storage storage.Storage, kv clientv3.KV, client *clientv3.Client, rootPath string, idAllocatorStep uint) (Manager, error) {
 	alloc := id.NewAllocatorImpl(kv, path.Join(rootPath, AllocClusterIDPrefix), idAllocatorStep)
 
 	manager := &managerImpl{
-		storage:                         storage,
-		kv:                              kv,
-		alloc:                           alloc,
-		clusters:                        make(map[string]*Cluster, 0),
-		rootPath:                        rootPath,
-		idAllocatorStep:                 idAllocatorStep,
-		partitionTableProportionOfNodes: partitionTableProportionOfNodes,
+		storage:         storage,
+		kv:              kv,
+		client:          client,
+		alloc:           alloc,
+		clusters:        make(map[string]*Cluster, 0),
+		rootPath:        rootPath,
+		idAllocatorStep: idAllocatorStep,
 	}
 
 	return manager, nil
@@ -133,7 +132,7 @@ func (m *managerImpl) CreateCluster(ctx context.Context, clusterName string, opt
 		return nil, errors.WithMessage(err, "cluster load")
 	}
 
-	c, err := NewCluster(clusterMetadata, m.client, m.rootPath, m.partitionTableProportionOfNodes)
+	c, err := NewCluster(clusterMetadata, m.client, m.rootPath)
 	if err != nil {
 		return nil, errors.WithMessage(err, "new cluster")
 	}
@@ -143,7 +142,7 @@ func (m *managerImpl) CreateCluster(ctx context.Context, clusterName string, opt
 		return nil, errors.WithMessage(err, "start cluster")
 	}
 
-	return cluster, nil
+	return c, nil
 }
 
 func (m *managerImpl) GetCluster(_ context.Context, clusterName string) (*Cluster, error) {
@@ -173,7 +172,7 @@ func (m *managerImpl) AllocSchemaID(ctx context.Context, clusterName, schemaName
 	return schema.ID, exists, nil
 }
 
-func (m *managerImpl) GetTables(clusterName, nodeName string, shardIDs []storage.ShardID) (map[storage.ShardID]metadata.ShardTables, error) {
+func (m *managerImpl) GetTables(clusterName, _ string, shardIDs []storage.ShardID) (map[storage.ShardID]metadata.ShardTables, error) {
 	cluster, err := m.getCluster(clusterName)
 	if err != nil {
 		return nil, errors.WithMessage(err, "get cluster")
@@ -286,7 +285,7 @@ func (m *managerImpl) Start(ctx context.Context) error {
 			return errors.WithMessage(err, "fail to load cluster")
 		}
 		log.Info("open cluster successfully", zap.String("cluster", clusterMetadata.Name()))
-		c, err := NewCluster(clusterMetadata, m.client, m.rootPath, m.partitionTableProportionOfNodes)
+		c, err := NewCluster(clusterMetadata, m.client, m.rootPath)
 		if err != nil {
 			return errors.WithMessage(err, "new cluster")
 		}

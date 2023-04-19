@@ -33,8 +33,7 @@ func (a AssignShardScheduler) Schedule(ctx context.Context, clusterSnapshot meta
 	}
 
 	// Check whether there is a shard without node mapping.
-	for i := 0; i < len(clusterSnapshot.Topology.ShardViews); i++ {
-		shardView := clusterSnapshot.Topology.ShardViews[i]
+	for _, shardView := range clusterSnapshot.Topology.ShardViewsMapping {
 		_, exists := findNodeByShard(shardView.ShardID, clusterSnapshot.Topology.ClusterView.ShardNodes)
 		if exists {
 			continue

@@ -3,11 +3,14 @@
 package metadata
 
 import (
+	"time"
+
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/server/storage"
 )
 
 const (
+	expiredThreshold                     = time.Second * 10
 	MinShardID                           = 0
 	HeartbeatKeepAliveIntervalSec uint64 = 15
 )
@@ -74,6 +77,10 @@ type DropTableResult struct {
 	ShardVersionUpdate []ShardVersionUpdate
 }
 
+type DropTableMetadataResult struct {
+	Table storage.Table
+}
+
 type OpenTableRequest struct {
 	SchemaName string
 	TableName  string
@@ -128,12 +135,8 @@ func NewRegisteredNode(meta storage.Node, shardInfos []ShardInfo) RegisteredNode
 	}
 }
 
-func (n RegisteredNode) IsOnline() bool {
-	return n.Node.State == storage.NodeStateOnline
-}
-
-func (n RegisteredNode) IsExpired(now uint64, aliveThreshold uint64) bool {
-	return now >= aliveThreshold+n.Node.LastTouchTime
+func (n RegisteredNode) IsExpired(now int64) bool {
+	return now >= int64(expiredThreshold)+int64(n.Node.LastTouchTime)
 }
 
 func ConvertShardsInfoToPB(shard ShardInfo) *metaservicepb.ShardInfo {

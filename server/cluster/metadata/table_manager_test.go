@@ -1,7 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 // nolint
-package metadata
+package metadata_test
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
 	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
@@ -43,22 +44,22 @@ const (
 	defaultThreadNum                         = 20
 )
 
-func newTestStorage(t *testing.T) (storage.Storage, clientv3.KV, etcdutil.CloseFn) {
+func newTestStorage(t *testing.T) (storage.Storage, clientv3.KV, *clientv3.Client, etcdutil.CloseFn) {
 	_, client, closeSrv := etcdutil.PrepareEtcdServerAndClient(t)
 	storage := storage.NewStorageWithEtcdBackend(client, testRootPath, storage.Options{
 		MaxScanLimit: 100, MinScanLimit: 10,
 	})
-	return storage, client, closeSrv
+	return storage, client, client, closeSrv
 }
 
-func newClusterManagerWithStorage(storage storage.Storage, kv clientv3.KV) (cluster.Manager, error) {
-	return cluster.NewManagerImpl(storage, kv, testRootPath, defaultIDAllocatorStep)
+func newClusterManagerWithStorage(storage storage.Storage, kv clientv3.KV, client *clientv3.Client) (cluster.Manager, error) {
+	return cluster.NewManagerImpl(storage, kv, client, testRootPath, defaultIDAllocatorStep)
 }
 
 func newTestClusterManager(t *testing.T) (cluster.Manager, etcdutil.CloseFn) {
 	re := require.New(t)
-	storage, kv, closeSrv := newTestStorage(t)
-	manager, err := newClusterManagerWithStorage(storage, kv)
+	storage, kv, client, closeSrv := newTestStorage(t)
+	manager, err := newClusterManagerWithStorage(storage, kv, client)
 	re.NoError(err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
@@ -77,9 +78,9 @@ func TestManagerSingleThread(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 
-	s, kv, closeSrv := newTestStorage(t)
+	s, kv, client, closeSrv := newTestStorage(t)
 	defer closeSrv()
-	manager, err := newClusterManagerWithStorage(s, kv)
+	manager, err := newClusterManagerWithStorage(s, kv, client)
 	re.NoError(err)
 
 	re.NoError(manager.Start(ctx))
@@ -109,7 +110,7 @@ func TestManagerSingleThread(t *testing.T) {
 
 	re.NoError(manager.Stop(ctx))
 
-	manager, err = newClusterManagerWithStorage(s, kv)
+	manager, err = newClusterManagerWithStorage(s, kv, client)
 	re.NoError(err)
 
 	re.NoError(manager.Start(ctx))
@@ -158,7 +159,7 @@ func testCluster(ctx context.Context, re *require.Assertions, manager cluster.Ma
 }
 
 func testCreateCluster(ctx context.Context, re *require.Assertions, manager cluster.Manager, clusterName string) {
-	_, err := manager.CreateCluster(ctx, clusterName, CreateClusterOpts{
+	_, err := manager.CreateCluster(ctx, clusterName, metadata.CreateClusterOpts{
 		NodeCount:         defaultNodeCount,
 		ReplicationFactor: defaultReplicationFactor,
 		ShardTotal:        defaultShardTotal,
@@ -169,12 +170,12 @@ func testCreateCluster(ctx context.Context, re *require.Assertions, manager clus
 func testRegisterNode(ctx context.Context, re *require.Assertions, manager cluster.Manager,
 	clusterName, nodeName string,
 ) {
-	err := manager.RegisterNode(ctx, clusterName, RegisteredNode{
+	err := manager.RegisterNode(ctx, clusterName, metadata.RegisteredNode{
 		storage.Node{
 			Name:          nodeName,
 			LastTouchTime: uint64(time.Now().UnixMilli()),
 			State:         storage.NodeStateOnline,
-		}, []ShardInfo{},
+		}, []metadata.ShardInfo{},
 	})
 	re.NoError(err)
 }
@@ -192,7 +193,7 @@ func testCreateTable(ctx context.Context, re *require.Assertions, manager cluste
 ) {
 	c, err := manager.GetCluster(ctx, clusterName)
 	re.NoError(err)
-	table, err := c.GetMetadata().CreateTable(ctx, CreateTableRequest{
+	table, err := c.GetMetadata().CreateTable(ctx, metadata.CreateTableRequest{
 		ShardID:       shardID,
 		SchemaName:    schema,
 		TableName:     tableName,

@@ -7,7 +7,6 @@ import (
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
-	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
@@ -23,17 +22,11 @@ import (
 	"go.uber.org/zap"
 )
 
-const defaultPartitionTableNum = 1
-
 type Factory struct {
-	idAllocator    id.Allocator
-	dispatch       eventdispatch.Dispatch
-	storage        procedure.Storage
-	clusterManager cluster.Manager
-	shardPicker    ShardPicker
-
-	// TODO: This is a temporary implementation version, which needs to be refined to the table level later.
-	partitionTableProportionOfNodes float32
+	idAllocator id.Allocator
+	dispatch    eventdispatch.Dispatch
+	storage     procedure.Storage
+	shardPicker ShardPicker
 }
 
 type CreateTableRequest struct {
@@ -68,18 +61,18 @@ type TransferLeaderRequest struct {
 }
 
 type SplitRequest struct {
-	ClusterName    string
-	SchemaName     string
-	TableNames     []string
-	Snapshot       metadata.Snapshot
-	ShardID        storage.ShardID
-	NewShardID     storage.ShardID
-	TargetNodeName string
+	ClusterMetadata *metadata.ClusterMetadata
+	SchemaName      string
+	TableNames      []string
+	Snapshot        metadata.Snapshot
+	ShardID         storage.ShardID
+	NewShardID      storage.ShardID
+	TargetNodeName  string
 }
 
 type CreatePartitionTableRequest struct {
-	Cluster   *metadata.ClusterMetadata
-	SourceReq *metaservicepb.CreateTableRequest
+	ClusterMetadata *metadata.ClusterMetadata
+	SourceReq       *metaservicepb.CreateTableRequest
 
 	PartitionTableRatioOfNodes float32
 
@@ -87,13 +80,12 @@ type CreatePartitionTableRequest struct {
 	OnFailed    func(error) error
 }
 
-func NewFactory(allocator id.Allocator, dispatch eventdispatch.Dispatch, storage procedure.Storage, partitionTableProportionOfNodes float32) *Factory {
+func NewFactory(allocator id.Allocator, dispatch eventdispatch.Dispatch, storage procedure.Storage) *Factory {
 	return &Factory{
-		idAllocator:                     allocator,
-		dispatch:                        dispatch,
-		storage:                         storage,
-		shardPicker:                     NewRandomBalancedShardPicker(manager),
-		partitionTableProportionOfNodes: partitionTableProportionOfNodes,
+		idAllocator: allocator,
+		dispatch:    dispatch,
+		storage:     storage,
+		shardPicker: NewRandomBalancedShardPicker(),
 	}
 }
 
@@ -102,11 +94,10 @@ func (f *Factory) MakeCreateTableProcedure(ctx context.Context, request CreateTa
 
 	if isPartitionTable {
 		return f.makeCreatePartitionTableProcedure(ctx, CreatePartitionTableRequest{
-			Cluster:                    request.ClusterMetadata,
-			SourceReq:                  request.SourceReq,
-			PartitionTableRatioOfNodes: f.partitionTableProportionOfNodes,
-			OnSucceeded:                request.OnSucceeded,
-			OnFailed:                   request.OnFailed,
+			ClusterMetadata: request.ClusterMetadata,
+			SourceReq:       request.SourceReq,
+			OnSucceeded:     request.OnSucceeded,
+			OnFailed:        request.OnFailed,
 		})
 	}
 
@@ -120,7 +111,7 @@ func (f *Factory) makeCreateTableProcedure(ctx context.Context, request CreateTa
 	}
 	snapshot := request.ClusterMetadata.GetClusterSnapshot()
 
-	shards, err := f.shardPicker.PickShards(ctx, request.Cluster.Name(), 1, false)
+	shards, err := f.shardPicker.PickShards(ctx, snapshot, 1, false)
 	if err != nil {
 		log.Error("pick table shard", zap.Error(err))
 		return nil, errors.WithMessage(err, "pick table shard")
@@ -130,17 +121,16 @@ func (f *Factory) makeCreateTableProcedure(ctx context.Context, request CreateTa
 		return nil, errors.WithMessagef(procedure.ErrPickShard, "pick table shard, shards length:%d", len(shards))
 	}
 
-	procedure := createtable.NewProcedure(createtable.ProcedureRequest{
+	return createtable.NewProcedure(createtable.ProcedureParams{
 		Dispatch:        f.dispatch,
 		ClusterMetadata: request.ClusterMetadata,
 		ClusterSnapshot: snapshot,
 		ID:              id,
-		ShardID:         shards[0].ShardInfo.ID,
-		Req:             request.SourceReq,
+		ShardID:         shards[0].ID,
+		SourceReq:       request.SourceReq,
 		OnSucceeded:     request.OnSucceeded,
 		OnFailed:        request.OnFailed,
 	})
-	return procedure, nil
 }
 
 func (f *Factory) makeCreatePartitionTableProcedure(ctx context.Context, request CreatePartitionTableRequest) (procedure.Procedure, error) {
@@ -149,41 +139,45 @@ func (f *Factory) makeCreatePartitionTableProcedure(ctx context.Context, request
 		return nil, err
 	}
 
-	getNodeShardResult, err := request.Cluster.GetNodeShards(ctx)
+	snapshot := request.ClusterMetadata.GetClusterSnapshot()
+
+	nodeNames := make(map[string]int, len(snapshot.Topology.ClusterView.ShardNodes))
+	for _, shardNode := range snapshot.Topology.ClusterView.ShardNodes {
+		nodeNames[shardNode.NodeName] = 1
+	}
+
+	subTableShards, err := f.shardPicker.PickShards(ctx, snapshot, len(request.SourceReq.PartitionTableInfo.SubTableNames), true)
 	if err != nil {
-		log.Error("cluster get node shard result")
-		return nil, err
+		return nil, errors.WithMessage(err, "pick sub table shards")
 	}
 
-	nodeNames := make(map[string]int)
-	for _, nodeShard := range getNodeShardResult.NodeShards {
-		nodeNames[nodeShard.ShardNode.NodeName] = 1
+	shardNodesWithVersion := make([]metadata.ShardNodeWithVersion, 0, len(subTableShards))
+	for _, subTableShard := range subTableShards {
+		shardView, exists := snapshot.Topology.ShardViewsMapping[subTableShard.ID]
+		if !exists {
+			return nil, errors.WithMessagef(metadata.ErrShardNotFound, "shard not found, shardID:%d", subTableShard.ID)
+		}
+		shardNodesWithVersion = append(shardNodesWithVersion, metadata.ShardNodeWithVersion{
+			ShardInfo: metadata.ShardInfo{
+				ID:      shardView.ShardID,
+				Role:    subTableShard.ShardRole,
+				Version: shardView.Version,
+			},
+			ShardNode: subTableShard,
+		})
 	}
 
-	partitionTableNum := procedure.Max(defaultPartitionTableNum, int(float32(len(nodeNames))*request.PartitionTableRatioOfNodes))
-
-	partitionTableShards, err := f.shardPicker.PickShards(ctx, request.Cluster.Name(), partitionTableNum, false)
-	if err != nil {
-		return nil, errors.WithMessage(err, "pick partition table shards")
-	}
-
-	subTableShards, err := f.shardPicker.PickShards(ctx, request.Cluster.Name(), len(request.SourceReq.PartitionTableInfo.SubTableNames), true)
-	if err != nil {
-		return nil, errors.WithMessage(err, "pick data table shards")
-	}
-
-	procedure := createpartitiontable.NewProcedure(createpartitiontable.ProcedureRequest{
-		ID:                   id,
-		Cluster:              request.Cluster,
-		Dispatch:             f.dispatch,
-		Storage:              f.storage,
-		Req:                  request.SourceReq,
-		PartitionTableShards: partitionTableShards,
-		SubTablesShards:      subTableShards,
-		OnSucceeded:          request.OnSucceeded,
-		OnFailed:             request.OnFailed,
+	return createpartitiontable.NewProcedure(createpartitiontable.ProcedureParams{
+		ID:              id,
+		ClusterMetadata: request.ClusterMetadata,
+		ClusterSnapshot: snapshot,
+		Dispatch:        f.dispatch,
+		Storage:         f.storage,
+		SourceReq:       request.SourceReq,
+		SubTablesShards: shardNodesWithVersion,
+		OnSucceeded:     request.OnSucceeded,
+		OnFailed:        request.OnFailed,
 	})
-	return procedure, nil
 }
 
 func (f *Factory) CreateDropTableProcedure(ctx context.Context, request DropTableRequest) (procedure.Procedure, error) {
@@ -192,23 +186,29 @@ func (f *Factory) CreateDropTableProcedure(ctx context.Context, request DropTabl
 		return nil, err
 	}
 
+	snapshot := request.ClusterMetadata.GetClusterSnapshot()
+
 	if request.IsPartitionTable() {
-		req := droppartitiontable.ProcedureRequest{
-			ID:          id,
-			Cluster:     request.Cluster,
-			Dispatch:    f.dispatch,
-			Storage:     f.storage,
-			Request:     request.SourceReq,
-			OnSucceeded: request.OnSucceeded,
-			OnFailed:    request.OnFailed,
-		}
-		procedure := droppartitiontable.NewProcedure(req)
-		return procedure, nil
+		return droppartitiontable.NewProcedure(droppartitiontable.ProcedureParams{
+			ID:              id,
+			ClusterMetadata: request.ClusterMetadata,
+			Dispatch:        f.dispatch,
+			Storage:         f.storage,
+			SourceReq:       request.SourceReq,
+			OnSucceeded:     request.OnSucceeded,
+			OnFailed:        request.OnFailed,
+		})
 	}
 
-	procedure := droptable.NewDropTableProcedure(f.dispatch, request.ClusterMetadata, id,
-		request.SourceReq, request.OnSucceeded, request.OnFailed)
-	return procedure, nil
+	return droptable.NewDropTableProcedure(droptable.ProcedureParams{
+		ID:              id,
+		Dispatch:        f.dispatch,
+		ClusterMetadata: request.ClusterMetadata,
+		ClusterSnapshot: snapshot,
+		SourceReq:       request.SourceReq,
+		OnSucceeded:     request.OnSucceeded,
+		OnFailed:        request.OnFailed,
+	})
 }
 
 func (f *Factory) CreateTransferLeaderProcedure(ctx context.Context, request TransferLeaderRequest) (procedure.Procedure, error) {
@@ -217,15 +217,15 @@ func (f *Factory) CreateTransferLeaderProcedure(ctx context.Context, request Tra
 		return nil, err
 	}
 
-	return transferleader.NewProcedure(
-		f.dispatch,
-		request.Snapshot,
-		f.storage,
-		request.ShardID,
-		request.OldLeaderNodeName,
-		request.NewLeaderNodeName,
-		id,
-	)
+	return transferleader.NewProcedure(transferleader.ProcedureParams{
+		ID:                id,
+		Dispatch:          f.dispatch,
+		Storage:           f.storage,
+		ClusterSnapshot:   request.Snapshot,
+		ShardID:           request.ShardID,
+		OldLeaderNodeName: request.OldLeaderNodeName,
+		NewLeaderNodeName: request.NewLeaderNodeName,
+	})
 }
 
 func (f *Factory) CreateSplitProcedure(ctx context.Context, request SplitRequest) (procedure.Procedure, error) {
@@ -234,23 +234,19 @@ func (f *Factory) CreateSplitProcedure(ctx context.Context, request SplitRequest
 		return nil, err
 	}
 
-	c, err := f.clusterManager.GetCluster(ctx, request.ClusterName)
-	if err != nil {
-		log.Error("cluster not found", zap.String("clusterName", request.ClusterName))
-		return nil, metadata.ErrClusterNotFound
-	}
-
 	return split.NewProcedure(
-		id,
-		f.dispatch,
-		f.storage,
-		c.GetMetadata(),
-		request.Snapshot,
-		request.SchemaName,
-		request.ShardID,
-		request.NewShardID,
-		request.TableNames,
-		request.TargetNodeName,
+		split.ProcedureParams{
+			ID:              id,
+			Dispatch:        f.dispatch,
+			Storage:         f.storage,
+			ClusterMetadata: request.ClusterMetadata,
+			ClusterSnapshot: metadata.Snapshot{},
+			ShardID:         request.ShardID,
+			NewShardID:      request.NewShardID,
+			SchemaName:      request.SchemaName,
+			TableNames:      request.TableNames,
+			TargetNodeName:  request.TargetNodeName,
+		},
 	)
 }
 

@@ -28,14 +28,14 @@ type Cluster struct {
 	schedulerManager scheduler.Manager
 }
 
-func NewCluster(metadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string, partitionTableProportionOfNodes float32) (*Cluster, error) {
+func NewCluster(metadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string) (*Cluster, error) {
 	procedureStorage := procedure.NewEtcdStorageImpl(client, rootPath)
-	procedureManager, err := procedure.NewManagerImpl(procedureStorage, metadata)
+	procedureManager, err := procedure.NewManagerImpl(metadata)
 	if err != nil {
 		return nil, errors.WithMessage(err, "create procedure manager")
 	}
 	dispatch := eventdispatch.NewDispatchImpl()
-	procedureFactory := coordinator.NewFactory(id.NewAllocatorImpl(client, defaultProcedurePrefixKey, defaultAllocStep), dispatch, procedureStorage, partitionTableProportionOfNodes)
+	procedureFactory := coordinator.NewFactory(id.NewAllocatorImpl(client, defaultProcedurePrefixKey, defaultAllocStep), dispatch, procedureStorage)
 
 	schedulerManager := scheduler.NewManager(procedureManager, procedureFactory, metadata, client, rootPath)
 

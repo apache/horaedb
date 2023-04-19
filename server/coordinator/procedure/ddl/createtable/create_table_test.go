@@ -1,58 +1,52 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package createtable
+package createtable_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
-	"github.com/CeresDB/ceresmeta/server/cluster"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/operation/scatter"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/ddl/createtable"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/test"
-	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCreateTable(t *testing.T) {
 	re := require.New(t)
+	ctx := context.Background()
 	dispatch := test.MockDispatch{}
-	_, c := scatter.Prepare(t)
+	c := test.InitStableCluster(ctx, t)
 
-	// Select a shard in NodeName0 to open table.
-	nodeShardsResult, err := c.GetNodeShards(context.Background())
-	re.NoError(err)
-	var shardID storage.ShardID
-	var found bool
-	for _, nodeShard := range nodeShardsResult.NodeShards {
-		if nodeShard.ShardNode.NodeName == test.NodeName0 {
-			shardID = nodeShard.ShardNode.ID
-			found = true
-		}
-	}
-	re.Equal(found, true)
+	// Select a shard to create table.
+	snapshot := c.GetMetadata().GetClusterSnapshot()
+	shardNode := snapshot.Topology.ClusterView.ShardNodes[0]
 
 	// New CreateTableProcedure to create a new table.
-	p := NewProcedure(ProcedureRequest{
-		Dispatch: dispatch,
-		Cluster:  c,
-		ID:       uint64(1),
-		ShardID:  shardID,
-		Req: &metaservicepb.CreateTableRequest{
+	p, err := createtable.NewProcedure(createtable.ProcedureParams{
+		Dispatch:        dispatch,
+		ClusterMetadata: c.GetMetadata(),
+		ClusterSnapshot: snapshot,
+		ID:              uint64(1),
+		ShardID:         shardNode.ID,
+		SourceReq: &metaservicepb.CreateTableRequest{
 			Header: &metaservicepb.RequestHeader{
-				Node:        test.NodeName0,
+				Node:        shardNode.NodeName,
 				ClusterName: test.ClusterName,
 			},
 			SchemaName: test.TestSchemaName,
 			Name:       test.TestTableName0,
 		},
-		OnSucceeded: func(_ cluster.CreateTableResult) error {
+		OnSucceeded: func(_ metadata.CreateTableResult) error {
 			return nil
 		},
-		OnFailed: func(_ error) error {
-			return nil
+		OnFailed: func(err error) error {
+			panic(fmt.Sprintf("create table failed, err:%v", err))
 		},
 	})
+	re.NoError(err)
 	err = p.Start(context.Background())
 	re.NoError(err)
 }

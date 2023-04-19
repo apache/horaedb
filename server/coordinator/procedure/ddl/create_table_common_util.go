@@ -7,11 +7,13 @@ import (
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
+	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 func CreateTableMetadata(ctx context.Context, c *metadata.ClusterMetadata, schemaName string, tableName string, shardID storage.ShardID, partitionInfo *clusterpb.PartitionInfo) (metadata.CreateTableResult, error) {
@@ -36,6 +38,7 @@ func CreateTableMetadata(ctx context.Context, c *metadata.ClusterMetadata, schem
 }
 
 func CreateTableOnShard(ctx context.Context, c *metadata.ClusterMetadata, dispatch eventdispatch.Dispatch, shardID storage.ShardID, request eventdispatch.CreateTableOnShardRequest) error {
+	log.Debug("CreateTableOnShard", zap.Uint64("curVersion", request.UpdateShardInfo.CurrShardInfo.Version), zap.Uint64("preVersion", request.UpdateShardInfo.PrevVersion))
 	shardNodes, err := c.GetShardNodesByShardID(shardID)
 	if err != nil {
 		return errors.WithMessage(err, "cluster get shardNode by id")

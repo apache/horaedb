@@ -48,8 +48,9 @@ var (
 )
 
 type Procedure struct {
-	fsm    *fsm.FSM
-	params ProcedureParams
+	fsm                *fsm.FSM
+	params             ProcedureParams
+	relatedVersionInfo procedure.RelatedVersionInfo
 
 	// Protect the state.
 	lock  sync.RWMutex
@@ -59,6 +60,7 @@ type Procedure struct {
 type ProcedureParams struct {
 	ID              uint64
 	ClusterMetadata *metadata.ClusterMetadata
+	ClusterSnapshot metadata.Snapshot
 	Dispatch        eventdispatch.Dispatch
 	Storage         procedure.Storage
 	SourceReq       *metaservicepb.DropTableRequest
@@ -66,16 +68,57 @@ type ProcedureParams struct {
 	OnFailed        func(error) error
 }
 
-func NewProcedure(params ProcedureParams) *Procedure {
+func NewProcedure(params ProcedureParams) (*Procedure, error) {
 	fsm := fsm.NewFSM(
 		stateBegin,
 		createDropPartitionTableEvents,
 		createDropPartitionTableCallbacks,
 	)
-	return &Procedure{
-		fsm:    fsm,
-		params: params,
+	relatedVersionInfo, err := buildRelatedVersionInfo(params)
+	if err != nil {
+		return nil, err
 	}
+
+	return &Procedure{
+		fsm:                fsm,
+		params:             params,
+		relatedVersionInfo: relatedVersionInfo,
+	}, nil
+}
+
+func buildRelatedVersionInfo(params ProcedureParams) (procedure.RelatedVersionInfo, error) {
+	tableShardMapping := make(map[storage.TableID]storage.ShardID, len(params.SourceReq.PartitionTableInfo.GetSubTableNames()))
+	for shardID, shardView := range params.ClusterSnapshot.Topology.ShardViewsMapping {
+		for _, tableID := range shardView.TableIDs {
+			tableShardMapping[tableID] = shardID
+		}
+	}
+	shardViewWithVersion := make(map[storage.ShardID]uint64, 0)
+	for _, subTableName := range params.SourceReq.PartitionTableInfo.GetSubTableNames() {
+		table, exists, err := params.ClusterMetadata.GetTable(params.SourceReq.GetSchemaName(), subTableName)
+		if err != nil {
+			return procedure.RelatedVersionInfo{}, errors.WithMessagef(err, "get sub table, tableName:%s", subTableName)
+		}
+		if !exists {
+			return procedure.RelatedVersionInfo{}, errors.WithMessagef(procedure.ErrTableNotExists, "get sub table, tableName:%s", subTableName)
+		}
+		shardID, exists := tableShardMapping[table.ID]
+		if !exists {
+			return procedure.RelatedVersionInfo{}, errors.WithMessagef(metadata.ErrShardNotFound, "get shard of sub table, tableID:%d", table.ID)
+		}
+		shardView, exists := params.ClusterSnapshot.Topology.ShardViewsMapping[shardID]
+		if !exists {
+			return procedure.RelatedVersionInfo{}, errors.WithMessagef(metadata.ErrShardNotFound, "shard not found in topology, shardID:%d", shardID)
+		}
+		shardViewWithVersion[shardID] = shardView.Version
+	}
+
+	relatedVersionInfo := procedure.RelatedVersionInfo{
+		ClusterID:        params.ClusterSnapshot.Topology.ClusterView.ClusterID,
+		ShardWithVersion: shardViewWithVersion,
+		ClusterVersion:   params.ClusterSnapshot.Topology.ClusterView.Version,
+	}
+	return relatedVersionInfo, nil
 }
 
 func (p *Procedure) ID() uint64 {
@@ -86,11 +129,20 @@ func (p *Procedure) Typ() procedure.Typ {
 	return procedure.DropPartitionTable
 }
 
+func (p *Procedure) RelatedVersionInfo() procedure.RelatedVersionInfo {
+	return p.relatedVersionInfo
+}
+
+func (p *Procedure) Priority() procedure.Priority {
+	return procedure.PriorityMed
+}
+
 func (p *Procedure) Start(ctx context.Context) error {
 	p.updateStateWithLock(procedure.StateRunning)
 
 	dropPartitionTableRequest := &callbackRequest{
 		ctx: ctx,
+		p:   p,
 	}
 
 	for {
@@ -254,28 +306,13 @@ func dropPartitionTableCallback(event *fsm.Event) {
 		return
 	}
 
-	dropTableResult, err := dropTableMetaData(event, req.tableName())
+	dropTableMetadataResult, err := req.p.params.ClusterMetadata.DropTableMetadata(req.ctx, req.schemaName(), req.tableName())
 	if err != nil {
 		procedure.CancelEventWithLog(event, err, fmt.Sprintf("drop table, table:%s", req.tableName()))
 		return
 	}
-	if !dropTableResult.exists {
-		procedure.CancelEventWithLog(event, procedure.ErrTableNotExists, fmt.Sprintf("table:%s", req.tableName()))
-		return
-	}
 
-	if len(dropTableResult.result.ShardVersionUpdate) == 0 {
-		procedure.CancelEventWithLog(event, procedure.ErrDropTableResult, fmt.Sprintf("legnth of shardVersionResult need >=1, current is %d", len(dropTableResult.result.ShardVersionUpdate)))
-		return
-	}
-
-	req.table = dropTableResult.table
-
-	// Drop table in the first shard.
-	if err := dispatchDropTable(event, dropTableResult.table, dropTableResult.result.ShardVersionUpdate[0]); err != nil {
-		procedure.CancelEventWithLog(event, err, fmt.Sprintf("drop table, table:%s", dropTableResult.table.Name))
-		return
-	}
+	req.table = dropTableMetadataResult.Table
 }
 
 func finishCallback(event *fsm.Event) {

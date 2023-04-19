@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	TestRootPath  = "/rootPath"
-	TestShardPath = "shards"
-	TestShardID   = 1
-	TestNodeName  = "testNode"
+	TestClusterName = "defaultCluster"
+	TestRootPath    = "/rootPath"
+	TestShardPath   = "shards"
+	TestShardID     = 1
+	TestNodeName    = "testNode"
 )
 
 func TestWatch(t *testing.T) {
@@ -27,7 +28,7 @@ func TestWatch(t *testing.T) {
 	ctx := context.Background()
 
 	_, client, _ := etcdutil.PrepareEtcdServerAndClient(t)
-	watch := NewWatch(TestRootPath, client)
+	watch := NewWatch(TestClusterName, TestRootPath, client)
 	err := watch.Start(ctx)
 	re.NoError(err)
 
@@ -42,7 +43,7 @@ func TestWatch(t *testing.T) {
 	b, err := proto.Marshal(&metaeventpb.ShardLockValue{NodeName: TestNodeName})
 	re.NoError(err)
 
-	keyPath := encodeShardKey(TestRootPath, TestShardPath, TestShardID)
+	keyPath := encodeShardKey(TestRootPath, TestShardPath, TestClusterName, TestShardID)
 	_, err = client.Put(ctx, keyPath, string(b))
 	re.NoError(err)
 	time.Sleep(time.Millisecond * 10)
@@ -59,14 +60,14 @@ type testShardEventCallback struct {
 	re     *require.Assertions
 }
 
-func (c *testShardEventCallback) OnShardRegistered(event ShardRegisterEvent) error {
+func (c *testShardEventCallback) OnShardRegistered(_ context.Context, event ShardRegisterEvent) error {
 	c.result = 2
 	c.re.Equal(storage.ShardID(TestShardID), event.ShardID)
 	c.re.Equal(TestNodeName, event.NewLeaderNode)
 	return nil
 }
 
-func (c *testShardEventCallback) OnShardExpired(event ShardExpireEvent) error {
+func (c *testShardEventCallback) OnShardExpired(_ context.Context, event ShardExpireEvent) error {
 	c.result = 1
 	c.re.Equal(storage.ShardID(TestShardID), event.ShardID)
 	c.re.Equal(TestNodeName, event.OldLeaderNode)

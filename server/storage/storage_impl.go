@@ -384,11 +384,14 @@ func (s *metaStorageImpl) ListShardViews(ctx context.Context, req ListShardViews
 	prefix := makeShardViewVersionKey(s.rootPath, uint32(req.ClusterID))
 	keys, err := etcdutil.List(ctx, s.client, prefix)
 	if err != nil {
-		return ListShardViewsResult{}, errors.WithMessagef(err, "list shard view, clusterID:%d, shardID:%d, key:%s")
+		return ListShardViewsResult{}, errors.WithMessagef(err, "list shard view, clusterID:%d", req.ClusterID)
 	}
 	for _, key := range keys {
 		if strings.HasSuffix(key, latestVersion) {
 			shardIDKey, err := decodeShardViewVersionKey(key)
+			if err != nil {
+				return ListShardViewsResult{}, errors.WithMessagef(err, "list shard view latest version, clusterID:%d, shardIDKey:%s, key:%s", req.ClusterID, shardIDKey, key)
+			}
 			shardID, err := strconv.ParseUint(shardIDKey, 10, 32)
 			if err != nil {
 				return ListShardViewsResult{}, errors.WithMessagef(err, "list shard view latest version, clusterID:%d, shardID:%d, key:%s", req.ClusterID, shardID, key)

@@ -9,29 +9,26 @@ import (
 
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
-	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/CeresDB/ceresmeta/server/coordinator/lock"
 	"github.com/CeresDB/ceresmeta/server/storage"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
 const (
 	metaListBatchSize                = 100
+	defaultWaitingQueueLen           = 1000
 	defaultWaitingQueueDelay         = time.Millisecond * 500
 	defaultPromoteDelay              = time.Millisecond * 100
 	defaultProcedureWorkerChanBufSiz = 10
 )
 
 type ManagerImpl struct {
-	storage  Storage
-	dispatch eventdispatch.Dispatch
 	metadata *metadata.ClusterMetadata
 
 	// ProcedureShardLock is used to ensure the consistency of procedures' concurrent running on shard, that is to say, only one procedure is allowed to run on a specific shard.
 	procedureShardLock *lock.EntryLock
 	// All procedure will be put into waiting queue first, when runningProcedure is empty, try to promote some waiting procedures to new running procedures.
-	waitingProcedures *ProcedureDelayQueue
+	waitingProcedures *DelayQueue
 	// ProcedureWorkerChan is used to notify that a procedure has been submitted or completed, and the manager will perform promote after receiving the signal.
 	procedureWorkerChan chan struct{}
 
@@ -108,31 +105,15 @@ func (m *ManagerImpl) ListRunningProcedure(_ context.Context) ([]*Info, error) {
 	return procedureInfos, nil
 }
 
-func NewManagerImpl(s Storage, metadata *metadata.ClusterMetadata) (Manager, error) {
+func NewManagerImpl(metadata *metadata.ClusterMetadata) (Manager, error) {
+	entryLock := lock.NewEntryLock(10)
 	manager := &ManagerImpl{
-		storage:  s,
-		dispatch: eventdispatch.NewDispatchImpl(),
-		metadata: metadata,
+		metadata:           metadata,
+		runningProcedures:  map[storage.ShardID]Procedure{},
+		procedureShardLock: &entryLock,
+		waitingProcedures:  NewProcedureDelayQueue(defaultWaitingQueueLen),
 	}
 	return manager, nil
-}
-
-func (m *ManagerImpl) retryAll(ctx context.Context) error {
-	metas, err := m.storage.List(ctx, metaListBatchSize)
-	if err != nil {
-		return errors.WithMessage(err, "storage list meta failed")
-	}
-	for _, meta := range metas {
-		if !meta.needRetry() {
-			continue
-		}
-		p := restoreProcedure(meta)
-		if p != nil {
-			err := m.retry(ctx, p)
-			return errors.WithMessagef(err, "retry procedure failed, procedureID:%d", p.ID())
-		}
-	}
-	return nil
 }
 
 func (m *ManagerImpl) startProcedurePromote(ctx context.Context, procedureWorkerChan chan struct{}) {
@@ -190,20 +171,11 @@ func (m *ManagerImpl) startProcedureWorker(ctx context.Context, newProcedure Pro
 		case procedureWorkerChan <- struct{}{}:
 		default:
 		}
-		return
 	}()
 }
 
-func (m *ManagerImpl) retry(ctx context.Context, procedure Procedure) error {
-	err := procedure.Start(ctx)
-	if err != nil {
-		return errors.WithMessagef(err, "start procedure failed, procedureID:%d", procedure.ID())
-	}
-	return nil
-}
-
 // Whether a waiting procedure could be running procedure.
-func (m *ManagerImpl) checkValid(ctx context.Context, procedure Procedure, cluster *metadata.ClusterMetadata) bool {
+func (m *ManagerImpl) checkValid(_ context.Context, _ Procedure, _ *metadata.ClusterMetadata) bool {
 	// ClusterVersion and ShardVersion in this procedure must be same with current cluster topology.
 	// TODO: Version verification is an important issue, implement it in another pull request.
 	return true
@@ -244,34 +216,4 @@ func (m *ManagerImpl) promoteProcedure(ctx context.Context) ([]Procedure, error)
 			}
 		}
 	}
-}
-
-// Load meta and restore procedure.
-// TODO: Restore procedure from metadata, some types of procedures do not need to be retried.
-func restoreProcedure(meta *Meta) Procedure {
-	switch meta.Typ {
-	case Create:
-		return nil
-	case Delete:
-		return nil
-	case TransferLeader:
-		return nil
-	case Migrate:
-		return nil
-	case Split:
-		return nil
-	case Merge:
-		return nil
-	case Scatter:
-		return nil
-	case CreateTable:
-		return nil
-	case DropTable:
-		return nil
-	case CreatePartitionTable:
-		return nil
-	case DropPartitionTable:
-		return nil
-	}
-	return nil
 }

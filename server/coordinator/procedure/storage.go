@@ -17,14 +17,6 @@ type Meta struct {
 	RawData []byte
 }
 
-// TODO: move needRetry to scheduler.go.
-func (m *Meta) needRetry() bool {
-	if m.State == StateCancelled || m.State == StateFinished {
-		return false
-	}
-	return true
-}
-
 type Storage interface {
 	Write
 	List(ctx context.Context, batchSize int) ([]*Meta, error)

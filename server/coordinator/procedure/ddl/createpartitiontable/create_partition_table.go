@@ -70,8 +70,11 @@ type ProcedureParams struct {
 	OnFailed        func(error) error
 }
 
-func NewProcedure(params ProcedureParams) *Procedure {
-	relatedVersionInfo := buildRelatedVersionInfo(params)
+func NewProcedure(params ProcedureParams) (*Procedure, error) {
+	relatedVersionInfo, err := buildRelatedVersionInfo(params)
+	if err != nil {
+		return nil, err
+	}
 
 	fsm := fsm.NewFSM(
 		stateBegin,
@@ -84,28 +87,24 @@ func NewProcedure(params ProcedureParams) *Procedure {
 		relatedVersionInfo: relatedVersionInfo,
 		params:             params,
 		state:              procedure.StateInit,
-	}
+	}, nil
 }
 
-func buildRelatedVersionInfo(params ProcedureParams) procedure.RelatedVersionInfo {
+func buildRelatedVersionInfo(params ProcedureParams) (procedure.RelatedVersionInfo, error) {
 	shardWithVersion := make(map[storage.ShardID]uint64, len(params.SubTablesShards))
-	shardIDs := make([]storage.ShardID, 0, len(params.SubTablesShards))
-	for _, shardView := range params.SubTablesShards {
-		shardIDs = append(shardIDs, shardView.ShardInfo.ID)
-	}
-	for _, shardID := range shardIDs {
-		for _, shardView := range params.ClusterSnapshot.Topology.ShardViews {
-			if shardView.ShardID == shardID {
-				shardWithVersion[shardID] = shardView.Version
-				continue
-			}
+	for _, subTableShard := range params.SubTablesShards {
+		shardView, exists := params.ClusterSnapshot.Topology.ShardViewsMapping[subTableShard.ShardInfo.ID]
+		if !exists {
+			return procedure.RelatedVersionInfo{}, errors.WithMessagef(metadata.ErrShardNotFound, "shard not found in topology, shardID:%d", subTableShard.ShardInfo.ID)
 		}
+		shardWithVersion[shardView.ShardID] = shardView.Version
 	}
+
 	return procedure.RelatedVersionInfo{
 		ClusterID:        params.ClusterSnapshot.Topology.ClusterView.ClusterID,
 		ShardWithVersion: shardWithVersion,
 		ClusterVersion:   params.ClusterSnapshot.Topology.ClusterView.Version,
-	}
+	}, nil
 }
 
 func (p *Procedure) ID() uint64 {
@@ -217,7 +216,6 @@ func createDataTablesCallback(event *fsm.Event) {
 	params := req.p.params
 	if len(params.SubTablesShards) != len(params.SourceReq.GetPartitionTableInfo().SubTableNames) {
 		panic(fmt.Sprintf("shards number must be equal to sub tables number, shardNumber:%d, subTableNumber:%d", len(params.SubTablesShards), len(params.SourceReq.GetPartitionTableInfo().SubTableNames)))
-		return
 	}
 
 	for i, subTableShard := range params.SubTablesShards {

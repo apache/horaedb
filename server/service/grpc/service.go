@@ -174,10 +174,10 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 	}
 
 	p, err := c.GetProcedureFactory().MakeCreateTableProcedure(ctx, coordinator.CreateTableRequest{
-		Cluster:     c.GetMetadata(),
-		SourceReq:   req,
-		OnSucceeded: onSucceeded,
-		OnFailed:    onFailed,
+		ClusterMetadata: c.GetMetadata(),
+		SourceReq:       req,
+		OnSucceeded:     onSucceeded,
+		OnFailed:        onFailed,
 	})
 	if err != nil {
 		log.Error("fail to create table, factory create procedure", zap.Error(err))
@@ -245,10 +245,10 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 	}
 
 	procedure, err := c.GetProcedureFactory().CreateDropTableProcedure(ctx, coordinator.DropTableRequest{
-		Cluster:     c.GetMetadata(),
-		SourceReq:   req,
-		OnSucceeded: onSucceeded,
-		OnFailed:    onFailed,
+		ClusterMetadata: c.GetMetadata(),
+		SourceReq:       req,
+		OnSucceeded:     onSucceeded,
+		OnFailed:        onFailed,
 	})
 	if err != nil {
 		log.Error("fail to drop table", zap.Error(err))

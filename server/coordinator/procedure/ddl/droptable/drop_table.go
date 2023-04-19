@@ -165,7 +165,10 @@ func NewDropTableProcedure(params ProcedureParams) (procedure.Procedure, error) 
 		return nil, err
 	}
 
-	relatedVersionInfo := buildRelatedVersionInfo(params, shardID)
+	relatedVersionInfo, err := buildRelatedVersionInfo(params, shardID)
+	if err != nil {
+		return nil, err
+	}
 
 	fsm := fsm.NewFSM(
 		stateBegin,
@@ -182,18 +185,18 @@ func NewDropTableProcedure(params ProcedureParams) (procedure.Procedure, error) 
 	}, nil
 }
 
-func buildRelatedVersionInfo(params ProcedureParams, shardID storage.ShardID) procedure.RelatedVersionInfo {
+func buildRelatedVersionInfo(params ProcedureParams, shardID storage.ShardID) (procedure.RelatedVersionInfo, error) {
 	shardWithVersion := make(map[storage.ShardID]uint64, 1)
-	for _, shardView := range params.ClusterSnapshot.Topology.ShardViews {
-		if shardView.ShardID == shardID {
-			shardWithVersion[shardID] = shardView.Version
-		}
+	shardView, exists := params.ClusterSnapshot.Topology.ShardViewsMapping[shardID]
+	if !exists {
+		return procedure.RelatedVersionInfo{}, errors.WithMessagef(metadata.ErrShardNotFound, "shard not found in topology, shardID:%d", shardID)
 	}
+	shardWithVersion[shardID] = shardView.Version
 	return procedure.RelatedVersionInfo{
 		ClusterID:        params.ClusterSnapshot.Topology.ClusterView.ClusterID,
 		ShardWithVersion: shardWithVersion,
 		ClusterVersion:   params.ClusterSnapshot.Topology.ClusterView.Version,
-	}
+	}, nil
 }
 
 func validateTable(params ProcedureParams) (storage.ShardID, error) {
@@ -207,7 +210,7 @@ func validateTable(params ProcedureParams) (storage.ShardID, error) {
 		return 0, err
 	}
 
-	for _, shardView := range params.ClusterSnapshot.Topology.ShardViews {
+	for _, shardView := range params.ClusterSnapshot.Topology.ShardViewsMapping {
 		for _, tableID := range shardView.TableIDs {
 			if table.ID == tableID {
 				return shardView.ShardID, nil

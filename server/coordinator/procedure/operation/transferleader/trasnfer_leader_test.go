@@ -1,12 +1,12 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package transferleader
+package transferleader_test
 
 import (
 	"context"
 	"testing"
 
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/operation/scatter"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/operation/transferleader"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/test"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
@@ -16,43 +16,29 @@ func TestTransferLeader(t *testing.T) {
 	re := require.New(t)
 	ctx := context.Background()
 	dispatch := test.MockDispatch{}
-	_, c := scatter.Prepare(t)
+	c := test.InitEmptyCluster(ctx, t)
 	s := test.NewTestStorage(t)
 
-	getNodeShardsResult, err := c.GetNodeShards(ctx)
-	re.NoError(err)
+	snapshot := c.GetMetadata().GetClusterSnapshot()
 
-	// Randomly select a node and shard to transfer leader.
-	oldLeaderNodeName := getNodeShardsResult.NodeShards[0].ShardNode.NodeName
-	shardID := getNodeShardsResult.NodeShards[0].ShardNode.ID
-
-	// Randomly select another node as new leader
-	registerNodes := c.GetRegisteredNodes()
-	var newLeaderNodeName string
-	found := false
-	for _, node := range registerNodes {
-		if node.Node.Name != oldLeaderNodeName {
-			newLeaderNodeName = node.Node.Name
-			found = true
-		}
+	var targetShardID storage.ShardID
+	for shardID := range snapshot.Topology.ShardViewsMapping {
+		targetShardID = shardID
+		break
 	}
-	re.Equal(true, found)
+	newLeaderNodeName := snapshot.RegisteredNodes[0].Node.Name
 
-	p, err := NewProcedure(dispatch, c, s, shardID, oldLeaderNodeName, newLeaderNodeName, uint64(1))
+	p, err := transferleader.NewProcedure(transferleader.ProcedureParams{
+		ID:                0,
+		Dispatch:          dispatch,
+		Storage:           s,
+		ClusterSnapshot:   snapshot,
+		ShardID:           targetShardID,
+		OldLeaderNodeName: "",
+		NewLeaderNodeName: newLeaderNodeName,
+	})
 	re.NoError(err)
+
 	err = p.Start(ctx)
 	re.NoError(err)
-
-	shardNodes, err := c.GetShardNodesByShardID(shardID)
-	re.NoError(err)
-	found = false
-	var newLeaderShardNode storage.ShardNode
-	for _, shardNode := range shardNodes {
-		if shardNode.ShardRole == storage.ShardRoleLeader {
-			found = true
-			newLeaderShardNode = shardNode
-		}
-	}
-	re.Equal(true, found)
-	re.Equal(newLeaderNodeName, newLeaderShardNode.NodeName)
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/coordinator"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/coordinator/watch"
+	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
@@ -51,7 +52,6 @@ type ManagerImpl struct {
 	registerSchedulers []Scheduler
 	shardWatch         *watch.ShardWatch
 	isRunning          bool
-	cancel             context.CancelFunc
 }
 
 func NewManager(procedureManager procedure.Manager, factory *coordinator.Factory, clusterMetadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string) Manager {
@@ -72,7 +72,6 @@ func (m *ManagerImpl) Stop(ctx context.Context) error {
 	defer m.lock.Unlock()
 
 	if m.isRunning {
-		m.cancel()
 		m.registerSchedulers = m.registerSchedulers[:0]
 		m.isRunning = false
 		if err := m.shardWatch.Stop(ctx); err != nil {
@@ -93,7 +92,6 @@ func (m *ManagerImpl) Start(ctx context.Context) error {
 
 	m.initRegister()
 
-	ctxWithCancel, cancel := context.WithCancel(ctx)
 	watch := watch.NewWatch(m.clusterMetadata.Name(), m.rootPath, m.client)
 	watch.RegisteringEventCallback(&schedulerWatchCallback{c: m.clusterMetadata})
 	m.shardWatch = watch
@@ -103,7 +101,7 @@ func (m *ManagerImpl) Start(ctx context.Context) error {
 	go func() {
 		for {
 			select {
-			case <-ctxWithCancel.Done():
+			case <-ctx.Done():
 				log.Info("scheduler manager is canceled")
 				return
 			default:
@@ -111,7 +109,7 @@ func (m *ManagerImpl) Start(ctx context.Context) error {
 				// Get latest cluster snapshot.
 				clusterSnapshot := m.clusterMetadata.GetClusterSnapshot()
 				log.Debug("scheduler manager invoke", zap.String("clusterSnapshot", fmt.Sprintf("%v", clusterSnapshot)))
-				results := m.Scheduler(ctxWithCancel, clusterSnapshot)
+				results := m.Scheduler(ctx, clusterSnapshot)
 				for _, result := range results {
 					if result.Procedure != nil {
 						log.Info("scheduler submit new procedure", zap.Uint64("ProcedureID", result.Procedure.ID()), zap.String("Reason", result.Reason))
@@ -125,7 +123,6 @@ func (m *ManagerImpl) Start(ctx context.Context) error {
 	}()
 
 	m.isRunning = true
-	m.cancel = cancel
 
 	return nil
 }
@@ -134,12 +131,20 @@ type schedulerWatchCallback struct {
 	c *metadata.ClusterMetadata
 }
 
-func (callback *schedulerWatchCallback) OnShardRegistered(event watch.ShardRegisterEvent) error {
+func (callback *schedulerWatchCallback) OnShardRegistered(_ context.Context, _ watch.ShardRegisterEvent) error {
 	return nil
 }
 
-func (callback *schedulerWatchCallback) OnShardExpired(event watch.ShardExpireEvent) error {
-	return nil
+func (callback *schedulerWatchCallback) OnShardExpired(ctx context.Context, event watch.ShardExpireEvent) error {
+	oldLeader := event.OldLeaderNode
+	shardID := event.ShardID
+	return callback.c.DropShardNode(ctx, []storage.ShardNode{
+		{
+			ID:        shardID,
+			ShardRole: storage.ShardRoleLeader,
+			NodeName:  oldLeader,
+		},
+	})
 }
 
 // Schedulers should to be initialized and registered here.

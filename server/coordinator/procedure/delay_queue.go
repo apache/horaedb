@@ -16,7 +16,7 @@ type procedureScheduleEntry struct {
 	runAfter  time.Time
 }
 
-type ProcedureDelayQueue struct {
+type DelayQueue struct {
 	maxLen int
 
 	// This lock is used to protect the following fields.
@@ -71,22 +71,22 @@ func (q *heapPriorityQueue) Peek() any {
 	return item
 }
 
-func NewProcedureDelayQueue(maxLen int) *ProcedureDelayQueue {
-	return &ProcedureDelayQueue{
+func NewProcedureDelayQueue(maxLen int) *DelayQueue {
+	return &DelayQueue{
 		heapQueue:     &heapPriorityQueue{procedures: []*procedureScheduleEntry{}},
 		existingProcs: map[uint64]struct{}{},
 		maxLen:        maxLen,
 	}
 }
 
-func (q *ProcedureDelayQueue) Len() int {
+func (q *DelayQueue) Len() int {
 	q.lock.RLock()
 	defer q.lock.RUnlock()
 
 	return q.heapQueue.Len()
 }
 
-func (q *ProcedureDelayQueue) Push(p Procedure, delay time.Duration) error {
+func (q *DelayQueue) Push(p Procedure, delay time.Duration) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
@@ -107,7 +107,7 @@ func (q *ProcedureDelayQueue) Push(p Procedure, delay time.Duration) error {
 	return nil
 }
 
-func (q *ProcedureDelayQueue) Pop() Procedure {
+func (q *DelayQueue) Pop() Procedure {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 

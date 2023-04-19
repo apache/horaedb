@@ -6,6 +6,7 @@ import (
 	"context"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/storage"
@@ -29,7 +30,7 @@ func TestRandomNodePicker(t *testing.T) {
 
 	for i := 0; i < nodeLength; i++ {
 		nodes = append(nodes, metadata.RegisteredNode{
-			Node:       storage.Node{Name: strconv.Itoa(i), State: storage.NodeStateOffline},
+			Node:       storage.Node{Name: strconv.Itoa(i), LastTouchTime: generateLastTouchTime(time.Minute)},
 			ShardInfos: nil,
 		})
 	}
@@ -39,7 +40,7 @@ func TestRandomNodePicker(t *testing.T) {
 	nodes = nodes[:0]
 	for i := 0; i < nodeLength; i++ {
 		nodes = append(nodes, metadata.RegisteredNode{
-			Node:       storage.Node{Name: strconv.Itoa(i), State: storage.NodeStateOnline},
+			Node:       storage.Node{Name: strconv.Itoa(i), LastTouchTime: generateLastTouchTime(0)},
 			ShardInfos: nil,
 		})
 	}
@@ -49,12 +50,16 @@ func TestRandomNodePicker(t *testing.T) {
 	nodes = nodes[:0]
 	for i := 0; i < nodeLength; i++ {
 		nodes = append(nodes, metadata.RegisteredNode{
-			Node:       storage.Node{Name: strconv.Itoa(i), State: storage.NodeStateOffline},
+			Node:       storage.Node{Name: strconv.Itoa(i), LastTouchTime: generateLastTouchTime(time.Minute)},
 			ShardInfos: nil,
 		})
 	}
-	nodes[selectOnlineNodeIndex].Node.State = storage.NodeStateOnline
+	nodes[selectOnlineNodeIndex].Node.LastTouchTime = uint64(time.Now().Unix())
 	node, err := nodePicker.PickNode(ctx, nodes)
 	re.NoError(err)
 	re.Equal(strconv.Itoa(selectOnlineNodeIndex), node.Node.Name)
+}
+
+func generateLastTouchTime(duration time.Duration) uint64 {
+	return uint64(time.Now().Unix() - int64(duration))
 }

@@ -337,13 +337,13 @@ func (a *API) split(writer http.ResponseWriter, req *http.Request) {
 	}
 
 	splitProcedure, err := c.GetProcedureFactory().CreateSplitProcedure(ctx, coordinator.SplitRequest{
-		ClusterName:    splitRequest.ClusterName,
-		SchemaName:     splitRequest.SchemaName,
-		TableNames:     splitRequest.SplitTables,
-		Snapshot:       metadata.Snapshot{},
-		ShardID:        storage.ShardID(splitRequest.ShardID),
-		NewShardID:     storage.ShardID(newShardID),
-		TargetNodeName: splitRequest.NodeName,
+		ClusterMetadata: c.GetMetadata(),
+		SchemaName:      splitRequest.SchemaName,
+		TableNames:      splitRequest.SplitTables,
+		Snapshot:        metadata.Snapshot{},
+		ShardID:         storage.ShardID(splitRequest.ShardID),
+		NewShardID:      storage.ShardID(newShardID),
+		TargetNodeName:  splitRequest.NodeName,
 	})
 	if err != nil {
 		log.Error("create split procedure", zap.Error(err))

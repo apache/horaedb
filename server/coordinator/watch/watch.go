@@ -37,8 +37,8 @@ type ShardExpireEvent struct {
 }
 
 type ShardEventCallback interface {
-	OnShardRegistered(event ShardRegisterEvent) error
-	OnShardExpired(event ShardExpireEvent) error
+	OnShardRegistered(ctx context.Context, event ShardRegisterEvent) error
+	OnShardExpired(ctx context.Context, event ShardExpireEvent) error
 }
 
 // ShardWatch used to watch the distributed lock of shard, and provide the corresponding callback function.
@@ -100,7 +100,7 @@ func (w *ShardWatch) startWatch(ctx context.Context, path string) error {
 		respChan := w.etcdClient.Watch(ctxWithCancel, path, clientv3.WithPrefix(), clientv3.WithPrevKV())
 		for resp := range respChan {
 			for _, event := range resp.Events {
-				if err := w.processEvent(event); err != nil {
+				if err := w.processEvent(ctx, event); err != nil {
 					log.Error("process event", zap.Error(err))
 				}
 			}
@@ -109,7 +109,7 @@ func (w *ShardWatch) startWatch(ctx context.Context, path string) error {
 	return nil
 }
 
-func (w *ShardWatch) processEvent(event *clientv3.Event) error {
+func (w *ShardWatch) processEvent(ctx context.Context, event *clientv3.Event) error {
 	switch event.Type {
 	case mvccpb.DELETE:
 		shardID, err := decodeShardKey(string(event.Kv.Key))
@@ -122,7 +122,7 @@ func (w *ShardWatch) processEvent(event *clientv3.Event) error {
 		}
 		log.Info("receive delete event", zap.String("preKV", fmt.Sprintf("%v", event.PrevKv)), zap.String("event", fmt.Sprintf("%v", event)), zap.Uint64("shardID", shardID), zap.String("oldLeader", shardLockValue.NodeName))
 		for _, callback := range w.eventCallbacks {
-			if err := callback.OnShardExpired(ShardExpireEvent{
+			if err := callback.OnShardExpired(ctx, ShardExpireEvent{
 				clusterName:   w.clusterName,
 				ShardID:       storage.ShardID(shardID),
 				OldLeaderNode: shardLockValue.NodeName,
@@ -141,7 +141,7 @@ func (w *ShardWatch) processEvent(event *clientv3.Event) error {
 		}
 		log.Info("receive put event", zap.String("event", fmt.Sprintf("%v", event)), zap.Uint64("shardID", shardID), zap.String("oldLeader", shardLockValue.NodeName))
 		for _, callback := range w.eventCallbacks {
-			if err := callback.OnShardRegistered(ShardRegisterEvent{
+			if err := callback.OnShardRegistered(ctx, ShardRegisterEvent{
 				clusterName:   w.clusterName,
 				ShardID:       storage.ShardID(shardID),
 				NewLeaderNode: shardLockValue.NodeName,

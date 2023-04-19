@@ -78,7 +78,7 @@ type ProcedureParams struct {
 	Dispatch eventdispatch.Dispatch
 	Storage  procedure.Storage
 
-	ClusterSnapShot metadata.Snapshot
+	ClusterSnapshot metadata.Snapshot
 
 	ShardID           storage.ShardID
 	OldLeaderNodeName string
@@ -86,11 +86,14 @@ type ProcedureParams struct {
 }
 
 func NewProcedure(params ProcedureParams) (procedure.Procedure, error) {
-	if err := validateClusterTopology(params.ClusterSnapShot.Topology, params.ShardID, params.OldLeaderNodeName); err != nil {
+	if err := validateClusterTopology(params.ClusterSnapshot.Topology, params.ShardID, params.OldLeaderNodeName); err != nil {
 		return nil, err
 	}
 
-	relatedVersionInfo := buildRelatedVersionInfo(params)
+	relatedVersionInfo, err := buildRelatedVersionInfo(params)
+	if err != nil {
+		return nil, err
+	}
 
 	transferLeaderOperationFsm := fsm.NewFSM(
 		stateBegin,
@@ -106,22 +109,31 @@ func NewProcedure(params ProcedureParams) (procedure.Procedure, error) {
 	}, nil
 }
 
-func buildRelatedVersionInfo(params ProcedureParams) procedure.RelatedVersionInfo {
+func buildRelatedVersionInfo(params ProcedureParams) (procedure.RelatedVersionInfo, error) {
 	shardViewWithVersion := make(map[storage.ShardID]uint64, 0)
-	for _, shardView := range params.ClusterSnapShot.Topology.ShardViews {
-		if shardView.ShardID == params.ShardID {
-			shardViewWithVersion[params.ShardID] = shardView.Version
-		}
+	shardView, exists := params.ClusterSnapshot.Topology.ShardViewsMapping[params.ShardID]
+	if !exists {
+		return procedure.RelatedVersionInfo{}, errors.WithMessagef(metadata.ErrShardNotFound, "shard not found in topology, shardID:%d", params.ShardID)
 	}
+	shardViewWithVersion[params.ShardID] = shardView.Version
+
 	relatedVersionInfo := procedure.RelatedVersionInfo{
-		ClusterID:        params.ClusterSnapShot.Topology.ClusterView.ClusterID,
+		ClusterID:        params.ClusterSnapshot.Topology.ClusterView.ClusterID,
 		ShardWithVersion: shardViewWithVersion,
-		ClusterVersion:   params.ClusterSnapShot.Topology.ClusterView.Version,
+		ClusterVersion:   params.ClusterSnapshot.Topology.ClusterView.Version,
 	}
-	return relatedVersionInfo
+	return relatedVersionInfo, nil
 }
 
 func validateClusterTopology(topology metadata.Topology, shardID storage.ShardID, oldLeaderNodeName string) error {
+	_, found := topology.ShardViewsMapping[shardID]
+	if !found {
+		log.Error("shard not found", zap.Uint64("shardID", uint64(shardID)))
+		return metadata.ErrShardNotFound
+	}
+	if len(oldLeaderNodeName) == 0 {
+		return nil
+	}
 	shardNodes := topology.ClusterView.ShardNodes
 	if len(shardNodes) == 0 {
 		log.Error("shard not exist in any node", zap.Uint32("shardID", uint32(shardID)))
@@ -135,16 +147,6 @@ func validateClusterTopology(topology metadata.Topology, shardID storage.ShardID
 				return metadata.ErrNodeNotFound
 			}
 		}
-	}
-	found := false
-	for _, shardView := range topology.ShardViews {
-		if shardView.ShardID == shardID {
-			found = true
-		}
-	}
-	if !found {
-		log.Error("shard not found", zap.Uint64("shardID", uint64(shardID)))
-		return metadata.ErrShardNotFound
 	}
 	return nil
 }
@@ -241,6 +243,10 @@ func closeOldLeaderCallback(event *fsm.Event) {
 	}
 	ctx := req.ctx
 
+	if len(req.p.params.OldLeaderNodeName) == 0 {
+		return
+	}
+
 	closeShardRequest := eventdispatch.CloseShardRequest{
 		ShardID: uint32(req.p.params.ShardID),
 	}
@@ -258,12 +264,12 @@ func openNewShardCallback(event *fsm.Event) {
 	}
 	ctx := req.ctx
 
-	var preVersion uint64
-	for _, shardView := range req.p.params.ClusterSnapShot.Topology.ShardViews {
-		if req.p.params.ShardID == shardView.ShardID {
-			preVersion = shardView.Version
-		}
+	shardView, exists := req.p.params.ClusterSnapshot.Topology.ShardViewsMapping[req.p.params.ShardID]
+	if !exists {
+		procedure.CancelEventWithLog(event, metadata.ErrShardNotFound, "shard not found in topology", zap.Uint64("shardID", uint64(req.p.params.ShardID)))
+		return
 	}
+	preVersion := shardView.Version
 
 	openShardRequest := eventdispatch.OpenShardRequest{
 		Shard: metadata.ShardInfo{ID: req.p.params.ShardID, Role: storage.ShardRoleLeader, Version: preVersion + 1},
@@ -301,7 +307,7 @@ func (p *Procedure) convertToMeta() (procedure.Meta, error) {
 		ID:                p.params.ID,
 		FsmState:          p.fsm.Current(),
 		ShardID:           p.params.ShardID,
-		snapshot:          p.params.ClusterSnapShot,
+		snapshot:          p.params.ClusterSnapshot,
 		OldLeaderNodeName: p.params.OldLeaderNodeName,
 		NewLeaderNodeName: p.params.NewLeaderNodeName,
 		State:             p.state,

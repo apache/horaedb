@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"math/big"
+	"time"
 
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/pkg/errors"
@@ -22,9 +23,10 @@ func NewRandomNodePicker() NodePicker {
 }
 
 func (p *RandomNodePicker) PickNode(_ context.Context, registeredNodes []metadata.RegisteredNode) (metadata.RegisteredNode, error) {
+	now := time.Now().Unix()
 	onlineNodeLength := 0
 	for _, registeredNode := range registeredNodes {
-		if registeredNode.IsOnline() {
+		if !registeredNode.IsExpired(now) {
 			onlineNodeLength++
 		}
 	}
@@ -40,7 +42,7 @@ func (p *RandomNodePicker) PickNode(_ context.Context, registeredNodes []metadat
 	selectIdx := int(randSelectedIdx.Int64())
 	curOnlineIdx := -1
 	for idx := 0; idx < len(registeredNodes); idx++ {
-		if registeredNodes[idx].IsOnline() {
+		if !registeredNodes[idx].IsExpired(now) {
 			curOnlineIdx++
 		}
 		if curOnlineIdx == selectIdx {

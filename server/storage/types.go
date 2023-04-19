@@ -2,7 +2,11 @@
 
 package storage
 
-import "github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
+import (
+	"time"
+
+	"github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
+)
 
 type (
 	ClusterID    uint32
@@ -156,6 +160,16 @@ type ClusterView struct {
 	CreatedAt  uint64
 }
 
+func NewClusterView(clusterID ClusterID, version uint64, state ClusterState, shardNodes []ShardNode) ClusterView {
+	return ClusterView{
+		ClusterID:  clusterID,
+		Version:    version,
+		State:      state,
+		ShardNodes: shardNodes,
+		CreatedAt:  uint64(time.Now().UnixMilli()),
+	}
+}
+
 type Schema struct {
 	ID        SchemaID
 	ClusterID ClusterID
@@ -184,6 +198,15 @@ type ShardView struct {
 	Version   uint64
 	TableIDs  []TableID
 	CreatedAt uint64
+}
+
+func NewShardView(shardID ShardID, version uint64, tableIDs []TableID) ShardView {
+	return ShardView{
+		ShardID:   shardID,
+		Version:   version,
+		TableIDs:  tableIDs,
+		CreatedAt: uint64(time.Now().UnixMilli()),
+	}
 }
 
 type NodeStats struct {

@@ -105,39 +105,51 @@ type ProcedureParams struct {
 	OnFailed        func(error) error
 }
 
-func NewProcedure(params ProcedureParams) procedure.Procedure {
+func NewProcedure(params ProcedureParams) (procedure.Procedure, error) {
 	fsm := fsm.NewFSM(
 		stateBegin,
 		createTableEvents,
 		createTableCallbacks,
 	)
-	return &Procedure{
-		fsm:    fsm,
-		params: params,
-		state:  procedure.StateInit,
+
+	relatedVersionInfo, err := buildRelatedVersionInfo(params)
+	if err != nil {
+		return nil, err
 	}
+
+	return &Procedure{
+		fsm:                fsm,
+		params:             params,
+		relatedVersionInfo: relatedVersionInfo,
+		state:              procedure.StateInit,
+	}, nil
 }
 
 type Procedure struct {
-	fsm    *fsm.FSM
-	params ProcedureParams
+	fsm                *fsm.FSM
+	params             ProcedureParams
+	relatedVersionInfo procedure.RelatedVersionInfo
 	// Protect the state.
 	lock  sync.RWMutex
 	state procedure.State
 }
 
 func (p *Procedure) RelatedVersionInfo() procedure.RelatedVersionInfo {
+	return p.relatedVersionInfo
+}
+
+func buildRelatedVersionInfo(params ProcedureParams) (procedure.RelatedVersionInfo, error) {
 	shardWithVersion := make(map[storage.ShardID]uint64, 1)
-	for _, shardView := range p.params.ClusterSnapshot.Topology.ShardViews {
-		if shardView.ShardID == p.params.ShardID {
-			shardWithVersion[p.params.ShardID] = shardView.Version
-		}
+	shardView, exists := params.ClusterSnapshot.Topology.ShardViewsMapping[params.ShardID]
+	if !exists {
+		return procedure.RelatedVersionInfo{}, errors.WithMessagef(metadata.ErrShardNotFound, "shard not found in topology, shardID:%d", params.ShardID)
 	}
+	shardWithVersion[params.ShardID] = shardView.Version
 	return procedure.RelatedVersionInfo{
-		ClusterID:        p.params.ClusterSnapshot.Topology.ClusterView.ClusterID,
+		ClusterID:        params.ClusterSnapshot.Topology.ClusterView.ClusterID,
 		ShardWithVersion: shardWithVersion,
-		ClusterVersion:   p.params.ClusterSnapshot.Topology.ClusterView.Version,
-	}
+		ClusterVersion:   params.ClusterSnapshot.Topology.ClusterView.Version,
+	}, nil
 }
 
 func (p *Procedure) Priority() procedure.Priority {

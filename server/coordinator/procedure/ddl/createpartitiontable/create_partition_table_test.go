@@ -7,11 +7,9 @@ import (
 	"testing"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
-	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/dml/createpartitiontable"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/operation/scatter"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/ddl/createpartitiontable"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/test"
 	"github.com/stretchr/testify/require"
 )
@@ -20,14 +18,14 @@ func TestCreatePartitionTable(t *testing.T) {
 	re := require.New(t)
 	ctx := context.Background()
 	dispatch := test.MockDispatch{}
-	manager, c := scatter.Prepare(t)
 	s := test.NewTestStorage(t)
+	c := test.InitStableCluster(ctx, t)
 
-	shardPicker := coordinator.NewRandomBalancedShardPicker(manager)
+	shardNode := c.GetMetadata().GetClusterSnapshot().Topology.ClusterView.ShardNodes[0]
 
 	request := &metaservicepb.CreateTableRequest{
 		Header: &metaservicepb.RequestHeader{
-			Node:        test.NodeName0,
+			Node:        shardNode.NodeName,
 			ClusterName: test.ClusterName,
 		},
 		PartitionTableInfo: &metaservicepb.PartitionTableInfo{
@@ -37,28 +35,40 @@ func TestCreatePartitionTable(t *testing.T) {
 		Name:       test.TestTableName0,
 	}
 
-	getNodeShardResult, err := c.GetNodeShards(ctx)
-	re.NoError(err)
+	shardPicker := coordinator.NewRandomBalancedShardPicker()
+	subTableShards, err := shardPicker.PickShards(ctx, c.GetMetadata().GetClusterSnapshot(), len(request.GetPartitionTableInfo().SubTableNames), true)
 
-	nodeNames := make(map[string]int)
-	for _, nodeShard := range getNodeShardResult.NodeShards {
-		nodeNames[nodeShard.ShardNode.NodeName] = 1
+	shardNodesWithVersion := make([]metadata.ShardNodeWithVersion, 0, len(subTableShards))
+	for _, subTableShard := range subTableShards {
+		shardView, exists := c.GetMetadata().GetClusterSnapshot().Topology.ShardViewsMapping[subTableShard.ID]
+		re.Equal(true, exists)
+		shardNodesWithVersion = append(shardNodesWithVersion, metadata.ShardNodeWithVersion{
+			ShardInfo: metadata.ShardInfo{
+				ID:      shardView.ShardID,
+				Role:    subTableShard.ShardRole,
+				Version: shardView.Version,
+			},
+			ShardNode: subTableShard,
+		})
 	}
 
-	partitionTableNum := procedure.Max(1, int(float32(len(nodeNames))*test.DefaultPartitionTableProportionOfNodes))
-
-	partitionTableShards, err := shardPicker.PickShards(ctx, c.Name(), partitionTableNum, false)
 	re.NoError(err)
-	dataTableShards, err := shardPicker.PickShards(ctx, c.Name(), len(request.GetPartitionTableInfo().SubTableNames), true)
-	re.NoError(err)
-
-	procedure := createpartitiontable.NewProcedure(createpartitiontable.ProcedureRequest{
-		ID: 1, Cluster: c, Dispatch: dispatch, Storage: s, Req: request, PartitionTableShards: partitionTableShards, SubTablesShards: dataTableShards, OnSucceeded: func(_ cluster.CreateTableResult) error {
+	procedure, err := createpartitiontable.NewProcedure(createpartitiontable.ProcedureParams{
+		ID:              0,
+		ClusterMetadata: c.GetMetadata(),
+		ClusterSnapshot: c.GetMetadata().GetClusterSnapshot(),
+		Dispatch:        dispatch,
+		Storage:         s,
+		SourceReq:       request,
+		SubTablesShards: shardNodesWithVersion,
+		OnSucceeded: func(result metadata.CreateTableResult) error {
 			return nil
-		}, OnFailed: func(_ error) error {
+		},
+		OnFailed: func(err error) error {
 			return nil
 		},
 	})
+	re.NoError(err)
 
 	err = procedure.Start(ctx)
 	re.NoError(err)

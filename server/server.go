@@ -15,7 +15,6 @@ import (
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/config"
-	"github.com/CeresDB/ceresmeta/server/coordinator/watch"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/CeresDB/ceresmeta/server/member"
 	metagrpc "github.com/CeresDB/ceresmeta/server/service/grpc"
@@ -36,9 +35,6 @@ type Server struct {
 
 	// The fields below are initialized after Run of server is called.
 	clusterManager cluster.Manager
-
-	// shardWatch used to watch shard lock event.
-	shardWatch *watch.ShardWatch
 
 	// member describes membership in ceresmeta cluster.
 	member  *member.Member
@@ -157,7 +153,7 @@ func (srv *Server) startServer(_ context.Context) error {
 		MaxScanLimit: srv.cfg.MaxScanLimit, MinScanLimit: srv.cfg.MinScanLimit,
 	})
 
-	manager, err := cluster.NewManagerImpl(storage, srv.etcdCli, srv.cfg.StorageRootPath, srv.cfg.IDAllocatorStep, srv.cfg.DefaultPartitionTableProportionOfNodes)
+	manager, err := cluster.NewManagerImpl(storage, srv.etcdCli, srv.etcdCli, srv.cfg.StorageRootPath, srv.cfg.IDAllocatorStep)
 	if err != nil {
 		return errors.WithMessage(err, "start server")
 	}
@@ -230,31 +226,13 @@ func (srv *Server) createDefaultCluster(ctx context.Context) error {
 		if err != nil {
 			log.Warn("create default cluster failed", zap.Error(err))
 			if coderr.Is(err, metadata.ErrClusterAlreadyExists.Code()) {
-				defaultCluster, err = srv.clusterManager.GetCluster(ctx, srv.cfg.DefaultClusterName)
+				_, err = srv.clusterManager.GetCluster(ctx, srv.cfg.DefaultClusterName)
 				if err != nil {
 					return errors.WithMessage(err, "get default cluster failed")
 				}
 			}
 		} else {
 			log.Info("create default cluster succeed", zap.String("cluster", defaultCluster.GetMetadata().Name()))
-		}
-		// Create ShardView, shardViews will be assigned to nodes by scheduler.
-		if defaultCluster.GetMetadata().GetClusterState() == storage.ClusterStateEmpty {
-			var createShardViews []metadata.CreateShardView
-			for i := uint32(0); i < defaultCluster.GetMetadata().GetTotalShardNum(); i++ {
-				shardID, err := defaultCluster.GetMetadata().AllocShardID(ctx)
-				if err != nil {
-					return errors.WithMessage(err, "alloc shard id failed")
-				}
-				createShardViews = append(createShardViews, metadata.CreateShardView{
-					ShardID: storage.ShardID(shardID),
-					Tables:  []storage.TableID{},
-				})
-			}
-			if err := defaultCluster.GetMetadata().CreateShardViews(ctx, createShardViews); err != nil {
-				log.Error("create default shard views failed", zap.Error(err))
-			}
-			log.Info("create shard view finish")
 		}
 	}
 	return nil
