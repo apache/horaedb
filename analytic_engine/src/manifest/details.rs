@@ -23,7 +23,7 @@ use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
 use prost::Message;
 use serde::{Deserialize, Serialize};
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::Mutex;
 use wal::{
@@ -36,7 +36,6 @@ use wal::{
 };
 
 use crate::{
-    instance::SpacesRef,
     manifest::{
         meta_data::{TableManifestData, TableManifestDataBuilder},
         meta_update::{
@@ -46,10 +45,11 @@ use crate::{
         LoadRequest, Manifest, SnapshotRequest,
     },
     space::SpaceId,
-    table::version::{TableVersionMeta, TableVersionSnapshot},
+    table::version::TableVersionMeta,
 };
 
 #[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display(
         "Failed to encode payloads, wal_location:{:?}, err:{}",
@@ -171,67 +171,6 @@ pub(crate) trait TableSnapshotProvider: fmt::Debug + Send + Sync {
         space_id: SpaceId,
         table_id: TableId,
     ) -> Result<Option<TableManifestData>>;
-}
-
-#[derive(Clone)]
-pub(crate) struct TableSnapshotProviderImpl {
-    pub(crate) spaces: SpacesRef,
-}
-
-impl fmt::Debug for TableSnapshotProviderImpl {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("spaces table snapshot provider")
-    }
-}
-
-impl TableSnapshotProvider for TableSnapshotProviderImpl {
-    fn get_table_snapshot(
-        &self,
-        space_id: SpaceId,
-        table_id: TableId,
-    ) -> Result<Option<TableManifestData>> {
-        let spaces = self.spaces.read().unwrap();
-        let table_data = spaces
-            .get_by_id(space_id)
-            .context(BuildSnapshotNoCause {
-                msg: format!("space not exist, space_id:{space_id}, table_id:{table_id}",),
-            })?
-            .find_table_by_id(table_id)
-            .context(BuildSnapshotNoCause {
-                msg: format!("table data not exist, space_id:{space_id}, table_id:{table_id}",),
-            })?;
-
-        // When table has been dropped, we should return None.
-        let table_manifest_data_opt = if !table_data.is_dropped() {
-            let table_meta = AddTableMeta {
-                space_id,
-                table_id,
-                table_name: table_data.name.to_string(),
-                schema: table_data.schema(),
-                opts: table_data.table_options().as_ref().clone(),
-            };
-
-            let version_snapshot = table_data.current_version().snapshot();
-            let TableVersionSnapshot {
-                flushed_sequence,
-                files,
-            } = version_snapshot;
-            let version_meta = TableVersionMeta {
-                flushed_sequence,
-                files,
-                max_file_id: table_data.last_file_id(),
-            };
-
-            Some(TableManifestData {
-                table_meta,
-                version_meta: Some(version_meta),
-            })
-        } else {
-            None
-        };
-
-        Ok(table_manifest_data_opt)
-    }
 }
 
 /// Snapshot recoverer

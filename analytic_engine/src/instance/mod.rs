@@ -17,10 +17,7 @@ mod read;
 pub(crate) mod serial_executor;
 pub(crate) mod write;
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::sync::Arc;
 
 use common_types::table::TableId;
 use common_util::{
@@ -40,7 +37,7 @@ use crate::{
     compaction::{scheduler::CompactionSchedulerRef, TableCompactionRequest},
     manifest::ManifestRef,
     row_iter::IterOptions,
-    space::{SpaceId, SpaceRef},
+    space::{SpaceId, SpaceRef, SpacesRef},
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
@@ -69,40 +66,6 @@ pub enum Error {
 }
 
 define_result!(Error);
-
-/// Spaces states
-#[derive(Default)]
-pub(crate) struct Spaces {
-    /// Id to space
-    id_to_space: HashMap<SpaceId, SpaceRef>,
-}
-
-impl Spaces {
-    /// Insert space by name, and also insert id to space mapping
-    fn insert(&mut self, space: SpaceRef) {
-        let space_id = space.id;
-        self.id_to_space.insert(space_id, space);
-    }
-
-    pub(crate) fn get_by_id(&self, id: SpaceId) -> Option<&SpaceRef> {
-        self.id_to_space.get(&id)
-    }
-
-    /// List all tables of all spaces
-    fn list_all_tables(&self, tables: &mut Vec<TableDataRef>) {
-        let total_tables = self.id_to_space.values().map(|s| s.table_num()).sum();
-        tables.reserve(total_tables);
-        for space in self.id_to_space.values() {
-            space.list_all_tables(tables);
-        }
-    }
-
-    fn list_all_spaces(&self) -> Vec<SpaceRef> {
-        self.id_to_space.values().cloned().collect()
-    }
-}
-
-pub(crate) type SpacesRef = Arc<RwLock<Spaces>>;
 
 pub struct SpaceStore {
     /// All spaces of the engine.

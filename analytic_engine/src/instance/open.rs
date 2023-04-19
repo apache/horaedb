@@ -31,16 +31,12 @@ use crate::{
         mem_collector::MemUsageCollector,
         serial_executor::TableOpSerialExecutor,
         write::MemTableWriter,
-        Instance, SpaceStore, Spaces,
+        Instance, SpaceStore,
     },
-    manifest::{
-        details::{ManifestImpl, TableSnapshotProviderImpl},
-        meta_data::TableManifestData,
-        LoadRequest,
-    },
+    manifest::{details::ManifestImpl, meta_data::TableManifestData, LoadRequest},
     payload::{ReadPayload, WalDecoder},
     row_iter::IterOptions,
-    space::{Space, SpaceContext, SpaceId, SpaceRef},
+    space::{Space, SpaceContext, SpaceId, SpaceRef, Spaces, TableSnapshotProviderImpl},
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
@@ -64,7 +60,7 @@ impl Instance {
         store_picker: ObjectStorePickerRef,
         sst_factory: SstFactoryRef,
     ) -> Result<Arc<Self>> {
-        let spaces = Arc::new(RwLock::new(Spaces::default()));
+        let spaces: Arc<RwLock<Spaces>> = Arc::new(RwLock::new(Spaces::default()));
         let table_snapshot_provider = Arc::new(TableSnapshotProviderImpl {
             spaces: spaces.clone(),
         });
