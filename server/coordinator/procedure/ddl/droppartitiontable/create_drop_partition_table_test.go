@@ -107,7 +107,7 @@ func testCreatePartitionTable(ctx context.Context, t *testing.T, dispatch eventd
 	procedure, err := createpartitiontable.NewProcedure(createpartitiontable.ProcedureParams{
 		ID:              0,
 		ClusterMetadata: c.GetMetadata(),
-		ClusterSnapshot: metadata.Snapshot{},
+		ClusterSnapshot: c.GetMetadata().GetClusterSnapshot(),
 		Dispatch:        dispatch,
 		Storage:         s,
 		SourceReq:       request,
