@@ -26,14 +26,13 @@ use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, info};
 use query_engine::executor::Executor as QueryExecutor;
-use router::endpoint::Endpoint;
-use snafu::{ensure, OptionExt, ResultExt};
 use query_frontend::{
     frontend::{Context as FrontendContext, Frontend},
     plan::{AlterTableOperation, AlterTablePlan, InsertPlan, Plan},
     planner::build_schema_from_write_table_request,
     provider::CatalogMetaProvider,
 };
+use router::endpoint::Endpoint;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::table::TableRef;
 use tonic::transport::Channel;
@@ -280,6 +279,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .map(|table_request| table_request.table.clone())
             .collect();
 
+        // TODO: Make the router can accept an iterator over the tables to avoid the
+        // memory allocation here.
         let route_data = self
             .router
             .route(RouteRequest {

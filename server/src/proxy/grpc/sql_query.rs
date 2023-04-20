@@ -327,10 +327,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             msg: format!("Failed to execute interpreter, sql:{}", req.sql),
         })?;
 
-        info!(
-        "Handle sql query success, catalog:{catalog}, schema:{schema}, request_id:{request_id}, cost:{}ms, request:{req:?}",
-        begin_instant.saturating_elapsed().as_millis(),
-    );
+        let cost = begin_instant.saturating_elapsed();
+        info!("Handle sql query success, catalog:{catalog}, schema:{schema}, request_id:{request_id}, cost:{cost:?}, request:{req:?}");
 
         Ok(output)
     }
