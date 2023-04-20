@@ -80,7 +80,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let req = match self.maybe_forward_sql_query(&req).await? {
             Some(resp) => match resp {
                 ForwardResult::Forwarded(resp) => return resp,
-                ForwardResult::Original => req,
+                ForwardResult::Local => req,
             },
             None => req,
         };
@@ -97,7 +97,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let req = match self.clone().maybe_forward_stream_sql_query(&req).await {
             Some(resp) => match resp {
                 ForwardResult::Forwarded(resp) => return resp,
-                ForwardResult::Original => req,
+                ForwardResult::Local => req,
             },
             None => req,
         };
@@ -327,14 +327,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             msg: format!("Failed to execute interpreter, sql:{}", req.sql),
         })?;
 
-        info!(
-        "Handle sql query success, catalog:{}, schema:{}, request_id:{}, cost:{}ms, request:{:?}",
-        catalog,
-        schema,
-        request_id,
-        begin_instant.saturating_elapsed().as_millis(),
-        req,
-    );
+        let cost = begin_instant.saturating_elapsed();
+        info!("Handle sql query success, catalog:{catalog}, schema:{schema}, request_id:{request_id}, cost:{cost:?}, request:{req:?}");
 
         Ok(output)
     }

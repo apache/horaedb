@@ -32,7 +32,7 @@ use query_frontend::{frontend, plan::Plan};
 use router::{endpoint::Endpoint, Router};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
-    engine::TableState,
+    engine::{EngineRuntimes, TableState},
     remote::model::{GetTableInfoRequest, TableIdentifier},
     table::TableId,
     PARTITION_TABLE_ENGINE_TYPE,
@@ -57,6 +57,7 @@ pub struct Proxy<Q> {
     auto_create_table: bool,
     schema_config_provider: SchemaConfigProviderRef,
     hotspot_recorder: Arc<HotspotRecorder>,
+    engine_runtimes: Arc<EngineRuntimes>,
 }
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
@@ -70,14 +71,17 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         auto_create_table: bool,
         schema_config_provider: SchemaConfigProviderRef,
         hotspot_config: hotspot::Config,
-        runtime: Arc<Runtime>,
+        engine_runtimes: Arc<EngineRuntimes>,
     ) -> Self {
         let forwarder = Arc::new(Forwarder::new(
             forward_config,
             router.clone(),
             local_endpoint,
         ));
-        let hotspot_recorder = Arc::new(HotspotRecorder::new(hotspot_config, runtime));
+        let hotspot_recorder = Arc::new(HotspotRecorder::new(
+            hotspot_config,
+            engine_runtimes.default_runtime.clone(),
+        ));
 
         Self {
             router,
@@ -87,6 +91,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             auto_create_table,
             schema_config_provider,
             hotspot_recorder,
+            engine_runtimes,
         }
     }
 
@@ -257,7 +262,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             table_id: Some(TableId::new(partition_table_info.id)),
             table_schema: table.table_schema,
             engine: table.engine,
-            options: Default::default(),
+            options: table.options,
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
             partition_info: Some(partition_table_info.partition_info),

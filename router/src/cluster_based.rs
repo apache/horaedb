@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
 use common_util::error::BoxError;
+use log::trace;
 use meta_client::types::{RouteTablesRequest, TableInfo};
 use moka::future::Cache;
 use snafu::ResultExt;
@@ -15,7 +16,7 @@ use crate::{
     RouteCacheConfig, Router,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct RouteData {
     table_info: TableInfo,
     endpoint: Option<Endpoint>,
@@ -71,6 +72,8 @@ impl ClusterBasedRouter {
         // Firstly route table from local cache.
         let mut routes = Vec::with_capacity(tables.len());
         let miss = self.route_from_cache(tables, &mut routes);
+        trace!("Route from cache, miss:{miss:?}, routes:{routes:?}");
+
         if miss.is_empty() {
             return Ok(routes);
         }
@@ -87,19 +90,29 @@ impl ClusterBasedRouter {
             .with_context(|| OtherWithCause {
                 msg: format!("Failed to route tables by cluster, req:{route_tables_req:?}"),
             })?;
+        trace!("Route tables by cluster, req:{route_tables_req:?}, resp:{route_resp:?}");
 
         // Now we pick up the nodes who own the leader shard for the route response.
         for (table_name, route_entry) in route_resp.entries {
-            for node_shard in route_entry.node_shards {
-                if node_shard.shard_info.is_leader() {
-                    let route = make_route(route_entry.table_info, &node_shard.endpoint)?;
-                    if let Some(cache) = &self.cache {
-                        // There may be data race here, and it is acceptable currently.
-                        cache.insert(table_name.clone(), route.clone()).await;
-                    }
-                    routes.push(route);
-                    break;
+            let route = if route_entry.node_shards.is_empty() {
+                Some(make_route(route_entry.table_info, None)?)
+            } else {
+                route_entry
+                    .node_shards
+                    .into_iter()
+                    .find(|node_shard| node_shard.shard_info.is_leader())
+                    .map(|node_shard| {
+                        make_route(route_entry.table_info, Some(&node_shard.endpoint))
+                    })
+                    .transpose()?
+            };
+
+            if let Some(route) = route {
+                if let Some(cache) = &self.cache {
+                    // There may be data race here, and it is acceptable currently.
+                    cache.insert(table_name.clone(), route.clone()).await;
                 }
+                routes.push(route);
             }
         }
         Ok(routes)
@@ -107,12 +120,14 @@ impl ClusterBasedRouter {
 }
 
 /// Make a route according to the table_info and the raw endpoint.
-fn make_route(table_info: TableInfo, endpoint: &str) -> Result<RouteData> {
-    let endpoint: Endpoint = endpoint.parse().context(ParseEndpoint { endpoint })?;
+fn make_route(table_info: TableInfo, endpoint: Option<&str>) -> Result<RouteData> {
+    let endpoint = endpoint
+        .map(|v| v.parse().context(ParseEndpoint { endpoint: v }))
+        .transpose()?;
 
     Ok(RouteData {
         table_info,
-        endpoint: Some(endpoint),
+        endpoint,
     })
 }
 

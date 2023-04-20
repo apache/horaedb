@@ -63,7 +63,10 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let request_id = RequestId::next_id();
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
-        let req_ctx = req.context.unwrap();
+        let req_ctx = req.context.context(ErrNoCause {
+            msg: "Missing context",
+            code: StatusCode::BAD_REQUEST,
+        })?;
         let schema = req_ctx.database;
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
