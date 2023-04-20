@@ -67,7 +67,6 @@ bytes = "1.1.0"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-ceresdbproto = "1.0.2"
 chrono = "0.4"
 clap = "3.0"
 clru = "0.6.1"
@@ -78,7 +77,7 @@ common_util = { path = "common_util" }
 datafusion = { git = "https://github.com/apache/arrow-datafusion.git", rev = "b87871fdd1f4ce64201eb1f7c79a0547627f37e9" }
 datafusion-proto = { git = "https://github.com/apache/arrow-datafusion.git", rev = "b87871fdd1f4ce64201eb1f7c79a0547627f37e9" }
 df_operator = { path = "df_operator" }
-etcd-client = { version = "0.10", features = ["tls"] }
+etcd-client = "0.10.3"
 env_logger = "0.6"
 futures = "0.3"
 xorfilter-rs = { git = "https://github.com/datafuse-extras/xorfilter", features = [
@@ -129,6 +128,10 @@ tokio = { version = "1.25", features = ["full"] }
 wal = { path = "wal" }
 message_queue = { path = "components/message_queue" }
 zstd = { version = "0.12", default-features = false }
+
+[workspace.dependencies.ceresdbproto]
+git = "https://github.com/CeresDB/ceresdbproto.git"
+branch = "refactor_cluster"
 
 [dependencies]
 analytic_engine = { workspace = true }
