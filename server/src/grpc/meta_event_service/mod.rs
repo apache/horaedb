@@ -198,7 +198,7 @@ impl HandlerContext {
     async fn acquire_shard_lock(&self, shard_id: ShardId) -> Result<()> {
         let lock_mgr = self.cluster.shard_lock_manager();
         let new_ctx = self.clone();
-        let on_lock_released = |shard_id| async move {
+        let on_lock_expired = |shard_id| async move {
             warn!("Shard lock is released, try to close the tables and shard, shard_id:{shard_id}");
             let close_shard_req = CloseShardRequest { shard_id };
             let res = handle_close_shard(new_ctx, close_shard_req).await;
@@ -209,7 +209,7 @@ impl HandlerContext {
         };
 
         let granted_by_this_call = lock_mgr
-            .grant_lock(shard_id, on_lock_released)
+            .grant_lock(shard_id, on_lock_expired)
             .await
             .box_err()
             .context(ErrWithCause {

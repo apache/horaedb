@@ -242,14 +242,18 @@ impl ShardLock {
         Bytes::from(key)
     }
 
-    async fn grant<OnReleased, Fut>(
+    /// Grant the shard lock.
+    ///
+    /// The `on_lock_expired` callback will be called when the lock is expired,
+    /// but it won't be triggered if the lock is revoked in purpose.
+    async fn grant<OnExpired, Fut>(
         &mut self,
-        on_lock_released: OnReleased,
+        on_lock_expired: OnExpired,
         etcd_client: &mut Client,
         runtime: &RuntimeRef,
     ) -> Result<()>
     where
-        OnReleased: FnOnce(ShardId) -> Fut + Send + 'static,
+        OnExpired: FnOnce(ShardId) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
         // Grant the lease.
@@ -263,12 +267,16 @@ impl ShardLock {
 
         self.acquire_lock_with_lease(lease_id, etcd_client).await?;
 
-        self.keep_lease_alive(lease_id, on_lock_released, etcd_client, runtime)
+        self.keep_lease_alive(lease_id, on_lock_expired, etcd_client, runtime)
             .await?;
 
         Ok(())
     }
 
+    /// Revoke the shard lock.
+    ///
+    /// NOTE: the `on_lock_expired` callback set in the `grant` won't be
+    /// triggered.
     async fn revoke(&mut self, etcd_client: &mut Client) -> Result<()> {
         // Stop keeping alive the lease.
         if let Some(sender) = self.lease_keepalive_stopper.take() {
@@ -325,15 +333,15 @@ impl ShardLock {
         Ok(())
     }
 
-    async fn keep_lease_alive<OnReleased, Fut>(
+    async fn keep_lease_alive<OnExpired, Fut>(
         &mut self,
         lease_id: i64,
-        on_lock_released: OnReleased,
+        on_lock_expired: OnExpired,
         etcd_client: &mut Client,
         runtime: &RuntimeRef,
     ) -> Result<()>
     where
-        OnReleased: FnOnce(ShardId) -> Fut + Send + 'static,
+        OnExpired: FnOnce(ShardId) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
         let mut lease = Lease::new(lease_id, Duration::from_secs(self.ttl_sec));
@@ -357,7 +365,7 @@ impl ShardLock {
                     _ = timer => {
                         if lease.is_expired() {
                             warn!("The lease of the shard lock is expired, shard_id:{shard_id}");
-                            on_lock_released(shard_id);
+                            on_lock_expired(shard_id);
                             return
                         }
                     }
@@ -368,7 +376,7 @@ impl ShardLock {
                             }
                             Err(e) => {
                                 error!("The lease of the shard lock is expired, shard_id:{shard_id}, err:{e:?}");
-                                on_lock_released(shard_id);
+                                on_lock_expired(shard_id);
                             }
                         }
                         return
@@ -405,14 +413,16 @@ impl ShardLockManager {
 
     /// Grant lock to the shard.
     ///
-    /// If the lock is already granted, return false.
-    pub async fn grant_lock<OnReleased, Fut>(
+    /// If the lock is already granted, return false. The `on_lock_expired` will
+    /// be called when the lock lease is expired, but it won't be triggered if
+    /// the lock is revoked.
+    pub async fn grant_lock<OnExpired, Fut>(
         &self,
         shard_id: u32,
-        on_lock_released: OnReleased,
+        on_lock_expired: OnExpired,
     ) -> Result<bool>
     where
-        OnReleased: FnOnce(ShardId) -> Fut + Send + 'static,
+        OnExpired: FnOnce(ShardId) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
         info!("Try to grant lock for shard:{shard_id}");
@@ -439,7 +449,7 @@ impl ShardLockManager {
         );
         let mut etcd_client = self.etcd_client.clone();
         shard_lock
-            .grant(on_lock_released, &mut etcd_client, &self.runtime)
+            .grant(on_lock_expired, &mut etcd_client, &self.runtime)
             .await?;
 
         shard_locks.insert(shard_id, shard_lock);
@@ -448,10 +458,10 @@ impl ShardLockManager {
         Ok(true)
     }
 
-    /// revoke lock is used to force transfer leader, the old leader must give
-    /// up its own lock before the new leader is used.
+    /// Revoke the shard lock.
     ///
-    /// If the lock is not exist, return false.
+    /// If the lock is not exist, return false. And the `on_lock_expired` won't
+    /// be triggered.
     pub async fn revoke_lock(&self, shard_id: u32) -> Result<bool> {
         info!("Try to revoke lock for shard:{shard_id}");
 
