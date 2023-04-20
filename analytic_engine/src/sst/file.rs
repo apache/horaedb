@@ -112,11 +112,7 @@ impl LevelHandler {
     }
 
     pub fn pick_ssts(&self, time_range: TimeRange) -> Vec<FileHandle> {
-        if self.level.is_min() {
-            self.files.files_by_time_range(time_range)
-        } else {
-            Vec::new()
-        }
+        self.files.files_by_time_range(time_range)
     }
 
     #[inline]

@@ -108,7 +108,7 @@ impl LevelsController {
                 let files = self.collect_expired_at_level(level, expire_time);
                 ExpiredFiles { level, files }
             })
-            .collect::<Vec<_>>()
+            .collect()
     }
 }
 

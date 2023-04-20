@@ -146,7 +146,7 @@ impl MergeSstBench {
         });
 
         builder
-            // make level configurable
+            // TODO: make level configurable
             .mut_ssts_of_level(Level::MIN)
             .extend_from_slice(&self.file_handles);
 
