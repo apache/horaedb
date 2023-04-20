@@ -1,41 +1,73 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{collections::HashMap, sync::{Arc, atomic::{AtomicU64, Ordering}}, time::Duration};
-
-use ceresdbproto::{meta_event::ShardLockValue};
-use common_types::{bytes::Bytes, table::ShardId};
-use common_util::{runtime::{RuntimeRef, JoinHandle}, define_result};
-use etcd_client::{Client, CompareOp, Compare, PutOptions, TxnOp, LeaseKeeper, LeaseKeepAliveStream, Txn};
-use log::{error, info, debug, warn};
-use prost::Message;
-use snafu::{ResultExt, Snafu, Backtrace, ensure};
-use tokio::{
+use std::{
+    collections::HashMap,
     sync::{
-        oneshot,
-        RwLock,
+        atomic::{AtomicU64, Ordering},
+        Arc,
     },
+    time::Duration,
 };
+
+use ceresdbproto::meta_event::ShardLockValue;
+use common_types::{bytes::Bytes, table::ShardId};
+use common_util::{
+    define_result,
+    runtime::{JoinHandle, RuntimeRef},
+};
+use etcd_client::{
+    Client, Compare, CompareOp, LeaseKeepAliveStream, LeaseKeeper, PutOptions, Txn, TxnOp,
+};
+use log::{debug, error, info, warn};
+use prost::Message;
+use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use tokio::sync::{oneshot, RwLock};
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
 pub enum Error {
     #[snafu(display("Failed to keep alive, err:{source}.\nBacktrace:\n{backtrace:?}"))]
-    KeepAlive { source: etcd_client::Error, backtrace: Backtrace },
+    KeepAlive {
+        source: etcd_client::Error,
+        backtrace: Backtrace,
+    },
 
-    #[snafu(display("Failed to keep alive because of no resp, lease_id:{lease_id}.\nBacktrace:\n{backtrace:?}"))]
+    #[snafu(display(
+        "Failed to keep alive because of no resp, lease_id:{lease_id}.\nBacktrace:\n{backtrace:?}"
+    ))]
     KeepAliveWithoutResp { lease_id: i64, backtrace: Backtrace },
 
-    #[snafu(display("Failed to grant lease, shard_id:{shard_id}, err:{source}.\nBacktrace:\n{backtrace:?}"))]
-    GrantLease {shard_id: ShardId, source: etcd_client::Error, backtrace: Backtrace },
+    #[snafu(display(
+        "Failed to grant lease, shard_id:{shard_id}, err:{source}.\nBacktrace:\n{backtrace:?}"
+    ))]
+    GrantLease {
+        shard_id: ShardId,
+        source: etcd_client::Error,
+        backtrace: Backtrace,
+    },
 
     #[snafu(display("Failed to create lock in etcd, shard_id:{shard_id}, err:{source}.\nBacktrace:\n{backtrace:?}"))]
-    CreateLockInEtcd {shard_id: ShardId, source: etcd_client::Error, backtrace: Backtrace },
+    CreateLockInEtcd {
+        shard_id: ShardId,
+        source: etcd_client::Error,
+        backtrace: Backtrace,
+    },
 
-    #[snafu(display("Failed to execute txn of create lock, shard_id:{shard_id}.\nBacktrace:\n{backtrace:?}"))]
-    CreateLockTxn {shard_id: ShardId, backtrace: Backtrace },
+    #[snafu(display(
+        "Failed to execute txn of create lock, shard_id:{shard_id}.\nBacktrace:\n{backtrace:?}"
+    ))]
+    CreateLockTxn {
+        shard_id: ShardId,
+        backtrace: Backtrace,
+    },
 
     #[snafu(display("Failed to revoke the lease, lease_id:{lease_id}, shard_id:{shard_id}, err:{source}.\nBacktrace:\n{backtrace:?}"))]
-    RevokeLease {lease_id: i64, shard_id: ShardId, source: etcd_client::Error, backtrace: Backtrace },
+    RevokeLease {
+        lease_id: i64,
+        shard_id: ShardId,
+        source: etcd_client::Error,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
@@ -86,33 +118,52 @@ impl Lease {
         expired_at_ms <= now
     }
 
-    async fn keep_alive_once(keeper: &mut LeaseKeeper, stream: &mut LeaseKeepAliveStream) -> Result<u64> {
+    async fn keep_alive_once(
+        keeper: &mut LeaseKeeper,
+        stream: &mut LeaseKeepAliveStream,
+    ) -> Result<u64> {
         keeper.keep_alive().await.context(KeepAlive)?;
         match stream.message().await.context(KeepAlive)? {
             Some(resp) => {
                 // The ttl in the response is in seconds.
                 let new_ttl = resp.ttl() as u64 * 1000;
-                let expired_at= common_util::time::current_time_millis() + new_ttl;
-                // debug!("lease keep alive, id:{lease_id}, new_ttl_ms:{new_ttl}, expired_at_ms:{expired_at}");
-                // expired_at_ms.store(expired_at, Ordering::Relaxed);
+                let expired_at = common_util::time::current_time_millis() + new_ttl;
+                // debug!("lease keep alive, id:{lease_id}, new_ttl_ms:{new_ttl},
+                // expired_at_ms:{expired_at}"); expired_at_ms.store(expired_at,
+                // Ordering::Relaxed);
                 Ok(expired_at)
             }
             None => {
-                error!("failed to keep lease alive because of no resp, id:{}", keeper.id());
-                KeepAliveWithoutResp { lease_id: keeper.id() }.fail()
+                error!(
+                    "failed to keep lease alive because of no resp, id:{}",
+                    keeper.id()
+                );
+                KeepAliveWithoutResp {
+                    lease_id: keeper.id(),
+                }
+                .fail()
             }
         }
     }
 
-    async fn start_keepalive(&mut self, mut stop_receiver: oneshot::Receiver<()>, notifier: oneshot::Sender<Result<()>>, etcd_client: &mut Client, runtime: &RuntimeRef) -> Result<()> {
-        let (mut keeper , mut stream)= etcd_client.lease_keep_alive(self.id).await.context(KeepAlive)?;
+    async fn start_keepalive(
+        &mut self,
+        mut stop_receiver: oneshot::Receiver<()>,
+        notifier: oneshot::Sender<Result<()>>,
+        etcd_client: &mut Client,
+        runtime: &RuntimeRef,
+    ) -> Result<()> {
+        let (mut keeper, mut stream) = etcd_client
+            .lease_keep_alive(self.id)
+            .await
+            .context(KeepAlive)?;
         let new_expired_at = Self::keep_alive_once(&mut keeper, &mut stream).await?;
         self.expired_at.store(new_expired_at, Ordering::Relaxed);
 
         // send keepalive request every ttl/3.
         let keep_alive_interval = self.ttl / 3;
         let lease_id = self.id;
-        let expired_at= self.expired_at.clone();
+        let expired_at = self.expired_at.clone();
         let handle = runtime.spawn(async move {
             loop {
                 match Self::keep_alive_once(&mut keeper, &mut stream).await {
@@ -141,7 +192,7 @@ impl Lease {
                         return
                     }
                 }
-            }   
+            }
         });
 
         self.keep_alive_handle = Some(handle);
@@ -173,7 +224,6 @@ impl ShardLock {
             lease_check_handle: None,
             lease_keepalive_stopper: None,
         }
-
     }
 
     fn format_lock_key(key_prefix: &str, shard_id: ShardId) -> Bytes {
@@ -181,7 +231,12 @@ impl ShardLock {
         Bytes::from(key)
     }
 
-    async fn grant(&mut self, on_lock_released: impl OnShardLockReleased, etcd_client: &mut Client, runtime: &RuntimeRef) -> Result<()> {
+    async fn grant(
+        &mut self,
+        on_lock_released: impl OnShardLockReleased,
+        etcd_client: &mut Client,
+        runtime: &RuntimeRef,
+    ) -> Result<()> {
         // Grant the lease.
         let resp = etcd_client
             .lease_grant(self.ttl_sec as i64, None)
@@ -193,7 +248,8 @@ impl ShardLock {
 
         self.acquire_lock_with_lease(lease_id, etcd_client).await?;
 
-        self.keep_lease_alive(lease_id, on_lock_released, etcd_client, runtime).await?;
+        self.keep_lease_alive(lease_id, on_lock_released, etcd_client, runtime)
+            .await?;
 
         Ok(())
     }
@@ -209,16 +265,19 @@ impl ShardLock {
         // Wait for the lease check worker to stop.
         if let Some(handle) = self.lease_check_handle.take() {
             if let Err(e) = handle.await {
-                warn!("Failed to wait for the lease check worker to stop, maybe it has exited so ignore it, shard_id:{}, err:{e}", self.shard_id); 
+                warn!("Failed to wait for the lease check worker to stop, maybe it has exited so ignore it, shard_id:{}, err:{e}", self.shard_id);
             }
         }
 
         // Revoke the lease.
         if let Some(lease_id) = self.lease_id.take() {
-            etcd_client.lease_revoke(lease_id).await.context(RevokeLease {
-                lease_id,
-                shard_id: self.shard_id,
-            })?;
+            etcd_client
+                .lease_revoke(lease_id)
+                .await
+                .context(RevokeLease {
+                    lease_id,
+                    shard_id: self.shard_id,
+                })?;
         }
 
         Ok(())
@@ -226,15 +285,13 @@ impl ShardLock {
 
     async fn acquire_lock_with_lease(&self, lease_id: i64, etcd_client: &mut Client) -> Result<()> {
         // In etcd, the version is 0 if the key does not exist.
-        let not_exist = Compare::version(self.key.clone(), CompareOp::Equal,0);
+        let not_exist = Compare::version(self.key.clone(), CompareOp::Equal, 0);
         let create_key = {
             let options = PutOptions::new().with_lease(lease_id);
             TxnOp::put(self.key.clone(), self.value.clone(), Some(options))
         };
 
-        let create_if_not_exist = Txn::new()
-                    .when([not_exist])
-                    .and_then([create_key]);
+        let create_if_not_exist = Txn::new().when([not_exist]).and_then([create_key]);
 
         let resp = etcd_client
             .txn(create_if_not_exist)
@@ -242,17 +299,35 @@ impl ShardLock {
             .context(CreateLockInEtcd {
                 shard_id: self.shard_id,
             })?;
-        
-        ensure!(resp.succeeded(), CreateLockTxn {shard_id: self.shard_id});
+
+        ensure!(
+            resp.succeeded(),
+            CreateLockTxn {
+                shard_id: self.shard_id
+            }
+        );
 
         Ok(())
     }
 
-    async fn keep_lease_alive(&mut self, lease_id: i64, on_lock_released: impl OnShardLockReleased, etcd_client: &mut Client, runtime: &RuntimeRef) -> Result<()> {
+    async fn keep_lease_alive(
+        &mut self,
+        lease_id: i64,
+        on_lock_released: impl OnShardLockReleased,
+        etcd_client: &mut Client,
+        runtime: &RuntimeRef,
+    ) -> Result<()> {
         let mut lease = Lease::new(lease_id, Duration::from_secs(self.ttl_sec));
         let (lease_expire_notifier, mut lease_expire_receiver) = oneshot::channel();
         let (keepalive_stop_sender, keepalive_stop_receiver) = oneshot::channel();
-        lease.start_keepalive(keepalive_stop_receiver, lease_expire_notifier, etcd_client, runtime).await?;
+        lease
+            .start_keepalive(
+                keepalive_stop_receiver,
+                lease_expire_notifier,
+                etcd_client,
+                runtime,
+            )
+            .await?;
 
         let lock_expire_check_interval = LOCK_EXPIRE_CHECK_INTERVAL;
         let shard_id = self.shard_id;
@@ -310,29 +385,39 @@ impl ShardLockManager {
     }
 
     /// Grant lock to the shard.
-    /// 
+    ///
     /// If the lock is already granted, return false.
-    pub async fn grant_lock(&self, shard_id: u32, on_lock_released: impl OnShardLockReleased) -> Result<bool>
-    {
+    pub async fn grant_lock(
+        &self,
+        shard_id: u32,
+        on_lock_released: impl OnShardLockReleased,
+    ) -> Result<bool> {
         info!("Try to grant lock for shard:{shard_id}");
         {
             let shard_locks = self.shard_locks.read().await;
             if shard_locks.contains_key(&shard_id) {
                 warn!("The lock has been granted, shard_id:{shard_id}");
-                return Ok(false)
+                return Ok(false);
             }
         }
 
         // Double check whether the locks has been granted.
         let mut shard_locks = self.shard_locks.write().await;
-        if shard_locks.contains_key(&shard_id)  {
+        if shard_locks.contains_key(&shard_id) {
             warn!("The lock has been granted, shard_id:{shard_id}");
-            return Ok(false)
+            return Ok(false);
         }
 
-        let mut shard_lock = ShardLock::new(shard_id, &self.key_prefix, self.value.clone(), self.lease_ttl_sec) ;
+        let mut shard_lock = ShardLock::new(
+            shard_id,
+            &self.key_prefix,
+            self.value.clone(),
+            self.lease_ttl_sec,
+        );
         let mut etcd_client = self.etcd_client.clone();
-        shard_lock.grant(on_lock_released, &mut etcd_client, &self.runtime).await?;
+        shard_lock
+            .grant(on_lock_released, &mut etcd_client, &self.runtime)
+            .await?;
 
         shard_locks.insert(shard_id, shard_lock);
 
@@ -342,7 +427,7 @@ impl ShardLockManager {
 
     /// revoke lock is used to force transfer leader, the old leader must give
     /// up its own lock before the new leader is used.
-    /// 
+    ///
     /// If the lock is not exist, return false.
     pub async fn revoke_lock(&self, shard_id: u32) -> Result<bool> {
         info!("Try to revoke lock for shard:{shard_id}");
@@ -353,7 +438,7 @@ impl ShardLockManager {
             Some(mut v) => {
                 let mut etcd_client = self.etcd_client.clone();
                 v.revoke(&mut etcd_client).await?;
-                
+
                 info!("Finish revoking lock for shard:{shard_id}");
                 Ok(true)
             }
