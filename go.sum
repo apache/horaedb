@@ -28,6 +28,8 @@ github.com/CeresDB/ceresdbproto/golang v0.0.0-20230330080500-1c3bf4e803ef h1:LkT
 github.com/CeresDB/ceresdbproto/golang v0.0.0-20230330080500-1c3bf4e803ef/go.mod h1:qLTh6jtSu2ZLIFsU3iiDIKvkrQvyY/Csg6Mk0Ub0QZ4=
 github.com/CeresDB/ceresdbproto/golang v0.0.0-20230330101212-9add015b62cf h1:WOLpPZuC5azSCxEyiZ236PMxUXgluGM7u8PwIK6yLXA=
 github.com/CeresDB/ceresdbproto/golang v0.0.0-20230330101212-9add015b62cf/go.mod h1:qLTh6jtSu2ZLIFsU3iiDIKvkrQvyY/Csg6Mk0Ub0QZ4=
+github.com/CeresDB/ceresdbproto/golang v0.0.0-20230420112830-0aee7927400c h1:X+uYsmRYgYpTI6YZoRGyqzn8LGscloAE10q4Ju+IAR8=
+github.com/CeresDB/ceresdbproto/golang v0.0.0-20230420112830-0aee7927400c/go.mod h1:qLTh6jtSu2ZLIFsU3iiDIKvkrQvyY/Csg6Mk0Ub0QZ4=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
 github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
