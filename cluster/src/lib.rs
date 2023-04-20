@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Cluster sub-crate includes serval functionalities for supporting CeresDB
 //! server to running in the distribute mode. Including:
@@ -7,6 +7,8 @@
 //!   etc.
 //!
 //! The core types are [Cluster] trait and its implementation [ClusterImpl].
+
+#![feature(trait_alias)]
 
 use std::sync::Arc;
 
@@ -35,23 +37,27 @@ pub mod topology;
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
 pub enum Error {
-    #[snafu(display("{msg}, err:{source}"))]
+    #[snafu(display("Internal error, msg:{msg}, err:{source}"))]
     Internal { msg: String, source: GenericError },
 
-    #[snafu(display("Build meta client failed, err:{}.", source))]
+    #[snafu(display("Build meta client failed, err:{source}."))]
     BuildMetaClient { source: meta_client::Error },
 
-    #[snafu(display("Meta client start failed, err:{}.", source))]
+    #[snafu(display("Meta client start failed, err:{source}."))]
     StartMetaClient { source: meta_client::Error },
 
-    #[snafu(display("Meta client execute failed, err:{}.", source))]
+    #[snafu(display("Meta client execute failed, err:{source}."))]
     MetaClientFailure { source: meta_client::Error },
 
+    #[snafu(display("Etcd client failure, msg:{msg}, err:{source}.\nBacktrace:\n{backtrace}"))]
+    EtcdClientFailureWithCause {
+        msg: String,
+        source: etcd_client::Error,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display(
-        "Fail to open shard, shard_id:{}, msg:{}.\nBacktrace:\n{}",
-        shard_id,
-        msg,
-        backtrace
+        "Fail to open shard, shard_id:{shard_id}, msg:{msg}.\nBacktrace:\n{backtrace}",
     ))]
     OpenShard {
         shard_id: ShardId,
@@ -59,31 +65,29 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Fail to open shard, source:{}.", source))]
+    #[snafu(display("Fail to open shard, shard_id:{shard_id}, source:{source}."))]
     OpenShardWithCause {
         shard_id: ShardId,
         source: GenericError,
     },
 
-    #[snafu(display("Fail to close shard, source:{}.", source))]
+    #[snafu(display("Fail to close shard, shard_id:{shard_id}, source:{source}."))]
     CloseShardWithCause {
         shard_id: ShardId,
         source: GenericError,
     },
 
-    #[snafu(display("Shard not found, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    #[snafu(display("Shard not found, msg:{msg}.\nBacktrace:\n{backtrace}"))]
     ShardNotFound { msg: String, backtrace: Backtrace },
 
-    #[snafu(display("Table not found, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    #[snafu(display("Table not found, msg:{msg}.\nBacktrace:\n{backtrace}"))]
     TableNotFound { msg: String, backtrace: Backtrace },
 
-    #[snafu(display("Table already exists, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    #[snafu(display("Table already exists, msg:{msg}.\nBacktrace:\n{backtrace}"))]
     TableAlreadyExists { msg: String, backtrace: Backtrace },
 
     #[snafu(display(
-        "Schema not found in current node, schema name:{}.\nBacktrace:\n{}",
-        schema_name,
-        backtrace
+        "Schema not found in current node, schema name:{schema_name}.\nBacktrace:\n{backtrace}",
     ))]
     SchemaNotFound {
         schema_name: SchemaName,
@@ -91,10 +95,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Shard version mismatch, shard_info:{:?}, expect version:{}.\nBacktrace:\n{}",
-        shard_info,
-        expect_version,
-        backtrace
+        "Shard version mismatch, shard_info:{shard_info:?}, expect version:{expect_version}.\nBacktrace:\n{backtrace}",
     ))]
     ShardVersionMismatch {
         shard_info: ShardInfo,
@@ -103,9 +104,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Cluster nodes are not found in the topology, version:{}.\nBacktrace:\n{}",
-        version,
-        backtrace
+        "Cluster nodes are not found in the topology, version:{version}.\nBacktrace:\n{backtrace}",
     ))]
     ClusterNodesNotFound { version: u64, backtrace: Backtrace },
 }

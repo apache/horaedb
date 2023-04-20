@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
     sync::{Arc, Mutex, RwLock},
@@ -13,10 +13,12 @@ use ceresdbproto::{
     },
     meta_service::TableInfo as TableInfoPb,
 };
+use common_types::table::ShardId;
 use common_util::{
     error::BoxError,
     runtime::{JoinHandle, Runtime},
 };
+use etcd_client::ConnectOptions;
 use log::{error, info, warn};
 use meta_client::{
     types::{
@@ -34,8 +36,8 @@ use tokio::{
 use crate::{
     config::ClusterConfig, shard_lock_manager::ShardLockManager,
     shard_tables_cache::ShardTablesCache, topology::ClusterTopology, CloseShardWithCause, Cluster,
-    ClusterNodesNotFound, ClusterNodesResp, Internal, MetaClientFailure, OpenShard,
-    OpenShardWithCause, Result, ShardNotFound, TableNotFound,
+    ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause, Internal,
+    MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound, TableNotFound,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -54,22 +56,33 @@ pub struct ClusterImpl {
 }
 
 impl ClusterImpl {
-    pub fn new(
+    pub async fn create(
+        node_name: String,
         shard_tables_cache: ShardTablesCache,
         meta_client: MetaClientRef,
         config: ClusterConfig,
         runtime: Arc<Runtime>,
-        etcd_client: etcd_client::Client,
-        endpoint: String,
-        gprc_port: u16,
     ) -> Result<Self> {
         let cache_ref = Arc::new(shard_tables_cache);
         let inner = Arc::new(Inner::new(cache_ref, meta_client)?);
+        let connect_options = ConnectOptions::from(&config.etcd_client);
+        let etcd_client =
+            etcd_client::Client::connect(&config.etcd_client.server_addrs, Some(connect_options))
+                .await
+                .context(EtcdClientFailureWithCause {
+                    msg: "failed to connect to etcd",
+                })?;
+
+        let shard_lock_key_prefix = format!(
+            "{}/{}/shards",
+            config.etcd_client.root_path, config.meta_client.cluster_name
+        );
+
         let shard_lock_manager = ShardLockManager::new(
-            config.meta_client.cluster_name.clone(),
-            endpoint,
-            gprc_port,
+            shard_lock_key_prefix,
+            node_name,
             etcd_client,
+            runtime.clone(),
         );
         Ok(Self {
             inner,
@@ -199,12 +212,7 @@ impl Inner {
         Ok(resp)
     }
 
-    async fn open_shard(&self, req: &OpenShardRequest) -> Result<TablesOfShard> {
-        let shard_info = req.shard.as_ref().context(OpenShard {
-            shard_id: 0u32,
-            msg: "missing shard info in the request",
-        })?;
-
+    async fn open_shard(&self, shard_info: &ShardInfo) -> Result<TablesOfShard> {
         if let Some(tables_of_shard) = self.shard_tables_cache.get(shard_info.id) {
             if tables_of_shard.shard_info.version == shard_info.version {
                 info!(
@@ -235,11 +243,6 @@ impl Inner {
                 shard_id: shard_info.id,
             })?;
 
-        info!(
-            "get tables of shards,shard {}, result {:?}",
-            shard_info.id, resp
-        );
-
         ensure!(
             resp.tables_by_shard.len() == 1,
             OpenShard {
@@ -248,13 +251,13 @@ impl Inner {
             }
         );
 
-        let mut tables_of_shard =
-            resp.tables_by_shard
-                .remove(&shard_info.id)
-                .context(OpenShard {
-                    shard_id: shard_info.id,
-                    msg: "shard tables are missing from the response",
-                })?;
+        let tables_of_shard = resp
+            .tables_by_shard
+            .remove(&shard_info.id)
+            .context(OpenShard {
+                shard_id: shard_info.id,
+                msg: "shard tables are missing from the response",
+            })?;
 
         self.shard_tables_cache
             .insert_or_update(tables_of_shard.clone());
@@ -262,11 +265,11 @@ impl Inner {
         Ok(tables_of_shard)
     }
 
-    fn close_shard(&self, req: &CloseShardRequest) -> Result<TablesOfShard> {
+    fn close_shard(&self, shard_id: ShardId) -> Result<TablesOfShard> {
         self.shard_tables_cache
-            .remove(req.shard_id)
+            .remove(shard_id)
             .with_context(|| ShardNotFound {
-                msg: format!("close non-existent shard, shard_id:{}", req.shard_id),
+                msg: format!("close non-existent shard, shard_id:{shard_id}"),
             })
     }
 
@@ -303,7 +306,7 @@ impl Inner {
 
         self.shard_tables_cache.try_insert_table_to_shard(
             update_shard_info.prev_version,
-            ShardInfo::from(curr_shard_info),
+            ShardInfo::from(&curr_shard_info),
             TableInfo::try_from(table_info)
                 .box_err()
                 .context(Internal {
@@ -329,7 +332,7 @@ impl Inner {
 
         self.shard_tables_cache.try_remove_table_from_shard(
             update_shard_info.prev_version,
-            ShardInfo::from(curr_shard_info),
+            ShardInfo::from(&curr_shard_info),
             TableInfo::try_from(table_info)
                 .box_err()
                 .context(Internal {
@@ -373,58 +376,56 @@ impl Cluster for ClusterImpl {
     }
 
     async fn open_shard(&self, req: &OpenShardRequest) -> Result<TablesOfShard> {
-        let shard_id = req.shard.clone().unwrap().id;
+        let shard_info = req.shard.as_ref().context(OpenShard {
+            shard_id: 0u32,
+            msg: "missing shard info in the request",
+        })?;
+        info!("Open shard begins, shard_id:{:?}", shard_info.id);
 
         let inner = self.inner.clone();
-        let callback = move |shard_id| {
-            let result = inner.close_shard(&CloseShardRequest { shard_id });
+        let on_lock_released = move |shard_id| {
+            warn!("Shard lock is released, try to close the shard, shard_id:{shard_id}");
+
+            let result = inner.close_shard(shard_id);
             match result {
-                Ok(_) => Ok(true),
-                Err(e) => Err(e),
+                Ok(_) => info!("Close shard success, shard_id:{shard_id}"),
+                Err(e) => error!("Close shard failed, shard_id:{shard_id}, err:{e}"),
             }
         };
 
-        let grant_result = self
+        let granted_by_this_call = self
             .shard_lock_manager
             .clone()
-            .grant_lock(shard_id, callback)
+            .grant_lock(shard_info.id, on_lock_released)
             .await
             .box_err()
-            .context(OpenShardWithCause { shard_id })?;
+            .context(OpenShardWithCause {
+                shard_id: shard_info.id,
+            })?;
 
-        ensure!(
-            grant_result,
-            OpenShard {
-                shard_id,
-                msg: format!("open a shard failed, shardID:{shard_id:?}"),
-            }
-        );
+        if !granted_by_this_call {
+            warn!("Shard lock is already granted, shard_id:{}", shard_info.id);
+        }
 
-        info!("Get shard lock finish");
-        self.inner.open_shard(req).await
+        self.inner.open_shard(&ShardInfo::from(shard_info)).await
     }
 
     async fn close_shard(&self, req: &CloseShardRequest) -> Result<TablesOfShard> {
-        let close_result = self.inner.close_shard(req);
-        match close_result {
-            Ok(_) => {
-                let revoke_result = self
-                    .shard_lock_manager
-                    .clone()
-                    .revoke_lock(req.shard_id)
-                    .await
-                    .box_err()
-                    .context(CloseShardWithCause {
-                        shard_id: req.shard_id,
-                    });
+        let close_result = self.inner.close_shard(req.shard_id)?;
+        let revoke_by_this_call = self
+            .shard_lock_manager
+            .revoke_lock(req.shard_id)
+            .await
+            .box_err()
+            .context(CloseShardWithCause {
+                shard_id: req.shard_id,
+            })?;
 
-                match revoke_result {
-                    Ok(()) => close_result,
-                    Err(e) => Err(e),
-                }
-            }
-            Err(_) => close_result,
+        if !revoke_by_this_call {
+            warn!("Shard lock is already revoked, shard_id:{}", req.shard_id);
         }
+
+        Ok(close_result)
     }
 
     async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()> {

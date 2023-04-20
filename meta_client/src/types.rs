@@ -218,8 +218,8 @@ impl From<ShardInfo> for meta_service_pb::ShardInfo {
     }
 }
 
-impl From<meta_service_pb::ShardInfo> for ShardInfo {
-    fn from(pb_shard_info: meta_service_pb::ShardInfo) -> Self {
+impl From<&meta_service_pb::ShardInfo> for ShardInfo {
+    fn from(pb_shard_info: &meta_service_pb::ShardInfo) -> Self {
         ShardInfo {
             id: pb_shard_info.id,
             role: pb_shard_info.role().into(),
@@ -283,7 +283,7 @@ impl TryFrom<meta_service_pb::TablesOfShard> for TablesOfShard {
                 msg: "in meta_service_pb::TablesOfShard",
             })?;
         Ok(Self {
-            shard_info: ShardInfo::from(shard_info),
+            shard_info: ShardInfo::from(&shard_info),
             tables: pb_tables_of_shard
                 .tables
                 .into_iter()
@@ -354,7 +354,7 @@ impl TryFrom<meta_service_pb::CreateTableResponse> for CreateTableResponse {
 
         Ok(Self {
             created_table: TableInfo::try_from(pb_table_info)?,
-            shard_info: ShardInfo::from(pb_shard_info),
+            shard_info: ShardInfo::from(&pb_shard_info),
         })
     }
 }
@@ -437,7 +437,7 @@ impl TryFrom<meta_service_pb::NodeShard> for NodeShard {
         })?;
         Ok(NodeShard {
             endpoint: pb.endpoint,
-            shard_info: ShardInfo::from(pb_shard_info),
+            shard_info: ShardInfo::from(&pb_shard_info),
         })
     }
 }

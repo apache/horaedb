@@ -1,326 +1,366 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{collections::HashMap, sync::Arc, time::Duration, vec};
+use std::{collections::HashMap, sync::{Arc, atomic::{AtomicU64, Ordering}}, time::Duration};
 
-use ceresdbproto::meta_event::ShardLockValue;
-use common_util::error::BoxError;
-use etcd_client::*;
-use log::{error, info};
+use ceresdbproto::{meta_event::ShardLockValue};
+use common_types::{bytes::Bytes, table::ShardId};
+use common_util::{runtime::{RuntimeRef, JoinHandle}, define_result};
+use etcd_client::{Client, CompareOp, Compare, PutOptions, TxnOp, LeaseKeeper, LeaseKeepAliveStream, Txn};
+use log::{error, info, debug, warn};
 use prost::Message;
-use snafu::ResultExt;
+use snafu::{ResultExt, Snafu, Backtrace, ensure};
 use tokio::{
     sync::{
         oneshot,
-        oneshot::{error::TryRecvError, Sender},
         RwLock,
     },
-    time::Interval,
 };
 
-use crate::{Internal, Result};
+#[derive(Debug, Snafu)]
+#[snafu(visibility = "pub")]
+pub enum Error {
+    #[snafu(display("Failed to keep alive, err:{source}.\nBacktrace:\n{backtrace:?}"))]
+    KeepAlive { source: etcd_client::Error, backtrace: Backtrace },
 
-const SHARD_LEADER_PATH: &str = "shards";
-const DEFAULT_LEASE_SECS: i64 = 30;
-const KEEP_ALIVE_PERIOD_SECS: u64 = 5;
+    #[snafu(display("Failed to keep alive because of no resp, lease_id:{lease_id}.\nBacktrace:\n{backtrace:?}"))]
+    KeepAliveWithoutResp { lease_id: i64, backtrace: Backtrace },
 
+    #[snafu(display("Failed to grant lease, shard_id:{shard_id}, err:{source}.\nBacktrace:\n{backtrace:?}"))]
+    GrantLease {shard_id: ShardId, source: etcd_client::Error, backtrace: Backtrace },
+
+    #[snafu(display("Failed to create lock in etcd, shard_id:{shard_id}, err:{source}.\nBacktrace:\n{backtrace:?}"))]
+    CreateLockInEtcd {shard_id: ShardId, source: etcd_client::Error, backtrace: Backtrace },
+
+    #[snafu(display("Failed to execute txn of create lock, shard_id:{shard_id}.\nBacktrace:\n{backtrace:?}"))]
+    CreateLockTxn {shard_id: ShardId, backtrace: Backtrace },
+
+    #[snafu(display("Failed to revoke the lease, lease_id:{lease_id}, shard_id:{shard_id}, err:{source}.\nBacktrace:\n{backtrace:?}"))]
+    RevokeLease {lease_id: i64, shard_id: ShardId, source: etcd_client::Error, backtrace: Backtrace },
+}
+
+define_result!(Error);
+
+const DEFAULT_LEASE_SECS: u64 = 30;
+const LOCK_EXPIRE_CHECK_INTERVAL: Duration = Duration::from_millis(200);
+
+pub trait OnShardLockReleased = FnOnce(ShardId) + Send + 'static;
+
+/// Shard lock is implemented based on etcd.
+///
+/// Only with the lock held, the shard can be operated by this node.
 pub struct ShardLockManager {
-    cluster_name: String,
-    endpoint: String,
-    root_path: String,
-    shard_leader_key: String,
+    key_prefix: String,
+    value: Bytes,
+    lease_ttl_sec: u64,
 
-    etcd_cli: Client,
-    lease_ttl_sec: i64,
+    etcd_client: Client,
+    runtime: RuntimeRef,
 
     // ShardID -> ShardLock
-    shard_lock_map: Arc<RwLock<HashMap<u32, RwLock<ShardLock>>>>,
+    shard_locks: Arc<RwLock<HashMap<u32, ShardLock>>>,
+}
+
+struct Lease {
+    id: i64,
+    ttl: Duration,
+    /// Expired time in milliseconds.
+    expired_at: Arc<AtomicU64>,
+
+    keep_alive_handle: Option<JoinHandle<()>>,
+}
+
+impl Lease {
+    fn new(id: i64, ttl: Duration) -> Self {
+        Self {
+            id,
+            ttl,
+            expired_at: Arc::new(AtomicU64::new(0)),
+            keep_alive_handle: None,
+        }
+    }
+
+    /// Check whether lease is expired.
+    fn is_expired(&self) -> bool {
+        let now = common_util::time::current_time_millis();
+        let expired_at_ms = self.expired_at.load(Ordering::Relaxed);
+        expired_at_ms <= now
+    }
+
+    async fn keep_alive_once(keeper: &mut LeaseKeeper, stream: &mut LeaseKeepAliveStream) -> Result<u64> {
+        keeper.keep_alive().await.context(KeepAlive)?;
+        match stream.message().await.context(KeepAlive)? {
+            Some(resp) => {
+                // The ttl in the response is in seconds.
+                let new_ttl = resp.ttl() as u64 * 1000;
+                let expired_at= common_util::time::current_time_millis() + new_ttl;
+                // debug!("lease keep alive, id:{lease_id}, new_ttl_ms:{new_ttl}, expired_at_ms:{expired_at}");
+                // expired_at_ms.store(expired_at, Ordering::Relaxed);
+                return Ok(expired_at);
+            }
+            None => {
+                error!("failed to keep lease alive because of no resp, id:{}", keeper.id());
+                KeepAliveWithoutResp { lease_id: keeper.id() }.fail()
+            }
+        }
+    }
+
+    async fn start_keepalive(&mut self, mut stop_receiver: oneshot::Receiver<()>, notifier: oneshot::Sender<Result<()>>, etcd_client: &mut Client, runtime: &RuntimeRef) -> Result<()> {
+        let (mut keeper , mut stream)= etcd_client.lease_keep_alive(self.id).await.context(KeepAlive)?;
+        let new_expired_at = Self::keep_alive_once(&mut keeper, &mut stream).await?;
+        self.expired_at.store(new_expired_at, Ordering::Relaxed);
+
+        // send keepalive request every ttl/3.
+        let keep_alive_interval = self.ttl / 3;
+        let lease_id = self.id;
+        let expired_at= self.expired_at.clone();
+        let handle = runtime.spawn(async move {
+            loop {
+                match Self::keep_alive_once(&mut keeper, &mut stream).await {
+                    Ok(new_expired_at) => {
+                        expired_at.store(new_expired_at, Ordering::Relaxed);
+                    }
+                    Err(e) => {
+                        error!("failed to keep lease alive, id:{lease_id}, err:{e}");
+                        if let Err(_) = notifier.send(Err(e)) {
+                            error!("failed to send keepalive failure, lease_id:{lease_id}");
+                        }
+
+                        return
+                    }
+                }
+                let sleeper = tokio::time::sleep(keep_alive_interval);
+                tokio::select! {
+                    _ = sleeper => {
+                        debug!("Try to keep the lease alive again, id:{lease_id}");
+                    },
+                    _ = &mut stop_receiver => {
+                        debug!("Stop keeping lease alive, id:{lease_id}");
+                        if let Err(_) = notifier.send(Ok(())) {
+                            error!("failed to send keepalive stopping message, lease_id:{lease_id}");
+                        }
+                        return
+                    }
+                }
+            }   
+        });
+
+        self.keep_alive_handle = Some(handle);
+
+        Ok(())
+    }
 }
 
 pub struct ShardLock {
-    shard_id: u32,
-    lock_ttl_sec: i64,
-    shard_lock_path: String,
-    // Deleted callback contains expired delete & invoke delete
-    lock_deleted_callback: Arc<dyn Fn(u32) -> Result<bool> + Send + Sync + 'static>,
+    shard_id: ShardId,
+    key: Bytes,
+    value: Bytes,
+    ttl_sec: u64,
 
-    etcd_cli: Client,
-    endpoint: String,
-
-    tx: Option<Sender<()>>,
+    lease_id: Option<i64>,
+    lease_check_handle: Option<JoinHandle<()>>,
+    lease_keepalive_stopper: Option<oneshot::Sender<()>>,
 }
 
 impl ShardLock {
-    async fn grant_lock(&mut self) -> Result<bool> {
-        let check_result = self.check_lock_owner().await;
-        match check_result {
-            Ok(result) => {
-                match result {
-                    None => {
-                        // Do nothing and continue grant
-                    }
-                    Some(result) => return Ok(result),
-                }
-            }
-            Err(e) => return Err(e),
+    fn new(shard_id: ShardId, key_prefix: &str, value: Bytes, ttl_sec: u64) -> Self {
+        Self {
+            shard_id,
+            key: Self::format_lock_key(key_prefix, shard_id),
+            value,
+            ttl_sec,
+
+            lease_id: None,
+            lease_check_handle: None,
+            lease_keepalive_stopper: None,
         }
 
-        // Get lock, put data to etcd with lease.
-        let lease_id = self.generate_lease().await?;
-
-        self.update_etcd_txn(lease_id).await?;
-
-        let keep_alive_interval =
-            tokio::time::interval(Duration::from_secs(KEEP_ALIVE_PERIOD_SECS));
-
-        self.keep_lease(lease_id, keep_alive_interval);
-
-        Ok(true)
     }
 
-    fn keep_lease(&mut self, lease_id: i64, mut keep_alive_interval: Interval) {
-        let mut client = self.etcd_cli.clone();
+    fn format_lock_key(key_prefix: &str, shard_id: ShardId) -> Bytes {
+        let key = format!("{key_prefix}/{shard_id:0>20}");
+        Bytes::from(key)
+    }
+
+    async fn grant(&mut self, on_lock_released: impl OnShardLockReleased, etcd_client: &mut Client, runtime: &RuntimeRef) -> Result<()> {
+        // Grant the lease.
+        let resp = etcd_client
+            .lease_grant(self.ttl_sec as i64, None)
+            .await
+            .context(GrantLease {
+                shard_id: self.shard_id,
+            })?;
+        let lease_id = resp.id();
+
+        self.acquire_lock_with_lease(lease_id, etcd_client).await?;
+
+        self.keep_lease_alive(lease_id, on_lock_released, etcd_client, runtime).await?;
+
+        Ok(())
+    }
+
+    async fn revoke(&mut self, etcd_client: &mut Client) -> Result<()> {
+        // Stop keeping alive the lease.
+        if let Some(sender) = self.lease_keepalive_stopper.take() {
+            if let Err(_) = sender.send(()) {
+                warn!("Failed to stop keeping lease alive, maybe it has been stopped already so ignore it, hard_id:{}", self.shard_id);
+            }
+        }
+
+        // Wait for the lease check worker to stop.
+        if let Some(handle) = self.lease_check_handle.take() {
+            if let Err(e) = handle.await {
+                warn!("Failed to wait for the lease check worker to stop, maybe it has exited so ignore it, shard_id:{}, err:{e}", self.shard_id); 
+            }
+        }
+
+        // Revoke the lease.
+        if let Some(lease_id) = self.lease_id.take() {
+            etcd_client.lease_revoke(lease_id).await.context(RevokeLease {
+                lease_id,
+                shard_id: self.shard_id,
+            })?;
+        }
+
+        Ok(())
+    }
+
+    async fn acquire_lock_with_lease(&self, lease_id: i64, etcd_client: &mut Client) -> Result<()> {
+        // In etcd, the version is 0 if the key does not exist.
+        let not_exist = Compare::version(self.key.clone(), CompareOp::Equal,0);
+        let create_key = {
+            let options = PutOptions::new().with_lease(lease_id);
+            TxnOp::put(self.key.clone(), self.value.clone(), Some(options))
+        };
+
+        let create_if_not_exist = Txn::new()
+                    .when([not_exist])
+                    .and_then([create_key]);
+
+        let resp = etcd_client
+            .txn(create_if_not_exist)
+            .await
+            .context(CreateLockInEtcd {
+                shard_id: self.shard_id,
+            })?;
+        
+        ensure!(resp.succeeded(), CreateLockTxn {shard_id: self.shard_id});
+
+        Ok(())
+    }
+
+    async fn keep_lease_alive(&mut self, lease_id: i64, on_lock_released: impl OnShardLockReleased, etcd_client: &mut Client, runtime: &RuntimeRef) -> Result<()> {
+        let mut lease = Lease::new(lease_id, Duration::from_secs(self.ttl_sec));
+        let (lease_expire_notifier, mut lease_expire_receiver) = oneshot::channel();
+        let (keepalive_stop_sender, keepalive_stop_receiver) = oneshot::channel();
+        lease.start_keepalive(keepalive_stop_receiver, lease_expire_notifier, etcd_client, runtime).await?;
+
+        let lock_expire_check_interval = LOCK_EXPIRE_CHECK_INTERVAL;
         let shard_id = self.shard_id;
-        let lock_deleted_callback = self.lock_deleted_callback.clone();
-        let (tx, mut rx) = oneshot::channel::<()>();
-        self.tx = Some(tx);
-        tokio::spawn(async move {
-            let (mut keeper, mut stream) = client.lease_keep_alive(lease_id).await.unwrap();
+        let handle = runtime.spawn(async move {
             loop {
-                keep_alive_interval.tick().await;
-
-                let mut lease_failed_flag = false;
-
-                match rx.try_recv() {
-                    Ok(_) => {
-                        info!("receive close request");
-                        return;
-                    }
-                    Err(e) => match e {
-                        TryRecvError::Empty => {}
-                        TryRecvError::Closed => {
-                            error!("shardID {},receive closed,{}", shard_id, e)
-                        }
-                    },
-                }
-
-                let resp = keeper.keep_alive().await;
-                match resp {
-                    Ok(_) => {}
-                    Err(e) => {
-                        error!("keep alive failed, shard will be removed, err msg {}", e);
-                        lease_failed_flag = true
-                    }
-                }
-
-                match stream.message().await {
-                    Ok(op) => {
-                        match op {
-                            None => {
-                                error!("keep alive failed, connection is closed, shard will be removed");
-                                lease_failed_flag = true
-                            }
-                            Some(resp) => {
-                                info!(
-                                    "shard {},lease {:?} keep alive, new ttl {:?}",
-                                    shard_id,
-                                    resp.id(),
-                                    resp.ttl()
-                                );
-                            }
+                let timer = tokio::time::sleep(lock_expire_check_interval);
+                tokio::select! {
+                    _ = timer => {
+                        if lease.is_expired() {
+                            warn!("The lease of the shard lock is expired, shard_id:{shard_id}");
+                            on_lock_released(shard_id);
+                            return
                         }
                     }
-                    Err(e) => {
-                        // Close Shard
-                        error!("keep alive failed, shard will be removed, err msg {}", e);
-                        lease_failed_flag = true
+                    res = &mut lease_expire_receiver => {
+                        match res {
+                            Ok(_) => {
+                                info!("The lease is revoked in purpose, and no need to do anything, shard_id:{shard_id}");
+                            }
+                            Err(e) => {
+                                error!("The lease of the shard lock is expired, shard_id:{shard_id}, err:{e:?}");
+                                on_lock_released(shard_id);
+                            }
+                        }
+                        return
                     }
-                }
-
-                if lease_failed_flag {
-                    // TODO: Consider how to property close shard when lease is expired.
-                    let callback_result = lock_deleted_callback(shard_id);
-                    info!("invoke callback, result {:?}", callback_result);
-                    return;
                 }
             }
         });
-    }
 
-    async fn update_etcd_txn(&mut self, lease_id: i64) -> Result<TxnResponse> {
-        self.etcd_cli
-            .clone()
-            .txn(
-                Txn::new()
-                    .when(vec![Compare::version(
-                        self.shard_lock_path.clone(),
-                        CompareOp::Equal,
-                        0,
-                    )])
-                    .and_then(vec![TxnOp::put(
-                        self.shard_lock_path.clone(),
-                        ShardLockValue {
-                            node_name: self.endpoint.clone(),
-                        }
-                        .encode_to_vec(),
-                        Some(PutOptions::new().with_lease(lease_id).with_prev_key()),
-                    )]),
-            )
-            .await
-            .box_err()
-            .context(Internal {
-                msg: String::from("etcd client txn failed"),
-            })
-    }
-
-    async fn generate_lease(&mut self) -> Result<i64> {
-        let lease_resp = self
-            .etcd_cli
-            .clone()
-            .lease_grant(self.lock_ttl_sec, None)
-            .await
-            .box_err()
-            .context(Internal {
-                msg: String::from("etcd client lease grant failed"),
-            });
-
-        match lease_resp {
-            Ok(resp) => Ok(resp.id()),
-            Err(e) => Err(e),
-        }
-    }
-
-    // 1. No lock exists
-    // 2. Lock exists, owner is current node
-    // 3. Lock exists, owner is not current node
-    async fn check_lock_owner(&mut self) -> Result<Option<bool>> {
-        // Check lock owner, return false if the locked has been granted by other node.
-        let get_resp = self
-            .etcd_cli
-            .clone()
-            .get(self.shard_lock_path.clone(), None)
-            .await
-            .box_err()
-            .context(Internal {
-                msg: String::from("get shard lock failed"),
-            })?;
-
-        if !get_resp.kvs().is_empty() {
-            let value = get_resp.kvs().get(0).unwrap().value();
-            info!("lease exists, {:?}", get_resp);
-            let str = String::from_utf8(value.to_vec())
-                .box_err()
-                .context(Internal {
-                    msg: String::from("get response value failed"),
-                })?;
-            return Ok(Some(str == self.endpoint));
-        }
-
-        Ok(None)
-    }
-
-    async fn revoke_lock(&mut self) -> Result<()> {
-        // 1. Stop lease.
-        if let Some(sender) = self.tx.take() {
-            let send_result = sender.send(());
-            info!("send_result, {:?}", send_result)
-        }
-
-        // 2. Remove etcd key if it current node is shard leader
-        self.etcd_cli
-            .clone()
-            .txn(
-                Txn::new()
-                    .when(vec![Compare::value(
-                        self.shard_lock_path.clone(),
-                        CompareOp::Equal,
-                        self.endpoint.clone(),
-                    )])
-                    .and_then(vec![TxnOp::delete(self.shard_lock_path.clone(), None)]),
-            )
-            .await
-            .box_err()
-            .context(Internal {
-                msg: String::from("etcd client txn failed"),
-            })?;
-
+        self.lease_check_handle = Some(handle);
+        self.lease_keepalive_stopper = Some(keepalive_stop_sender);
+        self.lease_id = Some(lease_id);
         Ok(())
     }
 }
 
 impl ShardLockManager {
     pub fn new(
-        cluster_name: String,
-        endpoint: String,
-        port: u16,
+        key_prefix: String,
+        node_name: String,
         etcd_client: Client,
+        runtime: RuntimeRef,
     ) -> ShardLockManager {
-        let addr = vec![endpoint, port.to_string()].join(":");
+        let value = Bytes::from(ShardLockValue { node_name }.encode_to_vec());
+
         ShardLockManager {
-            cluster_name,
-            endpoint: addr,
-            root_path: "/rootPath".to_string(),
-            shard_leader_key: SHARD_LEADER_PATH.to_string(),
+            key_prefix,
+            value,
             lease_ttl_sec: DEFAULT_LEASE_SECS,
-            etcd_cli: etcd_client,
-            shard_lock_map: Arc::new(RwLock::new(HashMap::new())),
+            etcd_client,
+            runtime,
+            shard_locks: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
-    /// Return true if grant lock success(including the current node is the
-    /// owner), otherwise return false. A new thread is started internally
-    /// and keeps calling keep alive.
-    pub async fn grant_lock<C>(&self, shard_id: u32, lock_deleted_callback: C) -> Result<bool>
-    where
-        C: Fn(u32) -> Result<bool> + Send + Sync + 'static,
+    /// Grant lock to the shard.
+    /// 
+    /// If the lock is already granted, return false.
+    pub async fn grant_lock(&self, shard_id: u32, on_lock_released: impl OnShardLockReleased) -> Result<bool>
     {
-        let mut shard_lock = ShardLock {
-            shard_id,
-            lock_ttl_sec: self.lease_ttl_sec,
-            shard_lock_path: self.generate_key_path(shard_id),
-            lock_deleted_callback: Arc::new(lock_deleted_callback),
-            etcd_cli: self.etcd_cli.clone(),
-            endpoint: self.endpoint.clone(),
-            tx: None,
-        };
-
-        let grant_result = shard_lock.grant_lock().await;
-
-        info!("shard_id {},grant result, {:?}", shard_id, grant_result);
-
-        match grant_result {
-            Ok(result) => {
-                if result {
-                    info!("grant lock,insert into map");
-                    self.shard_lock_map
-                        .write()
-                        .await
-                        .entry(shard_id)
-                        .or_insert(RwLock::new(shard_lock));
-                }
-                Ok(result)
+        info!("Try to grant lock for shard:{shard_id}");
+        {
+            let shard_locks = self.shard_locks.read().await;
+            if shard_locks.contains_key(&shard_id) {
+                warn!("The lock has been granted, shard_id:{shard_id}");
+                return Ok(false)
             }
-            Err(e) => Err(e),
         }
+
+        // Double check whether the locks has been granted.
+        let mut shard_locks = self.shard_locks.write().await;
+        if shard_locks.contains_key(&shard_id)  {
+            warn!("The lock has been granted, shard_id:{shard_id}");
+            return Ok(false)
+        }
+
+        let mut shard_lock = ShardLock::new(shard_id, &self.key_prefix, self.value.clone(), self.lease_ttl_sec) ;
+        let mut etcd_client = self.etcd_client.clone();
+        shard_lock.grant(on_lock_released, &mut etcd_client, &self.runtime).await?;
+
+        shard_locks.insert(shard_id, shard_lock);
+
+        info!("Finish granting lock for shard:{shard_id}");
+        return Ok(true)
     }
 
     /// revoke lock is used to force transfer leader, the old leader must give
     /// up its own lock before the new leader is used.
-    pub async fn revoke_lock(&self, shard_id: u32) -> Result<()> {
-        let map = self.shard_lock_map.read().await;
-        let shard_lock = map.get(&shard_id);
-        match shard_lock {
-            None => Ok(()),
-            Some(lock) => lock.write().await.revoke_lock().await,
-        }
-    }
+    /// 
+    /// If the lock is not exist, return false.
+    pub async fn revoke_lock(&self, shard_id: u32) -> Result<bool> {
+        info!("Try to revoke lock for shard:{shard_id}");
 
-    fn generate_key_path(&self, shard_id: u32) -> String {
-        vec![
-            self.root_path.clone(),
-            self.shard_leader_key.clone(),
-            self.cluster_name.clone(),
-            shard_id.to_string(),
-        ]
-        .join("/")
+        let mut shard_locks = self.shard_locks.write().await;
+        let shard_lock = shard_locks.remove(&shard_id);
+        match shard_lock {
+            Some(mut v) => {
+                let mut etcd_client = self.etcd_client.clone();
+                v.revoke(&mut etcd_client).await?;
+                
+                info!("Finish revoking lock for shard:{shard_id}");
+                Ok(true)
+            }
+            None => {
+                warn!("The lock is not exist, shard_id:{shard_id}");
+                Ok(false)
+            }
+        }
     }
 }
