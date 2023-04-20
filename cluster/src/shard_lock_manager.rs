@@ -95,7 +95,7 @@ impl Lease {
                 let expired_at= common_util::time::current_time_millis() + new_ttl;
                 // debug!("lease keep alive, id:{lease_id}, new_ttl_ms:{new_ttl}, expired_at_ms:{expired_at}");
                 // expired_at_ms.store(expired_at, Ordering::Relaxed);
-                return Ok(expired_at);
+                Ok(expired_at)
             }
             None => {
                 error!("failed to keep lease alive because of no resp, id:{}", keeper.id());
@@ -121,7 +121,7 @@ impl Lease {
                     }
                     Err(e) => {
                         error!("failed to keep lease alive, id:{lease_id}, err:{e}");
-                        if let Err(_) = notifier.send(Err(e)) {
+                        if notifier.send(Err(e)).is_err() {
                             error!("failed to send keepalive failure, lease_id:{lease_id}");
                         }
 
@@ -135,7 +135,7 @@ impl Lease {
                     },
                     _ = &mut stop_receiver => {
                         debug!("Stop keeping lease alive, id:{lease_id}");
-                        if let Err(_) = notifier.send(Ok(())) {
+                        if notifier.send(Ok(())).is_err() {
                             error!("failed to send keepalive stopping message, lease_id:{lease_id}");
                         }
                         return
@@ -201,7 +201,7 @@ impl ShardLock {
     async fn revoke(&mut self, etcd_client: &mut Client) -> Result<()> {
         // Stop keeping alive the lease.
         if let Some(sender) = self.lease_keepalive_stopper.take() {
-            if let Err(_) = sender.send(()) {
+            if sender.send(()).is_err() {
                 warn!("Failed to stop keeping lease alive, maybe it has been stopped already so ignore it, hard_id:{}", self.shard_id);
             }
         }
@@ -337,7 +337,7 @@ impl ShardLockManager {
         shard_locks.insert(shard_id, shard_lock);
 
         info!("Finish granting lock for shard:{shard_id}");
-        return Ok(true)
+        Ok(true)
     }
 
     /// revoke lock is used to force transfer leader, the old leader must give

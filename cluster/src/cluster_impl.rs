@@ -63,8 +63,7 @@ impl ClusterImpl {
         config: ClusterConfig,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
-        let cache_ref = Arc::new(shard_tables_cache);
-        let inner = Arc::new(Inner::new(cache_ref, meta_client)?);
+        let inner = Arc::new(Inner::new(shard_tables_cache, meta_client)?);
         let connect_options = ConnectOptions::from(&config.etcd_client);
         let etcd_client =
             etcd_client::Client::connect(&config.etcd_client.server_addrs, Some(connect_options))
@@ -140,13 +139,13 @@ impl ClusterImpl {
 }
 
 struct Inner {
-    shard_tables_cache: Arc<ShardTablesCache>,
+    shard_tables_cache: ShardTablesCache,
     meta_client: MetaClientRef,
     topology: RwLock<ClusterTopology>,
 }
 
 impl Inner {
-    fn new(shard_tables_cache: Arc<ShardTablesCache>, meta_client: MetaClientRef) -> Result<Self> {
+    fn new(shard_tables_cache: ShardTablesCache, meta_client: MetaClientRef) -> Result<Self> {
         Ok(Self {
             shard_tables_cache,
             meta_client,
@@ -380,6 +379,7 @@ impl Cluster for ClusterImpl {
             shard_id: 0u32,
             msg: "missing shard info in the request",
         })?;
+
         info!("Open shard begins, shard_id:{:?}", shard_info.id);
 
         let inner = self.inner.clone();
@@ -395,7 +395,6 @@ impl Cluster for ClusterImpl {
 
         let granted_by_this_call = self
             .shard_lock_manager
-            .clone()
             .grant_lock(shard_info.id, on_lock_released)
             .await
             .box_err()
@@ -407,10 +406,14 @@ impl Cluster for ClusterImpl {
             warn!("Shard lock is already granted, shard_id:{}", shard_info.id);
         }
 
-        self.inner.open_shard(&ShardInfo::from(shard_info)).await
+        let tables_of_shard = self.inner.open_shard(&ShardInfo::from(shard_info)).await?;
+        info!("Open shard succeeds, shard_id:{:?}", shard_info.id);
+        Ok(tables_of_shard)
     }
 
     async fn close_shard(&self, req: &CloseShardRequest) -> Result<TablesOfShard> {
+        info!("Close shard begins, shard_id:{:?}", req.shard_id);
+
         let close_result = self.inner.close_shard(req.shard_id)?;
         let revoke_by_this_call = self
             .shard_lock_manager
@@ -425,6 +428,7 @@ impl Cluster for ClusterImpl {
             warn!("Shard lock is already revoked, shard_id:{}", req.shard_id);
         }
 
+        info!("Close shard succeeds, shard_id:{:?}", req.shard_id);
         Ok(close_result)
     }
 

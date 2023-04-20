@@ -56,7 +56,7 @@ impl From<&EtcdClientConfig> for ConnectOptions {
 impl Default for EtcdClientConfig {
     fn default() -> Self {
         Self {
-            server_addrs: vec!["127.0.0.1:2883".to_string()],
+            server_addrs: vec!["127.0.0.1:2379".to_string()],
             root_path: DEFAULT_ETCD_ROOT_PATH.to_string(),
 
             rpc_timeout: ReadableDuration::secs(5),
