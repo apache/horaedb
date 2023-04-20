@@ -179,12 +179,13 @@ mod tests {
 
     use ceresdbproto::{
         meta_event::{
-            CloseShardRequest, CloseTableOnShardRequest, CreateTableOnShardRequest,
-            DropTableOnShardRequest, OpenShardRequest, OpenTableOnShardRequest,
+            CloseTableOnShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest,
+            OpenTableOnShardRequest,
         },
         storage::RequestContext,
     };
-    use cluster::{Cluster, ClusterNodesResp};
+    use cluster::{shard_lock_manager::ShardLockManagerRef, Cluster, ClusterNodesResp};
+    use common_types::table::ShardId;
     use common_util::config::ReadableDuration;
     use meta_client::types::{
         NodeShard, RouteEntry, RouteTablesResponse, ShardInfo, ShardRole::Leader, TableInfo,
@@ -205,11 +206,11 @@ mod tests {
             unimplemented!();
         }
 
-        async fn open_shard(&self, _req: &OpenShardRequest) -> cluster::Result<TablesOfShard> {
+        async fn open_shard(&self, _: &ShardInfo) -> cluster::Result<TablesOfShard> {
             unimplemented!();
         }
 
-        async fn close_shard(&self, _req: &CloseShardRequest) -> cluster::Result<TablesOfShard> {
+        async fn close_shard(&self, _: ShardId) -> cluster::Result<TablesOfShard> {
             unimplemented!();
         }
 
@@ -270,6 +271,10 @@ mod tests {
         }
 
         async fn fetch_nodes(&self) -> cluster::Result<ClusterNodesResp> {
+            unimplemented!();
+        }
+
+        fn shard_lock_manager(&self) -> ShardLockManagerRef {
             unimplemented!();
         }
     }

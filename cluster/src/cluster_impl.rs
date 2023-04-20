@@ -8,8 +8,8 @@ use std::{
 use async_trait::async_trait;
 use ceresdbproto::{
     meta_event::{
-        CloseShardRequest, CloseTableOnShardRequest, CreateTableOnShardRequest,
-        DropTableOnShardRequest, OpenShardRequest, OpenTableOnShardRequest, UpdateShardInfo,
+        CloseTableOnShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest,
+        OpenTableOnShardRequest, UpdateShardInfo,
     },
     meta_service::TableInfo as TableInfoPb,
 };
@@ -34,9 +34,11 @@ use tokio::{
 };
 
 use crate::{
-    config::ClusterConfig, shard_lock_manager::ShardLockManager,
-    shard_tables_cache::ShardTablesCache, topology::ClusterTopology, CloseShardWithCause, Cluster,
-    ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause, Internal,
+    config::ClusterConfig,
+    shard_lock_manager::{ShardLockManager, ShardLockManagerRef},
+    shard_tables_cache::ShardTablesCache,
+    topology::ClusterTopology,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause, Internal,
     MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound, TableNotFound,
 };
 
@@ -52,7 +54,7 @@ pub struct ClusterImpl {
     config: ClusterConfig,
     heartbeat_handle: Mutex<Option<JoinHandle<()>>>,
     stop_heartbeat_tx: Mutex<Option<Sender<()>>>,
-    shard_lock_manager: Arc<ShardLockManager>,
+    shard_lock_manager: ShardLockManagerRef,
 }
 
 impl ClusterImpl {
@@ -374,62 +376,12 @@ impl Cluster for ClusterImpl {
         Ok(())
     }
 
-    async fn open_shard(&self, req: &OpenShardRequest) -> Result<TablesOfShard> {
-        let shard_info = req.shard.as_ref().context(OpenShard {
-            shard_id: 0u32,
-            msg: "missing shard info in the request",
-        })?;
-
-        info!("Open shard begins, shard_id:{:?}", shard_info.id);
-
-        let inner = self.inner.clone();
-        let on_lock_released = move |shard_id| {
-            warn!("Shard lock is released, try to close the shard, shard_id:{shard_id}");
-
-            let result = inner.close_shard(shard_id);
-            match result {
-                Ok(_) => info!("Close shard success, shard_id:{shard_id}"),
-                Err(e) => error!("Close shard failed, shard_id:{shard_id}, err:{e}"),
-            }
-        };
-
-        let granted_by_this_call = self
-            .shard_lock_manager
-            .grant_lock(shard_info.id, on_lock_released)
-            .await
-            .box_err()
-            .context(OpenShardWithCause {
-                shard_id: shard_info.id,
-            })?;
-
-        if !granted_by_this_call {
-            warn!("Shard lock is already granted, shard_id:{}", shard_info.id);
-        }
-
-        let tables_of_shard = self.inner.open_shard(&ShardInfo::from(shard_info)).await?;
-        info!("Open shard succeeds, shard_id:{:?}", shard_info.id);
-        Ok(tables_of_shard)
+    async fn open_shard(&self, shard_info: &ShardInfo) -> Result<TablesOfShard> {
+        self.inner.open_shard(shard_info).await
     }
 
-    async fn close_shard(&self, req: &CloseShardRequest) -> Result<TablesOfShard> {
-        info!("Close shard begins, shard_id:{:?}", req.shard_id);
-
-        let close_result = self.inner.close_shard(req.shard_id)?;
-        let revoke_by_this_call = self
-            .shard_lock_manager
-            .revoke_lock(req.shard_id)
-            .await
-            .box_err()
-            .context(CloseShardWithCause {
-                shard_id: req.shard_id,
-            })?;
-
-        if !revoke_by_this_call {
-            warn!("Shard lock is already revoked, shard_id:{}", req.shard_id);
-        }
-
-        info!("Close shard succeeds, shard_id:{:?}", req.shard_id);
-        Ok(close_result)
+    async fn close_shard(&self, shard_id: ShardId) -> Result<TablesOfShard> {
+        self.inner.close_shard(shard_id)
     }
 
     async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()> {
@@ -454,5 +406,9 @@ impl Cluster for ClusterImpl {
 
     async fn fetch_nodes(&self) -> Result<ClusterNodesResp> {
         self.inner.fetch_nodes().await
+    }
+
+    fn shard_lock_manager(&self) -> ShardLockManagerRef {
+        self.shard_lock_manager.clone()
     }
 }

@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use ceresdbproto::meta_event::{
-    CloseShardRequest, CloseTableOnShardRequest, CreateTableOnShardRequest,
-    DropTableOnShardRequest, OpenShardRequest, OpenTableOnShardRequest,
+    CloseTableOnShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest,
+    OpenTableOnShardRequest,
 };
 use common_types::schema::SchemaName;
 use common_util::{define_result, error::GenericError};
@@ -23,14 +23,13 @@ use meta_client::types::{
     ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId, ShardInfo, ShardVersion,
     TablesOfShard,
 };
+use shard_lock_manager::ShardLockManagerRef;
 use snafu::{Backtrace, Snafu};
 
 pub mod cluster_impl;
 pub mod config;
-pub mod shard_tables_cache;
-// FIXME: Remove this lint ignore derive when topology about schema tables is
-// finished.
 pub mod shard_lock_manager;
+pub mod shard_tables_cache;
 #[allow(dead_code)]
 pub mod topology;
 
@@ -124,12 +123,13 @@ pub struct ClusterNodesResp {
 pub trait Cluster {
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
-    async fn open_shard(&self, req: &OpenShardRequest) -> Result<TablesOfShard>;
-    async fn close_shard(&self, req: &CloseShardRequest) -> Result<TablesOfShard>;
+    async fn open_shard(&self, shard_info: &ShardInfo) -> Result<TablesOfShard>;
+    async fn close_shard(&self, req: ShardId) -> Result<TablesOfShard>;
     async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()>;
     async fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()>;
     async fn open_table_on_shard(&self, req: &OpenTableOnShardRequest) -> Result<()>;
     async fn close_table_on_shard(&self, req: &CloseTableOnShardRequest) -> Result<()>;
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;
     async fn fetch_nodes(&self) -> Result<ClusterNodesResp>;
+    fn shard_lock_manager(&self) -> ShardLockManagerRef;
 }

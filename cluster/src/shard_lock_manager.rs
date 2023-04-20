@@ -2,6 +2,7 @@
 
 use std::{
     collections::HashMap,
+    future::Future,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -75,7 +76,7 @@ define_result!(Error);
 const DEFAULT_LEASE_SECS: u64 = 30;
 const LOCK_EXPIRE_CHECK_INTERVAL: Duration = Duration::from_millis(200);
 
-pub trait OnShardLockReleased = FnOnce(ShardId) + Send + 'static;
+pub type ShardLockManagerRef = Arc<ShardLockManager>;
 
 /// Shard lock is implemented based on etcd.
 ///
@@ -231,12 +232,16 @@ impl ShardLock {
         Bytes::from(key)
     }
 
-    async fn grant(
+    async fn grant<OnReleased, Fut>(
         &mut self,
-        on_lock_released: impl OnShardLockReleased,
+        on_lock_released: OnReleased,
         etcd_client: &mut Client,
         runtime: &RuntimeRef,
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        OnReleased: FnOnce(ShardId) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
         // Grant the lease.
         let resp = etcd_client
             .lease_grant(self.ttl_sec as i64, None)
@@ -310,13 +315,17 @@ impl ShardLock {
         Ok(())
     }
 
-    async fn keep_lease_alive(
+    async fn keep_lease_alive<OnReleased, Fut>(
         &mut self,
         lease_id: i64,
-        on_lock_released: impl OnShardLockReleased,
+        on_lock_released: OnReleased,
         etcd_client: &mut Client,
         runtime: &RuntimeRef,
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        OnReleased: FnOnce(ShardId) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
         let mut lease = Lease::new(lease_id, Duration::from_secs(self.ttl_sec));
         let (lease_expire_notifier, mut lease_expire_receiver) = oneshot::channel();
         let (keepalive_stop_sender, keepalive_stop_receiver) = oneshot::channel();
@@ -387,11 +396,15 @@ impl ShardLockManager {
     /// Grant lock to the shard.
     ///
     /// If the lock is already granted, return false.
-    pub async fn grant_lock(
+    pub async fn grant_lock<OnReleased, Fut>(
         &self,
         shard_id: u32,
-        on_lock_released: impl OnShardLockReleased,
-    ) -> Result<bool> {
+        on_lock_released: OnReleased,
+    ) -> Result<bool>
+    where
+        OnReleased: FnOnce(ShardId) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
         info!("Try to grant lock for shard:{shard_id}");
         {
             let shard_locks = self.shard_locks.read().await;
