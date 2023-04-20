@@ -74,11 +74,10 @@ impl ClusterImpl {
                     msg: "failed to connect to etcd",
                 })?;
 
-        let shard_lock_key_prefix = format!(
-            "{}/{}/shards",
-            config.etcd_client.root_path, config.meta_client.cluster_name
+        let shard_lock_key_prefix = Self::shard_lock_key_prefix(
+            &config.etcd_client.root_path,
+            &config.meta_client.cluster_name,
         );
-
         let shard_lock_manager = ShardLockManager::new(
             shard_lock_key_prefix,
             node_name,
@@ -135,8 +134,9 @@ impl ClusterImpl {
         self.config.meta_client.lease.0 / 2
     }
 
-    pub fn shard_tables_cache(&self) -> &ShardTablesCache {
-        &self.inner.shard_tables_cache
+    fn shard_lock_key_prefix(root_path: &str, cluster_name: &str) -> String {
+        const SHARD_LOCK_KEY: &str = "shards";
+        format!("{root_path}/{cluster_name}/{SHARD_LOCK_KEY}")
     }
 }
 
@@ -410,5 +410,27 @@ impl Cluster for ClusterImpl {
 
     fn shard_lock_manager(&self) -> ShardLockManagerRef {
         self.shard_lock_manager.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_shard_lock_key_prefix() {
+        let cases = vec![
+            (
+                ("/ceresdb", "defaultCluster"),
+                "/ceresdb/defaultCluster/shards",
+            ),
+            (("/", "defaultCluster"), "/defaultCluster/shards"),
+            (("/", ""), "/shards"),
+        ];
+
+        for ((root_path, cluster_name), expected) in cases {
+            let actual = ClusterImpl::shard_lock_key_prefix(root_path, cluster_name);
+            assert_eq!(actual, expected);
+        }
     }
 }

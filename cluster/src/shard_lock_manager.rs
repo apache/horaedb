@@ -78,7 +78,7 @@ const LOCK_EXPIRE_CHECK_INTERVAL: Duration = Duration::from_millis(200);
 
 pub type ShardLockManagerRef = Arc<ShardLockManager>;
 
-/// Shard lock is implemented based on etcd.
+/// Shard lock manager is implemented based on etcd.
 ///
 /// Only with the lock held, the shard can be operated by this node.
 pub struct ShardLockManager {
@@ -93,10 +93,13 @@ pub struct ShardLockManager {
     shard_locks: Arc<RwLock<HashMap<u32, ShardLock>>>,
 }
 
+/// The lease of the shard lock.
 struct Lease {
+    /// The lease id
     id: i64,
+    /// The time to live of the lease
     ttl: Duration,
-    /// Expired time in milliseconds.
+    /// Expired time in milliseconds
     expired_at: Arc<AtomicU64>,
 
     keep_alive_handle: Option<JoinHandle<()>>,
@@ -119,6 +122,9 @@ impl Lease {
         expired_at_ms <= now
     }
 
+    /// Keep alive the lease once.
+    ///
+    /// Return a new ttl in milliseconds if succeeds.
     async fn keep_alive_once(
         keeper: &mut LeaseKeeper,
         stream: &mut LeaseKeepAliveStream,
@@ -126,12 +132,9 @@ impl Lease {
         keeper.keep_alive().await.context(KeepAlive)?;
         match stream.message().await.context(KeepAlive)? {
             Some(resp) => {
-                // The ttl in the response is in seconds.
+                // The ttl in the response is in seconds, let's convert it into milliseconds.
                 let new_ttl = resp.ttl() as u64 * 1000;
                 let expired_at = common_util::time::current_time_millis() + new_ttl;
-                // debug!("lease keep alive, id:{lease_id}, new_ttl_ms:{new_ttl},
-                // expired_at_ms:{expired_at}"); expired_at_ms.store(expired_at,
-                // Ordering::Relaxed);
                 Ok(expired_at)
             }
             None => {
@@ -169,10 +172,11 @@ impl Lease {
             loop {
                 match Self::keep_alive_once(&mut keeper, &mut stream).await {
                     Ok(new_expired_at) => {
+                        debug!("The lease {lease_id} has been kept alive, new expire time in milliseconds:{new_expired_at}");
                         expired_at.store(new_expired_at, Ordering::Relaxed);
                     }
                     Err(e) => {
-                        error!("failed to keep lease alive, id:{lease_id}, err:{e}");
+                        error!("Failed to keep lease alive, id:{lease_id}, err:{e}");
                         if notifier.send(Err(e)).is_err() {
                             error!("failed to send keepalive failure, lease_id:{lease_id}");
                         }
@@ -202,10 +206,16 @@ impl Lease {
     }
 }
 
+/// Lock for a shard.
+///
+/// The lock is a temporary key in etcd, which is created with a lease.
 pub struct ShardLock {
     shard_id: ShardId,
+    /// The temporary key in etcd
     key: Bytes,
+    /// The value of the key in etcd
     value: Bytes,
+    /// The lease of the lock in etcd
     ttl_sec: u64,
 
     lease_id: Option<i64>,
@@ -217,7 +227,7 @@ impl ShardLock {
     fn new(shard_id: ShardId, key_prefix: &str, value: Bytes, ttl_sec: u64) -> Self {
         Self {
             shard_id,
-            key: Self::format_lock_key(key_prefix, shard_id),
+            key: Self::lock_key(key_prefix, shard_id),
             value,
             ttl_sec,
 
@@ -227,7 +237,7 @@ impl ShardLock {
         }
     }
 
-    fn format_lock_key(key_prefix: &str, shard_id: ShardId) -> Bytes {
+    fn lock_key(key_prefix: &str, shard_id: ShardId) -> Bytes {
         let key = format!("{key_prefix}/{shard_id:0>20}");
         Bytes::from(key)
     }
@@ -459,6 +469,27 @@ impl ShardLockManager {
                 warn!("The lock is not exist, shard_id:{shard_id}");
                 Ok(false)
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_shard_lock_key() {
+        let key_prefix = "/ceresdb/defaultCluster";
+        let cases = vec![
+            (0, "/ceresdb/defaultCluster/00000000000000000000"),
+            (10, "/ceresdb/defaultCluster/00000000000000000010"),
+            (10000, "/ceresdb/defaultCluster/00000000000000010000"),
+            (999999999, "/ceresdb/defaultCluster/00000000000999999999"),
+        ];
+
+        for (shard_id, expected) in cases {
+            let key = ShardLock::lock_key(key_prefix, shard_id);
+            assert_eq!(key, expected);
         }
     }
 }
