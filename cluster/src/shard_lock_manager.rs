@@ -372,12 +372,14 @@ impl ShardLock {
                     }
                     res = &mut lease_expire_receiver => {
                         match res {
-                            Ok(_) => {
+                            Ok(Ok(_)) => {
                                 info!("The lease is revoked in purpose, and no need to do anything, shard_id:{shard_id}");
                             }
-                            Err(e) => {
+                            Ok(Err(e)) => {
                                 error!("The lease of the shard lock is expired, shard_id:{shard_id}, err:{e:?}");
-                                on_lock_expired(shard_id);
+                            }
+                            Err(_) => {
+                                error!("The notifier is closed and nothing to do, shard_id:{shard_id}");
                             }
                         }
                         return
