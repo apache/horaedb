@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! The main entry point to start the server
 
@@ -12,8 +12,11 @@ use clap::{App, Arg};
 use common_util::{panic, toml};
 use log::info;
 
-/// The ip address of current node.
+/// By this environment variable, the address of current node can be overridden.
+/// And it could be domain name or ip address, but no port follows it.
 const NODE_ADDR: &str = "CERESDB_SERVER_ADDR";
+/// By this environment variable, the cluster name of current node can be
+/// overridden.
 const CLUSTER_NAME: &str = "CLUSTER_NAME";
 
 fn fetch_version() -> String {
@@ -34,14 +37,6 @@ fn fetch_version() -> String {
     .map(|(label, value)| format!("{label}: {value}"))
     .collect::<Vec<_>>()
     .join("\n")
-}
-
-// Parse the raw addr and panic if it is invalid.
-fn parse_node_addr_or_fail(raw_addr: &str) -> IpAddr {
-    let socket_addr: IpAddr = raw_addr
-        .parse()
-        .unwrap_or_else(|_| panic!("invalid node addr, raw_addr:{raw_addr}"));
-    socket_addr
 }
 
 fn main() {
@@ -67,8 +62,7 @@ fn main() {
     };
 
     if let Ok(node_addr) = env::var(NODE_ADDR) {
-        let ip = parse_node_addr_or_fail(&node_addr);
-        config.node.addr = ip.to_string();
+        config.node.addr = node_addr;
     }
     if let Ok(cluster) = env::var(CLUSTER_NAME) {
         if let Some(ClusterDeployment::WithMeta(v)) = &mut config.cluster_deployment {

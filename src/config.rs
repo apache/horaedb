@@ -12,6 +12,8 @@ use server::{
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct NodeInfo {
+    /// The address of the ceresdb node. It can be a domain name or an IP
+    /// address without port followed.
     pub addr: String,
     pub zone: String,
     pub idc: String,
