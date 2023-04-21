@@ -211,7 +211,7 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
 
     let shard_tables_cache = ShardTablesCache::default();
     let cluster = {
-        let cluster_impl = ClusterImpl::create(
+        let cluster_impl = ClusterImpl::try_new(
             endpoint,
             shard_tables_cache.clone(),
             meta_client.clone(),

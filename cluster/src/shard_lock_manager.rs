@@ -133,8 +133,8 @@ impl Lease {
         match stream.message().await.context(KeepAlive)? {
             Some(resp) => {
                 // The ttl in the response is in seconds, let's convert it into milliseconds.
-                let new_ttl = resp.ttl() as u64 * 1000;
-                let expired_at = common_util::time::current_time_millis() + new_ttl;
+                let new_ttl_ms = resp.ttl() as u64 * 1000;
+                let expired_at = common_util::time::current_time_millis() + new_ttl_ms;
                 Ok(expired_at)
             }
             None => {
@@ -190,7 +190,7 @@ impl Lease {
                         debug!("Try to keep the lease alive again, id:{lease_id}");
                     },
                     _ = &mut stop_receiver => {
-                        debug!("Stop keeping lease alive, id:{lease_id}");
+                        info!("Stop keeping lease alive, id:{lease_id}");
                         if notifier.send(Ok(())).is_err() {
                             error!("failed to send keepalive stopping message, lease_id:{lease_id}");
                         }
@@ -238,6 +238,7 @@ impl ShardLock {
     }
 
     fn lock_key(key_prefix: &str, shard_id: ShardId) -> Bytes {
+        // The shard id in the key is padded with at most 20 zeros to make it sortable.
         let key = format!("{key_prefix}/{shard_id:0>20}");
         Bytes::from(key)
     }

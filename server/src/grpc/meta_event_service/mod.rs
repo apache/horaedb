@@ -200,8 +200,7 @@ impl HandlerContext {
         let new_ctx = self.clone();
         let on_lock_expired = |shard_id| async move {
             warn!("Shard lock is released, try to close the tables and shard, shard_id:{shard_id}");
-            let close_shard_req = CloseShardRequest { shard_id };
-            let res = handle_close_shard(new_ctx, close_shard_req).await;
+            let res = do_close_shard(&new_ctx, shard_id).await;
             match res {
                 Ok(_) => info!("Close shard success, shard_id:{shard_id}"),
                 Err(e) => error!("Close shard failed, shard_id:{shard_id}, err:{e}"),
@@ -303,10 +302,8 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
     Ok(())
 }
 
-async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> Result<()> {
-    let shard_id = request.shard_id;
-    info!("Handle close shard begins, shard_id:{shard_id:?}");
-
+async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
+    info!("Do close shard begins, shard_id:{shard_id:?}");
     let tables_of_shard =
         ctx.cluster
             .close_shard(shard_id)
@@ -349,13 +346,23 @@ async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> 
 
     // try to close wal region
     ctx.wal_region_closer
-        .close_region(request.shard_id)
+        .close_region(shard_id)
         .await
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
             msg: format!("fail to close wal region, shard_id:{shard_id}"),
         })?;
 
+    info!("Do close shard succeed, shard_id:{shard_id}");
+
+    Ok(())
+}
+
+async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> Result<()> {
+    let shard_id = request.shard_id;
+    info!("Handle close shard begins, shard_id:{shard_id:?}");
+
+    do_close_shard(&ctx, shard_id).await?;
     ctx.release_shard_lock(shard_id).await?;
 
     info!("Handle close shard succeed, shard_id:{shard_id}");

@@ -59,7 +59,7 @@ pub struct ClusterImpl {
 }
 
 impl ClusterImpl {
-    pub async fn create(
+    pub async fn try_new(
         node_name: String,
         shard_tables_cache: ShardTablesCache,
         meta_client: MetaClientRef,

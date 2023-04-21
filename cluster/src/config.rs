@@ -34,7 +34,9 @@ pub struct EtcdClientConfig {
     /// Root path in the etcd used by the ceresdb server
     pub root_path: String,
 
+    /// Timeout to connect to etcd cluster
     pub connect_timeout: ReadableDuration,
+    /// Timeout for each rpc request
     pub rpc_timeout: ReadableDuration,
 
     /// The lease of the shard lock in seconds.
