@@ -16,6 +16,7 @@ use common_types::{
     schema::{RecordSchema, TIMESTAMP_COLUMN, TSID_COLUMN},
 };
 use common_util::error::BoxError;
+use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::debug;
 use prom_remote_api::types::{
@@ -29,7 +30,7 @@ use warp::reject;
 use crate::{
     context::RequestContext,
     proxy::{
-        error::{Error, Internal, InternalNoCause, Result},
+        error::{ErrNoCause, Error, Internal, InternalNoCause, Result},
         grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
         http::query::{QueryRequest, Request},
         Proxy,
@@ -231,10 +232,24 @@ impl Converter {
                 .map(|(_, idx)| batch.column(*idx))
                 .collect::<Vec<_>>();
             for row_idx in 0..batch.num_rows() {
-                let tsid = tsid_col
-                    .datum(row_idx)
-                    .as_u64()
-                    .expect("checked in try_new");
+                let tsid = tsid_col.datum(row_idx).as_u64().context(ErrNoCause {
+                    msg: "value should be non-nullable i64",
+                    code: StatusCode::BAD_REQUEST,
+                })?;
+                let sample = Sample {
+                    timestamp: timestamp_col
+                        .datum(row_idx)
+                        .as_timestamp()
+                        .context(ErrNoCause {
+                            msg: "timestamp should be non-nullable timestamp",
+                            code: StatusCode::BAD_REQUEST,
+                        })?
+                        .as_i64(),
+                    value: value_col.datum(row_idx).as_f64().context(ErrNoCause {
+                        msg: "value should be non-nullable f64",
+                        code: StatusCode::BAD_REQUEST,
+                    })?,
+                };
                 series_by_tsid
                     .entry(tsid)
                     .or_insert_with(|| {
@@ -244,7 +259,9 @@ impl Converter {
                             .enumerate()
                             .map(|(idx, (col_name, _))| {
                                 let col_value = tag_cols[idx].datum(row_idx);
-                                let col_value = col_value.as_str().expect("checked in try_new");
+                                // for null tag value, use empty string instead
+                                let col_value = col_value.as_str().unwrap_or_default();
+
                                 Label {
                                     name: col_name.to_string(),
                                     value: col_value.to_string(),
@@ -262,17 +279,7 @@ impl Converter {
                         }
                     })
                     .samples
-                    .push(Sample {
-                        timestamp: timestamp_col
-                            .datum(row_idx)
-                            .as_timestamp()
-                            .expect("checked in try_new")
-                            .as_i64(),
-                        value: value_col
-                            .datum(row_idx)
-                            .as_f64()
-                            .expect("checked in try_new"),
-                    });
+                    .push(sample);
             }
         }
 
