@@ -33,8 +33,7 @@ test:
 	cd $(DIR); cargo test --workspace -- --test-threads=4
 
 integration-test:
-	# TODO: restore it as `make run` after we fix the clustering integration test. 
-	cd $(DIR)/integration_tests; make run-local
+	cd $(DIR)/integration_tests; make run
 
 # grcov needs build first, then run test
 build-ut:

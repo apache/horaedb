@@ -22,9 +22,10 @@ use ceresdbproto::meta_event::{
     SplitShardResponse,
 };
 use cluster::ClusterRef;
-use common_types::schema::SchemaEncoder;
+use common_types::{schema::SchemaEncoder, table::ShardId};
 use common_util::{error::BoxError, runtime::Runtime, time::InstantExt};
-use log::{error, info};
+use log::{error, info, warn};
+use meta_client::types::ShardInfo;
 use paste::paste;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
@@ -183,6 +184,7 @@ impl<Q: QueryExecutor + 'static> MetaServiceImpl<Q> {
 }
 
 /// Context for handling all kinds of meta event service.
+#[derive(Clone)]
 struct HandlerContext {
     cluster: ClusterRef,
     default_catalog: String,
@@ -192,20 +194,78 @@ struct HandlerContext {
     wal_region_closer: WalRegionCloserRef,
 }
 
+impl HandlerContext {
+    async fn acquire_shard_lock(&self, shard_id: ShardId) -> Result<()> {
+        let lock_mgr = self.cluster.shard_lock_manager();
+        let new_ctx = self.clone();
+        let on_lock_expired = |shard_id| async move {
+            warn!("Shard lock is released, try to close the tables and shard, shard_id:{shard_id}");
+            let close_shard_req = CloseShardRequest { shard_id };
+            let res = handle_close_shard(new_ctx, close_shard_req).await;
+            match res {
+                Ok(_) => info!("Close shard success, shard_id:{shard_id}"),
+                Err(e) => error!("Close shard failed, shard_id:{shard_id}, err:{e}"),
+            }
+        };
+
+        let granted_by_this_call = lock_mgr
+            .grant_lock(shard_id, on_lock_expired)
+            .await
+            .box_err()
+            .context(ErrWithCause {
+                code: StatusCode::Internal,
+                msg: "fail to acquire shard lock",
+            })?;
+
+        if !granted_by_this_call {
+            warn!("Shard lock is already granted, shard_id:{}", shard_id);
+        }
+
+        Ok(())
+    }
+
+    async fn release_shard_lock(&self, shard_id: ShardId) -> Result<()> {
+        let lock_mgr = self.cluster.shard_lock_manager();
+        let revoked_by_this_call =
+            lock_mgr
+                .revoke_lock(shard_id)
+                .await
+                .box_err()
+                .context(ErrWithCause {
+                    code: StatusCode::Internal,
+                    msg: "fail to release shard lock",
+                })?;
+
+        if revoked_by_this_call {
+            warn!("Shard lock is revoked already, shard_id:{}", shard_id);
+        }
+
+        Ok(())
+    }
+}
+
 // TODO: maybe we should encapsulate the logic of handling meta event into a
 // trait, so that we don't need to expose the logic to the meta event service
 // implementation.
 
 async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Result<()> {
-    let tables_of_shard =
-        ctx.cluster
-            .open_shard(&request)
-            .await
-            .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::Internal,
-                msg: "fail to open shards in cluster",
-            })?;
+    info!("Handle open shard begins, request:{request:?}");
+    let shard_info = ShardInfo::from(&request.shard.context(ErrNoCause {
+        code: StatusCode::BadRequest,
+        msg: "shard info is required",
+    })?);
+
+    ctx.acquire_shard_lock(shard_info.id).await?;
+
+    let tables_of_shard = ctx
+        .cluster
+        .open_shard(&shard_info)
+        .await
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: "fail to open shards in cluster",
+        })?;
 
     let catalog_name = &ctx.default_catalog;
     let shard_info = tables_of_shard.shard_info;
@@ -236,13 +296,20 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
         .context(ErrWithCause {
             code: StatusCode::Internal,
             msg: "failed to open shard",
-        })
+        })?;
+
+    info!("Handle open shard success, shard_id:{}", shard_info.id);
+
+    Ok(())
 }
 
 async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> Result<()> {
+    let shard_id = request.shard_id;
+    info!("Handle close shard begins, shard_id:{shard_id:?}");
+
     let tables_of_shard =
         ctx.cluster
-            .close_shard(&request)
+            .close_shard(shard_id)
             .await
             .box_err()
             .context(ErrWithCause {
@@ -268,7 +335,7 @@ async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> 
         engine: ANALYTIC_ENGINE_TYPE.to_string(),
     };
     let opts = CloseOptions {
-        table_engine: ctx.table_engine,
+        table_engine: ctx.table_engine.clone(),
     };
 
     ctx.table_operator
@@ -286,8 +353,13 @@ async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> 
         .await
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to close wal region, shard_id:{}", request.shard_id),
-        })
+            msg: format!("fail to close wal region, shard_id:{shard_id}"),
+        })?;
+
+    ctx.release_shard_lock(shard_id).await?;
+
+    info!("Handle close shard succeed, shard_id:{shard_id}");
+    Ok(())
 }
 
 async fn handle_create_table_on_shard(

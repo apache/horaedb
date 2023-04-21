@@ -200,6 +200,10 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
         idc: config.node.idc.clone(),
         binary_version: config.node.binary_version.clone(),
     };
+
+    info!("Build ceresdb with node meta info:{node_meta_info:?}");
+
+    let endpoint = node_meta_info.endpoint();
     let meta_client =
         meta_impl::build_meta_client(cluster_config.meta_client.clone(), node_meta_info)
             .await
@@ -207,12 +211,14 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
 
     let shard_tables_cache = ShardTablesCache::default();
     let cluster = {
-        let cluster_impl = ClusterImpl::new(
+        let cluster_impl = ClusterImpl::create(
+            endpoint,
             shard_tables_cache.clone(),
             meta_client.clone(),
             cluster_config.clone(),
             runtimes.meta_runtime.clone(),
         )
+        .await
         .unwrap();
         Arc::new(cluster_impl)
     };

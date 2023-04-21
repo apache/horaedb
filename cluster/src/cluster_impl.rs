@@ -8,15 +8,17 @@ use std::{
 use async_trait::async_trait;
 use ceresdbproto::{
     meta_event::{
-        CloseShardRequest, CloseTableOnShardRequest, CreateTableOnShardRequest,
-        DropTableOnShardRequest, OpenShardRequest, OpenTableOnShardRequest, UpdateShardInfo,
+        CloseTableOnShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest,
+        OpenTableOnShardRequest, UpdateShardInfo,
     },
     meta_service::TableInfo as TableInfoPb,
 };
+use common_types::table::ShardId;
 use common_util::{
     error::BoxError,
     runtime::{JoinHandle, Runtime},
 };
+use etcd_client::ConnectOptions;
 use log::{error, info, warn};
 use meta_client::{
     types::{
@@ -32,9 +34,13 @@ use tokio::{
 };
 
 use crate::{
-    config::ClusterConfig, shard_tables_cache::ShardTablesCache, topology::ClusterTopology,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, Internal, MetaClientFailure, OpenShard,
-    OpenShardWithCause, Result, ShardNotFound, TableNotFound,
+    config::ClusterConfig,
+    shard_lock_manager::{ShardLockManager, ShardLockManagerRef},
+    shard_tables_cache::ShardTablesCache,
+    topology::ClusterTopology,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause, Internal,
+    InvalidArguments, MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound,
+    TableNotFound,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -49,23 +55,43 @@ pub struct ClusterImpl {
     config: ClusterConfig,
     heartbeat_handle: Mutex<Option<JoinHandle<()>>>,
     stop_heartbeat_tx: Mutex<Option<Sender<()>>>,
+    shard_lock_manager: ShardLockManagerRef,
 }
 
 impl ClusterImpl {
-    pub fn new(
+    pub async fn create(
+        node_name: String,
         shard_tables_cache: ShardTablesCache,
         meta_client: MetaClientRef,
         config: ClusterConfig,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
-        let inner = Inner::new(shard_tables_cache, meta_client)?;
+        let inner = Arc::new(Inner::new(shard_tables_cache, meta_client)?);
+        let connect_options = ConnectOptions::from(&config.etcd_client);
+        let etcd_client =
+            etcd_client::Client::connect(&config.etcd_client.server_addrs, Some(connect_options))
+                .await
+                .context(EtcdClientFailureWithCause {
+                    msg: "failed to connect to etcd",
+                })?;
 
+        let shard_lock_key_prefix = Self::shard_lock_key_prefix(
+            &config.etcd_client.root_path,
+            &config.meta_client.cluster_name,
+        )?;
+        let shard_lock_manager = ShardLockManager::new(
+            shard_lock_key_prefix,
+            node_name,
+            etcd_client,
+            runtime.clone(),
+        );
         Ok(Self {
-            inner: Arc::new(inner),
+            inner,
             runtime,
             config,
             heartbeat_handle: Mutex::new(None),
             stop_heartbeat_tx: Mutex::new(None),
+            shard_lock_manager: Arc::new(shard_lock_manager),
         })
     }
 
@@ -109,8 +135,23 @@ impl ClusterImpl {
         self.config.meta_client.lease.0 / 2
     }
 
-    pub fn shard_tables_cache(&self) -> &ShardTablesCache {
-        &self.inner.shard_tables_cache
+    fn shard_lock_key_prefix(root_path: &str, cluster_name: &str) -> Result<String> {
+        ensure!(
+            root_path.starts_with('/'),
+            InvalidArguments {
+                msg: "root_path is required to start with /",
+            }
+        );
+
+        ensure!(
+            !cluster_name.is_empty(),
+            InvalidArguments {
+                msg: "cluster_name is required non-empty",
+            }
+        );
+
+        const SHARD_LOCK_KEY: &str = "shards";
+        Ok(format!("{root_path}/{cluster_name}/{SHARD_LOCK_KEY}"))
     }
 }
 
@@ -187,12 +228,7 @@ impl Inner {
         Ok(resp)
     }
 
-    async fn open_shard(&self, req: &OpenShardRequest) -> Result<TablesOfShard> {
-        let shard_info = req.shard.as_ref().context(OpenShard {
-            shard_id: 0u32,
-            msg: "missing shard info in the request",
-        })?;
-
+    async fn open_shard(&self, shard_info: &ShardInfo) -> Result<TablesOfShard> {
         if let Some(tables_of_shard) = self.shard_tables_cache.get(shard_info.id) {
             if tables_of_shard.shard_info.version == shard_info.version {
                 info!(
@@ -245,11 +281,11 @@ impl Inner {
         Ok(tables_of_shard)
     }
 
-    fn close_shard(&self, req: &CloseShardRequest) -> Result<TablesOfShard> {
+    fn close_shard(&self, shard_id: ShardId) -> Result<TablesOfShard> {
         self.shard_tables_cache
-            .remove(req.shard_id)
+            .remove(shard_id)
             .with_context(|| ShardNotFound {
-                msg: format!("close non-existent shard, shard_id:{}", req.shard_id),
+                msg: format!("close non-existent shard, shard_id:{shard_id}"),
             })
     }
 
@@ -286,7 +322,7 @@ impl Inner {
 
         self.shard_tables_cache.try_insert_table_to_shard(
             update_shard_info.prev_version,
-            ShardInfo::from(curr_shard_info),
+            ShardInfo::from(&curr_shard_info),
             TableInfo::try_from(table_info)
                 .box_err()
                 .context(Internal {
@@ -312,7 +348,7 @@ impl Inner {
 
         self.shard_tables_cache.try_remove_table_from_shard(
             update_shard_info.prev_version,
-            ShardInfo::from(curr_shard_info),
+            ShardInfo::from(&curr_shard_info),
             TableInfo::try_from(table_info)
                 .box_err()
                 .context(Internal {
@@ -355,12 +391,12 @@ impl Cluster for ClusterImpl {
         Ok(())
     }
 
-    async fn open_shard(&self, req: &OpenShardRequest) -> Result<TablesOfShard> {
-        self.inner.open_shard(req).await
+    async fn open_shard(&self, shard_info: &ShardInfo) -> Result<TablesOfShard> {
+        self.inner.open_shard(shard_info).await
     }
 
-    async fn close_shard(&self, req: &CloseShardRequest) -> Result<TablesOfShard> {
-        self.inner.close_shard(req)
+    async fn close_shard(&self, shard_id: ShardId) -> Result<TablesOfShard> {
+        self.inner.close_shard(shard_id)
     }
 
     async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()> {
@@ -385,5 +421,35 @@ impl Cluster for ClusterImpl {
 
     async fn fetch_nodes(&self) -> Result<ClusterNodesResp> {
         self.inner.fetch_nodes().await
+    }
+
+    fn shard_lock_manager(&self) -> ShardLockManagerRef {
+        self.shard_lock_manager.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_shard_lock_key_prefix() {
+        let cases = vec![
+            (
+                ("/ceresdb", "defaultCluster"),
+                Some("/ceresdb/defaultCluster/shards"),
+            ),
+            (("", "defaultCluster"), None),
+            (("vvv", "defaultCluster"), None),
+            (("/x", ""), None),
+        ];
+
+        for ((root_path, cluster_name), expected) in cases {
+            let actual = ClusterImpl::shard_lock_key_prefix(root_path, cluster_name);
+            match expected {
+                Some(expected) => assert_eq!(actual.unwrap(), expected),
+                None => assert!(actual.is_err()),
+            }
+        }
     }
 }
