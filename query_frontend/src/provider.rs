@@ -6,6 +6,7 @@ use std::{any::Any, borrow::Cow, cell::RefCell, collections::HashMap, sync::Arc}
 
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
+use common_util::error::BoxError;
 use datafusion::{
     catalog::{catalog::CatalogProvider, schema::SchemaProvider},
     common::DataFusionError,
@@ -44,6 +45,18 @@ pub enum Error {
         source: Box<catalog::schema::Error>,
     },
 
+    #[snafu(display(
+        "Failed to get all tables, catalog_name:{}, schema_name:{}, err:{}",
+        catalog_name,
+        schema_name,
+        source
+    ))]
+    GetAllTables {
+        catalog_name: String,
+        schema_name: String,
+        source: Box<catalog::schema::Error>,
+    },
+
     #[snafu(display("Failed to find udf, err:{}", source))]
     FindUdf {
         source: df_operator::registry::Error,
@@ -72,6 +85,9 @@ pub trait MetaProvider {
 
     /// Get udaf by name.
     fn aggregate_udf(&self, name: &str) -> Result<Option<AggregateUdf>>;
+
+    /// Return all table names.
+    fn all_tables(&self) -> Result<Vec<TableRef>>;
 }
 
 /// We use an adapter instead of using [catalog::Manager] directly, because
@@ -137,6 +153,37 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
 
     fn aggregate_udf(&self, name: &str) -> Result<Option<AggregateUdf>> {
         self.function_registry.find_udaf(name).context(FindUdf)
+    }
+
+    // TODO: when support not only default catalog and schema, we should refactor
+    // the tables collecting procedure.
+    fn all_tables(&self) -> Result<Vec<TableRef>> {
+        let catalog = match self
+            .manager
+            .catalog_by_name(self.default_catalog)
+            .with_context(|| FindCatalog {
+                name: self.default_catalog,
+            })? {
+            Some(catalog) => catalog,
+            None => return Ok(Vec::default()),
+        };
+
+        let schema = match catalog
+            .schema_by_name(self.default_schema)
+            .context(FindSchema {
+                name: self.default_schema,
+            })? {
+            Some(schema) => schema,
+            None => return Ok(Vec::default()),
+        };
+
+        schema
+            .all_tables()
+            .map_err(|e| Box::new(e))
+            .with_context(|| GetAllTables {
+                catalog_name: self.default_catalog,
+                schema_name: self.default_schema,
+            })
     }
 }
 
@@ -218,6 +265,10 @@ impl<'a, P: MetaProvider> MetaProvider for ContextProviderAdapter<'a, P> {
 
     fn aggregate_udf(&self, name: &str) -> Result<Option<AggregateUdf>> {
         self.meta_provider.aggregate_udf(name)
+    }
+
+    fn all_tables(&self) -> Result<Vec<TableRef>> {
+        self.meta_provider.all_tables()
     }
 }
 
