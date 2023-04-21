@@ -36,6 +36,9 @@ pub mod topology;
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
 pub enum Error {
+    #[snafu(display("Invalid arguments, msg:{msg}.\nBacktrace:{backtrace}"))]
+    InvalidArguments { msg: String, backtrace: Backtrace },
+
     #[snafu(display("Internal error, msg:{msg}, err:{source}"))]
     Internal { msg: String, source: GenericError },
 

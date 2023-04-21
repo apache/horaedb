@@ -39,7 +39,8 @@ use crate::{
     shard_tables_cache::ShardTablesCache,
     topology::ClusterTopology,
     Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause, Internal,
-    MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound, TableNotFound,
+    InvalidArguments, MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound,
+    TableNotFound,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -77,7 +78,7 @@ impl ClusterImpl {
         let shard_lock_key_prefix = Self::shard_lock_key_prefix(
             &config.etcd_client.root_path,
             &config.meta_client.cluster_name,
-        );
+        )?;
         let shard_lock_manager = ShardLockManager::new(
             shard_lock_key_prefix,
             node_name,
@@ -134,9 +135,23 @@ impl ClusterImpl {
         self.config.meta_client.lease.0 / 2
     }
 
-    fn shard_lock_key_prefix(root_path: &str, cluster_name: &str) -> String {
+    fn shard_lock_key_prefix(root_path: &str, cluster_name: &str) -> Result<String> {
+        ensure!(
+            root_path.starts_with('/'),
+            InvalidArguments {
+                msg: "root_path is required to start with /",
+            }
+        );
+
+        ensure!(
+            !cluster_name.is_empty(),
+            InvalidArguments {
+                msg: "cluster_name is required non-empty",
+            }
+        );
+
         const SHARD_LOCK_KEY: &str = "shards";
-        format!("{root_path}/{cluster_name}/{SHARD_LOCK_KEY}")
+        Ok(format!("{root_path}/{cluster_name}/{SHARD_LOCK_KEY}"))
     }
 }
 
@@ -422,15 +437,19 @@ mod tests {
         let cases = vec![
             (
                 ("/ceresdb", "defaultCluster"),
-                "/ceresdb/defaultCluster/shards",
+                Some("/ceresdb/defaultCluster/shards"),
             ),
-            (("/", "defaultCluster"), "/defaultCluster/shards"),
-            (("/", ""), "/shards"),
+            (("", "defaultCluster"), None),
+            (("vvv", "defaultCluster"), None),
+            (("/x", ""), None),
         ];
 
         for ((root_path, cluster_name), expected) in cases {
             let actual = ClusterImpl::shard_lock_key_prefix(root_path, cluster_name);
-            assert_eq!(actual, expected);
+            match expected {
+                Some(expected) => assert_eq!(actual.unwrap(), expected),
+                None => assert!(actual.is_err()),
+            }
         }
     }
 }
