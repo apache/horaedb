@@ -38,7 +38,8 @@ fn test_table_compact_current_segment<T: EngineBuildContext>(engine_context: T) 
         let mut expect_rows = Vec::new();
 
         let start_ms = test_ctx.start_ms();
-        // Write more than ensure compaction will be triggered.
+        // Write max_threshold*2 sst to ensure level0->level1, level1->level1 compaction
+        // will be triggered.
         for offset in 0..default_opts.max_threshold as i64 * 2 {
             let rows = [
                 (
@@ -86,6 +87,8 @@ fn test_table_compact_current_segment<T: EngineBuildContext>(engine_context: T) 
             &expect_rows,
         )
         .await;
+
+        common_util::tests::init_log_for_test();
 
         // Trigger a compaction.
         test_ctx.compact_table(test_table1).await;

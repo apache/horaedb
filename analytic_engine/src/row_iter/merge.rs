@@ -34,8 +34,7 @@ use crate::{
     space::SpaceId,
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReadOptions},
-        file::FileHandle,
-        manager::MAX_LEVEL,
+        file::{FileHandle, Level, SST_LEVEL_NUM},
     },
     table::version::{MemTableVec, SamplingMemTable},
 };
@@ -127,7 +126,7 @@ impl<'a> MergeBuilder<'a> {
             config,
             sampling_mem: None,
             memtables: Vec::new(),
-            ssts: vec![Vec::new(); MAX_LEVEL],
+            ssts: vec![Vec::new(); SST_LEVEL_NUM],
         }
     }
 
@@ -151,8 +150,8 @@ impl<'a> MergeBuilder<'a> {
     }
 
     /// Returns file handles in `level`, panic if level >= MAX_LEVEL
-    pub fn mut_ssts_of_level(&mut self, level: u16) -> &mut Vec<FileHandle> {
-        &mut self.ssts[usize::from(level)]
+    pub fn mut_ssts_of_level(&mut self, level: Level) -> &mut Vec<FileHandle> {
+        &mut self.ssts[level.as_usize()]
     }
 
     pub async fn build(self) -> Result<MergeIterator> {

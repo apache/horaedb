@@ -58,11 +58,19 @@ pub enum Error {
         source: crate::compaction::scheduler::Error,
     },
 
-    #[snafu(display("Failed to flush table manually, table:{}, err:{}", table, source))]
-    ManualFlush { table: String, source: GenericError },
+    #[snafu(display("Failed to {} table manually, table:{}, err:{}", op, table, source))]
+    ManualOp {
+        op: String,
+        table: String,
+        source: GenericError,
+    },
 
-    #[snafu(display("Failed to receive flush result, table:{}, err:{}", table, source))]
-    RecvFlushResult { table: String, source: RecvError },
+    #[snafu(display("Failed to receive {} result, table:{}, err:{}", op, table, source))]
+    RecvManualOpResult {
+        op: String,
+        table: String,
+        source: RecvError,
+    },
 }
 
 define_result!(Error);
@@ -194,25 +202,29 @@ impl Instance {
             .schedule_flush(flush_scheduler, table_data, flush_opts)
             .await
             .box_err()
-            .context(ManualFlush {
+            .context(ManualOp {
+                op: "flush",
                 table: &table_data.name,
             })?;
 
         if let Some(rx) = rx_opt {
             rx.await
-                .context(RecvFlushResult {
+                .context(RecvManualOpResult {
+                    op: "flush",
                     table: &table_data.name,
                 })?
                 .box_err()
-                .context(ManualFlush {
+                .context(ManualOp {
+                    op: "flush",
                     table: &table_data.name,
                 })?;
         }
         Ok(())
     }
 
+    // This method will wait until compaction finished.
     pub async fn manual_compact_table(&self, table_data: &TableDataRef) -> Result<()> {
-        let request = TableCompactionRequest::no_waiter(table_data.clone());
+        let (request, rx) = TableCompactionRequest::new(table_data.clone());
         let succeed = self
             .compaction_scheduler
             .schedule_table_compaction(request)
@@ -221,7 +233,16 @@ impl Instance {
             error!("Failed to schedule compaction, table:{}", table_data.name);
         }
 
-        Ok(())
+        rx.await
+            .context(RecvManualOpResult {
+                op: "compact",
+                table: &table_data.name,
+            })?
+            .box_err()
+            .context(ManualOp {
+                op: "compact",
+                table: &table_data.name,
+            })
     }
 }
 

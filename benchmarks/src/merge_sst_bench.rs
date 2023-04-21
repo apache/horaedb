@@ -18,7 +18,7 @@ use analytic_engine::{
             FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
             ScanOptions, SstReadOptions,
         },
-        file::{FileHandle, FilePurgeQueue, Request},
+        file::{FileHandle, FilePurgeQueue, Level, Request},
         meta_data::cache::MetaCacheRef,
     },
     table::sst_util,
@@ -146,7 +146,8 @@ impl MergeSstBench {
         });
 
         builder
-            .mut_ssts_of_level(0)
+            // TODO: make level configurable
+            .mut_ssts_of_level(Level::MIN)
             .extend_from_slice(&self.file_handles);
 
         self.runtime.block_on(async {

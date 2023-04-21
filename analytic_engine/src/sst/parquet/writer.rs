@@ -12,9 +12,11 @@ use object_store::{ObjectStoreRef, Path};
 use snafu::ResultExt;
 use tokio::io::AsyncWrite;
 
+use super::meta_data::RowGroupFilter;
 use crate::{
     sst::{
         factory::{ObjectStorePickerRef, SstWriteOptions},
+        file::Level,
         parquet::{
             encoding::ParquetEncoder,
             meta_data::{ParquetFilter, ParquetMetaData, RowGroupFilterBuilder},
@@ -32,6 +34,7 @@ use crate::{
 pub struct ParquetSstWriter<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
+    level: Level,
     hybrid_encoding: bool,
     /// The storage where the data is persist.
     store: &'a ObjectStoreRef,
@@ -44,6 +47,7 @@ pub struct ParquetSstWriter<'a> {
 impl<'a> ParquetSstWriter<'a> {
     pub fn new(
         path: &'a Path,
+        level: Level,
         hybrid_encoding: bool,
         store_picker: &'a ObjectStorePickerRef,
         options: &SstWriteOptions,
@@ -51,6 +55,7 @@ impl<'a> ParquetSstWriter<'a> {
         let store = store_picker.default_store();
         Self {
             path,
+            level,
             hybrid_encoding,
             store,
             num_rows_per_row_group: options.num_rows_per_row_group,
@@ -71,9 +76,7 @@ struct RecordBatchGroupWriter {
     num_rows_per_row_group: usize,
     max_buffer_size: usize,
     compression: Compression,
-    /// The filter for the parquet file, and it will be updated during
-    /// generating the parquet file.
-    parquet_filter: ParquetFilter,
+    level: Level,
 }
 
 impl RecordBatchGroupWriter {
@@ -139,33 +142,29 @@ impl RecordBatchGroupWriter {
         Ok(curr_row_group)
     }
 
-    /// Build the parquet filter for the given `row_group`, and then update it
-    /// into `self.parquet_filter`.
-    fn update_parquet_filter(&mut self, row_group_batch: &[RecordBatchWithKey]) -> Result<()> {
-        // TODO: support filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
-        if self.hybrid_encoding {
-            return Ok(());
-        }
+    /// Build the parquet filter for the given `row_group`.
+    fn build_row_group_filter(
+        &self,
+        row_group_batch: &[RecordBatchWithKey],
+    ) -> Result<RowGroupFilter> {
+        let mut builder = RowGroupFilterBuilder::with_num_columns(row_group_batch[0].num_columns());
 
-        let row_group_filter = {
-            let mut builder =
-                RowGroupFilterBuilder::with_num_columns(row_group_batch[0].num_columns());
-
-            for partial_batch in row_group_batch {
-                for (col_idx, column) in partial_batch.columns().iter().enumerate() {
-                    for row in 0..column.num_rows() {
-                        let datum = column.datum(row);
-                        let bytes = datum.to_bytes();
-                        builder.add_key(col_idx, &bytes);
-                    }
+        for partial_batch in row_group_batch {
+            for (col_idx, column) in partial_batch.columns().iter().enumerate() {
+                for row in 0..column.num_rows() {
+                    let datum = column.datum(row);
+                    let bytes = datum.to_bytes();
+                    builder.add_key(col_idx, &bytes);
                 }
             }
+        }
 
-            builder.build().box_err().context(BuildParquetFilter)?
-        };
+        builder.build().box_err().context(BuildParquetFilter)
+    }
 
-        self.parquet_filter.push_row_group_filter(row_group_filter);
-        Ok(())
+    fn need_custom_filter(&self) -> bool {
+        // TODO: support filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
+        !self.hybrid_encoding && !self.level.is_min()
     }
 
     async fn write_all<W: AsyncWrite + Send + Unpin + 'static>(mut self, sink: W) -> Result<usize> {
@@ -183,6 +182,11 @@ impl RecordBatchGroupWriter {
         )
         .box_err()
         .context(EncodeRecordBatch)?;
+        let mut parquet_filter = if self.need_custom_filter() {
+            None
+        } else {
+            Some(ParquetFilter::default())
+        };
 
         loop {
             let row_group = self.fetch_next_row_group(&mut prev_record_batch).await?;
@@ -190,7 +194,9 @@ impl RecordBatchGroupWriter {
                 break;
             }
 
-            self.update_parquet_filter(&row_group)?;
+            if let Some(filter) = &mut parquet_filter {
+                filter.push_row_group_filter(self.build_row_group_filter(&row_group)?);
+            }
 
             let num_batches = row_group.len();
             for record_batch in row_group {
@@ -210,7 +216,7 @@ impl RecordBatchGroupWriter {
 
         let parquet_meta_data = {
             let mut parquet_meta_data = ParquetMetaData::from(self.meta_data);
-            parquet_meta_data.parquet_filter = Some(self.parquet_filter);
+            parquet_meta_data.parquet_filter = parquet_filter;
             parquet_meta_data
         };
         parquet_encoder
@@ -284,7 +290,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             max_buffer_size: self.max_buffer_size,
             compression: self.compression,
             meta_data: meta.clone(),
-            parquet_filter: ParquetFilter::default(),
+            level: self.level,
         };
 
         let (aborter, sink) =
@@ -412,7 +418,12 @@ mod tests {
             }));
 
             let mut writer = sst_factory
-                .create_writer(&sst_write_options, &sst_file_path, &store_picker)
+                .create_writer(
+                    &sst_write_options,
+                    &sst_file_path,
+                    &store_picker,
+                    Level::MAX,
+                )
                 .await
                 .unwrap();
             let sst_info = writer
@@ -541,7 +552,7 @@ mod tests {
                 schema,
             },
             max_buffer_size: 0,
-            parquet_filter: ParquetFilter::default(),
+            level: Level::default(),
         };
 
         let mut prev_record_batch = None;

@@ -46,7 +46,7 @@ use crate::{
     },
     sst::{
         factory::{self, ReadFrequency, ScanOptions, SstReadOptions, SstWriteOptions},
-        file::FileMeta,
+        file::{FileMeta, Level},
         meta_data::SstMetaReader,
         writer::{MetaData, RecordBatchStream},
     },
@@ -387,7 +387,10 @@ impl FlushTask {
             let file = self.dump_normal_memtable(request_id, mem).await?;
             if let Some(file) = file {
                 let sst_size = file.size;
-                files_to_level0.push(AddFile { level: 0, file });
+                files_to_level0.push(AddFile {
+                    level: Level::MIN,
+                    file,
+                });
 
                 // Set flushed sequence to max of the last_sequence of memtables.
                 flushed_sequence = cmp::max(flushed_sequence, mem.last_sequence());
@@ -516,7 +519,12 @@ impl FlushTask {
             let handler = self.runtime.spawn(async move {
                 let mut writer = store
                     .sst_factory
-                    .create_writer(&sst_write_options, &sst_file_path, store.store_picker())
+                    .create_writer(
+                        &sst_write_options,
+                        &sst_file_path,
+                        store.store_picker(),
+                        Level::MIN,
+                    )
                     .await
                     .context(CreateSstWriter {
                         storage_format_hint,
@@ -572,7 +580,7 @@ impl FlushTask {
         for (idx, info_and_meta) in info_and_metas.into_iter().enumerate() {
             let (sst_info, sst_meta) = info_and_meta?;
             files_to_level0.push(AddFile {
-                level: 0,
+                level: Level::MIN,
                 file: FileMeta {
                     id: file_ids[idx],
                     size: sst_info.file_size as u64,
@@ -628,6 +636,7 @@ impl FlushTask {
                 &sst_write_options,
                 &sst_file_path,
                 self.space_store.store_picker(),
+                Level::MIN,
             )
             .await
             .context(CreateSstWriter {
@@ -853,7 +862,12 @@ impl SpaceStore {
 
         let mut sst_writer = self
             .sst_factory
-            .create_writer(sst_write_options, &sst_file_path, self.store_picker())
+            .create_writer(
+                sst_write_options,
+                &sst_file_path,
+                self.store_picker(),
+                input.output_level,
+            )
             .await
             .context(CreateSstWriter {
                 storage_format_hint: sst_write_options.storage_format_hint,

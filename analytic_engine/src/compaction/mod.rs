@@ -432,6 +432,16 @@ pub struct TableCompactionRequest {
 }
 
 impl TableCompactionRequest {
+    pub fn new(table_data: TableDataRef) -> (Self, oneshot::Receiver<WaitResult<()>>) {
+        let (tx, rx) = oneshot::channel::<WaitResult<()>>();
+        let req = Self {
+            table_data,
+            waiter: Some(tx),
+        };
+
+        (req, rx)
+    }
+
     pub fn no_waiter(table_data: TableDataRef) -> Self {
         TableCompactionRequest {
             table_data,

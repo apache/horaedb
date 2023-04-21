@@ -43,7 +43,48 @@ pub enum Error {
 
 define_result!(Error);
 
-pub type Level = u16;
+pub const SST_LEVEL_NUM: usize = 2;
+
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Level(u16);
+
+impl Level {
+    // Currently there are only two levels: 0, 1.
+    pub const MAX: Self = Self(1);
+    pub const MIN: Self = Self(0);
+
+    pub fn next(&self) -> Self {
+        Self::MAX.0.min(self.0 + 1).into()
+    }
+
+    pub fn is_min(&self) -> bool {
+        self == &Self::MIN
+    }
+
+    pub fn as_usize(&self) -> usize {
+        self.0 as usize
+    }
+
+    pub fn as_u32(&self) -> u32 {
+        self.0 as u32
+    }
+
+    pub fn as_u16(&self) -> u16 {
+        self.0
+    }
+}
+
+impl From<u16> for Level {
+    fn from(value: u16) -> Self {
+        Self(value)
+    }
+}
+
+impl fmt::Display for Level {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 // TODO(yingwen): Order or split file by time range to speed up filter (even in
 //  level 0).
@@ -55,7 +96,7 @@ pub struct LevelHandler {
 }
 
 impl LevelHandler {
-    pub fn new(level: u16) -> Self {
+    pub fn new(level: Level) -> Self {
         Self {
             level,
             files: FileHandleSet::default(),
@@ -72,11 +113,7 @@ impl LevelHandler {
     }
 
     pub fn pick_ssts(&self, time_range: TimeRange) -> Vec<FileHandle> {
-        if self.level == 0 {
-            self.files.files_by_time_range(time_range)
-        } else {
-            Vec::new()
-        }
+        self.files.files_by_time_range(time_range)
     }
 
     #[inline]
