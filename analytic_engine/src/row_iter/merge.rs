@@ -34,7 +34,7 @@ use crate::{
     space::SpaceId,
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReadOptions},
-        file::{FileHandle, Level},
+        file::{FileHandle, Level, SST_LEVEL_NUM},
     },
     table::version::{MemTableVec, SamplingMemTable},
 };
@@ -126,7 +126,7 @@ impl<'a> MergeBuilder<'a> {
             config,
             sampling_mem: None,
             memtables: Vec::new(),
-            ssts: vec![Vec::new(); Level::TOTAL_NUM],
+            ssts: vec![Vec::new(); SST_LEVEL_NUM],
         }
     }
 

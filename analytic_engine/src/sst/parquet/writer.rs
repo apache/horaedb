@@ -142,29 +142,24 @@ impl RecordBatchGroupWriter {
         Ok(curr_row_group)
     }
 
-    /// Build the parquet filter for the given `row_group`
+    /// Build the parquet filter for the given `row_group`.
     fn build_row_group_filter(
         &self,
         row_group_batch: &[RecordBatchWithKey],
     ) -> Result<RowGroupFilter> {
-        let row_group_filter = {
-            let mut builder =
-                RowGroupFilterBuilder::with_num_columns(row_group_batch[0].num_columns());
+        let mut builder = RowGroupFilterBuilder::with_num_columns(row_group_batch[0].num_columns());
 
-            for partial_batch in row_group_batch {
-                for (col_idx, column) in partial_batch.columns().iter().enumerate() {
-                    for row in 0..column.num_rows() {
-                        let datum = column.datum(row);
-                        let bytes = datum.to_bytes();
-                        builder.add_key(col_idx, &bytes);
-                    }
+        for partial_batch in row_group_batch {
+            for (col_idx, column) in partial_batch.columns().iter().enumerate() {
+                for row in 0..column.num_rows() {
+                    let datum = column.datum(row);
+                    let bytes = datum.to_bytes();
+                    builder.add_key(col_idx, &bytes);
                 }
             }
+        }
 
-            builder.build().box_err().context(BuildParquetFilter)?
-        };
-
-        Ok(row_group_filter)
+        builder.build().box_err().context(BuildParquetFilter)
     }
 
     fn need_custom_filter(&self) -> bool {

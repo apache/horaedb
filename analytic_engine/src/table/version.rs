@@ -28,7 +28,7 @@ use crate::{
     memtable::{self, key::KeySequence, MemTableRef, PutContext},
     sampler::{DefaultSampler, SamplerRef},
     sst::{
-        file::{FileHandle, FilePurgeQueue, Level},
+        file::{FileHandle, FilePurgeQueue, SST_LEVEL_NUM},
         manager::{FileId, LevelsController},
     },
     table::{
@@ -487,7 +487,7 @@ impl Default for ReadView {
         Self {
             sampling_mem: None,
             memtables: Vec::new(),
-            leveled_ssts: vec![Vec::new(); Level::TOTAL_NUM],
+            leveled_ssts: vec![Vec::new(); SST_LEVEL_NUM],
         }
     }
 }
@@ -696,7 +696,7 @@ impl TableVersion {
     pub fn pick_read_view(&self, time_range: TimeRange) -> ReadView {
         let mut sampling_mem = None;
         let mut memtables = MemTableVec::new();
-        let mut leveled_ssts = vec![Vec::new(); Level::TOTAL_NUM];
+        let mut leveled_ssts = vec![Vec::new(); SST_LEVEL_NUM];
 
         {
             // Pick memtables for read.

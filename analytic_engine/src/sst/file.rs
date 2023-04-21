@@ -43,6 +43,8 @@ pub enum Error {
 
 define_result!(Error);
 
+pub const SST_LEVEL_NUM: usize = 2;
+
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Level(u16);
 
@@ -50,7 +52,6 @@ impl Level {
     // Currently there are only two levels: 0, 1.
     pub const MAX: Self = Self(1);
     pub const MIN: Self = Self(0);
-    pub const TOTAL_NUM: usize = 2;
 
     pub fn next(&self) -> Self {
         Self::MAX.0.min(self.0 + 1).into()
