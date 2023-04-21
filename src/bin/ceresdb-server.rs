@@ -2,7 +2,7 @@
 
 //! The main entry point to start the server
 
-use std::{env, net::IpAddr};
+use std::env;
 
 use ceresdb::{
     config::{ClusterDeployment, Config},
