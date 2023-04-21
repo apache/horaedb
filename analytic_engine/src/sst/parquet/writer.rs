@@ -146,12 +146,7 @@ impl RecordBatchGroupWriter {
     fn build_row_group_filter(
         &self,
         row_group_batch: &[RecordBatchWithKey],
-    ) -> Result<Option<RowGroupFilter>> {
-        // TODO: support filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
-        if self.hybrid_encoding {
-            return Ok(None);
-        }
-
+    ) -> Result<RowGroupFilter> {
         let row_group_filter = {
             let mut builder =
                 RowGroupFilterBuilder::with_num_columns(row_group_batch[0].num_columns());
@@ -169,7 +164,12 @@ impl RecordBatchGroupWriter {
             builder.build().box_err().context(BuildParquetFilter)?
         };
 
-        Ok(Some(row_group_filter))
+        Ok(row_group_filter)
+    }
+
+    fn need_custom_filter(&self) -> bool {
+        // TODO: support filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
+        !self.hybrid_encoding && !self.level.is_min()
     }
 
     async fn write_all<W: AsyncWrite + Send + Unpin + 'static>(mut self, sink: W) -> Result<usize> {
@@ -187,7 +187,7 @@ impl RecordBatchGroupWriter {
         )
         .box_err()
         .context(EncodeRecordBatch)?;
-        let mut parquet_filter = if self.level.is_min() {
+        let mut parquet_filter = if self.need_custom_filter() {
             None
         } else {
             Some(ParquetFilter::default())
@@ -200,9 +200,7 @@ impl RecordBatchGroupWriter {
             }
 
             if let Some(filter) = &mut parquet_filter {
-                if let Some(row_group_filter) = self.build_row_group_filter(&row_group)? {
-                    filter.push_row_group_filter(row_group_filter);
-                }
+                filter.push_row_group_filter(self.build_row_group_filter(&row_group)?);
             }
 
             let num_batches = row_group.len();

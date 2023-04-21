@@ -755,7 +755,6 @@ impl TableVersion {
         let controller = &inner.levels_controller;
         let files = controller
             .levels()
-            .into_iter()
             .flat_map(|level| {
                 let ssts = controller.iter_ssts_at_level(level);
                 ssts.map(move |file| {

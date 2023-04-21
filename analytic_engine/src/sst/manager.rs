@@ -70,9 +70,8 @@ impl LevelsController {
         level_handler.remove_ssts(file_ids);
     }
 
-    /// Total number of levels.
-    pub fn levels(&self) -> Vec<Level> {
-        self.levels.iter().map(|v| v.level).collect()
+    pub fn levels(&self) -> impl Iterator<Item = Level> + '_ {
+        self.levels.iter().map(|v| v.level)
     }
 
     /// Iter ssts at given `level`.
@@ -103,7 +102,6 @@ impl LevelsController {
 
     pub fn expired_ssts(&self, expire_time: Option<Timestamp>) -> Vec<ExpiredFiles> {
         self.levels()
-            .into_iter()
             .map(|level| {
                 let files = self.collect_expired_at_level(level, expire_time);
                 ExpiredFiles { level, files }
