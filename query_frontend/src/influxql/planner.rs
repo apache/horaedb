@@ -37,9 +37,7 @@ pub const CERESDB_MEASUREMENT_COLUMN_NAME: &str = "iox::measurement";
 // Port from https://github.com/ceresdb/influxql/blob/36fc4d873e/iox_query_influxql/src/frontend/planner.rs#L28
 struct InfluxQLSchemaProvider<'a, P: MetaProvider> {
     context_provider: ContextProviderAdapter<'a, P>,
-    // TODO: avoid load all tables.
-    // if we can ensure `table_names` is only called once, then load tables lazily is better.
-    table_cache: OnceCell<Vec<TableRef>>,
+    tables_cache: OnceCell<Vec<TableRef>>,
 }
 
 impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
@@ -67,7 +65,7 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
 
     fn table_names(&self) -> Vec<&'_ str> {
         let tables = match self
-            .table_cache
+            .tables_cache
             .get_or_try_init(|| self.context_provider.all_tables())
         {
             Ok(tables) => tables,
@@ -75,7 +73,7 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
                 // Restricted by the external interface of iox, we can just print error log here
                 // and return empty `Vec`.
                 error!("Influxql planner occurred error while trying to get all tables, err:{e}");
-                return Vec::new();
+                return Vec::default();
             }
         };
 
@@ -125,7 +123,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
         Ok(Self {
             schema_provider: InfluxQLSchemaProvider {
                 context_provider,
-                table_cache: OnceCell::new(),
+                tables_cache: OnceCell::new(),
             },
         })
     }

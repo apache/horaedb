@@ -148,11 +148,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 );
 
                 frontend
-                    .influxql_stmt_to_plan(
-                        &mut sql_ctx,
-                        stmts.remove(0),
-                        self.instance.catalog_manager.clone(),
-                    )
+                    .influxql_stmt_to_plan(&mut sql_ctx, stmts.remove(0))
                     .box_err()
                     .with_context(|| ErrWithCause {
                         code: StatusCode::BAD_REQUEST,

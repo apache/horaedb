@@ -4,7 +4,7 @@
 
 use std::{sync::Arc, time::Instant};
 
-use catalog::manager::ManagerRef;
+
 use ceresdbproto::{prometheus::Expr as PromExpr, storage::WriteTableRequest};
 use cluster::config::SchemaConfig;
 use common_types::request_id::RequestId;
@@ -146,7 +146,6 @@ impl<P: MetaProvider> Frontend<P> {
         &self,
         ctx: &mut Context,
         stmt: InfluxqlStatement,
-        _manager: ManagerRef,
     ) -> Result<Plan> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
         planner.influxql_stmt_to_plan(stmt).context(CreatePlan)
