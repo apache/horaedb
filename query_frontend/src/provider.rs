@@ -6,7 +6,6 @@ use std::{any::Any, borrow::Cow, cell::RefCell, collections::HashMap, sync::Arc}
 
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
-use common_util::error::BoxError;
 use datafusion::{
     catalog::{catalog::CatalogProvider, schema::SchemaProvider},
     common::DataFusionError,
@@ -54,7 +53,7 @@ pub enum Error {
     GetAllTables {
         catalog_name: String,
         schema_name: String,
-        source: Box<catalog::schema::Error>,
+        source: catalog::schema::Error,
     },
 
     #[snafu(display("Failed to find udf, err:{}", source))]
@@ -86,7 +85,7 @@ pub trait MetaProvider {
     /// Get udaf by name.
     fn aggregate_udf(&self, name: &str) -> Result<Option<AggregateUdf>>;
 
-    /// Return all table names.
+    /// Return all tables.
     fn all_tables(&self) -> Result<Vec<TableRef>>;
 }
 
@@ -177,13 +176,10 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
             None => return Ok(Vec::default()),
         };
 
-        schema
-            .all_tables()
-            .map_err(|e| Box::new(e))
-            .with_context(|| GetAllTables {
-                catalog_name: self.default_catalog,
-                schema_name: self.default_schema,
-            })
+        schema.all_tables().with_context(|| GetAllTables {
+            catalog_name: self.default_catalog,
+            schema_name: self.default_schema,
+        })
     }
 }
 
