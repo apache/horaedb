@@ -48,7 +48,9 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
         self.context_provider
             .get_table_provider(table_ref.into())
             .map_err(|e| {
-                DataFusionError::Plan(format!("measurement does not exist: {name}, source:{e}"))
+                DataFusionError::Plan(format!(
+                    "measurement does not exist, measurement:{name}, source:{e}"
+                ))
             })
     }
 
@@ -72,7 +74,7 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
             Err(e) => {
                 // Restricted by the external interface of iox, we can just print error log here
                 // and return empty `Vec`.
-                error!("Influxql planner occurred error while trying to get all tables, err:{e}");
+                error!("Influxql planner failed to get all tables, err:{e}");
                 return Vec::default();
             }
         };
@@ -86,7 +88,7 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
             Err(e) => {
                 // Restricted by the external interface of iox, we can just print error log here
                 // and return None.
-                error!("Influxql planner occurred error while trying to get table schema, name:{name}, err:{e}");
+                error!("Influxql planner failed to get table schema, name:{name}, err:{e}");
                 return None;
             }
         };
@@ -96,7 +98,7 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
             Ok(schema) => schema,
             Err(e) => {
                 // Same as above here.
-                error!("Influxql planner occurred error while converting schema to influxql schema, schema:{ceresdb_arrow_schema}, err:{e}");
+                error!("Influxql planner failed to convert schema to influxql schema, schema:{ceresdb_arrow_schema}, err:{e}");
                 return None;
             }
         };

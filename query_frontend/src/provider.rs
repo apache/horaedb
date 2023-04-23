@@ -154,8 +154,8 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
         self.function_registry.find_udaf(name).context(FindUdf)
     }
 
-    // TODO: when support not only default catalog and schema, we should refactor
-    // the tables collecting procedure.
+    // TODO: after supporting not only default catalog and schema, we should
+    // refactor the tables collecting procedure.
     fn all_tables(&self) -> Result<Vec<TableRef>> {
         let catalog = match self
             .manager
