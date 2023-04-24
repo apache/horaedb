@@ -89,6 +89,10 @@ pub trait MetaProvider {
     fn aggregate_udf(&self, name: &str) -> Result<Option<AggregateUdf>>;
 
     /// Return all tables.
+    ///
+    /// Note that it may incur expensive cost.
+    /// Now it is used in `table_names` method in `SchemaProvider`(introduced by
+    /// influxql).
     fn all_tables(&self) -> Result<Vec<TableRef>>;
 }
 
