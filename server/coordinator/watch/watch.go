@@ -70,7 +70,7 @@ func (w *ShardWatch) Start(ctx context.Context) error {
 		return nil
 	}
 
-	shardKeyPrefix := encodeShardKeyPrefix(w.rootPath, shardPath, w.clusterName)
+	shardKeyPrefix := encodeShardKeyPrefix(w.rootPath, w.clusterName, shardPath)
 	if err := w.startWatch(ctx, shardKeyPrefix); err != nil {
 		return errors.WithMessage(err, "etcd register watch failed")
 	}

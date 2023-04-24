@@ -303,9 +303,11 @@ func (m *TopologyManagerImpl) EvictTable(ctx context.Context, tableID storage.Ta
 		}
 
 		// Update shardView in storage.
+		// TODO: Move the code that modifies the version to the outside, and the actual version should be obtained from the call result of CeresDB.
+		newShardView := storage.NewShardView(shardView.ShardID, prevVersion+1, tableIDs)
 		if err := m.storage.UpdateShardView(ctx, storage.UpdateShardViewRequest{
 			ClusterID:     m.clusterID,
-			ShardView:     storage.NewShardView(shardView.ShardID, prevVersion+1, tableIDs),
+			ShardView:     newShardView,
 			LatestVersion: prevVersion,
 		}); err != nil {
 			return nil, errors.WithMessage(err, "storage update shard view")
@@ -315,6 +317,8 @@ func (m *TopologyManagerImpl) EvictTable(ctx context.Context, tableID storage.Ta
 		shardView.Version = prevVersion + 1
 		shardView.TableIDs = tableIDs
 		delete(m.tableShardMapping, tableID)
+
+		m.updateShardView(shardView.ShardID, newShardView)
 
 		result = append(result, ShardVersionUpdate{
 			ShardID:     shardID,
@@ -401,7 +405,7 @@ func (m *TopologyManagerImpl) DropShardNodes(ctx context.Context, shardNodes []s
 	newShardNodes := make([]storage.ShardNode, 0, len(m.clusterView.ShardNodes))
 
 	for i := 0; i < len(m.clusterView.ShardNodes); i++ {
-		if contains(shardNodes, m.clusterView.ShardNodes[i]) {
+		if !contains(shardNodes, m.clusterView.ShardNodes[i]) {
 			newShardNodes = append(newShardNodes, m.clusterView.ShardNodes[i])
 		}
 	}

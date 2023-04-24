@@ -43,7 +43,7 @@ func TestWatch(t *testing.T) {
 	b, err := proto.Marshal(&metaeventpb.ShardLockValue{NodeName: TestNodeName})
 	re.NoError(err)
 
-	keyPath := encodeShardKey(TestRootPath, TestShardPath, TestClusterName, TestShardID)
+	keyPath := encodeShardKey(TestRootPath, TestClusterName, TestShardPath, TestShardID)
 	_, err = client.Put(ctx, keyPath, string(b))
 	re.NoError(err)
 	time.Sleep(time.Millisecond * 10)

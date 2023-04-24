@@ -49,14 +49,32 @@ func prepareCallback(event *fsm.Event) {
 	}
 	params := req.p.params
 
-	createTableResult, err := ddl.CreateTableMetadata(req.ctx, params.ClusterMetadata, params.SourceReq.GetSchemaName(), params.SourceReq.GetName(), params.ShardID, nil)
+	createTableMetadataRequest := metadata.CreateTableMetadataRequest{
+		SchemaName:    params.SourceReq.GetSchemaName(),
+		TableName:     params.SourceReq.GetName(),
+		PartitionInfo: storage.PartitionInfo{Info: params.SourceReq.PartitionTableInfo.GetPartitionInfo()},
+	}
+	result, err := params.ClusterMetadata.CreateTableMetadata(req.ctx, createTableMetadataRequest)
 	if err != nil {
 		procedure.CancelEventWithLog(event, err, "create table metadata")
 		return
 	}
 
-	if err = ddl.CreateTableOnShard(req.ctx, params.ClusterMetadata, params.Dispatch, createTableResult.ShardVersionUpdate.ShardID, ddl.BuildCreateTableRequest(createTableResult, params.SourceReq, params.SourceReq.GetPartitionTableInfo().GetPartitionInfo())); err != nil {
+	shardVersionUpdate := metadata.ShardVersionUpdate{
+		ShardID:     params.ShardID,
+		CurrVersion: req.p.relatedVersionInfo.ShardWithVersion[params.ShardID] + 1,
+		PrevVersion: req.p.relatedVersionInfo.ShardWithVersion[params.ShardID],
+	}
+
+	createTableRequest := ddl.BuildCreateTableRequest(result.Table, shardVersionUpdate, params.SourceReq)
+	if err = ddl.CreateTableOnShard(req.ctx, params.ClusterMetadata, params.Dispatch, params.ShardID, createTableRequest); err != nil {
 		procedure.CancelEventWithLog(event, err, "dispatch create table on shard")
+		return
+	}
+
+	createTableResult, err := params.ClusterMetadata.AddTableTopology(req.ctx, params.ShardID, result.Table)
+	if err != nil {
+		procedure.CancelEventWithLog(event, err, "create table metadata")
 		return
 	}
 

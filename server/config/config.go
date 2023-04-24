@@ -25,7 +25,7 @@ const (
 	defaultEtcdLeaseTTLSec           = 10
 
 	defaultNodeNamePrefix          = "ceresmeta"
-	defaultRootPath                = "/rootPath"
+	defaultRootPath                = "/ceresdb"
 	defaultClientUrls              = "http://0.0.0.0:2379"
 	defaultPeerUrls                = "http://0.0.0.0:2380"
 	defaultInitialClusterState     = embed.ClusterStateFlagNew

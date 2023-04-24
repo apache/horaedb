@@ -188,6 +188,7 @@ func (a *API) transferLeader(writer http.ResponseWriter, req *http.Request) {
 	}
 
 	transferLeaderProcedure, err := c.GetProcedureFactory().CreateTransferLeaderProcedure(req.Context(), coordinator.TransferLeaderRequest{
+		Snapshot:          c.GetMetadata().GetClusterSnapshot(),
 		ShardID:           storage.ShardID(transferLeaderRequest.ShardID),
 		OldLeaderNodeName: transferLeaderRequest.OldLeaderNodeName,
 		NewLeaderNodeName: transferLeaderRequest.NewLeaderNodeName,
@@ -340,7 +341,7 @@ func (a *API) split(writer http.ResponseWriter, req *http.Request) {
 		ClusterMetadata: c.GetMetadata(),
 		SchemaName:      splitRequest.SchemaName,
 		TableNames:      splitRequest.SplitTables,
-		Snapshot:        metadata.Snapshot{},
+		Snapshot:        c.GetMetadata().GetClusterSnapshot(),
 		ShardID:         storage.ShardID(splitRequest.ShardID),
 		NewShardID:      storage.ShardID(newShardID),
 		TargetNodeName:  splitRequest.NodeName,

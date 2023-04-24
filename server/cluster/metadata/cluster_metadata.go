@@ -284,6 +284,23 @@ func (c *ClusterMetadata) CreateTableMetadata(ctx context.Context, request Creat
 	return res, nil
 }
 
+func (c *ClusterMetadata) AddTableTopology(ctx context.Context, shardID storage.ShardID, table storage.Table) (CreateTableResult, error) {
+	log.Info("add table topology start", zap.String("cluster", c.Name()), zap.String("tableName", table.Name))
+
+	// Add table to topology manager.
+	result, err := c.topologyManager.AddTable(ctx, shardID, []storage.Table{table})
+	if err != nil {
+		return CreateTableResult{}, errors.WithMessage(err, "topology manager add table")
+	}
+
+	ret := CreateTableResult{
+		Table:              table,
+		ShardVersionUpdate: result,
+	}
+	log.Info("add table topology succeed", zap.String("cluster", c.Name()), zap.String("result", fmt.Sprintf("%+v", ret)))
+	return ret, nil
+}
+
 func (c *ClusterMetadata) DropTableMetadata(ctx context.Context, schemaName, tableName string) (DropTableMetadataResult, error) {
 	log.Info("drop table start", zap.String("cluster", c.Name()), zap.String("schemaName", schemaName), zap.String("tableName", tableName))
 

@@ -12,6 +12,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/ddl"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/looplab/fsm"
 	"github.com/pkg/errors"
@@ -50,19 +51,15 @@ func prepareCallback(event *fsm.Event) {
 	}
 	params := req.p.params
 
-	table, exists, err := params.ClusterMetadata.GetTable(params.SourceReq.GetSchemaName(), params.SourceReq.GetName())
+	table, shardVersionUpdate, err := ddl.GetShardVersionByTableName(params.ClusterMetadata, params.SourceReq.GetSchemaName(), params.SourceReq.GetName(), req.p.relatedVersionInfo.ShardWithVersion)
 	if err != nil {
-		procedure.CancelEventWithLog(event, err, "cluster get table")
-		return
-	}
-	if !exists {
-		log.Warn("drop non-existing table", zap.String("schema", params.SourceReq.GetSchemaName()), zap.String("table", params.SourceReq.GetName()))
+		procedure.CancelEventWithLog(event, err, "get shard version by table name", zap.String("tableName", params.SourceReq.GetName()))
 		return
 	}
 
-	shardNodesResult, err := params.ClusterMetadata.GetShardNodeByTableIDs([]storage.TableID{table.ID})
+	err = ddl.DispatchDropTable(req.ctx, params.ClusterMetadata, params.Dispatch, params.SourceReq.GetSchemaName(), table, shardVersionUpdate)
 	if err != nil {
-		procedure.CancelEventWithLog(event, err, "cluster get shard by table id")
+		procedure.CancelEventWithLog(event, err, "dispatch drop table on shard")
 		return
 	}
 
@@ -77,51 +74,13 @@ func prepareCallback(event *fsm.Event) {
 		return
 	}
 
-	shardNodes, ok := shardNodesResult.ShardNodes[table.ID]
-	if !ok {
-		procedure.CancelEventWithLog(event, procedure.ErrShardLeaderNotFound, fmt.Sprintf("cluster get shard by table id, table:%v", table))
-		return
+	req.ret = metadata.TableInfo{
+		ID:            table.ID,
+		Name:          table.Name,
+		SchemaID:      table.SchemaID,
+		SchemaName:    params.SourceReq.GetSchemaName(),
+		PartitionInfo: table.PartitionInfo,
 	}
-
-	// TODO: consider followers
-	leader := storage.ShardNode{}
-	found := false
-	for _, shardNode := range shardNodes {
-		if shardNode.ShardRole == storage.ShardRoleLeader {
-			found = true
-			leader = shardNode
-			break
-		}
-	}
-
-	if !found {
-		procedure.CancelEventWithLog(event, procedure.ErrShardLeaderNotFound, "can't find leader")
-		return
-	}
-
-	tableInfo := metadata.TableInfo{
-		ID:         table.ID,
-		Name:       table.Name,
-		SchemaID:   table.SchemaID,
-		SchemaName: params.SourceReq.GetSchemaName(),
-	}
-	err = params.Dispatch.DropTableOnShard(req.ctx, leader.NodeName, eventdispatch.DropTableOnShardRequest{
-		UpdateShardInfo: eventdispatch.UpdateShardInfo{
-			CurrShardInfo: metadata.ShardInfo{
-				ID:      result.ShardVersionUpdate[0].ShardID,
-				Role:    storage.ShardRoleLeader,
-				Version: result.ShardVersionUpdate[0].CurrVersion,
-			},
-			PrevVersion: result.ShardVersionUpdate[0].PrevVersion,
-		},
-		TableInfo: tableInfo,
-	})
-	if err != nil {
-		procedure.CancelEventWithLog(event, err, "dispatch drop table on shard")
-		return
-	}
-
-	req.ret = tableInfo
 }
 
 func successCallback(event *fsm.Event) {

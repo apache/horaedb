@@ -140,7 +140,7 @@ func validateClusterTopology(topology metadata.Topology, shardID storage.ShardID
 		return metadata.ErrShardNotFound
 	}
 	for _, shardNode := range shardNodes {
-		if shardNode.ShardRole == storage.ShardRoleLeader {
+		if shardNode.ID == shardID {
 			leaderNodeName := shardNode.NodeName
 			if leaderNodeName != oldLeaderNodeName {
 				log.Error("shard leader node not match", zap.String("requestOldLeaderNodeName", oldLeaderNodeName), zap.String("actualOldLeaderNodeName", leaderNodeName))

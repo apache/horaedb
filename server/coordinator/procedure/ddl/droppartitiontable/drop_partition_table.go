@@ -13,6 +13,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/ddl"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/looplab/fsm"
 	"github.com/pkg/errors"
@@ -275,26 +276,26 @@ func dropDataTablesCallback(event *fsm.Event) {
 		return
 	}
 
+	shardVersions := req.p.relatedVersionInfo.ShardWithVersion
 	for _, tableName := range params.SourceReq.PartitionTableInfo.SubTableNames {
-		dropTableResult, err := dropTableMetaData(event, tableName)
+		table, shardVersionUpdate, err := ddl.GetShardVersionByTableName(params.ClusterMetadata, req.schemaName(), tableName, shardVersions)
 		if err != nil {
+			procedure.CancelEventWithLog(event, err, fmt.Sprintf("get shard version by table, table:%s", tableName))
+			return
+		}
+
+		if err := ddl.DispatchDropTable(req.ctx, params.ClusterMetadata, params.Dispatch, params.SourceReq.GetSchemaName(), table, shardVersionUpdate); err != nil {
 			procedure.CancelEventWithLog(event, err, fmt.Sprintf("drop table, table:%s", tableName))
 			return
 		}
 
-		if !dropTableResult.exists {
-			continue
-		}
-
-		if len(dropTableResult.result.ShardVersionUpdate) != 1 {
-			procedure.CancelEventWithLog(event, procedure.ErrDropTableResult, fmt.Sprintf("legnth of shardVersionResult!=1, current is %d", len(dropTableResult.result.ShardVersionUpdate)))
+		_, err = params.ClusterMetadata.DropTable(req.ctx, req.schemaName(), tableName)
+		if err != nil {
+			procedure.CancelEventWithLog(event, err, "drop table metadata", zap.String("tableName", tableName))
 			return
 		}
 
-		if err := dispatchDropTable(event, dropTableResult.table, dropTableResult.result.ShardVersionUpdate[0]); err != nil {
-			procedure.CancelEventWithLog(event, err, fmt.Sprintf("drop table, table:%s", tableName))
-			return
-		}
+		shardVersions[shardVersionUpdate.ShardID]++
 	}
 }
 
@@ -334,82 +335,4 @@ func finishCallback(event *fsm.Event) {
 		procedure.CancelEventWithLog(event, err, "drop partition table on succeeded")
 		return
 	}
-}
-
-type DropTableMetaDataResult struct {
-	table  storage.Table
-	result metadata.DropTableResult
-	exists bool
-}
-
-func dropTableMetaData(event *fsm.Event, tableName string) (DropTableMetaDataResult, error) {
-	request, err := procedure.GetRequestFromEvent[*callbackRequest](event)
-	if err != nil {
-		return DropTableMetaDataResult{
-			table:  storage.Table{},
-			result: metadata.DropTableResult{},
-			exists: false,
-		}, errors.WithMessage(err, "get request from event")
-	}
-
-	table, exists, err := request.p.params.ClusterMetadata.GetTable(request.schemaName(), tableName)
-	if err != nil {
-		return DropTableMetaDataResult{
-			table:  storage.Table{},
-			result: metadata.DropTableResult{},
-			exists: false,
-		}, errors.WithMessage(err, "cluster get table")
-	}
-	if !exists {
-		log.Warn("drop non-existing table", zap.String("schema", request.schemaName()), zap.String("table", tableName))
-		return DropTableMetaDataResult{storage.Table{}, metadata.DropTableResult{}, false}, nil
-	}
-
-	result, err := request.p.params.ClusterMetadata.DropTable(request.ctx, request.schemaName(), tableName)
-	if err != nil {
-		return DropTableMetaDataResult{storage.Table{}, metadata.DropTableResult{}, false}, errors.WithMessage(err, "cluster drop table")
-	}
-	return DropTableMetaDataResult{
-		table:  table,
-		result: result,
-		exists: true,
-	}, nil
-}
-
-func dispatchDropTable(event *fsm.Event, table storage.Table, version metadata.ShardVersionUpdate) error {
-	request, err := procedure.GetRequestFromEvent[*callbackRequest](event)
-	if err != nil {
-		return errors.WithMessage(err, "get request from event")
-	}
-	shardNodes, err := request.p.params.ClusterMetadata.GetShardNodesByShardID(version.ShardID)
-	if err != nil {
-		procedure.CancelEventWithLog(event, err, "get shard nodes by shard id")
-		return errors.WithMessage(err, "cluster get shard by shard id")
-	}
-
-	tableInfo := metadata.TableInfo{
-		ID:         table.ID,
-		Name:       table.Name,
-		SchemaID:   table.SchemaID,
-		SchemaName: request.p.params.SourceReq.GetSchemaName(),
-	}
-
-	for _, shardNode := range shardNodes {
-		err = request.p.params.Dispatch.DropTableOnShard(request.ctx, shardNode.NodeName, eventdispatch.DropTableOnShardRequest{
-			UpdateShardInfo: eventdispatch.UpdateShardInfo{
-				CurrShardInfo: metadata.ShardInfo{
-					ID:      version.ShardID,
-					Role:    storage.ShardRoleLeader,
-					Version: version.CurrVersion,
-				},
-				PrevVersion: version.PrevVersion,
-			},
-			TableInfo: tableInfo,
-		})
-		if err != nil {
-			return errors.WithMessage(err, "dispatch drop table on shard")
-		}
-	}
-
-	return nil
 }

@@ -218,17 +218,36 @@ func createDataTablesCallback(event *fsm.Event) {
 		panic(fmt.Sprintf("shards number must be equal to sub tables number, shardNumber:%d, subTableNumber:%d", len(params.SubTablesShards), len(params.SourceReq.GetPartitionTableInfo().SubTableNames)))
 	}
 
+	shardVersions := req.p.relatedVersionInfo.ShardWithVersion
 	for i, subTableShard := range params.SubTablesShards {
-		createTableResult, err := ddl.CreateTableMetadata(req.ctx, params.ClusterMetadata, params.SourceReq.GetSchemaName(), params.SourceReq.GetPartitionTableInfo().SubTableNames[i], subTableShard.ShardInfo.ID, nil)
+		result, err := params.ClusterMetadata.CreateTableMetadata(req.ctx, metadata.CreateTableMetadataRequest{
+			SchemaName:    params.SourceReq.GetSchemaName(),
+			TableName:     params.SourceReq.GetPartitionTableInfo().SubTableNames[i],
+			PartitionInfo: storage.PartitionInfo{},
+		})
 		if err != nil {
 			procedure.CancelEventWithLog(event, err, "create table metadata")
 			return
 		}
 
-		if err = ddl.CreateTableOnShard(req.ctx, params.ClusterMetadata, params.Dispatch, subTableShard.ShardInfo.ID, ddl.BuildCreateTableRequest(createTableResult, params.SourceReq, nil)); err != nil {
+		shardVersionUpdate := metadata.ShardVersionUpdate{
+			ShardID:     subTableShard.ShardInfo.ID,
+			CurrVersion: req.p.relatedVersionInfo.ShardWithVersion[subTableShard.ShardInfo.ID] + 1,
+			PrevVersion: req.p.relatedVersionInfo.ShardWithVersion[subTableShard.ShardInfo.ID],
+		}
+
+		if err := ddl.CreateTableOnShard(req.ctx, params.ClusterMetadata, params.Dispatch, subTableShard.ShardInfo.ID, ddl.BuildCreateTableRequest(result.Table, shardVersionUpdate, params.SourceReq)); err != nil {
 			procedure.CancelEventWithLog(event, err, "dispatch create table on shard")
 			return
 		}
+
+		_, err = params.ClusterMetadata.AddTableTopology(req.ctx, subTableShard.ShardInfo.ID, result.Table)
+		if err != nil {
+			procedure.CancelEventWithLog(event, err, "create table metadata")
+			return
+		}
+
+		shardVersions[shardVersionUpdate.ShardID]++
 	}
 }
 
