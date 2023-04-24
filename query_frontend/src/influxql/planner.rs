@@ -42,11 +42,8 @@ struct InfluxQLSchemaProvider<'a, P: MetaProvider> {
 
 impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
     fn get_table_provider(&self, name: &str) -> datafusion::error::Result<Arc<dyn TableSource>> {
-        let default_catalog = self.context_provider.default_catalog_name();
-        let default_schema = self.context_provider.default_schema_name();
-        let table_ref = TableReference::from(name).resolve(default_catalog, default_schema);
         self.context_provider
-            .get_table_provider(table_ref.into())
+            .get_table_provider(name.into())
             .map_err(|e| {
                 DataFusionError::Plan(format!(
                     "measurement does not exist, measurement:{name}, source:{e}"
@@ -104,6 +101,18 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
         };
 
         Some(influxql_schema)
+    }
+
+    fn table_exists(&self, name: &str) -> bool {
+        match self.context_provider.table(name.into()) {
+            Ok(Some(_)) => true,
+            Ok(None) => false,
+            Err(e) => {
+                // Same as above here.
+                error!("Influxql planner failed to find table, table_name:{name}, err:{e}");
+                false
+            }
+        }
     }
 }
 
