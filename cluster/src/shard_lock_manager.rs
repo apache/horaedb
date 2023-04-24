@@ -3,7 +3,7 @@
 use std::{
     collections::HashMap,
     future::Future,
-    sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock},
+    sync::{Arc, Mutex, RwLock},
     time::{Duration, Instant},
 };
 
@@ -19,7 +19,7 @@ use etcd_client::{
 use log::{debug, error, info, warn};
 use prost::Message;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
-use tokio::sync::{oneshot, RwLock};
+use tokio::sync::{oneshot, RwLock as AsyncRwLock};
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
@@ -41,6 +41,15 @@ pub enum Error {
     KeepAliveWithExpiredTTL {
         lease_id: i64,
         ttl_in_resp: i64,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Try to start multiple keepalive procedure in background, lease_id:{lease_id}, err:{source}.\nBacktrace:\n{backtrace:?}"
+    ))]
+    ConcurrentKeepalive {
+        source: tokio::sync::TryLockError,
+        lease_id: i64,
         backtrace: Backtrace,
     },
 
@@ -104,32 +113,42 @@ pub struct ShardLockManager {
     runtime: RuntimeRef,
 
     // ShardID -> ShardLock
-    shard_locks: Arc<RwLock<HashMap<u32, ShardLock>>>,
+    shard_locks: Arc<AsyncRwLock<HashMap<u32, ShardLock>>>,
 }
 
 #[derive(Debug)]
 struct LeaseState {
     expired_at: Instant,
-    alive: bool,
 }
 
 impl LeaseState {
     fn new(expired_at: Instant) -> Self {
-        Self {
-            expired_at,
-            alive: false,
+        Self { expired_at }
+    }
+
+    /// Get the duration until the lease is expired.
+    ///
+    /// The actual duration will be still returned even if the lease is not
+    /// alive. And None will be returned if the lease is expired.
+    fn duration_until_expired(&self) -> Option<Duration> {
+        let expired_at = self.expired_at;
+        let now = Instant::now();
+        if expired_at > now {
+            Some(expired_at - now)
+        } else {
+            None
         }
+    }
+
+    /// Check whether lease is expired.
+    fn is_expired(&self) -> bool {
+        self.expired_at < Instant::now()
     }
 }
 
 impl LeaseState {
     fn update_expired_at(&mut self, expired_at: Instant) {
-        self.alive = true;
         self.expired_at = expired_at;
-    }
-
-    fn set_dead(&mut self) {
-        self.alive = false;
     }
 }
 
@@ -149,11 +168,11 @@ struct Lease {
     /// The time to live of the lease
     ttl: Duration,
 
-    state: Arc<StdRwLock<LeaseState>>,
+    state: Arc<RwLock<LeaseState>>,
     /// The handle for the keep alive task in background.
     ///
     /// TODO: shall we wait for it to exit?
-    keep_alive_handle: StdMutex<Option<JoinHandle<()>>>,
+    keep_alive_handle: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl Lease {
@@ -161,35 +180,19 @@ impl Lease {
         Self {
             id,
             ttl,
-            state: Arc::new(StdRwLock::new(initial_state)),
-            keep_alive_handle: StdMutex::new(None),
+            state: Arc::new(RwLock::new(initial_state)),
+            keep_alive_handle: Mutex::new(None),
         }
     }
 
-    /// Check whether lease is expired.
-    ///
-    /// If the lease is not alive, it's considered as expired.
     fn is_expired(&self) -> bool {
         let state = self.state.read().unwrap();
-        if !state.alive {
-            warn!(
-                "Lease:{} is not alive, and is considered as expired",
-                self.id
-            );
-            return true;
-        }
-        state.expired_at < Instant::now()
+        state.is_expired()
     }
 
     fn duration_until_expired(&self) -> Option<Duration> {
         let state = self.state.read().unwrap();
-        let expired_at = state.expired_at;
-        let now = Instant::now();
-        if expired_at > now {
-            Some(expired_at - now)
-        } else {
-            None
-        }
+        state.duration_until_expired()
     }
 
     /// Keep alive the lease once, the state will be updated whatever the
@@ -197,7 +200,7 @@ impl Lease {
     async fn keep_alive_once(
         keeper: &mut LeaseKeeper,
         stream: &mut LeaseKeepAliveStream,
-        state: &Arc<StdRwLock<LeaseState>>,
+        state: &Arc<RwLock<LeaseState>>,
     ) -> Result<()> {
         keeper.keep_alive().await.context(KeepAlive)?;
         match stream.message().await.context(KeepAlive)? {
@@ -227,7 +230,6 @@ impl Lease {
                     "failed to keep lease alive because of no resp, id:{}",
                     keeper.id()
                 );
-                state.write().unwrap().set_dead();
                 KeepAliveWithoutResp {
                     lease_id: keeper.id(),
                 }
@@ -362,11 +364,10 @@ impl ShardLock {
         Fut: Future<Output = ()> + Send + 'static,
     {
         if self.is_valid() {
+            // FIXME: maybe the lock will be expired soon.
             warn!("The lock is already granted, shard_id:{}", self.shard_id);
             return Ok(false);
         }
-
-        self.wait_for_keepalive_exit().await;
 
         // Grant the lease first.
         let resp = etcd_client
@@ -384,10 +385,9 @@ impl ShardLock {
         );
 
         let lease_id = resp.id();
-        let lease_expired_at = Instant::now() + Duration::from_secs(resp.ttl() as u64);
-
         self.acquire_lock_with_lease(lease_id, etcd_client).await?;
 
+        let lease_expired_at = Instant::now() + Duration::from_secs(resp.ttl() as u64);
         self.keep_lease_alive(
             lease_id,
             lease_expired_at,
@@ -405,7 +405,7 @@ impl ShardLock {
     /// NOTE: the `on_lock_expired` callback set in the `grant` won't be
     /// triggered.
     async fn revoke(&mut self, etcd_client: &mut Client) -> Result<()> {
-        self.wait_for_keepalive_exit().await;
+        self.stop_keepalive().await;
 
         // Revoke the lease.
         if let Some(lease) = self.lease.take() {
@@ -431,7 +431,7 @@ impl ShardLock {
             .unwrap_or(false)
     }
 
-    async fn wait_for_keepalive_exit(&mut self) {
+    async fn stop_keepalive(&mut self) {
         info!(
             "Wait for background keepalive exit, shard_id:{}",
             self.shard_id
@@ -491,6 +491,8 @@ impl ShardLock {
         OnExpired: FnOnce(ShardId) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
+        // Try to acquire the lock to ensure there is only one running keepalive
+        // procedure.
         let initial_state = LeaseState::new(expired_at);
         let lease = Arc::new(Lease::new(
             lease_id,
@@ -508,15 +510,24 @@ impl ShardLock {
         let handle = runtime.spawn(async move {
             let mut keepalive_stop_rx = keepalive_stop_rx;
             loop {
-                if let Some(duration)  = lease_for_bg.duration_until_expired() {
+                if let Some(dur_until_expired)  = lease_for_bg.duration_until_expired() {
+                    // Assume the keepalive cost is 1.5 rpc_time to ensure the lease is not expired when waiting for next keepalive.
                     let keepalive_cost = rpc_timeout + rpc_timeout / 2;
-                    if duration > keepalive_cost {
-                        let wait_dur = duration - keepalive_cost;
-                        warn!("Next keepalive will be schedule after {wait_dur:?}, shard_id:{shard_id}, lease_id:{lease_id}, keepalive_cost:{keepalive_cost:?}, duration_until_expired:{duration:?}");
+                    if dur_until_expired > keepalive_cost {
+                        let wait_dur = dur_until_expired - keepalive_cost;
+                        info!(
+                            "Next keepalive will be schedule after {wait_dur:?}, shard_id:{shard_id}, lease_id:{lease_id}, \
+                            keepalive_cost:{keepalive_cost:?}, duration_until_expired:{dur_until_expired:?}"
+                        );
                         tokio::time::sleep(wait_dur).await;
-                        warn!("Start to keepalive, shard_id:{shard_id}, lease_id:{lease_id}");
+
+                        info!("Start to keepalive, shard_id:{shard_id}, lease_id:{lease_id}");
                     } else {
-                        warn!("The lease is about to expire, and trigger the on_lock_expire callback, shard_id:{shard_id}, lease_id:{lease_id}");
+                        warn!(
+                            "The lease is about to expire, and trigger the on_lock_expire callback, shard_id:{shard_id}, \
+                             lease_id:{lease_id}"
+                        );
+
                         on_lock_expired(shard_id).await;
                         return;
                     }
@@ -602,7 +613,7 @@ impl ShardLockManager {
             rpc_timeout,
             etcd_client,
             runtime,
-            shard_locks: Arc::new(RwLock::new(HashMap::new())),
+            shard_locks: Arc::new(AsyncRwLock::new(HashMap::new())),
         }
     }
 
