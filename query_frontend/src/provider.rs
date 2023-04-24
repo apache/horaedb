@@ -16,7 +16,7 @@ use datafusion::{
     sql::planner::ContextProvider,
 };
 use df_operator::{registry::FunctionRegistry, scalar::ScalarUdf, udaf::AggregateUdf};
-use snafu::{ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu};
 use table_engine::{provider::TableProviderAdapter, table::TableRef};
 
 use crate::container::{TableContainer, TableReference};
@@ -34,6 +34,9 @@ pub enum Error {
         name: String,
         source: catalog::Error,
     },
+
+    #[snafu(display("Failed to find catalog, name:{}", name))]
+    CatalogNotFound { name: String },
 
     #[snafu(display("Failed to find schema, name:{}", name))]
     SchemaNotFound { name: String },
@@ -157,24 +160,24 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
     // TODO: after supporting not only default catalog and schema, we should
     // refactor the tables collecting procedure.
     fn all_tables(&self) -> Result<Vec<TableRef>> {
-        let catalog = match self
+        let catalog = self
             .manager
             .catalog_by_name(self.default_catalog)
             .with_context(|| FindCatalog {
                 name: self.default_catalog,
-            })? {
-            Some(catalog) => catalog,
-            None => return Ok(Vec::default()),
-        };
+            })?
+            .with_context(|| CatalogNotFound {
+                name: self.default_catalog,
+            })?;
 
-        let schema = match catalog
+        let schema = catalog
             .schema_by_name(self.default_schema)
             .context(FindSchema {
                 name: self.default_schema,
-            })? {
-            Some(schema) => schema,
-            None => return Ok(Vec::default()),
-        };
+            })?
+            .with_context(|| SchemaNotFound {
+                name: self.default_schema,
+            })?;
 
         schema.all_tables().with_context(|| GetAllTables {
             catalog_name: self.default_catalog,
