@@ -315,12 +315,19 @@ impl ShardLock {
         on_lock_expired: OnExpired,
         etcd_client: &mut Client,
         runtime: &RuntimeRef,
-    ) -> Result<()>
+    ) -> Result<bool>
     where
         OnExpired: FnOnce(ShardId) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
-        // Grant the lease.
+        if self.is_valid() {
+            warn!("The lock is already granted, shard_id:{}", self.shard_id);
+            return Ok(false);
+        }
+
+        self.wait_for_keepalive_exit().await;
+
+        // Grant the lease first.
         let resp = etcd_client
             .lease_grant(self.ttl_sec as i64, None)
             .await
@@ -334,7 +341,7 @@ impl ShardLock {
         self.keep_lease_alive(lease_id, on_lock_expired, etcd_client, runtime)
             .await?;
 
-        Ok(())
+        Ok(true)
     }
 
     /// Revoke the shard lock.
@@ -369,6 +376,11 @@ impl ShardLock {
     }
 
     async fn wait_for_keepalive_exit(&mut self) {
+        info!(
+            "Wait for background keepalive exit, shard_id:{}",
+            self.shard_id
+        );
+
         // Stop keeping alive the lease.
         if let Some(sender) = self.lease_keepalive_stopper.take() {
             if sender.send(()).is_err() {
@@ -513,34 +525,11 @@ impl ShardLockManager {
         Fut: Future<Output = ()> + Send + 'static,
     {
         info!("Try to grant lock for shard:{shard_id}");
-        {
-            let shard_locks = self.shard_locks.read().await;
-            if let Some(shard_lock) = shard_locks.get(&shard_id) {
-                if shard_lock.is_valid() {
-                    warn!("The lock has been granted, shard_id:{shard_id}");
-                    return Ok(false);
-                } else {
-                    warn!(
-                        "The lock is invalid even if it was granted before, and it will be granted \
-                        again, shard_id:{shard_id}"
-                    );
-                }
-            }
-        }
 
-        // Double check whether the locks has been granted.
         let mut shard_locks = self.shard_locks.write().await;
         if let Some(shard_lock) = shard_locks.get_mut(&shard_id) {
-            if shard_lock.is_valid() {
-                warn!("The lock has been granted, shard_id:{shard_id}");
-                return Ok(false);
-            }
-
-            warn!(
-                "The lock to grant is invalid even if it was granted before, and it will be granted \
-                again, shard_id:{shard_id}"
-            );
             let mut etcd_client = self.etcd_client.clone();
+            warn!("The shard lock was created before, and grant it again now, shard_id:{shard_id}");
             shard_lock
                 .grant(on_lock_expired, &mut etcd_client, &self.runtime)
                 .await?;
