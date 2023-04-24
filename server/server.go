@@ -19,6 +19,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/member"
 	metagrpc "github.com/CeresDB/ceresmeta/server/service/grpc"
 	"github.com/CeresDB/ceresmeta/server/service/http"
+	"github.com/CeresDB/ceresmeta/server/status"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -29,6 +30,7 @@ import (
 
 type Server struct {
 	isClosed int32
+	status   *status.ServerStatus
 
 	cfg     *config.Config
 	etcdCfg *embed.Config
@@ -59,6 +61,7 @@ func CreateServer(cfg *config.Config) (*Server, error) {
 
 	srv := &Server{
 		isClosed: 0,
+		status:   status.NewServerStatus(),
 
 		cfg:     cfg,
 		etcdCfg: etcdCfg,
@@ -75,14 +78,17 @@ func CreateServer(cfg *config.Config) (*Server, error) {
 // Run runs the services and background jobs.
 func (srv *Server) Run(ctx context.Context) error {
 	if err := srv.startEtcd(ctx); err != nil {
+		srv.status.Set(status.Terminated)
 		return err
 	}
 
 	if err := srv.startServer(ctx); err != nil {
+		srv.status.Set(status.Terminated)
 		return err
 	}
 
 	srv.startBgJobs(ctx)
+	srv.status.Set(status.StatusRunning)
 
 	return nil
 }
@@ -159,7 +165,7 @@ func (srv *Server) startServer(_ context.Context) error {
 	}
 	srv.clusterManager = manager
 
-	api := http.NewAPI(manager, http.NewForwardClient(srv.member, srv.cfg.HTTPPort))
+	api := http.NewAPI(manager, srv.status, http.NewForwardClient(srv.member, srv.cfg.HTTPPort))
 	httpService := http.NewHTTPService(srv.cfg.HTTPPort, time.Second*10, time.Second*10, api.NewAPIRouter())
 	go func() {
 		err := httpService.Start()

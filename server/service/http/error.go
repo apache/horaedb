@@ -15,4 +15,5 @@ var (
 	ErrAllocShardID    = coderr.NewCodeError(coderr.Internal, "alloc shard id")
 	ErrForwardToLeader = coderr.NewCodeError(coderr.Internal, "forward to leader")
 	ErrParseLeaderAddr = coderr.NewCodeError(coderr.Internal, "parse leader addr")
+	ErrHealthCheck     = coderr.NewCodeError(coderr.Internal, "server health check fail")
 )

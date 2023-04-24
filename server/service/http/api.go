@@ -15,6 +15,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
+	"github.com/CeresDB/ceresmeta/server/status"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"go.uber.org/zap"
 )
@@ -29,12 +30,15 @@ const (
 type API struct {
 	clusterManager cluster.Manager
 
+	serverStatus *status.ServerStatus
+
 	forwardClient *ForwardClient
 }
 
-func NewAPI(clusterManager cluster.Manager, forwardClient *ForwardClient) *API {
+func NewAPI(clusterManager cluster.Manager, serverStatus *status.ServerStatus, forwardClient *ForwardClient) *API {
 	return &API{
 		clusterManager: clusterManager,
+		serverStatus:   serverStatus,
 		forwardClient:  forwardClient,
 	}
 }
@@ -42,13 +46,14 @@ func NewAPI(clusterManager cluster.Manager, forwardClient *ForwardClient) *API {
 func (a *API) NewAPIRouter() *Router {
 	router := New().WithPrefix(apiPrefix).WithInstrumentation(printRequestInsmt)
 
-	// Register post API.
+	// Register post/get API.
 	router.Post("/getShardTables", a.getShardTables)
 	router.Post("/transferLeader", a.transferLeader)
 	router.Post("/split", a.split)
 	router.Post("/route", a.route)
 	router.Post("/dropTable", a.dropTable)
 	router.Post("/getNodeShards", a.getNodeShards)
+	router.Get("/healthCheck", a.healthCheck)
 
 	return router
 }
@@ -359,4 +364,14 @@ func (a *API) split(writer http.ResponseWriter, req *http.Request) {
 	}
 
 	a.respond(writer, newShardID)
+}
+
+func (a *API) healthCheck(writer http.ResponseWriter, _ *http.Request) {
+	isServerHealthy := a.serverStatus.IsHealthy()
+	if isServerHealthy {
+		a.respond(writer, nil)
+	} else {
+		a.respondError(writer, ErrHealthCheck,
+			fmt.Sprintf("server heath check fail, status is %v", a.serverStatus.Get()))
+	}
 }
