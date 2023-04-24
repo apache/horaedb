@@ -203,7 +203,12 @@ impl HandlerContext {
             let res = do_close_shard(&new_ctx, shard_id).await;
             match res {
                 Ok(_) => info!("Close shard success, shard_id:{shard_id}"),
-                Err(e) => error!("Close shard failed, shard_id:{shard_id}, err:{e}"),
+                Err(e) => {
+                    panic!(
+                        "Close shard failed, and we have to panic to ensure the data \
+                        integrity, shard_id:{shard_id}, err:{e}"
+                    );
+                }
             }
         };
 

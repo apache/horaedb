@@ -83,6 +83,8 @@ impl ClusterImpl {
             shard_lock_key_prefix,
             node_name,
             etcd_client,
+            config.etcd_client.shard_lock_lease_ttl_sec,
+            config.etcd_client.shard_lock_lease_check_interval.0,
             runtime.clone(),
         );
         Ok(Self {
