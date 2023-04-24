@@ -114,6 +114,9 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
     }
 }
 
+/// Influxql logical planner
+///
+/// NOTICE: planner will be built for each influxql query.
 pub(crate) struct Planner<'a, P: MetaProvider> {
     schema_provider: InfluxQLSchemaProvider<'a, P>,
 }
@@ -128,13 +131,13 @@ fn convert_to_influxql_schema(ceresdb_arrow_schema: ArrowSchemaRef) -> Result<Sc
 }
 
 impl<'a, P: MetaProvider> Planner<'a, P> {
-    pub fn new(context_provider: ContextProviderAdapter<'a, P>) -> Result<Self> {
-        Ok(Self {
+    pub fn new(context_provider: ContextProviderAdapter<'a, P>) -> Self {
+        Self {
             schema_provider: InfluxQLSchemaProvider {
                 context_provider,
                 tables_cache: OnceCell::new(),
             },
-        })
+        }
     }
 
     /// Build sql logical plan from [InfluxqlStatement].
