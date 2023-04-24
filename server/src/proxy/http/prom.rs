@@ -8,7 +8,8 @@ use std::{collections::HashMap, result::Result as StdResult, time::Instant};
 
 use async_trait::async_trait;
 use ceresdbproto::storage::{
-    value, Field, FieldGroup, Tag, Value, WriteSeriesEntry, WriteTableRequest,
+    value, Field, FieldGroup, PrometheusRemoteQueryRequest, Tag, Value, WriteSeriesEntry,
+    WriteTableRequest,
 };
 use common_types::{
     datum::DatumKind,
@@ -23,6 +24,7 @@ use prom_remote_api::types::{
     label_matcher, Label, LabelMatcher, Query, QueryResult, RemoteStorage, Sample, TimeSeries,
     WriteRequest,
 };
+use prost::Message;
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
 use snafu::{ensure, OptionExt, ResultExt};
 use warp::reject;
@@ -97,7 +99,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     }
 
     /// Handle one query with remote storage protocol.
-    async fn handle_prom_process_query(
+    pub async fn handle_prom_process_query(
         &self,
         ctx: &RequestContext,
         query: Query,
@@ -143,6 +145,12 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for Proxy<Q> {
         ctx: &Self::Context,
         query: Query,
     ) -> StdResult<QueryResult, Self::Err> {
+        let _ = query.encode_to_vec();
+        let remote_req = PrometheusRemoteQueryRequest {
+            context: None,
+            query: query.encode_to_vec(),
+        };
+        self.maybe_forward_prom_remote_query(&remote_req);
         self.handle_prom_process_query(ctx, query).await
     }
 }

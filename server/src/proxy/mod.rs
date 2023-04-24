@@ -20,7 +20,8 @@ use std::{
 use ::http::StatusCode;
 use catalog::schema::{CreateOptions, CreateTableRequest, DropOptions, DropTableRequest};
 use ceresdbproto::storage::{
-    storage_service_client::StorageServiceClient, SqlQueryRequest, SqlQueryResponse,
+    storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
+    PrometheusRemoteQueryResponse, SqlQueryRequest, SqlQueryResponse,
 };
 use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID};
 use common_util::{error::BoxError, runtime::Runtime};
@@ -125,6 +126,46 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             let query = async move {
                 client
                     .sql_query(request)
+                    .await
+                    .map(|resp| resp.into_inner())
+                    .box_err()
+                    .context(ErrWithCause {
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        msg: "Forwarded sql query failed",
+                    })
+            }
+            .boxed();
+
+            Box::new(query) as _
+        };
+
+        let forward_result = self.forwarder.forward(forward_req, do_query).await;
+        Ok(match forward_result {
+            Ok(forward_res) => Some(forward_res),
+            Err(e) => {
+                error!("Failed to forward sql req but the error is ignored, err:{e}");
+                None
+            }
+        })
+    }
+
+    async fn maybe_forward_prom_remote_query(
+        &self,
+        req: &PrometheusRemoteQueryRequest,
+    ) -> Result<Option<ForwardResult<PrometheusRemoteQueryResponse, Error>>> {
+        let table_name = "FIXME".to_string();
+        let req_ctx = req.context.as_ref().unwrap();
+        let forward_req = ForwardRequest {
+            schema: req_ctx.database.clone(),
+            table: table_name,
+            req: req.clone().into_request(),
+        };
+        let do_query = |mut client: StorageServiceClient<Channel>,
+                        request: tonic::Request<PrometheusRemoteQueryRequest>,
+                        _: &Endpoint| {
+            let query = async move {
+                client
+                    .prom_remote_query(request)
                     .await
                     .map(|resp| resp.into_inner())
                     .box_err()

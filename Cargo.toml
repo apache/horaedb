@@ -67,7 +67,8 @@ bytes = "1.1.0"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-ceresdbproto = "1.0.3"
+# ceresdbproto = "1.0.3"
+ceresdbproto = { git = "https://github.com/CeresDB/ceresdbproto", branch = "feat-prom-remote-query" }
 chrono = "0.4"
 clap = "3.0"
 clru = "0.6.1"

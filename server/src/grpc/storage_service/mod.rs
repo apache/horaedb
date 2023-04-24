@@ -14,19 +14,20 @@ use ceresdbproto::{
     common::ResponseHeader,
     storage::{
         storage_service_server::StorageService, PrometheusQueryRequest, PrometheusQueryResponse,
-        RouteRequest, RouteResponse, SqlQueryRequest, SqlQueryResponse, WriteRequest,
-        WriteResponse,
+        PrometheusRemoteQueryRequest, PrometheusRemoteQueryResponse, RouteRequest, RouteResponse,
+        SqlQueryRequest, SqlQueryResponse, WriteRequest, WriteResponse,
     },
 };
 use common_util::time::InstantExt;
 use futures::{stream, stream::BoxStream, StreamExt};
 use http::StatusCode;
+use prost::Message;
 use query_engine::executor::Executor as QueryExecutor;
 use table_engine::engine::EngineRuntimes;
 
 use crate::{
     grpc::metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
-    proxy::{Context, Proxy},
+    proxy::{error::build_ok_header, Context, Proxy},
 };
 
 #[derive(Clone)]
@@ -80,6 +81,21 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
 
         GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .handle_sql_query
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
+
+        resp
+    }
+
+    async fn prom_remote_query(
+        &self,
+        req: tonic::Request<PrometheusRemoteQueryRequest>,
+    ) -> Result<tonic::Response<PrometheusRemoteQueryResponse>, tonic::Status> {
+        let begin_instant = Instant::now();
+
+        let resp = self.prom_remote_query_internal(req).await;
+
+        GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .handle_prom_query
             .observe(begin_instant.saturating_elapsed().as_secs_f64());
 
         resp
@@ -241,6 +257,57 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             },
         };
 
+        Ok(tonic::Response::new(resp))
+    }
+
+    async fn prom_remote_query_internal(
+        &self,
+        req: tonic::Request<PrometheusRemoteQueryRequest>,
+    ) -> Result<tonic::Response<PrometheusRemoteQueryResponse>, tonic::Status> {
+        let req = req.into_inner();
+        let proxy = self.proxy.clone();
+        let builder = crate::context::RequestContext::builder()
+            .timeout(self.timeout)
+            .runtime(self.runtimes.read_runtime.clone());
+        // FIXME
+        let ctx = builder.build().unwrap();
+        let join_handle = self.runtimes.read_runtime.spawn(async move {
+            if req.context.is_none() {
+                return PrometheusRemoteQueryResponse {
+                    header: Some(error::build_err_header(
+                        StatusCode::BAD_REQUEST.as_u16() as u32,
+                        "database is not set".to_string(),
+                    )),
+                    ..Default::default()
+                };
+            }
+            let query = prom_remote_api::types::Query::decode(req.query.as_ref()).unwrap();
+            match proxy.handle_prom_process_query(&ctx, query).await {
+                Ok(v) => PrometheusRemoteQueryResponse {
+                    header: Some(build_ok_header()),
+                    response: v.encode_to_vec(),
+                },
+
+                Err(e) => PrometheusRemoteQueryResponse {
+                    header: Some(error::build_err_header(
+                        StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                        e.error_message(),
+                    )),
+                    ..Default::default()
+                },
+            }
+        });
+
+        let resp = match join_handle.await {
+            Ok(v) => v,
+            Err(e) => PrometheusRemoteQueryResponse {
+                header: Some(error::build_err_header(
+                    StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                    format!("fail to join the spawn task, err:{e:?}"),
+                )),
+                ..Default::default()
+            },
+        };
         Ok(tonic::Response::new(resp))
     }
 

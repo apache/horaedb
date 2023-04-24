@@ -11,7 +11,7 @@ extern crate common_util;
 
 pub mod config;
 mod consts;
-mod context;
+pub mod context;
 pub(crate) mod error_util;
 mod grpc;
 mod handlers;
