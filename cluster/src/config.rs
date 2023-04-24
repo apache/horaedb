@@ -63,7 +63,7 @@ impl Default for EtcdClientConfig {
 
             rpc_timeout: ReadableDuration::secs(5),
             connect_timeout: ReadableDuration::secs(5),
-            shard_lock_lease_ttl_sec: 15,
+            shard_lock_lease_ttl_sec: 30,
             shard_lock_lease_check_interval: ReadableDuration::millis(200),
         }
     }

@@ -3,7 +3,7 @@
 use std::{
     collections::HashMap,
     future::Future,
-    sync::{Arc, RwLock as StdRwLock},
+    sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock},
     time::{Duration, Instant},
 };
 
@@ -53,6 +53,15 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display(
+        "Failed to grant lease, shard_id:{shard_id}, ttl_sec:{ttl_sec}.\nBacktrace:\n{backtrace:?}"
+    ))]
+    GrantLeaseWithInvalidTTL {
+        shard_id: ShardId,
+        ttl_sec: i64,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display("Failed to create lock in etcd, shard_id:{shard_id}, err:{source}.\nBacktrace:\n{backtrace:?}"))]
     CreateLockInEtcd {
         shard_id: ShardId,
@@ -89,6 +98,7 @@ pub struct ShardLockManager {
     value: Bytes,
     lease_ttl_sec: u64,
     lock_lease_check_interval: Duration,
+    rpc_timeout: Duration,
 
     etcd_client: Client,
     runtime: RuntimeRef,
@@ -104,9 +114,9 @@ struct LeaseState {
 }
 
 impl LeaseState {
-    fn new() -> Self {
+    fn new(expired_at: Instant) -> Self {
         Self {
-            expired_at: Instant::now(),
+            expired_at,
             alive: false,
         }
     }
@@ -123,6 +133,15 @@ impl LeaseState {
     }
 }
 
+#[derive(Debug)]
+enum KeepAliveStopReason {
+    Failure {
+        err: Error,
+        stop_rx: oneshot::Receiver<()>,
+    },
+    Exit,
+}
+
 /// The lease of the shard lock.
 struct Lease {
     /// The lease id
@@ -131,16 +150,19 @@ struct Lease {
     ttl: Duration,
 
     state: Arc<StdRwLock<LeaseState>>,
-    keep_alive_handle: Option<JoinHandle<()>>,
+    /// The handle for the keep alive task in background.
+    ///
+    /// TODO: shall we wait for it to exit?
+    keep_alive_handle: StdMutex<Option<JoinHandle<()>>>,
 }
 
 impl Lease {
-    fn new(id: i64, ttl: Duration) -> Self {
+    fn new(id: i64, ttl: Duration, initial_state: LeaseState) -> Self {
         Self {
             id,
             ttl,
-            state: Arc::new(StdRwLock::new(LeaseState::new())),
-            keep_alive_handle: None,
+            state: Arc::new(StdRwLock::new(initial_state)),
+            keep_alive_handle: StdMutex::new(None),
         }
     }
 
@@ -157,6 +179,17 @@ impl Lease {
             return true;
         }
         state.expired_at < Instant::now()
+    }
+
+    fn duration_until_expired(&self) -> Option<Duration> {
+        let state = self.state.read().unwrap();
+        let expired_at = state.expired_at;
+        let now = Instant::now();
+        if expired_at > now {
+            Some(expired_at - now)
+        } else {
+            None
+        }
     }
 
     /// Keep alive the lease once, the state will be updated whatever the
@@ -204,9 +237,9 @@ impl Lease {
     }
 
     async fn start_keepalive(
-        &mut self,
-        mut stop_receiver: oneshot::Receiver<()>,
-        notifier: oneshot::Sender<Result<()>>,
+        &self,
+        mut stop_rx: oneshot::Receiver<()>,
+        notifier: oneshot::Sender<KeepAliveStopReason>,
         etcd_client: &mut Client,
         runtime: &RuntimeRef,
     ) -> Result<()> {
@@ -225,10 +258,14 @@ impl Lease {
         let state = self.state.clone();
         let handle = runtime.spawn(async move {
             loop {
-                if let Err(e) = Self::keep_alive_once(&mut keeper, &mut stream, &state).await {
-                    error!("Failed to keep lease alive, id:{lease_id}, err:{e}");
-                    if notifier.send(Err(e)).is_err() {
-                        error!("failed to send keepalive failure, lease_id:{lease_id}");
+                if let Err(err) = Self::keep_alive_once(&mut keeper, &mut stream, &state).await {
+                    error!("Failed to keep lease alive, id:{lease_id}, err:{err}");
+                    let reason = KeepAliveStopReason::Failure {
+                        err,
+                        stop_rx,
+                    };
+                    if notifier.send(reason).is_err() {
+                        error!("Failed to send keepalive failure, lease_id:{lease_id}");
                     }
 
                     return
@@ -238,10 +275,10 @@ impl Lease {
                     _ = sleeper => {
                         debug!("Try to keep the lease alive again, id:{lease_id}");
                     },
-                    _ = &mut stop_receiver => {
+                    _ = &mut stop_rx => {
                         info!("Stop keeping lease alive, id:{lease_id}");
-                        if notifier.send(Ok(())).is_err() {
-                            error!("failed to send keepalive stopping message, lease_id:{lease_id}");
+                        if notifier.send(KeepAliveStopReason::Exit).is_err() {
+                            error!("Failed to send keepalive stopping message, lease_id:{lease_id}");
                         }
                         return
                     }
@@ -249,7 +286,7 @@ impl Lease {
             }
         });
 
-        self.keep_alive_handle = Some(handle);
+        *self.keep_alive_handle.lock().unwrap() = Some(handle);
 
         Ok(())
     }
@@ -273,6 +310,8 @@ pub struct ShardLock {
     ttl_sec: u64,
     /// The interval to check whether the lease is expired
     lease_check_interval: Duration,
+    /// The timeout for etcd rpc
+    rpc_timeout: Duration,
 
     lease: Option<Arc<Lease>>,
     lease_check_handle: Option<JoinHandle<()>>,
@@ -285,14 +324,16 @@ impl ShardLock {
         key_prefix: &str,
         value: Bytes,
         ttl_sec: u64,
-        expire_check_interval: Duration,
+        lease_check_interval: Duration,
+        rpc_timeout: Duration,
     ) -> Self {
         Self {
             shard_id,
             key: Self::lock_key(key_prefix, shard_id),
             value,
             ttl_sec,
-            lease_check_interval: expire_check_interval,
+            lease_check_interval,
+            rpc_timeout,
 
             lease: None,
             lease_check_handle: None,
@@ -334,12 +375,27 @@ impl ShardLock {
             .context(GrantLease {
                 shard_id: self.shard_id,
             })?;
+        ensure!(
+            resp.ttl() > 0,
+            GrantLeaseWithInvalidTTL {
+                shard_id: self.shard_id,
+                ttl_sec: resp.ttl()
+            }
+        );
+
         let lease_id = resp.id();
+        let lease_expired_at = Instant::now() + Duration::from_secs(resp.ttl() as u64);
 
         self.acquire_lock_with_lease(lease_id, etcd_client).await?;
 
-        self.keep_lease_alive(lease_id, on_lock_expired, etcd_client, runtime)
-            .await?;
+        self.keep_lease_alive(
+            lease_id,
+            lease_expired_at,
+            on_lock_expired,
+            etcd_client,
+            runtime,
+        )
+        .await?;
 
         Ok(true)
     }
@@ -426,6 +482,7 @@ impl ShardLock {
     async fn keep_lease_alive<OnExpired, Fut>(
         &mut self,
         lease_id: i64,
+        expired_at: Instant,
         on_lock_expired: OnExpired,
         etcd_client: &mut Client,
         runtime: &RuntimeRef,
@@ -434,48 +491,85 @@ impl ShardLock {
         OnExpired: FnOnce(ShardId) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
-        let mut lease = Lease::new(lease_id, Duration::from_secs(self.ttl_sec));
-        let (lease_expire_notifier, mut lease_expire_receiver) = oneshot::channel();
-        let (keepalive_stop_sender, keepalive_stop_receiver) = oneshot::channel();
-        lease
-            .start_keepalive(
-                keepalive_stop_receiver,
-                lease_expire_notifier,
-                etcd_client,
-                runtime,
-            )
-            .await?;
+        let initial_state = LeaseState::new(expired_at);
+        let lease = Arc::new(Lease::new(
+            lease_id,
+            Duration::from_secs(self.ttl_sec),
+            initial_state,
+        ));
 
-        let lease = Arc::new(lease);
-        let lease_for_check = lease.clone();
-        let lock_lease_check_interval = self.lease_check_interval;
         let shard_id = self.shard_id;
+        let rpc_timeout = self.rpc_timeout;
+        let lock_lease_check_interval = self.lease_check_interval;
+        let (keepalive_stop_sender, keepalive_stop_rx) = oneshot::channel();
+        let mut etcd_client = etcd_client.clone();
+        let runtime_for_bg = runtime.clone();
+        let lease_for_bg = lease.clone();
         let handle = runtime.spawn(async move {
+            let mut keepalive_stop_rx = keepalive_stop_rx;
             loop {
-                let timer = tokio::time::sleep(lock_lease_check_interval);
-                tokio::select! {
-                    _ = timer => {
-                        if lease_for_check.is_expired() {
-                            warn!("The lease of the shard lock is expired, shard_id:{shard_id}");
-                            on_lock_expired(shard_id).await;
-                            return
-                        }
+                if let Some(duration)  = lease_for_bg.duration_until_expired() {
+                    let keepalive_cost = rpc_timeout + rpc_timeout / 2;
+                    if duration > keepalive_cost {
+                        let wait_dur = duration - keepalive_cost;
+                        warn!("Next keepalive will be schedule after {wait_dur:?}, shard_id:{shard_id}, lease_id:{lease_id}, keepalive_cost:{keepalive_cost:?}, duration_until_expired:{duration:?}");
+                        tokio::time::sleep(wait_dur).await;
+                        warn!("Start to keepalive, shard_id:{shard_id}, lease_id:{lease_id}");
+                    } else {
+                        warn!("The lease is about to expire, and trigger the on_lock_expire callback, shard_id:{shard_id}, lease_id:{lease_id}");
+                        on_lock_expired(shard_id).await;
+                        return;
                     }
-                    res = &mut lease_expire_receiver => {
-                        match res {
-                            Ok(Ok(_)) => {
-                                info!("The lease is revoked in purpose, and no need to do anything, shard_id:{shard_id}");
-                            }
-                            Ok(Err(e)) => {
-                                error!("The lease of the shard lock is expired, shard_id:{shard_id}, err:{e:?}");
+                }
+
+                let (lease_expire_notifier, mut lease_expire_receiver) = oneshot::channel();
+                if let Err(e) = lease_for_bg
+                    .start_keepalive(
+                        keepalive_stop_rx,
+                        lease_expire_notifier,
+                        &mut etcd_client,
+                        &runtime_for_bg,
+                    )
+                    .await {
+                        error!("Failed to start keepalive, shard_id:{shard_id}, lease_id:{lease_id}, err:{e}");
+                        return;
+                    }
+
+                // Start to keep the lease alive forever.
+                // If the lease is expired, the whole task will be stopped. However, if there are some failure in the
+                // keepalive procedure, we will retry.
+                'outer: loop {
+                    let timer = tokio::time::sleep(lock_lease_check_interval);
+                    tokio::select! {
+                        _ = timer => {
+                            if lease_for_bg.is_expired() {
+                                warn!("The lease of the shard lock is expired, shard_id:{shard_id}");
                                 on_lock_expired(shard_id).await;
-                            }
-                            Err(_) => {
-                                error!("The notifier for lease keeping alive is closed, shard_id:{shard_id}");
-                                on_lock_expired(shard_id).await;
+                                return
                             }
                         }
-                        return
+                        res = &mut lease_expire_receiver => {
+                            match res {
+                                Ok(reason) => match reason {
+                                    KeepAliveStopReason::Exit => {
+                                        info!("The lease is revoked in purpose, and no need to do anything, shard_id:{shard_id}");
+                                        return;
+                                    }
+                                    KeepAliveStopReason::Failure { err, stop_rx } => {
+                                        error!("Fail to keep lease alive, and will retry, shard_id:{shard_id}, err:{err:?}");
+                                        keepalive_stop_rx = stop_rx;
+                                        // Break the outer loop to avoid the macro may introduce a new loop.
+                                        break 'outer;
+                                    }
+                                }
+                                Err(_) => {
+                                    // Unreachable! Because the notifier will always send a value before it is closed.
+                                    error!("The notifier for lease keeping alive is closed, will trigger callback, shard_id:{shard_id}");
+                                    on_lock_expired(shard_id).await;
+                                    return;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -495,6 +589,7 @@ impl ShardLockManager {
         etcd_client: Client,
         lease_ttl_sec: u64,
         lock_lease_check_interval: Duration,
+        rpc_timeout: Duration,
         runtime: RuntimeRef,
     ) -> ShardLockManager {
         let value = Bytes::from(ShardLockValue { node_name }.encode_to_vec());
@@ -504,6 +599,7 @@ impl ShardLockManager {
             value,
             lease_ttl_sec,
             lock_lease_check_interval,
+            rpc_timeout,
             etcd_client,
             runtime,
             shard_locks: Arc::new(RwLock::new(HashMap::new())),
@@ -542,6 +638,7 @@ impl ShardLockManager {
                 self.value.clone(),
                 self.lease_ttl_sec,
                 self.lock_lease_check_interval,
+                self.rpc_timeout,
             );
 
             let mut etcd_client = self.etcd_client.clone();
