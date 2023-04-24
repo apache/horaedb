@@ -16,7 +16,7 @@ use datafusion::{
     sql::planner::ContextProvider,
 };
 use df_operator::{registry::FunctionRegistry, scalar::ScalarUdf, udaf::AggregateUdf};
-use snafu::{ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu};
 use table_engine::{provider::TableProviderAdapter, table::TableRef};
 
 use crate::container::{TableContainer, TableReference};
@@ -35,6 +35,9 @@ pub enum Error {
         source: catalog::Error,
     },
 
+    #[snafu(display("Failed to find catalog, name:{}", name))]
+    CatalogNotFound { name: String },
+
     #[snafu(display("Failed to find schema, name:{}", name))]
     SchemaNotFound { name: String },
 
@@ -42,6 +45,18 @@ pub enum Error {
     FindTable {
         name: String,
         source: Box<catalog::schema::Error>,
+    },
+
+    #[snafu(display(
+        "Failed to get all tables, catalog_name:{}, schema_name:{}, err:{}",
+        catalog_name,
+        schema_name,
+        source
+    ))]
+    GetAllTables {
+        catalog_name: String,
+        schema_name: String,
+        source: catalog::schema::Error,
     },
 
     #[snafu(display("Failed to find udf, err:{}", source))]
@@ -72,6 +87,13 @@ pub trait MetaProvider {
 
     /// Get udaf by name.
     fn aggregate_udf(&self, name: &str) -> Result<Option<AggregateUdf>>;
+
+    /// Return all tables.
+    ///
+    /// Note that it may incur expensive cost.
+    /// Now it is used in `table_names` method in `SchemaProvider`(introduced by
+    /// influxql).
+    fn all_tables(&self) -> Result<Vec<TableRef>>;
 }
 
 /// We use an adapter instead of using [catalog::Manager] directly, because
@@ -137,6 +159,34 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
 
     fn aggregate_udf(&self, name: &str) -> Result<Option<AggregateUdf>> {
         self.function_registry.find_udaf(name).context(FindUdf)
+    }
+
+    // TODO: after supporting not only default catalog and schema, we should
+    // refactor the tables collecting procedure.
+    fn all_tables(&self) -> Result<Vec<TableRef>> {
+        let catalog = self
+            .manager
+            .catalog_by_name(self.default_catalog)
+            .with_context(|| FindCatalog {
+                name: self.default_catalog,
+            })?
+            .with_context(|| CatalogNotFound {
+                name: self.default_catalog,
+            })?;
+
+        let schema = catalog
+            .schema_by_name(self.default_schema)
+            .context(FindSchema {
+                name: self.default_schema,
+            })?
+            .with_context(|| SchemaNotFound {
+                name: self.default_schema,
+            })?;
+
+        schema.all_tables().with_context(|| GetAllTables {
+            catalog_name: self.default_catalog,
+            schema_name: self.default_schema,
+        })
     }
 }
 
@@ -218,6 +268,10 @@ impl<'a, P: MetaProvider> MetaProvider for ContextProviderAdapter<'a, P> {
 
     fn aggregate_udf(&self, name: &str) -> Result<Option<AggregateUdf>> {
         self.meta_provider.aggregate_udf(name)
+    }
+
+    fn all_tables(&self) -> Result<Vec<TableRef>> {
+        self.meta_provider.all_tables()
     }
 }
 

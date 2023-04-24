@@ -78,4 +78,8 @@ impl MetaProvider for MockMetaProvider {
     fn aggregate_udf(&self, _name: &str) -> crate::provider::Result<Option<AggregateUdf>> {
         todo!()
     }
+
+    fn all_tables(&self) -> crate::provider::Result<Vec<TableRef>> {
+        todo!()
+    }
 }

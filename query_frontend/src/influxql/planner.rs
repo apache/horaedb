@@ -2,8 +2,9 @@
 
 //! InfluxQL planner
 
-use std::{collections::HashMap, sync::Arc};
+use std::{cell::OnceCell, sync::Arc};
 
+use arrow::datatypes::SchemaRef as ArrowSchemaRef;
 use common_util::error::BoxError;
 use datafusion::{
     error::DataFusionError, logical_expr::TableSource, sql::planner::ContextProvider,
@@ -18,6 +19,7 @@ use influxql_parser::{
     statement::Statement as InfluxqlStatement,
 };
 use influxql_schema::Schema;
+use log::error;
 use snafu::{ensure, ResultExt};
 use table_engine::table::TableRef;
 
@@ -33,17 +35,18 @@ pub const CERESDB_MEASUREMENT_COLUMN_NAME: &str = "iox::measurement";
 // Port from https://github.com/ceresdb/influxql/blob/36fc4d873e/iox_query_influxql/src/frontend/planner.rs#L28
 struct InfluxQLSchemaProvider<'a, P: MetaProvider> {
     context_provider: ContextProviderAdapter<'a, P>,
-    // TODO: avoid load all tables.
-    // if we can ensure `table_names` is only called once, then load tables lazily is better.
-    tables: HashMap<String, (Arc<dyn TableSource>, Schema)>,
+    tables_cache: OnceCell<Vec<TableRef>>,
 }
 
 impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
     fn get_table_provider(&self, name: &str) -> datafusion::error::Result<Arc<dyn TableSource>> {
-        self.tables
-            .get(name)
-            .map(|(t, _)| Arc::clone(t))
-            .ok_or_else(|| DataFusionError::Plan(format!("measurement does not exist: {name}")))
+        self.context_provider
+            .get_table_provider(name.into())
+            .map_err(|e| {
+                DataFusionError::Plan(format!(
+                    "measurement does not exist, measurement:{name}, source:{e}"
+                ))
+            })
     }
 
     fn get_function_meta(&self, name: &str) -> Option<Arc<datafusion::logical_expr::ScalarUDF>> {
@@ -58,21 +61,68 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
     }
 
     fn table_names(&self) -> Vec<&'_ str> {
-        self.tables.keys().map(|k| k.as_str()).collect::<Vec<_>>()
+        let tables = match self
+            .tables_cache
+            .get_or_try_init(|| self.context_provider.all_tables())
+        {
+            Ok(tables) => tables,
+            Err(e) => {
+                // Restricted by the external interface of iox, we can just print error log here
+                // and return empty `Vec`.
+                error!("Influxql planner failed to get all tables, err:{e}");
+                return Vec::default();
+            }
+        };
+
+        tables.iter().map(|t| t.name()).collect()
     }
 
     fn table_schema(&self, name: &str) -> Option<Schema> {
-        self.tables.get(name).map(|(_, s)| s.clone())
+        let table_source = match self.get_table_provider(name) {
+            Ok(table) => table,
+            Err(e) => {
+                // Restricted by the external interface of iox, we can just print error log here
+                // and return None.
+                error!("Influxql planner failed to get table schema, name:{name}, err:{e}");
+                return None;
+            }
+        };
+
+        let ceresdb_arrow_schema = table_source.schema();
+        let influxql_schema = match convert_to_influxql_schema(table_source.schema()) {
+            Ok(schema) => schema,
+            Err(e) => {
+                // Same as above here.
+                error!("Influxql planner failed to convert schema to influxql schema, schema:{ceresdb_arrow_schema}, err:{e}");
+                return None;
+            }
+        };
+
+        Some(influxql_schema)
+    }
+
+    fn table_exists(&self, name: &str) -> bool {
+        match self.context_provider.table(name.into()) {
+            Ok(Some(_)) => true,
+            Ok(None) => false,
+            Err(e) => {
+                // Same as above here.
+                error!("Influxql planner failed to find table, table_name:{name}, err:{e}");
+                false
+            }
+        }
     }
 }
 
+/// Influxql logical planner
+///
+/// NOTICE: planner will be built for each influxql query.
 pub(crate) struct Planner<'a, P: MetaProvider> {
     schema_provider: InfluxQLSchemaProvider<'a, P>,
 }
 
-fn convert_influxql_schema(ceresdb_schema: common_types::schema::Schema) -> Result<Schema> {
-    let arrow_schema = ceresdb_schema.into_arrow_schema_ref();
-    ceresdb_schema_to_influxdb(arrow_schema)
+fn convert_to_influxql_schema(ceresdb_arrow_schema: ArrowSchemaRef) -> Result<Schema> {
+    ceresdb_schema_to_influxdb(ceresdb_arrow_schema)
         .box_err()
         .and_then(|s| Schema::try_from(s).box_err())
         .context(BuildPlanWithCause {
@@ -81,26 +131,13 @@ fn convert_influxql_schema(ceresdb_schema: common_types::schema::Schema) -> Resu
 }
 
 impl<'a, P: MetaProvider> Planner<'a, P> {
-    pub fn try_new(
-        context_provider: ContextProviderAdapter<'a, P>,
-        all_tables: Vec<TableRef>,
-    ) -> Result<Self> {
-        let tables = all_tables
-            .into_iter()
-            .map(|t| {
-                let table_name = t.name().to_string();
-                let schema = convert_influxql_schema(t.schema())?;
-                let table_source = context_provider.table_source(t);
-                Ok((table_name, (table_source, schema)))
-            })
-            .collect::<Result<HashMap<_, _>>>()?;
-
-        Ok(Self {
+    pub fn new(context_provider: ContextProviderAdapter<'a, P>) -> Self {
+        Self {
             schema_provider: InfluxQLSchemaProvider {
                 context_provider,
-                tables,
+                tables_cache: OnceCell::new(),
             },
-        })
+        }
     }
 
     /// Build sql logical plan from [InfluxqlStatement].

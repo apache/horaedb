@@ -187,11 +187,7 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
             );
 
             frontend
-                .influxql_stmt_to_plan(
-                    &mut sql_ctx,
-                    stmts.remove(0),
-                    instance.catalog_manager.clone(),
-                )
+                .influxql_stmt_to_plan(&mut sql_ctx, stmts.remove(0))
                 .context(CreatePlan {
                     query: &request.query,
                 })?
