@@ -66,6 +66,10 @@ impl ClusterImpl {
         config: ClusterConfig,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
+        if let Err(e) = config.etcd_client.validate() {
+            return InvalidArguments { msg: e }.fail();
+        }
+
         let inner = Arc::new(Inner::new(shard_tables_cache, meta_client)?);
         let connect_options = ConnectOptions::from(&config.etcd_client);
         let etcd_client =
@@ -85,7 +89,7 @@ impl ClusterImpl {
             etcd_client,
             config.etcd_client.shard_lock_lease_ttl_sec,
             config.etcd_client.shard_lock_lease_check_interval.0,
-            config.etcd_client.rpc_timeout.0,
+            config.etcd_client.rpc_timeout(),
             runtime.clone(),
         );
         Ok(Self {

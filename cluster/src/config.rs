@@ -1,5 +1,7 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+use std::time::Duration;
+
 use common_types::schema::TIMESTAMP_COLUMN;
 use common_util::config::ReadableDuration;
 use etcd_client::ConnectOptions;
@@ -25,6 +27,7 @@ impl Default for SchemaConfig {
 }
 
 const DEFAULT_ETCD_ROOT_PATH: &str = "/ceresdb";
+const MIN_SHARD_LOCK_LEASE_TTL_SEC: u64 = 15;
 
 #[derive(Clone, Deserialize, Debug, Serialize)]
 #[serde(default)]
@@ -36,22 +39,46 @@ pub struct EtcdClientConfig {
 
     /// Timeout to connect to etcd cluster
     pub connect_timeout: ReadableDuration,
-    /// Timeout for each rpc request
-    pub rpc_timeout: ReadableDuration,
 
     /// The lease of the shard lock in seconds.
     ///
     /// It should be greater than `shard_lock_lease_check_interval`.
+    /// NOTE: the rpc timeout to the etcd cluster is determined by it.
     pub shard_lock_lease_ttl_sec: u64,
     /// The interval of checking whether the shard lock lease is expired
     pub shard_lock_lease_check_interval: ReadableDuration,
+}
+
+impl EtcdClientConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.shard_lock_lease_ttl_sec < MIN_SHARD_LOCK_LEASE_TTL_SEC {
+            return Err(format!(
+                "shard_lock_lease_ttl_sec should be greater than {MIN_SHARD_LOCK_LEASE_TTL_SEC}"
+            ));
+        }
+
+        if self.shard_lock_lease_check_interval.0
+            >= Duration::from_secs(self.shard_lock_lease_ttl_sec)
+        {
+            return Err(format!(
+                "shard_lock_lease_check_interval({}) should be less than shard_lock_lease_ttl_sec({}s)",
+                self.shard_lock_lease_check_interval, self.shard_lock_lease_ttl_sec,
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub fn rpc_timeout(&self) -> Duration {
+        Duration::from_secs(self.shard_lock_lease_ttl_sec) / 6
+    }
 }
 
 impl From<&EtcdClientConfig> for ConnectOptions {
     fn from(config: &EtcdClientConfig) -> Self {
         ConnectOptions::default()
             .with_connect_timeout(config.connect_timeout.0)
-            .with_timeout(config.rpc_timeout.0)
+            .with_timeout(config.rpc_timeout())
     }
 }
 
@@ -60,8 +87,6 @@ impl Default for EtcdClientConfig {
         Self {
             server_addrs: vec!["127.0.0.1:2379".to_string()],
             root_path: DEFAULT_ETCD_ROOT_PATH.to_string(),
-
-            rpc_timeout: ReadableDuration::secs(5),
             connect_timeout: ReadableDuration::secs(5),
             shard_lock_lease_ttl_sec: 30,
             shard_lock_lease_check_interval: ReadableDuration::millis(200),
