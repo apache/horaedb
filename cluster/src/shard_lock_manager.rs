@@ -136,11 +136,7 @@ impl LeaseState {
     fn duration_until_expired(&self) -> Option<Duration> {
         let expired_at = self.expired_at;
         let now = Instant::now();
-        if expired_at > now {
-            Some(expired_at - now)
-        } else {
-            None
-        }
+        expired_at.checked_duration_since(now)
     }
 
     /// Check whether lease is expired.
@@ -503,6 +499,12 @@ impl ShardLock {
         Ok(())
     }
 
+    /// Keep alive the lease.
+    ///
+    /// The `on_lock_expired` callback will be called when the lock is expired,
+    /// but it won't be triggered if the lock is revoked in purpose.
+    /// The keepalive procedure supports retrying if the failure is caused by
+    /// rpc error, and it will stop if the lease is expired.
     async fn keep_lease_alive<OnExpired, Fut>(
         &mut self,
         lease_id: i64,
@@ -532,19 +534,23 @@ impl ShardLock {
         let runtime_for_bg = runtime.clone();
         let lease_for_bg = lease.clone();
         let handle = runtime.spawn(async move {
+            // This receiver is used to stop the underlying keepalive procedure.
             let mut keepalive_stop_rx = keepalive_stop_rx;
+            // The loop is for retrying the keepalive procedure if the failure results from rpc error.
             loop {
                 if let Some(dur_until_expired)  = lease_for_bg.duration_until_expired() {
-                    // Assume the keepalive cost is 1.5 rpc_time to ensure the lease is not expired when waiting for next keepalive.
+                    // Don't start next keep alive immediately, wait for a while to avoid too many requests.
+                    // The wait time is calculated based on the lease ttl and the rpc timeout. And if the time before
+                    // the lease expired is not enough (less than 1.5*rpc timeout), the keepalive will not be scheduled
+                    // and the lock is considered expired.
                     let keepalive_cost = rpc_timeout + rpc_timeout / 2;
-                    if dur_until_expired > keepalive_cost {
-                        let wait_dur = dur_until_expired - keepalive_cost;
+                    if let Some(wait) = dur_until_expired.checked_sub(keepalive_cost) {
                         info!(
-                            "Next keepalive will be schedule after {wait_dur:?}, shard_id:{shard_id}, lease_id:{lease_id}, \
+                            "Next keepalive will be schedule after {wait:?}, shard_id:{shard_id}, lease_id:{lease_id}, \
                             keepalive_cost:{keepalive_cost:?}, duration_until_expired:{dur_until_expired:?}"
                         );
                         tokio::select! {
-                            _ = tokio::time::sleep(wait_dur) => {
+                            _ = tokio::time::sleep(wait) => {
                                 info!("Start to keepalive, shard_id:{shard_id}, lease_id:{lease_id}");
                             }
                             _ = &mut keepalive_stop_rx => {
@@ -564,7 +570,7 @@ impl ShardLock {
                     }
                 }
 
-                let (lease_expire_notifier, mut lease_expire_receiver) = oneshot::channel();
+                let (lease_expire_notifier, mut lease_expire_rx) = oneshot::channel();
                 if let KeepAliveResult::Failure { err, stop_rx } = lease_for_bg
                     .start_keepalive(
                         keepalive_stop_rx,
@@ -573,7 +579,7 @@ impl ShardLock {
                         &runtime_for_bg,
                     )
                     .await {
-                        error!("Failed to start keepalive and will retry , shard_id:{shard_id}, lease_id:{lease_id}, err:{err}");
+                        error!("Failed to start keepalive and will retry , shard_id:{shard_id}, err:{err}");
                         keepalive_stop_rx = stop_rx;
                         continue;
                     }
@@ -591,7 +597,7 @@ impl ShardLock {
                                 return
                             }
                         }
-                        res = &mut lease_expire_receiver => {
+                        res = &mut lease_expire_rx => {
                             match res {
                                 Ok(reason) => match reason {
                                     KeepAliveStopReason::Exit => {
