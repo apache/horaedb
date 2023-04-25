@@ -63,7 +63,7 @@ pub enum Error {
 define_result!(Error);
 
 /// Modifications to meta data in meta
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum MetaUpdate {
     AddTable(AddTableMeta),
     DropTable(DropTableMeta),
