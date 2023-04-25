@@ -183,7 +183,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         Ok(match forward_result {
             Ok(forward_res) => Some(forward_res),
             Err(e) => {
-                error!("Failed to forward sql req but the error is ignored, err:{e}");
+                error!("Failed to forward prom req but the error is ignored, err:{e}");
                 None
             }
         })
