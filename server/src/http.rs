@@ -248,11 +248,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     .handle_query(&ctx, req)
                     .await
                     .map(convert_output)
-                    .map_err(|e| {
-                        // TODO(yingwen): Maybe truncate and print the sql
-                        error!("Http service Failed to handle sql, err:{}", e);
-                        Box::new(e) as _
-                    })
+                    .box_err()
                     .context(HandleRequest);
                 match result {
                     Ok(res) => Ok(reply::json(&res)),
@@ -499,10 +495,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and_then(|req, ctx, instance| async {
                 let result = handlers::admin::handle_block(ctx, instance, req)
                     .await
-                    .map_err(|e| {
-                        error!("Http service failed to handle admin block, err:{}", e);
-                        Box::new(e) as _
-                    })
+                    .box_err()
                     .context(HandleRequest);
 
                 match result {

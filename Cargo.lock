@@ -85,7 +85,7 @@ dependencies = [
  "async-trait",
  "base64 0.13.1",
  "bytes 1.4.0",
- "ceresdbproto 1.0.3 (git+https://github.com/CeresDB/ceresdbproto?branch=feat-prom-remote-query)",
+ "ceresdbproto",
  "common_types",
  "common_util",
  "datafusion",
@@ -1140,7 +1140,7 @@ checksum = "6a2c1699cb154e97cfccd3d6a0679f561c6214a33d86b3eacb78685c7479d022"
 dependencies = [
  "arrow 23.0.0",
  "async-trait",
- "ceresdbproto 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ceresdbproto",
  "dashmap 5.4.0",
  "futures 0.3.28",
  "paste 1.0.12",
@@ -1168,21 +1168,9 @@ dependencies = [
 
 [[package]]
 name = "ceresdbproto"
-version = "1.0.3"
+version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "456d1f090caba236219310b8f921a2b76e06e65f848965f1cf890a982b0e4735"
-dependencies = [
- "prost",
- "protoc-bin-vendored",
- "tonic",
- "tonic-build",
- "walkdir",
-]
-
-[[package]]
-name = "ceresdbproto"
-version = "1.0.3"
-source = "git+https://github.com/CeresDB/ceresdbproto?branch=feat-prom-remote-query#2bc6cb89d839f6e29c989164b6d7ebcbec6c7e70"
+checksum = "18d5d1c238f84dee01e671603c6a921868f3663256e0393c64ece88e58ee4869"
 dependencies = [
  "prost",
  "protoc-bin-vendored",
@@ -1344,7 +1332,7 @@ name = "cluster"
 version = "1.1.0"
 dependencies = [
  "async-trait",
- "ceresdbproto 1.0.3 (git+https://github.com/CeresDB/ceresdbproto?branch=feat-prom-remote-query)",
+ "ceresdbproto",
  "common_types",
  "common_util",
  "etcd-client",
@@ -1396,7 +1384,7 @@ dependencies = [
  "arrow_ext",
  "byteorder",
  "bytes_ext",
- "ceresdbproto 1.0.3 (git+https://github.com/CeresDB/ceresdbproto?branch=feat-prom-remote-query)",
+ "ceresdbproto",
  "chrono",
  "datafusion",
  "murmur3",
@@ -1414,7 +1402,7 @@ version = "1.1.0"
 dependencies = [
  "arrow 36.0.0",
  "backtrace",
- "ceresdbproto 1.0.3 (git+https://github.com/CeresDB/ceresdbproto?branch=feat-prom-remote-query)",
+ "ceresdbproto",
  "chrono",
  "common_types",
  "crossbeam-utils 0.8.15",
@@ -3541,7 +3529,7 @@ name = "meta_client"
 version = "1.1.0"
 dependencies = [
  "async-trait",
- "ceresdbproto 1.0.3 (git+https://github.com/CeresDB/ceresdbproto?branch=feat-prom-remote-query)",
+ "ceresdbproto",
  "common_types",
  "common_util",
  "futures 0.3.28",
@@ -4051,7 +4039,7 @@ version = "1.1.0"
 dependencies = [
  "async-trait",
  "bytes 1.4.0",
- "ceresdbproto 1.0.3 (git+https://github.com/CeresDB/ceresdbproto?branch=feat-prom-remote-query)",
+ "ceresdbproto",
  "chrono",
  "clru",
  "common_util",
@@ -4921,7 +4909,7 @@ dependencies = [
  "arrow 36.0.0",
  "async-trait",
  "catalog",
- "ceresdbproto 1.0.3 (git+https://github.com/CeresDB/ceresdbproto?branch=feat-prom-remote-query)",
+ "ceresdbproto",
  "cluster",
  "common_types",
  "common_util",
@@ -5313,7 +5301,7 @@ version = "1.1.0"
 dependencies = [
  "arrow_ext",
  "async-trait",
- "ceresdbproto 1.0.3 (git+https://github.com/CeresDB/ceresdbproto?branch=feat-prom-remote-query)",
+ "ceresdbproto",
  "common_types",
  "common_util",
  "futures 0.3.28",
@@ -5439,7 +5427,7 @@ name = "router"
 version = "1.1.0"
 dependencies = [
  "async-trait",
- "ceresdbproto 1.0.3 (git+https://github.com/CeresDB/ceresdbproto?branch=feat-prom-remote-query)",
+ "ceresdbproto",
  "cluster",
  "common_types",
  "common_util",
@@ -5794,7 +5782,7 @@ dependencies = [
  "async-trait",
  "bytes 1.4.0",
  "catalog",
- "ceresdbproto 1.0.3 (git+https://github.com/CeresDB/ceresdbproto?branch=feat-prom-remote-query)",
+ "ceresdbproto",
  "clru",
  "cluster",
  "common_types",
@@ -6346,7 +6334,7 @@ dependencies = [
  "arrow 36.0.0",
  "async-trait",
  "catalog",
- "ceresdbproto 1.0.3 (git+https://github.com/CeresDB/ceresdbproto?branch=feat-prom-remote-query)",
+ "ceresdbproto",
  "common_types",
  "common_util",
  "futures 0.3.28",
@@ -6365,7 +6353,7 @@ dependencies = [
  "arrow 36.0.0",
  "arrow_ext",
  "async-trait",
- "ceresdbproto 1.0.3 (git+https://github.com/CeresDB/ceresdbproto?branch=feat-prom-remote-query)",
+ "ceresdbproto",
  "common_types",
  "common_util",
  "datafusion",
@@ -7207,7 +7195,7 @@ name = "wal"
 version = "1.1.0"
 dependencies = [
  "async-trait",
- "ceresdbproto 1.0.3 (git+https://github.com/CeresDB/ceresdbproto?branch=feat-prom-remote-query)",
+ "ceresdbproto",
  "chrono",
  "common_types",
  "common_util",
