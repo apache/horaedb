@@ -387,7 +387,8 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 	}
 
 	// Update shard node mapping.
-	shardNodes := make(map[string][]storage.ShardNode, len(registeredNode.ShardInfos))
+	shardNodes := make(map[string][]storage.ShardNode, 1)
+	shardNodes[registeredNode.Node.Name] = make([]storage.ShardNode, 0, len(registeredNode.ShardInfos))
 	for _, shardInfo := range registeredNode.ShardInfos {
 		shardNodes[registeredNode.Node.Name] = append(shardNodes[registeredNode.Node.Name], storage.ShardNode{
 			ID:        shardInfo.ID,
