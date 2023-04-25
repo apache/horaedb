@@ -198,13 +198,21 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for Proxy<Q> {
         log::info!("remote_req is {:?}", remote_req);
         if let Some(resp) = self
             .maybe_forward_prom_remote_query(metric, remote_req)
-            .await?
+            .await
+            .map_err(|e| {
+                log::info!("remote_req forward error {:?}", e);
+                e
+            })?
         {
             match resp {
                 ForwardResult::Forwarded(resp) => {
                     return resp.and_then(|v| {
                         QueryResult::decode(v.response.as_ref())
                             .box_err()
+                            .map_err(|e| {
+                                log::info!("remote_req decode error {:?}", e);
+                                e
+                            })
                             .context(Internal {
                                 msg: "decode QueryResult failed",
                             })
