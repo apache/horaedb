@@ -16,7 +16,7 @@ use logger::RuntimeLevel;
 use profile::Profiler;
 use prom_remote_api::web;
 use query_engine::executor::Executor as QueryExecutor;
-use router::{endpoint::Endpoint, Router, RouterRef};
+use router::{endpoint::Endpoint, RouterRef};
 use serde::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
@@ -132,7 +132,7 @@ pub struct Service<Q> {
     rx: Option<Receiver<()>>,
     config: HttpConfig,
     config_content: String,
-    router: Arc<dyn Router + Send + Sync>,
+    router: RouterRef,
     opened_wals: OpenedWals,
 }
 
@@ -266,17 +266,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::path!("route" / String)
             .and(warp::get())
             .and(self.with_context())
-            .and(self.with_instance())
-            .and_then(|table: String, ctx, instance| async move {
-                let result = handlers::route::handle_route(&ctx, instance, &table)
+            .and(self.with_router())
+            .and_then(|table: String, ctx, router| async move {
+                let result = handlers::route::handle_route(ctx, router, table)
                     .await
-                    .map_err(|e| {
-                        error!(
-                            "Http service Failed to find route of table:{}, err:{:?}",
-                            table, e
-                        );
-                        Box::new(e) as _
-                    })
+                    .box_err()
                     .context(HandleRequest);
                 match result {
                     Ok(res) => Ok(reply::json(&res)),
@@ -536,7 +530,6 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         //TODO(boyan) use read/write runtime by sql type.
         let runtime = self.engine_runtimes.default_runtime.clone();
         let timeout = self.config.timeout;
-        let router = self.router.clone();
 
         header::optional::<String>(consts::CATALOG_HEADER)
             .and(header::optional::<String>(consts::SCHEMA_HEADER))
@@ -547,7 +540,6 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     let default_catalog = default_catalog.clone();
                     let runtime = runtime.clone();
                     let schema = schema.unwrap_or_else(|| default_schema.clone());
-                    let router = router.clone();
                     async move {
                         RequestContext::builder()
                             .catalog(catalog.unwrap_or(default_catalog))
@@ -555,7 +547,6 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                             .runtime(runtime)
                             .timeout(timeout)
                             .enable_partition_table_access(true)
-                            .router(router)
                             .build()
                             .context(CreateContext)
                             .map_err(reject::custom)
@@ -586,6 +577,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     ) -> impl Filter<Extract = (InstanceRef<Q>,), Error = Infallible> + Clone {
         let instance = self.proxy.instance();
         warp::any().map(move || instance.clone())
+    }
+
+    fn with_router(&self) -> impl Filter<Extract = (RouterRef,), Error = Infallible> + Clone {
+        let router = self.router.clone();
+        warp::any().map(move || router.clone())
     }
 
     fn with_log_runtime(

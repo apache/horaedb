@@ -4,19 +4,25 @@
 //! It converts write request to gRPC write request, and
 //! translates query request to SQL for execution.
 
-use std::{collections::HashMap, result::Result as StdResult, time::Instant};
+use std::{
+    collections::HashMap,
+    result::Result as StdResult,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use async_trait::async_trait;
+use catalog::consts::DEFAULT_CATALOG;
 use ceresdbproto::storage::{
-    value, Field, FieldGroup, PrometheusRemoteQueryRequest, Tag, Value, WriteSeriesEntry,
-    WriteTableRequest,
+    value, Field, FieldGroup, PrometheusRemoteQueryRequest, PrometheusRemoteQueryResponse, Tag,
+    Value, WriteSeriesEntry, WriteTableRequest,
 };
 use common_types::{
     datum::DatumKind,
     request_id::RequestId,
     schema::{RecordSchema, TIMESTAMP_COLUMN, TSID_COLUMN},
 };
-use common_util::error::BoxError;
+use common_util::{error::BoxError, runtime::Runtime};
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::debug;
@@ -32,7 +38,8 @@ use warp::reject;
 use crate::{
     context::RequestContext,
     proxy::{
-        error::{ErrNoCause, Error, Internal, InternalNoCause, Result},
+        error::{build_ok_header, ErrNoCause, Error, Internal, InternalNoCause, Result},
+        forward::ForwardResult,
         grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
         http::query::{QueryRequest, Request},
         Proxy,
@@ -129,6 +136,42 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         convert_query_result(metric, result)
     }
+
+    /// This method is used to handle forwarded gRPC query from
+    /// another CeresDB instance.
+    pub async fn handle_prom_grpc_query(
+        &self,
+        timeout: Option<Duration>,
+        req: PrometheusRemoteQueryRequest,
+        runtime: Arc<Runtime>,
+    ) -> Result<PrometheusRemoteQueryResponse> {
+        let ctx = req.context.context(ErrNoCause {
+            code: StatusCode::BAD_REQUEST,
+            msg: "request context is missing",
+        })?;
+        let database = ctx.database.to_string();
+        let query = Query::decode(req.query.as_ref())
+            .box_err()
+            .context(Internal {
+                msg: "decode query failed",
+            })?;
+        let builder = RequestContext::builder()
+            .timeout(timeout)
+            .runtime(runtime)
+            .schema(database)
+            // TODO: support different catalog
+            .catalog(DEFAULT_CATALOG.to_string());
+        let ctx = builder.build().box_err().context(Internal {
+            msg: "build request context failed",
+        })?;
+
+        self.handle_prom_process_query(&ctx, query)
+            .await
+            .map(|v| PrometheusRemoteQueryResponse {
+                header: Some(build_ok_header()),
+                response: v.encode_to_vec(),
+            })
+    }
 }
 
 #[async_trait]
@@ -145,12 +188,31 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for Proxy<Q> {
         ctx: &Self::Context,
         query: Query,
     ) -> StdResult<QueryResult, Self::Err> {
-        let _ = query.encode_to_vec();
+        let metric = find_metric(&query.matchers)?;
         let remote_req = PrometheusRemoteQueryRequest {
-            context: None,
+            context: Some(ceresdbproto::storage::RequestContext {
+                database: ctx.schema.to_string(),
+            }),
             query: query.encode_to_vec(),
         };
-        self.maybe_forward_prom_remote_query(&remote_req);
+        if let Some(resp) = self
+            .maybe_forward_prom_remote_query(metric, remote_req)
+            .await?
+        {
+            match resp {
+                ForwardResult::Forwarded(resp) => {
+                    return resp.and_then(|v| {
+                        QueryResult::decode(v.response.as_ref())
+                            .box_err()
+                            .context(Internal {
+                                msg: "decode QueryResult failed",
+                            })
+                    });
+                }
+                ForwardResult::Local => {}
+            }
+        }
+
         self.handle_prom_process_query(ctx, query).await
     }
 }
@@ -309,6 +371,17 @@ fn normalize_labels(mut labels: Vec<Label>) -> Result<(String, Vec<Label>)> {
     labels.sort_unstable_by(|a, b| a.name.cmp(&b.name));
 
     Ok((metric, labels))
+}
+
+fn find_metric(matchers: &[LabelMatcher]) -> Result<String> {
+    let idx = matchers
+        .iter()
+        .position(|m| m.name == NAME_LABEL)
+        .context(InternalNoCause {
+            msg: "Metric name is not found",
+        })?;
+
+    Ok(matchers[idx].value.clone())
 }
 
 /// Separate metric from matchers, and convert remaining matchers to sql

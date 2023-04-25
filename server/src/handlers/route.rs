@@ -2,7 +2,7 @@
 
 //! route request handler
 use ceresdbproto::storage::RouteRequest;
-use router::endpoint::Endpoint;
+use router::{endpoint::Endpoint, RouterRef};
 
 use crate::handlers::{error::RouteHandler, prelude::*};
 
@@ -17,10 +17,10 @@ pub struct RouteItem {
     pub endpoint: Option<Endpoint>,
 }
 
-pub async fn handle_route<Q: QueryExecutor + 'static>(
-    ctx: &RequestContext,
-    _: InstanceRef<Q>,
-    table: &str,
+pub async fn handle_route(
+    ctx: RequestContext,
+    router: RouterRef,
+    table: String,
 ) -> Result<RouteResponse> {
     if table.is_empty() {
         return Ok(RouteResponse { routes: vec![] });
@@ -33,19 +33,17 @@ pub async fn handle_route<Q: QueryExecutor + 'static>(
         tables: vec![table.to_string()],
     };
 
-    let routes = ctx.router.route(route_req).await.context(RouteHandler {
+    let routes = router.route(route_req).await.context(RouteHandler {
         table: table.to_string(),
     })?;
 
-    let mut route_items = Vec::with_capacity(1);
-    for route in routes {
-        route_items.push(RouteItem {
+    let routes = routes
+        .into_iter()
+        .map(|route| RouteItem {
             table: route.table,
             endpoint: route.endpoint.map(|endpoint| endpoint.into()),
-        });
-    }
+        })
+        .collect();
 
-    Ok(RouteResponse {
-        routes: route_items,
-    })
+    Ok(RouteResponse { routes })
 }

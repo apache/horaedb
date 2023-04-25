@@ -151,14 +151,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
     async fn maybe_forward_prom_remote_query(
         &self,
-        req: &PrometheusRemoteQueryRequest,
+        metric: String,
+        req: PrometheusRemoteQueryRequest,
     ) -> Result<Option<ForwardResult<PrometheusRemoteQueryResponse, Error>>> {
-        let table_name = "FIXME".to_string();
         let req_ctx = req.context.as_ref().unwrap();
         let forward_req = ForwardRequest {
             schema: req_ctx.database.clone(),
-            table: table_name,
-            req: req.clone().into_request(),
+            table: metric,
+            req: req.into_request(),
         };
         let do_query = |mut client: StorageServiceClient<Channel>,
                         request: tonic::Request<PrometheusRemoteQueryRequest>,
