@@ -25,6 +25,16 @@ pub enum Error {
 
     #[snafu(display("Primary key duplicate.\nBacktrace:\n{}", backtrace))]
     PrimaryKeyDuplicate { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Table delete data error, table:{}.\nBacktrace:\n{}",
+        table_name,
+        backtrace
+    ))]
+    DeleteData {
+        table_name: String,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
@@ -276,6 +286,14 @@ impl TableKv for MemoryImpl {
             .context(TableNotFound { table_name })?;
 
         Ok(table.get(key))
+    }
+
+    fn delete(&self, table_name: &str, key: &[u8]) -> std::result::Result<i64, Self::Error> {
+        let table = self
+            .find_table(table_name)
+            .context(TableNotFound { table_name })?;
+        table.delete(key)?;
+        Ok(0)
     }
 }
 

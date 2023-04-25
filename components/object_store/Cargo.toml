@@ -28,8 +28,9 @@ prost = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
+table_kv = { workspace = true }
 tokio = { workspace = true }
-upstream = { package = "object_store", version = "0.5.6", features = [ "aws" ] }
+upstream = { package="object_store", features = [ "aws" ], git = "https://github.com/MachaelLee/arrow-rs.git", rev = "e2717bf1175673d7ad2619b4f68c2db1e5f9f2dd" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -158,6 +158,18 @@ pub enum Error {
     },
 
     #[snafu(display(
+        "Failed to delete data from table, table:{}, err:{}.\nBacktrace:\n{}",
+        table_name,
+        source,
+        backtrace
+    ))]
+    DeleteData {
+        table_name: String,
+        source: obkv::error::Error,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
         "Invalid result num, table:{}, expect:{}, actual:{}.\nBacktrace:\n{}",
         table_name,
         expect,
@@ -487,6 +499,15 @@ impl TableKv for ObkvImpl {
             .context(GetValue { table_name })?;
 
         Ok(values.remove(VALUE_COLUMN_NAME).map(Value::as_bytes))
+    }
+
+    fn delete(&self, table_name: &str, key: &[u8]) -> std::result::Result<i64, Self::Error> {
+        let mut size = self
+            .client
+            .delete(table_name, bytes_to_values(key))
+            .context(DeleteData { table_name })?;
+
+        Ok(size)
     }
 }
 

@@ -185,4 +185,7 @@ pub trait TableKv: Clone + Send + Sync + fmt::Debug + 'static {
 
     /// Get value by key from table with `table_name`.
     fn get(&self, table_name: &str, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error>;
+
+    /// Delete data by key from table with `table_name`.
+    fn delete(&self, table_name: &str, key: &[u8]) -> Result<i64, Self::Error>;
 }

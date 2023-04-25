@@ -1878,7 +1878,7 @@ dependencies = [
  "lazy_static",
  "log",
  "num_cpus",
- "object_store 0.5.6",
+ "object_store 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "parking_lot 0.12.1",
  "parquet",
  "percent-encoding",
@@ -1905,7 +1905,7 @@ dependencies = [
  "arrow-array",
  "chrono",
  "num_cpus",
- "object_store 0.5.6",
+ "object_store 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "parquet",
  "sqlparser",
 ]
@@ -1920,7 +1920,7 @@ dependencies = [
  "datafusion-expr",
  "hashbrown 0.13.2",
  "log",
- "object_store 0.5.6",
+ "object_store 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "parking_lot 0.12.1",
  "rand 0.8.5",
  "tempfile",
@@ -1997,7 +1997,7 @@ dependencies = [
  "datafusion",
  "datafusion-common",
  "datafusion-expr",
- "object_store 0.5.6",
+ "object_store 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "prost",
 ]
 
@@ -4064,6 +4064,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec9cd6ca25e796a49fa242876d1c4de36a24a6da5258e9f0bc062dbf5e81c53b"
 dependencies = [
  "async-trait",
+ "bytes 1.4.0",
+ "chrono",
+ "futures 0.3.28",
+ "itertools",
+ "parking_lot 0.12.1",
+ "percent-encoding",
+ "snafu 0.7.4",
+ "tokio",
+ "tracing",
+ "url",
+ "walkdir",
+]
+
+[[package]]
+name = "object_store"
+version = "0.5.6"
+source = "git+https://github.com/MachaelLee/arrow-rs.git?rev=e2717bf1175673d7ad2619b4f68c2db1e5f9f2dd#e2717bf1175673d7ad2619b4f68c2db1e5f9f2dd"
+dependencies = [
+ "async-trait",
  "base64 0.21.0",
  "bytes 1.4.0",
  "chrono",
@@ -4071,7 +4090,7 @@ dependencies = [
  "itertools",
  "parking_lot 0.12.1",
  "percent-encoding",
- "quick-xml 0.28.1",
+ "quick-xml 0.28.2",
  "rand 0.8.5",
  "reqwest",
  "ring",
@@ -4099,13 +4118,14 @@ dependencies = [
  "lazy_static",
  "log",
  "lru",
- "object_store 0.5.6",
+ "object_store 0.5.6 (git+https://github.com/MachaelLee/arrow-rs.git?rev=e2717bf1175673d7ad2619b4f68c2db1e5f9f2dd)",
  "prometheus 0.12.0",
  "prometheus-static-metric",
  "prost",
  "serde",
  "serde_json",
  "snafu 0.6.10",
+ "table_kv",
  "tempfile",
  "tokio",
 ]
@@ -4285,7 +4305,7 @@ dependencies = [
  "lz4",
  "num",
  "num-bigint 0.4.3",
- "object_store 0.5.6",
+ "object_store 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "paste 1.0.12",
  "seq-macro",
  "snap",
@@ -5064,9 +5084,9 @@ dependencies = [
 
 [[package]]
 name = "quick-xml"
-version = "0.28.1"
+version = "0.28.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5c1a97b1bc42b1d550bfb48d4262153fe400a12bab1511821736f7eac76d7e2"
+checksum = "0ce5e73202a820a31f8a0ee32ada5e21029c81fd9e3ebf668a40832e4219d9d1"
 dependencies = [
  "memchr",
  "serde",
