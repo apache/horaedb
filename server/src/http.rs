@@ -745,12 +745,14 @@ async fn handle_rejection(
         let err_string = err.to_string();
         message = error_util::remove_backtrace_from_err(&err_string).to_string();
     } else {
-        error!("handle error: {:?}", rejection);
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = error_util::remove_backtrace_from_err(&format!("UNKNOWN_ERROR: {rejection:?}"))
             .to_string();
     }
 
+    if code.as_u16() >= 500 {
+        error!("HTTP handle error: {:?}", rejection);
+    }
     let json = reply::json(&ErrorResponse {
         code: code.as_u16(),
         message,

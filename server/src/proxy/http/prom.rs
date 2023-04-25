@@ -195,7 +195,6 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for Proxy<Q> {
             }),
             query: query.encode_to_vec(),
         };
-        log::info!("remote_req is {:?}", remote_req);
         if let Some(resp) = self
             .maybe_forward_prom_remote_query(metric, remote_req)
             .await
@@ -209,10 +208,6 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for Proxy<Q> {
                     return resp.and_then(|v| {
                         QueryResult::decode(v.response.as_ref())
                             .box_err()
-                            .map_err(|e| {
-                                log::info!("remote_req decode error {:?}", e);
-                                e
-                            })
                             .context(Internal {
                                 msg: "decode QueryResult failed",
                             })
@@ -222,9 +217,7 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for Proxy<Q> {
             }
         }
 
-        let resp = self.handle_prom_process_query(ctx, query).await;
-        log::info!("remote_req resp is:{resp:?}");
-        resp
+        self.handle_prom_process_query(ctx, query).await
     }
 }
 
