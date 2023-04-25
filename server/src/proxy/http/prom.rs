@@ -106,7 +106,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     }
 
     /// Handle one query with remote storage protocol.
-    pub async fn handle_prom_process_query(
+    async fn handle_prom_process_query(
         &self,
         ctx: &RequestContext,
         query: Query,
