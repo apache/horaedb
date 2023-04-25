@@ -24,8 +24,11 @@ use tokio::sync::{oneshot, RwLock as AsyncRwLock};
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
 pub enum Error {
-    #[snafu(display("Failed to keep alive, err:{source}.\nBacktrace:\n{backtrace:?}"))]
+    #[snafu(display(
+        "Failed to keep alive, lease_id:{lease_id}, err:{source}.\nBacktrace:\n{backtrace:?}"
+    ))]
     KeepAlive {
+        lease_id: i64,
         source: etcd_client::Error,
         backtrace: Backtrace,
     },
@@ -161,6 +164,15 @@ enum KeepAliveStopReason {
     Exit,
 }
 
+#[derive(Debug)]
+enum KeepAliveResult {
+    Ok,
+    Failure {
+        err: Error,
+        stop_rx: oneshot::Receiver<()>,
+    },
+}
+
 /// The lease of the shard lock.
 struct Lease {
     /// The lease id
@@ -202,8 +214,12 @@ impl Lease {
         stream: &mut LeaseKeepAliveStream,
         state: &Arc<RwLock<LeaseState>>,
     ) -> Result<()> {
-        keeper.keep_alive().await.context(KeepAlive)?;
-        match stream.message().await.context(KeepAlive)? {
+        keeper.keep_alive().await.context(KeepAlive {
+            lease_id: keeper.id(),
+        })?;
+        match stream.message().await.context(KeepAlive {
+            lease_id: keeper.id(),
+        })? {
             Some(resp) => {
                 // The ttl in the response is in seconds, let's convert it into milliseconds.
                 let ttl_sec = resp.ttl();
@@ -244,14 +260,22 @@ impl Lease {
         notifier: oneshot::Sender<KeepAliveStopReason>,
         etcd_client: &mut Client,
         runtime: &RuntimeRef,
-    ) -> Result<()> {
-        let (mut keeper, mut stream) = etcd_client
+    ) -> KeepAliveResult {
+        let (mut keeper, mut stream) = match etcd_client
             .lease_keep_alive(self.id)
             .await
-            .context(KeepAlive)?;
+            .context(KeepAlive { lease_id: self.id })
+        {
+            Ok((keeper, stream)) => (keeper, stream),
+            Err(err) => {
+                return KeepAliveResult::Failure { err, stop_rx };
+            }
+        };
 
         // Update the lease state immediately.
-        Self::keep_alive_once(&mut keeper, &mut stream, &self.state).await?;
+        if let Err(err) = Self::keep_alive_once(&mut keeper, &mut stream, &self.state).await {
+            return KeepAliveResult::Failure { err, stop_rx };
+        }
 
         // Send keepalive request every ttl/3.
         // FIXME: shall we ensure the interval won't be too small?
@@ -290,7 +314,7 @@ impl Lease {
 
         *self.keep_alive_handle.lock().unwrap() = Some(handle);
 
-        Ok(())
+        KeepAliveResult::Ok
     }
 }
 
@@ -519,9 +543,16 @@ impl ShardLock {
                             "Next keepalive will be schedule after {wait_dur:?}, shard_id:{shard_id}, lease_id:{lease_id}, \
                             keepalive_cost:{keepalive_cost:?}, duration_until_expired:{dur_until_expired:?}"
                         );
-                        tokio::time::sleep(wait_dur).await;
+                        tokio::select! {
+                            _ = tokio::time::sleep(wait_dur) => {
+                                info!("Start to keepalive, shard_id:{shard_id}, lease_id:{lease_id}");
+                            }
+                            _ = &mut keepalive_stop_rx => {
+                                info!("Recv signal to stop keepalive, shard_id:{shard_id}, lease_id:{lease_id}");
+                                return;
+                            }
+                        }
 
-                        info!("Start to keepalive, shard_id:{shard_id}, lease_id:{lease_id}");
                     } else {
                         warn!(
                             "The lease is about to expire, and trigger the on_lock_expire callback, shard_id:{shard_id}, \
@@ -534,7 +565,7 @@ impl ShardLock {
                 }
 
                 let (lease_expire_notifier, mut lease_expire_receiver) = oneshot::channel();
-                if let Err(e) = lease_for_bg
+                if let KeepAliveResult::Failure { err, stop_rx } = lease_for_bg
                     .start_keepalive(
                         keepalive_stop_rx,
                         lease_expire_notifier,
@@ -542,8 +573,9 @@ impl ShardLock {
                         &runtime_for_bg,
                     )
                     .await {
-                        error!("Failed to start keepalive, shard_id:{shard_id}, lease_id:{lease_id}, err:{e}");
-                        return;
+                        error!("Failed to start keepalive and will retry , shard_id:{shard_id}, lease_id:{lease_id}, err:{err}");
+                        keepalive_stop_rx = stop_rx;
+                        continue;
                     }
 
                 // Start to keep the lease alive forever.
