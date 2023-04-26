@@ -27,6 +27,8 @@ pub struct MysqlWorker<W: std::io::Write + Send + Sync, Q> {
     generic_hold: PhantomData<W>,
     instance: Arc<Instance<Q>>,
     runtimes: Arc<EngineRuntimes>,
+    // TODO: Maybe support route in mysql protocol
+    #[allow(dead_code)]
     router: RouterRef,
     timeout: Option<Duration>,
 }
@@ -148,7 +150,6 @@ where
             .runtime(runtime)
             .enable_partition_table_access(false)
             .timeout(self.timeout)
-            .router(self.router.clone())
             .build()
             .context(CreateContext)
     }

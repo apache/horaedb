@@ -5,7 +5,6 @@
 use std::{sync::Arc, time::Duration};
 
 use common_util::runtime::Runtime;
-use router::{Router, RouterRef};
 use snafu::{ensure, Backtrace, OptionExt, Snafu};
 
 #[allow(clippy::enum_variant_names)]
@@ -42,8 +41,6 @@ pub struct RequestContext {
     pub enable_partition_table_access: bool,
     /// Request timeout
     pub timeout: Option<Duration>,
-    /// router
-    pub router: Arc<dyn Router + Send + Sync>,
 }
 
 impl RequestContext {
@@ -59,7 +56,6 @@ pub struct Builder {
     runtime: Option<Arc<Runtime>>,
     enable_partition_table_access: bool,
     timeout: Option<Duration>,
-    router: Option<Arc<dyn Router + Send + Sync>>,
 }
 
 impl Builder {
@@ -88,17 +84,11 @@ impl Builder {
         self
     }
 
-    pub fn router(mut self, router: RouterRef) -> Self {
-        self.router = Some(router);
-        self
-    }
-
     pub fn build(self) -> Result<RequestContext> {
         ensure!(!self.catalog.is_empty(), MissingCatalog);
         ensure!(!self.schema.is_empty(), MissingSchema);
 
         let runtime = self.runtime.context(MissingRuntime)?;
-        let router = self.router.context(MissingRouter)?;
 
         Ok(RequestContext {
             catalog: self.catalog,
@@ -106,7 +96,6 @@ impl Builder {
             runtime,
             enable_partition_table_access: self.enable_partition_table_access,
             timeout: self.timeout,
-            router,
         })
     }
 }

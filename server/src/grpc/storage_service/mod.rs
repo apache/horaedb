@@ -14,8 +14,8 @@ use ceresdbproto::{
     common::ResponseHeader,
     storage::{
         storage_service_server::StorageService, PrometheusQueryRequest, PrometheusQueryResponse,
-        RouteRequest, RouteResponse, SqlQueryRequest, SqlQueryResponse, WriteRequest,
-        WriteResponse,
+        PrometheusRemoteQueryRequest, PrometheusRemoteQueryResponse, RouteRequest, RouteResponse,
+        SqlQueryRequest, SqlQueryResponse, WriteRequest, WriteResponse,
     },
 };
 use common_util::time::InstantExt;
@@ -80,6 +80,21 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
 
         GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .handle_sql_query
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
+
+        resp
+    }
+
+    async fn prom_remote_query(
+        &self,
+        req: tonic::Request<PrometheusRemoteQueryRequest>,
+    ) -> Result<tonic::Response<PrometheusRemoteQueryResponse>, tonic::Status> {
+        let begin_instant = Instant::now();
+
+        let resp = self.prom_remote_query_internal(req).await;
+
+        GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .handle_prom_query
             .observe(begin_instant.saturating_elapsed().as_secs_f64());
 
         resp
@@ -241,6 +256,40 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             },
         };
 
+        Ok(tonic::Response::new(resp))
+    }
+
+    async fn prom_remote_query_internal(
+        &self,
+        req: tonic::Request<PrometheusRemoteQueryRequest>,
+    ) -> Result<tonic::Response<PrometheusRemoteQueryResponse>, tonic::Status> {
+        let req = req.into_inner();
+        let proxy = self.proxy.clone();
+        let timeout = self.timeout;
+        let runtime = self.runtimes.read_runtime.clone();
+        let join_handle = self.runtimes.read_runtime.spawn(async move {
+            match proxy.handle_prom_grpc_query(timeout, req, runtime).await {
+                Ok(v) => v,
+                Err(e) => PrometheusRemoteQueryResponse {
+                    header: Some(error::build_err_header(
+                        StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                        e.error_message(),
+                    )),
+                    ..Default::default()
+                },
+            }
+        });
+
+        let resp = match join_handle.await {
+            Ok(v) => v,
+            Err(e) => PrometheusRemoteQueryResponse {
+                header: Some(error::build_err_header(
+                    StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                    format!("fail to join the spawn task, err:{e:?}"),
+                )),
+                ..Default::default()
+            },
+        };
         Ok(tonic::Response::new(resp))
     }
 
