@@ -135,8 +135,10 @@ func NewRegisteredNode(meta storage.Node, shardInfos []ShardInfo) RegisteredNode
 	}
 }
 
-func (n RegisteredNode) IsExpired(now int64) bool {
-	return now >= int64(expiredThreshold)+int64(n.Node.LastTouchTime)
+func (n RegisteredNode) IsExpired(now time.Time) bool {
+	expiredTime := time.UnixMilli(int64(n.Node.LastTouchTime)).Add(expiredThreshold)
+
+	return now.After(expiredTime)
 }
 
 func ConvertShardsInfoToPB(shard ShardInfo) *metaservicepb.ShardInfo {

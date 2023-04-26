@@ -4,51 +4,53 @@ package coordinator
 
 import (
 	"context"
-	"crypto/rand"
-	"math/big"
+	"strconv"
 	"time"
 
+	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
+	"github.com/CeresDB/ceresmeta/server/hash"
+	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type NodePicker interface {
-	PickNode(ctx context.Context, registerNodes []metadata.RegisteredNode) (metadata.RegisteredNode, error)
+	PickNode(ctx context.Context, shardID storage.ShardID, registerNodes []metadata.RegisteredNode) (metadata.RegisteredNode, error)
 }
 
-type RandomNodePicker struct{}
-
-func NewRandomNodePicker() NodePicker {
-	return &RandomNodePicker{}
+type ConsistentHashNodePicker struct {
+	hashReplicas int
 }
 
-func (p *RandomNodePicker) PickNode(_ context.Context, registeredNodes []metadata.RegisteredNode) (metadata.RegisteredNode, error) {
-	now := time.Now().Unix()
-	onlineNodeLength := 0
-	for _, registeredNode := range registeredNodes {
-		if !registeredNode.IsExpired(now) {
-			onlineNodeLength++
+func NewConsistentHashNodePicker(hashReplicas int) NodePicker {
+	return &ConsistentHashNodePicker{hashReplicas: hashReplicas}
+}
+
+func (p *ConsistentHashNodePicker) PickNode(_ context.Context, shardID storage.ShardID, registerNodes []metadata.RegisteredNode) (metadata.RegisteredNode, error) {
+	now := time.Now()
+
+	hashRing := hash.New(p.hashReplicas, nil)
+	aliveNodeNumber := 0
+	for _, registerNode := range registerNodes {
+		if !registerNode.IsExpired(now) {
+			hashRing.Add(registerNode.Node.Name)
+			aliveNodeNumber++
 		}
 	}
 
-	if onlineNodeLength == 0 {
-		return metadata.RegisteredNode{}, errors.WithMessage(ErrNodeNumberNotEnough, "online node length must bigger than 0")
+	if hashRing.IsEmpty() {
+		return metadata.RegisteredNode{}, errors.WithMessage(ErrNodeNumberNotEnough, "at least one online nodes is required")
 	}
 
-	randSelectedIdx, err := rand.Int(rand.Reader, big.NewInt(int64(onlineNodeLength)))
-	if err != nil {
-		return metadata.RegisteredNode{}, errors.WithMessage(err, "generate random node index")
-	}
-	selectIdx := int(randSelectedIdx.Int64())
-	curOnlineIdx := -1
-	for idx := 0; idx < len(registeredNodes); idx++ {
-		if !registeredNodes[idx].IsExpired(now) {
-			curOnlineIdx++
-		}
-		if curOnlineIdx == selectIdx {
-			return registeredNodes[idx], nil
+	pickedNodeName := hashRing.Get(strconv.Itoa(int(shardID)))
+	log.Debug("ConsistentHashNodePicker pick result", zap.Uint64("shardID", uint64(shardID)), zap.String("node", pickedNodeName), zap.Int("nodeNumber", aliveNodeNumber))
+
+	for i := 0; i < len(registerNodes); i++ {
+		if registerNodes[i].Node.Name == pickedNodeName {
+			return registerNodes[i], nil
 		}
 	}
 
-	return metadata.RegisteredNode{}, errors.WithMessage(ErrPickNode, "pick node failed")
+	return metadata.RegisteredNode{}, errors.WithMessagef(ErrPickNode, "pickedNode not found in register nodes, nodeName:%s", pickedNodeName)
 }

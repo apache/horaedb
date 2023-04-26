@@ -82,6 +82,16 @@ type Topology struct {
 	ClusterView       storage.ClusterView
 }
 
+func (t *Topology) IsStable() bool {
+	if t.ClusterView.State != storage.ClusterStateStable {
+		return false
+	}
+	if len(t.ClusterView.ShardNodes) != len(t.ShardViewsMapping) {
+		return false
+	}
+	return true
+}
+
 type TopologyManagerImpl struct {
 	storage      storage.Storage
 	clusterID    storage.ClusterID

@@ -38,7 +38,7 @@ func (a AssignShardScheduler) Schedule(ctx context.Context, clusterSnapshot meta
 		if exists {
 			continue
 		}
-		newLeaderNode, err := a.nodePicker.PickNode(ctx, clusterSnapshot.RegisteredNodes)
+		newLeaderNode, err := a.nodePicker.PickNode(ctx, shardView.ShardID, clusterSnapshot.RegisteredNodes)
 		if err != nil {
 			return ScheduleResult{}, err
 		}
