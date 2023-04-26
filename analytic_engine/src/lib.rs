@@ -50,7 +50,7 @@ pub struct Config {
     /// Default options for table
     pub table_opts: TableOptions,
 
-    pub compaction_config: SchedulerConfig,
+    pub compaction: SchedulerConfig,
 
     /// sst meta cache capacity
     pub sst_meta_cache_cap: Option<usize>,
@@ -103,7 +103,7 @@ impl Default for Config {
             replay_batch_size: 500,
             max_replay_tables_per_batch: 64,
             table_opts: TableOptions::default(),
-            compaction_config: SchedulerConfig::default(),
+            compaction: SchedulerConfig::default(),
             sst_meta_cache_cap: Some(1000),
             sst_data_cache_cap: Some(1000),
             manifest: ManifestOptions::default(),
