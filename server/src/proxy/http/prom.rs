@@ -7,7 +7,6 @@
 use std::{
     collections::HashMap,
     result::Result as StdResult,
-    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -22,7 +21,7 @@ use common_types::{
     request_id::RequestId,
     schema::{RecordSchema, TSID_COLUMN},
 };
-use common_util::{error::BoxError, runtime::Runtime, time::InstantExt};
+use common_util::{error::BoxError, time::InstantExt};
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::debug;
@@ -176,7 +175,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         &self,
         timeout: Option<Duration>,
         req: PrometheusRemoteQueryRequest,
-        runtime: Arc<Runtime>,
     ) -> Result<PrometheusRemoteQueryResponse> {
         let ctx = req.context.context(ErrNoCause {
             code: StatusCode::BAD_REQUEST,
@@ -191,7 +189,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let metric = find_metric(&query.matchers)?;
         let builder = RequestContext::builder()
             .timeout(timeout)
-            .runtime(runtime)
             .schema(database)
             // TODO: support different catalog
             .catalog(DEFAULT_CATALOG.to_string());

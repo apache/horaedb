@@ -95,12 +95,11 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
                         }
                     };
                     let instance = instance.clone();
-                    let runtimes = runtimes.clone();
                     let router = router.clone();
 
                     let rt = runtimes.read_runtime.clone();
                     rt.spawn(AsyncMysqlIntermediary::run_on(
-                        MysqlWorker::new(instance, runtimes, router, timeout),
+                        MysqlWorker::new(instance, router, timeout),
                         stream,
                     ));
                 },

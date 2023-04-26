@@ -266,9 +266,8 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let req = req.into_inner();
         let proxy = self.proxy.clone();
         let timeout = self.timeout;
-        let runtime = self.runtimes.read_runtime.clone();
         let join_handle = self.runtimes.read_runtime.spawn(async move {
-            match proxy.handle_prom_grpc_query(timeout, req, runtime).await {
+            match proxy.handle_prom_grpc_query(timeout, req).await {
                 Ok(v) => v,
                 Err(e) => PrometheusRemoteQueryResponse {
                     header: Some(error::build_err_header(

@@ -2,10 +2,9 @@
 
 //! Server context
 
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
-use common_util::runtime::Runtime;
-use snafu::{ensure, Backtrace, OptionExt, Snafu};
+use snafu::{ensure, Backtrace, Snafu};
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
@@ -35,8 +34,6 @@ pub struct RequestContext {
     pub catalog: String,
     /// Schema of request
     pub schema: String,
-    /// Runtime of this request
-    pub runtime: Arc<Runtime>,
     /// Enable partition table_access flag
     pub enable_partition_table_access: bool,
     /// Request timeout
@@ -53,7 +50,6 @@ impl RequestContext {
 pub struct Builder {
     catalog: String,
     schema: String,
-    runtime: Option<Arc<Runtime>>,
     enable_partition_table_access: bool,
     timeout: Option<Duration>,
 }
@@ -66,11 +62,6 @@ impl Builder {
 
     pub fn schema(mut self, schema: String) -> Self {
         self.schema = schema;
-        self
-    }
-
-    pub fn runtime(mut self, runtime: Arc<Runtime>) -> Self {
-        self.runtime = Some(runtime);
         self
     }
 
@@ -88,12 +79,9 @@ impl Builder {
         ensure!(!self.catalog.is_empty(), MissingCatalog);
         ensure!(!self.schema.is_empty(), MissingSchema);
 
-        let runtime = self.runtime.context(MissingRuntime)?;
-
         Ok(RequestContext {
             catalog: self.catalog,
             schema: self.schema,
-            runtime,
             enable_partition_table_access: self.enable_partition_table_access,
             timeout: self.timeout,
         })
