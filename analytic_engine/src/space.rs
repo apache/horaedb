@@ -12,19 +12,28 @@ use std::{
 };
 
 use arena::CollectorRef;
-use snafu::OptionExt;
+use common_util::error::BoxError;
+use snafu::{OptionExt, ResultExt};
 use table_engine::table::TableId;
 
 use crate::{
     instance::mem_collector::MemUsageCollector,
     manifest::{
-        details::{BuildSnapshotNoCause, TableSnapshotProvider},
+        details::{
+            ApplyEditToTableNoCause, ApplyEditToTableWithCause, BuildSnapshotNoCause,
+            TableSnapshotProvider,
+        },
         meta_data::TableManifestData,
-        meta_update::AddTableMeta,
+        meta_update::{
+            AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaUpdate,
+            MetaUpdateRequest, VersionEditMeta,
+        },
     },
+    sst::file::FilePurgerRef,
     table::{
-        data::{TableDataRef, TableDataSet},
+        data::{TableData, TableDataRef, TableDataSet},
         version::{TableVersionMeta, TableVersionSnapshot},
+        version_edit::VersionEdit,
     },
 };
 
@@ -239,6 +248,8 @@ pub(crate) type SpacesRef = Arc<RwLock<Spaces>>;
 #[derive(Clone)]
 pub(crate) struct TableSnapshotProviderImpl {
     pub(crate) spaces: SpacesRef,
+    pub(crate) file_purger: FilePurgerRef,
+    pub(crate) preflush_write_buffer_size_ratio: f32,
 }
 
 impl fmt::Debug for TableSnapshotProviderImpl {
@@ -294,5 +305,158 @@ impl TableSnapshotProvider for TableSnapshotProviderImpl {
         };
 
         Ok(table_manifest_data_opt)
+    }
+
+    fn apply_edit_to_table(
+        &self,
+        request: crate::manifest::meta_update::MetaUpdateRequest,
+    ) -> crate::manifest::details::Result<()> {
+        let MetaUpdateRequest {
+            shard_info,
+            meta_update,
+        } = request;
+
+        // `FnOnce` can only be pass as the instance but not reference, however `Impl
+        // FnOnce` can not act as the parameter of the closure... So Box<dyn
+        // FnOnce> is used here.
+        let find_space_and_apply_edit = |space_id: SpaceId,
+                                         apply_edit: Box<
+            dyn FnOnce(Arc<Space>) -> crate::manifest::details::Result<()>,
+        >| {
+            let spaces = self.spaces.read().unwrap();
+            let space = spaces
+                .get_by_id(space_id)
+                .with_context(|| ApplyEditToTableNoCause {
+                    msg: format!("space not found, space_id:{space_id}"),
+                })?;
+            apply_edit(space.clone())
+        };
+
+        match meta_update {
+            MetaUpdate::AddTable(AddTableMeta {
+                space_id,
+                table_id,
+                table_name,
+                schema,
+                opts,
+            }) => {
+                let add_table = Box::new(move |space: Arc<Space>| {
+                    let table_data = TableData::new(
+                        space.id,
+                        table_id,
+                        table_name,
+                        schema,
+                        shard_info.shard_id,
+                        opts,
+                        &self.file_purger,
+                        self.preflush_write_buffer_size_ratio,
+                        space.mem_usage_collector.clone(),
+                    )
+                    .box_err()
+                    .with_context(|| ApplyEditToTableWithCause {
+                        msg: format!(
+                            "failed to new table data, space_id:{}, table_id:{}",
+                            space.id, table_id
+                        ),
+                    })?;
+                    space.insert_table(Arc::new(table_data));
+                    Ok(())
+                });
+
+                find_space_and_apply_edit(space_id, add_table)
+            }
+            MetaUpdate::DropTable(DropTableMeta {
+                space_id,
+                table_name,
+                ..
+            }) => {
+                let drop_table = Box::new(move |space: Arc<Space>| {
+                    let table_data = match space.find_table(table_name.as_str()) {
+                        Some(v) => v,
+                        None => return Ok(()),
+                    };
+
+                    // Set the table dropped after finishing flushing and storing drop table meta
+                    // information.
+                    table_data.set_dropped();
+
+                    // Clear the memory status after updating manifest and clearing wal so that
+                    // the drop is retryable if fails to update and clear.
+                    space.remove_table(&table_data.name);
+
+                    Ok(())
+                });
+
+                find_space_and_apply_edit(space_id, drop_table)
+            }
+            MetaUpdate::VersionEdit(VersionEditMeta {
+                space_id,
+                table_id,
+                flushed_sequence,
+                files_to_add,
+                files_to_delete,
+                mems_to_remove,
+            }) => {
+                let version_edit = Box::new(move |space: Arc<Space>| {
+                    let table_data = space.find_table_by_id(table_id).with_context(|| {
+                        ApplyEditToTableNoCause {
+                            msg: format!(
+                                "table not found, space_id:{space_id}, table_id:{table_id}"
+                            ),
+                        }
+                    })?;
+                    let edit = VersionEdit {
+                        flushed_sequence,
+                        mems_to_remove,
+                        files_to_add,
+                        files_to_delete,
+                    };
+                    table_data.current_version().apply_edit(edit);
+
+                    Ok(())
+                });
+
+                find_space_and_apply_edit(space_id, version_edit)
+            }
+            MetaUpdate::AlterSchema(AlterSchemaMeta {
+                space_id,
+                table_id,
+                schema,
+                ..
+            }) => {
+                let alter_schema = Box::new(move |space: Arc<Space>| {
+                    let table_data = space.find_table_by_id(table_id).with_context(|| {
+                        ApplyEditToTableNoCause {
+                            msg: format!(
+                                "table not found, space_id:{space_id}, table_id:{table_id}"
+                            ),
+                        }
+                    })?;
+                    table_data.set_schema(schema);
+
+                    Ok(())
+                });
+                find_space_and_apply_edit(space_id, alter_schema)
+            }
+            MetaUpdate::AlterOptions(AlterOptionsMeta {
+                space_id,
+                table_id,
+                options,
+            }) => {
+                let alter_option = Box::new(move |space: Arc<Space>| {
+                    let table_data = space.find_table_by_id(table_id).with_context(|| {
+                        ApplyEditToTableNoCause {
+                            msg: format!(
+                                "table not found, space_id:{space_id}, table_id:{table_id}"
+                            ),
+                        }
+                    })?;
+                    table_data.set_table_options(options);
+
+                    Ok(())
+                });
+                find_space_and_apply_edit(space_id, alter_option)
+            }
+        }
     }
 }

@@ -82,14 +82,6 @@ impl Dropper {
                 table_id: table_data.id,
             })?;
 
-        // Set the table dropped after finishing flushing and storing drop table meta
-        // information.
-        table_data.set_dropped();
-
-        // Clear the memory status after updating manifest and clearing wal so that
-        // the drop is retryable if fails to update and clear.
-        self.space.remove_table(&table_data.name);
-
         Ok(true)
     }
 }

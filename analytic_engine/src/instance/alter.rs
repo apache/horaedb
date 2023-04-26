@@ -138,9 +138,6 @@ impl<'a> Alterer<'a> {
                 table_id: self.table_data.id,
             })?;
 
-        // Update schema in memory.
-        self.table_data.set_schema(request.schema);
-
         Ok(())
     }
 
@@ -266,9 +263,6 @@ impl<'a> Alterer<'a> {
                 table: &self.table_data.name,
                 table_id: self.table_data.id,
             })?;
-
-        // Update memory status
-        self.table_data.set_table_options(table_opts);
 
         Ok(())
     }

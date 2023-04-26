@@ -19,7 +19,7 @@ use wal::log_batch::{Payload, PayloadDecoder};
 use crate::{
     space::SpaceId,
     table::{
-        data::TableShardInfo,
+        data::{MemTableId, TableShardInfo},
         version_edit::{AddFile, DeleteFile, VersionEdit},
     },
     table_options, TableOptions,
@@ -222,6 +222,9 @@ pub struct VersionEditMeta {
     pub flushed_sequence: SequenceNumber,
     pub files_to_add: Vec<AddFile>,
     pub files_to_delete: Vec<DeleteFile>,
+    /// Id of memtables to remove from immutable memtable lists.
+    /// No need to persist.
+    pub mems_to_remove: Vec<MemTableId>,
 }
 
 impl VersionEditMeta {
@@ -275,6 +278,7 @@ impl TryFrom<manifest_pb::VersionEditMeta> for VersionEditMeta {
             flushed_sequence: src.flushed_sequence,
             files_to_add,
             files_to_delete,
+            mems_to_remove: Vec::default(),
         })
     }
 }

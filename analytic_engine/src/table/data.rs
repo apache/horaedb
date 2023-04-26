@@ -27,7 +27,7 @@ use common_util::define_result;
 use log::{debug, info};
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_engine::{engine::CreateTableRequest, table::TableId};
+use table_engine::table::TableId;
 
 use crate::{
     instance::serial_executor::TableOpSerialExecutor,
@@ -193,9 +193,13 @@ impl TableData {
     ///
     /// This function should only be called when a new table is creating and
     /// there is no existing data of the table
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         space_id: SpaceId,
-        request: CreateTableRequest,
+        table_id: TableId,
+        table_name: String,
+        table_schema: Schema,
+        shard_id: ShardId,
         table_opts: TableOptions,
         purger: &FilePurger,
         preflush_write_buffer_size_ratio: f32,
@@ -205,7 +209,7 @@ impl TableData {
         // segment_duration and bucket_duration is aligned to segment_duration
 
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
-        let purge_queue = purger.create_purge_queue(space_id, request.table_id);
+        let purge_queue = purger.create_purge_queue(space_id, table_id);
         let current_version = TableVersion::new(purge_queue);
         let metrics = Metrics::default();
         let mutable_limit = AtomicU32::new(compute_mutable_limit(
@@ -214,9 +218,9 @@ impl TableData {
         ));
 
         Ok(Self {
-            id: request.table_id,
-            name: request.table_name,
-            schema: Mutex::new(request.table_schema),
+            id: table_id,
+            name: table_name,
+            schema: Mutex::new(table_schema),
             space_id,
             mutable_limit,
             mutable_limit_write_buffer_ratio: preflush_write_buffer_size_ratio,
@@ -230,8 +234,8 @@ impl TableData {
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
-            shard_info: TableShardInfo::new(request.shard_id),
-            serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(request.table_id)),
+            shard_info: TableShardInfo::new(shard_id),
+            serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(table_id)),
         })
     }
 
@@ -604,7 +608,10 @@ pub mod tests {
     use arena::NoopCollector;
     use common_types::{datum::DatumKind, table::DEFAULT_SHARD_ID};
     use common_util::config::ReadableDuration;
-    use table_engine::{engine::TableState, table::SchemaId};
+    use table_engine::{
+        engine::{CreateTableRequest, TableState},
+        table::SchemaId,
+    };
 
     use super::*;
     use crate::{
@@ -688,7 +695,10 @@ pub mod tests {
 
             TableData::new(
                 space_id,
-                create_request,
+                create_request.table_id,
+                create_request.table_name,
+                create_request.table_schema,
+                create_request.shard_id,
                 table_opts,
                 &purger,
                 0.75,

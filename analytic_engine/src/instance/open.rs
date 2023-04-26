@@ -61,8 +61,16 @@ impl Instance {
         sst_factory: SstFactoryRef,
     ) -> Result<Arc<Self>> {
         let spaces: Arc<RwLock<Spaces>> = Arc::new(RwLock::new(Spaces::default()));
+        let default_runtime = ctx.runtimes.default_runtime.clone();
+        let file_purger = Arc::new(FilePurger::start(
+            &default_runtime,
+            store_picker.default_store().clone(),
+        ));
+
         let table_snapshot_provider = Arc::new(TableSnapshotProviderImpl {
             spaces: spaces.clone(),
+            file_purger: file_purger.clone(),
+            preflush_write_buffer_size_ratio: ctx.config.preflush_write_buffer_size_ratio,
         });
         let manifest = ManifestImpl::open(
             ctx.config.manifest.clone(),
@@ -95,9 +103,6 @@ impl Instance {
             ctx.config.write_sst_max_buffer_size.as_byte() as usize,
             scan_options_for_compaction,
         ));
-
-        let default_runtime = ctx.runtimes.default_runtime.clone();
-        let file_purger = FilePurger::start(&default_runtime, store_picker.default_store().clone());
 
         let scan_options = ScanOptions {
             background_read_parallelism: ctx.config.sst_background_read_parallelism,

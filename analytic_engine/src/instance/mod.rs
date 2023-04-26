@@ -40,7 +40,7 @@ use crate::{
     space::{SpaceId, SpaceRef, SpacesRef},
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
-        file::FilePurger,
+        file::FilePurgerRef,
         meta_data::cache::MetaCacheRef,
     },
     table::data::{TableDataRef, TableShardInfo},
@@ -137,7 +137,7 @@ pub struct Instance {
     table_opts: TableOptions,
 
     // End of write group options.
-    file_purger: FilePurger,
+    file_purger: FilePurgerRef,
     compaction_scheduler: CompactionSchedulerRef,
 
     meta_cache: Option<MetaCacheRef>,

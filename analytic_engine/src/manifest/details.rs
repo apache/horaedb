@@ -118,6 +118,16 @@ pub enum Error {
 
     #[snafu(display("Failed to build snapshot, msg:{}, err:{}", msg, source))]
     BuildSnapshotWithCause { msg: String, source: GenericError },
+
+    #[snafu(display(
+        "Failed to apply edit to table, msg:{}.\nBacktrace:\n{:?}",
+        msg,
+        backtrace
+    ))]
+    ApplyEditToTableNoCause { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Failed to apply edit to table, msg:{}, err:{}", msg, source))]
+    ApplyEditToTableWithCause { msg: String, source: GenericError },
 }
 
 define_result!(Error);
@@ -171,6 +181,8 @@ pub(crate) trait TableSnapshotProvider: fmt::Debug + Send + Sync {
         space_id: SpaceId,
         table_id: TableId,
     ) -> Result<Option<TableManifestData>>;
+
+    fn apply_edit_to_table(&self, update: MetaUpdateRequest) -> Result<()>;
 }
 
 /// Snapshot recoverer
@@ -433,19 +445,26 @@ impl Manifest for ManifestImpl {
     async fn store_update(&self, request: MetaUpdateRequest) -> GenericResult<()> {
         info!("Manifest store update, request:{:?}", request);
 
-        let table_id = request.meta_update.table_id();
-        let shard_id = request.shard_info.shard_id;
+        let request_for_storage_update = request;
+        let request_for_memory_update = request_for_storage_update.clone();
+
+        // Update storage.
+        let table_id = request_for_storage_update.meta_update.table_id();
+        let shard_id = request_for_storage_update.shard_info.shard_id;
         let location = WalLocation::new(shard_id as u64, table_id.as_u64());
-        let space_id = request.meta_update.space_id();
-        let table_id = request.meta_update.table_id();
+        let space_id = request_for_storage_update.meta_update.space_id();
+        let table_id = request_for_storage_update.meta_update.table_id();
 
         self.maybe_do_snapshot(space_id, table_id, location, false)
             .await?;
 
-        self.store_update_to_wal(request.meta_update, location)
+        self.store_update_to_wal(request_for_storage_update.meta_update, location)
             .await?;
 
-        Ok(())
+        // Update memory.
+        self.snap_data_provider
+            .apply_edit_to_table(request_for_memory_update)
+            .box_err()
     }
 
     async fn load_data(&self, load_req: &LoadRequest) -> GenericResult<Option<TableManifestData>> {
@@ -701,6 +720,7 @@ impl From<Snapshot> for manifest_pb::Snapshot {
                 flushed_sequence: version_meta.flushed_sequence,
                 files_to_add: version_meta.ordered_files(),
                 files_to_delete: vec![],
+                mems_to_remove: vec![],
             });
             (
                 table_meta,
@@ -802,6 +822,10 @@ mod tests {
         ) -> Result<Option<TableManifestData>> {
             let builder = self.builder.lock().unwrap();
             Ok(builder.clone().build())
+        }
+
+        fn apply_edit_to_table(&self, _update: MetaUpdateRequest) -> Result<()> {
+            todo!()
         }
     }
 
@@ -911,8 +935,9 @@ mod tests {
                 space_id: self.schema_id.as_u32(),
                 table_id,
                 flushed_sequence: flushed_seq.unwrap_or(100),
-                files_to_add: Vec::new(),
-                files_to_delete: Vec::new(),
+                files_to_add: vec![],
+                files_to_delete: vec![],
+                mems_to_remove: vec![],
             })
         }
 

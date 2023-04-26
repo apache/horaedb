@@ -53,7 +53,7 @@ use crate::{
     table::{
         data::{TableData, TableDataRef},
         version::{FlushableMemTables, MemTableState, SamplingMemTable},
-        version_edit::{AddFile, DeleteFile, VersionEdit},
+        version_edit::{AddFile, DeleteFile},
     },
     table_options::StorageFormatHint,
 };
@@ -248,8 +248,6 @@ impl Flusher {
                 .await
                 .context(StoreVersionEdit)?;
 
-            table_data.set_table_options(new_table_opts);
-
             // Now the segment duration is applied, we can stop sampling and freeze the
             // sampling memtable.
             current_version.freeze_sampling();
@@ -422,6 +420,7 @@ impl FlushTask {
                 flushed_sequence,
                 files_to_add: files_to_level0.clone(),
                 files_to_delete: vec![],
+                mems_to_remove: mems_to_flush.ids(),
             };
             let meta_update = MetaUpdate::VersionEdit(edit_meta);
             MetaUpdateRequest {
@@ -434,16 +433,6 @@ impl FlushTask {
             .store_update(update_req)
             .await
             .context(StoreVersionEdit)?;
-
-        // Edit table version to remove dumped memtables.
-        let mems_to_remove = mems_to_flush.ids();
-        let edit = VersionEdit {
-            flushed_sequence,
-            mems_to_remove,
-            files_to_add: files_to_level0,
-            files_to_delete: vec![],
-        };
-        self.table_data.current_version().apply_edit(edit);
 
         // Mark sequence <= flushed_sequence to be deleted.
         let table_location = self.table_data.table_location();
@@ -689,7 +678,8 @@ impl SpaceStore {
             flushed_sequence: 0,
             // Use the number of compaction inputs as the estimated number of files to add.
             files_to_add: Vec::with_capacity(task.compaction_inputs.len()),
-            files_to_delete: Vec::new(),
+            files_to_delete: vec![],
+            mems_to_remove: vec![],
         };
 
         if task.expired.is_empty() && task.compaction_inputs.is_empty() {
@@ -733,10 +723,6 @@ impl SpaceStore {
             .store_update(update_req)
             .await
             .context(StoreVersionEdit)?;
-
-        // Apply to the table version.
-        let edit = edit_meta.into_version_edit();
-        table_data.current_version().apply_edit(edit);
 
         Ok(())
     }
