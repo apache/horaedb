@@ -8,7 +8,7 @@ use common_types::{schema::Schema, time::TimeRange};
 use datafusion::{
     logical_expr::LogicalPlanBuilder,
     optimizer::utils::conjunction,
-    prelude::{col, lit, Expr},
+    prelude::{col, lit, regexp_match, Expr},
     sql::{planner::ContextProvider, TableReference},
 };
 use prom_remote_api::types::{label_matcher, LabelMatcher, Query};
@@ -89,9 +89,11 @@ fn normalize_matchers(matchers: Vec<LabelMatcher>) -> Result<(String, String, Ve
                     label_matcher::Type::Eq => col(m.name).eq(lit(m.value)),
                     label_matcher::Type::Neq => col(m.name).not_eq(lit(m.value)),
                     // https://github.com/prometheus/prometheus/blob/2ce94ac19673a3f7faf164e9e078a79d4d52b767/model/labels/regexp.go#L29
-                    label_matcher::Type::Re => col(m.name).like(lit(format!("^(?:{})", m.value))),
+                    label_matcher::Type::Re => {
+                        regexp_match(vec![col(m.name), lit(format!("^(?:{})", m.value))])
+                    }
                     label_matcher::Type::Nre => {
-                        col(m.name).not_like(lit(format!("^(?:{})", m.value)))
+                        regexp_match(vec![col(m.name), lit(format!("^(?:{})", m.value))]).not()
                     }
                 };
 
@@ -132,7 +134,6 @@ mod tests {
         // no metric
         assert!(normalize_matchers(vec![]).is_err());
 
-        // ok
         {
             let matchers = make_matchers(vec![
                 ("a", "1", Type::Eq),
@@ -148,8 +149,8 @@ mod tests {
             assert_eq!(
                 r#"a = Utf8("1")
 b != Utf8("2")
-c LIKE Utf8("^(?:3)")
-d NOT LIKE Utf8("^(?:4)")"#,
+regexpmatch(c, Utf8("^(?:3)"))
+NOT regexpmatch(d, Utf8("^(?:4)"))"#,
                 filters
                     .iter()
                     .map(|f| f.to_string())

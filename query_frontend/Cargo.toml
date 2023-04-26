@@ -32,8 +32,8 @@ influxql-schema = { git = "https://github.com/CeresDB/influxql", package = "sche
 itertools = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
-prom-remote-api = { workspace = true }
 paste = { workspace = true }
+prom-remote-api = { workspace = true }
 regex = "1"
 regex-syntax = "0.6.28"
 snafu = { workspace = true }

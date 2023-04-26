@@ -132,7 +132,7 @@ impl<P: MetaProvider> Frontend<P> {
         planner.statement_to_plan(stmt).context(CreatePlan)
     }
 
-    /// Experimental promql support natively, not used in production yet.
+    /// Experimental native promql support, not used in production yet.
     pub fn promql_expr_to_plan(
         &self,
         ctx: &mut Context,
@@ -143,15 +143,7 @@ impl<P: MetaProvider> Frontend<P> {
         planner.promql_expr_to_plan(expr).context(CreatePlan)
     }
 
-    pub fn influxql_stmt_to_plan(
-        &self,
-        ctx: &mut Context,
-        stmt: InfluxqlStatement,
-    ) -> Result<Plan> {
-        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
-        planner.influxql_stmt_to_plan(stmt).context(CreatePlan)
-    }
-
+    /// Prometheus remote query support
     pub fn prom_remote_query_to_plan(
         &self,
         ctx: &mut Context,
@@ -159,6 +151,15 @@ impl<P: MetaProvider> Frontend<P> {
     ) -> Result<Plan> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
         planner.remote_prom_req_to_plan(query).context(CreatePlan)
+    }
+
+    pub fn influxql_stmt_to_plan(
+        &self,
+        ctx: &mut Context,
+        stmt: InfluxqlStatement,
+    ) -> Result<Plan> {
+        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+        planner.influxql_stmt_to_plan(stmt).context(CreatePlan)
     }
 
     pub fn write_req_to_plan(
