@@ -117,6 +117,10 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             TIMESTAMP_COLUMN, query.start_timestamp_ms, query.end_timestamp_ms
         ));
 
+        // Open partition table if needed.
+        self.maybe_open_partition_table_if_not_exist(&ctx.catalog, &ctx.schema, &metric)
+            .await?;
+
         let sql = format!(
             "select * from {} where {} order by {}, {}",
             metric,
