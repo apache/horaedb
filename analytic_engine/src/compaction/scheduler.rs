@@ -73,7 +73,7 @@ impl Default for SchedulerConfig {
         Self {
             schedule_channel_len: 16,
             // 30 minutes schedule interval.
-            schedule_interval: ReadableDuration(Duration::from_secs(60 * 30)),
+            schedule_interval: ReadableDuration(Duration::from_secs(60 * 5)),
             max_ongoing_tasks: MAX_GOING_COMPACTION_TASKS,
             // flush_interval default is 5h.
             max_unflushed_duration: ReadableDuration(Duration::from_secs(60 * 60 * 5)),

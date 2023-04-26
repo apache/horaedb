@@ -82,7 +82,7 @@ impl Instance {
             meta_cache: ctx.meta_cache.clone(),
         });
 
-        let scheduler_config = ctx.config.compaction_config.clone();
+        let scheduler_config = ctx.config.compaction.clone();
         let scan_options_for_compaction = ScanOptions {
             background_read_parallelism: 1,
             max_record_batches_in_flight: MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ,
