@@ -18,6 +18,7 @@ use interpreters::interpreter::Output;
 use log::info;
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
 use query_frontend::{
+    frontend,
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,
 };
@@ -110,6 +111,17 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                         ForwardResult::Local => (),
                     }
                 };
+
+                // Open partition table if needed.
+                let table_name = frontend::parse_table_name(&stmts);
+                if let Some(table_name) = table_name {
+                    self.maybe_open_partition_table_if_not_exist(
+                        &ctx.catalog,
+                        &ctx.schema,
+                        &table_name,
+                    )
+                    .await?;
+                }
 
                 // Create logical plan
                 // Note: Remember to store sql in error when creating logical plan
