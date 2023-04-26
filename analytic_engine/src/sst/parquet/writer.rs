@@ -183,9 +183,9 @@ impl RecordBatchGroupWriter {
         .box_err()
         .context(EncodeRecordBatch)?;
         let mut parquet_filter = if self.need_custom_filter() {
-            None
-        } else {
             Some(ParquetFilter::default())
+        } else {
+            None
         };
 
         loop {
