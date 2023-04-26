@@ -38,6 +38,7 @@ use datafusion::{
 };
 use influxql_parser::statement::Statement as InfluxqlStatement;
 use log::{debug, trace};
+use prom_remote_api::types::Query as PromRemoteQuery;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
     ColumnDef, ColumnOption, Expr, Ident, Query, SetExpr, SqlOption, Statement as SqlStatement,
@@ -58,7 +59,7 @@ use crate::{
         ExistsTablePlan, InsertPlan, Plan, QueryPlan, QueryType, ShowCreatePlan, ShowPlan,
         ShowTablesPlan,
     },
-    promql::{ColumnNames, Expr as PromExpr},
+    promql::{remote_query_to_plan, ColumnNames, Expr as PromExpr},
     provider::{ContextProviderAdapter, MetaProvider},
 };
 // We do not carry backtrace in sql error because it is mainly used in server
@@ -328,6 +329,13 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
 
         expr.to_plan(planner.meta_provider, self.read_parallelism)
             .context(BuildPromPlanError)
+    }
+
+    pub fn remote_prom_req_to_plan(&self, query: PromRemoteQuery) -> Result<Plan> {
+        let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
+        let planner = PlannerDelegate::new(adapter);
+
+        remote_query_to_plan(query, planner.meta_provider).context(BuildPromPlanError)
     }
 
     pub fn influxql_stmt_to_plan(&self, statement: InfluxqlStatement) -> Result<Plan> {

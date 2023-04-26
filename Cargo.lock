@@ -4923,6 +4923,7 @@ dependencies = [
  "lazy_static",
  "log",
  "paste 1.0.12",
+ "prom-remote-api",
  "regex",
  "regex-syntax",
  "schema",

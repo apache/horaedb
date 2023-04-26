@@ -11,7 +11,6 @@ use common_types::{
     time::{TimeRange, Timestamp},
 };
 use datafusion::{
-    error::DataFusionError,
     logical_expr::{
         avg, col, count, lit,
         logical_plan::{Extension, LogicalPlan, LogicalPlanBuilder},
@@ -20,12 +19,13 @@ use datafusion::{
     optimizer::utils::conjunction,
     sql::planner::ContextProvider,
 };
-use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::{
     plan::{Plan, QueryPlan},
     promql::{
         datafusion_util::{default_sort_exprs, timerange_to_expr},
+        error::*,
         pushdown::{AlignParameter, Func},
         udf::{create_unique_id, regex_match_expr},
         ColumnNames, PromAlignNode,
@@ -35,53 +35,6 @@ use crate::{
 
 const INIT_LEVEL: usize = 1;
 const DEFAULT_LOOKBACK: i64 = 300_000;
-
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display("Invalid expr, expected: {}, actual:{:?}", expected, actual))]
-    UnexpectedExpr { expected: String, actual: String },
-
-    #[snafu(display("Expr pushdown not implemented, expr_type:{:?}", expr_type))]
-    NotImplemented { expr_type: OperatorType },
-
-    #[snafu(display("MetaProvider {}, err:{}", msg, source))]
-    MetaProviderError {
-        msg: String,
-        source: crate::provider::Error,
-    },
-
-    #[snafu(display("Table not found, table:{}", name))]
-    TableNotFound { name: String },
-
-    #[snafu(display("Table provider not found, table:{}, err:{}", name, source))]
-    TableProviderNotFound {
-        name: String,
-        source: DataFusionError,
-    },
-
-    #[snafu(display("Failed to build schema, err:{}", source))]
-    BuildTableSchema { source: common_types::schema::Error },
-
-    #[snafu(display("Failed to build plan, source:{}", source,))]
-    BuildPlanError { source: DataFusionError },
-
-    #[snafu(display("Invalid expr, msg:{}\nBacktrace:\n{}", msg, backtrace))]
-    InvalidExpr { msg: String, backtrace: Backtrace },
-
-    #[snafu(display("Failed to pushdown, source:{}", source))]
-    PushdownError {
-        source: crate::promql::pushdown::Error,
-    },
-}
-
-define_result!(Error);
-
-impl From<DataFusionError> for Error {
-    fn from(df_err: DataFusionError) -> Self {
-        Error::BuildPlanError { source: df_err }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -631,7 +584,7 @@ impl Selector {
         Ok((scan_plan, column_name, table))
     }
 
-    fn build_projection_tag_keys(
+    pub fn build_projection_tag_keys(
         schema: &Schema,
         field: &str,
     ) -> Result<(Vec<DataFusionExpr>, Vec<String>)> {
