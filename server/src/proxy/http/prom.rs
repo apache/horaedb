@@ -20,12 +20,12 @@ use ceresdbproto::storage::{
 use common_types::{
     datum::DatumKind,
     request_id::RequestId,
-    schema::{RecordSchema, TIMESTAMP_COLUMN, TSID_COLUMN},
+    schema::{RecordSchema, TSID_COLUMN},
 };
 use common_util::{error::BoxError, runtime::Runtime, time::InstantExt};
 use http::StatusCode;
 use interpreters::interpreter::Output;
-use log::{debug, info};
+use log::debug;
 use prom_remote_api::types::{
     Label, LabelMatcher, Query, QueryResult, RemoteStorage, Sample, TimeSeries, WriteRequest,
 };
@@ -33,6 +33,7 @@ use prost::Message;
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
 use query_frontend::{
     frontend::{Context, Frontend},
+    promql::{RemoteQueryPlan, DEFAULT_FIELD_COLUMN, NAME_LABEL},
     provider::CatalogMetaProvider,
 };
 use snafu::{ensure, OptionExt, ResultExt};
@@ -50,9 +51,6 @@ use crate::{
         Proxy,
     },
 };
-
-const NAME_LABEL: &str = "__name__";
-const VALUE_COLUMN: &str = "value";
 
 impl reject::Reject for Error {}
 
@@ -125,13 +123,11 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
 
-        info!(
+        debug!(
             "Query handler try to process request, request_id:{}, request:{:?}",
             request_id, query
         );
 
-        // TODO(yingwen): Privilege check, cannot access data of other tenant
-        // TODO(yingwen): Maybe move MetaProvider to instance
         let provider = CatalogMetaProvider {
             manager: self.instance.catalog_manager.clone(),
             default_catalog: &ctx.catalog,
@@ -141,7 +137,11 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let frontend = Frontend::new(provider);
         let mut plan_ctx = Context::new(request_id, deadline);
 
-        let plan = frontend
+        let RemoteQueryPlan {
+            plan,
+            timestamp_col_name,
+            field_col_name,
+        } = frontend
             .prom_remote_query_to_plan(&mut plan_ctx, query.clone())
             .box_err()
             .with_context(|| ErrWithCause {
@@ -167,14 +167,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         )
         .await?;
 
-        info!(
+        debug!(
             "Query handler finished, request_id:{}, cost:{}ms, query:{:?}",
             request_id,
             begin_instant.saturating_elapsed().as_millis(),
             query
         );
 
-        convert_query_result(metric, output)
+        convert_query_result(metric, timestamp_col_name, field_col_name, output)
     }
 
     /// This method is used to handle forwarded gRPC query from
@@ -272,14 +272,20 @@ struct Converter {
 }
 
 impl Converter {
-    fn try_new(schema: &RecordSchema) -> Result<Self> {
+    fn try_new(
+        schema: &RecordSchema,
+        timestamp_col_name: &str,
+        field_col_name: &str,
+    ) -> Result<Self> {
         let tsid_idx = schema.index_of(TSID_COLUMN).context(InternalNoCause {
             msg: "TSID column is missing in query response",
         })?;
-        let timestamp_idx = schema.index_of(TIMESTAMP_COLUMN).context(InternalNoCause {
-            msg: "Timestamp column is missing in query response",
-        })?;
-        let value_idx = schema.index_of(VALUE_COLUMN).context(InternalNoCause {
+        let timestamp_idx = schema
+            .index_of(timestamp_col_name)
+            .context(InternalNoCause {
+                msg: "Timestamp column is missing in query response",
+            })?;
+        let value_idx = schema.index_of(field_col_name).context(InternalNoCause {
             msg: "Value column is missing in query response",
         })?;
         let tags = schema
@@ -420,7 +426,9 @@ fn normalize_labels(mut labels: Vec<Label>) -> Result<(String, Vec<Label>)> {
     let metric_idx = labels
         .iter()
         .position(|label| label.name == NAME_LABEL)
-        .unwrap();
+        .context(InternalNoCause {
+            msg: "Metric name is not found",
+        })?;
     let metric = labels.swap_remove(metric_idx).value;
     labels.sort_unstable_by(|a, b| a.name.cmp(&b.name));
 
@@ -441,7 +449,7 @@ fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
             .or_insert_with(|| WriteTableRequest {
                 table: metric,
                 tag_names,
-                field_names: vec![VALUE_COLUMN.to_string()],
+                field_names: vec![DEFAULT_FIELD_COLUMN.to_string()],
                 entries: Vec::new(),
             })
             .entries
@@ -475,7 +483,12 @@ fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
     Ok(req_by_metric.into_values().collect())
 }
 
-fn convert_query_result(metric: String, resp: Output) -> Result<QueryResult> {
+fn convert_query_result(
+    metric: String,
+    timestamp_col_name: String,
+    field_col_name: String,
+    resp: Output,
+) -> Result<QueryResult> {
     let record_batches = match resp {
         Output::AffectedRows(_) => {
             return InternalNoCause {
@@ -490,7 +503,7 @@ fn convert_query_result(metric: String, resp: Output) -> Result<QueryResult> {
         None => {
             return Ok(QueryResult::default());
         }
-        Some(batch) => Converter::try_new(batch.schema())?,
+        Some(batch) => Converter::try_new(batch.schema(), &timestamp_col_name, &field_col_name)?,
     };
 
     converter.convert(metric, record_batches)
@@ -504,7 +517,11 @@ mod tests {
         array::{ArrayRef, Float64Array, StringArray, TimestampMillisecondArray, UInt64Array},
         record_batch::RecordBatch as ArrowRecordBatch,
     };
-    use common_types::{column_schema, record_batch::RecordBatch, schema};
+    use common_types::{
+        column_schema,
+        record_batch::RecordBatch,
+        schema::{self, TIMESTAMP_COLUMN},
+    };
     use prom_remote_api::types::Label;
 
     use super::*;
@@ -564,7 +581,7 @@ mod tests {
             )
             .unwrap()
             .add_normal_column(
-                column_schema::Builder::new(VALUE_COLUMN.to_string(), DatumKind::Double)
+                column_schema::Builder::new(DEFAULT_FIELD_COLUMN.to_string(), DatumKind::Double)
                     .build()
                     .unwrap(),
             )
@@ -612,7 +629,8 @@ mod tests {
         let schema = build_schema();
         let batches = build_record_batch(&schema);
         let record_schema = schema.to_record_schema();
-        let converter = Converter::try_new(&record_schema).unwrap();
+        let converter =
+            Converter::try_new(&record_schema, TIMESTAMP_COLUMN, DEFAULT_FIELD_COLUMN).unwrap();
         let mut query_result = converter.convert(metric.to_string(), batches).unwrap();
 
         query_result

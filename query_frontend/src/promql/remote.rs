@@ -24,12 +24,17 @@ use crate::{
     provider::{ContextProviderAdapter, MetaProvider},
 };
 
-const NAME_LABEL: &str = "__name__";
+pub const NAME_LABEL: &str = "__name__";
+pub const DEFAULT_FIELD_COLUMN: &str = "value";
 const FIELD_LABEL: &str = "__ceresdb_field__";
-const DEFAULT_FIELD_COLUMN: &str = "value";
 
+pub struct RemoteQueryPlan {
+    pub plan: Plan,
+    pub field_col_name: String,
+    pub timestamp_col_name: String,
+}
 /// Generate a plan like this
-/// ```
+/// ```plaintext
 /// Sort: (tsid, timestamp) asc
 ///   Project:
 ///     Filter:
@@ -38,7 +43,7 @@ const DEFAULT_FIELD_COLUMN: &str = "value";
 pub fn remote_query_to_plan<P: MetaProvider>(
     query: Query,
     meta_provider: ContextProviderAdapter<'_, P>,
-) -> Result<Plan> {
+) -> Result<RemoteQueryPlan> {
     let (metric, field, mut filters) = normalize_matchers(query.matchers)?;
     let table_ref = meta_provider
         .table(TableReference::parse_str(&metric))
@@ -50,18 +55,18 @@ pub fn remote_query_to_plan<P: MetaProvider>(
         .get_table_provider(table_ref.name().into())
         .context(TableProviderNotFound { name: &metric })?;
     let schema = Schema::try_from(table_provider.schema()).context(BuildTableSchema)?;
-    let timestamp_column_name = schema.timestamp_name();
+    let timestamp_col_name = schema.timestamp_name();
     let query_range = TimeRange::new_unchecked(
         query.start_timestamp_ms.into(),
         (query.end_timestamp_ms + 1).into(), // end is inclusive
     );
-    filters.push(timerange_to_expr(query_range, timestamp_column_name));
+    filters.push(timerange_to_expr(query_range, timestamp_col_name));
 
     let (projection, _) = Selector::build_projection_tag_keys(&schema, &field)?;
     let builder = LogicalPlanBuilder::scan(metric.clone(), table_provider, None)?
         .filter(conjunction(filters).expect("at least one filter(timestamp)"))?
         .project(projection)?
-        .sort(default_sort_exprs(timestamp_column_name))?;
+        .sort(default_sort_exprs(timestamp_col_name))?;
 
     let df_plan = builder.build().context(BuildPlanError)?;
     let tables = Arc::new(
@@ -71,10 +76,14 @@ pub fn remote_query_to_plan<P: MetaProvider>(
                 msg: "failed to find meta",
             })?,
     );
-    Ok(Plan::Query(QueryPlan { df_plan, tables }))
+    Ok(RemoteQueryPlan {
+        plan: Plan::Query(QueryPlan { df_plan, tables }),
+        field_col_name: field,
+        timestamp_col_name: timestamp_col_name.to_string(),
+    })
 }
 
-/// Separate metric, field from matchers, and convert remaining matchers to
+/// Extract metric, field from matchers, and convert remaining matchers to
 /// datafusion exprs
 fn normalize_matchers(matchers: Vec<LabelMatcher>) -> Result<(String, String, Vec<Expr>)> {
     let mut metric = None;
@@ -90,10 +99,11 @@ fn normalize_matchers(matchers: Vec<LabelMatcher>) -> Result<(String, String, Ve
                     label_matcher::Type::Neq => col(m.name).not_eq(lit(m.value)),
                     // https://github.com/prometheus/prometheus/blob/2ce94ac19673a3f7faf164e9e078a79d4d52b767/model/labels/regexp.go#L29
                     label_matcher::Type::Re => {
-                        regexp_match(vec![col(m.name), lit(format!("^(?:{})", m.value))])
+                        regexp_match(vec![col(m.name), lit(format!("^(?:{})$", m.value))])
+                            .is_not_null()
                     }
                     label_matcher::Type::Nre => {
-                        regexp_match(vec![col(m.name), lit(format!("^(?:{})", m.value))]).not()
+                        regexp_match(vec![col(m.name), lit(format!("^(?:{})$", m.value))]).is_null()
                     }
                 };
 
@@ -149,8 +159,8 @@ mod tests {
             assert_eq!(
                 r#"a = Utf8("1")
 b != Utf8("2")
-regexpmatch(c, Utf8("^(?:3)"))
-NOT regexpmatch(d, Utf8("^(?:4)"))"#,
+regexpmatch(c, Utf8("^(?:3)$")) IS NOT NULL
+regexpmatch(d, Utf8("^(?:4)$")) IS NULL"#,
                 filters
                     .iter()
                     .map(|f| f.to_string())

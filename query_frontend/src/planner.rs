@@ -59,7 +59,7 @@ use crate::{
         ExistsTablePlan, InsertPlan, Plan, QueryPlan, QueryType, ShowCreatePlan, ShowPlan,
         ShowTablesPlan,
     },
-    promql::{remote_query_to_plan, ColumnNames, Expr as PromExpr},
+    promql::{remote_query_to_plan, ColumnNames, Expr as PromExpr, RemoteQueryPlan},
     provider::{ContextProviderAdapter, MetaProvider},
 };
 // We do not carry backtrace in sql error because it is mainly used in server
@@ -331,7 +331,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
             .context(BuildPromPlanError)
     }
 
-    pub fn remote_prom_req_to_plan(&self, query: PromRemoteQuery) -> Result<Plan> {
+    pub fn remote_prom_req_to_plan(&self, query: PromRemoteQuery) -> Result<RemoteQueryPlan> {
         let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
         let planner = PlannerDelegate::new(adapter);
 

@@ -11,4 +11,4 @@ pub use convert::Expr;
 pub use datafusion_util::{ColumnNames, PromAlignNode};
 pub use error::Error;
 pub use pushdown::{AlignParameter, Func};
-pub use remote::remote_query_to_plan;
+pub use remote::{remote_query_to_plan, RemoteQueryPlan, DEFAULT_FIELD_COLUMN, NAME_LABEL};

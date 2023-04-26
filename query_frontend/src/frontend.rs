@@ -19,7 +19,7 @@ use crate::{
     parser::Parser,
     plan::Plan,
     planner::Planner,
-    promql::{ColumnNames, Expr},
+    promql::{ColumnNames, Expr, RemoteQueryPlan},
     provider::MetaProvider,
 };
 
@@ -148,7 +148,7 @@ impl<P: MetaProvider> Frontend<P> {
         &self,
         ctx: &mut Context,
         query: PromRemoteQuery,
-    ) -> Result<Plan> {
+    ) -> Result<RemoteQueryPlan> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
         planner.remote_prom_req_to_plan(query).context(CreatePlan)
     }
