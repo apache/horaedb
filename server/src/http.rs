@@ -9,7 +9,10 @@ use std::{
 
 use analytic_engine::setup::OpenedWals;
 use common_types::bytes::Bytes;
-use common_util::error::{BoxError, GenericError};
+use common_util::{
+    error::{BoxError, GenericError},
+    runtime::Runtime,
+};
 use handlers::query::QueryRequest as HandlerQueryRequest;
 use log::{error, info};
 use logger::RuntimeLevel;
@@ -380,11 +383,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::path!("debug" / "heap_profile" / ..)
             .and(warp::path::param::<u64>())
             .and(warp::get())
-            .and(self.with_context())
             .and(self.with_profiler())
+            .and(self.with_runtime())
             .and_then(
-                |duration_sec: u64, ctx: RequestContext, profiler: Arc<Profiler>| async move {
-                    let handle = ctx.runtime.spawn_blocking(move || {
+                |duration_sec: u64, profiler: Arc<Profiler>, runtime: Arc<Runtime>| async move {
+                    let handle = runtime.spawn_blocking(move || {
                         profiler.dump_mem_prof(duration_sec).context(ProfileHeap)
                     });
                     let result = handle.await.context(JoinAsyncTask);
@@ -404,9 +407,9 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::path!("debug" / "cpu_profile" / ..)
             .and(warp::path::param::<u64>())
             .and(warp::get())
-            .and(self.with_context())
-            .and_then(|duration_sec: u64, ctx: RequestContext| async move {
-                let handle = ctx.runtime.spawn_blocking(move || -> Result<()> {
+            .and(self.with_runtime())
+            .and_then(|duration_sec: u64, runtime: Arc<Runtime>| async move {
+                let handle = runtime.spawn_blocking(move || -> Result<()> {
                     let guard = pprof::ProfilerGuardBuilder::default()
                         .frequency(100)
                         .blocklist(&["libc", "libgcc", "pthread", "vdso"])
@@ -520,8 +523,6 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .catalog_manager
             .default_schema_name()
             .to_string();
-        //TODO(boyan) use read/write runtime by sql type.
-        let runtime = self.engine_runtimes.default_runtime.clone();
         let timeout = self.config.timeout;
 
         header::optional::<String>(consts::CATALOG_HEADER)
@@ -531,13 +532,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                 move |catalog: Option<_>, schema: Option<_>, _tenant: Option<_>| {
                     // Clone the captured variables
                     let default_catalog = default_catalog.clone();
-                    let runtime = runtime.clone();
                     let schema = schema.unwrap_or_else(|| default_schema.clone());
                     async move {
                         RequestContext::builder()
                             .catalog(catalog.unwrap_or(default_catalog))
                             .schema(schema)
-                            .runtime(runtime)
                             .timeout(timeout)
                             .enable_partition_table_access(true)
                             .build()
@@ -556,6 +555,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     fn with_proxy(&self) -> impl Filter<Extract = (Arc<Proxy<Q>>,), Error = Infallible> + Clone {
         let proxy = self.proxy.clone();
         warp::any().map(move || proxy.clone())
+    }
+
+    fn with_runtime(&self) -> impl Filter<Extract = (Arc<Runtime>,), Error = Infallible> + Clone {
+        let runtime = self.engine_runtimes.default_runtime.clone();
+        warp::any().map(move || runtime.clone())
     }
 
     fn with_influxdb(

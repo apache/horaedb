@@ -8,7 +8,6 @@ use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaW
 use query_engine::executor::Executor as QueryExecutor;
 use router::RouterRef;
 use snafu::ResultExt;
-use table_engine::engine::EngineRuntimes;
 
 use crate::{
     context::RequestContext,
@@ -26,7 +25,6 @@ use crate::{
 pub struct MysqlWorker<W: std::io::Write + Send + Sync, Q> {
     generic_hold: PhantomData<W>,
     instance: Arc<Instance<Q>>,
-    runtimes: Arc<EngineRuntimes>,
     // TODO: Maybe support route in mysql protocol
     #[allow(dead_code)]
     router: RouterRef,
@@ -38,16 +36,10 @@ where
     W: std::io::Write + Send + Sync,
     Q: QueryExecutor + 'static,
 {
-    pub fn new(
-        instance: Arc<Instance<Q>>,
-        runtimes: Arc<EngineRuntimes>,
-        router: RouterRef,
-        timeout: Option<Duration>,
-    ) -> Self {
+    pub fn new(instance: Arc<Instance<Q>>, router: RouterRef, timeout: Option<Duration>) -> Self {
         Self {
             generic_hold: PhantomData::default(),
             instance,
-            runtimes,
             router,
             timeout,
         }
@@ -142,12 +134,10 @@ where
             .catalog_manager
             .default_schema_name()
             .to_string();
-        let runtime = self.runtimes.default_runtime.clone();
 
         RequestContext::builder()
             .catalog(default_catalog)
             .schema(default_schema)
-            .runtime(runtime)
             .enable_partition_table_access(false)
             .timeout(self.timeout)
             .build()
