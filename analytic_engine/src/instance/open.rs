@@ -10,7 +10,7 @@ use std::{
 use common_types::schema::IndexInWriterSchema;
 use log::{debug, error, info, trace};
 use object_store::ObjectStoreRef;
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use table_engine::engine::OpenTableRequest;
 use wal::{
     log_batch::LogEntry,
@@ -25,7 +25,7 @@ use crate::{
         self,
         engine::{
             ApplyMemTable, FlushTable, OpenManifest, ReadMetaUpdate, ReadWal, RecoverTableData,
-            Result,
+            Result, SpaceNotExist,
         },
         flush_compaction::TableFlushOptions,
         mem_collector::MemUsageCollector,
@@ -36,7 +36,7 @@ use crate::{
     manifest::{details::ManifestImpl, meta_data::TableManifestData, LoadRequest},
     payload::{ReadPayload, WalDecoder},
     row_iter::IterOptions,
-    space::{Space, SpaceContext, SpaceId, SpaceRef, Spaces, TableSnapshotProviderImpl},
+    space::{SpaceRef, Spaces, TableSnapshotProviderImpl},
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
@@ -138,38 +138,6 @@ impl Instance {
         Ok(instance)
     }
 
-    /// Open the space if it is not opened before.
-    async fn open_space(
-        self: &Arc<Self>,
-        space_id: SpaceId,
-        context: SpaceContext,
-    ) -> Result<SpaceRef> {
-        {
-            let spaces = self.space_store.spaces.read().unwrap();
-
-            if let Some(space) = spaces.get_by_id(space_id) {
-                return Ok(space.clone());
-            }
-        }
-
-        // double check whether the space exists.
-        let mut spaces = self.space_store.spaces.write().unwrap();
-        if let Some(space) = spaces.get_by_id(space_id) {
-            return Ok(space.clone());
-        }
-
-        // Add this space to instance.
-        let space = Arc::new(Space::new(
-            space_id,
-            context,
-            self.space_write_buffer_size,
-            self.mem_usage_collector.clone(),
-        ));
-        spaces.insert(space.clone());
-
-        Ok(space)
-    }
-
     /// Open the table.
     pub async fn do_open_table(
         self: &Arc<Self>,
@@ -251,16 +219,16 @@ impl Instance {
             version_meta,
         } = manifest_data;
 
-        let context = SpaceContext {
-            catalog_name: request.catalog_name.clone(),
-            schema_name: request.schema_name.clone(),
-        };
-        let space = self.open_space(table_meta.space_id, context).await?;
-
-        let table_name = table_meta.table_name.clone();
+        let space = self
+            .find_space(table_meta.space_id)
+            .with_context(|| SpaceNotExist {
+                space_id: table_meta.space_id,
+                table: request.table_name.clone(),
+            })?;
 
         debug!("Instance apply add table, meta :{:?}", table_meta);
 
+        let table_name = table_meta.table_name.clone();
         let table_data = Arc::new(
             TableData::recover_from_add(
                 table_meta,
