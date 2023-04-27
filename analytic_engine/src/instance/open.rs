@@ -33,15 +33,16 @@ use crate::{
         write::MemTableWriter,
         Instance, SpaceStore,
     },
-    manifest::{details::ManifestImpl, meta_data::TableManifestData, LoadRequest},
+    manifest::{details::ManifestImpl, meta_snapshot::MetaSnapshot, LoadRequest},
     payload::{ReadPayload, WalDecoder},
     row_iter::IterOptions,
-    space::{SpaceRef, Spaces, TableSnapshotProviderImpl},
+    space::{SpaceRef, Spaces},
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
     },
     table::data::{TableData, TableDataRef},
+    table_meta_set_impl::TableMetaSetImpl,
 };
 
 const MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ: usize = 64;
@@ -67,7 +68,7 @@ impl Instance {
             store_picker.default_store().clone(),
         ));
 
-        let table_snapshot_provider = Arc::new(TableSnapshotProviderImpl {
+        let table_snapshot_provider = Arc::new(TableMetaSetImpl {
             spaces: spaces.clone(),
             file_purger: file_purger.clone(),
             preflush_write_buffer_size_ratio: ctx.config.preflush_write_buffer_size_ratio,
@@ -211,10 +212,10 @@ impl Instance {
     /// Recover `TableData` by applying manifest data to instance
     async fn recover_table_data(
         self: &Arc<Self>,
-        manifest_data: TableManifestData,
+        manifest_data: MetaSnapshot,
         request: &OpenTableRequest,
     ) -> Result<TableDataRef> {
-        let TableManifestData {
+        let MetaSnapshot {
             table_meta,
             version_meta,
         } = manifest_data;

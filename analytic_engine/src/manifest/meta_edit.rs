@@ -16,7 +16,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 use wal::log_batch::{Payload, PayloadDecoder};
 
-use super::meta_data::TableManifestData;
+use super::meta_snapshot::MetaSnapshot;
 use crate::{
     space::SpaceId,
     table::{
@@ -407,7 +407,7 @@ pub struct Snapshot {
     pub end_seq: SequenceNumber,
     /// The data of the snapshot.
     /// None means the table not exists(maybe dropped or not created yet).
-    pub data: Option<TableManifestData>,
+    pub data: Option<MetaSnapshot>,
 }
 
 impl TryFrom<manifest_pb::Snapshot> for Snapshot {
@@ -427,7 +427,7 @@ impl TryFrom<manifest_pb::Snapshot> for Snapshot {
             version_meta
         });
 
-        let table_manifest_data = meta.map(|v| TableManifestData {
+        let table_manifest_data = meta.map(|v| MetaSnapshot {
             table_meta: v,
             version_meta,
         });
@@ -475,7 +475,7 @@ impl From<Snapshot> for manifest_pb::Snapshot {
 #[derive(Debug, Clone)]
 pub enum MetaEdit {
     Update(MetaUpdate),
-    Snapshot(TableManifestData),
+    Snapshot(MetaSnapshot),
 }
 
 impl TryFrom<MetaEdit> for MetaUpdate {
@@ -486,14 +486,14 @@ impl TryFrom<MetaEdit> for MetaUpdate {
             Ok(update)
         } else {
             ConvertMetaEdit {
-                msg: format!("it is not the update type meta edit"),
+                msg: "it is not the update type meta edit",
             }
             .fail()
         }
     }
 }
 
-impl TryFrom<MetaEdit> for TableManifestData {
+impl TryFrom<MetaEdit> for MetaSnapshot {
     type Error = Error;
 
     fn try_from(value: MetaEdit) -> std::result::Result<Self, Self::Error> {
@@ -501,7 +501,7 @@ impl TryFrom<MetaEdit> for TableManifestData {
             Ok(table_manifest_data)
         } else {
             ConvertMetaEdit {
-                msg: format!("it is not the snapshot type meta edit"),
+                msg: "it is not the snapshot type meta edit",
             }
             .fail()
         }

@@ -35,18 +35,16 @@ use wal::{
     },
 };
 
-use super::meta_edit::{MetaEdit, Snapshot};
+use super::meta_edit::{Snapshot};
 use crate::{
     manifest::{
-        meta_data::{TableManifestData, TableManifestDataBuilder},
+        meta_snapshot::{MetaSnapshot, MetaSnapshotBuilder},
         meta_edit::{
-            AddTableMeta, MetaEditRequest, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload,
-            VersionEditMeta,
+            MetaEditRequest, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload,
         },
         LoadRequest, Manifest, SnapshotRequest,
     },
     space::SpaceId,
-    table::version::TableVersionMeta,
 };
 
 #[derive(Debug, Snafu)]
@@ -73,7 +71,7 @@ pub enum Error {
 
     #[snafu(display("Failed to apply table meta update, err:{}", source))]
     ApplyUpdate {
-        source: crate::manifest::meta_data::Error,
+        source: crate::manifest::meta_snapshot::Error,
     },
 
     #[snafu(display("Failed to clean wal, err:{}", source))]
@@ -184,12 +182,12 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
 /// Table snapshot provider
 ///
 /// Mainly for getting the [TableManifestData] from memory.
-pub(crate) trait TableSnapshotProvider: fmt::Debug + Send + Sync {
+pub(crate) trait TableMetaSet: fmt::Debug + Send + Sync {
     fn get_table_snapshot(
         &self,
         space_id: SpaceId,
         table_id: TableId,
-    ) -> Result<Option<TableManifestData>>;
+    ) -> Result<Option<MetaSnapshot>>;
 
     fn apply_edit_to_table(&self, update: MetaEditRequest) -> Result<()>;
 }
@@ -224,9 +222,9 @@ where
 
         let mut latest_seq = prev_snapshot.end_seq;
         let mut manifest_data_builder = if let Some(v) = prev_snapshot.data {
-            TableManifestDataBuilder::new(Some(v.table_meta), v.version_meta)
+            MetaSnapshotBuilder::new(Some(v.table_meta), v.version_meta)
         } else {
-            TableManifestDataBuilder::default()
+            MetaSnapshotBuilder::default()
         };
         while let Some((seq, update)) = reader.next_update().await? {
             latest_seq = seq;
@@ -244,7 +242,7 @@ where
         let mut reader = self.log_store.scan(ReadBoundary::Min).await?;
 
         let mut latest_seq = SequenceNumber::MIN;
-        let mut manifest_data_builder = TableManifestDataBuilder::default();
+        let mut manifest_data_builder = MetaSnapshotBuilder::default();
         let mut has_logs = false;
         while let Some((seq, update)) = reader.next_update().await? {
             latest_seq = seq;
@@ -276,7 +274,7 @@ struct Snapshotter<LogStore, SnapshotStore> {
     log_store: LogStore,
     snapshot_store: SnapshotStore,
     end_seq: SequenceNumber,
-    snapshot_data_provider: Arc<dyn TableSnapshotProvider>,
+    snapshot_data_provider: Arc<dyn TableMetaSet>,
     space_id: SpaceId,
     table_id: TableId,
 }
@@ -351,7 +349,7 @@ pub struct ManifestImpl {
     /// contains io operations.
     snapshot_write_guard: Arc<Mutex<()>>,
 
-    snap_data_provider: Arc<dyn TableSnapshotProvider>,
+    snap_data_provider: Arc<dyn TableMetaSet>,
 }
 
 impl ManifestImpl {
@@ -359,7 +357,7 @@ impl ManifestImpl {
         opts: Options,
         wal_manager: WalManagerRef,
         store: ObjectStoreRef,
-        snap_data_provider: Arc<dyn TableSnapshotProvider>,
+        snap_data_provider: Arc<dyn TableMetaSet>,
     ) -> Result<Self> {
         let manifest = Self {
             opts,
@@ -478,7 +476,7 @@ impl Manifest for ManifestImpl {
             .box_err()
     }
 
-    async fn load_data(&self, load_req: &LoadRequest) -> GenericResult<Option<TableManifestData>> {
+    async fn load_data(&self, load_req: &LoadRequest) -> GenericResult<Option<MetaSnapshot>> {
         info!("Manifest load data, request:{:?}", load_req);
 
         let location = WalLocation::new(load_req.shard_id as u64, load_req.table_id.as_u64());
@@ -698,7 +696,7 @@ mod tests {
             details::{MetaUpdateLogEntryIterator, MetaUpdateLogStore},
             meta_edit::{
                 AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaUpdate,
-                VersionEditMeta,
+                VersionEditMeta, MetaEdit,
             },
             LoadRequest, Manifest,
         },
@@ -741,7 +739,7 @@ mod tests {
 
     #[derive(Debug, Default)]
     struct MockProviderImpl {
-        builder: std::sync::Mutex<TableManifestDataBuilder>,
+        builder: std::sync::Mutex<MetaSnapshotBuilder>,
     }
 
     impl MockProviderImpl {
@@ -751,12 +749,12 @@ mod tests {
         }
     }
 
-    impl TableSnapshotProvider for MockProviderImpl {
+    impl TableMetaSet for MockProviderImpl {
         fn get_table_snapshot(
             &self,
             _space_id: SpaceId,
             _table_id: TableId,
-        ) -> Result<Option<TableManifestData>> {
+        ) -> Result<Option<MetaSnapshot>> {
             let builder = self.builder.lock().unwrap();
             Ok(builder.clone().build())
         }
@@ -826,7 +824,7 @@ mod tests {
         async fn check_table_manifest_data_with_manifest(
             &self,
             load_req: &LoadRequest,
-            expected: &Option<TableManifestData>,
+            expected: &Option<MetaSnapshot>,
             manifest: &ManifestImpl,
         ) {
             let data = manifest.load_data(load_req).await.unwrap();
@@ -836,7 +834,7 @@ mod tests {
         async fn check_table_manifest_data(
             &self,
             load_req: &LoadRequest,
-            expected: &Option<TableManifestData>,
+            expected: &Option<MetaSnapshot>,
         ) {
             let manifest = self.open_manifest().await;
             self.check_table_manifest_data_with_manifest(load_req, expected, &manifest)
@@ -901,7 +899,7 @@ mod tests {
         async fn add_table_with_manifest(
             &self,
             table_id: TableId,
-            manifest_data_builder: &mut TableManifestDataBuilder,
+            manifest_data_builder: &mut MetaSnapshotBuilder,
             manifest: &ManifestImpl,
         ) {
             let shard_info = TableShardInfo {
@@ -926,7 +924,7 @@ mod tests {
         async fn drop_table_with_manifest(
             &self,
             table_id: TableId,
-            manifest_data_builder: &mut TableManifestDataBuilder,
+            manifest_data_builder: &mut MetaSnapshotBuilder,
             manifest: &ManifestImpl,
         ) {
             let shard_info = TableShardInfo {
@@ -951,7 +949,7 @@ mod tests {
             &self,
             table_id: TableId,
             flushed_seq: Option<SequenceNumber>,
-            manifest_data_builder: &mut TableManifestDataBuilder,
+            manifest_data_builder: &mut MetaSnapshotBuilder,
             manifest: &ManifestImpl,
         ) {
             let shard_info = TableShardInfo {
@@ -975,7 +973,7 @@ mod tests {
         async fn add_table(
             &self,
             table_id: TableId,
-            manifest_data_builder: &mut TableManifestDataBuilder,
+            manifest_data_builder: &mut MetaSnapshotBuilder,
         ) {
             let manifest = self.open_manifest().await;
             self.add_table_with_manifest(table_id, manifest_data_builder, &manifest)
@@ -985,7 +983,7 @@ mod tests {
         async fn drop_table(
             &self,
             table_id: TableId,
-            manifest_data_builder: &mut TableManifestDataBuilder,
+            manifest_data_builder: &mut MetaSnapshotBuilder,
         ) {
             let manifest = self.open_manifest().await;
 
@@ -996,7 +994,7 @@ mod tests {
         async fn version_edit_table(
             &self,
             table_id: TableId,
-            manifest_data_builder: &mut TableManifestDataBuilder,
+            manifest_data_builder: &mut MetaSnapshotBuilder,
         ) {
             let manifest = self.open_manifest().await;
             self.version_edit_table_with_manifest(table_id, None, manifest_data_builder, &manifest)
@@ -1006,7 +1004,7 @@ mod tests {
         async fn alter_table_options(
             &self,
             table_id: TableId,
-            manifest_data_builder: &mut TableManifestDataBuilder,
+            manifest_data_builder: &mut MetaSnapshotBuilder,
         ) {
             let manifest = self.open_manifest().await;
 
@@ -1028,7 +1026,7 @@ mod tests {
         async fn alter_table_schema(
             &self,
             table_id: TableId,
-            manifest_data_builder: &mut TableManifestDataBuilder,
+            manifest_data_builder: &mut MetaSnapshotBuilder,
         ) {
             let manifest = self.open_manifest().await;
 
@@ -1054,13 +1052,13 @@ mod tests {
         F: for<'a> FnOnce(
             &'a TestContext,
             TableId,
-            &'a mut TableManifestDataBuilder,
+            &'a mut MetaSnapshotBuilder,
         ) -> BoxFuture<'a, ()>,
     {
         let runtime = ctx.runtime.clone();
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
-            let mut manifest_data_builder = TableManifestDataBuilder::default();
+            let mut manifest_data_builder = MetaSnapshotBuilder::default();
 
             update_table_meta(&ctx, table_id, &mut manifest_data_builder).await;
 
@@ -1140,7 +1138,7 @@ mod tests {
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
             let location = WalLocation::new(DEFAULT_SHARD_ID as u64, table_id.as_u64());
-            let mut manifest_data_builder = TableManifestDataBuilder::default();
+            let mut manifest_data_builder = MetaSnapshotBuilder::default();
             let manifest = ctx.open_manifest().await;
             ctx.add_table_with_manifest(table_id, &mut manifest_data_builder, &manifest)
                 .await;
@@ -1182,7 +1180,7 @@ mod tests {
                 table_id,
                 shard_id: DEFAULT_SHARD_ID,
             };
-            let mut manifest_data_builder = TableManifestDataBuilder::default();
+            let mut manifest_data_builder = MetaSnapshotBuilder::default();
             let manifest = ctx.open_manifest().await;
             ctx.add_table_with_manifest(table_id, &mut manifest_data_builder, &manifest)
                 .await;
@@ -1343,7 +1341,7 @@ mod tests {
 
             // 1. Test write and do snapshot
             // Create and check the latest snapshot first.
-            let mut manifest_builder = TableManifestDataBuilder::default();
+            let mut manifest_builder = MetaSnapshotBuilder::default();
             for update in &input_updates {
                 manifest_builder.apply_update(update.clone()).unwrap();
                 snapshot_provider.apply_update(update.clone());

@@ -27,18 +27,18 @@ pub enum Error {
 define_result!(Error);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TableManifestData {
+pub struct MetaSnapshot {
     pub table_meta: AddTableMeta,
     pub version_meta: Option<TableVersionMeta>,
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct TableManifestDataBuilder {
+pub struct MetaSnapshotBuilder {
     table_meta: Option<AddTableMeta>,
     version_meta: Option<TableVersionMeta>,
 }
 
-impl TableManifestDataBuilder {
+impl MetaSnapshotBuilder {
     pub fn new(table_meta: Option<AddTableMeta>, version_meta: Option<TableVersionMeta>) -> Self {
         Self {
             table_meta,
@@ -46,9 +46,9 @@ impl TableManifestDataBuilder {
         }
     }
 
-    pub fn build(mut self) -> Option<TableManifestData> {
+    pub fn build(mut self) -> Option<MetaSnapshot> {
         let version_meta = self.version_meta.take();
-        self.table_meta.map(|v| TableManifestData {
+        self.table_meta.map(|v| MetaSnapshot {
             table_meta: v,
             version_meta,
         })

@@ -3,7 +3,7 @@
 //! Manage meta data of the engine
 
 pub mod details;
-pub mod meta_data;
+pub mod meta_snapshot;
 pub mod meta_edit;
 
 use std::{fmt, sync::Arc};
@@ -14,7 +14,7 @@ use common_util::error::GenericResult;
 use table_engine::table::TableId;
 
 use crate::{
-    manifest::{meta_data::TableManifestData, meta_edit::MetaEditRequest},
+    manifest::{meta_snapshot::MetaSnapshot, meta_edit::MetaEditRequest},
     space::SpaceId,
 };
 
@@ -39,7 +39,7 @@ pub trait Manifest: Send + Sync + fmt::Debug {
     async fn load_data(
         &self,
         load_request: &LoadRequest,
-    ) -> GenericResult<Option<TableManifestData>>;
+    ) -> GenericResult<Option<MetaSnapshot>>;
 
     async fn do_snapshot(&self, request: SnapshotRequest) -> GenericResult<()>;
 }
