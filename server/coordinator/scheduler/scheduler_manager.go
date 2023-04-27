@@ -35,6 +35,8 @@ type Manager interface {
 
 	Stop(ctx context.Context) error
 
+	UpdateDeployMode(ctx context.Context, deployMode bool)
+
 	// Scheduler will be called when received new heartbeat, every scheduler registered in schedulerManager will be called to generate procedures.
 	// Scheduler cloud be schedule with fix time interval or heartbeat.
 	Scheduler(ctx context.Context, clusterSnapshot metadata.Snapshot) []ScheduleResult
@@ -53,6 +55,7 @@ type ManagerImpl struct {
 	registerSchedulers []Scheduler
 	shardWatch         *watch.ShardWatch
 	isRunning          bool
+	deployMode         bool
 }
 
 func NewManager(procedureManager procedure.Manager, factory *coordinator.Factory, clusterMetadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string) Manager {
@@ -110,6 +113,19 @@ func (m *ManagerImpl) Start(ctx context.Context) error {
 				// Get latest cluster snapshot.
 				clusterSnapshot := m.clusterMetadata.GetClusterSnapshot()
 				log.Debug("scheduler manager invoke", zap.String("clusterSnapshot", fmt.Sprintf("%v", clusterSnapshot)))
+
+				// TODO: Perhaps these codes related to deployMode need to be refactored.
+				// If deployMode is turned on, the scheduler will only be scheduled in the non-stable state.
+				if m.deployMode && clusterSnapshot.Topology.ClusterView.State == storage.ClusterStateStable {
+					continue
+				}
+				if clusterSnapshot.Topology.IsPrepareFinished() {
+					if err := m.clusterMetadata.UpdateClusterView(ctx, storage.ClusterStateStable, clusterSnapshot.Topology.ClusterView.ShardNodes); err != nil {
+						log.Error("update cluster view failed", zap.Error(err))
+					}
+					continue
+				}
+
 				results := m.Scheduler(ctx, clusterSnapshot)
 				for _, result := range results {
 					if result.Procedure != nil {
@@ -181,4 +197,12 @@ func (m *ManagerImpl) Scheduler(ctx context.Context, clusterSnapshot metadata.Sn
 		results = append(results, result)
 	}
 	return results
+}
+
+func (m *ManagerImpl) UpdateDeployMode(_ context.Context, deployMode bool) {
+	m.lock.Lock()
+	m.deployMode = deployMode
+	m.lock.Unlock()
+
+	log.Info("scheduler manager update deploy mode", zap.Bool("deployMode", deployMode))
 }

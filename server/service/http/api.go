@@ -53,6 +53,7 @@ func (a *API) NewAPIRouter() *Router {
 	router.Post("/route", a.route)
 	router.Post("/dropTable", a.dropTable)
 	router.Post("/getNodeShards", a.getNodeShards)
+	router.Put("/deployMode", a.deployMode)
 	router.Get("/healthCheck", a.healthCheck)
 
 	return router
@@ -364,6 +365,32 @@ func (a *API) split(writer http.ResponseWriter, req *http.Request) {
 	}
 
 	a.respond(writer, newShardID)
+}
+
+type UpdateDeployModeRequest struct {
+	ClusterName string `json:"clusterName"`
+	DeployMode  bool   `json:"deployMode"`
+}
+
+func (a *API) deployMode(writer http.ResponseWriter, req *http.Request) {
+	var updateDeployModeRequest UpdateDeployModeRequest
+	err := json.NewDecoder(req.Body).Decode(&updateDeployModeRequest)
+	if err != nil {
+		log.Error("decode request body failed", zap.Error(err))
+		a.respondError(writer, ErrParseRequest, "")
+		return
+	}
+
+	c, err := a.clusterManager.GetCluster(req.Context(), updateDeployModeRequest.ClusterName)
+	if err != nil {
+		log.Error("cluster not found", zap.String("clusterName", updateDeployModeRequest.ClusterName), zap.Error(err))
+		a.respondError(writer, metadata.ErrClusterNotFound, "cluster not found")
+		return
+	}
+
+	c.GetSchedulerManager().UpdateDeployMode(req.Context(), updateDeployModeRequest.DeployMode)
+
+	a.respond(writer, nil)
 }
 
 func (a *API) healthCheck(writer http.ResponseWriter, _ *http.Request) {

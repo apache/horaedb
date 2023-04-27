@@ -92,6 +92,16 @@ func (t *Topology) IsStable() bool {
 	return true
 }
 
+func (t *Topology) IsPrepareFinished() bool {
+	if t.ClusterView.State != storage.ClusterStatePrepare {
+		return false
+	}
+	if len(t.ShardViewsMapping) != len(t.ClusterView.ShardNodes) {
+		return false
+	}
+	return true
+}
+
 type TopologyManagerImpl struct {
 	storage      storage.Storage
 	clusterID    storage.ClusterID

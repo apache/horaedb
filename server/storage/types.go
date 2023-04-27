@@ -21,6 +21,7 @@ type (
 const (
 	ClusterStateEmpty ClusterState = iota + 1
 	ClusterStateStable
+	ClusterStatePrepare
 )
 
 const (
@@ -270,6 +271,8 @@ func convertClusterStateToPB(state ClusterState) clusterpb.ClusterView_ClusterSt
 		return clusterpb.ClusterView_EMPTY
 	case ClusterStateStable:
 		return clusterpb.ClusterView_STABLE
+	case ClusterStatePrepare:
+		return clusterpb.ClusterView_PREPARE_REBALANCE
 	}
 	return clusterpb.ClusterView_EMPTY
 }
@@ -280,6 +283,8 @@ func convertClusterStatePB(state clusterpb.ClusterView_ClusterState) ClusterStat
 		return ClusterStateEmpty
 	case clusterpb.ClusterView_STABLE:
 		return ClusterStateStable
+	case clusterpb.ClusterView_PREPARE_REBALANCE:
+		return ClusterStatePrepare
 	}
 	return ClusterStateEmpty
 }

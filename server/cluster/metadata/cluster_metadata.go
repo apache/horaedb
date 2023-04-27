@@ -378,10 +378,10 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 
 	c.registeredNodesCache[registeredNode.Node.Name] = registeredNode
 
-	// When the number of nodes in the cluster reaches the threshold, modify the cluster status to stable.
+	// When the number of nodes in the cluster reaches the threshold, modify the cluster status to prepare.
 	// TODO: Consider the design of the entire cluster state, which may require refactoring.
 	if uint32(len(c.registeredNodesCache)) >= c.metaData.MinNodeCount && c.topologyManager.GetClusterState() == storage.ClusterStateEmpty {
-		if err := c.UpdateClusterView(ctx, storage.ClusterStateStable, []storage.ShardNode{}); err != nil {
+		if err := c.UpdateClusterView(ctx, storage.ClusterStatePrepare, []storage.ShardNode{}); err != nil {
 			log.Error("update cluster view failed", zap.Error(err))
 		}
 	}

@@ -59,6 +59,10 @@ func (c *Cluster) GetProcedureFactory() *coordinator.Factory {
 	return c.procedureFactory
 }
 
+func (c *Cluster) GetSchedulerManager() scheduler.Manager {
+	return c.schedulerManager
+}
+
 func (c *Cluster) Start(ctx context.Context) error {
 	if err := c.procedureManager.Start(ctx); err != nil {
 		return errors.WithMessage(err, "start procedure manager")
