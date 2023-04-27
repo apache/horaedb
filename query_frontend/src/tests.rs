@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
-use common_types::tests::{build_default_value_schema, build_schema};
+use common_types::tests::{build_default_value_schema, build_schema, build_schema_for_cpu};
 use datafusion::catalog::TableReference;
 use df_operator::{scalar::ScalarUdf, udaf::AggregateUdf};
 use table_engine::{
@@ -44,6 +44,13 @@ impl Default for MockMetaProvider {
                     "__test_table".to_string(),
                     TableId::from(103),
                     build_schema(),
+                    ANALYTIC_ENGINE_TYPE.to_string(),
+                )),
+                // Used in `test_remote_query_to_plan`
+                Arc::new(MemoryTable::new(
+                    "cpu".to_string(),
+                    TableId::from(104),
+                    build_schema_for_cpu(),
                     ANALYTIC_ENGINE_TYPE.to_string(),
                 )),
             ],

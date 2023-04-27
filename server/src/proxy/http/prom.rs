@@ -20,34 +20,37 @@ use ceresdbproto::storage::{
 use common_types::{
     datum::DatumKind,
     request_id::RequestId,
-    schema::{RecordSchema, TIMESTAMP_COLUMN, TSID_COLUMN},
+    schema::{RecordSchema, TSID_COLUMN},
 };
-use common_util::{error::BoxError, runtime::Runtime};
+use common_util::{error::BoxError, runtime::Runtime, time::InstantExt};
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::debug;
 use prom_remote_api::types::{
-    label_matcher, Label, LabelMatcher, Query, QueryResult, RemoteStorage, Sample, TimeSeries,
-    WriteRequest,
+    Label, LabelMatcher, Query, QueryResult, RemoteStorage, Sample, TimeSeries, WriteRequest,
 };
 use prost::Message;
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
+use query_frontend::{
+    frontend::{Context, Frontend},
+    promql::{RemoteQueryPlan, DEFAULT_FIELD_COLUMN, NAME_LABEL},
+    provider::CatalogMetaProvider,
+};
 use snafu::{ensure, OptionExt, ResultExt};
 use warp::reject;
 
 use crate::{
     context::RequestContext,
     proxy::{
-        error::{build_ok_header, ErrNoCause, Error, Internal, InternalNoCause, Result},
+        error::{
+            build_ok_header, ErrNoCause, ErrWithCause, Error, Internal, InternalNoCause, Result,
+        },
+        execute_plan,
         forward::ForwardResult,
         grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
-        http::query::{QueryRequest, Request},
         Proxy,
     },
 };
-
-const NAME_LABEL: &str = "__name__";
-const VALUE_COLUMN: &str = "value";
 
 impl reject::Reject for Error {}
 
@@ -109,36 +112,62 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     async fn handle_prom_process_query(
         &self,
         ctx: &RequestContext,
+        metric: String,
         query: Query,
     ) -> Result<QueryResult> {
-        let (metric, mut filters) = normalize_matchers(query.matchers)?;
-        filters.push(format!(
-            "{} between {} AND {}",
-            TIMESTAMP_COLUMN, query.start_timestamp_ms, query.end_timestamp_ms
-        ));
-
         // Open partition table if needed.
         self.maybe_open_partition_table_if_not_exist(&ctx.catalog, &ctx.schema, &metric)
             .await?;
 
-        let sql = format!(
-            "select * from {} where {} order by {}, {}",
-            metric,
-            filters.join(" and "),
-            TSID_COLUMN,
-            TIMESTAMP_COLUMN
-        );
+        let request_id = RequestId::next_id();
+        let begin_instant = Instant::now();
+        let deadline = ctx.timeout.map(|t| begin_instant + t);
 
-        let request = QueryRequest::Sql(Request { query: sql });
-        let result = self
-            .handle_query(ctx, request)
-            .await
+        debug!("Query handler try to process request, request_id:{request_id}, request:{query:?}");
+
+        let provider = CatalogMetaProvider {
+            manager: self.instance.catalog_manager.clone(),
+            default_catalog: &ctx.catalog,
+            default_schema: &ctx.schema,
+            function_registry: &*self.instance.function_registry,
+        };
+        let frontend = Frontend::new(provider);
+        let mut plan_ctx = Context::new(request_id, deadline);
+
+        let RemoteQueryPlan {
+            plan,
+            timestamp_col_name,
+            field_col_name,
+        } = frontend
+            .prom_remote_query_to_plan(&mut plan_ctx, query.clone())
             .box_err()
-            .context(Internal {
-                msg: "Handle sql failed",
+            .with_context(|| ErrWithCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: format!("Failed to build plan, query:{query:?}"),
             })?;
 
-        convert_query_result(metric, result)
+        self.instance
+            .limiter
+            .try_limit(&plan)
+            .box_err()
+            .context(ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "Query is blocked",
+            })?;
+        let output = execute_plan(
+            request_id,
+            &ctx.catalog,
+            &ctx.schema,
+            self.instance.clone(),
+            plan,
+            deadline,
+        )
+        .await?;
+
+        let cost = begin_instant.saturating_elapsed().as_millis();
+        debug!("Query handler finished, request_id:{request_id}, cost:{cost}ms, query:{query:?}");
+
+        convert_query_result(metric, timestamp_col_name, field_col_name, output)
     }
 
     /// This method is used to handle forwarded gRPC query from
@@ -159,6 +188,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .context(Internal {
                 msg: "decode query failed",
             })?;
+        let metric = find_metric(&query.matchers)?;
         let builder = RequestContext::builder()
             .timeout(timeout)
             .runtime(runtime)
@@ -169,7 +199,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             msg: "build request context failed",
         })?;
 
-        self.handle_prom_process_query(&ctx, query)
+        self.handle_prom_process_query(&ctx, metric, query)
             .await
             .map(|v| PrometheusRemoteQueryResponse {
                 header: Some(build_ok_header()),
@@ -200,7 +230,7 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for Proxy<Q> {
             query: query.encode_to_vec(),
         };
         if let Some(resp) = self
-            .maybe_forward_prom_remote_query(metric, remote_req)
+            .maybe_forward_prom_remote_query(metric.clone(), remote_req)
             .await
             .map_err(|e| {
                 log::info!("remote_req forward error {:?}", e);
@@ -221,7 +251,7 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for Proxy<Q> {
             }
         }
 
-        self.handle_prom_process_query(ctx, query).await
+        self.handle_prom_process_query(ctx, metric, query).await
     }
 }
 
@@ -235,14 +265,20 @@ struct Converter {
 }
 
 impl Converter {
-    fn try_new(schema: &RecordSchema) -> Result<Self> {
+    fn try_new(
+        schema: &RecordSchema,
+        timestamp_col_name: &str,
+        field_col_name: &str,
+    ) -> Result<Self> {
         let tsid_idx = schema.index_of(TSID_COLUMN).context(InternalNoCause {
             msg: "TSID column is missing in query response",
         })?;
-        let timestamp_idx = schema.index_of(TIMESTAMP_COLUMN).context(InternalNoCause {
-            msg: "Timestamp column is missing in query response",
-        })?;
-        let value_idx = schema.index_of(VALUE_COLUMN).context(InternalNoCause {
+        let timestamp_idx = schema
+            .index_of(timestamp_col_name)
+            .context(InternalNoCause {
+                msg: "Timestamp column is missing in query response",
+            })?;
+        let value_idx = schema.index_of(field_col_name).context(InternalNoCause {
             msg: "Value column is missing in query response",
         })?;
         let tags = schema
@@ -367,6 +403,17 @@ impl Converter {
     }
 }
 
+fn find_metric(matchers: &[LabelMatcher]) -> Result<String> {
+    let idx = matchers
+        .iter()
+        .position(|m| m.name == NAME_LABEL)
+        .context(InternalNoCause {
+            msg: "Metric name is not found",
+        })?;
+
+    Ok(matchers[idx].value.clone())
+}
+
 /// Separate metric from labels, and sort labels by name.
 fn normalize_labels(mut labels: Vec<Label>) -> Result<(String, Vec<Label>)> {
     let metric_idx = labels
@@ -379,43 +426,6 @@ fn normalize_labels(mut labels: Vec<Label>) -> Result<(String, Vec<Label>)> {
     labels.sort_unstable_by(|a, b| a.name.cmp(&b.name));
 
     Ok((metric, labels))
-}
-
-fn find_metric(matchers: &[LabelMatcher]) -> Result<String> {
-    let idx = matchers
-        .iter()
-        .position(|m| m.name == NAME_LABEL)
-        .context(InternalNoCause {
-            msg: "Metric name is not found",
-        })?;
-
-    Ok(matchers[idx].value.clone())
-}
-
-/// Separate metric from matchers, and convert remaining matchers to sql
-/// filters.
-fn normalize_matchers(mut matchers: Vec<LabelMatcher>) -> Result<(String, Vec<String>)> {
-    let metric_idx =
-        matchers
-            .iter()
-            .position(|m| m.name == NAME_LABEL)
-            .context(InternalNoCause {
-                msg: "Metric name is not found",
-            })?;
-
-    let metric = matchers.swap_remove(metric_idx).value;
-    let filters = matchers
-        .iter()
-        .map(|m| match m.r#type() {
-            label_matcher::Type::Eq => format!("{} = '{}'", m.name, m.value),
-            label_matcher::Type::Neq => format!("{} != '{}'", m.name, m.value),
-            // https://github.com/prometheus/prometheus/blob/2ce94ac19673a3f7faf164e9e078a79d4d52b767/model/labels/regexp.go#L29
-            label_matcher::Type::Re => format!("{} ~ '^(?:{})'", m.name, m.value),
-            label_matcher::Type::Nre => format!("{} !~ '^(?:{})'", m.name, m.value),
-        })
-        .collect();
-
-    Ok((metric, filters))
 }
 
 fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
@@ -432,7 +442,7 @@ fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
             .or_insert_with(|| WriteTableRequest {
                 table: metric,
                 tag_names,
-                field_names: vec![VALUE_COLUMN.to_string()],
+                field_names: vec![DEFAULT_FIELD_COLUMN.to_string()],
                 entries: Vec::new(),
             })
             .entries
@@ -466,7 +476,12 @@ fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
     Ok(req_by_metric.into_values().collect())
 }
 
-fn convert_query_result(metric: String, resp: Output) -> Result<QueryResult> {
+fn convert_query_result(
+    metric: String,
+    timestamp_col_name: String,
+    field_col_name: String,
+    resp: Output,
+) -> Result<QueryResult> {
     let record_batches = match resp {
         Output::AffectedRows(_) => {
             return InternalNoCause {
@@ -481,7 +496,7 @@ fn convert_query_result(metric: String, resp: Output) -> Result<QueryResult> {
         None => {
             return Ok(QueryResult::default());
         }
-        Some(batch) => Converter::try_new(batch.schema())?,
+        Some(batch) => Converter::try_new(batch.schema(), &timestamp_col_name, &field_col_name)?,
     };
 
     converter.convert(metric, record_batches)
@@ -495,8 +510,12 @@ mod tests {
         array::{ArrayRef, Float64Array, StringArray, TimestampMillisecondArray, UInt64Array},
         record_batch::RecordBatch as ArrowRecordBatch,
     };
-    use common_types::{column_schema, record_batch::RecordBatch, schema};
-    use prom_remote_api::types::{label_matcher::Type, Label};
+    use common_types::{
+        column_schema,
+        record_batch::RecordBatch,
+        schema::{self, TIMESTAMP_COLUMN},
+    };
+    use prom_remote_api::types::Label;
 
     use super::*;
 
@@ -506,17 +525,6 @@ mod tests {
             .map(|(name, value)| Label {
                 name: name.to_string(),
                 value: value.to_string(),
-            })
-            .collect()
-    }
-
-    fn make_matchers(tuples: Vec<(&str, &str, Type)>) -> Vec<LabelMatcher> {
-        tuples
-            .into_iter()
-            .map(|(name, value, matcher_type)| LabelMatcher {
-                name: name.to_string(),
-                value: value.to_string(),
-                r#type: matcher_type as i32,
             })
             .collect()
     }
@@ -547,26 +555,6 @@ mod tests {
         assert!(normalize_labels(vec![]).is_err());
     }
 
-    #[test]
-    fn test_normailze_matchers() {
-        let matchers = make_matchers(vec![
-            ("a", "1", Type::Eq),
-            ("b", "2", Type::Neq),
-            ("c", "3", Type::Re),
-            ("d", "4", Type::Nre),
-            (NAME_LABEL, "cpu", Type::Eq),
-        ]);
-
-        let (metric, filters) = normalize_matchers(matchers).unwrap();
-        assert_eq!("cpu", metric);
-        assert_eq!(
-            vec!["a = '1'", "b != '2'", "c ~ '^(?:3)'", "d !~ '^(?:4)'"],
-            filters
-        );
-
-        assert!(normalize_matchers(vec![]).is_err());
-    }
-
     // Build a schema with
     // - 2 tags(tag1, tag2)
     // - 1 field(value)
@@ -586,7 +574,7 @@ mod tests {
             )
             .unwrap()
             .add_normal_column(
-                column_schema::Builder::new(VALUE_COLUMN.to_string(), DatumKind::Double)
+                column_schema::Builder::new(DEFAULT_FIELD_COLUMN.to_string(), DatumKind::Double)
                     .build()
                     .unwrap(),
             )
@@ -634,7 +622,8 @@ mod tests {
         let schema = build_schema();
         let batches = build_record_batch(&schema);
         let record_schema = schema.to_record_schema();
-        let converter = Converter::try_new(&record_schema).unwrap();
+        let converter =
+            Converter::try_new(&record_schema, TIMESTAMP_COLUMN, DEFAULT_FIELD_COLUMN).unwrap();
         let mut query_result = converter.convert(metric.to_string(), batches).unwrap();
 
         query_result

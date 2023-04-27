@@ -31,7 +31,7 @@ pub fn timerange_to_expr(query_range: TimeRange, column_name: &str) -> DataFusio
         expr: Box::new(col(column_name)),
         negated: false,
         low: Box::new(lit(query_range.inclusive_start().as_i64())),
-        high: Box::new(lit(query_range.exclusive_end().as_i64() + 1)),
+        high: Box::new(lit(query_range.exclusive_end().as_i64() - 1)),
     })
 }
 

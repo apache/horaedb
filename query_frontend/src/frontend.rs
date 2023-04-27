@@ -9,6 +9,7 @@ use cluster::config::SchemaConfig;
 use common_types::request_id::RequestId;
 use common_util::error::GenericError;
 use influxql_parser::statement::Statement as InfluxqlStatement;
+use prom_remote_api::types::Query as PromRemoteQuery;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{SetExpr, Statement as SqlStatement, TableFactor};
 use table_engine::table;
@@ -18,7 +19,7 @@ use crate::{
     parser::Parser,
     plan::Plan,
     planner::Planner,
-    promql::{ColumnNames, Expr},
+    promql::{ColumnNames, Expr, RemoteQueryPlan},
     provider::MetaProvider,
 };
 
@@ -131,6 +132,7 @@ impl<P: MetaProvider> Frontend<P> {
         planner.statement_to_plan(stmt).context(CreatePlan)
     }
 
+    /// Experimental native promql support, not used in production yet.
     pub fn promql_expr_to_plan(
         &self,
         ctx: &mut Context,
@@ -139,6 +141,16 @@ impl<P: MetaProvider> Frontend<P> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
 
         planner.promql_expr_to_plan(expr).context(CreatePlan)
+    }
+
+    /// Prometheus remote query support
+    pub fn prom_remote_query_to_plan(
+        &self,
+        ctx: &mut Context,
+        query: PromRemoteQuery,
+    ) -> Result<RemoteQueryPlan> {
+        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+        planner.remote_prom_req_to_plan(query).context(CreatePlan)
     }
 
     pub fn influxql_stmt_to_plan(
