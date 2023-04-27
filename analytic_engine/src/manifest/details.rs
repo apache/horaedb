@@ -120,10 +120,20 @@ pub enum Error {
         msg,
         backtrace
     ))]
-    ApplyEditToTableNoCause { msg: String, backtrace: Backtrace },
+    ApplyUpdateToTableNoCause { msg: String, backtrace: Backtrace },
 
     #[snafu(display("Failed to apply edit to table, msg:{}, err:{}", msg, source))]
-    ApplyEditToTableWithCause { msg: String, source: GenericError },
+    ApplyUpdateToTableWithCause { msg: String, source: GenericError },
+
+    #[snafu(display(
+        "Failed to apply snapshot to table, msg:{}.\nBacktrace:\n{:?}",
+        msg,
+        backtrace
+    ))]
+    ApplySnapshotToTableNoCause { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Failed to apply snapshot to table, msg:{}, err:{}", msg, source))]
+    ApplySnapshotToTableWithCause { msg: String, source: GenericError },
 
     #[snafu(display("Failed to load snapshot, err:{}", source))]
     LoadSnapshot { source: GenericError },

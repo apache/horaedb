@@ -475,7 +475,7 @@ impl From<Snapshot> for manifest_pb::Snapshot {
 #[derive(Debug, Clone)]
 pub enum MetaEdit {
     Update(MetaUpdate),
-    Snapshot(Snapshot),
+    Snapshot(TableManifestData),
 }
 
 impl TryFrom<MetaEdit> for MetaUpdate {
@@ -493,12 +493,12 @@ impl TryFrom<MetaEdit> for MetaUpdate {
     }
 }
 
-impl TryFrom<MetaEdit> for Snapshot {
+impl TryFrom<MetaEdit> for TableManifestData {
     type Error = Error;
 
     fn try_from(value: MetaEdit) -> std::result::Result<Self, Self::Error> {
-        if let MetaEdit::Snapshot(snapshot) = value {
-            Ok(snapshot)
+        if let MetaEdit::Snapshot(table_manifest_data) = value {
+            Ok(table_manifest_data)
         } else {
             ConvertMetaEdit {
                 msg: format!("it is not the snapshot type meta edit"),

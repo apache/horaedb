@@ -12,8 +12,8 @@ use std::{
 };
 
 use arena::CollectorRef;
-
 use common_util::error::BoxError;
+use log::debug;
 use snafu::{OptionExt, ResultExt};
 use table_engine::table::TableId;
 
@@ -21,13 +21,13 @@ use crate::{
     instance::mem_collector::MemUsageCollector,
     manifest::{
         details::{
-            ApplyEditToTableNoCause, ApplyEditToTableWithCause, BuildSnapshotNoCause,
-            TableSnapshotProvider,
+            ApplySnapshotToTableNoCause, ApplySnapshotToTableWithCause, ApplyUpdateToTableNoCause,
+            ApplyUpdateToTableWithCause, BuildSnapshotNoCause, TableSnapshotProvider,
         },
         meta_data::TableManifestData,
         meta_edit::{
-            AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEditRequest,
-            MetaUpdate, VersionEditMeta, self,
+            self, AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEditRequest,
+            MetaUpdate, VersionEditMeta,
         },
     },
     sst::file::FilePurgerRef,
@@ -260,7 +260,11 @@ impl fmt::Debug for TableSnapshotProviderImpl {
 }
 
 impl TableSnapshotProviderImpl {
-    fn apply_update(&self, meta_update: MetaUpdate, shard_info: TableShardInfo) -> crate::manifest::details::Result<()> {
+    fn apply_update(
+        &self,
+        meta_update: MetaUpdate,
+        shard_info: TableShardInfo,
+    ) -> crate::manifest::details::Result<()> {
         // `FnOnce` can only be pass as the instance but not reference, however `Impl
         // FnOnce` can not act as the parameter of the closure... So Box<dyn
         // FnOnce> is used here.
@@ -271,7 +275,7 @@ impl TableSnapshotProviderImpl {
             let spaces = self.spaces.read().unwrap();
             let space = spaces
                 .get_by_id(space_id)
-                .with_context(|| ApplyEditToTableNoCause {
+                .with_context(|| ApplyUpdateToTableNoCause {
                     msg: format!("space not found, space_id:{space_id}"),
                 })?;
             apply_edit(space.clone())
@@ -298,7 +302,7 @@ impl TableSnapshotProviderImpl {
                         space.mem_usage_collector.clone(),
                     )
                     .box_err()
-                    .with_context(|| ApplyEditToTableWithCause {
+                    .with_context(|| ApplyUpdateToTableWithCause {
                         msg: format!(
                             "failed to new table data, space_id:{}, table_id:{}",
                             space.id, table_id
@@ -344,7 +348,7 @@ impl TableSnapshotProviderImpl {
             }) => {
                 let version_edit = Box::new(move |space: Arc<Space>| {
                     let table_data = space.find_table_by_id(table_id).with_context(|| {
-                        ApplyEditToTableNoCause {
+                        ApplyUpdateToTableNoCause {
                             msg: format!(
                                 "table not found, space_id:{space_id}, table_id:{table_id}"
                             ),
@@ -371,7 +375,7 @@ impl TableSnapshotProviderImpl {
             }) => {
                 let alter_schema = Box::new(move |space: Arc<Space>| {
                     let table_data = space.find_table_by_id(table_id).with_context(|| {
-                        ApplyEditToTableNoCause {
+                        ApplyUpdateToTableNoCause {
                             msg: format!(
                                 "table not found, space_id:{space_id}, table_id:{table_id}"
                             ),
@@ -390,7 +394,7 @@ impl TableSnapshotProviderImpl {
             }) => {
                 let alter_option = Box::new(move |space: Arc<Space>| {
                     let table_data = space.find_table_by_id(table_id).with_context(|| {
-                        ApplyEditToTableNoCause {
+                        ApplyUpdateToTableNoCause {
                             msg: format!(
                                 "table not found, space_id:{space_id}, table_id:{table_id}"
                             ),
@@ -404,7 +408,60 @@ impl TableSnapshotProviderImpl {
             }
         }
     }
-} 
+
+    fn apply_snapshot(
+        &self,
+        table_manifest_data: TableManifestData,
+        shard_info: TableShardInfo,
+    ) -> crate::manifest::details::Result<()> {
+        let TableManifestData {
+            table_meta,
+            version_meta,
+        } = table_manifest_data;
+
+        let space_id = table_meta.space_id;
+        let spaces = self.spaces.read().unwrap();
+        let space = spaces
+            .get_by_id(space_id)
+            .with_context(|| ApplyUpdateToTableNoCause {
+                msg: format!("space not found, space_id:{space_id}"),
+            })?;
+
+        debug!("Instance apply add table, meta :{:?}", table_meta);
+
+        let table_name = table_meta.table_name.clone();
+        let table_data = Arc::new(
+            TableData::recover_from_add(
+                table_meta,
+                &self.file_purger,
+                shard_info.shard_id,
+                self.preflush_write_buffer_size_ratio,
+                space.mem_usage_collector.clone(),
+            )
+            .box_err()
+            .with_context(|| ApplySnapshotToTableWithCause {
+                msg: format!(
+                    "failed to new table_data, space_id:{}, table_name:{}",
+                    space.id, table_name
+                ),
+            })?,
+        );
+
+        // Apply version meta to the table.
+        if let Some(version_meta) = version_meta {
+            let max_file_id = version_meta.max_file_id_to_add();
+            table_data.current_version().apply_meta(version_meta);
+            // In recovery case, we need to maintain last file id of the table manually.
+            if table_data.last_file_id() < max_file_id {
+                table_data.set_last_file_id(max_file_id);
+            }
+        }
+
+        space.insert_table(table_data);
+
+        Ok(())
+    }
+}
 
 impl TableSnapshotProvider for TableSnapshotProviderImpl {
     fn get_table_snapshot(
@@ -466,7 +523,9 @@ impl TableSnapshotProvider for TableSnapshotProviderImpl {
 
         match meta_edit {
             meta_edit::MetaEdit::Update(update) => self.apply_update(update, shard_info),
-            meta_edit::MetaEdit::Snapshot(_) => todo!(),
+            meta_edit::MetaEdit::Snapshot(manifest_data) => {
+                self.apply_snapshot(manifest_data, shard_info)
+            }
         }
     }
 }
