@@ -66,3 +66,6 @@ run-rust:
 
 run-mysql:
 	cd mysql && ./basic.sh
+
+run-prom:
+	cd prom && ./run-tests.sh

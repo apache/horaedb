@@ -1,0 +1,3 @@
+remote_read:
+  - url: "http://127.0.0.1:5440/prom/v1/read"
+    read_recent: true
