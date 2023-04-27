@@ -1,6 +1,6 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! This module convert Prometheus remote query to datafusion plan
+//! This module convert Prometheus remote query to datafusion plan.
 
 use std::sync::Arc;
 
@@ -45,10 +45,12 @@ pub fn remote_query_to_plan<P: MetaProvider>(
     meta_provider: ContextProviderAdapter<'_, P>,
 ) -> Result<RemoteQueryPlan> {
     let (metric, field, mut filters) = normalize_matchers(query.matchers)?;
+
+    // get table schema
     let table_ref = meta_provider
         .table(TableReference::parse_str(&metric))
         .context(MetaProviderError {
-            msg: "failed to find table".to_string(),
+            msg: format!("Failed to find table, name:{metric}"),
         })?
         .context(TableNotFound { name: &metric })?;
     let table_provider = meta_provider
@@ -56,24 +58,30 @@ pub fn remote_query_to_plan<P: MetaProvider>(
         .context(TableProviderNotFound { name: &metric })?;
     let schema = Schema::try_from(table_provider.schema()).context(BuildTableSchema)?;
     let timestamp_col_name = schema.timestamp_name();
-    let query_range = TimeRange::new_unchecked(
-        query.start_timestamp_ms.into(),
-        (query.end_timestamp_ms + 1).into(), // end is inclusive
-    );
-    filters.push(timerange_to_expr(query_range, timestamp_col_name));
 
-    let (projection, _) = Selector::build_projection_tag_keys(&schema, &field)?;
-    let builder = LogicalPlanBuilder::scan(metric.clone(), table_provider, None)?
-        .filter(conjunction(filters).expect("at least one filter(timestamp)"))?
-        .project(projection)?
-        .sort(default_sort_exprs(timestamp_col_name))?;
+    // Build datafusion plan
+    let filter_exprs = {
+        let query_range = TimeRange::new_unchecked(
+            query.start_timestamp_ms.into(),
+            (query.end_timestamp_ms + 1).into(), // end is inclusive
+        );
+        filters.push(timerange_to_expr(query_range, timestamp_col_name));
+        conjunction(filters).expect("at least one filter(timestamp)")
+    };
+    let (projection_exprs, _) = Selector::build_projection_tag_keys(&schema, &field)?;
+    let sort_exprs = default_sort_exprs(timestamp_col_name);
+    let df_plan = LogicalPlanBuilder::scan(metric.clone(), table_provider, None)?
+        .filter(filter_exprs)?
+        .project(projection_exprs)?
+        .sort(sort_exprs)?
+        .build()
+        .context(BuildPlanError)?;
 
-    let df_plan = builder.build().context(BuildPlanError)?;
     let tables = Arc::new(
         meta_provider
             .try_into_container()
             .context(MetaProviderError {
-                msg: "failed to find meta",
+                msg: "Failed to find meta",
             })?,
     );
     Ok(RemoteQueryPlan {

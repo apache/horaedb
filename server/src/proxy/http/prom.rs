@@ -123,10 +123,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
 
-        debug!(
-            "Query handler try to process request, request_id:{}, request:{:?}",
-            request_id, query
-        );
+        debug!("Query handler try to process request, request_id:{request_id}, request:{query:?}");
 
         let provider = CatalogMetaProvider {
             manager: self.instance.catalog_manager.clone(),
@@ -167,12 +164,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         )
         .await?;
 
-        debug!(
-            "Query handler finished, request_id:{}, cost:{}ms, query:{:?}",
-            request_id,
-            begin_instant.saturating_elapsed().as_millis(),
-            query
-        );
+        let cost = begin_instant.saturating_elapsed().as_millis();
+        debug!("Query handler finished, request_id:{request_id}, cost:{cost}ms, query:{query:?}");
 
         convert_query_result(metric, timestamp_col_name, field_col_name, output)
     }
