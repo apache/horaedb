@@ -126,7 +126,7 @@ mod tests {
     use prom_remote_api::types::{label_matcher::Type, LabelMatcher};
 
     use super::*;
-    use crate::promql::remote::NAME_LABEL;
+    use crate::{promql::remote::NAME_LABEL, tests::MockMetaProvider};
 
     fn make_matchers(tuples: Vec<(&str, &str, Type)>) -> Vec<LabelMatcher> {
         tuples
@@ -137,6 +137,71 @@ mod tests {
                 r#type: matcher_type as i32,
             })
             .collect()
+    }
+
+    #[test]
+    fn test_remote_query_to_plan() {
+        let meta_provider = MockMetaProvider::default();
+        // default value
+        {
+            let ctx_provider = ContextProviderAdapter::new(&meta_provider, 1);
+            let query = Query {
+                start_timestamp_ms: 1000,
+                end_timestamp_ms: 2000,
+                matchers: make_matchers(vec![
+                    ("tag1", "some-value", Type::Eq),
+                    (NAME_LABEL, "cpu", Type::Eq),
+                ]),
+                hints: None,
+            };
+            let RemoteQueryPlan {
+                plan,
+                field_col_name,
+                timestamp_col_name,
+            } = remote_query_to_plan(query, ctx_provider).unwrap();
+            assert_eq!(
+                format!("\n{plan:?}"),
+                r#"
+Query(QueryPlan { df_plan: Sort: cpu.tsid ASC NULLS FIRST, cpu.time ASC NULLS FIRST
+  Projection: cpu.tag1, cpu.tag2, cpu.time, cpu.tsid, cpu.value
+    Filter: cpu.tag1 = Utf8("some-value") AND cpu.time BETWEEN Int64(1000) AND Int64(2000)
+      TableScan: cpu })"#
+                    .to_string()
+            );
+            assert_eq!(&field_col_name, "value");
+            assert_eq!(&timestamp_col_name, "time");
+        }
+
+        // field2 value
+        {
+            let ctx_provider = ContextProviderAdapter::new(&meta_provider, 1);
+            let query = Query {
+                start_timestamp_ms: 1000,
+                end_timestamp_ms: 2000,
+                matchers: make_matchers(vec![
+                    ("tag1", "some-value", Type::Eq),
+                    (NAME_LABEL, "cpu", Type::Eq),
+                    (FIELD_LABEL, "field2", Type::Eq),
+                ]),
+                hints: None,
+            };
+            let RemoteQueryPlan {
+                plan,
+                field_col_name,
+                timestamp_col_name,
+            } = remote_query_to_plan(query, ctx_provider).unwrap();
+            assert_eq!(
+                format!("\n{plan:?}"),
+                r#"
+Query(QueryPlan { df_plan: Sort: cpu.tsid ASC NULLS FIRST, cpu.time ASC NULLS FIRST
+  Projection: cpu.tag1, cpu.tag2, cpu.time, cpu.tsid, cpu.field2
+    Filter: cpu.tag1 = Utf8("some-value") AND cpu.time BETWEEN Int64(1000) AND Int64(2000)
+      TableScan: cpu })"#
+                    .to_string()
+            );
+            assert_eq!(&field_col_name, "field2");
+            assert_eq!(&timestamp_col_name, "time");
+        }
     }
 
     #[test]
