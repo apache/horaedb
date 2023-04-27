@@ -12,15 +12,14 @@ use table_engine::table::TableId;
 use crate::{
     manifest::{
         details::{
-            ApplySnapshotToTableWithCause, ApplyUpdateToTableNoCause,
-            ApplyUpdateToTableWithCause, BuildSnapshotNoCause,
-            TableMetaSet,
+            ApplySnapshotToTableWithCause, ApplyUpdateToTableNoCause, ApplyUpdateToTableWithCause,
+            BuildSnapshotNoCause, TableMetaSet,
         },
-        meta_snapshot::MetaSnapshot,
         meta_edit::{
             self, AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEditRequest,
             MetaUpdate, VersionEditMeta,
         },
+        meta_snapshot::MetaSnapshot,
     },
     space::{Space, SpaceId, SpacesRef},
     sst::file::FilePurgerRef,

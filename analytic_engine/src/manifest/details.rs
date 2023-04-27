@@ -35,16 +35,15 @@ use wal::{
     },
 };
 
-use super::meta_edit::{Snapshot};
+use super::meta_edit::{MetaEdit, Snapshot};
 use crate::{
     manifest::{
+        meta_edit::{MetaEditRequest, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload},
         meta_snapshot::{MetaSnapshot, MetaSnapshotBuilder},
-        meta_edit::{
-            MetaEditRequest, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload,
-        },
         LoadRequest, Manifest, SnapshotRequest,
     },
     space::SpaceId,
+    table::data::TableShardInfo,
 };
 
 #[derive(Debug, Snafu)]
@@ -476,9 +475,10 @@ impl Manifest for ManifestImpl {
             .box_err()
     }
 
-    async fn load_data(&self, load_req: &LoadRequest) -> GenericResult<Option<MetaSnapshot>> {
+    async fn load_data(&self, load_req: &LoadRequest) -> GenericResult<()> {
         info!("Manifest load data, request:{:?}", load_req);
 
+        // Load table meta snapshot from storage.
         let location = WalLocation::new(load_req.shard_id as u64, load_req.table_id.as_u64());
 
         let log_store = WalBasedLogStore {
@@ -495,9 +495,19 @@ impl Manifest for ManifestImpl {
             log_store,
             snapshot_store,
         };
-        let snapshot = reoverer.recover().await?;
+        let meta_snapshot_opt = reoverer.recover().await?.and_then(|v| v.data);
 
-        Ok(snapshot.and_then(|v| v.data))
+        // Apply it to table.
+        if let Some(snapshot) = meta_snapshot_opt {
+            let meta_edit = MetaEdit::Snapshot(snapshot);
+            let request = MetaEditRequest {
+                shard_info: TableShardInfo::new(load_req.shard_id),
+                meta_edit,
+            };
+            self.snap_data_provider.apply_edit_to_table(request)?;
+        }
+
+        Ok(())
     }
 
     async fn do_snapshot(&self, request: SnapshotRequest) -> GenericResult<()> {
@@ -695,10 +705,10 @@ mod tests {
         manifest::{
             details::{MetaUpdateLogEntryIterator, MetaUpdateLogStore},
             meta_edit::{
-                AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaUpdate,
-                VersionEditMeta, MetaEdit,
+                AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEdit,
+                MetaUpdate, VersionEditMeta,
             },
-            LoadRequest, Manifest,
+            meta_snapshot, LoadRequest, Manifest,
         },
         table::data::TableShardInfo,
         TableOptions,
@@ -742,13 +752,6 @@ mod tests {
         builder: std::sync::Mutex<MetaSnapshotBuilder>,
     }
 
-    impl MockProviderImpl {
-        fn apply_update(&self, update: MetaUpdate) {
-            let mut builder = self.builder.lock().unwrap();
-            builder.apply_update(update).unwrap();
-        }
-    }
-
     impl TableMetaSet for MockProviderImpl {
         fn get_table_snapshot(
             &self,
@@ -759,8 +762,29 @@ mod tests {
             Ok(builder.clone().build())
         }
 
-        fn apply_edit_to_table(&self, _update: MetaEditRequest) -> Result<()> {
-            todo!()
+        fn apply_edit_to_table(&self, request: MetaEditRequest) -> Result<()> {
+            let mut builder = self.builder.lock().unwrap();
+            let MetaEditRequest {
+                shard_info,
+                meta_edit,
+            } = request;
+
+            match meta_edit {
+                MetaEdit::Update(update) => {
+                    builder.apply_update(update);
+                }
+                MetaEdit::Snapshot(meta_snapshot) => {
+                    let MetaSnapshot {
+                        table_meta,
+                        version_meta,
+                    } = meta_snapshot;
+
+                    let mut builder = self.builder.lock().unwrap();
+                    *builder = MetaSnapshotBuilder::new(Some(table_meta), version_meta);
+                }
+            }
+
+            Ok(())
         }
     }
 
@@ -827,7 +851,8 @@ mod tests {
             expected: &Option<MetaSnapshot>,
             manifest: &ManifestImpl,
         ) {
-            let data = manifest.load_data(load_req).await.unwrap();
+            manifest.load_data(load_req).await.unwrap();
+            let data = self.mock_provider.builder.lock().unwrap().clone().build();
             assert_eq!(&data, expected);
         }
 
@@ -918,7 +943,6 @@ mod tests {
             manifest_data_builder
                 .apply_update(add_table.clone())
                 .unwrap();
-            self.mock_provider.apply_update(add_table);
         }
 
         async fn drop_table_with_manifest(
@@ -942,7 +966,6 @@ mod tests {
             manifest_data_builder
                 .apply_update(drop_table.clone())
                 .unwrap();
-            self.mock_provider.apply_update(drop_table);
         }
 
         async fn version_edit_table_with_manifest(
@@ -967,7 +990,6 @@ mod tests {
             manifest_data_builder
                 .apply_update(version_edit.clone())
                 .unwrap();
-            self.mock_provider.apply_update(version_edit);
         }
 
         async fn add_table(
@@ -1344,7 +1366,11 @@ mod tests {
             let mut manifest_builder = MetaSnapshotBuilder::default();
             for update in &input_updates {
                 manifest_builder.apply_update(update.clone()).unwrap();
-                snapshot_provider.apply_update(update.clone());
+                let request = MetaEditRequest {
+                    shard_info: TableShardInfo::new(DEFAULT_SHARD_ID),
+                    meta_edit: MetaEdit::Update(update.clone()),
+                };
+                snapshot_provider.apply_edit_to_table(request).unwrap();
             }
             let expect_table_manifest_data = manifest_builder.clone().build();
 
@@ -1376,7 +1402,6 @@ mod tests {
             for update in &updates_after_snapshot {
                 manifest_builder.apply_update(update.clone()).unwrap();
                 log_store.append(update.clone()).await.unwrap();
-                snapshot_provider.apply_update(update.clone());
             }
             let expect_table_manifest_data = manifest_builder.build();
             // Do snapshot and check the snapshot result again.

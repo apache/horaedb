@@ -12,16 +12,11 @@ use std::{
 };
 
 use arena::CollectorRef;
-
-
-
 use table_engine::table::TableId;
 
 use crate::{
     instance::mem_collector::MemUsageCollector,
-    table::{
-        data::{TableDataRef, TableDataSet},
-    },
+    table::data::{TableDataRef, TableDataSet},
 };
 
 /// Holds references to the table data and its space

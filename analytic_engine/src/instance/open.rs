@@ -24,8 +24,7 @@ use crate::{
     instance::{
         self,
         engine::{
-            ApplyMemTable, FlushTable, OpenManifest, ReadMetaUpdate, ReadWal, RecoverTableData,
-            Result, SpaceNotExist,
+            ApplyMemTable, FlushTable, OpenManifest, ReadMetaUpdate, ReadWal, Result, TableNotExist,
         },
         flush_compaction::TableFlushOptions,
         mem_collector::MemUsageCollector,
@@ -148,17 +147,25 @@ impl Instance {
         if let Some(table_data) = space.find_table_by_id(request.table_id) {
             return Ok(Some(table_data));
         }
-        let table_data = match self.recover_table_meta_data(request).await? {
-            Some(v) => v,
-            None => return Ok(None),
-        };
 
+        // Recover table meta from manifest.
+        self.recover_table_meta(request).await?;
+
+        // Recover table data from wal.
+        let table_data =
+            space
+                .find_table_by_id(request.table_id)
+                .with_context(|| TableNotExist {
+                    msg: format!(
+                        "table not exist, space_id:{}, table_id:{}, table_name:{}",
+                        space.id, request.table_id, request.table_name
+                    ),
+                })?;
         let read_ctx = ReadContext {
             batch_size: self.replay_batch_size,
             ..Default::default()
         };
-
-        self.recover_table_from_wal(table_data.clone(), self.replay_batch_size, &read_ctx)
+        self.recover_table_data(table_data.clone(), self.replay_batch_size, &read_ctx)
             .await
             .map_err(|e| {
                 error!("Recovery table from wal failed, table_data:{table_data:?}, err:{e}");
@@ -166,19 +173,13 @@ impl Instance {
                 e
             })?;
 
-        // All data has been recovered, insert the table into space to allow following
-        // access.
-        space.insert_table(table_data.clone());
         Ok(Some(table_data))
     }
 
     /// Recover meta data from manifest
     ///
     /// Return None if no meta data is found for the table.
-    async fn recover_table_meta_data(
-        self: &Arc<Self>,
-        request: &OpenTableRequest,
-    ) -> Result<Option<TableDataRef>> {
+    async fn recover_table_meta(self: &Arc<Self>, request: &OpenTableRequest) -> Result<()> {
         info!("Instance recover table:{} meta begin", request.table_id);
 
         // Load manifest, also create a new snapshot at startup.
@@ -189,8 +190,7 @@ impl Instance {
             table_id,
             shard_id: request.shard_id,
         };
-        let manifest_data = self
-            .space_store
+        self.space_store
             .manifest
             .load_data(&load_req)
             .await
@@ -198,69 +198,15 @@ impl Instance {
                 table_id: request.table_id,
             })?;
 
-        let table_data = if let Some(manifest_data) = manifest_data {
-            Some(self.recover_table_data(manifest_data, request).await?)
-        } else {
-            None
-        };
-
         info!("Instance recover table:{} meta end", request.table_id);
 
-        Ok(table_data)
-    }
-
-    /// Recover `TableData` by applying manifest data to instance
-    async fn recover_table_data(
-        self: &Arc<Self>,
-        manifest_data: MetaSnapshot,
-        request: &OpenTableRequest,
-    ) -> Result<TableDataRef> {
-        let MetaSnapshot {
-            table_meta,
-            version_meta,
-        } = manifest_data;
-
-        let space = self
-            .find_space(table_meta.space_id)
-            .with_context(|| SpaceNotExist {
-                space_id: table_meta.space_id,
-                table: request.table_name.clone(),
-            })?;
-
-        debug!("Instance apply add table, meta :{:?}", table_meta);
-
-        let table_name = table_meta.table_name.clone();
-        let table_data = Arc::new(
-            TableData::recover_from_add(
-                table_meta,
-                &self.file_purger,
-                request.shard_id,
-                self.preflush_write_buffer_size_ratio,
-                space.mem_usage_collector.clone(),
-            )
-            .context(RecoverTableData {
-                space_id: space.id,
-                table: &table_name,
-            })?,
-        );
-
-        // Apply version meta to the table.
-        if let Some(version_meta) = version_meta {
-            let max_file_id = version_meta.max_file_id_to_add();
-            table_data.current_version().apply_meta(version_meta);
-            // In recovery case, we need to maintain last file id of the table manually.
-            if table_data.last_file_id() < max_file_id {
-                table_data.set_last_file_id(max_file_id);
-            }
-        }
-
-        Ok(table_data)
+        Ok(())
     }
 
     /// Recover table data from wal
     ///
     /// Called by write worker
-    pub(crate) async fn recover_table_from_wal(
+    pub(crate) async fn recover_table_data(
         self: &Arc<Self>,
         table_data: TableDataRef,
         replay_batch_size: usize,
