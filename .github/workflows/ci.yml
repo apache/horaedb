@@ -221,6 +221,10 @@ jobs:
         working-directory: integration_tests
         run: |
           make run-mysql
+      - name: Run Prometheus query tests
+        working-directory: integration_tests
+        run: |
+          make run-prom
       - name: Upload Logs
         if: always()
         uses: actions/upload-artifact@v3
