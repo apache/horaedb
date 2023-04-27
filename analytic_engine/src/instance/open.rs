@@ -24,7 +24,7 @@ use crate::{
     instance::{
         self,
         engine::{
-            ApplyMemTable, FlushTable, OpenManifest, ReadMetaUpdate, ReadWal, Result, TableNotExist,
+            ApplyMemTable, FlushTable, OpenManifest, ReadMetaUpdate, ReadWal, Result,
         },
         flush_compaction::TableFlushOptions,
         mem_collector::MemUsageCollector,
@@ -32,7 +32,7 @@ use crate::{
         write::MemTableWriter,
         Instance, SpaceStore,
     },
-    manifest::{details::ManifestImpl, meta_snapshot::MetaSnapshot, LoadRequest},
+    manifest::{details::ManifestImpl, LoadRequest},
     payload::{ReadPayload, WalDecoder},
     row_iter::IterOptions,
     space::{SpaceRef, Spaces},
@@ -40,7 +40,7 @@ use crate::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
     },
-    table::data::{TableData, TableDataRef},
+    table::data::{TableDataRef},
     table_meta_set_impl::TableMetaSetImpl,
 };
 

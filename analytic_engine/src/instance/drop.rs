@@ -49,6 +49,7 @@ impl Dropper {
         // Fixme(xikai): Trigger a force flush so that the data of the table in the wal
         //  is marked for deletable. However, the overhead of the flushing can
         //  be avoided.
+
         let opts = TableFlushOptions::default();
         let flush_scheduler = serial_exec.flush_scheduler();
         self.flusher

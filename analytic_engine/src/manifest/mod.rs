@@ -14,7 +14,7 @@ use common_util::error::GenericResult;
 use table_engine::table::TableId;
 
 use crate::{
-    manifest::{meta_edit::MetaEditRequest, meta_snapshot::MetaSnapshot},
+    manifest::{meta_edit::MetaEditRequest},
     space::SpaceId,
 };
 

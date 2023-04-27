@@ -348,7 +348,7 @@ pub struct ManifestImpl {
     /// contains io operations.
     snapshot_write_guard: Arc<Mutex<()>>,
 
-    snap_data_provider: Arc<dyn TableMetaSet>,
+    table_meta_set: Arc<dyn TableMetaSet>,
 }
 
 impl ManifestImpl {
@@ -356,7 +356,7 @@ impl ManifestImpl {
         opts: Options,
         wal_manager: WalManagerRef,
         store: ObjectStoreRef,
-        snap_data_provider: Arc<dyn TableMetaSet>,
+        table_meta_set: Arc<dyn TableMetaSet>,
     ) -> Result<Self> {
         let manifest = Self {
             opts,
@@ -364,7 +364,7 @@ impl ManifestImpl {
             store,
             num_updates_since_snapshot: Arc::new(AtomicUsize::new(0)),
             snapshot_write_guard: Arc::new(Mutex::new(())),
-            snap_data_provider,
+            table_meta_set,
         };
 
         Ok(manifest)
@@ -417,7 +417,7 @@ impl ManifestImpl {
                 log_store,
                 snapshot_store,
                 end_seq,
-                snapshot_data_provider: self.snap_data_provider.clone(),
+                snapshot_data_provider: self.table_meta_set.clone(),
                 space_id,
                 table_id,
             };
@@ -470,9 +470,7 @@ impl Manifest for ManifestImpl {
         self.store_update_to_wal(meta_update, location).await?;
 
         // Update memory.
-        self.snap_data_provider
-            .apply_edit_to_table(request)
-            .box_err()
+        self.table_meta_set.apply_edit_to_table(request).box_err()
     }
 
     async fn load_data(&self, load_req: &LoadRequest) -> GenericResult<()> {
@@ -504,7 +502,7 @@ impl Manifest for ManifestImpl {
                 shard_info: TableShardInfo::new(load_req.shard_id),
                 meta_edit,
             };
-            self.snap_data_provider.apply_edit_to_table(request)?;
+            self.table_meta_set.apply_edit_to_table(request)?;
         }
 
         Ok(())
@@ -707,8 +705,7 @@ mod tests {
             meta_edit::{
                 AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEdit,
                 MetaUpdate, VersionEditMeta,
-            },
-            meta_snapshot, LoadRequest, Manifest,
+            }, LoadRequest, Manifest,
         },
         table::data::TableShardInfo,
         TableOptions,
@@ -765,7 +762,7 @@ mod tests {
         fn apply_edit_to_table(&self, request: MetaEditRequest) -> Result<()> {
             let mut builder = self.builder.lock().unwrap();
             let MetaEditRequest {
-                shard_info,
+                shard_info: _,
                 meta_edit,
             } = request;
 

@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Compaction integration tests.
 
@@ -31,8 +31,10 @@ fn test_table_compact_current_segment<T: EngineBuildContext>(engine_context: T) 
     env.block_on(async {
         test_ctx.open().await;
 
-        let test_table1 = "test_table1";
-        let fixed_schema_table = test_ctx.create_fixed_schema_table(test_table1).await;
+        let compact_test_table1 = "compact_test_table1";
+        let fixed_schema_table = test_ctx
+            .create_fixed_schema_table(compact_test_table1)
+            .await;
         let default_opts = SizeTieredCompactionOptions::default();
 
         let mut expect_rows = Vec::new();
@@ -62,12 +64,14 @@ fn test_table_compact_current_segment<T: EngineBuildContext>(engine_context: T) 
             expect_rows.extend_from_slice(&rows);
             let row_group = fixed_schema_table.rows_to_row_group(&rows);
 
-            test_ctx.write_to_table(test_table1, row_group).await;
+            test_ctx
+                .write_to_table(compact_test_table1, row_group)
+                .await;
 
             // Flush table and generate sst.
             test_ctx
                 .flush_table_with_request(
-                    test_table1,
+                    compact_test_table1,
                     FlushRequest {
                         // Don't trigger a compaction.
                         compact_after_flush: false,
@@ -83,7 +87,7 @@ fn test_table_compact_current_segment<T: EngineBuildContext>(engine_context: T) 
             &test_ctx,
             &fixed_schema_table,
             "Test read after flush",
-            test_table1,
+            compact_test_table1,
             &expect_rows,
         )
         .await;
@@ -91,14 +95,14 @@ fn test_table_compact_current_segment<T: EngineBuildContext>(engine_context: T) 
         common_util::tests::init_log_for_test();
 
         // Trigger a compaction.
-        test_ctx.compact_table(test_table1).await;
+        test_ctx.compact_table(compact_test_table1).await;
 
         // Check read after compaction.
         util::check_read(
             &test_ctx,
             &fixed_schema_table,
             "Test read after compaction",
-            test_table1,
+            compact_test_table1,
             &expect_rows,
         )
         .await;
