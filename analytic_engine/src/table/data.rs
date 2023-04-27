@@ -31,7 +31,7 @@ use table_engine::table::TableId;
 
 use crate::{
     instance::serial_executor::TableOpSerialExecutor,
-    manifest::meta_update::AddTableMeta,
+    manifest::meta_edit::AddTableMeta,
     memtable::{
         factory::{FactoryRef as MemTableFactoryRef, Options as MemTableOptions},
         skiplist::factory::SkiplistMemTableFactory,

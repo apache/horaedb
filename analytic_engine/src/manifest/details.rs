@@ -35,11 +35,12 @@ use wal::{
     },
 };
 
+use super::meta_edit::{MetaEdit, Snapshot};
 use crate::{
     manifest::{
         meta_data::{TableManifestData, TableManifestDataBuilder},
-        meta_update::{
-            AddTableMeta, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload, MetaUpdateRequest,
+        meta_edit::{
+            AddTableMeta, MetaEditRequest, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload,
             VersionEditMeta,
         },
         LoadRequest, Manifest, SnapshotRequest,
@@ -77,11 +78,6 @@ pub enum Error {
 
     #[snafu(display("Failed to clean wal, err:{}", source))]
     CleanWal { source: wal::manager::Error },
-
-    #[snafu(display("Failed to parse snapshot, err:{}", source))]
-    ParseSnapshot {
-        source: crate::manifest::meta_update::Error,
-    },
 
     #[snafu(display(
         "Failed to store snapshot, err:{}.\nBacktrace:\n{:?}",
@@ -128,6 +124,9 @@ pub enum Error {
 
     #[snafu(display("Failed to apply edit to table, msg:{}, err:{}", msg, source))]
     ApplyEditToTableWithCause { msg: String, source: GenericError },
+
+    #[snafu(display("Failed to load snapshot, err:{}", source))]
+    LoadSnapshot { source: GenericError },
 }
 
 define_result!(Error);
@@ -182,7 +181,7 @@ pub(crate) trait TableSnapshotProvider: fmt::Debug + Send + Sync {
         table_id: TableId,
     ) -> Result<Option<TableManifestData>>;
 
-    fn apply_edit_to_table(&self, update: MetaUpdateRequest) -> Result<()>;
+    fn apply_edit_to_table(&self, update: MetaEditRequest) -> Result<()>;
 }
 
 /// Snapshot recoverer
@@ -442,28 +441,30 @@ impl ManifestImpl {
 
 #[async_trait]
 impl Manifest for ManifestImpl {
-    async fn store_update(&self, request: MetaUpdateRequest) -> GenericResult<()> {
+    async fn store_update(&self, request: MetaEditRequest) -> GenericResult<()> {
         info!("Manifest store update, request:{:?}", request);
 
-        let request_for_storage_update = request;
-        let request_for_memory_update = request_for_storage_update.clone();
-
         // Update storage.
-        let table_id = request_for_storage_update.meta_update.table_id();
-        let shard_id = request_for_storage_update.shard_info.shard_id;
+        let MetaEditRequest {
+            shard_info,
+            meta_edit,
+        } = request.clone();
+
+        let meta_update = MetaUpdate::try_from(meta_edit).box_err()?;
+        let table_id = meta_update.table_id();
+        let shard_id = shard_info.shard_id;
         let location = WalLocation::new(shard_id as u64, table_id.as_u64());
-        let space_id = request_for_storage_update.meta_update.space_id();
-        let table_id = request_for_storage_update.meta_update.table_id();
+        let space_id = meta_update.space_id();
+        let table_id = meta_update.table_id();
 
         self.maybe_do_snapshot(space_id, table_id, location, false)
             .await?;
 
-        self.store_update_to_wal(request_for_storage_update.meta_update, location)
-            .await?;
+        self.store_update_to_wal(meta_update, location).await?;
 
         // Update memory.
         self.snap_data_provider
-            .apply_edit_to_table(request_for_memory_update)
+            .apply_edit_to_table(request)
             .box_err()
     }
 
@@ -597,8 +598,13 @@ impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
             .bytes()
             .await
             .context(FetchSnapshot)?;
-        let snapshot = manifest_pb::Snapshot::decode(payload.as_bytes()).context(DecodeSnapshot)?;
-        Ok(Some(Snapshot::try_from(snapshot)?))
+        let snapshot_pb =
+            manifest_pb::Snapshot::decode(payload.as_bytes()).context(DecodeSnapshot)?;
+        let snapshot = Snapshot::try_from(snapshot_pb)
+            .box_err()
+            .context(LoadSnapshot)?;
+
+        Ok(Some(snapshot))
     }
 }
 
@@ -663,85 +669,6 @@ impl MetaUpdateLogStore for WalBasedLogStore {
     }
 }
 
-/// The snapshot for the current logs.
-#[derive(Debug, Clone, PartialEq)]
-struct Snapshot {
-    /// The end sequence of the logs that this snapshot covers.
-    /// Basically it is the latest sequence number of the logs when creating a
-    /// new snapshot.
-    pub end_seq: SequenceNumber,
-    /// The data of the snapshot.
-    /// None means the table not exists(maybe dropped or not created yet).
-    pub data: Option<TableManifestData>,
-}
-
-impl TryFrom<manifest_pb::Snapshot> for Snapshot {
-    type Error = Error;
-
-    fn try_from(src: manifest_pb::Snapshot) -> Result<Self> {
-        let meta = src
-            .meta
-            .map(AddTableMeta::try_from)
-            .transpose()
-            .context(ParseSnapshot)?;
-
-        let version_edit = src
-            .version_edit
-            .map(VersionEditMeta::try_from)
-            .transpose()
-            .context(ParseSnapshot)?;
-
-        let version_meta = version_edit.map(|v| {
-            let mut version_meta = TableVersionMeta::default();
-            version_meta.apply_edit(v.into_version_edit());
-            version_meta
-        });
-
-        let table_manifest_data = meta.map(|v| TableManifestData {
-            table_meta: v,
-            version_meta,
-        });
-        Ok(Self {
-            end_seq: src.end_seq,
-            data: table_manifest_data,
-        })
-    }
-}
-
-impl From<Snapshot> for manifest_pb::Snapshot {
-    fn from(src: Snapshot) -> Self {
-        if let Some((meta, version_edit)) = src.data.map(|v| {
-            let space_id = v.table_meta.space_id;
-            let table_id = v.table_meta.table_id;
-            let table_meta = manifest_pb::AddTableMeta::from(v.table_meta);
-            let version_edit = v.version_meta.map(|version_meta| VersionEditMeta {
-                space_id,
-                table_id,
-                flushed_sequence: version_meta.flushed_sequence,
-                files_to_add: version_meta.ordered_files(),
-                files_to_delete: vec![],
-                mems_to_remove: vec![],
-            });
-            (
-                table_meta,
-                version_edit.map(manifest_pb::VersionEditMeta::from),
-            )
-        }) {
-            Self {
-                end_seq: src.end_seq,
-                meta: Some(meta),
-                version_edit,
-            }
-        } else {
-            Self {
-                end_seq: src.end_seq,
-                meta: None,
-                version_edit: None,
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::{path::PathBuf, sync::Arc, vec};
@@ -759,7 +686,7 @@ mod tests {
     use crate::{
         manifest::{
             details::{MetaUpdateLogEntryIterator, MetaUpdateLogStore},
-            meta_update::{
+            meta_edit::{
                 AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaUpdate,
                 VersionEditMeta,
             },
@@ -824,7 +751,7 @@ mod tests {
             Ok(builder.clone().build())
         }
 
-        fn apply_edit_to_table(&self, _update: MetaUpdateRequest) -> Result<()> {
+        fn apply_edit_to_table(&self, _update: MetaEditRequest) -> Result<()> {
             todo!()
         }
     }
@@ -973,9 +900,9 @@ mod tests {
 
             let add_table = self.meta_update_add_table(table_id);
             let update_req = {
-                MetaUpdateRequest {
+                MetaEditRequest {
                     shard_info,
-                    meta_update: add_table.clone(),
+                    meta_edit: MetaEdit::Update(add_table.clone()),
                 }
             };
 
@@ -998,9 +925,9 @@ mod tests {
 
             let drop_table = self.meta_update_drop_table(table_id);
             let update_req = {
-                MetaUpdateRequest {
+                MetaEditRequest {
                     shard_info,
-                    meta_update: drop_table.clone(),
+                    meta_edit: MetaEdit::Update(drop_table.clone()),
                 }
             };
             manifest.store_update(update_req).await.unwrap();
@@ -1023,9 +950,9 @@ mod tests {
 
             let version_edit = self.meta_update_version_edit(table_id, flushed_seq);
             let update_req = {
-                MetaUpdateRequest {
+                MetaEditRequest {
                     shard_info,
-                    meta_update: version_edit.clone(),
+                    meta_edit: MetaEdit::Update(version_edit.clone()),
                 }
             };
             manifest.store_update(update_req).await.unwrap();
@@ -1079,9 +1006,9 @@ mod tests {
 
             let alter_options = self.meta_update_alter_table_options(table_id);
             let update_req = {
-                MetaUpdateRequest {
+                MetaEditRequest {
                     shard_info,
-                    meta_update: alter_options.clone(),
+                    meta_edit: MetaEdit::Update(alter_options.clone()),
                 }
             };
             manifest.store_update(update_req).await.unwrap();
@@ -1101,9 +1028,9 @@ mod tests {
 
             let alter_schema = self.meta_update_alter_table_schema(table_id);
             let update_req = {
-                MetaUpdateRequest {
+                MetaEditRequest {
                     shard_info,
-                    meta_update: alter_schema.clone(),
+                    meta_edit: MetaEdit::Update(alter_schema.clone()),
                 }
             };
 

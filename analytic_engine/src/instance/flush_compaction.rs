@@ -36,7 +36,9 @@ use crate::{
         TableCompactionRequest,
     },
     instance::{self, serial_executor::TableFlushScheduler, SpaceStore, SpaceStoreRef},
-    manifest::meta_update::{AlterOptionsMeta, MetaUpdate, MetaUpdateRequest, VersionEditMeta},
+    manifest::meta_edit::{
+        AlterOptionsMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
+    },
     memtable::{ColumnarIterPtr, MemTableRef, ScanContext, ScanRequest},
     row_iter::{
         self,
@@ -237,9 +239,9 @@ impl Flusher {
                     table_id: table_data.id,
                     options: new_table_opts.clone(),
                 });
-                MetaUpdateRequest {
+                MetaEditRequest {
                     shard_info: table_data.shard_info,
-                    meta_update,
+                    meta_edit: MetaEdit::Update(meta_update),
                 }
             };
             self.space_store
@@ -423,9 +425,9 @@ impl FlushTask {
                 mems_to_remove: mems_to_flush.ids(),
             };
             let meta_update = MetaUpdate::VersionEdit(edit_meta);
-            MetaUpdateRequest {
+            MetaEditRequest {
                 shard_info: self.table_data.shard_info,
-                meta_update,
+                meta_edit: MetaEdit::Update(meta_update),
             }
         };
         self.space_store
@@ -714,9 +716,9 @@ impl SpaceStore {
 
         let update_req = {
             let meta_update = MetaUpdate::VersionEdit(edit_meta.clone());
-            MetaUpdateRequest {
+            MetaEditRequest {
                 shard_info: table_data.shard_info,
-                meta_update,
+                meta_edit: MetaEdit::Update(meta_update),
             }
         };
         self.manifest

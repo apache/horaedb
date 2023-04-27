@@ -12,7 +12,7 @@ use crate::{
         engine::{CreateOpenFailedTable, InvalidOptions, Result, TableNotExist, WriteManifest},
         Instance,
     },
-    manifest::meta_update::{AddTableMeta, MetaUpdate, MetaUpdateRequest},
+    manifest::meta_edit::{AddTableMeta, MetaEdit, MetaEditRequest, MetaUpdate},
     space::SpaceRef,
     table::data::{TableDataRef, TableShardInfo},
     table_options,
@@ -58,9 +58,9 @@ impl Instance {
                 schema: request.table_schema,
                 opts: table_opts,
             });
-            MetaUpdateRequest {
+            MetaEditRequest {
                 shard_info: TableShardInfo::new(request.shard_id),
-                meta_update,
+                meta_edit: MetaEdit::Update(meta_update),
             }
         };
         self.space_store

@@ -1,10 +1,10 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Manage meta data of the engine
 
 pub mod details;
 pub mod meta_data;
-pub mod meta_update;
+pub mod meta_edit;
 
 use std::{fmt, sync::Arc};
 
@@ -14,7 +14,7 @@ use common_util::error::GenericResult;
 use table_engine::table::TableId;
 
 use crate::{
-    manifest::{meta_data::TableManifestData, meta_update::MetaUpdateRequest},
+    manifest::{meta_data::TableManifestData, meta_edit::MetaEditRequest},
     space::SpaceId,
 };
 
@@ -30,7 +30,7 @@ pub type SnapshotRequest = LoadRequest;
 #[async_trait]
 pub trait Manifest: Send + Sync + fmt::Debug {
     /// Store update to manifest
-    async fn store_update(&self, request: MetaUpdateRequest) -> GenericResult<()>;
+    async fn store_update(&self, request: MetaEditRequest) -> GenericResult<()>;
 
     /// Load table meta data from manifest.
     ///

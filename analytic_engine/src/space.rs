@@ -12,6 +12,7 @@ use std::{
 };
 
 use arena::CollectorRef;
+
 use common_util::error::BoxError;
 use snafu::{OptionExt, ResultExt};
 use table_engine::table::TableId;
@@ -24,14 +25,14 @@ use crate::{
             TableSnapshotProvider,
         },
         meta_data::TableManifestData,
-        meta_update::{
-            AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaUpdate,
-            MetaUpdateRequest, VersionEditMeta,
+        meta_edit::{
+            AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEditRequest,
+            MetaUpdate, VersionEditMeta, self,
         },
     },
     sst::file::FilePurgerRef,
     table::{
-        data::{TableData, TableDataRef, TableDataSet},
+        data::{TableData, TableDataRef, TableDataSet, TableShardInfo},
         version::{TableVersionMeta, TableVersionSnapshot},
         version_edit::VersionEdit,
     },
@@ -258,64 +259,8 @@ impl fmt::Debug for TableSnapshotProviderImpl {
     }
 }
 
-impl TableSnapshotProvider for TableSnapshotProviderImpl {
-    fn get_table_snapshot(
-        &self,
-        space_id: SpaceId,
-        table_id: TableId,
-    ) -> crate::manifest::details::Result<Option<TableManifestData>> {
-        let spaces = self.spaces.read().unwrap();
-        let table_data = spaces
-            .get_by_id(space_id)
-            .context(BuildSnapshotNoCause {
-                msg: format!("space not exist, space_id:{space_id}, table_id:{table_id}",),
-            })?
-            .find_table_by_id(table_id)
-            .context(BuildSnapshotNoCause {
-                msg: format!("table data not exist, space_id:{space_id}, table_id:{table_id}",),
-            })?;
-
-        // When table has been dropped, we should return None.
-        let table_manifest_data_opt = if !table_data.is_dropped() {
-            let table_meta = AddTableMeta {
-                space_id,
-                table_id,
-                table_name: table_data.name.to_string(),
-                schema: table_data.schema(),
-                opts: table_data.table_options().as_ref().clone(),
-            };
-
-            let version_snapshot = table_data.current_version().snapshot();
-            let TableVersionSnapshot {
-                flushed_sequence,
-                files,
-            } = version_snapshot;
-            let version_meta = TableVersionMeta {
-                flushed_sequence,
-                files,
-                max_file_id: table_data.last_file_id(),
-            };
-
-            Some(TableManifestData {
-                table_meta,
-                version_meta: Some(version_meta),
-            })
-        } else {
-            None
-        };
-
-        Ok(table_manifest_data_opt)
-    }
-
-    fn apply_edit_to_table(
-        &self,
-        request: crate::manifest::meta_update::MetaUpdateRequest,
-    ) -> crate::manifest::details::Result<()> {
-        let MetaUpdateRequest {
-            shard_info,
-            meta_update,
-        } = request;
-
+impl TableSnapshotProviderImpl {
+    fn apply_update(&self, meta_update: MetaUpdate, shard_info: TableShardInfo) -> crate::manifest::details::Result<()> {
         // `FnOnce` can only be pass as the instance but not reference, however `Impl
         // FnOnce` can not act as the parameter of the closure... So Box<dyn
         // FnOnce> is used here.
@@ -457,6 +402,71 @@ impl TableSnapshotProvider for TableSnapshotProviderImpl {
                 });
                 find_space_and_apply_edit(space_id, alter_option)
             }
+        }
+    }
+} 
+
+impl TableSnapshotProvider for TableSnapshotProviderImpl {
+    fn get_table_snapshot(
+        &self,
+        space_id: SpaceId,
+        table_id: TableId,
+    ) -> crate::manifest::details::Result<Option<TableManifestData>> {
+        let spaces = self.spaces.read().unwrap();
+        let table_data = spaces
+            .get_by_id(space_id)
+            .context(BuildSnapshotNoCause {
+                msg: format!("space not exist, space_id:{space_id}, table_id:{table_id}",),
+            })?
+            .find_table_by_id(table_id)
+            .context(BuildSnapshotNoCause {
+                msg: format!("table data not exist, space_id:{space_id}, table_id:{table_id}",),
+            })?;
+
+        // When table has been dropped, we should return None.
+        let table_manifest_data_opt = if !table_data.is_dropped() {
+            let table_meta = AddTableMeta {
+                space_id,
+                table_id,
+                table_name: table_data.name.to_string(),
+                schema: table_data.schema(),
+                opts: table_data.table_options().as_ref().clone(),
+            };
+
+            let version_snapshot = table_data.current_version().snapshot();
+            let TableVersionSnapshot {
+                flushed_sequence,
+                files,
+            } = version_snapshot;
+            let version_meta = TableVersionMeta {
+                flushed_sequence,
+                files,
+                max_file_id: table_data.last_file_id(),
+            };
+
+            Some(TableManifestData {
+                table_meta,
+                version_meta: Some(version_meta),
+            })
+        } else {
+            None
+        };
+
+        Ok(table_manifest_data_opt)
+    }
+
+    fn apply_edit_to_table(
+        &self,
+        request: crate::manifest::meta_edit::MetaEditRequest,
+    ) -> crate::manifest::details::Result<()> {
+        let MetaEditRequest {
+            shard_info,
+            meta_edit,
+        } = request;
+
+        match meta_edit {
+            meta_edit::MetaEdit::Update(update) => self.apply_update(update, shard_info),
+            meta_edit::MetaEdit::Snapshot(_) => todo!(),
         }
     }
 }

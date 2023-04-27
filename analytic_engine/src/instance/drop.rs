@@ -12,7 +12,7 @@ use crate::{
         flush_compaction::{Flusher, TableFlushOptions},
         SpaceStoreRef,
     },
-    manifest::meta_update::{DropTableMeta, MetaUpdate, MetaUpdateRequest},
+    manifest::meta_edit::{DropTableMeta, MetaEdit, MetaEditRequest, MetaUpdate},
     space::SpaceRef,
 };
 
@@ -67,9 +67,9 @@ impl Dropper {
                 table_id: table_data.id,
                 table_name: table_data.name.clone(),
             });
-            MetaUpdateRequest {
+            MetaEditRequest {
                 shard_info: table_data.shard_info,
-                meta_update,
+                meta_edit: MetaEdit::Update(meta_update),
             }
         };
         self.space_store

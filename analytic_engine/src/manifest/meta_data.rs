@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Meta data of manifest.
 
@@ -7,7 +7,7 @@ use log::debug;
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{
-    manifest::meta_update::{AddTableMeta, MetaUpdate},
+    manifest::meta_edit::{AddTableMeta, MetaUpdate},
     table::version::TableVersionMeta,
 };
 
