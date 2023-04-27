@@ -778,8 +778,6 @@ mod tests {
                         table_meta,
                         version_meta,
                     } = meta_snapshot;
-
-                    let mut builder = self.builder.lock().unwrap();
                     *builder = MetaSnapshotBuilder::new(Some(table_meta), version_meta);
                 }
             }
@@ -1402,6 +1400,11 @@ mod tests {
             for update in &updates_after_snapshot {
                 manifest_builder.apply_update(update.clone()).unwrap();
                 log_store.append(update.clone()).await.unwrap();
+                let request = MetaEditRequest {
+                    shard_info: TableShardInfo::new(DEFAULT_SHARD_ID),
+                    meta_edit: MetaEdit::Update(update.clone()),
+                };
+                snapshot_provider.apply_edit_to_table(request).unwrap();
             }
             let expect_table_manifest_data = manifest_builder.build();
             // Do snapshot and check the snapshot result again.

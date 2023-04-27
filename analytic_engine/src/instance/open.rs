@@ -152,15 +152,11 @@ impl Instance {
         self.recover_table_meta(request).await?;
 
         // Recover table data from wal.
-        let table_data =
-            space
-                .find_table_by_id(request.table_id)
-                .with_context(|| TableNotExist {
-                    msg: format!(
-                        "table not exist, space_id:{}, table_id:{}, table_name:{}",
-                        space.id, request.table_id, request.table_name
-                    ),
-                })?;
+        let table_data = match space.find_table_by_id(request.table_id) {
+            Some(data) => data,
+            None => return Ok(None),
+        };
+
         let read_ctx = ReadContext {
             batch_size: self.replay_batch_size,
             ..Default::default()
