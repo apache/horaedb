@@ -4,6 +4,8 @@
 
 use std::{fmt, time::Duration};
 
+use ::obkv::error::Error;
+
 pub mod config;
 pub mod memory;
 pub mod obkv;

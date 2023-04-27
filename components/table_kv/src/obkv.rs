@@ -502,7 +502,7 @@ impl TableKv for ObkvImpl {
     }
 
     fn delete(&self, table_name: &str, key: &[u8]) -> std::result::Result<i64, Self::Error> {
-        let mut size = self
+        let size = self
             .client
             .delete(table_name, bytes_to_values(key))
             .context(DeleteData { table_name })?;

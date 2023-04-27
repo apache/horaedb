@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use common_util::config::{ReadableDuration, ReadableSize};
 use serde::{Deserialize, Serialize};
+use table_kv::config::ObkvConfig;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -42,6 +43,7 @@ impl Default for StorageOptions {
 pub enum ObjectStoreOptions {
     Local(LocalOptions),
     Aliyun(AliyunOptions),
+    Obkv(ObkvOptions),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -82,4 +84,12 @@ impl AliyunOptions {
     fn default_keep_alive_inverval() -> ReadableDuration {
         ReadableDuration::from(Duration::from_secs(2))
     }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ObkvOptions {
+    pub prefix: String,
+    pub shard_num: u64,
+    pub part_size: u64,
+    pub config: ObkvConfig,
 }

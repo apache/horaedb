@@ -13,6 +13,7 @@ use object_store::{
     disk_cache::DiskCacheStore,
     mem_cache::{MemCache, MemCacheStore},
     metrics::StoreWithMetrics,
+    obkv,
     prefix::StoreWithPrefix,
     LocalFileSystem, ObjectStoreRef,
 };
@@ -412,7 +413,7 @@ impl ObjectStorePicker for OpenedStorages {
 // ```
 fn open_storage(
     opts: StorageOptions,
-    runtime: Arc<Runtime>,
+    engine_runtimes: Arc<EngineRuntimes>,
 ) -> Pin<Box<dyn Future<Output = Result<OpenedStorages>> + Send>> {
     Box::pin(async move {
         let mut store = match opts.object_store {
@@ -443,6 +444,29 @@ fn open_storage(
                 );
                 let store_with_prefix = StoreWithPrefix::new(aliyun_opts.prefix, oss);
                 Arc::new(store_with_prefix.context(OpenObjectStore)?) as _
+            }
+            ObjectStoreOptions::Obkv(obkv_opts) => {
+                let obkv_config = obkv_opts.config;
+                let obkv = engine_runtimes
+                    .write_runtime
+                    .spawn_blocking(move || ObkvImpl::new(obkv_config).context(OpenObkv))
+                    .await
+                    .context(RuntimeExec)??;
+
+                let oss: ObjectStoreRef = Arc::new(
+                    obkv::ObkvObjectStore::try_new(
+                        String::from("default"),
+                        obkv_opts.shard_num,
+                        obkv_opts.part_size,
+                        obkv,
+                    )
+                    .context(OpenObjectStore)?,
+                );
+                let oss_with_metrics = Arc::new(StoreWithMetrics::new(oss));
+                Arc::new(
+                    StoreWithPrefix::new(obkv_opts.prefix, oss_with_metrics)
+                        .context(OpenObjectStore)?,
+                ) as _
             }
         };
 
