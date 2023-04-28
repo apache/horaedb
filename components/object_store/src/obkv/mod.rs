@@ -16,24 +16,23 @@ use bytes::Bytes;
 use chrono::{TimeZone, Utc};
 use common_util::error::{BoxError, GenericError};
 use futures::{
-    stream::{self, BoxStream, FuturesUnordered, FuturesOrdered},
+    stream::{BoxStream, FuturesOrdered},
     StreamExt,
 };
 use snafu::{ResultExt, Snafu};
 use table_kv::{TableKv, WriteBatch, WriteContext};
 use tokio::io::AsyncWrite;
 use upstream::{
-    aws::AmazonS3,
     multipart::{CloudMultiPartUpload, CloudMultiPartUploadImpl, UploadPart},
     path::{Path, DELIMITER},
     Error as StoreError, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result,
 };
 
 use self::meta::{MetaManager, ObkvObjectMeta};
-use crate::ObjectStoreRef;
 
 mod meta;
 
+/// The object store type of obkv
 pub const OBKV: &str = "OBKV";
 
 #[derive(Debug, Snafu)]
@@ -80,7 +79,7 @@ pub enum Error {
 
 #[derive(Debug, Clone)]
 pub struct ShardManager<T> {
-    client: Arc<T>,
+    _client: Arc<T>,
     namespace: String,
     shard_num: usize,
     table_names: Vec<String>,
@@ -101,7 +100,7 @@ impl<T: TableKv> ShardManager<T> {
         }
 
         Ok(Self {
-            client,
+            _client:client,
             namespace,
             shard_num,
             table_names,
@@ -146,7 +145,7 @@ impl<T: TableKv> ShardManager<T> {
 
 impl<T: TableKv> std::fmt::Display for ShardManager<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TableManager({},{})", self.namespace, self.shard_num);
+        write!(f, "TableManager({},{})", self.namespace, self.shard_num)?;
         Ok(())
     }
 }
@@ -177,8 +176,14 @@ impl<T: TableKv> ObkvObjectStore<T> {
         shard_num: usize,
         part_size: usize,
         client: Arc<T>,
-    ) -> std::result::Result<Self, Error> {
-        let shard_manager = ShardManager::try_new(client.clone(), namespace, shard_num)?;
+    ) -> Result<Self> {
+        let shard_manager =
+            ShardManager::try_new(client.clone(), namespace, shard_num).map_err(|source| {
+                StoreError::Generic {
+                    store: OBKV,
+                    source: Box::new(source),
+                }
+            })?;
         let meta_manager = MetaManager {
             client: client.clone(),
         };
@@ -196,22 +201,17 @@ impl<T: TableKv> ObkvObjectStore<T> {
     fn format_path(location: Option<&Path>) -> Path {
         if let Some(path) = location {
             if !path.as_ref().ends_with(DELIMITER) {
-                return Path {
-                    raw: String::from(format!("{}{}", path.as_ref(), DELIMITER)),
-                };
+                return Path::from(format!("{}{}", path.as_ref(), DELIMITER));
             }
             return path.clone();
         } else {
-            Path {
-                raw: String::from(""),
-            }
+            Path::from("")
         }
     }
 }
 
 impl<T: TableKv> ObkvObjectStore<T> {
     async fn read_meta(&self, location: &Path) -> std::result::Result<ObkvObjectMeta, Error> {
-        let table_name = self.shard_manager.oss_shard_table(&location);
         let meta = self
             .meta_manager
             .read_meta(location)
@@ -231,49 +231,28 @@ impl<T: TableKv> ObkvObjectStore<T> {
         }
     }
 
-    async fn get_internal1(&self, location: &Path) -> std::result::Result<BoxStream<'static, Result<Option<Vec<u8>>>>, Error> {
-        let meta = self.read_meta(location).await?;
-        let table_name = self.shard_manager.oss_shard_table(&location);
-        let client = self.client.clone();
-        
-        let futures = FuturesUnordered::new();
-        for path in meta.parts {
-            let client = self.client.clone();
-            let table_name = table_name.clone();
-            let future = async move {
-                Ok(Some(vec![10u8]))
-            };
-            futures.push(future);
-        }    
-    
-        Ok(futures.boxed())
-    }
-
     async fn get_internal(&self, location: &Path) -> std::result::Result<GetResult, Error> {
         let meta = self.read_meta(location).await?;
         let table_name = self.shard_manager.oss_shard_table(&location);
-        let client = self.client.clone();
         let mut futures = FuturesOrdered::new();
         for path in meta.parts {
             let client = self.client.clone();
-            let table_name = table_name.clone();
+            let table_name = table_name.to_string();
             let future = async move {
-                match client.get(table_name, path.as_bytes()) {
-                    Ok(res) => {
-                        Ok(Bytes::from(res.unwrap()))
-                    },
+                match client.get(&table_name, path.as_bytes()) {
+                    Ok(res) => Ok(Bytes::from(res.unwrap())),
                     Err(err) => Err(StoreError::Generic {
                         store: OBKV,
                         source: Box::new(err),
-                    })
-                } 
+                    }),
+                }
             };
             futures.push_back(future);
         }
-    
+
         let boxed = futures.boxed();
-    
-        Ok(GetResult::Stream( boxed))
+
+        Ok(GetResult::Stream(boxed))
     }
 }
 
@@ -302,30 +281,20 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
 
         let upload = ObkvMultiPartUpload {
             location: location.clone(),
-            upload_id: id.clone(),
+            _upload_id: id.clone(),
             table_name: table_name.to_string(),
             size: AtomicU64::new(0),
             client: Arc::clone(&self.client),
             part_size: self.part_size,
             meta_manager: self.meta_manager.clone(),
         };
-        Ok((
-            id,
-            Box::new(CloudMultiPartUpload {
-                inner: Arc::new(upload),
-                completed_parts: Vec::new(),
-                tasks: FuturesUnordered::new(),
-                max_concurrency: 8,
-                current_buffer: Vec::new(),
-                min_part_size: self.part_size as usize,
-                current_part_idx: 0,
-                completion_task: None,
-            }),
-        ))
+        let multi_part_upload = CloudMultiPartUpload::new_with_part_size(upload, 8, self.part_size);
+        Ok((id, Box::new(multi_part_upload)))
     }
 
-    async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
+    async fn abort_multipart(&self, location: &Path, _multipart_id: &MultipartId) -> Result<()> {
         // To abort multipart, we need to delete all data with path `location`.
+        // TODO: delete by version
         self.delete(location).await?;
         Ok(())
     }
@@ -357,10 +326,10 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         let start_offset = range.start % batch_size;
         let end_index = range.end / batch_size;
         let end_offset = range.end % batch_size;
-        let range_buffer = Vec::with_capacity(range.end - range.start);
+        let mut range_buffer = Vec::with_capacity(range.end - range.start);
 
         for index in start_index..=end_index {
-            let key = key_list[index];
+            let key = &key_list[index];
             let values = self
                 .client
                 .get(table_name, key.as_bytes())
@@ -387,7 +356,6 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
 
     /// Return the metadata for the specified location
     async fn head(&self, location: &Path) -> Result<ObjectMeta> {
-        let table_name = self.shard_manager.oss_shard_table(&location);
         let meta =
             self.read_meta(location)
                 .await
@@ -419,7 +387,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 })?;
 
         // delete every part of data
-        for part in meta.parts {
+        for part in &meta.parts {
             let key = part.as_bytes();
             self.client
                 .delete(table_name, key)
@@ -458,14 +426,14 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         let mut meta_list = Vec::new();
         for meta in raw_metas {
             meta_list.push(Ok(ObjectMeta {
-                location: Path { raw: meta.location },
+                location: Path::from(meta.location),
                 last_modified: Utc.timestamp_millis_opt(meta.last_modified).unwrap(),
                 size: meta.size,
                 e_tag: meta.e_tag,
             }));
         }
 
-        let iter =  futures::stream::iter(meta_list.into_iter());
+        let iter = futures::stream::iter(meta_list.into_iter());
         Ok(iter.boxed())
     }
 
@@ -492,12 +460,10 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             if let Some(pos) = subfix.find(DELIMITER) {
                 // common_prefix endswith '/'
                 let common_prefix = &subfix[0..pos + 1];
-                common_prefixes.insert(Path {
-                    raw: common_prefix.to_string(),
-                });
+                common_prefixes.insert(Path::from(common_prefix));
             } else {
                 objects.push(ObjectMeta {
-                    location: Path { raw: meta.location },
+                    location: Path::from(location),
                     last_modified: Utc.timestamp_millis_opt(meta.last_modified).unwrap(),
                     size: meta.size,
                     e_tag: meta.e_tag,
@@ -512,12 +478,12 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         })
     }
 
-    async fn copy(&self, from: &Path, to: &Path) -> Result<()> {
+    async fn copy(&self, _from: &Path, _to: &Path) -> Result<()> {
         // todo
         Err(StoreError::NotImplemented)
     }
 
-    async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
+    async fn copy_if_not_exists(&self, _from: &Path, _to: &Path) -> Result<()> {
         // todo
         Err(StoreError::NotImplemented)
     }
@@ -527,7 +493,7 @@ struct ObkvMultiPartUpload<T> {
     /// The full path to the object
     location: Path,
     /// The id of multi upload tasks
-    upload_id: String,
+    _upload_id: String,
     /// The table name of obkv to save data
     table_name: String,
     /// The client

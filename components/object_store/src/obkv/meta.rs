@@ -1,8 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{os::unix::prelude::OsStrExt, str, sync::Arc, time};
+use std::{str, sync::Arc, time};
 
-use bytes::BufMut;
 use common_util::{
     define_result,
     error::{BoxError, GenericError},
@@ -12,10 +11,7 @@ use snafu::{Backtrace, ResultExt, Snafu};
 use table_kv::{
     KeyBoundary, ScanContext, ScanIter, ScanRequest, TableKv, WriteBatch, WriteContext,
 };
-use upstream::{
-    path::{self, Path},
-    Error as StoreError, ObjectMeta, Result as StoreResult,
-};
+use upstream::{path::Path, Error as StoreError, Result as StoreResult};
 
 use super::OBKV;
 
@@ -194,7 +190,6 @@ impl<T: TableKv> MetaManager<T> {
 
         let mut metas = vec![];
         while iter.next().unwrap() {
-            let key = iter.key();
             let value = iter.value();
             let meta = ObkvObjectMeta::decode(value).map_err(|source| StoreError::Generic {
                 store: OBKV,
@@ -214,11 +209,4 @@ fn decode_json<'a, T: serde::Deserialize<'a>>(data: &'a [u8]) -> Result<T> {
 fn encode_json<T: serde::Serialize>(value: &T) -> Result<Vec<u8>> {
     let json = serde_json::to_string(value).context(EncodeJson)?;
     Ok(json.into_bytes())
-}
-
-fn to_generic_error(source: impl std::error::Error + Send + Sync + 'static) -> StoreError {
-    StoreError::Generic {
-        store: OBKV,
-        source: Box::new(source),
-    }
 }

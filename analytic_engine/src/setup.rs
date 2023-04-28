@@ -458,7 +458,7 @@ fn open_storage(
                         String::from("default"),
                         obkv_opts.shard_num,
                         obkv_opts.part_size,
-                        obkv,
+                        Arc::new(obkv),
                     )
                     .context(OpenObjectStore)?,
                 );
