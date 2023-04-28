@@ -6,7 +6,7 @@ use http::StatusCode;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::ResultExt;
 
-use crate::proxy::{error, error::ErrWithCause, Context, Proxy};
+use crate::{error, error::ErrWithCause, Context, Proxy};
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_route(&self, _ctx: Context, req: RouteRequest) -> RouteResponse {

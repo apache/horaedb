@@ -29,7 +29,7 @@ use query_frontend::{
 };
 use snafu::{ensure, OptionExt, ResultExt};
 
-use crate::proxy::{
+use crate::{
     error,
     error::{ErrNoCause, ErrWithCause, Error, Result},
     Context, Proxy,

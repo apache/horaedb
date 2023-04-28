@@ -30,13 +30,11 @@ use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::{
     context::RequestContext,
+    error::{ErrNoCause, ErrWithCause, Internal, InternalNoCause, Result},
+    execute_plan,
+    forward::ForwardResult,
     handlers::influxdb::InfluxqlRequest,
-    proxy::{
-        error::{ErrNoCause, ErrWithCause, Internal, InternalNoCause, Result},
-        execute_plan,
-        forward::ForwardResult,
-        Proxy,
-    },
+    Proxy,
 };
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {

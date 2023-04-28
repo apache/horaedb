@@ -40,15 +40,11 @@ use warp::reject;
 
 use crate::{
     context::RequestContext,
-    proxy::{
-        error::{
-            build_ok_header, ErrNoCause, ErrWithCause, Error, Internal, InternalNoCause, Result,
-        },
-        execute_plan,
-        forward::ForwardResult,
-        grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
-        Proxy,
-    },
+    error::{build_ok_header, ErrNoCause, ErrWithCause, Error, Internal, InternalNoCause, Result},
+    execute_plan,
+    forward::ForwardResult,
+    grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
+    Proxy,
 };
 
 impl reject::Reject for Error {}

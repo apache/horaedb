@@ -21,13 +21,11 @@ use ceresdbproto::{
 use common_util::time::InstantExt;
 use futures::{stream, stream::BoxStream, StreamExt};
 use http::StatusCode;
+use proxy::{Context, Proxy};
 use query_engine::executor::Executor as QueryExecutor;
 use table_engine::engine::EngineRuntimes;
 
-use crate::{
-    grpc::metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
-    proxy::{Context, Proxy},
-};
+use crate::grpc::metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC;
 
 #[derive(Clone)]
 pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {

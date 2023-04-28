@@ -18,6 +18,17 @@ use log::{error, info};
 use logger::RuntimeLevel;
 use profile::Profiler;
 use prom_remote_api::web;
+use proxy::{
+    context::RequestContext,
+    handlers::{
+        self,
+        influxdb::{self, InfluxDb, InfluxqlParams, InfluxqlRequest, WriteParams, WriteRequest},
+    },
+    http::query::{convert_output, QueryRequest, Request},
+    instance::InstanceRef,
+    schema_config_provider::SchemaConfigProviderRef,
+    Proxy,
+};
 use query_engine::executor::Executor as QueryExecutor;
 use router::{endpoint::Endpoint, RouterRef};
 use serde::Serialize;
@@ -32,27 +43,12 @@ use warp::{
     Filter,
 };
 
-use crate::{
-    consts,
-    context::RequestContext,
-    error_util,
-    handlers::{
-        self,
-        influxdb::{self, InfluxDb, InfluxqlParams, InfluxqlRequest, WriteParams, WriteRequest},
-    },
-    instance::InstanceRef,
-    metrics,
-    proxy::{
-        http::query::{convert_output, QueryRequest, Request},
-        Proxy,
-    },
-    schema_config_provider::SchemaConfigProviderRef,
-};
+use crate::{consts, error_util, metrics};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to create request context, err:{}", source))]
-    CreateContext { source: crate::context::Error },
+    CreateContext { source: proxy::context::Error },
 
     #[snafu(display("Failed to handle request, err:{}", source))]
     HandleRequest { source: GenericError },

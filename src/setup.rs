@@ -20,15 +20,17 @@ use interpreters::table_manipulator::{catalog_based, meta_based};
 use log::info;
 use logger::RuntimeLevel;
 use meta_client::{meta_impl, types::NodeMetaInfo};
+use proxy::{
+    limiter::Limiter,
+    schema_config_provider::{
+        cluster_based::ClusterBasedProvider, config_based::ConfigBasedProvider,
+    },
+};
 use query_engine::executor::{Executor, ExecutorImpl};
 use router::{rule_based::ClusterView, ClusterBasedRouter, RuleBasedRouter};
 use server::{
     config::{StaticRouteConfig, StaticTopologyConfig},
-    limiter::Limiter,
     local_tables::LocalTablesRecoverer,
-    schema_config_provider::{
-        cluster_based::ClusterBasedProvider, config_based::ConfigBasedProvider,
-    },
     server::Builder,
 };
 use table_engine::{engine::EngineRuntimes, memory::MemoryTableEngine, proxy::TableEngineProxy};

@@ -12,6 +12,12 @@ use interpreters::table_manipulator::TableManipulatorRef;
 use log::{info, warn};
 use logger::RuntimeLevel;
 use partition_table_engine::PartitionTableEngine;
+use proxy::{
+    instance::{Instance, InstanceRef},
+    limiter::Limiter,
+    schema_config_provider::SchemaConfigProviderRef,
+    Proxy,
+};
 use query_engine::executor::Executor as QueryExecutor;
 use remote_engine_client::RemoteEngineImpl;
 use router::{endpoint::Endpoint, RouterRef};
@@ -22,13 +28,9 @@ use crate::{
     config::ServerConfig,
     grpc::{self, RpcServices},
     http::{self, HttpConfig, Service},
-    instance::{Instance, InstanceRef},
-    limiter::Limiter,
     local_tables::{self, LocalTablesRecoverer},
     mysql,
     mysql::error::Error as MysqlError,
-    proxy::Proxy,
-    schema_config_provider::SchemaConfigProviderRef,
 };
 
 #[derive(Debug, Snafu)]

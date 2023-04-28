@@ -2,24 +2,25 @@
 
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
+use common_util::error::BoxError;
 use interpreters::interpreter::Output;
 use log::{error, info};
 use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaWriter};
-use query_engine::executor::Executor as QueryExecutor;
-use router::RouterRef;
-use snafu::ResultExt;
-
-use crate::{
+use proxy::{
     context::RequestContext,
     handlers::{
         self,
         query::{QueryRequest, Request},
     },
     instance::Instance,
-    mysql::{
-        error::{CreateContext, HandleSql, Result},
-        writer::MysqlQueryResultWriter,
-    },
+};
+use query_engine::executor::Executor as QueryExecutor;
+use router::RouterRef;
+use snafu::ResultExt;
+
+use crate::mysql::{
+    error::{CreateContext, HandleSql, Result},
+    writer::MysqlQueryResultWriter,
 };
 
 pub struct MysqlWorker<W: std::io::Write + Send + Sync, Q> {
@@ -118,6 +119,7 @@ where
                 error!("Mysql service Failed to handle sql, err: {}", e);
                 e
             })
+            .box_err()
             .context(HandleSql {
                 sql: sql.to_string(),
             })

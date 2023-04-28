@@ -3,7 +3,7 @@
 //! Request handlers
 
 pub mod admin;
-pub mod error;
+pub(crate) mod error;
 pub mod influxdb;
 pub mod query;
 pub mod route;

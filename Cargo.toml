@@ -39,6 +39,7 @@ members = [
     "interpreters",
     "meta_client",
     "partition_table_engine",
+    "proxy",
     "query_engine",
     "query_frontend",
     "remote_engine_client",
@@ -102,6 +103,7 @@ prom-remote-api = { version = "0.2.1" }
 prometheus = "0.12"
 prometheus-static-metric = "0.5"
 prost = "0.11"
+proxy = { path = "proxy" }
 query_engine = { path = "query_engine" }
 rand = "0.7"
 remote_engine_client = { path = "remote_engine_client" }
@@ -145,6 +147,7 @@ log = { workspace = true }
 logger = { workspace = true }
 meta_client = { workspace = true }
 moka = { version = "0.10", features = ["future"] }
+proxy = { workspace = true }
 query_engine = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true }

@@ -3,13 +3,21 @@
 //! The proxy module provides features such as forwarding and authentication,
 //! adapts to different protocols.
 
+#![feature(trait_alias)]
+
+pub mod context;
 pub(crate) mod error;
+pub(crate) mod error_util;
 #[allow(dead_code)]
 pub mod forward;
 pub(crate) mod grpc;
+pub mod handlers;
 pub mod hotspot;
 mod hotspot_lru;
-pub(crate) mod http;
+pub mod http;
+pub mod instance;
+pub mod limiter;
+pub mod schema_config_provider;
 pub(crate) mod util;
 
 use std::{
@@ -41,12 +49,10 @@ use table_engine::{
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
+    error::{ErrNoCause, ErrWithCause, Error, Internal, Result},
+    forward::{ForwardRequest, ForwardResult, Forwarder, ForwarderRef},
+    hotspot::HotspotRecorder,
     instance::InstanceRef,
-    proxy::{
-        error::{ErrNoCause, ErrWithCause, Error, Internal, Result},
-        forward::{ForwardRequest, ForwardResult, Forwarder, ForwarderRef},
-        hotspot::HotspotRecorder,
-    },
     schema_config_provider::SchemaConfigProviderRef,
 };
 

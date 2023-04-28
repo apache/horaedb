@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Server configs
 
@@ -8,6 +8,7 @@ use cluster::config::SchemaConfig;
 use common_types::schema::TIMESTAMP_COLUMN;
 use common_util::config::{ReadableDuration, ReadableSize};
 use meta_client::types::ShardId;
+use proxy::{forward, hotspot};
 use router::{
     endpoint::Endpoint,
     rule_based::{ClusterView, RuleList},
@@ -15,10 +16,7 @@ use router::{
 use serde::{Deserialize, Serialize};
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
-use crate::{
-    http::DEFAULT_MAX_BODY_SIZE,
-    proxy::{forward, hotspot},
-};
+use crate::http::DEFAULT_MAX_BODY_SIZE;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]

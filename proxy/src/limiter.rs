@@ -2,6 +2,7 @@
 
 use std::{collections::HashSet, sync::RwLock};
 
+use common_util::define_result;
 use datafusion::logical_expr::logical_plan::LogicalPlan;
 use query_frontend::plan::Plan;
 use serde::{Deserialize, Serialize};

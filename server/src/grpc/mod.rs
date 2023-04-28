@@ -24,20 +24,21 @@ use common_util::{
 };
 use futures::FutureExt;
 use log::{info, warn};
+use proxy::{
+    forward,
+    instance::InstanceRef,
+    schema_config_provider::{self},
+    Proxy,
+};
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
-use crate::{
-    grpc::{
-        meta_event_service::MetaServiceImpl, remote_engine_service::RemoteEngineServiceImpl,
-        storage_service::StorageServiceImpl,
-    },
-    instance::InstanceRef,
-    proxy::{forward, Proxy},
-    schema_config_provider::{self},
+use crate::grpc::{
+    meta_event_service::MetaServiceImpl, remote_engine_service::RemoteEngineServiceImpl,
+    storage_service::StorageServiceImpl,
 };
 
 mod meta_event_service;

@@ -38,14 +38,12 @@ use table_engine::table::TableRef;
 use tonic::transport::Channel;
 
 use crate::{
+    error,
+    error::{build_ok_header, ErrNoCause, ErrWithCause, InternalNoCause, Result},
+    execute_plan,
+    forward::{ForwardResult, ForwarderRef},
     instance::InstanceRef,
-    proxy::{
-        error,
-        error::{build_ok_header, ErrNoCause, ErrWithCause, InternalNoCause, Result},
-        execute_plan,
-        forward::{ForwardResult, ForwarderRef},
-        Context, Proxy,
-    },
+    Context, Proxy,
 };
 
 #[derive(Debug)]

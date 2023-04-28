@@ -1,5 +1,5 @@
 [package]
-name = "server"
+name = "proxy"
 
 [package.version]
 workspace = true
@@ -11,7 +11,6 @@ workspace = true
 workspace = true
 
 [dependencies]
-analytic_engine = { workspace = true }
 arrow = { workspace = true }
 arrow_ext = { workspace = true }
 async-trait = { workspace = true }
@@ -32,19 +31,12 @@ lazy_static = { workspace = true }
 log = { workspace = true }
 logger = { workspace = true }
 meta_client = { workspace = true }
-opensrv-mysql = "0.1.0"
-partition_table_engine = { workspace = true }
 paste = { workspace = true }
-pprof = { version = "0.11.1", features = ["flamegraph"] }
-profile = { workspace = true }
 prom-remote-api = { workspace = true, features = ["warp"] }
 prometheus = { workspace = true }
-prometheus-static-metric = { workspace = true }
 prost = { workspace = true }
-proxy = { workspace = true }
 query_engine = { workspace = true }
 query_frontend = { workspace = true }
-remote_engine_client = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -55,10 +47,10 @@ table_engine = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { workspace = true }
-wal = { workspace = true }
 warp = "0.3"
 zstd = { workspace = true }
 
 [dev-dependencies]
 json_pretty = "0.1.2"
 query_frontend = { workspace = true, features = ["test"] }
+system_catalog = { workspace = true }
