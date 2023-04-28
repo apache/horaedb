@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, RouteRequest,
 };
-use common_util::config::ReadableDuration;
+use common_util::{config::ReadableDuration, define_result};
 use log::{debug, error, warn};
 use router::{endpoint::Endpoint, RouterRef};
 use serde::{Deserialize, Serialize};

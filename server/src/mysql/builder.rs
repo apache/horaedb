@@ -1,18 +1,16 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
+use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
 use router::RouterRef;
 use snafu::{OptionExt, ResultExt};
 use table_engine::engine::EngineRuntimes;
 
-use crate::{
-    instance::InstanceRef,
-    mysql::{
-        error::{MissingInstance, MissingRouter, MissingRuntimes, ParseIpAddr, Result},
-        service::MysqlService,
-    },
+use crate::mysql::{
+    error::{MissingInstance, MissingRouter, MissingRuntimes, ParseIpAddr, Result},
+    service::MysqlService,
 };
 
 pub struct Builder<Q> {

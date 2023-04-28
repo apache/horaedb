@@ -3,11 +3,9 @@
 // Config for ceresdb server.
 
 use cluster::config::ClusterConfig;
+use proxy::limiter::LimiterConfig;
 use serde::{Deserialize, Serialize};
-use server::{
-    config::{ServerConfig, StaticRouteConfig},
-    limiter::LimiterConfig,
-};
+use server::config::{ServerConfig, StaticRouteConfig};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]

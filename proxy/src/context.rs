@@ -1,9 +1,10 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Server context
 
 use std::time::Duration;
 
+use common_util::define_result;
 use snafu::{ensure, Backtrace, Snafu};
 
 #[allow(clippy::enum_variant_names)]

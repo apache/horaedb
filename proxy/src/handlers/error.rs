@@ -2,7 +2,7 @@
 
 //! Error of handlers
 
-use common_util::error::GenericError;
+use common_util::{define_result, error::GenericError};
 use snafu::{Backtrace, Snafu};
 use warp::reject::Reject;
 

@@ -1121,6 +1121,7 @@ dependencies = [
  "logger",
  "meta_client",
  "moka",
+ "proxy",
  "query_engine",
  "router",
  "serde",
@@ -4271,14 +4272,12 @@ dependencies = [
 name = "partition_table_engine"
 version = "1.1.0"
 dependencies = [
- "async-stream",
  "async-trait",
  "common_types",
  "common_util",
  "futures 0.3.28",
  "lazy_static",
  "prometheus 0.12.0",
- "remote_engine_client",
  "snafu 0.6.10",
  "table_engine",
 ]
@@ -4833,6 +4832,52 @@ name = "protoc-bin-vendored-win32"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9653c3ed92974e34c5a6e0a510864dab979760481714c172e0a34e437cb98804"
+
+[[package]]
+name = "proxy"
+version = "1.1.0"
+dependencies = [
+ "arrow 36.0.0",
+ "arrow_ext",
+ "async-trait",
+ "bytes 1.4.0",
+ "catalog",
+ "ceresdbproto",
+ "clru",
+ "cluster",
+ "common_types",
+ "common_util",
+ "datafusion",
+ "df_operator",
+ "futures 0.3.28",
+ "http",
+ "influxdb-line-protocol",
+ "interpreters",
+ "json_pretty",
+ "lazy_static",
+ "log",
+ "logger",
+ "meta_client",
+ "paste 1.0.12",
+ "prom-remote-api",
+ "prometheus 0.12.0",
+ "prost",
+ "query_engine",
+ "query_frontend",
+ "router",
+ "serde",
+ "serde_json",
+ "snafu 0.6.10",
+ "spin 0.9.8",
+ "sqlparser",
+ "system_catalog",
+ "table_engine",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "warp",
+ "zstd 0.12.3+zstd.1.5.2",
+]
 
 [[package]]
 name = "ptr_meta"
@@ -5808,6 +5853,7 @@ dependencies = [
  "prometheus 0.12.0",
  "prometheus-static-metric",
  "prost",
+ "proxy",
  "query_engine",
  "query_frontend",
  "remote_engine_client",
@@ -5817,7 +5863,6 @@ dependencies = [
  "snafu 0.6.10",
  "spin 0.9.8",
  "sqlparser",
- "system_catalog",
  "table_engine",
  "tokio",
  "tokio-stream",

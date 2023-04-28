@@ -43,7 +43,7 @@ impl<K: Hash + Eq + Clone> HotspotLru<K> {
 
 #[cfg(test)]
 mod tests {
-    use crate::proxy::hotspot_lru::HotspotLru;
+    use crate::hotspot_lru::HotspotLru;
 
     #[test]
     fn test_inc_and_pop() {

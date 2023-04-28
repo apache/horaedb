@@ -27,6 +27,7 @@ use common_util::{error::BoxError, runtime::Runtime, time::InstantExt};
 use log::{error, info, warn};
 use meta_client::types::ShardInfo;
 use paste::paste;
+use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
@@ -38,15 +39,12 @@ use table_engine::{
 use tonic::Response;
 
 use self::shard_operation::WalCloserAdapter;
-use crate::{
-    grpc::{
-        meta_event_service::{
-            error::{ErrNoCause, ErrWithCause, Result, StatusCode},
-            shard_operation::WalRegionCloserRef,
-        },
-        metrics::META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+use crate::grpc::{
+    meta_event_service::{
+        error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+        shard_operation::WalRegionCloserRef,
     },
-    instance::InstanceRef,
+    metrics::META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
 };
 
 pub(crate) mod error;

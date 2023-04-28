@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use spin::Mutex as SpinMutex;
 use tokio::sync::mpsc::{self, Sender};
 
-use crate::proxy::{hotspot_lru::HotspotLru, util};
+use crate::{hotspot_lru::HotspotLru, util};
 
 type QueryKey = String;
 type WriteKey = String;

@@ -35,9 +35,9 @@ use warp::{reject, reply, Rejection, Reply};
 
 use crate::{
     context::RequestContext,
+    grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
     handlers,
     instance::InstanceRef,
-    proxy::grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
     schema_config_provider::SchemaConfigProviderRef,
 };
 

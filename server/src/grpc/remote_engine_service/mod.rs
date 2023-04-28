@@ -22,6 +22,7 @@ use futures::{
     stream::{self, BoxStream, StreamExt},
 };
 use log::error;
+use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
@@ -32,12 +33,9 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
-use crate::{
-    grpc::{
-        metrics::REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
-        remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
-    },
-    instance::InstanceRef,
+use crate::grpc::{
+    metrics::REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+    remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
 };
 
 pub(crate) mod error;

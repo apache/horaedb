@@ -49,7 +49,7 @@ mod tests {
 
     use ceresdbproto::prometheus::{expr, operand::Value::Selector, Expr, Operand};
 
-    use crate::proxy::util::table_from_expr;
+    use crate::util::table_from_expr;
 
     #[test]
     fn test_measurement_from_expr() {

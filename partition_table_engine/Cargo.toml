@@ -11,13 +11,11 @@ workspace = true
 workspace = true
 
 [dependencies]
-async-stream = { workspace = true }
 async-trait = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
 futures = { workspace = true }
 lazy_static = { workspace = true }
 prometheus = { workspace = true }
-remote_engine_client = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
