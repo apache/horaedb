@@ -89,7 +89,7 @@ impl AliyunOptions {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ObkvOptions {
     pub prefix: String,
-    pub shard_num: u64,
-    pub part_size: u64,
+    pub shard_num: usize,
+    pub part_size: usize,
     pub config: ObkvConfig,
 }

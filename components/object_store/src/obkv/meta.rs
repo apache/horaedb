@@ -75,7 +75,7 @@ pub struct ObkvObjectMeta {
     /// The full path to the object
     pub location: String,
     /// The last modified time in ms
-    pub last_modified: u64,
+    pub last_modified: i64,
     /// The size in bytes of the object
     pub size: usize,
     /// The unique identifier for the object; For Obkv, it is composed with
@@ -161,7 +161,6 @@ impl<T: TableKv> MetaManager<T> {
 
     pub async fn list_meta(
         &self,
-        client: Arc<T>,
         prefix: &Path,
     ) -> StoreResult<Vec<ObkvObjectMeta>, std::io::Error> {
         let scan_context: ScanContext = ScanContext {
@@ -185,7 +184,8 @@ impl<T: TableKv> MetaManager<T> {
             reverse: false,
         };
 
-        let mut iter = client
+        let mut iter = self
+            .client
             .scan(scan_context, META_TABLE, request)
             .map_err(|source| StoreError::Generic {
                 store: OBKV,
