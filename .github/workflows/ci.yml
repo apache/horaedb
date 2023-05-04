@@ -70,8 +70,8 @@ jobs:
         run: |
           rustup component add clippy
           rustup component add rustfmt
-          make install-sort 
-          make install-udeps
+          cargo install cargo-sort
+          cargo install cargo-udeps
       - name: Run Style Check
         run: |
           make check-license
@@ -156,7 +156,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
-      - name: Run black-box tests
+      - name: Run integration tests
         run: |
           make integration-test
         env:

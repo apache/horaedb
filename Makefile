@@ -53,17 +53,11 @@ test-ut:
 fmt:
 	cd $(DIR); cargo fmt -- --check
 
-install-sort:
-	cd $(DIR); cargo install cargo-sort
-
 check-cargo-toml:
 	cd $(DIR); cargo sort --workspace --check
 
 check-license:
 	cd $(DIR); sh scripts/check-license.sh
-
-install-udeps:
-	cd $(DIR); cargo install cargo-udeps
 
 udeps:
 	cd $(DIR); cargo udeps --all-targets --all-features --workspace
@@ -105,7 +99,9 @@ dev-setup:
 	echo "Detecting macOS system..."
 	brew --version >/dev/null 2>&1 || { echo "Error: Homebrew is not installed. Exiting..."; exit 1; }
 	echo "Installing dependencies using Homebrew..."
-	brew install git curl openssl protobuf cmake pre-commit
+	HOMEBREW_NO_AUTO_UPDATE=1 brew install git openssl protobuf cmake pre-commit
+	cargo install cargo-udeps
+	cargo install cargo-sort
 else ifeq ($(shell uname), Linux)
 dev-setup:
 	echo "Detecting Linux system..."
@@ -114,7 +110,9 @@ dev-setup:
 		echo "Detected Ubuntu system..."; \
 		echo "Installing dependencies using apt-get..."; \
 		sudo apt-get update; \
-		sudo apt install -y git curl gcc g++ libssl-dev pkg-config protobuf-compiler cmake pre-commit; \
+		sudo apt install -y git gcc g++ libssl-dev pkg-config protobuf-compiler cmake pre-commit; \
+		cargo install cargo-udeps; \
+		cargo install cargo-sort; \
 	else \
 		echo "Error: Unsupported Linux distribution. Exiting..."; \
 		exit 1; \

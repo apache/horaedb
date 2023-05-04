@@ -5839,7 +5839,6 @@ dependencies = [
  "http",
  "influxdb-line-protocol",
  "interpreters",
- "json_pretty",
  "lazy_static",
  "log",
  "logger",
