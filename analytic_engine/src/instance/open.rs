@@ -185,7 +185,7 @@ impl Instance {
         };
         self.space_store
             .manifest
-            .load_data(&load_req)
+            .recover(&load_req)
             .await
             .context(ReadMetaUpdate {
                 table_id: request.table_id,

@@ -132,7 +132,7 @@ impl<'a> Alterer<'a> {
         self.instance
             .space_store
             .manifest
-            .store_update(update_req)
+            .apply_edit(update_req)
             .await
             .context(WriteManifest {
                 space_id: self.table_data.space_id,
@@ -258,7 +258,7 @@ impl<'a> Alterer<'a> {
         self.instance
             .space_store
             .manifest
-            .store_update(update_req)
+            .apply_edit(update_req)
             .await
             .context(WriteManifest {
                 space_id: self.table_data.space_id,

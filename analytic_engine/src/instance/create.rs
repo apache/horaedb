@@ -65,7 +65,7 @@ impl Instance {
         };
         self.space_store
             .manifest
-            .store_update(update_req)
+            .apply_edit(update_req)
             .await
             .with_context(|| WriteManifest {
                 space_id: space.id,

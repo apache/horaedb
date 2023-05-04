@@ -246,7 +246,7 @@ impl Flusher {
             };
             self.space_store
                 .manifest
-                .store_update(update_req)
+                .apply_edit(update_req)
                 .await
                 .context(StoreVersionEdit)?;
 
@@ -432,7 +432,7 @@ impl FlushTask {
         };
         self.space_store
             .manifest
-            .store_update(update_req)
+            .apply_edit(update_req)
             .await
             .context(StoreVersionEdit)?;
 
@@ -722,7 +722,7 @@ impl SpaceStore {
             }
         };
         self.manifest
-            .store_update(update_req)
+            .apply_edit(update_req)
             .await
             .context(StoreVersionEdit)?;
 

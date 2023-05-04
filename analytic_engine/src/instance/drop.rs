@@ -75,7 +75,7 @@ impl Dropper {
         };
         self.space_store
             .manifest
-            .store_update(update_req)
+            .apply_edit(update_req)
             .await
             .context(WriteManifest {
                 space_id: self.space.id,

@@ -448,7 +448,7 @@ impl ManifestImpl {
 
 #[async_trait]
 impl Manifest for ManifestImpl {
-    async fn store_update(&self, request: MetaEditRequest) -> GenericResult<()> {
+    async fn apply_edit(&self, request: MetaEditRequest) -> GenericResult<()> {
         info!("Manifest store update, request:{:?}", request);
 
         // Update storage.
@@ -473,7 +473,7 @@ impl Manifest for ManifestImpl {
         self.table_meta_set.apply_edit_to_table(request).box_err()
     }
 
-    async fn load_data(&self, load_req: &LoadRequest) -> GenericResult<()> {
+    async fn recover(&self, load_req: &LoadRequest) -> GenericResult<()> {
         info!("Manifest load data, request:{:?}", load_req);
 
         // Load table meta snapshot from storage.
@@ -847,7 +847,7 @@ mod tests {
             expected: &Option<MetaSnapshot>,
             manifest: &ManifestImpl,
         ) {
-            manifest.load_data(load_req).await.unwrap();
+            manifest.recover(load_req).await.unwrap();
             let data = self.mock_provider.builder.lock().unwrap().clone().build();
             assert_eq!(&data, expected);
         }
@@ -935,7 +935,7 @@ mod tests {
                 }
             };
 
-            manifest.store_update(update_req).await.unwrap();
+            manifest.apply_edit(update_req).await.unwrap();
             manifest_data_builder
                 .apply_update(add_table.clone())
                 .unwrap();
@@ -958,7 +958,7 @@ mod tests {
                     meta_edit: MetaEdit::Update(drop_table.clone()),
                 }
             };
-            manifest.store_update(update_req).await.unwrap();
+            manifest.apply_edit(update_req).await.unwrap();
             manifest_data_builder
                 .apply_update(drop_table.clone())
                 .unwrap();
@@ -982,7 +982,7 @@ mod tests {
                     meta_edit: MetaEdit::Update(version_edit.clone()),
                 }
             };
-            manifest.store_update(update_req).await.unwrap();
+            manifest.apply_edit(update_req).await.unwrap();
             manifest_data_builder
                 .apply_update(version_edit.clone())
                 .unwrap();
@@ -1037,7 +1037,7 @@ mod tests {
                     meta_edit: MetaEdit::Update(alter_options.clone()),
                 }
             };
-            manifest.store_update(update_req).await.unwrap();
+            manifest.apply_edit(update_req).await.unwrap();
             manifest_data_builder.apply_update(alter_options).unwrap();
         }
 
@@ -1060,7 +1060,7 @@ mod tests {
                 }
             };
 
-            manifest.store_update(update_req).await.unwrap();
+            manifest.apply_edit(update_req).await.unwrap();
             manifest_data_builder.apply_update(alter_schema).unwrap();
         }
     }
