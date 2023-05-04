@@ -2,8 +2,7 @@
 
 //! time_bucket UDF.
 
-use std::time::Duration;
-
+use arrow::datatypes::IntervalDayTimeType;
 use chrono::{Datelike, FixedOffset, TimeZone};
 use common_types::{
     column::{ColumnBlock, ColumnBlockBuilder, TimestampColumn},
@@ -11,6 +10,10 @@ use common_types::{
     time::Timestamp,
 };
 use common_util::{define_result, error::BoxError};
+use datafusion::{
+    physical_expr::datetime_expressions::date_bin, physical_plan::ColumnarValue as DfColumnarValue,
+    scalar::ScalarValue,
+};
 use snafu::{ensure, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -236,22 +239,14 @@ impl Period {
     }
 
     fn truncate(&self, ts: Timestamp) -> Option<Timestamp> {
-        const MINUTE_SECONDS: u64 = 60;
-        const HOUR_SECONDS: u64 = 60 * MINUTE_SECONDS;
+        const MILLIS_SECONDS: i32 = 1000;
+        const MINUTE_SECONDS: i32 = 60 * MILLIS_SECONDS;
+        const HOUR_SECONDS: i32 = 60 * MINUTE_SECONDS;
 
         let truncated_ts = match self {
-            Period::Second(period) => {
-                let duration = Duration::from_secs(u64::from(*period));
-                ts.truncate_by(duration)
-            }
-            Period::Minute(period) => {
-                let duration = Duration::from_secs(u64::from(*period) * MINUTE_SECONDS);
-                ts.truncate_by(duration)
-            }
-            Period::Hour(period) => {
-                let duration = Duration::from_secs(u64::from(*period) * HOUR_SECONDS);
-                ts.truncate_by(duration)
-            }
+            Period::Second(period) => Self::truncate_mills(ts, i32::from(*period) * MILLIS_SECONDS),
+            Period::Minute(period) => Self::truncate_mills(ts, i32::from(*period) * MINUTE_SECONDS),
+            Period::Hour(period) => Self::truncate_mills(ts, i32::from(*period) * HOUR_SECONDS),
             Period::Day(period) => Self::truncate_day(ts, *period)?,
             Period::Week => Self::truncate_week(ts),
             Period::Month => Self::truncate_month(ts),
@@ -261,34 +256,61 @@ impl Period {
         Some(truncated_ts)
     }
 
+    fn truncate_mills(ts: Timestamp, period: i32) -> Timestamp {
+        let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
+        let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
+        let ts = datetime.timestamp_nanos();
+        let time = DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(Some(ts), None));
+
+        let stride = IntervalDayTimeType::make_value(0, period);
+        let stride = DfColumnarValue::Scalar(ScalarValue::IntervalDayTime(Some(stride)));
+        let result = date_bin(&[stride, time]).unwrap();
+
+        let truncated_ts: i64 = match result {
+            DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(Some(time), _)) => {
+                offset.timestamp_nanos(time).timestamp_millis()
+            }
+            _ => 0,
+        };
+
+        Timestamp::new(truncated_ts)
+    }
+
     fn truncate_day(ts: Timestamp, period: u16) -> Option<Timestamp> {
         let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
-        // Convert to local time. Won't panic.
         let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
+        let ts = datetime.timestamp_nanos();
+        let time = DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(Some(ts), None));
 
-        // Truncate day. Won't panic.
-        let day = datetime.day();
-        let day = day - (day % u32::from(period));
-        let truncated_datetime = offset
-            .with_ymd_and_hms(datetime.year(), datetime.month(), day, 0, 0, 0)
-            .unwrap();
-        let truncated_ts = truncated_datetime.timestamp_millis();
+        let stride = IntervalDayTimeType::make_value(period as i32, 0);
+        let stride = DfColumnarValue::Scalar(ScalarValue::IntervalDayTime(Some(stride)));
+        let result = date_bin(&[stride, time]).unwrap();
 
-        Some(Timestamp::new(truncated_ts))
+        match result {
+            DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(Some(time), _)) => {
+                let truncated_ts = offset.timestamp_nanos(time).timestamp_millis();
+                Some(Timestamp::new(truncated_ts))
+            }
+            _ => None,
+        }
     }
 
     fn truncate_week(ts: Timestamp) -> Timestamp {
         let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
-        // Convert to local time. Won't panic.
         let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
+        let ts = datetime.timestamp_nanos();
+        let time = DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(Some(ts), None));
 
-        // Truncate week. Won't panic.
-        let week_offset = datetime.weekday().num_days_from_monday();
-        let week_millis = 7 * 24 * 3600 * 1000;
-        let ts_offset = week_offset * week_millis;
-        // TODO(yingwen): Impl sub/divide for Timestamp
-        let week_millis = i64::from(week_millis);
-        let truncated_ts = (ts.as_i64() - i64::from(ts_offset)) / week_millis * week_millis;
+        let stride = IntervalDayTimeType::make_value(7, 0);
+        let stride = DfColumnarValue::Scalar(ScalarValue::IntervalDayTime(Some(stride)));
+        let result = date_bin(&[stride, time]).unwrap();
+
+        let truncated_ts: i64 = match result {
+            DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(Some(time), _)) => {
+                offset.timestamp_nanos(time).timestamp_millis()
+            }
+            _ => 0,
+        };
 
         Timestamp::new(truncated_ts)
     }
