@@ -137,7 +137,9 @@ func (s *Service) GetTablesOfShards(ctx context.Context, req *metaservicepb.GetT
 		return &metaservicepb.GetTablesOfShardsResponse{Header: responseHeader(err, "grpc get tables of shards")}, nil
 	}
 
-	return convertToGetTablesOfShardsResponse(tables), nil
+	result := convertToGetTablesOfShardsResponse(tables)
+	log.Info("[GetTablesOfShards]", zap.String("result", fmt.Sprintf("%v", result)))
+	return result, nil
 }
 
 // CreateTable implements gRPC CeresmetaServer.

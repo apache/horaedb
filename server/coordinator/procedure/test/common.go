@@ -27,6 +27,7 @@ const (
 	DefaultReplicationFactor               = 1
 	DefaultPartitionTableProportionOfNodes = 0.5
 	DefaultShardTotal                      = 4
+	DefaultSchedulerOperator               = true
 )
 
 type MockDispatch struct{}
@@ -97,7 +98,7 @@ func InitEmptyCluster(ctx context.Context, t *testing.T) *cluster.Cluster {
 	err = clusterMetadata.Load(ctx)
 	re.NoError(err)
 
-	c, err := cluster.NewCluster(clusterMetadata, client, TestRootPath)
+	c, err := cluster.NewCluster(clusterMetadata, client, TestRootPath, DefaultSchedulerOperator)
 	re.NoError(err)
 
 	_, _, err = c.GetMetadata().GetOrCreateSchema(ctx, TestSchemaName)

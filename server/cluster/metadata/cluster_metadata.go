@@ -99,8 +99,8 @@ func (c *ClusterMetadata) GetShardTables(shardIDs []storage.ShardID) map[storage
 		}
 		result[shardID] = ShardTables{
 			Shard: ShardInfo{
-				ID:      shardTableID.ShardNode.ID,
-				Role:    shardTableID.ShardNode.ShardRole,
+				ID:      shardID,
+				Role:    storage.ShardRoleLeader,
 				Version: shardTableID.Version,
 			},
 			Tables: tableInfos,
@@ -385,7 +385,6 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 			log.Error("update cluster view failed", zap.Error(err))
 		}
 	}
-
 	// Update shard node mapping.
 	shardNodes := make(map[string][]storage.ShardNode, 1)
 	shardNodes[registeredNode.Node.Name] = make([]storage.ShardNode, 0, len(registeredNode.ShardInfos))

@@ -35,7 +35,7 @@ type Manager interface {
 
 	Stop(ctx context.Context) error
 
-	UpdateDeployMode(ctx context.Context, deployMode bool)
+	UpdateEnableSchedule(ctx context.Context, enableSchedule bool)
 
 	// Scheduler will be called when received new heartbeat, every scheduler registered in schedulerManager will be called to generate procedures.
 	// Scheduler cloud be schedule with fix time interval or heartbeat.
@@ -55,10 +55,10 @@ type ManagerImpl struct {
 	registerSchedulers []Scheduler
 	shardWatch         *watch.ShardWatch
 	isRunning          bool
-	deployMode         bool
+	enableSchedule     bool
 }
 
-func NewManager(procedureManager procedure.Manager, factory *coordinator.Factory, clusterMetadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string) Manager {
+func NewManager(procedureManager procedure.Manager, factory *coordinator.Factory, clusterMetadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string, enableSchedule bool) Manager {
 	return &ManagerImpl{
 		procedureManager:   procedureManager,
 		registerSchedulers: []Scheduler{},
@@ -68,6 +68,7 @@ func NewManager(procedureManager procedure.Manager, factory *coordinator.Factory
 		clusterMetadata:    clusterMetadata,
 		client:             client,
 		rootPath:           rootPath,
+		enableSchedule:     enableSchedule,
 	}
 }
 
@@ -114,9 +115,9 @@ func (m *ManagerImpl) Start(ctx context.Context) error {
 				clusterSnapshot := m.clusterMetadata.GetClusterSnapshot()
 				log.Debug("scheduler manager invoke", zap.String("clusterSnapshot", fmt.Sprintf("%v", clusterSnapshot)))
 
-				// TODO: Perhaps these codes related to deployMode need to be refactored.
-				// If deployMode is turned on, the scheduler will only be scheduled in the non-stable state.
-				if m.deployMode && clusterSnapshot.Topology.ClusterView.State == storage.ClusterStateStable {
+				// TODO: Perhaps these codes related to schedulerOperator need to be refactored.
+				// If schedulerOperator is turned on, the scheduler will only be scheduled in the non-stable state.
+				if !m.enableSchedule && clusterSnapshot.Topology.ClusterView.State == storage.ClusterStateStable {
 					continue
 				}
 				if clusterSnapshot.Topology.IsPrepareFinished() {
@@ -199,10 +200,10 @@ func (m *ManagerImpl) Scheduler(ctx context.Context, clusterSnapshot metadata.Sn
 	return results
 }
 
-func (m *ManagerImpl) UpdateDeployMode(_ context.Context, deployMode bool) {
+func (m *ManagerImpl) UpdateEnableSchedule(_ context.Context, enableSchedule bool) {
 	m.lock.Lock()
-	m.deployMode = deployMode
+	m.enableSchedule = enableSchedule
 	m.lock.Unlock()
 
-	log.Info("scheduler manager update deploy mode", zap.Bool("deployMode", deployMode))
+	log.Info("scheduler manager update enableSchedule", zap.Bool("enableSchedule", enableSchedule))
 }
