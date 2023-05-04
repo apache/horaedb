@@ -10,7 +10,7 @@ use std::{
 use common_types::schema::IndexInWriterSchema;
 use log::{debug, error, info, trace};
 use object_store::ObjectStoreRef;
-use snafu::{OptionExt, ResultExt};
+use snafu::ResultExt;
 use table_engine::engine::OpenTableRequest;
 use wal::{
     log_batch::LogEntry,
@@ -23,9 +23,7 @@ use crate::{
     engine,
     instance::{
         self,
-        engine::{
-            ApplyMemTable, FlushTable, OpenManifest, ReadMetaUpdate, ReadWal, Result,
-        },
+        engine::{ApplyMemTable, FlushTable, OpenManifest, ReadMetaUpdate, ReadWal, Result},
         flush_compaction::TableFlushOptions,
         mem_collector::MemUsageCollector,
         serial_executor::TableOpSerialExecutor,
@@ -40,7 +38,7 @@ use crate::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
     },
-    table::data::{TableDataRef},
+    table::data::TableDataRef,
     table_meta_set_impl::TableMetaSetImpl,
 };
 
@@ -124,7 +122,6 @@ impl Instance {
             mem_usage_collector: Arc::new(MemUsageCollector::default()),
             db_write_buffer_size: ctx.config.db_write_buffer_size,
             space_write_buffer_size: ctx.config.space_write_buffer_size,
-            preflush_write_buffer_size_ratio: ctx.config.preflush_write_buffer_size_ratio,
             replay_batch_size: ctx.config.replay_batch_size,
             write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_byte() as usize,
             max_bytes_per_write_batch: ctx

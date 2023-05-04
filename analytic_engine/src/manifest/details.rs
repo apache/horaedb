@@ -705,7 +705,8 @@ mod tests {
             meta_edit::{
                 AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEdit,
                 MetaUpdate, VersionEditMeta,
-            }, LoadRequest, Manifest,
+            },
+            LoadRequest, Manifest,
         },
         table::data::TableShardInfo,
         TableOptions,
@@ -768,7 +769,7 @@ mod tests {
 
             match meta_edit {
                 MetaEdit::Update(update) => {
-                    builder.apply_update(update);
+                    builder.apply_update(update).unwrap();
                 }
                 MetaEdit::Snapshot(meta_snapshot) => {
                     let MetaSnapshot {

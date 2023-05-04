@@ -34,6 +34,7 @@ use crate::{
 pub(crate) struct TableMetaSetImpl {
     pub(crate) spaces: SpacesRef,
     pub(crate) file_purger: FilePurgerRef,
+    // TODO: maybe not suitable to place this parameter here?
     pub(crate) preflush_write_buffer_size_ratio: f32,
 }
 

@@ -13,10 +13,7 @@ use common_types::table::ShardId;
 use common_util::error::GenericResult;
 use table_engine::table::TableId;
 
-use crate::{
-    manifest::{meta_edit::MetaEditRequest},
-    space::SpaceId,
-};
+use crate::{manifest::meta_edit::MetaEditRequest, space::SpaceId};
 
 #[derive(Debug)]
 pub struct LoadRequest {

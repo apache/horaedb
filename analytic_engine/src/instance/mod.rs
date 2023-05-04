@@ -147,8 +147,6 @@ pub struct Instance {
     pub(crate) db_write_buffer_size: usize,
     /// Space write buffer size
     pub(crate) space_write_buffer_size: usize,
-    /// The ratio of table's write buffer size to trigger preflush
-    pub(crate) preflush_write_buffer_size_ratio: f32,
     /// Replay wal batch size
     pub(crate) replay_batch_size: usize,
     /// Write sst max buffer size
