@@ -122,7 +122,7 @@ impl<'a> Alterer<'a> {
         );
 
         // Write to Manifest
-        let update_req = {
+        let edit_req = {
             let meta_update = MetaUpdate::AlterSchema(manifest_update);
             MetaEditRequest {
                 shard_info: self.table_data.shard_info,
@@ -132,7 +132,7 @@ impl<'a> Alterer<'a> {
         self.instance
             .space_store
             .manifest
-            .apply_edit(update_req)
+            .apply_edit(edit_req)
             .await
             .context(WriteManifest {
                 space_id: self.table_data.space_id,
@@ -248,7 +248,7 @@ impl<'a> Alterer<'a> {
             })?;
 
         // Write to Manifest
-        let update_req = {
+        let edit_req = {
             let meta_update = MetaUpdate::AlterOptions(manifest_update);
             MetaEditRequest {
                 shard_info: self.table_data.shard_info,
@@ -258,7 +258,7 @@ impl<'a> Alterer<'a> {
         self.instance
             .space_store
             .manifest
-            .apply_edit(update_req)
+            .apply_edit(edit_req)
             .await
             .context(WriteManifest {
                 space_id: self.table_data.space_id,

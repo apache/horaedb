@@ -199,6 +199,8 @@ impl TableMetaSetImpl {
         meta_snapshot: MetaSnapshot,
         shard_info: TableShardInfo,
     ) -> crate::manifest::details::Result<()> {
+        debug!("TableMetaSet apply snapshot, snapshot :{:?}", meta_snapshot);
+
         let MetaSnapshot {
             table_meta,
             version_meta,
@@ -211,8 +213,6 @@ impl TableMetaSetImpl {
             .with_context(|| ApplyUpdateToTableNoCause {
                 msg: format!("space not found, space_id:{space_id}"),
             })?;
-
-        debug!("Instance apply add table, meta :{:?}", table_meta);
 
         let table_name = table_meta.table_name.clone();
         let table_data = Arc::new(
@@ -234,6 +234,11 @@ impl TableMetaSetImpl {
 
         // Apply version meta to the table.
         if let Some(version_meta) = version_meta {
+            debug!(
+                "TableMetaSet apply version meta, version meta:{:?}",
+                version_meta
+            );
+
             let max_file_id = version_meta.max_file_id_to_add();
             table_data.current_version().apply_meta(version_meta);
             // In recovery case, we need to maintain last file id of the table manually.
@@ -241,6 +246,11 @@ impl TableMetaSetImpl {
                 table_data.set_last_file_id(max_file_id);
             }
         }
+
+        debug!(
+            "TableMetaSet success to apply snapshot, table_id:{}, table_name:{}",
+            table_data.id, table_data.name
+        );
 
         space.insert_table(table_data);
 

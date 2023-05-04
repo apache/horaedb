@@ -26,13 +26,10 @@ pub type SnapshotRequest = LoadRequest;
 /// Manifest holds meta data of all tables.
 #[async_trait]
 pub trait Manifest: Send + Sync + fmt::Debug {
-    /// Store update to manifest
+    /// Apply edit to table metas, store it to storage.
     async fn apply_edit(&self, request: MetaEditRequest) -> GenericResult<()>;
 
-    /// Load table meta data from manifest.
-    ///
-    /// If `do_snapshot` is true, the manifest will try to create a snapshot of
-    /// the manifest data.
+    /// Recover table metas from storage.
     async fn recover(&self, load_request: &LoadRequest) -> GenericResult<()>;
 
     async fn do_snapshot(&self, request: SnapshotRequest) -> GenericResult<()>;

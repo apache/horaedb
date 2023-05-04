@@ -62,7 +62,7 @@ impl Dropper {
             })?;
 
         // Store the dropping information into meta
-        let update_req = {
+        let edit_req = {
             let meta_update = MetaUpdate::DropTable(DropTableMeta {
                 space_id: self.space.id,
                 table_id: table_data.id,
@@ -75,7 +75,7 @@ impl Dropper {
         };
         self.space_store
             .manifest
-            .apply_edit(update_req)
+            .apply_edit(edit_req)
             .await
             .context(WriteManifest {
                 space_id: self.space.id,

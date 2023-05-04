@@ -233,7 +233,7 @@ impl Flusher {
             let mut new_table_opts = (*table_data.table_options()).clone();
             new_table_opts.segment_duration = Some(ReadableDuration(suggest_segment_duration));
 
-            let update_req = {
+            let edit_req = {
                 let meta_update = MetaUpdate::AlterOptions(AlterOptionsMeta {
                     space_id: table_data.space_id,
                     table_id: table_data.id,
@@ -246,7 +246,7 @@ impl Flusher {
             };
             self.space_store
                 .manifest
-                .apply_edit(update_req)
+                .apply_edit(edit_req)
                 .await
                 .context(StoreVersionEdit)?;
 
@@ -415,7 +415,7 @@ impl FlushTask {
         );
 
         // Persist the flush result to manifest.
-        let update_req = {
+        let edit_req = {
             let edit_meta = VersionEditMeta {
                 space_id: self.table_data.space_id,
                 table_id: self.table_data.id,
@@ -432,7 +432,7 @@ impl FlushTask {
         };
         self.space_store
             .manifest
-            .apply_edit(update_req)
+            .apply_edit(edit_req)
             .await
             .context(StoreVersionEdit)?;
 
@@ -714,7 +714,7 @@ impl SpaceStore {
             .await?;
         }
 
-        let update_req = {
+        let edit_req = {
             let meta_update = MetaUpdate::VersionEdit(edit_meta.clone());
             MetaEditRequest {
                 shard_info: table_data.shard_info,
@@ -722,7 +722,7 @@ impl SpaceStore {
             }
         };
         self.manifest
-            .apply_edit(update_req)
+            .apply_edit(edit_req)
             .await
             .context(StoreVersionEdit)?;
 

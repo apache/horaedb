@@ -50,7 +50,7 @@ impl Instance {
         }
 
         // Store table info into meta both memory and storage.
-        let update_req = {
+        let edit_req = {
             let meta_update = MetaUpdate::AddTable(AddTableMeta {
                 space_id: space.id,
                 table_id: request.table_id,
@@ -65,7 +65,7 @@ impl Instance {
         };
         self.space_store
             .manifest
-            .apply_edit(update_req)
+            .apply_edit(edit_req)
             .await
             .with_context(|| WriteManifest {
                 space_id: space.id,

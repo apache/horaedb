@@ -474,7 +474,7 @@ impl Manifest for ManifestImpl {
     }
 
     async fn recover(&self, load_req: &LoadRequest) -> GenericResult<()> {
-        info!("Manifest load data, request:{:?}", load_req);
+        info!("Manifest recover, request:{:?}", load_req);
 
         // Load table meta snapshot from storage.
         let location = WalLocation::new(load_req.shard_id as u64, load_req.table_id.as_u64());
@@ -928,14 +928,14 @@ mod tests {
             };
 
             let add_table = self.meta_update_add_table(table_id);
-            let update_req = {
+            let edit_req = {
                 MetaEditRequest {
                     shard_info,
                     meta_edit: MetaEdit::Update(add_table.clone()),
                 }
             };
 
-            manifest.apply_edit(update_req).await.unwrap();
+            manifest.apply_edit(edit_req).await.unwrap();
             manifest_data_builder
                 .apply_update(add_table.clone())
                 .unwrap();
@@ -952,13 +952,13 @@ mod tests {
             };
 
             let drop_table = self.meta_update_drop_table(table_id);
-            let update_req = {
+            let edit_req = {
                 MetaEditRequest {
                     shard_info,
                     meta_edit: MetaEdit::Update(drop_table.clone()),
                 }
             };
-            manifest.apply_edit(update_req).await.unwrap();
+            manifest.apply_edit(edit_req).await.unwrap();
             manifest_data_builder
                 .apply_update(drop_table.clone())
                 .unwrap();
@@ -976,13 +976,13 @@ mod tests {
             };
 
             let version_edit = self.meta_update_version_edit(table_id, flushed_seq);
-            let update_req = {
+            let edit_req = {
                 MetaEditRequest {
                     shard_info,
                     meta_edit: MetaEdit::Update(version_edit.clone()),
                 }
             };
-            manifest.apply_edit(update_req).await.unwrap();
+            manifest.apply_edit(edit_req).await.unwrap();
             manifest_data_builder
                 .apply_update(version_edit.clone())
                 .unwrap();
@@ -1031,13 +1031,13 @@ mod tests {
             };
 
             let alter_options = self.meta_update_alter_table_options(table_id);
-            let update_req = {
+            let edit_req = {
                 MetaEditRequest {
                     shard_info,
                     meta_edit: MetaEdit::Update(alter_options.clone()),
                 }
             };
-            manifest.apply_edit(update_req).await.unwrap();
+            manifest.apply_edit(edit_req).await.unwrap();
             manifest_data_builder.apply_update(alter_options).unwrap();
         }
 
@@ -1053,14 +1053,14 @@ mod tests {
             };
 
             let alter_schema = self.meta_update_alter_table_schema(table_id);
-            let update_req = {
+            let edit_req = {
                 MetaEditRequest {
                     shard_info,
                     meta_edit: MetaEdit::Update(alter_schema.clone()),
                 }
             };
 
-            manifest.apply_edit(update_req).await.unwrap();
+            manifest.apply_edit(edit_req).await.unwrap();
             manifest_data_builder.apply_update(alter_schema).unwrap();
         }
     }
