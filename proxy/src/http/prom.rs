@@ -43,7 +43,7 @@ use crate::{
     error::{build_ok_header, ErrNoCause, ErrWithCause, Error, Internal, InternalNoCause, Result},
     execute_plan,
     forward::ForwardResult,
-    grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
+    grpc::write::{execute_insert_plan, WriteContext},
     Proxy,
 };
 
@@ -66,17 +66,13 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             })?;
         let write_context =
             WriteContext::new(request_id, deadline, catalog.clone(), schema.clone());
-        let plans = write_request_to_insert_plan(
-            self.instance.clone(),
-            convert_write_request(req)?,
-            schema_config,
-            write_context,
-        )
-        .await
-        .box_err()
-        .context(Internal {
-            msg: "Failed to write via gRPC",
-        })?;
+        let plans = self
+            .write_request_to_insert_plan(convert_write_request(req)?, schema_config, write_context)
+            .await
+            .box_err()
+            .context(Internal {
+                msg: "Failed to write via gRPC",
+            })?;
 
         let mut success = 0;
         for insert_plan in plans {
