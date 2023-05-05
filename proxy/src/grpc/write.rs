@@ -214,15 +214,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .write_request_to_insert_plan(req.table_requests, schema_config, write_context)
             .await?;
 
-        for insert_plan in &plan_vec {
-            self.maybe_open_partition_table_if_not_exist(
-                catalog,
-                &schema,
-                insert_plan.table.name(),
-            )
-            .await?;
-        }
-
         let mut success = 0;
         for insert_plan in plan_vec {
             success += execute_insert_plan(
@@ -311,6 +302,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     }
 }
 
+// TODO: use write_request_to_insert_plan in proxy, and remove following code.
 pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     instance: InstanceRef<Q>,
     table_requests: Vec<WriteTableRequest>,

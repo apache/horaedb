@@ -830,7 +830,6 @@ async fn execute_add_columns_plan<Q: QueryExecutor + 'static>(
 
 #[cfg(test)]
 mod test {
-    use catalog::schema::Schema;
     use ceresdbproto::storage::{value, Field, FieldGroup, Tag, Value, WriteSeriesEntry};
     use common_types::{
         column_schema::{self, ColumnSchema},
