@@ -245,9 +245,9 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 		errorCh <- err
 		return nil
 	}
-
 	procedure, err := c.GetProcedureFactory().CreateDropTableProcedure(ctx, coordinator.DropTableRequest{
 		ClusterMetadata: c.GetMetadata(),
+		ClusterSnapshot: c.GetMetadata().GetClusterSnapshot(),
 		SourceReq:       req,
 		OnSucceeded:     onSucceeded,
 		OnFailed:        onFailed,

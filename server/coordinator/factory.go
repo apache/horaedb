@@ -43,6 +43,7 @@ func (request *CreateTableRequest) isPartitionTable() bool {
 
 type DropTableRequest struct {
 	ClusterMetadata *metadata.ClusterMetadata
+	ClusterSnapshot metadata.Snapshot
 	SourceReq       *metaservicepb.DropTableRequest
 
 	OnSucceeded func(metadata.TableInfo) error
@@ -93,12 +94,13 @@ func (f *Factory) MakeCreateTableProcedure(ctx context.Context, request CreateTa
 	isPartitionTable := request.isPartitionTable()
 
 	if isPartitionTable {
-		return f.makeCreatePartitionTableProcedure(ctx, CreatePartitionTableRequest{
+		req := CreatePartitionTableRequest{
 			ClusterMetadata: request.ClusterMetadata,
 			SourceReq:       request.SourceReq,
 			OnSucceeded:     request.OnSucceeded,
 			OnFailed:        request.OnFailed,
-		})
+		}
+		return f.makeCreatePartitionTableProcedure(ctx, req)
 	}
 
 	return f.makeCreateTableProcedure(ctx, request)
@@ -192,6 +194,7 @@ func (f *Factory) CreateDropTableProcedure(ctx context.Context, request DropTabl
 		return droppartitiontable.NewProcedure(droppartitiontable.ProcedureParams{
 			ID:              id,
 			ClusterMetadata: request.ClusterMetadata,
+			ClusterSnapshot: request.ClusterSnapshot,
 			Dispatch:        f.dispatch,
 			Storage:         f.storage,
 			SourceReq:       request.SourceReq,

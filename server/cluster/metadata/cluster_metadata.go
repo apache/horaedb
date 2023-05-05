@@ -419,7 +419,7 @@ func needUpdate(oldCache RegisteredNode, registeredNode RegisteredNode) bool {
 // sortCompare compare if they are the same by sorted slice, return true when they are the same.
 func sortCompare(oldShardInfos, newShardInfos []ShardInfo) bool {
 	if len(oldShardInfos) != len(newShardInfos) {
-		return true
+		return false
 	}
 	oldShardIDs := make([]storage.ShardID, 0, len(oldShardInfos))
 	for i := 0; i < len(oldShardInfos); i++ {
@@ -446,7 +446,7 @@ func sortCompare(oldShardInfos, newShardInfos []ShardInfo) bool {
 // simpleCompare compare if they are the same by simple loop, return true when they are the same.
 func simpleCompare(oldShardInfos, newShardInfos []ShardInfo) bool {
 	if len(oldShardInfos) != len(newShardInfos) {
-		return true
+		return false
 	}
 L1:
 	for i := 0; i < len(newShardInfos); i++ {
