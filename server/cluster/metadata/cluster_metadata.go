@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 	"path"
+	"sort"
 	"sync"
 
 	"github.com/CeresDB/ceresmeta/pkg/log"
@@ -376,8 +377,6 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	c.registeredNodesCache[registeredNode.Node.Name] = registeredNode
-
 	// When the number of nodes in the cluster reaches the threshold, modify the cluster status to prepare.
 	// TODO: Consider the design of the entire cluster state, which may require refactoring.
 	if uint32(len(c.registeredNodesCache)) >= c.metaData.MinNodeCount && c.topologyManager.GetClusterState() == storage.ClusterStateEmpty {
@@ -385,7 +384,15 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 			log.Error("update cluster view failed", zap.Error(err))
 		}
 	}
+
 	// Update shard node mapping.
+	// Check whether to update persistence data.
+	oldCache, exists := c.registeredNodesCache[registeredNode.Node.Name]
+	c.registeredNodesCache[registeredNode.Node.Name] = registeredNode
+	if exists && !needUpdate(oldCache, registeredNode) {
+		return nil
+	}
+
 	shardNodes := make(map[string][]storage.ShardNode, 1)
 	shardNodes[registeredNode.Node.Name] = make([]storage.ShardNode, 0, len(registeredNode.ShardInfos))
 	for _, shardInfo := range registeredNode.ShardInfos {
@@ -400,6 +407,58 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 	}
 
 	return nil
+}
+
+func needUpdate(oldCache RegisteredNode, registeredNode RegisteredNode) bool {
+	if len(oldCache.ShardInfos) >= 50 {
+		return !sortCompare(oldCache.ShardInfos, registeredNode.ShardInfos)
+	}
+	return !simpleCompare(oldCache.ShardInfos, registeredNode.ShardInfos)
+}
+
+// sortCompare compare if they are the same by sorted slice, return true when they are the same.
+func sortCompare(oldShardInfos, newShardInfos []ShardInfo) bool {
+	if len(oldShardInfos) != len(newShardInfos) {
+		return true
+	}
+	oldShardIDs := make([]storage.ShardID, 0, len(oldShardInfos))
+	for i := 0; i < len(oldShardInfos); i++ {
+		oldShardIDs = append(oldShardIDs, oldShardInfos[i].ID)
+	}
+	sort.Slice(oldShardIDs, func(i, j int) bool {
+		return oldShardIDs[i] < oldShardIDs[j]
+	})
+	curShardIDs := make([]storage.ShardID, 0, len(newShardInfos))
+	for i := 0; i < len(newShardInfos); i++ {
+		curShardIDs = append(curShardIDs, newShardInfos[i].ID)
+	}
+	sort.Slice(curShardIDs, func(i, j int) bool {
+		return curShardIDs[i] < curShardIDs[j]
+	})
+	for i := 0; i < len(curShardIDs); i++ {
+		if curShardIDs[i] != oldShardIDs[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// simpleCompare compare if they are the same by simple loop, return true when they are the same.
+func simpleCompare(oldShardInfos, newShardInfos []ShardInfo) bool {
+	if len(oldShardInfos) != len(newShardInfos) {
+		return true
+	}
+L1:
+	for i := 0; i < len(newShardInfos); i++ {
+		for j := 0; j < len(newShardInfos); j++ {
+			if oldShardInfos[i].ID == newShardInfos[j].ID {
+				continue L1
+			}
+		}
+		return false
+	}
+
+	return true
 }
 
 func (c *ClusterMetadata) GetRegisteredNodes() []RegisteredNode {
@@ -585,9 +644,6 @@ func (c *ClusterMetadata) CreateShardViews(ctx context.Context, views []CreateSh
 }
 
 func (c *ClusterMetadata) GetClusterSnapshot() Snapshot {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-
 	return Snapshot{
 		Topology:        c.topologyManager.GetTopology(),
 		RegisteredNodes: c.GetRegisteredNodes(),
