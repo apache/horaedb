@@ -264,7 +264,12 @@ impl Period {
 
         let stride = IntervalDayTimeType::make_value(0, period);
         let stride = DfColumnarValue::Scalar(ScalarValue::IntervalDayTime(Some(stride)));
-        let result = date_bin(&[stride, time]).unwrap();
+        let origin = DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(
+            Some(-DEFAULT_TIMEZONE_OFFSET_SECS as i64 * 1_000_000_000),
+            Some("+00:00".to_owned()),
+        ));
+
+        let result = date_bin(&[stride, time, origin]).unwrap();
 
         let truncated_ts: i64 = match result {
             DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(Some(time), _)) => {
@@ -279,12 +284,17 @@ impl Period {
     fn truncate_day(ts: Timestamp, period: u16) -> Option<Timestamp> {
         let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
         let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
-        let ts = datetime.timestamp_nanos();
-        let time = DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(Some(ts), None));
+        let nanos_ts = datetime.timestamp_nanos();
+        let time = DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(Some(nanos_ts), None));
 
         let stride = IntervalDayTimeType::make_value(period as i32, 0);
         let stride = DfColumnarValue::Scalar(ScalarValue::IntervalDayTime(Some(stride)));
-        let result = date_bin(&[stride, time]).unwrap();
+
+        let origin = DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(
+            Some(-DEFAULT_TIMEZONE_OFFSET_SECS as i64 * 1_000_000_000),
+            Some("+00:00".to_owned()),
+        ));
+        let result = date_bin(&[stride, time, origin]).unwrap();
 
         match result {
             DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(Some(time), _)) => {
@@ -303,7 +313,12 @@ impl Period {
 
         let stride = IntervalDayTimeType::make_value(7, 0);
         let stride = DfColumnarValue::Scalar(ScalarValue::IntervalDayTime(Some(stride)));
-        let result = date_bin(&[stride, time]).unwrap();
+        let origin = DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(
+            Some(-DEFAULT_TIMEZONE_OFFSET_SECS as i64 * 1_000_000_000),
+            Some("+00:00".to_owned()),
+        ));
+
+        let result = date_bin(&[stride, time, origin]).unwrap();
 
         let truncated_ts: i64 = match result {
             DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(Some(time), _)) => {
@@ -341,5 +356,32 @@ impl Period {
         let truncated_ts = truncated_datetime.timestamp_millis();
 
         Timestamp::new(truncated_ts)
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use common_types::time::Timestamp;
+
+    use super::Period;
+
+    struct TimeBucketTest {
+        pub ts: i64,
+        pub truncate_ts: i64,
+    }
+
+    #[test]
+    fn test_time_bucket_day() {
+        let tests = [TimeBucketTest {
+            ts: 1656777600000,
+            truncate_ts: 1656777600000,
+        }];
+        let period = Period::parse("P1D").unwrap();
+        for test in tests {
+            let ts = Timestamp::new(test.ts);
+            let truncate_ts = period.truncate(ts).unwrap();
+            assert_eq!(truncate_ts.as_i64(), test.truncate_ts);
+        }
     }
 }
