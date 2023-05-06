@@ -3,7 +3,7 @@
 //! time_bucket UDF.
 
 use arrow::datatypes::IntervalDayTimeType;
-use chrono::{Datelike, FixedOffset, TimeZone};
+use chrono::{FixedOffset, TimeZone};
 use common_types::{
     column::{ColumnBlock, ColumnBlockBuilder, TimestampColumn},
     datum::{Datum, DatumKind},
@@ -11,7 +11,8 @@ use common_types::{
 };
 use common_util::{define_result, error::BoxError};
 use datafusion::{
-    physical_expr::datetime_expressions::date_bin, physical_plan::ColumnarValue as DfColumnarValue,
+    physical_expr::datetime_expressions::{date_bin, date_trunc},
+    physical_plan::ColumnarValue as DfColumnarValue,
     scalar::ScalarValue,
 };
 use snafu::{ensure, OptionExt, ResultExt, Snafu};
@@ -248,9 +249,9 @@ impl Period {
             Period::Minute(period) => Self::truncate_mills(ts, i32::from(*period) * MINUTE_SECONDS),
             Period::Hour(period) => Self::truncate_mills(ts, i32::from(*period) * HOUR_SECONDS),
             Period::Day(period) => Self::truncate_day(ts, *period)?,
-            Period::Week => Self::truncate_week(ts),
-            Period::Month => Self::truncate_month(ts),
-            Period::Year => Self::truncate_year(ts),
+            Period::Week => Self::truncate_time(ts, "week"),
+            Period::Month => Self::truncate_time(ts, "month"),
+            Period::Year => Self::truncate_time(ts, "year"),
         };
 
         Some(truncated_ts)
@@ -305,57 +306,23 @@ impl Period {
         }
     }
 
-    fn truncate_week(ts: Timestamp) -> Timestamp {
+    fn truncate_time(ts: Timestamp, granularity: &str) -> Timestamp {
         let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
+        // Convert to local time. Won't panic.
         let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
-        let ts = datetime.timestamp_nanos();
-        let time = DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(Some(ts), None));
 
-        let stride = IntervalDayTimeType::make_value(7, 0);
-        let stride = DfColumnarValue::Scalar(ScalarValue::IntervalDayTime(Some(stride)));
-        let origin = DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(
-            Some(-DEFAULT_TIMEZONE_OFFSET_SECS as i64 * 1_000_000_000),
-            Some("+00:00".to_owned()),
-        ));
-
-        let result = date_bin(&[stride, time, origin]).unwrap();
-
-        let truncated_ts: i64 = match result {
+        let ts_nanos = datetime.timestamp_nanos();
+        let time = DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(Some(ts_nanos), None));
+        let granularity = DfColumnarValue::Scalar(ScalarValue::Utf8(Some(granularity.to_string())));
+        let result = date_trunc(&[granularity, time]).unwrap();
+        let year_truncated_ts: i64 = match result {
             DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(Some(time), _)) => {
                 offset.timestamp_nanos(time).timestamp_millis()
             }
             _ => 0,
         };
 
-        Timestamp::new(truncated_ts)
-    }
-
-    fn truncate_month(ts: Timestamp) -> Timestamp {
-        let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
-        // Convert to local time. Won't panic.
-        let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
-
-        // Truncate month. Won't panic.
-        let truncated_datetime = offset
-            .with_ymd_and_hms(datetime.year(), datetime.month(), 1, 0, 0, 0)
-            .unwrap();
-        let truncated_ts = truncated_datetime.timestamp_millis();
-
-        Timestamp::new(truncated_ts)
-    }
-
-    fn truncate_year(ts: Timestamp) -> Timestamp {
-        let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
-        // Convert to local time. Won't panic.
-        let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
-
-        // Truncate year. Won't panic.
-        let truncated_datetime = offset
-            .with_ymd_and_hms(datetime.year(), 1, 1, 0, 0, 0)
-            .unwrap();
-        let truncated_ts = truncated_datetime.timestamp_millis();
-
-        Timestamp::new(truncated_ts)
+        Timestamp::new(year_truncated_ts - DEFAULT_TIMEZONE_OFFSET_SECS as i64 * 1000)
     }
 }
 
@@ -378,6 +345,56 @@ mod test {
             truncate_ts: 1656777600000,
         }];
         let period = Period::parse("P1D").unwrap();
+        for test in tests {
+            let ts = Timestamp::new(test.ts);
+            let truncate_ts = period.truncate(ts).unwrap();
+            assert_eq!(truncate_ts.as_i64(), test.truncate_ts);
+        }
+    }
+
+    #[test]
+    fn test_time_bucket_week() {
+        let tests = [TimeBucketTest {
+            ts: 1683383083000,          // 2023-5-6 22:24:43
+            truncate_ts: 1682870400000, // 2023-5-1 0:0:0
+        }];
+        let period = Period::parse("P1W").unwrap();
+        for test in tests {
+            let ts = Timestamp::new(test.ts);
+            let truncate_ts = period.truncate(ts).unwrap();
+            assert_eq!(truncate_ts.as_i64(), test.truncate_ts);
+        }
+    }
+
+    #[test]
+    fn test_time_bucket_year() {
+        let tests = [
+            TimeBucketTest {
+                ts: 1656777600000,
+                truncate_ts: 1640966400000,
+            },
+            TimeBucketTest {
+                ts: 1659484800000,
+                truncate_ts: 1640966400000,
+            },
+            TimeBucketTest {
+                ts: 1659571200000,
+                truncate_ts: 1640966400000,
+            },
+            TimeBucketTest {
+                ts: 1659577320000,
+                truncate_ts: 1640966400000,
+            },
+            TimeBucketTest {
+                ts: 1659577422000,
+                truncate_ts: 1640966400000,
+            },
+            TimeBucketTest {
+                ts: 1659577423000,
+                truncate_ts: 1640966400000,
+            },
+        ];
+        let period = Period::parse("P1Y").unwrap();
         for test in tests {
             let ts = Timestamp::new(test.ts);
             let truncate_ts = period.truncate(ts).unwrap();

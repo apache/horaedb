@@ -49,12 +49,12 @@ Timestamp(1659283200000),
 SELECT time_bucket(`timestamp`, 'P1W') FROM `02_function_time_bucket_table`;
 
 time_bucket(02_function_time_bucket_table.timestamp,Utf8("P1W")),
-Timestamp(1652918400000),
-Timestamp(1657756800000),
-Timestamp(1657756800000),
-Timestamp(1657756800000),
-Timestamp(1657756800000),
-Timestamp(1657756800000),
+Timestamp(1656259200000),
+Timestamp(1659283200000),
+Timestamp(1659283200000),
+Timestamp(1659283200000),
+Timestamp(1659283200000),
+Timestamp(1659283200000),
 
 
 SELECT time_bucket(`timestamp`, 'P1D') FROM `02_function_time_bucket_table`;
