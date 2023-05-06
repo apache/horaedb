@@ -7,12 +7,18 @@ import (
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/pkg/errors"
 )
+
+type TopologyType string
 
 const (
 	expiredThreshold                     = time.Second * 10
 	MinShardID                           = 0
 	HeartbeatKeepAliveIntervalSec uint64 = 15
+
+	TopologyTypeStatic  = "static"
+	TopologyTypeDynamic = "dynamic"
 )
 
 type Snapshot struct {
@@ -165,4 +171,15 @@ func ConvertTableInfoToPB(table TableInfo) *metaservicepb.TableInfo {
 		SchemaName:    table.SchemaName,
 		PartitionInfo: table.PartitionInfo.Info,
 	}
+}
+
+func ParseTopologyType(rawString string) (TopologyType, error) {
+	switch rawString {
+	case TopologyTypeStatic:
+		return TopologyTypeStatic, nil
+	case TopologyTypeDynamic:
+		return TopologyTypeDynamic, nil
+	}
+
+	return "", errors.WithMessagef(ErrParseTopologyType, "rawString:%s could not be parsed to topologyType", rawString)
 }

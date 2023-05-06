@@ -41,8 +41,14 @@ type ShardEventCallback interface {
 	OnShardExpired(ctx context.Context, event ShardExpireEvent) error
 }
 
-// ShardWatch used to watch the distributed lock of shard, and provide the corresponding callback function.
-type ShardWatch struct {
+type ShardWatch interface {
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
+	RegisteringEventCallback(eventCallback ShardEventCallback)
+}
+
+// EtcdShardWatch used to watch the distributed lock of shard, and provide the corresponding callback function.
+type EtcdShardWatch struct {
 	clusterName    string
 	rootPath       string
 	etcdClient     *clientv3.Client
@@ -53,8 +59,24 @@ type ShardWatch struct {
 	cancel    context.CancelFunc
 }
 
-func NewWatch(clusterName string, rootPath string, client *clientv3.Client) *ShardWatch {
-	return &ShardWatch{
+type NoopShardWatch struct{}
+
+func NewNoopShardWatch() ShardWatch {
+	return NoopShardWatch{}
+}
+
+func (n NoopShardWatch) Start(_ context.Context) error {
+	return nil
+}
+
+func (n NoopShardWatch) Stop(_ context.Context) error {
+	return nil
+}
+
+func (n NoopShardWatch) RegisteringEventCallback(_ ShardEventCallback) {}
+
+func NewEtcdShardWatch(clusterName string, rootPath string, client *clientv3.Client) ShardWatch {
+	return &EtcdShardWatch{
 		clusterName:    clusterName,
 		rootPath:       rootPath,
 		etcdClient:     client,
@@ -62,37 +84,37 @@ func NewWatch(clusterName string, rootPath string, client *clientv3.Client) *Sha
 	}
 }
 
-func (w *ShardWatch) Start(ctx context.Context) error {
+func (w *EtcdShardWatch) Start(ctx context.Context) error {
 	w.lock.Lock()
 	defer w.lock.Unlock()
-
-	if w.isRunning {
-		return nil
-	}
 
 	shardKeyPrefix := encodeShardKeyPrefix(w.rootPath, w.clusterName, shardPath)
 	if err := w.startWatch(ctx, shardKeyPrefix); err != nil {
 		return errors.WithMessage(err, "etcd register watch failed")
+	}
+	if w.isRunning {
+		return nil
 	}
 
 	w.isRunning = true
 	return nil
 }
 
-func (w *ShardWatch) Stop(_ context.Context) error {
+func (w *EtcdShardWatch) Stop(_ context.Context) error {
 	w.lock.Lock()
 	defer w.lock.Unlock()
 
-	w.isRunning = false
 	w.cancel()
+
+	w.isRunning = false
 	return nil
 }
 
-func (w *ShardWatch) RegisteringEventCallback(eventCallback ShardEventCallback) {
+func (w *EtcdShardWatch) RegisteringEventCallback(eventCallback ShardEventCallback) {
 	w.eventCallbacks = append(w.eventCallbacks, eventCallback)
 }
 
-func (w *ShardWatch) startWatch(ctx context.Context, path string) error {
+func (w *EtcdShardWatch) startWatch(ctx context.Context, path string) error {
 	log.Info("register shard watch", zap.String("watchPath", path))
 	go func() {
 		ctxWithCancel, cancel := context.WithCancel(ctx)
@@ -109,7 +131,7 @@ func (w *ShardWatch) startWatch(ctx context.Context, path string) error {
 	return nil
 }
 
-func (w *ShardWatch) processEvent(ctx context.Context, event *clientv3.Event) error {
+func (w *EtcdShardWatch) processEvent(ctx context.Context, event *clientv3.Event) error {
 	switch event.Type {
 	case mvccpb.DELETE:
 		shardID, err := decodeShardKey(string(event.Kv.Key))

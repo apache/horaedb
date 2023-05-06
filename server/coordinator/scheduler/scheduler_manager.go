@@ -53,12 +53,22 @@ type ManagerImpl struct {
 	// This lock is used to protect the following field.
 	lock               sync.RWMutex
 	registerSchedulers []Scheduler
-	shardWatch         *watch.ShardWatch
+	shardWatch         watch.ShardWatch
 	isRunning          bool
 	enableSchedule     bool
+	topologyType       metadata.TopologyType
 }
 
-func NewManager(procedureManager procedure.Manager, factory *coordinator.Factory, clusterMetadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string, enableSchedule bool) Manager {
+func NewManager(procedureManager procedure.Manager, factory *coordinator.Factory, clusterMetadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string, enableSchedule bool, topologyType metadata.TopologyType) Manager {
+	var shardWatch watch.ShardWatch
+	switch topologyType {
+	case metadata.TopologyTypeDynamic:
+		shardWatch = watch.NewEtcdShardWatch(clusterMetadata.Name(), rootPath, client)
+		shardWatch.RegisteringEventCallback(&schedulerWatchCallback{c: clusterMetadata})
+	case metadata.TopologyTypeStatic:
+		shardWatch = watch.NewNoopShardWatch()
+	}
+
 	return &ManagerImpl{
 		procedureManager:   procedureManager,
 		registerSchedulers: []Scheduler{},
@@ -67,8 +77,10 @@ func NewManager(procedureManager procedure.Manager, factory *coordinator.Factory
 		nodePicker:         coordinator.NewConsistentHashNodePicker(defaultHashReplicas),
 		clusterMetadata:    clusterMetadata,
 		client:             client,
+		shardWatch:         shardWatch,
 		rootPath:           rootPath,
 		enableSchedule:     enableSchedule,
+		topologyType:       topologyType,
 	}
 }
 
@@ -97,12 +109,10 @@ func (m *ManagerImpl) Start(ctx context.Context) error {
 
 	m.initRegister()
 
-	watch := watch.NewWatch(m.clusterMetadata.Name(), m.rootPath, m.client)
-	watch.RegisteringEventCallback(&schedulerWatchCallback{c: m.clusterMetadata})
-	m.shardWatch = watch
-	if err := watch.Start(ctx); err != nil {
+	if err := m.shardWatch.Start(ctx); err != nil {
 		return errors.WithMessage(err, "start shard watch failed")
 	}
+
 	go func() {
 		for {
 			select {
@@ -167,11 +177,27 @@ func (callback *schedulerWatchCallback) OnShardExpired(ctx context.Context, even
 
 // Schedulers should to be initialized and registered here.
 func (m *ManagerImpl) initRegister() {
-	assignShardScheduler := NewAssignShardScheduler(m.factory, m.nodePicker)
-	m.registerScheduler(assignShardScheduler)
+	var schedulers []Scheduler
+	switch m.topologyType {
+	case metadata.TopologyTypeDynamic:
+		schedulers = m.createDynamicTopologySchedulers()
+	case metadata.TopologyTypeStatic:
+		schedulers = m.createStaticTopologySchedulers()
+	}
+	for i := 0; i < len(schedulers); i++ {
+		m.registerScheduler(schedulers[i])
+	}
+}
 
+func (m *ManagerImpl) createStaticTopologySchedulers() []Scheduler {
+	staticTopologyShardScheduler := NewStaticTopologyShardScheduler(m.factory, m.nodePicker)
+	return []Scheduler{staticTopologyShardScheduler}
+}
+
+func (m *ManagerImpl) createDynamicTopologySchedulers() []Scheduler {
+	assignShardScheduler := NewAssignShardScheduler(m.factory, m.nodePicker)
 	rebalancedShardScheduler := NewRebalancedShardScheduler(m.factory, m.nodePicker)
-	m.registerScheduler(rebalancedShardScheduler)
+	return []Scheduler{assignShardScheduler, rebalancedShardScheduler}
 }
 
 func (m *ManagerImpl) registerScheduler(scheduler Scheduler) {

@@ -15,4 +15,5 @@ var (
 	ErrNodeNotFound         = coderr.NewCodeError(coderr.NotFound, "NodeName not found")
 	ErrTableAlreadyExists   = coderr.NewCodeError(coderr.Internal, "table already exists")
 	ErrOpenTable            = coderr.NewCodeError(coderr.Internal, "open table")
+	ErrParseTopologyType    = coderr.NewCodeError(coderr.Internal, "parse topology type")
 )

@@ -27,6 +27,7 @@ const (
 	defaultReplicationFactor        = 1
 	defaultShardTotal               = 8
 	defaultEnableSchedule           = true
+	defaultTopologyType             = "static"
 	node1                           = "127.0.0.1:8081"
 	node2                           = "127.0.0.2:8081"
 	table1                          = "table1"
@@ -52,7 +53,7 @@ func newTestStorage(t *testing.T) (storage.Storage, clientv3.KV, *clientv3.Clien
 }
 
 func newClusterManagerWithStorage(storage storage.Storage, kv clientv3.KV, client *clientv3.Client) (cluster.Manager, error) {
-	return cluster.NewManagerImpl(storage, kv, client, testRootPath, defaultIDAllocatorStep, defaultEnableSchedule)
+	return cluster.NewManagerImpl(storage, kv, client, testRootPath, defaultIDAllocatorStep, defaultEnableSchedule, defaultTopologyType)
 }
 
 func newTestClusterManager(t *testing.T) (cluster.Manager, etcdutil.CloseFn) {
