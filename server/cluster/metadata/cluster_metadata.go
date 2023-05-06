@@ -380,8 +380,6 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	c.registeredNodesCache[registeredNode.Node.Name] = registeredNode
-
 	// When the number of nodes in the cluster reaches the threshold, modify the cluster status to prepare.
 	// TODO: Consider the design of the entire cluster state, which may require refactoring.
 	if uint32(len(c.registeredNodesCache)) >= c.metaData.MinNodeCount && c.topologyManager.GetClusterState() == storage.ClusterStateEmpty {
