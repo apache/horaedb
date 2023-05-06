@@ -388,14 +388,13 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 		}
 	}
 
-	if !c.enableUpdateWhenStable && c.topologyManager.GetClusterState() == storage.ClusterStateStable {
-		return nil
-	}
-
 	// Update shard node mapping.
 	// Check whether to update persistence data.
 	oldCache, exists := c.registeredNodesCache[registeredNode.Node.Name]
 	c.registeredNodesCache[registeredNode.Node.Name] = registeredNode
+	if !c.enableUpdateWhenStable && c.topologyManager.GetClusterState() == storage.ClusterStateStable {
+		return nil
+	}
 	if exists && !needUpdate(oldCache, registeredNode) {
 		return nil
 	}
