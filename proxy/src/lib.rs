@@ -257,24 +257,34 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 msg: format!("Failed to find table, table_name:{table_name}"),
             })?;
 
-        let partition_table_info = self
+        let partition_table_info_in_meta = self
             .router
             .fetch_partition_table_info(schema_name, table_name)
             .await?;
 
-        // Drop partition table in following cases:
-        // 1. Partition table exist but table_id not match.
-        // 2. Partition table not exist in ceresmeta but exist in ceresdb-server.
-        if let Some(table) = table {
-            match &partition_table_info {
-                Some(partition_table_info) => {
-                    // No need to create partition table when table_id match.
-                    if table.id().as_u64() == partition_table_info.id {
-                        return Ok(());
-                    }
-                    info!("Drop partition table when table_id not match, catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, old_table_id:{}, new_table_id:{}",
+        match (table, &partition_table_info_in_meta) {
+            (Some(table), Some(partition_table_info)) => {
+                // No need to create partition table when table_id match.
+                if table.id().as_u64() == partition_table_info.id {
+                    return Ok(());
+                }
+                info!("Drop partition table because the id of the table in ceresdb is different from the one in ceresmeta, catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, old_table_id:{}, new_table_id:{}",
                              table.id().as_u64(), partition_table_info.id);
-                    // Drop table case 1.
+                // Drop partition table because the id of the table in ceresdb is different from
+                // the one in ceresmeta.
+                self.drop_partition_table(
+                    schema.clone(),
+                    catalog_name.to_string(),
+                    schema_name.to_string(),
+                    table_name.to_string(),
+                )
+                .await?;
+            }
+            (Some(table), None) => {
+                // Drop partition table because it does not exist in ceresmeta but exists in
+                // ceresdb-server.
+                if table.partition_info().is_some() {
+                    info!("Drop partition table because it does not exist in ceresmeta but exists in ceresdb-server, catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, table_id:{}",table.id());
                     self.drop_partition_table(
                         schema.clone(),
                         catalog_name.to_string(),
@@ -283,29 +293,16 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     )
                     .await?;
                 }
-                None => {
-                    // Drop table case 2.
-                    if table.partition_info().is_some() {
-                        info!("Drop partition table when partition table not exist in ceresmeta but exist in ceresdb-server, catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, table_id:{}",table.id());
-                        self.drop_partition_table(
-                            schema.clone(),
-                            catalog_name.to_string(),
-                            schema_name.to_string(),
-                            table_name.to_string(),
-                        )
-                        .await?;
-                    }
-                    // No need to create non-partition table.
-                    return Ok(());
-                }
+                // No need to create non-partition table.
+                return Ok(());
             }
+            // No need to create partition table when table not exist.
+            (None, None) => return Ok(()),
+            // Create partition table in following code.
+            (None, Some(_)) => (),
         }
 
-        if partition_table_info.is_none() {
-            return Ok(());
-        }
-
-        let partition_table_info = partition_table_info.unwrap();
+        let partition_table_info = partition_table_info_in_meta.unwrap();
 
         // If table not exists, open it.
         // Get table_schema from first sub partition table.
