@@ -705,6 +705,23 @@ pub fn cast_nanosecond_to_mills(array: &ArrayRef) -> Result<Arc<dyn Array>> {
     }
 }
 
+pub fn cast_mills_to_nanosecond(array: &ArrayRef) -> Result<Arc<dyn Array>> {
+    let column = ColumnarValue::Array(array.clone());
+    let mills_column = cast_column(
+        &column,
+        &DataType::Timestamp(TimeUnit::Nanosecond, None),
+        &DEFAULT_DATAFUSION_CAST_OPTIONS,
+    )
+    .with_context(|| CastTimestamp {
+        data_type: DataType::Timestamp(TimeUnit::Nanosecond, None),
+    })?;
+
+    match mills_column {
+        ColumnarValue::Array(array) => Ok(array),
+        _ => Err(Error::NotImplemented),
+    }
+}
+
 fn cast_array<'a, T: 'static>(datum_kind: &DatumKind, array: &'a ArrayRef) -> Result<&'a T> {
     array
         .as_any()

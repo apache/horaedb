@@ -111,7 +111,7 @@ pub enum ColumnarValue {
 }
 
 impl ColumnarValue {
-    fn into_df_columnar_value(self) -> DfColumnarValue {
+    pub fn into_df_columnar_value(self) -> DfColumnarValue {
         match self {
             ColumnarValue::Array(v) => DfColumnarValue::Array(v.to_arrow_array_ref()),
             ColumnarValue::Scalar(v) => DfColumnarValue::Scalar(v.into_df_scalar_value()),
