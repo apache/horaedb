@@ -1,4 +1,4 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Constants and utils for encoding.
 
@@ -74,7 +74,7 @@ pub fn format_permanent_bucket_key(namespace: &str) -> String {
 
 #[inline]
 pub fn format_table_unit_meta_name(namespace: &str, shard_id: usize) -> String {
-    format!("{namespace}_meta_{shard_id:0>6}")
+    format!("table_unit_meta_{namespace}_{shard_id:0>6}")
 }
 
 #[inline]
@@ -91,7 +91,7 @@ pub fn format_timed_wal_name(
         Some(v) => v,
     };
     Ok(format!(
-        "{}_data_{}_{:0>6}",
+        "wal_{}_{}_{:0>6}",
         namespace,
         dt.format(WAL_SHARD_TIMESTAMP_FORMAT),
         shard_id
@@ -100,7 +100,7 @@ pub fn format_timed_wal_name(
 
 #[inline]
 pub fn format_permanent_wal_name(namespace: &str, shard_id: usize) -> String {
-    format!("{namespace}_data_permanent_{shard_id:0>6}")
+    format!("wal_{namespace}_permanent_{shard_id:0>6}")
 }
 
 #[inline]
@@ -143,32 +143,32 @@ mod tests {
     fn test_format_table_unit_meta() {
         let ns = "abcdef";
         let name = format_table_unit_meta_name(ns, 0);
-        assert_eq!("abcdef_meta_000000", name);
+        assert_eq!("table_unit_meta_abcdef_000000", name);
 
         let name = format_table_unit_meta_name(ns, 124);
-        assert_eq!("abcdef_meta_000124", name);
+        assert_eq!("table_unit_meta_abcdef_000124", name);
 
         let name = format_table_unit_meta_name(ns, 999999);
-        assert_eq!("abcdef_meta_999999", name);
+        assert_eq!("table_unit_meta_abcdef_999999", name);
 
         let name = format_table_unit_meta_name(ns, 1234567);
-        assert_eq!("abcdef_meta_1234567", name);
+        assert_eq!("table_unit_meta_abcdef_1234567", name);
     }
 
     #[test]
     fn test_format_permanent_wal_name() {
         let ns = "mywal";
         let name = format_permanent_wal_name(ns, 0);
-        assert_eq!("mywal_data_permanent_000000", name);
+        assert_eq!("wal_mywal_permanent_000000", name);
 
         let name = format_permanent_wal_name(ns, 124);
-        assert_eq!("mywal_data_permanent_000124", name);
+        assert_eq!("wal_mywal_permanent_000124", name);
 
         let name = format_permanent_wal_name(ns, 999999);
-        assert_eq!("mywal_data_permanent_999999", name);
+        assert_eq!("wal_mywal_permanent_999999", name);
 
         let name = format_permanent_wal_name(ns, 1234567);
-        assert_eq!("mywal_data_permanent_1234567", name);
+        assert_eq!("wal_mywal_permanent_1234567", name);
     }
 
     #[test]
@@ -176,19 +176,19 @@ mod tests {
         let ns = "mywal";
 
         let name = format_timed_wal_name(ns, Timestamp::ZERO, 0).unwrap();
-        assert_eq!("mywal_data_19700101000000_000000", name);
+        assert_eq!("wal_mywal_19700101000000_000000", name);
 
         // gmt time 2022-03-28T00:00:00
         let ts = Timestamp::new(1648425600000);
 
         let name = format_timed_wal_name(ns, ts, 124).unwrap();
-        assert_eq!("mywal_data_20220328000000_000124", name);
+        assert_eq!("wal_mywal_20220328000000_000124", name);
 
         let name = format_timed_wal_name(ns, ts, 999999).unwrap();
-        assert_eq!("mywal_data_20220328000000_999999", name);
+        assert_eq!("wal_mywal_20220328000000_999999", name);
 
         let name = format_timed_wal_name(ns, ts, 1234567).unwrap();
-        assert_eq!("mywal_data_20220328000000_1234567", name);
+        assert_eq!("wal_mywal_20220328000000_1234567", name);
     }
 
     #[test]
