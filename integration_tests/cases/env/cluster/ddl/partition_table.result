@@ -69,7 +69,7 @@ tsid,t,name,id,value,
 UInt64(5639753573168158607),Timestamp(1651737067000),String("ceresdb3"),Int32(0),Double(103.0),
 
 
-SELECT * from partition_table_t where name in ("ceresdb0", "ceresdb1", "ceresdb2", "ceresdb3", "ceresdb4") order by name;;
+SELECT * from partition_table_t where name in ("ceresdb0", "ceresdb1", "ceresdb2", "ceresdb3", "ceresdb4") order by name;
 
 tsid,t,name,id,value,
 UInt64(7867167026748566913),Timestamp(1651737067000),String("ceresdb0"),Int32(0),Double(100.0),
@@ -79,7 +79,7 @@ UInt64(5639753573168158607),Timestamp(1651737067000),String("ceresdb3"),Int32(0)
 UInt64(1510325626916728375),Timestamp(1651737067000),String("ceresdb4"),Int32(0),Double(104.0),
 
 
-SELECT * from partition_table_t where name in ("ceresdb5", "ceresdb6", "ceresdb7","ceresdb8", "ceresdb9", "ceresdb10") order by name;;
+SELECT * from partition_table_t where name in ("ceresdb5", "ceresdb6", "ceresdb7","ceresdb8", "ceresdb9", "ceresdb10") order by name;
 
 tsid,t,name,id,value,
 UInt64(7158007527379307345),Timestamp(1651737067000),String("ceresdb10"),Int32(0),Double(110.0),
@@ -89,4 +89,12 @@ UInt64(4263010807109012073),Timestamp(1651737067000),String("ceresdb7"),Int32(0)
 UInt64(9923681778193615344),Timestamp(1651737067000),String("ceresdb8"),Int32(0),Double(108.0),
 UInt64(4860320137932382618),Timestamp(1651737067000),String("ceresdb9"),Int32(0),Double(109.0),
 
+
+DROP TABLE IF EXISTS `partition_table_t`;
+
+affected_rows: 0
+
+SHOW CREATE TABLE partition_table_t;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SHOW CREATE TABLE partition_table_t;. Caused by: Failed to create plan, err:Table not found, table:partition_table_t" })
 

@@ -36,7 +36,10 @@ SELECT * from partition_table_t where name = "ceresdb2";
 
 SELECT * from partition_table_t where name = "ceresdb3";
 
-SELECT * from partition_table_t where name in ("ceresdb0", "ceresdb1", "ceresdb2", "ceresdb3", "ceresdb4") order by name;;
+SELECT * from partition_table_t where name in ("ceresdb0", "ceresdb1", "ceresdb2", "ceresdb3", "ceresdb4") order by name;
 
-SELECT * from partition_table_t where name in ("ceresdb5", "ceresdb6", "ceresdb7","ceresdb8", "ceresdb9", "ceresdb10") order by name;;
+SELECT * from partition_table_t where name in ("ceresdb5", "ceresdb6", "ceresdb7","ceresdb8", "ceresdb9", "ceresdb10") order by name;
 
+DROP TABLE IF EXISTS `partition_table_t`;
+
+SHOW CREATE TABLE partition_table_t;
