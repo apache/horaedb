@@ -87,6 +87,8 @@ impl Client {
             }
         };
 
+        // When success to get the stream, table has been found in remote, not need to
+        // evict cache entry.
         let response = response.into_inner();
         let remote_read_record_batch_stream =
             ClientReadRecordBatchStream::new(table_ident, response, projected_schema);
@@ -116,27 +118,26 @@ impl Client {
                 msg: "Failed to write to remote engine",
             });
 
-        let response = match result {
-            Ok(response) => response,
-
-            Err(e) => {
-                // If occurred error, we simply evict the corresponding channel now.
-                // TODO: evict according to the type of error.
-                self.evict_route_from_cache(&[table_ident]).await;
-                return Err(e);
+        let result = result.and_then(|response| {
+            let response = response.into_inner();
+            if let Some(header) = &response.header && !status_code::is_ok(header.code) {
+                Server {
+                    table_idents: vec![table_ident.clone()],
+                    code: header.code,
+                    msg: header.error.clone(),
+                }.fail()
+            } else {
+                Ok(response.affected_rows as usize)
             }
-        };
+        });
 
-        let response = response.into_inner();
-        if let Some(header) = response.header && !status_code::is_ok(header.code) {
-            Server {
-                table_idents: vec![table_ident.clone()],
-                code: header.code,
-                msg: header.error,
-            }.fail()
-        } else {
-            Ok(response.affected_rows as usize)
+        if result.is_err() {
+            // If occurred error, we simply evict the corresponding channel now.
+            // TODO: evict according to the type of error.
+            self.evict_route_from_cache(&[table_ident]).await;
         }
+
+        result
     }
 
     pub async fn write_batch(&self, requests: Vec<WriteRequest>) -> Result<Vec<WriteBatchResult>> {
@@ -191,7 +192,7 @@ impl Client {
         let mut results = Vec::with_capacity(remote_write_results.len());
         for (table_idents, batch_result) in written_tables.into_iter().zip(remote_write_results) {
             // If it's runtime error, don't evict entires from route cache.
-            let remote_write_result = match batch_result.box_err() {
+            let batch_result = match batch_result.box_err() {
                 Ok(result) => result,
                 Err(e) => {
                     results.push(WriteBatchResult {
@@ -203,40 +204,31 @@ impl Client {
             };
 
             // Check remote write result then.
-            let remote_write_response = match remote_write_result {
-                Ok(response) => response,
-
-                Err(e) => {
-                    // If occurred error of remote write, we simply evict the corresponding channel
-                    // now. TODO: evict according to the type of error.
-                    self.evict_route_from_cache(&table_idents).await;
-                    results.push(WriteBatchResult {
-                        table_idents,
-                        result: Err(e),
-                    });
-                    continue;
+            let result = batch_result.and_then(|response| {
+                let response = response.into_inner();
+                if let Some(header) = &response.header && !status_code::is_ok(header.code) {
+                    Server {
+                        table_idents: table_idents.clone(),
+                        code: header.code,
+                        msg: header.error.clone(),
+                    }.fail().box_err()
+                } else {
+                    Ok(response.affected_rows)
                 }
-            };
+            });
 
-            // Check response finally.
-            let remote_write_response = remote_write_response.into_inner();
-            if let Some(header) = remote_write_response.header && !status_code::is_ok(header.code) {
-                let err = Server {
-                    table_idents: table_idents.clone(),
-                    code: header.code,
-                    msg: header.error,
-                }.fail().box_err();
-                results.push(WriteBatchResult {
-                    table_idents,
-                    result: err,
-                });
-            } else {
-                results.push(WriteBatchResult {
-                    table_idents,
-                    result: Ok(remote_write_response.affected_rows),
-                });
+            if result.is_err() {
+                // If occurred error, we simply evict the corresponding channel now.
+                // TODO: evict according to the type of error.
+                self.evict_route_from_cache(&table_idents).await;
             }
+
+            results.push(WriteBatchResult {
+                table_idents,
+                result,
+            });
         }
+
         Ok(results)
     }
 
@@ -260,48 +252,65 @@ impl Client {
                 msg: "Failed to get table info",
             });
 
-        let response = match result {
-            Ok(response) => response,
+        let result = result.and_then(|response| {
+            let response = response.into_inner();
+            if let Some(header) = &response.header && !status_code::is_ok(header.code) {
+                    Server {
+                        table_idents: vec![table_ident.clone()],
+                        code: header.code,
+                        msg: header.error.clone(),
+                    }.fail()
+                } else {
+                    Ok(response)
+                }
+        });
+
+        match result {
+            Ok(response) => {
+                let table_info = response.table_info.context(Server {
+                    table_idents: vec![table_ident.clone()],
+                    code: status_code::StatusCode::Internal.as_u32(),
+                    msg: "Table info is empty",
+                })?;
+
+                Ok(TableInfo {
+                    catalog_name: table_info.catalog_name,
+                    schema_name: table_info.schema_name,
+                    schema_id: SchemaId::from(table_info.schema_id),
+                    table_name: table_info.table_name,
+                    table_id: TableId::from(table_info.table_id),
+                    table_schema: table_info
+                        .table_schema
+                        .map(TryInto::try_into)
+                        .transpose()
+                        .box_err()
+                        .with_context(|| Convert {
+                            msg: "Failed to covert table schema",
+                        })?
+                        .with_context(|| Server {
+                            table_idents: vec![table_ident],
+                            code: status_code::StatusCode::Internal.as_u32(),
+                            msg: "Table schema is empty",
+                        })?,
+                    engine: table_info.engine,
+                    options: table_info.options,
+                    partition_info: table_info
+                        .partition_info
+                        .map(TryInto::try_into)
+                        .transpose()
+                        .box_err()
+                        .context(Convert {
+                            msg: "Failed to covert partition info",
+                        })?,
+                })
+            }
+
             Err(e) => {
                 // If occurred error, we simply evict the corresponding channel now.
                 // TODO: evict according to the type of error.
                 self.evict_route_from_cache(&[table_ident]).await;
-                return Err(e);
+                Err(e)
             }
-        };
-
-        let response = response.into_inner();
-        if let Some(header) = response.header && !status_code::is_ok(header.code) {
-            Server {
-                table_idents: vec![table_ident],
-                code: header.code,
-                msg: header.error,
-            }.fail()
-        } else {
-            let table_info = response.table_info.context(Server {
-                table_idents: vec![table_ident.clone()],
-                code: status_code::StatusCode::Internal.as_u32(),
-                msg: "Table info is empty",
-            })?;
-
-            Ok(TableInfo {
-                catalog_name: table_info.catalog_name,
-                schema_name: table_info.schema_name,
-                schema_id: SchemaId::from(table_info.schema_id),
-                table_name: table_info.table_name,
-                table_id: TableId::from(table_info.table_id),
-                table_schema: table_info.table_schema.map(TryInto::try_into).transpose().box_err()
-                    .with_context(|| Convert { msg: "Failed to covert table schema" })?
-                    .with_context(|| Server {
-                        table_idents: vec![table_ident],
-                        code: status_code::StatusCode::Internal.as_u32(),
-                        msg: "Table schema is empty",
-                    })?,
-                engine: table_info.engine,
-                options: table_info.options,
-                partition_info: table_info.partition_info.map(TryInto::try_into).transpose().box_err()
-                    .context(Convert { msg: "Failed to covert partition info" })?,
-            })
         }
     }
 
