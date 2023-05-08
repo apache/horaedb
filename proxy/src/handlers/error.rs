@@ -2,7 +2,7 @@
 
 //! Error of handlers
 
-use common_util::{define_result, error::GenericError};
+use common_util::define_result;
 use snafu::{Backtrace, Snafu};
 use warp::reject::Reject;
 
@@ -15,11 +15,6 @@ use crate::limiter;
 pub enum Error {
     #[snafu(display("Failed to parse sql, err:{}", source))]
     ParseSql {
-        source: query_frontend::frontend::Error,
-    },
-
-    #[snafu(display("Failed to parse influxql, err:{}", source))]
-    ParseInfluxql {
         source: query_frontend::frontend::Error,
     },
 
@@ -76,12 +71,6 @@ pub enum Error {
         source: tokio::time::error::Elapsed,
         backtrace: Backtrace,
     },
-
-    #[snafu(display("InfluxDb handler failed, msg:{}, source:{}", msg, source))]
-    InfluxDbHandlerWithCause { msg: String, source: GenericError },
-
-    #[snafu(display("InfluxDb handler failed, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
-    InfluxDbHandlerNoCause { msg: String, backtrace: Backtrace },
 
     #[snafu(display("Route handler failed, table:{:?}, source:{}", table, source))]
     RouteHandler {

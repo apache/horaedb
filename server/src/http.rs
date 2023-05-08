@@ -13,21 +13,19 @@ use common_util::{
     error::{BoxError, GenericError},
     runtime::Runtime,
 };
-use handlers::query::QueryRequest as HandlerQueryRequest;
 use log::{error, info};
 use logger::RuntimeLevel;
 use profile::Profiler;
 use prom_remote_api::web;
 use proxy::{
     context::RequestContext,
-    handlers::{
-        self,
-        influxdb::{self, InfluxDb, InfluxqlParams, InfluxqlRequest, WriteParams, WriteRequest},
+    handlers::{self},
+    http::query::{convert_output, Request},
+    influxdb::{
+        convert_influxql_output, InfluxqlParams, InfluxqlRequest, WriteParams, WriteRequest,
     },
-    http::query::{convert_output, QueryRequest, Request},
     instance::InstanceRef,
-    schema_config_provider::SchemaConfigProviderRef,
-    Proxy,
+    Proxy, QueryRequest,
 };
 use query_engine::executor::Executor as QueryExecutor;
 use router::{endpoint::Endpoint, RouterRef};
@@ -126,7 +124,6 @@ pub struct Service<Q> {
     engine_runtimes: Arc<EngineRuntimes>,
     log_runtime: Arc<RuntimeLevel>,
     profiler: Arc<Profiler>,
-    influxdb: Arc<InfluxDb<Q>>,
     tx: Sender<()>,
     rx: Option<Receiver<()>>,
     config: HttpConfig,
@@ -291,12 +288,16 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(warp::post())
             .and(body_limit)
             .and(self.with_context())
-            .and(self.with_influxdb())
             .and(warp::query::<WriteParams>())
             .and(warp::body::bytes())
-            .and_then(|ctx, db, params, lines| async move {
+            .and(self.with_proxy())
+            .and_then(|ctx, params, lines, proxy: Arc<Proxy<Q>>| async move {
                 let request = WriteRequest::new(lines, params);
-                influxdb::write(ctx, db, request).await
+                let result = proxy.handle_influxdb_write(ctx, request).await;
+                match result {
+                    Ok(res) => Ok(reply::json(&res)),
+                    Err(e) => Err(reject::custom(e)),
+                }
             });
 
         // Query support both get and post method, so we can't add `body_limit` here.
@@ -305,14 +306,30 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         let query_api = warp::path!("query")
             .and(warp::method())
             .and(self.with_context())
-            .and(self.with_influxdb())
             .and(warp::query::<InfluxqlParams>())
             .and(warp::body::form::<HashMap<String, String>>())
-            .and_then(|method, ctx, db, params, body| async move {
-                let request =
-                    InfluxqlRequest::try_new(method, body, params).map_err(reject::custom)?;
-                influxdb::query(ctx, db, HandlerQueryRequest::Influxql(request)).await
-            });
+            .and(self.with_proxy())
+            .and_then(
+                |method, ctx, params, body, proxy: Arc<Proxy<Q>>| async move {
+                    let request =
+                        InfluxqlRequest::try_new(method, body, params).map_err(reject::custom)?;
+                    let result = proxy
+                        .handle_influxdb_query(ctx, request)
+                        .await
+                        .and_then(convert_influxql_output)
+                        .box_err()
+                        .context(HandleRequest);
+                    match result {
+                        Ok(res) => Ok(reply::json(&res)),
+                        Err(e) => Err(reject::custom(e)),
+                    }
+                },
+            );
+        // .and_then(|| async move {
+        //     let request =
+        //         InfluxqlRequest::try_new(method, body,
+        // params).map_err(reject::custom)?;     influxdb::query(ctx, db,
+        // HandlerQueryRequest::Influxql(request)).await });
 
         warp::path!("influxdb" / "v1" / ..).and(write_api.or(query_api))
     }
@@ -558,13 +575,6 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::any().map(move || runtime.clone())
     }
 
-    fn with_influxdb(
-        &self,
-    ) -> impl Filter<Extract = (Arc<InfluxDb<Q>>,), Error = Infallible> + Clone {
-        let influxdb = self.influxdb.clone();
-        warp::any().map(move || influxdb.clone())
-    }
-
     fn with_instance(
         &self,
     ) -> impl Filter<Extract = (InstanceRef<Q>,), Error = Infallible> + Clone {
@@ -590,8 +600,6 @@ pub struct Builder<Q> {
     config: HttpConfig,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
-    instance: Option<InstanceRef<Q>>,
-    schema_config_provider: Option<SchemaConfigProviderRef>,
     config_content: Option<String>,
     proxy: Option<Arc<Proxy<Q>>>,
     router: Option<RouterRef>,
@@ -604,8 +612,6 @@ impl<Q> Builder<Q> {
             config,
             engine_runtimes: None,
             log_runtime: None,
-            instance: None,
-            schema_config_provider: None,
             config_content: None,
             proxy: None,
             router: None,
@@ -620,16 +626,6 @@ impl<Q> Builder<Q> {
 
     pub fn log_runtime(mut self, log_runtime: Arc<RuntimeLevel>) -> Self {
         self.log_runtime = Some(log_runtime);
-        self
-    }
-
-    pub fn instance(mut self, instance: InstanceRef<Q>) -> Self {
-        self.instance = Some(instance);
-        self
-    }
-
-    pub fn schema_config_provider(mut self, provider: SchemaConfigProviderRef) -> Self {
-        self.schema_config_provider = Some(provider);
         self
     }
 
@@ -659,23 +655,17 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
     pub fn build(self) -> Result<Service<Q>> {
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
-        let instance = self.instance.context(MissingInstance)?;
         let config_content = self.config_content.context(MissingInstance)?;
         let proxy = self.proxy.context(MissingProxy)?;
-        let schema_config_provider = self
-            .schema_config_provider
-            .context(MissingSchemaConfigProvider)?;
         let router = self.router.context(MissingRouter)?;
         let opened_wals = self.opened_wals.context(MissingWal)?;
 
-        let influxdb = Arc::new(InfluxDb::new(instance, schema_config_provider));
         let (tx, rx) = oneshot::channel();
 
         let service = Service {
             proxy,
             engine_runtimes,
             log_runtime,
-            influxdb,
             profiler: Arc::new(Profiler::default()),
             tx,
             rx: Some(rx),

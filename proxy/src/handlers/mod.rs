@@ -4,7 +4,6 @@
 
 pub mod admin;
 pub(crate) mod error;
-pub mod influxdb;
 pub mod query;
 pub mod route;
 

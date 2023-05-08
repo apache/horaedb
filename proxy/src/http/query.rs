@@ -33,8 +33,7 @@ use crate::{
     error::{ErrNoCause, ErrWithCause, Internal, InternalNoCause, Result},
     execute_plan,
     forward::ForwardResult,
-    handlers::influxdb::InfluxqlRequest,
-    Proxy,
+    Proxy, QueryRequest,
 };
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
@@ -257,15 +256,6 @@ impl Serialize for ResponseRows {
 
         seq.end()
     }
-}
-
-#[derive(Debug)]
-pub enum QueryRequest {
-    Sql(Request),
-    // TODO: influxql include more parameters, we should add it in later.
-    // TODO: remove dead_code after implement influxql with proxy
-    #[allow(dead_code)]
-    Influxql(InfluxqlRequest),
 }
 
 // Convert output to json
