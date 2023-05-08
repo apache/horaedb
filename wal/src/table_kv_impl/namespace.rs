@@ -1544,10 +1544,10 @@ mod tests {
         let bucket = Bucket::new("test", entry).unwrap();
         assert_eq!(4, bucket.wal_shard_names.len());
         let expect_names = [
-            "test_data_20220328000000_000000",
-            "test_data_20220328000000_000001",
-            "test_data_20220328000000_000002",
-            "test_data_20220328000000_000003",
+            "wal_test_20220328000000_000000",
+            "wal_test_20220328000000_000001",
+            "wal_test_20220328000000_000002",
+            "wal_test_20220328000000_000003",
         ];
         assert_eq!(&expect_names[..], &bucket.wal_shard_names[..]);
     }
@@ -1560,10 +1560,10 @@ mod tests {
         let bucket = Bucket::new("test", entry).unwrap();
         assert_eq!(4, bucket.wal_shard_names.len());
         let expect_names = [
-            "test_data_permanent_000000",
-            "test_data_permanent_000001",
-            "test_data_permanent_000002",
-            "test_data_permanent_000003",
+            "wal_test_permanent_000000",
+            "wal_test_permanent_000001",
+            "wal_test_permanent_000002",
+            "wal_test_permanent_000003",
         ];
         assert_eq!(&expect_names[..], &bucket.wal_shard_names[..]);
     }
