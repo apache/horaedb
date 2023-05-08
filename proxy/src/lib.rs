@@ -74,8 +74,6 @@ use crate::{
     forward::{ForwardRequest, ForwardResult, Forwarder, ForwarderRef},
     grpc::write::WriteContext,
     hotspot::HotspotRecorder,
-    http::query::Request,
-    influxdb::InfluxqlRequest,
     instance::InstanceRef,
     schema_config_provider::SchemaConfigProviderRef,
 };
@@ -475,14 +473,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             })?;
         Ok(())
     }
-}
-
-#[derive(Debug)]
-pub enum QueryRequest {
-    Sql(Request),
-    // TODO: influxql include more parameters, we should add it in later.
-    // TODO: remove dead_code after implement influxql with proxy
-    Influxql(InfluxqlRequest),
 }
 
 #[derive(Clone)]
