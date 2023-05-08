@@ -482,7 +482,6 @@ pub enum QueryRequest {
     Sql(Request),
     // TODO: influxql include more parameters, we should add it in later.
     // TODO: remove dead_code after implement influxql with proxy
-    #[allow(dead_code)]
     Influxql(InfluxqlRequest),
 }
 

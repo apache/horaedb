@@ -24,7 +24,6 @@ use snafu::{ensure, ResultExt};
 
 use crate::handlers::{
     error::{CreatePlan, InterpreterExec, ParseSql, QueryBlock, QueryTimeout, TooMuchStmt},
-    // influxdb::InfluxqlRequest,
     prelude::*,
 };
 
@@ -99,14 +98,11 @@ impl From<Bytes> for Request {
 #[derive(Debug)]
 pub enum QueryRequest {
     Sql(Request),
-    // TODO: influxql include more parameters, we should add it in later.
-    // Influxql(InfluxqlRequest),
 }
 impl QueryRequest {
     pub fn query(&self) -> &str {
         match self {
             QueryRequest::Sql(request) => request.query.as_str(),
-            // QueryRequest::Influxql(request) => request.query.as_str(),
         }
     }
 }

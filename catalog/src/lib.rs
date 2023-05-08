@@ -53,8 +53,10 @@ pub enum Error {
     #[snafu(display("Failed to operate table, msg:{}, err:{}", msg, source))]
     TableOperatorWithCause { msg: String, source: GenericError },
 
-    #[snafu(display("Failed to operate table, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
-    TableOperatorNoCause { msg: String, backtrace: Backtrace },
+    // Fixme: Temporarily remove the stack information, otherwise you will encounter a
+    // segmentation fault.
+    #[snafu(display("Failed to operate table, msg:{}.\n", msg))]
+    TableOperatorNoCause { msg: String },
 }
 
 define_result!(Error);
