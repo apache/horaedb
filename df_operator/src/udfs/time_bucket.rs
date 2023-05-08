@@ -274,9 +274,14 @@ impl Period {
         granularity: &str,
     ) -> Result<DfColumnarValue> {
         let granularity = DfColumnarValue::Scalar(ScalarValue::Utf8(Some(granularity.to_string())));
-        let trunc_array = date_trunc(&[granularity, array.clone()]).context(TruncateTimestamp)?;
+        let array = Self::fix_offset(array)?;
+        let trunc_array = date_trunc(&[granularity, array]).context(TruncateTimestamp)?;
+        let result_array = Self::fix_result_offset(&trunc_array)?;
+        Ok(result_array)
+    }
 
-        let list = match trunc_array {
+    fn fix_result_offset(array: &DfColumnarValue) -> Result<DfColumnarValue> {
+        let list = match array {
             DfColumnarValue::Array(array) => {
                 let array = as_timestamp_nanosecond_array(&array).context(TruncateTimestamp)?;
                 array
@@ -289,6 +294,25 @@ impl Period {
             }
             _ => return UnsupportedScalar.fail(),
         };
+
+        Ok(DfColumnarValue::Array(Arc::new(list)))
+    }
+
+    fn fix_offset(array: &DfColumnarValue) -> Result<DfColumnarValue> {
+        let list = match array {
+            DfColumnarValue::Array(array) => {
+                let array = as_timestamp_nanosecond_array(&array).context(TruncateTimestamp)?;
+                array
+                    .iter()
+                    .map(|ts| {
+                        ts.map(|t| Ok(t + DEFAULT_TIMEZONE_OFFSET_SECS as i64 * 1_000_000_000))
+                            .transpose()
+                    })
+                    .collect::<Result<TimestampNanosecondArray>>()?
+            }
+            _ => return UnsupportedScalar.fail(),
+        };
+
         Ok(DfColumnarValue::Array(Arc::new(list)))
     }
 }

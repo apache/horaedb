@@ -20,91 +20,100 @@ VALUES
     (1659577320000, 3),
     (1659571200000, 4),
     (1659484800000, 5),
-    (1656777600000, 6);
+    (1656777600000, 6),
+    (1656898920000, 7);
 
-affected_rows: 6
+affected_rows: 7
 
-SELECT time_bucket(`timestamp`, 'P1Y') FROM `02_function_time_bucket_table`;
+SELECT timestamp, time_bucket(`timestamp`, 'P1Y') FROM `02_function_time_bucket_table` order by timestamp;
 
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("P1Y")),
-Timestamp(1640966400000),
-Timestamp(1640966400000),
-Timestamp(1640966400000),
-Timestamp(1640966400000),
-Timestamp(1640966400000),
-Timestamp(1640966400000),
-
-
-SELECT time_bucket(`timestamp`, 'P1M') FROM `02_function_time_bucket_table`;
-
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("P1M")),
-Timestamp(1656604800000),
-Timestamp(1659283200000),
-Timestamp(1659283200000),
-Timestamp(1659283200000),
-Timestamp(1659283200000),
-Timestamp(1659283200000),
+timestamp,time_bucket(02_function_time_bucket_table.timestamp,Utf8("P1Y")),
+Timestamp(1656777600000),Timestamp(1640966400000),
+Timestamp(1656898920000),Timestamp(1640966400000),
+Timestamp(1659484800000),Timestamp(1640966400000),
+Timestamp(1659571200000),Timestamp(1640966400000),
+Timestamp(1659577320000),Timestamp(1640966400000),
+Timestamp(1659577422000),Timestamp(1640966400000),
+Timestamp(1659577423000),Timestamp(1640966400000),
 
 
-SELECT time_bucket(`timestamp`, 'P1W') FROM `02_function_time_bucket_table`;
+SELECT timestamp, time_bucket(`timestamp`, 'P1M') FROM `02_function_time_bucket_table` order by timestamp;
 
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("P1W")),
-Timestamp(1656259200000),
-Timestamp(1659283200000),
-Timestamp(1659283200000),
-Timestamp(1659283200000),
-Timestamp(1659283200000),
-Timestamp(1659283200000),
-
-
-SELECT time_bucket(`timestamp`, 'P1D') FROM `02_function_time_bucket_table`;
-
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("P1D")),
-Timestamp(1656777600000),
-Timestamp(1659456000000),
-Timestamp(1659542400000),
-Timestamp(1659542400000),
-Timestamp(1659542400000),
-Timestamp(1659542400000),
+timestamp,time_bucket(02_function_time_bucket_table.timestamp,Utf8("P1M")),
+Timestamp(1656777600000),Timestamp(1656604800000),
+Timestamp(1656898920000),Timestamp(1656604800000),
+Timestamp(1659484800000),Timestamp(1659283200000),
+Timestamp(1659571200000),Timestamp(1659283200000),
+Timestamp(1659577320000),Timestamp(1659283200000),
+Timestamp(1659577422000),Timestamp(1659283200000),
+Timestamp(1659577423000),Timestamp(1659283200000),
 
 
-SELECT time_bucket(`timestamp`, 'PT1H') FROM `02_function_time_bucket_table`;
+SELECT timestamp, time_bucket(`timestamp`, 'P1W') FROM `02_function_time_bucket_table` order by timestamp;
 
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1H")),
-Timestamp(1656777600000),
-Timestamp(1659484800000),
-Timestamp(1659571200000),
-Timestamp(1659574800000),
-Timestamp(1659574800000),
-Timestamp(1659574800000),
-
-
-SELECT time_bucket(`timestamp`, 'PT1M') FROM `02_function_time_bucket_table`;
-
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1M")),
-Timestamp(1656777600000),
-Timestamp(1659484800000),
-Timestamp(1659571200000),
-Timestamp(1659577320000),
-Timestamp(1659577380000),
-Timestamp(1659577380000),
+timestamp,time_bucket(02_function_time_bucket_table.timestamp,Utf8("P1W")),
+Timestamp(1656777600000),Timestamp(1656259200000),
+Timestamp(1656898920000),Timestamp(1656864000000),
+Timestamp(1659484800000),Timestamp(1659283200000),
+Timestamp(1659571200000),Timestamp(1659283200000),
+Timestamp(1659577320000),Timestamp(1659283200000),
+Timestamp(1659577422000),Timestamp(1659283200000),
+Timestamp(1659577423000),Timestamp(1659283200000),
 
 
-SELECT time_bucket(`timestamp`, 'PT1S') FROM `02_function_time_bucket_table`;
+SELECT timestamp, time_bucket(`timestamp`, 'P1D') FROM `02_function_time_bucket_table` order by timestamp;
 
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1S")),
-Timestamp(1656777600000),
-Timestamp(1659484800000),
-Timestamp(1659571200000),
-Timestamp(1659577320000),
-Timestamp(1659577422000),
-Timestamp(1659577423000),
+timestamp,time_bucket(02_function_time_bucket_table.timestamp,Utf8("P1D")),
+Timestamp(1656777600000),Timestamp(1656777600000),
+Timestamp(1656898920000),Timestamp(1656864000000),
+Timestamp(1659484800000),Timestamp(1659456000000),
+Timestamp(1659571200000),Timestamp(1659542400000),
+Timestamp(1659577320000),Timestamp(1659542400000),
+Timestamp(1659577422000),Timestamp(1659542400000),
+Timestamp(1659577423000),Timestamp(1659542400000),
+
+
+SELECT timestamp, time_bucket(`timestamp`, 'PT1H') FROM `02_function_time_bucket_table` order by timestamp;
+
+timestamp,time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1H")),
+Timestamp(1656777600000),Timestamp(1656777600000),
+Timestamp(1656898920000),Timestamp(1656896400000),
+Timestamp(1659484800000),Timestamp(1659484800000),
+Timestamp(1659571200000),Timestamp(1659571200000),
+Timestamp(1659577320000),Timestamp(1659574800000),
+Timestamp(1659577422000),Timestamp(1659574800000),
+Timestamp(1659577423000),Timestamp(1659574800000),
+
+
+SELECT timestamp, time_bucket(`timestamp`, 'PT1M') FROM `02_function_time_bucket_table` order by timestamp;
+
+timestamp,time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1M")),
+Timestamp(1656777600000),Timestamp(1656777600000),
+Timestamp(1656898920000),Timestamp(1656898920000),
+Timestamp(1659484800000),Timestamp(1659484800000),
+Timestamp(1659571200000),Timestamp(1659571200000),
+Timestamp(1659577320000),Timestamp(1659577320000),
+Timestamp(1659577422000),Timestamp(1659577380000),
+Timestamp(1659577423000),Timestamp(1659577380000),
+
+
+SELECT timestamp, time_bucket(`timestamp`, 'PT1S') FROM `02_function_time_bucket_table` order by timestamp;
+
+timestamp,time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1S")),
+Timestamp(1656777600000),Timestamp(1656777600000),
+Timestamp(1656898920000),Timestamp(1656898920000),
+Timestamp(1659484800000),Timestamp(1659484800000),
+Timestamp(1659571200000),Timestamp(1659571200000),
+Timestamp(1659577320000),Timestamp(1659577320000),
+Timestamp(1659577422000),Timestamp(1659577422000),
+Timestamp(1659577423000),Timestamp(1659577423000),
 
 
 SELECT time_bucket(`timestamp`, 'PT1H', 'yyyy-MM-dd HH:mm:ss') FROM `02_function_time_bucket_table`;
 
 time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1H"),Utf8("yyyy-MM-dd HH:mm:ss")),
 Timestamp(1656777600000),
+Timestamp(1656896400000),
 Timestamp(1659484800000),
 Timestamp(1659571200000),
 Timestamp(1659574800000),
@@ -116,6 +125,7 @@ SELECT time_bucket(`timestamp`, 'PT1H', 'yyyy-MM-dd HH:mm:ss', '+0800') FROM `02
 
 time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1H"),Utf8("yyyy-MM-dd HH:mm:ss"),Utf8("+0800")),
 Timestamp(1656777600000),
+Timestamp(1656896400000),
 Timestamp(1659484800000),
 Timestamp(1659571200000),
 Timestamp(1659574800000),
@@ -127,6 +137,7 @@ SELECT time_bucket(`timestamp`, 'PT1H', 'yyyy-MM-dd HH:mm:ss', '+0800', 'yyyy-MM
 
 time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1H"),Utf8("yyyy-MM-dd HH:mm:ss"),Utf8("+0800"),Utf8("yyyy-MM-dd HH")),
 Timestamp(1656777600000),
+Timestamp(1656896400000),
 Timestamp(1659484800000),
 Timestamp(1659571200000),
 Timestamp(1659574800000),
