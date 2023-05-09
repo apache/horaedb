@@ -25,12 +25,81 @@ use crate::{
     error::{ErrNoCause, ErrWithCause, Internal, Result},
     execute_plan,
     grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
-    influxdb::types::{convert_write_request, InfluxqlRequest, WriteRequest, WriteResponse},
+    influxdb::types::{
+        convert_influxql_output, convert_write_request, InfluxqlRequest, InfluxqlResponse,
+        WriteRequest, WriteResponse,
+    },
     Proxy,
 };
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_influxdb_query(
+        &self,
+        ctx: RequestContext,
+        req: InfluxqlRequest,
+    ) -> Result<InfluxqlResponse> {
+        let output = self.fetch_influxdb_query_output(ctx, req).await?;
+        convert_influxql_output(output)
+    }
+
+    pub async fn handle_influxdb_write(
+        &self,
+        ctx: RequestContext,
+        req: WriteRequest,
+    ) -> Result<WriteResponse> {
+        let request_id = RequestId::next_id();
+        let deadline = ctx.timeout.map(|t| Instant::now() + t);
+        let catalog = &ctx.catalog;
+        self.instance.catalog_manager.default_catalog_name();
+        let schema = &ctx.schema;
+        let schema_config = self
+            .schema_config_provider
+            .schema_config(schema)
+            .box_err()
+            .with_context(|| Internal {
+                msg: format!("get schema config failed, schema:{schema}"),
+            })?;
+
+        let write_context =
+            WriteContext::new(request_id, deadline, catalog.clone(), schema.clone());
+
+        let plans = write_request_to_insert_plan(
+            self.instance.clone(),
+            convert_write_request(req)?,
+            schema_config,
+            write_context,
+        )
+        .await
+        .box_err()
+        .with_context(|| Internal {
+            msg: "write request to insert plan",
+        })?;
+
+        let mut success = 0;
+        for insert_plan in plans {
+            success += execute_insert_plan(
+                request_id,
+                catalog,
+                schema,
+                self.instance.clone(),
+                insert_plan,
+                deadline,
+            )
+            .await
+            .box_err()
+            .with_context(|| Internal {
+                msg: "execute plan",
+            })?;
+        }
+        debug!(
+            "Influxdb write finished, catalog:{}, schema:{}, success:{}",
+            catalog, schema, success
+        );
+
+        Ok(())
+    }
+
+    async fn fetch_influxdb_query_output(
         &self,
         ctx: RequestContext,
         req: InfluxqlRequest,
@@ -113,62 +182,5 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         );
 
         Ok(output)
-    }
-
-    pub async fn handle_influxdb_write(
-        &self,
-        ctx: RequestContext,
-        req: WriteRequest,
-    ) -> Result<WriteResponse> {
-        let request_id = RequestId::next_id();
-        let deadline = ctx.timeout.map(|t| Instant::now() + t);
-        let catalog = &ctx.catalog;
-        self.instance.catalog_manager.default_catalog_name();
-        let schema = &ctx.schema;
-        let schema_config = self
-            .schema_config_provider
-            .schema_config(schema)
-            .box_err()
-            .with_context(|| Internal {
-                msg: format!("get schema config failed, schema:{schema}"),
-            })?;
-
-        let write_context =
-            WriteContext::new(request_id, deadline, catalog.clone(), schema.clone());
-
-        let plans = write_request_to_insert_plan(
-            self.instance.clone(),
-            convert_write_request(req)?,
-            schema_config,
-            write_context,
-        )
-        .await
-        .box_err()
-        .with_context(|| Internal {
-            msg: "write request to insert plan",
-        })?;
-
-        let mut success = 0;
-        for insert_plan in plans {
-            success += execute_insert_plan(
-                request_id,
-                catalog,
-                schema,
-                self.instance.clone(),
-                insert_plan,
-                deadline,
-            )
-            .await
-            .box_err()
-            .with_context(|| Internal {
-                msg: "execute plan",
-            })?;
-        }
-        debug!(
-            "Influxdb write finished, catalog:{}, schema:{}, success:{}",
-            catalog, schema, success
-        );
-
-        Ok(())
     }
 }

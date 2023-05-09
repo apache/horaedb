@@ -1,5 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+//! This module contains the types for InfluxDB.
+
 use std::collections::{BTreeMap, HashMap};
 
 use bytes::Bytes;
@@ -559,7 +561,7 @@ fn convert_influx_value(field_value: FieldValue) -> Value {
     Value { value: Some(v) }
 }
 
-pub fn convert_influxql_output(output: Output) -> Result<InfluxqlResponse> {
+pub(crate) fn convert_influxql_output(output: Output) -> Result<InfluxqlResponse> {
     // TODO: now, we just support one influxql in each query.
     let records = match output {
         Output::Records(records) => records,

@@ -20,10 +20,8 @@ use prom_remote_api::web;
 use proxy::{
     context::RequestContext,
     handlers::{self},
-    http::query::{convert_output, SqlRequest},
-    influxdb::types::{
-        convert_influxql_output, InfluxqlParams, InfluxqlRequest, WriteParams, WriteRequest,
-    },
+    http::sql::{convert_output, Request},
+    influxdb::types::{InfluxqlParams, InfluxqlRequest, WriteParams, WriteRequest},
     instance::InstanceRef,
     Proxy,
 };
@@ -227,7 +225,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     fn sql(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         // accept json or plain text
         let extract_request = warp::body::json()
-            .or(warp::body::bytes().map(|v: Bytes| SqlRequest {
+            .or(warp::body::bytes().map(|v: Bytes| Request {
                 query: String::from_utf8_lossy(&v).to_string(),
             }))
             .unify();
@@ -240,7 +238,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(self.with_proxy())
             .and_then(|req, ctx, proxy: Arc<Proxy<Q>>| async move {
                 let result = proxy
-                    .handle_query(&ctx, req)
+                    .handle_http_sql_query(&ctx, req)
                     .await
                     .map(convert_output)
                     .box_err()
@@ -315,7 +313,6 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     let result = proxy
                         .handle_influxdb_query(ctx, request)
                         .await
-                        .and_then(convert_influxql_output)
                         .box_err()
                         .context(HandleRequest);
                     match result {

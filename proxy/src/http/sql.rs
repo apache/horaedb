@@ -37,7 +37,11 @@ use crate::{
 };
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
-    pub async fn handle_query(&self, ctx: &RequestContext, req: SqlRequest) -> Result<Output> {
+    pub async fn handle_http_sql_query(
+        &self,
+        ctx: &RequestContext,
+        req: Request,
+    ) -> Result<Output> {
         let request_id = RequestId::next_id();
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
@@ -147,7 +151,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     }
 }
 #[derive(Debug, Deserialize)]
-pub struct SqlRequest {
+pub struct Request {
     pub query: String,
 }
 
