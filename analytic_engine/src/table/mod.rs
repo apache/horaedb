@@ -637,8 +637,7 @@ mod tests {
         let merged_rows = merged_request.row_group.take_rows();
         let original_rows = total_requests
             .iter_mut()
-            .map(|req| req.row_group.take_rows())
-            .flatten()
+            .flat_map(|req| req.row_group.take_rows())
             .collect::<Vec<_>>();
 
         assert_eq!(merged_rows, original_rows);
