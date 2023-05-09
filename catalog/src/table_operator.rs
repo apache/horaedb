@@ -101,7 +101,7 @@ impl TableOperator {
         } else {
             TableOperatorNoCause {
                 msg:  format!(
-                            "Failed to open shard, some tables open failed, no table is shard id:{shard_id}, opened count:{no_table_count}, open error count:{open_err_count}"),
+                            "Failed to open shard, some tables open failed, shard id:{shard_id}, no table is opened count:{no_table_count}, open error count:{open_err_count}"),
             }.fail()
         }
     }

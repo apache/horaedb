@@ -1,50 +1,26 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! This module implements [write][1] and [query][2] for InfluxDB.
-//! [1]: https://docs.influxdata.com/influxdb/v1.8/tools/api/#write-http-endpoint
-//! [2]: https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-http-endpoint
+//! This module contains the types for InfluxDB.
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-    time::Instant,
-};
+use std::collections::{BTreeMap, HashMap};
 
 use bytes::Bytes;
 use ceresdbproto::storage::{
     value, Field, FieldGroup, Tag, Value, WriteSeriesEntry, WriteTableRequest,
 };
 use common_types::{
-    column_schema::ColumnSchema, datum::Datum, record_batch::RecordBatch, request_id::RequestId,
-    schema::RecordSchema, time::Timestamp,
+    column_schema::ColumnSchema, datum::Datum, record_batch::RecordBatch, schema::RecordSchema,
+    time::Timestamp,
 };
 use common_util::error::BoxError;
-use handlers::{
-    error::{InfluxDbHandlerNoCause, InfluxDbHandlerWithCause, Result},
-    query::QueryRequest,
-};
 use http::Method;
 use influxdb_line_protocol::FieldValue;
 use interpreters::interpreter::Output;
-use log::debug;
-use query_engine::executor::Executor as QueryExecutor;
 use query_frontend::influxql::planner::CERESDB_MEASUREMENT_COLUMN_NAME;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt, ResultExt};
-use warp::{reject, reply, Rejection, Reply};
 
-use crate::{
-    context::RequestContext,
-    grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
-    handlers,
-    instance::InstanceRef,
-    schema_config_provider::SchemaConfigProviderRef,
-};
-
-pub struct InfluxDb<Q> {
-    instance: InstanceRef<Q>,
-    schema_config_provider: SchemaConfigProviderRef,
-}
+use crate::error::{Internal, InternalNoCause, Result};
 
 /// Influxql write request compatible with influxdb 1.8
 ///
@@ -134,21 +110,21 @@ impl InfluxqlRequest {
         //  - q: required(in body when POST and parameters when GET)
         //  - chunked,db,epoch,pretty: in parameters
         if body.contains_key("params") {
-            return InfluxDbHandlerNoCause {
+            return InternalNoCause {
                 msg: "`params` is not supported now",
             }
             .fail();
         }
 
         let query = match method {
-            Method::GET => params.q.context(InfluxDbHandlerNoCause {
+            Method::GET => params.q.context(InternalNoCause {
                 msg: "query not found when query by GET",
             })?,
-            Method::POST => body.remove("q").context(InfluxDbHandlerNoCause {
+            Method::POST => body.remove("q").context(InternalNoCause {
                 msg: "query not found when query by POST",
             })?,
             other => {
-                return InfluxDbHandlerNoCause {
+                return InternalNoCause {
                     msg: format!("method not allowed in query, method:{other}"),
                 }
                 .fail()
@@ -306,7 +282,7 @@ impl InfluxqlResultBuilder {
         let column_schemas = record_schema.columns().to_owned();
         ensure!(
             !column_schemas.is_empty(),
-            InfluxDbHandlerNoCause {
+            InternalNoCause {
                 msg: "empty schema",
             }
         );
@@ -321,7 +297,7 @@ impl InfluxqlResultBuilder {
         // described when introducing `column_schemas`.
         let mut col_iter = column_schemas.iter().enumerate();
         // The first column may be measurement column in normal.
-        ensure!(col_iter.next().unwrap().1.name == CERESDB_MEASUREMENT_COLUMN_NAME, InfluxDbHandlerNoCause {
+        ensure!(col_iter.next().unwrap().1.name == CERESDB_MEASUREMENT_COLUMN_NAME, InternalNoCause {
             msg: format!("invalid schema whose first column is not measurement column, schema:{column_schemas:?}"),
         });
 
@@ -353,7 +329,7 @@ impl InfluxqlResultBuilder {
         // Check schema's compatibility.
         ensure!(
             record_batch.schema().columns() == self.column_schemas,
-            InfluxDbHandlerNoCause {
+            InternalNoCause {
                 msg: format!(
                     "conflict schema, origin:{:?}, new:{:?}",
                     self.column_schemas,
@@ -444,7 +420,7 @@ impl InfluxqlResultBuilder {
             match measurement {
                 Datum::String(m) => m.to_string(),
                 other => {
-                    return InfluxDbHandlerNoCause {
+                    return InternalNoCause {
                         msg: format!("invalid measurement column, column:{other:?}"),
                     }
                     .fail()
@@ -459,7 +435,7 @@ impl InfluxqlResultBuilder {
                     Datum::Null => "".to_string(),
                     Datum::String(tag) => tag.to_string(),
                     other => {
-                        return InfluxDbHandlerNoCause {
+                        return InternalNoCause {
                             msg: format!("invalid tag column, column:{other:?}"),
                         }
                         .fail()
@@ -497,93 +473,17 @@ struct GroupKey {
     group_by_tag_values: Vec<String>,
 }
 
-impl<Q: QueryExecutor + 'static> InfluxDb<Q> {
-    pub fn new(instance: InstanceRef<Q>, schema_config_provider: SchemaConfigProviderRef) -> Self {
-        Self {
-            instance,
-            schema_config_provider,
-        }
-    }
-
-    async fn query(&self, ctx: RequestContext, req: QueryRequest) -> Result<InfluxqlResponse> {
-        let output = handlers::query::handle_query(&ctx, self.instance.clone(), req)
-            .await
-            .box_err()
-            .context(InfluxDbHandlerWithCause {
-                msg: "failed to query by influxql",
-            })?;
-
-        convert_influxql_output(output)
-    }
-
-    async fn write(&self, ctx: RequestContext, req: WriteRequest) -> Result<WriteResponse> {
-        let request_id = RequestId::next_id();
-        let deadline = ctx.timeout.map(|t| Instant::now() + t);
-        let catalog = &ctx.catalog;
-        self.instance.catalog_manager.default_catalog_name();
-        let schema = &ctx.schema;
-        let schema_config = self
-            .schema_config_provider
-            .schema_config(schema)
-            .box_err()
-            .with_context(|| InfluxDbHandlerWithCause {
-                msg: format!("get schema config failed, schema:{schema}"),
-            })?;
-
-        let write_context =
-            WriteContext::new(request_id, deadline, catalog.clone(), schema.clone());
-
-        let plans = write_request_to_insert_plan(
-            self.instance.clone(),
-            convert_write_request(req)?,
-            schema_config,
-            write_context,
-        )
-        .await
-        .box_err()
-        .with_context(|| InfluxDbHandlerWithCause {
-            msg: "write request to insert plan",
-        })?;
-
-        let mut success = 0;
-        for insert_plan in plans {
-            success += execute_insert_plan(
-                request_id,
-                catalog,
-                schema,
-                self.instance.clone(),
-                insert_plan,
-                deadline,
-            )
-            .await
-            .box_err()
-            .with_context(|| InfluxDbHandlerWithCause {
-                msg: "execute plan",
-            })?;
-        }
-        debug!(
-            "Influxdb write finished, catalog:{}, schema:{}, success:{}",
-            catalog, schema, success
-        );
-
-        Ok(())
-    }
-}
-
-fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
+pub(crate) fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
     let mut req_by_measurement = HashMap::new();
     for line in influxdb_line_protocol::parse_lines(&req.lines) {
-        let mut line = line.box_err().with_context(|| InfluxDbHandlerWithCause {
+        let mut line = line.box_err().with_context(|| Internal {
             msg: "invalid line",
         })?;
 
         let timestamp = match line.timestamp {
-            Some(ts) => req
-                .precision
-                .try_normalize(ts)
-                .context(InfluxDbHandlerNoCause {
-                    msg: "time outside range -9223372036854775806 - 9223372036854775806",
-                })?,
+            Some(ts) => req.precision.try_normalize(ts).context(InternalNoCause {
+                msg: "time outside range -9223372036854775806 - 9223372036854775806",
+            })?,
             None => Timestamp::now().as_i64(),
         };
         let mut tag_set = line.series.tag_set.unwrap_or_default();
@@ -661,12 +561,12 @@ fn convert_influx_value(field_value: FieldValue) -> Value {
     Value { value: Some(v) }
 }
 
-fn convert_influxql_output(output: Output) -> Result<InfluxqlResponse> {
+pub(crate) fn convert_influxql_output(output: Output) -> Result<InfluxqlResponse> {
     // TODO: now, we just support one influxql in each query.
     let records = match output {
         Output::Records(records) => records,
         Output::AffectedRows(_) => {
-            return InfluxDbHandlerNoCause {
+            return InternalNoCause {
                 msg: "output in influxql should not be affected rows",
             }
             .fail()
@@ -694,32 +594,10 @@ fn convert_influxql_output(output: Output) -> Result<InfluxqlResponse> {
     })
 }
 
-// TODO: Request and response type don't match influxdb's API now.
-pub async fn query<Q: QueryExecutor + 'static>(
-    ctx: RequestContext,
-    db: Arc<InfluxDb<Q>>,
-    req: QueryRequest,
-) -> std::result::Result<impl Reply, Rejection> {
-    db.query(ctx, req)
-        .await
-        .map_err(reject::custom)
-        .map(|v| reply::json(&v))
-}
-
-// TODO: Request and response type don't match influxdb's API now.
-pub async fn write<Q: QueryExecutor + 'static>(
-    ctx: RequestContext,
-    db: Arc<InfluxDb<Q>>,
-    req: WriteRequest,
-) -> std::result::Result<impl Reply, Rejection> {
-    db.write(ctx, req)
-        .await
-        .map_err(reject::custom)
-        .map(|_| warp::http::StatusCode::NO_CONTENT)
-}
-
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use arrow::datatypes::{Field as ArrowField, Schema as ArrowSchema};
     use common_types::{
         column::{ColumnBlock, ColumnBlockBuilder},

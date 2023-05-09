@@ -23,10 +23,7 @@ use serde::{
 use snafu::{ensure, ResultExt};
 
 use crate::handlers::{
-    error::{
-        CreatePlan, InterpreterExec, ParseInfluxql, ParseSql, QueryBlock, QueryTimeout, TooMuchStmt,
-    },
-    influxdb::InfluxqlRequest,
+    error::{CreatePlan, InterpreterExec, ParseSql, QueryBlock, QueryTimeout, TooMuchStmt},
     prelude::*,
 };
 
@@ -101,14 +98,11 @@ impl From<Bytes> for Request {
 #[derive(Debug)]
 pub enum QueryRequest {
     Sql(Request),
-    // TODO: influxql include more parameters, we should add it in later.
-    Influxql(InfluxqlRequest),
 }
 impl QueryRequest {
     pub fn query(&self) -> &str {
         match self {
             QueryRequest::Sql(request) => request.query.as_str(),
-            QueryRequest::Influxql(request) => request.query.as_str(),
         }
     }
 }
@@ -164,30 +158,6 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
             // Note: Remember to store sql in error when creating logical plan
             frontend
                 .statement_to_plan(&mut sql_ctx, stmts.remove(0))
-                .context(CreatePlan {
-                    query: &request.query,
-                })?
-        }
-
-        QueryRequest::Influxql(request) => {
-            let mut stmts = frontend
-                .parse_influxql(&mut sql_ctx, &request.query)
-                .context(ParseInfluxql)?;
-
-            if stmts.is_empty() {
-                return Ok(Output::AffectedRows(0));
-            }
-
-            ensure!(
-                stmts.len() == 1,
-                TooMuchStmt {
-                    len: stmts.len(),
-                    query: &request.query,
-                }
-            );
-
-            frontend
-                .influxql_stmt_to_plan(&mut sql_ctx, stmts.remove(0))
                 .context(CreatePlan {
                     query: &request.query,
                 })?

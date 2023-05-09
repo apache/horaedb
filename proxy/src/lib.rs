@@ -15,6 +15,7 @@ pub mod handlers;
 pub mod hotspot;
 mod hotspot_lru;
 pub mod http;
+pub mod influxdb;
 pub mod instance;
 pub mod limiter;
 pub mod schema_config_provider;

@@ -369,8 +369,6 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let http_service = http::Builder::new(http_config)
             .engine_runtimes(engine_runtimes.clone())
             .log_runtime(log_runtime)
-            .instance(instance.clone())
-            .schema_config_provider(provider.clone())
             .config_content(config_content)
             .proxy(proxy.clone())
             .router(router.clone())

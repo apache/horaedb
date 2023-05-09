@@ -33,15 +33,14 @@ use crate::{
     error::{ErrNoCause, ErrWithCause, Internal, InternalNoCause, Result},
     execute_plan,
     forward::ForwardResult,
-    handlers::influxdb::InfluxqlRequest,
     Proxy,
 };
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
-    pub async fn handle_query(
+    pub async fn handle_http_sql_query(
         &self,
         ctx: &RequestContext,
-        query_request: QueryRequest,
+        req: Request,
     ) -> Result<Output> {
         let request_id = RequestId::next_id();
         let begin_instant = Instant::now();
@@ -49,7 +48,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         info!(
             "Query handler try to process request, request_id:{}, request:{:?}",
-            request_id, query_request
+            request_id, req
         );
 
         // TODO(yingwen): Privilege check, cannot access data of other tenant
@@ -63,109 +62,65 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let frontend = Frontend::new(provider);
         let mut sql_ctx = SqlContext::new(request_id, deadline);
 
-        let plan = match &query_request {
-            QueryRequest::Sql(request) => {
-                // Parse sql, frontend error of invalid sql already contains sql
-                // TODO(yingwen): Maybe move sql from frontend error to outer error
-                let mut stmts = frontend
-                    .parse_sql(&mut sql_ctx, &request.query)
-                    .box_err()
-                    .with_context(|| ErrWithCause {
-                        code: StatusCode::BAD_REQUEST,
-                        msg: format!("Failed to parse sql, query:{}", request.query),
-                    })?;
+        // Parse sql, frontend error of invalid sql already contains sql
+        // TODO(yingwen): Maybe move sql from frontend error to outer error
+        let mut stmts = frontend
+            .parse_sql(&mut sql_ctx, &req.query)
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: format!("Failed to parse sql, query:{}", req.query),
+            })?;
 
-                if stmts.is_empty() {
-                    return Ok(Output::AffectedRows(0));
-                }
+        if stmts.is_empty() {
+            return Ok(Output::AffectedRows(0));
+        }
 
-                // TODO(yingwen): For simplicity, we only support executing one statement now
-                // TODO(yingwen): INSERT/UPDATE/DELETE can be batched
-                ensure!(
-                    stmts.len() == 1,
-                    ErrNoCause {
-                        code: StatusCode::BAD_REQUEST,
-                        msg: format!(
-                            "Only support execute one statement now, current num:{}, query:{}.",
-                            stmts.len(),
-                            request.query
-                        ),
-                    }
-                );
-
-                let sql_query_request = SqlQueryRequest {
-                    context: Some(GrpcRequestContext {
-                        database: ctx.schema.clone(),
-                    }),
-                    tables: vec![],
-                    sql: request.query.clone(),
-                };
-
-                if let Some(resp) = self.maybe_forward_sql_query(&sql_query_request).await? {
-                    match resp {
-                        ForwardResult::Forwarded(resp) => {
-                            return convert_sql_response_to_output(resp?)
-                        }
-                        ForwardResult::Local => (),
-                    }
-                };
-
-                // Open partition table if needed.
-                let table_name = frontend::parse_table_name(&stmts);
-                if let Some(table_name) = table_name {
-                    self.maybe_open_partition_table_if_not_exist(
-                        &ctx.catalog,
-                        &ctx.schema,
-                        &table_name,
-                    )
-                    .await?;
-                }
-
-                // Create logical plan
-                // Note: Remember to store sql in error when creating logical plan
-                frontend
-                    .statement_to_plan(&mut sql_ctx, stmts.remove(0))
-                    .box_err()
-                    .with_context(|| ErrWithCause {
-                        code: StatusCode::BAD_REQUEST,
-                        msg: format!("Failed to build plan, query:{}", request.query),
-                    })?
+        // TODO(yingwen): For simplicity, we only support executing one statement now
+        // TODO(yingwen): INSERT/UPDATE/DELETE can be batched
+        ensure!(
+            stmts.len() == 1,
+            ErrNoCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: format!(
+                    "Only support execute one statement now, current num:{}, query:{}.",
+                    stmts.len(),
+                    req.query
+                ),
             }
+        );
 
-            QueryRequest::Influxql(request) => {
-                let mut stmts = frontend
-                    .parse_influxql(&mut sql_ctx, &request.query)
-                    .box_err()
-                    .with_context(|| ErrWithCause {
-                        code: StatusCode::BAD_REQUEST,
-                        msg: format!("Failed to parse influxql, query:{}", request.query),
-                    })?;
+        let sql_query_request = SqlQueryRequest {
+            context: Some(GrpcRequestContext {
+                database: ctx.schema.clone(),
+            }),
+            tables: vec![],
+            sql: req.query.clone(),
+        };
 
-                if stmts.is_empty() {
-                    return Ok(Output::AffectedRows(0));
-                }
-
-                ensure!(
-                    stmts.len() == 1,
-                    ErrNoCause {
-                        code: StatusCode::BAD_REQUEST,
-                        msg: format!(
-                            "Only support execute one statement now, current num:{}, query:{}.",
-                            stmts.len(),
-                            request.query
-                        ),
-                    }
-                );
-
-                frontend
-                    .influxql_stmt_to_plan(&mut sql_ctx, stmts.remove(0))
-                    .box_err()
-                    .with_context(|| ErrWithCause {
-                        code: StatusCode::BAD_REQUEST,
-                        msg: format!("Failed to build plan, query:{}", request.query),
-                    })?
+        if let Some(resp) = self.maybe_forward_sql_query(&sql_query_request).await? {
+            match resp {
+                ForwardResult::Forwarded(resp) => return convert_sql_response_to_output(resp?),
+                ForwardResult::Local => (),
             }
         };
+
+        // Open partition table if needed.
+        let table_name = frontend::parse_table_name(&stmts);
+        if let Some(table_name) = table_name {
+            self.maybe_open_partition_table_if_not_exist(&ctx.catalog, &ctx.schema, &table_name)
+                .await?;
+        }
+
+        // Create logical plan
+        // Note: Remember to store sql in error when creating logical plan
+        let plan = frontend
+            .statement_to_plan(&mut sql_ctx, stmts.remove(0))
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: format!("Failed to build plan, query:{}", req.query),
+            })?;
 
         self.instance
             .limiter
@@ -189,7 +144,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             "Query handler finished, request_id:{}, cost:{}ms, request:{:?}",
             request_id,
             begin_instant.saturating_elapsed().as_millis(),
-            query_request
+            req
         );
 
         Ok(output)
@@ -257,15 +212,6 @@ impl Serialize for ResponseRows {
 
         seq.end()
     }
-}
-
-#[derive(Debug)]
-pub enum QueryRequest {
-    Sql(Request),
-    // TODO: influxql include more parameters, we should add it in later.
-    // TODO: remove dead_code after implement influxql with proxy
-    #[allow(dead_code)]
-    Influxql(InfluxqlRequest),
 }
 
 // Convert output to json
