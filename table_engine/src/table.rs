@@ -134,6 +134,14 @@ pub enum Error {
         tables: Vec<String>,
         source: GenericError,
     },
+
+    #[snafu(display(
+        "Failed to wait for pending writes, table:{table}.\nBacktrace:\n{backtrace}"
+    ))]
+    WaitForPendingWrites { table: String, backtrace: Backtrace },
+
+    #[snafu(display("Failed to do merge write, msg:{}", msg))]
+    MergeWrite { msg: String },
 }
 
 define_result!(Error);

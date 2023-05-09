@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Row type
 
@@ -304,6 +304,16 @@ impl RowGroup {
     #[inline]
     pub fn schema(&self) -> &Schema {
         &self.schema
+    }
+
+    #[inline]
+    pub fn take_rows(&mut self) -> Vec<Row> {
+        std::mem::take(&mut self.rows)
+    }
+
+    #[inline]
+    pub fn into_schema(self) -> Schema {
+        self.schema
     }
 
     /// Iter the row group by rows

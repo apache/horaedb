@@ -36,8 +36,8 @@ pub enum Error {
     #[snafu(display("Unexpected error, err:{}", source))]
     Unexpected { source: GenericError },
 
-    #[snafu(display("Unexpected error, msg:{}", msg))]
-    UnexpectedNoCause { msg: String },
+    #[snafu(display("Unexpected error, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    UnexpectedNoCause { msg: String, backtrace: Backtrace },
 
     #[snafu(display(
         "Unknown engine type, type:{}.\nBacktrace:\n{}",
