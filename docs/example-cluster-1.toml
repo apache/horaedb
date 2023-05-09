@@ -11,9 +11,6 @@ grpc_port = 8832
 mysql_port = 13307
 deploy_mode = "Cluster"
 
-[server.forward]
-enable = false
-
 [analytic.storage]
 mem_cache_capacity = '1G'
 mem_cache_partition_bits = 0

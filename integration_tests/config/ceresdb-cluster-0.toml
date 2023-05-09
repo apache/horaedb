@@ -8,9 +8,6 @@ grpc_port = 8831
 mysql_port = 3307
 deploy_mode = "Cluster"
 
-[server.forward]
-enable = true
-
 [tracing]
 dir = "/tmp/ceresdb0"
 
