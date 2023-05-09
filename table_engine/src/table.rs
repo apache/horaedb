@@ -286,8 +286,7 @@ impl fmt::Display for TableId {
     }
 }
 
-// TODO(yingwen): Support DELETE/UPDATE... , a mutation type is needed.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WriteRequest {
     /// rows to write
     pub row_group: RowGroup,

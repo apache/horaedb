@@ -94,11 +94,13 @@ impl fmt::Debug for TableImpl {
     }
 }
 
+/// The queue for buffering pending write requests.
 struct PendingWriteQueue {
     max_rows: usize,
     pending_writes: PendingWrites,
 }
 
+/// The underlying queue for buffering pending write requests.
 #[derive(Default)]
 struct PendingWrites {
     writes: Vec<WriteRequest>,
@@ -109,7 +111,7 @@ struct PendingWrites {
 impl PendingWrites {
     /// Try to push the request into the pending queue.
     ///
-    /// Original request will be returned if the schema is different.
+    /// This push will be rejected if the schema is different.
     fn try_push(&mut self, request: WriteRequest) -> QueueResult {
         if !self.is_same_schema(request.row_group.schema()) {
             return QueueResult::Reject(request);
@@ -152,9 +154,15 @@ impl PendingWrites {
     }
 }
 
+/// The result when trying to push write request to the queue.
 enum QueueResult {
+    /// This request is rejected because the queue is full or the schema is
+    /// different.
     Reject(WriteRequest),
+    /// This request is the first one in the queue.
     First,
+    /// This request is pushed into the queue and the caller should wait for the
+    /// finish notification.
     Waiter(Receiver<Result<()>>),
 }
 
@@ -219,10 +227,13 @@ fn merge_pending_write_requests(
 }
 
 impl TableImpl {
-    /// Perform table writes.
+    /// Perform table write with pending queue.
     ///
     /// If the write is blocked, try to push the request into the pending queue,
     /// and merge and write them later.
+    /// It should be noted that the write procedure is responsible for merging
+    /// and writing all the writes in the queue if its write request is the
+    /// first one in the queue.
     async fn write_with_pending_queue(&self, request: WriteRequest) -> Result<usize> {
         let num_rows = request.row_group.num_rows();
 
@@ -524,5 +535,112 @@ impl Table for TableImpl {
             .box_err()
             .context(Compact { table: self.name() })?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use common_types::{schema::Version, time::Timestamp};
+
+    use super::*;
+    use crate::tests::{row_util, table::FixedSchemaTable};
+
+    fn build_test_write_request(
+        seed: i64,
+        num_rows: usize,
+        schema_version: Version,
+    ) -> WriteRequest {
+        let schema = FixedSchemaTable::default_schema_builder()
+            .version(schema_version)
+            .build()
+            .unwrap();
+        let mut schema_rows = Vec::with_capacity(num_rows);
+        for i in 0..num_rows {
+            let row = (
+                "key1",
+                Timestamp::new(seed + i as i64 * 7),
+                "tag1-1",
+                11.0,
+                110.0,
+                "tag2-1",
+            );
+            schema_rows.push(row);
+        }
+        let rows = row_util::new_rows_6(&schema_rows);
+        let row_group = RowGroupBuilder::with_rows(schema, rows).unwrap().build();
+        WriteRequest { row_group }
+    }
+
+    #[test]
+    fn test_queue_write_requests() {
+        let mut queue = PendingWriteQueue::new(100);
+        let req0 = build_test_write_request(0, 99, 0);
+        let res0 = queue.try_push(req0);
+        assert!(!queue.is_full());
+        assert!(matches!(res0, QueueResult::First));
+
+        let req1 = build_test_write_request(10, 10, 0);
+        let res1 = queue.try_push(req1);
+        assert!(queue.is_full());
+        assert!(matches!(res1, QueueResult::Waiter(_)));
+
+        let req2 = build_test_write_request(20, 17, 0);
+        let res2 = queue.try_push(req2);
+        assert!(queue.is_full());
+        assert!(matches!(res2, QueueResult::Reject(_)));
+        if let QueueResult::Reject(req) = res2 {
+            assert_eq!(req.row_group.num_rows(), 17);
+        }
+
+        // Reset the queue, and check the result.
+        let pending_writes = queue.reset();
+        assert_eq!(pending_writes.num_rows, 99 + 10);
+        assert_eq!(pending_writes.writes.len(), 2);
+        // Only one waiter.
+        assert_eq!(pending_writes.notifiers.len(), 1);
+
+        assert!(queue.pending_writes.is_empty());
+    }
+
+    #[test]
+    fn test_queue_write_requests_with_different_schema() {
+        let mut queue = PendingWriteQueue::new(100);
+        let req0 = build_test_write_request(0, 10, 0);
+        let res0 = queue.try_push(req0);
+        assert!(matches!(res0, QueueResult::First));
+
+        let req1 = build_test_write_request(1, 10, 1);
+        let res1 = queue.try_push(req1);
+        assert!(matches!(res1, QueueResult::Reject(_)));
+    }
+
+    #[test]
+    fn test_merge_pending_write_requests() {
+        let mut queue = PendingWriteQueue::new(100);
+        let mut total_requests = Vec::with_capacity(3);
+        let req0 = build_test_write_request(0, 40, 0);
+        total_requests.push(req0.clone());
+        queue.try_push(req0);
+
+        let req1 = build_test_write_request(10, 40, 0);
+        total_requests.push(req1.clone());
+        queue.try_push(req1);
+
+        let req2 = build_test_write_request(10, 40, 0);
+        total_requests.push(req2.clone());
+        queue.try_push(req2);
+
+        let pending_writes = queue.reset();
+        let mut merged_request =
+            merge_pending_write_requests(pending_writes.writes, pending_writes.num_rows);
+
+        let merged_rows = merged_request.row_group.take_rows();
+        let original_rows = total_requests
+            .iter_mut()
+            .map(|req| req.row_group.take_rows())
+            .flatten()
+            .collect::<Vec<_>>();
+
+        assert_eq!(merged_rows, original_rows);
     }
 }

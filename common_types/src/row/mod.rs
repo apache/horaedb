@@ -243,14 +243,14 @@ impl<'a> RowGroupSlicer<'a> {
 
 // TODO(yingwen): For multiple rows that share the same schema, no need to store
 // Datum for each row element, we can store the whole row as a binary and
-// provide more efficent way to convert rows into columns
+// provide more efficient way to convert rows into columns
 /// RowGroup
 ///
 /// The min/max timestamp of an empty RowGroup is 0.
 ///
 /// Rows in the RowGroup have the same schema. The internal representation of
 /// rows is not specific.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RowGroup {
     /// Schema of the row group, all rows in the row group should have same
     /// schema
