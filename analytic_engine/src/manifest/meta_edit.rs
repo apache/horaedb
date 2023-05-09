@@ -16,8 +16,8 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 use wal::log_batch::{Payload, PayloadDecoder};
 
-use super::meta_snapshot::MetaSnapshot;
 use crate::{
+    manifest::meta_snapshot::MetaSnapshot,
     space::SpaceId,
     table::{
         data::{MemTableId, TableShardInfo},

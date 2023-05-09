@@ -35,10 +35,11 @@ use wal::{
     },
 };
 
-use super::meta_edit::{MetaEdit, Snapshot};
 use crate::{
     manifest::{
-        meta_edit::{MetaEditRequest, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload},
+        meta_edit::{
+            MetaEdit, MetaEditRequest, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload, Snapshot,
+        },
         meta_snapshot::{MetaSnapshot, MetaSnapshotBuilder},
         LoadRequest, Manifest, SnapshotRequest,
     },
@@ -178,9 +179,9 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
     }
 }
 
-/// Table snapshot provider
+/// Table meta set
 ///
-/// Mainly for getting the [TableManifestData] from memory.
+/// Get snapshot of or modify table's metadata through it.
 pub(crate) trait TableMetaSet: fmt::Debug + Send + Sync {
     fn get_table_snapshot(
         &self,
@@ -462,7 +463,6 @@ impl Manifest for ManifestImpl {
         let shard_id = shard_info.shard_id;
         let location = WalLocation::new(shard_id as u64, table_id.as_u64());
         let space_id = meta_update.space_id();
-        let table_id = meta_update.table_id();
 
         self.maybe_do_snapshot(space_id, table_id, location, false)
             .await?;

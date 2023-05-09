@@ -65,7 +65,7 @@ impl Instance {
             store_picker.default_store().clone(),
         ));
 
-        let table_snapshot_provider = Arc::new(TableMetaSetImpl {
+        let table_meta_set_impl = Arc::new(TableMetaSetImpl {
             spaces: spaces.clone(),
             file_purger: file_purger.clone(),
             preflush_write_buffer_size_ratio: ctx.config.preflush_write_buffer_size_ratio,
@@ -74,7 +74,7 @@ impl Instance {
             ctx.config.manifest.clone(),
             manifest_storages.wal_manager,
             manifest_storages.oss_storage,
-            table_snapshot_provider,
+            table_meta_set_impl,
         )
         .await
         .context(OpenManifest)?;

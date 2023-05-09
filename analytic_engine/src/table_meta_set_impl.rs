@@ -45,27 +45,28 @@ impl fmt::Debug for TableMetaSetImpl {
 }
 
 impl TableMetaSetImpl {
+    fn find_space_and_apply_edit<F>(
+        &self,
+        space_id: SpaceId,
+        apply_edit: F,
+    ) -> crate::manifest::details::Result<()>
+    where
+        F: FnOnce(Arc<Space>) -> crate::manifest::details::Result<()>,
+    {
+        let spaces = self.spaces.read().unwrap();
+        let space = spaces
+            .get_by_id(space_id)
+            .with_context(|| ApplyUpdateToTableNoCause {
+                msg: format!("space not found, space_id:{space_id}"),
+            })?;
+        apply_edit(space.clone())
+    }
+
     fn apply_update(
         &self,
         meta_update: MetaUpdate,
         shard_info: TableShardInfo,
     ) -> crate::manifest::details::Result<()> {
-        // `FnOnce` can only be pass as the instance but not reference, however `Impl
-        // FnOnce` can not act as the parameter of the closure... So Box<dyn
-        // FnOnce> is used here.
-        let find_space_and_apply_edit = |space_id: SpaceId,
-                                         apply_edit: Box<
-            dyn FnOnce(Arc<Space>) -> crate::manifest::details::Result<()>,
-        >| {
-            let spaces = self.spaces.read().unwrap();
-            let space = spaces
-                .get_by_id(space_id)
-                .with_context(|| ApplyUpdateToTableNoCause {
-                    msg: format!("space not found, space_id:{space_id}"),
-                })?;
-            apply_edit(space.clone())
-        };
-
         match meta_update {
             MetaUpdate::AddTable(AddTableMeta {
                 space_id,
@@ -74,7 +75,7 @@ impl TableMetaSetImpl {
                 schema,
                 opts,
             }) => {
-                let add_table = Box::new(move |space: Arc<Space>| {
+                let add_table = move |space: Arc<Space>| {
                     let table_data = TableData::new(
                         space.id,
                         table_id,
@@ -95,16 +96,16 @@ impl TableMetaSetImpl {
                     })?;
                     space.insert_table(Arc::new(table_data));
                     Ok(())
-                });
+                };
 
-                find_space_and_apply_edit(space_id, add_table)
+                self.find_space_and_apply_edit(space_id, add_table)
             }
             MetaUpdate::DropTable(DropTableMeta {
                 space_id,
                 table_name,
                 ..
             }) => {
-                let drop_table = Box::new(move |space: Arc<Space>| {
+                let drop_table = move |space: Arc<Space>| {
                     let table_data = match space.find_table(table_name.as_str()) {
                         Some(v) => v,
                         None => return Ok(()),
@@ -119,9 +120,9 @@ impl TableMetaSetImpl {
                     space.remove_table(&table_data.name);
 
                     Ok(())
-                });
+                };
 
-                find_space_and_apply_edit(space_id, drop_table)
+                self.find_space_and_apply_edit(space_id, drop_table)
             }
             MetaUpdate::VersionEdit(VersionEditMeta {
                 space_id,
@@ -131,7 +132,7 @@ impl TableMetaSetImpl {
                 files_to_delete,
                 mems_to_remove,
             }) => {
-                let version_edit = Box::new(move |space: Arc<Space>| {
+                let version_edit = move |space: Arc<Space>| {
                     let table_data = space.find_table_by_id(table_id).with_context(|| {
                         ApplyUpdateToTableNoCause {
                             msg: format!(
@@ -148,9 +149,9 @@ impl TableMetaSetImpl {
                     table_data.current_version().apply_edit(edit);
 
                     Ok(())
-                });
+                };
 
-                find_space_and_apply_edit(space_id, version_edit)
+                self.find_space_and_apply_edit(space_id, version_edit)
             }
             MetaUpdate::AlterSchema(AlterSchemaMeta {
                 space_id,
@@ -158,7 +159,7 @@ impl TableMetaSetImpl {
                 schema,
                 ..
             }) => {
-                let alter_schema = Box::new(move |space: Arc<Space>| {
+                let alter_schema = move |space: Arc<Space>| {
                     let table_data = space.find_table_by_id(table_id).with_context(|| {
                         ApplyUpdateToTableNoCause {
                             msg: format!(
@@ -169,15 +170,15 @@ impl TableMetaSetImpl {
                     table_data.set_schema(schema);
 
                     Ok(())
-                });
-                find_space_and_apply_edit(space_id, alter_schema)
+                };
+                self.find_space_and_apply_edit(space_id, alter_schema)
             }
             MetaUpdate::AlterOptions(AlterOptionsMeta {
                 space_id,
                 table_id,
                 options,
             }) => {
-                let alter_option = Box::new(move |space: Arc<Space>| {
+                let alter_option = move |space: Arc<Space>| {
                     let table_data = space.find_table_by_id(table_id).with_context(|| {
                         ApplyUpdateToTableNoCause {
                             msg: format!(
@@ -188,8 +189,8 @@ impl TableMetaSetImpl {
                     table_data.set_table_options(options);
 
                     Ok(())
-                });
-                find_space_and_apply_edit(space_id, alter_option)
+                };
+                self.find_space_and_apply_edit(space_id, alter_option)
             }
         }
     }
