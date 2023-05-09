@@ -2,21 +2,19 @@
 
 //! Create table logic of instance
 
-use std::sync::Arc;
-
 use common_util::error::BoxError;
 use log::info;
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use table_engine::engine::CreateTableRequest;
 
 use crate::{
     instance::{
-        engine::{CreateOpenFailedTable, CreateTableData, InvalidOptions, Result, WriteManifest},
+        engine::{CreateOpenFailedTable, InvalidOptions, Result, TableNotExist, WriteManifest},
         Instance,
     },
-    manifest::meta_update::{AddTableMeta, MetaUpdate, MetaUpdateRequest},
+    manifest::meta_edit::{AddTableMeta, MetaEdit, MetaEditRequest, MetaUpdate},
     space::SpaceRef,
-    table::data::{TableData, TableDataRef},
+    table::data::{TableDataRef, TableShardInfo},
     table_options,
 };
 
@@ -51,50 +49,38 @@ impl Instance {
             return Ok(table_data);
         }
 
-        // Choose a write worker for this table
-        let (table_name, table_id) = (request.table_name.clone(), request.table_id);
-
-        let table_data = Arc::new(
-            TableData::new(
-                space.id,
-                request,
-                table_opts,
-                &self.file_purger,
-                self.preflush_write_buffer_size_ratio,
-                space.mem_usage_collector.clone(),
-            )
-            .context(CreateTableData {
-                space_id: space.id,
-                table: &table_name,
-                table_id,
-            })?,
-        );
-
-        // Store table info into meta
-        let update_req = {
+        // Store table info into meta both memory and storage.
+        let edit_req = {
             let meta_update = MetaUpdate::AddTable(AddTableMeta {
                 space_id: space.id,
-                table_id: table_data.id,
-                table_name: table_data.name.clone(),
-                schema: table_data.schema(),
-                opts: table_data.table_options().as_ref().clone(),
+                table_id: request.table_id,
+                table_name: request.table_name.clone(),
+                schema: request.table_schema,
+                opts: table_opts,
             });
-            MetaUpdateRequest {
-                shard_info: table_data.shard_info,
-                meta_update,
+            MetaEditRequest {
+                shard_info: TableShardInfo::new(request.shard_id),
+                meta_edit: MetaEdit::Update(meta_update),
             }
         };
         self.space_store
             .manifest
-            .store_update(update_req)
+            .apply_edit(edit_req)
             .await
-            .context(WriteManifest {
+            .with_context(|| WriteManifest {
                 space_id: space.id,
-                table: &table_data.name,
-                table_id: table_data.id,
+                table: request.table_name.clone(),
+                table_id: request.table_id,
             })?;
 
-        space.insert_table(table_data.clone());
-        Ok(table_data)
+        // Table is sure to exist here.
+        space
+            .find_table_by_id(request.table_id)
+            .with_context(|| TableNotExist {
+                msg: format!(
+                    "table not exist, space_id:{}, table_id:{}, table_name:{}",
+                    space.id, request.table_id, request.table_name
+                ),
+            })
     }
 }

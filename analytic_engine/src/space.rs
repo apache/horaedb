@@ -12,20 +12,11 @@ use std::{
 };
 
 use arena::CollectorRef;
-use snafu::OptionExt;
 use table_engine::table::TableId;
 
 use crate::{
     instance::mem_collector::MemUsageCollector,
-    manifest::{
-        details::{BuildSnapshotNoCause, TableSnapshotProvider},
-        meta_data::TableManifestData,
-        meta_update::AddTableMeta,
-    },
-    table::{
-        data::{TableDataRef, TableDataSet},
-        version::{TableVersionMeta, TableVersionSnapshot},
-    },
+    table::data::{TableDataRef, TableDataSet},
 };
 
 /// Holds references to the table data and its space
@@ -235,64 +226,3 @@ impl Spaces {
 }
 
 pub(crate) type SpacesRef = Arc<RwLock<Spaces>>;
-
-#[derive(Clone)]
-pub(crate) struct TableSnapshotProviderImpl {
-    pub(crate) spaces: SpacesRef,
-}
-
-impl fmt::Debug for TableSnapshotProviderImpl {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("spaces table snapshot provider")
-    }
-}
-
-impl TableSnapshotProvider for TableSnapshotProviderImpl {
-    fn get_table_snapshot(
-        &self,
-        space_id: SpaceId,
-        table_id: TableId,
-    ) -> crate::manifest::details::Result<Option<TableManifestData>> {
-        let spaces = self.spaces.read().unwrap();
-        let table_data = spaces
-            .get_by_id(space_id)
-            .context(BuildSnapshotNoCause {
-                msg: format!("space not exist, space_id:{space_id}, table_id:{table_id}",),
-            })?
-            .find_table_by_id(table_id)
-            .context(BuildSnapshotNoCause {
-                msg: format!("table data not exist, space_id:{space_id}, table_id:{table_id}",),
-            })?;
-
-        // When table has been dropped, we should return None.
-        let table_manifest_data_opt = if !table_data.is_dropped() {
-            let table_meta = AddTableMeta {
-                space_id,
-                table_id,
-                table_name: table_data.name.to_string(),
-                schema: table_data.schema(),
-                opts: table_data.table_options().as_ref().clone(),
-            };
-
-            let version_snapshot = table_data.current_version().snapshot();
-            let TableVersionSnapshot {
-                flushed_sequence,
-                files,
-            } = version_snapshot;
-            let version_meta = TableVersionMeta {
-                flushed_sequence,
-                files,
-                max_file_id: table_data.last_file_id(),
-            };
-
-            Some(TableManifestData {
-                table_meta,
-                version_meta: Some(version_meta),
-            })
-        } else {
-            None
-        };
-
-        Ok(table_manifest_data_opt)
-    }
-}

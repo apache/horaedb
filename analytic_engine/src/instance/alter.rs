@@ -21,7 +21,9 @@ use crate::{
         serial_executor::TableOpSerialExecutor,
         InstanceRef,
     },
-    manifest::meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate, MetaUpdateRequest},
+    manifest::meta_edit::{
+        AlterOptionsMeta, AlterSchemaMeta, MetaEdit, MetaEditRequest, MetaUpdate,
+    },
     payload::WritePayload,
     table::data::TableDataRef,
     table_options,
@@ -120,26 +122,23 @@ impl<'a> Alterer<'a> {
         );
 
         // Write to Manifest
-        let update_req = {
+        let edit_req = {
             let meta_update = MetaUpdate::AlterSchema(manifest_update);
-            MetaUpdateRequest {
+            MetaEditRequest {
                 shard_info: self.table_data.shard_info,
-                meta_update,
+                meta_edit: MetaEdit::Update(meta_update),
             }
         };
         self.instance
             .space_store
             .manifest
-            .store_update(update_req)
+            .apply_edit(edit_req)
             .await
             .context(WriteManifest {
                 space_id: self.table_data.space_id,
                 table: &self.table_data.name,
                 table_id: self.table_data.id,
             })?;
-
-        // Update schema in memory.
-        self.table_data.set_schema(request.schema);
 
         Ok(())
     }
@@ -249,26 +248,23 @@ impl<'a> Alterer<'a> {
             })?;
 
         // Write to Manifest
-        let update_req = {
+        let edit_req = {
             let meta_update = MetaUpdate::AlterOptions(manifest_update);
-            MetaUpdateRequest {
+            MetaEditRequest {
                 shard_info: self.table_data.shard_info,
-                meta_update,
+                meta_edit: MetaEdit::Update(meta_update),
             }
         };
         self.instance
             .space_store
             .manifest
-            .store_update(update_req)
+            .apply_edit(edit_req)
             .await
             .context(WriteManifest {
                 space_id: self.table_data.space_id,
                 table: &self.table_data.name,
                 table_id: self.table_data.id,
             })?;
-
-        // Update memory status
-        self.table_data.set_table_options(table_opts);
 
         Ok(())
     }

@@ -12,7 +12,7 @@ use crate::{
         flush_compaction::{Flusher, TableFlushOptions},
         SpaceStoreRef,
     },
-    manifest::meta_update::{DropTableMeta, MetaUpdate, MetaUpdateRequest},
+    manifest::meta_edit::{DropTableMeta, MetaEdit, MetaEditRequest, MetaUpdate},
     space::SpaceRef,
 };
 
@@ -49,6 +49,7 @@ impl Dropper {
         // Fixme(xikai): Trigger a force flush so that the data of the table in the wal
         //  is marked for deletable. However, the overhead of the flushing can
         //  be avoided.
+
         let opts = TableFlushOptions::default();
         let flush_scheduler = serial_exec.flush_scheduler();
         self.flusher
@@ -61,34 +62,26 @@ impl Dropper {
             })?;
 
         // Store the dropping information into meta
-        let update_req = {
+        let edit_req = {
             let meta_update = MetaUpdate::DropTable(DropTableMeta {
                 space_id: self.space.id,
                 table_id: table_data.id,
                 table_name: table_data.name.clone(),
             });
-            MetaUpdateRequest {
+            MetaEditRequest {
                 shard_info: table_data.shard_info,
-                meta_update,
+                meta_edit: MetaEdit::Update(meta_update),
             }
         };
         self.space_store
             .manifest
-            .store_update(update_req)
+            .apply_edit(edit_req)
             .await
             .context(WriteManifest {
                 space_id: self.space.id,
                 table: &table_data.name,
                 table_id: table_data.id,
             })?;
-
-        // Set the table dropped after finishing flushing and storing drop table meta
-        // information.
-        table_data.set_dropped();
-
-        // Clear the memory status after updating manifest and clearing wal so that
-        // the drop is retryable if fails to update and clear.
-        self.space.remove_table(&table_data.name);
 
         Ok(true)
     }

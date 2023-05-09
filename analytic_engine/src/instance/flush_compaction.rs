@@ -36,7 +36,9 @@ use crate::{
         TableCompactionRequest,
     },
     instance::{self, serial_executor::TableFlushScheduler, SpaceStore, SpaceStoreRef},
-    manifest::meta_update::{AlterOptionsMeta, MetaUpdate, MetaUpdateRequest, VersionEditMeta},
+    manifest::meta_edit::{
+        AlterOptionsMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
+    },
     memtable::{ColumnarIterPtr, MemTableRef, ScanContext, ScanRequest},
     row_iter::{
         self,
@@ -53,7 +55,7 @@ use crate::{
     table::{
         data::{TableData, TableDataRef},
         version::{FlushableMemTables, MemTableState, SamplingMemTable},
-        version_edit::{AddFile, DeleteFile, VersionEdit},
+        version_edit::{AddFile, DeleteFile},
     },
     table_options::StorageFormatHint,
 };
@@ -231,24 +233,22 @@ impl Flusher {
             let mut new_table_opts = (*table_data.table_options()).clone();
             new_table_opts.segment_duration = Some(ReadableDuration(suggest_segment_duration));
 
-            let update_req = {
+            let edit_req = {
                 let meta_update = MetaUpdate::AlterOptions(AlterOptionsMeta {
                     space_id: table_data.space_id,
                     table_id: table_data.id,
                     options: new_table_opts.clone(),
                 });
-                MetaUpdateRequest {
+                MetaEditRequest {
                     shard_info: table_data.shard_info,
-                    meta_update,
+                    meta_edit: MetaEdit::Update(meta_update),
                 }
             };
             self.space_store
                 .manifest
-                .store_update(update_req)
+                .apply_edit(edit_req)
                 .await
                 .context(StoreVersionEdit)?;
-
-            table_data.set_table_options(new_table_opts);
 
             // Now the segment duration is applied, we can stop sampling and freeze the
             // sampling memtable.
@@ -415,35 +415,26 @@ impl FlushTask {
         );
 
         // Persist the flush result to manifest.
-        let update_req = {
+        let edit_req = {
             let edit_meta = VersionEditMeta {
                 space_id: self.table_data.space_id,
                 table_id: self.table_data.id,
                 flushed_sequence,
                 files_to_add: files_to_level0.clone(),
                 files_to_delete: vec![],
+                mems_to_remove: mems_to_flush.ids(),
             };
             let meta_update = MetaUpdate::VersionEdit(edit_meta);
-            MetaUpdateRequest {
+            MetaEditRequest {
                 shard_info: self.table_data.shard_info,
-                meta_update,
+                meta_edit: MetaEdit::Update(meta_update),
             }
         };
         self.space_store
             .manifest
-            .store_update(update_req)
+            .apply_edit(edit_req)
             .await
             .context(StoreVersionEdit)?;
-
-        // Edit table version to remove dumped memtables.
-        let mems_to_remove = mems_to_flush.ids();
-        let edit = VersionEdit {
-            flushed_sequence,
-            mems_to_remove,
-            files_to_add: files_to_level0,
-            files_to_delete: vec![],
-        };
-        self.table_data.current_version().apply_edit(edit);
 
         // Mark sequence <= flushed_sequence to be deleted.
         let table_location = self.table_data.table_location();
@@ -689,7 +680,8 @@ impl SpaceStore {
             flushed_sequence: 0,
             // Use the number of compaction inputs as the estimated number of files to add.
             files_to_add: Vec::with_capacity(task.compaction_inputs.len()),
-            files_to_delete: Vec::new(),
+            files_to_delete: vec![],
+            mems_to_remove: vec![],
         };
 
         if task.expired.is_empty() && task.compaction_inputs.is_empty() {
@@ -722,21 +714,17 @@ impl SpaceStore {
             .await?;
         }
 
-        let update_req = {
+        let edit_req = {
             let meta_update = MetaUpdate::VersionEdit(edit_meta.clone());
-            MetaUpdateRequest {
+            MetaEditRequest {
                 shard_info: table_data.shard_info,
-                meta_update,
+                meta_edit: MetaEdit::Update(meta_update),
             }
         };
         self.manifest
-            .store_update(update_req)
+            .apply_edit(edit_req)
             .await
             .context(StoreVersionEdit)?;
-
-        // Apply to the table version.
-        let edit = edit_meta.into_version_edit();
-        table_data.current_version().apply_edit(edit);
 
         Ok(())
     }

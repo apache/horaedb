@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Alter test
 
@@ -47,8 +47,8 @@ fn test_alter_table_add_column<T: EngineBuildContext>(engine_context: T) {
     env.block_on(async {
         test_ctx.open().await;
 
-        let test_table1 = "test_table1";
-        let fixed_schema_table = test_ctx.create_fixed_schema_table(test_table1).await;
+        let alter_test_table1 = "alter_test_table1";
+        let fixed_schema_table = test_ctx.create_fixed_schema_table(alter_test_table1).await;
 
         let start_ms = test_ctx.start_ms();
         let rows = [
@@ -72,21 +72,21 @@ fn test_alter_table_add_column<T: EngineBuildContext>(engine_context: T) {
 
         // Write data to table.
         let row_group = fixed_schema_table.rows_to_row_group(&rows);
-        test_ctx.write_to_table(test_table1, row_group).await;
+        test_ctx.write_to_table(alter_test_table1, row_group).await;
 
-        alter_schema_same_schema_version_case(&test_ctx, test_table1).await;
+        alter_schema_same_schema_version_case(&test_ctx, alter_test_table1).await;
 
-        alter_schema_old_pre_version_case(&test_ctx, test_table1).await;
+        alter_schema_old_pre_version_case(&test_ctx, alter_test_table1).await;
 
-        alter_schema_add_column_case(&mut test_ctx, test_table1, start_ms, false).await;
+        alter_schema_add_column_case(&mut test_ctx, alter_test_table1, start_ms, false).await;
 
         // Prepare another table for alter.
-        let test_table2 = "test_table2";
-        test_ctx.create_fixed_schema_table(test_table2).await;
+        let alter_test_table2 = "alter_test_table2";
+        test_ctx.create_fixed_schema_table(alter_test_table2).await;
         let row_group = fixed_schema_table.rows_to_row_group(&rows);
-        test_ctx.write_to_table(test_table2, row_group).await;
+        test_ctx.write_to_table(alter_test_table2, row_group).await;
 
-        alter_schema_add_column_case(&mut test_ctx, test_table2, start_ms, true).await;
+        alter_schema_add_column_case(&mut test_ctx, alter_test_table2, start_ms, true).await;
     });
 }
 
@@ -388,31 +388,43 @@ fn test_alter_table_options<T: EngineBuildContext>(engine_context: T) {
     env.block_on(async {
         test_ctx.open().await;
 
-        let test_table1 = "test_table1";
-        test_ctx.create_fixed_schema_table(test_table1).await;
+        let alter_test_table1 = "alter_test_table1";
+        test_ctx.create_fixed_schema_table(alter_test_table1).await;
 
-        let opts = test_ctx.table(test_table1).options();
+        let opts = test_ctx.table(alter_test_table1).options();
 
         let default_opts_map = default_options();
 
         assert_options_eq(&default_opts_map, &opts);
 
-        alter_immutable_option_case(&test_ctx, test_table1, "segment_duration", "20d").await;
+        alter_immutable_option_case(&test_ctx, alter_test_table1, "segment_duration", "20d").await;
 
-        alter_immutable_option_case(&test_ctx, test_table1, "bucket_duration", "20d").await;
+        alter_immutable_option_case(&test_ctx, alter_test_table1, "bucket_duration", "20d").await;
 
-        alter_immutable_option_case(&test_ctx, test_table1, "update_mode", "Append").await;
+        alter_immutable_option_case(&test_ctx, alter_test_table1, "update_mode", "Append").await;
 
-        alter_mutable_option_case(&mut test_ctx, test_table1, "enable_ttl", "false").await;
-        alter_mutable_option_case(&mut test_ctx, test_table1, "enable_ttl", "true").await;
-
-        alter_mutable_option_case(&mut test_ctx, test_table1, "arena_block_size", "10240").await;
-
-        alter_mutable_option_case(&mut test_ctx, test_table1, "write_buffer_size", "1024000").await;
+        alter_mutable_option_case(&mut test_ctx, alter_test_table1, "enable_ttl", "false").await;
+        alter_mutable_option_case(&mut test_ctx, alter_test_table1, "enable_ttl", "true").await;
 
         alter_mutable_option_case(
             &mut test_ctx,
-            test_table1,
+            alter_test_table1,
+            "arena_block_size",
+            "10240",
+        )
+        .await;
+
+        alter_mutable_option_case(
+            &mut test_ctx,
+            alter_test_table1,
+            "write_buffer_size",
+            "1024000",
+        )
+        .await;
+
+        alter_mutable_option_case(
+            &mut test_ctx,
+            alter_test_table1,
             "num_rows_per_row_group",
             "10000",
         )

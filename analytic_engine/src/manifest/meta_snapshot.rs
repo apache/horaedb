@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Meta data of manifest.
 
@@ -7,7 +7,7 @@ use log::debug;
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{
-    manifest::meta_update::{AddTableMeta, MetaUpdate},
+    manifest::meta_edit::{AddTableMeta, MetaUpdate},
     table::version::TableVersionMeta,
 };
 
@@ -27,18 +27,18 @@ pub enum Error {
 define_result!(Error);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TableManifestData {
+pub struct MetaSnapshot {
     pub table_meta: AddTableMeta,
     pub version_meta: Option<TableVersionMeta>,
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct TableManifestDataBuilder {
+pub struct MetaSnapshotBuilder {
     table_meta: Option<AddTableMeta>,
     version_meta: Option<TableVersionMeta>,
 }
 
-impl TableManifestDataBuilder {
+impl MetaSnapshotBuilder {
     pub fn new(table_meta: Option<AddTableMeta>, version_meta: Option<TableVersionMeta>) -> Self {
         Self {
             table_meta,
@@ -46,9 +46,9 @@ impl TableManifestDataBuilder {
         }
     }
 
-    pub fn build(mut self) -> Option<TableManifestData> {
+    pub fn build(mut self) -> Option<MetaSnapshot> {
         let version_meta = self.version_meta.take();
-        self.table_meta.map(|v| TableManifestData {
+        self.table_meta.map(|v| MetaSnapshot {
             table_meta: v,
             version_meta,
         })

@@ -586,6 +586,8 @@ impl FilePurger {
     }
 }
 
+pub type FilePurgerRef = Arc<FilePurger>;
+
 #[cfg(test)]
 pub mod tests {
     use super::*;

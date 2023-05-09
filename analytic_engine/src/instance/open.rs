@@ -23,25 +23,23 @@ use crate::{
     engine,
     instance::{
         self,
-        engine::{
-            ApplyMemTable, FlushTable, OpenManifest, ReadMetaUpdate, ReadWal, RecoverTableData,
-            Result,
-        },
+        engine::{ApplyMemTable, FlushTable, OpenManifest, ReadMetaUpdate, ReadWal, Result},
         flush_compaction::TableFlushOptions,
         mem_collector::MemUsageCollector,
         serial_executor::TableOpSerialExecutor,
         write::MemTableWriter,
         Instance, SpaceStore,
     },
-    manifest::{details::ManifestImpl, meta_data::TableManifestData, LoadRequest},
+    manifest::{details::ManifestImpl, LoadRequest},
     payload::{ReadPayload, WalDecoder},
     row_iter::IterOptions,
-    space::{Space, SpaceContext, SpaceId, SpaceRef, Spaces, TableSnapshotProviderImpl},
+    space::{SpaceRef, Spaces},
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
     },
-    table::data::{TableData, TableDataRef},
+    table::data::TableDataRef,
+    table_meta_set_impl::TableMetaSetImpl,
 };
 
 const MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ: usize = 64;
@@ -61,14 +59,22 @@ impl Instance {
         sst_factory: SstFactoryRef,
     ) -> Result<Arc<Self>> {
         let spaces: Arc<RwLock<Spaces>> = Arc::new(RwLock::new(Spaces::default()));
-        let table_snapshot_provider = Arc::new(TableSnapshotProviderImpl {
+        let default_runtime = ctx.runtimes.default_runtime.clone();
+        let file_purger = Arc::new(FilePurger::start(
+            &default_runtime,
+            store_picker.default_store().clone(),
+        ));
+
+        let table_meta_set_impl = Arc::new(TableMetaSetImpl {
             spaces: spaces.clone(),
+            file_purger: file_purger.clone(),
+            preflush_write_buffer_size_ratio: ctx.config.preflush_write_buffer_size_ratio,
         });
         let manifest = ManifestImpl::open(
             ctx.config.manifest.clone(),
             manifest_storages.wal_manager,
             manifest_storages.oss_storage,
-            table_snapshot_provider,
+            table_meta_set_impl,
         )
         .await
         .context(OpenManifest)?;
@@ -96,9 +102,6 @@ impl Instance {
             scan_options_for_compaction,
         ));
 
-        let default_runtime = ctx.runtimes.default_runtime.clone();
-        let file_purger = FilePurger::start(&default_runtime, store_picker.default_store().clone());
-
         let scan_options = ScanOptions {
             background_read_parallelism: ctx.config.sst_background_read_parallelism,
             max_record_batches_in_flight: ctx.config.scan_max_record_batches_in_flight,
@@ -119,7 +122,6 @@ impl Instance {
             mem_usage_collector: Arc::new(MemUsageCollector::default()),
             db_write_buffer_size: ctx.config.db_write_buffer_size,
             space_write_buffer_size: ctx.config.space_write_buffer_size,
-            preflush_write_buffer_size_ratio: ctx.config.preflush_write_buffer_size_ratio,
             replay_batch_size: ctx.config.replay_batch_size,
             write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_byte() as usize,
             max_bytes_per_write_batch: ctx
@@ -133,38 +135,6 @@ impl Instance {
         Ok(instance)
     }
 
-    /// Open the space if it is not opened before.
-    async fn open_space(
-        self: &Arc<Self>,
-        space_id: SpaceId,
-        context: SpaceContext,
-    ) -> Result<SpaceRef> {
-        {
-            let spaces = self.space_store.spaces.read().unwrap();
-
-            if let Some(space) = spaces.get_by_id(space_id) {
-                return Ok(space.clone());
-            }
-        }
-
-        // double check whether the space exists.
-        let mut spaces = self.space_store.spaces.write().unwrap();
-        if let Some(space) = spaces.get_by_id(space_id) {
-            return Ok(space.clone());
-        }
-
-        // Add this space to instance.
-        let space = Arc::new(Space::new(
-            space_id,
-            context,
-            self.space_write_buffer_size,
-            self.mem_usage_collector.clone(),
-        ));
-        spaces.insert(space.clone());
-
-        Ok(space)
-    }
-
     /// Open the table.
     pub async fn do_open_table(
         self: &Arc<Self>,
@@ -174,8 +144,13 @@ impl Instance {
         if let Some(table_data) = space.find_table_by_id(request.table_id) {
             return Ok(Some(table_data));
         }
-        let table_data = match self.recover_table_meta_data(request).await? {
-            Some(v) => v,
+
+        // Recover table meta from manifest.
+        self.recover_table_meta(request).await?;
+
+        // Recover table data from wal.
+        let table_data = match space.find_table_by_id(request.table_id) {
+            Some(data) => data,
             None => return Ok(None),
         };
 
@@ -183,8 +158,7 @@ impl Instance {
             batch_size: self.replay_batch_size,
             ..Default::default()
         };
-
-        self.recover_table_from_wal(table_data.clone(), self.replay_batch_size, &read_ctx)
+        self.recover_table_data(table_data.clone(), self.replay_batch_size, &read_ctx)
             .await
             .map_err(|e| {
                 error!("Recovery table from wal failed, table_data:{table_data:?}, err:{e}");
@@ -192,19 +166,13 @@ impl Instance {
                 e
             })?;
 
-        // All data has been recovered, insert the table into space to allow following
-        // access.
-        space.insert_table(table_data.clone());
         Ok(Some(table_data))
     }
 
     /// Recover meta data from manifest
     ///
     /// Return None if no meta data is found for the table.
-    async fn recover_table_meta_data(
-        self: &Arc<Self>,
-        request: &OpenTableRequest,
-    ) -> Result<Option<TableDataRef>> {
+    async fn recover_table_meta(self: &Arc<Self>, request: &OpenTableRequest) -> Result<()> {
         info!("Instance recover table:{} meta begin", request.table_id);
 
         // Load manifest, also create a new snapshot at startup.
@@ -215,78 +183,23 @@ impl Instance {
             table_id,
             shard_id: request.shard_id,
         };
-        let manifest_data = self
-            .space_store
+        self.space_store
             .manifest
-            .load_data(&load_req)
+            .recover(&load_req)
             .await
             .context(ReadMetaUpdate {
                 table_id: request.table_id,
             })?;
 
-        let table_data = if let Some(manifest_data) = manifest_data {
-            Some(self.recover_table_data(manifest_data, request).await?)
-        } else {
-            None
-        };
-
         info!("Instance recover table:{} meta end", request.table_id);
 
-        Ok(table_data)
-    }
-
-    /// Recover `TableData` by applying manifest data to instance
-    async fn recover_table_data(
-        self: &Arc<Self>,
-        manifest_data: TableManifestData,
-        request: &OpenTableRequest,
-    ) -> Result<TableDataRef> {
-        let TableManifestData {
-            table_meta,
-            version_meta,
-        } = manifest_data;
-
-        let context = SpaceContext {
-            catalog_name: request.catalog_name.clone(),
-            schema_name: request.schema_name.clone(),
-        };
-        let space = self.open_space(table_meta.space_id, context).await?;
-
-        let table_name = table_meta.table_name.clone();
-
-        debug!("Instance apply add table, meta :{:?}", table_meta);
-
-        let table_data = Arc::new(
-            TableData::recover_from_add(
-                table_meta,
-                &self.file_purger,
-                request.shard_id,
-                self.preflush_write_buffer_size_ratio,
-                space.mem_usage_collector.clone(),
-            )
-            .context(RecoverTableData {
-                space_id: space.id,
-                table: &table_name,
-            })?,
-        );
-
-        // Apply version meta to the table.
-        if let Some(version_meta) = version_meta {
-            let max_file_id = version_meta.max_file_id_to_add();
-            table_data.current_version().apply_meta(version_meta);
-            // In recovery case, we need to maintain last file id of the table manually.
-            if table_data.last_file_id() < max_file_id {
-                table_data.set_last_file_id(max_file_id);
-            }
-        }
-
-        Ok(table_data)
+        Ok(())
     }
 
     /// Recover table data from wal
     ///
     /// Called by write worker
-    pub(crate) async fn recover_table_from_wal(
+    pub(crate) async fn recover_table_data(
         self: &Arc<Self>,
         table_data: TableDataRef,
         replay_batch_size: usize,

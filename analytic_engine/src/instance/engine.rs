@@ -210,6 +210,9 @@ pub enum Error {
     OpenManifest {
         source: crate::manifest::details::Error,
     },
+
+    #[snafu(display("Failed to find table, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    TableNotExist { msg: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -240,7 +243,8 @@ impl From<Error> for table_engine::engine::Error {
             | Error::EncodePayloads { .. }
             | Error::CreateOpenFailedTable { .. }
             | Error::DoManifestSnapshot { .. }
-            | Error::OpenManifest { .. } => Self::Unexpected {
+            | Error::OpenManifest { .. }
+            | Error::TableNotExist { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
         }

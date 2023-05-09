@@ -17,9 +17,11 @@ use table_engine::table::TableId;
 use wal::log_batch::{Payload, PayloadDecoder};
 
 use crate::{
+    manifest::meta_snapshot::MetaSnapshot,
     space::SpaceId,
     table::{
-        data::TableShardInfo,
+        data::{MemTableId, TableShardInfo},
+        version::TableVersionMeta,
         version_edit::{AddFile, DeleteFile, VersionEdit},
     },
     table_options, TableOptions,
@@ -58,12 +60,15 @@ pub enum Error {
     ConvertVersionEdit {
         source: crate::table::version_edit::Error,
     },
+
+    #[snafu(display("Failed to convert meta edit, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    ConvertMetaEdit { msg: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
 
 /// Modifications to meta data in meta
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum MetaUpdate {
     AddTable(AddTableMeta),
     DropTable(DropTableMeta),
@@ -222,6 +227,9 @@ pub struct VersionEditMeta {
     pub flushed_sequence: SequenceNumber,
     pub files_to_add: Vec<AddFile>,
     pub files_to_delete: Vec<DeleteFile>,
+    /// Id of memtables to remove from immutable memtable lists.
+    /// No need to persist.
+    pub mems_to_remove: Vec<MemTableId>,
 }
 
 impl VersionEditMeta {
@@ -275,6 +283,7 @@ impl TryFrom<manifest_pb::VersionEditMeta> for VersionEditMeta {
             flushed_sequence: src.flushed_sequence,
             files_to_add,
             files_to_delete,
+            mems_to_remove: Vec::default(),
         })
     }
 }
@@ -389,8 +398,118 @@ impl PayloadDecoder for MetaUpdateDecoder {
     }
 }
 
+/// The snapshot for the current logs.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Snapshot {
+    /// The end sequence of the logs that this snapshot covers.
+    /// Basically it is the latest sequence number of the logs when creating a
+    /// new snapshot.
+    pub end_seq: SequenceNumber,
+    /// The data of the snapshot.
+    /// None means the table not exists(maybe dropped or not created yet).
+    pub data: Option<MetaSnapshot>,
+}
+
+impl TryFrom<manifest_pb::Snapshot> for Snapshot {
+    type Error = Error;
+
+    fn try_from(src: manifest_pb::Snapshot) -> Result<Self> {
+        let meta = src.meta.map(AddTableMeta::try_from).transpose()?;
+
+        let version_edit = src
+            .version_edit
+            .map(VersionEditMeta::try_from)
+            .transpose()?;
+
+        let version_meta = version_edit.map(|v| {
+            let mut version_meta = TableVersionMeta::default();
+            version_meta.apply_edit(v.into_version_edit());
+            version_meta
+        });
+
+        let table_manifest_data = meta.map(|v| MetaSnapshot {
+            table_meta: v,
+            version_meta,
+        });
+        Ok(Self {
+            end_seq: src.end_seq,
+            data: table_manifest_data,
+        })
+    }
+}
+
+impl From<Snapshot> for manifest_pb::Snapshot {
+    fn from(src: Snapshot) -> Self {
+        if let Some((meta, version_edit)) = src.data.map(|v| {
+            let space_id = v.table_meta.space_id;
+            let table_id = v.table_meta.table_id;
+            let table_meta = manifest_pb::AddTableMeta::from(v.table_meta);
+            let version_edit = v.version_meta.map(|version_meta| VersionEditMeta {
+                space_id,
+                table_id,
+                flushed_sequence: version_meta.flushed_sequence,
+                files_to_add: version_meta.ordered_files(),
+                files_to_delete: vec![],
+                mems_to_remove: vec![],
+            });
+            (
+                table_meta,
+                version_edit.map(manifest_pb::VersionEditMeta::from),
+            )
+        }) {
+            Self {
+                end_seq: src.end_seq,
+                meta: Some(meta),
+                version_edit,
+            }
+        } else {
+            Self {
+                end_seq: src.end_seq,
+                meta: None,
+                version_edit: None,
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct MetaUpdateRequest {
+pub enum MetaEdit {
+    Update(MetaUpdate),
+    Snapshot(MetaSnapshot),
+}
+
+impl TryFrom<MetaEdit> for MetaUpdate {
+    type Error = Error;
+
+    fn try_from(value: MetaEdit) -> std::result::Result<Self, Self::Error> {
+        if let MetaEdit::Update(update) = value {
+            Ok(update)
+        } else {
+            ConvertMetaEdit {
+                msg: "it is not the update type meta edit",
+            }
+            .fail()
+        }
+    }
+}
+
+impl TryFrom<MetaEdit> for MetaSnapshot {
+    type Error = Error;
+
+    fn try_from(value: MetaEdit) -> std::result::Result<Self, Self::Error> {
+        if let MetaEdit::Snapshot(table_manifest_data) = value {
+            Ok(table_manifest_data)
+        } else {
+            ConvertMetaEdit {
+                msg: "it is not the snapshot type meta edit",
+            }
+            .fail()
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MetaEditRequest {
     pub shard_info: TableShardInfo,
-    pub meta_update: MetaUpdate,
+    pub meta_edit: MetaEdit,
 }

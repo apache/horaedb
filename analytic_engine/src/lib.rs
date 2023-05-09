@@ -19,6 +19,7 @@ mod storage_options;
 pub mod table;
 pub mod table_options;
 
+pub mod table_meta_set_impl;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
