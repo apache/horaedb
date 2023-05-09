@@ -60,6 +60,8 @@ pub struct Config {
     /// Manifest options
     pub manifest: ManifestOptions,
 
+    /// The maximum rows in the write queue.
+    pub max_rows_in_write_queue: usize,
     /// The maximum write buffer size used for single space.
     pub space_write_buffer_size: usize,
     /// The maximum size of all Write Buffers across all spaces.
@@ -107,6 +109,7 @@ impl Default for Config {
             sst_meta_cache_cap: Some(1000),
             sst_data_cache_cap: Some(1000),
             manifest: ManifestOptions::default(),
+            max_rows_in_write_queue: 0,
             /// Zero means disabling this param, give a positive value to enable
             /// it.
             space_write_buffer_size: 0,
