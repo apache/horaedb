@@ -37,6 +37,9 @@ meta_addr = "http://127.0.0.1:2379"
 lease = "10s"
 timeout = "5s"
 
+[cluster_deployment.etcd_client]
+server_addrs = ['127.0.0.1:2379']
+
 [limiter]
 write_block_list = ['mytable1']
 read_block_list = ['mytable1']
