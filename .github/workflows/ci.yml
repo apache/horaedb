@@ -35,7 +35,7 @@ env:
 jobs:
   style-check:
     name: style-check
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
@@ -87,7 +87,7 @@ jobs:
 
   unit-test:
     name: unit-test
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
@@ -128,7 +128,7 @@ jobs:
 
   integration-test:
     name: integration-test
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
@@ -174,7 +174,7 @@ jobs:
 
   sdk-test:
     name: sdk-test
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
