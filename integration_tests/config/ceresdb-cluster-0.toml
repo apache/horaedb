@@ -8,9 +8,6 @@ grpc_port = 8831
 mysql_port = 3307
 deploy_mode = "Cluster"
 
-[server.forward]
-enable = true
-
 [tracing]
 dir = "/tmp/ceresdb0"
 
@@ -36,6 +33,9 @@ cluster_name = "defaultCluster"
 meta_addr = "http://127.0.0.1:2379"
 lease = "10s"
 timeout = "5s"
+
+[cluster_deployment.etcd_client]
+server_addrs = ['127.0.0.1:2379']
 
 [limiter]
 write_block_list = ['mytable1']

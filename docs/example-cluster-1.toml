@@ -11,9 +11,6 @@ grpc_port = 8832
 mysql_port = 13307
 deploy_mode = "Cluster"
 
-[server.forward]
-enable = false
-
 [analytic.storage]
 mem_cache_capacity = '1G'
 mem_cache_partition_bits = 0
@@ -36,6 +33,9 @@ cluster_name = "defaultCluster"
 meta_addr = "http://127.0.0.1:2379"
 lease = "10s"
 timeout = "5s"
+
+[cluster_deployment.etcd_client]
+server_addrs = ['127.0.0.1:2379']
 
 [limiter]
 write_block_list = ['mytable1']
