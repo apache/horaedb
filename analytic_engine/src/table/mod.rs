@@ -237,55 +237,48 @@ impl TableImpl {
     async fn write_with_pending_queue(&self, request: WriteRequest) -> Result<usize> {
         let num_rows = request.row_group.num_rows();
 
-        let lock_res = self.table_data.serial_exec.try_lock();
-        let (request, mut serial_exec, notifiers) = if let Ok(serial_exec) = lock_res {
-            (request, serial_exec, vec![])
-        } else {
-            // Failed to acquire the serial_exec, put the request into the
-            // pending queue.
-            let queue_res = {
-                let mut pending_queue = self.pending_writes.lock().unwrap();
-                pending_queue.try_push(request)
-            };
-            match queue_res {
-                QueueResult::First => {
-                    // This is the first request in the queue, and we should
-                    // take responsibilities for merging and writing the
-                    // requests in the queue.
-                    let serial_exec = self.table_data.serial_exec.lock().await;
-                    // The `serial_exec` is acquired, let's merge the pending requests and write
-                    // them all.
-                    let pending_writes = {
-                        let mut pending_queue = self.pending_writes.lock().unwrap();
-                        pending_queue.reset()
-                    };
-                    assert!(
-                        !pending_writes.is_empty(),
-                        "The pending writes should contain at least the one just pushed."
-                    );
-                    let merged_write_request = merge_pending_write_requests(
-                        pending_writes.writes,
-                        pending_writes.num_rows,
-                    );
-                    (merged_write_request, serial_exec, pending_writes.notifiers)
-                }
-                QueueResult::Waiter(rx) => {
-                    // The request is successfully pushed into the queue, and just wait for the
-                    // write result.
-                    match rx.await {
-                        Ok(res) => {
-                            res.box_err().context(Write { table: self.name() })?;
-                            return Ok(num_rows);
-                        }
-                        Err(_) => return WaitForPendingWrites { table: self.name() }.fail(),
+        // Failed to acquire the serial_exec, put the request into the
+        // pending queue.
+        let queue_res = {
+            let mut pending_queue = self.pending_writes.lock().unwrap();
+            pending_queue.try_push(request)
+        };
+        let (request, mut serial_exec, notifiers) = match queue_res {
+            QueueResult::First => {
+                // This is the first request in the queue, and we should
+                // take responsibilities for merging and writing the
+                // requests in the queue.
+                let serial_exec = self.table_data.serial_exec.lock().await;
+                // The `serial_exec` is acquired, let's merge the pending requests and write
+                // them all.
+                let pending_writes = {
+                    let mut pending_queue = self.pending_writes.lock().unwrap();
+                    pending_queue.reset()
+                };
+                assert!(
+                    !pending_writes.is_empty(),
+                    "The pending writes should contain at least the one just pushed."
+                );
+                let merged_write_request =
+                    merge_pending_write_requests(pending_writes.writes, pending_writes.num_rows);
+                (merged_write_request, serial_exec, pending_writes.notifiers)
+            }
+            QueueResult::Waiter(rx) => {
+                // The request is successfully pushed into the queue, and just wait for the
+                // write result.
+                match rx.await {
+                    Ok(res) => {
+                        res.box_err().context(Write { table: self.name() })?;
+                        return Ok(num_rows);
                     }
+                    Err(_) => return WaitForPendingWrites { table: self.name() }.fail(),
                 }
-                QueueResult::Reject(request) => {
-                    // The queue is full, return error.
-                    warn!("Pending_writes queue is full, table:{}", self.name());
-                    let serial_exec = self.table_data.serial_exec.lock().await;
-                    (request, serial_exec, vec![])
-                }
+            }
+            QueueResult::Reject(request) => {
+                // The queue is full, return error.
+                warn!("Pending_writes queue is full, table:{}", self.name());
+                let serial_exec = self.table_data.serial_exec.lock().await;
+                (request, serial_exec, vec![])
             }
         };
 
