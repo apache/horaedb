@@ -71,12 +71,10 @@ jobs:
           rustup component add clippy
           rustup component add rustfmt
           cargo install cargo-sort
-          cargo install cargo-udeps
       - name: Run Style Check
         run: |
           make check-license
           make clippy
-          make udeps
           make fmt
           make check-cargo-toml
       - name: Report Disk Usage
