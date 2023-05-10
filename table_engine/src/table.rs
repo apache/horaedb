@@ -140,6 +140,9 @@ pub enum Error {
     ))]
     WaitForPendingWrites { table: String, backtrace: Backtrace },
 
+    #[snafu(display("Reject for too many pending writes, table:{table}"))]
+    TooManyPendingWrites { table: String },
+
     #[snafu(display("Failed to do merge write, msg:{}", msg))]
     MergeWrite { msg: String },
 }

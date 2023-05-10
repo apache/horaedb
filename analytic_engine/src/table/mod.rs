@@ -13,7 +13,7 @@ use common_types::{
 use common_util::error::BoxError;
 use datafusion::{common::Column, logical_expr::Expr};
 use futures::TryStreamExt;
-use log::warn;
+use log::{error, warn};
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
     partition::PartitionInfo,
@@ -22,8 +22,8 @@ use table_engine::{
     table::{
         AlterOptions, AlterSchema, AlterSchemaRequest, Compact, Flush, FlushRequest, Get,
         GetInvalidPrimaryKey, GetNullPrimaryKey, GetRequest, MergeWrite, ReadOptions, ReadOrder,
-        ReadRequest, Result, Scan, Table, TableId, TableStats, WaitForPendingWrites, Write,
-        WriteRequest,
+        ReadRequest, Result, Scan, Table, TableId, TableStats, TooManyPendingWrites,
+        WaitForPendingWrites, Write, WriteRequest,
     },
 };
 use tokio::sync::oneshot::{self, Receiver, Sender};
@@ -286,11 +286,14 @@ impl TableImpl {
                     Err(_) => return WaitForPendingWrites { table: self.name() }.fail(),
                 }
             }
-            QueueResult::Reject(request) => {
+            QueueResult::Reject(_) => {
                 // The queue is full, return error.
-                warn!("Pending_writes queue is full, table:{}", self.name());
-                let serial_exec = self.table_data.serial_exec.lock().await;
-                (request, serial_exec, vec![])
+                error!(
+                    "Pending_writes queue is full, max_rows_in_queue:{}, table:{}",
+                    self.instance.max_rows_in_write_queue,
+                    self.name(),
+                );
+                return TooManyPendingWrites { table: self.name() }.fail();
             }
         };
 
