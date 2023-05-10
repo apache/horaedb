@@ -296,8 +296,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
         let table_name = self.pick_shard_table(&location);
 
-        // To abort multipart, we need to delete all data and meta info.
-        // delete data with path `location` and multipart_id
+        // Before aborting multipart, we need to delete all data parts and meta info.
+        // Here to delete data with path `location` and multipart_id
         let scan_context: ScanContext = ScanContext {
             timeout: time::Duration::from_secs(10),
             batch_size: 1000,
@@ -328,6 +328,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             })?;
         }
 
+        // Here to delete meta with path `location` and multipart_id
         self.meta_manager
             .delete_meta_with_version(location, &multipart_id)
             .await
