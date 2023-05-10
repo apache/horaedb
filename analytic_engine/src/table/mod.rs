@@ -42,8 +42,9 @@ pub mod version;
 pub mod version_edit;
 
 const GET_METRICS_COLLECTOR_NAME: &str = "get";
-const DEFAULT_PENDING_WRITE_REQUESTS: usize = 32;
-const DEFAULT_MAX_PENDING_ROWS: usize = 10000;
+// Additional 1/10 of the pending writes capacity is reserved for new pending
+// writes.
+const ADDITIONAL_PENDING_WRITE_CAP_RATIO: usize = 10;
 
 /// Table trait implementation
 pub struct TableImpl {
@@ -73,6 +74,8 @@ impl TableImpl {
         table_data: TableDataRef,
         space_table: SpaceAndTable,
     ) -> Self {
+        let pending_writes = Mutex::new(PendingWriteQueue::new(instance.max_rows_in_write_queue));
+
         Self {
             space_table,
             instance,
@@ -80,7 +83,7 @@ impl TableImpl {
             space_id,
             table_id,
             table_data,
-            pending_writes: Mutex::new(PendingWriteQueue::new(DEFAULT_MAX_PENDING_ROWS)),
+            pending_writes,
         }
     }
 }
@@ -109,6 +112,14 @@ struct PendingWrites {
 }
 
 impl PendingWrites {
+    pub fn with_capacity(cap: usize) -> Self {
+        Self {
+            writes: Vec::with_capacity(cap),
+            notifiers: Vec::with_capacity(cap),
+            num_rows: 0,
+        }
+    }
+
     /// Try to push the request into the pending queue.
     ///
     /// This push will be rejected if the schema is different.
@@ -120,8 +131,6 @@ impl PendingWrites {
         // For the first pending writes, don't provide the receiver because it should do
         // the write for the pending writes and no need to wait for the notification.
         let res = if self.is_empty() {
-            self.writes.reserve(DEFAULT_PENDING_WRITE_REQUESTS);
-            self.notifiers.reserve(DEFAULT_PENDING_WRITE_REQUESTS);
             QueueResult::First
         } else {
             let (tx, rx) = oneshot::channel();
@@ -194,7 +203,10 @@ impl PendingWriteQueue {
 
     /// Clear the pending writes and reset the number of rows.
     fn reset(&mut self) -> PendingWrites {
-        std::mem::take(&mut self.pending_writes)
+        let curr_num_reqs = self.pending_writes.writes.len();
+        let new_cap = curr_num_reqs / ADDITIONAL_PENDING_WRITE_CAP_RATIO + curr_num_reqs;
+        let new_pending_writes = PendingWrites::with_capacity(new_cap);
+        std::mem::replace(&mut self.pending_writes, new_pending_writes)
     }
 }
 
@@ -359,7 +371,7 @@ impl Table for TableImpl {
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {
-        if self.instance.max_rows_in_write_queue > 0 {
+        if request.row_group.num_rows() >= self.instance.max_rows_in_write_queue {
             return self.write_with_pending_queue(request).await;
         }
 
