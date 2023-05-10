@@ -264,6 +264,7 @@ mod tests {
                 location: location.clone(),
                 last_modified: DateTime::<Utc>::default(),
                 size: 0,
+                e_tag: None,
             })
         }
 
@@ -286,6 +287,7 @@ mod tests {
                     location: filepath,
                     last_modified: DateTime::<Utc>::default(),
                     size: 0,
+                    e_tag: None,
                 };
                 objects.push(Ok(object));
             }
