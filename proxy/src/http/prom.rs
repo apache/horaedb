@@ -13,8 +13,9 @@ use std::{
 use async_trait::async_trait;
 use catalog::consts::DEFAULT_CATALOG;
 use ceresdbproto::storage::{
-    value, Field, FieldGroup, PrometheusRemoteQueryRequest, PrometheusRemoteQueryResponse, Tag,
-    Value, WriteSeriesEntry, WriteTableRequest,
+    value, Field, FieldGroup, PrometheusRemoteQueryRequest, PrometheusRemoteQueryResponse,
+    RequestContext as GrpcRequestContext, Tag, Value, WriteRequest as GrpcWriteRequest,
+    WriteSeriesEntry, WriteTableRequest,
 };
 use common_types::{
     datum::DatumKind,
@@ -43,8 +44,7 @@ use crate::{
     error::{build_ok_header, ErrNoCause, ErrWithCause, Error, Internal, InternalNoCause, Result},
     execute_plan,
     forward::ForwardResult,
-    grpc::write::{execute_insert_plan, WriteContext},
-    Proxy,
+    Context as ProxyContext, Proxy,
 };
 
 impl reject::Reject for Error {}
@@ -52,49 +52,29 @@ impl reject::Reject for Error {}
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     /// Handle write samples to remote storage with remote storage protocol.
     async fn handle_prom_write(&self, ctx: RequestContext, req: WriteRequest) -> Result<()> {
-        let request_id = RequestId::next_id();
-        let deadline = ctx.timeout.map(|t| Instant::now() + t);
-        let catalog = &ctx.catalog;
-        self.instance.catalog_manager.default_catalog_name();
-        let schema = &ctx.schema;
-        let schema_config = self
-            .schema_config_provider
-            .schema_config(schema)
-            .box_err()
-            .context(Internal {
-                msg: "Failed to get schema",
-            })?;
-        let write_context =
-            WriteContext::new(request_id, deadline, catalog.clone(), schema.clone());
-        let plans = self
-            .write_request_to_insert_plan(convert_write_request(req)?, schema_config, write_context)
-            .await
-            .box_err()
-            .context(Internal {
-                msg: "Failed to write via gRPC",
-            })?;
-
-        let mut success = 0;
-        for insert_plan in plans {
-            success += execute_insert_plan(
-                request_id,
-                catalog,
-                schema,
-                self.instance.clone(),
-                insert_plan,
-                deadline,
-            )
-            .await
-            .box_err()
-            .context(Internal {
-                msg: "Failed to write via gRPC",
-            })?;
+        let write_table_requests = convert_write_request(req)?;
+        let table_request = GrpcWriteRequest {
+            context: Some(GrpcRequestContext {
+                database: ctx.schema.clone(),
+            }),
+            table_requests: write_table_requests,
+        };
+        let ctx = ProxyContext {
+            runtime: self.engine_runtimes.write_runtime.clone(),
+            timeout: ctx.timeout,
+        };
+        // TODO: Define a new public method instead of calling the grpc write method
+        // directly.
+        let result = self.handle_write(ctx, table_request).await;
+        if let Some(header) = result.header {
+            if header.code != StatusCode::OK.as_u16() as u32 {
+                ErrNoCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: format!("fail to write storage, err:{:?}", header.error),
+                }
+                .fail()?;
+            }
         }
-
-        debug!(
-            "Remote write finished, catalog:{}, schema:{}, success:{}",
-            catalog, schema, success
-        );
 
         Ok(())
     }
