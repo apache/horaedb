@@ -6,14 +6,7 @@ use common_util::error::BoxError;
 use interpreters::interpreter::Output;
 use log::{error, info};
 use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaWriter};
-use proxy::{
-    context::RequestContext,
-    handlers::{
-        self,
-        query::{QueryRequest, Request},
-    },
-    instance::Instance,
-};
+use proxy::{context::RequestContext, http::sql::Request, Proxy};
 use query_engine::executor::Executor as QueryExecutor;
 use router::RouterRef;
 use snafu::ResultExt;
@@ -25,7 +18,7 @@ use crate::mysql::{
 
 pub struct MysqlWorker<W: std::io::Write + Send + Sync, Q> {
     generic_hold: PhantomData<W>,
-    instance: Arc<Instance<Q>>,
+    proxy: Arc<Proxy<Q>>,
     // TODO: Maybe support route in mysql protocol
     #[allow(dead_code)]
     router: RouterRef,
@@ -37,10 +30,10 @@ where
     W: std::io::Write + Send + Sync,
     Q: QueryExecutor + 'static,
 {
-    pub fn new(instance: Arc<Instance<Q>>, router: RouterRef, timeout: Option<Duration>) -> Self {
+    pub fn new(proxy: Arc<Proxy<Q>>, router: RouterRef, timeout: Option<Duration>) -> Self {
         Self {
             generic_hold: PhantomData::default(),
-            instance,
+            proxy,
             router,
             timeout,
         }
@@ -111,9 +104,11 @@ where
 {
     async fn do_query<'a>(&'a mut self, sql: &'a str) -> Result<Output> {
         let ctx = self.create_ctx()?;
-        let req = Request::from(sql.to_string());
-        let req = QueryRequest::Sql(req);
-        handlers::query::handle_query(&ctx, self.instance.clone(), req)
+        let req = Request {
+            query: sql.to_string(),
+        };
+        self.proxy
+            .handle_http_sql_query(&ctx, req)
             .await
             .map_err(|e| {
                 error!("Mysql service Failed to handle sql, err: {}", e);
@@ -127,12 +122,14 @@ where
 
     fn create_ctx(&self) -> Result<RequestContext> {
         let default_catalog = self
-            .instance
+            .proxy
+            .instance()
             .catalog_manager
             .default_catalog_name()
             .to_string();
         let default_schema = self
-            .instance
+            .proxy
+            .instance()
             .catalog_manager
             .default_schema_name()
             .to_string();
