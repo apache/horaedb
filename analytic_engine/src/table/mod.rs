@@ -202,7 +202,7 @@ impl PendingWriteQueue {
     }
 
     /// Clear the pending writes and reset the number of rows.
-    fn reset(&mut self) -> PendingWrites {
+    fn take_pending_writes(&mut self) -> PendingWrites {
         let curr_num_reqs = self.pending_writes.writes.len();
         let new_cap = curr_num_reqs / ADDITIONAL_PENDING_WRITE_CAP_RATIO + curr_num_reqs;
         let new_pending_writes = PendingWrites::with_capacity(new_cap);
@@ -241,11 +241,11 @@ fn merge_pending_write_requests(
 impl TableImpl {
     /// Perform table write with pending queue.
     ///
-    /// If the write is blocked, try to push the request into the pending queue,
-    /// and merge and write them later.
-    /// It should be noted that the write procedure is responsible for merging
-    /// and writing all the writes in the queue if its write request is the
-    /// first one in the queue.
+    /// The writes will be put into the pending queue first. And the writer who
+    /// submits the first request to the queue is responsible for merging and
+    /// writing all the writes in the queue.
+    ///
+    /// NOTE: The write request will be rejected if the queue is full.
     async fn write_with_pending_queue(&self, request: WriteRequest) -> Result<usize> {
         let num_rows = request.row_group.num_rows();
 
@@ -265,7 +265,7 @@ impl TableImpl {
                 // them all.
                 let pending_writes = {
                     let mut pending_queue = self.pending_writes.lock().unwrap();
-                    pending_queue.reset()
+                    pending_queue.take_pending_writes()
                 };
                 assert!(
                     !pending_writes.is_empty(),
@@ -341,6 +341,11 @@ impl TableImpl {
             }
         }
     }
+
+    #[inline]
+    fn should_queue_write_request(&self, request: &WriteRequest) -> bool {
+        request.row_group.num_rows() < self.instance.max_rows_in_write_queue
+    }
 }
 
 #[async_trait]
@@ -374,7 +379,7 @@ impl Table for TableImpl {
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {
-        if request.row_group.num_rows() >= self.instance.max_rows_in_write_queue {
+        if self.should_queue_write_request(&request) {
             return self.write_with_pending_queue(request).await;
         }
 
@@ -601,7 +606,7 @@ mod tests {
         }
 
         // Reset the queue, and check the result.
-        let pending_writes = queue.reset();
+        let pending_writes = queue.take_pending_writes();
         assert_eq!(pending_writes.num_rows, 99 + 10);
         assert_eq!(pending_writes.writes.len(), 2);
         // Only one waiter.
@@ -638,7 +643,7 @@ mod tests {
         total_requests.push(req2.clone());
         queue.try_push(req2);
 
-        let pending_writes = queue.reset();
+        let pending_writes = queue.take_pending_writes();
         let mut merged_request =
             merge_pending_write_requests(pending_writes.writes, pending_writes.num_rows);
 
