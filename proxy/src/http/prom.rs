@@ -63,6 +63,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             runtime: self.engine_runtimes.write_runtime.clone(),
             timeout: ctx.timeout,
         };
+        // TODO: Define a new public method instead of calling the grpc write method
+        // directly.
         let result = self.handle_write(ctx, table_request).await;
         if let Some(header) = result.header {
             if header.code != StatusCode::OK.as_u16() as u32 {

@@ -70,7 +70,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         }
     }
 
-    // TODO: support forwarding write request
     async fn handle_write_internal(
         &self,
         ctx: Context,
