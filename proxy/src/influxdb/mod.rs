@@ -24,7 +24,7 @@ use crate::{
     context::RequestContext,
     error::{ErrNoCause, ErrWithCause, Internal, Result},
     execute_plan,
-    grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
+    grpc::write::{execute_insert_plan, WriteContext},
     influxdb::types::{
         convert_influxql_output, convert_write_request, InfluxqlRequest, InfluxqlResponse,
         WriteRequest, WriteResponse,
@@ -63,17 +63,13 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let write_context =
             WriteContext::new(request_id, deadline, catalog.clone(), schema.clone());
 
-        let plans = write_request_to_insert_plan(
-            self.instance.clone(),
-            convert_write_request(req)?,
-            schema_config,
-            write_context,
-        )
-        .await
-        .box_err()
-        .with_context(|| Internal {
-            msg: "write request to insert plan",
-        })?;
+        let plans = self
+            .write_request_to_insert_plan(convert_write_request(req)?, schema_config, write_context)
+            .await
+            .box_err()
+            .with_context(|| Internal {
+                msg: "write request to insert plan",
+            })?;
 
         let mut success = 0;
         for insert_plan in plans {

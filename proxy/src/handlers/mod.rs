@@ -4,7 +4,6 @@
 
 pub mod admin;
 pub(crate) mod error;
-// pub mod query;
 pub mod route;
 
 mod prelude {

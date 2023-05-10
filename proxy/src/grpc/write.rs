@@ -4,9 +4,7 @@ use std::{cmp::max, collections::HashMap, time::Instant};
 
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RouteRequest, WriteRequest, WriteResponse,
-    WriteTableRequest,
 };
-use cluster::config::SchemaConfig;
 use common_types::request_id::RequestId;
 use common_util::error::BoxError;
 use futures::{future::try_join_all, FutureExt};
@@ -20,12 +18,12 @@ use snafu::{OptionExt, ResultExt};
 use tonic::transport::Channel;
 
 use crate::{
-    create_table, error,
+    error,
     error::{build_ok_header, ErrNoCause, ErrWithCause, InternalNoCause, Result},
-    execute_add_columns_plan, execute_plan, find_new_columns,
+    execute_plan,
     forward::{ForwardResult, ForwarderRef},
     instance::InstanceRef,
-    try_get_table, write_table_request_to_insert_plan, Context, Proxy,
+    Context, Proxy,
 };
 
 #[derive(Debug)]
@@ -300,90 +298,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         }
         Ok((table_requests_to_local, table_requests_to_forward))
     }
-}
-
-// TODO: use write_request_to_insert_plan in proxy, and remove following code.
-pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
-    instance: InstanceRef<Q>,
-    table_requests: Vec<WriteTableRequest>,
-    schema_config: Option<&SchemaConfig>,
-    write_context: WriteContext,
-) -> Result<Vec<InsertPlan>> {
-    let mut plan_vec = Vec::with_capacity(table_requests.len());
-
-    let WriteContext {
-        request_id,
-        catalog,
-        schema,
-        deadline,
-        auto_create_table,
-    } = write_context;
-    let schema_config = schema_config.cloned().unwrap_or_default();
-    for write_table_req in table_requests {
-        let table_name = &write_table_req.table;
-        let mut table = try_get_table(&catalog, &schema, instance.clone(), table_name)?;
-
-        match table.clone() {
-            None => {
-                if auto_create_table {
-                    create_table(
-                        request_id,
-                        &catalog,
-                        &schema,
-                        instance.clone(),
-                        &write_table_req,
-                        &schema_config,
-                        deadline,
-                    )
-                    .await?;
-                    // try to get table again
-                    table = try_get_table(&catalog, &schema, instance.clone(), table_name)?;
-                }
-            }
-            Some(t) => {
-                if auto_create_table {
-                    // The reasons for making the decision to add columns before writing are as
-                    // follows:
-                    // * If judged based on the error message returned, it may cause data that has
-                    //   already been successfully written to be written again and affect the
-                    //   accuracy of the data.
-                    // * Currently, the decision to add columns is made at the request level, not at
-                    //   the row level, so the cost is relatively small.
-                    let table_schema = t.schema();
-                    let columns =
-                        find_new_columns(&table_schema, &schema_config, &write_table_req)?;
-                    if !columns.is_empty() {
-                        execute_add_columns_plan(
-                            request_id,
-                            &catalog,
-                            &schema,
-                            instance.clone(),
-                            t,
-                            columns,
-                            deadline,
-                        )
-                        .await?;
-                    }
-                }
-            }
-        }
-
-        match table {
-            Some(table) => {
-                let plan = write_table_request_to_insert_plan(table, write_table_req)?;
-                plan_vec.push(plan);
-            }
-            None => {
-                return ErrNoCause {
-                    code: StatusCode::BAD_REQUEST,
-                    msg: format!("Table not found, schema:{schema}, table:{table_name}"),
-                }
-                .fail();
-            }
-        }
-    }
-
-    Ok(plan_vec)
 }
 
 pub async fn execute_insert_plan<Q: QueryExecutor + 'static>(
