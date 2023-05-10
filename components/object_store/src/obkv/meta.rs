@@ -114,7 +114,7 @@ impl<T: TableKv> MetaManager<T> {
         println!("save meta:{}", meta.location);
         let mut batch = T::WriteBatch::default();
         let json = meta.encode()?;
-        batch.insert(meta.location.to_string().as_bytes(), &json);
+        batch.insert(meta.location.as_bytes(), &json);
         self.client
             .as_ref()
             .write(WriteContext::default(), META_TABLE, batch)

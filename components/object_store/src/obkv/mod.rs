@@ -193,7 +193,7 @@ impl<T: TableKv> ObkvObjectStore<T> {
             if !path.as_ref().ends_with(DELIMITER) {
                 return Path::from(format!("{}{}", path.as_ref(), DELIMITER));
             }
-            return path.clone();
+            path.clone()
         } else {
             Path::from("")
         }
@@ -233,7 +233,7 @@ impl<T: TableKv> ObkvObjectStore<T> {
 
     async fn get_internal(&self, location: &Path) -> std::result::Result<GetResult, Error> {
         let meta = self.read_meta(location).await?;
-        let table_name = self.pick_shard_table(&location);
+        let table_name = self.pick_shard_table(location);
         print!("get_internal table_name:{table_name}");
         let mut futures = FuturesOrdered::new();
         for path in meta.parts {
@@ -260,7 +260,7 @@ impl<T: TableKv> ObkvObjectStore<T> {
 #[async_trait]
 impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
-        let table_name = self.pick_shard_table(&location);
+        let table_name = self.pick_shard_table(location);
         let mut batch = T::WriteBatch::default();
         batch.insert(location.as_ref().as_bytes(), bytes.as_ref());
         self.client
@@ -277,8 +277,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         location: &Path,
     ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
         let upload_id = self.upload_id.fetch_add(1, Ordering::SeqCst);
-        let multi_part_id = MultipartId::from(format!("{}", upload_id));
-        let table_name = self.pick_shard_table(&location);
+        let multi_part_id = MultipartId::from(format!("{upload_id}"));
+        let table_name = self.pick_shard_table(location);
 
         let upload = ObkvMultiPartUpload {
             location: location.clone(),
@@ -294,7 +294,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     }
 
     async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
-        let table_name = self.pick_shard_table(&location);
+        let table_name = self.pick_shard_table(location);
 
         // Before aborting multipart, we need to delete all data parts and meta info.
         // Here to delete data with path `location` and multipart_id
@@ -330,7 +330,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
 
         // Here to delete meta with path `location` and multipart_id
         self.meta_manager
-            .delete_meta_with_version(location, &multipart_id)
+            .delete_meta_with_version(location, multipart_id)
             .await
             .map_err(|source| StoreError::Generic {
                 store: OBKV,
@@ -351,14 +351,14 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
-        let table_name = self.pick_shard_table(&location);
+        let table_name = self.pick_shard_table(location);
         let meta =
             self.read_meta(location)
                 .await
                 .box_err()
                 .map_err(|source| StoreError::NotFound {
                     path: location.to_string(),
-                    source: source,
+                    source,
                 })?;
 
         let batch_size = meta.part_size;
@@ -388,7 +388,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 if index == end_index {
                     end = end_offset;
                 }
-                println!("index:{},beign:{},end:{}", index, begin, end);
+                println!("index:{index},beign:{begin},end:{end}");
                 range_buffer.extend_from_slice(&bytes[begin..end]);
             }
         }
@@ -404,12 +404,12 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 .box_err()
                 .map_err(|source| StoreError::NotFound {
                     path: location.to_string(),
-                    source: source,
+                    source,
                 })?;
 
         Ok(ObjectMeta {
             location: (*location).clone(),
-            last_modified: Utc.timestamp_millis_opt(meta.last_modified as i64).unwrap(),
+            last_modified: Utc.timestamp_millis_opt(meta.last_modified).unwrap(),
             size: meta.size,
             e_tag: meta.e_tag,
         })
@@ -418,14 +418,14 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     /// Delete the object at the specified location.
     async fn delete(&self, location: &Path) -> Result<()> {
         // TODO: maybe coerruption here, should not delete data when data is reading.
-        let table_name = self.pick_shard_table(&location);
+        let table_name = self.pick_shard_table(location);
         let meta =
             self.read_meta(location)
                 .await
                 .box_err()
                 .map_err(|source| StoreError::NotFound {
                     path: location.to_string(),
-                    source: source,
+                    source,
                 })?;
 
         // delete every part of data
@@ -707,7 +707,7 @@ mod test {
     }
 
     async fn test_head(oss: Arc<ObkvObjectStore<MemoryImpl>>, location: &Path) {
-        let object_meta = oss.head(&location).await.unwrap();
+        let object_meta = oss.head(location).await.unwrap();
         assert_eq!(object_meta.location.as_ref(), location.as_ref());
         assert_eq!(object_meta.size, 2000);
     }
@@ -728,7 +728,7 @@ mod test {
 
         let bytes = oss
             .get_range(
-                &location,
+                location,
                 std::ops::Range {
                     start: 500,
                     end: 1500,
@@ -767,8 +767,7 @@ mod test {
     fn init_object_store() -> Arc<ObkvObjectStore<MemoryImpl>> {
         let table_kv = Arc::new(MemoryImpl::default());
         let obkv_object = ObkvObjectStore::try_new(128, 1024, table_kv).unwrap();
-        let oss = Arc::new(obkv_object);
-        oss
+        Arc::new(obkv_object)
     }
 
     fn generate_random_string(length: usize) -> String {
