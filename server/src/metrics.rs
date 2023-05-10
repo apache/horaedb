@@ -2,8 +2,20 @@
 
 //! Metrics util for server.
 
+use lazy_static::lazy_static;
 use log::warn;
-use prometheus::{Encoder, TextEncoder};
+use prometheus::{exponential_buckets, register_histogram_vec, Encoder, HistogramVec, TextEncoder};
+
+lazy_static! {
+    pub static ref HTTP_HANDLER_DURATION_HISTOGRAM_VEC: HistogramVec = register_histogram_vec!(
+        "http_handler_duration",
+        "Bucketed histogram of http server handler",
+        &["path", "code"],
+        // 0.01s, 0.02s, ... 163.84s
+        exponential_buckets(0.01, 2.0, 15).unwrap()
+    )
+    .unwrap();
+}
 
 /// Gather and dump prometheus to string.
 pub fn dump() -> String {

@@ -39,7 +39,10 @@ use warp::{
     Filter,
 };
 
-use crate::{consts, error_util, metrics};
+use crate::{
+    consts, error_util,
+    metrics::{self, HTTP_HANDLER_DURATION_HISTOGRAM_VEC},
+};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -188,6 +191,18 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .or(self.cpu_profile())
             .or(self.server_config())
             .or(self.stats())
+            .with(warp::log("http_requests"))
+            .with(warp::log::custom(|info| {
+                let path = info.path();
+                // Don't record /debug API
+                if path.starts_with("/debug") {
+                    return;
+                }
+
+                HTTP_HANDLER_DURATION_HISTOGRAM_VEC
+                    .with_label_values(&[path, info.status().as_str()])
+                    .observe(info.elapsed().as_secs_f64())
+            }))
     }
 
     /// Expose `/prom/v1/read` and `/prom/v1/write` to serve Prometheus remote
