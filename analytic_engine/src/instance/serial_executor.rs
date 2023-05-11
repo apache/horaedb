@@ -7,7 +7,7 @@ use std::{
 
 use common_util::{runtime::Runtime, time::InstantExt};
 use futures::Future;
-use log::error;
+use log::{error, warn};
 use table_engine::table::TableId;
 use tokio::sync::{
     oneshot,
@@ -131,7 +131,10 @@ impl TableFlushScheduler {
                     }
                     FlushState::Flushing => (),
                     FlushState::Failed { err_msg } => {
-                        return BackgroundFlushFailed { msg: err_msg }.fail();
+                        // Mark the worker is flushing.
+                        *flush_state = FlushState::Flushing;
+                        warn!("Retry to flush memory tables after background flush failed:{err_msg}");
+                        break;
                     }
                 }
 
