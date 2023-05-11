@@ -211,7 +211,6 @@ impl<T: TableKv> ObkvObjectStore<T> {
 
 impl<T: TableKv> ObkvObjectStore<T> {
     async fn read_meta(&self, location: &Path) -> std::result::Result<ObkvObjectMeta, Error> {
-        println!("read meta:{location}");
         let meta = self
             .meta_manager
             .read_meta(location)
@@ -368,7 +367,6 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         let end_index = range.end / batch_size;
         let end_offset = range.end % batch_size;
         let mut range_buffer = Vec::with_capacity(range.end - range.start);
-        println!("get_range  start_index:{start_index},start_offset:{start_offset},end_index:{end_index},end_offset:{end_offset}");
         for index in start_index..=end_index {
             let key = &key_list[index];
             let values = self
@@ -388,7 +386,6 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 if index == end_index {
                     end = end_offset;
                 }
-                println!("index:{index},beign:{begin},end:{end}");
                 range_buffer.extend_from_slice(&bytes[begin..end]);
             }
         }
@@ -559,7 +556,6 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
         let mut batch = T::WriteBatch::default();
         let key = format!("{}@{}@{}", self.location, self.upload_id, part_idx);
         batch.insert(key.as_bytes(), buf.as_ref());
-        println!("put_multipart_part table_name:{}", self.table_name);
 
         self.client
             .write(WriteContext::default(), &self.table_name, batch)
@@ -576,10 +572,6 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
         // We should save meta info after finish save data
         let mut paths = Vec::with_capacity(completed_parts.len());
         for upload_part in completed_parts {
-            println!(
-                "complete path:{},part:{}",
-                self.location, upload_part.content_id
-            );
             paths.push(upload_part.content_id);
         }
 
@@ -696,7 +688,6 @@ mod test {
         let meta_vec = stream
             .fold(Vec::new(), |mut acc, item| async {
                 let object_meta = item.unwrap();
-                println!("test_list:{}", object_meta.location.as_ref());
                 assert!(object_meta.location.as_ref().starts_with(prefix.as_ref()));
                 acc.push(object_meta);
                 acc
