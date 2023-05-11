@@ -8,7 +8,6 @@ use log::{error, info};
 use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaWriter};
 use proxy::{context::RequestContext, http::sql::Request, Proxy};
 use query_engine::executor::Executor as QueryExecutor;
-use router::RouterRef;
 use snafu::ResultExt;
 
 use crate::mysql::{
@@ -19,9 +18,6 @@ use crate::mysql::{
 pub struct MysqlWorker<W: std::io::Write + Send + Sync, Q> {
     generic_hold: PhantomData<W>,
     proxy: Arc<Proxy<Q>>,
-    // TODO: Maybe support route in mysql protocol
-    #[allow(dead_code)]
-    router: RouterRef,
     timeout: Option<Duration>,
 }
 
@@ -30,11 +26,10 @@ where
     W: std::io::Write + Send + Sync,
     Q: QueryExecutor + 'static,
 {
-    pub fn new(proxy: Arc<Proxy<Q>>, router: RouterRef, timeout: Option<Duration>) -> Self {
+    pub fn new(proxy: Arc<Proxy<Q>>, timeout: Option<Duration>) -> Self {
         Self {
             generic_hold: PhantomData::default(),
             proxy,
-            router,
             timeout,
         }
     }

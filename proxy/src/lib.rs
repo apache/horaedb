@@ -35,8 +35,8 @@ use catalog::schema::{
 };
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, value, PrometheusRemoteQueryRequest,
-    PrometheusRemoteQueryResponse, SqlQueryRequest, SqlQueryResponse, WriteSeriesEntry,
-    WriteTableRequest,
+    PrometheusRemoteQueryResponse, Route, RouteRequest, SqlQueryRequest, SqlQueryResponse,
+    WriteSeriesEntry, WriteTableRequest,
 };
 use cluster::config::SchemaConfig;
 use common_types::{
@@ -473,6 +473,17 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 msg: format!("Failed to drop partition table, table_name:{table_name}"),
             })?;
         Ok(())
+    }
+
+    pub(crate) async fn route(&self, req: RouteRequest) -> Result<Vec<Route>> {
+        self.router
+            .route(req)
+            .await
+            .box_err()
+            .context(ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "fail to route",
+            })
     }
 }
 

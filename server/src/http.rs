@@ -26,7 +26,7 @@ use proxy::{
     Proxy,
 };
 use query_engine::executor::Executor as QueryExecutor;
-use router::{endpoint::Endpoint, RouterRef};
+use router::endpoint::Endpoint;
 use serde::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
@@ -129,7 +129,6 @@ pub struct Service<Q> {
     rx: Option<Receiver<()>>,
     config: HttpConfig,
     config_content: String,
-    router: RouterRef,
     opened_wals: OpenedWals,
 }
 
@@ -270,9 +269,10 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::path!("route" / String)
             .and(warp::get())
             .and(self.with_context())
-            .and(self.with_router())
-            .and_then(|table: String, ctx, router| async move {
-                let result = handlers::route::handle_route(ctx, router, table)
+            .and(self.with_proxy())
+            .and_then(|table: String, ctx, proxy: Arc<Proxy<Q>>| async move {
+                let result = proxy
+                    .handle_http_route(&ctx, table)
                     .await
                     .box_err()
                     .context(HandleRequest);
@@ -588,11 +588,6 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::any().map(move || instance.clone())
     }
 
-    fn with_router(&self) -> impl Filter<Extract = (RouterRef,), Error = Infallible> + Clone {
-        let router = self.router.clone();
-        warp::any().map(move || router.clone())
-    }
-
     fn with_log_runtime(
         &self,
     ) -> impl Filter<Extract = (Arc<RuntimeLevel>,), Error = Infallible> + Clone {
@@ -608,7 +603,6 @@ pub struct Builder<Q> {
     log_runtime: Option<Arc<RuntimeLevel>>,
     config_content: Option<String>,
     proxy: Option<Arc<Proxy<Q>>>,
-    router: Option<RouterRef>,
     opened_wals: Option<OpenedWals>,
 }
 
@@ -620,7 +614,6 @@ impl<Q> Builder<Q> {
             log_runtime: None,
             config_content: None,
             proxy: None,
-            router: None,
             opened_wals: None,
         }
     }
@@ -645,11 +638,6 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn router(mut self, router: RouterRef) -> Self {
-        self.router = Some(router);
-        self
-    }
-
     pub fn opened_wals(mut self, opened_wals: OpenedWals) -> Self {
         self.opened_wals = Some(opened_wals);
         self
@@ -663,7 +651,6 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let config_content = self.config_content.context(MissingInstance)?;
         let proxy = self.proxy.context(MissingProxy)?;
-        let router = self.router.context(MissingRouter)?;
         let opened_wals = self.opened_wals.context(MissingWal)?;
 
         let (tx, rx) = oneshot::channel();
@@ -675,9 +662,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             profiler: Arc::new(Profiler::default()),
             tx,
             rx: Some(rx),
-            config: self.config.clone(),
+            config: self.config,
             config_content,
-            router,
             opened_wals,
         };
 
