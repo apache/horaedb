@@ -407,7 +407,8 @@ fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
             .unzip();
 
         req_by_metric
-            .entry(metric.to_string())
+            // fields with same tag names will be grouped together
+            .entry((metric.clone(), tag_names.clone()))
             .or_insert_with(|| WriteTableRequest {
                 table: metric,
                 tag_names,
