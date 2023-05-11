@@ -15,7 +15,7 @@ use tokio::sync::{
 };
 
 use crate::{
-    instance::flush_compaction::{BackgroundFlushFailed, Other, Result},
+    instance::flush_compaction::{Other, Result},
     table::metrics::Metrics,
 };
 
@@ -131,9 +131,9 @@ impl TableFlushScheduler {
                     }
                     FlushState::Flushing => (),
                     FlushState::Failed { err_msg } => {
+                        warn!("Retry to flush memory tables after background flush failed:{err_msg}");
                         // Mark the worker is flushing.
                         *flush_state = FlushState::Flushing;
-                        warn!("Retry to flush memory tables after background flush failed:{err_msg}");
                         break;
                     }
                 }
