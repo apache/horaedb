@@ -114,8 +114,6 @@ define_result!(Error);
 
 impl reject::Reject for Error {}
 
-pub const DEFAULT_MAX_BODY_SIZE: u64 = 64 * 1024;
-
 /// Http service
 ///
 /// Endpoints beginning with /debug are for internal use, and may subject to

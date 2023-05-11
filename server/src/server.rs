@@ -350,7 +350,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
         let http_config = HttpConfig {
             endpoint: http_endpoint,
-            max_body_size: self.server_config.http_max_body_size,
+            max_body_size: self.server_config.http_max_body_size.as_byte(),
             timeout: self.server_config.timeout.map(|v| v.0),
         };
 

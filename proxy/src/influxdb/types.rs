@@ -496,7 +496,7 @@ pub(crate) fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableR
             .map(|(tagk, _)| tagk.to_string())
             .collect::<Vec<_>>();
         let req_for_one_measurement = req_by_measurement
-            // fields with same tag names will be grouped together
+            // Fields with same tag names will be grouped together.
             .entry((line.series.measurement.to_string(), tag_names.clone()))
             .or_insert_with(|| WriteTableRequest {
                 table: line.series.measurement.to_string(),

@@ -1,6 +1,6 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use ceresdbproto::{cluster as cluster_pb, meta_service as meta_service_pb};
 pub use common_types::table::{ShardId, ShardVersion};
@@ -39,7 +39,7 @@ pub struct PartitionTableInfo {
     pub partition_info: PartitionInfo,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct CreateTableRequest {
     pub schema_name: String,
     pub name: String,
@@ -48,6 +48,20 @@ pub struct CreateTableRequest {
     pub create_if_not_exist: bool,
     pub options: HashMap<String, String>,
     pub partition_table_info: Option<PartitionTableInfo>,
+}
+
+impl fmt::Debug for CreateTableRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // ignore encoded_schema
+        f.debug_struct("CreateTableRequest")
+            .field("schema_name", &self.schema_name)
+            .field("name", &self.name)
+            .field("engine", &self.engine)
+            .field("create_if_not_exist", &self.create_if_not_exist)
+            .field("options", &self.options)
+            .field("partition_table_info", &self.partition_table_info)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug)]
