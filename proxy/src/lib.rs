@@ -20,6 +20,7 @@ pub mod instance;
 pub mod limiter;
 pub mod schema_config_provider;
 pub(crate) mod util;
+pub(crate) mod write;
 
 use std::{
     collections::{BTreeMap, HashMap},
