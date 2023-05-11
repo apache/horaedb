@@ -26,7 +26,6 @@ use snafu::{ensure, ResultExt};
 use crate::{
     context::RequestContext,
     error::{ErrNoCause, ErrWithCause, Result},
-    execute_plan,
     influxdb::types::{
         convert_influxql_output, convert_write_request, InfluxqlRequest, InfluxqlResponse,
         WriteRequest, WriteResponse,
@@ -136,15 +135,9 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Query is blocked",
             })?;
-        let output = execute_plan(
-            request_id,
-            &ctx.catalog,
-            &ctx.schema,
-            self.instance.clone(),
-            plan,
-            deadline,
-        )
-        .await?;
+        let output = self
+            .execute_plan(request_id, &ctx.catalog, &ctx.schema, plan, deadline)
+            .await?;
 
         info!(
             "Influxdb query handler finished, request_id:{}, cost:{}ms, request:{:?}",
