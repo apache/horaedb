@@ -131,7 +131,7 @@ impl TableFlushScheduler {
                     }
                     FlushState::Flushing => (),
                     FlushState::Failed { err_msg } => {
-                        warn!("Retry to flush memory tables after background flush failed:{err_msg}");
+                        warn!("Re-flush memory tables after background flush failed:{err_msg}");
                         // Mark the worker is flushing.
                         *flush_state = FlushState::Flushing;
                         break;
