@@ -111,7 +111,6 @@ impl<T: TableKv> std::fmt::Display for MetaManager<T> {
 
 impl<T: TableKv> MetaManager<T> {
     pub async fn save_meta(&self, meta: ObkvObjectMeta) -> Result<()> {
-        println!("save meta:{}", meta.location);
         let mut batch = T::WriteBatch::default();
         let json = meta.encode()?;
         batch.insert(meta.location.as_bytes(), &json);
