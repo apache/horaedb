@@ -491,12 +491,16 @@ pub(crate) fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableR
         tag_set.sort_unstable_by(|a, b| a.0.cmp(&b.0));
         // sort by field key
         line.field_set.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-
+        let tag_names = tag_set
+            .iter()
+            .map(|(tagk, _)| tagk.to_string())
+            .collect::<Vec<_>>();
         let req_for_one_measurement = req_by_measurement
-            .entry(line.series.measurement.to_string())
+            // fields with same tag names will be grouped together
+            .entry((line.series.measurement.to_string(), tag_names.clone()))
             .or_insert_with(|| WriteTableRequest {
                 table: line.series.measurement.to_string(),
-                tag_names: tag_set.iter().map(|(tagk, _)| tagk.to_string()).collect(),
+                tag_names,
                 field_names: line
                     .field_set
                     .iter()
