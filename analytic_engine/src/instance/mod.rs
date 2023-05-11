@@ -143,6 +143,7 @@ pub struct Instance {
     meta_cache: Option<MetaCacheRef>,
     /// Engine memtable memory usage collector
     mem_usage_collector: Arc<MemUsageCollector>,
+    pub(crate) max_rows_in_write_queue: usize,
     /// Engine write buffer size
     pub(crate) db_write_buffer_size: usize,
     /// Space write buffer size

@@ -134,6 +134,17 @@ pub enum Error {
         tables: Vec<String>,
         source: GenericError,
     },
+
+    #[snafu(display(
+        "Failed to wait for pending writes, table:{table}.\nBacktrace:\n{backtrace}"
+    ))]
+    WaitForPendingWrites { table: String, backtrace: Backtrace },
+
+    #[snafu(display("Reject for too many pending writes, table:{table}"))]
+    TooManyPendingWrites { table: String },
+
+    #[snafu(display("Failed to do merge write, msg:{}", msg))]
+    MergeWrite { msg: String },
 }
 
 define_result!(Error);
@@ -278,8 +289,7 @@ impl fmt::Display for TableId {
     }
 }
 
-// TODO(yingwen): Support DELETE/UPDATE... , a mutation type is needed.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WriteRequest {
     /// rows to write
     pub row_group: RowGroup,

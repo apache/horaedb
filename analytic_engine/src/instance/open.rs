@@ -120,6 +120,7 @@ impl Instance {
             file_purger,
             meta_cache: ctx.meta_cache.clone(),
             mem_usage_collector: Arc::new(MemUsageCollector::default()),
+            max_rows_in_write_queue: ctx.config.max_rows_in_write_queue,
             db_write_buffer_size: ctx.config.db_write_buffer_size,
             space_write_buffer_size: ctx.config.space_write_buffer_size,
             replay_batch_size: ctx.config.replay_batch_size,
