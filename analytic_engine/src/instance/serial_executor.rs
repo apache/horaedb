@@ -38,24 +38,23 @@ type ScheduleSyncRef = Arc<ScheduleSync>;
 struct ScheduleSync {
     state: Mutex<FlushState>,
     notifier: Sender<()>,
-    retry_flush_count: AtomicUsize,
+    continuous_flush_failure_count: AtomicUsize,
 }
 
 impl ScheduleSync {
     #[inline]
     pub fn should_retry_flush(&self, max_retry_limit: usize) -> bool {
-        if self.retry_flush_count.load(Ordering::Relaxed) < max_retry_limit {
-            self.retry_flush_count.fetch_add(1, Ordering::Relaxed);
-            return true;
-        }
-        false
+        self.continuous_flush_failure_count.load(Ordering::Relaxed) < max_retry_limit 
     }
 
     #[inline]
-    pub fn reset_retry_flush_count(&self) {
-        if self.retry_flush_count.load(Ordering::Relaxed) > 0 {
-            self.retry_flush_count.store(0, Ordering::Relaxed);
-        }
+    pub fn reset_flush_failure_count(&self) {
+        self.continuous_flush_failure_count.store(0, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub fn inc_flush_failure_count(&self) {
+        self.continuous_flush_failure_count.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -70,7 +69,7 @@ impl Default for TableFlushScheduler {
         let schedule_sync = ScheduleSync {
             state: Mutex::new(FlushState::Ready),
             notifier: tx,
-            retry_flush_count: AtomicUsize::new(0),
+            continuous_flush_failure_count: AtomicUsize::new(0),
         };
         Self {
             schedule_sync: Arc::new(schedule_sync),
@@ -220,10 +219,11 @@ fn on_flush_finished(schedule_sync: ScheduleSyncRef, res: &Result<()>) {
         let mut flush_state = schedule_sync.state.lock().unwrap();
         match res {
             Ok(()) => {
-                schedule_sync.reset_retry_flush_count();
+                schedule_sync.reset_flush_failure_count();
                 *flush_state = FlushState::Ready;
             }
             Err(e) => {
+                schedule_sync.inc_flush_failure_count();
                 let err_msg = e.to_string();
                 *flush_state = FlushState::Failed { err_msg };
             }
