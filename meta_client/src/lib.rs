@@ -9,7 +9,7 @@ use types::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, CreateTableRequest, CreateTableResponse,
     DropTableRequest, DropTableResponse, GetNodesRequest, GetNodesResponse,
     GetTablesOfShardsRequest, GetTablesOfShardsResponse, RouteTablesRequest, RouteTablesResponse,
-    ShardInfo,
+    ShardInfo
 };
 
 pub mod meta_impl;

@@ -240,12 +240,19 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 msg: format!("Failed to find table, table_name:{table_name}"),
             })?;
 
-        let partition_table_info_in_meta = self
+        let table_info_in_meta = self
             .router
-            .fetch_partition_table_info(schema_name, table_name)
+            .fetch_table_info(schema_name, table_name)
             .await?;
 
-        match (table, &partition_table_info_in_meta) {
+        if let Some(table_info_in_meta) = &table_info_in_meta {
+            // No need to handle non-partition table.
+            if !table_info_in_meta.is_partition_table() {
+                return Ok(());
+            }
+        }
+
+        match (table, &table_info_in_meta) {
             (Some(table), Some(partition_table_info)) => {
                 // No need to create partition table when table_id match.
                 if table.id().as_u64() == partition_table_info.id {
@@ -285,13 +292,13 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             (None, Some(_)) => (),
         }
 
-        let partition_table_info = partition_table_info_in_meta.unwrap();
+        let partition_table_info = table_info_in_meta.unwrap();
 
         // If table not exists, open it.
         // Get table_schema from first sub partition table.
         let first_sub_partition_table_name = util::get_sub_partition_name(
             &partition_table_info.name,
-            &partition_table_info.partition_info,
+            partition_table_info.partition_info.as_ref().unwrap(),
             0usize,
         );
         let table = self
@@ -324,7 +331,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             options: table.options,
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
-            partition_info: Some(partition_table_info.partition_info),
+            partition_info: partition_table_info.partition_info,
         };
         let create_opts = CreateOptions {
             table_engine: self.instance.partition_table_engine.clone(),

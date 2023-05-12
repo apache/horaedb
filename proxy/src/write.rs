@@ -2,7 +2,7 @@
 
 use std::{
     cmp::max,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, },
     time::Instant,
 };
 
@@ -64,10 +64,15 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
+        let request_id = RequestId::next_id();
+
         let write_context = req.context.clone().context(ErrNoCause {
             msg: "Missing context",
             code: StatusCode::BAD_REQUEST,
         })?;
+
+        self.handle_auto_create_table(request_id, &write_context.database, &req)
+            .await?;
 
         let (write_request_to_local, write_requests_to_forward) =
             self.split_write_request(req).await?;
@@ -86,8 +91,11 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         // Write to local.
         if !write_request_to_local.table_requests.is_empty() {
-            let local_handle =
-                async move { Ok(self.write_to_local(ctx, write_request_to_local).await) };
+            let local_handle = async move {
+                Ok(self
+                    .write_to_local(ctx, request_id, write_request_to_local)
+                    .await)
+            };
             futures.push(local_handle.boxed());
         }
 
@@ -232,8 +240,12 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         }
     }
 
-    async fn write_to_local(&self, ctx: Context, req: WriteRequest) -> Result<WriteResponse> {
-        let request_id = RequestId::next_id();
+    async fn write_to_local(
+        &self,
+        ctx: Context,
+        request_id: RequestId,
+        req: WriteRequest,
+    ) -> Result<WriteResponse> {
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
@@ -304,59 +316,38 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             let table_name = &write_table_req.table;
             self.maybe_open_partition_table_if_not_exist(&catalog, &schema, table_name)
                 .await?;
-            let mut table = self.try_get_table(&catalog, &schema, table_name)?;
+            let table = self
+                .try_get_table(&catalog, &schema, table_name)?
+                .with_context(|| ErrNoCause {
+                    code: StatusCode::BAD_REQUEST,
+                    msg: format!("Table not found, schema:{schema}, table:{table_name}"),
+                })?;
 
-            match table.clone() {
-                None => {
-                    if auto_create_table {
-                        self.create_table(
-                            request_id,
-                            &catalog,
-                            &schema,
-                            &write_table_req,
-                            &schema_config,
-                            deadline,
-                        )
-                        .await?;
-                        // try to get table again
-                        table = self.try_get_table(&catalog, &schema, table_name)?;
-                    }
-                }
-                Some(t) => {
-                    if auto_create_table {
-                        // The reasons for making the decision to add columns before writing are as
-                        // follows:
-                        // * If judged based on the error message returned, it may cause data that
-                        //   has already been successfully written to be written again and affect
-                        //   the accuracy of the data.
-                        // * Currently, the decision to add columns is made at the request level,
-                        //   not at the row level, so the cost is relatively small.
-                        let table_schema = t.schema();
-                        let columns =
-                            find_new_columns(&table_schema, &schema_config, &write_table_req)?;
-                        if !columns.is_empty() {
-                            self.execute_add_columns_plan(
-                                request_id, &catalog, &schema, t, columns, deadline,
-                            )
-                            .await?;
-                        }
-                    }
+            if auto_create_table {
+                // The reasons for making the decision to add columns before writing are as
+                // follows:
+                // * If judged based on the error message returned, it may cause data that has
+                //   already been successfully written to be written again and affect the
+                //   accuracy of the data.
+                // * Currently, the decision to add columns is made at the request level, not at
+                //   the row level, so the cost is relatively small.
+                let table_schema = table.schema();
+                let columns = find_new_columns(&table_schema, &schema_config, &write_table_req)?;
+                if !columns.is_empty() {
+                    self.execute_add_columns_plan(
+                        request_id,
+                        &catalog,
+                        &schema,
+                        table.clone(),
+                        columns,
+                        deadline,
+                    )
+                    .await?;
                 }
             }
 
-            match table {
-                Some(table) => {
-                    let plan = write_table_request_to_insert_plan(table, write_table_req)?;
-                    plan_vec.push(plan);
-                }
-                None => {
-                    return ErrNoCause {
-                        code: StatusCode::BAD_REQUEST,
-                        msg: format!("Table not found, schema:{schema}, table:{table_name}"),
-                    }
-                    .fail();
-                }
-            }
+            let plan = write_table_request_to_insert_plan(table, write_table_req)?;
+            plan_vec.push(plan);
         }
 
         Ok(plan_vec)
@@ -423,6 +414,47 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: format!("Failed to find table, table:{table_name}"),
             })
+    }
+
+    async fn handle_auto_create_table(
+        &self,
+        request_id: RequestId,
+        database: &str,
+        req: &WriteRequest,
+    ) -> Result<()> {
+        if !self.auto_create_table {
+            return Ok(());
+        }
+
+        let schema_config = self
+            .schema_config_provider
+            .schema_config(database)
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!("Fail to fetch schema config, schema_name:{database}"),
+            })?
+            .cloned()
+            .unwrap_or_default();
+        for write_table_req in &req.table_requests {
+            let table_info = self
+                .router
+                .fetch_table_info(database, &write_table_req.table)
+                .await?;
+            if table_info.is_some() {
+                continue;
+            }
+            self.create_table(
+                request_id,
+                self.instance.catalog_manager.default_catalog_name(),
+                database,
+                write_table_req,
+                &schema_config,
+                None,
+            )
+            .await?;
+        }
+        Ok(())
     }
 
     async fn create_table(

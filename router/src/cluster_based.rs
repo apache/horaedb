@@ -7,13 +7,12 @@ use ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
 use common_util::error::BoxError;
 use log::trace;
-use meta_client::types::{RouteTablesRequest, TableInfo};
+use meta_client::types::RouteTablesRequest;
 use moka::future::Cache;
 use snafu::ResultExt;
 
 use crate::{
-    endpoint::Endpoint, OtherWithCause, ParseEndpoint, PartitionTableInfo, Result,
-    RouteCacheConfig, Router,
+    endpoint::Endpoint, OtherWithCause, ParseEndpoint, Result, RouteCacheConfig, Router, TableInfo,
 };
 
 #[derive(Clone, Debug)]
@@ -24,22 +23,16 @@ struct RouteData {
 
 pub struct ClusterBasedRouter {
     cluster: ClusterRef,
-    cache: Option<Cache<String, RouteData>>,
+    cache: Cache<String, RouteData>,
 }
 
 impl ClusterBasedRouter {
     pub fn new(cluster: ClusterRef, cache_config: RouteCacheConfig) -> Self {
-        let cache = if cache_config.enable {
-            Some(
-                Cache::builder()
-                    .time_to_live(cache_config.ttl.0)
-                    .time_to_idle(cache_config.tti.0)
-                    .max_capacity(cache_config.capacity)
-                    .build(),
-            )
-        } else {
-            None
-        };
+        let cache = Cache::builder()
+            .time_to_live(cache_config.ttl.0)
+            .time_to_idle(cache_config.tti.0)
+            .max_capacity(cache_config.capacity)
+            .build();
 
         Self { cluster, cache }
     }
@@ -49,16 +42,12 @@ impl ClusterBasedRouter {
     fn route_from_cache(&self, tables: &[String], routes: &mut Vec<RouteData>) -> Vec<String> {
         let mut miss = vec![];
 
-        if let Some(cache) = &self.cache {
-            for table in tables {
-                if let Some(route) = cache.get(table) {
-                    routes.push(route.clone());
-                } else {
-                    miss.push(table.clone());
-                }
+        for table in tables {
+            if let Some(route) = self.cache.get(table) {
+                routes.push(route.clone());
+            } else {
+                miss.push(table.clone());
             }
-        } else {
-            miss = tables.to_vec();
         }
 
         miss
@@ -108,10 +97,8 @@ impl ClusterBasedRouter {
             };
 
             if let Some(route) = route {
-                if let Some(cache) = &self.cache {
-                    // There may be data race here, and it is acceptable currently.
-                    cache.insert(table_name.clone(), route.clone()).await;
-                }
+                // There may be data race here, and it is acceptable currently.
+                self.cache.insert(table_name.clone(), route.clone()).await;
                 routes.push(route);
             }
         }
@@ -145,11 +132,7 @@ impl Router for ClusterBasedRouter {
             .collect())
     }
 
-    async fn fetch_partition_table_info(
-        &self,
-        schema: &str,
-        table: &str,
-    ) -> Result<Option<PartitionTableInfo>> {
+    async fn fetch_table_info(&self, schema: &str, table: &str) -> Result<Option<TableInfo>> {
         let mut route_data_vec = self
             .route_with_cache(&vec![table.to_string()], schema.to_string())
             .await?;
@@ -159,17 +142,7 @@ impl Router for ClusterBasedRouter {
 
         let route_data = route_data_vec.remove(0);
         let table_info = route_data.table_info;
-        if table_info.partition_info.is_some() {
-            return Ok(Some(PartitionTableInfo {
-                id: table_info.id,
-                name: table_info.name,
-                schema_id: table_info.schema_id,
-                schema_name: table_info.schema_name,
-                partition_info: table_info.partition_info.unwrap(),
-            }));
-        }
-
-        Ok(None)
+        Ok(Some(table_info))
     }
 }
 
@@ -284,7 +257,6 @@ mod tests {
         let mock_cluster = MockClusterImpl {};
 
         let config = RouteCacheConfig {
-            enable: true,
             ttl: ReadableDuration::from(Duration::from_secs(4)),
             tti: ReadableDuration::from(Duration::from_secs(2)),
             capacity: 2,
