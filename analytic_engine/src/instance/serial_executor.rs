@@ -1,7 +1,10 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
     time::Instant,
 };
 
@@ -35,6 +38,25 @@ type ScheduleSyncRef = Arc<ScheduleSync>;
 struct ScheduleSync {
     state: Mutex<FlushState>,
     notifier: Sender<()>,
+    retry_flush_count: AtomicUsize,
+}
+
+impl ScheduleSync {
+    #[inline]
+    pub fn should_retry_flush(&self, max_retry_limit: usize) -> bool {
+        if self.retry_flush_count.load(Ordering::Relaxed) < max_retry_limit {
+            self.retry_flush_count.fetch_add(1, Ordering::Relaxed);
+            return true;
+        }
+        false
+    }
+
+    #[inline]
+    pub fn reset_retry_flush_count(&self) {
+        if self.retry_flush_count.load(Ordering::Relaxed) > 0 {
+            self.retry_flush_count.store(0, Ordering::Relaxed);
+        }
+    }
 }
 
 pub struct TableFlushScheduler {
@@ -48,6 +70,7 @@ impl Default for TableFlushScheduler {
         let schedule_sync = ScheduleSync {
             state: Mutex::new(FlushState::Ready),
             notifier: tx,
+            retry_flush_count: AtomicUsize::new(0),
         };
         Self {
             schedule_sync: Arc::new(schedule_sync),
@@ -132,13 +155,20 @@ impl TableFlushScheduler {
                     }
                     FlushState::Flushing => (),
                     FlushState::Failed { err_msg } => {
-                        if opts.retry_flush {
+                        if self
+                            .schedule_sync
+                            .should_retry_flush(opts.max_retry_flush_limit)
+                        {
                             warn!("Re-flush memory tables after background flush failed:{err_msg}");
                             // Mark the worker is flushing.
                             *flush_state = FlushState::Flushing;
                             break;
                         } else {
-                            return BackgroundFlushFailed { msg: err_msg }.fail();
+                            return BackgroundFlushFailed {
+                                msg: err_msg,
+                                retry_count: opts.max_retry_flush_limit,
+                            }
+                            .fail();
                         }
                     }
                 }
@@ -190,6 +220,7 @@ fn on_flush_finished(schedule_sync: ScheduleSyncRef, res: &Result<()>) {
         let mut flush_state = schedule_sync.state.lock().unwrap();
         match res {
             Ok(()) => {
+                schedule_sync.reset_retry_flush_count();
                 *flush_state = FlushState::Ready;
             }
             Err(e) => {

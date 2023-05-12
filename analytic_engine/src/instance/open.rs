@@ -124,7 +124,7 @@ impl Instance {
             space_write_buffer_size: ctx.config.space_write_buffer_size,
             replay_batch_size: ctx.config.replay_batch_size,
             write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_byte() as usize,
-            retry_flush: ctx.config.retry_flush,
+            max_retry_flush_limit: ctx.config.max_retry_flush_limit,
             max_bytes_per_write_batch: ctx
                 .config
                 .max_bytes_per_write_batch
@@ -326,7 +326,7 @@ impl Instance {
                         let opts = TableFlushOptions {
                             res_sender: None,
                             compact_after_flush: None,
-                            retry_flush: self.retry_flush,
+                            max_retry_flush_limit: self.max_retry_flush_limit,
                         };
                         let flusher = self.make_flusher();
                         let flush_scheduler = serial_exec.flush_scheduler();

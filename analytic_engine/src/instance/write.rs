@@ -593,7 +593,7 @@ impl<'a> Writer<'a> {
         let opts = TableFlushOptions {
             res_sender: None,
             compact_after_flush: None,
-            retry_flush: self.instance.should_retry_flush(),
+            max_retry_flush_limit: self.instance.max_retry_flush_limit(),
         };
         let flusher = self.instance.make_flusher();
         if table_data.id == self.table_data.id {

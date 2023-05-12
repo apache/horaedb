@@ -96,11 +96,16 @@ pub enum Error {
     WriteSst { path: String, source: GenericError },
 
     #[snafu(display(
-        "Background flush failed, cannot write more data, err:{}.\nBacktrace:\n{}",
+        "Background flush failed, cannot write more data, retry_count:{}, err:{}.\nBacktrace:\n{}",
+        retry_count,
         msg,
         backtrace
     ))]
-    BackgroundFlushFailed { msg: String, backtrace: Backtrace },
+    BackgroundFlushFailed {
+        msg: String,
+        retry_count: usize,
+        backtrace: Backtrace,
+    },
 
     #[snafu(display("Failed to build merge iterator, table:{}, err:{}", table, source))]
     BuildMergeIterator {
@@ -144,10 +149,10 @@ pub struct TableFlushOptions {
     ///
     /// If it is [None], no compaction will be scheduled.
     pub compact_after_flush: Option<CompactionSchedulerRef>,
-    /// Shoud retry flush After flush failed
+    /// Max retry limit After flush failed
     ///
-    /// Default is False
-    pub retry_flush: bool,
+    /// Default is 0
+    pub max_retry_flush_limit: usize,
 }
 
 impl fmt::Debug for TableFlushOptions {

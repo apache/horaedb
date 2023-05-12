@@ -81,8 +81,8 @@ pub struct Config {
     pub sst_background_read_parallelism: usize,
     /// Max buffer size for writing sst
     pub write_sst_max_buffer_size: ReadableSize,
-    /// Shoud retry flush After flush failed
-    pub retry_flush: bool,
+    /// Max retry limit After flush failed
+    pub max_retry_flush_limit: usize,
     /// Max bytes per write batch.
     ///
     /// If this is set, the atomicity of write request will be broken.
@@ -121,7 +121,7 @@ impl Default for Config {
             sst_background_read_parallelism: 8,
             scan_max_record_batches_in_flight: 1024,
             write_sst_max_buffer_size: ReadableSize::mb(10),
-            retry_flush: false,
+            max_retry_flush_limit: 0,
             max_bytes_per_write_batch: None,
             wal: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
