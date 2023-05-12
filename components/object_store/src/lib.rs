@@ -15,7 +15,6 @@ pub mod mem_cache;
 pub mod metrics;
 pub mod multipart;
 pub mod obkv;
-pub mod multipart;
 pub mod prefix;
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
