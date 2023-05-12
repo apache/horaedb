@@ -371,7 +371,6 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .log_runtime(log_runtime)
             .config_content(config_content)
             .proxy(proxy.clone())
-            .router(router.clone())
             .opened_wals(opened_wals.clone())
             .build()
             .context(HttpService {
@@ -387,7 +386,6 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let mysql_service = mysql::Builder::new(mysql_config)
             .runtimes(engine_runtimes.clone())
             .proxy(proxy.clone())
-            .router(router.clone())
             .build()
             .context(BuildMysqlService)?;
 

@@ -42,7 +42,6 @@ use warp::reject;
 use crate::{
     context::RequestContext,
     error::{build_ok_header, ErrNoCause, ErrWithCause, Error, Internal, InternalNoCause, Result},
-    execute_plan,
     forward::ForwardResult,
     Context as ProxyContext, Proxy,
 };
@@ -63,17 +62,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             runtime: self.engine_runtimes.write_runtime.clone(),
             timeout: ctx.timeout,
         };
-        // TODO: Define a new public method instead of calling the grpc write method
-        // directly.
-        let result = self.handle_write(ctx, table_request).await;
-        if let Some(header) = result.header {
-            if header.code != StatusCode::OK.as_u16() as u32 {
-                ErrNoCause {
-                    code: StatusCode::INTERNAL_SERVER_ERROR,
-                    msg: format!("fail to write storage, err:{:?}", header.error),
-                }
-                .fail()?;
+
+        let result = self.handle_write_internal(ctx, table_request).await?;
+        if result.failed != 0 {
+            ErrNoCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!("fail to write storage, failed rows:{:?}", result.failed),
             }
+            .fail()?;
         }
 
         Ok(())
@@ -125,15 +121,9 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Query is blocked",
             })?;
-        let output = execute_plan(
-            request_id,
-            &ctx.catalog,
-            &ctx.schema,
-            self.instance.clone(),
-            plan,
-            deadline,
-        )
-        .await?;
+        let output = self
+            .execute_plan(request_id, &ctx.catalog, &ctx.schema, plan, deadline)
+            .await?;
 
         let cost = begin_instant.saturating_elapsed().as_millis();
         debug!("Query handler finished, request_id:{request_id}, cost:{cost}ms, query:{query:?}");

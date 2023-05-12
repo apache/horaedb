@@ -71,12 +71,6 @@ pub enum Error {
         source: tokio::time::error::Elapsed,
         backtrace: Backtrace,
     },
-
-    #[snafu(display("Route handler failed, table:{:?}, source:{}", table, source))]
-    RouteHandler {
-        table: String,
-        source: router::Error,
-    },
 }
 
 define_result!(Error);

@@ -4,7 +4,6 @@
 
 pub mod admin;
 pub(crate) mod error;
-pub mod route;
 
 mod prelude {
     pub use catalog::manager::Manager as CatalogManager;
