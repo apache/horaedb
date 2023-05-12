@@ -14,6 +14,7 @@ use tokio::sync::{
     watch::{self, Receiver, Sender},
 };
 
+use super::flush_compaction::{BackgroundFlushFailed, TableFlushOptions};
 use crate::{
     instance::flush_compaction::{Other, Result},
     table::metrics::Metrics,
@@ -105,7 +106,7 @@ impl TableFlushScheduler {
         flush_job: F,
         on_flush_success: T,
         block_on_write_thread: bool,
-        res_sender: Option<oneshot::Sender<Result<()>>>,
+        opts: TableFlushOptions,
         runtime: &Runtime,
         metrics: &Metrics,
     ) -> Result<()>
@@ -131,10 +132,14 @@ impl TableFlushScheduler {
                     }
                     FlushState::Flushing => (),
                     FlushState::Failed { err_msg } => {
-                        warn!("Re-flush memory tables after background flush failed:{err_msg}");
-                        // Mark the worker is flushing.
-                        *flush_state = FlushState::Flushing;
-                        break;
+                        if opts.retry_flush {
+                            warn!("Re-flush memory tables after background flush failed:{err_msg}");
+                            // Mark the worker is flushing.
+                            *flush_state = FlushState::Flushing;
+                            break;
+                        } else {
+                            return BackgroundFlushFailed { msg: err_msg }.fail();
+                        }
                     }
                 }
 
@@ -167,7 +172,7 @@ impl TableFlushScheduler {
             if flush_res.is_ok() {
                 on_flush_success.await;
             }
-            send_flush_result(res_sender, flush_res);
+            send_flush_result(opts.res_sender, flush_res);
         };
 
         if block_on_write_thread {

@@ -144,6 +144,10 @@ pub struct TableFlushOptions {
     ///
     /// If it is [None], no compaction will be scheduled.
     pub compact_after_flush: Option<CompactionSchedulerRef>,
+    /// Shoud retry flush After flush failed
+    ///
+    /// Default is False
+    pub retry_flush: bool,
 }
 
 impl fmt::Debug for TableFlushOptions {
@@ -286,7 +290,7 @@ impl Flusher {
 
         // TODO: The immediate compaction after flush is not a good idea because it may
         // block on the write procedure.
-        if let Some(compaction_scheduler) = opts.compact_after_flush {
+        if let Some(compaction_scheduler) = opts.compact_after_flush.clone() {
             // Schedule compaction if flush completed successfully.
             let compact_req = TableCompactionRequest::no_waiter(table_data.clone());
             let on_flush_success = async move {
@@ -301,7 +305,7 @@ impl Flusher {
                     flush_job,
                     on_flush_success,
                     block_on,
-                    opts.res_sender,
+                    opts,
                     &self.runtime,
                     &table_data.metrics,
                 )
@@ -312,7 +316,7 @@ impl Flusher {
                     flush_job,
                     async {},
                     block_on,
-                    opts.res_sender,
+                    opts,
                     &self.runtime,
                     &table_data.metrics,
                 )
@@ -430,6 +434,7 @@ impl FlushTask {
                 meta_edit: MetaEdit::Update(meta_update),
             }
         };
+        // Update manifest and remove immutable memtables
         self.space_store
             .manifest
             .apply_edit(edit_req)

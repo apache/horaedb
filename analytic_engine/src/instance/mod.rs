@@ -151,6 +151,8 @@ pub struct Instance {
     pub(crate) replay_batch_size: usize,
     /// Write sst max buffer size
     pub(crate) write_sst_max_buffer_size: usize,
+    /// Shoud retry flush After flush failed
+    pub(crate) retry_flush: bool,
     /// Max bytes per write batch
     pub(crate) max_bytes_per_write_batch: Option<usize>,
     /// Options for scanning sst
@@ -191,6 +193,7 @@ impl Instance {
             } else {
                 None
             },
+            retry_flush: false,
         };
 
         let flusher = self.make_flusher();
@@ -273,6 +276,11 @@ impl Instance {
             runtime: self.runtimes.write_runtime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
         }
+    }
+
+    #[inline]
+    fn should_retry_flush(&self) -> bool {
+        self.retry_flush
     }
 }
 
