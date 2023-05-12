@@ -44,17 +44,19 @@ struct ScheduleSync {
 impl ScheduleSync {
     #[inline]
     pub fn should_retry_flush(&self, max_retry_limit: usize) -> bool {
-        self.continuous_flush_failure_count.load(Ordering::Relaxed) < max_retry_limit 
+        self.continuous_flush_failure_count.load(Ordering::Relaxed) < max_retry_limit
     }
 
     #[inline]
     pub fn reset_flush_failure_count(&self) {
-        self.continuous_flush_failure_count.store(0, Ordering::Relaxed);
+        self.continuous_flush_failure_count
+            .store(0, Ordering::Relaxed);
     }
 
     #[inline]
     pub fn inc_flush_failure_count(&self) {
-        self.continuous_flush_failure_count.fetch_add(1, Ordering::Relaxed);
+        self.continuous_flush_failure_count
+            .fetch_add(1, Ordering::Relaxed);
     }
 }
 
