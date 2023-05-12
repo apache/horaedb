@@ -121,7 +121,7 @@ impl Default for Config {
             sst_background_read_parallelism: 8,
             scan_max_record_batches_in_flight: 1024,
             write_sst_max_buffer_size: ReadableSize::mb(10),
-            retry_flush: true,
+            retry_flush: false,
             max_bytes_per_write_batch: None,
             wal: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
