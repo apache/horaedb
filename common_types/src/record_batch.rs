@@ -7,7 +7,7 @@ use std::{cmp, convert::TryFrom, mem, sync::Arc};
 use arrow::{
     array::BooleanArray,
     compute,
-    datatypes::{DataType, Field, Schema, SchemaRef as ArrowSchemaRef, TimeUnit},
+    datatypes::{DataType, Field, Fields, Schema, SchemaRef as ArrowSchemaRef, TimeUnit},
     error::ArrowError,
     record_batch::RecordBatch as ArrowRecordBatch,
 };
@@ -325,7 +325,7 @@ fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch>
         })
         .collect::<Vec<_>>();
     let mills_schema = Schema {
-        fields: mills_fileds,
+        fields: mills_fileds.into(),
         metadata: schema.metadata().clone(),
     };
     let result =
