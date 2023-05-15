@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/lock"
 	"github.com/CeresDB/ceresmeta/server/storage"
@@ -23,6 +22,7 @@ const (
 )
 
 type ManagerImpl struct {
+	logger   *zap.Logger
 	metadata *metadata.ClusterMetadata
 
 	// ProcedureShardLock is used to ensure the consistency of procedures' concurrent running on shard, that is to say, only one procedure is allowed to run on a specific shard.
@@ -45,7 +45,7 @@ func (m *ManagerImpl) Start(ctx context.Context) error {
 	defer m.lock.Unlock()
 
 	if m.running {
-		log.Warn("procedure manager has already been started")
+		m.logger.Warn("procedure manager has already been started")
 		return nil
 	}
 
@@ -64,7 +64,7 @@ func (m *ManagerImpl) Stop(ctx context.Context) error {
 	for _, procedure := range m.runningProcedures {
 		if procedure.State() == StateRunning {
 			err := procedure.Cancel(ctx)
-			log.Error("cancel procedure failed", zap.Error(err), zap.Uint64("procedureID", procedure.ID()))
+			m.logger.Error("cancel procedure failed", zap.Error(err), zap.Uint64("procedureID", procedure.ID()))
 			// TODO: consider whether a single procedure cancel failed should return directly.
 			return err
 		}
@@ -105,9 +105,10 @@ func (m *ManagerImpl) ListRunningProcedure(_ context.Context) ([]*Info, error) {
 	return procedureInfos, nil
 }
 
-func NewManagerImpl(metadata *metadata.ClusterMetadata) (Manager, error) {
+func NewManagerImpl(logger *zap.Logger, metadata *metadata.ClusterMetadata) (Manager, error) {
 	entryLock := lock.NewEntryLock(10)
 	manager := &ManagerImpl{
+		logger:             logger,
 		metadata:           metadata,
 		runningProcedures:  map[storage.ShardID]Procedure{},
 		procedureShardLock: &entryLock,
@@ -134,7 +135,7 @@ func (m *ManagerImpl) startProcedurePromote(ctx context.Context, procedureWorker
 func (m *ManagerImpl) startProcedurePromoteInternal(ctx context.Context, procedureWorkerChan chan struct{}) {
 	newProcedures, err := m.promoteProcedure(ctx)
 	if err != nil {
-		log.Error("promote procedure failed", zap.Error(err))
+		m.logger.Error("promote procedure failed", zap.Error(err))
 		return
 	}
 
@@ -147,19 +148,19 @@ func (m *ManagerImpl) startProcedurePromoteInternal(ctx context.Context, procedu
 	m.lock.Unlock()
 
 	for _, newProcedure := range newProcedures {
-		log.Info("promote procedure", zap.Uint64("procedureID", newProcedure.ID()))
+		m.logger.Info("promote procedure", zap.Uint64("procedureID", newProcedure.ID()))
 		m.startProcedureWorker(ctx, newProcedure, procedureWorkerChan)
 	}
 }
 
 func (m *ManagerImpl) startProcedureWorker(ctx context.Context, newProcedure Procedure, procedureWorkerChan chan struct{}) {
 	go func() {
-		log.Info("procedure start", zap.Uint64("procedureID", newProcedure.ID()))
+		m.logger.Info("procedure start", zap.Uint64("procedureID", newProcedure.ID()))
 		err := newProcedure.Start(ctx)
 		if err != nil {
-			log.Error("procedure start failed", zap.Error(err))
+			m.logger.Error("procedure start failed", zap.Error(err))
 		}
-		log.Info("procedure finish", zap.Uint64("procedureID", newProcedure.ID()))
+		m.logger.Info("procedure finish", zap.Uint64("procedureID", newProcedure.ID()))
 		for shardID := range newProcedure.RelatedVersionInfo().ShardWithVersion {
 			m.lock.Lock()
 			delete(m.runningProcedures, shardID)

@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/id"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
@@ -41,6 +40,7 @@ type Tables struct {
 }
 
 type TableManagerImpl struct {
+	logger        *zap.Logger
 	storage       storage.Storage
 	clusterID     storage.ClusterID
 	schemaIDAlloc id.Allocator
@@ -52,8 +52,9 @@ type TableManagerImpl struct {
 	schemaTables map[storage.SchemaID]*Tables // schemaName -> tables
 }
 
-func NewTableManagerImpl(storage storage.Storage, clusterID storage.ClusterID, schemaIDAlloc id.Allocator, tableIDAlloc id.Allocator) TableManager {
+func NewTableManagerImpl(logger *zap.Logger, storage storage.Storage, clusterID storage.ClusterID, schemaIDAlloc id.Allocator, tableIDAlloc id.Allocator) TableManager {
 	return &TableManagerImpl{
+		logger:        logger,
 		storage:       storage,
 		clusterID:     clusterID,
 		schemaIDAlloc: schemaIDAlloc,
@@ -92,7 +93,7 @@ func (m *TableManagerImpl) GetTablesByIDs(tableIDs []storage.TableID) []storage.
 		for _, tableID := range tableIDs {
 			table, ok := tables.tablesByID[tableID]
 			if !ok {
-				log.Warn("table not exists", zap.Uint64("tableID", uint64(tableID)))
+				m.logger.Warn("table not exists", zap.Uint64("tableID", uint64(tableID)))
 				continue
 			}
 			result = append(result, table)
@@ -243,7 +244,7 @@ func (m *TableManagerImpl) loadSchemas(ctx context.Context) error {
 	if err != nil {
 		return errors.WithMessage(err, "list schemas")
 	}
-	log.Debug("load schema", zap.String("data", fmt.Sprintf("%+v", schemasResult)))
+	m.logger.Debug("load schema", zap.String("data", fmt.Sprintf("%+v", schemasResult)))
 
 	// Reset data in memory.
 	m.schemas = make(map[string]storage.Schema, len(schemasResult.Schemas))
@@ -265,7 +266,7 @@ func (m *TableManagerImpl) loadTables(ctx context.Context) error {
 		if err != nil {
 			return errors.WithMessage(err, "list tables")
 		}
-		log.Debug("load table", zap.String("schema", fmt.Sprintf("%+v", schema)), zap.String("tables", fmt.Sprintf("%+v", tablesResult)))
+		m.logger.Debug("load table", zap.String("schema", fmt.Sprintf("%+v", schema)), zap.String("tables", fmt.Sprintf("%+v", tablesResult)))
 
 		for _, table := range tablesResult.Tables {
 			tables, ok := m.schemaTables[table.SchemaID]

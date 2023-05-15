@@ -159,11 +159,7 @@ func (srv *Server) startServer(_ context.Context) error {
 		MaxScanLimit: srv.cfg.MaxScanLimit, MinScanLimit: srv.cfg.MinScanLimit,
 	})
 
-	topologyType, err := metadata.ParseTopologyType(srv.cfg.TopologyType)
-	if err != nil {
-		return err
-	}
-	manager, err := cluster.NewManagerImpl(storage, srv.etcdCli, srv.etcdCli, srv.cfg.StorageRootPath, srv.cfg.IDAllocatorStep, srv.cfg.EnableSchedule, topologyType)
+	manager, err := cluster.NewManagerImpl(storage, srv.etcdCli, srv.etcdCli, srv.cfg.StorageRootPath, srv.cfg.IDAllocatorStep)
 	if err != nil {
 		return errors.WithMessage(err, "start server")
 	}
@@ -227,11 +223,17 @@ func (srv *Server) createDefaultCluster(ctx context.Context) error {
 
 	// Create default cluster by the leader.
 	if leaderResp.IsLocal {
+		topologyType, err := metadata.ParseTopologyType(srv.cfg.TopologyType)
+		if err != nil {
+			return err
+		}
 		defaultCluster, err := srv.clusterManager.CreateCluster(ctx, srv.cfg.DefaultClusterName,
 			metadata.CreateClusterOpts{
 				NodeCount:         uint32(srv.cfg.DefaultClusterNodeCount),
 				ReplicationFactor: uint32(srv.cfg.DefaultClusterReplicationFactor),
 				ShardTotal:        uint32(srv.cfg.DefaultClusterShardTotal),
+				EnableSchedule:    srv.cfg.EnableSchedule,
+				TopologyType:      topologyType,
 			})
 		if err != nil {
 			log.Warn("create default cluster failed", zap.Error(err))

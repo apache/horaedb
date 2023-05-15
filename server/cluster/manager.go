@@ -29,6 +29,7 @@ type Manager interface {
 
 	ListClusters(ctx context.Context) ([]*Cluster, error)
 	CreateCluster(ctx context.Context, clusterName string, opts metadata.CreateClusterOpts) (*Cluster, error)
+	UpdateCluster(ctx context.Context, clusterName string, opt metadata.UpdateClusterOpts) error
 	GetCluster(ctx context.Context, clusterName string) (*Cluster, error)
 	// AllocSchemaID means get or create schema.
 	// The second output parameter bool: Returns true if the table was newly created.
@@ -55,12 +56,10 @@ type managerImpl struct {
 	alloc           id.Allocator
 	rootPath        string
 	idAllocatorStep uint
-	enableSchedule  bool
-	topologyType    metadata.TopologyType
 }
 
-func NewManagerImpl(storage storage.Storage, kv clientv3.KV, client *clientv3.Client, rootPath string, idAllocatorStep uint, enableSchedule bool, topologyType metadata.TopologyType) (Manager, error) {
-	alloc := id.NewAllocatorImpl(kv, path.Join(rootPath, AllocClusterIDPrefix), idAllocatorStep)
+func NewManagerImpl(storage storage.Storage, kv clientv3.KV, client *clientv3.Client, rootPath string, idAllocatorStep uint) (Manager, error) {
+	alloc := id.NewAllocatorImpl(log.GetLogger(), kv, path.Join(rootPath, AllocClusterIDPrefix), idAllocatorStep)
 
 	manager := &managerImpl{
 		storage:         storage,
@@ -70,8 +69,6 @@ func NewManagerImpl(storage storage.Storage, kv clientv3.KV, client *clientv3.Cl
 		clusters:        make(map[string]*Cluster, 0),
 		rootPath:        rootPath,
 		idAllocatorStep: idAllocatorStep,
-		enableSchedule:  enableSchedule,
-		topologyType:    topologyType,
 	}
 
 	return manager, nil
@@ -108,13 +105,16 @@ func (m *managerImpl) CreateCluster(ctx context.Context, clusterName string, opt
 		return nil, errors.WithMessagef(err, "cluster manager CreateCluster, clusterName:%s", clusterName)
 	}
 
+	createTime := time.Now().UnixMilli()
 	clusterMetadataStorage := storage.Cluster{
-		ID:                clusterID,
-		Name:              clusterName,
-		MinNodeCount:      opts.NodeCount,
-		ReplicationFactor: opts.ReplicationFactor,
-		ShardTotal:        opts.ShardTotal,
-		CreatedAt:         uint64(time.Now().UnixMilli()),
+		ID:             clusterID,
+		Name:           clusterName,
+		MinNodeCount:   opts.NodeCount,
+		ShardTotal:     opts.ShardTotal,
+		EnableSchedule: opts.EnableSchedule,
+		TopologyType:   opts.TopologyType,
+		CreatedAt:      uint64(createTime),
+		ModifiedAt:     uint64(createTime),
 	}
 	err = m.storage.CreateCluster(ctx, storage.CreateClusterRequest{
 		Cluster: clusterMetadataStorage,
@@ -124,7 +124,9 @@ func (m *managerImpl) CreateCluster(ctx context.Context, clusterName string, opt
 		return nil, errors.WithMessage(err, "cluster create cluster")
 	}
 
-	clusterMetadata := metadata.NewClusterMetadata(clusterMetadataStorage, m.storage, m.kv, m.rootPath, m.idAllocatorStep, m.topologyType == metadata.TopologyTypeDynamic)
+	logger := log.With(zap.String("clusterName", clusterName))
+
+	clusterMetadata := metadata.NewClusterMetadata(logger, clusterMetadataStorage, m.storage, m.kv, m.rootPath, m.idAllocatorStep)
 
 	if err = clusterMetadata.Init(ctx); err != nil {
 		log.Error("fail to init cluster", zap.Error(err), zap.String("clusterName", clusterName))
@@ -136,7 +138,7 @@ func (m *managerImpl) CreateCluster(ctx context.Context, clusterName string, opt
 		return nil, errors.WithMessage(err, "cluster load")
 	}
 
-	c, err := NewCluster(clusterMetadata, m.client, m.rootPath, m.enableSchedule, m.topologyType)
+	c, err := NewCluster(logger, clusterMetadata, m.client, m.rootPath)
 	if err != nil {
 		return nil, errors.WithMessage(err, "new cluster")
 	}
@@ -147,6 +149,36 @@ func (m *managerImpl) CreateCluster(ctx context.Context, clusterName string, opt
 	}
 
 	return c, nil
+}
+
+func (m *managerImpl) UpdateCluster(ctx context.Context, clusterName string, opt metadata.UpdateClusterOpts) error {
+	c, err := m.getCluster(clusterName)
+	if err != nil {
+		log.Error("get cluster", zap.Error(err))
+		return err
+	}
+
+	err = m.storage.UpdateCluster(ctx, storage.UpdateClusterRequest{Cluster: storage.Cluster{
+		ID:             c.GetMetadata().GetClusterID(),
+		Name:           c.GetMetadata().Name(),
+		MinNodeCount:   c.GetMetadata().GetClusterMinNodeCount(),
+		ShardTotal:     c.GetMetadata().GetTotalShardNum(),
+		EnableSchedule: opt.EnableSchedule,
+		TopologyType:   c.GetMetadata().GetTopologyType(),
+		CreatedAt:      c.GetMetadata().GetCreateTime(),
+		ModifiedAt:     uint64(time.Now().UnixMilli()),
+	}})
+	if err != nil {
+		log.Error("update cluster", zap.Error(err))
+		return err
+	}
+
+	if err := c.GetMetadata().LoadMetadata(ctx); err != nil {
+		log.Error("fail to load cluster", zap.Error(err), zap.String("clusterName", clusterName))
+		return err
+	}
+
+	return nil
 }
 
 func (m *managerImpl) GetCluster(_ context.Context, clusterName string) (*Cluster, error) {
@@ -285,13 +317,14 @@ func (m *managerImpl) Start(ctx context.Context) error {
 
 	m.clusters = make(map[string]*Cluster, len(clusters.Clusters))
 	for _, metadataStorage := range clusters.Clusters {
-		clusterMetadata := metadata.NewClusterMetadata(metadataStorage, m.storage, m.kv, m.rootPath, m.idAllocatorStep, m.topologyType == metadata.TopologyTypeDynamic)
+		logger := log.With(zap.String("clusterName", metadataStorage.Name))
+		clusterMetadata := metadata.NewClusterMetadata(logger, metadataStorage, m.storage, m.kv, m.rootPath, m.idAllocatorStep)
 		if err := clusterMetadata.Load(ctx); err != nil {
 			log.Error("fail to load cluster", zap.String("cluster", clusterMetadata.Name()), zap.Error(err))
 			return errors.WithMessage(err, "fail to load cluster")
 		}
 		log.Info("open cluster successfully", zap.String("cluster", clusterMetadata.Name()))
-		c, err := NewCluster(clusterMetadata, m.client, m.rootPath, m.enableSchedule, m.topologyType)
+		c, err := NewCluster(logger, clusterMetadata, m.client, m.rootPath)
 		if err != nil {
 			return errors.WithMessage(err, "new cluster")
 		}

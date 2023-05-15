@@ -39,6 +39,22 @@ func newEtcdStorage(client *clientv3.Client, rootPath string, opts Options) Stor
 	return &metaStorageImpl{client, opts, rootPath}
 }
 
+func (s *metaStorageImpl) GetCluster(ctx context.Context, clusterID ClusterID) (Cluster, error) {
+	clusterKey := makeClusterKey(s.rootPath, uint32(clusterID))
+
+	value, err := etcdutil.Get(ctx, s.client, clusterKey)
+	if err != nil {
+		return Cluster{}, errors.WithMessagef(err, "get cluster, clusterID:%d, key:%s", clusterID, clusterKey)
+	}
+
+	clusterProto := &clusterpb.Cluster{}
+	if err = proto.Unmarshal([]byte(value), clusterProto); err != nil {
+		return Cluster{}, ErrDecode.WithCausef("decode cluster view, clusterID:%d, err:%v", clusterID, err)
+	}
+
+	return convertClusterPB(clusterProto), nil
+}
+
 func (s *metaStorageImpl) ListClusters(ctx context.Context) (ListClustersResult, error) {
 	startKey := makeClusterKey(s.rootPath, 0)
 	endKey := makeClusterKey(s.rootPath, math.MaxUint32)
@@ -88,6 +104,32 @@ func (s *metaStorageImpl) CreateCluster(ctx context.Context, req CreateClusterRe
 	}
 	if !resp.Succeeded {
 		return ErrCreateClusterAgain.WithCausef("cluster may already exist, clusterID:%d, key:%s, resp:%v", req.Cluster.ID, key, resp)
+	}
+	return nil
+}
+
+// UpdateCluster return an error if the cluster does not exist.
+func (s *metaStorageImpl) UpdateCluster(ctx context.Context, req UpdateClusterRequest) error {
+	c := convertClusterToPB(req.Cluster)
+	value, err := proto.Marshal(&c)
+	if err != nil {
+		return ErrEncode.WithCausef("encode cluster，clusterID:%d, err:%v", req.Cluster.ID, err)
+	}
+
+	key := makeClusterKey(s.rootPath, c.Id)
+
+	keyExists := clientv3util.KeyExists(key)
+	opUpdateCluster := clientv3.OpPut(key, string(value))
+
+	resp, err := s.client.Txn(ctx).
+		If(keyExists).
+		Then(opUpdateCluster).
+		Commit()
+	if err != nil {
+		return errors.WithMessagef(err, "update cluster, clusterID:%d, key:%s", req.Cluster.ID, key)
+	}
+	if !resp.Succeeded {
+		return ErrUpdateCluster.WithCausef("update cluster failed, clusterID:%d, key:%s, resp:%v", req.Cluster.ID, key, resp)
 	}
 	return nil
 }

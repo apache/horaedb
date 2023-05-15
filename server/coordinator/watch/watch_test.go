@@ -12,6 +12,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -28,7 +29,7 @@ func TestWatch(t *testing.T) {
 	ctx := context.Background()
 
 	_, client, _ := etcdutil.PrepareEtcdServerAndClient(t)
-	watch := NewEtcdShardWatch(TestClusterName, TestRootPath, client)
+	watch := NewEtcdShardWatch(zap.NewNop(), TestClusterName, TestRootPath, client)
 	err := watch.Start(ctx)
 	re.NoError(err)
 

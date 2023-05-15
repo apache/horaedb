@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/id"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
@@ -102,6 +101,7 @@ func (t *Topology) IsPrepareFinished() bool {
 }
 
 type TopologyManagerImpl struct {
+	logger       *zap.Logger
 	storage      storage.Storage
 	clusterID    storage.ClusterID
 	shardIDAlloc id.Allocator
@@ -119,8 +119,9 @@ type TopologyManagerImpl struct {
 	nodes map[string]storage.Node // NodeName in memory.
 }
 
-func NewTopologyManagerImpl(storage storage.Storage, clusterID storage.ClusterID, shardIDAlloc id.Allocator) TopologyManager {
+func NewTopologyManagerImpl(logger *zap.Logger, storage storage.Storage, clusterID storage.ClusterID, shardIDAlloc id.Allocator) TopologyManager {
 	return &TopologyManagerImpl{
+		logger:       logger,
 		storage:      storage,
 		clusterID:    clusterID,
 		shardIDAlloc: shardIDAlloc,
@@ -542,7 +543,7 @@ func (m *TopologyManagerImpl) loadClusterView(ctx context.Context) error {
 	if err != nil {
 		return errors.WithMessage(err, "storage get cluster view")
 	}
-	log.Debug("load cluster view", zap.String("clusterViews", fmt.Sprintf("%+v", clusterViewResult)))
+	m.logger.Debug("load cluster view", zap.String("clusterViews", fmt.Sprintf("%+v", clusterViewResult)))
 
 	m.shardNodesMapping = make(map[storage.ShardID][]storage.ShardNode, len(clusterViewResult.ClusterView.ShardNodes))
 	m.nodeShardsMapping = make(map[string][]storage.ShardNode, len(clusterViewResult.ClusterView.ShardNodes))
@@ -562,7 +563,7 @@ func (m *TopologyManagerImpl) loadShardViews(ctx context.Context) error {
 	if err != nil {
 		return errors.WithMessage(err, "storage list shard views")
 	}
-	log.Debug("load shard views", zap.Int32("clusterID", int32(m.clusterID)), zap.String("shardViews", fmt.Sprintf("%+v", shardViewsResult)))
+	m.logger.Debug("load shard views", zap.Int32("clusterID", int32(m.clusterID)), zap.String("shardViews", fmt.Sprintf("%+v", shardViewsResult)))
 
 	// Reset data in memory.
 	m.shardViews = shardViewsResult.ShardViews

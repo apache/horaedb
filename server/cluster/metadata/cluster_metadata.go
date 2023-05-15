@@ -11,7 +11,6 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/id"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
@@ -25,6 +24,7 @@ const (
 )
 
 type ClusterMetadata struct {
+	logger    *zap.Logger
 	clusterID storage.ClusterID
 
 	// RWMutex is used to protect following fields.
@@ -41,36 +41,40 @@ type ClusterMetadata struct {
 	storage      storage.Storage
 	kv           clientv3.KV
 	shardIDAlloc id.Allocator
-
-	enableUpdateWhenStable bool
 }
 
-func NewClusterMetadata(meta storage.Cluster, storage storage.Storage, kv clientv3.KV, rootPath string, idAllocatorStep uint, enableUpdateWhenStable bool) *ClusterMetadata {
-	schemaIDAlloc := id.NewAllocatorImpl(kv, path.Join(rootPath, meta.Name, AllocSchemaIDPrefix), idAllocatorStep)
-	tableIDAlloc := id.NewAllocatorImpl(kv, path.Join(rootPath, meta.Name, AllocTableIDPrefix), idAllocatorStep)
+func NewClusterMetadata(logger *zap.Logger, meta storage.Cluster, storage storage.Storage, kv clientv3.KV, rootPath string, idAllocatorStep uint) *ClusterMetadata {
+	schemaIDAlloc := id.NewAllocatorImpl(logger, kv, path.Join(rootPath, meta.Name, AllocSchemaIDPrefix), idAllocatorStep)
+	tableIDAlloc := id.NewAllocatorImpl(logger, kv, path.Join(rootPath, meta.Name, AllocTableIDPrefix), idAllocatorStep)
 	// FIXME: Load ShardTopology when cluster create, pass exist ShardID to allocator.
 	shardIDAlloc := id.NewReusableAllocatorImpl([]uint64{}, MinShardID)
 
 	cluster := &ClusterMetadata{
-		clusterID:              meta.ID,
-		metaData:               meta,
-		tableManager:           NewTableManagerImpl(storage, meta.ID, schemaIDAlloc, tableIDAlloc),
-		topologyManager:        NewTopologyManagerImpl(storage, meta.ID, shardIDAlloc),
-		registeredNodesCache:   map[string]RegisteredNode{},
-		storage:                storage,
-		kv:                     kv,
-		shardIDAlloc:           shardIDAlloc,
-		enableUpdateWhenStable: enableUpdateWhenStable,
+		logger:               logger,
+		clusterID:            meta.ID,
+		metaData:             meta,
+		tableManager:         NewTableManagerImpl(logger, storage, meta.ID, schemaIDAlloc, tableIDAlloc),
+		topologyManager:      NewTopologyManagerImpl(logger, storage, meta.ID, shardIDAlloc),
+		registeredNodesCache: map[string]RegisteredNode{},
+		storage:              storage,
+		kv:                   kv,
+		shardIDAlloc:         shardIDAlloc,
 	}
 
 	return cluster
 }
 
 func (c *ClusterMetadata) GetClusterID() storage.ClusterID {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
 	return c.clusterID
 }
 
 func (c *ClusterMetadata) Name() string {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
 	return c.metaData.Name
 }
 
@@ -91,7 +95,7 @@ func (c *ClusterMetadata) GetShardTables(shardIDs []storage.ShardID) map[storage
 		for _, table := range tables {
 			schema, ok := schemaByID[table.SchemaID]
 			if !ok {
-				log.Warn("schema not exits", zap.Uint64("schemaID", uint64(table.SchemaID)))
+				c.logger.Warn("schema not exits", zap.Uint64("schemaID", uint64(table.SchemaID)))
 			}
 			tableInfos = append(tableInfos, TableInfo{
 				ID:            table.ID,
@@ -130,7 +134,7 @@ func (c *ClusterMetadata) GetShardTables(shardIDs []storage.ShardID) map[storage
 // DropTable will drop table metadata and all mapping of this table.
 // If the table to be dropped has been opened multiple times, all its mapping will be dropped.
 func (c *ClusterMetadata) DropTable(ctx context.Context, schemaName, tableName string) (DropTableResult, error) {
-	log.Info("drop table start", zap.String("cluster", c.Name()), zap.String("schemaName", schemaName), zap.String("tableName", tableName))
+	c.logger.Info("drop table start", zap.String("cluster", c.Name()), zap.String("schemaName", schemaName), zap.String("tableName", tableName))
 
 	table, ok, err := c.tableManager.GetTable(schemaName, tableName)
 	if err != nil {
@@ -156,7 +160,7 @@ func (c *ClusterMetadata) DropTable(ctx context.Context, schemaName, tableName s
 	ret := DropTableResult{
 		ShardVersionUpdate: updateVersions,
 	}
-	log.Info("drop table success", zap.String("cluster", c.Name()), zap.String("schemaName", schemaName), zap.String("tableName", tableName), zap.String("result", fmt.Sprintf("%+v", ret)))
+	c.logger.Info("drop table success", zap.String("cluster", c.Name()), zap.String("schemaName", schemaName), zap.String("tableName", tableName), zap.String("result", fmt.Sprintf("%+v", ret)))
 
 	return ret, nil
 }
@@ -164,21 +168,21 @@ func (c *ClusterMetadata) DropTable(ctx context.Context, schemaName, tableName s
 // OpenTable will open an existing table on the specified shard.
 // The table to be opened must have been created.
 func (c *ClusterMetadata) OpenTable(ctx context.Context, request OpenTableRequest) (ShardVersionUpdate, error) {
-	log.Info("open table", zap.String("request", fmt.Sprintf("%v", request)))
+	c.logger.Info("open table", zap.String("request", fmt.Sprintf("%v", request)))
 
 	table, exists, err := c.GetTable(request.SchemaName, request.TableName)
 	if err != nil {
-		log.Error("get table", zap.Error(err), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
+		c.logger.Error("get table", zap.Error(err), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
 		return ShardVersionUpdate{}, err
 	}
 
 	if !exists {
-		log.Error("the table to be opened does not exist", zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
+		c.logger.Error("the table to be opened does not exist", zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
 		return ShardVersionUpdate{}, errors.WithMessagef(ErrTableNotFound, "table not exists, shcemaName:%s,tableName:%s", request.SchemaName, request.TableName)
 	}
 
 	if !table.IsPartitioned() {
-		log.Error("normal table cannot be opened on multiple shards", zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
+		c.logger.Error("normal table cannot be opened on multiple shards", zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
 		return ShardVersionUpdate{}, errors.WithMessagef(ErrOpenTable, "normal table cannot be opened on multiple shards, schemaName:%s, tableName:%s", request.SchemaName, request.TableName)
 	}
 
@@ -187,21 +191,21 @@ func (c *ClusterMetadata) OpenTable(ctx context.Context, request OpenTableReques
 		return ShardVersionUpdate{}, errors.WithMessage(err, "add table to topology")
 	}
 
-	log.Info("open table finish", zap.String("request", fmt.Sprintf("%v", request)))
+	c.logger.Info("open table finish", zap.String("request", fmt.Sprintf("%v", request)))
 	return shardVersionUpdate, nil
 }
 
 func (c *ClusterMetadata) CloseTable(ctx context.Context, request CloseTableRequest) (ShardVersionUpdate, error) {
-	log.Info("close table", zap.String("request", fmt.Sprintf("%v", request)))
+	c.logger.Info("close table", zap.String("request", fmt.Sprintf("%v", request)))
 
 	table, exists, err := c.GetTable(request.SchemaName, request.TableName)
 	if err != nil {
-		log.Error("get table", zap.Error(err), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
+		c.logger.Error("get table", zap.Error(err), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
 		return ShardVersionUpdate{}, err
 	}
 
 	if !exists {
-		log.Error("the table to be closed does not exist", zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
+		c.logger.Error("the table to be closed does not exist", zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
 		return ShardVersionUpdate{}, errors.WithMessagef(ErrTableNotFound, "table not exists, shcemaName:%s, tableName:%s", request.SchemaName, request.TableName)
 	}
 
@@ -210,14 +214,14 @@ func (c *ClusterMetadata) CloseTable(ctx context.Context, request CloseTableRequ
 		return ShardVersionUpdate{}, err
 	}
 
-	log.Info("close table finish", zap.String("request", fmt.Sprintf("%v", request)))
+	c.logger.Info("close table finish", zap.String("request", fmt.Sprintf("%v", request)))
 	return shardVersionUpdate, nil
 }
 
 // MigrateTable used to migrate tables from old shard to new shard.
 // The mapping relationship between table and shard will be modified.
 func (c *ClusterMetadata) MigrateTable(ctx context.Context, request MigrateTableRequest) error {
-	log.Info("migrate table", zap.String("request", fmt.Sprintf("%v", request)))
+	c.logger.Info("migrate table", zap.String("request", fmt.Sprintf("%v", request)))
 
 	tables := make([]storage.Table, 0, len(request.TableNames))
 	tableIDs := make([]storage.TableID, 0, len(request.TableNames))
@@ -225,12 +229,12 @@ func (c *ClusterMetadata) MigrateTable(ctx context.Context, request MigrateTable
 	for _, tableName := range request.TableNames {
 		table, exists, err := c.tableManager.GetTable(request.SchemaName, tableName)
 		if err != nil {
-			log.Error("get table", zap.Error(err), zap.String("schemaName", request.SchemaName), zap.String("tableName", tableName))
+			c.logger.Error("get table", zap.Error(err), zap.String("schemaName", request.SchemaName), zap.String("tableName", tableName))
 			return err
 		}
 
 		if !exists {
-			log.Error("the table to be closed does not exist", zap.String("schemaName", request.SchemaName), zap.String("tableName", tableName))
+			c.logger.Error("the table to be closed does not exist", zap.String("schemaName", request.SchemaName), zap.String("tableName", tableName))
 			return errors.WithMessagef(ErrTableNotFound, "table not exists, shcemaName:%s,tableName:%s", request.SchemaName, tableName)
 		}
 
@@ -239,16 +243,16 @@ func (c *ClusterMetadata) MigrateTable(ctx context.Context, request MigrateTable
 	}
 
 	if _, err := c.topologyManager.RemoveTable(ctx, request.OldShardID, tableIDs); err != nil {
-		log.Error("remove table from topology")
+		c.logger.Error("remove table from topology")
 		return err
 	}
 
 	if _, err := c.topologyManager.AddTable(ctx, request.NewShardID, tables); err != nil {
-		log.Error("add table from topology")
+		c.logger.Error("add table from topology")
 		return err
 	}
 
-	log.Info("migrate table finish", zap.String("request", fmt.Sprintf("%v", request)))
+	c.logger.Info("migrate table finish", zap.String("request", fmt.Sprintf("%v", request)))
 	return nil
 }
 
@@ -263,7 +267,7 @@ func (c *ClusterMetadata) GetTable(schemaName, tableName string) (storage.Table,
 }
 
 func (c *ClusterMetadata) CreateTableMetadata(ctx context.Context, request CreateTableMetadataRequest) (CreateTableMetadataResult, error) {
-	log.Info("create table start", zap.String("cluster", c.Name()), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
+	c.logger.Info("create table start", zap.String("cluster", c.Name()), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
 
 	_, exists, err := c.tableManager.GetTable(request.SchemaName, request.TableName)
 	if err != nil {
@@ -284,12 +288,12 @@ func (c *ClusterMetadata) CreateTableMetadata(ctx context.Context, request Creat
 		Table: table,
 	}
 
-	log.Info("create table metadata succeed", zap.String("cluster", c.Name()), zap.String("result", fmt.Sprintf("%+v", res)))
+	c.logger.Info("create table metadata succeed", zap.String("cluster", c.Name()), zap.String("result", fmt.Sprintf("%+v", res)))
 	return res, nil
 }
 
 func (c *ClusterMetadata) AddTableTopology(ctx context.Context, shardID storage.ShardID, table storage.Table) (CreateTableResult, error) {
-	log.Info("add table topology start", zap.String("cluster", c.Name()), zap.String("tableName", table.Name))
+	c.logger.Info("add table topology start", zap.String("cluster", c.Name()), zap.String("tableName", table.Name))
 
 	// Add table to topology manager.
 	result, err := c.topologyManager.AddTable(ctx, shardID, []storage.Table{table})
@@ -301,12 +305,12 @@ func (c *ClusterMetadata) AddTableTopology(ctx context.Context, shardID storage.
 		Table:              table,
 		ShardVersionUpdate: result,
 	}
-	log.Info("add table topology succeed", zap.String("cluster", c.Name()), zap.String("result", fmt.Sprintf("%+v", ret)))
+	c.logger.Info("add table topology succeed", zap.String("cluster", c.Name()), zap.String("result", fmt.Sprintf("%+v", ret)))
 	return ret, nil
 }
 
 func (c *ClusterMetadata) DropTableMetadata(ctx context.Context, schemaName, tableName string) (DropTableMetadataResult, error) {
-	log.Info("drop table start", zap.String("cluster", c.Name()), zap.String("schemaName", schemaName), zap.String("tableName", tableName))
+	c.logger.Info("drop table start", zap.String("cluster", c.Name()), zap.String("schemaName", schemaName), zap.String("tableName", tableName))
 
 	table, ok, err := c.tableManager.GetTable(schemaName, tableName)
 	if err != nil {
@@ -322,13 +326,13 @@ func (c *ClusterMetadata) DropTableMetadata(ctx context.Context, schemaName, tab
 		return DropTableMetadataResult{}, errors.WithMessage(err, "table manager drop table")
 	}
 
-	log.Info("drop table metadata success", zap.String("cluster", c.Name()), zap.String("schemaName", schemaName), zap.String("tableName", tableName), zap.String("result", fmt.Sprintf("%+v", table)))
+	c.logger.Info("drop table metadata success", zap.String("cluster", c.Name()), zap.String("schemaName", schemaName), zap.String("tableName", tableName), zap.String("result", fmt.Sprintf("%+v", table)))
 
 	return DropTableMetadataResult{Table: table}, nil
 }
 
 func (c *ClusterMetadata) CreateTable(ctx context.Context, request CreateTableRequest) (CreateTableResult, error) {
-	log.Info("create table start", zap.String("cluster", c.Name()), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
+	c.logger.Info("create table start", zap.String("cluster", c.Name()), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
 
 	_, exists, err := c.tableManager.GetTable(request.SchemaName, request.TableName)
 	if err != nil {
@@ -355,7 +359,7 @@ func (c *ClusterMetadata) CreateTable(ctx context.Context, request CreateTableRe
 		Table:              table,
 		ShardVersionUpdate: result,
 	}
-	log.Info("create table succeed", zap.String("cluster", c.Name()), zap.String("result", fmt.Sprintf("%+v", ret)))
+	c.logger.Info("create table succeed", zap.String("cluster", c.Name()), zap.String("result", fmt.Sprintf("%+v", ret)))
 	return ret, nil
 }
 
@@ -384,7 +388,7 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 	// TODO: Consider the design of the entire cluster state, which may require refactoring.
 	if uint32(len(c.registeredNodesCache)) >= c.metaData.MinNodeCount && c.topologyManager.GetClusterState() == storage.ClusterStateEmpty {
 		if err := c.UpdateClusterView(ctx, storage.ClusterStatePrepare, []storage.ShardNode{}); err != nil {
-			log.Error("update cluster view failed", zap.Error(err))
+			c.logger.Error("update cluster view failed", zap.Error(err))
 		}
 	}
 
@@ -392,7 +396,8 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 	// Check whether to update persistence data.
 	oldCache, exists := c.registeredNodesCache[registeredNode.Node.Name]
 	c.registeredNodesCache[registeredNode.Node.Name] = registeredNode
-	if !c.enableUpdateWhenStable && c.topologyManager.GetClusterState() == storage.ClusterStateStable {
+	enableUpdateWhenStable := c.metaData.TopologyType == storage.TopologyTypeDynamic
+	if !enableUpdateWhenStable && c.topologyManager.GetClusterState() == storage.ClusterStateStable {
 		return nil
 	}
 	if exists && !needUpdate(oldCache, registeredNode) {
@@ -610,6 +615,27 @@ func (c *ClusterMetadata) GetTotalShardNum() uint32 {
 	return c.metaData.ShardTotal
 }
 
+func (c *ClusterMetadata) GetEnableSchedule() bool {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	return c.metaData.EnableSchedule
+}
+
+func (c *ClusterMetadata) GetTopologyType() storage.TopologyType {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	return c.metaData.TopologyType
+}
+
+func (c *ClusterMetadata) GetCreateTime() uint64 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	return c.metaData.CreatedAt
+}
+
 func (c *ClusterMetadata) GetClusterState() storage.ClusterState {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -655,6 +681,26 @@ func (c *ClusterMetadata) GetClusterSnapshot() Snapshot {
 		Topology:        c.topologyManager.GetTopology(),
 		RegisteredNodes: c.GetRegisteredNodes(),
 	}
+}
+
+func (c *ClusterMetadata) GetStorageMetadata() storage.Cluster {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	return c.metaData
+}
+
+// LoadMetadata load cluster metadata from storage.
+func (c *ClusterMetadata) LoadMetadata(ctx context.Context) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	metadata, err := c.storage.GetCluster(ctx, c.clusterID)
+	if err != nil {
+		return errors.WithMessage(err, "get cluster")
+	}
+	c.metaData = metadata
+	return nil
 }
 
 // Initialize the cluster view and shard view of the cluster.

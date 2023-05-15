@@ -6,7 +6,6 @@ import (
 	"context"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
-	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
@@ -23,6 +22,7 @@ import (
 )
 
 type Factory struct {
+	logger      zap.Logger
 	idAllocator id.Allocator
 	dispatch    eventdispatch.Dispatch
 	storage     procedure.Storage
@@ -115,11 +115,11 @@ func (f *Factory) makeCreateTableProcedure(ctx context.Context, request CreateTa
 
 	shards, err := f.shardPicker.PickShards(ctx, snapshot, 1, false)
 	if err != nil {
-		log.Error("pick table shard", zap.Error(err))
+		f.logger.Error("pick table shard", zap.Error(err))
 		return nil, errors.WithMessage(err, "pick table shard")
 	}
 	if len(shards) != 1 {
-		log.Error("pick table shards length not equal 1", zap.Int("shards", len(shards)))
+		f.logger.Error("pick table shards length not equal 1", zap.Int("shards", len(shards)))
 		return nil, errors.WithMessagef(procedure.ErrPickShard, "pick table shard, shards length:%d", len(shards))
 	}
 

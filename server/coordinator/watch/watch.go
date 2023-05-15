@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaeventpb"
-	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -49,6 +48,7 @@ type ShardWatch interface {
 
 // EtcdShardWatch used to watch the distributed lock of shard, and provide the corresponding callback function.
 type EtcdShardWatch struct {
+	logger         *zap.Logger
 	clusterName    string
 	rootPath       string
 	etcdClient     *clientv3.Client
@@ -75,8 +75,9 @@ func (n NoopShardWatch) Stop(_ context.Context) error {
 
 func (n NoopShardWatch) RegisteringEventCallback(_ ShardEventCallback) {}
 
-func NewEtcdShardWatch(clusterName string, rootPath string, client *clientv3.Client) ShardWatch {
+func NewEtcdShardWatch(logger *zap.Logger, clusterName string, rootPath string, client *clientv3.Client) ShardWatch {
 	return &EtcdShardWatch{
+		logger:         logger,
 		clusterName:    clusterName,
 		rootPath:       rootPath,
 		etcdClient:     client,
@@ -115,7 +116,7 @@ func (w *EtcdShardWatch) RegisteringEventCallback(eventCallback ShardEventCallba
 }
 
 func (w *EtcdShardWatch) startWatch(ctx context.Context, path string) error {
-	log.Info("register shard watch", zap.String("watchPath", path))
+	w.logger.Info("register shard watch", zap.String("watchPath", path))
 	go func() {
 		ctxWithCancel, cancel := context.WithCancel(ctx)
 		w.cancel = cancel
@@ -123,7 +124,7 @@ func (w *EtcdShardWatch) startWatch(ctx context.Context, path string) error {
 		for resp := range respChan {
 			for _, event := range resp.Events {
 				if err := w.processEvent(ctx, event); err != nil {
-					log.Error("process event", zap.Error(err))
+					w.logger.Error("process event", zap.Error(err))
 				}
 			}
 		}
@@ -142,7 +143,7 @@ func (w *EtcdShardWatch) processEvent(ctx context.Context, event *clientv3.Event
 		if err != nil {
 			return err
 		}
-		log.Info("receive delete event", zap.String("preKV", fmt.Sprintf("%v", event.PrevKv)), zap.String("event", fmt.Sprintf("%v", event)), zap.Uint64("shardID", shardID), zap.String("oldLeader", shardLockValue.NodeName))
+		w.logger.Info("receive delete event", zap.String("preKV", fmt.Sprintf("%v", event.PrevKv)), zap.String("event", fmt.Sprintf("%v", event)), zap.Uint64("shardID", shardID), zap.String("oldLeader", shardLockValue.NodeName))
 		for _, callback := range w.eventCallbacks {
 			if err := callback.OnShardExpired(ctx, ShardExpireEvent{
 				clusterName:   w.clusterName,
@@ -161,7 +162,7 @@ func (w *EtcdShardWatch) processEvent(ctx context.Context, event *clientv3.Event
 		if err != nil {
 			return err
 		}
-		log.Info("receive put event", zap.String("event", fmt.Sprintf("%v", event)), zap.Uint64("shardID", shardID), zap.String("oldLeader", shardLockValue.NodeName))
+		w.logger.Info("receive put event", zap.String("event", fmt.Sprintf("%v", event)), zap.Uint64("shardID", shardID), zap.String("oldLeader", shardLockValue.NodeName))
 		for _, callback := range w.eventCallbacks {
 			if err := callback.OnShardRegistered(ctx, ShardRegisterEvent{
 				clusterName:   w.clusterName,

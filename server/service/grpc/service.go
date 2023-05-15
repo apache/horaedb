@@ -75,7 +75,7 @@ func (s *Service) NodeHeartbeat(ctx context.Context, req *metaservicepb.NodeHear
 		}, ShardInfos: shardInfos,
 	}
 
-	log.Info("[NodeHeartbeat]", zap.String("name", req.Info.Endpoint), zap.String("info", fmt.Sprintf("%+v", registeredNode)))
+	log.Info("[NodeHeartbeat]", zap.String("clusterName", req.GetHeader().ClusterName), zap.String("name", req.Info.Endpoint), zap.String("info", fmt.Sprintf("%+v", registeredNode)))
 
 	err = s.h.GetClusterManager().RegisterNode(ctx, req.GetHeader().GetClusterName(), registeredNode)
 	if err != nil {
@@ -138,7 +138,6 @@ func (s *Service) GetTablesOfShards(ctx context.Context, req *metaservicepb.GetT
 	}
 
 	result := convertToGetTablesOfShardsResponse(tables)
-	log.Info("[GetTablesOfShards]", zap.String("result", fmt.Sprintf("%v", result)))
 	return result, nil
 }
 

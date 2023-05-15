@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
@@ -43,6 +43,7 @@ type Manager interface {
 }
 
 type ManagerImpl struct {
+	logger           *zap.Logger
 	procedureManager procedure.Manager
 	factory          *coordinator.Factory
 	nodePicker       coordinator.NodePicker
@@ -54,33 +55,33 @@ type ManagerImpl struct {
 	lock               sync.RWMutex
 	registerSchedulers []Scheduler
 	shardWatch         watch.ShardWatch
-	isRunning          bool
+	isRunning          atomic.Bool
 	enableSchedule     bool
-	topologyType       metadata.TopologyType
+	topologyType       storage.TopologyType
 }
 
-func NewManager(procedureManager procedure.Manager, factory *coordinator.Factory, clusterMetadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string, enableSchedule bool, topologyType metadata.TopologyType) Manager {
+func NewManager(logger *zap.Logger, procedureManager procedure.Manager, factory *coordinator.Factory, clusterMetadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string, enableSchedule bool, topologyType storage.TopologyType) Manager {
 	var shardWatch watch.ShardWatch
 	switch topologyType {
-	case metadata.TopologyTypeDynamic:
-		shardWatch = watch.NewEtcdShardWatch(clusterMetadata.Name(), rootPath, client)
+	case storage.TopologyTypeDynamic:
+		shardWatch = watch.NewEtcdShardWatch(logger, clusterMetadata.Name(), rootPath, client)
 		shardWatch.RegisteringEventCallback(&schedulerWatchCallback{c: clusterMetadata})
-	case metadata.TopologyTypeStatic:
+	case storage.TopologyTypeStatic:
 		shardWatch = watch.NewNoopShardWatch()
 	}
 
 	return &ManagerImpl{
 		procedureManager:   procedureManager,
 		registerSchedulers: []Scheduler{},
-		isRunning:          false,
 		factory:            factory,
-		nodePicker:         coordinator.NewConsistentHashNodePicker(defaultHashReplicas),
+		nodePicker:         coordinator.NewConsistentHashNodePicker(logger, defaultHashReplicas),
 		clusterMetadata:    clusterMetadata,
 		client:             client,
 		shardWatch:         shardWatch,
 		rootPath:           rootPath,
 		enableSchedule:     enableSchedule,
 		topologyType:       topologyType,
+		logger:             logger,
 	}
 }
 
@@ -88,9 +89,9 @@ func (m *ManagerImpl) Stop(ctx context.Context) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	if m.isRunning {
+	if m.isRunning.Load() {
 		m.registerSchedulers = m.registerSchedulers[:0]
-		m.isRunning = false
+		m.isRunning.Store(false)
 		if err := m.shardWatch.Stop(ctx); err != nil {
 			return errors.WithMessage(err, "stop shard watch failed")
 		}
@@ -103,7 +104,7 @@ func (m *ManagerImpl) Start(ctx context.Context) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	if m.isRunning {
+	if m.isRunning.Load() {
 		return nil
 	}
 
@@ -114,43 +115,41 @@ func (m *ManagerImpl) Start(ctx context.Context) error {
 	}
 
 	go func() {
+		m.isRunning.Store(true)
 		for {
-			select {
-			case <-ctx.Done():
-				log.Info("scheduler manager is canceled")
+			if !m.isRunning.Load() {
+				m.logger.Info("scheduler manager is canceled")
 				return
-			default:
-				time.Sleep(schedulerInterval)
-				// Get latest cluster snapshot.
-				clusterSnapshot := m.clusterMetadata.GetClusterSnapshot()
-				log.Debug("scheduler manager invoke", zap.String("clusterSnapshot", fmt.Sprintf("%v", clusterSnapshot)))
+			}
 
-				// TODO: Perhaps these codes related to schedulerOperator need to be refactored.
-				// If schedulerOperator is turned on, the scheduler will only be scheduled in the non-stable state.
-				if !m.enableSchedule && clusterSnapshot.Topology.ClusterView.State == storage.ClusterStateStable {
-					continue
-				}
-				if clusterSnapshot.Topology.IsPrepareFinished() {
-					if err := m.clusterMetadata.UpdateClusterView(ctx, storage.ClusterStateStable, clusterSnapshot.Topology.ClusterView.ShardNodes); err != nil {
-						log.Error("update cluster view failed", zap.Error(err))
-					}
-					continue
-				}
+			time.Sleep(schedulerInterval)
+			// Get latest cluster snapshot.
+			clusterSnapshot := m.clusterMetadata.GetClusterSnapshot()
+			m.logger.Debug("scheduler manager invoke", zap.String("clusterSnapshot", fmt.Sprintf("%v", clusterSnapshot)))
 
-				results := m.Scheduler(ctx, clusterSnapshot)
-				for _, result := range results {
-					if result.Procedure != nil {
-						log.Info("scheduler submit new procedure", zap.Uint64("ProcedureID", result.Procedure.ID()), zap.String("Reason", result.Reason))
-						if err := m.procedureManager.Submit(ctx, result.Procedure); err != nil {
-							log.Error("scheduler submit new procedure failed", zap.Uint64("ProcedureID", result.Procedure.ID()), zap.Error(err))
-						}
+			// TODO: Perhaps these codes related to schedulerOperator need to be refactored.
+			// If schedulerOperator is turned on, the scheduler will only be scheduled in the non-stable state.
+			if !m.enableSchedule && clusterSnapshot.Topology.ClusterView.State == storage.ClusterStateStable {
+				continue
+			}
+			if clusterSnapshot.Topology.IsPrepareFinished() {
+				if err := m.clusterMetadata.UpdateClusterView(ctx, storage.ClusterStateStable, clusterSnapshot.Topology.ClusterView.ShardNodes); err != nil {
+					m.logger.Error("update cluster view failed", zap.Error(err))
+				}
+				continue
+			}
+
+			results := m.Scheduler(ctx, clusterSnapshot)
+			for _, result := range results {
+				if result.Procedure != nil {
+					m.logger.Info("scheduler submit new procedure", zap.Uint64("ProcedureID", result.Procedure.ID()), zap.String("Reason", result.Reason))
+					if err := m.procedureManager.Submit(ctx, result.Procedure); err != nil {
+						m.logger.Error("scheduler submit new procedure failed", zap.Uint64("ProcedureID", result.Procedure.ID()), zap.Error(err))
 					}
 				}
 			}
 		}
 	}()
-
-	m.isRunning = true
 
 	return nil
 }
@@ -179,9 +178,9 @@ func (callback *schedulerWatchCallback) OnShardExpired(ctx context.Context, even
 func (m *ManagerImpl) initRegister() {
 	var schedulers []Scheduler
 	switch m.topologyType {
-	case metadata.TopologyTypeDynamic:
+	case storage.TopologyTypeDynamic:
 		schedulers = m.createDynamicTopologySchedulers()
-	case metadata.TopologyTypeStatic:
+	case storage.TopologyTypeStatic:
 		schedulers = m.createStaticTopologySchedulers()
 	}
 	for i := 0; i < len(schedulers); i++ {
@@ -196,12 +195,12 @@ func (m *ManagerImpl) createStaticTopologySchedulers() []Scheduler {
 
 func (m *ManagerImpl) createDynamicTopologySchedulers() []Scheduler {
 	assignShardScheduler := NewAssignShardScheduler(m.factory, m.nodePicker)
-	rebalancedShardScheduler := NewRebalancedShardScheduler(m.factory, m.nodePicker)
+	rebalancedShardScheduler := NewRebalancedShardScheduler(m.logger, m.factory, m.nodePicker)
 	return []Scheduler{assignShardScheduler, rebalancedShardScheduler}
 }
 
 func (m *ManagerImpl) registerScheduler(scheduler Scheduler) {
-	log.Info("register new scheduler", zap.String("schedulerName", reflect.TypeOf(scheduler).String()), zap.Int("totalSchedulerLen", len(m.registerSchedulers)))
+	m.logger.Info("register new scheduler", zap.String("schedulerName", reflect.TypeOf(scheduler).String()), zap.Int("totalSchedulerLen", len(m.registerSchedulers)))
 	m.registerSchedulers = append(m.registerSchedulers, scheduler)
 }
 
@@ -218,7 +217,7 @@ func (m *ManagerImpl) Scheduler(ctx context.Context, clusterSnapshot metadata.Sn
 	for _, scheduler := range m.registerSchedulers {
 		result, err := scheduler.Schedule(ctx, clusterSnapshot)
 		if err != nil {
-			log.Error("scheduler failed", zap.Error(err))
+			m.logger.Error("scheduler failed", zap.Error(err))
 			continue
 		}
 		results = append(results, result)
@@ -231,5 +230,5 @@ func (m *ManagerImpl) UpdateEnableSchedule(_ context.Context, enableSchedule boo
 	m.enableSchedule = enableSchedule
 	m.lock.Unlock()
 
-	log.Info("scheduler manager update enableSchedule", zap.Bool("enableSchedule", enableSchedule))
+	m.logger.Info("scheduler manager update enableSchedule", zap.Bool("enableSchedule", enableSchedule))
 }

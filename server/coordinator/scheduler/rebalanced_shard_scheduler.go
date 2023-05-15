@@ -6,19 +6,20 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
 	"go.uber.org/zap"
 )
 
 type RebalancedShardScheduler struct {
+	logger     *zap.Logger
 	factory    *coordinator.Factory
 	nodePicker coordinator.NodePicker
 }
 
-func NewRebalancedShardScheduler(factory *coordinator.Factory, nodePicker coordinator.NodePicker) Scheduler {
+func NewRebalancedShardScheduler(logger *zap.Logger, factory *coordinator.Factory, nodePicker coordinator.NodePicker) Scheduler {
 	return &RebalancedShardScheduler{
+		logger:     logger,
 		factory:    factory,
 		nodePicker: nodePicker,
 	}
@@ -37,7 +38,7 @@ func (r RebalancedShardScheduler) Schedule(ctx context.Context, clusterSnapshot 
 			return ScheduleResult{}, err
 		}
 		if node.Node.Name != shardNode.NodeName {
-			log.Info("rebalanced shard scheduler generate new procedure", zap.Uint64("shardID", uint64(shardNode.ID)), zap.String("originNode", shardNode.NodeName), zap.String("newNode", node.Node.Name))
+			r.logger.Info("rebalanced shard scheduler generate new procedure", zap.Uint64("shardID", uint64(shardNode.ID)), zap.String("originNode", shardNode.NodeName), zap.String("newNode", node.Node.Name))
 			p, err := r.factory.CreateTransferLeaderProcedure(ctx, coordinator.TransferLeaderRequest{
 				Snapshot:          clusterSnapshot,
 				ShardID:           shardNode.ID,

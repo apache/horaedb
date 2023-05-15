@@ -10,6 +10,7 @@ var (
 
 	ErrCreateSchemaAgain         = coderr.NewCodeError(coderr.Internal, "storage create schemas")
 	ErrCreateClusterAgain        = coderr.NewCodeError(coderr.Internal, "storage create cluster")
+	ErrUpdateCluster             = coderr.NewCodeError(coderr.Internal, "storage update cluster")
 	ErrCreateClusterViewAgain    = coderr.NewCodeError(coderr.Internal, "storage create cluster view")
 	ErrUpdateClusterViewConflict = coderr.NewCodeError(coderr.Internal, "storage update cluster view")
 	ErrCreateTableAgain          = coderr.NewCodeError(coderr.Internal, "storage create tables")

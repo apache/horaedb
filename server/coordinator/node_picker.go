@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/hash"
 	"github.com/CeresDB/ceresmeta/server/storage"
@@ -20,11 +19,12 @@ type NodePicker interface {
 }
 
 type ConsistentHashNodePicker struct {
+	logger       *zap.Logger
 	hashReplicas int
 }
 
-func NewConsistentHashNodePicker(hashReplicas int) NodePicker {
-	return &ConsistentHashNodePicker{hashReplicas: hashReplicas}
+func NewConsistentHashNodePicker(logger *zap.Logger, hashReplicas int) NodePicker {
+	return &ConsistentHashNodePicker{hashReplicas: hashReplicas, logger: logger}
 }
 
 func (p *ConsistentHashNodePicker) PickNode(_ context.Context, shardID storage.ShardID, registerNodes []metadata.RegisteredNode) (metadata.RegisteredNode, error) {
@@ -44,7 +44,7 @@ func (p *ConsistentHashNodePicker) PickNode(_ context.Context, shardID storage.S
 	}
 
 	pickedNodeName := hashRing.Get(strconv.Itoa(int(shardID)))
-	log.Debug("ConsistentHashNodePicker pick result", zap.Uint64("shardID", uint64(shardID)), zap.String("node", pickedNodeName), zap.Int("nodeNumber", aliveNodeNumber))
+	p.logger.Debug("ConsistentHashNodePicker pick result", zap.Uint64("shardID", uint64(shardID)), zap.String("node", pickedNodeName), zap.Int("nodeNumber", aliveNodeNumber))
 
 	for i := 0; i < len(registerNodes); i++ {
 		if registerNodes[i].Node.Name == pickedNodeName {

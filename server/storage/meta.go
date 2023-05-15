@@ -10,10 +10,14 @@ import (
 
 // Storage defines the storage operations on the ceresdb cluster meta info.
 type Storage interface {
+	// GetCluster get cluster metadata by clusterID.
+	GetCluster(ctx context.Context, clusterID ClusterID) (Cluster, error)
 	// ListClusters list all clusters.
 	ListClusters(ctx context.Context) (ListClustersResult, error)
 	// CreateCluster create new cluster, return error if cluster already exists.
 	CreateCluster(ctx context.Context, req CreateClusterRequest) error
+	// UpdateCluster update cluster metadata.
+	UpdateCluster(ctx context.Context, req UpdateClusterRequest) error
 
 	// CreateClusterView create cluster view.
 	CreateClusterView(ctx context.Context, req CreateClusterViewRequest) error

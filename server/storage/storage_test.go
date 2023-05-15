@@ -35,12 +35,11 @@ func TestStorage_CreateAndListCluster(t *testing.T) {
 	expectClusters := make([]Cluster, 0, defaultCount)
 	for i := 0; i < defaultCount; i++ {
 		cluster := Cluster{
-			ID:                ClusterID(i),
-			Name:              fmt.Sprintf(nameFormat, i),
-			MinNodeCount:      uint32(i),
-			ReplicationFactor: uint32(i),
-			ShardTotal:        uint32(i),
-			CreatedAt:         uint64(time.Now().UnixMilli()),
+			ID:           ClusterID(i),
+			Name:         fmt.Sprintf(nameFormat, i),
+			MinNodeCount: uint32(i),
+			ShardTotal:   uint32(i),
+			CreatedAt:    uint64(time.Now().UnixMilli()),
 		}
 		req := CreateClusterRequest{
 			Cluster: cluster,
@@ -60,7 +59,6 @@ func TestStorage_CreateAndListCluster(t *testing.T) {
 		re.Equal(expectClusters[i].ID, clusters[i].ID)
 		re.Equal(expectClusters[i].Name, clusters[i].Name)
 		re.Equal(expectClusters[i].MinNodeCount, clusters[i].MinNodeCount)
-		re.Equal(expectClusters[i].ReplicationFactor, clusters[i].ReplicationFactor)
 		re.Equal(expectClusters[i].CreatedAt, clusters[i].CreatedAt)
 		re.Equal(expectClusters[i].ShardTotal, clusters[i].ShardTotal)
 	}

@@ -10,15 +10,10 @@ import (
 	"github.com/pkg/errors"
 )
 
-type TopologyType string
-
 const (
 	expiredThreshold                     = time.Second * 10
 	MinShardID                           = 0
 	HeartbeatKeepAliveIntervalSec uint64 = 15
-
-	TopologyTypeStatic  = "static"
-	TopologyTypeDynamic = "dynamic"
 )
 
 type Snapshot struct {
@@ -55,6 +50,12 @@ type CreateClusterOpts struct {
 	NodeCount         uint32
 	ReplicationFactor uint32
 	ShardTotal        uint32
+	EnableSchedule    bool
+	TopologyType      storage.TopologyType
+}
+
+type UpdateClusterOpts struct {
+	EnableSchedule bool
 }
 
 type CreateTableMetadataRequest struct {
@@ -173,13 +174,13 @@ func ConvertTableInfoToPB(table TableInfo) *metaservicepb.TableInfo {
 	}
 }
 
-func ParseTopologyType(rawString string) (TopologyType, error) {
+func ParseTopologyType(rawString string) (storage.TopologyType, error) {
 	switch rawString {
-	case TopologyTypeStatic:
-		return TopologyTypeStatic, nil
-	case TopologyTypeDynamic:
-		return TopologyTypeDynamic, nil
+	case storage.TopologyTypeStatic:
+		return storage.TopologyTypeStatic, nil
+	case storage.TopologyTypeDynamic:
+		return storage.TopologyTypeDynamic, nil
 	}
 
-	return "", errors.WithMessagef(ErrParseTopologyType, "rawString:%s could not be parsed to topologyType", rawString)
+	return "", errors.WithMessagef(ErrParseTopologyType, "could not be parsed to topologyType, rawString:%s", rawString)
 }

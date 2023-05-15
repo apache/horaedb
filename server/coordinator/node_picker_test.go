@@ -11,6 +11,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 const (
@@ -23,7 +24,7 @@ func TestConsistentHashNodePicker(t *testing.T) {
 	re := require.New(t)
 	ctx := context.Background()
 
-	nodePicker := NewConsistentHashNodePicker(50)
+	nodePicker := NewConsistentHashNodePicker(zap.NewNop(), 50)
 
 	var nodes []metadata.RegisteredNode
 	_, err := nodePicker.PickNode(ctx, 0, nodes)

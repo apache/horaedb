@@ -14,21 +14,20 @@ import (
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 const (
-	TestTableName0                         = "table0"
-	TestTableName1                         = "table1"
-	TestSchemaName                         = "TestSchemaName"
-	TestRootPath                           = "/rootPath"
-	DefaultIDAllocatorStep                 = 20
-	ClusterName                            = "ceresdbCluster1"
-	DefaultNodeCount                       = 2
-	DefaultReplicationFactor               = 1
-	DefaultPartitionTableProportionOfNodes = 0.5
-	DefaultShardTotal                      = 4
-	DefaultSchedulerOperator               = true
-	DefaultTopologyType                    = "static"
+	TestTableName0           = "table0"
+	TestTableName1           = "table1"
+	TestSchemaName           = "TestSchemaName"
+	TestRootPath             = "/rootPath"
+	DefaultIDAllocatorStep   = 20
+	ClusterName              = "ceresdbCluster1"
+	DefaultNodeCount         = 2
+	DefaultShardTotal        = 4
+	DefaultSchedulerOperator = true
+	DefaultTopologyType      = "static"
 )
 
 type MockDispatch struct{}
@@ -84,14 +83,17 @@ func InitEmptyCluster(ctx context.Context, t *testing.T) *cluster.Cluster {
 		MaxScanLimit: 100, MinScanLimit: 10,
 	})
 
-	clusterMetadata := metadata.NewClusterMetadata(storage.Cluster{
-		ID:                0,
-		Name:              ClusterName,
-		MinNodeCount:      DefaultNodeCount,
-		ReplicationFactor: DefaultReplicationFactor,
-		ShardTotal:        DefaultShardTotal,
-		CreatedAt:         0,
-	}, clusterStorage, client, TestRootPath, DefaultIDAllocatorStep, false)
+	logger := zap.NewNop()
+
+	clusterMetadata := metadata.NewClusterMetadata(logger, storage.Cluster{
+		ID:             0,
+		Name:           ClusterName,
+		MinNodeCount:   DefaultNodeCount,
+		ShardTotal:     DefaultShardTotal,
+		EnableSchedule: DefaultSchedulerOperator,
+		TopologyType:   DefaultTopologyType,
+		CreatedAt:      0,
+	}, clusterStorage, client, TestRootPath, DefaultIDAllocatorStep)
 
 	err := clusterMetadata.Init(ctx)
 	re.NoError(err)
@@ -99,7 +101,7 @@ func InitEmptyCluster(ctx context.Context, t *testing.T) *cluster.Cluster {
 	err = clusterMetadata.Load(ctx)
 	re.NoError(err)
 
-	c, err := cluster.NewCluster(clusterMetadata, client, TestRootPath, DefaultSchedulerOperator, DefaultTopologyType)
+	c, err := cluster.NewCluster(logger, clusterMetadata, client, TestRootPath)
 	re.NoError(err)
 
 	_, _, err = c.GetMetadata().GetOrCreateSchema(ctx, TestSchemaName)
