@@ -74,12 +74,13 @@ impl ArrayHandle {
     }
 
     // Note: this require primitive array
+
     fn data_slice(&self) -> &[u8] {
-        self.array.data().buffers()[0].as_slice()
+        unimplemented!()
     }
 
     fn nulls(&self) -> Option<&NullBuffer> {
-        self.array.data().nulls()
+        self.array.nulls()
     }
 }
 
@@ -122,12 +123,12 @@ pub fn build_hybrid_arrow_schema(schema: &Schema) -> ArrowSchemaRef {
         .enumerate()
         .map(|(idx, field)| {
             if schema.is_collapsible_column(idx) {
-                let field_type = DataType::List(Box::new(Field::new(
+                let field_type = DataType::List(Arc::new(Field::new(
                     LIST_ITEM_NAME,
                     field.data_type().clone(),
                     true,
                 )));
-                Field::new(field.name(), field_type, true)
+                Arc::new(Field::new(field.name(), field_type, true))
             } else {
                 field.clone()
             }
@@ -418,7 +419,7 @@ impl ListArrayBuilder {
         let array_len = self.multi_row_arrays.len();
         let mut offsets = MutableBuffer::new(array_len * std::mem::size_of::<i32>());
         let child_data = self.build_child_data(&mut offsets)?;
-        let field = Box::new(Field::new(
+        let field = Arc::new(Field::new(
             LIST_ITEM_NAME,
             self.datum_kind.to_arrow_data_type(),
             true,

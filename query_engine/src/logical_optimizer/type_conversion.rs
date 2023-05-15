@@ -82,7 +82,6 @@ impl OptimizerRule for TypeConversion {
             | LogicalPlan::Window { .. }
             | LogicalPlan::Aggregate { .. }
             | LogicalPlan::Repartition { .. }
-            | LogicalPlan::CreateExternalTable { .. }
             | LogicalPlan::Extension { .. }
             | LogicalPlan::Sort { .. }
             | LogicalPlan::Explain { .. }
@@ -90,14 +89,12 @@ impl OptimizerRule for TypeConversion {
             | LogicalPlan::Union { .. }
             | LogicalPlan::Join { .. }
             | LogicalPlan::CrossJoin { .. }
-            | LogicalPlan::CreateMemoryTable { .. }
-            | LogicalPlan::DropTable { .. }
-            | LogicalPlan::DropView { .. }
             | LogicalPlan::Values { .. }
             | LogicalPlan::Analyze { .. }
             | LogicalPlan::Distinct { .. }
             | LogicalPlan::Prepare { .. }
             | LogicalPlan::DescribeTable { .. }
+            | LogicalPlan::Ddl { .. }
             | LogicalPlan::Dml { .. } => {
                 let inputs = plan.inputs();
                 let new_inputs = inputs
@@ -119,9 +116,6 @@ impl OptimizerRule for TypeConversion {
             LogicalPlan::Subquery(_)
             | LogicalPlan::Statement { .. }
             | LogicalPlan::SubqueryAlias(_)
-            | LogicalPlan::CreateView(_)
-            | LogicalPlan::CreateCatalogSchema(_)
-            | LogicalPlan::CreateCatalog(_)
             | LogicalPlan::Unnest(_)
             | LogicalPlan::EmptyRelation { .. } => Ok(Some(plan.clone())),
         }

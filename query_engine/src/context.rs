@@ -6,12 +6,12 @@ use std::{sync::Arc, time::Instant};
 
 use common_types::request_id::RequestId;
 use datafusion::{
-    execution::context::default_session_builder,
+    execution::{context::SessionState, runtime_env::RuntimeEnv},
     optimizer::{
         common_subexpr_eliminate::CommonSubexprEliminate, eliminate_limit::EliminateLimit,
         optimizer::OptimizerRule, push_down_filter::PushDownFilter, push_down_limit::PushDownLimit,
         push_down_projection::PushDownProjection, simplify_expressions::SimplifyExpressions,
-        single_distinct_to_groupby::SingleDistinctToGroupBy, type_coercion::TypeCoercion,
+        single_distinct_to_groupby::SingleDistinctToGroupBy,
     },
     physical_optimizer::optimizer::PhysicalOptimizerRule,
     prelude::{SessionConfig, SessionContext},
@@ -56,15 +56,17 @@ impl Context {
                 self.default_schema.clone(),
             )
             .with_target_partitions(config.read_parallelism);
+
         df_session_config
             .options_mut()
             .extensions
             .insert(ceresdb_options);
 
         let logical_optimize_rules = Self::logical_optimize_rules();
-        let state = default_session_builder(df_session_config)
-            .with_query_planner(Arc::new(QueryPlannerAdapter))
-            .with_optimizer_rules(logical_optimize_rules);
+        let state =
+            SessionState::with_config_rt(df_session_config, Arc::new(RuntimeEnv::default()))
+                .with_query_planner(Arc::new(QueryPlannerAdapter))
+                .with_optimizer_rules(logical_optimize_rules);
         let state = iox_query::logical_optimizer::register_iox_logical_optimizers(state);
         let physical_optimizer =
             Self::apply_adapters_for_physical_optimize_rules(state.physical_optimizers());
@@ -92,7 +94,8 @@ impl Context {
             Arc::new(PushDownProjection::new()),
             Arc::new(PushDownFilter::new()),
             Arc::new(PushDownLimit::new()),
-            Arc::new(TypeCoercion::new()),
+            // FIXME
+            // Arc::new(datafusion::optimizer::analyzer::type_coercion::TypeCoercion::new()),
             Arc::new(SingleDistinctToGroupBy::new()),
         ];
 

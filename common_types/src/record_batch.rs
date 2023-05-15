@@ -7,7 +7,7 @@ use std::{cmp, convert::TryFrom, mem, sync::Arc};
 use arrow::{
     array::BooleanArray,
     compute,
-    datatypes::{DataType, Field, Fields, Schema, SchemaRef as ArrowSchemaRef, TimeUnit},
+    datatypes::{DataType, Field, Schema, SchemaRef as ArrowSchemaRef, TimeUnit},
     error::ArrowError,
     record_batch::RecordBatch as ArrowRecordBatch,
 };
