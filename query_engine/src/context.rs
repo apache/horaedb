@@ -8,8 +8,9 @@ use common_types::request_id::RequestId;
 use datafusion::{
     execution::{context::SessionState, runtime_env::RuntimeEnv},
     optimizer::{
-        common_subexpr_eliminate::CommonSubexprEliminate, eliminate_limit::EliminateLimit,
-        optimizer::OptimizerRule, push_down_filter::PushDownFilter, push_down_limit::PushDownLimit,
+        analyzer::AnalyzerRule, common_subexpr_eliminate::CommonSubexprEliminate,
+        eliminate_limit::EliminateLimit, optimizer::OptimizerRule,
+        push_down_filter::PushDownFilter, push_down_limit::PushDownLimit,
         push_down_projection::PushDownProjection, simplify_expressions::SimplifyExpressions,
         single_distinct_to_groupby::SingleDistinctToGroupBy,
     },
@@ -66,6 +67,7 @@ impl Context {
         let state =
             SessionState::with_config_rt(df_session_config, Arc::new(RuntimeEnv::default()))
                 .with_query_planner(Arc::new(QueryPlannerAdapter))
+                .with_analyzer_rules(Self::analyzer_rules())
                 .with_optimizer_rules(logical_optimize_rules);
         let state = iox_query::logical_optimizer::register_iox_logical_optimizers(state);
         let physical_optimizer =
@@ -94,8 +96,6 @@ impl Context {
             Arc::new(PushDownProjection::new()),
             Arc::new(PushDownFilter::new()),
             Arc::new(PushDownLimit::new()),
-            // FIXME
-            // Arc::new(datafusion::optimizer::analyzer::type_coercion::TypeCoercion::new()),
             Arc::new(SingleDistinctToGroupBy::new()),
         ];
 
@@ -105,5 +105,11 @@ impl Context {
         }
 
         optimizers
+    }
+
+    fn analyzer_rules() -> Vec<Arc<dyn AnalyzerRule + Send + Sync>> {
+        vec![Arc::new(
+            datafusion::optimizer::analyzer::type_coercion::TypeCoercion::new(),
+        )]
     }
 }
