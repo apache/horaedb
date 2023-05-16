@@ -732,14 +732,14 @@ mod tests {
         let string_data =
             string_array(vec![Some("bb"), None, Some("ccc"), Some("eeee"), Some("a")]);
         let offsets: [i32; 3] = [0, 4, 5];
-        let array_data = ArrayData::builder(DataType::List(Box::new(Field::new(
+        let array_data = ArrayData::builder(DataType::List(Arc::new(Field::new(
             LIST_ITEM_NAME,
             DataType::Utf8,
             true,
         ))))
         .len(2)
         .add_buffer(Buffer::from_slice_ref(offsets))
-        .add_child_data(string_data.data().to_owned())
+        .add_child_data(string_data.to_data())
         .build()
         .unwrap();
         let expected = ListArray::from(array_data);

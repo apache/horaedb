@@ -1022,13 +1022,12 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 // `enable_ident_normalization` is `true`, but we want to
 // function case-insensitive, so add this normalization.
 fn normalize_func_name(sql_stmt: &mut SqlStatement) {
-    let normalize_expr = |expr: &mut SqlExpr| match expr {
-        SqlExpr::Function(ref mut func) => {
+    let normalize_expr = |expr: &mut SqlExpr| {
+        if let SqlExpr::Function(ref mut func) = expr {
             for ident in &mut func.name.0 {
                 ident.value = ident.value.to_lowercase();
             }
         }
-        _ => {}
     };
 
     visit_statements_mut(sql_stmt, |stmt| {

@@ -210,7 +210,7 @@ mod test {
         let fields = fields
             .into_iter()
             .map(|(name, data_type)| ArrowField::new(name, data_type, false))
-            .collect();
+            .collect::<Vec<_>>();
         Arc::new(ArrowSchema::new(fields))
     }
 

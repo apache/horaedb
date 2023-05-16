@@ -44,7 +44,7 @@ impl AnalyzerRule for TypeConversion {
             LogicalPlan::Filter(Filter {
                 predicate, input, ..
             }) => {
-                let input: &LogicalPlan = &input;
+                let input: &LogicalPlan = input;
                 let predicate = predicate.clone().rewrite(&mut rewriter)?;
                 let input = self.analyze(input.clone(), config)?;
                 Ok(LogicalPlan::Filter(Filter::try_new(

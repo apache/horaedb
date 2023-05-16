@@ -602,7 +602,7 @@ pub(crate) fn convert_influxql_output(output: Output) -> Result<InfluxqlResponse
 mod tests {
     use std::sync::Arc;
 
-    use arrow::datatypes::{Field as ArrowField, Schema as ArrowSchema};
+    use arrow::datatypes::{Field as ArrowField, Fields, Schema as ArrowSchema};
     use common_types::{
         column::{ColumnBlock, ColumnBlockBuilder},
         column_schema,
@@ -796,14 +796,14 @@ mod tests {
             false,
         );
         let project_fields = vec![
-            measurement_field,
+            Arc::new(measurement_field),
             fields[1].clone(),
             fields[0].clone(),
             fields[2].clone(),
             fields[3].clone(),
         ];
         let project_arrow_schema = Arc::new(ArrowSchema::new_with_metadata(
-            project_fields,
+            Fields::from(project_fields),
             arrow_schema.metadata().clone(),
         ));
 
