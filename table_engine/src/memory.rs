@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! In-memory table engine implementations
 
@@ -24,7 +24,8 @@ use snafu::{OptionExt, ResultExt};
 
 use crate::{
     engine::{
-        CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest, TableEngine,
+        CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
+        OpenShardRequest, OpenTableRequest, TableEngine,
     },
     stream::{
         self, ErrNoSource, ErrWithSource, PartitionedStreams, RecordBatchStream,
@@ -291,5 +292,17 @@ impl TableEngine for MemoryTableEngine {
 
     async fn close_table(&self, _request: CloseTableRequest) -> crate::engine::Result<()> {
         Ok(())
+    }
+
+    async fn open_shard(
+        &self,
+        request: OpenShardRequest,
+    ) -> Vec<crate::engine::Result<Option<TableRef>>> {
+        todo!()
+    }
+
+    /// Close tables on same shard.
+    async fn close_shard(&self, request: CloseShardRequest) -> Vec<crate::engine::Result<String>> {
+        todo!()
     }
 }

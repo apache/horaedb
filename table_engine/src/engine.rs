@@ -269,6 +269,7 @@ pub struct OpenShardRequest {
 pub struct TableDef {
     pub catalog_name: String,
     pub schema_name: String,
+    pub schema_id: SchemaId,
     pub id: TableId,
     pub name: String,
 }
@@ -296,6 +297,12 @@ pub trait TableEngine: Send + Sync {
 
     /// Close table
     async fn close_table(&self, request: CloseTableRequest) -> Result<()>;
+
+    /// Open tables on same shard.
+    async fn open_shard(&self, request: OpenShardRequest) -> Vec<Result<Option<TableRef>>>;
+
+    /// Close tables on same shard.
+    async fn close_shard(&self, request: CloseShardRequest) -> Vec<Result<String>>;
 }
 
 /// A reference counted pointer to table engine

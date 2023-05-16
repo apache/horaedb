@@ -13,8 +13,8 @@ use common_util::error::BoxError;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{
-        CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest, Result,
-        TableEngine, Unexpected, UnexpectedNoCause,
+        CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
+        OpenShardRequest, OpenTableRequest, Result, TableEngine, Unexpected, UnexpectedNoCause,
     },
     remote::RemoteEngineRef,
     table::TableRef,
@@ -74,5 +74,13 @@ impl TableEngine for PartitionTableEngine {
 
     async fn close_table(&self, _request: CloseTableRequest) -> Result<()> {
         Ok(())
+    }
+
+    async fn open_shard(&self, _request: OpenShardRequest) -> Vec<Result<Option<TableRef>>> {
+        vec![Ok(None)]
+    }
+
+    async fn close_shard(&self, _request: CloseShardRequest) -> Vec<Result<String>> {
+        vec![Ok("".to_string())]
     }
 }
