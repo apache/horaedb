@@ -30,6 +30,9 @@ pub fn try_new(
     let cli_opt = ClientOptions::new()
         .with_allow_http(true)
         .with_pool_max_idle_per_host(pool_max_idle_per_host.into())
+        .with_http2_keep_alive_timeout(Duration::from_secs(60))
+        .with_http2_keep_alive_while_idle()
+        .with_http2_keep_alive_interval(Duration::from_secs(2))
         .with_timeout(timeout);
     let retry_config = RetryConfig {
         // TODO: add to config
