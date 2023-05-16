@@ -132,7 +132,7 @@ impl<T: TableKv> MetaManager<T> {
             .box_err()
             .context(ReadMeta {
                 location: location.as_ref().to_string(),
-            })?;
+            })?; 
 
         value.map(|v| decode_json(&v)).transpose()
     }
