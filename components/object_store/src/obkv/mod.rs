@@ -72,6 +72,9 @@ pub enum Error {
 
     #[snafu(display("No meta found, path:{}", path,))]
     MetaNotExists { path: String },
+
+    #[snafu(display("Data is too large to put, size:{size}, limit:{limit}"))]
+    TooLargeData { size: usize , limit: usize},
 }
 
 impl<T: TableKv> MetaManager<T> {
@@ -144,6 +147,8 @@ pub struct ObkvObjectStore<T> {
     /// Because it may cause problem to save huge data in one obkv value, so we
     /// need to split data into small parts;
     part_size: usize,
+    /// The max size of bytes, default is 1GB
+    max_put_size: usize,
 }
 
 impl<T: TableKv> std::fmt::Display for ObkvObjectStore<T> {
@@ -177,7 +182,17 @@ impl<T: TableKv> ObkvObjectStore<T> {
             client,
             upload_id,
             part_size,
+            max_put_size:1024*1024*1024
         })
+    }
+
+    #[inline]
+    fn check_size(&self, bytes: &Bytes)->std::result::Result<(), Error>{
+        if bytes.len() > self.max_put_size{
+            return TooLargeData{size:bytes.len(), limit:self.max_put_size}.fail();
+        }
+    
+        Ok(())
     }
 
     #[inline]
@@ -251,6 +266,12 @@ impl<T: TableKv> ObkvObjectStore<T> {
 #[async_trait]
 impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
+        // check the size of bytes is too large
+        self.check_size(&bytes).map_err(|source| StoreError::Generic {
+            store: OBKV,
+            source: Box::new(source),
+        })?;
+
         let table_name = self.pick_shard_table(location);
         let mut batch = T::WriteBatch::default();
         batch.insert(location.as_ref().as_bytes(), bytes.as_ref());
@@ -260,6 +281,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 store: OBKV,
                 source: Box::new(source),
             })?;
+        // TODO, save meta data
         Ok(())
     }
 
