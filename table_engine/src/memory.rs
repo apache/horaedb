@@ -296,13 +296,13 @@ impl TableEngine for MemoryTableEngine {
 
     async fn open_shard(
         &self,
-        request: OpenShardRequest,
+        _equest: OpenShardRequest,
     ) -> Vec<crate::engine::Result<Option<TableRef>>> {
-        todo!()
+        vec![Ok(None)]
     }
 
     /// Close tables on same shard.
-    async fn close_shard(&self, request: CloseShardRequest) -> Vec<crate::engine::Result<String>> {
-        todo!()
+    async fn close_shard(&self, _request: CloseShardRequest) -> Vec<crate::engine::Result<String>> {
+        vec![Ok("".to_string())]
     }
 }

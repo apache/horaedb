@@ -3,12 +3,9 @@
 use std::time::Instant;
 
 use common_util::{error::BoxError, time::InstantExt};
-use log::{error, info, warn};
+use log::{info, warn};
 use snafu::{OptionExt, ResultExt};
-use table_engine::{
-    engine::{self, TableEngineRef},
-    table::TableRef,
-};
+use table_engine::{engine, table::TableRef};
 
 use crate::{
     manager::ManagerRef,
