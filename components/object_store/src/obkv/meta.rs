@@ -98,7 +98,7 @@ impl ObkvObjectMeta {
 
 #[derive(Debug, Clone)]
 pub struct MetaManager<T> {
-    /// The full path to the object
+    /// The table kv client
     pub client: Arc<T>,
 }
 
@@ -125,7 +125,7 @@ impl<T: TableKv> MetaManager<T> {
     }
 
     pub async fn read_meta(&self, location: &Path) -> Result<Option<ObkvObjectMeta>> {
-        let values = self
+        let value = self
             .client
             .as_ref()
             .get(META_TABLE, location.as_ref().as_bytes())
@@ -134,12 +134,7 @@ impl<T: TableKv> MetaManager<T> {
                 location: location.as_ref().to_string(),
             })?;
 
-        if let Some(val) = values {
-            let meta = decode_json(&val)?;
-            Ok(meta)
-        } else {
-            Ok(None)
-        }
+        value.map(|v| decode_json(&v)).transpose()
     }
 
     pub async fn delete_meta(&self, meta: ObkvObjectMeta, location: &Path) -> Result<i64> {

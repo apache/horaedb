@@ -24,12 +24,14 @@ use snafu::{ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
 use tokio::io::AsyncWrite;
 use upstream::{
-    multipart::{CloudMultiPartUpload, CloudMultiPartUploadImpl, UploadPart},
     path::{Path, DELIMITER},
     Error as StoreError, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result,
 };
 
-use self::meta::{MetaManager, ObkvObjectMeta, META_TABLE};
+use crate::{
+    multipart::{CloudMultiPartUpload, CloudMultiPartUploadImpl, UploadPart},
+    obkv::meta::{MetaManager, ObkvObjectMeta, META_TABLE},
+};
 
 mod meta;
 mod util;
@@ -120,15 +122,6 @@ impl<T: TableKv> ShardManager<T> {
             shard_num,
             table_names,
         })
-    }
-
-    #[inline]
-    pub fn pick_shard_table(&self, path: &Path) -> &str {
-        let mut hasher = DefaultHasher::new();
-        path.as_ref().as_bytes().hash(&mut hasher);
-        let hash = hasher.finish();
-        let index = hash % (self.shard_num as u64);
-        &self.table_names[index as usize]
     }
 }
 
@@ -233,7 +226,6 @@ impl<T: TableKv> ObkvObjectStore<T> {
     async fn get_internal(&self, location: &Path) -> std::result::Result<GetResult, Error> {
         let meta = self.read_meta(location).await?;
         let table_name = self.pick_shard_table(location);
-        print!("get_internal table_name:{table_name}");
         let mut futures = FuturesOrdered::new();
         for path in meta.parts {
             let client = self.client.clone();
@@ -408,7 +400,6 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             location: (*location).clone(),
             last_modified: Utc.timestamp_millis_opt(meta.last_modified).unwrap(),
             size: meta.size,
-            e_tag: meta.e_tag,
         })
     }
 
@@ -468,7 +459,6 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 location: Path::from(meta.location),
                 last_modified: Utc.timestamp_millis_opt(meta.last_modified).unwrap(),
                 size: meta.size,
-                e_tag: meta.e_tag,
             }));
         }
 
@@ -505,7 +495,6 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                     location: Path::from(location),
                     last_modified: Utc.timestamp_millis_opt(meta.last_modified).unwrap(),
                     size: meta.size,
-                    e_tag: meta.e_tag,
                 })
             }
         }

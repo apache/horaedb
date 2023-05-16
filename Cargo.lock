@@ -1878,7 +1878,7 @@ dependencies = [
  "lazy_static",
  "log",
  "num_cpus",
- "object_store 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "object_store 0.5.6",
  "parking_lot 0.12.1",
  "parquet",
  "percent-encoding",
@@ -1905,7 +1905,7 @@ dependencies = [
  "arrow-array",
  "chrono",
  "num_cpus",
- "object_store 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "object_store 0.5.6",
  "parquet",
  "sqlparser",
 ]
@@ -1920,7 +1920,7 @@ dependencies = [
  "datafusion-expr",
  "hashbrown 0.13.2",
  "log",
- "object_store 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "object_store 0.5.6",
  "parking_lot 0.12.1",
  "rand 0.8.5",
  "tempfile",
@@ -1997,7 +1997,7 @@ dependencies = [
  "datafusion",
  "datafusion-common",
  "datafusion-expr",
- "object_store 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "object_store 0.5.6",
  "prost",
 ]
 
@@ -4064,25 +4064,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec9cd6ca25e796a49fa242876d1c4de36a24a6da5258e9f0bc062dbf5e81c53b"
 dependencies = [
  "async-trait",
- "bytes 1.4.0",
- "chrono",
- "futures 0.3.28",
- "itertools",
- "parking_lot 0.12.1",
- "percent-encoding",
- "snafu 0.7.4",
- "tokio",
- "tracing",
- "url",
- "walkdir",
-]
-
-[[package]]
-name = "object_store"
-version = "0.5.6"
-source = "git+https://github.com/MachaelLee/arrow-rs.git?rev=8ef80862c451dbb8cce33c8497862545f25a3b98#8ef80862c451dbb8cce33c8497862545f25a3b98"
-dependencies = [
- "async-trait",
  "base64 0.21.0",
  "bytes 1.4.0",
  "chrono",
@@ -4118,7 +4099,7 @@ dependencies = [
  "lazy_static",
  "log",
  "lru",
- "object_store 0.5.6 (git+https://github.com/MachaelLee/arrow-rs.git?rev=8ef80862c451dbb8cce33c8497862545f25a3b98)",
+ "object_store 0.5.6",
  "prometheus 0.12.0",
  "prometheus-static-metric",
  "prost",
