@@ -2,7 +2,7 @@
 
 //! Query handler
 
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 
 use arrow_ext::ipc::{CompressOptions, CompressionMethod, RecordBatchesEncoder};
 use ceresdbproto::{
@@ -12,20 +12,15 @@ use ceresdbproto::{
         ArrowPayload, SqlQueryRequest, SqlQueryResponse,
     },
 };
-use common_types::{record_batch::RecordBatch, request_id::RequestId};
-use common_util::{error::BoxError, time::InstantExt};
+use common_types::record_batch::RecordBatch;
+use common_util::error::BoxError;
 use futures::{stream, stream::BoxStream, FutureExt, StreamExt};
 use http::StatusCode;
-use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
-use log::{error, info, warn};
+use interpreters::interpreter::Output;
+use log::{error, warn};
 use query_engine::executor::Executor as QueryExecutor;
-use query_frontend::{
-    frontend,
-    frontend::{Context as SqlContext, Frontend},
-    provider::CatalogMetaProvider,
-};
 use router::endpoint::Endpoint;
-use snafu::{ensure, ResultExt};
+use snafu::ResultExt;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Channel, IntoRequest};
@@ -33,6 +28,7 @@ use tonic::{transport::Channel, IntoRequest};
 use crate::{
     error::{self, ErrNoCause, ErrWithCause, Error, Result},
     forward::{ForwardRequest, ForwardResult},
+    read::SqlResponse,
     Context, Proxy,
 };
 
@@ -50,6 +46,27 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 }
             }
             Ok(v) => v,
+        }
+    }
+
+    async fn handle_sql_query_internal(
+        &self,
+        ctx: Context,
+        req: SqlQueryRequest,
+    ) -> Result<SqlQueryResponse> {
+        if req.context.is_none() {
+            return ErrNoCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: "Database is not set",
+            }
+            .fail();
+        }
+
+        let req_context = req.context.as_ref().unwrap();
+        let schema = &req_context.database;
+        match self.handle_sql(ctx, schema, &req.sql).await? {
+            SqlResponse::Forwarded(resp) => Ok(resp),
+            SqlResponse::Local(output) => convert_output(&output, self.resp_compress_min_length),
         }
     }
 
@@ -72,28 +89,21 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         }
     }
 
-    async fn handle_sql_query_internal(
-        &self,
-        ctx: Context,
-        req: SqlQueryRequest,
-    ) -> Result<SqlQueryResponse> {
-        let req = match self.maybe_forward_sql_query(&req).await? {
-            Some(resp) => match resp {
-                ForwardResult::Forwarded(resp) => return resp,
-                ForwardResult::Local => req,
-            },
-            None => req,
-        };
-
-        let output = self.fetch_sql_query_output(ctx, &req).await?;
-        convert_output(&output, self.resp_compress_min_length)
-    }
-
     async fn handle_stream_query_internal(
         self: Arc<Self>,
         ctx: Context,
         req: SqlQueryRequest,
     ) -> Result<BoxStream<'static, SqlQueryResponse>> {
+        if req.context.is_none() {
+            return ErrNoCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: "Database is not set",
+            }
+            .fail();
+        }
+
+        let req_context = req.context.as_ref().unwrap();
+        let schema = req_context.database.clone();
         let req = match self.clone().maybe_forward_stream_sql_query(&req).await {
             Some(resp) => match resp {
                 ForwardResult::Forwarded(resp) => return resp,
@@ -105,7 +115,10 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let runtime = ctx.runtime.clone();
         let resp_compress_min_length = self.resp_compress_min_length;
-        let output = self.as_ref().fetch_sql_query_output(ctx, &req).await?;
+        let output = self
+            .as_ref()
+            .fetch_sql_query_output(ctx, &schema, &req.sql)
+            .await?;
         runtime.spawn(async move {
             match output {
                 Output::AffectedRows(rows) => {
@@ -194,143 +207,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 None
             }
         }
-    }
-
-    async fn fetch_sql_query_output(&self, ctx: Context, req: &SqlQueryRequest) -> Result<Output> {
-        let request_id = RequestId::next_id();
-        let begin_instant = Instant::now();
-        let deadline = ctx.timeout.map(|t| begin_instant + t);
-        let catalog = self.instance.catalog_manager.default_catalog_name();
-
-        info!("Handle sql query, request_id:{request_id}, request:{req:?}");
-
-        let req_ctx = req.context.as_ref().unwrap();
-        let schema = &req_ctx.database;
-        let instance = &self.instance;
-        // TODO(yingwen): Privilege check, cannot access data of other tenant
-        // TODO(yingwen): Maybe move MetaProvider to instance
-        let provider = CatalogMetaProvider {
-            manager: instance.catalog_manager.clone(),
-            default_catalog: catalog,
-            default_schema: schema,
-            function_registry: &*instance.function_registry,
-        };
-        let frontend = Frontend::new(provider);
-
-        let mut sql_ctx = SqlContext::new(request_id, deadline);
-        // Parse sql, frontend error of invalid sql already contains sql
-        // TODO(yingwen): Maybe move sql from frontend error to outer error
-        let mut stmts = frontend
-            .parse_sql(&mut sql_ctx, &req.sql)
-            .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: "Failed to parse sql",
-            })?;
-
-        ensure!(
-            !stmts.is_empty(),
-            ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: format!("No valid query statement provided, sql:{}", req.sql),
-            }
-        );
-
-        // TODO(yingwen): For simplicity, we only support executing one statement now
-        // TODO(yingwen): INSERT/UPDATE/DELETE can be batched
-        ensure!(
-            stmts.len() == 1,
-            ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: format!(
-                    "Only support execute one statement now, current num:{}, sql:{}",
-                    stmts.len(),
-                    req.sql
-                ),
-            }
-        );
-
-        // Open partition table if needed.
-        let table_name = frontend::parse_table_name(&stmts);
-        if let Some(table_name) = table_name {
-            self.maybe_open_partition_table_if_not_exist(catalog, schema, &table_name)
-                .await?;
-        }
-
-        // Create logical plan
-        // Note: Remember to store sql in error when creating logical plan
-        let plan = frontend
-            // TODO(yingwen): Check error, some error may indicate that the sql is invalid. Now we
-            // return internal server error in those cases
-            .statement_to_plan(&mut sql_ctx, stmts.remove(0))
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to create plan, query:{}", req.sql),
-            })?;
-
-        instance
-            .limiter
-            .try_limit(&plan)
-            .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Query is blocked",
-            })?;
-
-        if let Some(deadline) = deadline {
-            if deadline.check_deadline() {
-                return ErrNoCause {
-                    code: StatusCode::INTERNAL_SERVER_ERROR,
-                    msg: "Query timeout",
-                }
-                .fail();
-            }
-        }
-
-        // Execute in interpreter
-        let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
-            // Use current ctx's catalog and schema as default catalog and schema
-            .default_catalog_and_schema(catalog.to_string(), schema.to_string())
-            .build();
-        let interpreter_factory = Factory::new(
-            instance.query_executor.clone(),
-            instance.catalog_manager.clone(),
-            instance.table_engine.clone(),
-            instance.table_manipulator.clone(),
-        );
-        let interpreter = interpreter_factory
-            .create(interpreter_ctx, plan)
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to create interpreter",
-            })?;
-
-        let output = if let Some(deadline) = deadline {
-            tokio::time::timeout_at(
-                tokio::time::Instant::from_std(deadline),
-                interpreter.execute(),
-            )
-            .await
-            .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Query timeout",
-            })?
-        } else {
-            interpreter.execute().await
-        }
-        .box_err()
-        .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to execute interpreter, sql:{}", req.sql),
-        })?;
-
-        let cost = begin_instant.saturating_elapsed();
-        info!("Handle sql query success, catalog:{catalog}, schema:{schema}, request_id:{request_id}, cost:{cost:?}, request:{req:?}");
-
-        Ok(output)
     }
 }
 

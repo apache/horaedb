@@ -229,19 +229,10 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
         };
-        let join_handle = self.runtimes.read_runtime.spawn(async move {
-            if req.context.is_none() {
-                return SqlQueryResponse {
-                    header: Some(error::build_err_header(
-                        StatusCode::BAD_REQUEST.as_u16() as u32,
-                        "database is not set".to_string(),
-                    )),
-                    ..Default::default()
-                };
-            }
-
-            proxy.handle_sql_query(ctx, req).await
-        });
+        let join_handle = self
+            .runtimes
+            .read_runtime
+            .spawn(async move { proxy.handle_sql_query(ctx, req).await });
 
         let resp = match join_handle.await {
             Ok(v) => v,
@@ -407,19 +398,6 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
 
         let runtime = ctx.runtime.clone();
         let join_handle = runtime.spawn(async move {
-            if query_req.context.is_none() {
-                return stream::once(async move {
-                    Ok(SqlQueryResponse {
-                        header: Some(error::build_err_header(
-                            StatusCode::BAD_REQUEST.as_u16() as u32,
-                            "database is not set".to_string(),
-                        )),
-                        ..Default::default()
-                    })
-                })
-                .boxed();
-            }
-
             proxy
                 .handle_stream_sql_query(ctx, query_req)
                 .await
