@@ -16,8 +16,6 @@ use router::{
 use serde::{Deserialize, Serialize};
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
-use crate::http::DEFAULT_MAX_BODY_SIZE;
-
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct StaticRouteConfig {
@@ -100,7 +98,7 @@ pub struct ServerConfig {
     pub grpc_port: u16,
 
     pub timeout: Option<ReadableDuration>,
-    pub http_max_body_size: u64,
+    pub http_max_body_size: ReadableSize,
     pub grpc_server_cq_count: usize,
     /// The minimum length of the response body to compress.
     pub resp_compress_min_length: ReadableSize,
@@ -129,7 +127,7 @@ impl Default for ServerConfig {
             mysql_port: 3307,
             grpc_port: 8831,
             timeout: None,
-            http_max_body_size: DEFAULT_MAX_BODY_SIZE,
+            http_max_body_size: ReadableSize::mb(64),
             grpc_server_cq_count: 20,
             resp_compress_min_length: ReadableSize::mb(4),
             forward: forward::Config::default(),

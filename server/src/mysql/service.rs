@@ -5,18 +5,16 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 use common_util::runtime::JoinHandle;
 use log::{error, info};
 use opensrv_mysql::AsyncMysqlIntermediary;
-use proxy::instance::{Instance, InstanceRef};
+use proxy::Proxy;
 use query_engine::executor::Executor as QueryExecutor;
-use router::RouterRef;
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Receiver, Sender};
 
 use crate::mysql::{error::Result, worker::MysqlWorker};
 
 pub struct MysqlService<Q> {
-    instance: InstanceRef<Q>,
+    proxy: Arc<Proxy<Q>>,
     runtimes: Arc<EngineRuntimes>,
-    router: RouterRef,
     socket_addr: SocketAddr,
     join_handler: Option<JoinHandle<()>>,
     tx: Option<Sender<()>>,
@@ -25,16 +23,14 @@ pub struct MysqlService<Q> {
 
 impl<Q> MysqlService<Q> {
     pub fn new(
-        instance: Arc<Instance<Q>>,
+        proxy: Arc<Proxy<Q>>,
         runtimes: Arc<EngineRuntimes>,
-        router: RouterRef,
         socket_addr: SocketAddr,
         timeout: Option<Duration>,
     ) -> MysqlService<Q> {
         Self {
-            instance,
+            proxy,
             runtimes,
-            router,
             socket_addr,
             join_handler: None,
             tx: None,
@@ -53,9 +49,8 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
         info!("MySQL server tries to listen on {}", self.socket_addr);
 
         self.join_handler = Some(rt.default_runtime.spawn(Self::loop_accept(
-            self.instance.clone(),
+            self.proxy.clone(),
             self.runtimes.clone(),
-            self.router.clone(),
             self.socket_addr,
             self.timeout,
             rx,
@@ -70,9 +65,8 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
     }
 
     async fn loop_accept(
-        instance: InstanceRef<Q>,
+        proxy: Arc<Proxy<Q>>,
         runtimes: Arc<EngineRuntimes>,
-        router: RouterRef,
         socket_addr: SocketAddr,
         timeout: Option<Duration>,
         mut rx: Receiver<()>,
@@ -92,12 +86,11 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
                             break;
                         }
                     };
-                    let instance = instance.clone();
-                    let router = router.clone();
+                    let proxy = proxy.clone();
 
                     let rt = runtimes.read_runtime.clone();
                     rt.spawn(AsyncMysqlIntermediary::run_on(
-                        MysqlWorker::new(instance, router, timeout),
+                        MysqlWorker::new(proxy,  timeout),
                         stream,
                     ));
                 },

@@ -8,6 +8,9 @@ pub mod types;
 
 use std::time::Instant;
 
+use ceresdbproto::storage::{
+    RequestContext as GrpcRequestContext, WriteRequest as GrpcWriteRequest,
+};
 use common_types::request_id::RequestId;
 use common_util::{error::BoxError, time::InstantExt};
 use http::StatusCode;
@@ -22,14 +25,12 @@ use snafu::{ensure, ResultExt};
 
 use crate::{
     context::RequestContext,
-    error::{ErrNoCause, ErrWithCause, Internal, Result},
-    execute_plan,
-    grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
+    error::{ErrNoCause, ErrWithCause, Result},
     influxdb::types::{
         convert_influxql_output, convert_write_request, InfluxqlRequest, InfluxqlResponse,
         WriteRequest, WriteResponse,
     },
-    Proxy,
+    Context, Proxy,
 };
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
@@ -47,53 +48,23 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: RequestContext,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
-        let request_id = RequestId::next_id();
-        let deadline = ctx.timeout.map(|t| Instant::now() + t);
-        let catalog = &ctx.catalog;
-        self.instance.catalog_manager.default_catalog_name();
-        let schema = &ctx.schema;
-        let schema_config = self
-            .schema_config_provider
-            .schema_config(schema)
-            .box_err()
-            .with_context(|| Internal {
-                msg: format!("get schema config failed, schema:{schema}"),
-            })?;
+        let table_request = GrpcWriteRequest {
+            context: Some(GrpcRequestContext {
+                database: ctx.schema.clone(),
+            }),
+            table_requests: convert_write_request(req)?,
+        };
+        let proxy_context = Context {
+            timeout: ctx.timeout,
+            runtime: self.engine_runtimes.write_runtime.clone(),
+        };
+        let result = self
+            .handle_write_internal(proxy_context, table_request)
+            .await?;
 
-        let write_context =
-            WriteContext::new(request_id, deadline, catalog.clone(), schema.clone());
-
-        let plans = write_request_to_insert_plan(
-            self.instance.clone(),
-            convert_write_request(req)?,
-            schema_config,
-            write_context,
-        )
-        .await
-        .box_err()
-        .with_context(|| Internal {
-            msg: "write request to insert plan",
-        })?;
-
-        let mut success = 0;
-        for insert_plan in plans {
-            success += execute_insert_plan(
-                request_id,
-                catalog,
-                schema,
-                self.instance.clone(),
-                insert_plan,
-                deadline,
-            )
-            .await
-            .box_err()
-            .with_context(|| Internal {
-                msg: "execute plan",
-            })?;
-        }
         debug!(
-            "Influxdb write finished, catalog:{}, schema:{}, success:{}",
-            catalog, schema, success
+            "Influxdb write finished, catalog:{}, schema:{}, result:{result:?}",
+            ctx.catalog, ctx.schema
         );
 
         Ok(())
@@ -164,15 +135,9 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Query is blocked",
             })?;
-        let output = execute_plan(
-            request_id,
-            &ctx.catalog,
-            &ctx.schema,
-            self.instance.clone(),
-            plan,
-            deadline,
-        )
-        .await?;
+        let output = self
+            .execute_plan(request_id, &ctx.catalog, &ctx.schema, plan, deadline)
+            .await?;
 
         info!(
             "Influxdb query handler finished, request_id:{}, cost:{}ms, request:{:?}",

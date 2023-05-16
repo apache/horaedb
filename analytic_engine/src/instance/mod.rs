@@ -143,6 +143,7 @@ pub struct Instance {
     meta_cache: Option<MetaCacheRef>,
     /// Engine memtable memory usage collector
     mem_usage_collector: Arc<MemUsageCollector>,
+    pub(crate) max_rows_in_write_queue: usize,
     /// Engine write buffer size
     pub(crate) db_write_buffer_size: usize,
     /// Space write buffer size
@@ -151,6 +152,8 @@ pub struct Instance {
     pub(crate) replay_batch_size: usize,
     /// Write sst max buffer size
     pub(crate) write_sst_max_buffer_size: usize,
+    /// Max retry limit to flush memtables
+    pub(crate) max_retry_flush_limit: usize,
     /// Max bytes per write batch
     pub(crate) max_bytes_per_write_batch: Option<usize>,
     /// Options for scanning sst
@@ -191,6 +194,7 @@ impl Instance {
             } else {
                 None
             },
+            max_retry_flush_limit: 0,
         };
 
         let flusher = self.make_flusher();
@@ -273,6 +277,11 @@ impl Instance {
             runtime: self.runtimes.write_runtime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
         }
+    }
+
+    #[inline]
+    fn max_retry_flush_limit(&self) -> usize {
+        self.max_retry_flush_limit
     }
 }
 

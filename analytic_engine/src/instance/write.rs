@@ -590,7 +590,11 @@ impl<'a> Writer<'a> {
     /// acquired in advance. And in order to avoid deadlock, we should not wait
     /// for the lock.
     async fn handle_memtable_flush(&mut self, table_data: &TableDataRef) -> Result<()> {
-        let opts = TableFlushOptions::default();
+        let opts = TableFlushOptions {
+            res_sender: None,
+            compact_after_flush: None,
+            max_retry_flush_limit: self.instance.max_retry_flush_limit(),
+        };
         let flusher = self.instance.make_flusher();
         if table_data.id == self.table_data.id {
             let flush_scheduler = self.serial_exec.flush_scheduler();
