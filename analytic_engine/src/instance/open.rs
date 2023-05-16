@@ -120,10 +120,12 @@ impl Instance {
             file_purger,
             meta_cache: ctx.meta_cache.clone(),
             mem_usage_collector: Arc::new(MemUsageCollector::default()),
+            max_rows_in_write_queue: ctx.config.max_rows_in_write_queue,
             db_write_buffer_size: ctx.config.db_write_buffer_size,
             space_write_buffer_size: ctx.config.space_write_buffer_size,
             replay_batch_size: ctx.config.replay_batch_size,
             write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_byte() as usize,
+            max_retry_flush_limit: ctx.config.max_retry_flush_limit,
             max_bytes_per_write_batch: ctx
                 .config
                 .max_bytes_per_write_batch
@@ -325,6 +327,7 @@ impl Instance {
                         let opts = TableFlushOptions {
                             res_sender: None,
                             compact_after_flush: None,
+                            max_retry_flush_limit: self.max_retry_flush_limit,
                         };
                         let flusher = self.make_flusher();
                         let flush_scheduler = serial_exec.flush_scheduler();

@@ -61,6 +61,8 @@ pub struct Config {
     /// Manifest options
     pub manifest: ManifestOptions,
 
+    /// The maximum rows in the write queue.
+    pub max_rows_in_write_queue: usize,
     /// The maximum write buffer size used for single space.
     pub space_write_buffer_size: usize,
     /// The maximum size of all Write Buffers across all spaces.
@@ -81,6 +83,8 @@ pub struct Config {
     pub sst_background_read_parallelism: usize,
     /// Max buffer size for writing sst
     pub write_sst_max_buffer_size: ReadableSize,
+    /// Max retry limit After flush failed
+    pub max_retry_flush_limit: usize,
     /// Max bytes per write batch.
     ///
     /// If this is set, the atomicity of write request will be broken.
@@ -108,6 +112,7 @@ impl Default for Config {
             sst_meta_cache_cap: Some(1000),
             sst_data_cache_cap: Some(1000),
             manifest: ManifestOptions::default(),
+            max_rows_in_write_queue: 0,
             /// Zero means disabling this param, give a positive value to enable
             /// it.
             space_write_buffer_size: 0,
@@ -119,6 +124,7 @@ impl Default for Config {
             sst_background_read_parallelism: 8,
             scan_max_record_batches_in_flight: 1024,
             write_sst_max_buffer_size: ReadableSize::mb(10),
+            max_retry_flush_limit: 0,
             max_bytes_per_write_batch: None,
             wal: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),

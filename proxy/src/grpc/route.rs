@@ -1,24 +1,13 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use ceresdbproto::storage::{RouteRequest, RouteResponse};
-use common_util::error::BoxError;
-use http::StatusCode;
 use query_engine::executor::Executor as QueryExecutor;
-use snafu::ResultExt;
 
-use crate::{error, error::ErrWithCause, Context, Proxy};
+use crate::{error, Context, Proxy};
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_route(&self, _ctx: Context, req: RouteRequest) -> RouteResponse {
-        let routes = self
-            .router
-            .route(req)
-            .await
-            .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "fail to route",
-            });
+        let routes = self.route(req).await;
 
         let mut resp = RouteResponse::default();
         match routes {

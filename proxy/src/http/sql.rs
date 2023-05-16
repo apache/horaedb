@@ -31,7 +31,6 @@ use snafu::{ensure, OptionExt, ResultExt};
 use crate::{
     context::RequestContext,
     error::{ErrNoCause, ErrWithCause, Internal, InternalNoCause, Result},
-    execute_plan,
     forward::ForwardResult,
     Proxy,
 };
@@ -130,15 +129,9 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Query is blocked",
             })?;
-        let output = execute_plan(
-            request_id,
-            &ctx.catalog,
-            &ctx.schema,
-            self.instance.clone(),
-            plan,
-            deadline,
-        )
-        .await?;
+        let output = self
+            .execute_plan(request_id, &ctx.catalog, &ctx.schema, plan, deadline)
+            .await?;
 
         info!(
             "Query handler finished, request_id:{}, cost:{}ms, request:{:?}",

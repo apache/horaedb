@@ -96,11 +96,16 @@ pub enum Error {
     WriteSst { path: String, source: GenericError },
 
     #[snafu(display(
-        "Background flush failed, cannot write more data, err:{}.\nBacktrace:\n{}",
+        "Background flush failed, cannot write more data, retry_count:{}, err:{}.\nBacktrace:\n{}",
+        retry_count,
         msg,
         backtrace
     ))]
-    BackgroundFlushFailed { msg: String, backtrace: Backtrace },
+    BackgroundFlushFailed {
+        msg: String,
+        retry_count: usize,
+        backtrace: Backtrace,
+    },
 
     #[snafu(display("Failed to build merge iterator, table:{}, err:{}", table, source))]
     BuildMergeIterator {
@@ -144,6 +149,10 @@ pub struct TableFlushOptions {
     ///
     /// If it is [None], no compaction will be scheduled.
     pub compact_after_flush: Option<CompactionSchedulerRef>,
+    /// Max retry limit After flush failed
+    ///
+    /// Default is 0
+    pub max_retry_flush_limit: usize,
 }
 
 impl fmt::Debug for TableFlushOptions {
@@ -286,7 +295,7 @@ impl Flusher {
 
         // TODO: The immediate compaction after flush is not a good idea because it may
         // block on the write procedure.
-        if let Some(compaction_scheduler) = opts.compact_after_flush {
+        if let Some(compaction_scheduler) = opts.compact_after_flush.clone() {
             // Schedule compaction if flush completed successfully.
             let compact_req = TableCompactionRequest::no_waiter(table_data.clone());
             let on_flush_success = async move {
@@ -301,7 +310,7 @@ impl Flusher {
                     flush_job,
                     on_flush_success,
                     block_on,
-                    opts.res_sender,
+                    opts,
                     &self.runtime,
                     &table_data.metrics,
                 )
@@ -312,7 +321,7 @@ impl Flusher {
                     flush_job,
                     async {},
                     block_on,
-                    opts.res_sender,
+                    opts,
                     &self.runtime,
                     &table_data.metrics,
                 )
@@ -430,6 +439,7 @@ impl FlushTask {
                 meta_edit: MetaEdit::Update(meta_update),
             }
         };
+        // Update manifest and remove immutable memtables
         self.space_store
             .manifest
             .apply_edit(edit_req)
