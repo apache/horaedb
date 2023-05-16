@@ -350,9 +350,9 @@ mod tests {
     use catalog::consts::DEFAULT_SCHEMA;
     use ceresdbproto::storage::{Route, SqlQueryRequest, SqlQueryResponse};
     use futures::FutureExt;
-    use router::{Router};
-    use tonic::IntoRequest;
     use meta_client::types::TableInfo;
+    use router::Router;
+    use tonic::IntoRequest;
 
     use super::*;
 

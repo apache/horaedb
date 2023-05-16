@@ -2,7 +2,7 @@
 
 use std::{
     cmp::max,
-    collections::{BTreeMap, HashMap, },
+    collections::{BTreeMap, HashMap},
     time::Instant,
 };
 
