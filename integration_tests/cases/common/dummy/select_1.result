@@ -6,7 +6,7 @@ Int64(1),
 
 SELECT x;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SELECT x;. Caused by: Failed to create plan, err:Failed to generate datafusion plan, err:Schema error: No field named \"x\"." })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SELECT x;. Caused by: Failed to create plan, err:Failed to generate datafusion plan, err:Schema error: No field named x." })
 
 SELECT 'a';
 
@@ -22,7 +22,9 @@ Boolean(false),
 
 SELECT NOT(1);
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, sql: SELECT NOT(1);. Caused by: Failed to execute select, err:Failed to execute logical plan, err:Failed to collect record batch stream, err:Stream error, msg:convert from arrow record batch, err:Internal error: NOT 'Literal { value: Int64(1) }' can't be evaluated because the expression's type is Int64, not boolean or NULL. This was likely caused by a bug in DataFusion's code and we would welcome that you file an bug report in our issue tracker" })
+NOT Int64(1),
+Int64(-2),
+
 
 SELECT TRUE;
 

@@ -10,13 +10,14 @@ use datafusion::{
         tree_node::{TreeNode, TreeNodeRewriter},
         DFSchemaRef,
     },
+    config::ConfigOptions,
     error::{DataFusionError, Result},
     logical_expr::{
         expr::Expr,
         logical_plan::{Filter, LogicalPlan, TableScan},
         utils, Between, BinaryExpr, ExprSchemable, Operator,
     },
-    optimizer::{optimizer::OptimizerRule, OptimizerConfig},
+    optimizer::analyzer::AnalyzerRule,
     scalar::ScalarValue,
 };
 use log::debug;
@@ -31,30 +32,25 @@ use log::debug;
 /// * `expr = 'true'` to `expr = true` when `expr` is of boolean type
 pub struct TypeConversion;
 
-impl OptimizerRule for TypeConversion {
+impl AnalyzerRule for TypeConversion {
     #[allow(clippy::only_used_in_recursion)]
-    #[allow(deprecated)]
-    fn try_optimize(
-        &self,
-        plan: &LogicalPlan,
-        optimizer_config: &dyn OptimizerConfig,
-    ) -> Result<Option<LogicalPlan>> {
+    fn analyze(&self, plan: LogicalPlan, config: &ConfigOptions) -> Result<LogicalPlan> {
+        #[allow(deprecated)]
         let mut rewriter = TypeRewriter {
             schemas: plan.all_schemas(),
         };
 
-        match plan {
+        match &plan {
             LogicalPlan::Filter(Filter {
                 predicate, input, ..
             }) => {
+                let input: &LogicalPlan = &input;
                 let predicate = predicate.clone().rewrite(&mut rewriter)?;
-                let input = self
-                    .try_optimize(input, optimizer_config)?
-                    .unwrap_or_else(|| input.as_ref().clone());
-                Ok(Some(LogicalPlan::Filter(Filter::try_new(
+                let input = self.analyze(input.clone(), config)?;
+                Ok(LogicalPlan::Filter(Filter::try_new(
                     predicate,
                     Arc::new(input),
-                )?)))
+                )?))
             }
             LogicalPlan::TableScan(TableScan {
                 table_name,
@@ -69,14 +65,14 @@ impl OptimizerRule for TypeConversion {
                     .into_iter()
                     .map(|e| e.rewrite(&mut rewriter))
                     .collect::<Result<Vec<_>>>()?;
-                Ok(Some(LogicalPlan::TableScan(TableScan {
+                Ok(LogicalPlan::TableScan(TableScan {
                     table_name: table_name.clone(),
                     source: source.clone(),
                     projection: projection.clone(),
                     projected_schema: projected_schema.clone(),
                     filters: rewrite_filters,
                     fetch: *fetch,
-                })))
+                }))
             }
             LogicalPlan::Projection { .. }
             | LogicalPlan::Window { .. }
@@ -98,11 +94,8 @@ impl OptimizerRule for TypeConversion {
             | LogicalPlan::Dml { .. } => {
                 let inputs = plan.inputs();
                 let new_inputs = inputs
-                    .iter()
-                    .map(|plan| {
-                        self.try_optimize(plan, optimizer_config)
-                            .map(|v| v.unwrap_or_else(|| (*plan).clone()))
-                    })
+                    .into_iter()
+                    .map(|plan| self.analyze(plan.clone(), config))
                     .collect::<Result<Vec<_>>>()?;
 
                 let expr = plan
@@ -111,18 +104,18 @@ impl OptimizerRule for TypeConversion {
                     .map(|e| e.rewrite(&mut rewriter))
                     .collect::<Result<Vec<_>>>()?;
 
-                Ok(Some(utils::from_plan(plan, &expr, &new_inputs)?))
+                Ok(utils::from_plan(&plan, &expr, &new_inputs)?)
             }
             LogicalPlan::Subquery(_)
             | LogicalPlan::Statement { .. }
             | LogicalPlan::SubqueryAlias(_)
             | LogicalPlan::Unnest(_)
-            | LogicalPlan::EmptyRelation { .. } => Ok(Some(plan.clone())),
+            | LogicalPlan::EmptyRelation { .. } => Ok(plan.clone()),
         }
     }
 
     fn name(&self) -> &str {
-        "type_conversion"
+        "ceresdb_type_conversion"
     }
 }
 

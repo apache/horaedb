@@ -88,7 +88,6 @@ impl Context {
 
     fn logical_optimize_rules() -> Vec<Arc<dyn OptimizerRule + Send + Sync>> {
         let mut optimizers: Vec<Arc<dyn OptimizerRule + Send + Sync>> = vec![
-            Arc::new(TypeConversion),
             // These rules are the default settings of the datafusion.
             Arc::new(SimplifyExpressions::new()),
             Arc::new(CommonSubexprEliminate::new()),
@@ -108,8 +107,9 @@ impl Context {
     }
 
     fn analyzer_rules() -> Vec<Arc<dyn AnalyzerRule + Send + Sync>> {
-        vec![Arc::new(
-            datafusion::optimizer::analyzer::type_coercion::TypeCoercion::new(),
-        )]
+        vec![
+            Arc::new(TypeConversion),
+            Arc::new(datafusion::optimizer::analyzer::type_coercion::TypeCoercion::new()),
+        ]
     }
 }

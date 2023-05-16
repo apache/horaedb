@@ -2,11 +2,14 @@
 
 set -exo
 
-if [ -d ceresmeta ]; then
+SRC=/tmp/ceresmeta-src
+TARGET=$(pwd)/ceresmeta
+
+if [ -d $SRC ]; then
   echo "Remove old meta..."
-  rm -r ceresmeta
+  rm -rf $SRC
 fi
 
-git clone --depth 1 https://github.com/ceresdb/ceresmeta.git
-cd ceresmeta
-go build -o ceresmeta ./cmd/meta/...
+git clone --depth 1 https://github.com/ceresdb/ceresmeta.git ${SRC}
+cd ${SRC}
+go build -o ${TARGET}/ceresmeta ./cmd/meta/...
