@@ -35,5 +35,5 @@ check-license:
 build: check
 	@ go build -o ceresmeta ./cmd/meta/...
 
-clean:
-	@ rm -f ceresmeta
+integration_test: build
+	@ sh ./scripts/run_integration_test.sh

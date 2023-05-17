@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  statics:
+  style-check:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
@@ -18,6 +18,32 @@ jobs:
       - run: |
           make install-tools
           make check
+  unit-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.19
+      - run: |
+          make install-tools
           make test
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
+  integration-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.19
+      - run: |
+          make install-tools
+          sudo apt install -y protobuf-compiler
+          make integration_test
