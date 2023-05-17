@@ -4030,7 +4030,7 @@ dependencies = [
 [[package]]
 name = "object_store"
 version = "0.5.6"
-source = "git+https://github.com/MachaelLee/arrow-rs.git?rev=e3a4c0b2330005165d77da03db64ab251ccf3a3f#e3a4c0b2330005165d77da03db64ab251ccf3a3f"
+source = "git+https://github.com/MachaelLee/arrow-rs.git?rev=7ed1ab9abd4330fafe576fe0e7169ecf41c675b6#7ed1ab9abd4330fafe576fe0e7169ecf41c675b6"
 dependencies = [
  "async-trait",
  "base64 0.21.0",
@@ -4070,7 +4070,7 @@ dependencies = [
  "lazy_static",
  "log",
  "lru",
- "object_store 0.5.6 (git+https://github.com/MachaelLee/arrow-rs.git?rev=e3a4c0b2330005165d77da03db64ab251ccf3a3f)",
+ "object_store 0.5.6 (git+https://github.com/MachaelLee/arrow-rs.git?rev=7ed1ab9abd4330fafe576fe0e7169ecf41c675b6)",
  "prometheus 0.12.0",
  "prometheus-static-metric",
  "prost",

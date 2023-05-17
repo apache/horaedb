@@ -1,14 +1,15 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{fmt::Display, ops::Range};
+use std::{fmt::Display, ops::Range, time::Instant};
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::BoxStream;
 use lazy_static::lazy_static;
+use log::info;
 use prometheus::{exponential_buckets, register_histogram_vec, HistogramVec};
 use prometheus_static_metric::make_static_metric;
-use tokio::io::AsyncWrite;
+use tokio::{io::AsyncWrite};
 use upstream::{path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result};
 
 use crate::ObjectStoreRef;
@@ -116,8 +117,10 @@ impl ObjectStore for StoreWithMetrics {
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
+        let instant = Instant::now();
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.get_range.start_timer();
         let result = self.store.get_range(location, range).await?;
+        info!("object store metrics get_range cost:{}, location:{}", instant.elapsed().as_millis(),location);
         OBJECT_STORE_THROUGHPUT_HISTOGRAM
             .get_range
             .observe(result.len() as f64);
@@ -135,8 +138,11 @@ impl ObjectStore for StoreWithMetrics {
     }
 
     async fn head(&self, location: &Path) -> Result<ObjectMeta> {
+        let instant = Instant::now();
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.head.start_timer();
-        self.store.head(location).await
+        let response = self.store.head(location).await;
+        info!("object store metrics head cost:{}, location:{}", instant.elapsed().as_millis(),location);
+        response
     }
 
     async fn delete(&self, location: &Path) -> Result<()> {
