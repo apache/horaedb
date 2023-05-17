@@ -263,7 +263,7 @@ impl Period {
         let stride = DfColumnarValue::Scalar(ScalarValue::IntervalDayTime(Some(truncate_time)));
         let origin = DfColumnarValue::Scalar(ScalarValue::TimestampNanosecond(
             Some(-DEFAULT_TIMEZONE_OFFSET_SECS as i64 * 1_000_000_000),
-            Some("+00:00".to_owned()),
+            Some("+00:00".to_owned().into()),
         ));
 
         date_bin(&[stride, array.clone(), origin]).context(TruncateTimestamp)
