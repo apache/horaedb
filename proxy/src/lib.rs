@@ -18,6 +18,7 @@ pub mod http;
 pub mod influxdb;
 pub mod instance;
 pub mod limiter;
+pub(crate) mod read;
 pub mod schema_config_provider;
 pub(crate) mod util;
 pub(crate) mod write;
@@ -33,15 +34,15 @@ use catalog::schema::{
 };
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
-    PrometheusRemoteQueryResponse, Route, RouteRequest, SqlQueryRequest, SqlQueryResponse,
+    PrometheusRemoteQueryResponse, Route, RouteRequest,
 };
 use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID};
 use common_util::{error::BoxError, runtime::Runtime};
 use futures::FutureExt;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
-use log::{error, info, warn};
+use log::{error, info};
 use query_engine::executor::Executor as QueryExecutor;
-use query_frontend::{frontend, plan::Plan};
+use query_frontend::plan::Plan;
 use router::{endpoint::Endpoint, Router};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
@@ -108,55 +109,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
     pub fn instance(&self) -> InstanceRef<Q> {
         self.instance.clone()
-    }
-
-    async fn maybe_forward_sql_query(
-        &self,
-        req: &SqlQueryRequest,
-    ) -> Result<Option<ForwardResult<SqlQueryResponse, Error>>> {
-        let table_name = frontend::parse_table_name_with_sql(&req.sql)
-            .box_err()
-            .with_context(|| Internal {
-                msg: format!("Failed to parse table name with sql, sql:{}", req.sql),
-            })?;
-        if table_name.is_none() {
-            warn!("Unable to forward sql query without table name, req:{req:?}",);
-            return Ok(None);
-        }
-
-        let req_ctx = req.context.as_ref().unwrap();
-        let forward_req = ForwardRequest {
-            schema: req_ctx.database.clone(),
-            table: table_name.unwrap(),
-            req: req.clone().into_request(),
-        };
-        let do_query = |mut client: StorageServiceClient<Channel>,
-                        request: tonic::Request<SqlQueryRequest>,
-                        _: &Endpoint| {
-            let query = async move {
-                client
-                    .sql_query(request)
-                    .await
-                    .map(|resp| resp.into_inner())
-                    .box_err()
-                    .context(ErrWithCause {
-                        code: StatusCode::INTERNAL_SERVER_ERROR,
-                        msg: "Forwarded sql query failed",
-                    })
-            }
-            .boxed();
-
-            Box::new(query) as _
-        };
-
-        let forward_result = self.forwarder.forward(forward_req, do_query).await;
-        Ok(match forward_result {
-            Ok(forward_res) => Some(forward_res),
-            Err(e) => {
-                error!("Failed to forward sql req but the error is ignored, err:{e}");
-                None
-            }
-        })
     }
 
     async fn maybe_forward_prom_remote_query(
@@ -393,8 +345,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .limiter
             .try_limit(&plan)
             .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+            .context(Internal {
                 msg: "Request is blocked",
             })?;
 
@@ -411,8 +362,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let interpreter = interpreter_factory
             .create(interpreter_ctx, plan)
             .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+            .context(Internal {
                 msg: "Failed to create interpreter",
             })?;
 
@@ -423,19 +373,16 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             )
             .await
             .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+            .context(Internal {
                 msg: "Plan execution timeout",
             })
             .and_then(|v| {
-                v.box_err().context(ErrWithCause {
-                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                v.box_err().context(Internal {
                     msg: "Failed to execute interpreter",
                 })
             })
         } else {
-            interpreter.execute().await.box_err().context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+            interpreter.execute().await.box_err().context(Internal {
                 msg: "Failed to execute interpreter",
             })
         }

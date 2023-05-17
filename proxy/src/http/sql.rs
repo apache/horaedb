@@ -1,38 +1,30 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{io::Cursor, time::Instant};
+use std::io::Cursor;
 
 use arrow::{ipc::reader::StreamReader, record_batch::RecordBatch as ArrowRecordBatch};
 use ceresdbproto::storage::{
     arrow_payload::Compression, sql_query_response::Output as OutputPb, ArrowPayload,
-    RequestContext as GrpcRequestContext, SqlQueryRequest, SqlQueryResponse,
+    SqlQueryResponse,
 };
 use common_types::{
     datum::{Datum, DatumKind},
     record_batch::RecordBatch,
-    request_id::RequestId,
 };
-use common_util::{error::BoxError, time::InstantExt};
-use http::StatusCode;
+use common_util::error::BoxError;
 use interpreters::interpreter::Output;
-use log::info;
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
-use query_frontend::{
-    frontend,
-    frontend::{Context as SqlContext, Frontend},
-    provider::CatalogMetaProvider,
-};
 use serde::{
     ser::{SerializeMap, SerializeSeq},
     Deserialize, Serialize,
 };
-use snafu::{ensure, OptionExt, ResultExt};
+use snafu::{OptionExt, ResultExt};
 
 use crate::{
     context::RequestContext,
-    error::{ErrNoCause, ErrWithCause, Internal, InternalNoCause, Result},
-    forward::ForwardResult,
-    Proxy,
+    error::{Internal, InternalNoCause, Result},
+    read::SqlResponse,
+    Context, Proxy,
 };
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
@@ -41,106 +33,15 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: &RequestContext,
         req: Request,
     ) -> Result<Output> {
-        let request_id = RequestId::next_id();
-        let begin_instant = Instant::now();
-        let deadline = ctx.timeout.map(|t| begin_instant + t);
-
-        info!(
-            "Query handler try to process request, request_id:{}, request:{:?}",
-            request_id, req
-        );
-
-        // TODO(yingwen): Privilege check, cannot access data of other tenant
-        // TODO(yingwen): Maybe move MetaProvider to instance
-        let provider = CatalogMetaProvider {
-            manager: self.instance.catalog_manager.clone(),
-            default_catalog: &ctx.catalog,
-            default_schema: &ctx.schema,
-            function_registry: &*self.instance.function_registry,
+        let context = Context {
+            timeout: ctx.timeout,
+            runtime: self.engine_runtimes.read_runtime.clone(),
         };
-        let frontend = Frontend::new(provider);
-        let mut sql_ctx = SqlContext::new(request_id, deadline);
 
-        // Parse sql, frontend error of invalid sql already contains sql
-        // TODO(yingwen): Maybe move sql from frontend error to outer error
-        let mut stmts = frontend
-            .parse_sql(&mut sql_ctx, &req.query)
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: format!("Failed to parse sql, query:{}", req.query),
-            })?;
-
-        if stmts.is_empty() {
-            return Ok(Output::AffectedRows(0));
+        match self.handle_sql(context, &ctx.schema, &req.query).await? {
+            SqlResponse::Forwarded(resp) => convert_sql_response_to_output(resp),
+            SqlResponse::Local(output) => Ok(output),
         }
-
-        // TODO(yingwen): For simplicity, we only support executing one statement now
-        // TODO(yingwen): INSERT/UPDATE/DELETE can be batched
-        ensure!(
-            stmts.len() == 1,
-            ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: format!(
-                    "Only support execute one statement now, current num:{}, query:{}.",
-                    stmts.len(),
-                    req.query
-                ),
-            }
-        );
-
-        let sql_query_request = SqlQueryRequest {
-            context: Some(GrpcRequestContext {
-                database: ctx.schema.clone(),
-            }),
-            tables: vec![],
-            sql: req.query.clone(),
-        };
-
-        if let Some(resp) = self.maybe_forward_sql_query(&sql_query_request).await? {
-            match resp {
-                ForwardResult::Forwarded(resp) => return convert_sql_response_to_output(resp?),
-                ForwardResult::Local => (),
-            }
-        };
-
-        // Open partition table if needed.
-        let table_name = frontend::parse_table_name(&stmts);
-        if let Some(table_name) = table_name {
-            self.maybe_open_partition_table_if_not_exist(&ctx.catalog, &ctx.schema, &table_name)
-                .await?;
-        }
-
-        // Create logical plan
-        // Note: Remember to store sql in error when creating logical plan
-        let plan = frontend
-            .statement_to_plan(&mut sql_ctx, stmts.remove(0))
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: format!("Failed to build plan, query:{}", req.query),
-            })?;
-
-        self.instance
-            .limiter
-            .try_limit(&plan)
-            .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Query is blocked",
-            })?;
-        let output = self
-            .execute_plan(request_id, &ctx.catalog, &ctx.schema, plan, deadline)
-            .await?;
-
-        info!(
-            "Query handler finished, request_id:{}, cost:{}ms, request:{:?}",
-            request_id,
-            begin_instant.saturating_elapsed().as_millis(),
-            req
-        );
-
-        Ok(output)
     }
 }
 #[derive(Debug, Deserialize)]
