@@ -74,9 +74,8 @@ impl ArrayHandle {
     }
 
     // Note: this require primitive array
-
-    fn data_slice(&self) -> &[u8] {
-        unimplemented!()
+    fn data_slice(&self) -> Vec<u8> {
+        self.array.to_data().buffers()[0].as_slice().to_vec()
     }
 
     fn nulls(&self) -> Option<&NullBuffer> {

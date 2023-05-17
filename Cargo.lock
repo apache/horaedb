@@ -447,23 +447,6 @@ dependencies = [
 [[package]]
 name = "arrow_util"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?branch=chore-log#0f589eae3c530ded4367ae667ed5c85bb68dd723"
-dependencies = [
- "ahash 0.8.3",
- "arrow 38.0.0",
- "chrono",
- "comfy-table",
- "hashbrown 0.13.2",
- "num-traits",
- "once_cell",
- "regex",
- "snafu 0.7.4",
- "uuid 1.3.0",
-]
-
-[[package]]
-name = "arrow_util"
-version = "0.1.0"
 source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
 dependencies = [
  "ahash 0.8.3",
@@ -2010,26 +1993,12 @@ dependencies = [
 [[package]]
 name = "datafusion_util"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?branch=chore-log#0f589eae3c530ded4367ae667ed5c85bb68dd723"
-dependencies = [
- "async-trait",
- "datafusion",
- "futures 0.3.28",
- "observability_deps 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
- "pin-project",
- "tokio",
- "tokio-stream",
-]
-
-[[package]]
-name = "datafusion_util"
-version = "0.1.0"
 source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
 dependencies = [
  "async-trait",
  "datafusion",
  "futures 0.3.28",
- "observability_deps 0.1.0 (git+https://github.com/CeresDB/influxql)",
+ "observability_deps",
  "pin-project",
  "tokio",
  "tokio-stream",
@@ -2573,7 +2542,7 @@ checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
 [[package]]
 name = "generated_types"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?branch=chore-log#0f589eae3c530ded4367ae667ed5c85bb68dd723"
+source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
 dependencies = [
  "pbjson",
  "pbjson-build",
@@ -2966,7 +2935,7 @@ dependencies = [
 [[package]]
 name = "influxdb_influxql_parser"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?branch=chore-log#0f589eae3c530ded4367ae667ed5c85bb68dd723"
+source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -3037,48 +3006,23 @@ dependencies = [
 [[package]]
 name = "iox_query"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?branch=chore-log#0f589eae3c530ded4367ae667ed5c85bb68dd723"
-dependencies = [
- "arrow 38.0.0",
- "arrow_util 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
- "async-trait",
- "chrono",
- "datafusion",
- "datafusion_util 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
- "futures 0.3.28",
- "hashbrown 0.13.2",
- "log",
- "observability_deps 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
- "once_cell",
- "parking_lot 0.12.1",
- "query_functions 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
- "schema 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
- "snafu 0.7.4",
- "test_helpers 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
- "tokio",
- "tokio-stream",
-]
-
-[[package]]
-name = "iox_query"
-version = "0.1.0"
 source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
 dependencies = [
  "arrow 38.0.0",
- "arrow_util 0.1.0 (git+https://github.com/CeresDB/influxql)",
+ "arrow_util",
  "async-trait",
  "chrono",
  "datafusion",
- "datafusion_util 0.1.0 (git+https://github.com/CeresDB/influxql)",
+ "datafusion_util",
  "futures 0.3.28",
  "hashbrown 0.13.2",
- "observability_deps 0.1.0 (git+https://github.com/CeresDB/influxql)",
+ "observability_deps",
  "once_cell",
  "parking_lot 0.12.1",
- "query_functions 0.1.0 (git+https://github.com/CeresDB/influxql)",
- "schema 0.1.0 (git+https://github.com/CeresDB/influxql)",
+ "query_functions",
+ "schema",
  "snafu 0.7.4",
- "test_helpers 0.1.0 (git+https://github.com/CeresDB/influxql)",
+ "test_helpers",
  "tokio",
  "tokio-stream",
 ]
@@ -3086,22 +3030,22 @@ dependencies = [
 [[package]]
 name = "iox_query_influxql"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?branch=chore-log#0f589eae3c530ded4367ae667ed5c85bb68dd723"
+source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
 dependencies = [
  "arrow 38.0.0",
  "chrono",
  "chrono-tz",
  "datafusion",
- "datafusion_util 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
+ "datafusion_util",
  "generated_types",
  "influxdb_influxql_parser",
- "iox_query 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
+ "iox_query",
  "itertools",
- "observability_deps 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
+ "observability_deps",
  "once_cell",
- "query_functions 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
+ "query_functions",
  "regex",
- "schema 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
+ "schema",
  "serde_json",
 ]
 
@@ -4157,14 +4101,6 @@ dependencies = [
 [[package]]
 name = "observability_deps"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?branch=chore-log#0f589eae3c530ded4367ae667ed5c85bb68dd723"
-dependencies = [
- "tracing",
-]
-
-[[package]]
-name = "observability_deps"
-version = "0.1.0"
 source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
 dependencies = [
  "tracing",
@@ -5009,7 +4945,7 @@ dependencies = [
  "datafusion",
  "df_operator",
  "futures 0.3.28",
- "iox_query 0.1.0 (git+https://github.com/CeresDB/influxql)",
+ "iox_query",
  "log",
  "query_frontend",
  "serde",
@@ -5042,28 +4978,11 @@ dependencies = [
  "prom-remote-api",
  "regex",
  "regex-syntax 0.6.29",
- "schema 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
+ "schema",
  "snafu 0.6.10",
  "sqlparser",
  "table_engine",
  "tokio",
-]
-
-[[package]]
-name = "query_functions"
-version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?branch=chore-log#0f589eae3c530ded4367ae667ed5c85bb68dd723"
-dependencies = [
- "arrow 38.0.0",
- "chrono",
- "datafusion",
- "itertools",
- "observability_deps 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
- "once_cell",
- "regex",
- "regex-syntax 0.6.29",
- "schema 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
- "snafu 0.7.4",
 ]
 
 [[package]]
@@ -5075,11 +4994,11 @@ dependencies = [
  "chrono",
  "datafusion",
  "itertools",
- "observability_deps 0.1.0 (git+https://github.com/CeresDB/influxql)",
+ "observability_deps",
  "once_cell",
  "regex",
  "regex-syntax 0.6.29",
- "schema 0.1.0 (git+https://github.com/CeresDB/influxql)",
+ "schema",
  "snafu 0.7.4",
 ]
 
@@ -5767,26 +5686,13 @@ dependencies = [
 [[package]]
 name = "schema"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?branch=chore-log#0f589eae3c530ded4367ae667ed5c85bb68dd723"
-dependencies = [
- "arrow 38.0.0",
- "hashbrown 0.13.2",
- "indexmap",
- "itertools",
- "observability_deps 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
- "snafu 0.7.4",
-]
-
-[[package]]
-name = "schema"
-version = "0.1.0"
 source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
 dependencies = [
  "arrow 38.0.0",
  "hashbrown 0.13.2",
  "indexmap",
  "itertools",
- "observability_deps 0.1.0 (git+https://github.com/CeresDB/influxql)",
+ "observability_deps",
  "snafu 0.7.4",
 ]
 
@@ -6589,23 +6495,10 @@ dependencies = [
 [[package]]
 name = "test_helpers"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?branch=chore-log#0f589eae3c530ded4367ae667ed5c85bb68dd723"
-dependencies = [
- "dotenvy",
- "observability_deps 0.1.0 (git+https://github.com/CeresDB/influxql?branch=chore-log)",
- "parking_lot 0.12.1",
- "tempfile",
- "tracing-log",
- "tracing-subscriber 0.3.16",
-]
-
-[[package]]
-name = "test_helpers"
-version = "0.1.0"
 source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
 dependencies = [
  "dotenvy",
- "observability_deps 0.1.0 (git+https://github.com/CeresDB/influxql)",
+ "observability_deps",
  "parking_lot 0.12.1",
  "tempfile",
  "tracing-log",

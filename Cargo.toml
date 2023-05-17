@@ -89,6 +89,10 @@ lazy_static = "1.4.0"
 log = "0.4"
 logger = { path = "components/logger" }
 lru = "0.7.6"
+influxql-logical-planner = { git = "https://github.com/CeresDB/influxql", package = "iox_query_influxql" }
+influxql-parser = { git = "https://github.com/CeresDB/influxql", package = "influxdb_influxql_parser" }
+influxql-query = { git = "https://github.com/CeresDB/influxql", package = "iox_query" }
+influxql-schema = { git = "https://github.com/CeresDB/influxql", package = "schema" }
 interpreters = { path = "interpreters" }
 itertools = "0.10.5"
 meta_client = { path = "meta_client" }

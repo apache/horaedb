@@ -26,9 +26,9 @@ datafusion = { workspace = true }
 datafusion-proto = { workspace = true }
 df_operator = { workspace = true }
 hashbrown = { version = "0.12", features = ["raw"] }
-influxql-logical-planner = { git = "https://github.com/CeresDB/influxql", branch = "chore-log", package = "iox_query_influxql" }
-influxql-parser = { git = "https://github.com/CeresDB/influxql", branch = "chore-log", package = "influxdb_influxql_parser" }
-influxql-schema = { git = "https://github.com/CeresDB/influxql", branch = "chore-log", package = "schema" }
+influxql-logical-planner = { workspace = true }
+influxql-parser = { workspace = true }
+influxql-schema = { workspace = true }
 itertools = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
