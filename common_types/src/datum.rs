@@ -977,7 +977,7 @@ pub mod arrow_convert {
                 | DataType::LargeBinary
                 | DataType::FixedSizeBinary(_)
                 | DataType::Struct(_)
-                | DataType::Union(_, _, _)
+                | DataType::Union(_, _)
                 | DataType::List(_)
                 | DataType::LargeList(_)
                 | DataType::FixedSizeList(_, _)

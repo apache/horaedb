@@ -346,7 +346,7 @@ macro_rules! impl_from_array_and_slice {
                 // the underlying vector of [arrow::buffer::Buffer] and Bitmap (also
                 // holds a Buffer), thus require some allocation. However, the Buffer is
                 // managed by Arc, so cloning the buffer is not too expensive.
-                let array_data = array_ref.data().clone();
+                let array_data = array_ref.into_data();
                 let array = $ArrayType::from(array_data);
 
                 Self(array)
@@ -356,7 +356,7 @@ macro_rules! impl_from_array_and_slice {
         impl $Column {
             fn to_arrow_array(&self) -> $ArrayType {
                 // Clone the array data.
-                let array_data = self.0.data().clone();
+                let array_data = self.0.clone().into_data();
                 $ArrayType::from(array_data)
             }
 
@@ -367,7 +367,7 @@ macro_rules! impl_from_array_and_slice {
             fn slice(&self, offset: usize, length: usize) -> Self {
                 let array_slice = self.0.slice(offset, length);
                 // Clone the slice data.
-                let array_data = array_slice.data().clone();
+                let array_data = array_slice.into_data();
                 let array = $ArrayType::from(array_data);
 
                 Self(array)

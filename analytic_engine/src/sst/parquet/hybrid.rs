@@ -74,12 +74,12 @@ impl ArrayHandle {
     }
 
     // Note: this require primitive array
-    fn data_slice(&self) -> &[u8] {
-        self.array.data().buffers()[0].as_slice()
+    fn data_slice(&self) -> Vec<u8> {
+        self.array.to_data().buffers()[0].as_slice().to_vec()
     }
 
     fn nulls(&self) -> Option<&NullBuffer> {
-        self.array.data().nulls()
+        self.array.nulls()
     }
 }
 
@@ -122,12 +122,12 @@ pub fn build_hybrid_arrow_schema(schema: &Schema) -> ArrowSchemaRef {
         .enumerate()
         .map(|(idx, field)| {
             if schema.is_collapsible_column(idx) {
-                let field_type = DataType::List(Box::new(Field::new(
+                let field_type = DataType::List(Arc::new(Field::new(
                     LIST_ITEM_NAME,
                     field.data_type().clone(),
                     true,
                 )));
-                Field::new(field.name(), field_type, true)
+                Arc::new(Field::new(field.name(), field_type, true))
             } else {
                 field.clone()
             }
@@ -418,7 +418,7 @@ impl ListArrayBuilder {
         let array_len = self.multi_row_arrays.len();
         let mut offsets = MutableBuffer::new(array_len * std::mem::size_of::<i32>());
         let child_data = self.build_child_data(&mut offsets)?;
-        let field = Box::new(Field::new(
+        let field = Arc::new(Field::new(
             LIST_ITEM_NAME,
             self.datum_kind.to_arrow_data_type(),
             true,
@@ -731,14 +731,14 @@ mod tests {
         let string_data =
             string_array(vec![Some("bb"), None, Some("ccc"), Some("eeee"), Some("a")]);
         let offsets: [i32; 3] = [0, 4, 5];
-        let array_data = ArrayData::builder(DataType::List(Box::new(Field::new(
+        let array_data = ArrayData::builder(DataType::List(Arc::new(Field::new(
             LIST_ITEM_NAME,
             DataType::Utf8,
             true,
         ))))
         .len(2)
         .add_buffer(Buffer::from_slice_ref(offsets))
-        .add_child_data(string_data.data().to_owned())
+        .add_child_data(string_data.to_data())
         .build()
         .unwrap();
         let expected = ListArray::from(array_data);

@@ -526,7 +526,7 @@ impl HybridRecordDecoder {
             .iter()
             .map(|f| {
                 if let DataType::List(nested_field) = f.data_type() {
-                    Field::new(f.name(), nested_field.data_type().clone(), true)
+                    Arc::new(Field::new(f.name(), nested_field.data_type().clone(), true))
                 } else {
                     f.clone()
                 }
@@ -554,9 +554,10 @@ impl HybridRecordDecoder {
         assert_eq!(array_ref.len() + 1, value_offsets.len());
 
         let values_num = *value_offsets.last().unwrap() as usize;
-        let offset_slices = array_ref.data().buffers()[0].as_slice();
-        let value_slices = array_ref.data().buffers()[1].as_slice();
-        let nulls = array_ref.data().nulls();
+        let array_data = array_ref.to_data();
+        let offset_slices = array_data.buffers()[0].as_slice();
+        let value_slices = array_data.buffers()[1].as_slice();
+        let nulls = array_data.nulls();
         trace!(
             "raw buffer slice, offsets:{:#02x?}, values:{:#02x?}",
             offset_slices,
@@ -630,8 +631,9 @@ impl HybridRecordDecoder {
         assert!(!value_offsets.is_empty());
 
         let values_num = *value_offsets.last().unwrap() as usize;
-        let old_values_buffer = array_ref.data().buffers()[0].as_slice();
-        let old_nulls = array_ref.data().nulls();
+        let array_data = array_ref.to_data();
+        let old_values_buffer = array_data.buffers()[0].as_slice();
+        let old_nulls = array_data.nulls();
 
         let mut new_values_buffer = MutableBuffer::new(value_size * values_num);
         let mut new_null_buffer = hybrid::new_ones_buffer(values_num);
@@ -683,7 +685,8 @@ impl RecordDecoder for HybridRecordDecoder {
         let mut value_offsets = None;
         // Find value offsets from the first col in collapsible_cols_idx.
         if let Some(idx) = self.collapsible_cols_idx.first() {
-            let offset_slices = arrays[*idx as usize].data().buffers()[0].as_slice();
+            let array_data = arrays[*idx as usize].to_data();
+            let offset_slices = array_data.buffers()[0].as_slice();
             value_offsets = Some(Self::get_array_offsets(offset_slices));
         } else {
             CollapsibleColsIdxEmpty.fail()?;
@@ -703,7 +706,7 @@ impl RecordDecoder for HybridRecordDecoder {
                     // are collapsed by hybrid storage format, to differentiate
                     // List column in original records
                     DataType::List(_nested_field) => {
-                        Ok(make_array(array_ref.data().child_data()[0].clone()))
+                        Ok(make_array(array_ref.to_data().child_data()[0].clone()))
                     }
                     _ => {
                         let datum_kind = DatumKind::from_data_type(data_type).unwrap();
