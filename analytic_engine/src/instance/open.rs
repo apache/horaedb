@@ -271,7 +271,7 @@ impl Instance {
 
         let last_sequence = log_entries.back().unwrap().sequence;
 
-        info!(
+        debug!(
             "Instance replay table log entries begin, table:{}, table_id:{:?}, sequence:{}",
             table_data.name, table_data.id, last_sequence
         );
@@ -350,7 +350,7 @@ impl Instance {
             }
         }
 
-        info!(
+        debug!(
             "Instance replay table log entries end, table:{}, table_id:{:?}, last_sequence:{}",
             table_data.name, table_data.id, last_sequence
         );

@@ -196,7 +196,7 @@ impl Flusher {
         table_data: &TableDataRef,
         opts: TableFlushOptions,
     ) -> Result<()> {
-        info!(
+        debug!(
             "Instance flush table, table_data:{:?}, flush_opts:{:?}",
             table_data, opts
         );
