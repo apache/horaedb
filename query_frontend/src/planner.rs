@@ -1037,7 +1037,7 @@ fn normalize_func_name(sql_stmt: &mut SqlStatement) {
                     match projection {
                         SelectItem::UnnamedExpr(ref mut expr) => normalize_expr(expr),
                         SelectItem::ExprWithAlias { ref mut expr, .. } => normalize_expr(expr),
-                        _ => (),
+                        SelectItem::QualifiedWildcard(_, _) | SelectItem::Wildcard(_) => {}
                     }
                 }
             }
