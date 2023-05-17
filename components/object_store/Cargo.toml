@@ -29,7 +29,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
-upstream = { package="object_store", features = [ "aws" ], git = "https://github.com/MachaelLee/arrow-rs.git", rev = "a252d80c25d2d28bc34e7f63a14ec7e468dae1ed" }
+upstream = { package="object_store", features = [ "aws" ], git = "https://github.com/MachaelLee/arrow-rs.git", rev = "a0b39496862a21c6378709718fc08865cfc141af" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
