@@ -1,5 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+//! Contains common methods used by the read process.
+
 use std::time::Instant;
 
 use ceresdbproto::storage::{
@@ -133,7 +135,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("sql:{sql}"),
+                msg: format!("Failed to execute plan, sql:{sql}"),
             })?;
 
         let cost = begin_instant.saturating_elapsed();
