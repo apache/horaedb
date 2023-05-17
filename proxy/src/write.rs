@@ -419,7 +419,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     async fn handle_auto_create_table(
         &self,
         request_id: RequestId,
-        database: &str,
+        schema: &str,
         req: &WriteRequest,
     ) -> Result<()> {
         if !self.auto_create_table {
@@ -428,18 +428,21 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         let schema_config = self
             .schema_config_provider
-            .schema_config(database)
+            .schema_config(schema)
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Fail to fetch schema config, schema_name:{database}"),
+                msg: format!("Fail to fetch schema config, schema_name:{schema}"),
             })?
             .cloned()
             .unwrap_or_default();
+
+        // TODO: Consider whether to build tables concurrently when there are too many
+        // tables.
         for write_table_req in &req.table_requests {
             let table_info = self
                 .router
-                .fetch_table_info(database, &write_table_req.table)
+                .fetch_table_info(schema, &write_table_req.table)
                 .await?;
             if table_info.is_some() {
                 continue;
@@ -447,7 +450,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             self.create_table(
                 request_id,
                 self.instance.catalog_manager.default_catalog_name(),
-                database,
+                schema,
                 write_table_req,
                 &schema_config,
                 None,
