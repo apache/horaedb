@@ -2,7 +2,7 @@
 
 pub mod cluster_based;
 pub mod endpoint;
-pub(crate) mod hash;
+mod hash;
 pub mod rule_based;
 use std::{sync::Arc, time::Duration};
 
@@ -68,6 +68,8 @@ pub trait Router {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RouteCacheConfig {
+    /// Enable route cache, default false.
+    enable: bool,
     /// Time to live (TTL) in second.
     ttl: ReadableDuration,
     /// Time to idle (TTI) in second.
@@ -79,6 +81,7 @@ pub struct RouteCacheConfig {
 impl Default for RouteCacheConfig {
     fn default() -> Self {
         Self {
+            enable: false,
             ttl: ReadableDuration::from(Duration::from_secs(5)),
             tti: ReadableDuration::from(Duration::from_secs(5)),
             capacity: 10_000,
