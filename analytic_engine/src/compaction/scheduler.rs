@@ -66,7 +66,7 @@ pub struct SchedulerConfig {
 
 // TODO(boyan), a better default value?
 const MAX_GOING_COMPACTION_TASKS: usize = 8;
-const MAX_PENDING_COMPACTION_TASKS: usize = 1024;
+const MAX_PENDING_COMPACTION_TASKS: usize = 10240;
 
 impl Default for SchedulerConfig {
     fn default() -> Self {
@@ -626,10 +626,10 @@ impl ScheduleWorker {
 
             // This will spawn a background job to purge ssts and avoid schedule thread
             // blocked.
-            self.handle_table_compaction_request(TableCompactionRequest::no_waiter(table_data))
-                .await;
-            // self.limit
-            //     .add_request(TableCompactionRequest::no_waiter(table_data));
+            // self.handle_table_compaction_request(TableCompactionRequest::no_waiter(table_data))
+            //     .await;
+            self.limit
+                .add_request(TableCompactionRequest::no_waiter(table_data));
         }
     }
 
