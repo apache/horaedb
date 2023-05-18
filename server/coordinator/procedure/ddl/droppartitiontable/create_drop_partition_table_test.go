@@ -87,7 +87,7 @@ func testCreatePartitionTable(ctx context.Context, t *testing.T, dispatch eventd
 		Name:       tableName,
 	}
 
-	subTableShards, err := shardPicker.PickShards(ctx, c.GetMetadata().GetClusterSnapshot(), len(request.GetPartitionTableInfo().SubTableNames), true)
+	subTableShards, err := shardPicker.PickShards(ctx, c.GetMetadata().GetClusterSnapshot(), len(request.GetPartitionTableInfo().SubTableNames))
 	re.NoError(err)
 
 	shardNodesWithVersion := make([]metadata.ShardNodeWithVersion, 0, len(subTableShards))

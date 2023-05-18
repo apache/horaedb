@@ -113,7 +113,7 @@ func (f *Factory) makeCreateTableProcedure(ctx context.Context, request CreateTa
 	}
 	snapshot := request.ClusterMetadata.GetClusterSnapshot()
 
-	shards, err := f.shardPicker.PickShards(ctx, snapshot, 1, false)
+	shards, err := f.shardPicker.PickShards(ctx, snapshot, 1)
 	if err != nil {
 		f.logger.Error("pick table shard", zap.Error(err))
 		return nil, errors.WithMessage(err, "pick table shard")
@@ -148,7 +148,7 @@ func (f *Factory) makeCreatePartitionTableProcedure(ctx context.Context, request
 		nodeNames[shardNode.NodeName] = 1
 	}
 
-	subTableShards, err := f.shardPicker.PickShards(ctx, snapshot, len(request.SourceReq.PartitionTableInfo.SubTableNames), true)
+	subTableShards, err := f.shardPicker.PickShards(ctx, snapshot, len(request.SourceReq.PartitionTableInfo.SubTableNames))
 	if err != nil {
 		return nil, errors.WithMessage(err, "pick sub table shards")
 	}

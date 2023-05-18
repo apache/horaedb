@@ -4,7 +4,9 @@ package test
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	"math/big"
 	"testing"
 
 	"github.com/CeresDB/ceresmeta/server/cluster"
@@ -125,13 +127,13 @@ func InitStableCluster(ctx context.Context, t *testing.T) *cluster.Cluster {
 	snapshot := c.GetMetadata().GetClusterSnapshot()
 	shardNodes := make([]storage.ShardNode, 0, DefaultShardTotal)
 	for _, shardView := range snapshot.Topology.ShardViewsMapping {
-		for _, node := range snapshot.RegisteredNodes {
-			shardNodes = append(shardNodes, storage.ShardNode{
-				ID:        shardView.ShardID,
-				ShardRole: storage.ShardRoleLeader,
-				NodeName:  node.Node.Name,
-			})
-		}
+		selectNodeIdx, err := rand.Int(rand.Reader, big.NewInt(int64(len(snapshot.RegisteredNodes))))
+		re.NoError(err)
+		shardNodes = append(shardNodes, storage.ShardNode{
+			ID:        shardView.ShardID,
+			ShardRole: storage.ShardRoleLeader,
+			NodeName:  snapshot.RegisteredNodes[selectNodeIdx.Int64()].Node.Name,
+		})
 	}
 
 	err := c.GetMetadata().UpdateClusterView(ctx, storage.ClusterStateStable, shardNodes)
