@@ -6,22 +6,19 @@
 #![feature(trait_alias)]
 
 pub mod context;
-pub(crate) mod error;
-pub(crate) mod error_util;
+mod error;
+mod error_util;
 #[allow(dead_code)]
 pub mod forward;
-pub(crate) mod grpc;
-pub mod handlers;
 pub mod hotspot;
 mod hotspot_lru;
-pub mod http;
-pub mod influxdb;
 pub mod instance;
 pub mod limiter;
-pub(crate) mod read;
+mod protocol;
+mod read;
 pub mod schema_config_provider;
-pub(crate) mod util;
-pub(crate) mod write;
+mod util;
+mod write;
 
 use std::{
     sync::Arc,
@@ -41,6 +38,7 @@ use common_util::{error::BoxError, runtime::Runtime};
 use futures::FutureExt;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::{error, info};
+pub use protocol::{handlers, http, influxdb};
 use query_engine::executor::Executor as QueryExecutor;
 use query_frontend::plan::Plan;
 use router::{endpoint::Endpoint, Router};

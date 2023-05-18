@@ -14,7 +14,7 @@ mod prelude {
 
     pub use crate::{
         context::RequestContext,
-        handlers::error::{Error, Result},
         instance::InstanceRef,
+        protocol::handlers::error::{Error, Result},
     };
 }

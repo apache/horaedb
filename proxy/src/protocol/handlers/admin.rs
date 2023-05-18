@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::{handlers::prelude::*, limiter::BlockRule};
+use crate::{limiter::BlockRule, protocol::handlers::prelude::*};
 
 #[derive(Debug, Deserialize)]
 pub enum Operation {

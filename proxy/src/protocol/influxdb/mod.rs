@@ -26,7 +26,7 @@ use snafu::{ensure, ResultExt};
 use crate::{
     context::RequestContext,
     error::{ErrNoCause, ErrWithCause, Result},
-    influxdb::types::{
+    protocol::influxdb::types::{
         convert_influxql_output, convert_write_request, InfluxqlRequest, InfluxqlResponse,
         WriteRequest, WriteResponse,
     },

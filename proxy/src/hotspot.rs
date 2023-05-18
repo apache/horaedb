@@ -13,7 +13,6 @@ use spin::Mutex as SpinMutex;
 use tokio::sync::mpsc::{self, Sender};
 
 use crate::{hotspot_lru::HotspotLru, util};
-
 type QueryKey = String;
 type WriteKey = String;
 const TAG: &str = "hotspot autodump";
