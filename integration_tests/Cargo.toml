@@ -10,9 +10,7 @@ anyhow = "1.0.58"
 async-trait = "0.1"
 ceresdb-client = "1.0"
 local-ip-address = "0.5"
-query_frontend = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 sqlness = "0.4.3"
-sqlparser = { workspace = true }
 tokio = { workspace = true }

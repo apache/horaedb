@@ -16,7 +16,6 @@ use ceresdb_client::{
     model::sql_query::{display::CsvFormatter, Request},
     RpcContext,
 };
-use query_frontend::{frontend, parser::Parser};
 use reqwest::{ClientBuilder, Url};
 use sqlness::{Database, QueryContext};
 
@@ -271,18 +270,10 @@ impl<T> CeresDB<T> {
             database: Some("public".to_string()),
             timeout: None,
         };
-        let statements = Parser::parse_sql(&query).unwrap();
-        let table_name = frontend::parse_table_name(&statements);
 
-        let query_req = match table_name {
-            Some(table_name) => Request {
-                tables: vec![table_name],
-                sql: query,
-            },
-            None => Request {
-                tables: vec![],
-                sql: query,
-            },
+        let query_req = Request {
+            tables: vec![],
+            sql: query,
         };
 
         let result = client.sql_query(&query_ctx, &query_req).await;
