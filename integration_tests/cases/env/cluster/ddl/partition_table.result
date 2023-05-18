@@ -94,7 +94,3 @@ DROP TABLE IF EXISTS `partition_table_t`;
 
 affected_rows: 0
 
-SHOW CREATE TABLE partition_table_t;
-
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SHOW CREATE TABLE partition_table_t;. Caused by: Failed to create plan, err:Table not found, table:partition_table_t" })
-

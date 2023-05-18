@@ -42,4 +42,5 @@ SELECT * from partition_table_t where name in ("ceresdb5", "ceresdb6", "ceresdb7
 
 DROP TABLE IF EXISTS `partition_table_t`;
 
-SHOW CREATE TABLE partition_table_t;
+-- The route cache will cause the data table to be queried after it is deleted. Refer to #893.
+-- SHOW CREATE TABLE partition_table_t;

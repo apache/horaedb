@@ -350,7 +350,8 @@ mod tests {
     use catalog::consts::DEFAULT_SCHEMA;
     use ceresdbproto::storage::{Route, SqlQueryRequest, SqlQueryResponse};
     use futures::FutureExt;
-    use router::{PartitionTableInfo, Router};
+    use meta_client::types::TableInfo;
+    use router::Router;
     use tonic::IntoRequest;
 
     use super::*;
@@ -392,11 +393,11 @@ mod tests {
             }
         }
 
-        async fn fetch_partition_table_info(
+        async fn fetch_table_info(
             &self,
             _schema: &str,
             _table: &str,
-        ) -> router::Result<Option<PartitionTableInfo>> {
+        ) -> router::Result<Option<TableInfo>> {
             return Ok(None);
         }
     }
