@@ -9,7 +9,7 @@ use lazy_static::lazy_static;
 use log::info;
 use prometheus::{exponential_buckets, register_histogram_vec, HistogramVec};
 use prometheus_static_metric::make_static_metric;
-use tokio::io::AsyncWrite;
+use tokio::{io::AsyncWrite, runtime};
 use upstream::{path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result};
 
 use crate::ObjectStoreRef;

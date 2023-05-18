@@ -27,7 +27,7 @@ use futures::{
 use log::{debug, error, info};
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::predicate::Predicate;
-use tokio::sync::oneshot;
+use tokio::{sync::oneshot, time::Instant};
 use wal::manager::WalLocation;
 
 use crate::{
@@ -334,6 +334,7 @@ impl FlushTask {
     /// Each table can only have one running flush task at the same time, which
     /// should be ensured by the caller.
     async fn run(&self) -> Result<()> {
+        let instant = Instant::now();
         let current_version = self.table_data.current_version();
         let mems_to_flush = current_version.pick_memtables_to_flush(self.max_sequence);
 
@@ -356,8 +357,8 @@ impl FlushTask {
             .set_last_flush_time(time::current_time_millis());
 
         info!(
-            "Instance flush memtables done, table:{}, table_id:{}, request_id:{}",
-            self.table_data.name, self.table_data.id, request_id
+            "Instance flush memtables done, table:{}, table_id:{}, request_id:{}, cost:{}",
+            self.table_data.name, self.table_data.id, request_id, instant.elapsed().as_millis()
         );
 
         Ok(())
