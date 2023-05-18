@@ -626,10 +626,10 @@ impl ScheduleWorker {
 
             // This will spawn a background job to purge ssts and avoid schedule thread
             // blocked.
-            // self.handle_table_compaction_request(TableCompactionRequest::no_waiter(table_data))
-            //     .await;
-            self.limit
-                .add_request(TableCompactionRequest::no_waiter(table_data));
+            self.handle_table_compaction_request(TableCompactionRequest::no_waiter(table_data))
+                .await;
+            // self.limit
+            //     .add_request(TableCompactionRequest::no_waiter(table_data));
         }
     }
 
