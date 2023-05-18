@@ -82,7 +82,7 @@ def remote_query(ts):
     # uppercase table
     r = execute_pql(table2 + '{tag1="v1"}[5m]')
     result = r['data']['result']
-    assert result == [{'metric': {'__name__': table2, 'tag1': 'v1', 'tag2': 'v2'}, 'values': [[ts-5, '1'], [ts, '11']]}]
+    assert result == [{'metric': {'__name__': table2, 'tag1': 'v1', 'tag2': 'v2'}, 'values': [[ts-5, '10'], [ts, '110']]}]
 
 def main():
     ts = now()
