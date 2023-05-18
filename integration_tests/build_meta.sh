@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -exo
+set -e
 
 SRC=/tmp/ceresmeta-src
 TARGET=$(pwd)/ceresmeta

@@ -46,15 +46,8 @@ pub fn remote_query_to_plan<P: MetaProvider>(
 ) -> Result<RemoteQueryPlan> {
     let (metric, field, mut filters) = normalize_matchers(query.matchers)?;
 
-    // get table schema
-    let table_ref = meta_provider
-        .table(TableReference::parse_str(&metric))
-        .context(MetaProviderError {
-            msg: format!("Failed to find table, name:{metric}"),
-        })?
-        .context(TableNotFound { name: &metric })?;
     let table_provider = meta_provider
-        .get_table_provider(table_ref.name().into())
+        .get_table_provider(TableReference::bare(&metric))
         .context(TableProviderNotFound { name: &metric })?;
     let schema = Schema::try_from(table_provider.schema()).context(BuildTableSchema)?;
     let timestamp_col_name = schema.timestamp_name();

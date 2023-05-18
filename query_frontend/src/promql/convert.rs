@@ -12,11 +12,12 @@ use common_types::{
 };
 use datafusion::{
     logical_expr::{
-        avg, col, count, lit,
+        avg, count, lit,
         logical_plan::{Extension, LogicalPlan, LogicalPlanBuilder},
         max, min, sum, Expr as DataFusionExpr,
     },
     optimizer::utils::conjunction,
+    prelude::ident,
     sql::planner::ContextProvider,
 };
 use snafu::{ensure, OptionExt, ResultExt};
@@ -286,9 +287,12 @@ impl Expr {
                     };
                     let aggr_expr =
                         Self::aggr_op_expr(&op, &column_name.field, column_name.field.clone())?;
-                    let tag_exprs = groupby_columns.iter().map(|v| col(*v)).collect::<Vec<_>>();
+                    let tag_exprs = groupby_columns
+                        .iter()
+                        .map(|v| ident(*v))
+                        .collect::<Vec<_>>();
                     let udf_args = tag_exprs.clone();
-                    let mut groupby_expr = vec![col(&column_name.timestamp)];
+                    let mut groupby_expr = vec![ident(&column_name.timestamp)];
                     groupby_expr.extend(udf_args);
                     let unique_id_expr =
                         // TSID is lost after aggregate, but PromAlignNode need a unique id, so
@@ -302,16 +306,16 @@ impl Expr {
                         );
                     let mut projection = tag_exprs.clone();
                     projection.extend(vec![
-                        col(&column_name.timestamp),
-                        col(&column_name.field),
+                        ident(&column_name.timestamp),
+                        ident(&column_name.field),
                         unique_id_expr.clone(),
                     ]);
                     let sort_exprs = if tag_exprs.is_empty() {
-                        vec![col(&column_name.timestamp).sort(true, true)]
+                        vec![ident(&column_name.timestamp).sort(true, true)]
                     } else {
                         vec![
                             unique_id_expr.sort(true, true),
-                            col(&column_name.timestamp).sort(true, true),
+                            ident(&column_name.timestamp).sort(true, true),
                         ]
                     };
                     let builder = LogicalPlanBuilder::from(sub_plan);
@@ -333,11 +337,11 @@ impl Expr {
 
     fn aggr_op_expr(aggr_op: &str, field: &str, alias: String) -> Result<DataFusionExpr> {
         let expr = match aggr_op {
-            "sum" => sum(col(field)),
-            "max" => max(col(field)),
-            "min" => min(col(field)),
-            "count" => count(col(field)),
-            "avg" => avg(col(field)),
+            "sum" => sum(ident(field)),
+            "max" => max(ident(field)),
+            "min" => min(ident(field)),
+            "count" => count(ident(field)),
+            "avg" => avg(ident(field)),
             _ => {
                 return InvalidExpr {
                     msg: format!("aggr {aggr_op} not supported now"),
@@ -473,7 +477,7 @@ pub struct Filter {
 
 impl From<Filter> for DataFusionExpr {
     fn from(mut f: Filter) -> DataFusionExpr {
-        let tag_key = col(&f.tag_key);
+        let tag_key = ident(&f.tag_key);
         // TODO(chenxiang): only compare first op now
         let mut first_op = f.operators.remove(0);
         match first_op.typ {
@@ -608,21 +612,21 @@ impl Selector {
             .filter_map(|column| {
                 if column.is_tag {
                     tag_keys.push(column.name.clone());
-                    Some(col(&column.name))
+                    Some(ident(&column.name))
                 } else {
                     None
                 }
             })
             .collect::<Vec<_>>();
 
-        let timestamp_expr = col(&schema.column(schema.timestamp_index()).name);
+        let timestamp_expr = ident(&schema.column(schema.timestamp_index()).name);
         let tsid_expr = schema
             .tsid_column()
-            .map(|c| col(&c.name))
+            .map(|c| ident(&c.name))
             .context(InvalidExpr {
                 msg: format!("{TSID_COLUMN} not found"),
             })?;
-        let field_expr = col(field);
+        let field_expr = ident(field);
         projection.extend(vec![timestamp_expr, tsid_expr, field_expr]);
 
         Ok((projection, tag_keys))
