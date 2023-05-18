@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{fmt::Display, ops::Range, time::Instant};
+use std::{fmt::Display, ops::Range, time::Instant, thread};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -101,8 +101,19 @@ impl ObjectStore for StoreWithMetrics {
         &self,
         location: &Path,
     ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
+        let thread_name = thread::current().name().unwrap_or("noname").to_string();
+        let thread_id = thread::current().id();
+        let instant = Instant::now();
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.put_multipart.start_timer();
-        self.store.put_multipart(location).await
+        let res = self.store.put_multipart(location).await;
+        info!(
+            "object store metrics put_multipart cost:{}, location:{}, thread:{}-{:?}",
+            instant.elapsed().as_millis(),
+            location,
+            thread_name,
+            thread_id
+        );
+        res
     }
 
     async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
@@ -118,15 +129,17 @@ impl ObjectStore for StoreWithMetrics {
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
-        let handle = Handle::current();
+        let thread_name = thread::current().name().unwrap_or("noname").to_string();
+        let thread_id = thread::current().id();
         let instant = Instant::now();
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.get_range.start_timer();
         let result = self.store.get_range(location, range).await?;
         info!(
-            "object store metrics get_range cost:{}, location:{}, handle:{:?}",
+            "object store metrics get_range cost:{}, location:{}, thread:{}-{:?}",
             instant.elapsed().as_millis(),
             location,
-            handle
+            thread_name,
+            thread_id
         );
         OBJECT_STORE_THROUGHPUT_HISTOGRAM
             .get_range
