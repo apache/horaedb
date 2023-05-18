@@ -10,7 +10,7 @@ use std::{
 
 use common_util::{runtime::Runtime, time::InstantExt};
 use futures::Future;
-use log::{error, warn};
+use log::{error, warn, info};
 use table_engine::table::TableId;
 use tokio::sync::{
     oneshot,
@@ -20,7 +20,7 @@ use tokio::sync::{
 use super::flush_compaction::{BackgroundFlushFailed, TableFlushOptions};
 use crate::{
     instance::flush_compaction::{Other, Result},
-    table::metrics::Metrics,
+    table::{metrics::Metrics, data::TableData},
 };
 
 #[derive(Default)]
@@ -132,17 +132,19 @@ impl TableFlushScheduler {
         block_on_write_thread: bool,
         opts: TableFlushOptions,
         runtime: &Runtime,
-        metrics: &Metrics,
+        table_data: Arc<TableData>,
     ) -> Result<()>
     where
         F: Future<Output = Result<()>> + Send + 'static,
         T: Future<Output = ()> + Send + 'static,
     {
+        let metrics = &table_data.metrics;
         // If flush operation is running, then we need to wait for it to complete first.
         // Actually, the loop waiting ensures the multiple flush procedures to be
         // sequential, that is to say, at most one flush is being executed at
         // the same time.
         let mut stall_begin: Option<Instant> = None;
+
         loop {
             {
                 // Check if the flush procedure is running and the lock will be dropped when
@@ -189,7 +191,9 @@ impl TableFlushScheduler {
 
         // Record the write stall cost.
         if let Some(stall_begin) = stall_begin {
-            metrics.on_write_stall(stall_begin.saturating_elapsed());
+            let time = stall_begin.saturating_elapsed();
+            info!("stall time for:{},{}, wait:{}", table_data.name,table_data.id,time.as_millis());
+            metrics.on_write_stall(time);
         }
 
         // TODO(yingwen): Store pending flush requests and retry flush on

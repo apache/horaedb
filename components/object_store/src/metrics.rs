@@ -9,7 +9,7 @@ use lazy_static::lazy_static;
 use log::info;
 use prometheus::{exponential_buckets, register_histogram_vec, HistogramVec};
 use prometheus_static_metric::make_static_metric;
-use tokio::{io::AsyncWrite};
+use tokio::io::AsyncWrite;
 use upstream::{path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result};
 
 use crate::ObjectStoreRef;
@@ -85,6 +85,7 @@ impl Display for StoreWithMetrics {
         write!(f, "Store with metrics, underlying store:{}", self.store)
     }
 }
+use tokio::runtime::Handle;
 
 #[async_trait]
 impl ObjectStore for StoreWithMetrics {
@@ -117,10 +118,16 @@ impl ObjectStore for StoreWithMetrics {
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
+        let handle = Handle::current();
         let instant = Instant::now();
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.get_range.start_timer();
         let result = self.store.get_range(location, range).await?;
-        info!("object store metrics get_range cost:{}, location:{}", instant.elapsed().as_millis(),location);
+        info!(
+            "object store metrics get_range cost:{}, location:{}, handle:{:?}",
+            instant.elapsed().as_millis(),
+            location,
+            handle
+        );
         OBJECT_STORE_THROUGHPUT_HISTOGRAM
             .get_range
             .observe(result.len() as f64);
@@ -141,7 +148,11 @@ impl ObjectStore for StoreWithMetrics {
         let instant = Instant::now();
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.head.start_timer();
         let response = self.store.head(location).await;
-        info!("object store metrics head cost:{}, location:{}", instant.elapsed().as_millis(),location);
+        info!(
+            "object store metrics head cost:{}, location:{}",
+            instant.elapsed().as_millis(),
+            location
+        );
         response
     }
 

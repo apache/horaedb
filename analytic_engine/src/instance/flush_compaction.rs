@@ -316,16 +316,16 @@ impl Flusher {
         //         )
         //         .await
         // } else {
-            flush_scheduler
-                .flush_sequentially(
-                    flush_job,
-                    async {},
-                    block_on,
-                    opts,
-                    &self.runtime,
-                    &table_data.metrics,
-                )
-                .await
+        flush_scheduler
+            .flush_sequentially(
+                flush_job,
+                async {},
+                block_on,
+                opts,
+                &self.runtime,
+                table_data.clone(),
+            )
+            .await
         // }
     }
 }
