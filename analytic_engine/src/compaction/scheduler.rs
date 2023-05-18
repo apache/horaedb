@@ -631,6 +631,9 @@ impl ScheduleWorker {
             self.limit
                 .add_request(TableCompactionRequest::no_waiter(table_data));
         }
+        if let Err(e) = self.sender.send(ScheduleTask::Schedule).await {
+            error!("Fail to schedule table compaction request, err:{}", e);
+        }
     }
 
     async fn flush_tables(&self) {
