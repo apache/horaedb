@@ -1160,11 +1160,9 @@ dependencies = [
  "async-trait",
  "ceresdb-client",
  "local-ip-address",
- "query_frontend",
  "reqwest",
  "serde",
  "sqlness",
- "sqlparser",
  "tokio",
 ]
 
