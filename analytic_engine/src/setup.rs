@@ -5,7 +5,7 @@
 use std::{num::NonZeroUsize, path::Path, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
-use common_util::define_result;
+use common_util::{define_result, runtime::Runtime};
 use futures::Future;
 use message_queue::kafka::kafka_impl::KafkaImpl;
 use object_store::{
@@ -110,7 +110,11 @@ pub struct EngineBuilder<'a> {
 
 impl<'a> EngineBuilder<'a> {
     pub async fn build(self) -> Result<TableEngineRef> {
-        let opened_storages = open_storage(self.config.storage.clone()).await?;
+        let opened_storages = open_storage(
+            self.config.storage.clone(),
+            self.engine_runtimes.io_runtime.clone(),
+        )
+        .await?;
         let manifest_storages = ManifestStorages {
             wal_manager: self.opened_wals.manifest_wal.clone(),
             oss_storage: opened_storages.default_store().clone(),
@@ -408,6 +412,7 @@ impl ObjectStorePicker for OpenedStorages {
 // ```
 fn open_storage(
     opts: StorageOptions,
+    runtime: Arc<Runtime>,
 ) -> Pin<Box<dyn Future<Output = Result<OpenedStorages>> + Send>> {
     Box::pin(async move {
         let mut store = match opts.object_store {
@@ -434,7 +439,7 @@ fn open_storage(
                     )
                     .context(OpenObjectStore)?,
                 );
-                let oss_with_metrics = Arc::new(StoreWithMetrics::new(oss));
+                let oss_with_metrics = Arc::new(StoreWithMetrics::new(oss, runtime));
                 Arc::new(
                     StoreWithPrefix::new(aliyun_opts.prefix, oss_with_metrics)
                         .context(OpenObjectStore)?,

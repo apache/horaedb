@@ -610,7 +610,7 @@ impl ScheduleWorker {
 
     async fn schedule(&mut self) {
         self.compact_tables().await;
-        self.flush_tables().await;
+        // self.flush_tables().await;
     }
 
     async fn compact_tables(&mut self) {

@@ -10,7 +10,7 @@ use std::{
 
 use common_util::{runtime::Runtime, time::InstantExt};
 use futures::Future;
-use log::{error, warn, info};
+use log::{error, info, warn};
 use table_engine::table::TableId;
 use tokio::sync::{
     oneshot,
@@ -20,7 +20,7 @@ use tokio::sync::{
 use super::flush_compaction::{BackgroundFlushFailed, TableFlushOptions};
 use crate::{
     instance::flush_compaction::{Other, Result},
-    table::{metrics::Metrics, data::TableData},
+    table::{data::TableData, metrics::Metrics},
 };
 
 #[derive(Default)]
@@ -192,7 +192,12 @@ impl TableFlushScheduler {
         // Record the write stall cost.
         if let Some(stall_begin) = stall_begin {
             let time = stall_begin.saturating_elapsed();
-            info!("stall time for:{},{}, wait:{}", table_data.name,table_data.id,time.as_millis());
+            info!(
+                "stall time for:{},{}, wait:{}",
+                table_data.name,
+                table_data.id,
+                time.as_millis()
+            );
             metrics.on_write_stall(time);
         }
 

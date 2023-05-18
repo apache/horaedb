@@ -358,7 +358,10 @@ impl FlushTask {
 
         info!(
             "Instance flush memtables done, table:{}, table_id:{}, request_id:{}, cost:{}",
-            self.table_data.name, self.table_data.id, request_id, instant.elapsed().as_millis()
+            self.table_data.name,
+            self.table_data.id,
+            request_id,
+            instant.elapsed().as_millis()
         );
 
         Ok(())

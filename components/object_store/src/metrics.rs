@@ -1,9 +1,10 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{fmt::Display, ops::Range, time::Instant, thread};
+use std::{fmt::Display, ops::Range, sync::Arc, thread, time::Instant};
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use common_util::runtime::Runtime;
 use futures::stream::BoxStream;
 use lazy_static::lazy_static;
 use log::info;
@@ -72,11 +73,12 @@ lazy_static! {
 #[derive(Debug)]
 pub struct StoreWithMetrics {
     store: ObjectStoreRef,
+    runtime: Arc<Runtime>,
 }
 
 impl StoreWithMetrics {
-    pub fn new(store: ObjectStoreRef) -> Self {
-        Self { store }
+    pub fn new(store: ObjectStoreRef, runtime: Arc<Runtime>) -> Self {
+        Self { store, runtime }
     }
 }
 
@@ -104,7 +106,13 @@ impl ObjectStore for StoreWithMetrics {
         let thread_id = thread::current().id();
         let instant = Instant::now();
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.put_multipart.start_timer();
-        let res = self.store.put_multipart(location).await;
+        let loc = location.clone();
+        let store = self.store.clone();
+        let res = self
+            .runtime
+            .spawn(async move { store.put_multipart(&loc).await })
+            .await
+            .unwrap();
         info!(
             "object store metrics put_multipart cost:{}, location:{}, thread:{}-{:?}",
             instant.elapsed().as_millis(),
@@ -124,7 +132,13 @@ impl ObjectStore for StoreWithMetrics {
 
     async fn get(&self, location: &Path) -> Result<GetResult> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.get.start_timer();
-        self.store.get(location).await
+        let store = self.store.clone();
+        let loc = location.clone();
+        self.runtime
+            .spawn(async move { store.get(&loc).await })
+            .await
+            .unwrap()
+        // self.store.get(location).await
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
@@ -132,7 +146,15 @@ impl ObjectStore for StoreWithMetrics {
         let thread_id = thread::current().id();
         let instant = Instant::now();
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.get_range.start_timer();
-        let result = self.store.get_range(location, range).await?;
+        let store = self.store.clone();
+        let loc = location.clone();
+        let result = self
+            .runtime
+            .spawn(async move { store.get_range(&loc, range.clone()).await })
+            .await
+            .unwrap()
+            .unwrap();
+        // let result = self.store.get_range(location, range).await?;
         info!(
             "object store metrics get_range cost:{}, location:{}, thread:{}-{:?}",
             instant.elapsed().as_millis(),
@@ -151,7 +173,7 @@ impl ObjectStore for StoreWithMetrics {
         let result = self.store.get_ranges(location, ranges).await?;
         let len: usize = result.iter().map(|v| v.len()).sum();
         OBJECT_STORE_THROUGHPUT_HISTOGRAM
-            .get_range
+            .get_ranges
             .observe(len as f64);
         Ok(result)
     }
@@ -159,7 +181,14 @@ impl ObjectStore for StoreWithMetrics {
     async fn head(&self, location: &Path) -> Result<ObjectMeta> {
         let instant = Instant::now();
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.head.start_timer();
-        let response = self.store.head(location).await;
+        // let response = self.store.head(location).await;
+        let store = self.store.clone();
+        let loc = location.clone();
+        let response = self
+            .runtime
+            .spawn(async move { store.head(&loc).await })
+            .await
+            .unwrap();
         info!(
             "object store metrics head cost:{}, location:{}",
             instant.elapsed().as_millis(),
@@ -170,7 +199,13 @@ impl ObjectStore for StoreWithMetrics {
 
     async fn delete(&self, location: &Path) -> Result<()> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.delete.start_timer();
-        self.store.delete(location).await
+        let store = self.store.clone();
+        let loc = location.clone();
+        self.runtime
+            .spawn(async move { store.delete(&loc).await })
+            .await
+            .unwrap()
+        // self.store.delete(location).await
     }
 
     async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
