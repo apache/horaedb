@@ -23,16 +23,22 @@ struct RouteData {
 
 pub struct ClusterBasedRouter {
     cluster: ClusterRef,
-    cache: Cache<String, RouteData>,
+    cache: Option<Cache<String, RouteData>>,
 }
 
 impl ClusterBasedRouter {
     pub fn new(cluster: ClusterRef, cache_config: RouteCacheConfig) -> Self {
-        let cache = Cache::builder()
-            .time_to_live(cache_config.ttl.0)
-            .time_to_idle(cache_config.tti.0)
-            .max_capacity(cache_config.capacity)
-            .build();
+        let cache = if cache_config.enable {
+            Some(
+                Cache::builder()
+                    .time_to_live(cache_config.ttl.0)
+                    .time_to_idle(cache_config.tti.0)
+                    .max_capacity(cache_config.capacity)
+                    .build(),
+            )
+        } else {
+            None
+        };
 
         Self { cluster, cache }
     }
@@ -42,12 +48,16 @@ impl ClusterBasedRouter {
     fn route_from_cache(&self, tables: &[String], routes: &mut Vec<RouteData>) -> Vec<String> {
         let mut miss = vec![];
 
-        for table in tables {
-            if let Some(route) = self.cache.get(table) {
-                routes.push(route.clone());
-            } else {
-                miss.push(table.clone());
+        if let Some(cache) = &self.cache {
+            for table in tables {
+                if let Some(route) = cache.get(table) {
+                    routes.push(route.clone());
+                } else {
+                    miss.push(table.clone());
+                }
             }
+        } else {
+            miss = tables.to_vec();
         }
 
         miss
@@ -97,8 +107,10 @@ impl ClusterBasedRouter {
             };
 
             if let Some(route) = route {
-                // There may be data race here, and it is acceptable currently.
-                self.cache.insert(table_name.clone(), route.clone()).await;
+                if let Some(cache) = &self.cache {
+                    // There may be data race here, and it is acceptable currently.
+                    cache.insert(table_name.clone(), route.clone()).await;
+                }
                 routes.push(route);
             }
         }
@@ -257,6 +269,7 @@ mod tests {
         let mock_cluster = MockClusterImpl {};
 
         let config = RouteCacheConfig {
+            enable: true,
             ttl: ReadableDuration::from(Duration::from_secs(4)),
             tti: ReadableDuration::from(Duration::from_secs(2)),
             capacity: 2,
