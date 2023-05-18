@@ -31,13 +31,13 @@ CREATE TABLE if not exists `{}` (
     `tag1` string TAG,
     `tag2` string TAG,
     `value` double NOT NULL,
-    `value2` double NOT NULL,
+    `VALUE2` double NOT NULL,
     timestamp KEY (t)
 );
     """.format(table))
 
     execute_sql("""
-insert into {}(t, tag1, tag2, value, value2)
+insert into {}(t, tag1, tag2, value, VALUE2)
 values
 ({}, "v1", "v2", 1, 2),
 ({}, "v1", "v2", 11, 22)
@@ -63,6 +63,10 @@ def remote_query(ts):
     r = execute_pql(table + '{tag1!~"v1"}[5m]')
     result = r['data']['result']
     assert result == []
+
+    r = execute_pql(table + '{tag1="v1",__ceresdb_field__="VALUE2"}[5m]')
+    result = r['data']['result']
+    assert result == [{'metric': {'__name__': table, 'tag1': 'v1', 'tag2': 'v2'}, 'values': [[ts-5, '2'], [ts, '22']]}]
 
 def main():
     ts = now()
