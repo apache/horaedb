@@ -47,7 +47,7 @@ use crate::grpc::{
     metrics::META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
 };
 
-pub(crate) mod error;
+mod error;
 mod shard_operation;
 
 /// Builder for [MetaServiceImpl].
