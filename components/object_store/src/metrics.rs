@@ -85,7 +85,6 @@ impl Display for StoreWithMetrics {
         write!(f, "Store with metrics, underlying store:{}", self.store)
     }
 }
-use tokio::runtime::Handle;
 
 #[async_trait]
 impl ObjectStore for StoreWithMetrics {
