@@ -140,7 +140,6 @@ impl ObjectStore for StoreWithMetrics {
             .spawn(async move { store.get(&loc).await })
             .await
             .unwrap()
-        // self.store.get(location).await
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
@@ -157,7 +156,6 @@ impl ObjectStore for StoreWithMetrics {
             .await
             .unwrap()
             .unwrap();
-        // let result = self.store.get_range(location, range).await?;
         info!(
             "Object store with metrics get_range cost:{}, location:{}, thread:{}-{:?}",
             instant.elapsed().as_millis(),
@@ -193,7 +191,6 @@ impl ObjectStore for StoreWithMetrics {
             .spawn(async move { store.head(&loc).await })
             .await
             .unwrap();
-        // let response = self.store.head(location).await;
 
         info!(
             "Object store with metrics head cost:{}, location:{}",
@@ -211,7 +208,6 @@ impl ObjectStore for StoreWithMetrics {
             .spawn(async move { store.delete(&loc).await })
             .await
             .unwrap()
-        // self.store.delete(location).await
     }
 
     async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
