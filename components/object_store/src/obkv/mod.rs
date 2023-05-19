@@ -4,6 +4,7 @@ use std::{
     collections::{hash_map::DefaultHasher, HashSet},
     hash::{Hash, Hasher},
     ops::Range,
+    pin::Pin,
     sync::{
         atomic::{AtomicI64, AtomicU64, Ordering},
         Arc,
@@ -22,7 +23,7 @@ use futures::{
 };
 use snafu::{ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
-use tokio::io::AsyncWrite;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 use upstream::{
     path::{Path, DELIMITER},
     Error as StoreError, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result,
@@ -74,7 +75,7 @@ pub enum Error {
     MetaNotExists { path: String },
 
     #[snafu(display("Data is too large to put, size:{size}, limit:{limit}"))]
-    TooLargeData { size: usize , limit: usize},
+    TooLargeData { size: usize, limit: usize },
 }
 
 impl<T: TableKv> MetaManager<T> {
@@ -182,16 +183,20 @@ impl<T: TableKv> ObkvObjectStore<T> {
             client,
             upload_id,
             part_size,
-            max_put_size:1024*1024*1024
+            max_put_size: 1024 * 1024 * 1024,
         })
     }
 
     #[inline]
-    fn check_size(&self, bytes: &Bytes)->std::result::Result<(), Error>{
-        if bytes.len() > self.max_put_size{
-            return TooLargeData{size:bytes.len(), limit:self.max_put_size}.fail();
+    fn check_size(&self, bytes: &Bytes) -> std::result::Result<(), Error> {
+        if bytes.len() > self.max_put_size {
+            return TooLargeData {
+                size: bytes.len(),
+                limit: self.max_put_size,
+            }
+            .fail();
         }
-    
+
         Ok(())
     }
 
@@ -266,22 +271,31 @@ impl<T: TableKv> ObkvObjectStore<T> {
 #[async_trait]
 impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
-        // check the size of bytes is too large
-        self.check_size(&bytes).map_err(|source| StoreError::Generic {
-            store: OBKV,
-            source: Box::new(source),
-        })?;
-
-        let table_name = self.pick_shard_table(location);
-        let mut batch = T::WriteBatch::default();
-        batch.insert(location.as_ref().as_bytes(), bytes.as_ref());
-        self.client
-            .write(WriteContext::default(), table_name, batch)
+        // Check if the size of bytes is too large.
+        self.check_size(&bytes)
             .map_err(|source| StoreError::Generic {
                 store: OBKV,
                 source: Box::new(source),
             })?;
-        // TODO, save meta data
+
+        // Use `put_multipart` to implement `put`.
+        let (_upload_id, mut multipart) = self.put_multipart(location).await?;
+        multipart
+            .write(&bytes)
+            .await
+            .map_err(|source| StoreError::Generic {
+                store: OBKV,
+                source: Box::new(source),
+            })?;
+        // Complete stage: flush buffer data to obkv, and save meta data
+        multipart
+            .shutdown()
+            .await
+            .map_err(|source| StoreError::Generic {
+                store: OBKV,
+                source: Box::new(source),
+            })?;
+
         Ok(())
     }
 
@@ -540,20 +554,20 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
 }
 
 struct ObkvMultiPartUpload<T> {
-    /// The full path to the object
+    /// The full path to the object.
     location: Path,
-    /// The id of multi upload tasks, we use this id as object version
+    /// The id of multi upload tasks, we use this id as object version.
     upload_id: String,
-    /// The table name of obkv to save data
+    /// The table name of obkv to save data.
     table_name: String,
-    /// The client
+    /// The client of object store.
     client: Arc<T>,
-    /// The size of object
+    /// The size of object.
     size: AtomicU64,
     /// The size in bytes of one part. Note: maybe the size of last part less
     /// than part_size.
     part_size: usize,
-    /// The mananger to process meta info
+    /// The mananger to process meta info.
     meta_manager: Arc<MetaManager<T>>,
 }
 
@@ -574,13 +588,13 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
                 store: OBKV,
                 source: Box::new(source),
             })?;
-        // record size of object
+        // Record size of object.
         self.size.fetch_add(buf.len() as u64, Ordering::SeqCst);
         Ok(UploadPart { content_id: key })
     }
 
     async fn complete(&self, completed_parts: Vec<UploadPart>) -> Result<(), std::io::Error> {
-        // We should save meta info after finish save data
+        // We should save meta info after finish save data.
         let mut paths = Vec::with_capacity(completed_parts.len());
         for upload_part in completed_parts {
             paths.push(upload_part.content_id);
@@ -603,7 +617,7 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
             version: self.upload_id.clone(),
         };
 
-        // save meta info to specify obkv table
+        // Save meta info to specify obkv table.
         self.meta_manager
             .save_meta(meta)
             .await
@@ -619,6 +633,7 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
 mod test {
     use std::sync::Arc;
 
+    use bytes::{buf, Bytes};
     use common_util::runtime::{Builder, Runtime};
     use futures::StreamExt;
     use rand::{thread_rng, Rng};
@@ -627,6 +642,8 @@ mod test {
     use upstream::{path::Path, ObjectStore};
 
     use crate::obkv::ObkvObjectStore;
+
+    const TEST_PART_SIZE: usize = 1024;
 
     fn new_runtime() -> Arc<Runtime> {
         let runtime = Builder::default()
@@ -675,7 +692,10 @@ mod test {
             test_list(oss.clone(), 1).await;
 
             // test abort multi part
-            test_abort_upload(oss, input1, input2).await;
+            test_abort_upload(oss.clone(), input1, input2).await;
+
+            // test put data
+            test_put_data(oss.clone()).await;
         });
     }
 
@@ -768,7 +788,7 @@ mod test {
 
     fn init_object_store() -> Arc<ObkvObjectStore<MemoryImpl>> {
         let table_kv = Arc::new(MemoryImpl::default());
-        let obkv_object = ObkvObjectStore::try_new(128, 1024, table_kv).unwrap();
+        let obkv_object = ObkvObjectStore::try_new(128, TEST_PART_SIZE, table_kv).unwrap();
         Arc::new(obkv_object)
     }
 
@@ -781,5 +801,35 @@ mod test {
             .map(|_| rng.gen::<char>())
             .map(|c| chars[(c as usize) % chars.len()])
             .collect()
+    }
+
+    async fn test_put_data(oss: Arc<ObkvObjectStore<MemoryImpl>>) {
+        let length_vec = vec![
+            TEST_PART_SIZE - 10,
+            TEST_PART_SIZE,
+            2 * TEST_PART_SIZE,
+            4 * TEST_PART_SIZE,
+            4 * TEST_PART_SIZE + 10,
+        ];
+        for length in length_vec {
+            let location3 = Path::from("test/data/4");
+            let rand_str = generate_random_string(length);
+            let buffer = Bytes::from(rand_str);
+            oss.put(&location3, buffer.clone()).await.unwrap();
+            let meta = oss.head(&location3).await.unwrap();
+            assert_eq!(meta.location, location3);
+            assert_eq!(meta.size, length);
+            let body = oss.get(&location3).await.unwrap();
+            assert_eq!(buffer, body.bytes().await.unwrap());
+            let inner_meta = oss.meta_manager.read_meta(&location3).await.unwrap();
+            assert!(inner_meta.is_some());
+            inner_meta.map(|m| {
+                assert_eq!(m.location, location3.as_ref());
+                assert_eq!(m.part_size, oss.part_size);
+                let expect_size =
+                    length / TEST_PART_SIZE + if length % TEST_PART_SIZE != 0 { 1 } else { 0 };
+                assert_eq!(m.parts.len(), expect_size);
+            });
+        }
     }
 }
