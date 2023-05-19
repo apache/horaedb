@@ -60,6 +60,10 @@ pub struct AliyunOptions {
     pub pool_max_idle_per_host: usize,
     #[serde(default = "AliyunOptions::default_timeout")]
     pub timeout: ReadableDuration,
+    #[serde(default = "AliyunOptions::default_keep_alive_time")]
+    pub keep_alive_timeout: ReadableDuration,
+    #[serde(default = "AliyunOptions::default_keep_alive_inverval")]
+    pub keep_alive_interval: ReadableDuration,
 }
 
 impl AliyunOptions {
@@ -69,5 +73,13 @@ impl AliyunOptions {
 
     fn default_timeout() -> ReadableDuration {
         ReadableDuration::from(Duration::from_secs(60))
+    }
+
+    fn default_keep_alive_time() -> ReadableDuration {
+        ReadableDuration::from(Duration::from_secs(60))
+    }
+
+    fn default_keep_alive_inverval() -> ReadableDuration {
+        ReadableDuration::from(Duration::from_secs(2))
     }
 }

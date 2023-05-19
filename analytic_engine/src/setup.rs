@@ -436,6 +436,8 @@ fn open_storage(
                         aliyun_opts.bucket,
                         aliyun_opts.pool_max_idle_per_host,
                         aliyun_opts.timeout.0,
+                        aliyun_opts.keep_alive_timeout.0,
+                        aliyun_opts.keep_alive_interval.0,
                     )
                     .context(OpenObjectStore)?,
                 );

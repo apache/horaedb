@@ -20,7 +20,7 @@ use tokio::sync::{
 use super::flush_compaction::{BackgroundFlushFailed, TableFlushOptions};
 use crate::{
     instance::flush_compaction::{Other, Result},
-    table::{data::TableData, metrics::Metrics},
+    table::data::TableData,
 };
 
 #[derive(Default)]

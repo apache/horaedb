@@ -33,7 +33,6 @@ use wal::manager::WalLocation;
 use crate::{
     compaction::{
         scheduler::CompactionSchedulerRef, CompactionInputFiles, CompactionTask, ExpiredFiles,
-        TableCompactionRequest,
     },
     instance::{self, serial_executor::TableFlushScheduler, SpaceStore, SpaceStoreRef},
     manifest::meta_edit::{
