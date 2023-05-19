@@ -102,10 +102,11 @@ impl ObjectStore for StoreWithMetrics {
         &self,
         location: &Path,
     ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
+        let _timer = OBJECT_STORE_DURATION_HISTOGRAM.put_multipart.start_timer();
+
         let thread_name = thread::current().name().unwrap_or("noname").to_string();
         let thread_id = thread::current().id();
         let instant = Instant::now();
-        let _timer = OBJECT_STORE_DURATION_HISTOGRAM.put_multipart.start_timer();
         let loc = location.clone();
         let store = self.store.clone();
         let res = self
@@ -113,8 +114,9 @@ impl ObjectStore for StoreWithMetrics {
             .spawn(async move { store.put_multipart(&loc).await })
             .await
             .unwrap();
+
         info!(
-            "object store metrics put_multipart cost:{}, location:{}, thread:{}-{:?}",
+            "Object store with metrics put_multipart cost:{}, location:{}, thread:{}-{:?}",
             instant.elapsed().as_millis(),
             location,
             thread_name,
@@ -142,10 +144,11 @@ impl ObjectStore for StoreWithMetrics {
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
+        let _timer = OBJECT_STORE_DURATION_HISTOGRAM.get_range.start_timer();
+
         let thread_name = thread::current().name().unwrap_or("noname").to_string();
         let thread_id = thread::current().id();
         let instant = Instant::now();
-        let _timer = OBJECT_STORE_DURATION_HISTOGRAM.get_range.start_timer();
         let store = self.store.clone();
         let loc = location.clone();
         let result = self
@@ -156,12 +159,13 @@ impl ObjectStore for StoreWithMetrics {
             .unwrap();
         // let result = self.store.get_range(location, range).await?;
         info!(
-            "object store metrics get_range cost:{}, location:{}, thread:{}-{:?}",
+            "Object store with metrics get_range cost:{}, location:{}, thread:{}-{:?}",
             instant.elapsed().as_millis(),
             location,
             thread_name,
             thread_id
         );
+
         OBJECT_STORE_THROUGHPUT_HISTOGRAM
             .get_range
             .observe(result.len() as f64);
@@ -179,9 +183,9 @@ impl ObjectStore for StoreWithMetrics {
     }
 
     async fn head(&self, location: &Path) -> Result<ObjectMeta> {
-        let instant = Instant::now();
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.head.start_timer();
-        // let response = self.store.head(location).await;
+
+        let instant = Instant::now();
         let store = self.store.clone();
         let loc = location.clone();
         let response = self
@@ -189,8 +193,10 @@ impl ObjectStore for StoreWithMetrics {
             .spawn(async move { store.head(&loc).await })
             .await
             .unwrap();
+        // let response = self.store.head(location).await;
+
         info!(
-            "object store metrics head cost:{}, location:{}",
+            "Object store with metrics head cost:{}, location:{}",
             instant.elapsed().as_millis(),
             location
         );

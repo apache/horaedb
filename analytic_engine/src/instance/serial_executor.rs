@@ -192,12 +192,6 @@ impl TableFlushScheduler {
         // Record the write stall cost.
         if let Some(stall_begin) = stall_begin {
             let time = stall_begin.saturating_elapsed();
-            info!(
-                "stall time for:{},{}, wait:{}",
-                table_data.name,
-                table_data.id,
-                time.as_millis()
-            );
             metrics.on_write_stall(time);
         }
 
