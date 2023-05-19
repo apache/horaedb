@@ -292,29 +292,6 @@ impl Flusher {
         };
         let flush_job = async move { flush_task.run().await };
 
-        // TODO: The immediate compaction after flush is not a good idea because it may
-        // block on the write procedure.
-        // if let Some(compaction_scheduler) = opts.compact_after_flush.clone() {
-        //     // Schedule compaction if flush completed successfully.
-        //     let compact_req = TableCompactionRequest::no_waiter(table_data.clone());
-        //     let on_flush_success = async move {
-        //         // Here we don't care whether it is scheduled successfully or not.
-        //         // compaction_scheduler
-        //         //     .schedule_table_compaction(compact_req)
-        //         //     .await;
-        //     };
-
-        //     flush_scheduler
-        //         .flush_sequentially(
-        //             flush_job,
-        //             on_flush_success,
-        //             block_on,
-        //             opts,
-        //             &self.runtime,
-        //             &table_data.metrics,
-        //         )
-        //         .await
-        // } else {
         flush_scheduler
             .flush_sequentially(
                 flush_job,
@@ -325,7 +302,6 @@ impl Flusher {
                 table_data.clone(),
             )
             .await
-        // }
     }
 }
 
