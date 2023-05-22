@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use catalog::{
     schema::{
         CloseOptions, CloseTableRequest, CreateOptions, CreateTableRequest, DropOptions,
-        DropTableRequest, OpenOptions, OpenTableRequest,
+        DropTableRequest, OpenOptions, OpenTableRequest, TableDef,
     },
     table_operator::TableOperator,
 };
@@ -31,7 +31,7 @@ use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
-    engine::{TableDef, TableEngineRef, TableState},
+    engine::{TableEngineRef, TableState},
     partition::PartitionInfo,
     table::TableId,
     ANALYTIC_ENGINE_TYPE,
@@ -282,7 +282,7 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
         })
         .collect();
 
-    let open_shard_request = table_engine::engine::OpenShardRequest {
+    let open_shard_request = catalog::schema::OpenShardRequest {
         shard_id: shard_info.id,
         table_defs,
         engine: ANALYTIC_ENGINE_TYPE.to_string(),
@@ -329,7 +329,7 @@ async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
             name: info.name,
         })
         .collect();
-    let close_shard_request = table_engine::engine::CloseShardRequest {
+    let close_shard_request = catalog::schema::CloseShardRequest {
         shard_id: shard_info.id,
         table_defs,
         engine: ANALYTIC_ENGINE_TYPE.to_string(),

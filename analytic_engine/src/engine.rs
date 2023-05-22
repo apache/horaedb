@@ -6,12 +6,12 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_util::error::BoxError;
-use log::info;
+use log::{error, info};
 use snafu::ResultExt;
 use table_engine::{
     engine::{
-        Close, CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest, Result,
-        TableEngine,
+        Close, CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
+        OpenShardRequest, OpenTableRequest, Result, TableEngine,
     },
     table::{SchemaId, TableRef},
     ANALYTIC_ENGINE_TYPE,
@@ -36,6 +36,63 @@ impl Clone for TableEngineImpl {
 impl TableEngineImpl {
     pub fn new(instance: InstanceRef) -> Self {
         Self { instance }
+    }
+
+    async fn open_tables_of_shard(
+        &self,
+        open_requests: Vec<table_engine::engine::OpenTableRequest>,
+    ) -> Vec<table_engine::engine::Result<Option<TableRef>>> {
+        if open_requests.is_empty() {
+            return Vec::new();
+        }
+
+        let mut open_results = Vec::with_capacity(open_requests.len());
+        for request in open_requests {
+            let result = self
+                .open_table(request.clone())
+                .await
+                .map_err(|e| {
+                    error!("Failed to open table, open_request:{request:?}, err:{e}");
+                    e
+                })
+                .map(|table_opt| {
+                    if table_opt.is_none() {
+                        error!(
+                            "Table engine returns none when opening table, open_request:{request:?}"
+                        );
+                    }
+                    table_opt
+                });
+
+            open_results.push(result);
+        }
+
+        open_results
+    }
+
+    async fn close_tables_of_shard(
+        &self,
+        close_requests: Vec<table_engine::engine::CloseTableRequest>,
+    ) -> Vec<table_engine::engine::Result<String>> {
+        if close_requests.is_empty() {
+            return Vec::new();
+        }
+
+        let mut close_results = Vec::with_capacity(close_requests.len());
+        for request in close_requests {
+            let result = self
+                .close_table(request.clone())
+                .await
+                .map_err(|e| {
+                    error!("Failed to close table, close_request:{request:?}, err:{e}");
+                    e
+                })
+                .map(|_| request.table_name);
+
+            close_results.push(result);
+        }
+
+        close_results
     }
 }
 
@@ -131,6 +188,44 @@ impl TableEngine for TableEngineImpl {
         self.instance.close_table(space_id, request).await?;
 
         Ok(())
+    }
+
+    async fn open_shard(&self, request: OpenShardRequest) -> Vec<Result<Option<TableRef>>> {
+        let table_defs = request.table_defs;
+        let open_requests = table_defs
+            .into_iter()
+            .map(|def| OpenTableRequest {
+                catalog_name: def.catalog_name,
+                schema_name: def.schema_name,
+                schema_id: def.schema_id,
+                table_name: def.name,
+                table_id: def.id,
+                engine: request.engine.clone(),
+                shard_id: request.shard_id,
+            })
+            .collect();
+
+        self.open_tables_of_shard(open_requests).await
+    }
+
+    async fn close_shard(
+        &self,
+        request: CloseShardRequest,
+    ) -> Vec<table_engine::engine::Result<String>> {
+        let table_defs = request.table_defs;
+        let close_requests = table_defs
+            .into_iter()
+            .map(|def| CloseTableRequest {
+                catalog_name: def.catalog_name,
+                schema_name: def.schema_name,
+                schema_id: def.schema_id,
+                table_name: def.name,
+                table_id: def.id,
+                engine: request.engine.clone(),
+            })
+            .collect();
+
+        self.close_tables_of_shard(close_requests).await
     }
 }
 
