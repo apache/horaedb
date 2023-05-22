@@ -4287,7 +4287,7 @@ dependencies = [
  "lz4",
  "num",
  "num-bigint 0.4.3",
- "object_store 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "object_store 0.5.6",
  "paste 1.0.12",
  "seq-macro",
  "snap",
