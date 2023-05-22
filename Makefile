@@ -29,6 +29,9 @@ build-arm64:
 	ls -alh
 	cd $(DIR); cargo build --release --no-default-features
 
+build-with-console:
+	ls -alh
+	cd $(DIR); RUSTFLAGS="--cfg tokio_unstable" cargo build --release
 test:
 	cd $(DIR); cargo test --workspace -- --test-threads=4
 

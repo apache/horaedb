@@ -11,8 +11,9 @@ workspace = true
 workspace = true
 
 [dependencies]
+console-subscriber = "0.1.9"
 lazy_static = { workspace = true }
 serde = { workspace = true }
-tracing = "0.1.26"
-tracing-appender = "0.1.2"
-tracing-subscriber = "0.2.20"
+tracing = "0.1.37"
+tracing-appender = "0.2.2"
+tracing-subscriber = "0.3.17"
