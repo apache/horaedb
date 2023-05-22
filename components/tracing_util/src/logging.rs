@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 // Copyright 2020 Datafuse Labs.
 //
@@ -30,7 +30,7 @@ use tracing_appender::{
 };
 use tracing_subscriber::{
     fmt,
-    fmt::{time::ChronoLocal, Layer},
+    fmt::{time::SystemTime, Layer},
     prelude::*,
     registry::Registry,
     EnvFilter,
@@ -90,6 +90,13 @@ pub struct Config {
     pub dir: String,
     /// The level of tracing.
     pub level: String,
+    /// Console config.
+    pub console: Option<ConsoleConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ConsoleConfig {
+    pub port: u16,
 }
 
 impl Default for Config {
@@ -98,28 +105,49 @@ impl Default for Config {
             prefix: String::from("tracing"),
             dir: String::from("/tmp/ceresdb"),
             level: String::from("info"),
+            console: None,
         }
     }
 }
 
 /// Write logs to file and rotation.
-pub fn init_tracing_with_file(config: &Config, rotation: Rotation) -> WorkerGuard {
+pub fn init_tracing_with_file(config: &Config, node_addr: &str, rotation: Rotation) -> WorkerGuard {
     let file_appender = RollingFileAppender::new(rotation, &config.dir, &config.prefix);
     let (file_writer, file_guard) = tracing_appender::non_blocking(file_appender);
     let f_layer = Layer::new()
-        .with_timer(ChronoLocal::rfc3339())
+        .with_timer(SystemTime)
         .with_writer(file_writer)
         .with_thread_ids(true)
         .with_thread_names(true)
         .with_ansi(false)
         .with_span_events(FmtSpan::ENTER | FmtSpan::CLOSE);
 
-    let subscriber = Registry::default()
-        .with(EnvFilter::new(&config.level))
-        .with(f_layer);
-
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("error setting global tracing subscriber");
+    let subscriber = Registry::default().with(f_layer);
+    // TODO: subscriber.with(layer1) has the different type with
+    // subscriber.with(layer1).with(layer)...
+    // So left some duplicated codes here. Maybe we can use marco to simplify
+    // it.
+    match &config.console {
+        Some(console) => {
+            let console_addr = format!("{}:{}", node_addr, console.port);
+            let console_addr: std::net::SocketAddr = console_addr
+                .parse()
+                .unwrap_or_else(|_| panic!("invalid tokio console addr:{console_addr}"));
+            let directives = format!("tokio=trace,runtime=trace,{}", config.level);
+            let subscriber = subscriber.with(EnvFilter::new(directives)).with(
+                console_subscriber::ConsoleLayer::builder()
+                    .server_addr(console_addr)
+                    .spawn(),
+            );
+            tracing::subscriber::set_global_default(subscriber)
+                .expect("error setting global tracing subscriber");
+        }
+        None => {
+            let subscriber = subscriber.with(EnvFilter::new(&config.level));
+            tracing::subscriber::set_global_default(subscriber)
+                .expect("error setting global tracing subscriber");
+        }
+    };
 
     file_guard
 }
@@ -150,7 +178,7 @@ fn init_file_subscriber(app_name: &str, dir: &str) -> (WorkerGuard, impl Subscri
     let (writer, writer_guard) = tracing_appender::non_blocking(f);
 
     let f_layer = Layer::new()
-        .with_timer(ChronoLocal::rfc3339())
+        .with_timer(SystemTime)
         .with_writer(writer)
         .with_thread_ids(true)
         .with_thread_names(false)
