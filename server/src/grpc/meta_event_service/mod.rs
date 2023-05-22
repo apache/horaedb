@@ -306,7 +306,7 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
 }
 
 async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
-    info!("Do close shard begins, shard_id:{shard_id:?}");
+    info!("Do close shard begins, shard_id:{shard_id}");
     let tables_of_shard =
         ctx.cluster
             .freeze_shard(shard_id)
@@ -316,6 +316,7 @@ async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
                 code: StatusCode::Internal,
                 msg: "fail to freeze shard before close it in cluster",
             })?;
+    info!("Freeze shard before closing, shard_id:{shard_id}");
 
     let catalog_name = &ctx.default_catalog.clone();
     let shard_info = tables_of_shard.shard_info;
