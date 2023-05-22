@@ -105,7 +105,7 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Update on a frozen shard, shard_id:{shard_id}\nBacktrace:\n{backtrace}",))]
+    #[snafu(display("Update on a frozen shard, shard_id:{shard_id}.\nBacktrace:\n{backtrace}",))]
     UpdateFrozenShard {
         shard_id: ShardId,
         backtrace: Backtrace,

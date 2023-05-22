@@ -111,13 +111,6 @@ struct TablesOfShardCacheEntry {
     frozen: bool,
 }
 
-impl TablesOfShardCacheEntry {
-    #[inline]
-    fn is_frozen(&self) -> bool {
-        self.frozen
-    }
-}
-
 #[derive(Debug, Default)]
 struct Inner {
     // Tables organized by shard.
@@ -204,7 +197,7 @@ impl Inner {
             })?;
 
         ensure!(
-            !tables_of_shard.is_frozen(),
+            !tables_of_shard.frozen,
             UpdateFrozenShard {
                 shard_id: curr_shard.id,
             }
@@ -254,7 +247,7 @@ impl Inner {
             })?;
 
         ensure!(
-            !tables_of_shard.is_frozen(),
+            !tables_of_shard.frozen,
             UpdateFrozenShard {
                 shard_id: curr_shard.id,
             }
