@@ -30,7 +30,7 @@ use tracing_appender::{
 };
 use tracing_subscriber::{
     fmt,
-    fmt::{time::SystemTime, Layer},
+    fmt::{time::Uptime, Layer},
     prelude::*,
     registry::Registry,
     EnvFilter,
@@ -115,7 +115,7 @@ pub fn init_tracing_with_file(config: &Config, node_addr: &str, rotation: Rotati
     let file_appender = RollingFileAppender::new(rotation, &config.dir, &config.prefix);
     let (file_writer, file_guard) = tracing_appender::non_blocking(file_appender);
     let f_layer = Layer::new()
-        .with_timer(SystemTime)
+        .with_timer(Uptime::default())
         .with_writer(file_writer)
         .with_thread_ids(true)
         .with_thread_names(true)
@@ -124,7 +124,7 @@ pub fn init_tracing_with_file(config: &Config, node_addr: &str, rotation: Rotati
 
     let subscriber = Registry::default().with(f_layer);
     // TODO: subscriber.with(layer1) has the different type with
-    // subscriber.with(layer1).with(layer)...
+    // subscriber.with(layer1).with(layer2)...
     // So left some duplicated codes here. Maybe we can use marco to simplify
     // it.
     match &config.console {
@@ -134,6 +134,9 @@ pub fn init_tracing_with_file(config: &Config, node_addr: &str, rotation: Rotati
                 .parse()
                 .unwrap_or_else(|_| panic!("invalid tokio console addr:{console_addr}"));
             let directives = format!("tokio=trace,runtime=trace,{}", config.level);
+
+            // It is part of initializing logger, so just print it to stdout.
+            println!("Tokio console server tries to listen on {console_addr}...");
             let subscriber = subscriber.with(EnvFilter::new(directives)).with(
                 console_subscriber::ConsoleLayer::builder()
                     .server_addr(console_addr)
@@ -178,7 +181,7 @@ fn init_file_subscriber(app_name: &str, dir: &str) -> (WorkerGuard, impl Subscri
     let (writer, writer_guard) = tracing_appender::non_blocking(f);
 
     let f_layer = Layer::new()
-        .with_timer(SystemTime)
+        .with_timer(Uptime::default())
         .with_writer(writer)
         .with_thread_ids(true)
         .with_thread_names(false)
