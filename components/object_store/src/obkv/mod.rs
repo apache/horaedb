@@ -326,7 +326,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             part_size: self.part_size,
             meta_manager: self.meta_manager.clone(),
         };
-        let multi_part_upload = CloudMultiPartUpload::new_with_part_size(upload, 8, self.part_size);
+        let multi_part_upload = CloudMultiPartUpload::new(upload, 8, self.part_size);
 
         debug!(
             "ObkvObjectStore put_multipart operation, location:{}, table_name:{}, cost:{}",

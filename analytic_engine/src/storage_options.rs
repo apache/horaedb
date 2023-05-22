@@ -40,6 +40,7 @@ impl Default for StorageOptions {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
+#[allow(clippy::large_enum_variant)]
 pub enum ObjectStoreOptions {
     Local(LocalOptions),
     Aliyun(AliyunOptions),
