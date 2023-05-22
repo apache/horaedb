@@ -128,7 +128,7 @@ where
         // If current_buffer is not empty, see if it can be submitted
         if !self.current_buffer.is_empty() && self.tasks.len() < self.max_concurrency {
             let part_size = self.part_size;
-            while self.current_buffer.len() > 0 {
+            while !self.current_buffer.is_empty() {
                 let size = part_size.min(self.current_buffer.len());
                 let out_buffer = self.current_buffer.drain(0..size).collect::<Vec<_>>();
 
