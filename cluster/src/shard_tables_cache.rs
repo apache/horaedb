@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
     collections::HashMap,
@@ -8,7 +8,10 @@ use std::{
 use meta_client::types::{ShardId, ShardInfo, ShardVersion, TableInfo, TablesOfShard};
 use snafu::{ensure, OptionExt};
 
-use crate::{Result, ShardNotFound, ShardVersionMismatch, TableAlreadyExists, TableNotFound};
+use crate::{
+    Result, ShardNotFound, ShardVersionMismatch, TableAlreadyExists, TableNotFound,
+    UpdateFrozenShard,
+};
 
 /// [ShardTablesCache] caches the information about tables and shards, and the
 /// relationship between them is: one shard -> multiple tables.
@@ -52,11 +55,13 @@ impl ShardTablesCache {
     }
 
     /// Insert or update the tables of one shard.
-    pub fn insert_or_update(&self, tables_of_shard: TablesOfShard) {
-        self.inner
-            .write()
-            .unwrap()
-            .insert_or_update(tables_of_shard)
+    pub fn insert(&self, tables_of_shard: TablesOfShard) {
+        self.inner.write().unwrap().insert(tables_of_shard)
+    }
+
+    /// Freeze the shard.
+    pub fn freeze(&self, shard_id: ShardId) -> Option<TablesOfShard> {
+        self.inner.write().unwrap().freeze_shard(shard_id)
     }
 
     /// Try to insert a new table to the shard with a newer version.
@@ -100,11 +105,24 @@ impl ShardTablesCache {
     }
 }
 
+#[derive(Clone, Debug)]
+struct TablesOfShardCacheEntry {
+    entry: TablesOfShard,
+    frozen: bool,
+}
+
+impl TablesOfShardCacheEntry {
+    #[inline]
+    fn is_frozen(&self) -> bool {
+        self.frozen
+    }
+}
+
 #[derive(Debug, Default)]
 struct Inner {
     // Tables organized by shard.
     // TODO: The shard roles should be also taken into considerations.
-    tables_by_shard: HashMap<ShardId, TablesOfShard>,
+    tables_by_shard: HashMap<ShardId, TablesOfShardCacheEntry>,
 }
 
 impl Inner {
@@ -119,6 +137,7 @@ impl Inner {
         let mut shard_infos = vec![];
         for tables_of_shard in self.tables_by_shard.values() {
             if let Some(v) = tables_of_shard
+                .entry
                 .tables
                 .iter()
                 .find(|table| table.schema_name == schema_name && table.name == table_name)
@@ -127,7 +146,7 @@ impl Inner {
                     table_info = Some(v.clone());
                 }
 
-                shard_infos.push(tables_of_shard.shard_info.clone());
+                shard_infos.push(tables_of_shard.entry.shard_info.clone());
             }
         }
 
@@ -140,21 +159,32 @@ impl Inner {
     fn all_shard_infos(&self) -> Vec<ShardInfo> {
         self.tables_by_shard
             .values()
-            .map(|v| v.shard_info.clone())
+            .map(|v| v.entry.shard_info.clone())
             .collect()
     }
 
     fn get(&self, shard_id: ShardId) -> Option<TablesOfShard> {
-        self.tables_by_shard.get(&shard_id).cloned()
+        self.tables_by_shard.get(&shard_id).map(|v| v.entry.clone())
     }
 
     fn remove(&mut self, shard_id: ShardId) -> Option<TablesOfShard> {
-        self.tables_by_shard.remove(&shard_id)
+        self.tables_by_shard.remove(&shard_id).map(|v| v.entry)
     }
 
-    fn insert_or_update(&mut self, tables_of_shard: TablesOfShard) {
-        self.tables_by_shard
-            .insert(tables_of_shard.shard_info.id, tables_of_shard);
+    fn freeze_shard(&mut self, shard_id: ShardId) -> Option<TablesOfShard> {
+        let tables_of_shard = self.tables_by_shard.get_mut(&shard_id)?;
+        tables_of_shard.frozen = true;
+
+        Some(tables_of_shard.entry.clone())
+    }
+
+    fn insert(&mut self, tables_of_shard: TablesOfShard) {
+        let shard_id = tables_of_shard.shard_info.id;
+        let entry = TablesOfShardCacheEntry {
+            entry: tables_of_shard,
+            frozen: false,
+        };
+        self.tables_by_shard.insert(shard_id, entry);
     }
 
     fn try_insert_table_to_shard(
@@ -174,14 +204,25 @@ impl Inner {
             })?;
 
         ensure!(
-            tables_of_shard.shard_info.version == prev_shard_version,
+            !tables_of_shard.is_frozen(),
+            UpdateFrozenShard {
+                shard_id: curr_shard.id,
+            }
+        );
+
+        ensure!(
+            tables_of_shard.entry.shard_info.version == prev_shard_version,
             ShardVersionMismatch {
-                shard_info: tables_of_shard.shard_info.clone(),
+                shard_info: tables_of_shard.entry.shard_info.clone(),
                 expect_version: prev_shard_version,
             }
         );
 
-        let table = tables_of_shard.tables.iter().find(|v| v.id == new_table.id);
+        let table = tables_of_shard
+            .entry
+            .tables
+            .iter()
+            .find(|v| v.id == new_table.id);
         ensure!(
             table.is_none(),
             TableAlreadyExists {
@@ -190,8 +231,8 @@ impl Inner {
         );
 
         // Update tables of shard.
-        tables_of_shard.shard_info = curr_shard;
-        tables_of_shard.tables.push(new_table);
+        tables_of_shard.entry.shard_info = curr_shard;
+        tables_of_shard.entry.tables.push(new_table);
 
         Ok(())
     }
@@ -213,14 +254,22 @@ impl Inner {
             })?;
 
         ensure!(
-            tables_of_shard.shard_info.version == prev_shard_version,
+            !tables_of_shard.is_frozen(),
+            UpdateFrozenShard {
+                shard_id: curr_shard.id,
+            }
+        );
+
+        ensure!(
+            tables_of_shard.entry.shard_info.version == prev_shard_version,
             ShardVersionMismatch {
-                shard_info: tables_of_shard.shard_info.clone(),
+                shard_info: tables_of_shard.entry.shard_info.clone(),
                 expect_version: prev_shard_version,
             }
         );
 
         let table_idx = tables_of_shard
+            .entry
             .tables
             .iter()
             .position(|v| v.id == new_table.id)
@@ -229,8 +278,8 @@ impl Inner {
             })?;
 
         // Update tables of shard.
-        tables_of_shard.shard_info = curr_shard;
-        tables_of_shard.tables.swap_remove(table_idx);
+        tables_of_shard.entry.shard_info = curr_shard;
+        tables_of_shard.entry.tables.swap_remove(table_idx);
 
         Ok(())
     }

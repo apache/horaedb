@@ -309,12 +309,12 @@ async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
     info!("Do close shard begins, shard_id:{shard_id:?}");
     let tables_of_shard =
         ctx.cluster
-            .close_shard(shard_id)
+            .freeze_shard(shard_id)
             .await
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::Internal,
-                msg: "fail to close shards in cluster",
+                msg: "fail to freeze shard before close it in cluster",
             })?;
 
     let catalog_name = &ctx.default_catalog.clone();
@@ -347,13 +347,24 @@ async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
             msg: "failed to close shard",
         })?;
 
-    // try to close wal region
+    // Try to close wal region
     ctx.wal_region_closer
         .close_region(shard_id)
         .await
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
             msg: format!("fail to close wal region, shard_id:{shard_id}"),
+        })?;
+
+    // Remove the shard from the cluster topology after the shard is closed indeed.
+    let _ = ctx
+        .cluster
+        .close_shard(shard_id)
+        .await
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: "fail to close shards in cluster",
         })?;
 
     info!("Do close shard succeed, shard_id:{shard_id}");

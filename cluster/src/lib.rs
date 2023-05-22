@@ -105,6 +105,12 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display("Update on a frozen shard, shard_id:{shard_id}\nBacktrace:\n{backtrace}",))]
+    UpdateFrozenShard {
+        shard_id: ShardId,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display(
         "Cluster nodes are not found in the topology, version:{version}.\nBacktrace:\n{backtrace}",
     ))]
@@ -127,7 +133,14 @@ pub trait Cluster {
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
     async fn open_shard(&self, shard_info: &ShardInfo) -> Result<TablesOfShard>;
+    /// Close the shard.
+    ///
+    /// Return error if the shard is not found.
     async fn close_shard(&self, req: ShardId) -> Result<TablesOfShard>;
+    /// Freeze the shard to reject create/drop table on the shard.
+    ///
+    /// Return error if the shard is not found.
+    async fn freeze_shard(&self, req: ShardId) -> Result<TablesOfShard>;
     async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()>;
     async fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()>;
     async fn open_table_on_shard(&self, req: &OpenTableOnShardRequest) -> Result<()>;
