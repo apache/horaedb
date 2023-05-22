@@ -497,6 +497,11 @@ impl Manifest for ManifestImpl {
 
         // Apply it to table.
         if let Some(snapshot) = meta_snapshot_opt {
+            info!(
+                "Manifest recover, table_id:{}, result:{:?}",
+                load_req.table_id, snapshot
+            );
+
             let meta_edit = MetaEdit::Snapshot(snapshot);
             let request = MetaEditRequest {
                 shard_info: TableShardInfo::new(load_req.shard_id),

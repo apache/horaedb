@@ -4,7 +4,6 @@ use std::{
     collections::{hash_map::DefaultHasher, HashSet},
     hash::{Hash, Hasher},
     ops::Range,
-    pin::Pin,
     sync::{
         atomic::{AtomicI64, AtomicU64, Ordering},
         Arc,
@@ -21,9 +20,13 @@ use futures::{
     stream::{BoxStream, FuturesOrdered},
     StreamExt,
 };
+use log::debug;
 use snafu::{ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
-use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::{
+    io::{AsyncWrite, AsyncWriteExt},
+    time::Instant,
+};
 use upstream::{
     path::{Path, DELIMITER},
     Error as StoreError, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result,
@@ -271,6 +274,7 @@ impl<T: TableKv> ObkvObjectStore<T> {
 #[async_trait]
 impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
+        let instant = Instant::now();
         // Check if the size of bytes is too large.
         self.check_size(&bytes)
             .map_err(|source| StoreError::Generic {
@@ -295,7 +299,11 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 store: OBKV,
                 source: Box::new(source),
             })?;
-
+        debug!(
+            "ObkvObjectStore put operation, location:{},cost:{}",
+            location,
+            instant.elapsed().as_millis()
+        );
         Ok(())
     }
 
@@ -303,8 +311,10 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         &self,
         location: &Path,
     ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
+        let instant = Instant::now();
+
         let upload_id = self.upload_id.fetch_add(1, Ordering::SeqCst);
-        let multi_part_id = MultipartId::from(format!("{upload_id}"));
+        let multi_part_id = format!("{upload_id}");
         let table_name = self.pick_shard_table(location);
 
         let upload = ObkvMultiPartUpload {
@@ -317,10 +327,19 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             meta_manager: self.meta_manager.clone(),
         };
         let multi_part_upload = CloudMultiPartUpload::new_with_part_size(upload, 8, self.part_size);
+
+        debug!(
+            "ObkvObjectStore put_multipart operation, location:{}, table_name:{}, cost:{}",
+            location,
+            table_name,
+            instant.elapsed().as_millis()
+        );
         Ok((multi_part_id, Box::new(multi_part_upload)))
     }
 
     async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
+        let instant = Instant::now();
+
         let table_name = self.pick_shard_table(location);
 
         // Before aborting multipart, we need to delete all data parts and meta info.
@@ -364,20 +383,33 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 source: Box::new(source),
             })?;
 
+        debug!(
+            "ObkvObjectStore abort_multipart operation, location:{}, table:{}, cost:{}",
+            location,
+            table_name,
+            instant.elapsed().as_millis()
+        );
         Ok(())
     }
 
     async fn get(&self, location: &Path) -> Result<GetResult> {
-        self.get_internal(location)
-            .await
-            .box_err()
-            .map_err(|source| StoreError::NotFound {
-                path: location.to_string(),
-                source: source,
-            })
+        let instant = Instant::now();
+        let result = self.get_internal(location).await;
+
+        debug!(
+            "ObkvObjectStore get operation, location:{}, cost:{}",
+            location,
+            instant.elapsed().as_millis()
+        );
+        result.box_err().map_err(|source| StoreError::NotFound {
+            path: location.to_string(),
+            source,
+        })
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
+        let instant = Instant::now();
+
         let table_name = self.pick_shard_table(location);
         let meta =
             self.read_meta(location)
@@ -395,8 +427,13 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         let end_index = range.end / batch_size;
         let end_offset = range.end % batch_size;
         let mut range_buffer = Vec::with_capacity(range.end - range.start);
-        for index in start_index..=end_index {
-            let key = &key_list[index];
+        for (index, key) in key_list
+            .iter()
+            .enumerate()
+            .take(end_index + 1)
+            .skip(start_index)
+        {
+            // let key = &key_list[index];
             let values = self
                 .client
                 .get(table_name, key.as_bytes())
@@ -418,11 +455,20 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             }
         }
 
+        debug!(
+            "ObkvObjectStore get_range operation, location:{}, table:{}, cost:{}",
+            location,
+            table_name,
+            instant.elapsed().as_millis()
+        );
+
         Ok(range_buffer.into())
     }
 
     /// Return the metadata for the specified location
     async fn head(&self, location: &Path) -> Result<ObjectMeta> {
+        let instant = Instant::now();
+
         let meta =
             self.read_meta(location)
                 .await
@@ -431,6 +477,12 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                     path: location.to_string(),
                     source,
                 })?;
+
+        debug!(
+            "ObkvObjectStore head operation, location:{}, cost:{}",
+            location,
+            instant.elapsed().as_millis()
+        );
 
         Ok(ObjectMeta {
             location: (*location).clone(),
@@ -441,6 +493,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
 
     /// Delete the object at the specified location.
     async fn delete(&self, location: &Path) -> Result<()> {
+        let instant = Instant::now();
+
         // TODO: maybe coerruption here, should not delete data when data is reading.
         let table_name = self.pick_shard_table(location);
         let meta =
@@ -470,6 +524,14 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 store: OBKV,
                 source: Box::new(source),
             })?;
+
+        debug!(
+            "ObkvObjectStore delete operation, location:{}, table:{}, cost:{}",
+            location,
+            table_name,
+            instant.elapsed().as_millis()
+        );
+
         Ok(())
     }
 
@@ -479,6 +541,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     /// todo: Currently this method may return lots of object meta, we should
     /// limit the count of return ojects in future.
     async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
+        let instant = Instant::now();
+
         let path = Self::format_path(prefix);
         let raw_metas =
             self.meta_manager
@@ -499,6 +563,11 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         }
 
         let iter = futures::stream::iter(meta_list.into_iter());
+        debug!(
+            "ObkvObjectStore list operation, prefix:{}, cost:{}",
+            path,
+            instant.elapsed().as_millis()
+        );
         Ok(iter.boxed())
     }
 
@@ -507,6 +576,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     /// `foo/bar/` is a prefix of `foo/bar/x` but not of `foo/bar_baz/x`.
     /// see detail in: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html
     async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {
+        let instant = Instant::now();
+
         let path = Self::format_path(prefix);
         let metas =
             self.meta_manager
@@ -536,6 +607,11 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         }
 
         let common_prefixes = Vec::from_iter(common_prefixes.into_iter());
+        debug!(
+            "ObkvObjectStore list_with_delimiter operation, prefix:{}, cost:{}",
+            path,
+            instant.elapsed().as_millis()
+        );
         Ok(ListResult {
             common_prefixes,
             objects,
@@ -633,7 +709,7 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
 mod test {
     use std::sync::Arc;
 
-    use bytes::{buf, Bytes};
+    use bytes::Bytes;
     use common_util::runtime::{Builder, Runtime};
     use futures::StreamExt;
     use rand::{thread_rng, Rng};
@@ -737,7 +813,7 @@ mod test {
     async fn test_get_range(oss: Arc<ObkvObjectStore<MemoryImpl>>, location: &Path, expect: &[u8]) {
         let get = oss
             .get_range(
-                &location,
+                location,
                 std::ops::Range {
                     start: 100,
                     end: 200,
@@ -772,6 +848,7 @@ mod test {
         assert_eq!(expect, get.bytes().await.unwrap());
     }
 
+    #[allow(clippy::unused_io_amount)]
     async fn write_data(
         oss: Arc<dyn ObjectStore>,
         location: &Path,
@@ -823,13 +900,13 @@ mod test {
             assert_eq!(buffer, body.bytes().await.unwrap());
             let inner_meta = oss.meta_manager.read_meta(&location3).await.unwrap();
             assert!(inner_meta.is_some());
-            inner_meta.map(|m| {
+            if let Some(m) = inner_meta {
                 assert_eq!(m.location, location3.as_ref());
                 assert_eq!(m.part_size, oss.part_size);
                 let expect_size =
                     length / TEST_PART_SIZE + if length % TEST_PART_SIZE != 0 { 1 } else { 0 };
                 assert_eq!(m.parts.len(), expect_size);
-            });
+            }
         }
     }
 }

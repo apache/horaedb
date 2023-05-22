@@ -91,5 +91,6 @@ pub struct ObkvOptions {
     pub prefix: String,
     pub shard_num: usize,
     pub part_size: usize,
-    pub config: ObkvConfig,
+    /// Obkv client config
+    pub obkv: ObkvConfig,
 }
