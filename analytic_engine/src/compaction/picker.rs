@@ -484,6 +484,7 @@ impl TimeWindowPicker {
 
         let all_keys: BTreeSet<_> = buckets.keys().collect();
 
+        // First compact latest buckets
         for key in all_keys.into_iter().rev() {
             if let Some(bucket) = buckets.get(key) {
                 debug!("Key {}, now {}", key, now);
@@ -577,7 +578,7 @@ impl LevelPicker for TimeWindowPicker {
 
         debug!("TWCS compaction options: {:?}", opts);
 
-        let (buckets, ts) = Self::get_buckets(
+        let (buckets, max_bucket_ts) = Self::get_buckets(
             &uncompact_files,
             &ctx.segment_duration,
             opts.timestamp_resolution,
@@ -589,8 +590,8 @@ impl LevelPicker for TimeWindowPicker {
             &ctx.segment_duration,
             opts.timestamp_resolution,
         );
-        debug!("now {}, max_ts: {}", now, ts);
-        assert!(now >= ts);
+        debug!("now {}, max_ts: {}", now, max_bucket_ts);
+        assert!(now >= max_bucket_ts);
 
         Self::newest_bucket(buckets, opts.size_tiered, now)
     }
