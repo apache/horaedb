@@ -60,21 +60,7 @@ impl<T> CloudMultiPartUpload<T>
 where
     T: CloudMultiPartUploadImpl,
 {
-    pub fn new(inner: T, max_concurrency: usize) -> Self {
-        Self {
-            inner: Arc::new(inner),
-            completed_parts: Vec::new(),
-            tasks: FuturesUnordered::new(),
-            max_concurrency,
-            current_buffer: Vec::new(),
-            // Part size of 1 MiB
-            part_size: 1_048_576,
-            current_part_idx: 0,
-            completion_task: None,
-        }
-    }
-
-    pub fn new_with_part_size(inner: T, max_concurrency: usize, part_size: usize) -> Self {
+    pub fn new(inner: T, max_concurrency: usize, part_size: usize) -> Self {
         Self {
             inner: Arc::new(inner),
             completed_parts: Vec::new(),
