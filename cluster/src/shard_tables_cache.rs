@@ -54,14 +54,14 @@ impl ShardTablesCache {
         self.inner.write().unwrap().remove(shard_id)
     }
 
-    /// Insert or update the tables of one shard.
+    /// Insert the tables of one shard.
     pub fn insert(&self, tables_of_shard: TablesOfShard) {
         self.inner.write().unwrap().insert(tables_of_shard)
     }
 
     /// Freeze the shard.
     pub fn freeze(&self, shard_id: ShardId) -> Option<TablesOfShard> {
-        self.inner.write().unwrap().freeze_shard(shard_id)
+        self.inner.write().unwrap().freeze(shard_id)
     }
 
     /// Try to insert a new table to the shard with a newer version.
@@ -164,7 +164,7 @@ impl Inner {
         self.tables_by_shard.remove(&shard_id).map(|v| v.entry)
     }
 
-    fn freeze_shard(&mut self, shard_id: ShardId) -> Option<TablesOfShard> {
+    fn freeze(&mut self, shard_id: ShardId) -> Option<TablesOfShard> {
         let tables_of_shard = self.tables_by_shard.get_mut(&shard_id)?;
         tables_of_shard.frozen = true;
 
