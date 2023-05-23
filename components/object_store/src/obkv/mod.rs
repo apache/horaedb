@@ -889,24 +889,25 @@ mod test {
             4 * TEST_PART_SIZE + 10,
         ];
         for length in length_vec {
-            let location3 = Path::from("test/data/4");
+            let location = Path::from("test/data/4");
             let rand_str = generate_random_string(length);
             let buffer = Bytes::from(rand_str);
-            oss.put(&location3, buffer.clone()).await.unwrap();
-            let meta = oss.head(&location3).await.unwrap();
-            assert_eq!(meta.location, location3);
+            oss.put(&location, buffer.clone()).await.unwrap();
+            let meta = oss.head(&location).await.unwrap();
+            assert_eq!(meta.location, location);
             assert_eq!(meta.size, length);
-            let body = oss.get(&location3).await.unwrap();
+            let body = oss.get(&location).await.unwrap();
             assert_eq!(buffer, body.bytes().await.unwrap());
-            let inner_meta = oss.meta_manager.read_meta(&location3).await.unwrap();
+            let inner_meta = oss.meta_manager.read_meta(&location).await.unwrap();
             assert!(inner_meta.is_some());
             if let Some(m) = inner_meta {
-                assert_eq!(m.location, location3.as_ref());
+                assert_eq!(m.location, location.as_ref());
                 assert_eq!(m.part_size, oss.part_size);
                 let expect_size =
                     length / TEST_PART_SIZE + if length % TEST_PART_SIZE != 0 { 1 } else { 0 };
                 assert_eq!(m.parts.len(), expect_size);
             }
+            oss.delete(&location).await.unwrap();
         }
     }
 }
