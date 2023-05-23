@@ -12,7 +12,7 @@ use upstream::Result;
 
 type BoxedTryFuture<T> = Pin<Box<dyn Future<Output = Result<T, io::Error>> + Send>>;
 
-/// A trait that can be implemented by cloud-based objectstores
+/// A trait that can be implemented by cloud-based object stores
 /// and used in combination with [`CloudMultiPartUpload`] to provide
 /// multipart upload support.
 #[async_trait]
