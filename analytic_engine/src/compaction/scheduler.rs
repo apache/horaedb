@@ -72,8 +72,7 @@ impl Default for SchedulerConfig {
     fn default() -> Self {
         Self {
             schedule_channel_len: 16,
-            // 30 minutes schedule interval.
-            schedule_interval: ReadableDuration(Duration::from_secs(60 * 5)),
+            schedule_interval: ReadableDuration(Duration::from_secs(30)),
             max_ongoing_tasks: MAX_GOING_COMPACTION_TASKS,
             // flush_interval default is 5h.
             max_unflushed_duration: ReadableDuration(Duration::from_secs(60 * 60 * 5)),
@@ -545,7 +544,9 @@ impl ScheduleWorker {
         task: &CompactionTask,
     ) -> Option<MemoryUsageToken> {
         let input_size = task.estimated_total_input_file_size();
-        let estimate_memory_usage = input_size * 2;
+        // Currently sst build is in a streaming way, so it wouldn't consume memory more
+        // than its size.
+        let estimate_memory_usage = input_size;
 
         let token = self.memory_limit.try_apply_token(estimate_memory_usage);
 
