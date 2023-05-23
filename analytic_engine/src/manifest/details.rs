@@ -30,8 +30,8 @@ use wal::{
     kv_encoder::LogBatchEncoder,
     log_batch::LogEntry,
     manager::{
-        BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest, SequenceNumber,
-        WalLocation, WalManagerRef, WriteContext,
+        BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest, RegionId, ScanContext,
+        ScanRequest, SequenceNumber, WalLocation, WalManagerRef, WriteContext,
     },
 };
 
@@ -211,14 +211,14 @@ pub(crate) trait TableMetaSet: fmt::Debug + Send + Sync {
 // TODO: remove `LogStore` and related operations, it should be called directly but not in the
 // `SnapshotReoverer`.
 #[derive(Debug, Clone)]
-struct SnapshotRecoverer<LogStore, SnapshotStore> {
-    log_store: LogStore,
+struct SnapshotRecoverer<LogReader, SnapshotStore> {
+    log_store: LogReader,
     snapshot_store: SnapshotStore,
 }
 
-impl<LogStore, SnapshotStore> SnapshotRecoverer<LogStore, SnapshotStore>
+impl<LogReader, SnapshotStore> SnapshotRecoverer<LogReader, SnapshotStore>
 where
-    LogStore: MetaUpdateLogStore + Send + Sync,
+    LogReader: MetaUpdateLogReader + Send + Sync,
     SnapshotStore: MetaUpdateSnapshotStore + Send + Sync,
 {
     async fn recover(&self) -> Result<Option<Snapshot>> {
@@ -293,8 +293,8 @@ where
 // TODO: remove `LogStore` and related operations, it should be called directly but not in the
 // `Snapshotter`.
 #[derive(Debug, Clone)]
-struct Snapshotter<LogStore, SnapshotStore> {
-    log_store: LogStore,
+struct Snapshotter<LogWriter, SnapshotStore> {
+    log_store: LogWriter,
     snapshot_store: SnapshotStore,
     end_seq: SequenceNumber,
     snapshot_data_provider: Arc<dyn TableMetaSet>,
@@ -302,9 +302,9 @@ struct Snapshotter<LogStore, SnapshotStore> {
     table_id: TableId,
 }
 
-impl<LogStore, SnapshotStore> Snapshotter<LogStore, SnapshotStore>
+impl<LogWriter, SnapshotStore> Snapshotter<LogWriter, SnapshotStore>
 where
-    LogStore: MetaUpdateLogStore + Send + Sync,
+    LogWriter: MetaUpdateLogWriter + Send + Sync,
     SnapshotStore: MetaUpdateSnapshotStore + Send + Sync,
 {
     /// Create a latest snapshot of the current logs.
@@ -399,7 +399,7 @@ impl ManifestImpl {
         meta_update: MetaUpdate,
         location: WalLocation,
     ) -> Result<SequenceNumber> {
-        let log_store = WalBasedLogStore {
+        let log_store = WalBasedLogWriter {
             opts: self.opts.clone(),
             location,
             wal_manager: self.wal_manager.clone(),
@@ -429,7 +429,7 @@ impl ManifestImpl {
         }
 
         if let Ok(_guard) = self.snapshot_write_guard.try_lock() {
-            let log_store = WalBasedLogStore {
+            let log_store = WalBasedLogWriter {
                 opts: self.opts.clone(),
                 location,
                 wal_manager: self.wal_manager.clone(),
@@ -502,7 +502,7 @@ impl Manifest for ManifestImpl {
         // Load table meta snapshot from storage.
         let location = WalLocation::new(load_req.shard_id as u64, load_req.table_id.as_u64());
 
-        let log_store = WalBasedLogStore {
+        let log_store = WalBasedLogTableReader {
             opts: self.opts.clone(),
             location,
             wal_manager: self.wal_manager.clone(),
@@ -548,13 +548,16 @@ impl Manifest for ManifestImpl {
 }
 
 #[async_trait]
-trait MetaUpdateLogStore: std::fmt::Debug {
-    type Iter: MetaUpdateLogEntryIterator + Send;
-    async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter>;
-
+trait MetaUpdateLogWriter: std::fmt::Debug {
     async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber>;
 
     async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()>;
+}
+
+#[async_trait]
+trait MetaUpdateLogReader: std::fmt::Debug {
+    type Iter: MetaUpdateLogEntryIterator + Send;
+    async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter>;
 }
 
 #[async_trait]
@@ -648,14 +651,43 @@ impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
 }
 
 #[derive(Debug, Clone)]
-struct WalBasedLogStore {
+struct WalBasedLogWriter {
     opts: Options,
     location: WalLocation,
     wal_manager: WalManagerRef,
 }
 
 #[async_trait]
-impl MetaUpdateLogStore for WalBasedLogStore {
+impl MetaUpdateLogWriter for WalBasedLogWriter {
+    async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber> {
+        let payload = MetaUpdatePayload::from(meta_update);
+        let log_batch_encoder = LogBatchEncoder::create(self.location);
+        let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
+            wal_location: self.location,
+        })?;
+
+        let write_ctx = WriteContext {
+            timeout: self.opts.store_timeout.0,
+        };
+
+        self.wal_manager
+            .write(&write_ctx, &log_batch)
+            .await
+            .context(WriteWal)
+    }
+
+    async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()> {
+        self.wal_manager
+            .mark_delete_entries_up_to(self.location, inclusive_end)
+            .await
+            .context(CleanWal)
+    }
+}
+
+type WalBasedLogTableReader = WalBasedLogWriter;
+
+#[async_trait]
+impl MetaUpdateLogReader for WalBasedLogTableReader {
     type Iter = MetaUpdateReaderImpl;
 
     async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter> {
@@ -682,29 +714,42 @@ impl MetaUpdateLogStore for WalBasedLogStore {
             buffer: VecDeque::with_capacity(ctx.batch_size),
         })
     }
+}
 
-    async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber> {
-        let payload = MetaUpdatePayload::from(meta_update);
-        let log_batch_encoder = LogBatchEncoder::create(self.location);
-        let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
-            wal_location: self.location,
-        })?;
+#[derive(Debug, Clone)]
+struct WalBasedLogShardReader {
+    opts: Options,
+    region_id: RegionId,
+    wal_manager: WalManagerRef,
+}
 
-        let write_ctx = WriteContext {
-            timeout: self.opts.store_timeout.0,
+#[async_trait]
+impl MetaUpdateLogReader for WalBasedLogShardReader {
+    type Iter = MetaUpdateReaderImpl;
+
+    // TODO: now we scan whole logs in shard, we should optimize it by selecting a
+    // reasonable begin position in future.
+    async fn scan(&self, _start: ReadBoundary) -> Result<Self::Iter> {
+        let ctx = ScanContext {
+            timeout: self.opts.scan_timeout.0,
+            batch_size: self.opts.scan_batch_size,
         };
 
-        self.wal_manager
-            .write(&write_ctx, &log_batch)
-            .await
-            .context(WriteWal)
-    }
+        let scan_req = ScanRequest {
+            region_id: self.region_id,
+        };
 
-    async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()> {
-        self.wal_manager
-            .mark_delete_entries_up_to(self.location, inclusive_end)
+        let iter = self
+            .wal_manager
+            .scan(&ctx, &scan_req)
             .await
-            .context(CleanWal)
+            .context(ReadWal)?;
+
+        Ok(MetaUpdateReaderImpl {
+            iter,
+            has_next: true,
+            buffer: VecDeque::with_capacity(ctx.batch_size),
+        })
     }
 }
 
@@ -724,7 +769,7 @@ mod tests {
     use super::*;
     use crate::{
         manifest::{
-            details::{MetaUpdateLogEntryIterator, MetaUpdateLogStore},
+            details::{MetaUpdateLogEntryIterator, MetaUpdateLogReader, MetaUpdateLogWriter},
             meta_edit::{
                 AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEdit,
                 MetaUpdate, VersionEditMeta,
@@ -1293,7 +1338,27 @@ mod tests {
     }
 
     #[async_trait]
-    impl MetaUpdateLogStore for MemLogStore {
+    impl MetaUpdateLogWriter for MemLogStore {
+        async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber> {
+            let mut logs = self.logs.lock().unwrap();
+            let seq = logs.len() as u64;
+            logs.push(Some(meta_update));
+
+            Ok(seq)
+        }
+
+        async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()> {
+            let mut logs = self.logs.lock().unwrap();
+            for i in 0..=inclusive_end {
+                logs[i as usize] = None;
+            }
+
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl MetaUpdateLogReader for MemLogStore {
         type Iter = vec::IntoIter<MetaUpdateLogEntry>;
 
         async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter> {
@@ -1316,23 +1381,6 @@ mod tests {
             }
 
             Ok(exist_logs.into_iter())
-        }
-
-        async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber> {
-            let mut logs = self.logs.lock().unwrap();
-            let seq = logs.len() as u64;
-            logs.push(Some(meta_update));
-
-            Ok(seq)
-        }
-
-        async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()> {
-            let mut logs = self.logs.lock().unwrap();
-            for i in 0..=inclusive_end {
-                logs[i as usize] = None;
-            }
-
-            Ok(())
         }
     }
 
