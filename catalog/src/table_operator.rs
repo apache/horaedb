@@ -118,7 +118,7 @@ impl TableOperator {
 
         // Check and unregister successful closed table from schema.
         let mut success_count = 0_u32;
-        let mut close_err_count = 0_u32;
+        let mut close_table_errs = Vec::new();
 
         for (schema, close_result) in schemas.into_iter().zip(close_results.into_iter()) {
             match close_result {
@@ -126,26 +126,24 @@ impl TableOperator {
                     schema.unregister_table(&table_name);
                     success_count += 1;
                 }
-                Err(_) => {
-                    close_err_count += 1;
-                }
+                Err(e) => close_table_errs.push(e),
             }
         }
 
         info!(
-            "Close shard finished, shard id:{}, cost:{}ms, success_count:{}, close_err_count:{}",
+            "Close shard finished, shard id:{}, cost:{}ms, success_count:{}, close_table_errs:{:?}",
             shard_id,
             instant.saturating_elapsed().as_millis(),
             success_count,
-            close_err_count
+            close_table_errs,
         );
 
-        if close_err_count == 0 {
+        if close_table_errs.is_empty() {
             Ok(())
         } else {
             TableOperatorNoCause {
                 msg: format!(
-                    "Failed to close shard, shard id:{shard_id}, success_count:{success_count}, close_err_count:{close_err_count}",
+                    "Failed to close shard, shard id:{shard_id}, success_count:{success_count}, close_err_count:{}", close_table_errs.len(),
                 ),
             }
             .fail()

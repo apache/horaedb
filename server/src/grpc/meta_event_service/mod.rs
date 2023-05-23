@@ -246,17 +246,7 @@ impl HandlerContext {
     }
 }
 
-// TODO: maybe we should encapsulate the logic of handling meta event into a
-// trait, so that we don't need to expose the logic to the meta event service
-// implementation.
-
-async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Result<()> {
-    info!("Handle open shard begins, request:{request:?}");
-    let shard_info = ShardInfo::from(&request.shard.context(ErrNoCause {
-        code: StatusCode::BadRequest,
-        msg: "shard info is required",
-    })?);
-
+async fn do_open_shard(ctx: HandlerContext, shard_info: ShardInfo) -> Result<()> {
     ctx.acquire_shard_lock(shard_info.id).await?;
 
     let tables_of_shard = ctx
@@ -298,15 +288,35 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
         .context(ErrWithCause {
             code: StatusCode::Internal,
             msg: "failed to open shard",
-        })?;
+        })
+}
 
-    info!("Handle open shard success, shard_id:{}", shard_info.id);
+// TODO: maybe we should encapsulate the logic of handling meta event into a
+// trait, so that we don't need to expose the logic to the meta event service
+// implementation.
 
-    Ok(())
+async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Result<()> {
+    info!("Receive open shard request, request:{request:?}");
+    let shard_info = ShardInfo::from(&request.shard.context(ErrNoCause {
+        code: StatusCode::BadRequest,
+        msg: "shard info is required",
+    })?);
+
+    let shard_id = shard_info.id;
+    info!("Handle open shard begins, shard_id:{shard_id}");
+    match do_open_shard(ctx, shard_info).await {
+        Err(e) => {
+            error!("Failed to open shard, shard_id:{shard_id}, err:{e}");
+            Err(e)
+        }
+        Ok(_) => {
+            info!("Handle open shard success, shard_id:{shard_id}");
+            Ok(())
+        }
+    }
 }
 
 async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
-    info!("Do close shard begins, shard_id:{shard_id}");
     let tables_of_shard =
         ctx.cluster
             .freeze_shard(shard_id)
@@ -316,7 +326,7 @@ async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
                 code: StatusCode::Internal,
                 msg: "fail to freeze shard before close it in cluster",
             })?;
-    info!("Freeze shard before closing, shard_id:{shard_id}");
+    info!("Shard is frozen before closed, shard_id:{shard_id}");
 
     let catalog_name = &ctx.default_catalog.clone();
     let shard_info = tables_of_shard.shard_info;
@@ -368,20 +378,27 @@ async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
             msg: "fail to close shards in cluster",
         })?;
 
-    info!("Do close shard succeed, shard_id:{shard_id}");
-
-    Ok(())
+    ctx.release_shard_lock(shard_id).await.map_err(|e| {
+        error!("Failed to release shard lock, shard_id:{shard_id}, err:{e}");
+        e
+    })
 }
 
 async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> Result<()> {
+    info!("Receive close shard request, request:{request:?}");
+
     let shard_id = request.shard_id;
-    info!("Handle close shard begins, shard_id:{shard_id:?}");
-
-    do_close_shard(&ctx, shard_id).await?;
-    ctx.release_shard_lock(shard_id).await?;
-
-    info!("Handle close shard succeed, shard_id:{shard_id}");
-    Ok(())
+    info!("Handle close shard begins, shard_id:{shard_id}");
+    match do_close_shard(&ctx, shard_id).await {
+        Ok(_) => {
+            info!("Handle close shard succeed, shard_id:{shard_id}");
+            Ok(())
+        }
+        Err(e) => {
+            error!("Failed to close shard, shard_id:{shard_id}, err:{e}");
+            Err(e)
+        }
+    }
 }
 
 async fn handle_create_table_on_shard(
