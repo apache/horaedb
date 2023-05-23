@@ -199,6 +199,10 @@ mod tests {
             unimplemented!();
         }
 
+        async fn freeze_shard(&self, _: ShardId) -> cluster::Result<TablesOfShard> {
+            unimplemented!();
+        }
+
         async fn create_table_on_shard(
             &self,
             _req: &CreateTableOnShardRequest,

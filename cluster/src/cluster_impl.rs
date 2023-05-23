@@ -282,8 +282,7 @@ impl Inner {
                 msg: "shard tables are missing from the response",
             })?;
 
-        self.shard_tables_cache
-            .insert_or_update(tables_of_shard.clone());
+        self.shard_tables_cache.insert(tables_of_shard.clone());
 
         Ok(tables_of_shard)
     }
@@ -296,12 +295,21 @@ impl Inner {
             })
     }
 
+    #[inline]
+    fn freeze_shard(&self, shard_id: ShardId) -> Result<TablesOfShard> {
+        self.shard_tables_cache
+            .freeze(shard_id)
+            .with_context(|| ShardNotFound {
+                msg: format!("try to freeze a non-existent shard, shard_id:{shard_id}"),
+            })
+    }
+
     fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()> {
         self.insert_table_to_shard(req.update_shard_info.clone(), req.table_info.clone())
     }
 
     fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()> {
-        self.remove_table_to_shard(req.update_shard_info.clone(), req.table_info.clone())
+        self.remove_table_from_shard(req.update_shard_info.clone(), req.table_info.clone())
     }
 
     fn open_table_on_shard(&self, req: &OpenTableOnShardRequest) -> Result<()> {
@@ -309,7 +317,7 @@ impl Inner {
     }
 
     fn close_table_on_shard(&self, req: &CloseTableOnShardRequest) -> Result<()> {
-        self.remove_table_to_shard(req.update_shard_info.clone(), req.table_info.clone())
+        self.remove_table_from_shard(req.update_shard_info.clone(), req.table_info.clone())
     }
 
     fn insert_table_to_shard(
@@ -338,7 +346,7 @@ impl Inner {
         )
     }
 
-    fn remove_table_to_shard(
+    fn remove_table_from_shard(
         &self,
         update_shard_info: Option<UpdateShardInfo>,
         table_info: Option<TableInfoPb>,
@@ -404,6 +412,10 @@ impl Cluster for ClusterImpl {
 
     async fn close_shard(&self, shard_id: ShardId) -> Result<TablesOfShard> {
         self.inner.close_shard(shard_id)
+    }
+
+    async fn freeze_shard(&self, shard_id: ShardId) -> Result<TablesOfShard> {
+        self.inner.freeze_shard(shard_id)
     }
 
     async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()> {
