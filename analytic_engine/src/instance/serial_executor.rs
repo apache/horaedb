@@ -10,7 +10,7 @@ use std::{
 
 use common_util::{runtime::Runtime, time::InstantExt};
 use futures::Future;
-use log::{error, info, warn};
+use log::{error, warn};
 use table_engine::table::TableId;
 use tokio::sync::{
     oneshot,

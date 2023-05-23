@@ -19,6 +19,7 @@ fn normalize_endpoint(endpoint: &str, bucket: &str) -> String {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn try_new(
     key_id: impl Into<String>,
     key_secret: impl Into<String>,
