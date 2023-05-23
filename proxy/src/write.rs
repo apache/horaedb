@@ -23,7 +23,10 @@ use common_types::{
     time::Timestamp,
 };
 use common_util::error::BoxError;
-use futures::{future::try_join_all, FutureExt};
+use futures::{
+    future::{try_join_all, BoxFuture},
+    FutureExt,
+};
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, error, info};
@@ -44,6 +47,9 @@ use crate::{
     forward::{ForwardResult, ForwarderRef},
     Context, Proxy,
 };
+
+type WriteResponseFutures<'a> =
+    Vec<BoxFuture<'a, common_util::runtime::Result<Result<WriteResponse>>>>;
 
 #[derive(Debug)]
 pub struct WriteContext {
@@ -66,6 +72,29 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
+        let write_context = req.context.clone();
+        let resp = if self.cluster_with_meta {
+            self.handle_write_with_meta(ctx, req).await?
+        } else {
+            self.handle_write_without_meta(ctx, req).await?
+        };
+
+        debug!(
+            "Handle write finished, write_context:{:?}, resp:{:?}",
+            write_context, resp
+        );
+        Ok(resp)
+    }
+
+    // Handle write requests based on ceresmeta.
+    // 1. Create table via ceresmeta if it does not exist.
+    // 2. Split write request.
+    // 3. Process write.
+    async fn handle_write_with_meta(
+        &self,
+        ctx: Context,
+        req: WriteRequest,
+    ) -> Result<WriteResponse> {
         let request_id = RequestId::next_id();
 
         let write_context = req.context.clone().context(ErrNoCause {
@@ -73,7 +102,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             code: StatusCode::BAD_REQUEST,
         })?;
 
-        self.handle_auto_create_table(request_id, &write_context.database, &req)
+        self.handle_auto_create_table_with_meta(request_id, &write_context.database, &req)
             .await?;
 
         let (write_request_to_local, write_requests_to_forward) =
@@ -82,47 +111,184 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let mut futures = Vec::with_capacity(write_requests_to_forward.len() + 1);
 
         // Write to remote.
-        for (endpoint, table_write_request) in write_requests_to_forward {
-            let forwarder = self.forwarder.clone();
-            let write_handle = self.engine_runtimes.io_runtime.spawn(async move {
-                Self::write_to_remote(forwarder, endpoint, table_write_request).await
-            });
-
-            futures.push(write_handle.boxed());
-        }
+        self.collect_write_to_remote_future(&mut futures, write_requests_to_forward)
+            .await;
 
         // Write to local.
-        if !write_request_to_local.table_requests.is_empty() {
-            let local_handle = async move {
-                Ok(self
-                    .write_to_local(ctx, request_id, write_request_to_local)
-                    .await)
-            };
-            futures.push(local_handle.boxed());
+        self.collect_write_to_local_future(&mut futures, ctx, request_id, write_request_to_local)
+            .await;
+
+        self.collect_write_response(futures).await
+    }
+
+    // Handle write requests without ceresmeta.
+    // 1. Split write request.
+    // 2. Create table if not exist.
+    // 3. Process write.
+    async fn handle_write_without_meta(
+        &self,
+        ctx: Context,
+        req: WriteRequest,
+    ) -> Result<WriteResponse> {
+        let request_id = RequestId::next_id();
+
+        let write_context = req.context.clone().context(ErrNoCause {
+            msg: "Missing context",
+            code: StatusCode::BAD_REQUEST,
+        })?;
+        let (write_request_to_local, write_requests_to_forward) =
+            self.split_write_request(req).await?;
+
+        let mut futures = Vec::with_capacity(write_requests_to_forward.len() + 1);
+
+        // Write to remote.
+        self.collect_write_to_remote_future(&mut futures, write_requests_to_forward)
+            .await;
+
+        // Create table.
+        self.handle_auto_create_table_without_meta(
+            request_id,
+            &write_request_to_local,
+            &write_context.database,
+        )
+        .await?;
+
+        // Write to local.
+        self.collect_write_to_local_future(&mut futures, ctx, request_id, write_request_to_local)
+            .await;
+
+        self.collect_write_response(futures).await
+    }
+
+    async fn handle_auto_create_table_with_meta(
+        &self,
+        request_id: RequestId,
+        schema: &str,
+        req: &WriteRequest,
+    ) -> Result<()> {
+        if !self.auto_create_table {
+            return Ok(());
         }
 
-        let resps = try_join_all(futures)
-            .await
+        let schema_config = self
+            .schema_config_provider
+            .schema_config(schema)
             .box_err()
-            .context(ErrWithCause {
+            .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to join task",
+                msg: format!("Fail to fetch schema config, schema_name:{schema}"),
+            })?
+            .cloned()
+            .unwrap_or_default();
+
+        // TODO: Consider whether to build tables concurrently when there are too many
+        // tables.
+        for write_table_req in &req.table_requests {
+            let table_info = self
+                .router
+                .fetch_table_info(schema, &write_table_req.table)
+                .await?;
+            if table_info.is_some() {
+                continue;
+            }
+            self.create_table(
+                request_id,
+                self.instance.catalog_manager.default_catalog_name(),
+                schema,
+                write_table_req,
+                &schema_config,
+                None,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    async fn handle_auto_create_table_without_meta(
+        &self,
+        request_id: RequestId,
+        write_request: &WriteRequest,
+        schema: &str,
+    ) -> Result<()> {
+        let table_names = write_request
+            .table_requests
+            .iter()
+            .map(|v| v.table.clone())
+            .collect::<Vec<String>>();
+
+        let catalog = self.default_catalog_name();
+        let schema_config = self
+            .schema_config_provider
+            .schema_config(schema)
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!("Fail to fetch schema config, schema:{schema}"),
+            })?
+            .cloned()
+            .unwrap_or_default();
+
+        if self.auto_create_table {
+            for (idx, table_name) in table_names.iter().enumerate() {
+                let table = self.try_get_table(catalog, schema, table_name)?;
+                if table.is_none() {
+                    self.create_table(
+                        request_id,
+                        catalog,
+                        schema,
+                        &write_request.table_requests[idx],
+                        &schema_config,
+                        None,
+                    )
+                    .await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn create_table(
+        &self,
+        request_id: RequestId,
+        catalog: &str,
+        schema: &str,
+        write_table_req: &WriteTableRequest,
+        schema_config: &SchemaConfig,
+        deadline: Option<Instant>,
+    ) -> Result<()> {
+        let provider = CatalogMetaProvider {
+            manager: self.instance.catalog_manager.clone(),
+            default_catalog: catalog,
+            default_schema: schema,
+            function_registry: &*self.instance.function_registry,
+        };
+        let frontend = Frontend::new(provider);
+        let mut ctx = FrontendContext::new(request_id, deadline);
+        let plan = frontend
+            .write_req_to_plan(&mut ctx, schema_config, write_table_req)
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!(
+                    "Failed to build creating table plan, table:{}",
+                    write_table_req.table
+                ),
             })?;
 
-        debug!(
-            "Grpc handle write finished, schema:{}, resps:{:?}",
-            write_context.database, resps
+        debug!("Execute create table begin, plan:{:?}", plan);
+
+        let output = self
+            .execute_plan(request_id, catalog, schema, plan, deadline)
+            .await;
+
+        ensure!(
+            matches!(output, Ok(Output::AffectedRows(_))),
+            ErrNoCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "Invalid output type, expect AffectedRows, found Records",
+            }
         );
-
-        let mut success = 0;
-        for resp in resps {
-            success += resp?.success;
-        }
-
-        Ok(WriteResponse {
-            success,
-            ..Default::default()
-        })
+        Ok(())
     }
 
     async fn split_write_request(
@@ -190,6 +356,61 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             }
         }
         Ok((table_requests_to_local, table_requests_to_forward))
+    }
+
+    async fn collect_write_to_remote_future(
+        &self,
+        futures: &mut WriteResponseFutures<'_>,
+        write_request: HashMap<Endpoint, WriteRequest>,
+    ) {
+        for (endpoint, table_write_request) in write_request {
+            let forwarder = self.forwarder.clone();
+            let write_handle = self.engine_runtimes.io_runtime.spawn(async move {
+                Self::write_to_remote(forwarder, endpoint, table_write_request).await
+            });
+
+            futures.push(write_handle.boxed());
+        }
+    }
+
+    #[inline]
+    async fn collect_write_to_local_future<'a>(
+        &'a self,
+        futures: &mut WriteResponseFutures<'a>,
+        ctx: Context,
+        request_id: RequestId,
+        write_request: WriteRequest,
+    ) {
+        if write_request.table_requests.is_empty() {
+            return;
+        }
+
+        let local_handle =
+            async move { Ok(self.write_to_local(ctx, request_id, write_request).await) };
+        futures.push(local_handle.boxed());
+    }
+
+    async fn collect_write_response(
+        &self,
+        futures: Vec<BoxFuture<'_, common_util::runtime::Result<Result<WriteResponse>>>>,
+    ) -> Result<WriteResponse> {
+        let resps = try_join_all(futures)
+            .await
+            .box_err()
+            .context(ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "Failed to join task",
+            })?;
+
+        let mut success = 0;
+        for resp in resps {
+            success += resp?.success;
+        }
+
+        Ok(WriteResponse {
+            success,
+            ..Default::default()
+        })
     }
 
     async fn write_to_remote(
@@ -266,7 +487,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             })?;
 
         debug!(
-            "Grpc handle write begin, catalog:{catalog}, schema:{schema}, request_id:{request_id}, first_table:{:?}, num_tables:{}",
+            "Local write begin, catalog:{catalog}, schema:{schema}, request_id:{request_id}, first_table:{:?}, num_tables:{}",
             req.table_requests
                 .first()
                 .map(|m| (&m.table, &m.tag_names, &m.field_names)),
@@ -364,7 +585,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         deadline: Option<Instant>,
     ) -> Result<usize> {
         debug!(
-            "Grpc handle write table begin, table:{}, row_num:{}",
+            "Execute insert plan begin, table:{}, row_num:{}",
             insert_plan.table.name(),
             insert_plan.rows.num_rows()
         );
@@ -416,93 +637,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: format!("Failed to find table, table:{table_name}"),
             })
-    }
-
-    async fn handle_auto_create_table(
-        &self,
-        request_id: RequestId,
-        schema: &str,
-        req: &WriteRequest,
-    ) -> Result<()> {
-        if !self.auto_create_table {
-            return Ok(());
-        }
-
-        let schema_config = self
-            .schema_config_provider
-            .schema_config(schema)
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Fail to fetch schema config, schema_name:{schema}"),
-            })?
-            .cloned()
-            .unwrap_or_default();
-
-        // TODO: Consider whether to build tables concurrently when there are too many
-        // tables.
-        for write_table_req in &req.table_requests {
-            let table_info = self
-                .router
-                .fetch_table_info(schema, &write_table_req.table)
-                .await?;
-            if table_info.is_some() {
-                continue;
-            }
-            self.create_table(
-                request_id,
-                self.instance.catalog_manager.default_catalog_name(),
-                schema,
-                write_table_req,
-                &schema_config,
-                None,
-            )
-            .await?;
-        }
-        Ok(())
-    }
-
-    async fn create_table(
-        &self,
-        request_id: RequestId,
-        catalog: &str,
-        schema: &str,
-        write_table_req: &WriteTableRequest,
-        schema_config: &SchemaConfig,
-        deadline: Option<Instant>,
-    ) -> Result<()> {
-        let provider = CatalogMetaProvider {
-            manager: self.instance.catalog_manager.clone(),
-            default_catalog: catalog,
-            default_schema: schema,
-            function_registry: &*self.instance.function_registry,
-        };
-        let frontend = Frontend::new(provider);
-        let mut ctx = FrontendContext::new(request_id, deadline);
-        let plan = frontend
-            .write_req_to_plan(&mut ctx, schema_config, write_table_req)
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!(
-                    "Failed to build creating table plan, table:{}",
-                    write_table_req.table
-                ),
-            })?;
-
-        debug!("Grpc handle create table begin, plan:{:?}", plan);
-
-        let output = self
-            .execute_plan(request_id, catalog, schema, plan, deadline)
-            .await;
-        output.and_then(|output| match output {
-            Output::AffectedRows(_) => Ok(()),
-            Output::Records(_) => ErrNoCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Invalid output type, expect AffectedRows, found Records",
-            }
-            .fail(),
-        })
     }
 
     async fn execute_add_columns_plan(

@@ -30,7 +30,7 @@ use std::{
 
 use ::http::StatusCode;
 use catalog::schema::{
-    CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, SchemaRef,
+    CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, SchemaRef,
 };
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
@@ -70,6 +70,7 @@ pub struct Proxy<Q> {
     schema_config_provider: SchemaConfigProviderRef,
     hotspot_recorder: Arc<HotspotRecorder>,
     engine_runtimes: Arc<EngineRuntimes>,
+    cluster_with_meta: bool,
 }
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
@@ -84,6 +85,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         schema_config_provider: SchemaConfigProviderRef,
         hotspot_config: hotspot::Config,
         engine_runtimes: Arc<EngineRuntimes>,
+        cluster_with_meta: bool,
     ) -> Self {
         let forwarder = Arc::new(Forwarder::new(
             forward_config,
@@ -104,11 +106,16 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             schema_config_provider,
             hotspot_recorder,
             engine_runtimes,
+            cluster_with_meta,
         }
     }
 
     pub fn instance(&self) -> InstanceRef<Q> {
         self.instance.clone()
+    }
+
+    fn default_catalog_name(&self) -> NameRef {
+        self.instance.catalog_manager.default_catalog_name()
     }
 
     async fn maybe_forward_prom_remote_query(
