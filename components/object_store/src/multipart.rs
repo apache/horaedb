@@ -175,7 +175,6 @@ where
     }
 
     /// Send all buffer data to object store in final stage.
-    /// This method is added by ceresdb, not naive `object_store` method.
     fn final_flush_buffer(mut self: Pin<&mut Self>) {
         let part_size = self.part_size;
         while !self.current_buffer.is_empty() {
@@ -193,7 +192,6 @@ where
     }
 
     /// Send buffer data to object store in write stage.
-    /// This method is added by ceresdb, not naive `object_store` method.
     fn flush_buffer(mut self: Pin<&mut Self>) {
         let part_size = self.part_size;
 
@@ -209,6 +207,42 @@ where
             }));
             self.current_part_idx += 1;
             // *enough_to_send = self.current_buffer.len() >= part_size;
+        }
+    }
+}
+
+/// The process of ObjectStore write multipart upload is:
+/// First, Call ObjectStore::multi_upload to begin multipart upload.
+/// Second, Call AsyncWrite::poll_write to wrtie buffer data to oject,this
+/// fuction can be called many times. Last, Call AsyncWrite::poll_shutdown to
+/// finish current mulipart upload. See more in
+/// [`analytic_engine::sst::parquet::writer::ParquetSstWriter::write`]
+impl<T> CloudMultiPartUpload<T>
+where
+    T: CloudMultiPartUploadImpl + Send + Sync,
+{
+    // The `poll_flush` function will only flush the in-progress tasks.
+    // The `final_flush` method called during `poll_shutdown` will flush
+    // the `current_buffer` along with in-progress tasks.
+    fn final_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), io::Error>> {
+        // Poll current tasks
+        self.as_mut().poll_tasks(cx)?;
+
+        // If current_buffer is not empty, see if it can be submitted
+        if !self.current_buffer.is_empty() && self.tasks.len() < self.max_concurrency {
+            self.as_mut().final_flush_buffer();
+        }
+
+        self.as_mut().poll_tasks(cx)?;
+
+        // If tasks and current_buffer are empty, return Ready
+        if self.tasks.is_empty() && self.current_buffer.is_empty() {
+            Poll::Ready(Ok(()))
+        } else {
+            Poll::Pending
         }
     }
 }
