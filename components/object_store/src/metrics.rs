@@ -11,7 +11,10 @@ use log::info;
 use prometheus::{exponential_buckets, register_histogram_vec, HistogramVec};
 use prometheus_static_metric::make_static_metric;
 use tokio::io::AsyncWrite;
-use upstream::{path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result};
+use upstream::{
+    path::Path, Error as StoreError, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore,
+    Result,
+};
 
 use crate::ObjectStoreRef;
 
@@ -69,6 +72,7 @@ lazy_static! {
         ObjectStoreThroughputHistogram::from(&OBJECT_STORE_THROUGHPUT_HISTOGRAM_VEC);
 }
 
+pub const METRICS: &str = "METRICS";
 /// A object store wrapper for collecting statistics about the underlying store.
 #[derive(Debug)]
 pub struct StoreWithMetrics {
@@ -113,7 +117,10 @@ impl ObjectStore for StoreWithMetrics {
             .runtime
             .spawn(async move { store.put_multipart(&loc).await })
             .await
-            .unwrap();
+            .map_err(|source| StoreError::Generic {
+                store: METRICS,
+                source: Box::new(source),
+            })?;
 
         info!(
             "Object store with metrics put_multipart cost:{}, location:{}, thread:{}-{:?}",
@@ -139,7 +146,10 @@ impl ObjectStore for StoreWithMetrics {
         self.runtime
             .spawn(async move { store.get(&loc).await })
             .await
-            .unwrap()
+            .map_err(|source| StoreError::Generic {
+                store: METRICS,
+                source: Box::new(source),
+            })?
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
@@ -154,8 +164,10 @@ impl ObjectStore for StoreWithMetrics {
             .runtime
             .spawn(async move { store.get_range(&loc, range.clone()).await })
             .await
-            .unwrap()
-            .unwrap();
+            .map_err(|source| StoreError::Generic {
+                store: METRICS,
+                source: Box::new(source),
+            })??;
         info!(
             "Object store with metrics get_range cost:{}, location:{}, thread:{}-{:?}",
             instant.elapsed().as_millis(),
@@ -190,7 +202,10 @@ impl ObjectStore for StoreWithMetrics {
             .runtime
             .spawn(async move { store.head(&loc).await })
             .await
-            .unwrap();
+            .map_err(|source| StoreError::Generic {
+                store: METRICS,
+                source: Box::new(source),
+            })?;
 
         info!(
             "Object store with metrics head cost:{}, location:{}",
@@ -207,7 +222,10 @@ impl ObjectStore for StoreWithMetrics {
         self.runtime
             .spawn(async move { store.delete(&loc).await })
             .await
-            .unwrap()
+            .map_err(|source| StoreError::Generic {
+                store: METRICS,
+                source: Box::new(source),
+            })?
     }
 
     async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
