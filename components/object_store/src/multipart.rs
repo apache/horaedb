@@ -2,7 +2,6 @@
 
 //! Implement multipart upload of [ObjectStore](upstream::ObjectStore), and most
 //! of the codes are forked from `arrow-rs`:https://github.com/apache/arrow-rs/blob/master/object_store/src/multipart.rs
-
 use std::{io, pin::Pin, sync::Arc, task::Poll};
 
 use async_trait::async_trait;
