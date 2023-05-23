@@ -74,13 +74,16 @@ pub struct ObkvObjectMeta {
     pub size: usize,
     /// The unique identifier for the object; For Obkv, it is composed with
     /// table_name @ path @ upload_id
-    pub e_tag: Option<String>,
+    pub unique_id: Option<String>,
     /// The size in bytes of one part. Note: maybe the size of last part less
     /// than part_size.
     pub part_size: usize,
     /// The paths of multi upload parts.
     pub parts: Vec<String>,
-    /// The version of object, come from the upload_id
+    /// The version of object, we use the upload_id as version.
+    /// TODO: Since `upload_id` is used by multiple objects, it may become very
+    /// large. Should we assign a version number to each object to avoid
+    /// this issue?
     pub version: String,
 }
 

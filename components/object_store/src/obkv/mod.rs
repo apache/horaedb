@@ -684,7 +684,7 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
             location: self.location.as_ref().to_string(),
             last_modified,
             size: self.size.load(Ordering::SeqCst) as usize,
-            e_tag: Some(format!(
+            unique_id: Some(format!(
                 "{}@{}@{}",
                 self.table_name, self.location, self.upload_id
             )),
