@@ -3,7 +3,7 @@
 use std::{io, pin::Pin, sync::Arc, task::Poll};
 
 /// Implement multipart upload of Object Store, which refer to `object-store` of
-/// `arrow-rs`.
+/// `arrow-rs`:https://github.com/apache/arrow-rs/blob/master/object_store/src/multipart.rs
 use async_trait::async_trait;
 use futures::{stream::FuturesUnordered, Future, StreamExt};
 use tokio::io::AsyncWrite;
@@ -113,19 +113,7 @@ where
 
         // If current_buffer is not empty, see if it can be submitted
         if !self.current_buffer.is_empty() && self.tasks.len() < self.max_concurrency {
-            let part_size = self.part_size;
-            while !self.current_buffer.is_empty() {
-                let size = part_size.min(self.current_buffer.len());
-                let out_buffer = self.current_buffer.drain(0..size).collect::<Vec<_>>();
-
-                let inner = Arc::clone(&self.inner);
-                let part_idx = self.current_part_idx;
-                self.tasks.push(Box::pin(async move {
-                    let upload_part = inner.put_multipart_part(out_buffer, part_idx).await?;
-                    Ok((part_idx, upload_part))
-                }));
-                self.current_part_idx += 1;
-            }
+            self.as_mut().final_flush_buffer();
         }
 
         self.as_mut().poll_tasks(cx)?;
@@ -135,6 +123,44 @@ where
             Poll::Ready(Ok(()))
         } else {
             Poll::Pending
+        }
+    }
+
+    /// Send all buffer data to object store in final stage.
+    /// This method is added by ceresdb, not naive `object_store` method.
+    fn final_flush_buffer(mut self: Pin<&mut Self>) {
+        let part_size = self.part_size;
+        while !self.current_buffer.is_empty() {
+            let size = part_size.min(self.current_buffer.len());
+            let out_buffer = self.current_buffer.drain(0..size).collect::<Vec<_>>();
+
+            let inner = Arc::clone(&self.inner);
+            let part_idx = self.current_part_idx;
+            self.tasks.push(Box::pin(async move {
+                let upload_part = inner.put_multipart_part(out_buffer, part_idx).await?;
+                Ok((part_idx, upload_part))
+            }));
+            self.current_part_idx += 1;
+        }
+    }
+
+    /// Send buffer data to object store in write stage.
+    /// This method is added by ceresdb, not naive `object_store` method.
+    fn flush_buffer(mut self: Pin<&mut Self>) {
+        let part_size = self.part_size;
+
+        // We will continuously submit tasks until size of the buffer is smaller than
+        // `part_size`.
+        while self.current_buffer.len() >= part_size {
+            let out_buffer = self.current_buffer.drain(0..part_size).collect::<Vec<_>>();
+            let inner = Arc::clone(&self.inner);
+            let part_idx = self.current_part_idx;
+            self.tasks.push(Box::pin(async move {
+                let upload_part = inner.put_multipart_part(out_buffer, part_idx).await?;
+                Ok((part_idx, upload_part))
+            }));
+            self.current_part_idx += 1;
+            // *enough_to_send = self.current_buffer.len() >= part_size;
         }
     }
 }
@@ -154,23 +180,12 @@ where
         // If adding buf to pending buffer would trigger send, check
         // whether we have capacity for another task.
         let part_size = self.part_size;
-        let mut enough_to_send = (buf.len() + self.current_buffer.len()) >= part_size;
+        let enough_to_send = (buf.len() + self.current_buffer.len()) >= part_size;
         if enough_to_send && self.tasks.len() < self.max_concurrency {
             // If we do, copy into the buffer and submit the task, and return ready.
             self.current_buffer.extend_from_slice(buf);
-            // We will continuously submit tasks until size of the buffer is smaller than
-            // `part_size`.
-            while enough_to_send {
-                let out_buffer = self.current_buffer.drain(0..part_size).collect::<Vec<_>>();
-                let inner = Arc::clone(&self.inner);
-                let part_idx = self.current_part_idx;
-                self.tasks.push(Box::pin(async move {
-                    let upload_part = inner.put_multipart_part(out_buffer, part_idx).await?;
-                    Ok((part_idx, upload_part))
-                }));
-                self.current_part_idx += 1;
-                enough_to_send = self.current_buffer.len() >= part_size;
-            }
+            // Flush buffer data, use custom method
+            self.as_mut().flush_buffer();
             // We need to poll immediately after adding to setup waker
             self.as_mut().poll_tasks(cx)?;
 
