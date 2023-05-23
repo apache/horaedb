@@ -13,7 +13,7 @@ type BoxedTryFuture<T> = Pin<Box<dyn Future<Output = Result<T, io::Error>> + Sen
 
 /// A trait that can be implemented by cloud-based objectstores
 /// and used in combination with [`CloudMultiPartUpload`] to provide
-/// multipart upload support
+/// multipart upload support.
 #[async_trait]
 pub trait CloudMultiPartUploadImpl: 'static {
     /// Upload a single part
