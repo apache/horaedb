@@ -1,3 +1,5 @@
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+
 use table_kv::{KeyBoundary, ScanRequest};
 
 /// Generate ScanRequest with prefix
