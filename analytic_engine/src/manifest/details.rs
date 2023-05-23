@@ -141,7 +141,13 @@ define_result!(Error);
 
 #[async_trait]
 trait MetaUpdateLogEntryIterator {
-    async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdate)>>;
+    async fn next_update(&mut self) -> Result<Option<MetaUpdateLogEntry>>;
+}
+
+pub struct MetaUpdateLogEntry {
+    pub sequence: SequenceNumber,
+    pub table_id: TableId,
+    pub meta_update: MetaUpdate,
 }
 
 /// Implementation of [`MetaUpdateLogEntryIterator`].
@@ -154,7 +160,7 @@ pub struct MetaUpdateReaderImpl {
 
 #[async_trait]
 impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
-    async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdate)>> {
+    async fn next_update(&mut self) -> Result<Option<MetaUpdateLogEntry>> {
         if !self.has_next {
             return Ok(None);
         }
@@ -170,7 +176,14 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
         }
 
         match self.buffer.pop_front() {
-            Some(entry) => Ok(Some((entry.sequence, entry.payload))),
+            Some(entry) => {
+                let log_entry = MetaUpdateLogEntry {
+                    sequence: entry.sequence,
+                    table_id: TableId::new(entry.table_id),
+                    meta_update: entry.payload,
+                };
+                Ok(Some(log_entry))
+            }
             None => {
                 self.has_next = false;
                 Ok(None)
@@ -226,7 +239,12 @@ where
         } else {
             MetaSnapshotBuilder::default()
         };
-        while let Some((seq, update)) = reader.next_update().await? {
+        while let Some(MetaUpdateLogEntry {
+            sequence: seq,
+            meta_update: update,
+            ..
+        }) = reader.next_update().await?
+        {
             latest_seq = seq;
             manifest_data_builder
                 .apply_update(update)
@@ -244,7 +262,12 @@ where
         let mut latest_seq = SequenceNumber::MIN;
         let mut manifest_data_builder = MetaSnapshotBuilder::default();
         let mut has_logs = false;
-        while let Some((seq, update)) = reader.next_update().await? {
+        while let Some(MetaUpdateLogEntry {
+            sequence: seq,
+            meta_update: update,
+            ..
+        }) = reader.next_update().await?
+        {
             latest_seq = seq;
             manifest_data_builder
                 .apply_update(update)
@@ -1244,14 +1267,16 @@ mod tests {
 
     #[derive(Debug, Clone)]
     struct MemLogStore {
+        table_id: TableId,
         logs: Arc<std::sync::Mutex<Vec<Option<MetaUpdate>>>>,
     }
 
     impl MemLogStore {
-        fn from_updates(updates: &[MetaUpdate]) -> Self {
+        fn from_updates(table_id: TableId, updates: &[MetaUpdate]) -> Self {
             let mut buf = Vec::with_capacity(updates.len());
             buf.extend(updates.iter().map(|v| Some(v.clone())));
             Self {
+                table_id,
                 logs: Arc::new(std::sync::Mutex::new(buf)),
             }
         }
@@ -1269,7 +1294,7 @@ mod tests {
 
     #[async_trait]
     impl MetaUpdateLogStore for MemLogStore {
-        type Iter = vec::IntoIter<(SequenceNumber, MetaUpdate)>;
+        type Iter = vec::IntoIter<MetaUpdateLogEntry>;
 
         async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter> {
             let logs = self.logs.lock().unwrap();
@@ -1281,7 +1306,13 @@ mod tests {
                 if idx < start || update.is_none() {
                     continue;
                 }
-                exist_logs.push((idx as u64, update.clone().unwrap()));
+
+                let log_entry = MetaUpdateLogEntry {
+                    sequence: idx as u64,
+                    table_id: self.table_id,
+                    meta_update: update.clone().unwrap(),
+                };
+                exist_logs.push(log_entry);
             }
 
             Ok(exist_logs.into_iter())
@@ -1308,9 +1339,9 @@ mod tests {
     #[async_trait]
     impl<T> MetaUpdateLogEntryIterator for T
     where
-        T: Iterator<Item = (SequenceNumber, MetaUpdate)> + Send + Sync,
+        T: Iterator<Item = MetaUpdateLogEntry> + Send + Sync,
     {
-        async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdate)>> {
+        async fn next_update(&mut self) -> Result<Option<MetaUpdateLogEntry>> {
             Ok(self.next())
         }
     }
@@ -1348,7 +1379,7 @@ mod tests {
         input_updates: Vec<MetaUpdate>,
         updates_after_snapshot: Vec<MetaUpdate>,
     ) {
-        let log_store = MemLogStore::from_updates(&input_updates);
+        let log_store = MemLogStore::from_updates(table_id, &input_updates);
         let snapshot_store = MemSnapshotStore::new();
         let snapshot_data_provider = ctx.mock_provider.clone();
 

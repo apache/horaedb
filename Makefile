@@ -32,6 +32,7 @@ build-arm64:
 build-with-console:
 	ls -alh
 	cd $(DIR); RUSTFLAGS="--cfg tokio_unstable" cargo build --release
+
 test:
 	cd $(DIR); cargo test --workspace -- --test-threads=4
 
