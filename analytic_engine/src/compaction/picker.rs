@@ -520,12 +520,15 @@ impl TimeWindowPicker {
                     // Sort by sstable file size
                     let mut sorted_files = bucket.to_vec();
                     sorted_files.sort_unstable_by_key(FileHandle::size);
-
-                    return Some(trim_to_threshold(
+                    let candidate_files = trim_to_threshold(
                         sorted_files,
                         size_tiered_opts.max_threshold,
                         max_input_sstable_size,
-                    ));
+                    );
+                    // At least 2 sst for compact
+                    if candidate_files.len() > 1 {
+                        return Some(candidate_files);
+                    }
                 } else {
                     debug!(
                         "No compaction necessary for bucket size {} , key {}, now {}",
