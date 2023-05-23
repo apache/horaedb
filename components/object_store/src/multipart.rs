@@ -1,10 +1,9 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+//! Implement multipart upload of [ObjectStore](upstream::ObjectStore), and most
+//! of the codes are forked from `arrow-rs`:https://github.com/apache/arrow-rs/blob/master/object_store/src/multipart.rs
 use std::{io, pin::Pin, sync::Arc, task::Poll};
 
-//! Implement multipart upload of [ObjectStore](upstream::ObjectStore), and most of the codes are forked from
-//! https://github.com/apache/arrow-rs/blob/a9b9c609d9db5c6dd2f20e92856d048bc20b7f14/object_store/src/multipart.rs
-/// `arrow-rs`:https://github.com/apache/arrow-rs/blob/master/object_store/src/multipart.rs
 use async_trait::async_trait;
 use futures::{stream::FuturesUnordered, Future, StreamExt};
 use tokio::io::AsyncWrite;
@@ -92,8 +91,8 @@ where
     }
 }
 
-/// [ Methods in this impl are added by ceresdb, not naive `object_store`
-/// method ].
+/// [ Note: Methods in this impl are added by ceresdb, not included in the
+/// `object_store` crate ].
 impl<T> CloudMultiPartUpload<T>
 where
     T: CloudMultiPartUploadImpl + Send + Sync,
