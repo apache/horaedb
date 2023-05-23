@@ -15,11 +15,8 @@ pub struct PartitionedRwLock<T> {
 }
 
 impl<T> PartitionedRwLock<T> {
-    // TODO: we should get the nearest 2^n of `partition_num` as real
-    // `partition_num`. By doing so, we can use "&" to get partition rather than
-    // "%".
-    pub fn new(t: T, partition_num: NonZeroUsize) -> Self {
-        let partition_num = partition_num.get();
+    pub fn new(t: T, partition_bit: NonZeroUsize) -> Self {
+        let partition_num = 1 << partition_bit.get();
         let locked_content = Arc::new(RwLock::new(t));
         Self {
             partitions: vec![locked_content; partition_num],
@@ -41,9 +38,9 @@ impl<T> PartitionedRwLock<T> {
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &RwLock<T> {
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
-        let partition_num = self.partitions.len();
+        let partition_mask = self.partitions.len() - 1;
 
-        &self.partitions[(hasher.finish() as usize) % partition_num]
+        &self.partitions[(hasher.finish() as usize) & partition_mask]
     }
 }
 
@@ -53,11 +50,8 @@ pub struct PartitionedMutex<T> {
 }
 
 impl<T> PartitionedMutex<T> {
-    // TODO: we should get the nearest 2^n of `partition_num` as real
-    // `partition_num`. By doing so, we can use "&" to get partition rather than
-    // "%".
-    pub fn new(t: T, partition_num: NonZeroUsize) -> Self {
-        let partition_num = partition_num.get();
+    pub fn new(t: T, partition_bit: NonZeroUsize) -> Self {
+        let partition_num = 1 << partition_bit.get();
         let locked_content = Arc::new(Mutex::new(t));
         Self {
             partitions: vec![locked_content; partition_num],
@@ -73,9 +67,9 @@ impl<T> PartitionedMutex<T> {
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &Mutex<T> {
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
-        let partition_num = self.partitions.len();
+        let partition_mask = self.partitions.len() - 1;
 
-        &self.partitions[(hasher.finish() as usize) % partition_num]
+        &self.partitions[(hasher.finish() as usize) & partition_mask]
     }
 }
 
@@ -88,7 +82,7 @@ mod tests {
     #[test]
     fn test_partitioned_rwlock() {
         let test_locked_map =
-            PartitionedRwLock::new(HashMap::new(), NonZeroUsize::new(10).unwrap());
+            PartitionedRwLock::new(HashMap::new(), NonZeroUsize::new(4).unwrap());
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
 
@@ -105,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_partitioned_mutex() {
-        let test_locked_map = PartitionedMutex::new(HashMap::new(), NonZeroUsize::new(10).unwrap());
+        let test_locked_map = PartitionedMutex::new(HashMap::new(), NonZeroUsize::new(4).unwrap());
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
 
