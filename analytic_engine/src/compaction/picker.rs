@@ -525,7 +525,7 @@ impl TimeWindowPicker {
                         size_tiered_opts.max_threshold,
                         max_input_sstable_size,
                     );
-                    // At least 2 sst for compact
+                    // At least 2 sst for compaction
                     if candidate_files.len() > 1 {
                         return Some(candidate_files);
                     }
@@ -612,6 +612,7 @@ mod tests {
         tests::build_schema,
         time::{TimeRange, Timestamp},
     };
+    use common_util::hash_map;
     use tokio::sync::mpsc;
 
     use super::*;
@@ -770,17 +771,17 @@ mod tests {
         }
     }
 
-    fn build_file_handles(sizes: Vec<u64>) -> Vec<FileHandle> {
+    fn build_file_handles(sizes: Vec<(u64, TimeRange)>) -> Vec<FileHandle> {
         let (tx, _rx) = mpsc::unbounded_channel();
 
         sizes
             .into_iter()
-            .map(|size| {
+            .map(|(size, time_range)| {
                 let file_meta = FileMeta {
-                    id: 1,
                     size,
+                    time_range,
+                    id: 1,
                     row_num: 0,
-                    time_range: TimeRange::empty(),
                     max_seq: 0,
                     storage_format: StorageFormat::default(),
                 };
@@ -792,7 +793,12 @@ mod tests {
 
     #[test]
     fn test_size_tiered_picker() {
-        let bucket = Bucket::with_files(build_file_handles(vec![100, 110, 200]));
+        let time_range = TimeRange::empty();
+        let bucket = Bucket::with_files(build_file_handles(vec![
+            (100, time_range),
+            (110, time_range),
+            (200, time_range),
+        ]));
 
         let (out_bucket, _) =
             SizeTieredPicker::trim_to_threshold_with_hotness(bucket.clone(), 10, 300);
@@ -835,5 +841,43 @@ mod tests {
         let bucket = Bucket::with_files(vec![]);
         assert_eq!(bucket.avg_size, 0);
         assert!(bucket.files.is_empty());
+    }
+
+    #[test]
+    fn test_time_window_newest_bucket() {
+        let size_tiered_opts = SizeTieredCompactionOptions::default();
+        // old bucket have enough sst for compaction
+        {
+            let old_bucket = build_file_handles(vec![
+                (102, TimeRange::new_unchecked_for_test(100, 200)),
+                (100, TimeRange::new_unchecked_for_test(100, 200)),
+                (101, TimeRange::new_unchecked_for_test(100, 200)),
+            ]);
+            let new_bucket = build_file_handles(vec![
+                (200, TimeRange::new_unchecked_for_test(200, 300)),
+                (201, TimeRange::new_unchecked_for_test(200, 300)),
+            ]);
+
+            let buckets = hash_map! { 100 => old_bucket, 200 => new_bucket };
+            let bucket = TimeWindowPicker::newest_bucket(buckets, size_tiered_opts, 200).unwrap();
+            assert_eq!(
+                vec![100, 101, 102],
+                bucket.into_iter().map(|f| f.size()).collect::<Vec<_>>()
+            );
+        }
+
+        // old bucket have only 1 sst, which is not enough for compaction
+        {
+            let old_bucket =
+                build_file_handles(vec![(100, TimeRange::new_unchecked_for_test(100, 200))]);
+            let new_bucket = build_file_handles(vec![
+                (200, TimeRange::new_unchecked_for_test(200, 300)),
+                (201, TimeRange::new_unchecked_for_test(200, 300)),
+            ]);
+
+            let buckets = hash_map! { 100 => old_bucket, 200 => new_bucket };
+            let bucket = TimeWindowPicker::newest_bucket(buckets, size_tiered_opts, 200);
+            assert_eq!(None, bucket);
+        }
     }
 }
