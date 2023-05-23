@@ -91,6 +91,49 @@ where
     }
 }
 
+/// [ Methods in this impl are added by ceresdb, not naive `object_store`
+/// method ].
+impl<T> CloudMultiPartUpload<T>
+where
+    T: CloudMultiPartUploadImpl + Send + Sync,
+{
+    /// Send all buffer data to object store in final stage.
+    fn final_flush_buffer(mut self: Pin<&mut Self>) {
+        let part_size = self.part_size;
+        while !self.current_buffer.is_empty() {
+            let size = part_size.min(self.current_buffer.len());
+            let out_buffer = self.current_buffer.drain(0..size).collect::<Vec<_>>();
+
+            let inner = Arc::clone(&self.inner);
+            let part_idx = self.current_part_idx;
+            self.tasks.push(Box::pin(async move {
+                let upload_part = inner.put_multipart_part(out_buffer, part_idx).await?;
+                Ok((part_idx, upload_part))
+            }));
+            self.current_part_idx += 1;
+        }
+    }
+
+    /// Send buffer data to object store in write stage.
+    fn flush_buffer(mut self: Pin<&mut Self>) {
+        let part_size = self.part_size;
+
+        // We will continuously submit tasks until size of the buffer is smaller than
+        // `part_size`.
+        while self.current_buffer.len() >= part_size {
+            let out_buffer = self.current_buffer.drain(0..part_size).collect::<Vec<_>>();
+            let inner = Arc::clone(&self.inner);
+            let part_idx = self.current_part_idx;
+            self.tasks.push(Box::pin(async move {
+                let upload_part = inner.put_multipart_part(out_buffer, part_idx).await?;
+                Ok((part_idx, upload_part))
+            }));
+            self.current_part_idx += 1;
+            // *enough_to_send = self.current_buffer.len() >= part_size;
+        }
+    }
+}
+
 /// The process of ObjectStore write multipart upload is:
 /// First, Call ObjectStore::multi_upload to begin multipart upload.
 /// Second, Call AsyncWrite::poll_write to wrtie buffer data to oject,this
@@ -123,44 +166,6 @@ where
             Poll::Ready(Ok(()))
         } else {
             Poll::Pending
-        }
-    }
-
-    /// Send all buffer data to object store in final stage.
-    /// This method is added by ceresdb, not naive `object_store` method.
-    fn final_flush_buffer(mut self: Pin<&mut Self>) {
-        let part_size = self.part_size;
-        while !self.current_buffer.is_empty() {
-            let size = part_size.min(self.current_buffer.len());
-            let out_buffer = self.current_buffer.drain(0..size).collect::<Vec<_>>();
-
-            let inner = Arc::clone(&self.inner);
-            let part_idx = self.current_part_idx;
-            self.tasks.push(Box::pin(async move {
-                let upload_part = inner.put_multipart_part(out_buffer, part_idx).await?;
-                Ok((part_idx, upload_part))
-            }));
-            self.current_part_idx += 1;
-        }
-    }
-
-    /// Send buffer data to object store in write stage.
-    /// This method is added by ceresdb, not naive `object_store` method.
-    fn flush_buffer(mut self: Pin<&mut Self>) {
-        let part_size = self.part_size;
-
-        // We will continuously submit tasks until size of the buffer is smaller than
-        // `part_size`.
-        while self.current_buffer.len() >= part_size {
-            let out_buffer = self.current_buffer.drain(0..part_size).collect::<Vec<_>>();
-            let inner = Arc::clone(&self.inner);
-            let part_idx = self.current_part_idx;
-            self.tasks.push(Box::pin(async move {
-                let upload_part = inner.put_multipart_part(out_buffer, part_idx).await?;
-                Ok((part_idx, upload_part))
-            }));
-            self.current_part_idx += 1;
-            // *enough_to_send = self.current_buffer.len() >= part_size;
         }
     }
 }
