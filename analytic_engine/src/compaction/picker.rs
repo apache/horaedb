@@ -160,6 +160,24 @@ fn find_uncompact_files(
         .collect()
 }
 
+// Trim the largest sstables off the end to meet the `max_threshold` and
+// `max_input_sstable_size`
+fn trim_to_threshold(
+    input_files: Vec<FileHandle>,
+    max_threshold: usize,
+    max_input_sstable_size: u64,
+) -> Vec<FileHandle> {
+    let mut input_size = 0;
+    input_files
+        .into_iter()
+        .take(max_threshold)
+        .take_while(|f| {
+            input_size += f.size();
+            input_size <= max_input_sstable_size
+        })
+        .collect()
+}
+
 /// Size tiered compaction strategy
 /// See https://github.com/jeffjirsa/twcs/blob/master/src/main/java/com/jeffjirsa/cassandra/db/compaction/SizeTieredCompactionStrategy.java
 #[derive(Default)]
@@ -394,18 +412,7 @@ impl SizeTieredPicker {
                 .reverse()
         });
 
-        // and then trim the coldest sstables off the end to meet the max_threshold
-        let len = sorted_files.len();
-        let mut input_size = 0;
-        let pruned_bucket: Vec<FileHandle> = sorted_files
-            .into_iter()
-            .take(std::cmp::min(max_threshold, len))
-            .take_while(|f| {
-                input_size += f.size();
-                input_size <= max_input_sstable_size
-            })
-            .collect();
-
+        let pruned_bucket = trim_to_threshold(sorted_files, max_threshold, max_input_sstable_size);
         // bucket hotness is the sum of the hotness of all sstable members
         let bucket_hotness = pruned_bucket.iter().map(Bucket::hotness).sum();
 
@@ -484,10 +491,12 @@ impl TimeWindowPicker {
 
         let all_keys: BTreeSet<_> = buckets.keys().collect();
 
+        // First compact latest buckets
         for key in all_keys.into_iter().rev() {
             if let Some(bucket) = buckets.get(key) {
                 debug!("Key {}, now {}", key, now);
 
+                let max_input_sstable_size = size_tiered_opts.max_input_sstable_size.as_byte();
                 if bucket.len() >= size_tiered_opts.min_threshold && *key >= now {
                     // If we're in the newest bucket, we'll use STCS to prioritize sstables
                     let buckets = SizeTieredPicker::get_buckets(
@@ -500,7 +509,7 @@ impl TimeWindowPicker {
                         buckets,
                         size_tiered_opts.min_threshold,
                         size_tiered_opts.max_threshold,
-                        size_tiered_opts.max_input_sstable_size.as_byte(),
+                        max_input_sstable_size,
                     );
 
                     if files.is_some() {
@@ -508,9 +517,14 @@ impl TimeWindowPicker {
                     }
                 } else if bucket.len() >= 2 && *key < now {
                     debug!("Bucket size {} >= 2 and not in current bucket, compacting what's here: {:?}", bucket.len(), bucket);
-                    return Some(Self::trim_to_threshold(
-                        bucket,
+                    // Sort by sstable file size
+                    let mut sorted_files = bucket.to_vec();
+                    sorted_files.sort_unstable_by_key(FileHandle::size);
+
+                    return Some(trim_to_threshold(
+                        sorted_files,
                         size_tiered_opts.max_threshold,
+                        max_input_sstable_size,
                     ));
                 } else {
                     debug!(
@@ -524,19 +538,6 @@ impl TimeWindowPicker {
         }
 
         None
-    }
-
-    fn trim_to_threshold(files: &[FileHandle], max_threshold: usize) -> Vec<FileHandle> {
-        // Sort by sstable file size
-        let mut sorted_files = files.to_vec();
-        sorted_files.sort_unstable_by_key(FileHandle::size);
-
-        // Trim the largest sstables off the end to meet the maxThreshold
-        let len = sorted_files.len();
-        sorted_files
-            .into_iter()
-            .take(std::cmp::min(max_threshold, len))
-            .collect()
     }
 
     /// Get current window timestamp, the caller MUST ensure the level has ssts,
@@ -577,7 +578,7 @@ impl LevelPicker for TimeWindowPicker {
 
         debug!("TWCS compaction options: {:?}", opts);
 
-        let (buckets, ts) = Self::get_buckets(
+        let (buckets, max_bucket_ts) = Self::get_buckets(
             &uncompact_files,
             &ctx.segment_duration,
             opts.timestamp_resolution,
@@ -589,8 +590,11 @@ impl LevelPicker for TimeWindowPicker {
             &ctx.segment_duration,
             opts.timestamp_resolution,
         );
-        debug!("now {}, max_ts: {}", now, ts);
-        assert!(now >= ts);
+        debug!(
+            "TWCS current window is {}, max_bucket_ts: {}",
+            now, max_bucket_ts
+        );
+        assert!(now >= max_bucket_ts);
 
         Self::newest_bucket(buckets, opts.size_tiered, now)
     }

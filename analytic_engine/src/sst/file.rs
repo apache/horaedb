@@ -253,7 +253,6 @@ impl fmt::Debug for FileHandle {
         f.debug_struct("FileHandle")
             .field("meta", &self.inner.meta)
             .field("being_compacted", &self.being_compacted())
-            .field("metrics", &self.inner.metrics)
             .finish()
     }
 }
