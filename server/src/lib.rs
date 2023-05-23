@@ -10,7 +10,7 @@ extern crate common_util;
 
 pub mod config;
 mod consts;
-pub(crate) mod error_util;
+mod error_util;
 mod grpc;
 mod http;
 pub mod local_tables;

@@ -6,11 +6,10 @@
 #![feature(trait_alias)]
 
 pub mod context;
-pub(crate) mod error;
-pub(crate) mod error_util;
-#[allow(dead_code)]
+mod error;
+mod error_util;
 pub mod forward;
-pub(crate) mod grpc;
+mod grpc;
 pub mod handlers;
 pub mod hotspot;
 mod hotspot_lru;
@@ -18,10 +17,10 @@ pub mod http;
 pub mod influxdb;
 pub mod instance;
 pub mod limiter;
-pub(crate) mod read;
+mod read;
 pub mod schema_config_provider;
-pub(crate) mod util;
-pub(crate) mod write;
+mod util;
+mod write;
 
 use std::{
     sync::Arc,
