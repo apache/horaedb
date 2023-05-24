@@ -13,6 +13,7 @@ pub mod aliyun;
 pub mod disk_cache;
 pub mod mem_cache;
 pub mod metrics;
+pub mod multipart;
 pub mod prefix;
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
