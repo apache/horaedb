@@ -286,14 +286,7 @@ impl Flusher {
         let flush_job = async move { flush_task.run().await };
 
         flush_scheduler
-            .flush_sequentially(
-                flush_job,
-                async {},
-                block_on,
-                opts,
-                &self.runtime,
-                table_data.clone(),
-            )
+            .flush_sequentially(flush_job, block_on, opts, &self.runtime, table_data.clone())
             .await
     }
 }
