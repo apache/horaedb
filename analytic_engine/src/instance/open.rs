@@ -326,7 +326,6 @@ impl Instance {
                     if table_data.should_flush_table(serial_exec) {
                         let opts = TableFlushOptions {
                             res_sender: None,
-                            compact_after_flush: None,
                             max_retry_flush_limit: self.max_retry_flush_limit,
                         };
                         let flusher = self.make_flusher();

@@ -31,9 +31,7 @@ use tokio::{sync::oneshot, time::Instant};
 use wal::manager::WalLocation;
 
 use crate::{
-    compaction::{
-        scheduler::CompactionSchedulerRef, CompactionInputFiles, CompactionTask, ExpiredFiles,
-    },
+    compaction::{CompactionInputFiles, CompactionTask, ExpiredFiles},
     instance::{self, serial_executor::TableFlushScheduler, SpaceStore, SpaceStoreRef},
     manifest::meta_edit::{
         AlterOptionsMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
@@ -144,10 +142,6 @@ pub struct TableFlushOptions {
     ///
     /// Default is None.
     pub res_sender: Option<oneshot::Sender<Result<()>>>,
-    /// Schedule a compaction request after flush if it is not [None].
-    ///
-    /// If it is [None], no compaction will be scheduled.
-    pub compact_after_flush: Option<CompactionSchedulerRef>,
     /// Max retry limit After flush failed
     ///
     /// Default is 0
@@ -158,7 +152,6 @@ impl fmt::Debug for TableFlushOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TableFlushOptions")
             .field("res_sender", &self.res_sender.is_some())
-            .field("compact_after_flush", &self.compact_after_flush.is_some())
             .finish()
     }
 }

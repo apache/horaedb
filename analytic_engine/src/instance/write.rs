@@ -592,7 +592,6 @@ impl<'a> Writer<'a> {
     async fn handle_memtable_flush(&mut self, table_data: &TableDataRef) -> Result<()> {
         let opts = TableFlushOptions {
             res_sender: None,
-            compact_after_flush: None,
             max_retry_flush_limit: self.instance.max_retry_flush_limit(),
         };
         let flusher = self.instance.make_flusher();

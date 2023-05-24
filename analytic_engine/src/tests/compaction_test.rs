@@ -70,14 +70,7 @@ fn test_table_compact_current_segment<T: EngineBuildContext>(engine_context: T) 
 
             // Flush table and generate sst.
             test_ctx
-                .flush_table_with_request(
-                    compact_test_table1,
-                    FlushRequest {
-                        // Don't trigger a compaction.
-                        compact_after_flush: false,
-                        sync: true,
-                    },
-                )
+                .flush_table_with_request(compact_test_table1, FlushRequest { sync: true })
                 .await;
         }
 
