@@ -2,6 +2,7 @@
 
 //! Implement multipart upload of [ObjectStore](upstream::ObjectStore), and most
 //! of the codes are forked from `arrow-rs`:https://github.com/apache/arrow-rs/blob/master/object_store/src/multipart.rs
+
 use std::{io, pin::Pin, sync::Arc, task::Poll};
 
 use async_trait::async_trait;
@@ -185,8 +186,7 @@ where
 
         // If adding buf to pending buffer would trigger send, check
         // whether we have capacity for another task.
-        let part_size = self.part_size;
-        let enough_to_send = (buf.len() + self.current_buffer.len()) >= part_size;
+        let enough_to_send = (buf.len() + self.current_buffer.len()) >= self.part_size;
         if enough_to_send && self.tasks.len() < self.max_concurrency {
             // If we do, copy into the buffer and submit the task, and return ready.
             self.current_buffer.extend_from_slice(buf);
