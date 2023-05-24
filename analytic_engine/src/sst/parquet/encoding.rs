@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{convert::TryFrom, mem, sync::Arc};
 
@@ -22,10 +22,10 @@ use common_util::{
 };
 use log::trace;
 use parquet::{
+    arrow::AsyncArrowWriter,
     basic::Compression,
     file::{metadata::KeyValue, properties::WriterProperties},
 };
-use parquet_ext::async_arrow_writer::AsyncArrowWriter;
 use prost::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use tokio::io::AsyncWrite;
