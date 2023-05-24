@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/pprof"
 
 	"github.com/CeresDB/ceresmeta/pkg/coderr"
 	"github.com/CeresDB/ceresmeta/pkg/log"
@@ -57,6 +58,16 @@ func (a *API) NewAPIRouter() *Router {
 	router.Put("/createCluster", a.createCluster)
 	router.Post("/updateCluster", a.updateCluster)
 	router.Get("/healthCheck", a.healthCheck)
+
+	// Register pprof API.
+	router.Get("/debug/pprof/profile", pprof.Profile)
+	router.Get("/debug/pprof/symbol", pprof.Symbol)
+	router.Get("/debug/pprof/trace", pprof.Trace)
+	router.Get("/debug/pprof/heap", a.pprofHeap)
+	router.Get("/debug/pprof/allocs", a.pprofAllocs)
+	router.Get("/debug/pprof/block", a.pprofBlock)
+	router.Get("/debug/pprof/goroutine", a.pprofGoroutine)
+	router.Get("/debug/pprof/threadCreate", a.pprofThreadcreate)
 
 	return router
 }
@@ -533,4 +544,24 @@ func (a *API) healthCheck(writer http.ResponseWriter, _ *http.Request) {
 		a.respondError(writer, ErrHealthCheck,
 			fmt.Sprintf("server heath check fail, status is %v", a.serverStatus.Get()))
 	}
+}
+
+func (a *API) pprofHeap(writer http.ResponseWriter, req *http.Request) {
+	pprof.Handler("heap").ServeHTTP(writer, req)
+}
+
+func (a *API) pprofAllocs(writer http.ResponseWriter, req *http.Request) {
+	pprof.Handler("allocs").ServeHTTP(writer, req)
+}
+
+func (a *API) pprofBlock(writer http.ResponseWriter, req *http.Request) {
+	pprof.Handler("block").ServeHTTP(writer, req)
+}
+
+func (a *API) pprofGoroutine(writer http.ResponseWriter, req *http.Request) {
+	pprof.Handler("goroutine").ServeHTTP(writer, req)
+}
+
+func (a *API) pprofThreadcreate(writer http.ResponseWriter, req *http.Request) {
+	pprof.Handler("threadcreate").ServeHTTP(writer, req)
 }
