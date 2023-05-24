@@ -15,6 +15,7 @@ default = ["arrow", "datafusion"]
 test = []
 
 [dependencies]
+ahash = "0.8.3"
 # In alphabetical order
 arrow = { workspace = true, optional = true }
 arrow_ext = { workspace = true }
@@ -30,4 +31,3 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 sqlparser = { workspace = true }
-ahash = "0.8.3"
