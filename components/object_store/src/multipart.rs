@@ -42,7 +42,8 @@ where
     /// A list of completed parts, in sequential order.
     completed_parts: Vec<Option<UploadPart>>,
     /// Part upload tasks currently running.
-    /// Every task upload part_size data to objectstore.
+    ///
+    /// Every task uploads data with `part_size` to objectstore.
     tasks: FuturesUnordered<BoxedTryFuture<(usize, UploadPart)>>,
     /// Maximum number of upload tasks to run concurrently
     max_concurrency: usize,
