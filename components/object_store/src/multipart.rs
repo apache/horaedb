@@ -48,7 +48,7 @@ where
     max_concurrency: usize,
     /// Buffer that will be sent in next upload.
     current_buffer: Vec<u8>,
-    /// Size of a part in bytes, size of last part may less than `part_size`.
+    /// Size of a part in bytes, size of last part may be smaller than `part_size`.
     part_size: usize,
     /// Index of current part
     current_part_idx: usize,
