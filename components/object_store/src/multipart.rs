@@ -178,16 +178,10 @@ where
     fn final_flush_buffer(mut self: Pin<&mut Self>) {
         let part_size = self.part_size;
         while !self.current_buffer.is_empty() {
-            let size = part_size.min(self.current_buffer.len());
+            let size = self.part_size.min(self.current_buffer.len());
             let out_buffer = self.current_buffer.drain(0..size).collect::<Vec<_>>();
 
-            let inner = Arc::clone(&self.inner);
-            let part_idx = self.current_part_idx;
-            self.tasks.push(Box::pin(async move {
-                let upload_part = inner.put_multipart_part(out_buffer, part_idx).await?;
-                Ok((part_idx, upload_part))
-            }));
-            self.current_part_idx += 1;
+            self.as_mut().submit_part_upload_task(out_buffer);
         }
     }
 
@@ -199,30 +193,37 @@ where
         // `part_size`.
         while self.current_buffer.len() >= part_size {
             let out_buffer = self.current_buffer.drain(0..part_size).collect::<Vec<_>>();
-            let inner = Arc::clone(&self.inner);
-            let part_idx = self.current_part_idx;
-            self.tasks.push(Box::pin(async move {
-                let upload_part = inner.put_multipart_part(out_buffer, part_idx).await?;
-                Ok((part_idx, upload_part))
-            }));
-            self.current_part_idx += 1;
+            self.as_mut().submit_part_upload_task(out_buffer);
         }
+    }
+
+    fn submit_part_upload_task(mut self: Pin<&mut Self>, out_buffer: Vec<u8>) {
+        let inner = Arc::clone(&self.inner);
+        let part_idx = self.current_part_idx;
+        self.tasks.push(Box::pin(async move {
+            let upload_part = inner.put_multipart_part(out_buffer, part_idx).await?;
+
+            Ok((part_idx, upload_part))
+        }));
+        self.current_part_idx += 1;
     }
 }
 
 /// The process of ObjectStore write multipart upload is:
-/// - Obtain a `AsyncWrite` by `ObjectStore::multi_upload` to begin multipart upload;
+/// - Obtain a `AsyncWrite` by `ObjectStore::multi_upload` to begin multipart
+///   upload;
 /// - Write all the data parts by `AsyncWrite::poll_write`;
 /// - Call `AsyncWrite::poll_shutdown` to finish current mulipart upload;
-/// 
-/// The `multi_upload` is used in [`analytic_engine::sst::parquet::writer::ParquetSstWriter::write`].
+///
+/// The `multi_upload` is used in
+/// [`analytic_engine::sst::parquet::writer::ParquetSstWriter::write`].
 impl<T> CloudMultiPartUpload<T>
 where
     T: CloudMultiPartUploadImpl + Send + Sync,
 {
     /// Compared with `poll_flush` which only flushes the in-progress tasks,
-    /// `final_flush` is called during `poll_shutdown`, and will flush the `current_buffer`
-    /// along with in-progress tasks.
+    /// `final_flush` is called during `poll_shutdown`, and will flush the
+    /// `current_buffer` along with in-progress tasks.
     fn final_flush(
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -231,7 +232,7 @@ where
         self.as_mut().poll_tasks(cx)?;
 
         // If current_buffer is not empty, see if it can be submitted
-        if !self.current_buffer.is_empty() && self.tasks.len() < self.max_concurrency {
+        if self.tasks.len() < self.max_concurrency {
             self.as_mut().final_flush_buffer();
         }
 
