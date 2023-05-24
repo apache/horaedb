@@ -7,7 +7,7 @@ import (
 )
 
 func checkAutoAddColumnsWithCreateTable(ctx context.Context, client ceresdb.Client) error {
-	timestampName := "t"
+	timestampName := "timestamp"
 
 	err := dropTable(ctx, client)
 	if err != nil {
