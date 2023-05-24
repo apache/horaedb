@@ -363,7 +363,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     }
 }
 
-fn build_column_schema(
+pub fn build_column_schema(
     column_name: &str,
     data_type: DatumKind,
     is_tag: bool,
@@ -537,7 +537,7 @@ fn ensure_data_type_compatible(
     Ok(())
 }
 
-fn try_get_data_type_from_value(value: &PbValue) -> Result<DatumKind> {
+pub fn try_get_data_type_from_value(value: &PbValue) -> Result<DatumKind> {
     match value {
         PbValue::Float64Value(_) => Ok(DatumKind::Double),
         PbValue::StringValue(_) => Ok(DatumKind::String),
@@ -555,6 +555,7 @@ fn try_get_data_type_from_value(value: &PbValue) -> Result<DatumKind> {
         PbValue::VarbinaryValue(_) => Ok(DatumKind::Varbinary),
     }
 }
+
 /// A planner wraps the datafusion's logical planner, and delegate sql like
 /// select/explain to datafusion's planner.
 pub(crate) struct PlannerDelegate<'a, P: MetaProvider> {
