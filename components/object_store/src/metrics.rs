@@ -7,7 +7,7 @@ use bytes::Bytes;
 use common_util::runtime::Runtime;
 use futures::stream::BoxStream;
 use lazy_static::lazy_static;
-use log::{debug, trace};
+use log::trace;
 use prometheus::{exponential_buckets, register_histogram_vec, HistogramVec};
 use prometheus_static_metric::make_static_metric;
 use tokio::io::AsyncWrite;
@@ -111,8 +111,6 @@ impl ObjectStore for StoreWithMetrics {
     ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.put_multipart.start_timer();
 
-        let thread_name = thread::current().name().unwrap_or("noname").to_string();
-        let thread_id = thread::current().id();
         let instant = Instant::now();
         let loc = location.clone();
         let store = self.store.clone();
@@ -129,8 +127,8 @@ impl ObjectStore for StoreWithMetrics {
             "Object store with metrics put_multipart cost:{}ms, location:{}, thread:{}-{:?}",
             instant.elapsed().as_millis(),
             location,
-            thread_name,
-            thread_id
+            thread::current().name().unwrap_or("noname").to_string(),
+            thread::current().id()
         );
         res
     }
@@ -158,8 +156,6 @@ impl ObjectStore for StoreWithMetrics {
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.get_range.start_timer();
 
-        let thread_name = thread::current().name().unwrap_or("noname").to_string();
-        let thread_id = thread::current().id();
         let instant = Instant::now();
         let store = self.store.clone();
         let loc = location.clone();
@@ -175,8 +171,8 @@ impl ObjectStore for StoreWithMetrics {
             "Object store with metrics get_range cost:{}ms, location:{}, thread:{}-{:?}",
             instant.elapsed().as_millis(),
             location,
-            thread_name,
-            thread_id
+            thread::current().name().unwrap_or("noname").to_string(),
+            thread::current().id()
         );
 
         OBJECT_STORE_THROUGHPUT_HISTOGRAM

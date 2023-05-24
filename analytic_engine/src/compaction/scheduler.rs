@@ -624,7 +624,7 @@ impl ScheduleWorker {
                 table_data.name, table_data.id, request_id
             );
 
-            // This will spawn a background job to purge ssts and avoid schedule thread
+            // This will add a compaction request to queue and avoid schedule thread
             // blocked.
             self.limit
                 .add_request(TableCompactionRequest::no_waiter(table_data));
