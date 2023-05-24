@@ -206,7 +206,6 @@ where
                 Ok((part_idx, upload_part))
             }));
             self.current_part_idx += 1;
-            // *enough_to_send = self.current_buffer.len() >= part_size;
         }
     }
 }
