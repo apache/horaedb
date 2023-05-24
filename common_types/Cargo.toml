@@ -15,8 +15,8 @@ default = ["arrow", "datafusion"]
 test = []
 
 [dependencies]
-ahash = "0.8.3"
 # In alphabetical order
+ahash = "0.8.3"
 arrow = { workspace = true, optional = true }
 arrow_ext = { workspace = true }
 byteorder = "1.2"
