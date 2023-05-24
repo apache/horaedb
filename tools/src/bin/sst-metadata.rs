@@ -54,14 +54,31 @@ async fn run(args: Args) -> Result<()> {
     let storage: ObjectStoreRef = Arc::new(storage);
     let prefix_path = Path::parse(args.dir)?;
     let mut ssts = storage.list(Some(&prefix_path)).await?;
+
+    let mut metas = Vec::new();
     while let Some(object_meta) = ssts.next().await {
-        let ObjectMeta { location, size, .. } = object_meta?;
-        let md = parse_metadata(&storage, &location, size).await?;
+        let object_meta = object_meta?;
+        let md = parse_metadata(&storage, &object_meta.location, object_meta.size).await?;
+        metas.push((object_meta, md));
+    }
+
+    // sort by time_range asc
+    metas.sort_unstable_by(|a, b| {
+        a.1.time_range
+            .inclusive_start()
+            .cmp(&b.1.time_range.inclusive_start())
+    });
+
+    for (object_meta, md) in metas {
+        let ObjectMeta { location, size, .. } = object_meta;
         let time_range = md.time_range;
         let start = format_as_ymdhms(time_range.inclusive_start().as_i64());
         let end = format_as_ymdhms(time_range.exclusive_end().as_i64());
         let seq = md.max_sequence;
-        println!("Location:{location}, time_range:[{start}, {end}), size:{size}, max_seq:{seq}");
+        println!(
+            "Location:{location}, time_range:[{start}, {end}), size:{size},
+    max_seq:{seq}"
+        );
     }
 
     Ok(())
