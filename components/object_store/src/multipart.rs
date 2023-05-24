@@ -93,8 +93,8 @@ where
     }
 }
 
-/// [ Note: Methods in this impl are added by ceresdb, not included in the
-/// `object_store` crate ].
+/// **Note: Methods in this impl are added by ceresdb, not included in the
+/// `object_store` crate.**
 impl<T> CloudMultiPartUpload<T>
 where
     T: CloudMultiPartUploadImpl + Send + Sync,
