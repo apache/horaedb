@@ -77,6 +77,9 @@ pub const METRICS: &str = "METRICS";
 #[derive(Debug)]
 pub struct StoreWithMetrics {
     store: ObjectStoreRef,
+    /// Use a separate runtime to execute object store methods;
+    /// Prevent computationally intensive tasks from occupying the runtime for a
+    /// long time and causing an increase in access time.
     runtime: Arc<Runtime>,
 }
 
