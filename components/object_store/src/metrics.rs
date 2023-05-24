@@ -7,7 +7,7 @@ use bytes::Bytes;
 use common_util::runtime::Runtime;
 use futures::stream::BoxStream;
 use lazy_static::lazy_static;
-use log::info;
+use log::{debug, trace};
 use prometheus::{exponential_buckets, register_histogram_vec, HistogramVec};
 use prometheus_static_metric::make_static_metric;
 use tokio::io::AsyncWrite;
@@ -125,7 +125,7 @@ impl ObjectStore for StoreWithMetrics {
                 source: Box::new(source),
             })?;
 
-        info!(
+        trace!(
             "Object store with metrics put_multipart cost:{}ms, location:{}, thread:{}-{:?}",
             instant.elapsed().as_millis(),
             location,
@@ -171,7 +171,7 @@ impl ObjectStore for StoreWithMetrics {
                 store: METRICS,
                 source: Box::new(source),
             })??;
-        info!(
+        trace!(
             "Object store with metrics get_range cost:{}ms, location:{}, thread:{}-{:?}",
             instant.elapsed().as_millis(),
             location,
@@ -210,7 +210,7 @@ impl ObjectStore for StoreWithMetrics {
                 source: Box::new(source),
             })?;
 
-        info!(
+        trace!(
             "Object store with metrics head cost:{}ms, location:{}",
             instant.elapsed().as_millis(),
             location

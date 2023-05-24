@@ -441,11 +441,8 @@ fn open_storage(
                     )
                     .context(OpenObjectStore)?,
                 );
-                let oss_with_metrics = Arc::new(StoreWithMetrics::new(oss, runtime));
-                Arc::new(
-                    StoreWithPrefix::new(aliyun_opts.prefix, oss_with_metrics)
-                        .context(OpenObjectStore)?,
-                ) as _
+                let store_with_prefix = StoreWithPrefix::new(aliyun_opts.prefix, oss);
+                Arc::new(store_with_prefix.context(OpenObjectStore)?) as _
             }
         };
 
@@ -466,6 +463,8 @@ fn open_storage(
                 .context(OpenObjectStore)?,
             ) as _;
         }
+
+        store = Arc::new(StoreWithMetrics::new(store, runtime));
 
         if opts.mem_cache_capacity.as_byte() > 0 {
             let mem_cache = Arc::new(
