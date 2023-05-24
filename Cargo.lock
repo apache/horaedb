@@ -1380,6 +1380,7 @@ dependencies = [
 name = "common_types"
 version = "1.2.0"
 dependencies = [
+ "ahash 0.8.3",
  "arrow 38.0.0",
  "arrow_ext",
  "byteorder",

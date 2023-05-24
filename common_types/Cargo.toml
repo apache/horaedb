@@ -30,3 +30,4 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 sqlparser = { workspace = true }
+ahash = "0.8.3"
