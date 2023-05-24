@@ -3,11 +3,11 @@
 //! Partitioned locks
 
 use std::{
-    collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
     sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
+use common_types::hash::AHasher;
 /// Simple partitioned `RwLock`
 pub struct PartitionedRwLock<T> {
     partitions: Vec<RwLock<T>>,
@@ -42,7 +42,7 @@ where
     }
 
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &RwLock<T> {
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = AHasher::default();
         key.hash(&mut hasher);
 
         &self.partitions[(hasher.finish() as usize) & self.partition_mask]
@@ -77,7 +77,7 @@ where
     }
 
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &Mutex<T> {
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = AHasher::default();
         key.hash(&mut hasher);
 
         &self.partitions[(hasher.finish() as usize) & self.partition_mask]
