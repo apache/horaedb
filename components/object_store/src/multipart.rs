@@ -50,8 +50,8 @@ where
     max_concurrency: usize,
     /// Buffer that will be sent in next upload.
     ///
-    /// TODO: Maybe we can use a list of Vec<u8> to ensure every buffer is aligned
-    /// with the part_size to avoid any extra copy in the future.
+    /// TODO: Maybe we can use a list of Vec<u8> to ensure every buffer is
+    /// aligned with the part_size to avoid any extra copy in the future.
     current_buffer: Vec<u8>,
     /// Size of a part in bytes, size of last part may be smaller than
     /// `part_size`.
@@ -193,9 +193,9 @@ where
         // The current buffer is not enough to send.
         if !enough_to_send {
             self.current_buffer.extend_from_slice(buf);
-            return Poll::Ready(Ok(buf.len()))
+            return Poll::Ready(Ok(buf.len()));
         }
-        
+
         if self.tasks.len() < self.max_concurrency {
             // If we do, copy into the buffer and submit the task, and return ready.
             self.current_buffer.extend_from_slice(buf);
