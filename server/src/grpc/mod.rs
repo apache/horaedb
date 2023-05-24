@@ -44,7 +44,7 @@ use crate::grpc::{
 mod meta_event_service;
 mod metrics;
 mod remote_engine_service;
-pub(crate) mod storage_service;
+mod storage_service;
 
 #[derive(Debug, Snafu)]
 pub enum Error {

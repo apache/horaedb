@@ -3,7 +3,7 @@
 //! Request handlers
 
 pub mod admin;
-pub(crate) mod error;
+mod error;
 
 mod prelude {
     pub use catalog::manager::Manager as CatalogManager;

@@ -669,7 +669,7 @@ impl ShardLockManager {
         OnExpired: FnOnce(ShardId) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
-        info!("Try to grant lock for shard:{shard_id}");
+        info!("Try to grant lock for shard, shard_id:{shard_id}");
 
         let mut shard_locks = self.shard_locks.write().await;
         if let Some(shard_lock) = shard_locks.get_mut(&shard_id) {
@@ -698,7 +698,7 @@ impl ShardLockManager {
             shard_locks.insert(shard_id, shard_lock);
         }
 
-        info!("Finish granting lock for shard:{shard_id}");
+        info!("Finish granting lock for shard, shard_id:{shard_id}");
         Ok(true)
     }
 
@@ -707,7 +707,7 @@ impl ShardLockManager {
     /// If the lock is not exist, return false. And the `on_lock_expired` won't
     /// be triggered.
     pub async fn revoke_lock(&self, shard_id: u32) -> Result<bool> {
-        info!("Try to revoke lock for shard:{shard_id}");
+        info!("Try to revoke lock for shard, shard_id:{shard_id}");
 
         let mut shard_locks = self.shard_locks.write().await;
         let shard_lock = shard_locks.remove(&shard_id);
@@ -716,7 +716,7 @@ impl ShardLockManager {
                 let mut etcd_client = self.etcd_client.clone();
                 v.revoke(&mut etcd_client).await?;
 
-                info!("Finish revoking lock for shard:{shard_id}");
+                info!("Finish revoking lock for shard, shard_id:{shard_id}");
                 Ok(true)
             }
             None => {

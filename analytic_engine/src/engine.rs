@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_util::error::BoxError;
-use log::{error, info};
+use log::{error, info, warn};
 use snafu::ResultExt;
 use table_engine::{
     engine::{
@@ -63,6 +63,10 @@ impl TableEngineImpl {
                     }
                     table_opt
                 });
+
+            if let Ok(None) = result {
+                warn!("Try to open a missing table, open request:{request:?}");
+            }
 
             open_results.push(result);
         }
