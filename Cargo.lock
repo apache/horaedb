@@ -6929,6 +6929,7 @@ dependencies = [
  "common_util",
  "env_logger",
  "futures 0.3.28",
+ "num_cpus",
  "object_store 1.2.0",
  "parquet",
  "parquet_ext",
