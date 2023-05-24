@@ -10,7 +10,10 @@ use analytic_engine::sst::{
 };
 use anyhow::Result;
 use clap::Parser;
-use common_util::runtime::{self, Runtime};
+use common_util::{
+    runtime::{self, Runtime},
+    time::format_as_ymdhms,
+};
 use futures::StreamExt;
 use object_store::{LocalFileSystem, ObjectMeta, ObjectStoreRef, Path};
 use parquet_ext::meta_data::fetch_parquet_metadata;
@@ -55,8 +58,10 @@ async fn run(args: Args) -> Result<()> {
         let ObjectMeta { location, size, .. } = object_meta?;
         let md = parse_metadata(&storage, &location, size).await?;
         let time_range = md.time_range;
+        let start = format_as_ymdhms(time_range.inclusive_start().as_i64());
+        let end = format_as_ymdhms(time_range.exclusive_end().as_i64());
         let seq = md.max_sequence;
-        println!("Location:{location}, time_range:{time_range:?}, size:{size}, max_seq:{seq}");
+        println!("Location:{location}, time_range:[{start}, {end}), size:{size}, max_seq:{seq}");
     }
 
     Ok(())
