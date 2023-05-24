@@ -42,7 +42,7 @@ func NewService(opTimeout time.Duration, h Handler) *Service {
 // Handler is needed by grpc service to process the requests.
 type Handler interface {
 	GetClusterManager() cluster.Manager
-	GetLeader(ctx context.Context) (*member.GetLeaderResp, error)
+	GetLeader(ctx context.Context) (member.GetLeaderAddrResp, error)
 	// TODO: define the methods for handling other grpc requests.
 }
 

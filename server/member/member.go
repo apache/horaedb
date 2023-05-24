@@ -11,6 +11,7 @@ import (
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metastoragepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
+	"github.com/pkg/errors"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
@@ -54,9 +55,9 @@ func NewMember(rootPath string, id uint64, name, endpoint string, etcdCli *clien
 	}
 }
 
-// GetLeader gets the leader of the cluster.
-// GetLeaderResp.Leader == nil if no leader found.
-func (m *Member) GetLeader(ctx context.Context) (*GetLeaderResp, error) {
+// getLeader gets the leader of the cluster.
+// getLeaderResp.Leader == nil if no leader found.
+func (m *Member) getLeader(ctx context.Context) (*getLeaderResp, error) {
 	ctx, cancel := context.WithTimeout(ctx, m.rpcTimeout)
 	defer cancel()
 	resp, err := m.etcdCli.Get(ctx, m.leaderKey)
@@ -67,7 +68,7 @@ func (m *Member) GetLeader(ctx context.Context) (*GetLeaderResp, error) {
 		return nil, ErrMultipleLeader
 	}
 	if len(resp.Kvs) == 0 {
-		return &GetLeaderResp{}, nil
+		return &getLeaderResp{}, nil
 	}
 	leaderKv := resp.Kvs[0]
 	leader := &metastoragepb.Member{}
@@ -76,7 +77,22 @@ func (m *Member) GetLeader(ctx context.Context) (*GetLeaderResp, error) {
 		return nil, ErrInvalidLeaderValue.WithCause(err)
 	}
 
-	return &GetLeaderResp{Leader: leader, Revision: leaderKv.ModRevision, IsLocal: leader.GetId() == m.ID}, nil
+	return &getLeaderResp{Leader: leader, Revision: leaderKv.ModRevision, IsLocal: leader.GetId() == m.ID}, nil
+}
+
+// GetLeaderAddr gets the leader address of the cluster with memory cache.
+// return error if no leader found.
+func (m *Member) GetLeaderAddr(_ context.Context) (GetLeaderAddrResp, error) {
+	if m.leader == nil {
+		return GetLeaderAddrResp{
+			LeaderEndpoint: "",
+			IsLocal:        false,
+		}, errors.WithMessage(ErrGetLeader, "no leader found")
+	}
+	return GetLeaderAddrResp{
+		LeaderEndpoint: m.leader.Endpoint,
+		IsLocal:        m.leader.GetId() == m.ID,
+	}, nil
 }
 
 func (m *Member) ResetLeader(ctx context.Context) error {
@@ -174,6 +190,12 @@ func (m *Member) CampaignAndKeepLeader(ctx context.Context, leaseTTLSec int64, c
 	}
 
 	m.logger.Info("[SetLeader]", zap.String("leader-key", m.leaderKey), zap.String("leader", m.Name))
+	// Update leader memory cache.
+	m.leader = &metastoragepb.Member{
+		Name:     m.Name,
+		Id:       m.ID,
+		Endpoint: m.Endpoint,
+	}
 
 	if callbacks != nil {
 		// The leader has been elected and trigger the callbacks.
@@ -229,8 +251,13 @@ func (m *Member) Marshal() (string, error) {
 	return string(bs), nil
 }
 
-type GetLeaderResp struct {
+type getLeaderResp struct {
 	Leader   *metastoragepb.Member
 	Revision int64
 	IsLocal  bool
+}
+
+type GetLeaderAddrResp struct {
+	LeaderEndpoint string
+	IsLocal        bool
 }

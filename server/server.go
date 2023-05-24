@@ -216,13 +216,13 @@ func (srv *Server) watchEtcdLeaderPriority(_ context.Context) {
 }
 
 func (srv *Server) createDefaultCluster(ctx context.Context) error {
-	leaderResp, err := srv.member.GetLeader(ctx)
+	resp, err := srv.member.GetLeaderAddr(ctx)
 	if err != nil {
 		log.Warn("get leader failed", zap.Error(err))
 	}
 
 	// Create default cluster by the leader.
-	if leaderResp.IsLocal {
+	if resp.IsLocal {
 		topologyType, err := metadata.ParseTopologyType(srv.cfg.TopologyType)
 		if err != nil {
 			return err
@@ -266,8 +266,9 @@ func (srv *Server) GetClusterManager() cluster.Manager {
 	return srv.clusterManager
 }
 
-func (srv *Server) GetLeader(ctx context.Context) (*member.GetLeaderResp, error) {
-	return srv.member.GetLeader(ctx)
+func (srv *Server) GetLeader(ctx context.Context) (member.GetLeaderAddrResp, error) {
+	// Get leader with cache.
+	return srv.member.GetLeaderAddr(ctx)
 }
 
 type leadershipEventCallbacks struct {
