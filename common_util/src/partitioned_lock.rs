@@ -5,12 +5,12 @@
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
-    sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 /// Simple partitioned `RwLock`
 pub struct PartitionedRwLock<T> {
-    partitions: Vec<Arc<RwLock<T>>>,
+    partitions: Vec<RwLock<T>>,
     partition_mask: usize,
 }
 
@@ -21,7 +21,7 @@ where
     pub fn new(t: T, partition_bit: usize) -> Self {
         let partition_num = 1 << partition_bit;
         let partitions = (0..partition_num)
-            .map(|_| Arc::new(RwLock::new(t.clone())))
+            .map(|_| RwLock::new(t.clone()))
             .collect::<Vec<_>>();
         Self {
             partitions,
@@ -51,7 +51,7 @@ where
 
 /// Simple partitioned `Mutex`
 pub struct PartitionedMutex<T> {
-    partitions: Vec<Arc<Mutex<T>>>,
+    partitions: Vec<Mutex<T>>,
     partition_mask: usize,
 }
 
@@ -62,7 +62,7 @@ where
     pub fn new(t: T, partition_bit: usize) -> Self {
         let partition_num = 1 << partition_bit;
         let partitions = (0..partition_num)
-            .map(|_| Arc::new(Mutex::new(t.clone())))
+            .map(|_| Mutex::new(t.clone()))
             .collect::<Vec<_>>();
         Self {
             partitions,
