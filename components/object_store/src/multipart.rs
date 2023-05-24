@@ -186,7 +186,13 @@ where
         // If adding buf to pending buffer would trigger send, check
         // whether we have capacity for another task.
         let enough_to_send = (buf.len() + self.current_buffer.len()) >= self.part_size;
-        if enough_to_send && self.tasks.len() < self.max_concurrency {
+        // The current buffer is not enough to send.
+        if !enough_to_send {
+            self.current_buffer.extend_from_slice(buf);
+            return Poll::Ready(Ok(buf.len()))
+        }
+        
+        if self.tasks.len() < self.max_concurrency {
             // If we do, copy into the buffer and submit the task, and return ready.
             self.current_buffer.extend_from_slice(buf);
             // Flush buffer data, use custom method
@@ -194,9 +200,6 @@ where
             // We need to poll immediately after adding to setup waker
             self.as_mut().poll_tasks(cx)?;
 
-            Poll::Ready(Ok(buf.len()))
-        } else if !enough_to_send {
-            self.current_buffer.extend_from_slice(buf);
             Poll::Ready(Ok(buf.len()))
         } else {
             // Waker registered by call to poll_tasks at beginning
