@@ -3,4 +3,4 @@
 mod prom_query;
 mod route;
 mod sql_query;
-pub(crate) mod write;
+mod write;

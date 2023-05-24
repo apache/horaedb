@@ -37,7 +37,7 @@ build-ceresdb:
 build-test:
 	cargo build
 
-build: build-ceresdb build-test build-meta
+build: build-ceresdb build-test
 
 kill-old-process:
 	killall ceresdb-server | true
@@ -45,13 +45,13 @@ kill-old-process:
 
 prepare: clean build kill-old-process
 
-run: prepare
+run: prepare build-meta
 	$(CERESDB_TEST_BINARY)
 
 run-local: prepare
 	CERESDB_ENV_FILTER=local $(CERESDB_TEST_BINARY)
 
-run-cluster: prepare
+run-cluster: prepare build-meta
 	CERESDB_ENV_FILTER=cluster $(CERESDB_TEST_BINARY)
 
 run-java:

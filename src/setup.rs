@@ -51,7 +51,7 @@ pub fn setup_logger(config: &Config) -> RuntimeLevel {
 
 /// Setup tracing with given `config`, returns the writer guard.
 pub fn setup_tracing(config: &Config) -> WorkerGuard {
-    tracing_util::init_tracing_with_file(&config.tracing, Rotation::NEVER)
+    tracing_util::init_tracing_with_file(&config.tracing, &config.node.addr, Rotation::NEVER)
 }
 
 fn build_runtime(name: &str, threads_num: usize) -> runtime::Runtime {
@@ -132,7 +132,7 @@ async fn run_server_with_runtimes<T>(
         .function_registry(function_registry)
         .limiter(limiter);
 
-    let engine_builder = T::default();
+    let wal_builder = T::default();
     let builder = match &config.cluster_deployment {
         None => {
             build_without_meta(
@@ -140,12 +140,12 @@ async fn run_server_with_runtimes<T>(
                 &StaticRouteConfig::default(),
                 builder,
                 engine_runtimes.clone(),
-                engine_builder,
+                wal_builder,
             )
             .await
         }
         Some(ClusterDeployment::NoMeta(v)) => {
-            build_without_meta(&config, v, builder, engine_runtimes.clone(), engine_builder).await
+            build_without_meta(&config, v, builder, engine_runtimes.clone(), wal_builder).await
         }
         Some(ClusterDeployment::WithMeta(cluster_config)) => {
             build_with_meta(
@@ -153,7 +153,7 @@ async fn run_server_with_runtimes<T>(
                 cluster_config,
                 builder,
                 engine_runtimes.clone(),
-                engine_builder,
+                wal_builder,
             )
             .await
         }

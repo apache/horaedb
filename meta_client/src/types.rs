@@ -104,6 +104,12 @@ pub struct TableInfo {
     pub partition_info: Option<PartitionInfo>,
 }
 
+impl TableInfo {
+    pub fn is_partition_table(&self) -> bool {
+        self.partition_info.is_some()
+    }
+}
+
 impl TryFrom<meta_service_pb::TableInfo> for TableInfo {
     type Error = Error;
 

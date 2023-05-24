@@ -325,7 +325,7 @@ fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch>
         })
         .collect::<Vec<_>>();
     let mills_schema = Schema {
-        fields: mills_fileds,
+        fields: mills_fileds.into(),
         metadata: schema.metadata().clone(),
     };
     let result =

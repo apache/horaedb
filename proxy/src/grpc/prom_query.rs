@@ -19,7 +19,7 @@ use common_types::{
 };
 use common_util::error::BoxError;
 use http::StatusCode;
-use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
+use interpreters::interpreter::Output;
 use log::info;
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
 use query_frontend::{
@@ -116,44 +116,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 msg: "Query is blocked",
             })?;
 
-        // Execute in interpreter
-        let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
-            // Use current ctx's catalog and schema as default catalog and schema
-            .default_catalog_and_schema(catalog.to_string(), schema)
-            .build();
-        let interpreter_factory = Factory::new(
-            self.instance.query_executor.clone(),
-            self.instance.catalog_manager.clone(),
-            self.instance.table_engine.clone(),
-            self.instance.table_manipulator.clone(),
-        );
-        let interpreter = interpreter_factory
-            .create(interpreter_ctx, plan)
+        let output = self
+            .execute_plan(request_id, catalog, &schema, plan, deadline)
+            .await
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to create interpreter",
+                msg: "Failed to execute plan",
             })?;
-
-        let output = if let Some(deadline) = deadline {
-            tokio::time::timeout_at(
-                tokio::time::Instant::from_std(deadline),
-                interpreter.execute(),
-            )
-            .await
-            .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::REQUEST_TIMEOUT,
-                msg: "Query timeout",
-            })?
-        } else {
-            interpreter.execute().await
-        }
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to execute interpreter",
-        })?;
 
         let resp = convert_output(output, column_name)
             .box_err()

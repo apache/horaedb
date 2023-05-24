@@ -434,7 +434,7 @@ impl RecordSchema {
             .columns
             .iter()
             .map(|col| col.to_arrow_field())
-            .collect();
+            .collect::<Vec<_>>();
         // Build arrow schema.
         let arrow_schema = Arc::new(ArrowSchema::new_with_metadata(
             fields,
@@ -1222,7 +1222,11 @@ impl Builder {
             );
         }
 
-        let fields = self.columns.iter().map(|c| c.to_arrow_field()).collect();
+        let fields = self
+            .columns
+            .iter()
+            .map(|c| c.to_arrow_field())
+            .collect::<Vec<_>>();
         let meta = self.build_arrow_schema_meta();
 
         Ok(Schema {

@@ -188,7 +188,7 @@ impl Flusher {
         table_data: &TableDataRef,
         opts: TableFlushOptions,
     ) -> Result<()> {
-        info!(
+        debug!(
             "Instance flush table, table_data:{:?}, flush_opts:{:?}",
             table_data, opts
         );
@@ -669,7 +669,7 @@ impl SpaceStore {
         }
 
         info!(
-            "try do compaction for table:{}#{}, estimated input files size:{}, input files number:{}",
+            "Try do compaction for table:{}#{}, estimated input files size:{}, input files number:{}",
             table_data.name,
             table_data.id,
             task.estimated_total_input_file_size(),

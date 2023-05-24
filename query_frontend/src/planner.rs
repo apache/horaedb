@@ -7,6 +7,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     convert::TryFrom,
     mem,
+    ops::ControlFlow,
     sync::Arc,
 };
 
@@ -41,8 +42,8 @@ use log::{debug, trace};
 use prom_remote_api::types::Query as PromRemoteQuery;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
-    ColumnDef, ColumnOption, Expr, Ident, Query, SetExpr, SqlOption, Statement as SqlStatement,
-    TableConstraint, UnaryOperator, Value, Values,
+    visit_statements_mut, ColumnDef, ColumnOption, Expr, Expr as SqlExpr, Ident, Query, SelectItem,
+    SetExpr, SqlOption, Statement as SqlStatement, TableConstraint, UnaryOperator, Value, Values,
 };
 use table_engine::table::TableRef;
 
@@ -565,10 +566,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         Self { meta_provider }
     }
 
-    pub(crate) fn sql_statement_to_plan(self, sql_stmt: SqlStatement) -> Result<Plan> {
+    pub(crate) fn sql_statement_to_plan(self, mut sql_stmt: SqlStatement) -> Result<Plan> {
         match sql_stmt {
             // Query statement use datafusion planner
             SqlStatement::Explain { .. } | SqlStatement::Query(_) => {
+                normalize_func_name(&mut sql_stmt);
                 self.sql_statement_to_datafusion_plan(sql_stmt)
             }
             SqlStatement::Insert { .. } => self.insert_to_plan(sql_stmt),
@@ -1014,6 +1016,34 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             .table(table_ref)
             .context(MetaProviderFindTable)
     }
+}
+
+// Datafusion only support lower-case function name when
+// `enable_ident_normalization` is `true`, but we want to
+// function case-insensitive, so add this normalization.
+fn normalize_func_name(sql_stmt: &mut SqlStatement) {
+    let normalize_expr = |expr: &mut SqlExpr| {
+        if let SqlExpr::Function(ref mut func) = expr {
+            for ident in &mut func.name.0 {
+                ident.value = ident.value.to_lowercase();
+            }
+        }
+    };
+
+    visit_statements_mut(sql_stmt, |stmt| {
+        if let SqlStatement::Query(q) = stmt {
+            if let SetExpr::Select(select) = q.body.as_mut() {
+                for projection in &mut select.projection {
+                    match projection {
+                        SelectItem::UnnamedExpr(ref mut expr) => normalize_expr(expr),
+                        SelectItem::ExprWithAlias { ref mut expr, .. } => normalize_expr(expr),
+                        SelectItem::QualifiedWildcard(_, _) | SelectItem::Wildcard(_) => {}
+                    }
+                }
+            }
+        }
+        ControlFlow::<()>::Continue(())
+    });
 }
 
 #[derive(Debug)]

@@ -38,7 +38,7 @@ use crate::grpc::{
     remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
 };
 
-pub(crate) mod error;
+mod error;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
