@@ -24,7 +24,7 @@ where
             .map(|_| Arc::new(RwLock::new(t.clone())))
             .collect::<Vec<_>>();
         Self {
-            partitions: partitions,
+            partitions,
             partition_mask: partition_num - 1,
         }
     }
@@ -65,7 +65,7 @@ where
             .map(|_| Arc::new(Mutex::new(t.clone())))
             .collect::<Vec<_>>();
         Self {
-            partitions: partitions,
+            partitions,
             partition_mask: partition_num - 1,
         }
     }
