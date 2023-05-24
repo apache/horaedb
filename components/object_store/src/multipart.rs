@@ -135,18 +135,18 @@ where
 }
 
 /// The process of ObjectStore write multipart upload is:
-/// First, Call ObjectStore::multi_upload to begin multipart upload.
-/// Second, Call AsyncWrite::poll_write to wrtie buffer data to oject,this
-/// fuction can be called many times. Last, Call AsyncWrite::poll_shutdown to
-/// finish current mulipart upload. See more in
-/// [`analytic_engine::sst::parquet::writer::ParquetSstWriter::write`]
+/// - Obtain a `AsyncWrite` by `ObjectStore::multi_upload` to begin multipart upload;
+/// - Write all the data parts by `AsyncWrite::poll_write`;
+/// - Call `AsyncWrite::poll_shutdown` to finish current mulipart upload;
+/// 
+/// The `multi_upload` is used in [`analytic_engine::sst::parquet::writer::ParquetSstWriter::write`].
 impl<T> CloudMultiPartUpload<T>
 where
     T: CloudMultiPartUploadImpl + Send + Sync,
 {
-    // The `poll_flush` function will only flush the in-progress tasks.
-    // The `final_flush` method called during `poll_shutdown` will flush
-    // the `current_buffer` along with in-progress tasks.
+    /// Compared with `poll_flush` which only flushes the in-progress tasks,
+    /// `final_flush` is called during `poll_shutdown`, and will flush the `current_buffer`
+    /// along with in-progress tasks.
     fn final_flush(
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
