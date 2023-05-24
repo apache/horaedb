@@ -332,7 +332,7 @@ impl FlushTask {
             .set_last_flush_time(time::current_time_millis());
 
         info!(
-            "Instance flush memtables done, table:{}, table_id:{}, request_id:{}, cost:{}",
+            "Instance flush memtables done, table:{}, table_id:{}, request_id:{}, cost:{}ms",
             self.table_data.name,
             self.table_data.id,
             request_id,

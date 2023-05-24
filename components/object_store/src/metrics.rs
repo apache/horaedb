@@ -123,7 +123,7 @@ impl ObjectStore for StoreWithMetrics {
             })?;
 
         info!(
-            "Object store with metrics put_multipart cost:{}, location:{}, thread:{}-{:?}",
+            "Object store with metrics put_multipart cost:{}ms, location:{}, thread:{}-{:?}",
             instant.elapsed().as_millis(),
             location,
             thread_name,
@@ -169,7 +169,7 @@ impl ObjectStore for StoreWithMetrics {
                 source: Box::new(source),
             })??;
         info!(
-            "Object store with metrics get_range cost:{}, location:{}, thread:{}-{:?}",
+            "Object store with metrics get_range cost:{}ms, location:{}, thread:{}-{:?}",
             instant.elapsed().as_millis(),
             location,
             thread_name,
@@ -208,7 +208,7 @@ impl ObjectStore for StoreWithMetrics {
             })?;
 
         info!(
-            "Object store with metrics head cost:{}, location:{}",
+            "Object store with metrics head cost:{}ms, location:{}",
             instant.elapsed().as_millis(),
             location
         );
