@@ -38,7 +38,11 @@ use ceresdbproto::storage::{
 use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID};
 use common_util::{error::BoxError, runtime::Runtime};
 use futures::FutureExt;
-use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
+use interpreters::{
+    context::Context as InterpreterContext,
+    factory::Factory,
+    interpreter::{InterpreterPtr, Output},
+};
 use log::{error, info};
 use query_engine::executor::Executor as QueryExecutor;
 use query_frontend::plan::Plan;
@@ -362,9 +366,45 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 msg: "Request is blocked",
             })?;
 
+        let interpreter =
+            self.build_interpreter(request_id, catalog, schema, plan, deadline, false)?;
+        Self::interpreter_execute_plan(interpreter, deadline).await
+    }
+
+    async fn execute_plan_involving_partition_table(
+        &self,
+        request_id: RequestId,
+        catalog: &str,
+        schema: &str,
+        plan: Plan,
+        deadline: Option<Instant>,
+    ) -> Result<Output> {
+        self.instance
+            .limiter
+            .try_limit(&plan)
+            .box_err()
+            .context(Internal {
+                msg: "Request is blocked",
+            })?;
+
+        let interpreter =
+            self.build_interpreter(request_id, catalog, schema, plan, deadline, true)?;
+        Self::interpreter_execute_plan(interpreter, deadline).await
+    }
+
+    fn build_interpreter(
+        &self,
+        request_id: RequestId,
+        catalog: &str,
+        schema: &str,
+        plan: Plan,
+        deadline: Option<Instant>,
+        enable_partition_table_access: bool,
+    ) -> Result<InterpreterPtr> {
         let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
             // Use current ctx's catalog and schema as default catalog and schema
             .default_catalog_and_schema(catalog.to_string(), schema.to_string())
+            .enable_partition_table_access(enable_partition_table_access)
             .build();
         let interpreter_factory = Factory::new(
             self.instance.query_executor.clone(),
@@ -372,13 +412,18 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             self.instance.table_engine.clone(),
             self.instance.table_manipulator.clone(),
         );
-        let interpreter = interpreter_factory
+        interpreter_factory
             .create(interpreter_ctx, plan)
             .box_err()
             .context(Internal {
                 msg: "Failed to create interpreter",
-            })?;
+            })
+    }
 
+    async fn interpreter_execute_plan(
+        interpreter: InterpreterPtr,
+        deadline: Option<Instant>,
+    ) -> Result<Output> {
         if let Some(deadline) = deadline {
             tokio::time::timeout_at(
                 tokio::time::Instant::from_std(deadline),
@@ -406,4 +451,5 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 pub struct Context {
     pub timeout: Option<Duration>,
     pub runtime: Arc<Runtime>,
+    pub enable_partition_table_access: bool,
 }
