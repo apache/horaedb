@@ -6,6 +6,7 @@ use std::{
     hash::{Hash, Hasher},
     sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
+
 /// Warning, do not use this hash in non-memory scenarios.
 use common_types::hash::AHasher;
 /// Simple partitioned `RwLock`
@@ -49,7 +50,7 @@ where
     }
 
     #[cfg(test)]
-    fn get_partition_by_index(&self, index: usize) -> &RwLock<T>{
+    fn get_partition_by_index(&self, index: usize) -> &RwLock<T> {
         &self.partitions[index]
     }
 }
@@ -88,7 +89,7 @@ where
     }
 
     #[cfg(test)]
-    fn get_partition_by_index(&self, index: usize) -> &Mutex<T>{
+    fn get_partition_by_index(&self, index: usize) -> &Mutex<T> {
         &self.partitions[index]
     }
 }
