@@ -15,6 +15,18 @@ use table_engine::table::TableId;
 
 use crate::{manifest::meta_edit::MetaEditRequest, space::SpaceId};
 
+#[derive(Debug, Clone)]
+pub struct RecoverRequest {
+    pub tables: Vec<TableInSpace>,
+    pub shard_id: ShardId,
+}
+
+#[derive(Debug, Clone)]
+pub struct TableInSpace {
+    pub table_id: TableId,
+    pub space_id: SpaceId,
+}
+
 #[derive(Debug)]
 pub struct LoadRequest {
     pub space_id: SpaceId,
@@ -23,6 +35,7 @@ pub struct LoadRequest {
 }
 
 pub type SnapshotRequest = LoadRequest;
+
 /// Manifest holds meta data of all tables.
 #[async_trait]
 pub trait Manifest: Send + Sync + fmt::Debug {
@@ -30,9 +43,16 @@ pub trait Manifest: Send + Sync + fmt::Debug {
     async fn apply_edit(&self, request: MetaEditRequest) -> GenericResult<()>;
 
     /// Recover table metas from storage.
-    async fn recover(&self, load_request: &LoadRequest) -> GenericResult<()>;
+    async fn recover(&self, load_req: &RecoverRequest) -> GenericResult<Vec<RecoverResult>>;
 
     async fn do_snapshot(&self, request: SnapshotRequest) -> GenericResult<()>;
 }
 
 pub type ManifestRef = Arc<dyn Manifest>;
+
+struct TableResult<T> {
+    pub table_id: TableId,
+    pub result: GenericResult<T>,
+}
+
+pub type RecoverResult = TableResult<()>;

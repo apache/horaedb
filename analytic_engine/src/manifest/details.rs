@@ -3,7 +3,7 @@
 //! Implementation of Manifest
 
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     fmt, mem,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -11,8 +11,9 @@ use std::{
     },
 };
 
+use arc_swap::ArcSwap;
 use async_trait::async_trait;
-use ceresdbproto::manifest as manifest_pb;
+use ceresdbproto::{manifest as manifest_pb, meta_storage::procedure_info::State};
 use common_util::{
     config::ReadableDuration,
     define_result,
@@ -35,12 +36,13 @@ use wal::{
     },
 };
 
+use super::{RecoverRequest, RecoverResult, TableResult};
 use crate::{
     manifest::{
         meta_edit::{
             MetaEdit, MetaEditRequest, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload, Snapshot,
         },
-        meta_snapshot::{MetaSnapshot, MetaSnapshotBuilder},
+        meta_snapshot::{self, MetaSnapshot, MetaSnapshotBuilder},
         LoadRequest, Manifest, SnapshotRequest,
     },
     space::SpaceId,
@@ -210,79 +212,188 @@ pub(crate) trait TableMetaSet: fmt::Debug + Send + Sync {
 /// Usually, it will recover the snapshot from storage(like disk, oss, etc).
 // TODO: remove `LogStore` and related operations, it should be called directly but not in the
 // `SnapshotReoverer`.
-#[derive(Debug, Clone)]
-struct SnapshotRecoverer<LogReader, SnapshotStore> {
-    log_store: LogReader,
-    snapshot_store: SnapshotStore,
+#[derive(Debug)]
+struct SnapshotRecoverer {
+    wal_manager: WalManagerRef,
+    object_store: ObjectStoreRef,
+    request: RecoverRequest,
+    states: HashMap<TableId, RecoverState>,
 }
 
-impl<LogReader, SnapshotStore> SnapshotRecoverer<LogReader, SnapshotStore>
-where
-    LogReader: MetaUpdateLogReader + Send + Sync,
-    SnapshotStore: MetaUpdateSnapshotStore + Send + Sync,
-{
-    async fn recover(&self) -> Result<Option<Snapshot>> {
-        // Load the current snapshot first.
-        match self.snapshot_store.load().await? {
-            Some(v) => Ok(Some(self.create_latest_snapshot_with_prev(v).await?)),
-            None => self.create_latest_snapshot_without_prev().await,
+#[derive(Debug)]
+enum RecoverState {
+    FromSnapshotStore,
+    FromLogStore {
+        latest_seq: SequenceNumber,
+        meta_snapshot_builder: MetaSnapshotBuilder,
+        is_empty: bool,
+    },
+    Failed {
+        err: GenericError,
+    },
+    Success(Option<Snapshot>),
+}
+
+pub type SnapshotRecoverResult = TableResult<Option<Snapshot>>;
+
+impl SnapshotRecoverer {
+    async fn recover_from_snapshot(&mut self) -> Result<()> {
+        info!(
+            "Manifest recover from snapshot store, request:{:?}",
+            self.request
+        );
+        // Pull all snapshots concurrently.
+        let load_snapshots = self
+            .request
+            .tables
+            .iter()
+            .map(|table| {
+                let snapshot_store = ObjectStoreBasedSnapshotStore {
+                    store: self.object_store.clone(),
+                    snapshot_path: ObjectStoreBasedSnapshotStore::snapshot_path(
+                        table.space_id,
+                        table.table_id,
+                    ),
+                };
+
+                let table_id = table.table_id;
+                async move { (table.table_id, snapshot_store.load().await) }
+            })
+            .collect::<Vec<_>>();
+        let results = futures::future::join_all(load_snapshots).await;
+
+        // Update state according to the pull results.
+        for (table_id, result) in results {
+            let state = self.states.get_mut(&table_id).expect("table id must exist");
+            assert!(matches!(state, RecoverState::FromSnapshotStore));
+
+            match result {
+                Ok(snapshot_opt) => {
+                    let mut is_empty = true;
+                    let (latest_seq, meta_snapshot_builder) = match snapshot_opt {
+                        Some(snapshot) => {
+                            is_empty = false;
+                            match snapshot.data {
+                                Some(data) => (
+                                    snapshot.end_seq,
+                                    MetaSnapshotBuilder::new(
+                                        Some(data.table_meta),
+                                        data.version_meta,
+                                    ),
+                                ),
+                                None => (snapshot.end_seq, MetaSnapshotBuilder::default()),
+                            }
+                        }
+                        None => (SequenceNumber::MIN, MetaSnapshotBuilder::default()),
+                    };
+                    *state = RecoverState::FromLogStore {
+                        latest_seq,
+                        meta_snapshot_builder,
+                        is_empty,
+                    };
+                }
+                Err(e) => {
+                    *state = RecoverState::Failed { err: Box::new(e) };
+                }
+            }
         }
+
+        Ok(())
     }
 
-    async fn create_latest_snapshot_with_prev(&self, prev_snapshot: Snapshot) -> Result<Snapshot> {
-        let log_start_boundary = ReadBoundary::Excluded(prev_snapshot.end_seq);
-        let mut reader = self.log_store.scan(log_start_boundary).await?;
+    async fn recover_from_log(&mut self) -> Result<()> {
+        info!(
+            "Manifest recover from log store, request:{:?}",
+            self.request
+        );
 
-        let mut latest_seq = prev_snapshot.end_seq;
-        let mut manifest_data_builder = if let Some(v) = prev_snapshot.data {
-            MetaSnapshotBuilder::new(Some(v.table_meta), v.version_meta)
-        } else {
-            MetaSnapshotBuilder::default()
+        let shard_log_reader = WalBasedLogShardReader {
+            opts: Options::default(),
+            region_id: self.request.shard_id as RegionId,
+            wal_manager: self.wal_manager.clone(),
         };
+        let mut shard_log_reader = shard_log_reader.scan(ReadBoundary::Min).await?;
+
         while let Some(MetaUpdateLogEntry {
+            table_id,
             sequence: seq,
             meta_update: update,
-            ..
-        }) = reader.next_update().await?
+        }) = shard_log_reader.next_update().await?
         {
-            latest_seq = seq;
-            manifest_data_builder
-                .apply_update(update)
-                .context(ApplyUpdate)?;
+            if let Some(state) = self.states.get_mut(&table_id) {
+                match state {
+                    RecoverState::FromLogStore {
+                        latest_seq,
+                        meta_snapshot_builder,
+                        is_empty,
+                    } => {
+                        *latest_seq = seq;
+                        *is_empty = false;
+                        if let Err(e) = meta_snapshot_builder.apply_update(update) {
+                            *state = RecoverState::Failed { err: Box::new(e) }
+                        }
+                    }
+                    RecoverState::Failed { .. } => {}
+                    RecoverState::Success { .. } | RecoverState::FromSnapshotStore => {
+                        unreachable!();
+                    }
+                }
+            }
         }
-        Ok(Snapshot {
-            end_seq: latest_seq,
-            data: manifest_data_builder.build(),
-        })
+
+        for (table_id, state) in self.states.iter_mut() {
+            if let RecoverState::FromLogStore {
+                latest_seq,
+                meta_snapshot_builder,
+                is_empty,
+            } = state
+            {
+                let snapshot = if *is_empty {
+                    None
+                } else {
+                    let meta_snapshot_builder = std::mem::take(meta_snapshot_builder);
+                    let meta_snapshot = meta_snapshot_builder.build();
+                    Some(Snapshot {
+                        end_seq: *latest_seq,
+                        data: meta_snapshot,
+                    })
+                };
+                *state = RecoverState::Success(snapshot);
+            }
+        }
+
+        Ok(())
     }
 
-    async fn create_latest_snapshot_without_prev(&self) -> Result<Option<Snapshot>> {
-        let mut reader = self.log_store.scan(ReadBoundary::Min).await?;
+    async fn recover(&mut self) -> Result<Vec<SnapshotRecoverResult>> {
+        info!(
+            "Manifest start to recover from storage, request:{:?}",
+            self.request
+        );
 
-        let mut latest_seq = SequenceNumber::MIN;
-        let mut manifest_data_builder = MetaSnapshotBuilder::default();
-        let mut has_logs = false;
-        while let Some(MetaUpdateLogEntry {
-            sequence: seq,
-            meta_update: update,
-            ..
-        }) = reader.next_update().await?
-        {
-            latest_seq = seq;
-            manifest_data_builder
-                .apply_update(update)
-                .context(ApplyUpdate)?;
-            has_logs = true;
-        }
+        self.recover_from_snapshot().await?;
+        self.recover_from_log().await?;
+        let states = std::mem::take(&mut self.states);
 
-        if has_logs {
-            Ok(Some(Snapshot {
-                end_seq: latest_seq,
-                data: manifest_data_builder.build(),
-            }))
-        } else {
-            Ok(None)
-        }
+        let table_results = states
+            .into_iter()
+            .map(|(table_id, state)| {
+                let result = match state {
+                    RecoverState::Failed { err } => Err(err),
+                    RecoverState::Success(snapshot_opt) => Ok(snapshot_opt),
+                    RecoverState::FromSnapshotStore | RecoverState::FromLogStore { .. } => {
+                        unreachable!()
+                    }
+                };
+                SnapshotRecoverResult { table_id, result }
+            })
+            .collect();
+
+        info!(
+            "Manifest finish to recover from storage, request:{:?}",
+            self.request
+        );
+        Ok(table_results)
     }
 }
 
@@ -496,39 +607,61 @@ impl Manifest for ManifestImpl {
         self.table_meta_set.apply_edit_to_table(request).box_err()
     }
 
-    async fn recover(&self, load_req: &LoadRequest) -> GenericResult<()> {
+    async fn recover(&self, load_req: &RecoverRequest) -> GenericResult<Vec<RecoverResult>> {
         info!("Manifest recover, request:{:?}", load_req);
 
-        // Load table meta snapshot from storage.
-        let location = WalLocation::new(load_req.shard_id as u64, load_req.table_id.as_u64());
-
-        let log_store = WalBasedLogTableReader {
-            opts: self.opts.clone(),
-            location,
+        let states = load_req
+            .tables
+            .iter()
+            .map(|table| (table.table_id, RecoverState::FromSnapshotStore))
+            .collect::<HashMap<_, _>>();
+        let mut recoverer = SnapshotRecoverer {
             wal_manager: self.wal_manager.clone(),
+            object_store: self.store.clone(),
+            request: (*load_req).clone(),
+            states,
         };
-        let snapshot_store = ObjectStoreBasedSnapshotStore::new(
-            load_req.space_id,
-            load_req.table_id,
-            self.store.clone(),
-        );
-        let reoverer = SnapshotRecoverer {
-            log_store,
-            snapshot_store,
-        };
-        let meta_snapshot_opt = reoverer.recover().await?.and_then(|v| v.data);
+        let recover_results = recoverer.recover().await.box_err()?;
 
         // Apply it to table.
-        if let Some(snapshot) = meta_snapshot_opt {
-            let meta_edit = MetaEdit::Snapshot(snapshot);
-            let request = MetaEditRequest {
-                shard_info: TableShardInfo::new(load_req.shard_id),
-                meta_edit,
-            };
-            self.table_meta_set.apply_edit_to_table(request)?;
+        let mut final_results = Vec::with_capacity(recover_results.len());
+        for recover_result in recover_results {
+            match recover_result.result {
+                Ok(Some(snapshot)) => {
+                    if let Some(snapshot) = snapshot.data {
+                        let meta_edit = MetaEdit::Snapshot(snapshot);
+                        let request = MetaEditRequest {
+                            shard_info: TableShardInfo::new(load_req.shard_id),
+                            meta_edit,
+                        };
+                        if let Err(e) = self.table_meta_set.apply_edit_to_table(request).box_err() {
+                            final_results.push(RecoverResult {
+                                table_id: recover_result.table_id,
+                                result: Err(e),
+                            });
+                        }
+                    } else {
+                        warn!(
+                            "Manifest try recover a table has not exist, table_id:{}",
+                            recover_result.table_id
+                        );
+                    }
+                    final_results.push(RecoverResult {
+                        table_id: recover_result.table_id,
+                        result: Ok(()),
+                    })
+                }
+
+                Ok(None) => {}
+
+                Err(e) => final_results.push(RecoverResult {
+                    table_id: recover_result.table_id,
+                    result: Err(e),
+                }),
+            }
         }
 
-        Ok(())
+        Ok(final_results)
     }
 
     async fn do_snapshot(&self, request: SnapshotRequest) -> GenericResult<()> {
@@ -548,26 +681,26 @@ impl Manifest for ManifestImpl {
 }
 
 #[async_trait]
-trait MetaUpdateLogWriter: std::fmt::Debug {
+trait MetaUpdateLogWriter: std::fmt::Debug + Clone {
     async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber>;
 
     async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()>;
 }
 
 #[async_trait]
-trait MetaUpdateLogReader: std::fmt::Debug {
+trait MetaUpdateLogReader: std::fmt::Debug + Clone {
     type Iter: MetaUpdateLogEntryIterator + Send;
     async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter>;
 }
 
 #[async_trait]
-trait MetaUpdateSnapshotStore: std::fmt::Debug {
+trait MetaUpdateSnapshotStore: std::fmt::Debug + Clone {
     async fn store(&self, snapshot: &Snapshot) -> Result<()>;
 
     async fn load(&self) -> Result<Option<Snapshot>>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ObjectStoreBasedSnapshotStore {
     store: ObjectStoreRef,
     snapshot_path: Path,
@@ -774,7 +907,7 @@ mod tests {
                 AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEdit,
                 MetaUpdate, VersionEditMeta,
             },
-            LoadRequest, Manifest,
+            LoadRequest, Manifest, TableInSpace,
         },
         table::data::TableShardInfo,
         TableOptions,
@@ -911,22 +1044,22 @@ mod tests {
 
         async fn check_table_manifest_data_with_manifest(
             &self,
-            load_req: &LoadRequest,
+            recover_req: &RecoverRequest,
             expected: &Option<MetaSnapshot>,
             manifest: &ManifestImpl,
         ) {
-            manifest.recover(load_req).await.unwrap();
+            manifest.recover(recover_req).await.unwrap();
             let data = self.mock_provider.builder.lock().unwrap().clone().build();
             assert_eq!(&data, expected);
         }
 
         async fn check_table_manifest_data(
             &self,
-            load_req: &LoadRequest,
+            recover_req: &RecoverRequest,
             expected: &Option<MetaSnapshot>,
         ) {
             let manifest = self.open_manifest().await;
-            self.check_table_manifest_data_with_manifest(load_req, expected, &manifest)
+            self.check_table_manifest_data_with_manifest(recover_req, expected, &manifest)
                 .await;
         }
 
@@ -1147,14 +1280,15 @@ mod tests {
             let mut manifest_data_builder = MetaSnapshotBuilder::default();
 
             update_table_meta(&ctx, table_id, &mut manifest_data_builder).await;
-
-            let load_req = LoadRequest {
-                table_id,
-                shard_id: DEFAULT_SHARD_ID,
-                space_id: ctx.schema_id.as_u32(),
+            let recover_req = RecoverRequest {
+                tables: vec![TableInSpace {
+                    table_id,
+                    space_id: DEFAULT_SHARD_ID,
+                }],
+                shard_id: ctx.schema_id.as_u32(),
             };
             let expected_table_manifest_data = manifest_data_builder.build();
-            ctx.check_table_manifest_data(&load_req, &expected_table_manifest_data)
+            ctx.check_table_manifest_data(&recover_req, &expected_table_manifest_data)
                 .await;
         })
     }
@@ -1241,13 +1375,15 @@ mod tests {
                 &manifest,
             )
             .await;
-            let load_req = LoadRequest {
-                space_id: ctx.schema_id.as_u32(),
-                table_id,
-                shard_id: DEFAULT_SHARD_ID,
+            let recover_req = RecoverRequest {
+                tables: vec![TableInSpace {
+                    table_id,
+                    space_id: DEFAULT_SHARD_ID,
+                }],
+                shard_id: ctx.schema_id.as_u32(),
             };
             ctx.check_table_manifest_data_with_manifest(
-                &load_req,
+                &recover_req,
                 &manifest_data_builder.build(),
                 &manifest,
             )
@@ -1261,9 +1397,8 @@ mod tests {
         let runtime = ctx.runtime.clone();
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
-            let load_req = LoadRequest {
-                space_id: ctx.schema_id.as_u32(),
-                table_id,
+            let recover_req = RecoverRequest {
+                tables: vec![TableInSpace { table_id, space_id: ctx.schema_id.as_u32() }],
                 shard_id: DEFAULT_SHARD_ID,
             };
             let mut manifest_data_builder = MetaSnapshotBuilder::default();
@@ -1281,7 +1416,7 @@ mod tests {
                 .await;
             }
             ctx.check_table_manifest_data_with_manifest(
-                &load_req,
+                &recover_req,
                 &manifest_data_builder.clone().build(),
                 &manifest,
             )
@@ -1302,7 +1437,7 @@ mod tests {
                 .await;
             }
             ctx.check_table_manifest_data_with_manifest(
-                &load_req,
+                &recover_req,
                 &manifest_data_builder.build(),
                 &manifest,
             )
@@ -1529,8 +1664,8 @@ mod tests {
         snapshot_store: &MemSnapshotStore,
     ) -> Option<Snapshot> {
         let recoverer = SnapshotRecoverer {
-            log_store: log_store.clone(),
-            snapshot_store: snapshot_store.clone(),
+            // log_store: log_store.clone(),
+            // snapshot_store: snapshot_store.clone(),
         };
         recoverer.recover().await.unwrap()
     }
