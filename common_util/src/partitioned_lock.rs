@@ -6,7 +6,7 @@ use std::{
     hash::{Hash, Hasher},
     sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-
+/// Warning, do not use this hash in non-memory scenarios.
 use common_types::hash::AHasher;
 /// Simple partitioned `RwLock`
 pub struct PartitionedRwLock<T> {
@@ -47,6 +47,11 @@ where
 
         &self.partitions[(hasher.finish() as usize) & self.partition_mask]
     }
+
+    #[cfg(test)]
+    fn get_partition_by_index(&self, index: usize) -> &RwLock<T>{
+        &self.partitions[index]
+    }
 }
 
 /// Simple partitioned `Mutex`
@@ -79,8 +84,12 @@ where
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &Mutex<T> {
         let mut hasher = AHasher::default();
         key.hash(&mut hasher);
-
         &self.partitions[(hasher.finish() as usize) & self.partition_mask]
+    }
+
+    #[cfg(test)]
+    fn get_partition_by_index(&self, index: usize) -> &Mutex<T>{
+        &self.partitions[index]
     }
 }
 
@@ -128,13 +137,12 @@ mod tests {
     fn test_partitioned_mutex_vis_different_partition() {
         let tmp_vec: Vec<f32> = Vec::new();
         let test_locked_map = PartitionedMutex::new(tmp_vec, 4);
-        let test_key_first = "test_key_first".to_string();
-        let mutex_first = test_locked_map.get_partition(&test_key_first);
+        let mutex_first = test_locked_map.get_partition_by_index(0);
+
         let mut _tmp_data = mutex_first.lock().unwrap();
         assert!(mutex_first.try_lock().is_err());
 
-        let test_key_second = "test_key_second".to_string();
-        let mutex_second = test_locked_map.get_partition(&test_key_second);
+        let mutex_second = test_locked_map.get_partition_by_index(1);
         assert!(mutex_second.try_lock().is_ok());
         assert!(mutex_first.try_lock().is_err());
     }
@@ -143,13 +151,11 @@ mod tests {
     fn test_partitioned_rwmutex_vis_different_partition() {
         let tmp_vec: Vec<f32> = Vec::new();
         let test_locked_map = PartitionedRwLock::new(tmp_vec, 4);
-        let test_key_first = "test_key_first".to_string();
-        let mutex_first = test_locked_map.get_partition(&test_key_first);
+        let mutex_first = test_locked_map.get_partition_by_index(0);
         let mut _tmp = mutex_first.write().unwrap();
         assert!(mutex_first.try_write().is_err());
 
-        let test_key_second = "test_key_second".to_string();
-        let mutex_second_try_lock = test_locked_map.get_partition(&test_key_second);
+        let mutex_second_try_lock = test_locked_map.get_partition_by_index(1);
         assert!(mutex_second_try_lock.try_write().is_ok());
         assert!(mutex_first.try_write().is_err());
     }
