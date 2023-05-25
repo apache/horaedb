@@ -7,6 +7,9 @@
     Average time to DefaultHash a string of length 10: 33.6364 nanoseconds
     Average time to ahash a string of length 10: 19.0412 nanoseconds
     Average time to murmur3 a string of length 10: 33.0394 nanoseconds
+    Warning: Do not use this hash in non-memory scenarios,
+    One of the reasons is as follows:
+    https://github.com/tkaitchuck/aHash/blob/master/README.md#goals-and-non-goals
 */
 pub use ahash::AHasher;
 use byteorder::{ByteOrder, LittleEndian};

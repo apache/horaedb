@@ -7,7 +7,6 @@ use std::{
     sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-/// Warning, do not use this hash in non-memory scenarios.
 use common_types::hash::AHasher;
 /// Simple partitioned `RwLock`
 pub struct PartitionedRwLock<T> {
