@@ -36,6 +36,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let context = Context {
             timeout: ctx.timeout,
             runtime: self.engine_runtimes.read_runtime.clone(),
+            enable_partition_table_access: true,
         };
 
         match self.handle_sql(context, &ctx.schema, &req.query).await? {
