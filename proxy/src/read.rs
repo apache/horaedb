@@ -129,14 +129,17 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 msg: format!("Failed to create plan, query:{sql}"),
             })?;
 
-        let output = self
-            .execute_plan(request_id, catalog, schema, plan, deadline)
-            .await
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to execute plan, sql:{sql}"),
-            })?;
+        let output = if ctx.enable_partition_table_access {
+            self.execute_plan_involving_partition_table(request_id, catalog, schema, plan, deadline)
+                .await
+        } else {
+            self.execute_plan(request_id, catalog, schema, plan, deadline)
+                .await
+        };
+        let output = output.box_err().with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: format!("Failed to execute plan, sql:{sql}"),
+        })?;
 
         let cost = begin_instant.saturating_elapsed();
         info!("Handle sql query success, catalog:{catalog}, schema:{schema}, request_id:{request_id}, cost:{cost:?}, sql:{sql:?}");

@@ -57,6 +57,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let proxy_context = Context {
             timeout: ctx.timeout,
             runtime: self.engine_runtimes.write_runtime.clone(),
+            enable_partition_table_access: false,
         };
         let result = self
             .handle_write_internal(proxy_context, table_request)

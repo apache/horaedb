@@ -137,6 +137,7 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
         let ctx = Context {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
+            enable_partition_table_access: false,
         };
         let stream = Self::stream_sql_query_internal(ctx, proxy, req).await;
 
@@ -159,6 +160,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let ctx = Context {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
+            enable_partition_table_access: false,
         };
 
         let join_handle = self
@@ -189,6 +191,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let ctx = Context {
             runtime: self.runtimes.write_runtime.clone(),
             timeout: self.timeout,
+            enable_partition_table_access: false,
         };
 
         let join_handle = self.runtimes.write_runtime.spawn(async move {
@@ -228,6 +231,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let ctx = Context {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
+            enable_partition_table_access: false,
         };
         let join_handle = self
             .runtimes
@@ -290,6 +294,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let ctx = Context {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
+            enable_partition_table_access: false,
         };
         let join_handle = self.runtimes.read_runtime.spawn(async move {
             if req.context.is_none() {
@@ -329,6 +334,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let ctx = Context {
             runtime: self.runtimes.write_runtime.clone(),
             timeout: self.timeout,
+            enable_partition_table_access: false,
         };
 
         let join_handle = self.runtimes.write_runtime.spawn(async move {
