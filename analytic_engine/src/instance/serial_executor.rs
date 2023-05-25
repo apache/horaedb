@@ -20,7 +20,7 @@ use tokio::sync::{
 use super::flush_compaction::{BackgroundFlushFailed, TableFlushOptions};
 use crate::{
     instance::flush_compaction::{Other, Result},
-    table::metrics::Metrics,
+    table::data::TableData,
 };
 
 #[derive(Default)]
@@ -125,24 +125,24 @@ impl TableFlushScheduler {
     /// sequential.
     ///
     /// REQUIRE: should only be called by the write thread.
-    pub async fn flush_sequentially<F, T>(
+    pub async fn flush_sequentially<F>(
         &mut self,
         flush_job: F,
-        on_flush_success: T,
         block_on_write_thread: bool,
         opts: TableFlushOptions,
         runtime: &Runtime,
-        metrics: &Metrics,
+        table_data: Arc<TableData>,
     ) -> Result<()>
     where
         F: Future<Output = Result<()>> + Send + 'static,
-        T: Future<Output = ()> + Send + 'static,
     {
+        let metrics = &table_data.metrics;
         // If flush operation is running, then we need to wait for it to complete first.
         // Actually, the loop waiting ensures the multiple flush procedures to be
         // sequential, that is to say, at most one flush is being executed at
         // the same time.
         let mut stall_begin: Option<Instant> = None;
+
         loop {
             {
                 // Check if the flush procedure is running and the lock will be dropped when
@@ -189,7 +189,8 @@ impl TableFlushScheduler {
 
         // Record the write stall cost.
         if let Some(stall_begin) = stall_begin {
-            metrics.on_write_stall(stall_begin.saturating_elapsed());
+            let time = stall_begin.saturating_elapsed();
+            metrics.on_write_stall(time);
         }
 
         // TODO(yingwen): Store pending flush requests and retry flush on
@@ -200,9 +201,6 @@ impl TableFlushScheduler {
         let task = async move {
             let flush_res = flush_job.await;
             on_flush_finished(schedule_sync, &flush_res);
-            if flush_res.is_ok() {
-                on_flush_success.await;
-            }
             send_flush_result(opts.res_sender, flush_res);
         };
 

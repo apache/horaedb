@@ -62,21 +62,20 @@ pub struct SchedulerConfig {
     pub max_ongoing_tasks: usize,
     pub max_unflushed_duration: ReadableDuration,
     pub memory_limit: ReadableSize,
+    pub max_pending_compaction_tasks: usize,
 }
-
-// TODO(boyan), a better default value?
-const MAX_GOING_COMPACTION_TASKS: usize = 8;
-const MAX_PENDING_COMPACTION_TASKS: usize = 1024;
 
 impl Default for SchedulerConfig {
     fn default() -> Self {
         Self {
             schedule_channel_len: 16,
+            // 30 seconds schedule interval.
             schedule_interval: ReadableDuration(Duration::from_secs(30)),
-            max_ongoing_tasks: MAX_GOING_COMPACTION_TASKS,
+            max_ongoing_tasks: 8,
             // flush_interval default is 5h.
             max_unflushed_duration: ReadableDuration(Duration::from_secs(60 * 60 * 5)),
             memory_limit: ReadableSize::gb(4),
+            max_pending_compaction_tasks: 1024,
         }
     }
 }
@@ -201,6 +200,7 @@ struct OngoingTaskLimit {
     ongoing_tasks: AtomicUsize,
     /// Buffer to hold pending requests
     request_buf: RequestBuf,
+    max_pending_compaction_tasks: usize,
 }
 
 impl OngoingTaskLimit {
@@ -222,8 +222,8 @@ impl OngoingTaskLimit {
             let mut req_buf = self.request_buf.write().unwrap();
 
             // Remove older requests
-            if req_buf.len() >= MAX_PENDING_COMPACTION_TASKS {
-                while req_buf.len() >= MAX_PENDING_COMPACTION_TASKS {
+            if req_buf.len() >= self.max_pending_compaction_tasks {
+                while req_buf.len() >= self.max_pending_compaction_tasks {
                     req_buf.pop_front();
                     dropped += 1;
                 }
@@ -238,7 +238,7 @@ impl OngoingTaskLimit {
         if dropped > 0 {
             warn!(
                 "Too many compaction pending tasks,  limit: {}, dropped {} older tasks.",
-                MAX_PENDING_COMPACTION_TASKS, dropped,
+                self.max_pending_compaction_tasks, dropped,
             );
         }
     }
@@ -308,6 +308,7 @@ impl SchedulerImpl {
             limit: Arc::new(OngoingTaskLimit {
                 ongoing_tasks: AtomicUsize::new(0),
                 request_buf: RwLock::new(RequestQueue::default()),
+                max_pending_compaction_tasks: config.max_pending_compaction_tasks,
             }),
             running: running.clone(),
             memory_limit: MemoryLimit::new(config.memory_limit.as_byte() as usize),
@@ -625,10 +626,13 @@ impl ScheduleWorker {
                 table_data.name, table_data.id, request_id
             );
 
-            // This will spawn a background job to purge ssts and avoid schedule thread
+            // This will add a compaction request to queue and avoid schedule thread
             // blocked.
-            self.handle_table_compaction_request(TableCompactionRequest::no_waiter(table_data))
-                .await;
+            self.limit
+                .add_request(TableCompactionRequest::no_waiter(table_data));
+        }
+        if let Err(e) = self.sender.send(ScheduleTask::Schedule).await {
+            error!("Fail to schedule table compaction request, err:{}", e);
         }
     }
 

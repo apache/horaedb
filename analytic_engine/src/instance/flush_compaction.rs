@@ -27,14 +27,11 @@ use futures::{
 use log::{debug, error, info};
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::predicate::Predicate;
-use tokio::sync::oneshot;
+use tokio::{sync::oneshot, time::Instant};
 use wal::manager::WalLocation;
 
 use crate::{
-    compaction::{
-        scheduler::CompactionSchedulerRef, CompactionInputFiles, CompactionTask, ExpiredFiles,
-        TableCompactionRequest,
-    },
+    compaction::{CompactionInputFiles, CompactionTask, ExpiredFiles},
     instance::{self, serial_executor::TableFlushScheduler, SpaceStore, SpaceStoreRef},
     manifest::meta_edit::{
         AlterOptionsMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
@@ -145,10 +142,6 @@ pub struct TableFlushOptions {
     ///
     /// Default is None.
     pub res_sender: Option<oneshot::Sender<Result<()>>>,
-    /// Schedule a compaction request after flush if it is not [None].
-    ///
-    /// If it is [None], no compaction will be scheduled.
-    pub compact_after_flush: Option<CompactionSchedulerRef>,
     /// Max retry limit After flush failed
     ///
     /// Default is 0
@@ -159,7 +152,6 @@ impl fmt::Debug for TableFlushOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TableFlushOptions")
             .field("res_sender", &self.res_sender.is_some())
-            .field("compact_after_flush", &self.compact_after_flush.is_some())
             .finish()
     }
 }
@@ -293,40 +285,9 @@ impl Flusher {
         };
         let flush_job = async move { flush_task.run().await };
 
-        // TODO: The immediate compaction after flush is not a good idea because it may
-        // block on the write procedure.
-        if let Some(compaction_scheduler) = opts.compact_after_flush.clone() {
-            // Schedule compaction if flush completed successfully.
-            let compact_req = TableCompactionRequest::no_waiter(table_data.clone());
-            let on_flush_success = async move {
-                // Here we don't care whether it is scheduled successfully or not.
-                compaction_scheduler
-                    .schedule_table_compaction(compact_req)
-                    .await;
-            };
-
-            flush_scheduler
-                .flush_sequentially(
-                    flush_job,
-                    on_flush_success,
-                    block_on,
-                    opts,
-                    &self.runtime,
-                    &table_data.metrics,
-                )
-                .await
-        } else {
-            flush_scheduler
-                .flush_sequentially(
-                    flush_job,
-                    async {},
-                    block_on,
-                    opts,
-                    &self.runtime,
-                    &table_data.metrics,
-                )
-                .await
-        }
+        flush_scheduler
+            .flush_sequentially(flush_job, block_on, opts, &self.runtime, table_data.clone())
+            .await
     }
 }
 
@@ -334,6 +295,7 @@ impl FlushTask {
     /// Each table can only have one running flush task at the same time, which
     /// should be ensured by the caller.
     async fn run(&self) -> Result<()> {
+        let instant = Instant::now();
         let current_version = self.table_data.current_version();
         let mems_to_flush = current_version.pick_memtables_to_flush(self.max_sequence);
 
@@ -356,8 +318,11 @@ impl FlushTask {
             .set_last_flush_time(time::current_time_millis());
 
         info!(
-            "Instance flush memtables done, table:{}, table_id:{}, request_id:{}",
-            self.table_data.name, self.table_data.id, request_id
+            "Instance flush memtables done, table:{}, table_id:{}, request_id:{}, cost:{}ms",
+            self.table_data.name,
+            self.table_data.id,
+            request_id,
+            instant.elapsed().as_millis()
         );
 
         Ok(())

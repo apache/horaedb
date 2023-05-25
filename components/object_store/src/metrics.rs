@@ -1,15 +1,20 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{fmt::Display, ops::Range};
+use std::{fmt::Display, ops::Range, sync::Arc, thread, time::Instant};
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use common_util::runtime::Runtime;
 use futures::stream::BoxStream;
 use lazy_static::lazy_static;
+use log::trace;
 use prometheus::{exponential_buckets, register_histogram_vec, HistogramVec};
 use prometheus_static_metric::make_static_metric;
 use tokio::io::AsyncWrite;
-use upstream::{path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result};
+use upstream::{
+    path::Path, Error as StoreError, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore,
+    Result,
+};
 
 use crate::ObjectStoreRef;
 
@@ -67,15 +72,20 @@ lazy_static! {
         ObjectStoreThroughputHistogram::from(&OBJECT_STORE_THROUGHPUT_HISTOGRAM_VEC);
 }
 
+pub const METRICS: &str = "METRICS";
 /// A object store wrapper for collecting statistics about the underlying store.
 #[derive(Debug)]
 pub struct StoreWithMetrics {
     store: ObjectStoreRef,
+    /// Use a separate runtime to execute object store methods;
+    /// Prevent computationally intensive tasks from occupying the runtime for a
+    /// long time and causing an increase in access time.
+    runtime: Arc<Runtime>,
 }
 
 impl StoreWithMetrics {
-    pub fn new(store: ObjectStoreRef) -> Self {
-        Self { store }
+    pub fn new(store: ObjectStoreRef, runtime: Arc<Runtime>) -> Self {
+        Self { store, runtime }
     }
 }
 
@@ -100,7 +110,27 @@ impl ObjectStore for StoreWithMetrics {
         location: &Path,
     ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.put_multipart.start_timer();
-        self.store.put_multipart(location).await
+
+        let instant = Instant::now();
+        let loc = location.clone();
+        let store = self.store.clone();
+        let res = self
+            .runtime
+            .spawn(async move { store.put_multipart(&loc).await })
+            .await
+            .map_err(|source| StoreError::Generic {
+                store: METRICS,
+                source: Box::new(source),
+            })?;
+
+        trace!(
+            "Object store with metrics put_multipart cost:{}ms, location:{}, thread:{}-{:?}",
+            instant.elapsed().as_millis(),
+            location,
+            thread::current().name().unwrap_or("noname").to_string(),
+            thread::current().id()
+        );
+        res
     }
 
     async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
@@ -112,12 +142,39 @@ impl ObjectStore for StoreWithMetrics {
 
     async fn get(&self, location: &Path) -> Result<GetResult> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.get.start_timer();
-        self.store.get(location).await
+        let store = self.store.clone();
+        let loc = location.clone();
+        self.runtime
+            .spawn(async move { store.get(&loc).await })
+            .await
+            .map_err(|source| StoreError::Generic {
+                store: METRICS,
+                source: Box::new(source),
+            })?
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.get_range.start_timer();
-        let result = self.store.get_range(location, range).await?;
+
+        let instant = Instant::now();
+        let store = self.store.clone();
+        let loc = location.clone();
+        let result = self
+            .runtime
+            .spawn(async move { store.get_range(&loc, range.clone()).await })
+            .await
+            .map_err(|source| StoreError::Generic {
+                store: METRICS,
+                source: Box::new(source),
+            })??;
+        trace!(
+            "Object store with metrics get_range cost:{}ms, location:{}, thread:{}-{:?}",
+            instant.elapsed().as_millis(),
+            location,
+            thread::current().name().unwrap_or("noname").to_string(),
+            thread::current().id()
+        );
+
         OBJECT_STORE_THROUGHPUT_HISTOGRAM
             .get_range
             .observe(result.len() as f64);
@@ -129,19 +186,45 @@ impl ObjectStore for StoreWithMetrics {
         let result = self.store.get_ranges(location, ranges).await?;
         let len: usize = result.iter().map(|v| v.len()).sum();
         OBJECT_STORE_THROUGHPUT_HISTOGRAM
-            .get_range
+            .get_ranges
             .observe(len as f64);
         Ok(result)
     }
 
     async fn head(&self, location: &Path) -> Result<ObjectMeta> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.head.start_timer();
-        self.store.head(location).await
+
+        let instant = Instant::now();
+        let store = self.store.clone();
+        let loc = location.clone();
+        let response = self
+            .runtime
+            .spawn(async move { store.head(&loc).await })
+            .await
+            .map_err(|source| StoreError::Generic {
+                store: METRICS,
+                source: Box::new(source),
+            })?;
+
+        trace!(
+            "Object store with metrics head cost:{}ms, location:{}",
+            instant.elapsed().as_millis(),
+            location
+        );
+        response
     }
 
     async fn delete(&self, location: &Path) -> Result<()> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.delete.start_timer();
-        self.store.delete(location).await
+        let store = self.store.clone();
+        let loc = location.clone();
+        self.runtime
+            .spawn(async move { store.delete(&loc).await })
+            .await
+            .map_err(|source| StoreError::Generic {
+                store: METRICS,
+                source: Box::new(source),
+            })?
     }
 
     async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
