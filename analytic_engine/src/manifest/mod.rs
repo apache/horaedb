@@ -5,6 +5,8 @@
 pub mod details;
 pub mod meta_edit;
 pub mod meta_snapshot;
+mod storage;
+pub mod error;
 
 use std::{fmt, sync::Arc};
 
@@ -56,3 +58,5 @@ struct TableResult<T> {
 }
 
 pub type RecoverResult = TableResult<()>;
+
+

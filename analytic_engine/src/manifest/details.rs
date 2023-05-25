@@ -14,6 +14,7 @@ use std::{
 use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use ceresdbproto::{manifest as manifest_pb, meta_storage::procedure_info::State};
+use common_types::table::ShardId;
 use common_util::{
     config::ReadableDuration,
     define_result,
@@ -35,7 +36,7 @@ use wal::{
         ScanRequest, SequenceNumber, WalLocation, WalManagerRef, WriteContext,
     },
 };
-
+use crate::manifest::storage::*;
 use super::{RecoverRequest, RecoverResult, TableResult};
 use crate::{
     manifest::{
@@ -48,98 +49,7 @@ use crate::{
     space::SpaceId,
     table::data::TableShardInfo,
 };
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
-pub enum Error {
-    #[snafu(display(
-        "Failed to encode payloads, wal_location:{:?}, err:{}",
-        wal_location,
-        source
-    ))]
-    EncodePayloads {
-        wal_location: WalLocation,
-        source: wal::manager::Error,
-    },
-
-    #[snafu(display("Failed to write update to wal, err:{}", source))]
-    WriteWal { source: wal::manager::Error },
-
-    #[snafu(display("Failed to read wal, err:{}", source))]
-    ReadWal { source: wal::manager::Error },
-
-    #[snafu(display("Failed to read log entry, err:{}", source))]
-    ReadEntry { source: wal::manager::Error },
-
-    #[snafu(display("Failed to apply table meta update, err:{}", source))]
-    ApplyUpdate {
-        source: crate::manifest::meta_snapshot::Error,
-    },
-
-    #[snafu(display("Failed to clean wal, err:{}", source))]
-    CleanWal { source: wal::manager::Error },
-
-    #[snafu(display(
-        "Failed to store snapshot, err:{}.\nBacktrace:\n{:?}",
-        source,
-        backtrace
-    ))]
-    StoreSnapshot {
-        source: object_store::ObjectStoreError,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display(
-        "Failed to fetch snapshot, err:{}.\nBacktrace:\n{:?}",
-        source,
-        backtrace
-    ))]
-    FetchSnapshot {
-        source: object_store::ObjectStoreError,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display(
-        "Failed to decode snapshot, err:{}.\nBacktrace:\n{:?}",
-        source,
-        backtrace
-    ))]
-    DecodeSnapshot {
-        source: prost::DecodeError,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display("Failed to build snapshot, msg:{}.\nBacktrace:\n{:?}", msg, backtrace))]
-    BuildSnapshotNoCause { msg: String, backtrace: Backtrace },
-
-    #[snafu(display("Failed to build snapshot, msg:{}, err:{}", msg, source))]
-    BuildSnapshotWithCause { msg: String, source: GenericError },
-
-    #[snafu(display(
-        "Failed to apply edit to table, msg:{}.\nBacktrace:\n{:?}",
-        msg,
-        backtrace
-    ))]
-    ApplyUpdateToTableNoCause { msg: String, backtrace: Backtrace },
-
-    #[snafu(display("Failed to apply edit to table, msg:{}, err:{}", msg, source))]
-    ApplyUpdateToTableWithCause { msg: String, source: GenericError },
-
-    #[snafu(display(
-        "Failed to apply snapshot to table, msg:{}.\nBacktrace:\n{:?}",
-        msg,
-        backtrace
-    ))]
-    ApplySnapshotToTableNoCause { msg: String, backtrace: Backtrace },
-
-    #[snafu(display("Failed to apply snapshot to table, msg:{}, err:{}", msg, source))]
-    ApplySnapshotToTableWithCause { msg: String, source: GenericError },
-
-    #[snafu(display("Failed to load snapshot, err:{}", source))]
-    LoadSnapshot { source: GenericError },
-}
-
-define_result!(Error);
+use crate::manifest::error::*;
 
 #[async_trait]
 trait MetaUpdateLogEntryIterator {
@@ -213,9 +123,9 @@ pub(crate) trait TableMetaSet: fmt::Debug + Send + Sync {
 // TODO: remove `LogStore` and related operations, it should be called directly but not in the
 // `SnapshotReoverer`.
 #[derive(Debug)]
-struct SnapshotRecoverer {
-    wal_manager: WalManagerRef,
-    object_store: ObjectStoreRef,
+struct SnapshotRecoverer<LogStore, SnapshotStore>  {
+    log_store: LogStore,
+    snapshot_store: SnapshotStore,
     request: RecoverRequest,
     states: HashMap<TableId, RecoverState>,
 }
@@ -236,7 +146,11 @@ enum RecoverState {
 
 pub type SnapshotRecoverResult = TableResult<Option<Snapshot>>;
 
-impl SnapshotRecoverer {
+impl<LogStore, SnapshotStore>  SnapshotRecoverer<LogStore, SnapshotStore> 
+where
+    LogStore: MetaUpdateLogStore + Send + Sync,
+    SnapshotStore: MetaUpdateSnapshotStore + Send + Sync, 
+{
     async fn recover_from_snapshot(&mut self) -> Result<()> {
         info!(
             "Manifest recover from snapshot store, request:{:?}",
@@ -248,16 +162,12 @@ impl SnapshotRecoverer {
             .tables
             .iter()
             .map(|table| {
-                let snapshot_store = ObjectStoreBasedSnapshotStore {
-                    store: self.object_store.clone(),
-                    snapshot_path: ObjectStoreBasedSnapshotStore::snapshot_path(
-                        table.space_id,
-                        table.table_id,
-                    ),
+                let snapshot_path = ObjectStoreBasedSnapshotStore::snapshot_path(table.space_id, table.table_id);
+                let request = LoadSnapshotRequest {
+                    snapshot_path,
                 };
-
-                let table_id = table.table_id;
-                async move { (table.table_id, snapshot_store.load().await) }
+                let store = self.snapshot_store.clone();
+                async move { (table.table_id, store.load(request).await) }
             })
             .collect::<Vec<_>>();
         let results = futures::future::join_all(load_snapshots).await;
@@ -306,13 +216,6 @@ impl SnapshotRecoverer {
             "Manifest recover from log store, request:{:?}",
             self.request
         );
-
-        let shard_log_reader = WalBasedLogShardReader {
-            opts: Options::default(),
-            region_id: self.request.shard_id as RegionId,
-            wal_manager: self.wal_manager.clone(),
-        };
-        let mut shard_log_reader = shard_log_reader.scan(ReadBoundary::Min).await?;
 
         while let Some(MetaUpdateLogEntry {
             table_id,
@@ -365,6 +268,16 @@ impl SnapshotRecoverer {
         Ok(())
     }
 
+    // TODO: now we just recover table by table as origin.
+    // Maybe we should make it more concurrently.
+    async fn table_based_recover_from_log(&self) -> Result<()> {
+        todo!()
+    }
+
+    async fn region_based_recover_from_log(&self) -> Result<()> {
+        
+    }
+
     async fn recover(&mut self) -> Result<Vec<SnapshotRecoverResult>> {
         info!(
             "Manifest start to recover from storage, request:{:?}",
@@ -413,13 +326,21 @@ struct Snapshotter<LogWriter, SnapshotStore> {
     table_id: TableId,
 }
 
-impl<LogWriter, SnapshotStore> Snapshotter<LogWriter, SnapshotStore>
+struct MakeSnapshotRequest {
+    space_id: SpaceId,
+    table_id: TableId,
+    location: WalLocation,
+    opts: Options,
+    end_seq: SequenceNumber,
+}
+
+impl<LogStore, SnapshotStore> Snapshotter<LogStore, SnapshotStore>
 where
-    LogWriter: MetaUpdateLogWriter + Send + Sync,
+    LogStore: MetaUpdateLogStore + Send + Sync,
     SnapshotStore: MetaUpdateSnapshotStore + Send + Sync,
 {
     /// Create a latest snapshot of the current logs.
-    async fn snapshot(&self) -> Result<Option<Snapshot>> {
+    async fn snapshot(&self, request: MakeSnapshotRequest) -> Result<()> {
         // Get snapshot data from memory.
         let table_snapshot_opt = self
             .snapshot_data_provider
@@ -430,13 +351,24 @@ where
         };
 
         // Update the current snapshot to the new one.
-        self.snapshot_store.store(&snapshot).await?;
+        let snapshot_path = ObjectStoreBasedSnapshotStore::snapshot_path(request.space_id, request.table_id);
+        let store_snapshot_request = StoreSnapshotRequest {
+            snapshot,
+            snapshot_path,
+        };
+        self.snapshot_store.store(store_snapshot_request).await?;
+        
         // Delete the expired logs after saving the snapshot.
         // TODO: Actually this operation can be performed background, and the failure of
         // it can be ignored.
-        self.log_store.delete_up_to(snapshot.end_seq).await?;
+        let delete_log_request = DeleteRequest {
+            opts: request.opts,
+            location: request.location,
+            inclusive_end: self.end_seq,
+        };
+        self.log_store.delete_up_to(delete_log_request).await?;
 
-        Ok(Some(snapshot))
+        Ok(())
     }
 }
 
@@ -510,12 +442,17 @@ impl ManifestImpl {
         meta_update: MetaUpdate,
         location: WalLocation,
     ) -> Result<SequenceNumber> {
-        let log_store = WalBasedLogWriter {
-            opts: self.opts.clone(),
-            location,
+        let log_store = WalBasedLogStore {
             wal_manager: self.wal_manager.clone(),
         };
-        let latest_sequence = log_store.append(meta_update).await?;
+        
+        let request = AppendRequest {
+            opts: self.opts.clone(),
+            location,
+            meta_update,
+        };
+
+        let latest_sequence = log_store.append(request).await?;
         self.num_updates_since_snapshot
             .fetch_add(1, Ordering::Relaxed);
 
@@ -531,22 +468,22 @@ impl ManifestImpl {
         table_id: TableId,
         location: WalLocation,
         force: bool,
-    ) -> Result<Option<Snapshot>> {
+    ) -> Result<()> {
         if !force {
             let num_updates = self.num_updates_since_snapshot.load(Ordering::Relaxed);
             if num_updates < self.opts.snapshot_every_n_updates {
-                return Ok(None);
+                return Ok(());
             }
         }
 
         if let Ok(_guard) = self.snapshot_write_guard.try_lock() {
-            let log_store = WalBasedLogWriter {
-                opts: self.opts.clone(),
-                location,
+            let log_store = WalBasedLogStore {
                 wal_manager: self.wal_manager.clone(),
             };
             let snapshot_store =
-                ObjectStoreBasedSnapshotStore::new(space_id, table_id, self.store.clone());
+                ObjectStoreBasedSnapshotStore {
+                    store: self.store.clone(),
+                };
             let end_seq = self.wal_manager.sequence_num(location).await.unwrap();
             let snapshotter = Snapshotter {
                 log_store,
@@ -557,15 +494,24 @@ impl ManifestImpl {
                 table_id,
             };
 
-            let snapshot = snapshotter.snapshot().await?.map(|v| {
+            let request = MakeSnapshotRequest {
+                shard_id,
+                space_id,
+                table_id,
+                opts: self.opts.clone(),
+                end_seq,
+            };
+
+
+            snapshotter.snapshot().await?.map(|v| {
                 self.decrease_num_updates();
                 v
             });
-            Ok(snapshot)
         } else {
             debug!("Avoid concurrent snapshot");
-            Ok(None)
         }
+
+        Ok(())
     }
 
     // with snapshot guard held
@@ -607,18 +553,27 @@ impl Manifest for ManifestImpl {
         self.table_meta_set.apply_edit_to_table(request).box_err()
     }
 
-    async fn recover(&self, load_req: &RecoverRequest) -> GenericResult<Vec<RecoverResult>> {
-        info!("Manifest recover, request:{:?}", load_req);
+    async fn recover(&self, recover_req: &RecoverRequest) -> GenericResult<Vec<RecoverResult>> {
+        info!("Manifest recover, request:{:?}", recover_req);
 
-        let states = load_req
+        let states = recover_req
             .tables
             .iter()
             .map(|table| (table.table_id, RecoverState::FromSnapshotStore))
             .collect::<HashMap<_, _>>();
-        let mut recoverer = SnapshotRecoverer {
+
+        let log_store = WalBasedLogStore {
             wal_manager: self.wal_manager.clone(),
-            object_store: self.store.clone(),
-            request: (*load_req).clone(),
+        };
+
+        let snapshot_store = ObjectStoreBasedSnapshotStore {
+            store: self.store.clone(),
+        };
+
+        let mut recoverer = SnapshotRecoverer {
+            log_store,
+            snapshot_store,
+            request: recover_req.clone(),
             states,
         };
         let recover_results = recoverer.recover().await.box_err()?;
@@ -631,7 +586,7 @@ impl Manifest for ManifestImpl {
                     if let Some(snapshot) = snapshot.data {
                         let meta_edit = MetaEdit::Snapshot(snapshot);
                         let request = MetaEditRequest {
-                            shard_info: TableShardInfo::new(load_req.shard_id),
+                            shard_info: TableShardInfo::new(recover_req.shard_id),
                             meta_edit,
                         };
                         if let Err(e) = self.table_meta_set.apply_edit_to_table(request).box_err() {
@@ -677,212 +632,6 @@ impl Manifest for ManifestImpl {
             .box_err()?;
 
         Ok(())
-    }
-}
-
-#[async_trait]
-trait MetaUpdateLogWriter: std::fmt::Debug + Clone {
-    async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber>;
-
-    async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()>;
-}
-
-#[async_trait]
-trait MetaUpdateLogReader: std::fmt::Debug + Clone {
-    type Iter: MetaUpdateLogEntryIterator + Send;
-    async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter>;
-}
-
-#[async_trait]
-trait MetaUpdateSnapshotStore: std::fmt::Debug + Clone {
-    async fn store(&self, snapshot: &Snapshot) -> Result<()>;
-
-    async fn load(&self) -> Result<Option<Snapshot>>;
-}
-
-#[derive(Debug, Clone)]
-struct ObjectStoreBasedSnapshotStore {
-    store: ObjectStoreRef,
-    snapshot_path: Path,
-}
-
-impl ObjectStoreBasedSnapshotStore {
-    const CURRENT_SNAPSHOT_NAME: &str = "current";
-    const SNAPSHOT_PATH_PREFIX: &str = "manifest/snapshot";
-
-    pub fn new(space_id: SpaceId, table_id: TableId, store: ObjectStoreRef) -> Self {
-        let snapshot_path = Self::snapshot_path(space_id, table_id);
-        Self {
-            store,
-            snapshot_path,
-        }
-    }
-
-    fn snapshot_path(space_id: SpaceId, table_id: TableId) -> Path {
-        format!(
-            "{}/{}/{}/{}",
-            Self::SNAPSHOT_PATH_PREFIX,
-            space_id,
-            table_id,
-            Self::CURRENT_SNAPSHOT_NAME,
-        )
-        .into()
-    }
-}
-
-#[async_trait]
-impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
-    /// Store the latest snapshot to the underlying store by overwriting the old
-    /// snapshot.
-    async fn store(&self, snapshot: &Snapshot) -> Result<()> {
-        let snapshot_pb = manifest_pb::Snapshot::from(snapshot.clone());
-        let payload = snapshot_pb.encode_to_vec();
-        // The atomic write is ensured by the [`ObjectStore`] implementation.
-        self.store
-            .put(&self.snapshot_path, payload.into())
-            .await
-            .context(StoreSnapshot)?;
-
-        Ok(())
-    }
-
-    /// Load the `current_snapshot` file from the underlying store, and with the
-    /// mapping info in it load the latest snapshot file then.
-    async fn load(&self) -> Result<Option<Snapshot>> {
-        let get_res = self.store.get(&self.snapshot_path).await;
-        if let Err(object_store::ObjectStoreError::NotFound { path, source }) = &get_res {
-            warn!(
-                "Current snapshot file doesn't exist, path:{}, err:{}",
-                path, source
-            );
-            return Ok(None);
-        };
-
-        // TODO: currently, this is just a workaround to handle the case where the error
-        // is not thrown as [object_store::ObjectStoreError::NotFound].
-        if let Err(err) = &get_res {
-            let err_msg = err.to_string().to_lowercase();
-            if err_msg.contains("404") || err_msg.contains("not found") {
-                warn!("Current snapshot file doesn't exist, err:{}", err);
-                return Ok(None);
-            }
-        }
-
-        let payload = get_res
-            .context(FetchSnapshot)?
-            .bytes()
-            .await
-            .context(FetchSnapshot)?;
-        let snapshot_pb =
-            manifest_pb::Snapshot::decode(payload.as_bytes()).context(DecodeSnapshot)?;
-        let snapshot = Snapshot::try_from(snapshot_pb)
-            .box_err()
-            .context(LoadSnapshot)?;
-
-        Ok(Some(snapshot))
-    }
-}
-
-#[derive(Debug, Clone)]
-struct WalBasedLogWriter {
-    opts: Options,
-    location: WalLocation,
-    wal_manager: WalManagerRef,
-}
-
-#[async_trait]
-impl MetaUpdateLogWriter for WalBasedLogWriter {
-    async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber> {
-        let payload = MetaUpdatePayload::from(meta_update);
-        let log_batch_encoder = LogBatchEncoder::create(self.location);
-        let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
-            wal_location: self.location,
-        })?;
-
-        let write_ctx = WriteContext {
-            timeout: self.opts.store_timeout.0,
-        };
-
-        self.wal_manager
-            .write(&write_ctx, &log_batch)
-            .await
-            .context(WriteWal)
-    }
-
-    async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()> {
-        self.wal_manager
-            .mark_delete_entries_up_to(self.location, inclusive_end)
-            .await
-            .context(CleanWal)
-    }
-}
-
-type WalBasedLogTableReader = WalBasedLogWriter;
-
-#[async_trait]
-impl MetaUpdateLogReader for WalBasedLogTableReader {
-    type Iter = MetaUpdateReaderImpl;
-
-    async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter> {
-        let ctx = ReadContext {
-            timeout: self.opts.scan_timeout.0,
-            batch_size: self.opts.scan_batch_size,
-        };
-
-        let read_req = ReadRequest {
-            location: self.location,
-            start,
-            end: ReadBoundary::Max,
-        };
-
-        let iter = self
-            .wal_manager
-            .read_batch(&ctx, &read_req)
-            .await
-            .context(ReadWal)?;
-
-        Ok(MetaUpdateReaderImpl {
-            iter,
-            has_next: true,
-            buffer: VecDeque::with_capacity(ctx.batch_size),
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-struct WalBasedLogShardReader {
-    opts: Options,
-    region_id: RegionId,
-    wal_manager: WalManagerRef,
-}
-
-#[async_trait]
-impl MetaUpdateLogReader for WalBasedLogShardReader {
-    type Iter = MetaUpdateReaderImpl;
-
-    // TODO: now we scan whole logs in shard, we should optimize it by selecting a
-    // reasonable begin position in future.
-    async fn scan(&self, _start: ReadBoundary) -> Result<Self::Iter> {
-        let ctx = ScanContext {
-            timeout: self.opts.scan_timeout.0,
-            batch_size: self.opts.scan_batch_size,
-        };
-
-        let scan_req = ScanRequest {
-            region_id: self.region_id,
-        };
-
-        let iter = self
-            .wal_manager
-            .scan(&ctx, &scan_req)
-            .await
-            .context(ReadWal)?;
-
-        Ok(MetaUpdateReaderImpl {
-            iter,
-            has_next: true,
-            buffer: VecDeque::with_capacity(ctx.batch_size),
-        })
     }
 }
 
