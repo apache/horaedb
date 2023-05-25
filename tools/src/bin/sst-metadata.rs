@@ -26,13 +26,17 @@ struct Args {
     #[clap(short, long, required(true))]
     store_path: String,
 
-    /// Sst directory(relative to store_path)
+    /// SST directory(relative to store_path)
     #[clap(short, long, required(true))]
     dir: String,
 
     /// Verbose print
     #[clap(short, long, required(false))]
     verbose: bool,
+
+    /// Thread num, 0 means cpu num
+    #[clap(short, long, default_value_t = 0)]
+    threads: usize,
 }
 
 fn new_runtime(thread_num: usize) -> Runtime {
@@ -46,7 +50,12 @@ fn new_runtime(thread_num: usize) -> Runtime {
 
 fn main() {
     let args = Args::parse();
-    let rt = Arc::new(new_runtime(num_cpus::get()));
+    let thread_num = if args.threads == 0 {
+        num_cpus::get()
+    } else {
+        args.threads
+    };
+    let rt = Arc::new(new_runtime(thread_num));
     rt.block_on(async move {
         if let Err(e) = run(args).await {
             eprintln!("Run failed, err:{e}");
@@ -98,8 +107,9 @@ async fn run(args: Args) -> Result<()> {
         if args.verbose {
             println!("object_meta:{object_meta:?}, parquet_meta:{parquet_meta:?}, time_range::[{start}, {end})");
         } else {
+            let size_mb = *size as f64 / 1024.0 / 1024.0;
             println!(
-                "Location:{location}, time_range:[{start}, {end}), size:{size}, max_seq:{seq}"
+                "Location:{location}, time_range:[{start}, {end}), size:{size_mb:.3}M, max_seq:{seq}"
             );
         }
     }
