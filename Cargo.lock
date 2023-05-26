@@ -1409,6 +1409,7 @@ dependencies = [
  "crossbeam-utils 0.8.15",
  "env_logger",
  "gag",
+ "hex",
  "lazy_static",
  "libc",
  "log",
@@ -2795,6 +2796,12 @@ name = "hermit-abi"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fed44880c466736ef9a5c5b5facefb5ed0785676d0c02d612db14e54f0d84286"
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "http"
@@ -6930,6 +6937,7 @@ dependencies = [
  "common_util",
  "env_logger",
  "futures 0.3.28",
+ "num_cpus",
  "object_store 1.2.0",
  "parquet",
  "parquet_ext",
