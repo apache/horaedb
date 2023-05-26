@@ -1,7 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use common_util::{define_result, error::GenericError};
-use snafu::{Snafu, Backtrace};
+use snafu::{Backtrace, Snafu};
 use wal::manager::WalLocation;
 
 #[derive(Debug, Snafu)]

@@ -2,20 +2,30 @@
 
 use std::collections::VecDeque;
 
+use async_trait::async_trait;
+use ceresdbproto::manifest as manifest_pb;
 use common_types::SequenceNumber;
 use common_util::error::BoxError;
 use log::warn;
-use object_store::{Path, ObjectStoreRef};
+use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
 use prost::Message;
 use snafu::ResultExt;
 use table_engine::table::TableId;
-use wal::{manager::{ReadBoundary, WalLocation, RegionId, WalManagerRef, BatchLogIteratorAdapter, ScanContext, WriteContext, ReadContext, ReadRequest}, kv_encoder::LogBatchEncoder, log_batch::LogEntry};
+use wal::{
+    kv_encoder::LogBatchEncoder,
+    log_batch::LogEntry,
+    manager::{
+        BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest, RegionId, ScanContext,
+        WalLocation, WalManagerRef, WriteContext,
+    },
+};
 
-use super::{details::Options, meta_edit::{MetaUpdatePayload, MetaUpdate, Snapshot, MetaUpdateDecoder}};
-use async_trait::async_trait;
-use crate::{manifest::error::*, space::SpaceId}; 
-use ceresdbproto::manifest as manifest_pb;
+use super::{
+    details::Options,
+    meta_edit::{MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload, Snapshot},
+};
+use crate::{manifest::error::*, space::SpaceId};
 
 /// Manifest Snapshot store
 #[async_trait]
@@ -27,11 +37,11 @@ pub trait MetaUpdateSnapshotStore: std::fmt::Debug + Clone {
 
 pub struct StoreSnapshotRequest {
     pub snapshot: Snapshot,
-    pub snapshot_path: Path,    
+    pub snapshot_path: Path,
 }
 
 pub struct LoadSnapshotRequest {
-    pub snapshot_path: Path,    
+    pub snapshot_path: Path,
 }
 
 /// Manifest Log store
@@ -39,22 +49,22 @@ pub struct LoadSnapshotRequest {
 pub trait MetaUpdateLogStore: std::fmt::Debug + Clone {
     type Iter: MetaUpdateLogEntryIterator + Send;
 
-    async fn scan(&self, request: ScanRequest) -> Result<Self::Iter>;    
+    async fn scan(&self, request: ScanLogRequest) -> Result<Self::Iter>;
 
     async fn append(&self, request: AppendRequest) -> Result<SequenceNumber>;
 
     async fn delete_up_to(&self, request: DeleteRequest) -> Result<()>;
 }
 
-pub enum ScanRequest {
+pub enum ScanLogRequest {
     Table(ScanTableRequest),
-    Region(ScanRegionRequest)
+    Region(ScanRegionRequest),
 }
 
 pub struct ScanTableRequest {
     pub opts: Options,
     pub location: WalLocation,
-    pub start: ReadBoundary,    
+    pub start: ReadBoundary,
 }
 
 pub struct ScanRegionRequest {
@@ -63,15 +73,15 @@ pub struct ScanRegionRequest {
 }
 
 pub struct AppendRequest {
-    opts: Options,
-    location: WalLocation,
-    meta_update: MetaUpdate,
+    pub opts: Options,
+    pub location: WalLocation,
+    pub meta_update: MetaUpdate,
 }
 
 pub struct DeleteRequest {
     pub opts: Options,
     pub location: WalLocation,
-    pub inclusive_end: SequenceNumber        
+    pub inclusive_end: SequenceNumber,
 }
 
 /// Object store impl for manifest snapshot store
@@ -85,9 +95,7 @@ impl ObjectStoreBasedSnapshotStore {
     const SNAPSHOT_PATH_PREFIX: &str = "manifest/snapshot";
 
     pub fn new(store: ObjectStoreRef) -> Self {
-        Self {
-            store,
-        }
+        Self { store }
     }
 
     pub fn snapshot_path(space_id: SpaceId, table_id: TableId) -> Path {
@@ -109,7 +117,7 @@ impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
     async fn store(&self, request: StoreSnapshotRequest) -> Result<()> {
         let snapshot_pb = manifest_pb::Snapshot::from(request.snapshot);
         let payload = snapshot_pb.encode_to_vec();
-        
+
         // The atomic write is ensured by the [`ObjectStore`] implementation.
         self.store
             .put(&request.snapshot_path, payload.into())
@@ -188,7 +196,10 @@ impl WalBasedLogStore {
         })
     }
 
-    async fn scan_logs_of_region(&self, request: ScanRegionRequest) -> Result<MetaUpdateReaderImpl> {
+    async fn scan_logs_of_region(
+        &self,
+        request: ScanRegionRequest,
+    ) -> Result<MetaUpdateReaderImpl> {
         let ctx = ScanContext {
             timeout: request.opts.scan_timeout.0,
             batch_size: request.opts.scan_batch_size,
@@ -210,24 +221,24 @@ impl WalBasedLogStore {
             buffer: VecDeque::with_capacity(ctx.batch_size),
         })
     }
-}   
+}
 
 #[async_trait]
 impl MetaUpdateLogStore for WalBasedLogStore {
     type Iter = MetaUpdateReaderImpl;
 
-    async fn scan(&self, request: ScanRequest) -> Result<Self::Iter> {
+    async fn scan(&self, request: ScanLogRequest) -> Result<Self::Iter> {
         match request {
-            ScanRequest::Table(req) => self.scan_logs_of_table(req).await,
-            ScanRequest::Region(req) => self.scan_logs_of_region(req).await,
+            ScanLogRequest::Table(req) => self.scan_logs_of_table(req).await,
+            ScanLogRequest::Region(req) => self.scan_logs_of_region(req).await,
         }
-    }    
+    }
 
     async fn append(&self, request: AppendRequest) -> Result<SequenceNumber> {
         let payload = MetaUpdatePayload::from(request.meta_update);
         let log_batch_encoder = LogBatchEncoder::create(request.location);
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
-            wal_location: request.location
+            wal_location: request.location,
         })?;
 
         let write_ctx = WriteContext {
@@ -249,7 +260,7 @@ impl MetaUpdateLogStore for WalBasedLogStore {
 }
 
 #[async_trait]
-trait MetaUpdateLogEntryIterator {
+pub trait MetaUpdateLogEntryIterator {
     async fn next_update(&mut self) -> Result<Option<MetaUpdateLogEntry>>;
 }
 

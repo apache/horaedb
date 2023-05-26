@@ -30,7 +30,7 @@ use crate::{
         write::MemTableWriter,
         Instance, SpaceStore,
     },
-    manifest::{details::ManifestImpl, LoadRequest},
+    manifest::{details::ManifestImpl, DoSnapshotRequest, RecoverRequest, TableInSpace},
     payload::{ReadPayload, WalDecoder},
     row_iter::IterOptions,
     space::{SpaceRef, Spaces},
@@ -180,14 +180,13 @@ impl Instance {
         // Load manifest, also create a new snapshot at startup.
         let table_id = request.table_id;
         let space_id = engine::build_space_id(request.schema_id);
-        let load_req = LoadRequest {
-            space_id,
-            table_id,
+        let recover_req = RecoverRequest {
             shard_id: request.shard_id,
+            tables: vec![TableInSpace { table_id, space_id }],
         };
         self.space_store
             .manifest
-            .recover(&load_req)
+            .recover(&recover_req)
             .await
             .context(ReadMetaUpdate {
                 table_id: request.table_id,

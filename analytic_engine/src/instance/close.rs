@@ -11,7 +11,7 @@ use crate::{
         engine::{DoManifestSnapshot, FlushTable, Result},
         flush_compaction::{Flusher, TableFlushOptions},
     },
-    manifest::{ManifestRef, SnapshotRequest},
+    manifest::{ManifestRef, DoSnapshotRequest},
     space::SpaceRef,
 };
 
@@ -50,7 +50,7 @@ impl Closer {
             })?;
 
         // Force manifest to do snapshot.
-        let snapshot_request = SnapshotRequest {
+        let snapshot_request = DoSnapshotRequest {
             space_id: self.space.id,
             table_id: table_data.id,
             shard_id: table_data.shard_info.shard_id,

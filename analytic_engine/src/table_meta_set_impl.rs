@@ -11,10 +11,8 @@ use table_engine::table::TableId;
 
 use crate::{
     manifest::{
-        details::{
-            ApplySnapshotToTableWithCause, ApplyUpdateToTableNoCause, ApplyUpdateToTableWithCause,
-            BuildSnapshotNoCause, TableMetaSet,
-        },
+        error::*,
+        details::TableMetaSet,
         meta_edit::{
             self, AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEditRequest,
             MetaUpdate, VersionEditMeta,
@@ -49,9 +47,9 @@ impl TableMetaSetImpl {
         &self,
         space_id: SpaceId,
         apply_edit: F,
-    ) -> crate::manifest::details::Result<()>
+    ) -> Result<()>
     where
-        F: FnOnce(Arc<Space>) -> crate::manifest::details::Result<()>,
+        F: FnOnce(Arc<Space>) -> Result<()>,
     {
         let spaces = self.spaces.read().unwrap();
         let space = spaces
@@ -66,7 +64,7 @@ impl TableMetaSetImpl {
         &self,
         meta_update: MetaUpdate,
         shard_info: TableShardInfo,
-    ) -> crate::manifest::details::Result<()> {
+    ) -> Result<()> {
         match meta_update {
             MetaUpdate::AddTable(AddTableMeta {
                 space_id,
@@ -199,7 +197,7 @@ impl TableMetaSetImpl {
         &self,
         meta_snapshot: MetaSnapshot,
         shard_info: TableShardInfo,
-    ) -> crate::manifest::details::Result<()> {
+    ) -> Result<()> {
         debug!("TableMetaSet apply snapshot, snapshot :{:?}", meta_snapshot);
 
         let MetaSnapshot {
@@ -264,7 +262,7 @@ impl TableMetaSet for TableMetaSetImpl {
         &self,
         space_id: SpaceId,
         table_id: TableId,
-    ) -> crate::manifest::details::Result<Option<MetaSnapshot>> {
+    ) -> Result<Option<MetaSnapshot>> {
         let spaces = self.spaces.read().unwrap();
         let table_data = spaces
             .get_by_id(space_id)
@@ -311,7 +309,7 @@ impl TableMetaSet for TableMetaSetImpl {
     fn apply_edit_to_table(
         &self,
         request: crate::manifest::meta_edit::MetaEditRequest,
-    ) -> crate::manifest::details::Result<()> {
+    ) -> Result<()> {
         let MetaEditRequest {
             shard_info,
             meta_edit,

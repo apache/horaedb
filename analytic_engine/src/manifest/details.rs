@@ -36,73 +36,21 @@ use wal::{
         ScanRequest, SequenceNumber, WalLocation, WalManagerRef, WriteContext,
     },
 };
-use crate::manifest::storage::*;
+
 use super::{RecoverRequest, RecoverResult, TableResult};
 use crate::{
     manifest::{
+        error::*,
         meta_edit::{
             MetaEdit, MetaEditRequest, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload, Snapshot,
         },
         meta_snapshot::{self, MetaSnapshot, MetaSnapshotBuilder},
-        LoadRequest, Manifest, SnapshotRequest,
+        storage::{MetaUpdateLogEntryIterator, *},
+        DoSnapshotRequest, Manifest,
     },
     space::SpaceId,
     table::data::TableShardInfo,
 };
-use crate::manifest::error::*;
-
-#[async_trait]
-trait MetaUpdateLogEntryIterator {
-    async fn next_update(&mut self) -> Result<Option<MetaUpdateLogEntry>>;
-}
-
-pub struct MetaUpdateLogEntry {
-    pub sequence: SequenceNumber,
-    pub table_id: TableId,
-    pub meta_update: MetaUpdate,
-}
-
-/// Implementation of [`MetaUpdateLogEntryIterator`].
-#[derive(Debug)]
-pub struct MetaUpdateReaderImpl {
-    iter: BatchLogIteratorAdapter,
-    has_next: bool,
-    buffer: VecDeque<LogEntry<MetaUpdate>>,
-}
-
-#[async_trait]
-impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
-    async fn next_update(&mut self) -> Result<Option<MetaUpdateLogEntry>> {
-        if !self.has_next {
-            return Ok(None);
-        }
-
-        if self.buffer.is_empty() {
-            let decoder = MetaUpdateDecoder;
-            let buffer = mem::take(&mut self.buffer);
-            self.buffer = self
-                .iter
-                .next_log_entries(decoder, buffer)
-                .await
-                .context(ReadEntry)?;
-        }
-
-        match self.buffer.pop_front() {
-            Some(entry) => {
-                let log_entry = MetaUpdateLogEntry {
-                    sequence: entry.sequence,
-                    table_id: TableId::new(entry.table_id),
-                    meta_update: entry.payload,
-                };
-                Ok(Some(log_entry))
-            }
-            None => {
-                self.has_next = false;
-                Ok(None)
-            }
-        }
-    }
-}
 
 /// Table meta set
 ///
@@ -123,7 +71,7 @@ pub(crate) trait TableMetaSet: fmt::Debug + Send + Sync {
 // TODO: remove `LogStore` and related operations, it should be called directly but not in the
 // `SnapshotReoverer`.
 #[derive(Debug)]
-struct SnapshotRecoverer<LogStore, SnapshotStore>  {
+struct SnapshotRecoverer<LogStore, SnapshotStore> {
     log_store: LogStore,
     snapshot_store: SnapshotStore,
     request: RecoverRequest,
@@ -146,10 +94,10 @@ enum RecoverState {
 
 pub type SnapshotRecoverResult = TableResult<Option<Snapshot>>;
 
-impl<LogStore, SnapshotStore>  SnapshotRecoverer<LogStore, SnapshotStore> 
+impl<LogStore, SnapshotStore> SnapshotRecoverer<LogStore, SnapshotStore>
 where
     LogStore: MetaUpdateLogStore + Send + Sync,
-    SnapshotStore: MetaUpdateSnapshotStore + Send + Sync, 
+    SnapshotStore: MetaUpdateSnapshotStore + Send + Sync,
 {
     async fn recover_from_snapshot(&mut self) -> Result<()> {
         info!(
@@ -162,10 +110,9 @@ where
             .tables
             .iter()
             .map(|table| {
-                let snapshot_path = ObjectStoreBasedSnapshotStore::snapshot_path(table.space_id, table.table_id);
-                let request = LoadSnapshotRequest {
-                    snapshot_path,
-                };
+                let snapshot_path =
+                    ObjectStoreBasedSnapshotStore::snapshot_path(table.space_id, table.table_id);
+                let request = LoadSnapshotRequest { snapshot_path };
                 let store = self.snapshot_store.clone();
                 async move { (table.table_id, store.load(request).await) }
             })
@@ -212,16 +159,34 @@ where
     }
 
     async fn recover_from_log(&mut self) -> Result<()> {
+        self.region_based_recover_from_log().await
+    }
+
+    // TODO: now we just recover table by table as origin.
+    // Maybe we should make it more concurrently.
+    async fn table_based_recover_from_log(&mut self) -> Result<()> {
+        todo!()
+    }
+
+    async fn region_based_recover_from_log(&mut self) -> Result<()> {
         info!(
             "Manifest recover from log store, request:{:?}",
             self.request
         );
 
+        let request = ScanLogRequest::Region({
+            ScanRegionRequest {
+                opts: Options::default(),
+                region_id: self.request.shard_id as RegionId,
+            }
+        });
+        let mut reader = self.log_store.scan(request).await.unwrap();
+
         while let Some(MetaUpdateLogEntry {
             table_id,
             sequence: seq,
             meta_update: update,
-        }) = shard_log_reader.next_update().await?
+        }) = reader.next_update().await?
         {
             if let Some(state) = self.states.get_mut(&table_id) {
                 match state {
@@ -268,16 +233,6 @@ where
         Ok(())
     }
 
-    // TODO: now we just recover table by table as origin.
-    // Maybe we should make it more concurrently.
-    async fn table_based_recover_from_log(&self) -> Result<()> {
-        todo!()
-    }
-
-    async fn region_based_recover_from_log(&self) -> Result<()> {
-        
-    }
-
     async fn recover(&mut self) -> Result<Vec<SnapshotRecoverResult>> {
         info!(
             "Manifest start to recover from storage, request:{:?}",
@@ -317,16 +272,13 @@ where
 // TODO: remove `LogStore` and related operations, it should be called directly but not in the
 // `Snapshotter`.
 #[derive(Debug, Clone)]
-struct Snapshotter<LogWriter, SnapshotStore> {
-    log_store: LogWriter,
+struct Snapshotter<LogStore, SnapshotStore> {
+    log_store: LogStore,
     snapshot_store: SnapshotStore,
-    end_seq: SequenceNumber,
     snapshot_data_provider: Arc<dyn TableMetaSet>,
-    space_id: SpaceId,
-    table_id: TableId,
 }
 
-struct MakeSnapshotRequest {
+struct SnapshotRequest {
     space_id: SpaceId,
     table_id: TableId,
     location: WalLocation,
@@ -340,31 +292,32 @@ where
     SnapshotStore: MetaUpdateSnapshotStore + Send + Sync,
 {
     /// Create a latest snapshot of the current logs.
-    async fn snapshot(&self, request: MakeSnapshotRequest) -> Result<()> {
+    async fn snapshot(&self, request: SnapshotRequest) -> Result<()> {
         // Get snapshot data from memory.
         let table_snapshot_opt = self
             .snapshot_data_provider
-            .get_table_snapshot(self.space_id, self.table_id)?;
+            .get_table_snapshot(request.space_id, request.table_id)?;
         let snapshot = Snapshot {
-            end_seq: self.end_seq,
+            end_seq: request.end_seq,
             data: table_snapshot_opt,
         };
 
         // Update the current snapshot to the new one.
-        let snapshot_path = ObjectStoreBasedSnapshotStore::snapshot_path(request.space_id, request.table_id);
+        let snapshot_path =
+            ObjectStoreBasedSnapshotStore::snapshot_path(request.space_id, request.table_id);
         let store_snapshot_request = StoreSnapshotRequest {
             snapshot,
             snapshot_path,
         };
         self.snapshot_store.store(store_snapshot_request).await?;
-        
+
         // Delete the expired logs after saving the snapshot.
         // TODO: Actually this operation can be performed background, and the failure of
         // it can be ignored.
         let delete_log_request = DeleteRequest {
             opts: request.opts,
             location: request.location,
-            inclusive_end: self.end_seq,
+            inclusive_end: request.end_seq,
         };
         self.log_store.delete_up_to(delete_log_request).await?;
 
@@ -445,7 +398,7 @@ impl ManifestImpl {
         let log_store = WalBasedLogStore {
             wal_manager: self.wal_manager.clone(),
         };
-        
+
         let request = AppendRequest {
             opts: self.opts.clone(),
             location,
@@ -480,38 +433,29 @@ impl ManifestImpl {
             let log_store = WalBasedLogStore {
                 wal_manager: self.wal_manager.clone(),
             };
-            let snapshot_store =
-                ObjectStoreBasedSnapshotStore {
-                    store: self.store.clone(),
-                };
+            let snapshot_store = ObjectStoreBasedSnapshotStore {
+                store: self.store.clone(),
+            };
             let end_seq = self.wal_manager.sequence_num(location).await.unwrap();
             let snapshotter = Snapshotter {
                 log_store,
                 snapshot_store,
-                end_seq,
                 snapshot_data_provider: self.table_meta_set.clone(),
-                space_id,
-                table_id,
             };
 
-            let request = MakeSnapshotRequest {
-                shard_id,
+            let request = SnapshotRequest {
                 space_id,
                 table_id,
                 opts: self.opts.clone(),
                 end_seq,
+                location,
             };
 
-
-            snapshotter.snapshot().await?.map(|v| {
-                self.decrease_num_updates();
-                v
-            });
+            snapshotter.snapshot(request).await
         } else {
             debug!("Avoid concurrent snapshot");
+            Ok(())
         }
-
-        Ok(())
     }
 
     // with snapshot guard held
@@ -619,7 +563,7 @@ impl Manifest for ManifestImpl {
         Ok(final_results)
     }
 
-    async fn do_snapshot(&self, request: SnapshotRequest) -> GenericResult<()> {
+    async fn do_snapshot(&self, request: DoSnapshotRequest) -> GenericResult<()> {
         info!("Manifest do snapshot, request:{:?}", request);
 
         let table_id = request.table_id;
@@ -651,12 +595,12 @@ mod tests {
     use super::*;
     use crate::{
         manifest::{
-            details::{MetaUpdateLogEntryIterator, MetaUpdateLogReader, MetaUpdateLogWriter},
+            details::{MetaUpdateLogEntryIterator, MetaUpdateLogStore},
             meta_edit::{
                 AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEdit,
                 MetaUpdate, VersionEditMeta,
             },
-            LoadRequest, Manifest, TableInSpace,
+            DoSnapshotRequest, Manifest, TableInSpace,
         },
         table::data::TableShardInfo,
         TableOptions,
@@ -1147,7 +1091,10 @@ mod tests {
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
             let recover_req = RecoverRequest {
-                tables: vec![TableInSpace { table_id, space_id: ctx.schema_id.as_u32() }],
+                tables: vec![TableInSpace {
+                    table_id,
+                    space_id: ctx.schema_id.as_u32(),
+                }],
                 shard_id: DEFAULT_SHARD_ID,
             };
             let mut manifest_data_builder = MetaSnapshotBuilder::default();
@@ -1222,32 +1169,18 @@ mod tests {
     }
 
     #[async_trait]
-    impl MetaUpdateLogWriter for MemLogStore {
-        async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber> {
-            let mut logs = self.logs.lock().unwrap();
-            let seq = logs.len() as u64;
-            logs.push(Some(meta_update));
-
-            Ok(seq)
-        }
-
-        async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()> {
-            let mut logs = self.logs.lock().unwrap();
-            for i in 0..=inclusive_end {
-                logs[i as usize] = None;
-            }
-
-            Ok(())
-        }
-    }
-
-    #[async_trait]
-    impl MetaUpdateLogReader for MemLogStore {
+    impl MetaUpdateLogStore for MemLogStore {
         type Iter = vec::IntoIter<MetaUpdateLogEntry>;
 
-        async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter> {
+        async fn scan(&self, request: ScanLogRequest) -> Result<Self::Iter> {
+            let request = if let ScanLogRequest::Table(req) = request{
+                req
+            } else {
+                panic!("")
+            };
+
             let logs = self.logs.lock().unwrap();
-            let start = start.as_start_sequence_number().unwrap() as usize;
+            let start = request.start.as_start_sequence_number().unwrap() as usize;
 
             let mut exist_logs = Vec::new();
             let logs_with_idx = logs.iter().enumerate();
@@ -1265,6 +1198,23 @@ mod tests {
             }
 
             Ok(exist_logs.into_iter())
+        }
+    
+        async fn append(&self, request: AppendRequest) -> Result<SequenceNumber> {
+            let mut logs = self.logs.lock().unwrap();
+            let seq = logs.len() as u64;
+            logs.push(Some(request.meta_update));
+
+            Ok(seq)
+        }
+    
+        async fn delete_up_to(&self, request: DeleteRequest) -> Result<()> {
+            let mut logs = self.logs.lock().unwrap();
+            for i in 0..=request.inclusive_end {
+                logs[i as usize] = None;
+            }
+
+            Ok(())
         }
     }
 
@@ -1293,25 +1243,30 @@ mod tests {
 
     #[async_trait]
     impl MetaUpdateSnapshotStore for MemSnapshotStore {
-        async fn store(&self, snapshot: &Snapshot) -> Result<()> {
+        async fn store(&self, request: StoreSnapshotRequest) -> Result<()> {
             let mut curr_snapshot = self.curr_snapshot.lock().await;
-            *curr_snapshot = Some(snapshot.clone());
+            *curr_snapshot = Some(request.snapshot.clone());
             Ok(())
         }
 
-        async fn load(&self) -> Result<Option<Snapshot>> {
+        async fn load(&self, request: LoadSnapshotRequest) -> Result<Option<Snapshot>> {
             let curr_snapshot = self.curr_snapshot.lock().await;
             Ok(curr_snapshot.clone())
         }
     }
 
+    // The test idea is:
+    //  + 1. Use `MetaSnapshotBuilder` to build expected result.
+    //  + 2. Make snapshot and store.
+    //  + 3. Load snapshot.
+    //  + 4. Compare loaded snapshot and expected.
     fn run_snapshot_test(
         ctx: Arc<TestContext>,
         table_id: TableId,
         input_updates: Vec<MetaUpdate>,
         updates_after_snapshot: Vec<MetaUpdate>,
     ) {
-        let log_store = MemLogStore::from_updates(table_id, &input_updates);
+        let log_store = MemLogStore::from_updates(table_id, &[]);
         let snapshot_store = MemSnapshotStore::new();
         let snapshot_data_provider = ctx.mock_provider.clone();
 
@@ -1319,75 +1274,101 @@ mod tests {
             let log_store = log_store;
             let snapshot_store = snapshot_store;
             let snapshot_provider = snapshot_data_provider;
+            let mut manifest_builder = MetaSnapshotBuilder::default();
 
+            check_snapshot_workflow(&mut manifest_builder, &log_store, &snapshot_store, snapshot_provider.clone(), table_id, &input_updates, input_updates.is_empty());
+            check_snapshot_workflow(&mut manifest_builder, &log_store, &snapshot_store, snapshot_provider, table_id, &updates_after_snapshot, input_updates.is_empty() && updates_after_snapshot.is_empty());
             // 1. Test write and do snapshot
             // Create and check the latest snapshot first.
-            let mut manifest_builder = MetaSnapshotBuilder::default();
-            for update in &input_updates {
-                manifest_builder.apply_update(update.clone()).unwrap();
-                let request = MetaEditRequest {
-                    shard_info: TableShardInfo::new(DEFAULT_SHARD_ID),
-                    meta_edit: MetaEdit::Update(update.clone()),
-                };
-                snapshot_provider.apply_edit_to_table(request).unwrap();
-            }
-            let expect_table_manifest_data = manifest_builder.clone().build();
-
-            // Do snapshot from memory and check the snapshot result.
-            let snapshot = build_and_store_snapshot(
-                &log_store,
-                &snapshot_store,
-                snapshot_provider.clone(),
-                table_id,
-            )
-            .await;
-            if input_updates.is_empty() {
-                assert!(snapshot.is_none());
-            } else {
-                assert!(snapshot.is_some());
-                let snapshot = snapshot.unwrap();
-                assert_eq!(snapshot.data, expect_table_manifest_data);
-                assert_eq!(snapshot.end_seq, log_store.next_seq() - 1);
-
-                let recovered_snapshot = recover_snapshot(&log_store, &snapshot_store).await;
-                assert_eq!(snapshot, recovered_snapshot.unwrap());
-            }
-            // The logs in the log store should be cleared after snapshot.
-            let updates_in_log_store = log_store.to_meta_updates().await;
-            assert!(updates_in_log_store.is_empty());
-
+            
             // 2. Test write after snapshot, and do snapshot again
             // Write the updates after snapshot.
-            for update in &updates_after_snapshot {
-                manifest_builder.apply_update(update.clone()).unwrap();
-                log_store.append(update.clone()).await.unwrap();
-                let request = MetaEditRequest {
-                    shard_info: TableShardInfo::new(DEFAULT_SHARD_ID),
-                    meta_edit: MetaEdit::Update(update.clone()),
-                };
-                snapshot_provider.apply_edit_to_table(request).unwrap();
-            }
-            let expect_table_manifest_data = manifest_builder.build();
-            // Do snapshot and check the snapshot result again.
-            let snapshot =
-                build_and_store_snapshot(&log_store, &snapshot_store, snapshot_provider, table_id)
-                    .await;
+            // for update in &updates_after_snapshot {
+            //     manifest_builder.apply_update(update.clone()).unwrap();
 
-            if input_updates.is_empty() && updates_after_snapshot.is_empty() {
-                assert!(snapshot.is_none());
-            } else {
-                assert!(snapshot.is_some());
-                let snapshot = snapshot.unwrap();
-                assert_eq!(snapshot.data, expect_table_manifest_data);
-                assert_eq!(snapshot.end_seq, log_store.next_seq() - 1);
+            //     let request = AppendRequest {
+            //         opts: Options::default(),
+            //         location: WalLocation::new(DEFAULT_SHARD_ID as RegionId, table_id.as_u64()),
+            //         meta_update: update.clone(),
+            //     };
+            //     log_store.append(request).await.unwrap();
+            //     let request = MetaEditRequest {
+            //         shard_info: TableShardInfo::new(DEFAULT_SHARD_ID),
+            //         meta_edit: MetaEdit::Update(update.clone()),
+            //     };
+            //     snapshot_provider.apply_edit_to_table(request).unwrap();
+            // }
+            // let expect_table_manifest_data = manifest_builder.build();
+            // // Do snapshot and check the snapshot result again.
+            // let snapshot =
+            //     build_and_store_snapshot(&log_store, &snapshot_store, snapshot_provider, table_id)
+            //         .await;
 
-                let recovered_snapshot = recover_snapshot(&log_store, &snapshot_store).await;
-                assert_eq!(snapshot, recovered_snapshot.unwrap());
-            }
-            // The logs in the log store should be cleared after snapshot.
-            let updates_in_log_store = log_store.to_meta_updates().await;
-            assert!(updates_in_log_store.is_empty());
+            // if input_updates.is_empty() && updates_after_snapshot.is_empty() {
+            //     assert!(snapshot.is_none());
+            // } else {
+            //     assert!(snapshot.is_some());
+            //     let snapshot = snapshot.unwrap();
+            //     assert_eq!(snapshot.data, expect_table_manifest_data);
+            //     assert_eq!(snapshot.end_seq, log_store.next_seq() - 1);
+
+            //     let recovered_snapshot = recover_snapshot(&log_store, &snapshot_store).await;
+            //     assert_eq!(snapshot, recovered_snapshot.unwrap());
+            // }
+            // // The logs in the log store should be cleared after snapshot.
+            // let updates_in_log_store = log_store.to_meta_updates().await;
+            // assert!(updates_in_log_store.is_empty());
         });
+    }
+
+    async fn check_snapshot_workflow(manifest_builder: &mut MetaSnapshotBuilder,
+        log_store: &MemLogStore, snapshot_store: &MemSnapshotStore, snapshot_provider: Arc<MockProviderImpl>,
+        table_id: TableId, input_updates: &[MetaUpdate],
+        is_empty: bool)
+    {
+        for update in input_updates {
+            manifest_builder.apply_update(update.clone()).unwrap();
+            
+            let request = AppendRequest {
+                opts: Options::default(),
+                location: WalLocation::new(DEFAULT_SHARD_ID as RegionId, table_id.as_u64()),
+                meta_update: update.clone(),
+            };
+            log_store.append(request).await.unwrap();
+            
+            let request = MetaEditRequest {
+                shard_info: TableShardInfo::new(DEFAULT_SHARD_ID),
+                meta_edit: MetaEdit::Update(update.clone()),
+            };
+            snapshot_provider.apply_edit_to_table(request).unwrap();
+        }
+        let expect_table_manifest_data = manifest_builder.clone().build();
+
+        // Do snapshot from memory and check the snapshot result.
+        // Build and store.
+        build_and_store_snapshot(
+            &log_store,
+            &snapshot_store,
+            snapshot_provider.clone(),
+            table_id,
+        )
+        .await;
+
+        // Fetch 
+        let tables = vec![TableInSpace { table_id, space_id: 0 }];
+        let recovered_snapshot = recover_snapshot(&log_store, &snapshot_store, &tables, DEFAULT_SHARD_ID).await;
+        if is_empty {
+            assert!(recovered_snapshot.is_none());
+        } else {
+            assert!(recovered_snapshot.is_some());
+            let snapshot = recovered_snapshot.unwrap();
+            assert_eq!(snapshot.data, expect_table_manifest_data);
+            assert_eq!(snapshot.end_seq, log_store.next_seq() - 1);
+        }
+
+        // The logs in the log store should be cleared after snapshot.
+        let updates_in_log_store = log_store.to_meta_updates().await;
+        assert!(updates_in_log_store.is_empty());
     }
 
     async fn build_and_store_snapshot(
@@ -1395,28 +1376,47 @@ mod tests {
         snapshot_store: &MemSnapshotStore,
         snapshot_provider: Arc<MockProviderImpl>,
         table_id: TableId,
-    ) -> Option<Snapshot> {
+    ) {
         let end_seq = log_store.next_seq() - 1;
+        let space_id = 0;
         let snapshotter = Snapshotter {
             log_store: log_store.clone(),
             snapshot_store: snapshot_store.clone(),
-            end_seq,
             snapshot_data_provider: snapshot_provider,
-            space_id: 0,
-            table_id,
         };
-        snapshotter.snapshot().await.unwrap()
+        let request = SnapshotRequest {
+            space_id,
+            table_id,
+            location: WalLocation::new(DEFAULT_SHARD_ID as RegionId, table_id.as_u64()),
+            opts: Options::default(),
+            end_seq,
+        };
+        snapshotter.snapshot(request).await.unwrap();
     }
 
     async fn recover_snapshot(
         log_store: &MemLogStore,
         snapshot_store: &MemSnapshotStore,
+        tables: &[TableInSpace],
+        shard_id: ShardId,
     ) -> Option<Snapshot> {
-        let recoverer = SnapshotRecoverer {
+        let request = RecoverRequest {
+            tables: tables.to_owned(),
+            shard_id,
+        };
+        let states = tables.iter().map(|table| {
+            (table.table_id, RecoverState::FromSnapshotStore)
+        }).collect::<HashMap<_,_>>();
+
+        let mut recoverer = SnapshotRecoverer {
+            log_store: log_store.clone(),
+            snapshot_store: snapshot_store.clone(),
+            request,
+            states,
             // log_store: log_store.clone(),
             // snapshot_store: snapshot_store.clone(),
         };
-        recoverer.recover().await.unwrap()
+        recoverer.recover().await.unwrap().pop().unwrap().result.unwrap()
     }
 
     #[test]

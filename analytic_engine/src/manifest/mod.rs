@@ -3,10 +3,10 @@
 //! Manage meta data of the engine
 
 pub mod details;
+pub mod error;
 pub mod meta_edit;
 pub mod meta_snapshot;
 mod storage;
-pub mod error;
 
 use std::{fmt, sync::Arc};
 
@@ -30,13 +30,11 @@ pub struct TableInSpace {
 }
 
 #[derive(Debug)]
-pub struct LoadRequest {
+pub struct DoSnapshotRequest {
     pub space_id: SpaceId,
     pub table_id: TableId,
     pub shard_id: ShardId,
 }
-
-pub type SnapshotRequest = LoadRequest;
 
 /// Manifest holds meta data of all tables.
 #[async_trait]
@@ -47,16 +45,14 @@ pub trait Manifest: Send + Sync + fmt::Debug {
     /// Recover table metas from storage.
     async fn recover(&self, load_req: &RecoverRequest) -> GenericResult<Vec<RecoverResult>>;
 
-    async fn do_snapshot(&self, request: SnapshotRequest) -> GenericResult<()>;
+    async fn do_snapshot(&self, request: DoSnapshotRequest) -> GenericResult<()>;
 }
 
 pub type ManifestRef = Arc<dyn Manifest>;
 
-struct TableResult<T> {
+pub struct TableResult<T> {
     pub table_id: TableId,
     pub result: GenericResult<T>,
 }
 
 pub type RecoverResult = TableResult<()>;
-
-

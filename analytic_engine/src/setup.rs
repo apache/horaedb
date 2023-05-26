@@ -60,7 +60,7 @@ pub enum Error {
 
     #[snafu(display("Failed to open manifest, err:{}", source))]
     OpenManifest {
-        source: crate::manifest::details::Error,
+        source: crate::manifest::error::Error,
     },
 
     #[snafu(display("Failed to open obkv, err:{}", source))]
