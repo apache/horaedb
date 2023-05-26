@@ -7,22 +7,21 @@ use std::{
     sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-use common_types::hash::{build_fixed_seed_ahasher};
+use common_types::hash::build_fixed_seed_ahasher;
 /// Simple partitioned `RwLock`
 pub struct PartitionedRwLock<T> {
     partitions: Vec<RwLock<T>>,
     partition_mask: usize,
 }
 
-impl<T> PartitionedRwLock<T>
-where
-    T: Clone,
-{
-    pub fn new(t: T, partition_bit: usize) -> Self {
+impl<T> PartitionedRwLock<T> {
+    pub fn new(t: Vec<T>, partition_bit: usize) -> Self {
         let partition_num = 1 << partition_bit;
-        let partitions = (0..partition_num)
-            .map(|_| RwLock::new(t.clone()))
-            .collect::<Vec<_>>();
+        debug_assert!(t.len() == partition_num);
+        let partitions = t
+            .into_iter()
+            .map(|i| RwLock::new(i))
+            .collect::<Vec<RwLock<T>>>();
         Self {
             partitions,
             partition_mask: partition_num - 1,
@@ -65,6 +64,7 @@ pub struct PartitionedMutex<T> {
 impl<T> PartitionedMutex<T> {
     pub fn new(t: Vec<T>, partition_bit: usize) -> Self {
         let partition_num = 1 << partition_bit;
+        debug_assert!(t.len() == partition_num);
         let partitions = t
             .into_iter()
             .map(|i| Mutex::new(i))
@@ -105,7 +105,8 @@ mod tests {
 
     #[test]
     fn test_partitioned_rwlock() {
-        let test_locked_map = PartitionedRwLock::new(HashMap::new(), 4);
+        let hmap: Vec<_> = (0..(1 << 4)).map(|_| HashMap::new()).collect();
+        let test_locked_map = PartitionedRwLock::new(hmap, 4);
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
 
@@ -140,7 +141,7 @@ mod tests {
 
     #[test]
     fn test_partitioned_mutex_vis_different_partition() {
-        let tmp_vec: Vec<f32> = Vec::new();
+        let tmp_vec: Vec<Vec<i32>> = (0..(1 << 4)).map(|_| Vec::new()).collect();
         let test_locked_map = PartitionedMutex::new(tmp_vec, 4);
         let mutex_first = test_locked_map.get_partition_by_index(0);
 
@@ -154,7 +155,7 @@ mod tests {
 
     #[test]
     fn test_partitioned_rwmutex_vis_different_partition() {
-        let tmp_vec: Vec<f32> = Vec::new();
+        let tmp_vec: Vec<Vec<i32>> = (0..(1 << 4)).map(|_| Vec::new()).collect();
         let test_locked_map = PartitionedRwLock::new(tmp_vec, 4);
         let mutex_first = test_locked_map.get_partition_by_index(0);
         let mut _tmp = mutex_first.write().unwrap();

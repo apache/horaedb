@@ -108,7 +108,7 @@ impl MemCache {
     }
 
     fn peek(&self, key: &str) -> Option<Bytes> {
-        self.partitions.lock(&key).peek(&key)
+        self.partitions.lock(&key).peek(key)
     }
 
     fn insert(&self, key: String, value: Bytes) {
