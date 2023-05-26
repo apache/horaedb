@@ -54,12 +54,9 @@ impl MemCache {
         let cap_per_part = mem_cap
             .checked_mul(NonZeroUsize::new(partition_num).unwrap())
             .context(InvalidCapacity)?;
-        let inner_vec = (0..partition_num)
-            .map(|_| {
-                CLruCache::with_config(CLruCacheConfig::new(cap_per_part).with_scale(CustomScale))
-            })
-            .collect::<Vec<_>>();
-        let inner = PartitionedMutex::new(inner_vec, partition_bits);
+        let inin_lru =
+            || CLruCache::with_config(CLruCacheConfig::new(cap_per_part).with_scale(CustomScale));
+        let inner = PartitionedMutex::new(inin_lru, partition_bits);
         Ok(Self { mem_cap, inner })
     }
 
