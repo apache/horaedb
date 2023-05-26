@@ -24,7 +24,6 @@ pub fn hash64(mut bytes: &[u8]) -> u64 {
 }
 
 pub fn build_fixed_seed_ahasher() -> AHasher {
-    ahash::AHasher::default();
     ahash::RandomState::with_seeds(0, 0, 0, 0).build_hasher()
 }
 #[cfg(test)]
