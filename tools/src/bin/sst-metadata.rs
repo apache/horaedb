@@ -19,11 +19,7 @@ use tokio::{runtime::Handle, task::JoinSet};
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    /// Root dir of storage
-    #[clap(short, long, required(true))]
-    store_path: String,
-
-    /// SST directory(relative to store_path)
+    /// SST directory
     #[clap(short, long, required(true))]
     dir: String,
 
@@ -62,12 +58,11 @@ fn main() {
 
 async fn run(args: Args) -> Result<()> {
     let handle = Handle::current();
-    let storage = LocalFileSystem::new_with_prefix(args.store_path)?;
+    let storage = LocalFileSystem::new_with_prefix(&args.dir)?;
     let storage: ObjectStoreRef = Arc::new(storage);
-    let prefix_path = Path::parse(args.dir)?;
 
     let mut join_set = JoinSet::new();
-    let mut ssts = storage.list(Some(&prefix_path)).await?;
+    let mut ssts = storage.list(None).await?;
     while let Some(object_meta) = ssts.next().await {
         let object_meta = object_meta?;
         let storage = storage.clone();
