@@ -64,6 +64,11 @@ trait Filter: fmt::Debug {
     /// Serialize the bitmap index to binary array.
     fn to_bytes(&self) -> Vec<u8>;
 
+    /// Serialized size
+    fn size(&self) -> usize {
+        self.to_bytes().len()
+    }
+
     /// Deserialize the binary array to bitmap index.
     fn from_bytes(buf: Vec<u8>) -> Result<Self>
     where
@@ -189,6 +194,13 @@ impl RowGroupFilter {
             .as_ref()
             .map(|v| v.contains(data))
     }
+
+    fn size(&self) -> usize {
+        self.column_filters
+            .iter()
+            .map(|cf| cf.as_ref().map(|cf| cf.size()).unwrap_or(0))
+            .sum()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -208,6 +220,10 @@ impl ParquetFilter {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn size(&self) -> usize {
+        self.row_group_filters.iter().map(|f| f.size()).sum()
     }
 }
 
@@ -324,14 +340,22 @@ impl From<ParquetMetaData> for MetaData {
 
 impl fmt::Debug for ParquetMetaData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use common_util::byte::encode;
+
         f.debug_struct("ParquetMetaData")
-            .field("min_key", &self.min_key)
-            .field("max_key", &self.max_key)
+            .field("min_key", &encode(&self.min_key))
+            .field("max_key", &encode(&self.max_key))
             .field("time_range", &self.time_range)
             .field("max_sequence", &self.max_sequence)
             .field("schema", &self.schema)
-            // Avoid the messy output from filter.
-            .field("has_filter", &self.parquet_filter.is_some())
+            .field(
+                "filter_size",
+                &self
+                    .parquet_filter
+                    .as_ref()
+                    .map(|filter| filter.size())
+                    .unwrap_or(0),
+            )
             .field("collapsible_cols_idx", &self.collapsible_cols_idx)
             .finish()
     }
