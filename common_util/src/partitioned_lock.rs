@@ -55,6 +55,7 @@ where
 }
 
 /// Simple partitioned `Mutex`
+#[derive(Debug)]
 pub struct PartitionedMutex<T> {
     partitions: Vec<Mutex<T>>,
     partition_mask: usize,
@@ -62,13 +63,12 @@ pub struct PartitionedMutex<T> {
 
 impl<T> PartitionedMutex<T>
 where
-    T: Clone,
 {
-    pub fn new(t: T, partition_bit: usize) -> Self {
+    pub fn new(t: Vec<T>, partition_bit: usize) -> Self {
         let partition_num = 1 << partition_bit;
-        let partitions = (0..partition_num)
-            .map(|_| Mutex::new(t.clone()))
-            .collect::<Vec<_>>();
+        let partitions = t.into_iter()
+            .map(|i| Mutex::new(i))
+            .collect::<Vec<Mutex<T>>>();
         Self {
             partitions,
             partition_mask: partition_num - 1,
@@ -118,7 +118,8 @@ mod tests {
 
     #[test]
     fn test_partitioned_mutex() {
-        let test_locked_map = PartitionedMutex::new(HashMap::new(), 4);
+        let hmap :  Vec<_>= (0..(1<<4)).into_iter().map(|_|HashMap::new()).collect();
+        let test_locked_map = PartitionedMutex::new(hmap, 4);
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
 
