@@ -7,7 +7,7 @@ use std::{
     sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-use common_types::hash::{build_fixed_seed_ahasher, AHasher};
+use common_types::hash::{build_fixed_seed_ahasher};
 /// Simple partitioned `RwLock`
 pub struct PartitionedRwLock<T> {
     partitions: Vec<RwLock<T>>,
@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn test_partitioned_mutex() {
-        let hmap: Vec<_> = (0..(1 << 4)).into_iter().map(|_| HashMap::new()).collect();
+        let hmap: Vec<_> = (0..(1 << 4)).map(|_| HashMap::new()).collect();
         let test_locked_map = PartitionedMutex::new(hmap, 4);
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
