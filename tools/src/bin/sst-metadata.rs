@@ -4,10 +4,7 @@
 
 use std::sync::Arc;
 
-use analytic_engine::sst::{
-    meta_data::cache::MetaData,
-    parquet::{async_reader::ChunkReaderAdapter, meta_data::ParquetMetaDataRef},
-};
+use analytic_engine::sst::{meta_data::cache::MetaData, parquet::async_reader::ChunkReaderAdapter};
 use anyhow::{Context, Result};
 use clap::Parser;
 use common_util::{
@@ -94,28 +91,33 @@ async fn run(args: Args) -> Result<()> {
 
     // sort by time_range asc
     metas.sort_by(|a, b| {
-        a.1.time_range
+        a.1.custom()
+            .time_range
             .inclusive_start()
-            .cmp(&b.1.time_range.inclusive_start())
+            .cmp(&b.1.custom().time_range.inclusive_start())
     });
 
-    for (object_meta, parquet_meta, metadata_size) in metas {
+    for (object_meta, sst_metadata, metadata_size) in metas {
         let ObjectMeta { location, size, .. } = &object_meta;
-        let time_range = parquet_meta.time_range;
+        let custom_meta = sst_metadata.custom();
+        let parquet_meta = sst_metadata.parquet();
+        let time_range = custom_meta.time_range;
         let start = format_as_ymdhms(time_range.inclusive_start().as_i64());
         let end = format_as_ymdhms(time_range.exclusive_end().as_i64());
-        let seq = parquet_meta.max_sequence;
-        let filter_size = parquet_meta
+        let seq = custom_meta.max_sequence;
+        let filter_size = custom_meta
             .parquet_filter
             .as_ref()
             .map(|f| f.size())
             .unwrap_or(0);
+        let file_metadata = parquet_meta.file_metadata();
+        let row_num = file_metadata.num_rows();
         if args.verbose {
-            println!("object_meta:{object_meta:?}, parquet_meta:{parquet_meta:?}, time_range::[{start}, {end}), metadata_size:{metadata_size}");
+            println!("object_meta:{object_meta:?}, parquet_meta:{parquet_meta:?}");
         } else {
             let size_mb = *size as f64 / 1024.0 / 1024.0;
             println!(
-                "Location:{location}, time_range:[{start}, {end}), size:{size_mb:.3}M, max_seq:{seq}, filter:{filter_size}, metadata:{metadata_size}"
+                "Location:{location}, time_range:[{start}, {end}), size:{size_mb:.3}M, max_seq:{seq}, filter:{filter_size}, metadata:{metadata_size}, row_num:{row_num}"
             );
         }
     }
@@ -127,11 +129,10 @@ async fn parse_metadata(
     storage: ObjectStoreRef,
     path: Path,
     size: usize,
-) -> Result<(ParquetMetaDataRef, usize)> {
+) -> Result<(MetaData, usize)> {
     let reader = ChunkReaderAdapter::new(&path, &storage);
     let (parquet_metadata, metadata_size) = fetch_parquet_metadata(size, &reader).await?;
 
-    let md = MetaData::try_new(&parquet_metadata, true)?;
-    let custom_meta = md.custom();
-    Ok((custom_meta.clone(), metadata_size))
+    let md = MetaData::try_new(&parquet_metadata, false)?;
+    Ok((md, metadata_size))
 }
