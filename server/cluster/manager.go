@@ -164,7 +164,7 @@ func (m *managerImpl) UpdateCluster(ctx context.Context, clusterName string, opt
 		MinNodeCount:   c.GetMetadata().GetClusterMinNodeCount(),
 		ShardTotal:     c.GetMetadata().GetTotalShardNum(),
 		EnableSchedule: opt.EnableSchedule,
-		TopologyType:   c.GetMetadata().GetTopologyType(),
+		TopologyType:   opt.TopologyType,
 		CreatedAt:      c.GetMetadata().GetCreateTime(),
 		ModifiedAt:     uint64(time.Now().UnixMilli()),
 	}})

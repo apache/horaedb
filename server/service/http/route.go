@@ -10,6 +10,8 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+type param string
+
 // Router wraps httprouter.Router and adds support for prefixed sub-routers,
 // per-request context injections and instrumentation.
 type Router struct {
@@ -86,6 +88,18 @@ func (r *Router) handle(handlerName string, h http.HandlerFunc) httprouter.Handl
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 
+		for _, p := range params {
+			ctx = context.WithValue(ctx, param(p.Key), p.Value)
+		}
 		h(w, req.WithContext(ctx))
 	}
+}
+
+// Param returns param p for the context, or the empty string when
+// param does not exist in context.
+func Param(ctx context.Context, p string) string {
+	if v := ctx.Value(param(p)); v != nil {
+		return v.(string)
+	}
+	return ""
 }

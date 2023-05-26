@@ -56,6 +56,7 @@ type CreateClusterOpts struct {
 
 type UpdateClusterOpts struct {
 	EnableSchedule bool
+	TopologyType   storage.TopologyType
 }
 
 type CreateTableMetadataRequest struct {
