@@ -58,6 +58,7 @@ pub trait MetaUpdateLogStore: std::fmt::Debug + Clone {
 
 pub enum ScanLogRequest {
     Table(ScanTableRequest),
+    #[allow(dead_code)]
     Region(ScanRegionRequest),
 }
 
@@ -93,10 +94,6 @@ pub struct ObjectStoreBasedSnapshotStore {
 impl ObjectStoreBasedSnapshotStore {
     const CURRENT_SNAPSHOT_NAME: &str = "current";
     const SNAPSHOT_PATH_PREFIX: &str = "manifest/snapshot";
-
-    pub fn new(store: ObjectStoreRef) -> Self {
-        Self { store }
-    }
 
     pub fn snapshot_path(space_id: SpaceId, table_id: TableId) -> Path {
         format!(

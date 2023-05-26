@@ -3,48 +3,33 @@
 //! Implementation of Manifest
 
 use std::{
-    collections::{HashMap, VecDeque},
-    fmt, mem,
+    collections::HashMap,
+    fmt::{self, format},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
 };
 
-use arc_swap::ArcSwap;
 use async_trait::async_trait;
-use ceresdbproto::{manifest as manifest_pb, meta_storage::procedure_info::State};
 use common_types::table::ShardId;
 use common_util::{
     config::ReadableDuration,
-    define_result,
     error::{BoxError, GenericError, GenericResult},
 };
 use log::{debug, info, warn};
-use object_store::{ObjectStoreRef, Path};
-use parquet::data_type::AsBytes;
-use prost::Message;
+use object_store::ObjectStoreRef;
 use serde::{Deserialize, Serialize};
-use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::Mutex;
-use wal::{
-    kv_encoder::LogBatchEncoder,
-    log_batch::LogEntry,
-    manager::{
-        BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest, RegionId, ScanContext,
-        ScanRequest, SequenceNumber, WalLocation, WalManagerRef, WriteContext,
-    },
-};
+use wal::manager::{ReadBoundary, RegionId, SequenceNumber, WalLocation, WalManagerRef};
 
 use super::{RecoverRequest, RecoverResult, TableResult};
 use crate::{
     manifest::{
         error::*,
-        meta_edit::{
-            MetaEdit, MetaEditRequest, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload, Snapshot,
-        },
-        meta_snapshot::{self, MetaSnapshot, MetaSnapshotBuilder},
+        meta_edit::{MetaEdit, MetaEditRequest, MetaUpdate, Snapshot},
+        meta_snapshot::{MetaSnapshot, MetaSnapshotBuilder},
         storage::{MetaUpdateLogEntryIterator, *},
         DoSnapshotRequest, Manifest,
     },
@@ -81,15 +66,16 @@ struct SnapshotRecoverer<LogStore, SnapshotStore> {
 #[derive(Debug)]
 enum RecoverState {
     FromSnapshotStore,
-    FromLogStore {
-        latest_seq: SequenceNumber,
-        meta_snapshot_builder: MetaSnapshotBuilder,
-        is_empty: bool,
-    },
-    Failed {
-        err: GenericError,
-    },
+    FromLogStore(FromLogStoreContext),
+    Failed(GenericError),
     Success(Option<Snapshot>),
+}
+
+#[derive(Debug)]
+pub struct FromLogStoreContext {
+    latest_seq: SequenceNumber,
+    meta_snapshot_builder: MetaSnapshotBuilder,
+    is_empty: bool,
 }
 
 pub type SnapshotRecoverResult = TableResult<Option<Snapshot>>;
@@ -104,6 +90,7 @@ where
             "Manifest recover from snapshot store, request:{:?}",
             self.request
         );
+
         // Pull all snapshots concurrently.
         let load_snapshots = self
             .request
@@ -143,14 +130,14 @@ where
                         }
                         None => (SequenceNumber::MIN, MetaSnapshotBuilder::default()),
                     };
-                    *state = RecoverState::FromLogStore {
+                    *state = RecoverState::FromLogStore(FromLogStoreContext {
                         latest_seq,
                         meta_snapshot_builder,
                         is_empty,
-                    };
+                    });
                 }
                 Err(e) => {
-                    *state = RecoverState::Failed { err: Box::new(e) };
+                    *state = RecoverState::Failed(Box::new(e));
                 }
             }
         }
@@ -159,78 +146,102 @@ where
     }
 
     async fn recover_from_log(&mut self) -> Result<()> {
-        self.region_based_recover_from_log().await
+        self.recover_from_log_on_table_mode().await
     }
 
     // TODO: now we just recover table by table as origin.
     // Maybe we should make it more concurrently.
-    async fn table_based_recover_from_log(&mut self) -> Result<()> {
-        todo!()
-    }
-
-    async fn region_based_recover_from_log(&mut self) -> Result<()> {
+    async fn recover_from_log_on_table_mode(&mut self) -> Result<()> {
         info!(
-            "Manifest recover from log store, request:{:?}",
+            "Manifest recover from log on table mode, request:{:?}",
             self.request
         );
 
-        let request = ScanLogRequest::Region({
-            ScanRegionRequest {
-                opts: Options::default(),
-                region_id: self.request.shard_id as RegionId,
-            }
-        });
-        let mut reader = self.log_store.scan(request).await.unwrap();
-
-        while let Some(MetaUpdateLogEntry {
-            table_id,
-            sequence: seq,
-            meta_update: update,
-        }) = reader.next_update().await?
-        {
-            if let Some(state) = self.states.get_mut(&table_id) {
-                match state {
-                    RecoverState::FromLogStore {
-                        latest_seq,
-                        meta_snapshot_builder,
-                        is_empty,
-                    } => {
-                        *latest_seq = seq;
-                        *is_empty = false;
-                        if let Err(e) = meta_snapshot_builder.apply_update(update) {
-                            *state = RecoverState::Failed { err: Box::new(e) }
+        for (table_id, state) in self.states.iter_mut() {
+            match state {
+                RecoverState::FromLogStore(context) => {
+                    let result = Self::recover_single_table_from_log(
+                        self.log_store.clone(),
+                        self.request.shard_id,
+                        *table_id,
+                        context,
+                    )
+                    .await;
+                    match result {
+                        Ok(snapshot) => {
+                            *state = RecoverState::Success(snapshot);
+                        }
+                        Err(e) => {
+                            *state = RecoverState::Failed(e);
                         }
                     }
-                    RecoverState::Failed { .. } => {}
-                    RecoverState::Success { .. } | RecoverState::FromSnapshotStore => {
-                        unreachable!();
-                    }
+                }
+                RecoverState::Failed(_) => {}
+                RecoverState::FromSnapshotStore | RecoverState::Success(_) => {
+                    return RecoverFromStorageNoCause {
+                        msg: format!("occur unexpected state while trying to recover from log, table_id:{table_id}, state:{state:?}")
+                    }.fail();
                 }
             }
         }
 
-        for (table_id, state) in self.states.iter_mut() {
-            if let RecoverState::FromLogStore {
-                latest_seq,
-                meta_snapshot_builder,
-                is_empty,
-            } = state
-            {
-                let snapshot = if *is_empty {
-                    None
-                } else {
-                    let meta_snapshot_builder = std::mem::take(meta_snapshot_builder);
-                    let meta_snapshot = meta_snapshot_builder.build();
-                    Some(Snapshot {
-                        end_seq: *latest_seq,
-                        data: meta_snapshot,
-                    })
-                };
-                *state = RecoverState::Success(snapshot);
+        Ok(())
+    }
+
+    async fn recover_single_table_from_log(
+        log_store: LogStore,
+        shard_id: ShardId,
+        table_id: TableId,
+        context: &mut FromLogStoreContext,
+    ) -> GenericResult<Option<Snapshot>> {
+        debug!(
+            "Manifest recover single table from log, table_id:{}, shard_id:{}, context:{:?}",
+            table_id, shard_id, context
+        );
+
+        let FromLogStoreContext {
+            latest_seq,
+            meta_snapshot_builder,
+            is_empty,
+        } = context;
+
+        let request = ScanLogRequest::Table({
+            ScanTableRequest {
+                opts: Options::default(),
+                location: WalLocation::new(shard_id as RegionId, table_id.as_u64()),
+                start: ReadBoundary::Included(*latest_seq),
             }
+        });
+        let mut reader = log_store.scan(request).await.box_err()?;
+
+        while let Some(MetaUpdateLogEntry {
+            sequence: seq,
+            meta_update: update,
+            ..
+        }) = reader.next_update().await?
+        {
+            *latest_seq = seq;
+            *is_empty = false;
+            meta_snapshot_builder.apply_update(update).box_err()?;
         }
 
-        Ok(())
+        let snapshot = if *is_empty {
+            None
+        } else {
+            let meta_snapshot_builder = std::mem::take(meta_snapshot_builder);
+            let meta_snapshot = meta_snapshot_builder.build();
+            Some(Snapshot {
+                end_seq: *latest_seq,
+                data: meta_snapshot,
+            })
+        };
+
+        Ok(snapshot)
+    }
+
+    #[allow(dead_code)]
+    async fn region_based_recover_from_log(&mut self) -> Result<()> {
+        todo!()
     }
 
     async fn recover(&mut self) -> Result<Vec<SnapshotRecoverResult>> {
@@ -241,16 +252,18 @@ where
 
         self.recover_from_snapshot().await?;
         self.recover_from_log().await?;
+        
         let states = std::mem::take(&mut self.states);
-
         let table_results = states
             .into_iter()
             .map(|(table_id, state)| {
                 let result = match state {
-                    RecoverState::Failed { err } => Err(err),
+                    RecoverState::Failed(err) => Err(err),
                     RecoverState::Success(snapshot_opt) => Ok(snapshot_opt),
                     RecoverState::FromSnapshotStore | RecoverState::FromLogStore { .. } => {
-                        unreachable!()
+                        RecoverFromStorageNoCause {
+                            msg: format!("occur unexpected state while trying to recover, table_id:{table_id}, state:{state:?}")
+                        }.fail().box_err()
                     }
                 };
                 SnapshotRecoverResult { table_id, result }
@@ -450,12 +463,14 @@ impl ManifestImpl {
                 end_seq,
                 location,
             };
+            snapshotter.snapshot(request).await?;
 
-            snapshotter.snapshot(request).await
+            self.decrease_num_updates();
         } else {
             debug!("Avoid concurrent snapshot");
-            Ok(())
         }
+
+        Ok(())
     }
 
     // with snapshot guard held
@@ -600,7 +615,7 @@ mod tests {
                 AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEdit,
                 MetaUpdate, VersionEditMeta,
             },
-            DoSnapshotRequest, Manifest, TableInSpace,
+            Manifest, TableInSpace,
         },
         table::data::TableShardInfo,
         TableOptions,
@@ -1173,7 +1188,7 @@ mod tests {
         type Iter = vec::IntoIter<MetaUpdateLogEntry>;
 
         async fn scan(&self, request: ScanLogRequest) -> Result<Self::Iter> {
-            let request = if let ScanLogRequest::Table(req) = request{
+            let request = if let ScanLogRequest::Table(req) = request {
                 req
             } else {
                 panic!("")
@@ -1199,7 +1214,7 @@ mod tests {
 
             Ok(exist_logs.into_iter())
         }
-    
+
         async fn append(&self, request: AppendRequest) -> Result<SequenceNumber> {
             let mut logs = self.logs.lock().unwrap();
             let seq = logs.len() as u64;
@@ -1207,7 +1222,7 @@ mod tests {
 
             Ok(seq)
         }
-    
+
         async fn delete_up_to(&self, request: DeleteRequest) -> Result<()> {
             let mut logs = self.logs.lock().unwrap();
             for i in 0..=request.inclusive_end {
@@ -1249,17 +1264,12 @@ mod tests {
             Ok(())
         }
 
-        async fn load(&self, request: LoadSnapshotRequest) -> Result<Option<Snapshot>> {
+        async fn load(&self, _request: LoadSnapshotRequest) -> Result<Option<Snapshot>> {
             let curr_snapshot = self.curr_snapshot.lock().await;
             Ok(curr_snapshot.clone())
         }
     }
 
-    // The test idea is:
-    //  + 1. Use `MetaSnapshotBuilder` to build expected result.
-    //  + 2. Make snapshot and store.
-    //  + 3. Load snapshot.
-    //  + 4. Compare loaded snapshot and expected.
     fn run_snapshot_test(
         ctx: Arc<TestContext>,
         table_id: TableId,
@@ -1276,66 +1286,53 @@ mod tests {
             let snapshot_provider = snapshot_data_provider;
             let mut manifest_builder = MetaSnapshotBuilder::default();
 
-            check_snapshot_workflow(&mut manifest_builder, &log_store, &snapshot_store, snapshot_provider.clone(), table_id, &input_updates, input_updates.is_empty());
-            check_snapshot_workflow(&mut manifest_builder, &log_store, &snapshot_store, snapshot_provider, table_id, &updates_after_snapshot, input_updates.is_empty() && updates_after_snapshot.is_empty());
-            // 1. Test write and do snapshot
-            // Create and check the latest snapshot first.
-            
-            // 2. Test write after snapshot, and do snapshot again
-            // Write the updates after snapshot.
-            // for update in &updates_after_snapshot {
-            //     manifest_builder.apply_update(update.clone()).unwrap();
-
-            //     let request = AppendRequest {
-            //         opts: Options::default(),
-            //         location: WalLocation::new(DEFAULT_SHARD_ID as RegionId, table_id.as_u64()),
-            //         meta_update: update.clone(),
-            //     };
-            //     log_store.append(request).await.unwrap();
-            //     let request = MetaEditRequest {
-            //         shard_info: TableShardInfo::new(DEFAULT_SHARD_ID),
-            //         meta_edit: MetaEdit::Update(update.clone()),
-            //     };
-            //     snapshot_provider.apply_edit_to_table(request).unwrap();
-            // }
-            // let expect_table_manifest_data = manifest_builder.build();
-            // // Do snapshot and check the snapshot result again.
-            // let snapshot =
-            //     build_and_store_snapshot(&log_store, &snapshot_store, snapshot_provider, table_id)
-            //         .await;
-
-            // if input_updates.is_empty() && updates_after_snapshot.is_empty() {
-            //     assert!(snapshot.is_none());
-            // } else {
-            //     assert!(snapshot.is_some());
-            //     let snapshot = snapshot.unwrap();
-            //     assert_eq!(snapshot.data, expect_table_manifest_data);
-            //     assert_eq!(snapshot.end_seq, log_store.next_seq() - 1);
-
-            //     let recovered_snapshot = recover_snapshot(&log_store, &snapshot_store).await;
-            //     assert_eq!(snapshot, recovered_snapshot.unwrap());
-            // }
-            // // The logs in the log store should be cleared after snapshot.
-            // let updates_in_log_store = log_store.to_meta_updates().await;
-            // assert!(updates_in_log_store.is_empty());
+            check_snapshot_workflow(
+                &mut manifest_builder,
+                &log_store,
+                &snapshot_store,
+                snapshot_provider.clone(),
+                table_id,
+                &input_updates,
+                input_updates.is_empty(),
+            )
+            .await;
+            check_snapshot_workflow(
+                &mut manifest_builder,
+                &log_store,
+                &snapshot_store,
+                snapshot_provider,
+                table_id,
+                &updates_after_snapshot,
+                input_updates.is_empty() && updates_after_snapshot.is_empty(),
+            )
+            .await;
         });
     }
 
-    async fn check_snapshot_workflow(manifest_builder: &mut MetaSnapshotBuilder,
-        log_store: &MemLogStore, snapshot_store: &MemSnapshotStore, snapshot_provider: Arc<MockProviderImpl>,
-        table_id: TableId, input_updates: &[MetaUpdate],
-        is_empty: bool)
-    {
+    // The test idea is:
+    //  + 1. Use `MetaSnapshotBuilder` to build expected result.
+    //  + 2. Make snapshot and store.
+    //  + 3. Load snapshot.
+    //  + 4. Compare loaded snapshot and expected.
+    async fn check_snapshot_workflow(
+        manifest_builder: &mut MetaSnapshotBuilder,
+        log_store: &MemLogStore,
+        snapshot_store: &MemSnapshotStore,
+        snapshot_provider: Arc<MockProviderImpl>,
+        table_id: TableId,
+        input_updates: &[MetaUpdate],
+        is_empty: bool,
+    ) {
         for update in input_updates {
             manifest_builder.apply_update(update.clone()).unwrap();
-            
+
             let request = AppendRequest {
                 opts: Options::default(),
                 location: WalLocation::new(DEFAULT_SHARD_ID as RegionId, table_id.as_u64()),
                 meta_update: update.clone(),
             };
             log_store.append(request).await.unwrap();
-            
+
             let request = MetaEditRequest {
                 shard_info: TableShardInfo::new(DEFAULT_SHARD_ID),
                 meta_edit: MetaEdit::Update(update.clone()),
@@ -1347,16 +1344,20 @@ mod tests {
         // Do snapshot from memory and check the snapshot result.
         // Build and store.
         build_and_store_snapshot(
-            &log_store,
-            &snapshot_store,
+            log_store,
+            snapshot_store,
             snapshot_provider.clone(),
             table_id,
         )
         .await;
 
-        // Fetch 
-        let tables = vec![TableInSpace { table_id, space_id: 0 }];
-        let recovered_snapshot = recover_snapshot(&log_store, &snapshot_store, &tables, DEFAULT_SHARD_ID).await;
+        // Fetch
+        let tables = vec![TableInSpace {
+            table_id,
+            space_id: 0,
+        }];
+        let recovered_snapshot =
+            recover_snapshot(log_store, snapshot_store, &tables, DEFAULT_SHARD_ID).await;
         if is_empty {
             assert!(recovered_snapshot.is_none());
         } else {
@@ -1404,9 +1405,10 @@ mod tests {
             tables: tables.to_owned(),
             shard_id,
         };
-        let states = tables.iter().map(|table| {
-            (table.table_id, RecoverState::FromSnapshotStore)
-        }).collect::<HashMap<_,_>>();
+        let states = tables
+            .iter()
+            .map(|table| (table.table_id, RecoverState::FromSnapshotStore))
+            .collect::<HashMap<_, _>>();
 
         let mut recoverer = SnapshotRecoverer {
             log_store: log_store.clone(),
@@ -1416,7 +1418,14 @@ mod tests {
             // log_store: log_store.clone(),
             // snapshot_store: snapshot_store.clone(),
         };
-        recoverer.recover().await.unwrap().pop().unwrap().result.unwrap()
+        recoverer
+            .recover()
+            .await
+            .unwrap()
+            .pop()
+            .unwrap()
+            .result
+            .unwrap()
     }
 
     #[test]

@@ -92,6 +92,16 @@ pub enum Error {
 
     #[snafu(display("Failed to load snapshot, err:{}", source))]
     LoadSnapshot { source: GenericError },
+
+    #[snafu(display("Failed to recover from storage, msg:{}, err:{}", msg, source))]
+    RecoverFromStorageWithCause { msg: String, source: GenericError },
+
+    #[snafu(display(
+        "Failed to recover from storage, msg:{}.\nBacktrace:\n{}",
+        msg,
+        backtrace
+    ))]
+    RecoverFromStorageNoCause { msg: String, backtrace: Backtrace },
 }
 
 define_result!(Error);

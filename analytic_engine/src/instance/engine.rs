@@ -213,6 +213,12 @@ pub enum Error {
 
     #[snafu(display("Failed to find table, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     TableNotExist { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Failed to recover manifest, err:{}", source))]
+    RecoverManifest {
+        source: GenericError,
+    },
+
 }
 
 define_result!(Error);
@@ -244,7 +250,8 @@ impl From<Error> for table_engine::engine::Error {
             | Error::CreateOpenFailedTable { .. }
             | Error::DoManifestSnapshot { .. }
             | Error::OpenManifest { .. }
-            | Error::TableNotExist { .. } => Self::Unexpected {
+            | Error::TableNotExist { .. }
+            | Error::RecoverManifest { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
         }

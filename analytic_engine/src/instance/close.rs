@@ -11,7 +11,7 @@ use crate::{
         engine::{DoManifestSnapshot, FlushTable, Result},
         flush_compaction::{Flusher, TableFlushOptions},
     },
-    manifest::{ManifestRef, DoSnapshotRequest},
+    manifest::{DoSnapshotRequest, ManifestRef},
     space::SpaceRef,
 };
 

@@ -11,8 +11,8 @@ use table_engine::table::TableId;
 
 use crate::{
     manifest::{
-        error::*,
         details::TableMetaSet,
+        error::*,
         meta_edit::{
             self, AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEditRequest,
             MetaUpdate, VersionEditMeta,
@@ -20,7 +20,7 @@ use crate::{
         meta_snapshot::MetaSnapshot,
     },
     space::{Space, SpaceId, SpacesRef},
-    sst::file::FilePurgerRef,
+    sst::file::{FilePurgerRef},
     table::{
         data::{TableData, TableShardInfo},
         version::{TableVersionMeta, TableVersionSnapshot},
@@ -43,11 +43,7 @@ impl fmt::Debug for TableMetaSetImpl {
 }
 
 impl TableMetaSetImpl {
-    fn find_space_and_apply_edit<F>(
-        &self,
-        space_id: SpaceId,
-        apply_edit: F,
-    ) -> Result<()>
+    fn find_space_and_apply_edit<F>(&self, space_id: SpaceId, apply_edit: F) -> Result<()>
     where
         F: FnOnce(Arc<Space>) -> Result<()>,
     {
@@ -60,11 +56,7 @@ impl TableMetaSetImpl {
         apply_edit(space.clone())
     }
 
-    fn apply_update(
-        &self,
-        meta_update: MetaUpdate,
-        shard_info: TableShardInfo,
-    ) -> Result<()> {
+    fn apply_update(&self, meta_update: MetaUpdate, shard_info: TableShardInfo) -> Result<()> {
         match meta_update {
             MetaUpdate::AddTable(AddTableMeta {
                 space_id,
