@@ -115,14 +115,20 @@ async fn run(args: Args) -> Result<()> {
         if args.verbose {
             println!("object_meta:{object_meta:?}, parquet_meta:{parquet_meta:?}");
         } else {
-            let size_mb = *size as f64 / 1024.0 / 1024.0;
+            let size_mb = as_mb(*size);
+            let metadata_mb = as_mb(metadata_size);
+            let filter_mb = as_mb(filter_size);
             println!(
-                "Location:{location}, time_range:[{start}, {end}), size:{size_mb:.3}M, max_seq:{seq}, filter:{filter_size}, metadata:{metadata_size}, row_num:{row_num}"
+                "Location:{location}, time_range:[{start}, {end}), max_seq:{seq}, size:{size_mb:.3}M, filter:{filter_mb:.3}M, metadata:{metadata_mb:.3}M, row_num:{row_num}"
             );
         }
     }
 
     Ok(())
+}
+
+fn as_mb(v: usize) -> f64 {
+    v as f64 / 1024.0 / 1024.0
 }
 
 async fn parse_metadata(
