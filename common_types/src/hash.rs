@@ -13,7 +13,7 @@ use std::hash::BuildHasher;
     One of the reasons is as follows:
     https://github.com/tkaitchuck/aHash/blob/master/README.md#goals-and-non-goals
 */
-pub use ahash::AHasher;
+use ahash::AHasher;
 use byteorder::{ByteOrder, LittleEndian};
 use murmur3::murmur3_x64_128;
 pub fn hash64(mut bytes: &[u8]) -> u64 {
@@ -26,6 +26,7 @@ pub fn hash64(mut bytes: &[u8]) -> u64 {
 pub fn build_fixed_seed_ahasher() -> AHasher {
     ahash::RandomState::with_seeds(0, 0, 0, 0).build_hasher()
 }
+
 #[cfg(test)]
 mod test {
     use super::*;

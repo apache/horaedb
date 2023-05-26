@@ -37,48 +37,10 @@ impl WeightScale<String, Bytes> for CustomScale {
     }
 }
 
-struct Partition {
-    inner: CLruCache<String, Bytes, RandomState, CustomScale>,
-}
-
-impl Partition {
-    fn new(mem_cap: NonZeroUsize) -> Self {
-        let cache = CLruCache::with_config(CLruCacheConfig::new(mem_cap).with_scale(CustomScale));
-
-        Self { inner: cache }
-    }
-}
-
-impl Partition {
-    fn get(&mut self, key: &str) -> Option<Bytes> {
-        self.inner.get(key).cloned()
-    }
-
-    fn peek(&mut self, key: &str) -> Option<Bytes> {
-        // FIXME: actually, here write lock is not necessary.
-        self.inner.peek(key).cloned()
-    }
-
-    fn insert(&mut self, key: String, value: Bytes) {
-        // don't care error now.
-        self.inner.put_with_weight(key, value).unwrap();
-    }
-
-    #[cfg(test)]
-    fn keys(&self) -> Vec<String> {
-        self.inner
-            .iter()
-            .map(|(key, _)| key)
-            .cloned()
-            .collect::<Vec<_>>()
-    }
-}
-
 pub struct MemCache {
     /// Max memory this store can use
     mem_cap: NonZeroUsize,
-    partitions: PartitionedMutex<Partition>,
-    partition_mask: usize,
+    inner: PartitionedMutex<CLruCache<String, Bytes, RandomState, CustomScale>>,
 }
 
 pub type MemCacheRef = Arc<MemCache>;
@@ -92,37 +54,40 @@ impl MemCache {
         let cap_per_part = mem_cap
             .checked_mul(NonZeroUsize::new(partition_num).unwrap())
             .context(InvalidCapacity)?;
-        let partitions_copy = (0..partition_num)
-            .map(|_| Partition::new(cap_per_part))
+        let inner_vec = (0..partition_num)
+            .map(|_| {
+                CLruCache::with_config(CLruCacheConfig::new(cap_per_part).with_scale(CustomScale))
+            })
             .collect::<Vec<_>>();
-        let partitions = PartitionedMutex::new(partitions_copy, partition_bits);
-        Ok(Self {
-            mem_cap,
-            partitions,
-            partition_mask: partition_num - 1,
-        })
+        let inner = PartitionedMutex::new(inner_vec, partition_bits);
+        Ok(Self { mem_cap, inner })
     }
 
     fn get(&self, key: &str) -> Option<Bytes> {
-        self.partitions.lock(&key).get(key)
+        self.inner.lock(&key).get(key).cloned()
     }
 
     fn peek(&self, key: &str) -> Option<Bytes> {
-        self.partitions.lock(&key).peek(key)
+        self.inner.lock(&key).peek(key).cloned()
     }
 
     fn insert(&self, key: String, value: Bytes) {
-        self.partitions.lock(&key).insert(key, value);
+        self.inner.lock(&key).put_with_weight(key, value).unwrap();
     }
 
     /// Give a description of the cache state.
 
     #[cfg(test)]
+    fn keys(&self, part: &CLruCache<String, Bytes, RandomState, CustomScale>) -> Vec<String> {
+        part.iter().map(|(key, _)| key).cloned().collect::<Vec<_>>()
+    }
+
+    #[cfg(test)]
     fn state_desc(&self) -> String {
-        self.partitions
+        self.inner
             .get_all_partition()
             .iter()
-            .map(|part| part.lock().unwrap().keys().join(","))
+            .map(|part| self.keys(&part.lock().unwrap()).join(","))
             .enumerate()
             .map(|(part_no, keys)| format!("{part_no}: [{keys}]"))
             .collect::<Vec<_>>()
@@ -134,8 +99,7 @@ impl Display for MemCache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MemCache")
             .field("mem_cap", &self.mem_cap)
-            .field("mask", &self.partition_mask)
-            .field("partitions", &self.partitions.get_all_partition().len())
+            .field("partitions", &self.inner.get_all_partition().len())
             .finish()
     }
 }
