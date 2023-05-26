@@ -7,7 +7,7 @@ use std::{
     sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-use common_types::hash::AHasher;
+use common_types::hash::{build_fixed_seed_ahasher, AHasher};
 /// Simple partitioned `RwLock`
 pub struct PartitionedRwLock<T> {
     partitions: Vec<RwLock<T>>,
@@ -42,7 +42,8 @@ where
     }
 
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &RwLock<T> {
-        let mut hasher = AHasher::default();
+        let mut hasher = build_fixed_seed_ahasher();
+
         key.hash(&mut hasher);
 
         &self.partitions[(hasher.finish() as usize) & self.partition_mask]
@@ -81,7 +82,7 @@ impl<T> PartitionedMutex<T> {
     }
 
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &Mutex<T> {
-        let mut hasher = AHasher::default();
+        let mut hasher = build_fixed_seed_ahasher();
         key.hash(&mut hasher);
         &self.partitions[(hasher.finish() as usize) & self.partition_mask]
     }

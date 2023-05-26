@@ -77,7 +77,7 @@ impl Partition {
 pub struct MemCache {
     /// Max memory this store can use
     mem_cap: NonZeroUsize,
-    partitions_tmp: PartitionedMutex<Partition>,
+    partitions: PartitionedMutex<Partition>,
     partition_mask: usize,
 }
 
@@ -95,32 +95,31 @@ impl MemCache {
         let partitions_copy = (0..partition_num)
             .map(|_| Partition::new(cap_per_part))
             .collect::<Vec<_>>();
-        let partitions_tmp = PartitionedMutex::new(partitions_copy, partition_bits);
+        let partitions = PartitionedMutex::new(partitions_copy, partition_bits);
         Ok(Self {
             mem_cap,
-            partitions_tmp,
+            partitions,
             partition_mask: partition_num - 1,
         })
     }
 
     fn get(&self, key: &str) -> Option<Bytes> {
-        println!("{:?}", self.partitions_tmp.lock(&key).get(key));
-        self.partitions_tmp.lock(&key).get(key)
+        self.partitions.lock(&key).get(key)
     }
 
     fn peek(&self, key: &str) -> Option<Bytes> {
-        self.partitions_tmp.lock(&key).peek(&key)
+        self.partitions.lock(&key).peek(&key)
     }
 
     fn insert(&self, key: String, value: Bytes) {
-        self.partitions_tmp.lock(&key).insert(key, value);
+        self.partitions.lock(&key).insert(key, value);
     }
 
     /// Give a description of the cache state.
 
     #[cfg(test)]
     fn state_desc(&self) -> String {
-        self.partitions_tmp
+        self.partitions
             .get_all_partition()
             .iter()
             .map(|part| part.lock().unwrap().keys().join(","))
@@ -136,7 +135,7 @@ impl Display for MemCache {
         f.debug_struct("MemCache")
             .field("mem_cap", &self.mem_cap)
             .field("mask", &self.partition_mask)
-            .field("partitions", &self.partitions_tmp.get_all_partition().len())
+            .field("partitions", &self.partitions.get_all_partition().len())
             .finish()
     }
 }
@@ -363,10 +362,10 @@ mod test {
             .unwrap();
 
         assert_eq!(
-            r#"0: []
-1: [partition.sst-100-105]
-2: []
-3: [partition.sst-0-5]"#,
+            r#"0: [partition.sst-0-5]
+1: []
+2: [partition.sst-100-105]
+3: []"#,
             store.cache.as_ref().state_desc()
         );
 

@@ -2,6 +2,8 @@
 
 // custom hash mod
 
+use std::hash::BuildHasher;
+
 /* We compared the speed difference between murmur3 and ahash for a string of
     length 10, and the results show that ahash has a clear advantage.
     Average time to DefaultHash a string of length 10: 33.6364 nanoseconds
@@ -14,7 +16,6 @@
 pub use ahash::AHasher;
 use byteorder::{ByteOrder, LittleEndian};
 use murmur3::murmur3_x64_128;
-
 pub fn hash64(mut bytes: &[u8]) -> u64 {
     let mut out = [0; 16];
     murmur3_x64_128(&mut bytes, 0, &mut out);
@@ -22,6 +23,10 @@ pub fn hash64(mut bytes: &[u8]) -> u64 {
     LittleEndian::read_u64(&out[0..8])
 }
 
+pub fn build_fixed_seed_ahasher() -> AHasher {
+    ahash::AHasher::default();
+    ahash::RandomState::with_seeds(0, 0, 0, 0).build_hasher()
+}
 #[cfg(test)]
 mod test {
     use super::*;
