@@ -5,11 +5,11 @@
 //! 2. Builtin Partition to reduce lock contention
 
 use std::{
-    collections::hash_map::{RandomState},
+    collections::hash_map::RandomState,
     fmt::{self, Display},
     num::NonZeroUsize,
     ops::Range,
-    sync::{Arc},
+    sync::Arc,
 };
 
 use async_trait::async_trait;
@@ -45,9 +45,7 @@ impl Partition {
     fn new(mem_cap: NonZeroUsize) -> Self {
         let cache = CLruCache::with_config(CLruCacheConfig::new(mem_cap).with_scale(CustomScale));
 
-        Self {
-            inner: cache,
-        }
+        Self { inner: cache }
     }
 }
 
@@ -76,12 +74,10 @@ impl Partition {
     }
 }
 
-
-
 pub struct MemCache {
     /// Max memory this store can use
     mem_cap: NonZeroUsize,
-    partitions_tmp: PartitionedMutex<Partition>, 
+    partitions_tmp: PartitionedMutex<Partition>,
     partition_mask: usize,
 }
 
@@ -124,7 +120,8 @@ impl MemCache {
 
     #[cfg(test)]
     fn state_desc(&self) -> String {
-        self.partitions_tmp.get_all_partition()
+        self.partitions_tmp
+            .get_all_partition()
             .iter()
             .map(|part| part.lock().unwrap().keys().join(","))
             .enumerate()
