@@ -74,9 +74,9 @@ async fn run(args: Args) -> Result<()> {
         let location = object_meta.location.clone();
         join_set.spawn_on(
             async move {
-                let (metadata, metadata_size) =
+                let (metadata, metadata_size, kv_size) =
                     parse_metadata(storage, location, object_meta.size).await?;
-                Ok::<_, anyhow::Error>((object_meta, metadata, metadata_size))
+                Ok::<_, anyhow::Error>((object_meta, metadata, metadata_size, kv_size))
             },
             &handle,
         );
@@ -97,7 +97,7 @@ async fn run(args: Args) -> Result<()> {
             .cmp(&b.1.custom().time_range.inclusive_start())
     });
 
-    for (object_meta, sst_metadata, metadata_size) in metas {
+    for (object_meta, sst_metadata, metadata_size, kv_size) in metas {
         let ObjectMeta { location, size, .. } = &object_meta;
         let custom_meta = sst_metadata.custom();
         let parquet_meta = sst_metadata.parquet();
@@ -118,8 +118,9 @@ async fn run(args: Args) -> Result<()> {
             let size_mb = as_mb(*size);
             let metadata_mb = as_mb(metadata_size);
             let filter_mb = as_mb(filter_size);
+            let kv_mb = as_mb(kv_size);
             println!(
-                "Location:{location}, time_range:[{start}, {end}), max_seq:{seq}, size:{size_mb:.3}M, filter:{filter_mb:.3}M, metadata:{metadata_mb:.3}M, row_num:{row_num}"
+                "Location:{location}, time_range:[{start}, {end}), max_seq:{seq}, size:{size_mb:.3}M, metadata:{metadata_mb:.3}M, kv:{kv_mb:.3}M, filter:{filter_mb:.3}M, row_num:{row_num}"
             );
         }
     }
@@ -135,10 +136,18 @@ async fn parse_metadata(
     storage: ObjectStoreRef,
     path: Path,
     size: usize,
-) -> Result<(MetaData, usize)> {
+) -> Result<(MetaData, usize, usize)> {
     let reader = ChunkReaderAdapter::new(&path, &storage);
     let (parquet_metadata, metadata_size) = fetch_parquet_metadata(size, &reader).await?;
+    let kv_metadata = parquet_metadata.file_metadata().key_value_metadata();
+    let kv_size = kv_metadata
+        .map(|kvs| {
+            kvs.iter()
+                .map(|kv| kv.key.as_bytes().len() + kv.value.as_ref().map(|v| v.len()).unwrap_or(0))
+                .sum()
+        })
+        .unwrap_or(0);
 
     let md = MetaData::try_new(&parquet_metadata, false)?;
-    Ok((md, metadata_size))
+    Ok((md, metadata_size, kv_size))
 }
