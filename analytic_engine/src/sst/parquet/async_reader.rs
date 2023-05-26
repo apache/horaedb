@@ -296,7 +296,7 @@ impl<'a> Reader<'a> {
         let file_size = self.load_file_size().await?;
         let chunk_reader_adapter = ChunkReaderAdapter::new(self.path, self.store);
 
-        let meta_data =
+        let (meta_data, _) =
             parquet_ext::meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter)
                 .await
                 .with_context(|| FetchAndDecodeSstMeta {

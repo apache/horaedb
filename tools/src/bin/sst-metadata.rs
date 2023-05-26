@@ -77,8 +77,9 @@ async fn run(args: Args) -> Result<()> {
         let location = object_meta.location.clone();
         join_set.spawn_on(
             async move {
-                let md = parse_metadata(storage, location, object_meta.size).await?;
-                Ok::<_, anyhow::Error>((object_meta, md))
+                let (metadata, metadata_size) =
+                    parse_metadata(storage, location, object_meta.size).await?;
+                Ok::<_, anyhow::Error>((object_meta, metadata, metadata_size))
             },
             &handle,
         );
@@ -98,18 +99,23 @@ async fn run(args: Args) -> Result<()> {
             .cmp(&b.1.time_range.inclusive_start())
     });
 
-    for (object_meta, parquet_meta) in metas {
+    for (object_meta, parquet_meta, metadata_size) in metas {
         let ObjectMeta { location, size, .. } = &object_meta;
         let time_range = parquet_meta.time_range;
         let start = format_as_ymdhms(time_range.inclusive_start().as_i64());
         let end = format_as_ymdhms(time_range.exclusive_end().as_i64());
         let seq = parquet_meta.max_sequence;
+        let filter_size = parquet_meta
+            .parquet_filter
+            .as_ref()
+            .map(|f| f.size())
+            .unwrap_or(0);
         if args.verbose {
-            println!("object_meta:{object_meta:?}, parquet_meta:{parquet_meta:?}, time_range::[{start}, {end})");
+            println!("object_meta:{object_meta:?}, parquet_meta:{parquet_meta:?}, time_range::[{start}, {end}), metadata_size:{metadata_size}");
         } else {
             let size_mb = *size as f64 / 1024.0 / 1024.0;
             println!(
-                "Location:{location}, time_range:[{start}, {end}), size:{size_mb:.3}M, max_seq:{seq}"
+                "Location:{location}, time_range:[{start}, {end}), size:{size_mb:.3}M, max_seq:{seq}, filter:{filter_size}, metadata:{metadata_size}"
             );
         }
     }
@@ -121,11 +127,11 @@ async fn parse_metadata(
     storage: ObjectStoreRef,
     path: Path,
     size: usize,
-) -> Result<ParquetMetaDataRef> {
+) -> Result<(ParquetMetaDataRef, usize)> {
     let reader = ChunkReaderAdapter::new(&path, &storage);
-    let parquet_meta_data = fetch_parquet_metadata(size, &reader).await?;
+    let (parquet_metadata, metadata_size) = fetch_parquet_metadata(size, &reader).await?;
 
-    let md = MetaData::try_new(&parquet_meta_data, true)?;
+    let md = MetaData::try_new(&parquet_metadata, true)?;
     let custom_meta = md.custom();
-    Ok(custom_meta.clone())
+    Ok((custom_meta.clone(), metadata_size))
 }

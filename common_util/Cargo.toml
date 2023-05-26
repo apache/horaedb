@@ -26,6 +26,7 @@ lazy_static = { workspace = true }
 libc = "0.2"
 log = { workspace = true }
 logger = { workspace = true }
+hex = "0.4.3"
 pin-project-lite = { workspace = true }
 prometheus = { workspace = true }
 serde = { workspace = true }
