@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_partitioned_rwlock() {
-        let init_hmap = || HashMap::new();
+        let init_hmap = HashMap::new;
         let test_locked_map = PartitionedRwLock::new(init_hmap, 4);
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_partitioned_mutex() {
-        let init_hmap = || HashMap::new();
+        let init_hmap = HashMap::new;
         let test_locked_map = PartitionedMutex::new(init_hmap, 4);
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
@@ -143,7 +143,7 @@ mod tests {
 
     #[test]
     fn test_partitioned_mutex_vis_different_partition() {
-        let init_vec = || Vec::<i32>::new();
+        let init_vec = Vec::<i32>::new;
         let test_locked_map = PartitionedMutex::new(init_vec, 4);
         let mutex_first = test_locked_map.get_partition_by_index(0);
 
@@ -157,7 +157,7 @@ mod tests {
 
     #[test]
     fn test_partitioned_rwmutex_vis_different_partition() {
-        let init_vec = || Vec::<i32>::new();
+        let init_vec = Vec::<i32>::new;
         let test_locked_map = PartitionedRwLock::new(init_vec, 4);
         let mutex_first = test_locked_map.get_partition_by_index(0);
         let mut _tmp = mutex_first.write().unwrap();
