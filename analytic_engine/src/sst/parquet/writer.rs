@@ -551,7 +551,7 @@ mod tests {
             input: record_batch_stream,
             input_exhausted: false,
             num_rows_per_row_group,
-            min_rows_when_build_filter: 100,
+            min_rows_when_build_filter: 0,
             compression: Compression::UNCOMPRESSED,
             meta_data: MetaData {
                 min_key: Default::default(),

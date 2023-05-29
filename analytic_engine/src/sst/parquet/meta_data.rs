@@ -457,7 +457,7 @@ mod tests {
     }
 
     #[test]
-    fn test_row_group_filter_builder() {
+    fn test_row_group_filter_builder_normal_case() {
         let mut builders = RowGroupFilterBuilder::with_num_columns(1, 0);
         for key in ["host-123", "host-456", "host-789"] {
             builders.add_key(0, key.as_bytes());
@@ -472,5 +472,17 @@ mod tests {
 
             assert_eq!(expected, actual);
         }
+    }
+
+    #[test]
+    fn test_row_group_filter_builder_none_case() {
+        // Require 10 values to build filter, but only given 3.
+        let mut builders = RowGroupFilterBuilder::with_num_columns(1, 10);
+        for key in ["host-123", "host-456", "host-789"] {
+            builders.add_key(0, key.as_bytes());
+        }
+        let row_group_filter = builders.build().unwrap();
+        assert_eq!(1, row_group_filter.column_filters.len());
+        assert!(row_group_filter.column_filters[0].is_none());
     }
 }
