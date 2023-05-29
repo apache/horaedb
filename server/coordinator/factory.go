@@ -243,7 +243,7 @@ func (f *Factory) CreateSplitProcedure(ctx context.Context, request SplitRequest
 			Dispatch:        f.dispatch,
 			Storage:         f.storage,
 			ClusterMetadata: request.ClusterMetadata,
-			ClusterSnapshot: metadata.Snapshot{},
+			ClusterSnapshot: request.Snapshot,
 			ShardID:         request.ShardID,
 			NewShardID:      request.NewShardID,
 			SchemaName:      request.SchemaName,

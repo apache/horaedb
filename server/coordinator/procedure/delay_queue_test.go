@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type TestProcedure struct{ id uint64 }
+type TestProcedure struct{ ProcedureID uint64 }
 
 func (t TestProcedure) RelatedVersionInfo() RelatedVersionInfo {
 	return RelatedVersionInfo{}
@@ -21,7 +21,7 @@ func (t TestProcedure) Priority() Priority {
 }
 
 func (t TestProcedure) ID() uint64 {
-	return t.id
+	return t.ProcedureID
 }
 
 func (t TestProcedure) Typ() Typ {
@@ -43,10 +43,10 @@ func (t TestProcedure) State() State {
 func TestDelayQueue(t *testing.T) {
 	re := require.New(t)
 
-	testProcedure0 := TestProcedure{0}
-	testProcedure1 := TestProcedure{1}
-	testProcedure2 := TestProcedure{2}
-	testProcedure3 := TestProcedure{3}
+	testProcedure0 := TestProcedure{ProcedureID: 0}
+	testProcedure1 := TestProcedure{ProcedureID: 1}
+	testProcedure2 := TestProcedure{ProcedureID: 2}
+	testProcedure3 := TestProcedure{ProcedureID: 3}
 
 	queue := NewProcedureDelayQueue(3)
 	err := queue.Push(testProcedure0, time.Millisecond*40)

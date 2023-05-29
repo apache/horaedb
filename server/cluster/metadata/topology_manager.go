@@ -366,13 +366,13 @@ func (m *TopologyManagerImpl) GetShardNodesByTableIDs(tableIDs []storage.TableID
 	for _, tableID := range tableIDs {
 		shardIDs, ok := m.tableShardMapping[tableID]
 		if !ok {
-			return GetShardNodesByTableIDsResult{}, ErrTableNotFound.WithCausef("table id:%d", tableID)
+			return GetShardNodesByTableIDsResult{}, ErrShardNotFound.WithCausef("table id:%d, not shard is assigned", tableID)
 		}
 
 		for _, shardID := range shardIDs {
 			shardNodes, ok := m.shardNodesMapping[shardID]
 			if !ok {
-				return GetShardNodesByTableIDsResult{}, ErrShardNotFound.WithCausef("shard id:%d", shardID)
+				return GetShardNodesByTableIDsResult{}, ErrNodeNotFound.WithCausef("shard id:%d, no node is assigned", shardID)
 			}
 
 			if _, exists := tableShardNodes[tableID]; !exists {

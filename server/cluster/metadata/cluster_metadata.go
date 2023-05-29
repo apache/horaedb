@@ -165,59 +165,6 @@ func (c *ClusterMetadata) DropTable(ctx context.Context, schemaName, tableName s
 	return ret, nil
 }
 
-// OpenTable will open an existing table on the specified shard.
-// The table to be opened must have been created.
-func (c *ClusterMetadata) OpenTable(ctx context.Context, request OpenTableRequest) (ShardVersionUpdate, error) {
-	c.logger.Info("open table", zap.String("request", fmt.Sprintf("%v", request)))
-
-	table, exists, err := c.GetTable(request.SchemaName, request.TableName)
-	if err != nil {
-		c.logger.Error("get table", zap.Error(err), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
-		return ShardVersionUpdate{}, err
-	}
-
-	if !exists {
-		c.logger.Error("the table to be opened does not exist", zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
-		return ShardVersionUpdate{}, errors.WithMessagef(ErrTableNotFound, "table not exists, shcemaName:%s,tableName:%s", request.SchemaName, request.TableName)
-	}
-
-	if !table.IsPartitioned() {
-		c.logger.Error("normal table cannot be opened on multiple shards", zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
-		return ShardVersionUpdate{}, errors.WithMessagef(ErrOpenTable, "normal table cannot be opened on multiple shards, schemaName:%s, tableName:%s", request.SchemaName, request.TableName)
-	}
-
-	shardVersionUpdate, err := c.topologyManager.AddTable(ctx, request.ShardID, []storage.Table{table})
-	if err != nil {
-		return ShardVersionUpdate{}, errors.WithMessage(err, "add table to topology")
-	}
-
-	c.logger.Info("open table finish", zap.String("request", fmt.Sprintf("%v", request)))
-	return shardVersionUpdate, nil
-}
-
-func (c *ClusterMetadata) CloseTable(ctx context.Context, request CloseTableRequest) (ShardVersionUpdate, error) {
-	c.logger.Info("close table", zap.String("request", fmt.Sprintf("%v", request)))
-
-	table, exists, err := c.GetTable(request.SchemaName, request.TableName)
-	if err != nil {
-		c.logger.Error("get table", zap.Error(err), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
-		return ShardVersionUpdate{}, err
-	}
-
-	if !exists {
-		c.logger.Error("the table to be closed does not exist", zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
-		return ShardVersionUpdate{}, errors.WithMessagef(ErrTableNotFound, "table not exists, shcemaName:%s, tableName:%s", request.SchemaName, request.TableName)
-	}
-
-	shardVersionUpdate, err := c.topologyManager.RemoveTable(ctx, request.ShardID, []storage.TableID{table.ID})
-	if err != nil {
-		return ShardVersionUpdate{}, err
-	}
-
-	c.logger.Info("close table finish", zap.String("request", fmt.Sprintf("%v", request)))
-	return shardVersionUpdate, nil
-}
-
 // MigrateTable used to migrate tables from old shard to new shard.
 // The mapping relationship between table and shard will be modified.
 func (c *ClusterMetadata) MigrateTable(ctx context.Context, request MigrateTableRequest) error {

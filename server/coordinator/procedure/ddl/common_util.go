@@ -5,7 +5,6 @@ package ddl
 import (
 	"context"
 
-	"github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
@@ -15,27 +14,6 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
-
-func CreateTableMetadata(ctx context.Context, c *metadata.ClusterMetadata, schemaName string, tableName string, shardID storage.ShardID, partitionInfo *clusterpb.PartitionInfo) (metadata.CreateTableResult, error) {
-	_, exists, err := c.GetTable(schemaName, tableName)
-	if err != nil {
-		return metadata.CreateTableResult{}, errors.WithMessage(err, "cluster get table")
-	}
-	if exists {
-		return metadata.CreateTableResult{}, errors.WithMessagef(procedure.ErrTableAlreadyExists, "create an existing table, schemaName:%s, tableName:%s", schemaName, tableName)
-	}
-
-	createTableResult, err := c.CreateTable(ctx, metadata.CreateTableRequest{
-		ShardID:       shardID,
-		SchemaName:    schemaName,
-		TableName:     tableName,
-		PartitionInfo: storage.PartitionInfo{Info: partitionInfo},
-	})
-	if err != nil {
-		return metadata.CreateTableResult{}, errors.WithMessage(err, "create table")
-	}
-	return createTableResult, nil
-}
 
 func CreateTableOnShard(ctx context.Context, c *metadata.ClusterMetadata, dispatch eventdispatch.Dispatch, shardID storage.ShardID, request eventdispatch.CreateTableOnShardRequest) error {
 	log.Debug("CreateTableOnShard", zap.Uint64("curVersion", request.UpdateShardInfo.CurrShardInfo.Version), zap.Uint64("preVersion", request.UpdateShardInfo.PrevVersion))

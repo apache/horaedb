@@ -66,9 +66,9 @@ func TestSplit(t *testing.T) {
 	snapshot = c.GetMetadata().GetClusterSnapshot()
 
 	splitShard, exists := snapshot.Topology.ShardViewsMapping[targetShardNode.ID]
-	re.Equal(true, exists)
+	re.True(exists)
 	newShard, exists := snapshot.Topology.ShardViewsMapping[storage.ShardID(newShardID)]
-	re.Equal(true, exists)
+	re.True(exists)
 	re.NotNil(splitShard)
 	re.NotNil(newShard)
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
@@ -76,6 +77,16 @@ func NewTestStorage(_ *testing.T) procedure.Storage {
 	return MockStorage{}
 }
 
+type MockIDAllocator struct{}
+
+func (m MockIDAllocator) Alloc(_ context.Context) (uint64, error) {
+	return 0, nil
+}
+
+func (m MockIDAllocator) Collect(_ context.Context, _ uint64) error {
+	return nil
+}
+
 // InitEmptyCluster will return a cluster that has created shards and nodes, but it does not have any shard node mapping.
 func InitEmptyCluster(ctx context.Context, t *testing.T) *cluster.Cluster {
 	re := require.New(t)
@@ -109,13 +120,25 @@ func InitEmptyCluster(ctx context.Context, t *testing.T) *cluster.Cluster {
 	_, _, err = c.GetMetadata().GetOrCreateSchema(ctx, TestSchemaName)
 	re.NoError(err)
 
+	lastTouchTime := time.Now().UnixMilli()
 	for i := 0; i < DefaultNodeCount; i++ {
 		err = c.GetMetadata().RegisterNode(ctx, metadata.RegisteredNode{
-			Node:       storage.Node{Name: fmt.Sprintf("node%d", i)},
+			Node:       storage.Node{Name: fmt.Sprintf("node%d", i), LastTouchTime: uint64(lastTouchTime)},
 			ShardInfos: nil,
 		})
 		re.NoError(err)
 	}
+
+	return c
+}
+
+// InitPrepareCluster will return a cluster that has created shards and nodes, and cluster state is prepare.
+func InitPrepareCluster(ctx context.Context, t *testing.T) *cluster.Cluster {
+	re := require.New(t)
+	c := InitEmptyCluster(ctx, t)
+
+	err := c.GetMetadata().UpdateClusterView(ctx, storage.ClusterStatePrepare, []storage.ShardNode{})
+	re.NoError(err)
 
 	return c
 }

@@ -93,7 +93,7 @@ func testCreatePartitionTable(ctx context.Context, t *testing.T, dispatch eventd
 	shardNodesWithVersion := make([]metadata.ShardNodeWithVersion, 0, len(subTableShards))
 	for _, subTableShard := range subTableShards {
 		shardView, exists := c.GetMetadata().GetClusterSnapshot().Topology.ShardViewsMapping[subTableShard.ID]
-		re.Equal(true, exists)
+		re.True(exists)
 		shardNodesWithVersion = append(shardNodesWithVersion, metadata.ShardNodeWithVersion{
 			ShardInfo: metadata.ShardInfo{
 				ID:      shardView.ShardID,

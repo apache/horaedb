@@ -29,10 +29,6 @@ jobs:
       - run: |
           make install-tools
           make test
-  coverage:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
   integration-test:
