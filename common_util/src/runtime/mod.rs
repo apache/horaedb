@@ -101,6 +101,12 @@ pin_project! {
     }
 }
 
+impl<T> JoinHandle<T> {
+    pub fn abort(&self) {
+        self.inner.abort();
+    }
+}
+
 impl<T> Future for JoinHandle<T> {
     type Output = Result<T>;
 
