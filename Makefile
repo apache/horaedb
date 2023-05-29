@@ -130,3 +130,4 @@ endif
 fix:
 	cargo fmt
 	cargo sort --workspace
+	cargo clippy --fix --all-targets --all-features --workspace -- -D warnings
