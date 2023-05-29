@@ -93,7 +93,9 @@ impl<T> PartitionedMutex<T> {
     fn get_partition_by_index(&self, index: usize) -> &Mutex<T> {
         &self.partitions[index]
     }
-
+    /// This method is for testing purposes only.
+    /// Can not be accessed across create #[cfg(test)] method
+    /// https://github.com/rust-lang/cargo/issues/8379
     pub fn get_all_partition(&self) -> &Vec<Mutex<T>> {
         &self.partitions
     }
