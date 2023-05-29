@@ -139,8 +139,9 @@ impl RowGroupFilterBuilder {
     pub(crate) fn build(self) -> Result<RowGroupFilter> {
         self.builders
             .into_iter()
-            .zip(self.column_values.into_iter())
+            .zip(self.column_values.iter())
             .map(|(b, values)| {
+                // ignore build when distinct column values are less than threshold.
                 if values.len() < self.min_rows_when_build_filter {
                     return Ok(None);
                 }
