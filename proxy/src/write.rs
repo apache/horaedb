@@ -279,10 +279,10 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         let output = self
             .execute_plan(request_id, catalog, schema, plan, deadline)
-            .await;
+            .await?;
 
         ensure!(
-            matches!(output, Ok(Output::AffectedRows(_))),
+            matches!(output, Output::AffectedRows(_)),
             ErrNoCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Invalid output type, expect AffectedRows, found Records",
