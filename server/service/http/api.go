@@ -15,7 +15,9 @@ import (
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
+	"github.com/CeresDB/ceresmeta/server/config"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
+	"github.com/CeresDB/ceresmeta/server/limiter"
 	"github.com/CeresDB/ceresmeta/server/status"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"go.uber.org/zap"
@@ -34,13 +36,15 @@ type API struct {
 	serverStatus *status.ServerStatus
 
 	forwardClient *ForwardClient
+	flowLimiter   *limiter.FlowLimiter
 }
 
-func NewAPI(clusterManager cluster.Manager, serverStatus *status.ServerStatus, forwardClient *ForwardClient) *API {
+func NewAPI(clusterManager cluster.Manager, serverStatus *status.ServerStatus, forwardClient *ForwardClient, flowLimiter *limiter.FlowLimiter) *API {
 	return &API{
 		clusterManager: clusterManager,
 		serverStatus:   serverStatus,
 		forwardClient:  forwardClient,
+		flowLimiter:    flowLimiter,
 	}
 }
 
@@ -54,6 +58,7 @@ func (a *API) NewAPIRouter() *Router {
 	router.Post("/route", a.route)
 	router.Post("/dropTable", a.dropTable)
 	router.Post("/getNodeShards", a.getNodeShards)
+	router.Put("/flowLimiter", a.updateFlowLimiter)
 	router.Get("/healthCheck", a.healthCheck)
 
 	// Register cluster API.
@@ -550,6 +555,48 @@ func (a *API) updateCluster(writer http.ResponseWriter, req *http.Request) {
 	}
 
 	a.respond(writer, c.GetMetadata().GetClusterID())
+}
+
+type UpdateFlowLimiterRequest struct {
+	TokenBucketFillRate           int  `json:"tokenBucketFillRate"`
+	TokenBucketBurstEventCapacity int  `json:"tokenBucketBurstEventCapacity"`
+	Enable                        bool `json:"enable"`
+}
+
+func (a *API) updateFlowLimiter(writer http.ResponseWriter, req *http.Request) {
+	resp, isLeader, err := a.forwardClient.forwardToLeader(req)
+	if err != nil {
+		log.Error("forward to leader failed", zap.Error(err))
+		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("err: %s", err.Error()))
+		return
+	}
+
+	if !isLeader {
+		a.respondForward(writer, resp)
+		return
+	}
+
+	var updateFlowLimiterRequest UpdateFlowLimiterRequest
+	err = json.NewDecoder(req.Body).Decode(&updateFlowLimiterRequest)
+	if err != nil {
+		log.Error("decode request body failed", zap.Error(err))
+		a.respondError(writer, ErrParseRequest, fmt.Sprintf("decode request body failed, err: %s", err.Error()))
+		return
+	}
+
+	newLimiterConfig := config.LimiterConfig{
+		TokenBucketFillRate:           updateFlowLimiterRequest.TokenBucketFillRate,
+		TokenBucketBurstEventCapacity: updateFlowLimiterRequest.TokenBucketBurstEventCapacity,
+		Enable:                        updateFlowLimiterRequest.Enable,
+	}
+
+	if err := a.flowLimiter.UpdateLimiter(newLimiterConfig); err != nil {
+		log.Error("update flow limiter failed", zap.Error(err))
+		a.respondError(writer, ErrUpdateFlowLimiter, fmt.Sprintf("err: %s", err.Error()))
+		return
+	}
+
+	a.respond(writer, nil)
 }
 
 func (a *API) healthCheck(writer http.ResponseWriter, _ *http.Request) {

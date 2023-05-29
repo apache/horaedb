@@ -16,6 +16,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/config"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
+	"github.com/CeresDB/ceresmeta/server/limiter"
 	"github.com/CeresDB/ceresmeta/server/member"
 	metagrpc "github.com/CeresDB/ceresmeta/server/service/grpc"
 	"github.com/CeresDB/ceresmeta/server/service/http"
@@ -37,6 +38,7 @@ type Server struct {
 
 	// The fields below are initialized after Run of server is called.
 	clusterManager cluster.Manager
+	flowLimiter    *limiter.FlowLimiter
 
 	// member describes membership in ceresmeta cluster.
 	member  *member.Member
@@ -164,8 +166,9 @@ func (srv *Server) startServer(_ context.Context) error {
 		return errors.WithMessage(err, "start server")
 	}
 	srv.clusterManager = manager
+	srv.flowLimiter = limiter.NewFlowLimiter(srv.cfg.FlowLimiter)
 
-	api := http.NewAPI(manager, srv.status, http.NewForwardClient(srv.member, srv.cfg.HTTPPort))
+	api := http.NewAPI(manager, srv.status, http.NewForwardClient(srv.member, srv.cfg.HTTPPort), srv.flowLimiter)
 	httpService := http.NewHTTPService(srv.cfg.HTTPPort, time.Second*10, time.Second*10, api.NewAPIRouter())
 	go func() {
 		err := httpService.Start()
@@ -269,6 +272,13 @@ func (srv *Server) GetClusterManager() cluster.Manager {
 func (srv *Server) GetLeader(ctx context.Context) (member.GetLeaderAddrResp, error) {
 	// Get leader with cache.
 	return srv.member.GetLeaderAddr(ctx)
+}
+
+func (srv *Server) GetFlowLimiter() (*limiter.FlowLimiter, error) {
+	if srv.flowLimiter == nil {
+		return nil, ErrFlowLimiterNotFound
+	}
+	return srv.flowLimiter, nil
 }
 
 type leadershipEventCallbacks struct {

@@ -17,8 +17,10 @@ import (
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
+	"github.com/CeresDB/ceresmeta/server/limiter"
 	"github.com/CeresDB/ceresmeta/server/member"
 	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -43,6 +45,7 @@ func NewService(opTimeout time.Duration, h Handler) *Service {
 type Handler interface {
 	GetClusterManager() cluster.Manager
 	GetLeader(ctx context.Context) (member.GetLeaderAddrResp, error)
+	GetFlowLimiter() (*limiter.FlowLimiter, error)
 	// TODO: define the methods for handling other grpc requests.
 }
 
@@ -143,6 +146,11 @@ func (s *Service) GetTablesOfShards(ctx context.Context, req *metaservicepb.GetT
 
 // CreateTable implements gRPC CeresmetaServer.
 func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTableRequest) (*metaservicepb.CreateTableResponse, error) {
+	// Since there may be too many table creation requests, a flow limiter is added here.
+	if ok, err := s.allow(); !ok {
+		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table grpc request is rejected by flow limiter")}, nil
+	}
+
 	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
 	if err != nil {
 		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
@@ -214,6 +222,11 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 
 // DropTable implements gRPC CeresmetaServer.
 func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableRequest) (*metaservicepb.DropTableResponse, error) {
+	// Since there may be too many table dropping requests, a flow limiter is added here.
+	if ok, err := s.allow(); !ok {
+		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table grpc request is rejected by flow limiter")}, nil
+	}
+
 	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
 	if err != nil {
 		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table")}, nil
@@ -274,6 +287,11 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 
 // RouteTables implements gRPC CeresmetaServer.
 func (s *Service) RouteTables(ctx context.Context, req *metaservicepb.RouteTablesRequest) (*metaservicepb.RouteTablesResponse, error) {
+	// Since there may be too many table routing requests, a flow limiter is added here.
+	if ok, err := s.allow(); !ok {
+		return &metaservicepb.RouteTablesResponse{Header: responseHeader(err, "routeTables grpc request is rejected by flow limiter")}, nil
+	}
+
 	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
 	if err != nil {
 		return &metaservicepb.RouteTablesResponse{Header: responseHeader(err, "grpc routeTables")}, nil
@@ -395,4 +413,15 @@ func responseHeader(err error, msg string) *commonpb.ResponseHeader {
 	}
 
 	return &commonpb.ResponseHeader{Code: coderr.Internal, Error: msg + err.Error()}
+}
+
+func (s *Service) allow() (bool, error) {
+	flowLimiter, err := s.h.GetFlowLimiter()
+	if err != nil {
+		return false, errors.WithMessage(err, "get flow limiter failed")
+	}
+	if !flowLimiter.Allow() {
+		return false, ErrFlowLimit.WithCausef("the current flow has reached the threshold")
+	}
+	return true, nil
 }
