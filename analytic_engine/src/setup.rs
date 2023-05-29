@@ -443,7 +443,7 @@ fn open_storage(
                 Arc::new(store_with_prefix.context(OpenObjectStore)?) as _
             }
             ObjectStoreOptions::Obkv(obkv_opts) => {
-                let obkv_config = obkv_opts.obkv;
+                let obkv_config = obkv_opts.client;
                 let obkv = engine_runtimes
                     .write_runtime
                     .spawn_blocking(move || ObkvImpl::new(obkv_config).context(OpenObkv))
