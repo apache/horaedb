@@ -70,7 +70,7 @@ impl MemCache {
 
     fn insert(&self, key: String, value: Bytes) {
         // don't care error now.
-        _  = self.inner.lock(&key).put_with_weight(key, value);
+        _ = self.inner.lock(&key).put_with_weight(key, value);
     }
 
     /// Give a description of the cache state.
