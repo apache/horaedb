@@ -2,7 +2,7 @@
 
 // MetaData for SST based on parquet.
 
-use std::{fmt, ops::Index, sync::Arc};
+use std::{collections::HashSet, fmt, ops::Index, sync::Arc};
 
 use bytes::Bytes;
 use ceresdbproto::{schema as schema_pb, sst as sst_pb};
@@ -117,23 +117,34 @@ impl Filter for Xor8Filter {
 
 pub struct RowGroupFilterBuilder {
     builders: Vec<Option<Xor8Builder>>,
+    column_values: Vec<HashSet<Vec<u8>>>,
+    min_rows_when_build_filter: usize,
 }
 
 impl RowGroupFilterBuilder {
-    pub(crate) fn with_num_columns(num_col: usize) -> Self {
+    pub(crate) fn with_num_columns(num_col: usize, min_rows_when_build_filter: usize) -> Self {
         Self {
             builders: vec![None; num_col],
+            column_values: vec![HashSet::new(); num_col],
+            min_rows_when_build_filter,
         }
     }
 
     pub(crate) fn add_key(&mut self, col_idx: usize, key: &[u8]) {
-        self.builders[col_idx].get_or_insert_default().insert(key)
+        self.builders[col_idx].get_or_insert_default().insert(key);
+        // TODO: remove to_owned?
+        self.column_values[col_idx].insert(key.to_owned());
     }
 
     pub(crate) fn build(self) -> Result<RowGroupFilter> {
         self.builders
             .into_iter()
-            .map(|b| {
+            .zip(self.column_values.into_iter())
+            .map(|(b, values)| {
+                if values.len() < self.min_rows_when_build_filter {
+                    return Ok(None);
+                }
+
                 b.map(|mut b| {
                     b.build()
                         .context(BuildXor8Filter)
@@ -447,7 +458,7 @@ mod tests {
 
     #[test]
     fn test_row_group_filter_builder() {
-        let mut builders = RowGroupFilterBuilder::with_num_columns(1);
+        let mut builders = RowGroupFilterBuilder::with_num_columns(1, 0);
         for key in ["host-123", "host-456", "host-789"] {
             builders.add_key(0, key.as_bytes());
         }

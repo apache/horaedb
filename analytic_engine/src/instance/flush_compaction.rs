@@ -169,6 +169,7 @@ pub struct Flusher {
 
     pub runtime: RuntimeRef,
     pub write_sst_max_buffer_size: usize,
+    pub min_rows_when_build_filter: usize,
 }
 
 struct FlushTask {
@@ -178,6 +179,7 @@ struct FlushTask {
 
     runtime: RuntimeRef,
     write_sst_max_buffer_size: usize,
+    min_rows_when_build_filter: usize,
 }
 
 impl Flusher {
@@ -282,6 +284,7 @@ impl Flusher {
             space_store: self.space_store.clone(),
             runtime: self.runtime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
+            min_rows_when_build_filter: self.min_rows_when_build_filter,
         };
         let flush_job = async move { flush_task.run().await };
 
@@ -460,6 +463,7 @@ impl FlushTask {
             num_rows_per_row_group: self.table_data.table_options().num_rows_per_row_group,
             compression: self.table_data.table_options().compression,
             max_buffer_size: self.write_sst_max_buffer_size,
+            min_rows_when_build_filter: self.min_rows_when_build_filter,
         };
 
         for time_range in &time_ranges {
@@ -594,6 +598,7 @@ impl FlushTask {
             num_rows_per_row_group: self.table_data.table_options().num_rows_per_row_group,
             compression: self.table_data.table_options().compression,
             max_buffer_size: self.write_sst_max_buffer_size,
+            min_rows_when_build_filter: self.min_rows_when_build_filter,
         };
         let mut writer = self
             .space_store
