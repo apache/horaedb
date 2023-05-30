@@ -25,16 +25,6 @@ pub enum Error {
 
     #[snafu(display("Primary key duplicate.\nBacktrace:\n{}", backtrace))]
     PrimaryKeyDuplicate { backtrace: Backtrace },
-
-    #[snafu(display(
-        "Table delete data error, table:{}.\nBacktrace:\n{}",
-        table_name,
-        backtrace
-    ))]
-    DeleteData {
-        table_name: String,
-        backtrace: Backtrace,
-    },
 }
 
 define_result!(Error);

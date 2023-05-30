@@ -63,6 +63,7 @@ define_result!(Error);
 pub const OBJECT_STORE_META: &str = "obkv_object_store_meta";
 
 /// The meta info of Obkv Object
+/// **Note: Do not change the field name, may lead to breaking changes!**
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ObkvObjectMeta {
