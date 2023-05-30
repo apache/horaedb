@@ -542,27 +542,19 @@ impl FlushTask {
         batch_record_senders.clear();
 
         for (idx, sst_handler) in sst_handlers.into_iter().enumerate() {
-            let result = sst_handler.await.context(RuntimeJoin);
-            match result {
-                Ok(info_and_metas) => {
-                    let (sst_info, sst_meta) = info_and_metas?;
-                    files_to_level0.push(AddFile {
-                        level: Level::MIN,
-                        file: FileMeta {
-                            id: file_ids[idx],
-                            size: sst_info.file_size as u64,
-                            row_num: sst_info.row_num as u64,
-                            time_range: sst_meta.time_range,
-                            max_seq: sst_meta.max_sequence,
-                            storage_format: sst_info.storage_format,
-                        },
-                    })
-                }
-                Err(e) => {
-                    error!("Failed to flushed, err:{e}");
-                    break;
-                }
-            }
+            let info_and_metas = sst_handler.await.context(RuntimeJoin)?;
+            let (sst_info, sst_meta) = info_and_metas?;
+            files_to_level0.push(AddFile {
+                level: Level::MIN,
+                file: FileMeta {
+                    id: file_ids[idx],
+                    size: sst_info.file_size as u64,
+                    row_num: sst_info.row_num as u64,
+                    time_range: sst_meta.time_range,
+                    max_seq: sst_meta.max_sequence,
+                    storage_format: sst_info.storage_format,
+                },
+            })
         }
 
         Ok(Some(max_sequence))
