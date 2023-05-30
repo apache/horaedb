@@ -147,7 +147,7 @@ pub struct ObkvObjectStore<T> {
     meta_manager: Arc<MetaManager<T>>,
     client: Arc<T>,
     upload_id: AtomicI64,
-    /// The size of one object part which persit in obkv;
+    /// The size of one object part persited in obkv
     /// Because it may cause problem to save huge data in one obkv value, so we
     /// need to split data into small parts;
     part_size: usize,
