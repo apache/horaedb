@@ -157,20 +157,6 @@ impl TryFrom<ceresdbproto::remote_engine::WriteBatchRequest> for WriteBatchReque
     }
 }
 
-impl TryFrom<WriteBatchRequest> for ceresdbproto::remote_engine::WriteBatchRequest {
-    type Error = Error;
-
-    fn try_from(batch_request: WriteBatchRequest) -> std::result::Result<Self, Self::Error> {
-        let batch = batch_request
-            .batch
-            .into_iter()
-            .map(remote_engine::WriteRequest::try_from)
-            .collect::<std::result::Result<Vec<_>, Self::Error>>()?;
-
-        Ok(remote_engine::WriteBatchRequest { batch })
-    }
-}
-
 impl WriteBatchRequest {
     pub fn batch_convert_to_pb(
         batch_request: WriteBatchRequest,
@@ -224,61 +210,6 @@ impl TryFrom<ceresdbproto::remote_engine::WriteRequest> for WriteRequest {
         Ok(Self {
             table: table_identifier.into(),
             write_request: TableWriteRequest { row_group },
-        })
-    }
-}
-
-impl TryFrom<WriteRequest> for ceresdbproto::remote_engine::WriteRequest {
-    type Error = Error;
-
-    fn try_from(request: WriteRequest) -> std::result::Result<Self, Self::Error> {
-        // Row group to pb.
-        let row_group = request.write_request.row_group;
-        let table_schema = row_group.schema();
-        let min_timestamp = row_group.min_timestamp().as_i64();
-        let max_timestamp = row_group.max_timestamp().as_i64();
-
-        let mut builder = RecordBatchWithKeyBuilder::new(table_schema.to_record_schema_with_key());
-
-        for row in row_group {
-            builder
-                .append_row(row)
-                .map_err(|e| Box::new(e) as _)
-                .context(ConvertRowGroup)?;
-        }
-
-        let record_batch_with_key = builder
-            .build()
-            .map_err(|e| Box::new(e) as _)
-            .context(ConvertRowGroup)?;
-        let record_batch = record_batch_with_key.into_record_batch();
-        let compress_output = ipc::encode_record_batch(
-            &record_batch.into_arrow_record_batch(),
-            CompressOptions::default(),
-        )
-        .map_err(|e| Box::new(e) as _)
-        .context(ConvertRowGroup)?;
-
-        let compression = match compress_output.method {
-            CompressionMethod::None => arrow_payload::Compression::None,
-            CompressionMethod::Zstd => arrow_payload::Compression::Zstd,
-        };
-
-        let row_group_pb = ceresdbproto::remote_engine::RowGroup {
-            min_timestamp,
-            max_timestamp,
-            rows: Some(Arrow(ArrowPayload {
-                record_batches: vec![compress_output.payload],
-                compression: compression as i32,
-            })),
-        };
-
-        // Table ident to pb.
-        let table_pb = request.table.into();
-
-        Ok(Self {
-            table: Some(table_pb),
-            row_group: Some(row_group_pb),
         })
     }
 }

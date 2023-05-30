@@ -50,7 +50,7 @@ pub struct Client {
 
 impl Client {
     pub fn new(config: Config, router: RouterRef, io_runtime: Arc<Runtime>) -> Self {
-        let compression = config.compression.clone();
+        let compression = config.compression;
         let cached_router = CachedRouter::new(router, config);
 
         Self {
@@ -171,7 +171,7 @@ impl Client {
                 request,
                 channel,
             } = context;
-            let compress_options = self.compression.clone();
+            let compress_options = self.compression;
             let handle = self.io_runtime.spawn(async move {
                 let batch_request_pb =
                     match WriteBatchRequest::batch_convert_to_pb(request, compress_options)
