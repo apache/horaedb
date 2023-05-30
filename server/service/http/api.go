@@ -169,7 +169,7 @@ func (a *API) getShardTables(writer http.ResponseWriter, req *http.Request) {
 	err := json.NewDecoder(req.Body).Decode(&getShardTables)
 	if err != nil {
 		log.Error("decode request body failed", zap.Error(err))
-		a.respondError(writer, ErrParseRequest, fmt.Sprintf("decode request body failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrParseRequest, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 	log.Info("get shard tables request", zap.String("request", fmt.Sprintf("%+v", getShardTables)))
@@ -177,7 +177,7 @@ func (a *API) getShardTables(writer http.ResponseWriter, req *http.Request) {
 	c, err := a.clusterManager.GetCluster(req.Context(), getShardTables.ClusterName)
 	if err != nil {
 		log.Error("get cluster failed", zap.String("clusterName", getShardTables.ClusterName), zap.Error(err))
-		a.respondError(writer, ErrGetCluster, fmt.Sprintf("get cluster failed, clusterName: %s, cause: %s", getShardTables.ClusterName, err.Error()))
+		a.respondError(writer, ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", getShardTables.ClusterName, err.Error()))
 		return
 	}
 
@@ -202,7 +202,7 @@ func (a *API) transferLeader(writer http.ResponseWriter, req *http.Request) {
 	err := json.NewDecoder(req.Body).Decode(&transferLeaderRequest)
 	if err != nil {
 		log.Error("decode request body failed", zap.Error(err))
-		a.respondError(writer, ErrParseRequest, fmt.Sprintf("decode request body failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrParseRequest, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 	log.Info("transfer leader request", zap.String("request", fmt.Sprintf("%+v", transferLeaderRequest)))
@@ -210,7 +210,7 @@ func (a *API) transferLeader(writer http.ResponseWriter, req *http.Request) {
 	c, err := a.clusterManager.GetCluster(req.Context(), transferLeaderRequest.ClusterName)
 	if err != nil {
 		log.Error("get cluster failed", zap.String("clusterName", transferLeaderRequest.ClusterName), zap.Error(err))
-		a.respondError(writer, ErrGetCluster, fmt.Sprintf("get cluster failed, clusterName: %s, cause: %s", transferLeaderRequest.ClusterName, err.Error()))
+		a.respondError(writer, ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", transferLeaderRequest.ClusterName, err.Error()))
 		return
 	}
 
@@ -222,13 +222,13 @@ func (a *API) transferLeader(writer http.ResponseWriter, req *http.Request) {
 	})
 	if err != nil {
 		log.Error("create transfer leader procedure failed", zap.Error(err))
-		a.respondError(writer, ErrCreateProcedure, fmt.Sprintf("create transfer leader procedure failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrCreateProcedure, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 	err = c.GetProcedureManager().Submit(req.Context(), transferLeaderProcedure)
 	if err != nil {
 		log.Error("submit transfer leader procedure failed", zap.Error(err))
-		a.respondError(writer, ErrSubmitProcedure, fmt.Sprintf("submit transfer leader procedure failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrSubmitProcedure, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -245,7 +245,7 @@ func (a *API) route(writer http.ResponseWriter, req *http.Request) {
 	resp, isLeader, err := a.forwardClient.forwardToLeader(req)
 	if err != nil {
 		log.Error("forward to leader failed", zap.Error(err))
-		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("forward to leader failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -258,7 +258,7 @@ func (a *API) route(writer http.ResponseWriter, req *http.Request) {
 	err = json.NewDecoder(req.Body).Decode(&routeRequest)
 	if err != nil {
 		log.Error("decode request body failed", zap.Error(err))
-		a.respondError(writer, ErrParseRequest, fmt.Sprintf("decode request body failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrParseRequest, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 	log.Info("route request", zap.String("request", fmt.Sprintf("%+v", routeRequest)))
@@ -266,7 +266,7 @@ func (a *API) route(writer http.ResponseWriter, req *http.Request) {
 	result, err := a.clusterManager.RouteTables(context.Background(), routeRequest.ClusterName, routeRequest.SchemaName, routeRequest.Tables)
 	if err != nil {
 		log.Error("route tables failed", zap.Error(err))
-		a.respondError(writer, ErrRouteTable, fmt.Sprintf("route tables failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrRouteTable, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -281,7 +281,7 @@ func (a *API) getNodeShards(writer http.ResponseWriter, req *http.Request) {
 	resp, isLeader, err := a.forwardClient.forwardToLeader(req)
 	if err != nil {
 		log.Error("forward to leader failed", zap.Error(err))
-		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("forward to leader failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -293,14 +293,14 @@ func (a *API) getNodeShards(writer http.ResponseWriter, req *http.Request) {
 	err = json.NewDecoder(req.Body).Decode(&nodeShardsRequest)
 	if err != nil {
 		log.Error("decode request body failed", zap.Error(err))
-		a.respondError(writer, ErrParseRequest, fmt.Sprintf("decode request body failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrParseRequest, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
 	result, err := a.clusterManager.GetNodeShards(context.Background(), nodeShardsRequest.ClusterName)
 	if err != nil {
 		log.Error("get node shards failed", zap.Error(err))
-		a.respondError(writer, ErrGetNodeShards, fmt.Sprintf("get node shards failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrGetNodeShards, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -317,7 +317,7 @@ func (a *API) dropTable(writer http.ResponseWriter, req *http.Request) {
 	resp, isLeader, err := a.forwardClient.forwardToLeader(req)
 	if err != nil {
 		log.Error("forward to leader failed", zap.Error(err))
-		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("forward to leader failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -330,14 +330,14 @@ func (a *API) dropTable(writer http.ResponseWriter, req *http.Request) {
 	err = json.NewDecoder(req.Body).Decode(&dropTableRequest)
 	if err != nil {
 		log.Error("decode request body failed", zap.Error(err))
-		a.respondError(writer, ErrParseRequest, fmt.Sprintf("decode request body failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrParseRequest, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 	log.Info("drop table reqeust", zap.String("request", fmt.Sprintf("%+v", dropTableRequest)))
 
 	if err := a.clusterManager.DropTable(context.Background(), dropTableRequest.ClusterName, dropTableRequest.SchemaName, dropTableRequest.Table); err != nil {
 		log.Error("drop table failed", zap.Error(err))
-		a.respondError(writer, ErrDropTable, fmt.Sprintf("drop table failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrDropTable, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -356,7 +356,7 @@ func (a *API) split(writer http.ResponseWriter, req *http.Request) {
 	resp, isLeader, err := a.forwardClient.forwardToLeader(req)
 	if err != nil {
 		log.Error("forward to leader failed", zap.Error(err))
-		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("forward to leader failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -369,7 +369,7 @@ func (a *API) split(writer http.ResponseWriter, req *http.Request) {
 	err = json.NewDecoder(req.Body).Decode(&splitRequest)
 	if err != nil {
 		log.Error("decode request body failed", zap.Error(err))
-		a.respondError(writer, ErrParseRequest, fmt.Sprintf("decode request body failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrParseRequest, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 	ctx := context.Background()
@@ -377,14 +377,14 @@ func (a *API) split(writer http.ResponseWriter, req *http.Request) {
 	c, err := a.clusterManager.GetCluster(ctx, splitRequest.ClusterName)
 	if err != nil {
 		log.Error("get cluster failed", zap.String("clusterName", splitRequest.ClusterName), zap.Error(err))
-		a.respondError(writer, ErrGetCluster, fmt.Sprintf("get cluster failed, clusterName: %s, cause: %s", splitRequest.ClusterName, err.Error()))
+		a.respondError(writer, ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", splitRequest.ClusterName, err.Error()))
 		return
 	}
 
 	newShardID, err := c.GetMetadata().AllocShardID(ctx)
 	if err != nil {
 		log.Error("alloc shard id failed", zap.Error(err))
-		a.respondError(writer, ErrAllocShardID, fmt.Sprintf("alloc shard id failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrAllocShardID, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -399,13 +399,13 @@ func (a *API) split(writer http.ResponseWriter, req *http.Request) {
 	})
 	if err != nil {
 		log.Error("create split procedure failed", zap.Error(err))
-		a.respondError(writer, ErrCreateProcedure, fmt.Sprintf("create split procedure failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrCreateProcedure, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
 	if err := c.GetProcedureManager().Submit(ctx, splitProcedure); err != nil {
 		log.Error("submit split procedure failed", zap.Error(err))
-		a.respondError(writer, ErrSubmitProcedure, fmt.Sprintf("submit split procedure failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrSubmitProcedure, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -416,7 +416,7 @@ func (a *API) listClusters(writer http.ResponseWriter, req *http.Request) {
 	resp, isLeader, err := a.forwardClient.forwardToLeader(req)
 	if err != nil {
 		log.Error("forward to leader failed", zap.Error(err))
-		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("forward to leader failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -428,7 +428,7 @@ func (a *API) listClusters(writer http.ResponseWriter, req *http.Request) {
 	clusters, err := a.clusterManager.ListClusters(req.Context())
 	if err != nil {
 		log.Error("list clusters failed", zap.Error(err))
-		a.respondError(writer, ErrGetCluster, fmt.Sprintf("list clusters failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrGetCluster, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -452,7 +452,7 @@ func (a *API) createCluster(writer http.ResponseWriter, req *http.Request) {
 	resp, isLeader, err := a.forwardClient.forwardToLeader(req)
 	if err != nil {
 		log.Error("forward to leader failed", zap.Error(err))
-		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("forward to leader failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -465,7 +465,7 @@ func (a *API) createCluster(writer http.ResponseWriter, req *http.Request) {
 	err = json.NewDecoder(req.Body).Decode(&createClusterRequest)
 	if err != nil {
 		log.Error("decode request body failed", zap.Error(err))
-		a.respondError(writer, ErrParseRequest, fmt.Sprintf("decode request body failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrParseRequest, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -478,7 +478,7 @@ func (a *API) createCluster(writer http.ResponseWriter, req *http.Request) {
 	topologyType, err := metadata.ParseTopologyType(createClusterRequest.TopologyType)
 	if err != nil {
 		log.Error("parse topology type failed", zap.Error(err))
-		a.respondError(writer, ErrParseTopology, fmt.Sprintf("parse topology type failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrParseTopology, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 	c, err := a.clusterManager.CreateCluster(req.Context(), createClusterRequest.Name, metadata.CreateClusterOpts{
@@ -490,7 +490,7 @@ func (a *API) createCluster(writer http.ResponseWriter, req *http.Request) {
 	})
 	if err != nil {
 		log.Error("create cluster failed", zap.Error(err))
-		a.respondError(writer, metadata.ErrCreateCluster, fmt.Sprintf("create cluster failed, cause: %s", err.Error()))
+		a.respondError(writer, metadata.ErrCreateCluster, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -508,7 +508,7 @@ func (a *API) updateCluster(writer http.ResponseWriter, req *http.Request) {
 	resp, isLeader, err := a.forwardClient.forwardToLeader(req)
 	if err != nil {
 		log.Error("forward to leader failed", zap.Error(err))
-		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("forward to leader failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -527,21 +527,21 @@ func (a *API) updateCluster(writer http.ResponseWriter, req *http.Request) {
 	err = json.NewDecoder(req.Body).Decode(&updateClusterRequest)
 	if err != nil {
 		log.Error("decode request body failed", zap.Error(err))
-		a.respondError(writer, ErrParseRequest, fmt.Sprintf("decode request body failed, cause: %s", err.Error()))
+		a.respondError(writer, ErrParseRequest, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
 	c, err := a.clusterManager.GetCluster(req.Context(), clusterName)
 	if err != nil {
 		log.Error("get cluster failed", zap.Error(err))
-		a.respondError(writer, ErrGetCluster, fmt.Sprintf("get cluster failed, clusterName: %s, cause: %s", clusterName, err.Error()))
+		a.respondError(writer, ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", clusterName, err.Error()))
 		return
 	}
 
 	topologyType, err := metadata.ParseTopologyType(updateClusterRequest.TopologyType)
 	if err != nil {
 		log.Error("parse topology type", zap.Error(err))
-		a.respondError(writer, metadata.ErrParseTopologyType, "parse topology type")
+		a.respondError(writer, ErrParseTopology, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -550,7 +550,7 @@ func (a *API) updateCluster(writer http.ResponseWriter, req *http.Request) {
 		TopologyType:   topologyType,
 	}); err != nil {
 		log.Error("update cluster failed", zap.Error(err))
-		a.respondError(writer, metadata.ErrUpdateCluster, fmt.Sprintf("update cluster failed, cause: %s", err.Error()))
+		a.respondError(writer, metadata.ErrUpdateCluster, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
@@ -580,7 +580,7 @@ func (a *API) updateFlowLimiter(writer http.ResponseWriter, req *http.Request) {
 	err = json.NewDecoder(req.Body).Decode(&updateFlowLimiterRequest)
 	if err != nil {
 		log.Error("decode request body failed", zap.Error(err))
-		a.respondError(writer, ErrParseRequest, fmt.Sprintf("decode request body failed, err: %s", err.Error()))
+		a.respondError(writer, ErrParseRequest, fmt.Sprintf("err: %s", err.Error()))
 		return
 	}
 
