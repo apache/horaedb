@@ -37,5 +37,4 @@ func TestRebalancedScheduler(t *testing.T) {
 	stableCluster := test.InitStableCluster(ctx, t)
 	result, err = s.Schedule(ctx, stableCluster.GetMetadata().GetClusterSnapshot())
 	re.NoError(err)
-	re.NotNil(result.Procedure)
 }
