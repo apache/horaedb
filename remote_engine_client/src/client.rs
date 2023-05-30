@@ -16,7 +16,7 @@ use ceresdbproto::{
 };
 use common_types::{
     projected_schema::ProjectedSchema,
-    record_batch::{RecordBatch, RecordBatchBuilder},
+    record_batch::{CachedRecordBatchesConverter, RecordBatch},
     schema::RecordSchema,
 };
 use common_util::{error::BoxError, runtime::Runtime};
@@ -330,7 +330,7 @@ pub struct ClientReadRecordBatchStream {
     pub response_stream: Streaming<remote_engine::ReadResponse>,
     pub projected_schema: ProjectedSchema,
     pub projected_record_schema: RecordSchema,
-    pub record_batch_builder: RecordBatchBuilder,
+    pub record_batches_converter: CachedRecordBatchesConverter,
 }
 
 impl ClientReadRecordBatchStream {
@@ -345,7 +345,7 @@ impl ClientReadRecordBatchStream {
             response_stream,
             projected_schema,
             projected_record_schema,
-            record_batch_builder: RecordBatchBuilder::default(),
+            record_batches_converter: CachedRecordBatchesConverter::default(),
         }
     }
 }
@@ -403,8 +403,8 @@ impl Stream for ClientReadRecordBatchStream {
                                         );
 
                                         let arrow_record_batch = record_batch_vec.swap_remove(0);
-                                        this.record_batch_builder
-                                            .build(arrow_record_batch)
+                                        this.record_batches_converter
+                                            .convert(arrow_record_batch)
                                             .map_err(|e| Box::new(e) as _)
                                             .context(Convert {
                                                 msg: "convert read record batch",

@@ -8,7 +8,6 @@ use arrow::{
     record_batch::RecordBatch,
 };
 use async_trait::async_trait;
-use common_types::record_batch::convert_single_arrow_record_batch;
 use query_engine::executor::RecordBatchVec;
 use query_frontend::plan::ExistsTablePlan;
 use snafu::{ResultExt, Snafu};
@@ -50,7 +49,7 @@ fn exists_table_result(exists: bool) -> Result<RecordBatchVec> {
     )
     .unwrap();
 
-    let record_batch = convert_single_arrow_record_batch(arrow_record_batch).unwrap();
+    let record_batch = arrow_record_batch.try_into().unwrap();
 
     Ok(vec![record_batch])
 }

@@ -9,7 +9,6 @@ use arrow::{
 };
 use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::Schema, Catalog};
-use common_types::record_batch::convert_single_arrow_record_batch;
 use query_frontend::{
     ast::ShowCreateObject,
     plan::{QueryType, ShowCreatePlan, ShowPlan, ShowTablesPlan},
@@ -159,8 +158,7 @@ impl ShowInterpreter {
                 .context(CreateRecordBatch)?
             }
         };
-        let record_batch =
-            convert_single_arrow_record_batch(arrow_record_batch).context(ToCommonRecordType)?;
+        let record_batch = arrow_record_batch.try_into().context(ToCommonRecordType)?;
 
         Ok(Output::Records(vec![record_batch]))
     }
@@ -185,8 +183,7 @@ impl ShowInterpreter {
         )
         .context(CreateRecordBatch)?;
 
-        let record_batch =
-            convert_single_arrow_record_batch(arrow_record_batch).context(ToCommonRecordType)?;
+        let record_batch = arrow_record_batch.try_into().context(ToCommonRecordType)?;
 
         Ok(Output::Records(vec![record_batch]))
     }

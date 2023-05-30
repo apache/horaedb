@@ -9,7 +9,7 @@ use ceresdbproto::storage::{
 };
 use common_types::{
     datum::{Datum, DatumKind},
-    record_batch::{RecordBatch, RecordBatchBuilder},
+    record_batch::{CachedRecordBatchesConverter, RecordBatch},
 };
 use common_util::error::BoxError;
 use interpreters::interpreter::Output;
@@ -165,14 +165,14 @@ fn convert_sql_response_to_output(sql_query_response: SqlQueryResponse) -> Resul
         msg: "Output is empty in sql query response".to_string(),
     })?;
 
-    let mut record_batch_builder = RecordBatchBuilder::default();
+    let mut record_batch_builder = CachedRecordBatchesConverter::default();
     let output = match output_pb {
         OutputPb::AffectedRows(affected) => Output::AffectedRows(affected as usize),
         OutputPb::Arrow(arrow_payload) => {
             let arrow_record_batches = decode_arrow_payload(arrow_payload)?;
             let rows_group: Vec<RecordBatch> = arrow_record_batches
                 .into_iter()
-                .map(|arrow_record_batch| record_batch_builder.build(arrow_record_batch))
+                .map(|arrow_record_batch| record_batch_builder.convert(arrow_record_batch))
                 .map(|v| {
                     v.box_err().context(Internal {
                         msg: "decode arrow payload",

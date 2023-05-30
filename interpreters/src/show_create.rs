@@ -7,7 +7,6 @@ use arrow::{
     datatypes::{DataType, Field, Schema},
     record_batch::RecordBatch,
 };
-use common_types::record_batch::convert_single_arrow_record_batch;
 use datafusion::logical_expr::Expr;
 use datafusion_proto::bytes::Serializeable;
 use log::error;
@@ -59,7 +58,7 @@ impl ShowCreateInterpreter {
         )
         .unwrap();
 
-        let record_batch = convert_single_arrow_record_batch(arrow_record_batch).unwrap();
+        let record_batch = arrow_record_batch.try_into().unwrap();
 
         Ok(vec![record_batch])
     }

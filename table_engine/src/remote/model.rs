@@ -14,7 +14,7 @@ use ceresdbproto::{
     storage::{arrow_payload, ArrowPayload},
 };
 use common_types::{
-    record_batch::{RecordBatchBuilder, RecordBatchWithKeyBuilder},
+    record_batch::{CachedRecordBatchesConverter, RecordBatchWithKeyBuilder},
     row::{RowGroup, RowGroupBuilder},
     schema::Schema,
 };
@@ -336,10 +336,10 @@ fn build_row_group_from_record_batch(
             .context(ConvertRowGroup)?,
     );
 
-    let mut record_batch_builder = RecordBatchBuilder::default();
+    let mut record_batches_converter = CachedRecordBatchesConverter::default();
     for arrow_record_batch in arrow_record_batches {
-        let record_batch = record_batch_builder
-            .build(arrow_record_batch)
+        let record_batch = record_batches_converter
+            .convert(arrow_record_batch)
             .map_err(|e| Box::new(e) as _)
             .context(ConvertRowGroup)?;
 

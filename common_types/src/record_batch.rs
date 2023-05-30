@@ -269,13 +269,21 @@ impl RecordBatch {
     }
 }
 
+/// Converter from arrow record batches to inner's
+///
+/// Converting arrow schema to inner's is expensive. For eliminate the
+/// duplicated converting, we define such converter to cache the first converted
+/// one and reuse it in later converting.
+///
+/// NOTE: must ensure the converted arrow record batches has the same schema
+/// before deciding to use this converter.
 #[derive(Default)]
-pub struct RecordBatchBuilder {
+pub struct CachedRecordBatchesConverter {
     schema_cache: Option<RecordSchema>,
 }
 
-impl RecordBatchBuilder {
-    pub fn build(&mut self, arrow_record_batch: ArrowRecordBatch) -> Result<RecordBatch> {
+impl CachedRecordBatchesConverter {
+    pub fn convert(&mut self, arrow_record_batch: ArrowRecordBatch) -> Result<RecordBatch> {
         let schema = match &self.schema_cache {
             Some(schema) => schema.clone(),
             None => {
@@ -287,25 +295,35 @@ impl RecordBatchBuilder {
             }
         };
 
-        let column_blocks =
-            build_column_blocks_from_arrow_record_batch(&arrow_record_batch, &schema)?;
-        let arrow_record_batch = cast_arrow_record_batch(arrow_record_batch)?;
-
-        Ok(RecordBatch {
-            schema,
-            data: RecordBatchData {
-                arrow_record_batch,
-                column_blocks,
-            },
-        })
+        convert_single_arrow_record_batch(arrow_record_batch, schema)
     }
 }
 
-#[inline]
-pub fn convert_single_arrow_record_batch(
+impl TryFrom<ArrowRecordBatch> for RecordBatch {
+    type Error = Error;
+
+    fn try_from(arrow_record_batch: ArrowRecordBatch) -> Result<Self> {
+        let record_schema =
+            RecordSchema::try_from(arrow_record_batch.schema()).context(ConvertArrowSchema)?;
+
+        convert_single_arrow_record_batch(arrow_record_batch, record_schema)
+    }
+}
+
+fn convert_single_arrow_record_batch(
     arrow_record_batch: ArrowRecordBatch,
+    schema: RecordSchema,
 ) -> Result<RecordBatch> {
-    RecordBatchBuilder::default().build(arrow_record_batch)
+    let column_blocks = build_column_blocks_from_arrow_record_batch(&arrow_record_batch, &schema)?;
+    let arrow_record_batch = cast_arrow_record_batch(arrow_record_batch)?;
+
+    Ok(RecordBatch {
+        schema,
+        data: RecordBatchData {
+            arrow_record_batch,
+            column_blocks,
+        },
+    })
 }
 
 fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch> {

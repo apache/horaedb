@@ -10,7 +10,7 @@ use std::{
 
 use arrow::{datatypes::SchemaRef, record_batch::RecordBatch as ArrowRecordBatch};
 use common_types::{
-    record_batch::{RecordBatch, RecordBatchBuilder},
+    record_batch::{CachedRecordBatchesConverter, RecordBatch},
     schema::RecordSchema,
 };
 use common_util::{
@@ -87,7 +87,7 @@ impl DfRecordBatchStream for ToDfStream {
 pub struct FromDfStream {
     schema: RecordSchema,
     df_stream: DfSendableRecordBatchStream,
-    record_batch_builder: RecordBatchBuilder,
+    record_batches_converter: CachedRecordBatchesConverter,
 }
 
 impl FromDfStream {
@@ -102,7 +102,7 @@ impl FromDfStream {
         Ok(Self {
             schema,
             df_stream,
-            record_batch_builder: RecordBatchBuilder::default(),
+            record_batches_converter: CachedRecordBatchesConverter::default(),
         })
     }
 }
@@ -115,7 +115,7 @@ impl Stream for FromDfStream {
             Poll::Ready(Some(record_batch_res)) => Poll::Ready(Some(
                 record_batch_res
                     .box_err()
-                    .and_then(|batch| self.record_batch_builder.build(batch).box_err())
+                    .and_then(|batch| self.record_batches_converter.convert(batch).box_err())
                     .context(ErrWithSource {
                         msg: "convert from arrow record batch",
                     }),
