@@ -108,7 +108,7 @@ impl Client {
 
         // Write to remote.
         let table_ident = request.table.clone();
-        let request_pb = WriteRequest::convert(request, self.compression)
+        let request_pb = WriteRequest::convert_to_pb(request, self.compression)
             .box_err()
             .context(Convert {
                 msg: "Failed to convert WriteRequest to pb",
@@ -171,9 +171,10 @@ impl Client {
                 request,
                 channel,
             } = context;
+            let compress_options = self.compression.clone();
             let handle = self.io_runtime.spawn(async move {
                 let batch_request_pb =
-                    match ceresdbproto::remote_engine::WriteBatchRequest::try_from(request)
+                    match WriteBatchRequest::batch_convert_to_pb(request,compress_options)
                         .box_err()
                     {
                         Ok(pb) => pb,

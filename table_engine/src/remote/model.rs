@@ -171,6 +171,19 @@ impl TryFrom<WriteBatchRequest> for ceresdbproto::remote_engine::WriteBatchReque
     }
 }
 
+impl WriteBatchRequest  {
+
+    pub fn batch_convert_to_pb(batch_request: WriteBatchRequest, compress_options: CompressOptions) -> std::result::Result<ceresdbproto::remote_engine::WriteBatchRequest, Error> {
+        let batch = batch_request
+            .batch
+            .into_iter()
+            .map(|req|WriteRequest::convert_to_pb(req, compress_options))
+            .collect::<std::result::Result<Vec<_>, Error>>()?;
+
+        Ok(remote_engine::WriteBatchRequest { batch })
+    }
+}
+
 pub struct WriteRequest {
     pub table: TableIdentifier,
     pub write_request: TableWriteRequest,
@@ -269,9 +282,8 @@ impl TryFrom<WriteRequest> for ceresdbproto::remote_engine::WriteRequest {
 }
 
 impl WriteRequest {
-    // type Error = Error;
 
-    pub fn convert(
+    pub fn convert_to_pb(
         request: WriteRequest,
         compress_options: CompressOptions,
     ) -> std::result::Result<ceresdbproto::remote_engine::WriteRequest, Error> {
