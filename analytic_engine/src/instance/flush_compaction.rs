@@ -659,7 +659,7 @@ impl SpaceStore {
             mems_to_remove: vec![],
         };
 
-        if task.expired.is_empty() && task.compaction_inputs.is_empty() {
+        if task.num_expired_files() == 0 && task.num_compact_files() == 0 {
             // Nothing to compact.
             return Ok(());
         }
@@ -673,7 +673,7 @@ impl SpaceStore {
             table_data.name,
             table_data.id,
             task.estimated_total_input_file_size(),
-            task.num_input_files(),
+            task.num_compact_files(),
         );
 
         for input in &task.compaction_inputs {
