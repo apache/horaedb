@@ -148,8 +148,8 @@ pub struct ObkvObjectStore<T> {
     client: Arc<T>,
     upload_id: AtomicI64,
     /// The size of one object part persited in obkv
-    /// Because it may cause problem to save huge data in one obkv value, so we
-    /// need to split data into small parts;
+    /// It may cause problem to save huge data in one obkv value, so we
+    /// need to split data into small parts.
     part_size: usize,
     /// The max size of bytes, default is 1GB
     max_put_size: usize,
