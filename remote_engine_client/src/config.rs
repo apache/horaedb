@@ -4,6 +4,7 @@
 
 use std::str::FromStr;
 
+use arrow_ext::ipc::CompressOptions;
 use common_util::config::ReadableDuration;
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +19,7 @@ pub struct Config {
     pub channel_keep_alive_interval: ReadableDuration,
     pub route_cache_max_size_per_partition: usize,
     pub route_cache_partition_num: usize,
+    pub compression: CompressOptions,
 }
 
 impl Default for Config {
@@ -31,6 +33,7 @@ impl Default for Config {
             channel_keep_alive_while_idle: true,
             route_cache_max_size_per_partition: 16,
             route_cache_partition_num: 16,
+            compression: CompressOptions::default(),
         }
     }
 }
