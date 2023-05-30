@@ -62,7 +62,7 @@ impl Default for CompressOptions {
     fn default() -> Self {
         Self {
             compress_min_length: DEFAULT_COMPRESS_MIN_LENGTH,
-            method: CompressionMethod::Zstd,
+            method: CompressionMethod::None,
         }
     }
 }

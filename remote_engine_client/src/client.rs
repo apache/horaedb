@@ -174,7 +174,7 @@ impl Client {
             let compress_options = self.compression.clone();
             let handle = self.io_runtime.spawn(async move {
                 let batch_request_pb =
-                    match WriteBatchRequest::batch_convert_to_pb(request,compress_options)
+                    match WriteBatchRequest::batch_convert_to_pb(request, compress_options)
                         .box_err()
                     {
                         Ok(pb) => pb,
