@@ -637,8 +637,6 @@ impl ScheduleWorker {
     }
 
     async fn flush_tables(&self) {
-        info!("Scheduled flush all tables begins");
-
         let mut tables_buf = Vec::new();
         self.space_store.list_all_tables(&mut tables_buf);
         let flusher = Flusher {
@@ -649,9 +647,9 @@ impl ScheduleWorker {
 
         for table_data in &tables_buf {
             let last_flush_time = table_data.last_flush_time();
-            if last_flush_time + self.max_unflushed_duration.as_millis_u64()
-                < common_util::time::current_time_millis()
-            {
+            let flush_deadline_ms = last_flush_time + self.max_unflushed_duration.as_millis_u64();
+            let now_ms = common_util::time::current_time_millis();
+            if now_ms > flush_deadline_ms {
                 info!(
                     "Scheduled flush is triggered, table:{}, last_flush_time:{last_flush_time}ms, max_unflushed_duration:{:?}",
                     table_data.name,
@@ -669,8 +667,6 @@ impl ScheduleWorker {
                 }
             }
         }
-
-        info!("Scheduled flush all tables finishes");
     }
 }
 
