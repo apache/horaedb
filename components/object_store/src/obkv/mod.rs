@@ -152,7 +152,7 @@ pub struct ObkvObjectStore<T> {
     /// need to split data into small parts;
     part_size: usize,
     /// The max size of bytes, default is 1GB
-    max_put_size: usize,
+    max_object_size: usize,
 }
 
 impl<T: TableKv> std::fmt::Display for ObkvObjectStore<T> {
@@ -186,16 +186,16 @@ impl<T: TableKv> ObkvObjectStore<T> {
             client,
             upload_id,
             part_size,
-            max_put_size: 1024 * 1024 * 1024,
+            max_object_size: 1024 * 1024 * 1024,
         })
     }
 
     #[inline]
     fn check_size(&self, bytes: &Bytes) -> std::result::Result<(), Error> {
-        if bytes.len() > self.max_put_size {
+        if bytes.len() > self.max_object_size {
             return TooLargeData {
                 size: bytes.len(),
-                limit: self.max_put_size,
+                limit: self.max_object_size,
             }
             .fail();
         }
