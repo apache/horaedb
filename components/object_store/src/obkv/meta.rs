@@ -15,7 +15,7 @@ use super::{util, OBKV};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Invalid utf8 string, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    #[snafu(display("Invalid utf8 string, err:{source}.\nBacktrace:\n{backtrace}"))]
     InvalidUtf8 {
         source: std::str::Utf8Error,
         backtrace: Backtrace,
