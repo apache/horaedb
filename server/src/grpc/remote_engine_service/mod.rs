@@ -17,7 +17,7 @@ use ceresdbproto::{
 };
 use common_types::record_batch::RecordBatch;
 use common_util::{error::BoxError, time::InstantExt};
-use futures::stream::{self, BoxStream, FuturesUnordered, StreamExt};
+use futures::stream::{self, BoxStream, StreamExt};
 use log::error;
 use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
@@ -159,42 +159,41 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
     ) -> std::result::Result<Response<WriteResponse>, Status> {
         let begin_instant = Instant::now();
         let request = request.into_inner();
-        let write_table_futures = FuturesUnordered::new();
+        let mut write_table_handles = Vec::with_capacity(request.batch.len());
         for one_request in request.batch {
             let ctx = self.handler_ctx();
-            write_table_futures.push(handle_write(ctx, one_request));
+            let handle = self
+                .runtimes
+                .write_runtime
+                .spawn(handle_write(ctx, one_request));
+            write_table_handles.push(handle);
         }
 
-        let handle = self
-            .runtimes
-            .write_runtime
-            .spawn(async move { write_table_futures.collect::<Vec<_>>().await });
-        let write_results = handle.await.box_err().context(ErrWithCause {
-            code: StatusCode::Internal,
-            msg: "fail to run the join task",
-        });
-
-        let mut batch_resp = WriteResponse::default();
-        match write_results {
-            Ok(results) => {
-                let mut affected_rows = 0;
-                for res in results {
-                    match res {
-                        Ok(resp) => affected_rows += resp.affected_rows,
-                        Err(e) => {
-                            error!("Failed to write batches, err:{e}");
-                            batch_resp.header = Some(error::build_err_header(e));
-                            break;
-                        }
-                    }
-                }
-                batch_resp.header = Some(error::build_ok_header());
-                batch_resp.affected_rows = affected_rows;
-            }
-            Err(e) => {
-                batch_resp.header = Some(error::build_err_header(e));
-            }
+        let mut batch_resp = WriteResponse {
+            header: Some(error::build_ok_header()),
+            affected_rows: 0,
         };
+        for write_handle in write_table_handles {
+            let write_result = write_handle.await.box_err().context(ErrWithCause {
+                code: StatusCode::Internal,
+                msg: "fail to run the join task",
+            });
+            match write_result {
+                Ok(res) => match res {
+                    Ok(resp) => batch_resp.affected_rows += resp.affected_rows,
+                    Err(e) => {
+                        error!("Failed to write batches, err:{e}");
+                        batch_resp.header = Some(error::build_err_header(e));
+                        break;
+                    }
+                },
+                Err(e) => {
+                    error!("Failed to write batches, err:{e}");
+                    batch_resp.header = Some(error::build_err_header(e));
+                    break;
+                }
+            };
+        }
 
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .write_batch
