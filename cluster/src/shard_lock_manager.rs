@@ -466,10 +466,13 @@ impl ShardLock {
 
         // Wait for the lease check worker to stop.
         if let Some(handle) = self.lease_check_handle.take() {
-            if let Err(e) = handle.await {
-                warn!("Failed to wait for the lease check worker to stop, maybe it has exited so ignore it, shard_id:{}, err:{e}", self.shard_id);
-            }
+            handle.abort();
         }
+
+        info!(
+            "Finish exiting from background keepalive task, shard_id:{}",
+            self.shard_id
+        );
     }
 
     async fn acquire_lock_with_lease(&self, lease_id: i64, etcd_client: &mut Client) -> Result<()> {
@@ -711,7 +714,7 @@ impl ShardLockManager {
 
         let mut shard_locks = self.shard_locks.write().await;
         let shard_lock = shard_locks.remove(&shard_id);
-        match shard_lock {
+        let res = match shard_lock {
             Some(mut v) => {
                 let mut etcd_client = self.etcd_client.clone();
                 v.revoke(&mut etcd_client).await?;
@@ -723,7 +726,10 @@ impl ShardLockManager {
                 warn!("The lock is not exist, shard_id:{shard_id}");
                 Ok(false)
             }
-        }
+        };
+
+        info!("Finish revoke lock for shard, shard_id:{shard_id}");
+        res
     }
 }
 
