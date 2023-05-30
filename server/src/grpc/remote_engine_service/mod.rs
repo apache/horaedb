@@ -178,6 +178,8 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
                 code: StatusCode::Internal,
                 msg: "fail to run the join task",
             });
+            // The underlying write can't be cancelled, so just ignore the left write
+            // handles (don't abort them) if any error is encountered.
             match write_result {
                 Ok(res) => match res {
                     Ok(resp) => batch_resp.affected_rows += resp.affected_rows,
