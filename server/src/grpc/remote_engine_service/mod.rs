@@ -17,10 +17,7 @@ use ceresdbproto::{
 };
 use common_types::record_batch::RecordBatch;
 use common_util::{error::BoxError, time::InstantExt};
-use futures::{
-    future::try_join_all,
-    stream::{self, BoxStream, StreamExt},
-};
+use futures::stream::{self, BoxStream, FuturesUnordered, StreamExt};
 use log::error;
 use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
@@ -162,28 +159,39 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
     ) -> std::result::Result<Response<WriteResponse>, Status> {
         let begin_instant = Instant::now();
         let request = request.into_inner();
-        let mut write_table_futures = Vec::with_capacity(request.batch.len());
+        let write_table_futures = FuturesUnordered::new();
         for one_request in request.batch {
             let ctx = self.handler_ctx();
-            write_table_futures.push(async move { handle_write(ctx, one_request).await });
+            write_table_futures.push(handle_write(ctx, one_request));
         }
 
         let handle = self
             .runtimes
             .write_runtime
-            .spawn(try_join_all(write_table_futures));
-        let batch_result = handle.await.box_err().context(ErrWithCause {
+            .spawn(async move { write_table_futures.collect::<Vec<_>>().await });
+        let write_results = handle.await.box_err().context(ErrWithCause {
             code: StatusCode::Internal,
             msg: "fail to run the join task",
         });
 
         let mut batch_resp = WriteResponse::default();
-        match batch_result {
-            Ok(Ok(v)) => {
+        match write_results {
+            Ok(results) => {
+                let mut affected_rows = 0;
+                for res in results {
+                    match res {
+                        Ok(resp) => affected_rows += resp.affected_rows,
+                        Err(e) => {
+                            error!("Failed to write batches, err:{e}");
+                            batch_resp.header = Some(error::build_err_header(e));
+                            break;
+                        }
+                    }
+                }
                 batch_resp.header = Some(error::build_ok_header());
-                batch_resp.affected_rows = v.into_iter().map(|resp| resp.affected_rows).sum();
+                batch_resp.affected_rows = affected_rows;
             }
-            Ok(Err(e)) | Err(e) => {
+            Err(e) => {
                 batch_resp.header = Some(error::build_err_header(e));
             }
         };
