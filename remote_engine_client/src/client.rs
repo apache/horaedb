@@ -18,7 +18,7 @@ use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatch, schema::RecordSchema,
 };
 use common_util::{error::BoxError, runtime::Runtime};
-use futures::{future::join_all, Stream, StreamExt};
+use futures::{Stream, StreamExt};
 use log::info;
 use router::RouterRef;
 use snafu::{ensure, OptionExt, ResultExt};
@@ -188,9 +188,9 @@ impl Client {
             written_tables.push(table_idents);
         }
 
-        let remote_write_results = join_all(remote_writes).await;
-        let mut results = Vec::with_capacity(remote_write_results.len());
-        for (table_idents, batch_result) in written_tables.into_iter().zip(remote_write_results) {
+        let mut results = Vec::with_capacity(remote_writes.len());
+        for (table_idents, remote_write) in written_tables.into_iter().zip(remote_writes) {
+            let batch_result = remote_write.await;
             // If it's runtime error, don't evict entires from route cache.
             let batch_result = match batch_result.box_err() {
                 Ok(result) => result,

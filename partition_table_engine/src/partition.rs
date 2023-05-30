@@ -10,7 +10,6 @@ use common_types::{
     schema::Schema,
 };
 use common_util::error::BoxError;
-use futures::future::try_join_all;
 use snafu::ResultExt;
 use table_engine::{
     partition::{
@@ -256,13 +255,19 @@ impl Table for PartitionTableImpl {
             })
         }
 
+        let mut record_batch_streams = Vec::with_capacity(futures.len());
+        for future in futures {
+            let record_batch_stream = future.await.box_err().context(Scan {
+                table: self.name().to_string(),
+            })?;
+            record_batch_streams.push(record_batch_stream);
+        }
+
         let streams = {
             let _remote_timer = PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM
                 .with_label_values(&["remote_read"])
                 .start_timer();
-            try_join_all(futures).await.box_err().context(Scan {
-                table: self.name().to_string(),
-            })?
+            record_batch_streams
         };
 
         Ok(PartitionedStreams { streams })

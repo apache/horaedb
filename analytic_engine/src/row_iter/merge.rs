@@ -19,7 +19,7 @@ use common_types::{
     SequenceNumber,
 };
 use common_util::{define_result, error::GenericError};
-use futures::{future::try_join_all, StreamExt};
+use futures::StreamExt;
 use log::{debug, trace};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
@@ -683,13 +683,13 @@ impl MergeIterator {
         }
 
         let pull_start = Instant::now();
-        let buffered_streams = try_join_all(init_buffered_streams).await?;
         self.metrics.scan_duration += pull_start.elapsed();
-        self.metrics.scan_count += buffered_streams.len();
+        self.metrics.scan_count += init_buffered_streams.len();
 
         // Push streams to heap.
         let current_schema = &self.schema;
-        for buffered_stream in buffered_streams {
+        for buffered_stream in init_buffered_streams {
+            let buffered_stream = buffered_stream.await?;
             let stream_schema = buffered_stream.schema();
             ensure!(
                 current_schema == stream_schema,

@@ -23,10 +23,7 @@ use common_types::{
     time::Timestamp,
 };
 use common_util::error::BoxError;
-use futures::{
-    future::{try_join_all, BoxFuture},
-    FutureExt,
-};
+use futures::{future::BoxFuture, FutureExt};
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, error, info};
@@ -394,17 +391,13 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         &self,
         futures: Vec<BoxFuture<'_, common_util::runtime::Result<Result<WriteResponse>>>>,
     ) -> Result<WriteResponse> {
-        let resps = try_join_all(futures)
-            .await
-            .box_err()
-            .context(ErrWithCause {
+        let mut success = 0;
+        for future in futures {
+            let res = future.await.box_err().context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Failed to join task",
             })?;
-
-        let mut success = 0;
-        for resp in resps {
-            success += resp?.success;
+            success += res?.success;
         }
 
         Ok(WriteResponse {
