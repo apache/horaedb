@@ -353,7 +353,7 @@ impl<'a> MemTableWriter<'a> {
 
 impl<'a> Writer<'a> {
     pub(crate) async fn write(&mut self, request: WriteRequest) -> Result<usize> {
-        let _timer = self.table_data.metrics.start_table_write_timer();
+        let _timer = self.table_data.metrics.start_table_write_execute_timer();
         self.table_data.metrics.on_write_request_begin();
 
         self.validate_before_write(&request)?;

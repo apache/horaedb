@@ -6,10 +6,10 @@
 
 use std::{
     convert::TryInto,
-    time::{Duration, Instant},
+    time::{Duration, Instant, UNIX_EPOCH},
 };
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
 pub trait DurationExt {
     /// Convert into u64.
@@ -47,7 +47,7 @@ impl InstantExt for Instant {
 
 #[inline]
 pub fn secs_to_nanos(s: u64) -> u64 {
-    s * 1000000000
+    s * 1_000_000_000
 }
 
 #[inline]
@@ -58,6 +58,12 @@ pub fn current_time_millis() -> u64 {
 #[inline]
 pub fn current_as_rfc3339() -> String {
     Utc::now().to_rfc3339()
+}
+
+#[inline]
+pub fn format_as_ymdhms(unix_timestamp: i64) -> String {
+    let dt = DateTime::<Utc>::from(UNIX_EPOCH + Duration::from_millis(unix_timestamp as u64));
+    dt.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
 #[cfg(test)]
