@@ -21,7 +21,6 @@ use common_util::{
 };
 use futures::{
     channel::{mpsc, mpsc::channel},
-    future::try_join_all,
     stream, SinkExt, TryStreamExt,
 };
 use log::{debug, error, info};
@@ -542,20 +541,28 @@ impl FlushTask {
         }
         batch_record_senders.clear();
 
-        let info_and_metas = try_join_all(sst_handlers).await.context(RuntimeJoin)?;
-        for (idx, info_and_meta) in info_and_metas.into_iter().enumerate() {
-            let (sst_info, sst_meta) = info_and_meta?;
-            files_to_level0.push(AddFile {
-                level: Level::MIN,
-                file: FileMeta {
-                    id: file_ids[idx],
-                    size: sst_info.file_size as u64,
-                    row_num: sst_info.row_num as u64,
-                    time_range: sst_meta.time_range,
-                    max_seq: sst_meta.max_sequence,
-                    storage_format: sst_info.storage_format,
-                },
-            })
+        for (idx, sst_handler) in sst_handlers.into_iter().enumerate() {
+            let result = sst_handler.await.context(RuntimeJoin);
+            match result {
+                Ok(info_and_metas) => {
+                    let (sst_info, sst_meta) = info_and_metas?;
+                    files_to_level0.push(AddFile {
+                        level: Level::MIN,
+                        file: FileMeta {
+                            id: file_ids[idx],
+                            size: sst_info.file_size as u64,
+                            row_num: sst_info.row_num as u64,
+                            time_range: sst_meta.time_range,
+                            max_seq: sst_meta.max_sequence,
+                            storage_format: sst_info.storage_format,
+                        },
+                    })
+                }
+                Err(e) => {
+                    error!("Failed to flushed, err:{e}");
+                    break;
+                }
+            }
         }
 
         Ok(Some(max_sequence))
