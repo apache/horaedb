@@ -34,7 +34,7 @@ use upstream::{
 
 use crate::{
     multipart::{CloudMultiPartUpload, CloudMultiPartUploadImpl, UploadPart},
-    obkv::meta::{MetaManager, ObkvObjectMeta, META_TABLE},
+    obkv::meta::{MetaManager, ObkvObjectMeta, OBJECT_STORE_META},
 };
 
 mod meta;
@@ -83,7 +83,7 @@ pub enum Error {
 
 impl<T: TableKv> MetaManager<T> {
     fn try_new(client: Arc<T>) -> std::result::Result<Self, Error> {
-        create_table_if_not_exists(client.clone(), META_TABLE)?;
+        create_table_if_not_exists(client.clone(), OBJECT_STORE_META)?;
         Ok(Self { client })
     }
 }

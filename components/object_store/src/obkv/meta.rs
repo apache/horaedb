@@ -60,7 +60,7 @@ pub enum Error {
 
 define_result!(Error);
 
-pub const META_TABLE: &str = "obkv_object_store_meta";
+pub const OBJECT_STORE_META: &str = "obkv_object_store_meta";
 
 /// The meta info of Obkv Object
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -119,7 +119,7 @@ impl<T: TableKv> MetaManager<T> {
         batch.insert(meta.location.as_bytes(), &json);
         self.client
             .as_ref()
-            .write(WriteContext::default(), META_TABLE, batch)
+            .write(WriteContext::default(), OBJECT_STORE_META, batch)
             .box_err()
             .with_context(|| SaveMeta {
                 location: meta.location,
@@ -131,7 +131,7 @@ impl<T: TableKv> MetaManager<T> {
         let value = self
             .client
             .as_ref()
-            .get(META_TABLE, location.as_ref().as_bytes())
+            .get(OBJECT_STORE_META, location.as_ref().as_bytes())
             .box_err()
             .context(ReadMeta {
                 location: location.as_ref().to_string(),
@@ -144,7 +144,7 @@ impl<T: TableKv> MetaManager<T> {
         let affect_rows = self
             .client
             .as_ref()
-            .delete(META_TABLE, location.as_ref().as_bytes())
+            .delete(OBJECT_STORE_META, location.as_ref().as_bytes())
             .box_err()
             .context(DeleteMeta {
                 location: meta.location,
@@ -176,7 +176,7 @@ impl<T: TableKv> MetaManager<T> {
 
         let mut iter = self
             .client
-            .scan(scan_context, META_TABLE, scan_request)
+            .scan(scan_context, OBJECT_STORE_META, scan_request)
             .map_err(|source| StoreError::Generic {
                 store: OBKV,
                 source: Box::new(source),
