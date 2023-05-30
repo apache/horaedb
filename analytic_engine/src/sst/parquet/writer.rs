@@ -40,7 +40,7 @@ pub struct ParquetSstWriter<'a> {
     store: &'a ObjectStoreRef,
     /// Max row group size.
     num_rows_per_row_group: usize,
-    min_rows_when_build_filter: usize,
+    min_value_num_when_build_filter: usize,
     max_buffer_size: usize,
     compression: Compression,
 }
@@ -60,7 +60,7 @@ impl<'a> ParquetSstWriter<'a> {
             hybrid_encoding,
             store,
             num_rows_per_row_group: options.num_rows_per_row_group,
-            min_rows_when_build_filter: options.min_rows_when_build_filter,
+            min_value_num_when_build_filter: options.min_value_num_when_build_filter,
             compression: options.compression.into(),
             max_buffer_size: options.max_buffer_size,
         }
@@ -76,7 +76,7 @@ struct RecordBatchGroupWriter {
     input_exhausted: bool,
     meta_data: MetaData,
     num_rows_per_row_group: usize,
-    min_rows_when_build_filter: usize,
+    min_value_num_when_build_filter: usize,
     max_buffer_size: usize,
     compression: Compression,
     level: Level,
@@ -152,7 +152,7 @@ impl RecordBatchGroupWriter {
     ) -> Result<RowGroupFilter> {
         let mut builder = RowGroupFilterBuilder::with_num_columns(
             row_group_batch[0].num_columns(),
-            self.min_rows_when_build_filter,
+            self.min_value_num_when_build_filter,
         );
 
         for partial_batch in row_group_batch {
@@ -293,7 +293,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             input,
             input_exhausted: false,
             num_rows_per_row_group: self.num_rows_per_row_group,
-            min_rows_when_build_filter: self.min_rows_when_build_filter,
+            min_value_num_when_build_filter: self.min_value_num_when_build_filter,
             max_buffer_size: self.max_buffer_size,
             compression: self.compression,
             meta_data: meta.clone(),
@@ -386,7 +386,7 @@ mod tests {
             let sst_write_options = SstWriteOptions {
                 storage_format_hint: StorageFormatHint::Auto,
                 num_rows_per_row_group,
-                min_rows_when_build_filter: 0,
+                min_value_num_when_build_filter: 0,
                 compression: table_options::Compression::Uncompressed,
                 max_buffer_size: 0,
             };
@@ -551,7 +551,7 @@ mod tests {
             input: record_batch_stream,
             input_exhausted: false,
             num_rows_per_row_group,
-            min_rows_when_build_filter: 0,
+            min_value_num_when_build_filter: 0,
             compression: Compression::UNCOMPRESSED,
             meta_data: MetaData {
                 min_key: Default::default(),

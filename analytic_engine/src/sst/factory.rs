@@ -132,7 +132,7 @@ pub struct SstWriteOptions {
     pub num_rows_per_row_group: usize,
     pub compression: Compression,
     pub max_buffer_size: usize,
-    pub min_rows_when_build_filter: usize,
+    pub min_value_num_when_build_filter: usize,
 }
 
 #[derive(Debug, Default)]

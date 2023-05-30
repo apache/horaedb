@@ -118,15 +118,15 @@ impl Filter for Xor8Filter {
 pub struct RowGroupFilterBuilder {
     builders: Vec<Option<Xor8Builder>>,
     column_values: Vec<HashSet<Vec<u8>>>,
-    min_rows_when_build_filter: usize,
+    min_value_num_when_build_filter: usize,
 }
 
 impl RowGroupFilterBuilder {
-    pub(crate) fn with_num_columns(num_col: usize, min_rows_when_build_filter: usize) -> Self {
+    pub(crate) fn with_num_columns(num_col: usize, min_value_num_when_build_filter: usize) -> Self {
         Self {
             builders: vec![None; num_col],
             column_values: vec![HashSet::new(); num_col],
-            min_rows_when_build_filter,
+            min_value_num_when_build_filter,
         }
     }
 
@@ -142,7 +142,7 @@ impl RowGroupFilterBuilder {
             .zip(self.column_values.iter())
             .map(|(b, values)| {
                 // ignore build when distinct column values are less than threshold.
-                if values.len() < self.min_rows_when_build_filter {
+                if values.len() < self.min_value_num_when_build_filter {
                     return Ok(None);
                 }
 

@@ -82,7 +82,7 @@ pub struct Config {
     /// Sst background reading parallelism
     pub sst_background_read_parallelism: usize,
     /// Min rows required when build sst filter
-    pub min_rows_when_build_filter: usize,
+    pub min_value_num_when_build_filter: usize,
     /// Max buffer size for writing sst
     pub write_sst_max_buffer_size: ReadableSize,
     /// Max retry limit After flush failed
@@ -126,7 +126,7 @@ impl Default for Config {
             sst_background_read_parallelism: 8,
             scan_max_record_batches_in_flight: 1024,
             write_sst_max_buffer_size: ReadableSize::mb(10),
-            min_rows_when_build_filter: 20,
+            min_value_num_when_build_filter: 20,
             max_retry_flush_limit: 0,
             max_bytes_per_write_batch: None,
             wal: WalStorageConfig::RocksDB(Box::default()),

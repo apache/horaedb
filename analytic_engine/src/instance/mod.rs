@@ -153,7 +153,7 @@ pub struct Instance {
     /// Write sst max buffer size
     pub(crate) write_sst_max_buffer_size: usize,
     /// Min rows required when build sst filter
-    pub(crate) min_rows_when_build_filter: usize,
+    pub(crate) min_value_num_when_build_filter: usize,
     /// Max retry limit to flush memtables
     pub(crate) max_retry_flush_limit: usize,
     /// Max bytes per write batch
@@ -273,7 +273,7 @@ impl Instance {
             // Do flush in write runtime
             runtime: self.runtimes.write_runtime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
-            min_rows_when_build_filter: self.min_rows_when_build_filter,
+            min_value_num_when_build_filter: self.min_value_num_when_build_filter,
         }
     }
 
