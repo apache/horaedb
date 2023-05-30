@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table record stream
 
@@ -9,7 +9,10 @@ use std::{
 };
 
 use arrow::{datatypes::SchemaRef, record_batch::RecordBatch as ArrowRecordBatch};
-use common_types::{record_batch::RecordBatch, schema::RecordSchema};
+use common_types::{
+    record_batch::{RecordBatch, RecordBatchBuilder},
+    schema::RecordSchema,
+};
 use common_util::{
     define_result,
     error::{BoxError, GenericError},
@@ -84,6 +87,7 @@ impl DfRecordBatchStream for ToDfStream {
 pub struct FromDfStream {
     schema: RecordSchema,
     df_stream: DfSendableRecordBatchStream,
+    record_batch_builder: RecordBatchBuilder,
 }
 
 impl FromDfStream {
@@ -95,7 +99,11 @@ impl FromDfStream {
                 msg: "convert record schema",
             })?;
 
-        Ok(Self { schema, df_stream })
+        Ok(Self {
+            schema,
+            df_stream,
+            record_batch_builder: RecordBatchBuilder::default(),
+        })
     }
 }
 
@@ -107,7 +115,7 @@ impl Stream for FromDfStream {
             Poll::Ready(Some(record_batch_res)) => Poll::Ready(Some(
                 record_batch_res
                     .box_err()
-                    .and_then(|batch| RecordBatch::try_from(batch).box_err())
+                    .and_then(|batch| self.record_batch_builder.build(batch).box_err())
                     .context(ErrWithSource {
                         msg: "convert from arrow record batch",
                     }),

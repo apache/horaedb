@@ -1,6 +1,6 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{convert::TryInto, sync::Arc};
+use std::sync::Arc;
 
 use arrow::{
     array::UInt8Array,
@@ -8,6 +8,7 @@ use arrow::{
     record_batch::RecordBatch,
 };
 use async_trait::async_trait;
+use common_types::record_batch::convert_single_arrow_record_batch;
 use query_engine::executor::RecordBatchVec;
 use query_frontend::plan::ExistsTablePlan;
 use snafu::{ResultExt, Snafu};
@@ -49,7 +50,7 @@ fn exists_table_result(exists: bool) -> Result<RecordBatchVec> {
     )
     .unwrap();
 
-    let record_batch = arrow_record_batch.try_into().unwrap();
+    let record_batch = convert_single_arrow_record_batch(arrow_record_batch).unwrap();
 
     Ok(vec![record_batch])
 }

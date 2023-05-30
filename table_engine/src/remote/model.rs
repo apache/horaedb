@@ -14,7 +14,7 @@ use ceresdbproto::{
     storage::{arrow_payload, ArrowPayload},
 };
 use common_types::{
-    record_batch::{RecordBatch, RecordBatchWithKeyBuilder},
+    record_batch::{RecordBatchBuilder, RecordBatchWithKeyBuilder},
     row::{RowGroup, RowGroupBuilder},
     schema::Schema,
 };
@@ -324,21 +324,22 @@ pub struct TableInfo {
 }
 
 fn build_row_group_from_record_batch(
-    record_batches: Vec<arrow::record_batch::RecordBatch>,
+    arrow_record_batches: Vec<arrow::record_batch::RecordBatch>,
 ) -> Result<RowGroup> {
-    ensure!(!record_batches.is_empty(), EmptyRecordBatch);
+    ensure!(!arrow_record_batches.is_empty(), EmptyRecordBatch);
 
     let mut row_group_builder = RowGroupBuilder::new(
-        record_batches[0]
+        arrow_record_batches[0]
             .schema()
             .try_into()
             .map_err(|e| Box::new(e) as _)
             .context(ConvertRowGroup)?,
     );
 
-    for record_batch in record_batches {
-        let record_batch: RecordBatch = record_batch
-            .try_into()
+    let mut record_batch_builder = RecordBatchBuilder::default();
+    for arrow_record_batch in arrow_record_batches {
+        let record_batch = record_batch_builder
+            .build(arrow_record_batch)
             .map_err(|e| Box::new(e) as _)
             .context(ConvertRowGroup)?;
 

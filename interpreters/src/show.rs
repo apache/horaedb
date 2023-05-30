@@ -1,6 +1,6 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{convert::TryInto, sync::Arc};
+use std::sync::Arc;
 
 use arrow::{
     array::StringArray,
@@ -9,6 +9,7 @@ use arrow::{
 };
 use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::Schema, Catalog};
+use common_types::record_batch::convert_single_arrow_record_batch;
 use query_frontend::{
     ast::ShowCreateObject,
     plan::{QueryType, ShowCreatePlan, ShowPlan, ShowTablesPlan},
@@ -128,7 +129,7 @@ impl ShowInterpreter {
                 .collect::<Vec<_>>(),
         };
 
-        let record_batch = match plan.query_type {
+        let arrow_record_batch = match plan.query_type {
             QueryType::Sql => {
                 let schema = DataSchema::new(vec![Field::new(
                     SHOW_TABLES_COLUMN_SCHEMA,
@@ -158,7 +159,8 @@ impl ShowInterpreter {
                 .context(CreateRecordBatch)?
             }
         };
-        let record_batch = record_batch.try_into().context(ToCommonRecordType)?;
+        let record_batch =
+            convert_single_arrow_record_batch(arrow_record_batch).context(ToCommonRecordType)?;
 
         Ok(Output::Records(vec![record_batch]))
     }
@@ -177,13 +179,14 @@ impl ShowInterpreter {
             DataType::Utf8,
             false,
         )]);
-        let record_batch = RecordBatch::try_new(
+        let arrow_record_batch = RecordBatch::try_new(
             Arc::new(schema),
             vec![Arc::new(StringArray::from(schema_names))],
         )
         .context(CreateRecordBatch)?;
 
-        let record_batch = record_batch.try_into().context(ToCommonRecordType)?;
+        let record_batch =
+            convert_single_arrow_record_batch(arrow_record_batch).context(ToCommonRecordType)?;
 
         Ok(Output::Records(vec![record_batch]))
     }

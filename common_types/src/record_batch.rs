@@ -269,25 +269,43 @@ impl RecordBatch {
     }
 }
 
-impl TryFrom<ArrowRecordBatch> for RecordBatch {
-    type Error = Error;
+#[derive(Default)]
+pub struct RecordBatchBuilder {
+    schema_cache: Option<RecordSchema>,
+}
 
-    fn try_from(arrow_record_batch: ArrowRecordBatch) -> Result<Self> {
-        let record_schema =
-            RecordSchema::try_from(arrow_record_batch.schema()).context(ConvertArrowSchema)?;
+impl RecordBatchBuilder {
+    pub fn build(&mut self, arrow_record_batch: ArrowRecordBatch) -> Result<RecordBatch> {
+        let schema = match &self.schema_cache {
+            Some(schema) => schema.clone(),
+            None => {
+                let schema = RecordSchema::try_from(arrow_record_batch.schema())
+                    .context(ConvertArrowSchema)?;
+                self.schema_cache = Some(schema.clone());
+
+                schema
+            }
+        };
 
         let column_blocks =
-            build_column_blocks_from_arrow_record_batch(&arrow_record_batch, &record_schema)?;
-
+            build_column_blocks_from_arrow_record_batch(&arrow_record_batch, &schema)?;
         let arrow_record_batch = cast_arrow_record_batch(arrow_record_batch)?;
-        Ok(Self {
-            schema: record_schema,
+
+        Ok(RecordBatch {
+            schema,
             data: RecordBatchData {
                 arrow_record_batch,
                 column_blocks,
             },
         })
     }
+}
+
+#[inline]
+pub fn convert_single_arrow_record_batch(
+    arrow_record_batch: ArrowRecordBatch,
+) -> Result<RecordBatch> {
+    RecordBatchBuilder::default().build(arrow_record_batch)
 }
 
 fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch> {
