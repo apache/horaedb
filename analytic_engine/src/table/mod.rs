@@ -379,6 +379,12 @@ impl Table for TableImpl {
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {
+        let _timer = self
+            .space_table
+            .table_data()
+            .metrics
+            .start_table_total_timer();
+
         if self.should_queue_write_request(&request) {
             return self.write_with_pending_queue(request).await;
         }
