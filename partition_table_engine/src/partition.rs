@@ -10,6 +10,7 @@ use common_types::{
     schema::Schema,
 };
 use common_util::error::BoxError;
+use futures::{stream::FuturesUnordered, StreamExt};
 use snafu::ResultExt;
 use table_engine::{
     partition::{
@@ -241,7 +242,7 @@ impl Table for PartitionTableImpl {
         };
 
         // Query streams through remote engine.
-        let mut futures = Vec::with_capacity(partitions.len());
+        let mut futures = FuturesUnordered::new();
         for partition in partitions {
             let remote_engine = self.remote_engine.clone();
             let request_clone = request.clone();
@@ -256,8 +257,8 @@ impl Table for PartitionTableImpl {
         }
 
         let mut record_batch_streams = Vec::with_capacity(futures.len());
-        for future in futures {
-            let record_batch_stream = future.await.box_err().context(Scan {
+        while let Some(record_batch_stream) = futures.next().await {
+            let record_batch_stream = record_batch_stream.box_err().context(Scan {
                 table: self.name().to_string(),
             })?;
             record_batch_streams.push(record_batch_stream);

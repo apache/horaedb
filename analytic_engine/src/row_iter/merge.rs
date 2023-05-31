@@ -19,7 +19,7 @@ use common_types::{
     SequenceNumber,
 };
 use common_util::{define_result, error::GenericError};
-use futures::StreamExt;
+use futures::{stream::FuturesUnordered, StreamExt};
 use log::{debug, trace};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
@@ -675,7 +675,7 @@ impl MergeIterator {
         let init_start = Instant::now();
 
         // Initialize buffered streams concurrently.
-        let mut init_buffered_streams = Vec::with_capacity(self.origin_streams.len());
+        let mut init_buffered_streams = FuturesUnordered::new();
         for origin_stream in mem::take(&mut self.origin_streams) {
             let schema = self.schema.clone();
             init_buffered_streams
@@ -688,8 +688,8 @@ impl MergeIterator {
 
         // Push streams to heap.
         let current_schema = &self.schema;
-        for buffered_stream in init_buffered_streams {
-            let buffered_stream = buffered_stream.await?;
+        while let Some(buffered_stream) = init_buffered_streams.next().await {
+            let buffered_stream = buffered_stream?;
             let stream_schema = buffered_stream.schema();
             ensure!(
                 current_schema == stream_schema,
