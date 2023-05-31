@@ -71,23 +71,30 @@ pub const OBJECT_STORE_META: &str = "obkv_object_store_meta";
 #[serde(default)]
 pub struct ObkvObjectMeta {
     /// The full path to the object
+    #[serde(rename = "location")]
     pub location: String,
     /// The last modified time in ms
+    #[serde(rename = "last_modified")]
     pub last_modified: i64,
     /// The size in bytes of the object
+    #[serde(rename = "size")]
     pub size: usize,
     /// The unique identifier for the object; For Obkv, it is composed with
     /// table_name @ path @ upload_id
+    #[serde(rename = "unique_id")]
     pub unique_id: Option<String>,
     /// The size in bytes of one part. Note: maybe the size of last part less
     /// than part_size.
+    #[serde(rename = "part_size")]
     pub part_size: usize,
     /// The paths of multi upload parts.
+    #[serde(rename = "parts")]
     pub parts: Vec<String>,
     /// The version of object, we use the upload_id as version.
     /// TODO: Since `upload_id` is used by multiple objects, it may become very
     /// large. Should we assign a version number to each object to avoid
     /// this issue?
+    #[serde(rename = "version")]
     pub version: String,
 }
 
