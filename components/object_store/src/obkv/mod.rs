@@ -538,7 +538,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     /// List all the objects with the given prefix.
     /// Prefixes are evaluated on a path segment basis, i.e. `foo/bar/` is a
     /// prefix of `foo/bar/x` but not of `foo/bar_baz/x`.
-    /// todo: Currently this method may return lots of object meta, we should
+    /// TODO: Currently this method may return lots of object meta, we should
     /// limit the count of return ojects in future.
     async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
         let instant = Instant::now();
