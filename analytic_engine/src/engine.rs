@@ -2,7 +2,7 @@
 
 //! Implements the TableEngine trait
 
-use std::{sync::Arc};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_util::error::BoxError;
@@ -220,7 +220,6 @@ impl TableEngine for TableEngineImpl {
     }
 
     async fn open_shard(&self, request: OpenTablesOfShardRequest) -> Result<OpenShardResult> {
-        let shard_id = request.shard_id;
         let shard_result = self
             .instance
             .open_tables_of_shard(request)
@@ -244,7 +243,6 @@ impl TableEngine for TableEngineImpl {
                     engine_shard_result.insert(table_id, Ok(Some(table_impl)));
                 }
                 Ok(None) => {
-                    warn!("Try to open a missing table, table_id:{table_id}, shard_id:{shard_id}");
                     engine_shard_result.insert(table_id, Ok(None));
                 }
                 Err(e) => {

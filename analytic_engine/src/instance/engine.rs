@@ -2,16 +2,13 @@
 
 //! Table engine logic of instance
 
-use std::{sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use common_types::schema::Version;
 use common_util::{define_result, error::GenericError};
 use snafu::{Backtrace, OptionExt, Snafu};
 use table_engine::{
-    engine::{
-        CloseTableRequest, CreateTableRequest, DropTableRequest,
-        OpenTablesOfShardRequest,
-    },
+    engine::{CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTablesOfShardRequest},
     table::TableId,
 };
 use wal::manager::WalLocation;
@@ -402,6 +399,14 @@ impl Instance {
         request: OpenTablesOfShardRequest,
     ) -> Result<OpenTablesOfShardResult> {
         let mut table_ctxs = Vec::with_capacity(request.table_defs.len());
+
+        // Open tables.
+        struct TableInfo {
+            name: String,
+            id: TableId,
+        }
+
+        let mut spaces_of_tables = Vec::with_capacity(request.table_defs.len());
         for table_def in request.table_defs {
             let context = SpaceContext {
                 catalog_name: table_def.catalog_name.clone(),
@@ -410,6 +415,13 @@ impl Instance {
 
             let space_id = build_space_id(table_def.schema_id);
             let space = self.find_or_create_space(space_id, context).await?;
+            spaces_of_tables.push((
+                TableInfo {
+                    name: table_def.name.clone(),
+                    id: table_def.id,
+                },
+                space.clone(),
+            ));
             table_ctxs.push(TableContext { table_def, space });
         }
         let shard_ctx = TablesOfShardContext {
@@ -417,6 +429,22 @@ impl Instance {
             table_ctxs,
         };
 
-        self.do_open_tables_of_shard(shard_ctx).await
+        let shard_result = self.do_open_tables_of_shard(shard_ctx).await?;
+
+        // Insert opened tables to spaces.
+        for (table_info, space) in spaces_of_tables {
+            let table_result = shard_result.get(&table_info.id).unwrap();
+            match table_result {
+                Ok(Some(table)) => {
+                    space.insert_table(table.table_data().clone());
+                }
+                Ok(None) => {}
+                Err(_) => {
+                    space.insert_open_failed_table(table_info.name);
+                }
+            }
+        }
+
+        Ok(shard_result)
     }
 }

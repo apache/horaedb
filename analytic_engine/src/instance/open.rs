@@ -8,23 +8,16 @@ use std::{
 };
 
 use common_types::{schema::IndexInWriterSchema, table::ShardId};
-
 use log::{debug, error, info, trace};
 use object_store::ObjectStoreRef;
 use snafu::{OptionExt, ResultExt};
-use table_engine::{
-    engine::{TableDef},
-    table::TableId,
-};
+use table_engine::{engine::TableDef, table::TableId};
 use wal::{
     log_batch::LogEntry,
     manager::{ReadBoundary, ReadContext, ReadRequest, WalManager, WalManagerRef},
 };
 
-use super::{
-    engine::{OpenShard},
-    flush_compaction::Flusher,
-};
+use super::{engine::OpenShard, flush_compaction::Flusher};
 use crate::{
     compaction::scheduler::SchedulerImpl,
     context::OpenContext,

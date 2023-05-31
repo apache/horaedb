@@ -3,7 +3,7 @@
 use std::time::Instant;
 
 use common_util::{error::BoxError, time::InstantExt};
-use log::{info, warn};
+use log::{error, info, warn};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{engine, table::TableRef};
 
@@ -48,7 +48,7 @@ impl TableOperator {
         // Open tables by table engine.
         // TODO: add the `open_shard` method into table engine.
         let engine_open_shard_req = engine::OpenTablesOfShardRequest {
-            shard_id: request.shard_id,
+            shard_id,
             table_defs: engine_table_defs,
             engine: request.engine,
         };
@@ -78,10 +78,11 @@ impl TableOperator {
                     success_count += 1;
                 }
                 Ok(None) => {
+                    error!("TableOperator failed to open a missing table, table_id:{table_id}, schema_id:{:?}, shard_id:{shard_id}", schema.id());
                     missing_table_count += 1;
                 }
-                // Has printed error log for it.
                 Err(e) => {
+                    error!("TableOperator failed to open table, table_id:{table_id}, schema_id:{:?}, shard_id:{shard_id}, err:{}", schema.id(), e);
                     open_table_errs.push(e);
                 }
             }
