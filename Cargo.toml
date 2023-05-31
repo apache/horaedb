@@ -162,7 +162,7 @@ toml = { workspace = true }
 tracing_util = { workspace = true }
 
 [build-dependencies]
-vergen = { version = "7", default-features = false, features = ["build", "git", "rustc"] }
+vergen = { version = "8", default-features = false, features = ["build", "cargo", "git", "gitcl", "rustc"] }
 
 # This profile optimizes for good runtime performance.
 [profile.release]
