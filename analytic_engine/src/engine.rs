@@ -2,16 +2,17 @@
 
 //! Implements the TableEngine trait
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, result, sync::Arc};
 
 use async_trait::async_trait;
 use common_util::error::BoxError;
 use log::{error, info, warn};
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{
         Close, CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
-        OpenShard, OpenShardRequest, OpenShardResult, OpenTableRequest, Result, TableEngine,
+        OpenShard, OpenShardResult, OpenTableNoCause, OpenTableRequest, OpenTableWithCause,
+        OpenTablesOfShardRequest, Result, TableDef, TableEngine,
     },
     table::{SchemaId, TableRef},
     ANALYTIC_ENGINE_TYPE,
@@ -158,27 +159,51 @@ impl TableEngine for TableEngineImpl {
     }
 
     async fn open_table(&self, request: OpenTableRequest) -> Result<Option<TableRef>> {
+        let shard_id = request.shard_id;
         let space_id = build_space_id(request.schema_id);
+        let table_id = request.table_id;
 
         info!(
             "Table engine impl open table, space_id:{}, request:{:?}",
             space_id, request
         );
-        let space_table = match self.instance.open_table(space_id, &request).await? {
-            Some(v) => v,
-            None => return Ok(None),
+
+        let table_id = request.table_id;
+        let table_def = TableDef {
+            catalog_name: request.catalog_name,
+            schema_name: request.schema_name,
+            schema_id: request.schema_id,
+            id: table_id,
+            name: request.table_name,
         };
 
-        let table_impl = Arc::new(TableImpl::new(
-            self.instance.clone(),
-            ANALYTIC_ENGINE_TYPE.to_string(),
-            space_id,
-            space_table.table_data().id,
-            space_table.table_data().clone(),
-            space_table,
-        ));
+        let shard_request = OpenTablesOfShardRequest {
+            shard_id,
+            table_defs: vec![table_def],
+            engine: request.engine,
+        };
 
-        Ok(Some(table_impl))
+        let mut shard_result = self.instance.open_tables_of_shard(shard_request).await?;
+        let table_opt = shard_result.remove(&table_id).with_context(|| OpenTableNoCause {
+            msg: Some(format!("table not exist, table_id:{table_id}, space_id:{space_id}, shard_id:{shard_id}")),
+        })?
+        .box_err()
+        .context(OpenTableWithCause {
+            msg: None,
+        })?;
+
+        let table_opt = table_opt.map(|space_table| {
+            Arc::new(TableImpl::new(
+                self.instance.clone(),
+                ANALYTIC_ENGINE_TYPE.to_string(),
+                space_id,
+                space_table.table_data().id,
+                space_table.table_data().clone(),
+                space_table,
+            )) as _
+        });
+
+        Ok(table_opt)
     }
 
     async fn close_table(&self, request: CloseTableRequest) -> Result<()> {
@@ -194,11 +219,11 @@ impl TableEngine for TableEngineImpl {
         Ok(())
     }
 
-    async fn open_shard(&self, request: OpenShardRequest) -> Result<OpenShardResult> {
-        let table_defs = request.table_defs;
+    async fn open_shard(&self, request: OpenTablesOfShardRequest) -> Result<OpenShardResult> {
+        let shard_id = request.shard_id;
         let shard_result = self
             .instance
-            .open_shard(request)
+            .open_tables_of_shard(request)
             .await
             .box_err()
             .context(OpenShard)?;
@@ -219,7 +244,7 @@ impl TableEngine for TableEngineImpl {
                     engine_shard_result.insert(table_id, Ok(Some(table_impl)));
                 }
                 Ok(None) => {
-                    warn!("Try to open a missing table, open request:{request:?}");
+                    warn!("Try to open a missing table, table_id:{table_id}, shard_id:{shard_id}");
                     engine_shard_result.insert(table_id, Ok(None));
                 }
                 Err(e) => {

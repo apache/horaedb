@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use crate::{
     engine::{
         CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
-        OpenShardRequest, OpenShardResult, OpenTableRequest, TableEngine, TableEngineRef,
+        OpenShardResult, OpenTableRequest, OpenTablesOfShardRequest, TableEngine, TableEngineRef,
         UnknownEngineType,
     },
     memory::MemoryTableEngine,
@@ -76,7 +76,7 @@ impl TableEngine for TableEngineProxy {
 
     async fn open_shard(
         &self,
-        request: OpenShardRequest,
+        request: OpenTablesOfShardRequest,
     ) -> crate::engine::Result<OpenShardResult> {
         match request.engine.as_str() {
             MEMORY_ENGINE_TYPE => self.memory.open_shard(request).await,

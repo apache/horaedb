@@ -25,7 +25,7 @@ use snafu::{OptionExt, ResultExt};
 use crate::{
     engine::{
         CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
-        OpenShardRequest, OpenShardResult, OpenTableRequest, TableEngine,
+        OpenShardResult, OpenTableRequest, OpenTablesOfShardRequest, TableEngine,
     },
     stream::{
         self, ErrNoSource, ErrWithSource, PartitionedStreams, RecordBatchStream,
@@ -296,7 +296,7 @@ impl TableEngine for MemoryTableEngine {
 
     async fn open_shard(
         &self,
-        _equest: OpenShardRequest,
+        _equest: OpenTablesOfShardRequest,
     ) -> crate::engine::Result<OpenShardResult> {
         Ok(OpenShardResult::default())
     }

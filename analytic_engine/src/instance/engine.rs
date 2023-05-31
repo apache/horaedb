@@ -9,16 +9,17 @@ use common_util::{define_result, error::GenericError};
 use snafu::{Backtrace, OptionExt, Snafu};
 use table_engine::{
     engine::{
-        CloseTableRequest, CreateTableRequest, DropTableRequest, OpenShardRequest, OpenTableRequest,
+        CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest,
+        OpenTablesOfShardRequest,
     },
     table::TableId,
 };
 use wal::manager::WalLocation;
 
-use super::open::{OpenShardContext, OpenTableContext};
+use super::open::{TableContext, TablesOfShardContext};
 use crate::{
     engine::build_space_id,
-    instance::{close::Closer, drop::Dropper, open::OpenShardResult, Instance},
+    instance::{close::Closer, drop::Dropper, open::OpenTablesOfShardResult, Instance},
     space::{Space, SpaceAndTable, SpaceContext, SpaceId, SpaceRef},
 };
 
@@ -396,10 +397,10 @@ impl Instance {
     /// Find the table under given space by its table name
     ///
     /// Return None if space or table is not found
-    pub async fn open_shard(
+    pub async fn open_tables_of_shard(
         self: &Arc<Self>,
-        request: OpenShardRequest,
-    ) -> Result<OpenShardResult> {
+        request: OpenTablesOfShardRequest,
+    ) -> Result<OpenTablesOfShardResult> {
         let mut table_ctxs = Vec::with_capacity(request.table_defs.len());
         for table_def in request.table_defs {
             let context = SpaceContext {
@@ -409,9 +410,9 @@ impl Instance {
 
             let space_id = build_space_id(table_def.schema_id);
             let space = self.find_or_create_space(space_id, context).await?;
-            table_ctxs.push(OpenTableContext { table_def, space });
+            table_ctxs.push(TableContext { table_def, space });
         }
-        let shard_ctx = OpenShardContext {
+        let shard_ctx = TablesOfShardContext {
             shard_id: request.shard_id,
             table_ctxs,
         };

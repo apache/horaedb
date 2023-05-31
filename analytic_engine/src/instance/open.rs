@@ -14,7 +14,7 @@ use log::{debug, error, info, trace};
 use object_store::ObjectStoreRef;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
-    engine::{OpenShardRequest, OpenTableRequest, TableDef},
+    engine::{OpenTableRequest, OpenTablesOfShardRequest, TableDef},
     table::TableId,
 };
 use wal::{
@@ -149,8 +149,8 @@ impl Instance {
     /// Open the table.
     pub async fn do_open_tables_of_shard(
         self: &Arc<Self>,
-        context: OpenShardContext,
-    ) -> Result<OpenShardResult> {
+        context: TablesOfShardContext,
+    ) -> Result<OpenTablesOfShardResult> {
         let mut shard_opener = ShardOpener::init(
             context,
             self.space_store.manifest.clone(),
@@ -165,15 +165,15 @@ impl Instance {
 }
 
 #[derive(Debug, Clone)]
-pub struct OpenShardContext {
+pub struct TablesOfShardContext {
     /// Shard id
     pub shard_id: ShardId,
     /// Table infos
-    pub table_ctxs: Vec<OpenTableContext>,
+    pub table_ctxs: Vec<TableContext>,
 }
 
 #[derive(Clone, Debug)]
-pub struct OpenTableContext {
+pub struct TableContext {
     pub table_def: TableDef,
     pub space: SpaceRef,
 }
@@ -198,7 +198,7 @@ struct RecoverTableDataContext {
     space: SpaceRef,
 }
 
-pub type OpenShardResult = HashMap<TableId, Result<Option<SpaceAndTable>>>;
+pub type OpenTablesOfShardResult = HashMap<TableId, Result<Option<SpaceAndTable>>>;
 
 /// Opener for tables of the same shard
 struct ShardOpener {
@@ -213,7 +213,7 @@ struct ShardOpener {
 
 impl ShardOpener {
     fn init(
-        shard_context: OpenShardContext,
+        shard_context: TablesOfShardContext,
         manifest: ManifestRef,
         wal_manager: WalManagerRef,
         wal_replay_batch_size: usize,
@@ -225,10 +225,7 @@ impl ShardOpener {
             let space = &table_ctx.space;
             let table_id = table_ctx.table_def.id;
             let state = if let Some(table_data) = space.find_table_by_id(table_id) {
-                TableOpenState::Success(Some(SpaceAndTable {
-                    space: space.clone(),
-                    table_data,
-                }))
+                TableOpenState::Success(Some(SpaceAndTable::new(space.clone(), table_data)))
             } else {
                 TableOpenState::RecoverTableMeta(RecoverTableMetaContext {
                     table_def: table_ctx.table_def,
@@ -249,7 +246,7 @@ impl ShardOpener {
         })
     }
 
-    async fn open(&mut self) -> Result<OpenShardResult> {
+    async fn open(&mut self) -> Result<OpenTablesOfShardResult> {
         // Recover tables' meatadatas.
         self.recover_table_metas().await?;
 
@@ -346,8 +343,9 @@ impl ShardOpener {
 
                     match result {
                         Ok((table_data, space)) => {
-                            *state =
-                                TableOpenState::Success(Some(SpaceAndTable { space, table_data }));
+                            *state = TableOpenState::Success(Some(SpaceAndTable::new(
+                                space, table_data,
+                            )));
                         }
                         Err(e) => *state = TableOpenState::Failed(e),
                     }

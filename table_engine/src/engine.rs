@@ -69,6 +69,18 @@ pub enum Error {
 
     #[snafu(display("Failed to open shard, err:{}", source))]
     OpenShard { source: GenericError },
+
+    #[snafu(display("Failed to open table, msg:{:?}.\nBacktrace:\n{}", msg, backtrace))]
+    OpenTableNoCause {
+        msg: Option<String>,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Failed to open table, msg:{:?}, err:{}", msg, source))]
+    OpenTableWithCause {
+        msg: Option<String>,
+        source: GenericError,
+    },
 }
 
 define_result!(Error);
@@ -260,7 +272,7 @@ pub struct CloseTableRequest {
 }
 
 #[derive(Debug, Clone)]
-pub struct OpenShardRequest {
+pub struct OpenTablesOfShardRequest {
     /// Shard id
     pub shard_id: ShardId,
 
@@ -280,7 +292,7 @@ pub struct TableDef {
     pub name: String,
 }
 
-pub type CloseShardRequest = OpenShardRequest;
+pub type CloseShardRequest = OpenTablesOfShardRequest;
 
 /// Table engine
 // TODO(yingwen): drop table support to release resource owned by the table
@@ -305,7 +317,7 @@ pub trait TableEngine: Send + Sync {
     async fn close_table(&self, request: CloseTableRequest) -> Result<()>;
 
     /// Open tables on same shard.
-    async fn open_shard(&self, request: OpenShardRequest) -> Result<OpenShardResult>;
+    async fn open_shard(&self, request: OpenTablesOfShardRequest) -> Result<OpenShardResult>;
 
     /// Close tables on same shard.
     async fn close_shard(&self, request: CloseShardRequest) -> Vec<Result<String>>;

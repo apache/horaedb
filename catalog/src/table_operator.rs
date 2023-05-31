@@ -47,7 +47,7 @@ impl TableOperator {
 
         // Open tables by table engine.
         // TODO: add the `open_shard` method into table engine.
-        let engine_open_shard_req = engine::OpenShardRequest {
+        let engine_open_shard_req = engine::OpenTablesOfShardRequest {
             shard_id: request.shard_id,
             table_defs: engine_table_defs,
             engine: request.engine,
