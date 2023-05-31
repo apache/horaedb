@@ -19,6 +19,7 @@ const NODE_ADDR: &str = "CERESDB_SERVER_ADDR";
 /// overridden.
 const CLUSTER_NAME: &str = "CLUSTER_NAME";
 
+/// Default value for version information is not found from environment
 const UNKNOWN: &str = "Unknown";
 
 fn fetch_version() -> String {
@@ -34,7 +35,7 @@ fn fetch_version() -> String {
         ("\nVersion", version),
         ("Git commit", git_commit_id),
         ("Git branch", git_branch),
-        ("Optimize Level", opt_level),
+        ("Opt level", opt_level),
         ("Rustc version", rustc_version),
         ("Target", target),
         ("Build date", build_time),
