@@ -13,6 +13,8 @@ use upstream::{path::Path, Error as StoreError, Result as StoreResult};
 
 use super::{util, OBKV};
 
+pub const HEADER: u8 = 0x00_u8;
+
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Invalid utf8 string, err:{source}.\nBacktrace:\n{backtrace}"))]
@@ -202,11 +204,16 @@ impl<T: TableKv> MetaManager<T> {
 }
 
 fn decode_json<'a, T: serde::Deserialize<'a>>(data: &'a [u8]) -> Result<T> {
-    let json = str::from_utf8(data).context(InvalidUtf8)?;
+    assert_eq!(data[0], HEADER);
+    let json = str::from_utf8(&data[1..]).context(InvalidUtf8)?;
     serde_json::from_str(json).context(InvalidJson { json })
 }
 
 fn encode_json<T: serde::Serialize>(value: &T) -> Result<Vec<u8>> {
     let json = serde_json::to_string(value).context(EncodeJson)?;
-    Ok(json.into_bytes())
+    let bytes = json.into_bytes();
+    let mut key_buffer = Vec::with_capacity(bytes.len() + 1);
+    key_buffer.push(HEADER);
+    key_buffer.extend(bytes);
+    Ok(key_buffer)
 }

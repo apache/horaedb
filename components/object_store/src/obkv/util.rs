@@ -93,8 +93,8 @@ mod test {
         let case2_actual = scan_request_with_prefix(&case2);
         assert_eq!(case2_expect, case2_actual);
 
-        let case3 = vec![0x00_u8, 0xff, 0x00];
-        let case3_expect_bytes = vec![0x01_u8, 0x00, 0x00];
+        let case3 = vec![0x00_u8, 0x00, 0xff];
+        let case3_expect_bytes = vec![0x00_u8, 0x01, 0x00];
         let case3_expect = table_kv::ScanRequest {
             start: table_kv::KeyBoundary::included(&case3),
             end: table_kv::KeyBoundary::excluded(&case3_expect_bytes),
