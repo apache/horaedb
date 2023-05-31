@@ -43,14 +43,13 @@ impl Error {
     /// Get the error message returned to the user.
     pub fn error_message(&self) -> String {
         match self {
-            Error::ErrNoCause { msg, .. } => msg.clone(),
+            Error::ErrNoCause { msg, .. } | Error::InternalNoCause { msg, .. } => msg.clone(),
 
-            Error::ErrWithCause { msg, source, .. } => {
+            Error::ErrWithCause { msg, source, .. } | Error::Internal { msg, source, .. } => {
                 let err_string = source.to_string();
                 let first_line = error_util::remove_backtrace_from_err(&err_string);
                 format!("{msg}. Caused by: {first_line}")
             }
-            Error::Internal { msg, .. } | Error::InternalNoCause { msg, .. } => msg.clone(),
         }
     }
 }
