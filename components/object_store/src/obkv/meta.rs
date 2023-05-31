@@ -151,8 +151,8 @@ impl<T: TableKv> MetaManager<T> {
         value.map(|v| decode_json(&v)).transpose()
     }
 
-    pub async fn delete_meta(&self, meta: ObkvObjectMeta, location: &Path) -> Result<i64> {
-        let affect_rows = self
+    pub async fn delete_meta(&self, meta: ObkvObjectMeta, location: &Path) -> Result<()> {
+        self
             .client
             .as_ref()
             .delete(OBJECT_STORE_META, location.as_ref().as_bytes())
@@ -160,8 +160,8 @@ impl<T: TableKv> MetaManager<T> {
             .context(DeleteMeta {
                 location: meta.location,
             })?;
-
-        Ok(affect_rows)
+        
+        Ok(())
     }
 
     pub async fn delete_meta_with_version(&self, location: &Path, version: &str) -> Result<i64> {
