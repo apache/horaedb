@@ -66,10 +66,10 @@ const (
 )
 
 type LimiterConfig struct {
-	// TokenBucketFillRate is the rate at which the limiter tokens are updated.
-	TokenBucketFillRate int `toml:"token-bucket-fill-rate" env:"FLOW_LIMITER_TOKEN_BUCKET_FILL_RATE"`
-	// TokenBucketBurstEventCapacity is the Capacity of the limiter token bucket.
-	TokenBucketBurstEventCapacity int `toml:"token-bucket-burst-event-capacity" env:"FLOW_LIMITER_TOKEN_BUCKET_BURST_EVENT_CAPACITY"`
+	// Limit is the updated rate of tokens.
+	Limit int `toml:"limit" env:"FLOW_LIMITER_LIMIT"`
+	// Burst is the maximum number of tokens.
+	Burst int `toml:"burst" env:"FLOW_LIMITER_BURST"`
 	// Enable is used to control the switch of the limiter.
 	Enable bool `toml:"enable" env:"FLOW_LIMITER_ENABLE"`
 }
@@ -254,9 +254,9 @@ func MakeConfigParser() (*Parser, error) {
 			File:  log.DefaultLogFile,
 		},
 		FlowLimiter: LimiterConfig{
-			TokenBucketFillRate:           defaultInitialLimiterRate,
-			TokenBucketBurstEventCapacity: defaultInitialLimiterCapacity,
-			Enable:                        defaultEnableLimiter,
+			Limit:  defaultInitialLimiterRate,
+			Burst:  defaultInitialLimiterCapacity,
+			Enable: defaultEnableLimiter,
 		},
 
 		GrpcHandleTimeoutMs: defaultGrpcHandleTimeoutMs,

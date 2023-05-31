@@ -21,9 +21,9 @@ const (
 func TestFlowLimiter(t *testing.T) {
 	re := require.New(t)
 	flowLimiter := NewFlowLimiter(config.LimiterConfig{
-		TokenBucketFillRate:           defaultInitialLimiterRate,
-		TokenBucketBurstEventCapacity: defaultInitialLimiterCapacity,
-		Enable:                        defaultEnableLimiter,
+		Limit:  defaultInitialLimiterRate,
+		Burst:  defaultInitialLimiterCapacity,
+		Enable: defaultEnableLimiter,
 	})
 
 	for i := 0; i < defaultInitialLimiterCapacity; i++ {
@@ -38,9 +38,9 @@ func TestFlowLimiter(t *testing.T) {
 	}
 
 	err := flowLimiter.UpdateLimiter(config.LimiterConfig{
-		TokenBucketFillRate:           defaultUpdateLimiterRate,
-		TokenBucketBurstEventCapacity: defaultUpdateLimiterCapacity,
-		Enable:                        defaultEnableLimiter,
+		Limit:  defaultUpdateLimiterRate,
+		Burst:  defaultUpdateLimiterCapacity,
+		Enable: defaultEnableLimiter,
 	})
 	re.NoError(err)
 
