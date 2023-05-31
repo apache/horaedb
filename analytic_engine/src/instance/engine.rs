@@ -2,19 +2,23 @@
 
 //! Table engine logic of instance
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use common_types::schema::Version;
 use common_util::{define_result, error::GenericError};
 use snafu::{Backtrace, OptionExt, Snafu};
 use table_engine::{
-    engine::{CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest},
+    engine::{
+        CloseTableRequest, CreateTableRequest, DropTableRequest, OpenShardRequest, OpenTableRequest,
+    },
     table::TableId,
 };
 use wal::manager::WalLocation;
 
+use super::open::{OpenShardContext, OpenTableContext};
 use crate::{
-    instance::{close::Closer, drop::Dropper, Instance},
+    engine::build_space_id,
+    instance::{close::Closer, drop::Dropper, open::OpenShardResult, Instance},
     space::{Space, SpaceAndTable, SpaceContext, SpaceId, SpaceRef},
 };
 
@@ -213,6 +217,9 @@ pub enum Error {
 
     #[snafu(display("Failed to find table, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     TableNotExist { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Failed to open shard, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    OpenShard { msg: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -244,7 +251,8 @@ impl From<Error> for table_engine::engine::Error {
             | Error::CreateOpenFailedTable { .. }
             | Error::DoManifestSnapshot { .. }
             | Error::OpenManifest { .. }
-            | Error::TableNotExist { .. } => Self::Unexpected {
+            | Error::TableNotExist { .. }
+            | Error::OpenShard { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
         }
@@ -330,21 +338,21 @@ impl Instance {
     /// Find the table under given space by its table name
     ///
     /// Return None if space or table is not found
-    pub async fn open_table(
-        self: &Arc<Self>,
-        space_id: SpaceId,
-        request: &OpenTableRequest,
-    ) -> Result<Option<SpaceAndTable>> {
-        let context = SpaceContext {
-            catalog_name: request.catalog_name.clone(),
-            schema_name: request.schema_name.clone(),
-        };
-        let space = self.find_or_create_space(space_id, context).await?;
+    // pub async fn open_table(
+    //     self: &Arc<Self>,
+    //     space_id: SpaceId,
+    //     request: &OpenTableRequest,
+    // ) -> Result<Option<SpaceAndTable>> {
+    //     let context = SpaceContext {
+    //         catalog_name: request.catalog_name.clone(),
+    //         schema_name: request.schema_name.clone(),
+    //     };
+    //     let space = self.find_or_create_space(space_id, context).await?;
 
-        let table_data = self.do_open_table(space.clone(), request).await?;
+    //     let table_data = self.do_open_table(space.clone(), request).await?;
 
-        Ok(table_data.map(|v| SpaceAndTable::new(space, v)))
-    }
+    //     Ok(table_data.map(|v| SpaceAndTable::new(space, v)))
+    // }
 
     /// Drop a table under given space
     pub async fn drop_table(
@@ -383,5 +391,31 @@ impl Instance {
         };
 
         closer.close(request).await
+    }
+
+    /// Find the table under given space by its table name
+    ///
+    /// Return None if space or table is not found
+    pub async fn open_shard(
+        self: &Arc<Self>,
+        request: OpenShardRequest,
+    ) -> Result<OpenShardResult> {
+        let mut table_ctxs = Vec::with_capacity(request.table_defs.len());
+        for table_def in request.table_defs {
+            let context = SpaceContext {
+                catalog_name: table_def.catalog_name.clone(),
+                schema_name: table_def.schema_name.clone(),
+            };
+
+            let space_id = build_space_id(table_def.schema_id);
+            let space = self.find_or_create_space(space_id, context).await?;
+            table_ctxs.push(OpenTableContext { table_def, space });
+        }
+        let shard_ctx = OpenShardContext {
+            shard_id: request.shard_id,
+            table_ctxs,
+        };
+
+        self.do_open_tables_of_shard(shard_ctx).await
     }
 }

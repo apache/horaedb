@@ -2,7 +2,7 @@
 
 //! Implements the TableEngine trait
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use common_util::error::BoxError;
@@ -11,7 +11,7 @@ use snafu::ResultExt;
 use table_engine::{
     engine::{
         Close, CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
-        OpenShardRequest, OpenTableRequest, Result, TableEngine,
+        OpenShard, OpenShardRequest, OpenShardResult, OpenTableRequest, Result, TableEngine,
     },
     table::{SchemaId, TableRef},
     ANALYTIC_ENGINE_TYPE,
@@ -194,22 +194,41 @@ impl TableEngine for TableEngineImpl {
         Ok(())
     }
 
-    async fn open_shard(&self, request: OpenShardRequest) -> Vec<Result<Option<TableRef>>> {
+    async fn open_shard(&self, request: OpenShardRequest) -> Result<OpenShardResult> {
         let table_defs = request.table_defs;
-        let open_requests = table_defs
-            .into_iter()
-            .map(|def| OpenTableRequest {
-                catalog_name: def.catalog_name,
-                schema_name: def.schema_name,
-                schema_id: def.schema_id,
-                table_name: def.name,
-                table_id: def.id,
-                engine: request.engine.clone(),
-                shard_id: request.shard_id,
-            })
-            .collect();
+        let shard_result = self
+            .instance
+            .open_shard(request)
+            .await
+            .box_err()
+            .context(OpenShard)?;
 
-        self.open_tables_of_shard(open_requests).await
+        let mut engine_shard_result = OpenShardResult::with_capacity(shard_result.len());
+        for (table_id, table_res) in shard_result {
+            match table_res.box_err() {
+                Ok(Some(space_table)) => {
+                    let space_id = space_table.space().id;
+                    let table_impl = Arc::new(TableImpl::new(
+                        self.instance.clone(),
+                        ANALYTIC_ENGINE_TYPE.to_string(),
+                        space_id,
+                        space_table.table_data().id,
+                        space_table.table_data().clone(),
+                        space_table,
+                    ));
+                    engine_shard_result.insert(table_id, Ok(Some(table_impl)));
+                }
+                Ok(None) => {
+                    warn!("Try to open a missing table, open request:{request:?}");
+                    engine_shard_result.insert(table_id, Ok(None));
+                }
+                Err(e) => {
+                    engine_shard_result.insert(table_id, Err(e));
+                }
+            }
+        }
+
+        Ok(engine_shard_result)
     }
 
     async fn close_shard(

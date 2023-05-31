@@ -3,20 +3,29 @@
 //! Open logic of instance
 
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
+    fmt, result,
     sync::{Arc, RwLock},
 };
 
-use common_types::schema::IndexInWriterSchema;
+use common_types::{schema::IndexInWriterSchema, table::ShardId};
+use common_util::error::GenericError;
 use log::{debug, error, info, trace};
 use object_store::ObjectStoreRef;
-use snafu::ResultExt;
-use table_engine::engine::OpenTableRequest;
+use snafu::{OptionExt, ResultExt};
+use table_engine::{
+    engine::{OpenShardRequest, OpenTableRequest, TableDef},
+    table::TableId,
+};
 use wal::{
     log_batch::LogEntry,
-    manager::{ReadBoundary, ReadContext, ReadRequest, WalManagerRef},
+    manager::{ReadBoundary, ReadContext, ReadRequest, WalManager, WalManagerRef},
 };
 
+use super::{
+    engine::{OpenShard, TableNotExist},
+    flush_compaction::Flusher,
+};
 use crate::{
     compaction::scheduler::SchedulerImpl,
     context::OpenContext,
@@ -30,10 +39,10 @@ use crate::{
         write::MemTableWriter,
         Instance, SpaceStore,
     },
-    manifest::{details::ManifestImpl, LoadRequest},
+    manifest::{details::ManifestImpl, LoadRequest, Manifest, ManifestRef},
     payload::{ReadPayload, WalDecoder},
     row_iter::IterOptions,
-    space::{SpaceRef, Spaces},
+    space::{SpaceAndTable, SpaceContext, SpaceRef, Spaces},
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
@@ -138,62 +147,247 @@ impl Instance {
     }
 
     /// Open the table.
-    pub async fn do_open_table(
+    pub async fn do_open_tables_of_shard(
         self: &Arc<Self>,
-        space: SpaceRef,
-        request: &OpenTableRequest,
-    ) -> Result<Option<TableDataRef>> {
-        if let Some(table_data) = space.find_table_by_id(request.table_id) {
-            return Ok(Some(table_data));
+        context: OpenShardContext,
+    ) -> Result<OpenShardResult> {
+        let mut shard_opener = ShardOpener::init(
+            context,
+            self.space_store.manifest.clone(),
+            self.space_store.wal_manager.clone(),
+            self.replay_batch_size,
+            self.make_flusher(),
+            self.max_retry_flush_limit,
+        )?;
+
+        shard_opener.open().await
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OpenShardContext {
+    /// Shard id
+    pub shard_id: ShardId,
+    /// Table infos
+    pub table_ctxs: Vec<OpenTableContext>,
+}
+
+#[derive(Clone, Debug)]
+pub struct OpenTableContext {
+    pub table_def: TableDef,
+    pub space: SpaceRef,
+}
+
+#[derive(Debug)]
+enum TableOpenState {
+    RecoverTableMeta(RecoverTableMetaContext),
+    RecoverTableData(RecoverTableDataContext),
+    Failed(crate::instance::engine::Error),
+    Success(Option<SpaceAndTable>),
+}
+
+#[derive(Debug)]
+struct RecoverTableMetaContext {
+    table_def: TableDef,
+    space: SpaceRef,
+}
+
+#[derive(Debug)]
+struct RecoverTableDataContext {
+    table_data: TableDataRef,
+    space: SpaceRef,
+}
+
+pub type OpenShardResult = HashMap<TableId, Result<Option<SpaceAndTable>>>;
+
+/// Opener for tables of the same shard
+struct ShardOpener {
+    shard_id: ShardId,
+    manifest: ManifestRef,
+    wal_manager: WalManagerRef,
+    states: HashMap<TableId, TableOpenState>,
+    wal_replay_batch_size: usize,
+    flusher: Flusher,
+    max_retry_flush_limit: usize,
+}
+
+impl ShardOpener {
+    fn init(
+        shard_context: OpenShardContext,
+        manifest: ManifestRef,
+        wal_manager: WalManagerRef,
+        wal_replay_batch_size: usize,
+        flusher: Flusher,
+        max_retry_flush_limit: usize,
+    ) -> Result<Self> {
+        let mut states = HashMap::with_capacity(shard_context.table_ctxs.len());
+        for table_ctx in shard_context.table_ctxs {
+            let space = &table_ctx.space;
+            let table_id = table_ctx.table_def.id;
+            let state = if let Some(table_data) = space.find_table_by_id(table_id) {
+                TableOpenState::Success(Some(SpaceAndTable {
+                    space: space.clone(),
+                    table_data,
+                }))
+            } else {
+                TableOpenState::RecoverTableMeta(RecoverTableMetaContext {
+                    table_def: table_ctx.table_def,
+                    space: table_ctx.space,
+                })
+            };
+            states.insert(table_id, state);
         }
 
-        // Recover table meta from manifest.
-        self.recover_table_meta(request).await?;
+        Ok(Self {
+            shard_id: shard_context.shard_id,
+            manifest,
+            wal_manager,
+            states,
+            wal_replay_batch_size,
+            flusher,
+            max_retry_flush_limit,
+        })
+    }
 
-        // Recover table data from wal.
-        let table_data = match space.find_table_by_id(request.table_id) {
-            Some(data) => data,
-            None => return Ok(None),
-        };
+    async fn open(&mut self) -> Result<OpenShardResult> {
+        // Recover tables' meatadatas.
+        self.recover_table_metas().await?;
 
-        let read_ctx = ReadContext {
-            batch_size: self.replay_batch_size,
-            ..Default::default()
-        };
-        self.recover_table_data(table_data.clone(), self.replay_batch_size, &read_ctx)
-            .await
-            .map_err(|e| {
-                error!("Recovery table from wal failed, table_data:{table_data:?}, err:{e}");
-                space.insert_open_failed_table(table_data.name.to_string());
-                e
-            })?;
+        // Recover table' datas.
+        self.recover_table_datas().await?;
 
-        Ok(Some(table_data))
+        // Retrieve the table results and return.
+        let states = std::mem::take(&mut self.states);
+        let mut table_results = HashMap::with_capacity(states.len());
+        for (table_id, state) in states {
+            match state {
+                TableOpenState::Failed(e) => {
+                    table_results.insert(table_id, Err(e));
+                }
+                TableOpenState::Success(data) => {
+                    table_results.insert(table_id, Ok(data));
+                }
+                TableOpenState::RecoverTableMeta(_) | TableOpenState::RecoverTableData(_) => {
+                    return OpenShard {
+                        msg: format!(
+                            "unexpected table state, state:{:?}, table_id:{}",
+                            state, table_id
+                        ),
+                    }
+                    .fail()
+                }
+            }
+        }
+
+        Ok(table_results)
+    }
+
+    async fn recover_table_metas(&mut self) -> Result<()> {
+        for (table_id, state) in self.states.iter_mut() {
+            let result = if let TableOpenState::RecoverTableMeta(ctx) = state {
+                match Self::recover_single_table_meta(
+                    self.manifest.as_ref(),
+                    self.shard_id,
+                    &ctx.table_def,
+                )
+                .await
+                {
+                    Ok(()) => {
+                        let table_data = ctx.space.find_table_by_id(*table_id);
+                        Ok(table_data.map(|data| (data, ctx.space.clone())))
+                    }
+                    Err(e) => Err(e),
+                }
+            } else {
+                return OpenShard {
+                    msg: format!("unexpected table state:{:?}", state),
+                }
+                .fail();
+            };
+
+            match result {
+                Ok(Some((table_data, space))) => {
+                    *state = TableOpenState::RecoverTableData(RecoverTableDataContext {
+                        table_data,
+                        space,
+                    })
+                }
+                Ok(None) => *state = TableOpenState::Success(None),
+                Err(e) => *state = TableOpenState::Failed(e),
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn recover_table_datas(&mut self) -> Result<()> {
+        for (table_id, state) in self.states.iter_mut() {
+            match state {
+                TableOpenState::RecoverTableData(ctx) => {
+                    let table_data = ctx.table_data.clone();
+                    let read_ctx = ReadContext {
+                        batch_size: self.wal_replay_batch_size,
+                        ..Default::default()
+                    };
+
+                    let result = match Self::recover_single_table_data(
+                        &self.flusher,
+                        self.max_retry_flush_limit,
+                        self.wal_manager.as_ref(),
+                        table_data.clone(),
+                        self.wal_replay_batch_size,
+                        &read_ctx,
+                    )
+                    .await
+                    {
+                        Ok(()) => Ok((table_data, ctx.space.clone())),
+                        Err(e) => Err(e),
+                    };
+
+                    match result {
+                        Ok((table_data, space)) => {
+                            *state =
+                                TableOpenState::Success(Some(SpaceAndTable { space, table_data }));
+                        }
+                        Err(e) => *state = TableOpenState::Failed(e),
+                    }
+                }
+                TableOpenState::Failed(_) => {}
+                TableOpenState::RecoverTableMeta(_) | TableOpenState::Success(_) => {
+                    return OpenShard {
+                        msg: format!("unexpected table state:{:?}", state),
+                    }
+                    .fail()
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Recover meta data from manifest
     ///
     /// Return None if no meta data is found for the table.
-    async fn recover_table_meta(self: &Arc<Self>, request: &OpenTableRequest) -> Result<()> {
-        info!("Instance recover table:{} meta begin", request.table_id);
+    async fn recover_single_table_meta(
+        manifest: &dyn Manifest,
+        shard_id: ShardId,
+        table_def: &TableDef,
+    ) -> Result<()> {
+        info!("Instance recover table:{} meta begin", table_def.id);
 
         // Load manifest, also create a new snapshot at startup.
-        let table_id = request.table_id;
-        let space_id = engine::build_space_id(request.schema_id);
+        let table_id = table_def.id;
+        let space_id = engine::build_space_id(table_def.schema_id);
         let load_req = LoadRequest {
             space_id,
             table_id,
-            shard_id: request.shard_id,
+            shard_id,
         };
-        self.space_store
-            .manifest
-            .recover(&load_req)
-            .await
-            .context(ReadMetaUpdate {
-                table_id: request.table_id,
-            })?;
+        manifest.recover(&load_req).await.context(ReadMetaUpdate {
+            table_id: table_def.id,
+        })?;
 
-        info!("Instance recover table:{} meta end", request.table_id);
+        info!("Instance recover table:{} meta end", table_def.id);
 
         Ok(())
     }
@@ -201,8 +395,10 @@ impl Instance {
     /// Recover table data from wal
     ///
     /// Called by write worker
-    pub(crate) async fn recover_table_data(
-        self: &Arc<Self>,
+    pub(crate) async fn recover_single_table_data(
+        flusher: &Flusher,
+        max_retry_flush_limit: usize,
+        wal_manager: &dyn WalManager,
         table_data: TableDataRef,
         replay_batch_size: usize,
         read_ctx: &ReadContext,
@@ -222,9 +418,7 @@ impl Instance {
         };
 
         // Read all wal of current table.
-        let mut log_iter = self
-            .space_store
-            .wal_manager
+        let mut log_iter = wal_manager
             .read_batch(read_ctx, &read_req)
             .await
             .context(ReadWal)?;
@@ -240,8 +434,14 @@ impl Instance {
                 .context(ReadWal)?;
 
             // Replay all log entries of current table
-            self.replay_table_log_entries(&mut serial_exec, &table_data, &log_entry_buf)
-                .await?;
+            Self::replay_table_log_entries(
+                &flusher,
+                max_retry_flush_limit,
+                &mut serial_exec,
+                &table_data,
+                &log_entry_buf,
+            )
+            .await?;
 
             // No more entries.
             if log_entry_buf.is_empty() {
@@ -254,7 +454,8 @@ impl Instance {
 
     /// Replay all log entries into memtable and flush if necessary.
     async fn replay_table_log_entries(
-        self: &Arc<Self>,
+        flusher: &Flusher,
+        max_retry_flush_limit: usize,
         serial_exec: &mut TableOpSerialExecutor,
         table_data: &TableDataRef,
         log_entries: &VecDeque<LogEntry<ReadPayload>>,
@@ -326,9 +527,8 @@ impl Instance {
                     if table_data.should_flush_table(serial_exec) {
                         let opts = TableFlushOptions {
                             res_sender: None,
-                            max_retry_flush_limit: self.max_retry_flush_limit,
+                            max_retry_flush_limit,
                         };
-                        let flusher = self.make_flusher();
                         let flush_scheduler = serial_exec.flush_scheduler();
                         flusher
                             .schedule_flush(flush_scheduler, table_data, opts)

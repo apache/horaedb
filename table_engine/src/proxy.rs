@@ -7,7 +7,8 @@ use async_trait::async_trait;
 use crate::{
     engine::{
         CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
-        OpenShardRequest, OpenTableRequest, TableEngine, TableEngineRef, UnknownEngineType,
+        OpenShardRequest, OpenShardResult, OpenTableRequest, TableEngine, TableEngineRef,
+        UnknownEngineType,
     },
     memory::MemoryTableEngine,
     table::TableRef,
@@ -76,11 +77,11 @@ impl TableEngine for TableEngineProxy {
     async fn open_shard(
         &self,
         request: OpenShardRequest,
-    ) -> Vec<crate::engine::Result<Option<TableRef>>> {
+    ) -> crate::engine::Result<OpenShardResult> {
         match request.engine.as_str() {
             MEMORY_ENGINE_TYPE => self.memory.open_shard(request).await,
             ANALYTIC_ENGINE_TYPE => self.analytic.open_shard(request).await,
-            engine_type => vec![UnknownEngineType { engine_type }.fail()],
+            engine_type => UnknownEngineType { engine_type }.fail(),
         }
     }
 

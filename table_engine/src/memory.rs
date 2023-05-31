@@ -25,7 +25,7 @@ use snafu::{OptionExt, ResultExt};
 use crate::{
     engine::{
         CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
-        OpenShardRequest, OpenTableRequest, TableEngine,
+        OpenShardRequest, OpenShardResult, OpenTableRequest, TableEngine,
     },
     stream::{
         self, ErrNoSource, ErrWithSource, PartitionedStreams, RecordBatchStream,
@@ -297,8 +297,8 @@ impl TableEngine for MemoryTableEngine {
     async fn open_shard(
         &self,
         _equest: OpenShardRequest,
-    ) -> Vec<crate::engine::Result<Option<TableRef>>> {
-        vec![Ok(None)]
+    ) -> crate::engine::Result<OpenShardResult> {
+        Ok(OpenShardResult::default())
     }
 
     /// Close tables on same shard.
