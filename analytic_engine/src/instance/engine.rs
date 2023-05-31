@@ -2,14 +2,14 @@
 
 //! Table engine logic of instance
 
-use std::{collections::HashMap, sync::Arc};
+use std::{sync::Arc};
 
 use common_types::schema::Version;
 use common_util::{define_result, error::GenericError};
 use snafu::{Backtrace, OptionExt, Snafu};
 use table_engine::{
     engine::{
-        CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest,
+        CloseTableRequest, CreateTableRequest, DropTableRequest,
         OpenTablesOfShardRequest,
     },
     table::TableId,

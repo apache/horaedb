@@ -4,17 +4,16 @@
 
 use std::{
     collections::{HashMap, VecDeque},
-    fmt, result,
     sync::{Arc, RwLock},
 };
 
 use common_types::{schema::IndexInWriterSchema, table::ShardId};
-use common_util::error::GenericError;
+
 use log::{debug, error, info, trace};
 use object_store::ObjectStoreRef;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
-    engine::{OpenTableRequest, OpenTablesOfShardRequest, TableDef},
+    engine::{TableDef},
     table::TableId,
 };
 use wal::{
@@ -23,7 +22,7 @@ use wal::{
 };
 
 use super::{
-    engine::{OpenShard, TableNotExist},
+    engine::{OpenShard},
     flush_compaction::Flusher,
 };
 use crate::{
@@ -42,7 +41,7 @@ use crate::{
     manifest::{details::ManifestImpl, LoadRequest, Manifest, ManifestRef},
     payload::{ReadPayload, WalDecoder},
     row_iter::IterOptions,
-    space::{SpaceAndTable, SpaceContext, SpaceRef, Spaces},
+    space::{SpaceAndTable, SpaceRef, Spaces},
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
@@ -318,7 +317,7 @@ impl ShardOpener {
     }
 
     async fn recover_table_datas(&mut self) -> Result<()> {
-        for (table_id, state) in self.states.iter_mut() {
+        for (_table_id, state) in self.states.iter_mut() {
             match state {
                 TableOpenState::RecoverTableData(ctx) => {
                     let table_data = ctx.table_data.clone();

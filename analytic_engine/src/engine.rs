@@ -2,7 +2,7 @@
 
 //! Implements the TableEngine trait
 
-use std::{collections::HashMap, result, sync::Arc};
+use std::{sync::Arc};
 
 use async_trait::async_trait;
 use common_util::error::BoxError;
@@ -161,7 +161,7 @@ impl TableEngine for TableEngineImpl {
     async fn open_table(&self, request: OpenTableRequest) -> Result<Option<TableRef>> {
         let shard_id = request.shard_id;
         let space_id = build_space_id(request.schema_id);
-        let table_id = request.table_id;
+        let _table_id = request.table_id;
 
         info!(
             "Table engine impl open table, space_id:{}, request:{:?}",
