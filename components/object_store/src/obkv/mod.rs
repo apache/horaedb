@@ -350,7 +350,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         };
 
         let prefix = format!("{}@{}@", location.as_ref(), multipart_id);
-        let scan_request = util::scan_request_with_prefix(&prefix);
+        let scan_request = util::scan_request_with_prefix(prefix.as_bytes());
 
         let mut iter = self
             .client

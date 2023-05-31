@@ -32,7 +32,7 @@ pub trait WriteBatch: Default {
 }
 
 /// Key to seek.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SeekKey(Vec<u8>);
 
 impl From<&[u8]> for SeekKey {
@@ -52,7 +52,7 @@ impl SeekKey {
 }
 
 /// Boundary of key to seek.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum KeyBoundary {
     /// Included key boudary.
     Included(SeekKey),
@@ -110,7 +110,7 @@ impl Default for ScanContext {
 }
 
 /// Scan request.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ScanRequest {
     /// Start bound.
     pub start: KeyBoundary,

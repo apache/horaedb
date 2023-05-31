@@ -3,20 +3,104 @@
 use table_kv::{KeyBoundary, ScanRequest};
 
 /// Generate ScanRequest with prefix
-pub fn scan_request_with_prefix(prefix: &str) -> ScanRequest {
-    let key_buffer = prefix.as_bytes();
-    let mut start_key = Vec::with_capacity(key_buffer.len() + 1);
-    let mut end_key = Vec::with_capacity(key_buffer.len() + 1);
-    start_key.extend(key_buffer);
-    end_key.extend(key_buffer);
-    // push the 0xffffffff into end_key
-    let value = usize::MAX.to_be_bytes();
-    end_key.extend(value);
+pub fn scan_request_with_prefix(prefix_bytes: &[u8]) -> ScanRequest {
+    let mut start_key = Vec::with_capacity(prefix_bytes.len());
+    start_key.extend(prefix_bytes);
     let start = KeyBoundary::included(start_key.as_ref());
-    let end = KeyBoundary::excluded(end_key.as_ref());
+
+    let mut end_key = Vec::with_capacity(prefix_bytes.len());
+    end_key.extend(prefix_bytes);
+    let carry = add_one(&mut end_key);
+    // Check add one operation overflow.
+    let end = if carry == 1 {
+        KeyBoundary::MaxIncluded
+    } else {
+        KeyBoundary::excluded(end_key.as_ref())
+    };
     table_kv::ScanRequest {
         start,
         end,
         reverse: false,
+    }
+}
+
+pub fn add_one(nums: &mut [u8]) -> u8 {
+    let mut carry = 1;
+    for i in (0..nums.len()).rev() {
+        let sum = nums[i].wrapping_add(carry);
+        nums[i] = sum;
+        if sum == 0x00 {
+            carry = 1;
+        } else {
+            carry = 0;
+            break;
+        }
+    }
+    carry
+}
+
+#[cfg(test)]
+mod test {
+
+    use crate::obkv::util::{add_one, scan_request_with_prefix};
+
+    #[test]
+    fn test_add_one() {
+        let mut case0 = vec![0xff_u8, 0xff, 0xff];
+        let case0_expect = vec![0x00, 0x00, 0x00];
+        assert_eq!(1, add_one(&mut case0));
+        assert_eq!(case0, case0_expect);
+
+        let mut case1 = vec![0x00_u8, 0xff, 0xff];
+        let case1_expect = vec![0x01, 0x00, 0x00];
+        assert_eq!(0, add_one(&mut case1));
+        assert_eq!(case1, case1_expect);
+
+        let mut case2 = vec![0x00_u8, 0x00, 0x00];
+        let case2_expect = vec![0x00, 0x00, 0x01];
+        assert_eq!(0, add_one(&mut case2));
+        assert_eq!(case2, case2_expect);
+    }
+
+    #[test]
+    fn test_scan_request_with_prefix() {
+        let case0 = vec![0xff_u8, 0xff, 0xff];
+        let case0_expect = table_kv::ScanRequest {
+            start: table_kv::KeyBoundary::included(&case0),
+            end: table_kv::KeyBoundary::MaxIncluded,
+            reverse: false,
+        };
+        let case0_actual = scan_request_with_prefix(&case0);
+        assert_eq!(case0_expect, case0_actual);
+
+        let case1 = "abc".as_bytes();
+        let case1_expect_bytes = "abd".as_bytes();
+        let case1_expect = table_kv::ScanRequest {
+            start: table_kv::KeyBoundary::included(case1),
+            end: table_kv::KeyBoundary::excluded(case1_expect_bytes),
+            reverse: false,
+        };
+        let case1_actual = scan_request_with_prefix(case1);
+        assert_eq!(case1_expect, case1_actual);
+
+        let case2 = vec![0x00_u8, 0x00, 0x00];
+        let case2_expect_bytes = vec![0x00_u8, 0x00, 0x01];
+        let case2_expect = table_kv::ScanRequest {
+            start: table_kv::KeyBoundary::included(&case2),
+            end: table_kv::KeyBoundary::excluded(&case2_expect_bytes),
+            reverse: false,
+        };
+        let case2_actual = scan_request_with_prefix(&case2);
+        assert_eq!(case2_expect, case2_actual);
+
+        let case3 = vec![0x00_u8, 0xff, 0x00];
+        let case3_expect_bytes = vec![0x01_u8, 0x00, 0x00];
+        let case3_expect = table_kv::ScanRequest {
+            start: table_kv::KeyBoundary::included(&case3),
+            end: table_kv::KeyBoundary::excluded(&case3_expect_bytes),
+            reverse: false,
+        };
+        let case3_actual = scan_request_with_prefix(&case3);
+        assert_eq!(case3_expect, case3_actual);
     }
 }

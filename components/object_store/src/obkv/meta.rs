@@ -173,7 +173,7 @@ impl<T: TableKv> MetaManager<T> {
             batch_size: 1000,
         };
 
-        let scan_request = util::scan_request_with_prefix(prefix.as_ref());
+        let scan_request = util::scan_request_with_prefix(prefix.as_ref().as_bytes());
 
         let mut iter = self
             .client
