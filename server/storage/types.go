@@ -24,6 +24,7 @@ const (
 	ClusterStateStable
 	ClusterStatePrepare
 
+	TopologyTypeUnknown = "unknown"
 	TopologyTypeStatic  = "static"
 	TopologyTypeDynamic = "dynamic"
 )
@@ -283,6 +284,8 @@ func convertClusterToPB(cluster Cluster) clusterpb.Cluster {
 
 func convertTopologyTypeToPB(topologyType TopologyType) clusterpb.Cluster_TopologyType {
 	switch topologyType {
+	case TopologyTypeUnknown:
+		return clusterpb.Cluster_UNKNOWN
 	case TopologyTypeStatic:
 		return clusterpb.Cluster_STATIC
 	case TopologyTypeDynamic:
@@ -293,6 +296,8 @@ func convertTopologyTypeToPB(topologyType TopologyType) clusterpb.Cluster_Topolo
 
 func convertTopologyTypePB(topologyType clusterpb.Cluster_TopologyType) TopologyType {
 	switch topologyType {
+	case clusterpb.Cluster_UNKNOWN:
+		return TopologyTypeUnknown
 	case clusterpb.Cluster_STATIC:
 		return TopologyTypeStatic
 	case clusterpb.Cluster_DYNAMIC:
