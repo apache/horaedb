@@ -2,7 +2,7 @@
 
 //! Table engine logic of instance
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use common_types::schema::Version;
 use common_util::{define_result, error::GenericError};
@@ -312,7 +312,6 @@ impl Instance {
         Ok(SpaceAndTable::new(space, table_data))
     }
 
-    /// Drop a table under given space
     /// Find the table under given space by its table name
     ///
     /// Return None if space or table is not found
@@ -332,25 +331,6 @@ impl Instance {
 
         Ok(space_table)
     }
-
-    /// Find the table under given space by its table name
-    ///
-    /// Return None if space or table is not found
-    // pub async fn open_table(
-    //     self: &Arc<Self>,
-    //     space_id: SpaceId,
-    //     request: &OpenTableRequest,
-    // ) -> Result<Option<SpaceAndTable>> {
-    //     let context = SpaceContext {
-    //         catalog_name: request.catalog_name.clone(),
-    //         schema_name: request.schema_name.clone(),
-    //     };
-    //     let space = self.find_or_create_space(space_id, context).await?;
-
-    //     let table_data = self.do_open_table(space.clone(), request).await?;
-
-    //     Ok(table_data.map(|v| SpaceAndTable::new(space, v)))
-    // }
 
     /// Drop a table under given space
     pub async fn drop_table(
@@ -391,9 +371,7 @@ impl Instance {
         closer.close(request).await
     }
 
-    /// Find the table under given space by its table name
-    ///
-    /// Return None if space or table is not found
+    /// Open tables of same shard together
     pub async fn open_tables_of_shard(
         self: &Arc<Self>,
         request: OpenTablesOfShardRequest,

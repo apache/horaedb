@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_util::error::BoxError;
-use log::{error, info, warn};
+use log::{error, info};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{
@@ -37,42 +37,6 @@ impl Clone for TableEngineImpl {
 impl TableEngineImpl {
     pub fn new(instance: InstanceRef) -> Self {
         Self { instance }
-    }
-
-    async fn open_tables_of_shard(
-        &self,
-        open_requests: Vec<table_engine::engine::OpenTableRequest>,
-    ) -> Vec<table_engine::engine::Result<Option<TableRef>>> {
-        if open_requests.is_empty() {
-            return Vec::new();
-        }
-
-        let mut open_results = Vec::with_capacity(open_requests.len());
-        for request in open_requests {
-            let result = self
-                .open_table(request.clone())
-                .await
-                .map_err(|e| {
-                    error!("Failed to open table, open_request:{request:?}, err:{e}");
-                    e
-                })
-                .map(|table_opt| {
-                    if table_opt.is_none() {
-                        error!(
-                            "Table engine returns none when opening table, open_request:{request:?}"
-                        );
-                    }
-                    table_opt
-                });
-
-            if let Ok(None) = result {
-                warn!("Try to open a missing table, open request:{request:?}");
-            }
-
-            open_results.push(result);
-        }
-
-        open_results
     }
 
     async fn close_tables_of_shard(

@@ -10,7 +10,7 @@ use std::{
 use common_types::{schema::IndexInWriterSchema, table::ShardId};
 use log::{debug, error, info, trace};
 use object_store::ObjectStoreRef;
-use snafu::{OptionExt, ResultExt};
+use snafu::ResultExt;
 use table_engine::{engine::TableDef, table::TableId};
 use wal::{
     log_batch::LogEntry,
@@ -239,10 +239,10 @@ impl ShardOpener {
     }
 
     async fn open(&mut self) -> Result<OpenTablesOfShardResult> {
-        // Recover tables' meatadatas.
+        // Recover tables' metadata.
         self.recover_table_metas().await?;
 
-        // Recover table' datas.
+        // Recover table' data.
         self.recover_table_datas().await?;
 
         // Retrieve the table results and return.
@@ -259,8 +259,7 @@ impl ShardOpener {
                 TableOpenState::RecoverTableMeta(_) | TableOpenState::RecoverTableData(_) => {
                     return OpenShard {
                         msg: format!(
-                            "unexpected table state, state:{:?}, table_id:{}",
-                            state, table_id
+                            "unexpected table state, state:{state:?}, table_id:{table_id}",
                         ),
                     }
                     .fail()
@@ -289,7 +288,7 @@ impl ShardOpener {
                 }
             } else {
                 return OpenShard {
-                    msg: format!("unexpected table state:{:?}", state),
+                    msg: format!("unexpected table state:{state:?}"),
                 }
                 .fail();
             };
@@ -345,7 +344,7 @@ impl ShardOpener {
                 TableOpenState::Failed(_) => {}
                 TableOpenState::RecoverTableMeta(_) | TableOpenState::Success(_) => {
                     return OpenShard {
-                        msg: format!("unexpected table state:{:?}", state),
+                        msg: format!("unexpected table state:{state:?}"),
                     }
                     .fail()
                 }
@@ -425,7 +424,7 @@ impl ShardOpener {
 
             // Replay all log entries of current table
             Self::replay_table_log_entries(
-                &flusher,
+                flusher,
                 max_retry_flush_limit,
                 &mut serial_exec,
                 &table_data,
