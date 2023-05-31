@@ -17,7 +17,7 @@ use wal::{
     manager::{ReadBoundary, ReadContext, ReadRequest, WalManager, WalManagerRef},
 };
 
-use super::{engine::OpenShard, flush_compaction::Flusher};
+use super::{engine::OpenTablesOfShard, flush_compaction::Flusher};
 use crate::{
     compaction::scheduler::SchedulerImpl,
     context::OpenContext,
@@ -257,7 +257,7 @@ impl ShardOpener {
                     table_results.insert(table_id, Ok(data));
                 }
                 TableOpenState::RecoverTableMeta(_) | TableOpenState::RecoverTableData(_) => {
-                    return OpenShard {
+                    return OpenTablesOfShard {
                         msg: format!(
                             "unexpected table state, state:{state:?}, table_id:{table_id}",
                         ),
@@ -304,7 +304,7 @@ impl ShardOpener {
                 // Table was found to be opened in init stage.
                 TableOpenState::Success(_) => {}
                 TableOpenState::RecoverTableData(_) | TableOpenState::Failed(_) => {
-                    return OpenShard {
+                    return OpenTablesOfShard {
                         msg: format!("unexpected table state:{state:?}"),
                     }
                     .fail();
@@ -353,7 +353,7 @@ impl ShardOpener {
                 // Table was found opened, or failed in meta recovery stage.
                 TableOpenState::Failed(_) | TableOpenState::Success(_) => {}
                 TableOpenState::RecoverTableMeta(_) => {
-                    return OpenShard {
+                    return OpenTablesOfShard {
                         msg: format!("unexpected table state:{state:?}"),
                     }
                     .fail()

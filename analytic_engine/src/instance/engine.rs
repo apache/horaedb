@@ -217,7 +217,7 @@ pub enum Error {
     TableNotExist { msg: String, backtrace: Backtrace },
 
     #[snafu(display("Failed to open shard, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
-    OpenShard { msg: String, backtrace: Backtrace },
+    OpenTablesOfShard { msg: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -250,7 +250,7 @@ impl From<Error> for table_engine::engine::Error {
             | Error::DoManifestSnapshot { .. }
             | Error::OpenManifest { .. }
             | Error::TableNotExist { .. }
-            | Error::OpenShard { .. } => Self::Unexpected {
+            | Error::OpenTablesOfShard { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
         }
@@ -372,10 +372,12 @@ impl Instance {
     }
 
     /// Open tables of same shard together
+    // TODO: just return `TableRef` rather than `SpaceAndTable`.
     pub async fn open_tables_of_shard(
         self: &Arc<Self>,
         request: OpenTablesOfShardRequest,
     ) -> Result<OpenTablesOfShardResult> {
+        let shard_id = request.shard_id;
         let mut table_ctxs = Vec::with_capacity(request.table_defs.len());
 
         // Open tables.
@@ -403,7 +405,7 @@ impl Instance {
             table_ctxs.push(TableContext { table_def, space });
         }
         let shard_ctx = TablesOfShardContext {
-            shard_id: request.shard_id,
+            shard_id,
             table_ctxs,
         };
 
@@ -411,15 +413,19 @@ impl Instance {
 
         // Insert opened tables to spaces.
         for (table_info, space) in spaces_of_tables {
-            let table_result = shard_result.get(&table_info.id).unwrap();
-            match table_result {
-                Ok(Some(table)) => {
-                    space.insert_table(table.table_data().clone());
-                }
-                Ok(None) => {}
-                Err(_) => {
-                    space.insert_open_failed_table(table_info.name);
-                }
+            let table_result =
+                shard_result
+                    .get(&table_info.id)
+                    .with_context(|| OpenTablesOfShard {
+                        msg: format!(
+                        "table not exist in result, table_id:{}, space_id:{shard_id}, shard_id:{}",
+                        table_info.id, space.id
+                    ),
+                    })?;
+
+            // TODO: should not modify space here, maybe should place it into manifest.
+            if table_result.is_err() {
+                space.insert_open_failed_table(table_info.name);
             }
         }
 
