@@ -678,8 +678,7 @@ impl MergeIterator {
         let mut init_buffered_streams = FuturesUnordered::new();
         for origin_stream in mem::take(&mut self.origin_streams) {
             let schema = self.schema.clone();
-            init_buffered_streams
-                .push(async move { BufferedStream::build(schema, origin_stream).await });
+            init_buffered_streams.push(BufferedStream::build(schema, origin_stream));
         }
 
         let pull_start = Instant::now();
