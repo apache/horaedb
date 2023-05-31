@@ -270,47 +270,56 @@ impl ShardOpener {
         Ok(table_results)
     }
 
+    /// Recover table meta data from manifest based on shard.
     async fn recover_table_metas(&mut self) -> Result<()> {
         for (table_id, state) in self.states.iter_mut() {
-            let result = if let TableOpenState::RecoverTableMeta(ctx) = state {
-                match Self::recover_single_table_meta(
-                    self.manifest.as_ref(),
-                    self.shard_id,
-                    &ctx.table_def,
-                )
-                .await
-                {
-                    Ok(()) => {
-                        let table_data = ctx.space.find_table_by_id(*table_id);
-                        Ok(table_data.map(|data| (data, ctx.space.clone())))
-                    }
-                    Err(e) => Err(e),
-                }
-            } else {
-                return OpenShard {
-                    msg: format!("unexpected table state:{state:?}"),
-                }
-                .fail();
-            };
+            match state {
+                // Only do the meta recovery work in `RecoverTableMeta` state.
+                TableOpenState::RecoverTableMeta(ctx) => {
+                    let result = match Self::recover_single_table_meta(
+                        self.manifest.as_ref(),
+                        self.shard_id,
+                        &ctx.table_def,
+                    )
+                    .await
+                    {
+                        Ok(()) => {
+                            let table_data = ctx.space.find_table_by_id(*table_id);
+                            Ok(table_data.map(|data| (data, ctx.space.clone())))
+                        }
+                        Err(e) => Err(e),
+                    };
 
-            match result {
-                Ok(Some((table_data, space))) => {
-                    *state = TableOpenState::RecoverTableData(RecoverTableDataContext {
-                        table_data,
-                        space,
-                    })
+                    match result {
+                        Ok(Some((table_data, space))) => {
+                            *state = TableOpenState::RecoverTableData(RecoverTableDataContext {
+                                table_data,
+                                space,
+                            })
+                        }
+                        Ok(None) => *state = TableOpenState::Success(None),
+                        Err(e) => *state = TableOpenState::Failed(e),
+                    }
                 }
-                Ok(None) => *state = TableOpenState::Success(None),
-                Err(e) => *state = TableOpenState::Failed(e),
+                // Table was found to be opened in init stage.
+                TableOpenState::Success(_) => {}
+                TableOpenState::RecoverTableData(_) | TableOpenState::Failed(_) => {
+                    return OpenShard {
+                        msg: format!("unexpected table state:{state:?}"),
+                    }
+                    .fail();
+                }
             }
         }
 
         Ok(())
     }
 
+    /// Recover table data based on shard.
     async fn recover_table_datas(&mut self) -> Result<()> {
         for (_table_id, state) in self.states.iter_mut() {
             match state {
+                // Only do the wal recovery work in `RecoverTableData` state.
                 TableOpenState::RecoverTableData(ctx) => {
                     let table_data = ctx.table_data.clone();
                     let read_ctx = ReadContext {
@@ -341,8 +350,9 @@ impl ShardOpener {
                         Err(e) => *state = TableOpenState::Failed(e),
                     }
                 }
-                TableOpenState::Failed(_) => {}
-                TableOpenState::RecoverTableMeta(_) | TableOpenState::Success(_) => {
+                // Table was found opened, or failed in meta recovery stage.
+                TableOpenState::Failed(_) | TableOpenState::Success(_) => {}
+                TableOpenState::RecoverTableMeta(_) => {
                     return OpenShard {
                         msg: format!("unexpected table state:{state:?}"),
                     }
@@ -354,7 +364,7 @@ impl ShardOpener {
         Ok(())
     }
 
-    /// Recover meta data from manifest
+    /// Recover meta data from manifest.
     ///
     /// Return None if no meta data is found for the table.
     async fn recover_single_table_meta(
@@ -381,7 +391,7 @@ impl ShardOpener {
         Ok(())
     }
 
-    /// Recover table data from wal
+    /// Recover table data from wal.
     ///
     /// Called by write worker
     pub(crate) async fn recover_single_table_data(
