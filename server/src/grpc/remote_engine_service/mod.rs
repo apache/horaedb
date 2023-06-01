@@ -311,27 +311,26 @@ async fn handle_stream_read(
     ctx: HandlerContext,
     request: ReadRequest,
 ) -> Result<PartitionedStreams> {
-    let read_request: table_engine::remote::model::ReadRequest =
-        request.try_into().box_err().context(ErrWithCause {
-            code: StatusCode::BadRequest,
-            msg: "fail to convert read request",
-        })?;
+    let table_engine::remote::model::ReadRequest {
+        table: table_ident,
+        read_request,
+    } = request.try_into().box_err().context(ErrWithCause {
+        code: StatusCode::BadRequest,
+        msg: "fail to convert read request",
+    })?;
 
-    let begin = Instant::now();
-    let request_id = read_request.read_request.request_id;
+    let request_id = read_request.request_id;
     info!(
-        "Handle stream read, request_id:{request_id}, table:{:?}, read_options:{:?}, read_order:{:?}, predicate:{:?} ",
-        read_request.table,
-        read_request.read_request.opts,
-        read_request.read_request.order,
-        read_request.read_request.predicate,
+        "Handle stream read, request_id:{request_id}, table:{table_ident:?}, read_options:{:?}, read_order:{:?}, predicate:{:?} ",
+        read_request.opts,
+        read_request.order,
+        read_request.predicate,
     );
 
-    let table = find_table_by_identifier(&ctx, &read_request.table)?;
-    let table_ident = read_request.table;
-
+    let begin = Instant::now();
+    let table = find_table_by_identifier(&ctx, &table_ident)?;
     let streams = table
-        .partitioned_read(read_request.read_request)
+        .partitioned_read(read_request)
         .await
         .box_err()
         .with_context(|| ErrWithCause {
