@@ -30,7 +30,6 @@ use parquet::{
     file::metadata::RowGroupMetaData,
 };
 use parquet_ext::meta_data::ChunkReader;
-use prometheus::local::LocalHistogram;
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -42,7 +41,6 @@ use crate::sst::{
         cache::{MetaCacheRef, MetaData},
         SstMetaData,
     },
-    metrics,
     parquet::{
         encoding::ParquetDecoder,
         meta_data::{ParquetFilter, ParquetMetaDataRef},
@@ -221,10 +219,6 @@ impl<'a> Reader<'a> {
         let chunks_num = parallelism;
         let chunk_size = target_row_groups.len() / parallelism;
         self.metrics.parallelism = parallelism;
-        debug!(
-            "Reader fetch record batches parallelly, parallelism suggest:{}, real:{}, chunk_size:{}",
-            suggested_parallelism, parallelism, chunk_size
-        );
 
         let mut target_row_group_chunks = vec![Vec::with_capacity(chunk_size); chunks_num];
         for (row_group_idx, row_group) in target_row_groups.into_iter().enumerate() {
@@ -235,6 +229,10 @@ impl<'a> Reader<'a> {
         let proj_mask = ProjectionMask::leaves(
             meta_data.parquet().file_metadata().schema_descr(),
             row_projector.existed_source_projection().iter().copied(),
+        );
+        debug!(
+            "Reader fetch record batches, parallelism suggest:{}, real:{}, chunk_size:{}, project:{:?}",
+            suggested_parallelism, parallelism, chunk_size, proj_mask
         );
 
         let mut streams = Vec::with_capacity(target_row_group_chunks.len());
@@ -355,18 +353,12 @@ impl<'a> Reader<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
-struct ObjectReaderMetrics {
-    bytes_scanned: usize,
-    sst_get_range_length_histogram: LocalHistogram,
-}
-
 #[derive(Clone)]
 struct ObjectStoreReader {
     storage: ObjectStoreRef,
     path: Path,
     meta_data: MetaData,
-    metrics: ObjectReaderMetrics,
+    begin: Instant,
 }
 
 impl ObjectStoreReader {
@@ -375,27 +367,23 @@ impl ObjectStoreReader {
             storage,
             path,
             meta_data,
-            metrics: ObjectReaderMetrics {
-                bytes_scanned: 0,
-                sst_get_range_length_histogram: metrics::SST_GET_RANGE_HISTOGRAM.local(),
-            },
+            begin: Instant::now(),
         }
     }
 }
 
 impl Drop for ObjectStoreReader {
     fn drop(&mut self) {
-        debug!("ObjectStoreReader is dropped, metrics:{:?}", self.metrics);
+        debug!(
+            "ObjectStoreReader dropped, path:{}, elapsed:{:?}",
+            &self.path,
+            self.begin.elapsed()
+        );
     }
 }
 
 impl AsyncFileReader for ObjectStoreReader {
     fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
-        self.metrics.bytes_scanned += range.end - range.start;
-        self.metrics
-            .sst_get_range_length_histogram
-            .observe((range.end - range.start) as f64);
-
         self.storage
             .get_range(&self.path, range)
             .map_err(|e| {
@@ -410,13 +398,6 @@ impl AsyncFileReader for ObjectStoreReader {
         &mut self,
         ranges: Vec<Range<usize>>,
     ) -> BoxFuture<'_, parquet::errors::Result<Vec<Bytes>>> {
-        for range in &ranges {
-            self.metrics.bytes_scanned += range.end - range.start;
-            self.metrics
-                .sst_get_range_length_histogram
-                .observe((range.end - range.start) as f64);
-        }
-
         async move {
             self.storage
                 .get_ranges(&self.path, &ranges)
