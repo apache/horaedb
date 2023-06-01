@@ -21,7 +21,7 @@ use futures::{
     StreamExt,
 };
 use log::debug;
-use snafu::{ResultExt, Snafu};
+use snafu::{ensure, ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
 use tokio::{
     io::{AsyncWrite, AsyncWriteExt},
@@ -83,14 +83,14 @@ pub enum Error {
 
 impl<T: TableKv> MetaManager<T> {
     fn try_new(client: Arc<T>) -> std::result::Result<Self, Error> {
-        create_table_if_not_exists(client.clone(), OBJECT_STORE_META)?;
+        create_table_if_not_exists(&client, OBJECT_STORE_META)?;
         Ok(Self { client })
     }
 }
 
 /// If table not exists, create shard table; Else, do nothing.
 fn create_table_if_not_exists<T: TableKv>(
-    table_kv: Arc<T>,
+    table_kv: &Arc<T>,
     table_name: &str,
 ) -> std::result::Result<(), Error> {
     let table_exists = table_kv
@@ -120,7 +120,7 @@ impl<T: TableKv> ShardManager<T> {
 
         for shard_id in 0..shard_num {
             let table_name = format!("object_store_{shard_id}");
-            create_table_if_not_exists(client.clone(), &table_name)?;
+            create_table_if_not_exists(&client, &table_name)?;
             table_names.push(table_name);
         }
 
@@ -192,13 +192,13 @@ impl<T: TableKv> ObkvObjectStore<T> {
 
     #[inline]
     fn check_size(&self, bytes: &Bytes) -> std::result::Result<(), Error> {
-        if bytes.len() > self.max_object_size {
-            return TooLargeData {
+        ensure!(
+            bytes.len() < self.max_object_size,
+            TooLargeData {
                 size: bytes.len(),
                 limit: self.max_object_size,
             }
-            .fail();
-        }
+        );
 
         Ok(())
     }
@@ -275,7 +275,7 @@ impl<T: TableKv> ObkvObjectStore<T> {
 impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
         let instant = Instant::now();
-        // Check if the size of bytes is too large.
+
         self.check_size(&bytes)
             .map_err(|source| StoreError::Generic {
                 store: OBKV,
@@ -313,7 +313,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
         let instant = Instant::now();
 
-        let upload_id = self.upload_id.fetch_add(1, Ordering::SeqCst);
+        let upload_id = self.upload_id.fetch_add(1, Ordering::Relaxed);
         let multi_part_id = format!("{upload_id}");
         let table_name = self.pick_shard_table(location);
 
@@ -665,7 +665,7 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
                 source: Box::new(source),
             })?;
         // Record size of object.
-        self.size.fetch_add(buf.len() as u64, Ordering::SeqCst);
+        self.size.fetch_add(buf.len() as u64, Ordering::Relaxed);
         Ok(UploadPart { content_id: key })
     }
 
