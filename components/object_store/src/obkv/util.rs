@@ -10,7 +10,7 @@ pub fn scan_request_with_prefix(prefix_bytes: &[u8]) -> ScanRequest {
 
     let mut end_key = Vec::with_capacity(prefix_bytes.len());
     end_key.extend(prefix_bytes);
-    let carry = add_one(&mut end_key);
+    let carry = inc_by_one(&mut end_key);
     // Check add one operation overflow.
     let end = if carry == 1 {
         KeyBoundary::MaxIncluded
@@ -24,7 +24,8 @@ pub fn scan_request_with_prefix(prefix_bytes: &[u8]) -> ScanRequest {
     }
 }
 
-pub fn add_one(nums: &mut [u8]) -> u8 {
+/// Increment one to the byte array, and return the carry.
+fn inc_by_one(nums: &mut [u8]) -> u8 {
     let mut carry = 1;
     for i in (0..nums.len()).rev() {
         let sum = nums[i].wrapping_add(carry);
@@ -42,23 +43,23 @@ pub fn add_one(nums: &mut [u8]) -> u8 {
 #[cfg(test)]
 mod test {
 
-    use crate::obkv::util::{add_one, scan_request_with_prefix};
+    use crate::obkv::util::{inc_by_one, scan_request_with_prefix};
 
     #[test]
     fn test_add_one() {
         let mut case0 = vec![0xff_u8, 0xff, 0xff];
         let case0_expect = vec![0x00, 0x00, 0x00];
-        assert_eq!(1, add_one(&mut case0));
+        assert_eq!(1, inc_by_one(&mut case0));
         assert_eq!(case0, case0_expect);
 
         let mut case1 = vec![0x00_u8, 0xff, 0xff];
         let case1_expect = vec![0x01, 0x00, 0x00];
-        assert_eq!(0, add_one(&mut case1));
+        assert_eq!(0, inc_by_one(&mut case1));
         assert_eq!(case1, case1_expect);
 
         let mut case2 = vec![0x00_u8, 0x00, 0x00];
         let case2_expect = vec![0x00, 0x00, 0x01];
-        assert_eq!(0, add_one(&mut case2));
+        assert_eq!(0, inc_by_one(&mut case2));
         assert_eq!(case2, case2_expect);
     }
 
