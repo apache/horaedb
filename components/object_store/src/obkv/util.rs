@@ -2,6 +2,8 @@
 
 use table_kv::{KeyBoundary, ScanRequest};
 
+use super::meta::ObkvObjectMeta;
+
 /// Generate ScanRequest with prefix
 pub fn scan_request_with_prefix(prefix_bytes: &[u8]) -> ScanRequest {
     let mut start_key = Vec::with_capacity(prefix_bytes.len());
@@ -40,10 +42,44 @@ fn inc_by_one(nums: &mut [u8]) -> u8 {
     carry
 }
 
+/// Estimate the json string size of ObkvObjectMeta
+pub fn estimate_size(value: &ObkvObjectMeta) -> usize {
+    // {}
+    let mut size = 2;
+    // size of key name && , && "" && :
+    size += (8 + 13 + 4 + 9 + 9 + 5 + 7) + 4 * 7;
+    size += value.location.len() + 2;
+    // last_modified
+    size += 8;
+    // size
+    size += 8;
+    // unique_id
+    if let Some(id) = &value.unique_id {
+        size += id.len() + 2;
+    } else {
+        size += 4;
+    }
+    // part_size
+    size += 8;
+    // parts
+    for part in &value.parts {
+        // part.len && "" &&: &&,
+        size += part.len() + 4;
+    }
+    //{}
+    size += 2;
+    // version
+    size += value.version.len();
+    size
+}
+
 #[cfg(test)]
 mod test {
 
-    use crate::obkv::util::{inc_by_one, scan_request_with_prefix};
+    use crate::obkv::{
+        meta::ObkvObjectMeta,
+        util::{estimate_size, inc_by_one, scan_request_with_prefix},
+    };
 
     #[test]
     fn test_add_one() {
@@ -103,5 +139,33 @@ mod test {
         };
         let case3_actual = scan_request_with_prefix(&case3);
         assert_eq!(case3_expect, case3_actual);
+    }
+
+    #[test]
+    fn test_estimate_size() {
+        let meta = ObkvObjectMeta {
+            location: String::from("/test/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxfdsfjlajflk"),
+            last_modified: 123456789,
+            size: 10000000,
+            unique_id: Some(String::from("1245689u438uferjalfjkda")),
+            part_size: 1024,
+            parts: vec![
+                String::from("/test/xx/0"),
+                String::from("/test/xx/1"),
+                String::from("/test/xx/4"),
+                String::from("/test/xx/5"),
+                String::from("/test/xx/0"),
+                String::from("/test/xx/1"),
+                String::from("/test/xx/4"),
+                String::from("/test/xx/5"),
+            ],
+            version: String::from("123456fsdalfkassa;l;kjfaklasadffsd"),
+        };
+
+        let expect = estimate_size(&meta);
+        let json = &serde_json::to_string(&meta).unwrap();
+        let real = json.len();
+        println!("expect:{expect},real:{real}");
+        assert!(expect.abs_diff(real) as f32 / (real as f32) < 0.1);
     }
 }

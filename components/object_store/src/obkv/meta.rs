@@ -11,7 +11,10 @@ use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
 use upstream::{path::Path, Error as StoreError, Result as StoreResult};
 
-use super::{util, OBKV};
+use super::{
+    util::{self, estimate_size},
+    OBKV,
+};
 
 pub const HEADER: u8 = 0x00_u8;
 
@@ -129,8 +132,8 @@ impl<T: TableKv> std::fmt::Display for MetaManager<T> {
 impl<T: TableKv> MetaManager<T> {
     pub async fn save_meta(&self, meta: ObkvObjectMeta) -> Result<()> {
         let mut batch = T::WriteBatch::default();
-        let json = meta.encode()?;
-        batch.insert(meta.location.as_bytes(), &json);
+        let encode_bytes = meta.encode()?;
+        batch.insert(meta.location.as_bytes(), &encode_bytes);
         self.client
             .as_ref()
             .write(WriteContext::default(), OBJECT_STORE_META, batch)
@@ -166,14 +169,14 @@ impl<T: TableKv> MetaManager<T> {
         Ok(())
     }
 
-    pub async fn delete_meta_with_version(&self, location: &Path, version: &str) -> Result<i64> {
+    pub async fn delete_meta_with_version(&self, location: &Path, version: &str) -> Result<()> {
         let meta_result = self.read_meta(location).await?;
         if let Some(meta) = meta_result {
             if meta.version == version {
                 self.delete_meta(meta, location).await?;
             }
         }
-        Ok(0)
+        Ok(())
     }
 
     pub async fn list_meta(
@@ -212,7 +215,9 @@ impl<T: TableKv> MetaManager<T> {
     }
 }
 
-fn decode_json<'a, T: serde::Deserialize<'a>>(data: &'a [u8]) -> Result<T> {
+fn decode_json<'a, ObkvObjectMeta: serde::Deserialize<'a>>(
+    data: &'a [u8],
+) -> Result<ObkvObjectMeta> {
     ensure!(
         data[0] == HEADER,
         InvalidHeader {
@@ -224,11 +229,10 @@ fn decode_json<'a, T: serde::Deserialize<'a>>(data: &'a [u8]) -> Result<T> {
     serde_json::from_str(json).context(InvalidJson { json })
 }
 
-fn encode_json<T: serde::Serialize>(value: &T) -> Result<Vec<u8>> {
-    let json = serde_json::to_string(value).context(EncodeJson)?;
-    let bytes = json.into_bytes();
-    let mut key_buffer = Vec::with_capacity(bytes.len() + 1);
+fn encode_json(value: &ObkvObjectMeta) -> Result<Vec<u8>> {
+    let size = estimate_size(value);
+    let mut key_buffer = Vec::with_capacity(size + 1);
     key_buffer.push(HEADER);
-    key_buffer.extend(bytes);
+    serde_json::to_writer(&mut key_buffer, value).context(EncodeJson)?;
     Ok(key_buffer)
 }
