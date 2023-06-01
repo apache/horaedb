@@ -7,7 +7,7 @@ use common_util::{
     error::{BoxError, GenericError},
 };
 use serde::{Deserialize, Serialize};
-use snafu::{Backtrace, ResultExt, Snafu};
+use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
 use upstream::{path::Path, Error as StoreError, Result as StoreResult};
 
@@ -58,6 +58,9 @@ pub enum Error {
         location: String,
         source: GenericError,
     },
+
+    #[snafu(display("Invalid header found, header:{header}, expect:{expect}"))]
+    InvalidHeader { header: u8, expect: u8 },
 }
 
 define_result!(Error);
@@ -152,15 +155,14 @@ impl<T: TableKv> MetaManager<T> {
     }
 
     pub async fn delete_meta(&self, meta: ObkvObjectMeta, location: &Path) -> Result<()> {
-        self
-            .client
+        self.client
             .as_ref()
             .delete(OBJECT_STORE_META, location.as_ref().as_bytes())
             .box_err()
             .context(DeleteMeta {
                 location: meta.location,
             })?;
-        
+
         Ok(())
     }
 
@@ -211,7 +213,13 @@ impl<T: TableKv> MetaManager<T> {
 }
 
 fn decode_json<'a, T: serde::Deserialize<'a>>(data: &'a [u8]) -> Result<T> {
-    assert_eq!(data[0], HEADER);
+    ensure!(
+        data[0] == HEADER,
+        InvalidHeader {
+            header: data[0],
+            expect: HEADER,
+        }
+    );
     let json = str::from_utf8(&data[1..]).context(InvalidUtf8)?;
     serde_json::from_str(json).context(InvalidJson { json })
 }
