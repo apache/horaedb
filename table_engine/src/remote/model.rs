@@ -158,7 +158,7 @@ impl TryFrom<ceresdbproto::remote_engine::WriteBatchRequest> for WriteBatchReque
 }
 
 impl WriteBatchRequest {
-    pub fn batch_convert_to_pb(
+    pub fn convert_write_batch_to_pb(
         batch_request: WriteBatchRequest,
         compress_options: CompressOptions,
     ) -> std::result::Result<ceresdbproto::remote_engine::WriteBatchRequest, Error> {
