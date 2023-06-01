@@ -63,6 +63,7 @@ async fn run(args: Args) -> Result<()> {
 
     let mut join_set = JoinSet::new();
     let mut ssts = storage.list(None).await?;
+    let verbose = args.verbose;
     while let Some(object_meta) = ssts.next().await {
         let object_meta = object_meta?;
         let storage = storage.clone();
@@ -70,7 +71,7 @@ async fn run(args: Args) -> Result<()> {
         join_set.spawn_on(
             async move {
                 let (metadata, metadata_size, kv_size) =
-                    parse_metadata(storage, location, object_meta.size).await?;
+                    parse_metadata(storage, location, object_meta.size, verbose).await?;
                 Ok::<_, anyhow::Error>((object_meta, metadata, metadata_size, kv_size))
             },
             &handle,
@@ -107,8 +108,8 @@ async fn run(args: Args) -> Result<()> {
             .unwrap_or(0);
         let file_metadata = parquet_meta.file_metadata();
         let row_num = file_metadata.num_rows();
-        if args.verbose {
-            println!("object_meta:{object_meta:?}, parquet_meta:{parquet_meta:?}");
+        if verbose {
+            println!("object_meta:{object_meta:?}, parquet_meta:{parquet_meta:?}, custom_meta:{custom_meta:?}");
         } else {
             let size_mb = as_mb(*size);
             let metadata_mb = as_mb(metadata_size);
@@ -131,6 +132,7 @@ async fn parse_metadata(
     storage: ObjectStoreRef,
     path: Path,
     size: usize,
+    verbose: bool,
 ) -> Result<(MetaData, usize, usize)> {
     let reader = ChunkReaderAdapter::new(&path, &storage);
     let (parquet_metadata, metadata_size) = fetch_parquet_metadata(size, &reader).await?;
@@ -138,7 +140,17 @@ async fn parse_metadata(
     let kv_size = kv_metadata
         .map(|kvs| {
             kvs.iter()
-                .map(|kv| kv.key.as_bytes().len() + kv.value.as_ref().map(|v| v.len()).unwrap_or(0))
+                .map(|kv| {
+                    if verbose {
+                        println!(
+                            "kv_metadata_size, key:{}, value:{:?}",
+                            kv.key,
+                            kv.value.as_ref().map(|v| v.len())
+                        );
+                    }
+
+                    kv.key.as_bytes().len() + kv.value.as_ref().map(|v| v.len()).unwrap_or(0)
+                })
                 .sum()
         })
         .unwrap_or(0);
