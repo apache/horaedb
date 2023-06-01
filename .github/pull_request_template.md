@@ -1,8 +1,7 @@
-## Related Issues
-Closes #
+## Rationale
+
 
 ## Detailed Changes
 
 
-## Test Plan 
-
+## Test Plan
