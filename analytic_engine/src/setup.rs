@@ -455,6 +455,8 @@ fn open_storage(
                         obkv_opts.shard_num,
                         obkv_opts.part_size,
                         Arc::new(obkv),
+                        obkv_opts.max_object_size,
+                        obkv_opts.max_upload_concurrency,
                     )
                     .context(OpenObjectStore)?,
                 );

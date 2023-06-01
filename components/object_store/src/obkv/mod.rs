@@ -108,14 +108,13 @@ fn create_table_if_not_exists<T: TableKv>(
 }
 
 #[derive(Debug, Clone)]
-pub struct ShardManager<T> {
-    _client: Arc<T>,
+pub struct ShardManager {
     shard_num: usize,
     table_names: Vec<String>,
 }
 
-impl<T: TableKv> ShardManager<T> {
-    fn try_new(client: Arc<T>, shard_num: usize) -> std::result::Result<Self, Error> {
+impl ShardManager {
+    fn try_new<T: TableKv>(client: Arc<T>, shard_num: usize) -> std::result::Result<Self, Error> {
         let mut table_names = Vec::with_capacity(shard_num);
 
         for shard_id in 0..shard_num {
@@ -125,14 +124,13 @@ impl<T: TableKv> ShardManager<T> {
         }
 
         Ok(Self {
-            _client: client,
             shard_num,
             table_names,
         })
     }
 }
 
-impl<T: TableKv> std::fmt::Display for ShardManager<T> {
+impl std::fmt::Display for ShardManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "ObjectStore ObkvShardManager({})", self.shard_num)?;
         Ok(())
@@ -142,7 +140,7 @@ impl<T: TableKv> std::fmt::Display for ShardManager<T> {
 #[derive(Debug)]
 pub struct ObkvObjectStore<T> {
     /// The manager to manage shard table in obkv
-    shard_manager: ShardManager<T>,
+    shard_manager: ShardManager,
     /// The manager to manage object store meta, which persist in obkv
     meta_manager: Arc<MetaManager<T>>,
     client: Arc<T>,
@@ -153,6 +151,8 @@ pub struct ObkvObjectStore<T> {
     part_size: usize,
     /// The max size of bytes, default is 1GB
     max_object_size: usize,
+    /// Maximum number of upload tasks to run concurrently
+    max_upload_concurrency: usize,
 }
 
 impl<T: TableKv> std::fmt::Display for ObkvObjectStore<T> {
@@ -167,7 +167,13 @@ impl<T: TableKv> std::fmt::Display for ObkvObjectStore<T> {
 }
 
 impl<T: TableKv> ObkvObjectStore<T> {
-    pub fn try_new(shard_num: usize, part_size: usize, client: Arc<T>) -> Result<Self> {
+    pub fn try_new(
+        shard_num: usize,
+        part_size: usize,
+        client: Arc<T>,
+        max_object_size: usize,
+        max_upload_concurrency: usize,
+    ) -> Result<Self> {
         let shard_manager = ShardManager::try_new(client.clone(), shard_num).map_err(|source| {
             StoreError::Generic {
                 store: OBKV,
@@ -186,7 +192,8 @@ impl<T: TableKv> ObkvObjectStore<T> {
             client,
             upload_id,
             part_size,
-            max_object_size: 1024 * 1024 * 1024,
+            max_object_size,
+            max_upload_concurrency,
         })
     }
 
@@ -326,7 +333,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             part_size: self.part_size,
             meta_manager: self.meta_manager.clone(),
         };
-        let multi_part_upload = CloudMultiPartUpload::new(upload, 8, self.part_size);
+        let multi_part_upload =
+            CloudMultiPartUpload::new(upload, self.max_upload_concurrency, self.part_size);
 
         debug!(
             "ObkvObjectStore put_multipart operation, location:{}, table_name:{}, cost:{}",
@@ -865,7 +873,8 @@ mod test {
 
     fn init_object_store() -> Arc<ObkvObjectStore<MemoryImpl>> {
         let table_kv = Arc::new(MemoryImpl::default());
-        let obkv_object = ObkvObjectStore::try_new(128, TEST_PART_SIZE, table_kv).unwrap();
+        let obkv_object =
+            ObkvObjectStore::try_new(128, TEST_PART_SIZE, table_kv, 1024 * 1024 * 1024, 8).unwrap();
         Arc::new(obkv_object)
     }
 

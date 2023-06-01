@@ -231,8 +231,8 @@ fn decode_json<'a, ObkvObjectMeta: serde::Deserialize<'a>>(
 
 fn encode_json(value: &ObkvObjectMeta) -> Result<Vec<u8>> {
     let size = estimate_size(value);
-    let mut key_buffer = Vec::with_capacity(size + 1);
-    key_buffer.push(HEADER);
-    serde_json::to_writer(&mut key_buffer, value).context(EncodeJson)?;
-    Ok(key_buffer)
+    let mut encode_bytes = Vec::with_capacity(size + 1);
+    encode_bytes.push(HEADER);
+    serde_json::to_writer(&mut encode_bytes, value).context(EncodeJson)?;
+    Ok(encode_bytes)
 }
