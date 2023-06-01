@@ -51,9 +51,9 @@ impl MemCache {
         mem_cap: NonZeroUsize,
     ) -> std::result::Result<Self, Error> {
         let partition_num = 1 << partition_bits;
-        let cap_per_part = mem_cap
-            .checked_mul(NonZeroUsize::new(partition_num).unwrap())
-            .context(InvalidCapacity)?;
+        let cap_per_part =
+            NonZeroUsize::new((mem_cap.get() as f64 / partition_num as f64) as usize)
+                .context(InvalidCapacity)?;
         let inin_lru =
             || CLruCache::with_config(CLruCacheConfig::new(cap_per_part).with_scale(CustomScale));
         let inner = PartitionedMutex::new(inin_lru, partition_bits);
