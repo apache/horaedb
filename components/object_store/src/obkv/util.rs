@@ -29,7 +29,7 @@ pub fn add_one(nums: &mut [u8]) -> u8 {
     for i in (0..nums.len()).rev() {
         let sum = nums[i].wrapping_add(carry);
         nums[i] = sum;
-        if sum == 0x00 {
+        if sum == 0 {
             carry = 1;
         } else {
             carry = 0;

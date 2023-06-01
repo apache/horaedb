@@ -204,7 +204,7 @@ impl<T: TableKv> ObkvObjectStore<T> {
     }
 
     #[inline]
-    fn format_path(location: Option<&Path>) -> Path {
+    fn normalize_path(location: Option<&Path>) -> Path {
         if let Some(path) = location {
             if !path.as_ref().ends_with(DELIMITER) {
                 return Path::from(format!("{}{}", path.as_ref(), DELIMITER));
@@ -543,7 +543,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
         let instant = Instant::now();
 
-        let path = Self::format_path(prefix);
+        let path = Self::normalize_path(prefix);
         let raw_metas =
             self.meta_manager
                 .list_meta(&path)
@@ -578,7 +578,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {
         let instant = Instant::now();
 
-        let path = Self::format_path(prefix);
+        let path = Self::normalize_path(prefix);
         let metas =
             self.meta_manager
                 .list_meta(&path)
