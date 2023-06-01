@@ -128,6 +128,15 @@ impl ShardManager {
             table_names,
         })
     }
+
+    #[inline]
+    pub fn pick_shard_table(&self, path: &Path) -> &str {
+        let mut hasher = DefaultHasher::new();
+        path.as_ref().as_bytes().hash(&mut hasher);
+        let hash = hasher.finish();
+        let index = hash % (self.table_names.len() as u64);
+        &self.table_names[index as usize]
+    }
 }
 
 impl std::fmt::Display for ShardManager {
@@ -224,11 +233,7 @@ impl<T: TableKv> ObkvObjectStore<T> {
 
     #[inline]
     pub fn pick_shard_table(&self, path: &Path) -> &str {
-        let mut hasher = DefaultHasher::new();
-        path.as_ref().as_bytes().hash(&mut hasher);
-        let hash = hasher.finish();
-        let index = hash % (self.shard_manager.shard_num as u64);
-        &self.shard_manager.table_names[index as usize]
+        self.shard_manager.pick_shard_table(path)
     }
 }
 
