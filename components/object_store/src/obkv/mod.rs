@@ -326,7 +326,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
 
         let upload = ObkvMultiPartUpload {
             location: location.clone(),
-            upload_id: multi_part_id.clone(),
+            current_upload_id: multi_part_id.clone(),
             table_name: table_name.to_string(),
             size: AtomicU64::new(0),
             client: Arc::clone(&self.client),
@@ -641,7 +641,7 @@ struct ObkvMultiPartUpload<T> {
     /// The full path to the object.
     location: Path,
     /// The id of multi upload tasks, we use this id as object version.
-    upload_id: String,
+    current_upload_id: String,
     /// The table name of obkv to save data.
     table_name: String,
     /// The client of object store.
@@ -663,7 +663,7 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
         part_idx: usize,
     ) -> Result<UploadPart, std::io::Error> {
         let mut batch = T::WriteBatch::default();
-        let key = format!("{}@{}@{}", self.location, self.upload_id, part_idx);
+        let key = format!("{}@{}@{}", self.location, self.current_upload_id, part_idx);
         batch.insert(key.as_bytes(), buf.as_ref());
 
         self.client
@@ -694,11 +694,11 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
             size: self.size.load(Ordering::SeqCst) as usize,
             unique_id: Some(format!(
                 "{}@{}@{}",
-                self.table_name, self.location, self.upload_id
+                self.table_name, self.location, self.current_upload_id
             )),
             part_size: self.part_size,
             parts: paths,
-            version: self.upload_id.clone(),
+            version: self.current_upload_id.clone(),
         };
 
         // Save meta info to specify obkv table.
