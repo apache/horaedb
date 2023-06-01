@@ -358,11 +358,11 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         // Before aborting multipart, we need to delete all data parts and meta info.
         // Here to delete data with path `location` and multipart_id
         let scan_context: ScanContext = ScanContext {
-            timeout: time::Duration::from_secs(10),
-            batch_size: 1000,
+            timeout: time::Duration::from_secs(meta::SCAN_TIMEOUT_SECS),
+            batch_size: meta::SCAN_BATCH_SIZE,
         };
 
-        let prefix = format!("{}@{}@", location.as_ref(), multipart_id);
+        let prefix: String = format!("{}@{}@", location.as_ref(), multipart_id);
         let scan_request = util::scan_request_with_prefix(prefix.as_bytes());
 
         let mut iter = self

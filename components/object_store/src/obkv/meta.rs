@@ -18,6 +18,10 @@ use super::{
 
 pub const HEADER: u8 = 0x00_u8;
 
+pub const SCAN_TIMEOUT_SECS: u64 = 10;
+
+pub const SCAN_BATCH_SIZE: i32 = 1000;
+
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Invalid utf8 string, err:{source}.\nBacktrace:\n{backtrace}"))]
@@ -184,8 +188,8 @@ impl<T: TableKv> MetaManager<T> {
         prefix: &Path,
     ) -> StoreResult<Vec<ObkvObjectMeta>, std::io::Error> {
         let scan_context: ScanContext = ScanContext {
-            timeout: time::Duration::from_secs(10),
-            batch_size: 1000,
+            timeout: time::Duration::from_secs(SCAN_TIMEOUT_SECS),
+            batch_size: SCAN_BATCH_SIZE,
         };
 
         let scan_request = util::scan_request_with_prefix(prefix.as_ref().as_bytes());
