@@ -155,7 +155,9 @@ impl RowGroupFilterBuilder {
     }
 
     pub(crate) fn add_key(&mut self, col_idx: usize, key: &[u8]) {
-        self.builders[col_idx].as_mut().map(|b| b.insert(key));
+        if let Some(b) = self.builders[col_idx].as_mut() {
+            b.insert(key)
+        }
     }
 
     pub(crate) fn build(self) -> Result<RowGroupFilter> {
@@ -481,14 +483,13 @@ mod tests {
         let schema = build_schema();
         let record_schema = schema.to_record_schema_with_key();
         let mut builders = RowGroupFilterBuilder::new(&record_schema);
-        assert!(builders.builders[0].is_none());
-        assert!(builders.builders[1].is_none());
-        assert!(builders.builders[2].is_none());
-
         for key in ["host-123", "host-456", "host-789"] {
             builders.add_key(3, key.as_bytes());
         }
         let row_group_filter = builders.build().unwrap();
+        for i in 0..3 {
+            assert!(row_group_filter.column_filters[i].is_none());
+        }
 
         let testcase = [("host-123", true), ("host-321", false)];
         for (key, expected) in testcase {
