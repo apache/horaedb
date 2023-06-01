@@ -340,4 +340,21 @@ mod test {
             .get(&MemCacheStore::cache_key(&location, &range100_105))
             .is_some());
     }
+
+    #[test]
+    fn test_mem_cache_capacity() {
+        // 4 partitions
+        let store = prepare_store(2, 100);
+        assert_eq!(
+            "25,25,25,25",
+            store
+                .cache
+                .inner
+                .get_all_partition()
+                .iter()
+                .map(|p| p.lock().unwrap().capacity().to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+    }
 }
