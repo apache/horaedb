@@ -18,7 +18,7 @@ use ceresdbproto::{
 use common_types::record_batch::RecordBatch;
 use common_util::{error::BoxError, time::InstantExt};
 use futures::stream::{self, BoxStream, StreamExt};
-use log::error;
+use log::{error, info};
 use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
@@ -311,22 +311,37 @@ async fn handle_stream_read(
     ctx: HandlerContext,
     request: ReadRequest,
 ) -> Result<PartitionedStreams> {
-    let read_request: table_engine::remote::model::ReadRequest =
-        request.try_into().box_err().context(ErrWithCause {
-            code: StatusCode::BadRequest,
-            msg: "fail to convert read request",
-        })?;
+    let table_engine::remote::model::ReadRequest {
+        table: table_ident,
+        read_request,
+    } = request.try_into().box_err().context(ErrWithCause {
+        code: StatusCode::BadRequest,
+        msg: "fail to convert read request",
+    })?;
 
-    let table = find_table_by_identifier(&ctx, &read_request.table)?;
+    let request_id = read_request.request_id;
+    info!(
+        "Handle stream read, request_id:{request_id}, table:{table_ident:?}, read_options:{:?}, read_order:{:?}, predicate:{:?} ",
+        read_request.opts,
+        read_request.order,
+        read_request.predicate,
+    );
 
+    let begin = Instant::now();
+    let table = find_table_by_identifier(&ctx, &table_ident)?;
     let streams = table
-        .partitioned_read(read_request.read_request)
+        .partitioned_read(read_request)
         .await
         .box_err()
-        .context(ErrWithCause {
+        .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to read table, table:{:?}", read_request.table),
+            msg: format!("fail to read table, table:{table_ident:?}"),
         })?;
+
+    info!(
+        "Handle stream read success, request_id:{request_id}, table:{table_ident:?}, cost:{:?}",
+        begin.elapsed(),
+    );
 
     Ok(streams)
 }
