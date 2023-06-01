@@ -21,7 +21,6 @@ use common_util::{
 };
 use futures::{
     channel::{mpsc, mpsc::channel},
-    future::try_join_all,
     stream, SinkExt, TryStreamExt,
 };
 use log::{debug, error, info};
@@ -542,9 +541,9 @@ impl FlushTask {
         }
         batch_record_senders.clear();
 
-        let info_and_metas = try_join_all(sst_handlers).await.context(RuntimeJoin)?;
-        for (idx, info_and_meta) in info_and_metas.into_iter().enumerate() {
-            let (sst_info, sst_meta) = info_and_meta?;
+        for (idx, sst_handler) in sst_handlers.into_iter().enumerate() {
+            let info_and_metas = sst_handler.await.context(RuntimeJoin)?;
+            let (sst_info, sst_meta) = info_and_metas?;
             files_to_level0.push(AddFile {
                 level: Level::MIN,
                 file: FileMeta {
