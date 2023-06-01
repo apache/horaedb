@@ -126,13 +126,12 @@ pub struct RowGroupFilterBuilder {
 
 impl RowGroupFilterBuilder {
     pub(crate) fn new(record_schema: &RecordSchemaWithKey) -> Self {
-        let key_idx = record_schema.primary_key_idx();
         let builders = record_schema
             .columns()
             .iter()
             .enumerate()
             .map(|(i, col)| {
-                if key_idx.contains(&i) {
+                if record_schema.is_primary_key_index(i) {
                     return None;
                 }
 
