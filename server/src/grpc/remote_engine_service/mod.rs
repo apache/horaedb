@@ -31,7 +31,10 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
 use crate::grpc::{
-    metrics::REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+    metrics::{
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+        REMOTE_ENGINE_GRPC_WRITE_RERQUEST_FAILED_COUNTER,
+    },
     remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
 };
 
@@ -110,6 +113,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
                 resp.affected_rows = v.affected_rows;
             }
             Ok(Err(e)) | Err(e) => {
+                REMOTE_ENGINE_GRPC_WRITE_RERQUEST_FAILED_COUNTER.inc();
                 resp.header = Some(error::build_err_header(e));
             }
         };
@@ -185,12 +189,14 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
                     Ok(resp) => batch_resp.affected_rows += resp.affected_rows,
                     Err(e) => {
                         error!("Failed to write batches, err:{e}");
+                        REMOTE_ENGINE_GRPC_WRITE_RERQUEST_FAILED_COUNTER.inc();
                         batch_resp.header = Some(error::build_err_header(e));
                         break;
                     }
                 },
                 Err(e) => {
                     error!("Failed to write batches, err:{e}");
+                    REMOTE_ENGINE_GRPC_WRITE_RERQUEST_FAILED_COUNTER.inc();
                     batch_resp.header = Some(error::build_err_header(e));
                     break;
                 }

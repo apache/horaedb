@@ -25,7 +25,9 @@ use proxy::{Context, Proxy};
 use query_engine::executor::Executor as QueryExecutor;
 use table_engine::engine::EngineRuntimes;
 
-use crate::grpc::metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC;
+use crate::grpc::metrics::{
+    GRPC_HANDLER_DURATION_HISTOGRAM_VEC, GRPC_WRITE_RERQUEST_FAILED_COUNTER,
+};
 
 #[derive(Clone)]
 pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
@@ -210,13 +212,16 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
 
         let resp = match join_handle.await {
             Ok(v) => v,
-            Err(e) => WriteResponse {
-                header: Some(error::build_err_header(
-                    StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
-                    format!("fail to join the spawn task, err:{e:?}"),
-                )),
-                ..Default::default()
-            },
+            Err(e) => {
+                GRPC_WRITE_RERQUEST_FAILED_COUNTER.inc();
+                WriteResponse {
+                    header: Some(error::build_err_header(
+                        StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                        format!("fail to join the spawn task, err:{e:?}"),
+                    )),
+                    ..Default::default()
+                }
+            }
         };
 
         Ok(tonic::Response::new(resp))
@@ -380,13 +385,16 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
 
         let resp = match join_handle.await {
             Ok(v) => v,
-            Err(e) => WriteResponse {
-                header: Some(error::build_err_header(
-                    StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
-                    format!("fail to join the spawn task, err:{e:?}"),
-                )),
-                ..Default::default()
-            },
+            Err(e) => {
+                GRPC_WRITE_RERQUEST_FAILED_COUNTER.inc();
+                WriteResponse {
+                    header: Some(error::build_err_header(
+                        StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                        format!("fail to join the spawn task, err:{e:?}"),
+                    )),
+                    ..Default::default()
+                }
+            }
         };
 
         Ok(tonic::Response::new(resp))
