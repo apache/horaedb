@@ -191,12 +191,11 @@ impl<T: TableKv> ObkvObjectStore<T> {
                 store: OBKV,
                 source: Box::new(source),
             })?;
-        let upload_id = AtomicI64::new(0);
         Ok(Self {
             shard_manager,
             meta_manager: Arc::new(meta_manager),
             client,
-            current_upload_id: upload_id,
+            current_upload_id: AtomicU64::new(0),
             part_size,
             max_object_size,
             max_upload_concurrency,
