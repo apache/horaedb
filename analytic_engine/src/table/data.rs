@@ -368,12 +368,11 @@ impl TableData {
         timestamp: Timestamp,
         table_schema: &Schema,
     ) -> Result<MemTableForWrite> {
-        let schema_version = table_schema.version();
         let last_sequence = self.last_sequence();
 
         if let Some(mem) = self
             .current_version
-            .memtable_for_write(timestamp, schema_version)
+            .memtable_for_write(timestamp, table_schema.version())
             .context(FindMemTable)?
         {
             return Ok(mem);
