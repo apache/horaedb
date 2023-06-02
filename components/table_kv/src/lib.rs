@@ -187,12 +187,12 @@ pub trait TableKv: Clone + Send + Sync + fmt::Debug + 'static {
     fn get(&self, table_name: &str, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error>;
 
     /// Delete data by key from table with `table_name`.
-    fn delete(&self, table_name: &str, key: &[u8]) -> Result<i64, Self::Error>;
+    fn delete(&self, table_name: &str, key: &[u8]) -> Result<(), Self::Error>;
 
-    /// Batch delete data by key list from table with `table_name`.
+    /// Delete a batch of data by key list from table with `table_name`.
     fn batch_delete(
         &self,
         table_name: &str,
-        key: Vec<Vec<u8>>,
-    ) -> std::result::Result<i64, Self::Error>;
+        keys: Vec<Vec<u8>>,
+    ) -> std::result::Result<(), Self::Error>;
 }

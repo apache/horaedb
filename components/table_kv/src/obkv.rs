@@ -501,23 +501,21 @@ impl TableKv for ObkvImpl {
         Ok(values.remove(VALUE_COLUMN_NAME).map(Value::as_bytes))
     }
 
-    fn delete(&self, table_name: &str, key: &[u8]) -> std::result::Result<i64, Self::Error> {
-        let size = self
-            .client
+    fn delete(&self, table_name: &str, key: &[u8]) -> std::result::Result<(), Self::Error> {
+        self.client
             .delete(table_name, bytes_to_values(key))
             .context(DeleteData { table_name })?;
 
-        Ok(size)
+        Ok(())
     }
 
     fn batch_delete(
         &self,
         table_name: &str,
-        key_list: Vec<Vec<u8>>,
-    ) -> std::result::Result<i64, Self::Error> {
-        let mut batch_ops = ObTableBatchOperation::default();
-        let size = key_list.len();
-        for key in key_list {
+        keys: Vec<Vec<u8>>,
+    ) -> std::result::Result<(), Self::Error> {
+        let mut batch_ops = ObTableBatchOperation::with_ops_num_raw(keys.len());
+        for key in keys {
             batch_ops.delete(bytes_to_values(&key));
         }
 
@@ -525,7 +523,7 @@ impl TableKv for ObkvImpl {
             .execute_batch(table_name, batch_ops)
             .context(WriteTable { table_name })?;
 
-        Ok(size as i64)
+        Ok(())
     }
 }
 

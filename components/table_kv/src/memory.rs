@@ -278,28 +278,27 @@ impl TableKv for MemoryImpl {
         Ok(table.get(key))
     }
 
-    fn delete(&self, table_name: &str, key: &[u8]) -> std::result::Result<i64, Self::Error> {
+    fn delete(&self, table_name: &str, key: &[u8]) -> std::result::Result<(), Self::Error> {
         let table = self
             .find_table(table_name)
             .context(TableNotFound { table_name })?;
         table.delete(key)?;
-        Ok(0)
+        Ok(())
     }
 
     fn batch_delete(
         &self,
         table_name: &str,
-        key_list: Vec<Vec<u8>>,
-    ) -> std::result::Result<i64, Self::Error> {
+        keys: Vec<Vec<u8>>,
+    ) -> std::result::Result<(), Self::Error> {
         let table = self
             .find_table(table_name)
             .context(TableNotFound { table_name })?;
-        let size = key_list.len();
-        for key in key_list {
+        for key in keys {
             table.delete(&key)?;
         }
 
-        Ok(size as i64)
+        Ok(())
     }
 }
 

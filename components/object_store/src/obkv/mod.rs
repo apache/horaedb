@@ -373,9 +373,9 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 source: Box::new(source),
             })?;
 
-        let mut key_list = vec![];
+        let mut keys = vec![];
         while iter.valid() {
-            key_list.push(iter.key().to_vec());
+            keys.push(iter.key().to_vec());
             iter.next().map_err(|source| StoreError::Generic {
                 store: OBKV,
                 source: Box::new(source),
@@ -383,7 +383,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         }
 
         self.client
-            .batch_delete(table_name, key_list)
+            .batch_delete(table_name, keys)
             .map_err(|source| StoreError::Generic {
                 store: OBKV,
                 source: Box::new(source),
