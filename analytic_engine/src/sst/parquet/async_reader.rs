@@ -82,6 +82,7 @@ pub struct Reader<'a> {
 
     /// Options for `read_parallelly`
     metrics: Metrics,
+    df_plan_metrics: ExecutionPlanMetricsSet,
 }
 
 #[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
@@ -105,7 +106,7 @@ impl<'a> Reader<'a> {
         metrics_collector: Option<MetricsCollector>,
     ) -> Self {
         let store = store_picker.pick_by_freq(options.frequency);
-
+        let df_plan_metrics = ExecutionPlanMetricsSet::new();
         let metrics = Metrics {
             metrics_collector,
             ..Default::default()
@@ -123,6 +124,7 @@ impl<'a> Reader<'a> {
             meta_data: None,
             row_projector: None,
             metrics,
+            df_plan_metrics,
         }
     }
 
@@ -199,20 +201,22 @@ impl<'a> Reader<'a> {
         row_groups: &[usize],
         file_metadata: &parquet_ext::ParquetMetaData,
     ) -> Result<Option<RowSelection>> {
-        let metrics_set = ExecutionPlanMetricsSet::new();
         // TODO: remove fixed partition
         let partition = 0;
-        let metrics = ParquetFileMetrics::new(partition, &self.path.to_string(), &metrics_set);
+        let metrics = ParquetFileMetrics::new(partition, self.path.as_ref(), &self.df_plan_metrics);
         let exprs = datafusion::optimizer::utils::conjunction(self.predicate.exprs().to_vec());
         let exprs = match exprs {
             Some(exprs) => exprs,
             None => return Ok(None),
         };
 
-        let df_schema = arrow_schema.clone().to_dfschema().unwrap();
+        let df_schema = arrow_schema
+            .clone()
+            .to_dfschema()
+            .context(DataFusionError)?;
         let physical_expr =
             create_physical_expr(&exprs, &df_schema, &arrow_schema, &ExecutionProps::new())
-                .unwrap();
+                .context(DataFusionError)?;
         let page_predicate = PagePruningPredicate::try_new(&physical_expr, arrow_schema.clone())
             .context(DataFusionError)?;
 
@@ -283,7 +287,7 @@ impl<'a> Reader<'a> {
                 .await
                 .with_context(|| ParquetError)?;
             let row_selection =
-                self.build_row_selection(arrow_schema.clone(), &chunk, &parquet_metadata)?;
+                self.build_row_selection(arrow_schema.clone(), &chunk, parquet_metadata)?;
             if let Some(selection) = row_selection {
                 builder = builder.with_row_selection(selection);
             };
@@ -396,6 +400,16 @@ impl<'a> Reader<'a> {
     pub(crate) async fn row_groups(&mut self) -> Vec<parquet::file::metadata::RowGroupMetaData> {
         let meta_data = self.read_sst_meta().await.unwrap();
         meta_data.parquet().row_groups().to_vec()
+    }
+}
+
+impl<'a> Drop for Reader<'a> {
+    fn drop(&mut self) {
+        debug!(
+            "Parquet reader dropped, path:{:?}, df_plan_metrics:{}",
+            self.path,
+            self.df_plan_metrics.clone_inner().to_string()
+        );
     }
 }
 
