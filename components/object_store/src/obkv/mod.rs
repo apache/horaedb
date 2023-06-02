@@ -5,7 +5,7 @@ use std::{
     hash::{Hash, Hasher},
     ops::Range,
     sync::{
-        atomic::{AtomicI64, AtomicU64, Ordering},
+        atomic::{AtomicU64, Ordering},
         Arc,
     },
     time,
@@ -14,14 +14,14 @@ use std::{
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use chrono::{TimeZone, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use common_util::error::{BoxError, GenericError};
 use futures::{
     stream::{BoxStream, FuturesOrdered},
     StreamExt,
 };
 use log::debug;
-use snafu::{ensure, ResultExt, Snafu};
+use snafu::{ensure, OptionExt, ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
 use tokio::{
     io::{AsyncWrite, AsyncWriteExt},
@@ -76,6 +76,9 @@ pub enum Error {
 
     #[snafu(display("Data is too large to put, size:{size}, limit:{limit}"))]
     TooLargeData { size: usize, limit: usize },
+
+    #[snafu(display("Convert timestamp to date time fail, timestamp:{timestamp}"))]
+    ConvertTimestamp { timestamp: i64 },
 }
 
 impl<T: TableKv> MetaManager<T> {
@@ -150,7 +153,7 @@ pub struct ObkvObjectStore<T> {
     /// The manager to manage object store meta, which persist in obkv
     meta_manager: Arc<MetaManager<T>>,
     client: Arc<T>,
-    current_upload_id: AtomicI64,
+    current_upload_id: AtomicU64,
     /// The size of one object part persited in obkv
     /// It may cause problem to save huge data in one obkv value, so we
     /// need to split data into small parts.
@@ -277,6 +280,15 @@ impl<T: TableKv> ObkvObjectStore<T> {
         let boxed = futures.boxed();
 
         Ok(GetResult::Stream(boxed))
+    }
+
+    fn convert_datetime(&self, timestamp: i64) -> std::result::Result<DateTime<Utc>, Error> {
+        let timestamp_millis_opt = Utc.timestamp_millis_opt(timestamp);
+        if let Some(dt) = timestamp_millis_opt.single() {
+            Ok(dt)
+        } else {
+            ConvertTimestamp { timestamp }.fail()
+        }
     }
 }
 
@@ -487,9 +499,17 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             instant.elapsed().as_millis()
         );
 
+        let last_modified = self
+            .convert_datetime(meta.last_modified)
+            .box_err()
+            .map_err(|source| StoreError::NotFound {
+                path: location.to_string(),
+                source,
+            })?;
+
         Ok(ObjectMeta {
             location: (*location).clone(),
-            last_modified: Utc.timestamp_millis_opt(meta.last_modified).unwrap(),
+            last_modified,
             size: meta.size,
         })
     }
@@ -540,7 +560,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     /// Prefixes are evaluated on a path segment basis, i.e. `foo/bar/` is a
     /// prefix of `foo/bar/x` but not of `foo/bar_baz/x`.
     /// TODO: Currently this method may return lots of object meta, we should
-    /// limit the count of return ojects in future.
+    /// limit the count of return ojects in future. Maybe a better
+    /// implementation is to fetch and send the list results in a stream way.
     async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
         let instant = Instant::now();
 
