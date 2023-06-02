@@ -25,6 +25,7 @@ use table_engine::{
         ReadRequest, Result, Scan, Table, TableId, TableStats, TooManyPendingWrites,
         WaitForPendingWrites, Write, WriteRequest,
     },
+    ANALYTIC_ENGINE_TYPE,
 };
 use tokio::sync::oneshot::{self, Receiver, Sender};
 use trace_metric::MetricsCollector;
@@ -66,22 +67,16 @@ pub struct TableImpl {
 }
 
 impl TableImpl {
-    pub fn new(
-        instance: InstanceRef,
-        engine_type: String,
-        space_id: SpaceId,
-        table_id: TableId,
-        table_data: TableDataRef,
-        space_table: SpaceAndTable,
-    ) -> Self {
+    pub fn new(instance: InstanceRef, space_table: SpaceAndTable) -> Self {
         let pending_writes = Mutex::new(PendingWriteQueue::new(instance.max_rows_in_write_queue));
-
+        let table_data = space_table.table_data().clone();
+        let space_id = space_table.space().space_id();
         Self {
             space_table,
             instance,
-            engine_type,
+            engine_type: ANALYTIC_ENGINE_TYPE.to_string(),
             space_id,
-            table_id,
+            table_id: table_data.id,
             table_data,
             pending_writes,
         }

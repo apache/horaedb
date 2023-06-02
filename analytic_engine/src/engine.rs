@@ -11,8 +11,8 @@ use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{
         Close, CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
-        OpenShard, OpenShardResult, OpenTableNoCause, OpenTableRequest, OpenTableWithCause,
-        OpenTablesOfShardRequest, Result, TableDef, TableEngine,
+        OpenShard, OpenShardRequest, OpenShardResult, OpenTableNoCause, OpenTableRequest,
+        OpenTableWithCause, Result, TableDef, TableEngine,
     },
     table::{SchemaId, TableRef},
     ANALYTIC_ENGINE_TYPE,
@@ -98,14 +98,7 @@ impl TableEngine for TableEngineImpl {
 
         let space_table = self.instance.create_table(space_id, request).await?;
 
-        let table_impl: TableRef = Arc::new(TableImpl::new(
-            self.instance.clone(),
-            ANALYTIC_ENGINE_TYPE.to_string(),
-            space_id,
-            space_table.table_data().id,
-            space_table.table_data().clone(),
-            space_table,
-        ));
+        let table_impl: TableRef = Arc::new(TableImpl::new(self.instance.clone(), space_table));
 
         Ok(table_impl)
     }
@@ -125,14 +118,13 @@ impl TableEngine for TableEngineImpl {
     async fn open_table(&self, request: OpenTableRequest) -> Result<Option<TableRef>> {
         let shard_id = request.shard_id;
         let space_id = build_space_id(request.schema_id);
-        let _table_id = request.table_id;
+        let table_id = request.table_id;
 
         info!(
             "Table engine impl open table, space_id:{}, request:{:?}",
             space_id, request
         );
 
-        let table_id = request.table_id;
         let table_def = TableDef {
             catalog_name: request.catalog_name,
             schema_name: request.schema_name,
@@ -141,7 +133,7 @@ impl TableEngine for TableEngineImpl {
             name: request.table_name,
         };
 
-        let shard_request = OpenTablesOfShardRequest {
+        let shard_request = OpenShardRequest {
             shard_id,
             table_defs: vec![table_def],
             engine: request.engine,
@@ -156,16 +148,8 @@ impl TableEngine for TableEngineImpl {
             msg: None,
         })?;
 
-        let table_opt = table_opt.map(|space_table| {
-            Arc::new(TableImpl::new(
-                self.instance.clone(),
-                ANALYTIC_ENGINE_TYPE.to_string(),
-                space_id,
-                space_table.table_data().id,
-                space_table.table_data().clone(),
-                space_table,
-            )) as _
-        });
+        let table_opt = table_opt
+            .map(|space_table| Arc::new(TableImpl::new(self.instance.clone(), space_table)) as _);
 
         Ok(table_opt)
     }
@@ -183,7 +167,7 @@ impl TableEngine for TableEngineImpl {
         Ok(())
     }
 
-    async fn open_shard(&self, request: OpenTablesOfShardRequest) -> Result<OpenShardResult> {
+    async fn open_shard(&self, request: OpenShardRequest) -> Result<OpenShardResult> {
         let shard_result = self
             .instance
             .open_tables_of_shard(request)
@@ -195,15 +179,7 @@ impl TableEngine for TableEngineImpl {
         for (table_id, table_res) in shard_result {
             match table_res.box_err() {
                 Ok(Some(space_table)) => {
-                    let space_id = space_table.space().id;
-                    let table_impl = Arc::new(TableImpl::new(
-                        self.instance.clone(),
-                        ANALYTIC_ENGINE_TYPE.to_string(),
-                        space_id,
-                        space_table.table_data().id,
-                        space_table.table_data().clone(),
-                        space_table,
-                    ));
+                    let table_impl = Arc::new(TableImpl::new(self.instance.clone(), space_table));
                     engine_shard_result.insert(table_id, Ok(Some(table_impl)));
                 }
                 Ok(None) => {

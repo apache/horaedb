@@ -8,7 +8,7 @@ use common_types::schema::Version;
 use common_util::{define_result, error::GenericError};
 use snafu::{Backtrace, OptionExt, Snafu};
 use table_engine::{
-    engine::{CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTablesOfShardRequest},
+    engine::{CloseTableRequest, CreateTableRequest, DropTableRequest, OpenShardRequest},
     table::TableId,
 };
 use wal::manager::WalLocation;
@@ -375,7 +375,7 @@ impl Instance {
     // TODO: just return `TableRef` rather than `SpaceAndTable`.
     pub async fn open_tables_of_shard(
         self: &Arc<Self>,
-        request: OpenTablesOfShardRequest,
+        request: OpenShardRequest,
     ) -> Result<OpenTablesOfShardResult> {
         let shard_id = request.shard_id;
         let mut table_ctxs = Vec::with_capacity(request.table_defs.len());
@@ -395,13 +395,7 @@ impl Instance {
 
             let space_id = build_space_id(table_def.schema_id);
             let space = self.find_or_create_space(space_id, context).await?;
-            spaces_of_tables.push((
-                TableInfo {
-                    name: table_def.name.clone(),
-                    id: table_def.id,
-                },
-                space.clone(),
-            ));
+            spaces_of_tables.push(((table_def.name.clone(), table_def.id), space.clone()));
             table_ctxs.push(TableContext { table_def, space });
         }
         let shard_ctx = TablesOfShardContext {
@@ -412,20 +406,19 @@ impl Instance {
         let shard_result = self.do_open_tables_of_shard(shard_ctx).await?;
 
         // Insert opened tables to spaces.
-        for (table_info, space) in spaces_of_tables {
-            let table_result =
-                shard_result
-                    .get(&table_info.id)
-                    .with_context(|| OpenTablesOfShard {
-                        msg: format!(
+        for ((table_name, table_id), space) in spaces_of_tables {
+            let table_result = shard_result
+                .get(&table_id)
+                .with_context(|| OpenTablesOfShard {
+                    msg: format!(
                         "table not exist in result, table_id:{}, space_id:{shard_id}, shard_id:{}",
-                        table_info.id, space.id
+                        table_id, space.id
                     ),
-                    })?;
+                })?;
 
             // TODO: should not modify space here, maybe should place it into manifest.
             if table_result.is_err() {
-                space.insert_open_failed_table(table_info.name);
+                space.insert_open_failed_table(table_name);
             }
         }
 

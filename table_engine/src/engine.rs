@@ -272,7 +272,7 @@ pub struct CloseTableRequest {
 }
 
 #[derive(Debug, Clone)]
-pub struct OpenTablesOfShardRequest {
+pub struct OpenShardRequest {
     /// Shard id
     pub shard_id: ShardId,
 
@@ -292,7 +292,7 @@ pub struct TableDef {
     pub name: String,
 }
 
-pub type CloseShardRequest = OpenTablesOfShardRequest;
+pub type CloseShardRequest = OpenShardRequest;
 
 /// Table engine
 // TODO(yingwen): drop table support to release resource owned by the table
@@ -317,7 +317,7 @@ pub trait TableEngine: Send + Sync {
     async fn close_table(&self, request: CloseTableRequest) -> Result<()>;
 
     /// Open tables on same shard.
-    async fn open_shard(&self, request: OpenTablesOfShardRequest) -> Result<OpenShardResult>;
+    async fn open_shard(&self, request: OpenShardRequest) -> Result<OpenShardResult>;
 
     /// Close tables on same shard.
     async fn close_shard(&self, request: CloseShardRequest) -> Vec<Result<String>>;
