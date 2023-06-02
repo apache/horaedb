@@ -1,7 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
-    collections::{HashSet},
+    collections::HashSet,
     hash::{Hash, Hasher},
     ops::Range,
     sync::{
@@ -27,11 +27,11 @@ use tokio::{
     io::{AsyncWrite, AsyncWriteExt},
     time::Instant,
 };
+use twox_hash::XxHash64;
 use upstream::{
     path::{Path, DELIMITER},
     Error as StoreError, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result,
 };
-use twox_hash::XxHash64;
 
 use crate::{
     multipart::{CloudMultiPartUpload, CloudMultiPartUploadImpl, UploadPart},

@@ -43,9 +43,7 @@ fn inc_by_one(nums: &mut [u8]) -> u8 {
 #[cfg(test)]
 mod test {
 
-    use crate::obkv::{
-        util::{inc_by_one, scan_request_with_prefix},
-    };
+    use crate::obkv::util::{inc_by_one, scan_request_with_prefix};
 
     #[test]
     fn test_add_one() {
