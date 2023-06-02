@@ -34,7 +34,10 @@ use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
 use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
-    arrow::{async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask},
+    arrow::{
+        arrow_reader::RowSelection, async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder,
+        ProjectionMask,
+    },
     file::metadata::RowGroupMetaData,
 };
 use parquet_ext::meta_data::ChunkReader;
@@ -190,6 +193,34 @@ impl<'a> Reader<'a> {
         suggested.min(num_row_groups).max(1)
     }
 
+    fn build_row_selection(
+        &self,
+        arrow_schema: SchemaRef,
+        row_groups: &[usize],
+        file_metadata: &parquet_ext::ParquetMetaData,
+    ) -> Result<Option<RowSelection>> {
+        let metrics_set = ExecutionPlanMetricsSet::new();
+        // TODO: remove fixed partition
+        let partition = 0;
+        let metrics = ParquetFileMetrics::new(partition, &self.path.to_string(), &metrics_set);
+        let exprs = datafusion::optimizer::utils::conjunction(self.predicate.exprs().to_vec());
+        let exprs = match exprs {
+            Some(exprs) => exprs,
+            None => return Ok(None),
+        };
+
+        let df_schema = arrow_schema.clone().to_dfschema().unwrap();
+        let physical_expr =
+            create_physical_expr(&exprs, &df_schema, &arrow_schema, &ExecutionProps::new())
+                .unwrap();
+        let page_predicate = PagePruningPredicate::try_new(&physical_expr, arrow_schema.clone())
+            .context(DataFusionError)?;
+
+        page_predicate
+            .prune(row_groups, file_metadata, &metrics)
+            .context(DataFusionError)
+    }
+
     async fn fetch_record_batch_streams(
         &mut self,
         suggested_parallelism: usize,
@@ -245,29 +276,14 @@ impl<'a> Reader<'a> {
         );
 
         let mut streams = Vec::with_capacity(target_row_group_chunks.len());
-        let exprs = datafusion::optimizer::utils::conjunction(self.predicate.exprs().to_vec());
-        let metrics_set = ExecutionPlanMetricsSet::new();
-        let metrics = ParquetFileMetrics::new(1, &self.path.to_string(), &metrics_set);
         for chunk in target_row_group_chunks {
             let object_store_reader =
                 ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
-            let row_selection = if let Some(exprs) = &exprs {
-                let df_schema = arrow_schema.clone().to_dfschema().unwrap();
-                let physical_expr =
-                    create_physical_expr(exprs, &df_schema, &arrow_schema, &ExecutionProps::new())
-                        .unwrap();
-                let page_predicate =
-                    PagePruningPredicate::try_new(&physical_expr, arrow_schema.clone())
-                        .context(DataFusionError)?;
-                page_predicate
-                    .prune(&chunk, parquet_metadata, &metrics)
-                    .context(DataFusionError)?
-            } else {
-                None
-            };
             let mut builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
                 .await
                 .with_context(|| ParquetError)?;
+            let row_selection =
+                self.build_row_selection(arrow_schema.clone(), &chunk, &parquet_metadata)?;
             if let Some(selection) = row_selection {
                 builder = builder.with_row_selection(selection);
             };
