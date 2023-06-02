@@ -172,7 +172,6 @@ pub struct TableContext {
 
 #[derive(Debug)]
 enum TableOpenStage {
-    Ready(Option<SpaceAndTable>),
     RecoverTableMeta(RecoverTableMetaContext),
     RecoverTableData(RecoverTableDataContext),
     Failed(crate::instance::engine::Error),
@@ -220,7 +219,7 @@ impl ShardOpener {
             let state = if let Some(table_data) = space.find_table_by_id(table_id) {
                 // Table is possible to have been opened, we just mark it ready and ignore in
                 // recovery.
-                TableOpenStage::Ready(Some(SpaceAndTable::new(space.clone(), table_data)))
+                TableOpenStage::Success(Some(SpaceAndTable::new(space.clone(), table_data)))
             } else {
                 TableOpenStage::RecoverTableMeta(RecoverTableMetaContext {
                     table_def: table_ctx.table_def,
@@ -256,12 +255,10 @@ impl ShardOpener {
                 TableOpenStage::Failed(e) => {
                     table_results.insert(table_id, Err(e));
                 }
-                TableOpenStage::Ready(data) => {
+                TableOpenStage::Success(data) => {
                     table_results.insert(table_id, Ok(data));
                 }
-                TableOpenStage::RecoverTableMeta(_)
-                | TableOpenStage::RecoverTableData(_)
-                | TableOpenStage::Success(_) => {
+                TableOpenStage::RecoverTableMeta(_) | TableOpenStage::RecoverTableData(_) => {
                     return OpenTablesOfShard {
                         msg: format!(
                             "unexpected table state, state:{state:?}, table_id:{table_id}",
@@ -307,10 +304,8 @@ impl ShardOpener {
                     }
                 }
                 // Table was found to be opened in init stage.
-                TableOpenStage::Ready(_) => {}
-                TableOpenStage::RecoverTableData(_)
-                | TableOpenStage::Failed(_)
-                | TableOpenStage::Success(_) => {
+                TableOpenStage::Success(_) => {}
+                TableOpenStage::RecoverTableData(_) | TableOpenStage::Failed(_) => {
                     return OpenTablesOfShard {
                         msg: format!("unexpected table state:{state:?}"),
                     }
@@ -358,8 +353,8 @@ impl ShardOpener {
                     }
                 }
                 // Table was found opened, or failed in meta recovery stage.
-                TableOpenStage::Failed(_) | TableOpenStage::Ready(_) => {}
-                TableOpenStage::RecoverTableMeta(_) | TableOpenStage::Success(_) => {
+                TableOpenStage::Failed(_) | TableOpenStage::Success(_) => {}
+                TableOpenStage::RecoverTableMeta(_) => {
                     return OpenTablesOfShard {
                         msg: format!("unexpected table state:{state:?}"),
                     }
