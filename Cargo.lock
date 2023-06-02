@@ -4110,6 +4110,7 @@ dependencies = [
  "table_kv",
  "tempfile",
  "tokio",
+ "twox-hash",
 ]
 
 [[package]]

@@ -453,10 +453,10 @@ fn open_storage(
                 let oss: ObjectStoreRef = Arc::new(
                     obkv::ObkvObjectStore::try_new(
                         obkv_opts.shard_num,
-                        obkv_opts.part_size,
+                        obkv_opts.part_size.0 as usize,
                         Arc::new(obkv),
-                        obkv_opts.max_object_size,
-                        obkv_opts.max_upload_concurrency,
+                        obkv_opts.max_object_size.0 as usize,
+                        obkv_opts.upload_parallelism,
                     )
                     .context(OpenObjectStore)?,
                 );

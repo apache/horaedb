@@ -1,7 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
-    collections::{hash_map::DefaultHasher, HashSet},
+    collections::{HashSet},
     hash::{Hash, Hasher},
     ops::Range,
     sync::{
@@ -31,6 +31,7 @@ use upstream::{
     path::{Path, DELIMITER},
     Error as StoreError, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result,
 };
+use twox_hash::XxHash64;
 
 use crate::{
     multipart::{CloudMultiPartUpload, CloudMultiPartUploadImpl, UploadPart},
@@ -43,38 +44,34 @@ mod util;
 /// The object store type of obkv
 pub const OBKV: &str = "OBKV";
 
+/// Hash seed to build hasher. Modify the seed will result in different route
+/// result!
+const HASH_SEED: u64 = 0;
+
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Failed to scan data, namespace:{}, err:{}", namespace, source,))]
+    #[snafu(display("Failed to scan data, namespace:{namespace}, err:{source}"))]
     ScanData {
         namespace: String,
         source: GenericError,
     },
 
-    #[snafu(display("Failed to put data, path:{}, err:{}", path, source,))]
-    PutData {
-        namespace: String,
-        path: String,
-        source: GenericError,
-    },
+    #[snafu(display("Failed to put data, path:{path}, err:{source}"))]
+    PutData { path: String, source: GenericError },
 
-    #[snafu(display(
-        "Failed to create shard table, table_name:{}, err:{}",
-        table_name,
-        source,
-    ))]
+    #[snafu(display("Failed to create shard table, table_name:{table_name}, err:{source}"))]
     CreateShardTable {
         table_name: String,
         source: GenericError,
     },
 
-    #[snafu(display("Failed to read meta, path:{}, err:{}", path, source))]
+    #[snafu(display("Failed to read meta, path:{path}, err:{source}"))]
     ReadMeta { path: String, source: GenericError },
 
-    #[snafu(display("Empty data found in path:{}, index:{}", path, index))]
+    #[snafu(display("Empty data found in path:{path}, index:{index}"))]
     EmptyDataPart { path: String, index: usize },
 
-    #[snafu(display("No meta found, path:{}", path,))]
+    #[snafu(display("No meta found, path:{path}"))]
     MetaNotExists { path: String },
 
     #[snafu(display("Data is too large to put, size:{size}, limit:{limit}"))]
@@ -131,7 +128,7 @@ impl ShardManager {
 
     #[inline]
     pub fn pick_shard_table(&self, path: &Path) -> &str {
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = XxHash64::with_seed(HASH_SEED);
         path.as_ref().as_bytes().hash(&mut hasher);
         let hash = hasher.finish();
         let index = hash % (self.table_names.len() as u64);
@@ -223,7 +220,7 @@ impl<T: TableKv> ObkvObjectStore<T> {
     fn normalize_path(location: Option<&Path>) -> Path {
         if let Some(path) = location {
             if !path.as_ref().ends_with(DELIMITER) {
-                return Path::from(format!("{}{}", path.as_ref(), DELIMITER));
+                return Path::from(format!("{}{DELIMITER}", path.as_ref()));
             }
             path.clone()
         } else {
@@ -261,6 +258,7 @@ impl<T: TableKv> ObkvObjectStore<T> {
     async fn get_internal(&self, location: &Path) -> std::result::Result<GetResult, Error> {
         let meta = self.read_meta(location).await?;
         let table_name = self.pick_shard_table(location);
+        // TODO: Let table_kv provide a api `get_batch` to avoid extra IO operations.
         let mut futures = FuturesOrdered::new();
         for path in meta.parts {
             let client = self.client.clone();
@@ -312,8 +310,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 source: Box::new(source),
             })?;
         debug!(
-            "ObkvObjectStore put operation, location:{},cost:{}",
-            location,
+            "ObkvObjectStore put operation, location:{location},cost:{}",
             instant.elapsed().as_millis()
         );
         Ok(())
@@ -342,9 +339,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             CloudMultiPartUpload::new(upload, self.max_upload_concurrency, self.part_size);
 
         debug!(
-            "ObkvObjectStore put_multipart operation, location:{}, table_name:{}, cost:{}",
-            location,
-            table_name,
+            "ObkvObjectStore put_multipart operation, location:{location}, table_name:{table_name}, cost:{}",
             instant.elapsed().as_millis()
         );
         Ok((multi_part_id, Box::new(multi_part_upload)))
@@ -362,7 +357,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             batch_size: meta::SCAN_BATCH_SIZE,
         };
 
-        let prefix: String = format!("{}@{}@", location.as_ref(), multipart_id);
+        let prefix = format!("{location}@{multipart_id}@");
         let scan_request = util::scan_request_with_prefix(prefix.as_bytes());
 
         let mut iter = self
@@ -399,9 +394,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             })?;
 
         debug!(
-            "ObkvObjectStore abort_multipart operation, location:{}, table:{}, cost:{}",
-            location,
-            table_name,
+            "ObkvObjectStore abort_multipart operation, location:{location}, table_name:{table_name}, cost:{}",
             instant.elapsed().as_millis()
         );
         Ok(())
@@ -412,8 +405,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         let result = self.get_internal(location).await;
 
         debug!(
-            "ObkvObjectStore get operation, location:{}, cost:{}",
-            location,
+            "ObkvObjectStore get operation, location:{location}, cost:{}",
             instant.elapsed().as_millis()
         );
         result.box_err().map_err(|source| StoreError::NotFound {
@@ -471,9 +463,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         }
 
         debug!(
-            "ObkvObjectStore get_range operation, location:{}, table:{}, cost:{}",
-            location,
-            table_name,
+            "ObkvObjectStore get_range operation, location:{location}, table:{table_name}, cost:{}",
             instant.elapsed().as_millis()
         );
 
@@ -494,8 +484,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 })?;
 
         debug!(
-            "ObkvObjectStore head operation, location:{}, cost:{}",
-            location,
+            "ObkvObjectStore head operation, location:{location}, cost:{}",
             instant.elapsed().as_millis()
         );
 
@@ -541,9 +530,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             })?;
 
         debug!(
-            "ObkvObjectStore delete operation, location:{}, table:{}, cost:{}",
-            location,
-            table_name,
+            "ObkvObjectStore delete operation, location:{location}, table:{table_name}, cost:{}",
             instant.elapsed().as_millis()
         );
 
@@ -579,8 +566,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
 
         let iter = futures::stream::iter(meta_list.into_iter());
         debug!(
-            "ObkvObjectStore list operation, prefix:{}, cost:{}",
-            path,
+            "ObkvObjectStore list operation, prefix:{path}, cost:{}",
             instant.elapsed().as_millis()
         );
         Ok(iter.boxed())
@@ -623,8 +609,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
 
         let common_prefixes = Vec::from_iter(common_prefixes.into_iter());
         debug!(
-            "ObkvObjectStore list_with_delimiter operation, prefix:{}, cost:{}",
-            path,
+            "ObkvObjectStore list_with_delimiter operation, prefix:{path}, cost:{}",
             instant.elapsed().as_millis()
         );
         Ok(ListResult {

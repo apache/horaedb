@@ -31,6 +31,7 @@ serde_json = { workspace = true }
 snafu = { workspace = true }
 table_kv = { workspace = true }
 tokio = { workspace = true }
+twox-hash = "1.6"
 upstream = { package = "object_store", version = "0.5.6", features = [ "aws" ] }
 
 [dev-dependencies]

@@ -12,7 +12,7 @@ use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
 use upstream::{path::Path, Error as StoreError, Result as StoreResult};
 
 use super::{
-    util::{self, estimate_size},
+    util::{self},
     OBKV,
 };
 
@@ -30,37 +30,32 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-        "Invalid json, err:{}, json:{}.\nBacktrace:\n{}",
-        source,
-        json,
-        backtrace
-    ))]
+    #[snafu(display("Invalid json, err:{source}, json:{json}.\nBacktrace:\n{backtrace}"))]
     InvalidJson {
         json: String,
         source: serde_json::Error,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to encode json, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    #[snafu(display("Failed to encode json, err:{source}.\nBacktrace:\n{backtrace}"))]
     EncodeJson {
         source: serde_json::Error,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to save meta, location:{}, err:{}", location, source))]
+    #[snafu(display("Failed to save meta, location:{location}, err:{source}"))]
     SaveMeta {
         location: String,
         source: GenericError,
     },
 
-    #[snafu(display("Failed to delete meta, location:{}, err:{}", location, source))]
+    #[snafu(display("Failed to delete meta, location:{location}, err:{source}"))]
     DeleteMeta {
         location: String,
         source: GenericError,
     },
 
-    #[snafu(display("Failed to read meta, location:{}, err:{}", location, source))]
+    #[snafu(display("Failed to read meta, location:{location}, err:{source}"))]
     ReadMeta {
         location: String,
         source: GenericError,
@@ -117,6 +112,38 @@ impl ObkvObjectMeta {
     #[inline]
     pub fn encode(&self) -> Result<Vec<u8>> {
         encode_json(self)
+    }
+
+    /// Estimate the json string size of ObkvObjectMeta
+    #[inline]
+    pub fn estimate_size_of_json(&self) -> usize {
+        // {}
+        let mut size = 2;
+        // size of key name, `,`, `""` and `:`
+        size += (8 + 13 + 4 + 9 + 9 + 5 + 7) + 4 * 7;
+        size += self.location.len() + 2;
+        // last_modified
+        size += 8;
+        // size
+        size += 8;
+        // unique_id
+        if let Some(id) = &self.unique_id {
+            size += id.len() + 2;
+        } else {
+            size += 4;
+        }
+        // part_size
+        size += 8;
+        // parts
+        for part in &self.parts {
+            // part.len, `""`, `:`, and `,`
+            size += part.len() + 4;
+        }
+        //{}
+        size += 2;
+        // version
+        size += self.version.len();
+        size
     }
 }
 
@@ -234,9 +261,43 @@ fn decode_json<'a, ObkvObjectMeta: serde::Deserialize<'a>>(
 }
 
 fn encode_json(value: &ObkvObjectMeta) -> Result<Vec<u8>> {
-    let size = estimate_size(value);
+    let size = value.estimate_size_of_json();
     let mut encode_bytes = Vec::with_capacity(size + 1);
     encode_bytes.push(HEADER);
     serde_json::to_writer(&mut encode_bytes, value).context(EncodeJson)?;
     Ok(encode_bytes)
+}
+
+#[cfg(test)]
+mod test {
+
+    use crate::obkv::meta::ObkvObjectMeta;
+
+    #[test]
+    fn test_estimate_size() {
+        let meta = ObkvObjectMeta {
+            location: String::from("/test/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxfdsfjlajflk"),
+            last_modified: 123456789,
+            size: 10000000,
+            unique_id: Some(String::from("1245689u438uferjalfjkda")),
+            part_size: 1024,
+            parts: vec![
+                String::from("/test/xx/0"),
+                String::from("/test/xx/1"),
+                String::from("/test/xx/4"),
+                String::from("/test/xx/5"),
+                String::from("/test/xx/0"),
+                String::from("/test/xx/1"),
+                String::from("/test/xx/4"),
+                String::from("/test/xx/5"),
+            ],
+            version: String::from("123456fsdalfkassa;l;kjfaklasadffsd"),
+        };
+
+        let expect = meta.estimate_size_of_json();
+        let json = &serde_json::to_string(&meta).unwrap();
+        let real = json.len();
+        println!("expect:{expect},real:{real}");
+        assert!(expect.abs_diff(real) as f32 / (real as f32) < 0.1);
+    }
 }

@@ -87,35 +87,35 @@ impl AliyunOptions {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObkvOptions {
     pub prefix: String,
     #[serde(default = "ObkvOptions::default_shard_num")]
     pub shard_num: usize,
     #[serde(default = "ObkvOptions::default_part_size")]
-    pub part_size: usize,
+    pub part_size: ReadableSize,
     #[serde(default = "ObkvOptions::default_max_object_size")]
-    pub max_object_size: usize,
-    #[serde(default = "ObkvOptions::default_max_upload_concurrency")]
+    pub max_object_size: ReadableSize,
+    #[serde(default = "ObkvOptions::default_upload_parallelism")]
     pub upload_parallelism: usize,
     /// Obkv client config
     pub client: ObkvConfig,
 }
 
 impl ObkvOptions {
-    fn default_max_object_size() -> usize {
-        1024 * 1024 * 1024
+    fn default_max_object_size() -> ReadableSize {
+        ReadableSize::gb(1)
     }
 
-    fn default_part_size() -> usize {
-        1024 * 1024
+    fn default_part_size() -> ReadableSize {
+        ReadableSize::mb(1)
     }
 
     fn default_shard_num() -> usize {
         512
     }
 
-    fn default_max_upload_concurrency() -> usize {
+    fn default_upload_parallelism() -> usize {
         8
     }
 }
