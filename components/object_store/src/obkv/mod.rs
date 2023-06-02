@@ -373,19 +373,21 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 source: Box::new(source),
             })?;
 
+        let mut key_list = vec![];
         while iter.valid() {
-            self.client
-                .delete(table_name, iter.key())
-                .map_err(|source| StoreError::Generic {
-                    store: OBKV,
-                    source: Box::new(source),
-                })?;
-
+            key_list.push(iter.key().to_vec());
             iter.next().map_err(|source| StoreError::Generic {
                 store: OBKV,
                 source: Box::new(source),
             })?;
         }
+
+        self.client
+            .batch_delete(table_name, key_list)
+            .map_err(|source| StoreError::Generic {
+                store: OBKV,
+                source: Box::new(source),
+            })?;
 
         // Here to delete meta with path `location` and multipart_id
         self.meta_manager

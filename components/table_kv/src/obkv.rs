@@ -509,6 +509,24 @@ impl TableKv for ObkvImpl {
 
         Ok(size)
     }
+
+    fn batch_delete(
+        &self,
+        table_name: &str,
+        key_list: Vec<Vec<u8>>,
+    ) -> std::result::Result<i64, Self::Error> {
+        let mut batch_ops = ObTableBatchOperation::default();
+        let size = key_list.len();
+        for key in key_list {
+            batch_ops.delete(bytes_to_values(&key));
+        }
+
+        self.client
+            .execute_batch(table_name, batch_ops)
+            .context(WriteTable { table_name })?;
+
+        Ok(size as i64)
+    }
 }
 
 pub struct ObkvScanIter {
