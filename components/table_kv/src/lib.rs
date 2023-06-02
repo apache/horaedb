@@ -190,7 +190,7 @@ pub trait TableKv: Clone + Send + Sync + fmt::Debug + 'static {
     fn delete(&self, table_name: &str, key: &[u8]) -> Result<(), Self::Error>;
 
     /// Delete a batch of data by key list from table with `table_name`.
-    fn batch_delete(
+    fn delete_batch(
         &self,
         table_name: &str,
         keys: Vec<Vec<u8>>,

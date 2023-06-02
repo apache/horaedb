@@ -106,12 +106,24 @@ pub struct ObkvObjectMeta {
 impl ObkvObjectMeta {
     #[inline]
     pub fn decode(data: &[u8]) -> Result<Self> {
-        decode_json(data)
+        ensure!(
+            data[0] == HEADER,
+            InvalidHeader {
+                header: data[0],
+                expect: HEADER,
+            }
+        );
+        let json = str::from_utf8(&data[1..]).context(InvalidUtf8)?;
+        serde_json::from_str(json).context(InvalidJson { json })
     }
 
     #[inline]
     pub fn encode(&self) -> Result<Vec<u8>> {
-        encode_json(self)
+        let size = self.estimate_size_of_json();
+        let mut encode_bytes = Vec::with_capacity(size + 1);
+        encode_bytes.push(HEADER);
+        serde_json::to_writer(&mut encode_bytes, self).context(EncodeJson)?;
+        Ok(encode_bytes)
     }
 
     /// Estimate the json string size of ObkvObjectMeta
@@ -161,7 +173,7 @@ impl<T: TableKv> std::fmt::Display for MetaManager<T> {
 }
 
 impl<T: TableKv> MetaManager<T> {
-    pub async fn save_meta(&self, meta: ObkvObjectMeta) -> Result<()> {
+    pub async fn save(&self, meta: ObkvObjectMeta) -> Result<()> {
         let mut batch = T::WriteBatch::default();
         let encode_bytes = meta.encode()?;
         batch.insert(meta.location.as_bytes(), &encode_bytes);
@@ -175,7 +187,7 @@ impl<T: TableKv> MetaManager<T> {
         Ok(())
     }
 
-    pub async fn read_meta(&self, location: &Path) -> Result<Option<ObkvObjectMeta>> {
+    pub async fn read(&self, location: &Path) -> Result<Option<ObkvObjectMeta>> {
         let value = self
             .client
             .as_ref()
@@ -185,10 +197,10 @@ impl<T: TableKv> MetaManager<T> {
                 location: location.as_ref().to_string(),
             })?;
 
-        value.map(|v| decode_json(&v)).transpose()
+        value.map(|v| ObkvObjectMeta::decode(&v)).transpose()
     }
 
-    pub async fn delete_meta(&self, meta: ObkvObjectMeta, location: &Path) -> Result<()> {
+    pub async fn delete(&self, meta: ObkvObjectMeta, location: &Path) -> Result<()> {
         self.client
             .as_ref()
             .delete(OBJECT_STORE_META, location.as_ref().as_bytes())
@@ -200,20 +212,17 @@ impl<T: TableKv> MetaManager<T> {
         Ok(())
     }
 
-    pub async fn delete_meta_with_version(&self, location: &Path, version: &str) -> Result<()> {
-        let meta_result = self.read_meta(location).await?;
+    pub async fn delete_with_version(&self, location: &Path, version: &str) -> Result<()> {
+        let meta_result = self.read(location).await?;
         if let Some(meta) = meta_result {
             if meta.version == version {
-                self.delete_meta(meta, location).await?;
+                self.delete(meta, location).await?;
             }
         }
         Ok(())
     }
 
-    pub async fn list_meta(
-        &self,
-        prefix: &Path,
-    ) -> StoreResult<Vec<ObkvObjectMeta>, std::io::Error> {
+    pub async fn list(&self, prefix: &Path) -> StoreResult<Vec<ObkvObjectMeta>, std::io::Error> {
         let scan_context: ScanContext = ScanContext {
             timeout: time::Duration::from_secs(SCAN_TIMEOUT_SECS),
             batch_size: SCAN_BATCH_SIZE,
@@ -244,28 +253,6 @@ impl<T: TableKv> MetaManager<T> {
         }
         Ok(metas)
     }
-}
-
-fn decode_json<'a, ObkvObjectMeta: serde::Deserialize<'a>>(
-    data: &'a [u8],
-) -> Result<ObkvObjectMeta> {
-    ensure!(
-        data[0] == HEADER,
-        InvalidHeader {
-            header: data[0],
-            expect: HEADER,
-        }
-    );
-    let json = str::from_utf8(&data[1..]).context(InvalidUtf8)?;
-    serde_json::from_str(json).context(InvalidJson { json })
-}
-
-fn encode_json(value: &ObkvObjectMeta) -> Result<Vec<u8>> {
-    let size = value.estimate_size_of_json();
-    let mut encode_bytes = Vec::with_capacity(size + 1);
-    encode_bytes.push(HEADER);
-    serde_json::to_writer(&mut encode_bytes, value).context(EncodeJson)?;
-    Ok(encode_bytes)
 }
 
 #[cfg(test)]

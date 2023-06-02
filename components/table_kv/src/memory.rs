@@ -286,7 +286,7 @@ impl TableKv for MemoryImpl {
         Ok(())
     }
 
-    fn batch_delete(
+    fn delete_batch(
         &self,
         table_name: &str,
         keys: Vec<Vec<u8>>,

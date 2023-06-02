@@ -174,9 +174,9 @@ impl<T: TableKv> std::fmt::Display for ObkvObjectStore<T> {
 
 impl<T: TableKv> ObkvObjectStore<T> {
     pub fn try_new(
+        client: Arc<T>,
         shard_num: usize,
         part_size: usize,
-        client: Arc<T>,
         max_object_size: usize,
         max_upload_concurrency: usize,
     ) -> Result<Self> {
@@ -238,7 +238,7 @@ impl<T: TableKv> ObkvObjectStore<T> {
     async fn read_meta(&self, location: &Path) -> std::result::Result<ObkvObjectMeta, Error> {
         let meta = self
             .meta_manager
-            .read_meta(location)
+            .read(location)
             .await
             .box_err()
             .context(ReadMeta {
@@ -351,7 +351,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         let table_name = self.pick_shard_table(location);
 
         // Before aborting multipart, we need to delete all data parts and meta info.
-        // Here to delete data with path `location` and multipart_id
+        // Here to delete data with path `location` and multipart_id.
         let scan_context: ScanContext = ScanContext {
             timeout: time::Duration::from_secs(meta::SCAN_TIMEOUT_SECS),
             batch_size: meta::SCAN_BATCH_SIZE,
@@ -378,7 +378,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         }
 
         self.client
-            .batch_delete(table_name, keys)
+            .delete_batch(table_name, keys)
             .map_err(|source| StoreError::Generic {
                 store: OBKV,
                 source: Box::new(source),
@@ -386,7 +386,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
 
         // Here to delete meta with path `location` and multipart_id
         self.meta_manager
-            .delete_meta_with_version(location, multipart_id)
+            .delete_with_version(location, multipart_id)
             .await
             .map_err(|source| StoreError::Generic {
                 store: OBKV,
@@ -522,7 +522,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         }
         // delete meta info
         self.meta_manager
-            .delete_meta(meta, location)
+            .delete(meta, location)
             .await
             .map_err(|source| StoreError::Generic {
                 store: OBKV,
@@ -548,7 +548,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         let path = Self::normalize_path(prefix);
         let raw_metas =
             self.meta_manager
-                .list_meta(&path)
+                .list(&path)
                 .await
                 .map_err(|source| StoreError::Generic {
                     store: OBKV,
@@ -580,14 +580,14 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         let instant = Instant::now();
 
         let path = Self::normalize_path(prefix);
-        let metas =
-            self.meta_manager
-                .list_meta(&path)
-                .await
-                .map_err(|source| StoreError::Generic {
-                    store: OBKV,
-                    source: Box::new(source),
-                })?;
+        let metas = self
+            .meta_manager
+            .list(&path)
+            .await
+            .map_err(|source| StoreError::Generic {
+                store: OBKV,
+                source: Box::new(source),
+            })?;
 
         let mut common_prefixes = HashSet::new();
         let mut objects = Vec::new();
@@ -695,7 +695,7 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
 
         // Save meta info to specify obkv table.
         self.meta_manager
-            .save_meta(meta)
+            .save(meta)
             .await
             .map_err(|source| StoreError::Generic {
                 store: OBKV,
@@ -866,7 +866,7 @@ mod test {
     fn init_object_store() -> Arc<ObkvObjectStore<MemoryImpl>> {
         let table_kv = Arc::new(MemoryImpl::default());
         let obkv_object =
-            ObkvObjectStore::try_new(128, TEST_PART_SIZE, table_kv, 1024 * 1024 * 1024, 8).unwrap();
+            ObkvObjectStore::try_new(table_kv, 128, TEST_PART_SIZE, 1024 * 1024 * 1024, 8).unwrap();
         Arc::new(obkv_object)
     }
 
@@ -899,7 +899,7 @@ mod test {
             assert_eq!(meta.size, length);
             let body = oss.get(&location).await.unwrap();
             assert_eq!(buffer, body.bytes().await.unwrap());
-            let inner_meta = oss.meta_manager.read_meta(&location).await.unwrap();
+            let inner_meta = oss.meta_manager.read(&location).await.unwrap();
             assert!(inner_meta.is_some());
             if let Some(m) = inner_meta {
                 assert_eq!(m.location, location.as_ref());
