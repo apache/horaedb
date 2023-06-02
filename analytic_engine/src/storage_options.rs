@@ -97,7 +97,7 @@ pub struct ObkvOptions {
     #[serde(default = "ObkvOptions::default_max_object_size")]
     pub max_object_size: usize,
     #[serde(default = "ObkvOptions::default_max_upload_concurrency")]
-    pub max_upload_concurrency: usize,
+    pub upload_parallelism: usize,
     /// Obkv client config
     pub client: ObkvConfig,
 }
