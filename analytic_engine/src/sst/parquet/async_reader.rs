@@ -7,7 +7,7 @@ use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use arrow::{datatypes::SchemaRef, record_batch::RecordBatch as ArrowRecordBatch};
@@ -22,22 +22,26 @@ use common_util::{
     runtime::{AbortOnDropMany, JoinHandle, Runtime},
     time::InstantExt,
 };
-use datafusion::physical_plan::{
-    file_format::{parquet::page_filter::PagePruningPredicate, ParquetFileMetrics},
-    metrics::ExecutionPlanMetricsSet,
+use datafusion::{
+    common::ToDFSchema,
+    physical_expr::{create_physical_expr, execution_props::ExecutionProps},
+    physical_plan::{
+        file_format::{parquet::page_filter::PagePruningPredicate, ParquetFileMetrics},
+        metrics::ExecutionPlanMetricsSet,
+    },
 };
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
-use log::{debug, error, info, warn};
+use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask},
     file::metadata::RowGroupMetaData,
 };
 use parquet_ext::meta_data::ChunkReader;
-use prometheus::local::LocalHistogram;
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
+use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 use crate::sst::{
     factory::{ObjectStorePickerRef, ReadFrequency, SstReadOptions},
@@ -45,7 +49,6 @@ use crate::sst::{
         cache::{MetaCacheRef, MetaData},
         SstMetaData,
     },
-    metrics,
     parquet::{
         encoding::ParquetDecoder,
         meta_data::{ParquetFilter, ParquetMetaDataRef},
@@ -54,6 +57,7 @@ use crate::sst::{
     reader::{error::*, Result, SstReader},
 };
 
+const PRUNE_ROW_GROUPS_METRICS_COLLECTOR_NAME: &str = "prune_row_groups";
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
 
 pub struct Reader<'a> {
@@ -63,19 +67,30 @@ pub struct Reader<'a> {
     store: &'a ObjectStoreRef,
     /// The hint for the sst file size.
     file_size_hint: Option<usize>,
+    num_rows_per_row_group: usize,
     projected_schema: ProjectedSchema,
     meta_cache: Option<MetaCacheRef>,
     predicate: PredicateRef,
     /// Current frequency decides the cache policy.
     frequency: ReadFrequency,
-    batch_size: usize,
-
     /// Init those fields in `init_if_necessary`
     meta_data: Option<MetaData>,
     row_projector: Option<RowProjector>,
 
     /// Options for `read_parallelly`
-    parallelism_options: ParallelismOptions,
+    metrics: Metrics,
+}
+
+#[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
+pub(crate) struct Metrics {
+    #[metric(boolean)]
+    pub meta_data_cache_hit: bool,
+    #[metric(duration)]
+    pub read_meta_data_duration: Duration,
+    #[metric(number)]
+    pub parallelism: usize,
+    #[metric(collector)]
+    pub metrics_collector: Option<MetricsCollector>,
 }
 
 impl<'a> Reader<'a> {
@@ -84,24 +99,27 @@ impl<'a> Reader<'a> {
         options: &SstReadOptions,
         file_size_hint: Option<usize>,
         store_picker: &'a ObjectStorePickerRef,
+        metrics_collector: Option<MetricsCollector>,
     ) -> Self {
-        let batch_size = options.read_batch_row_num;
-        let parallelism_options =
-            ParallelismOptions::new(options.read_batch_row_num, options.num_rows_per_row_group);
         let store = store_picker.pick_by_freq(options.frequency);
+
+        let metrics = Metrics {
+            metrics_collector,
+            ..Default::default()
+        };
 
         Self {
             path,
             store,
             file_size_hint,
+            num_rows_per_row_group: options.num_rows_per_row_group,
             projected_schema: options.projected_schema.clone(),
             meta_cache: options.meta_cache.clone(),
             predicate: options.predicate.clone(),
             frequency: options.frequency,
-            batch_size,
             meta_data: None,
             row_projector: None,
-            parallelism_options,
+            metrics,
         }
     }
 
@@ -110,11 +128,6 @@ impl<'a> Reader<'a> {
         read_parallelism: usize,
     ) -> Result<Vec<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>>> {
         assert!(read_parallelism > 0);
-        let read_parallelism = if self.parallelism_options.enable_read_parallelly {
-            read_parallelism
-        } else {
-            1
-        };
 
         self.init_if_necessary().await?;
         let streams = self.fetch_record_batch_streams(read_parallelism).await?;
@@ -122,8 +135,10 @@ impl<'a> Reader<'a> {
             return Ok(Vec::new());
         }
 
-        let row_projector = self.row_projector.take().unwrap();
-        let row_projector = ArrowRecordBatchProjector::from(row_projector);
+        let row_projector = {
+            let row_projector = self.row_projector.take().unwrap();
+            ArrowRecordBatchProjector::from(row_projector)
+        };
 
         let sst_meta_data = self
             .meta_data
@@ -153,15 +168,31 @@ impl<'a> Reader<'a> {
         row_groups: &[RowGroupMetaData],
         parquet_filter: Option<&ParquetFilter>,
     ) -> Result<Vec<usize>> {
-        let pruner =
-            RowGroupPruner::try_new(&schema, row_groups, parquet_filter, self.predicate.exprs())?;
+        let metrics_collector = self
+            .metrics
+            .metrics_collector
+            .as_ref()
+            .map(|v| v.span(PRUNE_ROW_GROUPS_METRICS_COLLECTOR_NAME.to_string()));
+        let mut pruner = RowGroupPruner::try_new(
+            &schema,
+            row_groups,
+            parquet_filter,
+            self.predicate.exprs(),
+            metrics_collector,
+        )?;
 
         Ok(pruner.prune())
     }
 
+    /// The final parallelism is ensured in the range: [1, num_row_groups].
+    #[inline]
+    fn decide_read_parallelism(suggested: usize, num_row_groups: usize) -> usize {
+        suggested.min(num_row_groups).max(1)
+    }
+
     async fn fetch_record_batch_streams(
         &mut self,
-        read_parallelism: usize,
+        suggested_parallelism: usize,
     ) -> Result<Vec<SendableRecordBatchStream>> {
         assert!(self.meta_data.is_some());
 
@@ -175,7 +206,7 @@ impl<'a> Reader<'a> {
             meta_data.custom().parquet_filter.as_ref(),
         )?;
 
-        info!(
+        debug!(
             "Reader fetch record batches, path:{}, row_groups total:{}, after prune:{}",
             self.path,
             meta_data.parquet().num_row_groups(),
@@ -187,18 +218,16 @@ impl<'a> Reader<'a> {
         }
 
         // Partition the batches by `read_parallelism`.
-        let suggest_read_parallelism = read_parallelism;
-        let read_parallelism = std::cmp::min(target_row_groups.len(), suggest_read_parallelism);
+        let parallelism =
+            Self::decide_read_parallelism(suggested_parallelism, target_row_groups.len());
 
         // TODO: we only support read parallelly when `batch_size` ==
         // `num_rows_per_row_group`, so this placing method is ok, we should
         // adjust it when supporting it other situations.
-        let chunks_num = read_parallelism;
-        let chunk_size = target_row_groups.len() / read_parallelism + 1;
-        info!(
-            "Reader fetch record batches parallelly, parallelism suggest:{}, real:{}, chunk_size:{}",
-            suggest_read_parallelism, read_parallelism, chunk_size
-        );
+        let chunks_num = parallelism;
+        let chunk_size = target_row_groups.len() / parallelism;
+        self.metrics.parallelism = parallelism;
+
         let mut target_row_group_chunks = vec![Vec::with_capacity(chunk_size); chunks_num];
         for (row_group_idx, row_group) in target_row_groups.into_iter().enumerate() {
             let chunk_idx = row_group_idx % chunks_num;
@@ -210,6 +239,10 @@ impl<'a> Reader<'a> {
             meta_data.parquet().file_metadata().schema_descr(),
             row_projector.existed_source_projection().iter().copied(),
         );
+        debug!(
+            "Reader fetch record batches, parallelism suggest:{}, real:{}, chunk_size:{}, project:{:?}",
+            suggested_parallelism, parallelism, chunk_size, proj_mask
+        );
 
         let mut streams = Vec::with_capacity(target_row_group_chunks.len());
         let exprs = datafusion::optimizer::utils::conjunction(self.predicate.exprs().to_vec());
@@ -219,8 +252,13 @@ impl<'a> Reader<'a> {
             let object_store_reader =
                 ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
             let row_selection = if let Some(exprs) = &exprs {
-                let page_predicate = PagePruningPredicate::try_new(&exprs, arrow_schema.clone())
-                    .context(DataFusionError)?;
+                let df_schema = arrow_schema.clone().to_dfschema().unwrap();
+                let physical_expr =
+                    create_physical_expr(exprs, &df_schema, &arrow_schema, &ExecutionProps::new())
+                        .unwrap();
+                let page_predicate =
+                    PagePruningPredicate::try_new(&physical_expr, arrow_schema.clone())
+                        .context(DataFusionError)?;
                 page_predicate
                     .prune(&chunk, parquet_metadata, &metrics)
                     .context(DataFusionError)?
@@ -234,7 +272,7 @@ impl<'a> Reader<'a> {
                 builder = builder.with_row_selection(selection);
             };
             let stream = builder
-                .with_batch_size(self.batch_size)
+                .with_batch_size(self.num_rows_per_row_group)
                 .with_row_groups(chunk)
                 .with_projection(proj_mask.clone())
                 .build()
@@ -252,7 +290,12 @@ impl<'a> Reader<'a> {
             return Ok(());
         }
 
-        let meta_data = self.read_sst_meta().await?;
+        let meta_data = {
+            let start = Instant::now();
+            let meta_data = self.read_sst_meta().await?;
+            self.metrics.read_meta_data_duration = start.elapsed();
+            meta_data
+        };
 
         let row_projector = self
             .projected_schema
@@ -278,12 +321,9 @@ impl<'a> Reader<'a> {
 
     async fn load_meta_data_from_storage(&self) -> Result<parquet_ext::ParquetMetaDataRef> {
         let file_size = self.load_file_size().await?;
-        let chunk_reader_adapter = ChunkReaderAdapter {
-            path: self.path,
-            store: self.store,
-        };
+        let chunk_reader_adapter = ChunkReaderAdapter::new(self.path, self.store);
 
-        let meta_data =
+        let (meta_data, _) =
             parquet_ext::meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter)
                 .await
                 .with_context(|| FetchAndDecodeSstMeta {
@@ -300,9 +340,10 @@ impl<'a> Reader<'a> {
         }
     }
 
-    async fn read_sst_meta(&self) -> Result<MetaData> {
+    async fn read_sst_meta(&mut self) -> Result<MetaData> {
         if let Some(cache) = &self.meta_cache {
             if let Some(meta_data) = cache.get(self.path.as_ref()) {
+                self.metrics.meta_data_cache_hit = true;
                 return Ok(meta_data);
             }
         }
@@ -341,52 +382,12 @@ impl<'a> Reader<'a> {
     }
 }
 
-/// Options for `read_parallelly` in [Reader]
-#[derive(Debug, Clone, Copy)]
-struct ParallelismOptions {
-    /// Whether allow parallelly reading.
-    ///
-    /// NOTICE: now we only allow `read_parallelly` when
-    /// `read_batch_row_num` == `num_rows_per_row_group`
-    /// (surely, `num_rows_per_row_group` > 0).
-    // TODO: maybe we should support `read_parallelly` in all situations.
-    enable_read_parallelly: bool,
-    // TODO: more configs will be add.
-}
-
-impl ParallelismOptions {
-    fn new(read_batch_row_num: usize, num_rows_per_row_group: usize) -> Self {
-        let enable_read_parallelly = if read_batch_row_num != num_rows_per_row_group {
-            warn!(
-                "Reader new parallelism options not enable, don't allow read parallelly because
-                read_batch_row_num != num_rows_per_row_group,
-                read_batch_row_num:{}, num_rows_per_row_group:{}",
-                read_batch_row_num, num_rows_per_row_group
-            );
-
-            false
-        } else {
-            true
-        };
-
-        Self {
-            enable_read_parallelly,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-struct ReaderMetrics {
-    bytes_scanned: usize,
-    sst_get_range_length_histogram: LocalHistogram,
-}
-
 #[derive(Clone)]
 struct ObjectStoreReader {
     storage: ObjectStoreRef,
     path: Path,
     meta_data: MetaData,
-    metrics: ReaderMetrics,
+    begin: Instant,
 }
 
 impl ObjectStoreReader {
@@ -395,27 +396,23 @@ impl ObjectStoreReader {
             storage,
             path,
             meta_data,
-            metrics: ReaderMetrics {
-                bytes_scanned: 0,
-                sst_get_range_length_histogram: metrics::SST_GET_RANGE_HISTOGRAM.local(),
-            },
+            begin: Instant::now(),
         }
     }
 }
 
 impl Drop for ObjectStoreReader {
     fn drop(&mut self) {
-        debug!("ObjectStoreReader is dropped, metrics:{:?}", self.metrics);
+        debug!(
+            "ObjectStoreReader dropped, path:{}, elapsed:{:?}",
+            &self.path,
+            self.begin.elapsed()
+        );
     }
 }
 
 impl AsyncFileReader for ObjectStoreReader {
     fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
-        self.metrics.bytes_scanned += range.end - range.start;
-        self.metrics
-            .sst_get_range_length_histogram
-            .observe((range.end - range.start) as f64);
-
         self.storage
             .get_range(&self.path, range)
             .map_err(|e| {
@@ -430,13 +427,6 @@ impl AsyncFileReader for ObjectStoreReader {
         &mut self,
         ranges: Vec<Range<usize>>,
     ) -> BoxFuture<'_, parquet::errors::Result<Vec<Bytes>>> {
-        for range in &ranges {
-            self.metrics.bytes_scanned += range.end - range.start;
-            self.metrics
-                .sst_get_range_length_histogram
-                .observe((range.end - range.start) as f64);
-        }
-
         async move {
             self.storage
                 .get_ranges(&self.path, &ranges)
@@ -457,9 +447,15 @@ impl AsyncFileReader for ObjectStoreReader {
     }
 }
 
-struct ChunkReaderAdapter<'a> {
+pub struct ChunkReaderAdapter<'a> {
     path: &'a Path,
     store: &'a ObjectStoreRef,
+}
+
+impl<'a> ChunkReaderAdapter<'a> {
+    pub fn new(path: &'a Path, store: &'a ObjectStoreRef) -> Self {
+        Self { path, store }
+    }
 }
 
 #[async_trait]
@@ -499,7 +495,7 @@ impl RecordBatchProjector {
 
 impl Drop for RecordBatchProjector {
     fn drop(&mut self) {
-        info!(
+        debug!(
             "RecordBatchProjector dropped, path:{} rows:{}, cost:{}ms.",
             self.path,
             self.row_num,
@@ -619,8 +615,6 @@ impl Stream for RecordBatchReceiver {
     }
 }
 
-const DEFAULT_CHANNEL_CAP: usize = 1024;
-
 /// Spawn a new thread to read record_batches
 pub struct ThreadedReader<'a> {
     inner: Reader<'a>,
@@ -631,7 +625,12 @@ pub struct ThreadedReader<'a> {
 }
 
 impl<'a> ThreadedReader<'a> {
-    pub fn new(reader: Reader<'a>, runtime: Arc<Runtime>, read_parallelism: usize) -> Self {
+    pub fn new(
+        reader: Reader<'a>,
+        runtime: Arc<Runtime>,
+        read_parallelism: usize,
+        channel_cap: usize,
+    ) -> Self {
         assert!(
             read_parallelism > 0,
             "read parallelism must be greater than 0"
@@ -640,7 +639,7 @@ impl<'a> ThreadedReader<'a> {
         Self {
             inner: reader,
             runtime,
-            channel_cap: DEFAULT_CHANNEL_CAP,
+            channel_cap,
             read_parallelism,
         }
     }
@@ -688,7 +687,7 @@ impl<'a> SstReader for ThreadedReader<'a> {
             self.read_parallelism, read_parallelism
         );
 
-        let channel_cap_per_sub_reader = self.channel_cap / self.read_parallelism + 1;
+        let channel_cap_per_sub_reader = self.channel_cap / sub_readers.len();
         let (tx_group, rx_group): (Vec<_>, Vec<_>) = (0..read_parallelism)
             .map(|_| mpsc::channel::<Result<RecordBatchWithKey>>(channel_cap_per_sub_reader))
             .unzip();
@@ -717,8 +716,6 @@ mod tests {
 
     use futures::{Stream, StreamExt};
     use tokio::sync::mpsc::{self, Receiver, Sender};
-
-    use super::ParallelismOptions;
 
     struct MockReceivers {
         rx_group: Vec<Receiver<u32>>,
@@ -814,26 +811,5 @@ mod tests {
         }
 
         assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn test_parallelism_options() {
-        // `read_batch_row_num` < num_rows_per_row_group`
-        let read_batch_row_num = 2;
-        let num_rows_per_row_group = 4;
-        let options = ParallelismOptions::new(read_batch_row_num, num_rows_per_row_group);
-        assert!(!options.enable_read_parallelly);
-
-        // `read_batch_row_num` > num_rows_per_row_group
-        let read_batch_row_num = 8;
-        let num_rows_per_row_group = 4;
-        let options = ParallelismOptions::new(read_batch_row_num, num_rows_per_row_group);
-        assert!(!options.enable_read_parallelly);
-
-        // `read_batch_row_num` == num_rows_per_row_group`
-        let read_batch_row_num = 4;
-        let num_rows_per_row_group = 4;
-        let options = ParallelismOptions::new(read_batch_row_num, num_rows_per_row_group);
-        assert!(options.enable_read_parallelly);
     }
 }

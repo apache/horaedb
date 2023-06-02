@@ -8,10 +8,7 @@
 
 [English](./README.md)
 
-CeresDB 是一款高性能、分布式、Schema-less 的云原生时序数据库，能够同时处理时序型（time-series）以及分析型（analytics）负载。
-
-## 项目状态
-项目目前在快速迭代中，早期版本可能存在数据不兼容问题，因此不推荐生产使用及性能测试。
+CeresDB 是一款高性能、分布式的云原生时序数据库。
 
 ## RoadMap
 项目 [Roadmap](https://docs.ceresdb.io/dev/roadmap.html)。
@@ -134,7 +131,7 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 |    x86_64-apple-darwin   | 10.15+, Catalina+ |          构建          |
 |    aarch64-apple-darwin  |   11+, Big Sur+   |          构建          |
 | aarch64-unknown-linux-gnu|        TBD        | 详见 [#63](https://github.com/CeresDB/ceresdb/issues/63)|
-|         *-windows        |         *         |         未支持         |
+|         windows          |         *         |         未支持         |
 
 ## 如何贡献
 [如何参与 CeresDB 代码贡献](CONTRIBUTING.md)
@@ -154,5 +151,5 @@ CeresDB 基于 [Apache License 2.0](./LICENSE) 协议。
 - [CeresDB 社区角色](docs/community/ROLES-CN.md)
 - [Slack](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1dcbv8yq8-Fv8aVUb6ODTL7kxbzs9fnA)
 - 邮箱: ceresdbservice@gmail.com
-- [微信群](https://github.com/CeresDB/assets/blob/main/WeChatQRCode.jpg)
+- [官方微信公众号](https://github.com/CeresDB/community/blob/main/communication/wechat/official-account-qrcode.jpg)
 - 钉钉群: CeresDB 开源: 44602802

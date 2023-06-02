@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Logical optimizer
 
@@ -8,8 +8,8 @@ pub mod tests;
 pub mod type_conversion;
 
 use datafusion::{error::DataFusionError, prelude::SessionContext};
+use query_frontend::plan::QueryPlan;
 use snafu::{Backtrace, ResultExt, Snafu};
-use sql::plan::QueryPlan;
 
 #[derive(Debug, Snafu)]
 pub enum Error {

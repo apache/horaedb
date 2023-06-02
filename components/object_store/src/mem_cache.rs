@@ -5,9 +5,8 @@
 //! 2. Builtin Partition to reduce lock contention
 
 use std::{
-    collections::hash_map::{DefaultHasher, RandomState},
+    collections::hash_map::RandomState,
     fmt::{self, Display},
-    hash::{Hash, Hasher},
     num::NonZeroUsize,
     ops::Range,
     sync::Arc,
@@ -16,9 +15,10 @@ use std::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use clru::{CLruCache, CLruCacheConfig, WeightScale};
+use common_util::partitioned_lock::PartitionedMutex;
 use futures::stream::BoxStream;
 use snafu::{OptionExt, Snafu};
-use tokio::{io::AsyncWrite, sync::Mutex};
+use tokio::io::AsyncWrite;
 use upstream::{path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result};
 
 use crate::ObjectStoreRef;
@@ -37,54 +37,10 @@ impl WeightScale<String, Bytes> for CustomScale {
     }
 }
 
-struct Partition {
-    inner: Mutex<CLruCache<String, Bytes, RandomState, CustomScale>>,
-}
-
-impl Partition {
-    fn new(mem_cap: NonZeroUsize) -> Self {
-        let cache = CLruCache::with_config(CLruCacheConfig::new(mem_cap).with_scale(CustomScale));
-
-        Self {
-            inner: Mutex::new(cache),
-        }
-    }
-}
-
-impl Partition {
-    async fn get(&self, key: &str) -> Option<Bytes> {
-        let mut guard = self.inner.lock().await;
-        guard.get(key).cloned()
-    }
-
-    async fn peek(&self, key: &str) -> Option<Bytes> {
-        // FIXME: actually, here write lock is not necessary.
-        let guard = self.inner.lock().await;
-        guard.peek(key).cloned()
-    }
-
-    async fn insert(&self, key: String, value: Bytes) {
-        let mut guard = self.inner.lock().await;
-        // don't care error now.
-        _ = guard.put_with_weight(key, value);
-    }
-
-    #[cfg(test)]
-    async fn keys(&self) -> Vec<String> {
-        let guard = self.inner.lock().await;
-        guard
-            .iter()
-            .map(|(key, _)| key)
-            .cloned()
-            .collect::<Vec<_>>()
-    }
-}
-
 pub struct MemCache {
     /// Max memory this store can use
     mem_cap: NonZeroUsize,
-    partitions: Vec<Arc<Partition>>,
-    partition_mask: usize,
+    inner: PartitionedMutex<CLruCache<String, Bytes, RandomState, CustomScale>>,
 }
 
 pub type MemCacheRef = Arc<MemCache>;
@@ -95,54 +51,45 @@ impl MemCache {
         mem_cap: NonZeroUsize,
     ) -> std::result::Result<Self, Error> {
         let partition_num = 1 << partition_bits;
-        let cap_per_part = mem_cap
-            .checked_mul(NonZeroUsize::new(partition_num).unwrap())
-            .context(InvalidCapacity)?;
-        let partitions = (0..partition_num)
-            .map(|_| Arc::new(Partition::new(cap_per_part)))
-            .collect::<Vec<_>>();
-
-        Ok(Self {
-            mem_cap,
-            partitions,
-            partition_mask: partition_num - 1,
-        })
+        let cap_per_part =
+            NonZeroUsize::new((mem_cap.get() as f64 / partition_num as f64) as usize)
+                .context(InvalidCapacity)?;
+        let inin_lru =
+            || CLruCache::with_config(CLruCacheConfig::new(cap_per_part).with_scale(CustomScale));
+        let inner = PartitionedMutex::new(inin_lru, partition_bits);
+        Ok(Self { mem_cap, inner })
     }
 
-    fn locate_partition(&self, key: &str) -> Arc<Partition> {
-        let mut hasher = DefaultHasher::new();
-        key.hash(&mut hasher);
-        self.partitions[hasher.finish() as usize & self.partition_mask].clone()
+    fn get(&self, key: &str) -> Option<Bytes> {
+        self.inner.lock(&key).get(key).cloned()
     }
 
-    async fn get(&self, key: &str) -> Option<Bytes> {
-        let partition = self.locate_partition(key);
-        partition.get(key).await
+    fn peek(&self, key: &str) -> Option<Bytes> {
+        self.inner.lock(&key).peek(key).cloned()
     }
 
-    async fn peek(&self, key: &str) -> Option<Bytes> {
-        let partition = self.locate_partition(key);
-        partition.peek(key).await
+    fn insert(&self, key: String, value: Bytes) {
+        // don't care error now.
+        _ = self.inner.lock(&key).put_with_weight(key, value);
     }
 
-    async fn insert(&self, key: String, value: Bytes) {
-        let partition = self.locate_partition(&key);
-        partition.insert(key, value).await;
+    /// Give a description of the cache state.
+
+    #[cfg(test)]
+    fn keys(&self, part: &CLruCache<String, Bytes, RandomState, CustomScale>) -> Vec<String> {
+        part.iter().map(|(key, _)| key).cloned().collect::<Vec<_>>()
     }
 
     #[cfg(test)]
-    async fn to_string(&self) -> String {
-        futures::future::join_all(
-            self.partitions
-                .iter()
-                .map(|part| async { part.keys().await.join(",") }),
-        )
-        .await
-        .into_iter()
-        .enumerate()
-        .map(|(part_no, keys)| format!("{part_no}: [{keys}]"))
-        .collect::<Vec<_>>()
-        .join("\n")
+    fn state_desc(&self) -> String {
+        self.inner
+            .get_all_partition()
+            .iter()
+            .map(|part| self.keys(&part.lock().unwrap()).join(","))
+            .enumerate()
+            .map(|(part_no, keys)| format!("{part_no}: [{keys}]"))
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
@@ -150,8 +97,7 @@ impl Display for MemCache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MemCache")
             .field("mem_cap", &self.mem_cap)
-            .field("mask", &self.partition_mask)
-            .field("partitions", &self.partitions.len())
+            .field("partitions", &self.inner.get_all_partition().len())
             .finish()
     }
 }
@@ -195,21 +141,21 @@ impl MemCacheStore {
         // TODO(chenxiang): What if there are some overlapping range in cache?
         // A request with range [5, 10) can also use [0, 20) cache
         let cache_key = Self::cache_key(location, &range);
-        if let Some(bytes) = self.cache.get(&cache_key).await {
+        if let Some(bytes) = self.cache.get(&cache_key) {
             return Ok(bytes);
         }
 
         // TODO(chenxiang): What if two threads reach here? It's better to
         // pend one thread, and only let one to fetch data from underlying store.
         let bytes = self.underlying_store.get_range(location, range).await?;
-        self.cache.insert(cache_key, bytes.clone()).await;
+        self.cache.insert(cache_key, bytes.clone());
 
         Ok(bytes)
     }
 
     async fn get_range_with_ro_cache(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
         let cache_key = Self::cache_key(location, &range);
-        if let Some(bytes) = self.cache.peek(&cache_key).await {
+        if let Some(bytes) = self.cache.peek(&cache_key) {
             return Ok(bytes);
         }
 
@@ -297,7 +243,7 @@ mod test {
 
     use super::*;
 
-    async fn prepare_store(bits: usize, mem_cap: usize) -> MemCacheStore {
+    fn prepare_store(bits: usize, mem_cap: usize) -> MemCacheStore {
         let local_path = tempdir().unwrap();
         let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
 
@@ -309,7 +255,7 @@ mod test {
     #[tokio::test]
     async fn test_mem_cache_evict() {
         // single partition
-        let store = prepare_store(0, 13).await;
+        let store = prepare_store(0, 13);
 
         // write date
         let location = Path::from("1.sst");
@@ -324,7 +270,6 @@ mod test {
         assert!(store
             .cache
             .get(&MemCacheStore::cache_key(&location, &range0_5))
-            .await
             .is_some());
 
         // get bytes from [5, 10), insert to cache
@@ -333,12 +278,10 @@ mod test {
         assert!(store
             .cache
             .get(&MemCacheStore::cache_key(&location, &range0_5))
-            .await
             .is_some());
         assert!(store
             .cache
             .get(&MemCacheStore::cache_key(&location, &range5_10))
-            .await
             .is_some());
 
         // get bytes from [10, 15), insert to cache
@@ -351,24 +294,21 @@ mod test {
         assert!(store
             .cache
             .get(&MemCacheStore::cache_key(&location, &range0_5))
-            .await
             .is_none());
         assert!(store
             .cache
             .get(&MemCacheStore::cache_key(&location, &range5_10))
-            .await
             .is_some());
         assert!(store
             .cache
             .get(&MemCacheStore::cache_key(&location, &range10_15))
-            .await
             .is_some());
     }
 
     #[tokio::test]
     async fn test_mem_cache_partition() {
         // 4 partitions
-        let store = prepare_store(2, 100).await;
+        let store = prepare_store(2, 100);
         let location = Path::from("partition.sst");
         store
             .put(&location, Bytes::from_static(&[1; 1024]))
@@ -384,22 +324,37 @@ mod test {
             .unwrap();
 
         assert_eq!(
-            r#"0: []
-1: [partition.sst-100-105]
-2: []
-3: [partition.sst-0-5]"#,
-            store.cache.as_ref().to_string().await
+            r#"0: [partition.sst-0-5]
+1: []
+2: [partition.sst-100-105]
+3: []"#,
+            store.cache.as_ref().state_desc()
         );
 
         assert!(store
             .cache
             .get(&MemCacheStore::cache_key(&location, &range0_5))
-            .await
             .is_some());
         assert!(store
             .cache
             .get(&MemCacheStore::cache_key(&location, &range100_105))
-            .await
             .is_some());
+    }
+
+    #[test]
+    fn test_mem_cache_capacity() {
+        // 4 partitions
+        let store = prepare_store(2, 100);
+        assert_eq!(
+            "25,25,25,25",
+            store
+                .cache
+                .inner
+                .get_all_partition()
+                .iter()
+                .map(|p| p.lock().unwrap().capacity().to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        );
     }
 }

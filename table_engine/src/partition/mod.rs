@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Partitioned table supports
 
@@ -232,10 +232,12 @@ impl TryFrom<ceresdbproto::cluster::PartitionInfo> for PartitionInfo {
     }
 }
 
+#[inline]
 pub fn format_sub_partition_table_name(table_name: &str, partition_name: &str) -> String {
     format!("{PARTITION_TABLE_PREFIX}{table_name}_{partition_name}")
 }
 
+#[inline]
 pub fn is_sub_partition_table(table_name: &str) -> bool {
     table_name.starts_with(PARTITION_TABLE_PREFIX)
 }

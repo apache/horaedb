@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Cluster sub-crate includes serval functionalities for supporting CeresDB
 //! server to running in the distribute mode. Including:
@@ -8,12 +8,14 @@
 //!
 //! The core types are [Cluster] trait and its implementation [ClusterImpl].
 
+#![feature(trait_alias)]
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use ceresdbproto::meta_event::{
-    CloseShardRequest, CloseTableOnShardRequest, CreateTableOnShardRequest,
-    DropTableOnShardRequest, OpenShardRequest, OpenTableOnShardRequest,
+    CloseTableOnShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest,
+    OpenTableOnShardRequest,
 };
 use common_types::schema::SchemaName;
 use common_util::{define_result, error::GenericError};
@@ -21,33 +23,43 @@ use meta_client::types::{
     ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId, ShardInfo, ShardVersion,
     TablesOfShard,
 };
+use shard_lock_manager::ShardLockManagerRef;
 use snafu::{Backtrace, Snafu};
 
 pub mod cluster_impl;
 pub mod config;
+pub mod shard_lock_manager;
 pub mod shard_tables_cache;
-// FIXME: Remove this lint ignore derive when topology about schema tables is
-// finished.
 #[allow(dead_code)]
 pub mod topology;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
 pub enum Error {
-    #[snafu(display("Build meta client failed, err:{}.", source))]
+    #[snafu(display("Invalid arguments, msg:{msg}.\nBacktrace:{backtrace}"))]
+    InvalidArguments { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Internal error, msg:{msg}, err:{source}"))]
+    Internal { msg: String, source: GenericError },
+
+    #[snafu(display("Build meta client failed, err:{source}."))]
     BuildMetaClient { source: meta_client::Error },
 
-    #[snafu(display("Meta client start failed, err:{}.", source))]
+    #[snafu(display("Meta client start failed, err:{source}."))]
     StartMetaClient { source: meta_client::Error },
 
-    #[snafu(display("Meta client execute failed, err:{}.", source))]
+    #[snafu(display("Meta client execute failed, err:{source}."))]
     MetaClientFailure { source: meta_client::Error },
 
+    #[snafu(display("Etcd client failure, msg:{msg}, err:{source}.\nBacktrace:\n{backtrace}"))]
+    EtcdClientFailureWithCause {
+        msg: String,
+        source: etcd_client::Error,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display(
-        "Fail to open shard, shard_id:{}, msg:{}.\nBacktrace:\n{}",
-        shard_id,
-        msg,
-        backtrace
+        "Fail to open shard, shard_id:{shard_id}, msg:{msg}.\nBacktrace:\n{backtrace}",
     ))]
     OpenShard {
         shard_id: ShardId,
@@ -55,25 +67,29 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Fail to open shard, source:{}.", source))]
+    #[snafu(display("Fail to open shard, shard_id:{shard_id}, source:{source}."))]
     OpenShardWithCause {
         shard_id: ShardId,
         source: GenericError,
     },
 
-    #[snafu(display("Shard not found, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    #[snafu(display("Fail to close shard, shard_id:{shard_id}, source:{source}."))]
+    CloseShardWithCause {
+        shard_id: ShardId,
+        source: GenericError,
+    },
+
+    #[snafu(display("Shard not found, msg:{msg}.\nBacktrace:\n{backtrace}"))]
     ShardNotFound { msg: String, backtrace: Backtrace },
 
-    #[snafu(display("Table not found, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    #[snafu(display("Table not found, msg:{msg}.\nBacktrace:\n{backtrace}"))]
     TableNotFound { msg: String, backtrace: Backtrace },
 
-    #[snafu(display("Table already exists, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    #[snafu(display("Table already exists, msg:{msg}.\nBacktrace:\n{backtrace}"))]
     TableAlreadyExists { msg: String, backtrace: Backtrace },
 
     #[snafu(display(
-        "Schema not found in current node, schema name:{}.\nBacktrace:\n{}",
-        schema_name,
-        backtrace
+        "Schema not found in current node, schema name:{schema_name}.\nBacktrace:\n{backtrace}",
     ))]
     SchemaNotFound {
         schema_name: SchemaName,
@@ -81,10 +97,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Shard version mismatch, shard_info:{:?}, expect version:{}.\nBacktrace:\n{}",
-        shard_info,
-        expect_version,
-        backtrace
+        "Shard version mismatch, shard_info:{shard_info:?}, expect version:{expect_version}.\nBacktrace:\n{backtrace}",
     ))]
     ShardVersionMismatch {
         shard_info: ShardInfo,
@@ -92,10 +105,14 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display("Update on a frozen shard, shard_id:{shard_id}.\nBacktrace:\n{backtrace}",))]
+    UpdateFrozenShard {
+        shard_id: ShardId,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display(
-        "Cluster nodes are not found in the topology, version:{}.\nBacktrace:\n{}",
-        version,
-        backtrace
+        "Cluster nodes are not found in the topology, version:{version}.\nBacktrace:\n{backtrace}",
     ))]
     ClusterNodesNotFound { version: u64, backtrace: Backtrace },
 }
@@ -115,12 +132,20 @@ pub struct ClusterNodesResp {
 pub trait Cluster {
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
-    async fn open_shard(&self, req: &OpenShardRequest) -> Result<TablesOfShard>;
-    async fn close_shard(&self, req: &CloseShardRequest) -> Result<TablesOfShard>;
+    async fn open_shard(&self, shard_info: &ShardInfo) -> Result<TablesOfShard>;
+    /// Close the shard.
+    ///
+    /// Return error if the shard is not found.
+    async fn close_shard(&self, req: ShardId) -> Result<TablesOfShard>;
+    /// Freeze the shard to reject create/drop table on the shard.
+    ///
+    /// Return error if the shard is not found.
+    async fn freeze_shard(&self, req: ShardId) -> Result<TablesOfShard>;
     async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()>;
     async fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()>;
     async fn open_table_on_shard(&self, req: &OpenTableOnShardRequest) -> Result<()>;
     async fn close_table_on_shard(&self, req: &CloseTableOnShardRequest) -> Result<()>;
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;
     async fn fetch_nodes(&self) -> Result<ClusterNodesResp>;
+    fn shard_lock_manager(&self) -> ShardLockManagerRef;
 }

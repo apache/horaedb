@@ -1,21 +1,19 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use common_util::runtime::JoinHandle;
 use log::{error, info};
 use opensrv_mysql::AsyncMysqlIntermediary;
+use proxy::Proxy;
 use query_engine::executor::Executor as QueryExecutor;
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Receiver, Sender};
 
-use crate::{
-    instance::{Instance, InstanceRef},
-    mysql::{error::Result, worker::MysqlWorker},
-};
+use crate::mysql::{error::Result, worker::MysqlWorker};
 
 pub struct MysqlService<Q> {
-    instance: InstanceRef<Q>,
+    proxy: Arc<Proxy<Q>>,
     runtimes: Arc<EngineRuntimes>,
     socket_addr: SocketAddr,
     join_handler: Option<JoinHandle<()>>,
@@ -25,13 +23,13 @@ pub struct MysqlService<Q> {
 
 impl<Q> MysqlService<Q> {
     pub fn new(
-        instance: Arc<Instance<Q>>,
+        proxy: Arc<Proxy<Q>>,
         runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
         timeout: Option<Duration>,
     ) -> MysqlService<Q> {
         Self {
-            instance,
+            proxy,
             runtimes,
             socket_addr,
             join_handler: None,
@@ -50,8 +48,8 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
 
         info!("MySQL server tries to listen on {}", self.socket_addr);
 
-        self.join_handler = Some(rt.bg_runtime.spawn(Self::loop_accept(
-            self.instance.clone(),
+        self.join_handler = Some(rt.default_runtime.spawn(Self::loop_accept(
+            self.proxy.clone(),
             self.runtimes.clone(),
             self.socket_addr,
             self.timeout,
@@ -67,7 +65,7 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
     }
 
     async fn loop_accept(
-        instance: InstanceRef<Q>,
+        proxy: Arc<Proxy<Q>>,
         runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
         timeout: Option<Duration>,
@@ -88,12 +86,11 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
                             break;
                         }
                     };
-                    let instance = instance.clone();
-                    let runtimes = runtimes.clone();
+                    let proxy = proxy.clone();
 
                     let rt = runtimes.read_runtime.clone();
                     rt.spawn(AsyncMysqlIntermediary::run_on(
-                        MysqlWorker::new(instance, runtimes, timeout),
+                        MysqlWorker::new(proxy,  timeout),
                         stream,
                     ));
                 },

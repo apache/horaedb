@@ -1,17 +1,17 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 // Meta event rpc service implementation.
 
 use std::{sync::Arc, time::Instant};
 
+use analytic_engine::setup::OpenedWals;
 use async_trait::async_trait;
 use catalog::{
-    manager::ManagerRef,
     schema::{
-        CloseOptions, CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef,
-        OpenOptions, OpenTableRequest, SchemaRef,
+        CloseOptions, CloseTableRequest, CreateOptions, CreateTableRequest, DropOptions,
+        DropTableRequest, OpenOptions, OpenTableRequest, TableDef,
     },
-    CatalogRef,
+    table_operator::TableOperator,
 };
 use ceresdbproto::meta_event::{
     meta_event_service_server::MetaEventService, ChangeShardRoleRequest, ChangeShardRoleResponse,
@@ -22,35 +22,69 @@ use ceresdbproto::meta_event::{
     SplitShardResponse,
 };
 use cluster::ClusterRef;
-use common_types::schema::SchemaEncoder;
+use common_types::{schema::SchemaEncoder, table::ShardId};
 use common_util::{error::BoxError, runtime::Runtime, time::InstantExt};
-use log::{error, info};
+use log::{error, info, warn};
+use meta_client::types::ShardInfo;
 use paste::paste;
+use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
-    engine::{CloseTableRequest, TableEngineRef, TableState},
+    engine::{TableEngineRef, TableState},
     partition::PartitionInfo,
-    table::{SchemaId, TableId},
+    table::TableId,
     ANALYTIC_ENGINE_TYPE,
 };
 use tonic::Response;
 
-use crate::{
-    grpc::{
-        meta_event_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
-        metrics::META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+use self::shard_operation::WalCloserAdapter;
+use crate::grpc::{
+    meta_event_service::{
+        error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+        shard_operation::WalRegionCloserRef,
     },
-    instance::InstanceRef,
+    metrics::META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
 };
 
-pub(crate) mod error;
+mod error;
+mod shard_operation;
 
-#[derive(Clone)]
-pub struct MetaServiceImpl<Q: QueryExecutor + 'static> {
+/// Builder for [MetaServiceImpl].
+pub struct Builder<Q> {
     pub cluster: ClusterRef,
     pub instance: InstanceRef<Q>,
     pub runtime: Arc<Runtime>,
+    pub opened_wals: OpenedWals,
+}
+
+impl<Q: QueryExecutor + 'static> Builder<Q> {
+    pub fn build(self) -> MetaServiceImpl<Q> {
+        let Self {
+            cluster,
+            instance,
+            runtime,
+            opened_wals,
+        } = self;
+
+        MetaServiceImpl {
+            cluster,
+            instance,
+            runtime,
+            wal_region_closer: Arc::new(WalCloserAdapter {
+                data_wal: opened_wals.data_wal,
+                manifest_wal: opened_wals.manifest_wal,
+            }),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct MetaServiceImpl<Q: QueryExecutor + 'static> {
+    cluster: ClusterRef,
+    instance: InstanceRef<Q>,
+    runtime: Arc<Runtime>,
+    wal_region_closer: WalRegionCloserRef,
 }
 
 macro_rules! handle_request {
@@ -134,134 +168,237 @@ impl<Q: QueryExecutor + 'static> MetaServiceImpl<Q> {
     fn handler_ctx(&self) -> HandlerContext {
         HandlerContext {
             cluster: self.cluster.clone(),
-            catalog_manager: self.instance.catalog_manager.clone(),
+            default_catalog: self
+                .instance
+                .catalog_manager
+                .default_catalog_name()
+                .to_string(),
+            table_operator: TableOperator::new(self.instance.catalog_manager.clone()),
             table_engine: self.instance.table_engine.clone(),
+            partition_table_engine: self.instance.partition_table_engine.clone(),
+            wal_region_closer: self.wal_region_closer.clone(),
         }
     }
 }
 
 /// Context for handling all kinds of meta event service.
+#[derive(Clone)]
 struct HandlerContext {
     cluster: ClusterRef,
-    catalog_manager: ManagerRef,
+    default_catalog: String,
+    table_operator: TableOperator,
     table_engine: TableEngineRef,
+    partition_table_engine: TableEngineRef,
+    wal_region_closer: WalRegionCloserRef,
 }
 
 impl HandlerContext {
-    fn default_catalog(&self) -> Result<CatalogRef> {
-        let default_catalog_name = self.catalog_manager.default_catalog_name();
-        let default_catalog = self
-            .catalog_manager
-            .catalog_by_name(default_catalog_name)
-            .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::Internal,
-                msg: "fail to get default catalog",
-            })?
-            .context(ErrNoCause {
-                code: StatusCode::NotFound,
-                msg: "default catalog is not found",
-            })?;
+    async fn acquire_shard_lock(&self, shard_id: ShardId) -> Result<()> {
+        let lock_mgr = self.cluster.shard_lock_manager();
+        let new_ctx = self.clone();
+        let on_lock_expired = |shard_id| async move {
+            warn!("Shard lock is released, try to close the tables and shard, shard_id:{shard_id}");
+            let res = do_close_shard(&new_ctx, shard_id).await;
+            match res {
+                Ok(_) => info!("Close shard success, shard_id:{shard_id}"),
+                Err(e) => {
+                    panic!(
+                        "Close shard failed, and we have to panic to ensure the data \
+                        integrity, shard_id:{shard_id}, err:{e}"
+                    );
+                }
+            }
+        };
 
-        Ok(default_catalog)
-    }
-}
-
-async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Result<()> {
-    let tables_of_shard =
-        ctx.cluster
-            .open_shard(&request)
+        let granted_by_this_call = lock_mgr
+            .grant_lock(shard_id, on_lock_expired)
             .await
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::Internal,
-                msg: "fail to open shards in cluster",
+                msg: "fail to acquire shard lock",
             })?;
 
-    let topology = ctx
+        if !granted_by_this_call {
+            warn!("Shard lock is already granted, shard_id:{}", shard_id);
+        }
+
+        Ok(())
+    }
+
+    async fn release_shard_lock(&self, shard_id: ShardId) -> Result<()> {
+        let lock_mgr = self.cluster.shard_lock_manager();
+        let revoked_by_this_call =
+            lock_mgr
+                .revoke_lock(shard_id)
+                .await
+                .box_err()
+                .context(ErrWithCause {
+                    code: StatusCode::Internal,
+                    msg: "fail to release shard lock",
+                })?;
+
+        if revoked_by_this_call {
+            warn!("Shard lock is revoked already, shard_id:{}", shard_id);
+        }
+
+        Ok(())
+    }
+}
+
+async fn do_open_shard(ctx: HandlerContext, shard_info: ShardInfo) -> Result<()> {
+    ctx.acquire_shard_lock(shard_info.id).await?;
+
+    let tables_of_shard = ctx
         .cluster
-        .fetch_nodes()
+        .open_shard(&shard_info)
         .await
         .box_err()
-        .with_context(|| ErrWithCause {
+        .context(ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to get topology while opening shard, request:{request:?}"),
+            msg: "fail to open shards in cluster",
         })?;
 
+    let catalog_name = &ctx.default_catalog;
     let shard_info = tables_of_shard.shard_info;
-    let default_catalog = ctx.default_catalog()?;
+    let table_defs = tables_of_shard
+        .tables
+        .into_iter()
+        .map(|info| TableDef {
+            catalog_name: catalog_name.clone(),
+            schema_name: info.schema_name,
+            id: TableId::from(info.id),
+            name: info.name,
+        })
+        .collect();
+
+    let open_shard_request = catalog::schema::OpenShardRequest {
+        shard_id: shard_info.id,
+        table_defs,
+        engine: ANALYTIC_ENGINE_TYPE.to_string(),
+    };
     let opts = OpenOptions {
         table_engine: ctx.table_engine,
     };
 
-    for table in tables_of_shard.tables {
-        let schema = find_schema(default_catalog.clone(), &table.schema_name)?;
-
-        let open_request = OpenTableRequest {
-            catalog_name: ctx.catalog_manager.default_catalog_name().to_string(),
-            schema_name: table.schema_name,
-            schema_id: SchemaId::from(table.schema_id),
-            table_name: table.name.clone(),
-            table_id: TableId::new(table.id),
-            engine: ANALYTIC_ENGINE_TYPE.to_string(),
-            shard_id: shard_info.id,
-            cluster_version: topology.cluster_topology_version,
-        };
-        schema
-            .open_table(open_request.clone(), opts.clone())
-            .await
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::Internal,
-                msg: format!("fail to open table, open_request:{open_request:?}"),
-            })?
-            .with_context(|| ErrNoCause {
-                code: StatusCode::Internal,
-                msg: format!("no table is opened, open_request:{open_request:?}"),
-            })?;
-    }
-
-    Ok(())
+    ctx.table_operator
+        .open_shard(open_shard_request, opts)
+        .await
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: "failed to open shard",
+        })
 }
 
-async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> Result<()> {
+// TODO: maybe we should encapsulate the logic of handling meta event into a
+// trait, so that we don't need to expose the logic to the meta event service
+// implementation.
+
+async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Result<()> {
+    info!("Receive open shard request, request:{request:?}");
+    let shard_info = ShardInfo::from(&request.shard.context(ErrNoCause {
+        code: StatusCode::BadRequest,
+        msg: "shard info is required",
+    })?);
+
+    let shard_id = shard_info.id;
+    info!("Handle open shard begins, shard_id:{shard_id}");
+    match do_open_shard(ctx, shard_info).await {
+        Err(e) => {
+            error!("Failed to open shard, shard_id:{shard_id}, err:{e}");
+            Err(e)
+        }
+        Ok(_) => {
+            info!("Handle open shard success, shard_id:{shard_id}");
+            Ok(())
+        }
+    }
+}
+
+async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
     let tables_of_shard =
         ctx.cluster
-            .close_shard(&request)
+            .freeze_shard(shard_id)
             .await
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::Internal,
-                msg: "fail to close shards in cluster",
+                msg: "fail to freeze shard before close it in cluster",
             })?;
+    info!("Shard is frozen before closed, shard_id:{shard_id}");
 
-    let default_catalog = ctx.default_catalog()?;
-
-    let opts = CloseOptions {
-        table_engine: ctx.table_engine,
+    let catalog_name = &ctx.default_catalog.clone();
+    let shard_info = tables_of_shard.shard_info;
+    let table_defs = tables_of_shard
+        .tables
+        .into_iter()
+        .map(|info| TableDef {
+            catalog_name: catalog_name.clone(),
+            schema_name: info.schema_name,
+            id: TableId::from(info.id),
+            name: info.name,
+        })
+        .collect();
+    let close_shard_request = catalog::schema::CloseShardRequest {
+        shard_id: shard_info.id,
+        table_defs,
+        engine: ANALYTIC_ENGINE_TYPE.to_string(),
     };
-    for table in tables_of_shard.tables {
-        let schema = find_schema(default_catalog.clone(), &table.schema_name)?;
+    let opts = CloseOptions {
+        table_engine: ctx.table_engine.clone(),
+    };
 
-        let close_request = CloseTableRequest {
-            catalog_name: ctx.catalog_manager.default_catalog_name().to_string(),
-            schema_name: table.schema_name,
-            schema_id: SchemaId::from(table.schema_id),
-            table_name: table.name.clone(),
-            table_id: TableId::new(table.id),
-            engine: ANALYTIC_ENGINE_TYPE.to_string(),
-        };
-        schema
-            .close_table(close_request.clone(), opts.clone())
-            .await
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::Internal,
-                msg: format!("fail to close table, close_request:{close_request:?}"),
-            })?;
+    ctx.table_operator
+        .close_shard(close_shard_request, opts)
+        .await
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: "failed to close shard",
+        })?;
+
+    // Try to close wal region
+    ctx.wal_region_closer
+        .close_region(shard_id)
+        .await
+        .with_context(|| ErrWithCause {
+            code: StatusCode::Internal,
+            msg: format!("fail to close wal region, shard_id:{shard_id}"),
+        })?;
+
+    // Remove the shard from the cluster topology after the shard is closed indeed.
+    let _ = ctx
+        .cluster
+        .close_shard(shard_id)
+        .await
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: "fail to close shards in cluster",
+        })?;
+
+    ctx.release_shard_lock(shard_id).await.map_err(|e| {
+        error!("Failed to release shard lock, shard_id:{shard_id}, err:{e}");
+        e
+    })
+}
+
+async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> Result<()> {
+    info!("Receive close shard request, request:{request:?}");
+
+    let shard_id = request.shard_id;
+    info!("Handle close shard begins, shard_id:{shard_id}");
+    match do_close_shard(&ctx, shard_id).await {
+        Ok(_) => {
+            info!("Handle close shard succeed, shard_id:{shard_id}");
+            Ok(())
+        }
+        Err(e) => {
+            error!("Failed to close shard, shard_id:{shard_id}, err:{e}");
+            Err(e)
+        }
     }
-
-    Ok(())
 }
 
 async fn handle_create_table_on_shard(
@@ -277,16 +414,8 @@ async fn handle_create_table_on_shard(
             msg: format!("fail to create table on shard in cluster, req:{request:?}"),
         })?;
 
-    let topology = ctx
-        .cluster
-        .fetch_nodes()
-        .await
-        .box_err()
-        .with_context(|| ErrWithCause {
-            code: StatusCode::Internal,
-            msg: format!("fail to get topology while creating table, request:{request:?}"),
-        })?;
-
+    // Create the table by operator afterwards.
+    let catalog_name = &ctx.default_catalog;
     let shard_info = request
         .update_shard_info
         .context(ErrNoCause {
@@ -298,16 +427,12 @@ async fn handle_create_table_on_shard(
             code: StatusCode::BadRequest,
             msg: "current shard info is missing ine CreateTableOnShardRequest",
         })?;
-    let table = request.table_info.context(ErrNoCause {
+    let table_info = request.table_info.context(ErrNoCause {
         code: StatusCode::BadRequest,
         msg: "table info is missing in the CreateTableOnShardRequest",
     })?;
 
-    // Create the table by catalog manager afterwards.
-    let default_catalog = ctx.default_catalog()?;
-
-    let schema = find_schema(default_catalog, &table.schema_name)?;
-
+    // Get information for partition table creating.
     let table_schema = SchemaEncoder::default()
         .decode(&request.encoded_schema)
         .box_err()
@@ -319,41 +444,44 @@ async fn handle_create_table_on_shard(
             ),
         })?;
 
-    let partition_info = match table.partition_info {
-        Some(v) => Some(
-            PartitionInfo::try_from(v.clone())
-                .box_err()
-                .with_context(|| ErrWithCause {
+    let (table_engine, partition_info) = match table_info.partition_info {
+        Some(v) => {
+            let partition_info = Some(PartitionInfo::try_from(v.clone()).box_err().with_context(
+                || ErrWithCause {
                     code: StatusCode::BadRequest,
                     msg: format!("fail to parse partition info, partition_info:{v:?}"),
-                })?,
-        ),
-        None => None,
+                },
+            )?);
+            (ctx.partition_table_engine.clone(), partition_info)
+        }
+        None => (ctx.table_engine.clone(), None),
     };
 
+    // Build create table request and options.
     let create_table_request = CreateTableRequest {
-        catalog_name: ctx.catalog_manager.default_catalog_name().to_string(),
-        schema_name: table.schema_name,
-        schema_id: SchemaId::from_u32(table.schema_id),
-        table_name: table.name,
+        catalog_name: catalog_name.clone(),
+        schema_name: table_info.schema_name,
+        table_name: table_info.name,
+        table_id: Some(TableId::new(table_info.id)),
         table_schema,
         engine: request.engine,
         options: request.options,
         state: TableState::Stable,
         shard_id: shard_info.id,
-        cluster_version: topology.cluster_topology_version,
         partition_info,
     };
+
     let create_opts = CreateOptions {
-        table_engine: ctx.table_engine,
+        table_engine,
         create_if_not_exists: request.create_if_not_exist,
     };
 
-    schema
-        .create_table(create_table_request.clone(), create_opts)
+    let _ = ctx
+        .table_operator
+        .create_table_on_shard(create_table_request.clone(), create_opts)
         .await
         .box_err()
-        .with_context(|| ErrWithCause {
+        .context(ErrWithCause {
             code: StatusCode::Internal,
             msg: format!("fail to create table with request:{create_table_request:?}"),
         })?;
@@ -374,21 +502,16 @@ async fn handle_drop_table_on_shard(
             msg: format!("fail to drop table on shard in cluster, req:{request:?}"),
         })?;
 
-    let table = request.table_info.context(ErrNoCause {
+    // Drop the table by operator afterwards.
+    let catalog_name = ctx.default_catalog.clone();
+    let table_info = request.table_info.context(ErrNoCause {
         code: StatusCode::BadRequest,
         msg: "table info is missing in the DropTableOnShardRequest",
     })?;
-
-    // Drop the table by catalog manager afterwards.
-    let default_catalog = ctx.default_catalog()?;
-
-    let schema = find_schema(default_catalog, &table.schema_name)?;
-
     let drop_table_request = DropTableRequest {
-        catalog_name: ctx.catalog_manager.default_catalog_name().to_string(),
-        schema_name: table.schema_name,
-        schema_id: SchemaId::from_u32(table.schema_id),
-        table_name: table.name,
+        catalog_name,
+        schema_name: table_info.schema_name,
+        table_name: table_info.name,
         // FIXME: the engine type should not use the default one.
         engine: ANALYTIC_ENGINE_TYPE.to_string(),
     };
@@ -396,8 +519,8 @@ async fn handle_drop_table_on_shard(
         table_engine: ctx.table_engine,
     };
 
-    schema
-        .drop_table(drop_table_request.clone(), drop_opts)
+    ctx.table_operator
+        .drop_table_on_shard(drop_table_request.clone(), drop_opts)
         .await
         .box_err()
         .with_context(|| ErrWithCause {
@@ -421,16 +544,8 @@ async fn handle_open_table_on_shard(
             msg: format!("fail to open table on shard in cluster, req:{request:?}"),
         })?;
 
-    let topology = ctx
-        .cluster
-        .fetch_nodes()
-        .await
-        .box_err()
-        .with_context(|| ErrWithCause {
-            code: StatusCode::Internal,
-            msg: format!("fail to get topology while opening table, request:{request:?}"),
-        })?;
-
+    // Open the table by operator afterwards.
+    let catalog_name = ctx.default_catalog.clone();
     let shard_info = request
         .update_shard_info
         .context(ErrNoCause {
@@ -442,33 +557,25 @@ async fn handle_open_table_on_shard(
             code: StatusCode::BadRequest,
             msg: "current shard info is missing ine OpenTableOnShardRequest",
         })?;
-    let table = request.table_info.context(ErrNoCause {
+    let table_info = request.table_info.context(ErrNoCause {
         code: StatusCode::BadRequest,
         msg: "table info is missing in the OpenTableOnShardRequest",
     })?;
-
-    // Open the table by catalog manager afterwards.
-    let default_catalog = ctx.default_catalog()?;
-
-    let schema = find_schema(default_catalog, &table.schema_name)?;
-
     let open_table_request = OpenTableRequest {
-        catalog_name: ctx.catalog_manager.default_catalog_name().to_string(),
-        schema_name: table.schema_name,
-        schema_id: SchemaId::from_u32(table.schema_id),
-        table_name: table.name,
+        catalog_name,
+        schema_name: table_info.schema_name,
+        table_name: table_info.name,
         // FIXME: the engine type should not use the default one.
         engine: ANALYTIC_ENGINE_TYPE.to_string(),
         shard_id: shard_info.id,
-        cluster_version: topology.cluster_topology_version,
-        table_id: TableId::new(table.id),
+        table_id: TableId::new(table_info.id),
     };
     let open_opts = OpenOptions {
         table_engine: ctx.table_engine,
     };
 
-    schema
-        .open_table(open_table_request.clone(), open_opts)
+    ctx.table_operator
+        .open_table_on_shard(open_table_request.clone(), open_opts)
         .await
         .box_err()
         .with_context(|| ErrWithCause {
@@ -492,22 +599,17 @@ async fn handle_close_table_on_shard(
             msg: format!("fail to close table on shard in cluster, req:{request:?}"),
         })?;
 
-    let table = request.table_info.context(ErrNoCause {
+    // Close the table by catalog manager afterwards.
+    let catalog_name = &ctx.default_catalog;
+    let table_info = request.table_info.context(ErrNoCause {
         code: StatusCode::BadRequest,
         msg: "table info is missing in the CloseTableOnShardRequest",
     })?;
-
-    // Close the table by catalog manager afterwards.
-    let default_catalog = ctx.default_catalog()?;
-
-    let schema = find_schema(default_catalog, &table.schema_name)?;
-
     let close_table_request = CloseTableRequest {
-        catalog_name: ctx.catalog_manager.default_catalog_name().to_string(),
-        schema_name: table.schema_name,
-        schema_id: SchemaId::from_u32(table.schema_id),
-        table_name: table.name,
-        table_id: TableId::new(table.id),
+        catalog_name: catalog_name.clone(),
+        schema_name: table_info.schema_name,
+        table_name: table_info.name,
+        table_id: TableId::new(table_info.id),
         // FIXME: the engine type should not use the default one.
         engine: ANALYTIC_ENGINE_TYPE.to_string(),
     };
@@ -515,8 +617,8 @@ async fn handle_close_table_on_shard(
         table_engine: ctx.table_engine,
     };
 
-    schema
-        .close_table(close_table_request.clone(), close_opts)
+    ctx.table_operator
+        .close_table_on_shard(close_table_request.clone(), close_opts)
         .await
         .box_err()
         .with_context(|| ErrWithCause {
@@ -525,21 +627,6 @@ async fn handle_close_table_on_shard(
         })?;
 
     Ok(())
-}
-
-#[inline]
-fn find_schema(catalog: CatalogRef, schema_name: NameRef) -> Result<SchemaRef> {
-    catalog
-        .schema_by_name(schema_name)
-        .box_err()
-        .with_context(|| ErrWithCause {
-            code: StatusCode::Internal,
-            msg: format!("fail to get schema, schema:{schema_name:?}"),
-        })?
-        .with_context(|| ErrNoCause {
-            code: StatusCode::NotFound,
-            msg: format!("schema is not found, schema:{schema_name:?}"),
-        })
 }
 
 #[async_trait]

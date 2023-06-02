@@ -4,7 +4,7 @@ use std::{
     cmp,
     cmp::Ordering,
     collections::BinaryHeap,
-    fmt, mem,
+    mem,
     ops::{Deref, DerefMut},
     time::{Duration, Instant},
 };
@@ -19,10 +19,11 @@ use common_types::{
     SequenceNumber,
 };
 use common_util::{define_result, error::GenericError};
-use futures::{future::try_join_all, StreamExt};
-use log::{debug, info, trace};
+use futures::{stream::FuturesUnordered, StreamExt};
+use log::{debug, trace};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
+use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 use crate::{
     row_iter::{
@@ -33,8 +34,7 @@ use crate::{
     space::SpaceId,
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReadOptions},
-        file::FileHandle,
-        manager::{FileId, MAX_LEVEL},
+        file::{FileHandle, Level, SST_LEVEL_NUM},
     },
     table::version::{MemTableVec, SamplingMemTable},
 };
@@ -83,6 +83,7 @@ define_result!(Error);
 #[derive(Debug)]
 pub struct MergeConfig<'a> {
     pub request_id: RequestId,
+    pub metrics_collector: Option<MetricsCollector>,
     /// None for background jobs, such as: compaction
     pub deadline: Option<Instant>,
     pub space_id: SpaceId,
@@ -125,7 +126,7 @@ impl<'a> MergeBuilder<'a> {
             config,
             sampling_mem: None,
             memtables: Vec::new(),
-            ssts: vec![Vec::new(); MAX_LEVEL],
+            ssts: vec![Vec::new(); SST_LEVEL_NUM],
         }
     }
 
@@ -149,8 +150,8 @@ impl<'a> MergeBuilder<'a> {
     }
 
     /// Returns file handles in `level`, panic if level >= MAX_LEVEL
-    pub fn mut_ssts_of_level(&mut self, level: u16) -> &mut Vec<FileHandle> {
-        &mut self.ssts[usize::from(level)]
+    pub fn mut_ssts_of_level(&mut self, level: Level) -> &mut Vec<FileHandle> {
+        &mut self.ssts[level.as_usize()]
     }
 
     pub async fn build(self) -> Result<MergeIterator> {
@@ -182,6 +183,7 @@ impl<'a> MergeBuilder<'a> {
                 self.config.reverse,
                 self.config.predicate.as_ref(),
                 self.config.deadline,
+                self.config.metrics_collector.clone(),
             )
             .context(BuildStreamFromMemtable)?;
             streams.push(stream);
@@ -195,6 +197,7 @@ impl<'a> MergeBuilder<'a> {
                 self.config.reverse,
                 self.config.predicate.as_ref(),
                 self.config.deadline,
+                self.config.metrics_collector.clone(),
             )
             .context(BuildStreamFromMemtable)?;
             streams.push(stream);
@@ -210,6 +213,7 @@ impl<'a> MergeBuilder<'a> {
                     self.config.sst_factory,
                     &self.config.sst_read_options,
                     self.config.store_picker,
+                    self.config.metrics_collector.clone(),
                 )
                 .await
                 .context(BuildStreamFromSst)?;
@@ -224,9 +228,14 @@ impl<'a> MergeBuilder<'a> {
             // Use the schema after projection as the schema of the merge iterator.
             self.config.projected_schema.to_record_schema_with_key(),
             streams,
+            self.ssts,
             self.config.merge_iter_options,
             self.config.reverse,
-            Metrics::new(self.memtables.len(), sst_streams_num, sst_ids),
+            Metrics::new(
+                self.memtables.len(),
+                sst_streams_num,
+                self.config.metrics_collector,
+            ),
         ))
     }
 }
@@ -555,60 +564,48 @@ impl Ord for HeapBufferedStream {
     }
 }
 
+/// Metrics for merge iterator.
+#[derive(TraceMetricWhenDrop)]
 pub struct Metrics {
+    #[metric(number)]
     num_memtables: usize,
+    #[metric(number)]
     num_ssts: usize,
-    sst_ids: Vec<FileId>,
-    /// Times to fetch rows from one stream.
-    times_fetch_rows_from_one: usize,
     /// Total rows collected using fetch_rows_from_one_stream().
+    #[metric(number)]
     total_rows_fetch_from_one: usize,
+    /// Times to fetch rows from one stream.
+    #[metric(number)]
+    times_fetch_rows_from_one: usize,
     /// Times to fetch one row from multiple stream.
+    #[metric(number)]
     times_fetch_row_from_multiple: usize,
-    /// Create time of the metrics.
-    create_at: Instant,
     /// Init time cost of the metrics.
+    #[metric(duration)]
     init_duration: Duration,
     /// Scan time cost of the metrics.
+    #[metric(duration)]
     scan_duration: Duration,
     /// Scan count
+    #[metric(number)]
     scan_count: usize,
+    #[metric(collector)]
+    metrics_collector: Option<MetricsCollector>,
 }
 
 impl Metrics {
-    fn new(num_memtables: usize, num_ssts: usize, sst_ids: Vec<FileId>) -> Self {
+    fn new(num_memtables: usize, num_ssts: usize, collector: Option<MetricsCollector>) -> Self {
         Self {
             num_memtables,
             num_ssts,
-            sst_ids,
             times_fetch_rows_from_one: 0,
             total_rows_fetch_from_one: 0,
             times_fetch_row_from_multiple: 0,
-            create_at: Instant::now(),
             init_duration: Duration::default(),
             scan_duration: Duration::default(),
             scan_count: 0,
+            metrics_collector: collector,
         }
-    }
-}
-
-impl fmt::Debug for Metrics {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Metrics")
-            .field("num_memtables", &self.num_memtables)
-            .field("num_ssts", &self.num_ssts)
-            .field("sst_ids", &self.sst_ids)
-            .field("times_fetch_rows_from_one", &self.times_fetch_rows_from_one)
-            .field("total_rows_fetch_from_one", &self.total_rows_fetch_from_one)
-            .field(
-                "times_fetch_row_from_multiple",
-                &self.times_fetch_row_from_multiple,
-            )
-            .field("duration_since_create", &self.create_at.elapsed())
-            .field("init_duration", &self.init_duration)
-            .field("scan_duration", &self.scan_duration)
-            .field("scan_count", &self.scan_count)
-            .finish()
     }
 }
 
@@ -619,6 +616,9 @@ pub struct MergeIterator {
     schema: RecordSchemaWithKey,
     record_batch_builder: RecordBatchWithKeyBuilder,
     origin_streams: Vec<SequencedRecordBatchStream>,
+    /// ssts are kept here to avoid them from being purged.
+    #[allow(dead_code)]
+    ssts: Vec<Vec<FileHandle>>,
     /// Any [BufferedStream] in the hot heap is not empty.
     hot: BinaryHeap<HeapBufferedStream>,
     /// Any [BufferedStream] in the cold heap is not empty.
@@ -629,11 +629,13 @@ pub struct MergeIterator {
 }
 
 impl MergeIterator {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         table_id: TableId,
         request_id: RequestId,
         schema: RecordSchemaWithKey,
         streams: Vec<SequencedRecordBatchStream>,
+        ssts: Vec<Vec<FileHandle>>,
         iter_options: IterOptions,
         reverse: bool,
         metrics: Metrics,
@@ -646,6 +648,7 @@ impl MergeIterator {
             request_id,
             inited: false,
             schema,
+            ssts,
             record_batch_builder,
             origin_streams: streams,
             hot: BinaryHeap::with_capacity(heap_cap),
@@ -672,21 +675,20 @@ impl MergeIterator {
         let init_start = Instant::now();
 
         // Initialize buffered streams concurrently.
-        let mut init_buffered_streams = Vec::with_capacity(self.origin_streams.len());
+        let mut init_buffered_streams = FuturesUnordered::new();
         for origin_stream in mem::take(&mut self.origin_streams) {
             let schema = self.schema.clone();
-            init_buffered_streams
-                .push(async move { BufferedStream::build(schema, origin_stream).await });
+            init_buffered_streams.push(BufferedStream::build(schema, origin_stream));
         }
 
         let pull_start = Instant::now();
-        let buffered_streams = try_join_all(init_buffered_streams).await?;
         self.metrics.scan_duration += pull_start.elapsed();
-        self.metrics.scan_count += buffered_streams.len();
+        self.metrics.scan_count += init_buffered_streams.len();
 
         // Push streams to heap.
         let current_schema = &self.schema;
-        for buffered_stream in buffered_streams {
+        while let Some(buffered_stream) = init_buffered_streams.next().await {
+            let buffered_stream = buffered_stream?;
             let stream_schema = buffered_stream.schema();
             ensure!(
                 current_schema == stream_schema,
@@ -846,15 +848,6 @@ impl MergeIterator {
     }
 }
 
-impl Drop for MergeIterator {
-    fn drop(&mut self) {
-        info!(
-            "Merge iterator dropped, table_id:{:?}, request_id:{}, metrics:{:?}, iter_options:{:?},",
-            self.table_id, self.request_id, self.metrics, self.iter_options,
-        );
-    }
-}
-
 #[async_trait]
 impl RecordBatchWithKeyIterator for MergeIterator {
     type Error = Error;
@@ -914,9 +907,10 @@ mod tests {
             RequestId::next_id(),
             schema.to_record_schema_with_key(),
             streams,
-            IterOptions::default(),
+            Vec::new(),
+            IterOptions { batch_size: 500 },
             false,
-            Metrics::new(1, 1, vec![]),
+            Metrics::new(1, 1, None),
         );
 
         check_iterator(
@@ -966,9 +960,10 @@ mod tests {
             RequestId::next_id(),
             schema.to_record_schema_with_key(),
             streams,
-            IterOptions::default(),
+            Vec::new(),
+            IterOptions { batch_size: 500 },
             true,
-            Metrics::new(1, 1, vec![]),
+            Metrics::new(1, 1, None),
         );
 
         check_iterator(

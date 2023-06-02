@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table abstraction
 
@@ -25,6 +25,7 @@ use common_types::{
 use common_util::error::{BoxError, GenericError};
 use serde::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use trace_metric::MetricsCollector;
 
 use crate::{
     engine::TableState,
@@ -83,7 +84,7 @@ pub enum Error {
     #[snafu(display("Invalid arguments, err:{}", source))]
     InvalidArguments { table: String, source: GenericError },
 
-    #[snafu(display("Failed to write table, table:{}, err:{}", table, source))]
+    #[snafu(display("Failed to write tables, table:{}, err:{}", table, source))]
     Write { table: String, source: GenericError },
 
     #[snafu(display("Failed to scan table, table:{}, err:{}", table, source))]
@@ -127,6 +128,23 @@ pub enum Error {
 
     #[snafu(display("Failed to locate partitions, err:{}", source))]
     LocatePartitions { source: GenericError },
+
+    #[snafu(display("Failed to write tables in batch, tables:{:?}, err:{}", tables, source))]
+    WriteBatch {
+        tables: Vec<String>,
+        source: GenericError,
+    },
+
+    #[snafu(display(
+        "Failed to wait for pending writes, table:{table}.\nBacktrace:\n{backtrace}"
+    ))]
+    WaitForPendingWrites { table: String, backtrace: Backtrace },
+
+    #[snafu(display("Reject for too many pending writes, table:{table}"))]
+    TooManyPendingWrites { table: String },
+
+    #[snafu(display("Failed to do merge write, msg:{}", msg))]
+    MergeWrite { msg: String },
 }
 
 define_result!(Error);
@@ -271,8 +289,7 @@ impl fmt::Display for TableId {
     }
 }
 
-// TODO(yingwen): Support DELETE/UPDATE... , a mutation type is needed.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WriteRequest {
     /// rows to write
     pub row_group: RowGroup,
@@ -388,6 +405,8 @@ pub struct ReadRequest {
     pub predicate: PredicateRef,
     /// Read the rows in reverse order.
     pub order: ReadOrder,
+    /// Collector for metrics of this read request.
+    pub metrics_collector: MetricsCollector,
 }
 
 impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
@@ -448,6 +467,7 @@ impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
             projected_schema,
             predicate,
             order,
+            metrics_collector: MetricsCollector::default(),
         })
     }
 }
@@ -462,18 +482,13 @@ pub struct AlterSchemaRequest {
 
 #[derive(Debug)]
 pub struct FlushRequest {
-    /// Trigger a compaction after flush, default is true.
-    pub compact_after_flush: bool,
     /// Whether to wait flush task finishes, default is true.
     pub sync: bool,
 }
 
 impl Default for FlushRequest {
     fn default() -> Self {
-        Self {
-            compact_after_flush: true,
-            sync: true,
-        }
+        Self { sync: true }
     }
 }
 
@@ -513,9 +528,6 @@ pub trait Table: std::fmt::Debug {
     async fn read(&self, request: ReadRequest) -> Result<SendableRecordBatchStream>;
 
     /// Get the specific row according to the primary key.
-    /// TODO(xikai): object-safety is not ensured by now if the default
-    ///  implementation is provided. Actually it is better to use the read
-    ///  method to implement the get method.
     async fn get(&self, request: GetRequest) -> Result<Option<Row>>;
 
     /// Read multiple partition of the table in parallel.

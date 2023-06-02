@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table version
 
@@ -25,12 +25,11 @@ use crate::{
         picker::{self, CompactionPickerRef, PickerContext},
         CompactionTask, ExpiredFiles,
     },
-    instance::write_worker::WorkerLocal,
     memtable::{self, key::KeySequence, MemTableRef, PutContext},
     sampler::{DefaultSampler, SamplerRef},
     sst::{
-        file::{FileHandle, FilePurgeQueue},
-        manager::{FileId, LevelsController, MAX_LEVEL},
+        file::{FileHandle, FilePurgeQueue, SST_LEVEL_NUM},
+        manager::{FileId, LevelsController},
     },
     table::{
         data::MemTableId,
@@ -488,7 +487,7 @@ impl Default for ReadView {
         Self {
             sampling_mem: None,
             memtables: Vec::new(),
-            leveled_ssts: vec![Vec::new(); MAX_LEVEL],
+            leveled_ssts: vec![Vec::new(); SST_LEVEL_NUM],
         }
     }
 }
@@ -504,7 +503,7 @@ struct TableVersionInner {
     /// All memtables
     memtable_view: MemTableView,
     /// All ssts
-    levels: LevelsController,
+    levels_controller: LevelsController,
 
     /// The earliest sequence number of the entries already flushed (inclusive).
     /// All log entry with sequence <= `flushed_sequence` can be deleted
@@ -512,11 +511,7 @@ struct TableVersionInner {
 }
 
 impl TableVersionInner {
-    fn memtable_for_write(
-        &self,
-        _write_lock: &WorkerLocal,
-        timestamp: Timestamp,
-    ) -> Option<MemTableForWrite> {
+    fn memtable_for_write(&self, timestamp: Timestamp) -> Option<MemTableForWrite> {
         if let Some(mem) = self.memtable_view.sampling_mem.clone() {
             if !mem.freezed {
                 // If sampling memtable is not freezed.
@@ -549,7 +544,7 @@ impl TableVersion {
         Self {
             inner: RwLock::new(TableVersionInner {
                 memtable_view: MemTableView::new(),
-                levels: LevelsController::new(purge_queue),
+                levels_controller: LevelsController::new(purge_queue),
                 flushed_sequence: 0,
             }),
         }
@@ -579,10 +574,7 @@ impl TableVersion {
     /// Returns a duration if a sampled segment duration needs to be persisted.
     ///
     /// REQUIRE: Do in write worker
-    pub fn switch_memtables_or_suggest_duration(
-        &self,
-        _worker_local: &WorkerLocal,
-    ) -> Option<Duration> {
+    pub fn switch_memtables_or_suggest_duration(&self) -> Option<Duration> {
         self.inner
             .write()
             .unwrap()
@@ -593,7 +585,7 @@ impl TableVersion {
     /// Stop timestamp sampling and freezed the sampling memtable.
     ///
     /// REQUIRE: Do in write worker
-    pub fn freeze_sampling(&self, _worker_local: &WorkerLocal) {
+    pub fn freeze_sampling(&self) {
         self.inner
             .write()
             .unwrap()
@@ -617,16 +609,11 @@ impl TableVersion {
     /// different schema.
     pub fn memtable_for_write(
         &self,
-        write_lock: &WorkerLocal,
         timestamp: Timestamp,
         schema_version: schema::Version,
     ) -> Result<Option<MemTableForWrite>> {
         // Find memtable by timestamp
-        let memtable = self
-            .inner
-            .read()
-            .unwrap()
-            .memtable_for_write(write_lock, timestamp);
+        let memtable = self.inner.read().unwrap().memtable_for_write(timestamp);
         let mutable = match memtable {
             Some(v) => v,
             None => return Ok(None),
@@ -675,13 +662,15 @@ impl TableVersion {
 
         // Add sst files to level first.
         for add_file in edit.files_to_add {
-            inner.levels.add_sst_to_level(add_file.level, add_file.file);
+            inner
+                .levels_controller
+                .add_sst_to_level(add_file.level, add_file.file);
         }
 
         // Remove ssts from level.
         for delete_file in edit.files_to_delete {
             inner
-                .levels
+                .levels_controller
                 .remove_ssts_from_level(delete_file.level, &[delete_file.file_id]);
         }
 
@@ -698,14 +687,16 @@ impl TableVersion {
         inner.flushed_sequence = cmp::max(inner.flushed_sequence, meta.flushed_sequence);
 
         for add_file in meta.files.into_values() {
-            inner.levels.add_sst_to_level(add_file.level, add_file.file);
+            inner
+                .levels_controller
+                .add_sst_to_level(add_file.level, add_file.file);
         }
     }
 
     pub fn pick_read_view(&self, time_range: TimeRange) -> ReadView {
         let mut sampling_mem = None;
         let mut memtables = MemTableVec::new();
-        let mut leveled_ssts = vec![Vec::new(); MAX_LEVEL];
+        let mut leveled_ssts = vec![Vec::new(); SST_LEVEL_NUM];
 
         {
             // Pick memtables for read.
@@ -716,9 +707,11 @@ impl TableVersion {
                 .memtables_for_read(time_range, &mut memtables, &mut sampling_mem);
 
             // Pick ssts for read.
-            inner.levels.pick_ssts(time_range, |level, ssts| {
-                leveled_ssts[level as usize].extend_from_slice(ssts)
-            });
+            inner
+                .levels_controller
+                .pick_ssts(time_range, |level, ssts| {
+                    leveled_ssts[level.as_usize()].extend_from_slice(ssts)
+                });
         }
 
         ReadView {
@@ -736,19 +729,19 @@ impl TableVersion {
     ) -> picker::Result<CompactionTask> {
         let inner = self.inner.read().unwrap();
 
-        picker.pick_compaction(picker_ctx, &inner.levels)
+        picker.pick_compaction(picker_ctx, &inner.levels_controller)
     }
 
     pub fn has_expired_sst(&self, expire_time: Option<Timestamp>) -> bool {
         let inner = self.inner.read().unwrap();
 
-        inner.levels.has_expired_sst(expire_time)
+        inner.levels_controller.has_expired_sst(expire_time)
     }
 
     pub fn expired_ssts(&self, expire_time: Option<Timestamp>) -> Vec<ExpiredFiles> {
         let inner = self.inner.read().unwrap();
 
-        inner.levels.expired_ssts(expire_time)
+        inner.levels_controller.expired_ssts(expire_time)
     }
 
     pub fn flushed_sequence(&self) -> SequenceNumber {
@@ -756,6 +749,34 @@ impl TableVersion {
 
         inner.flushed_sequence
     }
+
+    pub fn snapshot(&self) -> TableVersionSnapshot {
+        let inner = self.inner.read().unwrap();
+        let controller = &inner.levels_controller;
+        let files = controller
+            .levels()
+            .flat_map(|level| {
+                let ssts = controller.iter_ssts_at_level(level);
+                ssts.map(move |file| {
+                    let add_file = AddFile {
+                        level,
+                        file: file.meta(),
+                    };
+                    (file.id(), add_file)
+                })
+            })
+            .collect();
+
+        TableVersionSnapshot {
+            flushed_sequence: inner.flushed_sequence,
+            files,
+        }
+    }
+}
+
+pub struct TableVersionSnapshot {
+    pub flushed_sequence: SequenceNumber,
+    pub files: HashMap<FileId, AddFile>,
 }
 
 /// During recovery, we apply all version edit to [TableVersionMeta] first, then
@@ -764,8 +785,8 @@ impl TableVersion {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TableVersionMeta {
     pub flushed_sequence: SequenceNumber,
-    files: HashMap<FileId, AddFile>,
-    max_file_id: FileId,
+    pub files: HashMap<FileId, AddFile>,
+    pub max_file_id: FileId,
 }
 
 impl TableVersionMeta {
@@ -800,7 +821,6 @@ impl TableVersionMeta {
 mod tests {
     use super::*;
     use crate::{
-        instance::write_worker::tests::WriteHandleMocker,
         sst::file::tests::FilePurgerMocker,
         table::{data::tests::MemTableMocker, version_edit::tests::AddFileMocker},
         table_options,
@@ -815,8 +835,6 @@ mod tests {
 
     #[test]
     fn test_empty_table_version() {
-        let mocked_write_handle = WriteHandleMocker::default().build();
-        let worker_local = mocked_write_handle.worker_local;
         let version = new_table_version();
 
         let ts = Timestamp::now();
@@ -848,13 +866,11 @@ mod tests {
         }
 
         let now = Timestamp::now();
-        let mutable = version.memtable_for_write(&worker_local, now, 1).unwrap();
+        let mutable = version.memtable_for_write(now, 1).unwrap();
         assert!(mutable.is_none());
 
         // Nothing to switch.
-        assert!(version
-            .switch_memtables_or_suggest_duration(&worker_local)
-            .is_none());
+        assert!(version.switch_memtables_or_suggest_duration().is_none());
     }
 
     fn check_flushable_mem_with_sampling(
@@ -871,8 +887,6 @@ mod tests {
 
     #[test]
     fn test_table_version_sampling() {
-        let mocked_write_handle = WriteHandleMocker::default().build();
-        let worker_local = mocked_write_handle.worker_local;
         let version = new_table_version();
 
         let memtable = MemTableMocker::default().build();
@@ -886,14 +900,14 @@ mod tests {
         // Should write to sampling memtable.
         let now = Timestamp::now();
         let mutable = version
-            .memtable_for_write(&worker_local, now, schema.version())
+            .memtable_for_write(now, schema.version())
             .unwrap()
             .unwrap();
         let actual_memtable = mutable.as_sampling();
         assert_eq!(memtable_id, actual_memtable.id);
 
         let mutable = version
-            .memtable_for_write(&worker_local, Timestamp::new(1234), schema.version())
+            .memtable_for_write(Timestamp::new(1234), schema.version())
             .unwrap()
             .unwrap();
         let actual_memtable = mutable.as_sampling();
@@ -911,7 +925,6 @@ mod tests {
 
     #[test]
     fn test_table_version_sampling_switch() {
-        let worker_local = WriteHandleMocker::default().build().worker_local;
         let version = new_table_version();
 
         let memtable = MemTableMocker::default().build();
@@ -923,9 +936,7 @@ mod tests {
 
         version.set_sampling(sampling_mem);
 
-        let duration = version
-            .switch_memtables_or_suggest_duration(&worker_local)
-            .unwrap();
+        let duration = version.switch_memtables_or_suggest_duration().unwrap();
         assert_eq!(table_options::DEFAULT_SEGMENT_DURATION, duration);
 
         // Flushable memtables only contains sampling memtable.
@@ -935,7 +946,7 @@ mod tests {
         // Write to memtable after switch and before freezed.
         let now = Timestamp::now();
         let mutable = version
-            .memtable_for_write(&worker_local, now, schema.version())
+            .memtable_for_write(now, schema.version())
             .unwrap()
             .unwrap();
         // Still write to sampling memtable.
@@ -943,9 +954,7 @@ mod tests {
         assert_eq!(memtable_id, actual_memtable.id);
 
         // Switch still return duration before freezed.
-        let duration = version
-            .switch_memtables_or_suggest_duration(&worker_local)
-            .unwrap();
+        let duration = version.switch_memtables_or_suggest_duration().unwrap();
         assert_eq!(table_options::DEFAULT_SEGMENT_DURATION, duration);
 
         // Flushable memtables only contains sampling memtable before sampling
@@ -956,7 +965,6 @@ mod tests {
 
     #[test]
     fn test_table_version_sampling_freeze() {
-        let worker_local = WriteHandleMocker::default().build().worker_local;
         let version = new_table_version();
 
         let memtable = MemTableMocker::default().build();
@@ -969,18 +977,16 @@ mod tests {
         version.set_sampling(sampling_mem);
         assert_eq!(
             table_options::DEFAULT_SEGMENT_DURATION,
-            version
-                .switch_memtables_or_suggest_duration(&worker_local)
-                .unwrap()
+            version.switch_memtables_or_suggest_duration().unwrap()
         );
 
         // Freeze the sampling memtable.
-        version.freeze_sampling(&worker_local);
+        version.freeze_sampling();
 
         // No memtable after switch and freezed.
         let now = Timestamp::now();
         assert!(version
-            .memtable_for_write(&worker_local, now, schema.version())
+            .memtable_for_write(now, schema.version())
             .unwrap()
             .is_none());
 
@@ -1009,7 +1015,7 @@ mod tests {
 
         // Write to mutable memtable.
         let mutable = version
-            .memtable_for_write(&worker_local, now, schema.version())
+            .memtable_for_write(now, schema.version())
             .unwrap()
             .unwrap();
         let mutable = mutable.as_normal();
@@ -1023,13 +1029,11 @@ mod tests {
         assert_eq!(memtable_id2, read_view.memtables[0].id);
 
         // Switch mutable memtable.
-        assert!(version
-            .switch_memtables_or_suggest_duration(&worker_local)
-            .is_none());
+        assert!(version.switch_memtables_or_suggest_duration().is_none());
         // No memtable after switch.
         let now = Timestamp::now();
         assert!(version
-            .memtable_for_write(&worker_local, now, schema.version())
+            .memtable_for_write(now, schema.version())
             .unwrap()
             .is_none());
 
@@ -1042,7 +1046,6 @@ mod tests {
 
     #[test]
     fn test_table_version_sampling_apply_edit() {
-        let worker_local = WriteHandleMocker::default().build().worker_local;
         let version = new_table_version();
 
         let memtable = MemTableMocker::default().build();
@@ -1052,7 +1055,7 @@ mod tests {
 
         // Prepare sampling memtable.
         version.set_sampling(sampling_mem);
-        version.freeze_sampling(&worker_local);
+        version.freeze_sampling();
 
         let now = Timestamp::now();
         let time_range =
@@ -1070,9 +1073,7 @@ mod tests {
         version.insert_mutable(mem_state);
 
         // Switch memtable.
-        assert!(version
-            .switch_memtables_or_suggest_duration(&worker_local)
-            .is_none());
+        assert!(version.switch_memtables_or_suggest_duration().is_none());
 
         let max_sequence = 120;
         let file_id = 13;

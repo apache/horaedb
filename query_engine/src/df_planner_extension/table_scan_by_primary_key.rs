@@ -3,6 +3,7 @@
 use std::{
     any::Any,
     fmt::{Debug, Formatter},
+    hash::{Hash, Hasher},
     sync::Arc,
 };
 
@@ -11,12 +12,12 @@ use datafusion::{
     common::DFSchemaRef,
     error::DataFusionError,
     execution::context::SessionState,
+    logical_expr::{
+        expr_rewriter,
+        logical_plan::{LogicalPlan, TableScan, UserDefinedLogicalNode},
+        Expr,
+    },
     physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner},
-};
-use datafusion_expr::{
-    expr_rewriter,
-    logical_plan::{LogicalPlan, TableScan, UserDefinedLogicalNode},
-    Expr,
 };
 use table_engine::{provider::TableProviderAdapter, table::ReadOrder};
 
@@ -50,7 +51,7 @@ impl ExtensionPlanner for Planner {
 /// It differs from the default [`TableScan`] in its corresponding
 /// [`ExecutionPlan`] is a special [`ScanTable`] which can controls the scan
 /// order.
-#[derive(Clone)]
+#[derive(Clone, Hash, PartialEq)]
 pub struct TableScanByPrimaryKey {
     asc: bool,
     scan_plan: Arc<LogicalPlan>,
@@ -153,5 +154,21 @@ impl UserDefinedLogicalNode for TableScanByPrimaryKey {
             asc: self.asc,
             scan_plan: self.scan_plan.clone(),
         })
+    }
+
+    fn name(&self) -> &str {
+        "ScanTableInPrimaryKeyOrder"
+    }
+
+    fn dyn_hash(&self, state: &mut dyn Hasher) {
+        let mut s = state;
+        self.hash(&mut s);
+    }
+
+    fn dyn_eq(&self, other: &dyn UserDefinedLogicalNode) -> bool {
+        match other.as_any().downcast_ref::<Self>() {
+            Some(o) => self == o,
+            None => false,
+        }
     }
 }

@@ -18,39 +18,46 @@ async-trait = { workspace = true }
 bytes = { workspace = true }
 catalog = { workspace = true }
 ceresdbproto = { workspace = true }
+clru = { workspace = true }
 cluster = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
 datafusion = { workspace = true }
-datafusion-expr = { workspace = true }
 df_operator = { workspace = true }
 futures = { workspace = true }
 http = "0.2"
+influxdb-line-protocol = "1.0"
 interpreters = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 logger = { workspace = true }
 meta_client = { workspace = true }
 opensrv-mysql = "0.1.0"
+partition_table_engine = { workspace = true }
 paste = { workspace = true }
+pprof = { version = "0.11.1", features = ["flamegraph"] }
 profile = { workspace = true }
-prom-remote-api = { version = "0.2.1", features = ["warp"] }
+prom-remote-api = { workspace = true, features = ["warp"] }
 prometheus = { workspace = true }
 prometheus-static-metric = { workspace = true }
 prost = { workspace = true }
+proxy = { workspace = true }
 query_engine = { workspace = true }
+query_frontend = { workspace = true }
+remote_engine_client = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
-sql = { workspace = true }
-system_catalog = { workspace = true }
+spin = { workspace = true }
+sqlparser = { workspace = true }
 table_engine = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { workspace = true }
+wal = { workspace = true }
 warp = "0.3"
 zstd = { workspace = true }
 
 [dev-dependencies]
-sql = { workspace = true, features = ["test"] }
+query_frontend = { workspace = true, features = ["test"] }

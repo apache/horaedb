@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! A router based on rules.
 
@@ -9,10 +9,10 @@ use ceresdbproto::storage::{self, Route, RouteRequest};
 use cluster::config::SchemaConfig;
 use log::info;
 use meta_client::types::ShardId;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt};
 
-use crate::{endpoint::Endpoint, hash, Result, RouteNotFound, Router, ShardNotFound};
+use crate::{endpoint::Endpoint, hash, Result, RouteNotFound, Router, ShardNotFound, TableInfo};
 
 pub type ShardNodes = HashMap<ShardId, Endpoint>;
 
@@ -22,7 +22,7 @@ pub struct ClusterView {
     pub schema_configs: HashMap<String, SchemaConfig>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PrefixRule {
     /// Schema name of the prefix.
     pub schema: String,
@@ -32,7 +32,7 @@ pub struct PrefixRule {
     pub shard: ShardId,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct HashRule {
     /// Schema name of the prefix.
     pub schema: String,
@@ -40,7 +40,7 @@ pub struct HashRule {
     pub shards: Vec<ShardId>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RuleList {
     pub prefix_rules: Vec<PrefixRule>,
@@ -162,7 +162,6 @@ impl Router for RuleBasedRouter {
                 let route = Route {
                     table,
                     endpoint: Some(pb_endpoint),
-                    ..Default::default()
                 };
                 route_results.push(route);
             }
@@ -170,5 +169,9 @@ impl Router for RuleBasedRouter {
         }
 
         Ok(Vec::new())
+    }
+
+    async fn fetch_table_info(&self, _schema: &str, _table: &str) -> Result<Option<TableInfo>> {
+        return Ok(None);
     }
 }

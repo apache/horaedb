@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use async_trait::async_trait;
 use common_types::schema::SchemaEncoder;
@@ -8,8 +8,8 @@ use meta_client::{
     types::{CreateTableRequest, DropTableRequest, PartitionTableInfo},
     MetaClientRef,
 };
+use query_frontend::plan::{CreateTablePlan, DropTablePlan};
 use snafu::ResultExt;
-use sql::plan::{CreateTablePlan, DropTablePlan};
 use table_engine::{
     engine::TableEngineRef,
     partition::{format_sub_partition_table_name, PartitionInfo},

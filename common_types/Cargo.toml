@@ -16,6 +16,7 @@ test = []
 
 [dependencies]
 # In alphabetical order
+ahash = { version = "0.8.2", default-features = false, features = ["runtime-rng"] }
 arrow = { workspace = true, optional = true }
 arrow_ext = { workspace = true }
 byteorder = "1.2"

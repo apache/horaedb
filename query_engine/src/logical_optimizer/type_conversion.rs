@@ -2,19 +2,23 @@
 
 use std::{mem, sync::Arc};
 
-use arrow::{compute, compute::kernels::cast_utils::string_to_timestamp_nanos};
+use arrow::{compute, compute::kernels::cast_utils::string_to_timestamp_nanos, error::ArrowError};
+use chrono::{Local, LocalResult, NaiveDateTime, TimeZone, Utc};
 use datafusion::{
     arrow::datatypes::DataType,
-    common::DFSchemaRef,
+    common::{
+        tree_node::{TreeNode, TreeNodeRewriter},
+        DFSchemaRef,
+    },
+    config::ConfigOptions,
     error::{DataFusionError, Result},
-    optimizer::{optimizer::OptimizerRule, OptimizerConfig},
+    logical_expr::{
+        expr::Expr,
+        logical_plan::{Filter, LogicalPlan, TableScan},
+        utils, Between, BinaryExpr, ExprSchemable, Operator,
+    },
+    optimizer::analyzer::AnalyzerRule,
     scalar::ScalarValue,
-};
-use datafusion_expr::{
-    expr::Expr,
-    expr_rewriter::{ExprRewritable, ExprRewriter},
-    logical_plan::{Filter, LogicalPlan, TableScan},
-    utils, Between, BinaryExpr, ExprSchemable, Operator,
 };
 use log::debug;
 
@@ -28,29 +32,25 @@ use log::debug;
 /// * `expr = 'true'` to `expr = true` when `expr` is of boolean type
 pub struct TypeConversion;
 
-impl OptimizerRule for TypeConversion {
+impl AnalyzerRule for TypeConversion {
     #[allow(clippy::only_used_in_recursion)]
-    fn try_optimize(
-        &self,
-        plan: &LogicalPlan,
-        optimizer_config: &dyn OptimizerConfig,
-    ) -> Result<Option<LogicalPlan>> {
+    fn analyze(&self, plan: LogicalPlan, config: &ConfigOptions) -> Result<LogicalPlan> {
+        #[allow(deprecated)]
         let mut rewriter = TypeRewriter {
             schemas: plan.all_schemas(),
         };
 
-        match plan {
+        match &plan {
             LogicalPlan::Filter(Filter {
                 predicate, input, ..
             }) => {
+                let input: &LogicalPlan = input;
                 let predicate = predicate.clone().rewrite(&mut rewriter)?;
-                let input = self
-                    .try_optimize(input, optimizer_config)?
-                    .unwrap_or_else(|| input.as_ref().clone());
-                Ok(Some(LogicalPlan::Filter(Filter::try_new(
+                let input = self.analyze(input.clone(), config)?;
+                Ok(LogicalPlan::Filter(Filter::try_new(
                     predicate,
                     Arc::new(input),
-                )?)))
+                )?))
             }
             LogicalPlan::TableScan(TableScan {
                 table_name,
@@ -65,20 +65,19 @@ impl OptimizerRule for TypeConversion {
                     .into_iter()
                     .map(|e| e.rewrite(&mut rewriter))
                     .collect::<Result<Vec<_>>>()?;
-                Ok(Some(LogicalPlan::TableScan(TableScan {
+                Ok(LogicalPlan::TableScan(TableScan {
                     table_name: table_name.clone(),
                     source: source.clone(),
                     projection: projection.clone(),
                     projected_schema: projected_schema.clone(),
                     filters: rewrite_filters,
                     fetch: *fetch,
-                })))
+                }))
             }
             LogicalPlan::Projection { .. }
             | LogicalPlan::Window { .. }
             | LogicalPlan::Aggregate { .. }
             | LogicalPlan::Repartition { .. }
-            | LogicalPlan::CreateExternalTable { .. }
             | LogicalPlan::Extension { .. }
             | LogicalPlan::Sort { .. }
             | LogicalPlan::Explain { .. }
@@ -86,23 +85,17 @@ impl OptimizerRule for TypeConversion {
             | LogicalPlan::Union { .. }
             | LogicalPlan::Join { .. }
             | LogicalPlan::CrossJoin { .. }
-            | LogicalPlan::CreateMemoryTable { .. }
-            | LogicalPlan::DropTable { .. }
-            | LogicalPlan::DropView { .. }
             | LogicalPlan::Values { .. }
             | LogicalPlan::Analyze { .. }
             | LogicalPlan::Distinct { .. }
-            | LogicalPlan::SetVariable { .. }
             | LogicalPlan::Prepare { .. }
             | LogicalPlan::DescribeTable { .. }
+            | LogicalPlan::Ddl { .. }
             | LogicalPlan::Dml { .. } => {
                 let inputs = plan.inputs();
                 let new_inputs = inputs
-                    .iter()
-                    .map(|plan| {
-                        self.try_optimize(plan, optimizer_config)
-                            .map(|v| v.unwrap_or_else(|| (*plan).clone()))
-                    })
+                    .into_iter()
+                    .map(|plan| self.analyze(plan.clone(), config))
                     .collect::<Result<Vec<_>>>()?;
 
                 let expr = plan
@@ -111,20 +104,18 @@ impl OptimizerRule for TypeConversion {
                     .map(|e| e.rewrite(&mut rewriter))
                     .collect::<Result<Vec<_>>>()?;
 
-                Ok(Some(utils::from_plan(plan, &expr, &new_inputs)?))
+                Ok(utils::from_plan(&plan, &expr, &new_inputs)?)
             }
             LogicalPlan::Subquery(_)
+            | LogicalPlan::Statement { .. }
             | LogicalPlan::SubqueryAlias(_)
-            | LogicalPlan::CreateView(_)
-            | LogicalPlan::CreateCatalogSchema(_)
-            | LogicalPlan::CreateCatalog(_)
             | LogicalPlan::Unnest(_)
-            | LogicalPlan::EmptyRelation { .. } => Ok(Some(plan.clone())),
+            | LogicalPlan::EmptyRelation { .. } => Ok(plan.clone()),
         }
     }
 
     fn name(&self) -> &str {
-        "type_conversion"
+        "ceresdb_type_conversion"
     }
 }
 
@@ -186,7 +177,10 @@ impl<'a> TypeRewriter<'a> {
     fn cast_scalar_value(value: &ScalarValue, data_type: &DataType) -> Result<ScalarValue> {
         if let DataType::Timestamp(_, _) = data_type {
             if let ScalarValue::Utf8(Some(v)) = value {
-                return string_to_timestamp_ms(v);
+                return match string_to_timestamp_ms_workaround(v) {
+                    Ok(v) => Ok(v),
+                    _ => string_to_timestamp_ms(v),
+                };
             }
         }
 
@@ -209,7 +203,9 @@ impl<'a> TypeRewriter<'a> {
     }
 }
 
-impl<'a> ExprRewriter for TypeRewriter<'a> {
+impl<'a> TreeNodeRewriter for TypeRewriter<'a> {
+    type N = Expr;
+
     fn mutate(&mut self, expr: Expr) -> Result<Expr> {
         let new_expr = match expr {
             Expr::BinaryExpr(BinaryExpr { left, op, right }) => match op {
@@ -281,14 +277,56 @@ impl<'a> ExprRewriter for TypeRewriter<'a> {
 }
 
 fn string_to_timestamp_ms(string: &str) -> Result<ScalarValue> {
-    Ok(ScalarValue::TimestampMillisecond(
-        Some(
-            string_to_timestamp_nanos(string)
-                .map(|t| t / 1_000_000)
-                .map_err(DataFusionError::from)?,
-        ),
-        None,
-    ))
+    let ts = string_to_timestamp_nanos(string)
+        .map(|t| t / 1_000_000)
+        .map_err(DataFusionError::from)?;
+    Ok(ScalarValue::TimestampMillisecond(Some(ts), None))
+}
+
+// TODO(lee): remove following codes after PR(https://github.com/apache/arrow-rs/pull/3787) merged
+fn string_to_timestamp_ms_workaround(string: &str) -> Result<ScalarValue> {
+    // Because function `string_to_timestamp_nanos` returns a NaiveDateTime's
+    // nanoseconds from a string without a specify time zone, We need to convert
+    // it to local timestamp.
+
+    // without a timezone specifier as a local time, using 'T' as a separator
+    // Example: 2020-09-08T13:42:29.190855
+    if let Ok(ts) = NaiveDateTime::parse_from_str(string, "%Y-%m-%dT%H:%M:%S%.f") {
+        let mills = naive_datetime_to_timestamp(string, ts).map_err(DataFusionError::from)?;
+        return Ok(ScalarValue::TimestampMillisecond(Some(mills), None));
+    }
+
+    // without a timezone specifier as a local time, using ' ' as a separator
+    // Example: 2020-09-08 13:42:29.190855
+    if let Ok(ts) = NaiveDateTime::parse_from_str(string, "%Y-%m-%d %H:%M:%S%.f") {
+        let mills = naive_datetime_to_timestamp(string, ts).map_err(DataFusionError::from)?;
+        return Ok(ScalarValue::TimestampMillisecond(Some(mills), None));
+    }
+
+    Err(ArrowError::CastError(format!(
+        "Error parsing '{string}' as timestamp: local time representation is invalid"
+    )))
+    .map_err(DataFusionError::from)
+}
+
+/// Converts the naive datetime (which has no specific timezone) to a
+/// nanosecond epoch timestamp relative to UTC.
+/// copy from:https://github.com/apache/arrow-rs/blob/6a6e7f72331aa6589aa676577571ffed98d52394/arrow/src/compute/kernels/cast_utils.rs#L208
+fn naive_datetime_to_timestamp(s: &str, datetime: NaiveDateTime) -> Result<i64, ArrowError> {
+    let l = Local {};
+
+    match l.from_local_datetime(&datetime) {
+        LocalResult::None => Err(ArrowError::CastError(format!(
+            "Error parsing '{s}' as timestamp: local time representation is invalid"
+        ))),
+        LocalResult::Single(local_datetime) => {
+            Ok(local_datetime.with_timezone(&Utc).timestamp_nanos() / 1_000_000)
+        }
+
+        LocalResult::Ambiguous(local_datetime, _) => {
+            Ok(local_datetime.with_timezone(&Utc).timestamp_nanos() / 1_000_000)
+        }
+    }
 }
 
 enum TimestampType {
@@ -315,24 +353,25 @@ mod tests {
     use std::collections::HashMap;
 
     use arrow::datatypes::TimeUnit;
+    use chrono::{NaiveDate, NaiveTime};
     use datafusion::{
         common::{DFField, DFSchema},
         prelude::col,
     };
 
     use super::*;
+    use crate::logical_optimizer::type_conversion;
 
     fn expr_test_schema() -> DFSchemaRef {
         Arc::new(
             DFSchema::new_with_metadata(
                 vec![
-                    DFField::new(None, "c1", DataType::Utf8, true),
-                    DFField::new(None, "c2", DataType::Int64, true),
-                    DFField::new(None, "c3", DataType::Float64, true),
-                    DFField::new(None, "c4", DataType::Float32, true),
-                    DFField::new(None, "c5", DataType::Boolean, true),
-                    DFField::new(
-                        None,
+                    DFField::new_unqualified("c1", DataType::Utf8, true),
+                    DFField::new_unqualified("c2", DataType::Int64, true),
+                    DFField::new_unqualified("c3", DataType::Float64, true),
+                    DFField::new_unqualified("c4", DataType::Float32, true),
+                    DFField::new_unqualified("c5", DataType::Boolean, true),
+                    DFField::new_unqualified(
                         "c6",
                         DataType::Timestamp(TimeUnit::Millisecond, None),
                         false,
@@ -445,7 +484,7 @@ mod tests {
 
     #[test]
     fn test_type_conversion_timestamp() {
-        let date_string = "2021-09-07 16:00:00".to_string();
+        let date_string = "2021-09-07T16:00:00Z".to_string();
         let schema = expr_test_schema();
         let mut rewriter = TypeRewriter {
             schemas: vec![&schema],
@@ -498,7 +537,7 @@ mod tests {
         );
 
         // Timestamp c6 between "2021-09-07 16:00:00" and "2021-09-07 17:00:00"
-        let date_string2 = "2021-09-07 17:00:00".to_string();
+        let date_string2 = "2021-09-07T17:00:00Z".to_string();
         let exp = Expr::Between(Between {
             expr: Box::new(col("c6")),
             negated: false,
@@ -529,5 +568,29 @@ mod tests {
                 ),))
             })
         );
+    }
+
+    #[test]
+    fn test_string_to_timestamp_ms_workaround() {
+        let date_string = [
+            "2021-09-07T16:00:00+08:00",
+            "2021-09-07 16:00:00+08:00",
+            "2021-09-07T16:00:00Z",
+            "2021-09-07 16:00:00Z",
+        ];
+        for string in date_string {
+            let result = type_conversion::string_to_timestamp_ms_workaround(string);
+            assert!(result.is_err());
+        }
+
+        let date_string = "2021-09-07 16:00:00".to_string();
+        let d = NaiveDate::from_ymd_opt(2021, 9, 7).unwrap();
+        let t = NaiveTime::from_hms_milli_opt(16, 0, 0, 0).unwrap();
+        let dt = NaiveDateTime::new(d, t);
+        let expect = naive_datetime_to_timestamp(&date_string, dt).unwrap();
+        let result = type_conversion::string_to_timestamp_ms_workaround(&date_string);
+        if let Ok(ScalarValue::TimestampMillisecond(Some(mills), _)) = result {
+            assert_eq!(mills, expect)
+        }
     }
 }

@@ -16,9 +16,9 @@ use analytic_engine::{
     sst::{
         factory::{
             FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
-            SstReadOptions,
+            ScanOptions, SstReadOptions,
         },
-        file::{FileHandle, FilePurgeQueue, Request},
+        file::{FileHandle, FilePurgeQueue, Level, Request},
         meta_data::cache::MetaCacheRef,
     },
     table::sst_util,
@@ -61,16 +61,19 @@ impl MergeSstBench {
 
         let predicate = config.predicate.into_predicate();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
+        let scan_options = ScanOptions {
+            background_read_parallelism: 1,
+            max_record_batches_in_flight: 1024,
+        };
         let sst_read_options = SstReadOptions {
-            read_batch_row_num: config.read_batch_row_num,
             reverse: false,
             frequency: ReadFrequency::Frequent,
+            num_rows_per_row_group: config.num_rows_per_row_group,
             projected_schema,
             predicate,
             meta_cache: meta_cache.clone(),
+            scan_options,
             runtime: runtime.clone(),
-            background_read_parallelism: 1,
-            num_rows_per_row_group: config.read_batch_row_num,
         };
         let max_projections = cmp::min(config.max_projections, schema.num_columns());
 
@@ -117,14 +120,17 @@ impl MergeSstBench {
         let space_id = self.space_id;
         let table_id = self.table_id;
         let sequence = u64::MAX;
-        let iter_options = IterOptions::default();
         let projected_schema = self.sst_read_options.projected_schema.clone();
         let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
+        let iter_options = IterOptions {
+            batch_size: self.sst_read_options.num_rows_per_row_group,
+        };
 
         let request_id = RequestId::next_id();
         let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
         let mut builder = MergeBuilder::new(MergeConfig {
             request_id,
+            metrics_collector: None,
             deadline: None,
             space_id,
             table_id,
@@ -140,7 +146,8 @@ impl MergeSstBench {
         });
 
         builder
-            .mut_ssts_of_level(0)
+            // TODO: make level configurable
+            .mut_ssts_of_level(Level::MIN)
             .extend_from_slice(&self.file_handles);
 
         self.runtime.block_on(async {

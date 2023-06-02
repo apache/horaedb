@@ -1,0 +1,45 @@
+[package]
+name = "query_frontend"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[features]
+test = []
+
+[dependencies]
+# In alphabetical order
+arrow = { workspace = true }
+async-trait = { workspace = true }
+catalog = { workspace = true }
+ceresdbproto = { workspace = true }
+cluster = { workspace = true }
+common_types = { workspace = true }
+common_util = { workspace = true }
+datafusion = { workspace = true }
+datafusion-proto = { workspace = true }
+df_operator = { workspace = true }
+hashbrown = { version = "0.12", features = ["raw"] }
+influxql-logical-planner = { workspace = true }
+influxql-parser = { workspace = true }
+influxql-schema = { workspace = true }
+itertools = { workspace = true }
+lazy_static = { workspace = true }
+log = { workspace = true }
+paste = { workspace = true }
+prom-remote-api = { workspace = true }
+regex = "1"
+regex-syntax = "0.6.28"
+snafu = { workspace = true }
+sqlparser = { workspace = true }
+table_engine = { workspace = true }
+
+[dev-dependencies]
+common_types = { workspace = true, features = ["test"] }
+tokio = { workspace = true }

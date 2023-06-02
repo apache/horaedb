@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::sync::Arc;
 
@@ -9,7 +9,7 @@ use ceresdbproto::{
 };
 use common_util::{config::ReadableDuration, error::BoxError};
 use log::{debug, info};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};
 
 use crate::{
@@ -25,7 +25,7 @@ use crate::{
 
 type MetaServiceGrpcClient = CeresmetaRpcServiceClient<tonic::transport::Channel>;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct MetaClientConfig {
     pub cluster_name: String,
@@ -153,7 +153,7 @@ impl MetaClient for MetaClientImpl {
         info!("Meta client finish dropping table, resp:{:?}", pb_resp);
 
         check_response_header(&pb_resp.header)?;
-        Ok(DropTableResponse::from(pb_resp))
+        DropTableResponse::try_from(pb_resp)
     }
 
     async fn get_tables_of_shards(

@@ -11,11 +11,11 @@ use datafusion::{
     common::{DFSchemaRef, ToDFSchema},
     datasource::TableProvider,
     execution::context::SessionState,
+    logical_expr::{
+        Expr, Extension, Filter, Limit, LogicalPlan, Projection, Sort, TableScan, TableSource,
+        TableType,
+    },
     physical_plan::ExecutionPlan,
-};
-use datafusion_expr::{
-    Expr, Extension, Filter, Limit, LogicalPlan, Projection, Sort, TableScan, TableSource,
-    TableType,
 };
 
 use crate::df_planner_extension::table_scan_by_primary_key::TableScanByPrimaryKey;
@@ -136,7 +136,7 @@ impl LogicalPlanNodeBuilder {
         let projected_schema = self.df_schema_ref();
 
         let plan = LogicalPlan::TableScan(TableScan {
-            table_name: self.table_name.clone(),
+            table_name: self.table_name.clone().into(),
             source: Arc::new(provider),
             projection: None,
             projected_schema,

@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Test utils.
 
@@ -8,7 +8,7 @@ use common_types::{
     datum::Datum,
     record_batch::RecordBatch,
     row::{Row, RowGroup},
-    table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
+    table::DEFAULT_SHARD_ID,
     time::Timestamp,
 };
 use common_util::{
@@ -30,10 +30,7 @@ use table_engine::{
 use tempfile::TempDir;
 
 use crate::{
-    setup::{
-        EngineBuildContext, EngineBuildContextBuilder, EngineBuilder, MemWalEngineBuilder,
-        RocksDBWalEngineBuilder,
-    },
+    setup::{EngineBuilder, MemWalsOpener, OpenedWals, RocksDBWalsOpener, WalsOpener},
     storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions},
     tests::table::{self, FixedSchemaTable, RowTuple},
     Config, RocksDBConfig, WalStorageConfig,
@@ -50,7 +47,7 @@ impl From<Null> for Datum {
     }
 }
 
-pub async fn check_read_with_order<T: EngineContext>(
+pub async fn check_read_with_order<T: WalsOpener>(
     test_ctx: &TestContext<T>,
     fixed_schema_table: &FixedSchemaTable,
     msg: &str,
@@ -72,7 +69,7 @@ pub async fn check_read_with_order<T: EngineContext>(
     }
 }
 
-pub async fn check_read<T: EngineContext>(
+pub async fn check_read<T: WalsOpener>(
     test_ctx: &TestContext<T>,
     fixed_schema_table: &FixedSchemaTable,
     msg: &str,
@@ -90,7 +87,7 @@ pub async fn check_read<T: EngineContext>(
     .await
 }
 
-pub async fn check_get<T: EngineContext>(
+pub async fn check_get<T: WalsOpener>(
     test_ctx: &TestContext<T>,
     fixed_schema_table: &FixedSchemaTable,
     msg: &str,
@@ -108,25 +105,36 @@ pub async fn check_get<T: EngineContext>(
     }
 }
 
-pub struct TestContext<T: EngineContext> {
-    pub context: EngineBuildContext,
+pub struct TestContext<T> {
+    config: Config,
+    wals_opener: T,
     runtimes: Arc<EngineRuntimes>,
-    builder: T::EngineBuilder,
-    pub engine: Option<TableEngineRef>,
-    pub schema_id: SchemaId,
+    engine: Option<TableEngineRef>,
+    opened_wals: Option<OpenedWals>,
+    schema_id: SchemaId,
     last_table_seq: u32,
 
     name_to_tables: HashMap<String, TableRef>,
 }
 
-impl<T: EngineContext> TestContext<T> {
+impl<T: WalsOpener> TestContext<T> {
     pub async fn open(&mut self) {
-        let engine = self
-            .builder
-            .build(self.context.clone(), self.runtimes.clone())
-            .await
-            .unwrap();
-        self.engine = Some(engine);
+        let opened_wals = if let Some(opened_wals) = self.opened_wals.take() {
+            opened_wals
+        } else {
+            self.wals_opener
+                .open_wals(&self.config.wal, self.runtimes.clone())
+                .await
+                .unwrap()
+        };
+
+        let engine_builder = EngineBuilder {
+            config: &self.config,
+            engine_runtimes: self.runtimes.clone(),
+            opened_wals: opened_wals.clone(),
+        };
+        self.opened_wals = Some(opened_wals);
+        self.engine = Some(engine_builder.build().await.unwrap());
     }
 
     pub async fn reopen(&mut self) {
@@ -177,7 +185,6 @@ impl<T: EngineContext> TestContext<T> {
                 table_id,
                 engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
                 shard_id: DEFAULT_SHARD_ID,
-                cluster_version: DEFAULT_CLUSTER_VERSION,
             })
             .await
             .unwrap()
@@ -201,7 +208,6 @@ impl<T: EngineContext> TestContext<T> {
                 table_id,
                 engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
                 shard_id: DEFAULT_SHARD_ID,
-                cluster_version: DEFAULT_CLUSTER_VERSION,
             })
             .await?;
 
@@ -362,7 +368,11 @@ impl<T: EngineContext> TestContext<T> {
     }
 }
 
-impl<T: EngineContext> TestContext<T> {
+impl<T> TestContext<T> {
+    pub fn config_mut(&mut self) -> &mut Config {
+        &mut self.config
+    }
+
     pub fn clone_engine(&self) -> TableEngineRef {
         self.engine.clone().unwrap()
     }
@@ -379,14 +389,19 @@ impl TestEnv {
         Builder::default()
     }
 
-    pub fn new_context<T: EngineContext>(&self, engine_context: T) -> TestContext<T> {
+    pub fn new_context<T: EngineBuildContext>(
+        &self,
+        build_context: T,
+    ) -> TestContext<T::WalsOpener> {
+        let config = build_context.config();
+        let wals_opener = build_context.wals_opener();
+
         TestContext {
-            context: EngineBuildContextBuilder::default()
-                .config(engine_context.config())
-                .build(),
+            config,
+            wals_opener,
             runtimes: self.runtimes.clone(),
-            builder: engine_context.engine_builder(),
             engine: None,
+            opened_wals: None,
             schema_id: SchemaId::from_u32(100),
             last_table_seq: 1,
             name_to_tables: HashMap::new(),
@@ -394,7 +409,7 @@ impl TestEnv {
     }
 
     pub fn block_on<F: Future>(&self, future: F) -> F::Output {
-        self.runtimes.bg_runtime.block_on(future)
+        self.runtimes.default_runtime.block_on(future)
     }
 }
 
@@ -419,6 +434,7 @@ impl Builder {
             },
             wal: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
                 data_dir: dir.path().to_str().unwrap().to_string(),
+                ..Default::default()
             })),
             ..Default::default()
         };
@@ -438,7 +454,9 @@ impl Builder {
                 read_runtime: runtime.clone(),
                 write_runtime: runtime.clone(),
                 meta_runtime: runtime.clone(),
-                bg_runtime: runtime,
+                compact_runtime: runtime.clone(),
+                default_runtime: runtime.clone(),
+                io_runtime: runtime,
             }),
         }
     }
@@ -450,18 +468,18 @@ impl Default for Builder {
     }
 }
 
-pub trait EngineContext: Clone + Default {
-    type EngineBuilder: EngineBuilder;
+pub trait EngineBuildContext: Clone + Default {
+    type WalsOpener: WalsOpener;
 
-    fn engine_builder(&self) -> Self::EngineBuilder;
+    fn wals_opener(&self) -> Self::WalsOpener;
     fn config(&self) -> Config;
 }
 
-pub struct RocksDBEngineContext {
+pub struct RocksDBEngineBuildContext {
     config: Config,
 }
 
-impl Default for RocksDBEngineContext {
+impl Default for RocksDBEngineBuildContext {
     fn default() -> Self {
         let dir = tempfile::tempdir().unwrap();
 
@@ -479,6 +497,7 @@ impl Default for RocksDBEngineContext {
 
             wal: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
                 data_dir: dir.path().to_str().unwrap().to_string(),
+                ..Default::default()
             })),
             ..Default::default()
         };
@@ -487,7 +506,7 @@ impl Default for RocksDBEngineContext {
     }
 }
 
-impl Clone for RocksDBEngineContext {
+impl Clone for RocksDBEngineBuildContext {
     fn clone(&self) -> Self {
         let mut config = self.config.clone();
 
@@ -506,17 +525,18 @@ impl Clone for RocksDBEngineContext {
         config.storage = storage;
         config.wal = WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
             data_dir: dir.path().to_str().unwrap().to_string(),
+            ..Default::default()
         }));
 
         Self { config }
     }
 }
 
-impl EngineContext for RocksDBEngineContext {
-    type EngineBuilder = RocksDBWalEngineBuilder;
+impl EngineBuildContext for RocksDBEngineBuildContext {
+    type WalsOpener = RocksDBWalsOpener;
 
-    fn engine_builder(&self) -> Self::EngineBuilder {
-        RocksDBWalEngineBuilder::default()
+    fn wals_opener(&self) -> Self::WalsOpener {
+        RocksDBWalsOpener::default()
     }
 
     fn config(&self) -> Config {
@@ -525,11 +545,11 @@ impl EngineContext for RocksDBEngineContext {
 }
 
 #[derive(Clone)]
-pub struct MemoryEngineContext {
+pub struct MemoryEngineBuildContext {
     config: Config,
 }
 
-impl Default for MemoryEngineContext {
+impl Default for MemoryEngineBuildContext {
     fn default() -> Self {
         let dir = tempfile::tempdir().unwrap();
 
@@ -552,11 +572,11 @@ impl Default for MemoryEngineContext {
     }
 }
 
-impl EngineContext for MemoryEngineContext {
-    type EngineBuilder = MemWalEngineBuilder;
+impl EngineBuildContext for MemoryEngineBuildContext {
+    type WalsOpener = MemWalsOpener;
 
-    fn engine_builder(&self) -> Self::EngineBuilder {
-        MemWalEngineBuilder::default()
+    fn wals_opener(&self) -> Self::WalsOpener {
+        MemWalsOpener::default()
     }
 
     fn config(&self) -> Config {

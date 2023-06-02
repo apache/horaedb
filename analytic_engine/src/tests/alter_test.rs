@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Alter test
 
@@ -15,38 +15,40 @@ use log::info;
 use table_engine::table::AlterSchemaRequest;
 
 use crate::{
+    setup::WalsOpener,
     table_options::TableOptions,
     tests::{
         row_util,
         table::{self, FixedSchemaTable},
         util::{
-            EngineContext, MemoryEngineContext, Null, RocksDBEngineContext, TestContext, TestEnv,
+            EngineBuildContext, MemoryEngineBuildContext, Null, RocksDBEngineBuildContext,
+            TestContext, TestEnv,
         },
     },
 };
 
 #[test]
 fn test_alter_table_add_column_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_alter_table_add_column(rocksdb_ctx);
 }
 
 #[ignore = "Enable this test when manifest use another snapshot implementation"]
 #[test]
 fn test_alter_table_add_column_mem_wal() {
-    let memory_ctx = MemoryEngineContext::default();
+    let memory_ctx = MemoryEngineBuildContext::default();
     test_alter_table_add_column(memory_ctx);
 }
 
-fn test_alter_table_add_column<T: EngineContext>(engine_context: T) {
+fn test_alter_table_add_column<T: EngineBuildContext>(engine_context: T) {
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context(engine_context);
 
     env.block_on(async {
         test_ctx.open().await;
 
-        let test_table1 = "test_table1";
-        let fixed_schema_table = test_ctx.create_fixed_schema_table(test_table1).await;
+        let alter_test_table1 = "alter_test_table1";
+        let fixed_schema_table = test_ctx.create_fixed_schema_table(alter_test_table1).await;
 
         let start_ms = test_ctx.start_ms();
         let rows = [
@@ -70,21 +72,21 @@ fn test_alter_table_add_column<T: EngineContext>(engine_context: T) {
 
         // Write data to table.
         let row_group = fixed_schema_table.rows_to_row_group(&rows);
-        test_ctx.write_to_table(test_table1, row_group).await;
+        test_ctx.write_to_table(alter_test_table1, row_group).await;
 
-        alter_schema_same_schema_version_case(&test_ctx, test_table1).await;
+        alter_schema_same_schema_version_case(&test_ctx, alter_test_table1).await;
 
-        alter_schema_old_pre_version_case(&test_ctx, test_table1).await;
+        alter_schema_old_pre_version_case(&test_ctx, alter_test_table1).await;
 
-        alter_schema_add_column_case(&mut test_ctx, test_table1, start_ms, false).await;
+        alter_schema_add_column_case(&mut test_ctx, alter_test_table1, start_ms, false).await;
 
         // Prepare another table for alter.
-        let test_table2 = "test_table2";
-        test_ctx.create_fixed_schema_table(test_table2).await;
+        let alter_test_table2 = "alter_test_table2";
+        test_ctx.create_fixed_schema_table(alter_test_table2).await;
         let row_group = fixed_schema_table.rows_to_row_group(&rows);
-        test_ctx.write_to_table(test_table2, row_group).await;
+        test_ctx.write_to_table(alter_test_table2, row_group).await;
 
-        alter_schema_add_column_case(&mut test_ctx, test_table2, start_ms, true).await;
+        alter_schema_add_column_case(&mut test_ctx, alter_test_table2, start_ms, true).await;
     });
 }
 
@@ -109,7 +111,7 @@ fn add_columns(schema_builder: schema::Builder) -> schema::Builder {
         .unwrap()
 }
 
-async fn alter_schema_same_schema_version_case<T: EngineContext>(
+async fn alter_schema_same_schema_version_case<T: WalsOpener>(
     test_ctx: &TestContext<T>,
     table_name: &str,
 ) {
@@ -131,7 +133,7 @@ async fn alter_schema_same_schema_version_case<T: EngineContext>(
     assert!(res.is_err());
 }
 
-async fn alter_schema_old_pre_version_case<T: EngineContext>(
+async fn alter_schema_old_pre_version_case<T: WalsOpener>(
     test_ctx: &TestContext<T>,
     table_name: &str,
 ) {
@@ -157,7 +159,7 @@ async fn alter_schema_old_pre_version_case<T: EngineContext>(
     assert!(res.is_err());
 }
 
-async fn alter_schema_add_column_case<T: EngineContext>(
+async fn alter_schema_add_column_case<T: WalsOpener>(
     test_ctx: &mut TestContext<T>,
     table_name: &str,
     start_ms: i64,
@@ -345,7 +347,7 @@ async fn alter_schema_add_column_case<T: EngineContext>(
     .await;
 }
 
-async fn check_read_row_group<T: EngineContext>(
+async fn check_read_row_group<T: WalsOpener>(
     test_ctx: &TestContext<T>,
     msg: &str,
     table_name: &str,
@@ -368,49 +370,61 @@ async fn check_read_row_group<T: EngineContext>(
 
 #[test]
 fn test_alter_table_options_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_alter_table_options(rocksdb_ctx);
 }
 
 #[ignore = "Enable this test when manifest use another snapshot implementation"]
 #[test]
 fn test_alter_table_options_mem_wal() {
-    let memory_ctx = MemoryEngineContext::default();
+    let memory_ctx = MemoryEngineBuildContext::default();
     test_alter_table_options(memory_ctx);
 }
 
-fn test_alter_table_options<T: EngineContext>(engine_context: T) {
+fn test_alter_table_options<T: EngineBuildContext>(engine_context: T) {
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context(engine_context);
 
     env.block_on(async {
         test_ctx.open().await;
 
-        let test_table1 = "test_table1";
-        test_ctx.create_fixed_schema_table(test_table1).await;
+        let alter_test_table1 = "alter_test_table1";
+        test_ctx.create_fixed_schema_table(alter_test_table1).await;
 
-        let opts = test_ctx.table(test_table1).options();
+        let opts = test_ctx.table(alter_test_table1).options();
 
         let default_opts_map = default_options();
 
         assert_options_eq(&default_opts_map, &opts);
 
-        alter_immutable_option_case(&test_ctx, test_table1, "segment_duration", "20d").await;
+        alter_immutable_option_case(&test_ctx, alter_test_table1, "segment_duration", "20d").await;
 
-        alter_immutable_option_case(&test_ctx, test_table1, "bucket_duration", "20d").await;
+        alter_immutable_option_case(&test_ctx, alter_test_table1, "bucket_duration", "20d").await;
 
-        alter_immutable_option_case(&test_ctx, test_table1, "update_mode", "Append").await;
+        alter_immutable_option_case(&test_ctx, alter_test_table1, "update_mode", "Append").await;
 
-        alter_mutable_option_case(&mut test_ctx, test_table1, "enable_ttl", "false").await;
-        alter_mutable_option_case(&mut test_ctx, test_table1, "enable_ttl", "true").await;
-
-        alter_mutable_option_case(&mut test_ctx, test_table1, "arena_block_size", "10240").await;
-
-        alter_mutable_option_case(&mut test_ctx, test_table1, "write_buffer_size", "1024000").await;
+        alter_mutable_option_case(&mut test_ctx, alter_test_table1, "enable_ttl", "false").await;
+        alter_mutable_option_case(&mut test_ctx, alter_test_table1, "enable_ttl", "true").await;
 
         alter_mutable_option_case(
             &mut test_ctx,
-            test_table1,
+            alter_test_table1,
+            "arena_block_size",
+            "10240",
+        )
+        .await;
+
+        alter_mutable_option_case(
+            &mut test_ctx,
+            alter_test_table1,
+            "write_buffer_size",
+            "1024000",
+        )
+        .await;
+
+        alter_mutable_option_case(
+            &mut test_ctx,
+            alter_test_table1,
             "num_rows_per_row_group",
             "10000",
         )
@@ -418,7 +432,7 @@ fn test_alter_table_options<T: EngineContext>(engine_context: T) {
     });
 }
 
-async fn alter_immutable_option_case<T: EngineContext>(
+async fn alter_immutable_option_case<T: WalsOpener>(
     test_ctx: &TestContext<T>,
     table_name: &str,
     opt_key: &str,
@@ -439,7 +453,7 @@ async fn alter_immutable_option_case<T: EngineContext>(
     assert_options_eq(&old_opts, &opts_after_alter);
 }
 
-async fn alter_mutable_option_case<T: EngineContext>(
+async fn alter_mutable_option_case<T: WalsOpener>(
     test_ctx: &mut TestContext<T>,
     table_name: &str,
     opt_key: &str,

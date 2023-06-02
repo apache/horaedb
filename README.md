@@ -8,11 +8,7 @@
 
 [中文](./README-CN.md)
 
-CeresDB is a high-performance, distributed, schema-less, cloud native time-series database that can handle both time-series and analytics workloads.
-
-## Status
-The project is currently under rapid development. This early stage is not production ready and may incur data corruptions.
-
+CeresDB is a high-performance, distributed, cloud native time-series database.
 
 ## Documentation
 - [User Guide](https://docs.ceresdb.io/)
@@ -34,5 +30,5 @@ CeresDB is under [Apache License 2.0](./LICENSE).
 - Check our community [roles](docs/community/ROLES.md)
 - Join the user group on [Slack](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1dcbv8yq8-Fv8aVUb6ODTL7kxbzs9fnA)
 - Contact us via Email: ceresdbservice@gmail.com
-- WeChat group [QR code](https://github.com/CeresDB/assets/blob/main/WeChatQRCode.jpg)
+- WeChat Official Account [QR code](https://github.com/CeresDB/community/blob/main/communication/wechat/official-account-qrcode.jpg)
 - Join the user group on DingTalk: 44602802

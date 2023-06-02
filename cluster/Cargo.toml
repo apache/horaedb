@@ -15,9 +15,10 @@ async-trait = { workspace = true }
 ceresdbproto = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
+etcd-client = { workspace = true }
 log = { workspace = true }
 meta_client = { workspace = true }
-rust-fsm = "0.6.0"
+prost = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }

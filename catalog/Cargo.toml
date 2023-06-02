@@ -14,5 +14,6 @@ workspace = true
 async-trait = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
+log = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }

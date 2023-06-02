@@ -1,9 +1,9 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Partition rule datafusion adapter
 
 use common_types::{row::RowGroup, schema::Schema};
-use datafusion_expr::Expr;
+use datafusion::logical_expr::Expr;
 
 use self::extractor::KeyExtractor;
 use crate::partition::{
@@ -13,7 +13,7 @@ use crate::partition::{
     BuildPartitionRule, PartitionInfo, Result,
 };
 
-pub(crate) mod extractor;
+mod extractor;
 
 /// Partition rule's adapter for datafusion
 pub struct DfPartitionRuleAdapter {
@@ -71,7 +71,7 @@ mod tests {
         string::StringBytes,
         time::Timestamp,
     };
-    use datafusion_expr::{col, lit};
+    use datafusion::logical_expr::{col, lit};
 
     use super::*;
     use crate::partition::{

@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Schema of table
 
@@ -322,7 +322,7 @@ impl ToString for ArrowSchemaMetaKey {
 pub type Version = u32;
 
 /// Mapping column index in table schema to column index in writer schema
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct IndexInWriterSchema(Vec<Option<usize>>);
 
 impl IndexInWriterSchema {
@@ -434,7 +434,7 @@ impl RecordSchema {
             .columns
             .iter()
             .map(|col| col.to_arrow_field())
-            .collect();
+            .collect::<Vec<_>>();
         // Build arrow schema.
         let arrow_schema = Arc::new(ArrowSchema::new_with_metadata(
             fields,
@@ -512,6 +512,10 @@ impl RecordSchemaWithKey {
 
     pub fn primary_key_idx(&self) -> &[usize] {
         &self.primary_key_indexes
+    }
+
+    pub fn is_primary_key_index(&self, idx: usize) -> bool {
+        self.primary_key_indexes.contains(&idx)
     }
 
     pub fn index_of(&self, name: &str) -> Option<usize> {
@@ -1222,7 +1226,11 @@ impl Builder {
             );
         }
 
-        let fields = self.columns.iter().map(|c| c.to_arrow_field()).collect();
+        let fields = self
+            .columns
+            .iter()
+            .map(|c| c.to_arrow_field())
+            .collect::<Vec<_>>();
         let meta = self.build_arrow_schema_meta();
 
         Ok(Schema {

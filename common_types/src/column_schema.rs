@@ -2,7 +2,7 @@
 
 //! Schema of column
 
-use std::{collections::HashMap, convert::TryFrom, str::FromStr};
+use std::{collections::HashMap, convert::TryFrom, str::FromStr, sync::Arc};
 
 use arrow::datatypes::{DataType, Field};
 use ceresdbproto::schema as schema_pb;
@@ -280,10 +280,10 @@ impl TryFrom<schema_pb::ColumnSchema> for ColumnSchema {
     }
 }
 
-impl TryFrom<&Field> for ColumnSchema {
+impl TryFrom<&Arc<Field>> for ColumnSchema {
     type Error = Error;
 
-    fn try_from(field: &Field) -> Result<Self> {
+    fn try_from(field: &Arc<Field>) -> Result<Self> {
         let ArrowFieldMeta {
             id,
             is_tag,

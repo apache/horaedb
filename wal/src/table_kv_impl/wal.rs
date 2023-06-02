@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Wal based on namespace.
 
@@ -14,7 +14,7 @@ use table_kv::TableKv;
 use crate::{
     log_batch::LogWriteBatch,
     manager::{
-        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, ScanContext,
+        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
         ScanRequest, WalLocation, WalManager,
     },
     table_kv_impl::{
@@ -53,7 +53,7 @@ impl<T: TableKv> WalNamespaceImpl<T> {
         name: &str,
         config: NamespaceConfig,
     ) -> Result<NamespaceRef<T>> {
-        let rt = runtimes.bg_runtime.clone();
+        let rt = runtimes.default_runtime.clone();
         let table_kv = table_kv.clone();
         let namespace_name = name.to_string();
 
@@ -116,6 +116,14 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
             .await
             .box_err()
             .context(Delete)
+    }
+
+    async fn close_region(&self, region_id: RegionId) -> Result<()> {
+        self.namespace
+            .close_region(region_id)
+            .await
+            .box_err()
+            .context(CloseRegion { region: region_id })
     }
 
     async fn close_gracefully(&self) -> Result<()> {

@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table space
 //!
@@ -6,6 +6,7 @@
 //! different space can use same table name
 
 use std::{
+    collections::HashMap,
     fmt,
     sync::{Arc, RwLock},
 };
@@ -14,7 +15,7 @@ use arena::CollectorRef;
 use table_engine::table::TableId;
 
 use crate::{
-    instance::{mem_collector::MemUsageCollector, write_worker::WriteGroup},
+    instance::mem_collector::MemUsageCollector,
     table::data::{TableDataRef, TableDataSet},
 };
 
@@ -92,8 +93,11 @@ pub struct Space {
     /// lock
     table_datas: RwLock<TableDataSet>,
 
-    /// Write workers
-    pub write_group: WriteGroup,
+    /// If table open failed, request of this table is not allowed, otherwise
+    /// schema may become inconsistent.
+    // TODO: engine should provide a repair method to fix those failed tables.
+    open_failed_tables: RwLock<Vec<String>>,
+
     /// Space memtable memory usage collector
     pub mem_usage_collector: Arc<MemUsageCollector>,
     /// The maximum write buffer size used for single space.
@@ -105,14 +109,13 @@ impl Space {
         id: SpaceId,
         context: SpaceContext,
         write_buffer_size: usize,
-        write_group: WriteGroup,
         engine_mem_collector: CollectorRef,
     ) -> Self {
         Self {
             id,
             context,
-            table_datas: RwLock::new(TableDataSet::new()),
-            write_group,
+            table_datas: Default::default(),
+            open_failed_tables: Default::default(),
             mem_usage_collector: Arc::new(MemUsageCollector::with_parent(engine_mem_collector)),
             write_buffer_size,
         }
@@ -128,22 +131,16 @@ impl Space {
     /// Find the table whose memtable consumes the most memory in the space by
     /// specifying Worker.
     #[inline]
-    pub fn find_maximum_memory_usage_table(&self, worker_index: usize) -> Option<TableDataRef> {
-        let worker_num = self.write_group.worker_num();
+    pub fn find_maximum_memory_usage_table(&self) -> Option<TableDataRef> {
         self.table_datas
             .read()
             .unwrap()
-            .find_maximum_memory_usage_table(worker_num, worker_index)
+            .find_maximum_memory_usage_table()
     }
 
     #[inline]
     pub fn memtable_memory_usage(&self) -> usize {
         self.mem_usage_collector.total_memory_allocated()
-    }
-
-    pub async fn close(&self) {
-        // Stop the write group.
-        self.write_group.stop().await;
     }
 
     /// Insert table data into space memory state if the table is
@@ -157,6 +154,14 @@ impl Space {
             .unwrap()
             .insert_if_absent(table_data);
         assert!(success);
+    }
+
+    pub(crate) fn insert_open_failed_table(&self, table_name: String) {
+        self.open_failed_tables.write().unwrap().push(table_name)
+    }
+
+    pub(crate) fn is_open_failed_table(&self, table_name: &String) -> bool {
+        self.open_failed_tables.read().unwrap().contains(table_name)
     }
 
     /// Find table under this space by table name
@@ -187,3 +192,37 @@ impl Space {
 
 /// A reference to space
 pub type SpaceRef = Arc<Space>;
+
+/// Spaces states
+#[derive(Default)]
+pub(crate) struct Spaces {
+    /// Id to space
+    id_to_space: HashMap<SpaceId, SpaceRef>,
+}
+
+impl Spaces {
+    /// Insert space by name, and also insert id to space mapping
+    pub fn insert(&mut self, space: SpaceRef) {
+        let space_id = space.id;
+        self.id_to_space.insert(space_id, space);
+    }
+
+    pub fn get_by_id(&self, id: SpaceId) -> Option<&SpaceRef> {
+        self.id_to_space.get(&id)
+    }
+
+    /// List all tables of all spaces
+    pub fn list_all_tables(&self, tables: &mut Vec<TableDataRef>) {
+        let total_tables = self.id_to_space.values().map(|s| s.table_num()).sum();
+        tables.reserve(total_tables);
+        for space in self.id_to_space.values() {
+            space.list_all_tables(tables);
+        }
+    }
+
+    pub fn list_all_spaces(&self) -> Vec<SpaceRef> {
+        self.id_to_space.values().cloned().collect()
+    }
+}
+
+pub(crate) type SpacesRef = Arc<RwLock<Spaces>>;

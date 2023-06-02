@@ -1,17 +1,16 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Compaction.
 
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use std::{collections::HashMap, fmt, str::FromStr, sync::Arc};
 
 use common_util::config::{ReadableSize, TimeUnit};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::{ensure, Backtrace, GenerateBacktrace, ResultExt, Snafu};
 use tokio::sync::oneshot;
 
 use crate::{
     compaction::picker::{CommonCompactionPicker, CompactionPickerRef},
-    instance::write_worker::CompactionNotifier,
     sst::file::{FileHandle, Level},
     table::data::TableDataRef,
     table_options::COMPACTION_STRATEGY,
@@ -57,7 +56,7 @@ pub enum Error {
     InvalidOption { error: String, backtrace: Backtrace },
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, Deserialize, Default, PartialEq, Serialize)]
 pub enum CompactionStrategy {
     #[default]
     Default,
@@ -65,7 +64,7 @@ pub enum CompactionStrategy {
     SizeTiered(SizeTieredCompactionOptions),
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Serialize)]
 pub struct SizeTieredCompactionOptions {
     pub bucket_low: f32,
     pub bucket_high: f32,
@@ -75,7 +74,7 @@ pub struct SizeTieredCompactionOptions {
     pub max_input_sstable_size: ReadableSize,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Serialize)]
 pub struct TimeWindowCompactionOptions {
     pub size_tiered: SizeTieredCompactionOptions,
     // TODO(boyan) In fact right now we only supports TimeUnit::Milliseconds resolution.
@@ -317,7 +316,7 @@ pub struct ExpiredFiles {
     pub files: Vec<FileHandle>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
 pub struct CompactionTask {
     pub compaction_inputs: Vec<CompactionInputFiles>,
     pub expired: Vec<ExpiredFiles>,
@@ -348,8 +347,36 @@ impl CompactionTask {
         total_input_size as usize
     }
 
-    pub fn num_input_files(&self) -> usize {
+    pub fn num_compact_files(&self) -> usize {
         self.compaction_inputs.iter().map(|v| v.files.len()).sum()
+    }
+
+    pub fn num_expired_files(&self) -> usize {
+        self.expired.iter().map(|v| v.files.len()).sum()
+    }
+}
+
+impl fmt::Debug for CompactionTask {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CompactionTask")
+            .field("inputs", &self.compaction_inputs)
+            .field(
+                "expired",
+                &self
+                    .expired
+                    .iter()
+                    .map(|expired| {
+                        format!(
+                            "level:{}, files:{:?}",
+                            expired.level,
+                            expired.files.iter().map(|f| f.id())
+                        )
+                    })
+                    // only print first 10 files
+                    .take(10)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
     }
 }
 
@@ -429,18 +456,23 @@ impl Drop for WaiterNotifier {
 /// Request to compact single table.
 pub struct TableCompactionRequest {
     pub table_data: TableDataRef,
-    pub compaction_notifier: Option<CompactionNotifier>,
     pub waiter: Option<oneshot::Sender<WaitResult<()>>>,
 }
 
 impl TableCompactionRequest {
-    pub fn no_waiter(
-        table_data: TableDataRef,
-        compaction_notifier: Option<CompactionNotifier>,
-    ) -> Self {
+    pub fn new(table_data: TableDataRef) -> (Self, oneshot::Receiver<WaitResult<()>>) {
+        let (tx, rx) = oneshot::channel::<WaitResult<()>>();
+        let req = Self {
+            table_data,
+            waiter: Some(tx),
+        };
+
+        (req, rx)
+    }
+
+    pub fn no_waiter(table_data: TableDataRef) -> Self {
         TableCompactionRequest {
             table_data,
-            compaction_notifier,
             waiter: None,
         }
     }

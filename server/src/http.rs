@@ -1,23 +1,36 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Http service
 
 use std::{
-    collections::HashMap, convert::Infallible, error::Error as StdError, net::IpAddr, sync::Arc,
-    time::Duration,
+    collections::HashMap, convert::Infallible, error::Error as StdError, fs::File, net::IpAddr,
+    sync::Arc, thread, time::Duration,
 };
 
-use common_util::error::BoxError;
+use analytic_engine::setup::OpenedWals;
+use common_types::bytes::Bytes;
+use common_util::{
+    error::{BoxError, GenericError},
+    runtime::Runtime,
+};
 use log::{error, info};
 use logger::RuntimeLevel;
 use profile::Profiler;
-use prom_remote_api::{types::RemoteStorageRef, web};
+use prom_remote_api::web;
+use proxy::{
+    context::RequestContext,
+    handlers::{self},
+    http::sql::{convert_output, Request},
+    influxdb::types::{InfluxqlParams, InfluxqlRequest, WriteParams, WriteRequest},
+    instance::InstanceRef,
+    Proxy,
+};
 use query_engine::executor::Executor as QueryExecutor;
 use router::endpoint::Endpoint;
 use serde::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
-use tokio::sync::oneshot::{self, Sender};
+use tokio::sync::oneshot::{self, Receiver, Sender};
 use warp::{
     header,
     http::StatusCode,
@@ -27,24 +40,17 @@ use warp::{
 };
 
 use crate::{
-    consts,
-    context::RequestContext,
-    error_util,
-    handlers::{self, prom::CeresDBStorage, sql::Request},
-    instance::InstanceRef,
-    metrics,
-    schema_config_provider::SchemaConfigProviderRef,
+    consts, error_util,
+    metrics::{self, HTTP_HANDLER_DURATION_HISTOGRAM_VEC},
 };
 
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to create request context, err:{}", source))]
-    CreateContext { source: crate::context::Error },
+    CreateContext { source: proxy::context::Error },
 
     #[snafu(display("Failed to handle request, err:{}", source))]
-    HandleRequest {
-        source: Box<crate::handlers::error::Error>,
-    },
+    HandleRequest { source: GenericError },
 
     #[snafu(display("Failed to handle update log level, err:{}", msg))]
     HandleUpdateLogLevel { msg: String },
@@ -60,6 +66,9 @@ pub enum Error {
 
     #[snafu(display("Missing schema config provider.\nBacktrace:\n{}", backtrace))]
     MissingSchemaConfigProvider { backtrace: Backtrace },
+
+    #[snafu(display("Missing proxy.\nBacktrace:\n{}", backtrace))]
+    MissingProxy { backtrace: Backtrace },
 
     #[snafu(display(
         "Fail to do heap profiling, err:{}.\nBacktrace:\n{}",
@@ -90,31 +99,72 @@ pub enum Error {
     Internal {
         source: Box<dyn StdError + Send + Sync>,
     },
+
+    #[snafu(display("Server already started.\nBacktrace:\n{}", backtrace))]
+    AlreadyStarted { backtrace: Backtrace },
+
+    #[snafu(display("Missing router.\nBacktrace:\n{}", backtrace))]
+    MissingRouter { backtrace: Backtrace },
+
+    #[snafu(display("Missing wal.\nBacktrace:\n{}", backtrace))]
+    MissingWal { backtrace: Backtrace },
 }
 
 define_result!(Error);
 
 impl reject::Reject for Error {}
 
-pub const DEFAULT_MAX_BODY_SIZE: u64 = 64 * 1024;
-
 /// Http service
 ///
-/// Note that the service does not owns the runtime
+/// Endpoints beginning with /debug are for internal use, and may subject to
+/// breaking changes.
 pub struct Service<Q> {
+    proxy: Arc<Proxy<Q>>,
     engine_runtimes: Arc<EngineRuntimes>,
     log_runtime: Arc<RuntimeLevel>,
-    instance: InstanceRef<Q>,
     profiler: Arc<Profiler>,
-    prom_remote_storage: RemoteStorageRef<RequestContext, crate::handlers::prom::Error>,
     tx: Sender<()>,
+    rx: Option<Receiver<()>>,
     config: HttpConfig,
+    config_content: String,
+    opened_wals: OpenedWals,
 }
 
-impl<Q> Service<Q> {
-    // TODO(yingwen): Maybe log error or return error
+impl<Q: QueryExecutor + 'static> Service<Q> {
+    pub async fn start(&mut self) -> Result<()> {
+        let ip_addr: IpAddr = self
+            .config
+            .endpoint
+            .addr
+            .parse()
+            .with_context(|| ParseIpAddr {
+                ip: self.config.endpoint.addr.to_string(),
+            })?;
+        let rx = self.rx.take().context(AlreadyStarted)?;
+
+        info!(
+            "HTTP server tries to listen on {}",
+            &self.config.endpoint.to_string()
+        );
+
+        // Register filters to warp and rejection handler
+        let routes = self.routes().recover(handle_rejection);
+        let (_addr, server) = warp::serve(routes).bind_with_graceful_shutdown(
+            (ip_addr, self.config.endpoint.port),
+            async {
+                rx.await.ok();
+            },
+        );
+
+        self.engine_runtimes.default_runtime.spawn(server);
+
+        Ok(())
+    }
+
     pub fn stop(self) {
-        let _ = self.tx.send(());
+        if let Err(e) = self.tx.send(()) {
+            error!("Failed to send http service stop message, err:{:?}", e);
+        }
     }
 }
 
@@ -123,13 +173,33 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         self.home()
+            // public APIs
             .or(self.metrics())
             .or(self.sql())
-            .or(self.heap_profile())
+            .or(self.influxdb_api())
+            .or(self.prom_api())
+            .or(self.route())
+            // admin APIs
             .or(self.admin_block())
+            // debug APIs
             .or(self.flush_memtable())
             .or(self.update_log_level())
-            .or(self.prom_api())
+            .or(self.heap_profile())
+            .or(self.cpu_profile())
+            .or(self.server_config())
+            .or(self.stats())
+            .with(warp::log("http_requests"))
+            .with(warp::log::custom(|info| {
+                let path = info.path();
+                // Don't record /debug API
+                if path.starts_with("/debug") {
+                    return;
+                }
+
+                HTTP_HANDLER_DURATION_HISTOGRAM_VEC
+                    .with_label_values(&[path, info.status().as_str()])
+                    .observe(info.elapsed().as_secs_f64())
+            }))
     }
 
     /// Expose `/prom/v1/read` and `/prom/v1/write` to serve Prometheus remote
@@ -138,22 +208,19 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         let write_api = warp::path!("write")
-            .and(web::warp::with_remote_storage(
-                self.prom_remote_storage.clone(),
-            ))
+            .and(web::warp::with_remote_storage(self.proxy.clone()))
             .and(self.with_context())
             .and(web::warp::protobuf_body())
             .and_then(web::warp::write);
         let query_api = warp::path!("read")
-            .and(web::warp::with_remote_storage(
-                self.prom_remote_storage.clone(),
-            ))
+            .and(web::warp::with_remote_storage(self.proxy.clone()))
             .and(self.with_context())
             .and(web::warp::protobuf_body())
             .and_then(web::warp::read);
 
         warp::path!("prom" / "v1" / ..)
             .and(warp::post())
+            .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(write_api.or(query_api))
     }
 
@@ -170,7 +237,9 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     fn sql(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         // accept json or plain text
         let extract_request = warp::body::json()
-            .or(warp::body::bytes().map(Request::from))
+            .or(warp::body::bytes().map(|v: Bytes| Request {
+                query: String::from_utf8_lossy(&v).to_string(),
+            }))
             .unify();
 
         warp::path!("sql")
@@ -178,22 +247,95 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(extract_request)
             .and(self.with_context())
-            .and(self.with_instance())
-            .and_then(|req, ctx, instance| async move {
-                let result = handlers::sql::handle_sql(&ctx, instance, req)
+            .and(self.with_proxy())
+            .and_then(|req, ctx, proxy: Arc<Proxy<Q>>| async move {
+                let result = proxy
+                    .handle_http_sql_query(&ctx, req)
                     .await
-                    .map(handlers::sql::convert_output)
-                    .map_err(|e| {
-                        // TODO(yingwen): Maybe truncate and print the sql
-                        error!("Http service Failed to handle sql, err:{}", e);
-                        Box::new(e)
-                    })
+                    .map(convert_output)
+                    .box_err()
                     .context(HandleRequest);
                 match result {
                     Ok(res) => Ok(reply::json(&res)),
                     Err(e) => Err(reject::custom(e)),
                 }
             })
+    }
+
+    // GET /route
+    fn route(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("route" / String)
+            .and(warp::get())
+            .and(self.with_context())
+            .and(self.with_proxy())
+            .and_then(|table: String, ctx, proxy: Arc<Proxy<Q>>| async move {
+                let result = proxy
+                    .handle_http_route(&ctx, table)
+                    .await
+                    .box_err()
+                    .context(HandleRequest);
+                match result {
+                    Ok(res) => Ok(reply::json(&res)),
+                    Err(e) => Err(reject::custom(e)),
+                }
+            })
+    }
+
+    /// for write api:
+    ///     POST `/influxdb/v1/write`
+    ///
+    /// for query api:
+    ///     POST/GET `/influxdb/v1/query`
+    ///
+    /// It's derived from the influxdb 1.x query api described doc of 1.8:
+    ///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-http-endpoint
+    fn influxdb_api(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        let body_limit = warp::body::content_length_limit(self.config.max_body_size);
+
+        let write_api = warp::path!("write")
+            .and(warp::post())
+            .and(body_limit)
+            .and(self.with_context())
+            .and(warp::query::<WriteParams>())
+            .and(warp::body::bytes())
+            .and(self.with_proxy())
+            .and_then(|ctx, params, lines, proxy: Arc<Proxy<Q>>| async move {
+                let request = WriteRequest::new(lines, params);
+                let result = proxy.handle_influxdb_write(ctx, request).await;
+                match result {
+                    Ok(res) => Ok(reply::json(&res)),
+                    Err(e) => Err(reject::custom(e)),
+                }
+            });
+
+        // Query support both get and post method, so we can't add `body_limit` here.
+        // Otherwise it will throw `Rejection(LengthRequired)`
+        // TODO: support body limit for POST request
+        let query_api = warp::path!("query")
+            .and(warp::method())
+            .and(self.with_context())
+            .and(warp::query::<InfluxqlParams>())
+            .and(warp::body::form::<HashMap<String, String>>())
+            .and(self.with_proxy())
+            .and_then(
+                |method, ctx, params, body, proxy: Arc<Proxy<Q>>| async move {
+                    let request =
+                        InfluxqlRequest::try_new(method, body, params).map_err(reject::custom)?;
+                    let result = proxy
+                        .handle_influxdb_query(ctx, request)
+                        .await
+                        .box_err()
+                        .context(HandleRequest);
+                    match result {
+                        Ok(res) => Ok(reply::json(&res)),
+                        Err(e) => Err(reject::custom(e)),
+                    }
+                },
+            );
+
+        warp::path!("influxdb" / "v1" / ..).and(write_api.or(query_api))
     }
 
     // POST /debug/flush_memtable
@@ -258,11 +400,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::path!("debug" / "heap_profile" / ..)
             .and(warp::path::param::<u64>())
             .and(warp::get())
-            .and(self.with_context())
             .and(self.with_profiler())
+            .and(self.with_runtime())
             .and_then(
-                |duration_sec: u64, ctx: RequestContext, profiler: Arc<Profiler>| async move {
-                    let handle = ctx.runtime.spawn_blocking(move || {
+                |duration_sec: u64, profiler: Arc<Profiler>, runtime: Arc<Runtime>| async move {
+                    let handle = runtime.spawn_blocking(move || {
                         profiler.dump_mem_prof(duration_sec).context(ProfileHeap)
                     });
                     let result = handle.await.context(JoinAsyncTask);
@@ -273,6 +415,72 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     }
                 },
             )
+    }
+
+    // GET /debug/cpu_profile/{seconds}
+    fn cpu_profile(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("debug" / "cpu_profile" / ..)
+            .and(warp::path::param::<u64>())
+            .and(warp::get())
+            .and(self.with_runtime())
+            .and_then(|duration_sec: u64, runtime: Arc<Runtime>| async move {
+                let handle = runtime.spawn_blocking(move || -> Result<()> {
+                    let guard = pprof::ProfilerGuardBuilder::default()
+                        .frequency(100)
+                        .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+                        .build()
+                        .box_err()
+                        .context(Internal)?;
+
+                    thread::sleep(Duration::from_secs(duration_sec));
+
+                    let report = guard.report().build().box_err().context(Internal)?;
+                    let file = File::create("/tmp/flamegraph.svg")
+                        .box_err()
+                        .context(Internal)?;
+                    report.flamegraph(file).box_err().context(Internal)?;
+                    Ok(())
+                });
+                let result = handle.await.context(JoinAsyncTask);
+                match result {
+                    Ok(_) => Ok("ok"),
+                    Err(e) => Err(reject::custom(e)),
+                }
+            })
+    }
+
+    // GET /debug/config
+    fn server_config(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        let server_config_content = self.config_content.clone();
+        warp::path!("debug" / "config")
+            .and(warp::get())
+            .map(move || server_config_content.clone())
+    }
+
+    // GET /debug/stats
+    fn stats(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        let opened_wals = self.opened_wals.clone();
+        warp::path!("debug" / "stats")
+            .and(warp::get())
+            .map(move || {
+                [
+                    "Data wal stats:",
+                    &opened_wals
+                        .data_wal
+                        .get_statistics()
+                        .unwrap_or_else(|| "Unknown".to_string()),
+                    "Manifest wal stats:",
+                    &opened_wals
+                        .manifest_wal
+                        .get_statistics()
+                        .unwrap_or_else(|| "Unknown".to_string()),
+                ]
+                .join("\n")
+            })
     }
 
     // PUT /debug/log_level/{level}
@@ -307,10 +515,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and_then(|req, ctx, instance| async {
                 let result = handlers::admin::handle_block(ctx, instance, req)
                     .await
-                    .map_err(|e| {
-                        error!("Http service failed to handle admin block, err:{}", e);
-                        Box::new(e)
-                    })
+                    .box_err()
                     .context(HandleRequest);
 
                 match result {
@@ -324,17 +529,17 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         &self,
     ) -> impl Filter<Extract = (RequestContext,), Error = warp::Rejection> + Clone {
         let default_catalog = self
-            .instance
+            .proxy
+            .instance()
             .catalog_manager
             .default_catalog_name()
             .to_string();
         let default_schema = self
-            .instance
+            .proxy
+            .instance()
             .catalog_manager
             .default_schema_name()
             .to_string();
-        //TODO(boyan) use read/write runtime by sql type.
-        let runtime = self.engine_runtimes.bg_runtime.clone();
         let timeout = self.config.timeout;
 
         header::optional::<String>(consts::CATALOG_HEADER)
@@ -344,13 +549,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                 move |catalog: Option<_>, schema: Option<_>, _tenant: Option<_>| {
                     // Clone the captured variables
                     let default_catalog = default_catalog.clone();
-                    let runtime = runtime.clone();
                     let schema = schema.unwrap_or_else(|| default_schema.clone());
                     async move {
                         RequestContext::builder()
                             .catalog(catalog.unwrap_or(default_catalog))
                             .schema(schema)
-                            .runtime(runtime)
                             .timeout(timeout)
                             .enable_partition_table_access(true)
                             .build()
@@ -366,10 +569,20 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::any().map(move || profiler.clone())
     }
 
+    fn with_proxy(&self) -> impl Filter<Extract = (Arc<Proxy<Q>>,), Error = Infallible> + Clone {
+        let proxy = self.proxy.clone();
+        warp::any().map(move || proxy.clone())
+    }
+
+    fn with_runtime(&self) -> impl Filter<Extract = (Arc<Runtime>,), Error = Infallible> + Clone {
+        let runtime = self.engine_runtimes.default_runtime.clone();
+        warp::any().map(move || runtime.clone())
+    }
+
     fn with_instance(
         &self,
     ) -> impl Filter<Extract = (InstanceRef<Q>,), Error = Infallible> + Clone {
-        let instance = self.instance.clone();
+        let instance = self.proxy.instance();
         warp::any().map(move || instance.clone())
     }
 
@@ -386,8 +599,9 @@ pub struct Builder<Q> {
     config: HttpConfig,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
-    instance: Option<InstanceRef<Q>>,
-    schema_config_provider: Option<SchemaConfigProviderRef>,
+    config_content: Option<String>,
+    proxy: Option<Arc<Proxy<Q>>>,
+    opened_wals: Option<OpenedWals>,
 }
 
 impl<Q> Builder<Q> {
@@ -396,8 +610,9 @@ impl<Q> Builder<Q> {
             config,
             engine_runtimes: None,
             log_runtime: None,
-            instance: None,
-            schema_config_provider: None,
+            config_content: None,
+            proxy: None,
+            opened_wals: None,
         }
     }
 
@@ -411,13 +626,18 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn instance(mut self, instance: InstanceRef<Q>) -> Self {
-        self.instance = Some(instance);
+    pub fn config_content(mut self, content: String) -> Self {
+        self.config_content = Some(content);
         self
     }
 
-    pub fn schema_config_provider(mut self, provider: SchemaConfigProviderRef) -> Self {
-        self.schema_config_provider = Some(provider);
+    pub fn proxy(mut self, proxy: Arc<Proxy<Q>>) -> Self {
+        self.proxy = Some(proxy);
+        self
+    }
+
+    pub fn opened_wals(mut self, opened_wals: OpenedWals) -> Self {
+        self.opened_wals = Some(opened_wals);
         self
     }
 }
@@ -425,47 +645,25 @@ impl<Q> Builder<Q> {
 impl<Q: QueryExecutor + 'static> Builder<Q> {
     /// Build and start the service
     pub fn build(self) -> Result<Service<Q>> {
-        let engine_runtime = self.engine_runtimes.context(MissingEngineRuntimes)?;
+        let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
-        let instance = self.instance.context(MissingInstance)?;
-        let schema_config_provider = self
-            .schema_config_provider
-            .context(MissingSchemaConfigProvider)?;
-        let prom_remote_storage = Arc::new(CeresDBStorage::new(
-            instance.clone(),
-            schema_config_provider,
-        ));
+        let config_content = self.config_content.context(MissingInstance)?;
+        let proxy = self.proxy.context(MissingProxy)?;
+        let opened_wals = self.opened_wals.context(MissingWal)?;
+
         let (tx, rx) = oneshot::channel();
 
         let service = Service {
-            engine_runtimes: engine_runtime.clone(),
+            proxy,
+            engine_runtimes,
             log_runtime,
-            instance,
-            prom_remote_storage,
             profiler: Arc::new(Profiler::default()),
             tx,
-            config: self.config.clone(),
+            rx: Some(rx),
+            config: self.config,
+            config_content,
+            opened_wals,
         };
-
-        info!(
-            "HTTP server tries to listen on {}",
-            &self.config.endpoint.to_string()
-        );
-
-        let ip_addr: IpAddr = self.config.endpoint.addr.parse().context(ParseIpAddr {
-            ip: self.config.endpoint.addr,
-        })?;
-
-        // Register filters to warp and rejection handler
-        let routes = service.routes().recover(handle_rejection);
-        let (_addr, server) = warp::serve(routes).bind_with_graceful_shutdown(
-            (ip_addr, self.config.endpoint.port),
-            async {
-                rx.await.ok();
-            },
-        );
-        // Run the service
-        engine_runtime.bg_runtime.spawn(server);
 
         Ok(service)
     }
@@ -494,10 +692,14 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::MissingLogRuntime { .. }
         | Error::MissingInstance { .. }
         | Error::MissingSchemaConfigProvider { .. }
+        | Error::MissingProxy { .. }
         | Error::ParseIpAddr { .. }
         | Error::ProfileHeap { .. }
         | Error::Internal { .. }
         | Error::JoinAsyncTask { .. }
+        | Error::AlreadyStarted { .. }
+        | Error::MissingRouter { .. }
+        | Error::MissingWal { .. }
         | Error::HandleUpdateLogLevel { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
@@ -516,11 +718,14 @@ async fn handle_rejection(
         let err_string = err.to_string();
         message = error_util::remove_backtrace_from_err(&err_string).to_string();
     } else {
-        error!("handle error: {:?}", rejection);
         code = StatusCode::INTERNAL_SERVER_ERROR;
-        message = format!("UNKNOWN_ERROR: {rejection:?}");
+        message = error_util::remove_backtrace_from_err(&format!("UNKNOWN_ERROR: {rejection:?}"))
+            .to_string();
     }
 
+    if code.as_u16() >= 500 {
+        error!("HTTP handle error: {:?}", rejection);
+    }
     let json = reply::json(&ErrorResponse {
         code: code.as_u16(),
         message,

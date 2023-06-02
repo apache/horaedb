@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{convert::TryInto, sync::Arc};
 
@@ -9,12 +9,12 @@ use arrow::{
 };
 use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::Schema, Catalog};
+use query_frontend::{
+    ast::ShowCreateObject,
+    plan::{QueryType, ShowCreatePlan, ShowPlan, ShowTablesPlan},
+};
 use regex::Regex;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use sql::{
-    ast::ShowCreateObject,
-    plan::{ShowCreatePlan, ShowPlan, ShowTablesPlan},
-};
 
 use crate::{
     context::Context,
@@ -127,17 +127,37 @@ impl ShowInterpreter {
                 .map(|t| t.name().to_string())
                 .collect::<Vec<_>>(),
         };
-        let schema = DataSchema::new(vec![Field::new(
-            SHOW_TABLES_COLUMN_SCHEMA,
-            DataType::Utf8,
-            false,
-        )]);
-        let record_batch = RecordBatch::try_new(
-            Arc::new(schema),
-            vec![Arc::new(StringArray::from(tables_names))],
-        )
-        .context(CreateRecordBatch)?;
 
+        let record_batch = match plan.query_type {
+            QueryType::Sql => {
+                let schema = DataSchema::new(vec![Field::new(
+                    SHOW_TABLES_COLUMN_SCHEMA,
+                    DataType::Utf8,
+                    false,
+                )]);
+
+                RecordBatch::try_new(
+                    Arc::new(schema),
+                    vec![Arc::new(StringArray::from(tables_names))],
+                )
+                .context(CreateRecordBatch)?
+            }
+            QueryType::InfluxQL => {
+                // TODO: refactor those constants
+                let schema = DataSchema::new(vec![
+                    Field::new("iox::measurement", DataType::Utf8, false),
+                    Field::new("name", DataType::Utf8, false),
+                ]);
+
+                let measurements = vec!["measurements".to_string(); tables_names.len()];
+                let measurements = Arc::new(StringArray::from(measurements));
+                RecordBatch::try_new(
+                    Arc::new(schema),
+                    vec![measurements, Arc::new(StringArray::from(tables_names))],
+                )
+                .context(CreateRecordBatch)?
+            }
+        };
         let record_batch = record_batch.try_into().context(ToCommonRecordType)?;
 
         Ok(Output::Records(vec![record_batch]))

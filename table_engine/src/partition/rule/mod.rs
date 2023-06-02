@@ -1,11 +1,11 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Partition rules
 
 pub mod df_adapter;
-pub(crate) mod factory;
-pub(crate) mod filter;
-pub(crate) mod key;
+mod factory;
+mod filter;
+mod key;
 
 use common_types::{datum::DatumKind, row::RowGroup};
 

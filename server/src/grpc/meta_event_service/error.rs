@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Error definitions for meta event service.
 
@@ -55,6 +55,7 @@ pub enum StatusCode {
     #[default]
     Ok = 0,
     BadRequest = 401,
+    #[allow(dead_code)]
     NotFound = 404,
     Internal = 500,
 }

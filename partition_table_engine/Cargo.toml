@@ -1,0 +1,21 @@
+[package]
+name = "partition_table_engine"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+common_types = { workspace = true }
+common_util = { workspace = true }
+futures = { workspace = true }
+lazy_static = { workspace = true }
+prometheus = { workspace = true }
+snafu = { workspace = true }
+table_engine = { workspace = true }

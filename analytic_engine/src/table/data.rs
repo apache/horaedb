@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table data
 
@@ -19,7 +19,7 @@ use arena::CollectorRef;
 use common_types::{
     self,
     schema::{Schema, Version},
-    table::{ClusterVersion, ShardId},
+    table::ShardId,
     time::{TimeRange, Timestamp},
     SequenceNumber,
 };
@@ -27,11 +27,11 @@ use common_util::define_result;
 use log::{debug, info};
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_engine::{engine::CreateTableRequest, partition::PartitionInfo, table::TableId};
+use table_engine::table::TableId;
 
 use crate::{
-    instance::write_worker::{choose_worker, WorkerLocal, WriteHandle},
-    manifest::meta_update::AddTableMeta,
+    instance::serial_executor::TableOpSerialExecutor,
+    manifest::meta_edit::AddTableMeta,
     memtable::{
         factory::{FactoryRef as MemTableFactoryRef, Options as MemTableOptions},
         skiplist::factory::SkiplistMemTableFactory,
@@ -78,15 +78,11 @@ pub type MemTableId = u64;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TableShardInfo {
     pub shard_id: ShardId,
-    pub cluster_version: ClusterVersion,
 }
 
 impl TableShardInfo {
-    pub fn new(shard_id: ShardId, cluster_version: ClusterVersion) -> Self {
-        Self {
-            shard_id,
-            cluster_version,
-        }
+    pub fn new(shard_id: ShardId) -> Self {
+        Self { shard_id }
     }
 }
 
@@ -103,6 +99,9 @@ pub struct TableData {
 
     /// Mutable memtable memory size limitation
     mutable_limit: AtomicU32,
+    /// Mutable memtable memory usage ratio of the write buffer size.
+    mutable_limit_write_buffer_ratio: f32,
+
     /// Options of this table
     ///
     /// Most modification to `opts` can be done by replacing the old options
@@ -123,8 +122,7 @@ pub struct TableData {
     /// single writer, but reads are allowed to be done concurrently without
     /// mutex protected
     last_sequence: AtomicU64,
-    /// Handle to the write worker
-    pub write_handle: WriteHandle,
+
     /// Auto incremented id to track memtable, reset on engine open
     ///
     /// Allocating memtable id should be guarded by write lock
@@ -148,11 +146,11 @@ pub struct TableData {
     /// Metrics of this table
     pub metrics: Metrics,
 
-    /// Shard id
+    /// Shard info of the table
     pub shard_info: TableShardInfo,
 
-    /// Partition info
-    pub partition_info: Option<PartitionInfo>,
+    /// The table operation serial_exec
+    pub serial_exec: tokio::sync::Mutex<TableOpSerialExecutor>,
 }
 
 impl fmt::Debug for TableData {
@@ -168,7 +166,6 @@ impl fmt::Debug for TableData {
             .field("last_file_id", &self.last_file_id)
             .field("dropped", &self.dropped.load(Ordering::Relaxed))
             .field("shard_info", &self.shard_info)
-            .field("partition_info", &self.partition_info)
             .finish()
     }
 }
@@ -180,8 +177,15 @@ impl Drop for TableData {
 }
 
 #[inline]
-fn get_mutable_limit(opts: &TableOptions) -> u32 {
-    opts.write_buffer_size / 8 * 7
+fn compute_mutable_limit(
+    write_buffer_size: u32,
+    mutable_limit_write_buffer_size_ratio: f32,
+) -> u32 {
+    assert!((0.0..=1.0).contains(&mutable_limit_write_buffer_size_ratio));
+
+    let limit = write_buffer_size as f32 * mutable_limit_write_buffer_size_ratio;
+    // This is safe because the limit won't be larger than the write_buffer_size.
+    limit as u32
 }
 
 impl TableData {
@@ -189,41 +193,49 @@ impl TableData {
     ///
     /// This function should only be called when a new table is creating and
     /// there is no existing data of the table
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         space_id: SpaceId,
-        request: CreateTableRequest,
-        write_handle: WriteHandle,
+        table_id: TableId,
+        table_name: String,
+        table_schema: Schema,
+        shard_id: ShardId,
         table_opts: TableOptions,
         purger: &FilePurger,
+        preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
     ) -> Result<Self> {
         // FIXME(yingwen): Validate TableOptions, such as bucket_duration >=
         // segment_duration and bucket_duration is aligned to segment_duration
 
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
-        let purge_queue = purger.create_purge_queue(space_id, request.table_id);
+        let purge_queue = purger.create_purge_queue(space_id, table_id);
         let current_version = TableVersion::new(purge_queue);
-        let metrics = Metrics::new(&request.table_name);
+        let metrics = Metrics::default();
+        let mutable_limit = AtomicU32::new(compute_mutable_limit(
+            table_opts.write_buffer_size,
+            preflush_write_buffer_size_ratio,
+        ));
 
         Ok(Self {
-            id: request.table_id,
-            name: request.table_name,
-            schema: Mutex::new(request.table_schema),
+            id: table_id,
+            name: table_name,
+            schema: Mutex::new(table_schema),
             space_id,
-            mutable_limit: AtomicU32::new(get_mutable_limit(&table_opts)),
+            mutable_limit,
+            mutable_limit_write_buffer_ratio: preflush_write_buffer_size_ratio,
             opts: ArcSwap::new(Arc::new(table_opts)),
             memtable_factory,
             mem_usage_collector,
             current_version,
             last_sequence: AtomicU64::new(0),
-            write_handle,
             last_memtable_id: AtomicU64::new(0),
             last_file_id: AtomicU64::new(0),
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
-            shard_info: TableShardInfo::new(request.shard_id, request.cluster_version),
-            partition_info: request.partition_info,
+            shard_info: TableShardInfo::new(shard_id),
+            serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(table_id)),
         })
     }
 
@@ -232,36 +244,39 @@ impl TableData {
     /// This wont recover sequence number, which will be set after wal replayed
     pub fn recover_from_add(
         add_meta: AddTableMeta,
-        write_handle: WriteHandle,
         purger: &FilePurger,
-        mem_usage_collector: CollectorRef,
         shard_id: ShardId,
-        cluster_version: ClusterVersion,
+        preflush_write_buffer_size_ratio: f32,
+        mem_usage_collector: CollectorRef,
     ) -> Result<Self> {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
         let current_version = TableVersion::new(purge_queue);
-        let metrics = Metrics::new(&add_meta.table_name);
+        let metrics = Metrics::default();
+        let mutable_limit = AtomicU32::new(compute_mutable_limit(
+            add_meta.opts.write_buffer_size,
+            preflush_write_buffer_size_ratio,
+        ));
 
         Ok(Self {
             id: add_meta.table_id,
             name: add_meta.table_name,
             schema: Mutex::new(add_meta.schema),
             space_id: add_meta.space_id,
-            mutable_limit: AtomicU32::new(get_mutable_limit(&add_meta.opts)),
+            mutable_limit,
+            mutable_limit_write_buffer_ratio: preflush_write_buffer_size_ratio,
             opts: ArcSwap::new(Arc::new(add_meta.opts)),
             memtable_factory,
             mem_usage_collector,
             current_version,
             last_sequence: AtomicU64::new(0),
-            write_handle,
             last_memtable_id: AtomicU64::new(0),
             last_file_id: AtomicU64::new(0),
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
-            shard_info: TableShardInfo::new(shard_id, cluster_version),
-            partition_info: add_meta.partition_info,
+            shard_info: TableShardInfo::new(shard_id),
+            serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(add_meta.table_id)),
         })
     }
 
@@ -316,12 +331,13 @@ impl TableData {
     }
 
     /// Update table options.
-    ///
-    /// REQUIRE: The write lock is held.
     #[inline]
-    pub fn set_table_options(&self, _write_lock: &WorkerLocal, opts: TableOptions) {
-        self.mutable_limit
-            .store(get_mutable_limit(&opts), Ordering::Relaxed);
+    pub fn set_table_options(&self, opts: TableOptions) {
+        let mutable_limit = compute_mutable_limit(
+            opts.write_buffer_size,
+            self.mutable_limit_write_buffer_ratio,
+        );
+        self.mutable_limit.store(mutable_limit, Ordering::Relaxed);
         self.opts.store(Arc::new(opts))
     }
 
@@ -347,11 +363,8 @@ impl TableData {
     /// If the memtable schema is outdated, switch all memtables and create the
     /// needed mutable memtable by current schema. The returned memtable is
     /// guaranteed to have same schema of current table
-    ///
-    /// REQUIRE: The write lock is held
     pub fn find_or_create_mutable(
         &self,
-        write_lock: &WorkerLocal,
         timestamp: Timestamp,
         table_schema: &Schema,
     ) -> Result<MemTableForWrite> {
@@ -360,7 +373,7 @@ impl TableData {
 
         if let Some(mem) = self
             .current_version
-            .memtable_for_write(write_lock, timestamp, schema_version)
+            .memtable_for_write(timestamp, schema_version)
             .context(FindMemTable)?
         {
             return Ok(mem);
@@ -415,7 +428,7 @@ impl TableData {
     /// Returns true if the memory usage of this table reaches flush threshold
     ///
     /// REQUIRE: Do in write worker
-    pub fn should_flush_table(&self, _worker_local: &WorkerLocal) -> bool {
+    pub fn should_flush_table(&self, serial_exec: &mut TableOpSerialExecutor) -> bool {
         // Fallback to usize::MAX if Failed to convert arena_block_size into
         // usize (overflow)
         let max_write_buffer_size = self
@@ -432,8 +445,9 @@ impl TableData {
         let mutable_usage = self.current_version.mutable_memory_usage();
         let total_usage = self.current_version.total_memory_usage();
 
+        let in_flush = serial_exec.flush_scheduler().is_in_flush();
         // Inspired by https://github.com/facebook/rocksdb/blob/main/include/rocksdb/write_buffer_manager.h#L94
-        if mutable_usage > mutable_limit {
+        if mutable_usage > mutable_limit && !in_flush {
             info!(
                 "TableData should flush, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
                 self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size
@@ -522,7 +536,7 @@ pub struct TableLocation {
 pub type TableDataRef = Arc<TableData>;
 
 /// Manages TableDataRef
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TableDataSet {
     /// Name to table data
     table_datas: HashMap<String, TableDataRef>,
@@ -533,10 +547,7 @@ pub struct TableDataSet {
 impl TableDataSet {
     /// Create an empty TableDataSet
     pub fn new() -> Self {
-        Self {
-            table_datas: HashMap::new(),
-            id_to_tables: HashMap::new(),
-        }
+        Self::default()
     }
 
     /// Insert if absent, if successfully inserted, return true and return
@@ -574,16 +585,10 @@ impl TableDataSet {
         self.table_datas.len()
     }
 
-    /// Find the table that the current WorkerLocal belongs to and consumes the
-    /// largest memtable memory usage.
-    pub fn find_maximum_memory_usage_table(
-        &self,
-        worker_num: usize,
-        worker_index: usize,
-    ) -> Option<TableDataRef> {
+    pub fn find_maximum_memory_usage_table(&self) -> Option<TableDataRef> {
+        // TODO: Possible performance issue here when there are too many tables.
         self.table_datas
             .values()
-            .filter(|t| choose_worker(t.id.as_u64() as usize, worker_num) == worker_index)
             .max_by_key(|t| t.memtable_memory_usage())
             .cloned()
     }
@@ -596,27 +601,20 @@ impl TableDataSet {
     }
 }
 
-impl Default for TableDataSet {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 pub mod tests {
     use std::sync::Arc;
 
     use arena::NoopCollector;
-    use common_types::{
-        datum::DatumKind,
-        table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
-    };
+    use common_types::{datum::DatumKind, table::DEFAULT_SHARD_ID};
     use common_util::config::ReadableDuration;
-    use table_engine::{engine::TableState, table::SchemaId};
+    use table_engine::{
+        engine::{CreateTableRequest, TableState},
+        table::SchemaId,
+    };
 
     use super::*;
     use crate::{
-        instance::write_worker::tests::WriteHandleMocker,
         memtable::{factory::Factory, MemTableRef},
         sst::file::tests::FilePurgerMocker,
         table_options,
@@ -656,8 +654,6 @@ pub mod tests {
         table_id: TableId,
         table_name: String,
         shard_id: ShardId,
-        cluster_version: ClusterVersion,
-        write_handle: Option<WriteHandle>,
     }
 
     impl TableDataMocker {
@@ -676,16 +672,6 @@ pub mod tests {
             self
         }
 
-        pub fn cluster_version(mut self, cluster_version: ClusterVersion) -> Self {
-            self.cluster_version = cluster_version;
-            self
-        }
-
-        pub fn write_handle(mut self, write_handle: WriteHandle) -> Self {
-            self.write_handle = Some(write_handle);
-            self
-        }
-
         pub fn build(self) -> TableData {
             let space_id = DEFAULT_SPACE_ID;
             let table_schema = default_schema();
@@ -700,24 +686,22 @@ pub mod tests {
                 options: HashMap::new(),
                 state: TableState::Stable,
                 shard_id: self.shard_id,
-                cluster_version: self.cluster_version,
                 partition_info: None,
             };
 
-            let write_handle = self.write_handle.unwrap_or_else(|| {
-                let mocked_write_handle = WriteHandleMocker::default().space_id(space_id).build();
-                mocked_write_handle.write_handle
-            });
             let table_opts = TableOptions::default();
             let purger = FilePurgerMocker::mock();
             let collector = Arc::new(NoopCollector);
 
             TableData::new(
                 space_id,
-                create_request,
-                write_handle,
+                create_request.table_id,
+                create_request.table_name,
+                create_request.table_schema,
+                create_request.shard_id,
                 table_opts,
                 &purger,
+                0.75,
                 collector,
             )
             .unwrap()
@@ -730,8 +714,6 @@ pub mod tests {
                 table_id: table::new_table_id(2, 1),
                 table_name: "mocked_table".to_string(),
                 shard_id: DEFAULT_SHARD_ID,
-                cluster_version: DEFAULT_CLUSTER_VERSION,
-                write_handle: None,
             }
         }
     }
@@ -741,20 +723,15 @@ pub mod tests {
         let table_id = table::new_table_id(100, 30);
         let table_name = "new_table".to_string();
         let shard_id = 42;
-        let cluster_version = 1;
         let table_data = TableDataMocker::default()
             .table_id(table_id)
             .table_name(table_name.clone())
             .shard_id(shard_id)
-            .cluster_version(cluster_version)
             .build();
 
         assert_eq!(table_id, table_data.id);
         assert_eq!(table_name, table_data.name);
-        assert_eq!(
-            TableShardInfo::new(shard_id, cluster_version),
-            table_data.shard_info
-        );
+        assert_eq!(TableShardInfo::new(shard_id), table_data.shard_info);
         assert_eq!(0, table_data.last_sequence());
         assert!(!table_data.is_dropped());
         assert_eq!(0, table_data.last_file_id());
@@ -764,20 +741,12 @@ pub mod tests {
 
     #[test]
     fn test_find_or_create_mutable() {
-        let mocked_write_handle = WriteHandleMocker::default()
-            .space_id(DEFAULT_SPACE_ID)
-            .build();
-        let table_data = TableDataMocker::default()
-            .write_handle(mocked_write_handle.write_handle)
-            .build();
-        let worker_local = mocked_write_handle.worker_local;
+        let table_data = TableDataMocker::default().build();
         let schema = table_data.schema();
 
         // Create sampling memtable.
         let zero_ts = Timestamp::new(0);
-        let mutable = table_data
-            .find_or_create_mutable(&worker_local, zero_ts, &schema)
-            .unwrap();
+        let mutable = table_data.find_or_create_mutable(zero_ts, &schema).unwrap();
         assert!(mutable.accept_timestamp(zero_ts));
         let sampling_mem = mutable.as_sampling();
         let sampling_id = sampling_mem.id;
@@ -785,9 +754,7 @@ pub mod tests {
 
         // Test memtable is reused.
         let now_ts = Timestamp::now();
-        let mutable = table_data
-            .find_or_create_mutable(&worker_local, now_ts, &schema)
-            .unwrap();
+        let mutable = table_data.find_or_create_mutable(now_ts, &schema).unwrap();
         assert!(mutable.accept_timestamp(now_ts));
         let sampling_mem = mutable.as_sampling();
         // Use same sampling memtable.
@@ -798,19 +765,46 @@ pub mod tests {
         let mut table_opts = (*table_data.table_options()).clone();
         table_opts.segment_duration =
             Some(ReadableDuration(table_options::DEFAULT_SEGMENT_DURATION));
-        table_data.set_table_options(&worker_local, table_opts);
+        table_data.set_table_options(table_opts);
         // Freeze sampling memtable.
-        current_version.freeze_sampling(&worker_local);
+        current_version.freeze_sampling();
 
         // A new mutable memtable should be created.
-        let mutable = table_data
-            .find_or_create_mutable(&worker_local, now_ts, &schema)
-            .unwrap();
+        let mutable = table_data.find_or_create_mutable(now_ts, &schema).unwrap();
         assert!(mutable.accept_timestamp(now_ts));
         let mem_state = mutable.as_normal();
         assert_eq!(2, mem_state.id);
         let time_range =
             TimeRange::bucket_of(now_ts, table_options::DEFAULT_SEGMENT_DURATION).unwrap();
         assert_eq!(time_range, mem_state.time_range);
+    }
+
+    #[test]
+    fn test_compute_mutable_limit() {
+        // Build the cases for compute_mutable_limit.
+        let cases = vec![
+            (80, 0.8, 64),
+            (80, 0.5, 40),
+            (80, 0.1, 8),
+            (80, 0.0, 0),
+            (80, 1.0, 80),
+            (0, 0.8, 0),
+            (0, 0.5, 0),
+            (0, 0.1, 0),
+            (0, 0.0, 0),
+            (0, 1.0, 0),
+        ];
+
+        for (write_buffer_size, ratio, expected) in cases {
+            let limit = compute_mutable_limit(write_buffer_size, ratio);
+            assert_eq!(expected, limit);
+        }
+    }
+
+    #[should_panic]
+    #[test]
+    fn test_compute_mutable_limit_panic() {
+        compute_mutable_limit(80, 1.1);
+        compute_mutable_limit(80, -0.1);
     }
 }

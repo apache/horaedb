@@ -1,17 +1,17 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 // Config for ceresdb server.
 
 use cluster::config::ClusterConfig;
-use serde::Deserialize;
-use server::{
-    config::{ServerConfig, StaticRouteConfig},
-    limiter::LimiterConfig,
-};
+use proxy::limiter::LimiterConfig;
+use serde::{Deserialize, Serialize};
+use server::config::{ServerConfig, StaticRouteConfig};
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct NodeInfo {
+    /// The address of the ceresdb node. It can be a domain name or an IP
+    /// address without port followed.
     pub addr: String,
     pub zone: String,
     pub idc: String,
@@ -29,7 +29,7 @@ impl Default for NodeInfo {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     /// The information of the host node.
@@ -67,24 +67,28 @@ pub struct Config {
 ///
 /// [ClusterDeployment::WithMeta] means to start one or multiple CeresDB
 /// instance(s) under the control of CeresMeta.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "mode")]
 pub enum ClusterDeployment {
     NoMeta(StaticRouteConfig),
     WithMeta(ClusterConfig),
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RuntimeConfig {
-    // Runtime for reading data
+    /// Runtime for reading data
     pub read_thread_num: usize,
-    // Runtime for writing data
+    /// Runtime for writing data
     pub write_thread_num: usize,
-    // Runtime for communicating with meta cluster
+    /// Runtime for communicating with meta cluster
     pub meta_thread_num: usize,
-    // Runtime for background tasks
-    pub background_thread_num: usize,
+    /// Runtime for compaction
+    pub compact_thread_num: usize,
+    /// Runtime for other tasks which may not important
+    pub default_thread_num: usize,
+    /// Runtime for io
+    pub io_thread_num: usize,
 }
 
 impl Default for RuntimeConfig {
@@ -93,7 +97,9 @@ impl Default for RuntimeConfig {
             read_thread_num: 8,
             write_thread_num: 8,
             meta_thread_num: 2,
-            background_thread_num: 8,
+            compact_thread_num: 4,
+            default_thread_num: 8,
+            io_thread_num: 4,
         }
     }
 }

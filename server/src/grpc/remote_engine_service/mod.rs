@@ -1,20 +1,25 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 // Remote engine rpc service implementation.
 
 use std::{sync::Arc, time::Instant};
 
-use arrow_ext::ipc::{self, CompressOptions, CompressOutput};
+use arrow_ext::ipc::{self, CompressOptions, CompressOutput, CompressionMethod};
 use async_trait::async_trait;
-use catalog::manager::ManagerRef;
-use ceresdbproto::remote_engine::{
-    remote_engine_service_server::RemoteEngineService, ReadRequest, ReadResponse, WriteRequest,
-    WriteResponse,
+use catalog::{manager::ManagerRef, schema::SchemaRef};
+use ceresdbproto::{
+    remote_engine::{
+        read_response::Output::Arrow, remote_engine_service_server::RemoteEngineService,
+        GetTableInfoRequest, GetTableInfoResponse, ReadRequest, ReadResponse, WriteBatchRequest,
+        WriteRequest, WriteResponse,
+    },
+    storage::{arrow_payload, ArrowPayload},
 };
-use common_types::{record_batch::RecordBatch, RemoteEngineVersion};
+use common_types::record_batch::RecordBatch;
 use common_util::{error::BoxError, time::InstantExt};
 use futures::stream::{self, BoxStream, StreamExt};
-use log::error;
+use log::{error, info};
+use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
@@ -25,19 +30,15 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
-use crate::{
-    grpc::{
-        metrics::REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
-        remote_engine_service::error::{
-            build_ok_header, ErrNoCause, ErrWithCause, Result, StatusCode,
-        },
-    },
-    instance::InstanceRef,
+use crate::grpc::{
+    metrics::REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+    remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
 };
 
-pub(crate) mod error;
+mod error;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
+const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
 
 #[derive(Clone)]
 pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {
@@ -119,6 +120,90 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
         Ok(Response::new(resp))
     }
 
+    async fn get_table_info_internal(
+        &self,
+        request: Request<GetTableInfoRequest>,
+    ) -> std::result::Result<Response<GetTableInfoResponse>, Status> {
+        let begin_instant = Instant::now();
+        let ctx = self.handler_ctx();
+        let handle = self.runtimes.read_runtime.spawn(async move {
+            let request = request.into_inner();
+            handle_get_table_info(ctx, request).await
+        });
+
+        let res = handle.await.box_err().context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: "fail to join task",
+        });
+
+        let mut resp = GetTableInfoResponse::default();
+        match res {
+            Ok(Ok(v)) => {
+                resp.header = Some(error::build_ok_header());
+                resp.table_info = v.table_info;
+            }
+            Ok(Err(e)) | Err(e) => {
+                resp.header = Some(error::build_err_header(e));
+            }
+        };
+
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .get_table_info
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
+        Ok(Response::new(resp))
+    }
+
+    async fn write_batch_internal(
+        &self,
+        request: Request<WriteBatchRequest>,
+    ) -> std::result::Result<Response<WriteResponse>, Status> {
+        let begin_instant = Instant::now();
+        let request = request.into_inner();
+        let mut write_table_handles = Vec::with_capacity(request.batch.len());
+        for one_request in request.batch {
+            let ctx = self.handler_ctx();
+            let handle = self
+                .runtimes
+                .write_runtime
+                .spawn(handle_write(ctx, one_request));
+            write_table_handles.push(handle);
+        }
+
+        let mut batch_resp = WriteResponse {
+            header: Some(error::build_ok_header()),
+            affected_rows: 0,
+        };
+        for write_handle in write_table_handles {
+            let write_result = write_handle.await.box_err().context(ErrWithCause {
+                code: StatusCode::Internal,
+                msg: "fail to run the join task",
+            });
+            // The underlying write can't be cancelled, so just ignore the left write
+            // handles (don't abort them) if any error is encountered.
+            match write_result {
+                Ok(res) => match res {
+                    Ok(resp) => batch_resp.affected_rows += resp.affected_rows,
+                    Err(e) => {
+                        error!("Failed to write batches, err:{e}");
+                        batch_resp.header = Some(error::build_err_header(e));
+                        break;
+                    }
+                },
+                Err(e) => {
+                    error!("Failed to write batches, err:{e}");
+                    batch_resp.header = Some(error::build_err_header(e));
+                    break;
+                }
+            };
+        }
+
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .write_batch
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
+
+        Ok(Response::new(batch_resp))
+    }
+
     fn handler_ctx(&self) -> HandlerContext {
         HandlerContext {
             catalog_manager: self.instance.catalog_manager.clone(),
@@ -127,6 +212,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
 }
 
 /// Context for handling all kinds of remote engine service.
+#[derive(Clone)]
 struct HandlerContext {
     catalog_manager: ManagerRef,
 }
@@ -145,11 +231,9 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                     Ok(record_batch) => {
                         let resp = match ipc::encode_record_batch(
                             &record_batch.into_arrow_record_batch(),
-                            // TODO: Set compress_min_size to 0 for now, we should set it to a
-                            // proper value.
                             CompressOptions {
-                                compress_min_length: 0,
-                                method: ipc::CompressionMethod::Zstd,
+                                compress_min_length: DEFAULT_COMPRESS_MIN_LENGTH,
+                                method: CompressionMethod::Zstd,
                             },
                         )
                         .box_err()
@@ -161,11 +245,20 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                                 header: Some(error::build_err_header(e)),
                                 ..Default::default()
                             },
-                            Ok(CompressOutput { payload, .. }) => ReadResponse {
-                                header: Some(build_ok_header()),
-                                version: RemoteEngineVersion::ArrowIPCWithZstd.as_u32(),
-                                rows: payload,
-                            },
+                            Ok(CompressOutput { payload, method }) => {
+                                let compression = match method {
+                                    CompressionMethod::None => arrow_payload::Compression::None,
+                                    CompressionMethod::Zstd => arrow_payload::Compression::Zstd,
+                                };
+
+                                ReadResponse {
+                                    header: Some(error::build_ok_header()),
+                                    output: Some(Arrow(ArrowPayload {
+                                        record_batches: vec![payload],
+                                        compression: compression as i32,
+                                    })),
+                                }
+                            }
                         };
 
                         Ok(resp)
@@ -179,7 +272,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                     }
                 }));
 
-                Ok(tonic::Response::new(new_stream))
+                Ok(Response::new(new_stream))
             }
             Err(e) => {
                 let resp = ReadResponse {
@@ -187,7 +280,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                     ..Default::default()
                 };
                 let stream = stream::once(async { Ok(resp) });
-                Ok(tonic::Response::new(Box::pin(stream)))
+                Ok(Response::new(Box::pin(stream)))
             }
         }
     }
@@ -198,28 +291,57 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
     ) -> std::result::Result<Response<WriteResponse>, Status> {
         self.write_internal(request).await
     }
+
+    async fn get_table_info(
+        &self,
+        request: Request<GetTableInfoRequest>,
+    ) -> std::result::Result<Response<GetTableInfoResponse>, Status> {
+        self.get_table_info_internal(request).await
+    }
+
+    async fn write_batch(
+        &self,
+        request: Request<WriteBatchRequest>,
+    ) -> std::result::Result<Response<WriteResponse>, Status> {
+        self.write_batch_internal(request).await
+    }
 }
 
 async fn handle_stream_read(
     ctx: HandlerContext,
     request: ReadRequest,
 ) -> Result<PartitionedStreams> {
-    let read_request: table_engine::remote::model::ReadRequest =
-        request.try_into().box_err().context(ErrWithCause {
-            code: StatusCode::BadRequest,
-            msg: "fail to convert read request",
-        })?;
+    let table_engine::remote::model::ReadRequest {
+        table: table_ident,
+        read_request,
+    } = request.try_into().box_err().context(ErrWithCause {
+        code: StatusCode::BadRequest,
+        msg: "fail to convert read request",
+    })?;
 
-    let table = find_table_by_identifier(&ctx, &read_request.table)?;
+    let request_id = read_request.request_id;
+    info!(
+        "Handle stream read, request_id:{request_id}, table:{table_ident:?}, read_options:{:?}, read_order:{:?}, predicate:{:?} ",
+        read_request.opts,
+        read_request.order,
+        read_request.predicate,
+    );
 
+    let begin = Instant::now();
+    let table = find_table_by_identifier(&ctx, &table_ident)?;
     let streams = table
-        .partitioned_read(read_request.read_request)
+        .partitioned_read(read_request)
         .await
         .box_err()
-        .context(ErrWithCause {
+        .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to read table, table:{:?}", read_request.table),
+            msg: format!("fail to read table, table:{table_ident:?}"),
         })?;
+
+    info!(
+        "Handle stream read success, request_id:{request_id}, table:{table_ident:?}, cost:{:?}",
+        begin.elapsed(),
+    );
 
     Ok(streams)
 }
@@ -247,10 +369,68 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
     })
 }
 
+async fn handle_get_table_info(
+    ctx: HandlerContext,
+    request: GetTableInfoRequest,
+) -> Result<GetTableInfoResponse> {
+    let request: table_engine::remote::model::GetTableInfoRequest =
+        request.try_into().box_err().context(ErrWithCause {
+            code: StatusCode::BadRequest,
+            msg: "fail to convert get table info request",
+        })?;
+
+    let schema = find_schema_by_identifier(&ctx, &request.table)?;
+    let table = schema
+        .table_by_name(&request.table.table)
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: format!("fail to get table, table:{}", request.table.table),
+        })?
+        .context(ErrNoCause {
+            code: StatusCode::NotFound,
+            msg: format!("table is not found, table:{}", request.table.table),
+        })?;
+
+    Ok(GetTableInfoResponse {
+        header: None,
+        table_info: Some(ceresdbproto::remote_engine::TableInfo {
+            catalog_name: request.table.catalog,
+            schema_name: schema.name().to_string(),
+            schema_id: schema.id().as_u32(),
+            table_name: table.name().to_string(),
+            table_id: table.id().as_u64(),
+            table_schema: Some((&table.schema()).into()),
+            engine: table.engine_type().to_string(),
+            options: table.options(),
+            partition_info: table.partition_info().map(Into::into),
+        }),
+    })
+}
+
 fn find_table_by_identifier(
     ctx: &HandlerContext,
     table_identifier: &TableIdentifier,
 ) -> Result<TableRef> {
+    let schema = find_schema_by_identifier(ctx, table_identifier)?;
+
+    schema
+        .table_by_name(&table_identifier.table)
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: format!("fail to get table, table:{}", table_identifier.table),
+        })?
+        .context(ErrNoCause {
+            code: StatusCode::NotFound,
+            msg: format!("table is not found, table:{}", table_identifier.table),
+        })
+}
+
+fn find_schema_by_identifier(
+    ctx: &HandlerContext,
+    table_identifier: &TableIdentifier,
+) -> Result<SchemaRef> {
     let catalog = ctx
         .catalog_manager
         .catalog_by_name(&table_identifier.catalog)
@@ -263,7 +443,7 @@ fn find_table_by_identifier(
             code: StatusCode::NotFound,
             msg: format!("catalog is not found, catalog:{}", table_identifier.catalog),
         })?;
-    let schema = catalog
+    catalog
         .schema_by_name(&table_identifier.schema)
         .box_err()
         .context(ErrWithCause {
@@ -279,17 +459,5 @@ fn find_table_by_identifier(
                 "schema of table is not found, schema:{}",
                 table_identifier.schema
             ),
-        })?;
-
-    schema
-        .table_by_name(&table_identifier.table)
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::Internal,
-            msg: format!("fail to get table, table:{}", table_identifier.table),
-        })?
-        .context(ErrNoCause {
-            code: StatusCode::NotFound,
-            msg: format!("table is not found, table:{}", table_identifier.table),
         })
 }

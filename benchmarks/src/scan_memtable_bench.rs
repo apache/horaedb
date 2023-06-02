@@ -86,6 +86,7 @@ impl ScanMemTableBench {
             projected_schema: self.projected_schema.clone(),
             need_dedup: true,
             reverse: false,
+            metrics_collector: None,
         };
 
         let iter = self.memtable.scan(scan_ctx, scan_req).unwrap();

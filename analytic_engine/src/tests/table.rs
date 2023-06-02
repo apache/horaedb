@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Utils to create table.
 
@@ -12,7 +12,7 @@ use common_types::{
     request_id::RequestId,
     row::{Row, RowGroup, RowGroupBuilder},
     schema::{self, Schema},
-    table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
+    table::DEFAULT_SHARD_ID,
     time::Timestamp,
 };
 use common_util::config::ReadableDuration;
@@ -22,6 +22,7 @@ use table_engine::{
     predicate::Predicate,
     table::{GetRequest, ReadOptions, ReadOrder, ReadRequest, SchemaId, TableId, TableSeq},
 };
+use trace_metric::MetricsCollector;
 
 use crate::{table_options, tests::row_util};
 
@@ -185,6 +186,7 @@ pub fn new_read_all_request_with_order(
         projected_schema: ProjectedSchema::no_projection(schema),
         predicate: Arc::new(Predicate::empty()),
         order,
+        metrics_collector: MetricsCollector::default(),
     }
 }
 
@@ -310,7 +312,6 @@ impl Default for Builder {
                 options: HashMap::new(),
                 state: TableState::Stable,
                 shard_id: DEFAULT_SHARD_ID,
-                cluster_version: DEFAULT_CLUSTER_VERSION,
             },
         }
     }

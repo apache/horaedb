@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! A volatile catalog implementation used for storing information about table
 //! and schema in memory.
@@ -14,10 +14,9 @@ use catalog::{
     self, consts,
     manager::{self, Manager},
     schema::{
-        self, CatalogMismatch, CloseOptions, CloseTableRequest, CloseTableWithCause, CreateOptions,
-        CreateTableRequest, CreateTableWithCause, DropOptions, DropTableRequest,
-        DropTableWithCause, NameRef, OpenOptions, OpenTableRequest, OpenTableWithCause, Schema,
-        SchemaMismatch, SchemaRef,
+        self, CatalogMismatch, CreateOptions, CreateTableRequest, CreateTableWithCause,
+        DropOptions, DropTableRequest, DropTableWithCause, NameRef, Schema, SchemaMismatch,
+        SchemaRef,
     },
     Catalog, CatalogRef, CreateSchemaWithCause,
 };
@@ -302,19 +301,22 @@ impl Schema for SchemaImpl {
         }
 
         // Do real create table.
-        let table_with_shards = self
-            .shard_tables_cache
-            .find_table_by_name(
-                &request.catalog_name,
-                &request.schema_name,
-                &request.table_name,
-            )
-            .with_context(|| schema::CreateTable {
-                request: request.clone(),
-                msg: "table with shards is not found in the ShardTableManager",
-            })?;
-
-        let request = request.into_engine_create_request(table_with_shards.table_info.id.into());
+        // Partition table is not stored in ShardTableManager.
+        if request.partition_info.is_none() {
+            let _ = self
+                .shard_tables_cache
+                .find_table_by_name(
+                    &request.catalog_name,
+                    &request.schema_name,
+                    &request.table_name,
+                )
+                .with_context(|| schema::CreateTable {
+                    request: request.clone(),
+                    msg: format!("table with shards is not found in the ShardTableManager, catalog_name:{}, schema_name:{}, table_name:{}",
+                                 request.catalog_name, request.schema_name, request.table_name),
+                })?;
+        }
+        let request = request.into_engine_create_request(None, self.schema_id);
 
         // Table engine is able to handle duplicate table creation.
         let table = opts
@@ -358,6 +360,7 @@ impl Schema for SchemaImpl {
         };
 
         // Drop the table in the engine first.
+        let request = request.into_engine_drop_request(self.schema_id);
         let real_dropped = opts
             .table_engine
             .drop_table(request)
@@ -370,62 +373,6 @@ impl Schema for SchemaImpl {
         Ok(real_dropped)
     }
 
-    async fn open_table(
-        &self,
-        request: OpenTableRequest,
-        opts: OpenOptions,
-    ) -> schema::Result<Option<TableRef>> {
-        let table = self.get_table(
-            &request.catalog_name,
-            &request.schema_name,
-            &request.table_name,
-        )?;
-        if table.is_some() {
-            return Ok(table);
-        }
-
-        let table = opts
-            .table_engine
-            .open_table(request)
-            .await
-            .box_err()
-            .context(OpenTableWithCause)?;
-
-        if let Some(table) = &table {
-            self.add_table(table.clone());
-        }
-
-        Ok(table)
-    }
-
-    async fn close_table(
-        &self,
-        request: CloseTableRequest,
-        opts: CloseOptions,
-    ) -> schema::Result<()> {
-        if self
-            .get_table(
-                &request.catalog_name,
-                &request.schema_name,
-                &request.table_name,
-            )?
-            .is_none()
-        {
-            return Ok(());
-        }
-
-        let table_name = request.table_name.clone();
-        opts.table_engine
-            .close_table(request)
-            .await
-            .box_err()
-            .context(CloseTableWithCause)?;
-
-        self.remove_table(&table_name);
-
-        Ok(())
-    }
-
     fn all_tables(&self) -> schema::Result<Vec<TableRef>> {
         Ok(self
             .tables
@@ -434,5 +381,13 @@ impl Schema for SchemaImpl {
             .iter()
             .map(|(_, v)| v.clone())
             .collect())
+    }
+
+    fn register_table(&self, table: TableRef) {
+        self.add_table(table);
+    }
+
+    fn unregister_table(&self, table_name: &str) {
+        let _ = self.remove_table(table_name);
     }
 }

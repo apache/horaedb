@@ -14,11 +14,15 @@ use arrow::{
         TimestampMillisecondArray, TimestampMillisecondBuilder, UInt16Array, UInt16Builder,
         UInt32Array, UInt32Builder, UInt64Array, UInt64Builder, UInt8Array, UInt8Builder,
     },
-    datatypes::DataType,
+    datatypes::{DataType, TimeUnit},
     error::ArrowError,
 };
+use datafusion::physical_plan::{
+    expressions::{cast_column, DEFAULT_DATAFUSION_CAST_OPTIONS},
+    ColumnarValue,
+};
 use paste::paste;
-use snafu::{Backtrace, OptionExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
     bytes::Bytes,
@@ -68,6 +72,19 @@ pub enum Error {
         data_type: DataType,
         backtrace: Backtrace,
     },
+
+    #[snafu(display(
+        "Failed to cast nanosecond to millisecond, data_type:{}. err:{}",
+        data_type,
+        source,
+    ))]
+    CastTimestamp {
+        data_type: DataType,
+        source: datafusion::error::DataFusionError,
+    },
+
+    #[snafu(display("Operation not yet implemented."))]
+    NotImplemented,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -329,7 +346,7 @@ macro_rules! impl_from_array_and_slice {
                 // the underlying vector of [arrow::buffer::Buffer] and Bitmap (also
                 // holds a Buffer), thus require some allocation. However, the Buffer is
                 // managed by Arc, so cloning the buffer is not too expensive.
-                let array_data = array_ref.data().clone();
+                let array_data = array_ref.into_data();
                 let array = $ArrayType::from(array_data);
 
                 Self(array)
@@ -339,7 +356,7 @@ macro_rules! impl_from_array_and_slice {
         impl $Column {
             fn to_arrow_array(&self) -> $ArrayType {
                 // Clone the array data.
-                let array_data = self.0.data().clone();
+                let array_data = self.0.clone().into_data();
                 $ArrayType::from(array_data)
             }
 
@@ -350,7 +367,7 @@ macro_rules! impl_from_array_and_slice {
             fn slice(&self, offset: usize, length: usize) -> Self {
                 let array_slice = self.0.slice(offset, length);
                 // Clone the slice data.
-                let array_data = array_slice.data().clone();
+                let array_data = array_slice.into_data();
                 let array = $ArrayType::from(array_data);
 
                 Self(array)
@@ -608,8 +625,18 @@ macro_rules! define_column_block {
                         DatumKind::Null => ColumnBlock::Null(NullColumn::new_null(array.len())),
                         $(
                             DatumKind::$Kind => {
-                                let column = cast_array(datum_kind, array)?;
-                                ColumnBlock::$Kind([<$Kind Column>]::from(column))
+                                let mills_array;
+                                let cast_column = match array.data_type() {
+                                    DataType::Timestamp(TimeUnit::Nanosecond, None) =>  {
+                                        mills_array = cast_nanosecond_to_mills(array)?;
+                                        cast_array(datum_kind, &mills_array)?
+                                    },
+                                    _ => {
+                                        cast_array(datum_kind, array)?
+                                    }
+                                };
+
+                                ColumnBlock::$Kind([<$Kind Column>]::from(cast_column))
                             }
                         )*
                     };
@@ -655,6 +682,26 @@ impl ColumnBlock {
             ColumnBlock::Timestamp(c) => Some(c),
             _ => None,
         }
+    }
+}
+
+// TODO: This is a temp workaround to support nanoseconds, a better way
+// is to support nanoseconds natively.
+// This is also required for influxql.
+pub fn cast_nanosecond_to_mills(array: &ArrayRef) -> Result<Arc<dyn Array>> {
+    let column = ColumnarValue::Array(array.clone());
+    let mills_column = cast_column(
+        &column,
+        &DataType::Timestamp(TimeUnit::Millisecond, None),
+        &DEFAULT_DATAFUSION_CAST_OPTIONS,
+    )
+    .with_context(|| CastTimestamp {
+        data_type: DataType::Timestamp(TimeUnit::Millisecond, None),
+    })?;
+
+    match mills_column {
+        ColumnarValue::Array(array) => Ok(array),
+        _ => Err(Error::NotImplemented),
     }
 }
 

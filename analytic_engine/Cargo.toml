@@ -18,6 +18,7 @@ test = ["tempfile"]
 arc-swap = "1.4.0"
 arena = { workspace = true }
 arrow = { workspace = true }
+async-stream = { workspace = true }
 async-trait = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
@@ -25,8 +26,6 @@ ceresdbproto = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
 datafusion = { workspace = true }
-datafusion-common = { workspace = true }
-datafusion-expr = { workspace = true }
 futures = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
@@ -47,6 +46,7 @@ table_engine = { workspace = true }
 table_kv = { workspace = true }
 tempfile = { workspace = true, optional = true }
 tokio = { workspace = true }
+trace_metric = { workspace = true }
 wal = { workspace = true }
 xorfilter-rs = { workspace = true }
 
@@ -54,5 +54,6 @@ xorfilter-rs = { workspace = true }
 common_types = { workspace = true, features = ["test"] }
 common_util = { workspace = true, features = ["test"] }
 env_logger = { workspace = true }
+pin-project-lite = { workspace = true }
 rand = { workspace = true }
 wal = { workspace = true, features = ["test"] }

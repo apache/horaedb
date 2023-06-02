@@ -1,16 +1,25 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Server
 
 use std::sync::Arc;
 
+use analytic_engine::setup::OpenedWals;
 use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
 use df_operator::registry::FunctionRegistryRef;
 use interpreters::table_manipulator::TableManipulatorRef;
 use log::{info, warn};
 use logger::RuntimeLevel;
+use partition_table_engine::PartitionTableEngine;
+use proxy::{
+    instance::{Instance, InstanceRef},
+    limiter::Limiter,
+    schema_config_provider::SchemaConfigProviderRef,
+    Proxy,
+};
 use query_engine::executor::Executor as QueryExecutor;
+use remote_engine_client::RemoteEngineImpl;
 use router::{endpoint::Endpoint, RouterRef};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
@@ -19,12 +28,9 @@ use crate::{
     config::ServerConfig,
     grpc::{self, RpcServices},
     http::{self, HttpConfig, Service},
-    instance::{Instance, InstanceRef},
-    limiter::Limiter,
     local_tables::{self, LocalTablesRecoverer},
     mysql,
     mysql::error::Error as MysqlError,
-    schema_config_provider::SchemaConfigProviderRef,
 };
 
 #[derive(Debug, Snafu)]
@@ -56,11 +62,17 @@ pub enum Error {
     #[snafu(display("Missing function registry.\nBacktrace:\n{}", backtrace))]
     MissingFunctionRegistry { backtrace: Backtrace },
 
+    #[snafu(display("Missing wals.\nBacktrace:\n{}", backtrace))]
+    MissingWals { backtrace: Backtrace },
+
     #[snafu(display("Missing limiter.\nBacktrace:\n{}", backtrace))]
     MissingLimiter { backtrace: Backtrace },
 
-    #[snafu(display("Failed to start http service, err:{}", source))]
-    StartHttpService { source: crate::http::Error },
+    #[snafu(display("Http service failed, msg:{}, err:{}", msg, source))]
+    HttpService {
+        msg: String,
+        source: crate::http::Error,
+    },
 
     #[snafu(display("Failed to build mysql service, err:{}", source))]
     BuildMysqlService { source: MysqlError },
@@ -129,6 +141,9 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
         self.create_default_schema_if_not_exists().await;
 
         info!("Server start, start services");
+        self.http_service.start().await.context(HttpService {
+            msg: "start failed",
+        })?;
         self.mysql_service
             .start()
             .await
@@ -163,8 +178,10 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
 
 #[must_use]
 pub struct Builder<Q> {
-    config: ServerConfig,
+    server_config: ServerConfig,
+    remote_engine_client_config: remote_engine_client::config::Config,
     node_addr: String,
+    config_content: Option<String>,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
     catalog_manager: Option<ManagerRef>,
@@ -177,13 +194,16 @@ pub struct Builder<Q> {
     router: Option<RouterRef>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
     local_tables_recoverer: Option<LocalTablesRecoverer>,
+    opened_wals: Option<OpenedWals>,
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
     pub fn new(config: ServerConfig) -> Self {
         Self {
-            config,
+            server_config: config,
+            remote_engine_client_config: remote_engine_client::Config::default(),
             node_addr: "".to_string(),
+            config_content: None,
             engine_runtimes: None,
             log_runtime: None,
             catalog_manager: None,
@@ -196,11 +216,17 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             router: None,
             schema_config_provider: None,
             local_tables_recoverer: None,
+            opened_wals: None,
         }
     }
 
     pub fn node_addr(mut self, node_addr: String) -> Self {
         self.node_addr = node_addr;
+        self
+    }
+
+    pub fn config_content(mut self, config_content: String) -> Self {
+        self.config_content = Some(config_content);
         self
     }
 
@@ -267,6 +293,11 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         self
     }
 
+    pub fn opened_wals(mut self, opened_wals: OpenedWals) -> Self {
+        self.opened_wals = Some(opened_wals);
+        self
+    }
+
     /// Build and run the server
     pub fn build(self) -> Result<Server<Q>> {
         // Build instance
@@ -275,69 +306,98 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let table_engine = self.table_engine.context(MissingTableEngine)?;
         let table_manipulator = self.table_manipulator.context(MissingTableManipulator)?;
         let function_registry = self.function_registry.context(MissingFunctionRegistry)?;
+        let opened_wals = self.opened_wals.context(MissingWals)?;
+        let router = self.router.context(MissingRouter)?;
+        let provider = self
+            .schema_config_provider
+            .context(MissingSchemaConfigProvider)?;
+        let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
+        let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
+        let config_content = self.config_content.expect("Missing config content");
+
+        let remote_engine_ref = Arc::new(RemoteEngineImpl::new(
+            self.remote_engine_client_config.clone(),
+            router.clone(),
+            engine_runtimes.io_runtime.clone(),
+        ));
+
+        let partition_table_engine = Arc::new(PartitionTableEngine::new(remote_engine_ref.clone()));
 
         let instance = {
             let instance = Instance {
                 catalog_manager,
                 query_executor,
                 table_engine,
+                partition_table_engine,
                 function_registry,
                 limiter: self.limiter,
                 table_manipulator,
+                remote_engine_ref,
             };
             InstanceRef::new(instance)
         };
 
+        let grpc_endpoint = Endpoint {
+            addr: self.server_config.bind_addr.clone(),
+            port: self.server_config.grpc_port,
+        };
+
         // Create http config
-        let endpoint = Endpoint {
-            addr: self.config.bind_addr.clone(),
-            port: self.config.http_port,
+        let http_endpoint = Endpoint {
+            addr: self.server_config.bind_addr.clone(),
+            port: self.server_config.http_port,
         };
 
         let http_config = HttpConfig {
-            endpoint,
-            max_body_size: self.config.http_max_body_size,
-            timeout: self.config.timeout.map(|v| v.0),
+            endpoint: http_endpoint,
+            max_body_size: self.server_config.http_max_body_size.as_byte(),
+            timeout: self.server_config.timeout.map(|v| v.0),
         };
 
-        // Start http service
-        let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
-        let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
-        let provider = self
-            .schema_config_provider
-            .context(MissingSchemaConfigProvider)?;
+        let proxy = Arc::new(Proxy::new(
+            router.clone(),
+            instance.clone(),
+            self.server_config.forward,
+            Endpoint::new(self.node_addr, self.server_config.grpc_port),
+            self.server_config.resp_compress_min_length.as_byte() as usize,
+            self.server_config.auto_create_table,
+            provider.clone(),
+            self.server_config.hotspot,
+            engine_runtimes.clone(),
+            self.cluster.is_some(),
+        ));
+
         let http_service = http::Builder::new(http_config)
             .engine_runtimes(engine_runtimes.clone())
             .log_runtime(log_runtime)
-            .instance(instance.clone())
-            .schema_config_provider(provider.clone())
+            .config_content(config_content)
+            .proxy(proxy.clone())
+            .opened_wals(opened_wals.clone())
             .build()
-            .context(StartHttpService)?;
+            .context(HttpService {
+                msg: "build failed",
+            })?;
 
         let mysql_config = mysql::MysqlConfig {
-            ip: self.config.bind_addr.clone(),
-            port: self.config.mysql_port,
-            timeout: self.config.timeout.map(|v| v.0),
+            ip: self.server_config.bind_addr.clone(),
+            port: self.server_config.mysql_port,
+            timeout: self.server_config.timeout.map(|v| v.0),
         };
 
         let mysql_service = mysql::Builder::new(mysql_config)
             .runtimes(engine_runtimes.clone())
-            .instance(instance.clone())
+            .proxy(proxy.clone())
             .build()
             .context(BuildMysqlService)?;
 
-        let router = self.router.context(MissingRouter)?;
         let rpc_services = grpc::Builder::new()
-            .endpoint(Endpoint::new(self.config.bind_addr, self.config.grpc_port).to_string())
-            .local_endpoint(Endpoint::new(self.node_addr, self.config.grpc_port).to_string())
-            .resp_compress_min_length(self.config.resp_compress_min_length.as_bytes() as usize)
+            .endpoint(grpc_endpoint.to_string())
             .runtimes(engine_runtimes)
             .instance(instance.clone())
-            .router(router)
             .cluster(self.cluster.clone())
-            .schema_config_provider(provider)
-            .forward_config(self.config.forward)
-            .timeout(self.config.timeout.map(|v| v.0))
+            .opened_wals(opened_wals)
+            .timeout(self.server_config.timeout.map(|v| v.0))
+            .proxy(proxy)
             .build()
             .context(BuildGrpcService)?;
 

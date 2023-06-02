@@ -1,0 +1,14 @@
+[package]
+name = "trace_metric"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies]
+trace_metric_derive = { workspace = true }

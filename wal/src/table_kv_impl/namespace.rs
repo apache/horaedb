@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Wal namespace.
 
@@ -15,6 +15,7 @@ use common_util::{
     define_result,
     error::{BoxError, GenericError},
     runtime::Runtime,
+    timed_task::{TaskHandle, TimedTask},
 };
 use log::{debug, error, info, trace, warn};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -26,13 +27,13 @@ use crate::{
     kv_encoder::CommonLogKey,
     log_batch::LogWriteBatch,
     manager::{
-        self, ReadContext, ReadRequest, ScanContext, ScanRequest, SequenceNumber, WalLocation,
+        self, ReadContext, ReadRequest, RegionId, ScanContext, ScanRequest, SequenceNumber,
+        WalLocation,
     },
     table_kv_impl::{
         consts, encoding,
         model::{BucketEntry, NamespaceConfig, NamespaceEntry},
         table_unit::{TableLogIterator, TableUnit, TableUnitRef},
-        timed_task::{TaskHandle, TimedTask},
         WalRuntimes,
     },
 };
@@ -348,7 +349,7 @@ impl<T: TableKv> NamespaceInner<T> {
         let namespace = self.name().to_string();
         let meta_table_name = self.meta_table_name.clone();
         let table_kv = self.table_kv.clone();
-        self.runtimes.bg_runtime.spawn_blocking(move || {
+        self.runtimes.default_runtime.spawn_blocking(move || {
             let outdated_buckets = outdated_buckets.into_iter().map(Arc::new).collect();
             if let Err(e) = purge_buckets(outdated_buckets, &namespace, &meta_table_name, &table_kv)
             {
@@ -519,7 +520,7 @@ impl<T: TableKv> NamespaceInner<T> {
 
     // TODO(yingwen): Provide a close_table_unit() method.
     async fn open_table_unit(&self, location: WalLocation) -> Result<Option<TableUnitRef>> {
-        let region_id = location.versioned_region_id.id;
+        let region_id = location.region_id;
         let table_id = location.table_id;
 
         let table_unit_meta_table = self.table_unit_meta_table(table_id);
@@ -576,7 +577,7 @@ impl<T: TableKv> NamespaceInner<T> {
             &self.table_kv,
             self.config.new_init_scan_ctx(),
             table_unit_meta_table,
-            location.versioned_region_id.id,
+            location.region_id,
             location.table_id,
             buckets,
         )
@@ -636,6 +637,15 @@ impl<T: TableKv> NamespaceInner<T> {
         Ok(common_types::MIN_SEQUENCE_NUMBER)
     }
 
+    /// Close the region.
+    async fn close_region(&self, region_id: RegionId) -> Result<()> {
+        let mut table_units = self.table_units.write().unwrap();
+        // remote the table unit belongs to this region.
+        table_units.retain(|_, v| v.region_id() != region_id);
+
+        Ok(())
+    }
+
     /// Read log from this namespace. Note that the iterating the iterator may
     /// still block caller thread now.
     async fn read_log(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<TableLogIterator<T>> {
@@ -688,7 +698,7 @@ impl<T: TableKv> NamespaceInner<T> {
         // during reading start/end sequence.
         let buckets = self.list_buckets();
 
-        let region_id = request.versioned_region_id.id;
+        let region_id = request.region_id;
         let min_log_key = CommonLogKey::new(region_id, TableId::MIN, SequenceNumber::MIN);
         let max_log_key = CommonLogKey::new(region_id, TableId::MAX, SequenceNumber::MAX);
 
@@ -1021,7 +1031,7 @@ impl<T: TableKv> Namespace<T> {
 
             // Has ttl, we need to periodically create/purge buckets.
             monitor_handle = Some(start_bucket_monitor(
-                &runtimes.bg_runtime,
+                &runtimes.default_runtime,
                 BUCKET_MONITOR_PERIOD,
                 inner.clone(),
             ));
@@ -1030,7 +1040,7 @@ impl<T: TableKv> Namespace<T> {
 
             // Start a cleaner if wal has no ttl.
             cleaner_handle = Some(start_log_cleaner(
-                &runtimes.bg_runtime,
+                &runtimes.default_runtime,
                 LOG_CLEANER_PERIOD,
                 inner.clone(),
             ));
@@ -1112,6 +1122,10 @@ impl<T: TableKv> Namespace<T> {
     /// Get last sequence number of this table unit.
     pub async fn last_sequence(&self, location: WalLocation) -> Result<SequenceNumber> {
         self.inner.last_sequence(location).await
+    }
+
+    pub async fn close_region(&self, region_id: RegionId) -> Result<()> {
+        self.inner.close_region(region_id).await
     }
 
     /// Read log from this namespace. Note that the iterating the iterator may
@@ -1427,7 +1441,9 @@ fn purge_buckets<T: TableKv>(
     for bucket in &buckets {
         // Delete all tables of this bucket.
         for table_name in &bucket.wal_shard_names {
-            table_kv.drop_table(table_name).map_err(Box::new)?;
+            let _ = table_kv.drop_table(table_name).map_err(|e| {
+                error!("Purge buckets drop table failed, table:{table_name}, err:{e}");
+            });
         }
 
         // All tables of this bucket have been dropped, we can remove the bucket record
@@ -1453,10 +1469,7 @@ fn purge_buckets<T: TableKv>(
 mod tests {
     use std::sync::Arc;
 
-    use common_types::{
-        bytes::BytesMut,
-        table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
-    };
+    use common_types::{bytes::BytesMut, table::DEFAULT_SHARD_ID};
     use common_util::runtime::{Builder, Runtime};
     use table_kv::{memory::MemoryImpl, KeyBoundary, ScanContext, ScanRequest};
 
@@ -1482,7 +1495,7 @@ mod tests {
         WalRuntimes {
             read_runtime: runtime.clone(),
             write_runtime: runtime.clone(),
-            bg_runtime: runtime,
+            default_runtime: runtime,
         }
     }
 
@@ -1759,8 +1772,7 @@ mod tests {
         runtime.block_on(async {
             let namespace = NamespaceMocker::new(table_kv.clone(), runtime.clone()).build();
             let table_id = 123;
-            let location =
-                WalLocation::new(DEFAULT_SHARD_ID as u64, DEFAULT_CLUSTER_VERSION, table_id);
+            let location = WalLocation::new(DEFAULT_SHARD_ID as u64, table_id);
             let seq1 = write_test_payloads(&namespace, location, 1000, 1004).await;
             write_test_payloads(&namespace, location, 1005, 1009).await;
 

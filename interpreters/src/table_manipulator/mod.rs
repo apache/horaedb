@@ -1,11 +1,11 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_util::error::GenericError;
+use query_frontend::plan::{CreateTablePlan, DropTablePlan};
 use snafu::{Backtrace, Snafu};
-use sql::plan::{CreateTablePlan, DropTablePlan};
 use table_engine::engine::TableEngineRef;
 
 use crate::{context::Context, interpreter::Output};
@@ -62,6 +62,9 @@ pub enum Error {
 
     #[snafu(display("Failed to create partition table without ceresmeta, table:{}", table))]
     PartitionTableNotSupported { table: String },
+
+    #[snafu(display("Failed to operate table, err:{}", source))]
+    TableOperator { source: catalog::Error },
 }
 
 define_result!(Error);

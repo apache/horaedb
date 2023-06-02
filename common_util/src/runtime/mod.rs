@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! A multi-threaded runtime that supports running Futures
 use std::{
@@ -43,6 +43,8 @@ pub enum Error {
 }
 
 define_result!(Error);
+
+pub type RuntimeRef = Arc<Runtime>;
 
 /// A runtime to run future tasks
 #[derive(Debug)]
@@ -99,6 +101,12 @@ pin_project! {
     }
 }
 
+impl<T> JoinHandle<T> {
+    pub fn abort(&self) {
+        self.inner.abort();
+    }
+}
+
 impl<T> Future for JoinHandle<T> {
     type Output = Result<T>;
 
@@ -139,7 +147,7 @@ pub struct Builder {
 impl Default for Builder {
     fn default() -> Self {
         Self {
-            thread_name: "cse-runtime-worker".to_string(),
+            thread_name: "runtime-worker".to_string(),
             builder: RuntimeBuilder::new_multi_thread(),
         }
     }

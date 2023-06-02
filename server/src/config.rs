@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Server configs
 
@@ -8,33 +8,31 @@ use cluster::config::SchemaConfig;
 use common_types::schema::TIMESTAMP_COLUMN;
 use common_util::config::{ReadableDuration, ReadableSize};
 use meta_client::types::ShardId;
+use proxy::{forward, hotspot};
 use router::{
     endpoint::Endpoint,
     rule_based::{ClusterView, RuleList},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
-use crate::{grpc::forward, http::DEFAULT_MAX_BODY_SIZE};
-
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct StaticRouteConfig {
     pub rules: RuleList,
     pub topology: StaticTopologyConfig,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ShardView {
     pub shard_id: ShardId,
     pub endpoint: Endpoint,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct SchemaShardView {
     pub schema: String,
-    pub auto_create_tables: bool,
     pub default_engine_type: String,
     pub default_timestamp_column_name: String,
     pub shard_views: Vec<ShardView>,
@@ -44,7 +42,6 @@ impl Default for SchemaShardView {
     fn default() -> Self {
         Self {
             schema: "".to_string(),
-            auto_create_tables: true,
             default_engine_type: ANALYTIC_ENGINE_TYPE.to_string(),
             default_timestamp_column_name: TIMESTAMP_COLUMN.to_string(),
             shard_views: Vec::default(),
@@ -55,14 +52,13 @@ impl Default for SchemaShardView {
 impl From<SchemaShardView> for SchemaConfig {
     fn from(view: SchemaShardView) -> Self {
         Self {
-            auto_create_tables: view.auto_create_tables,
             default_engine_type: view.default_engine_type,
             default_timestamp_column_name: view.default_timestamp_column_name,
         }
     }
 }
 
-#[derive(Debug, Default, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct StaticTopologyConfig {
     pub schema_shards: Vec<SchemaShardView>,
@@ -92,7 +88,7 @@ impl From<&StaticTopologyConfig> for ClusterView {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ServerConfig {
     /// The address to listen.
@@ -102,27 +98,43 @@ pub struct ServerConfig {
     pub grpc_port: u16,
 
     pub timeout: Option<ReadableDuration>,
-    pub http_max_body_size: u64,
+    pub http_max_body_size: ReadableSize,
     pub grpc_server_cq_count: usize,
     /// The minimum length of the response body to compress.
     pub resp_compress_min_length: ReadableSize,
 
     /// Config for forwarding
     pub forward: forward::Config,
+
+    /// Whether to create table automatically when data is first written, only
+    /// used in gRPC
+    pub auto_create_table: bool,
+
+    pub default_schema_config: SchemaConfig,
+
+    // Config of route
+    pub route_cache: router::RouteCacheConfig,
+
+    /// record hotspot query or write requests
+    pub hotspot: hotspot::Config,
 }
 
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            bind_addr: String::from("0.0.0.0"),
+            bind_addr: String::from("127.0.0.1"),
             http_port: 5440,
             mysql_port: 3307,
             grpc_port: 8831,
             timeout: None,
-            http_max_body_size: DEFAULT_MAX_BODY_SIZE,
+            http_max_body_size: ReadableSize::mb(64),
             grpc_server_cq_count: 20,
             resp_compress_min_length: ReadableSize::mb(4),
             forward: forward::Config::default(),
+            auto_create_table: true,
+            default_schema_config: Default::default(),
+            route_cache: router::RouteCacheConfig::default(),
+            hotspot: hotspot::Config::default(),
         }
     }
 }

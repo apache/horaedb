@@ -1,0 +1,42 @@
+[node]
+addr = "127.0.0.1"
+
+[logger]
+level = "info"
+
+[server]
+bind_addr = "0.0.0.0"
+http_port = 5440
+grpc_port = 8831
+mysql_port = 3307
+deploy_mode = "Cluster"
+
+[analytic.storage]
+mem_cache_capacity = '1G'
+mem_cache_partition_bits = 0
+
+[analytic.storage.object_store]
+type = "Local"
+data_dir = "/tmp/ceresdb0"
+
+[analytic.wal]
+type = "RocksDB"
+data_dir = "/tmp/ceresdb0"
+
+[cluster_deployment]
+mode = "WithMeta"
+cmd_channel_buffer_size = 10
+
+[cluster_deployment.meta_client]
+# Only support "defaultCluster" currently.
+cluster_name = "defaultCluster"
+meta_addr = "http://127.0.0.1:2379"
+lease = "10s"
+timeout = "5s"
+
+[cluster_deployment.etcd_client]
+server_addrs = ['127.0.0.1:2379']
+
+[limiter]
+write_block_list = ['mytable1']
+read_block_list = ['mytable1']

@@ -1,10 +1,10 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Interpreter factory
 
 use catalog::manager::ManagerRef;
 use query_engine::executor::Executor;
-use sql::plan::Plan;
+use query_frontend::plan::Plan;
 use table_engine::engine::TableEngineRef;
 
 use crate::{

@@ -1,24 +1,20 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Create table logic of instance
 
-use std::sync::Arc;
-
 use common_util::error::BoxError;
 use log::info;
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use table_engine::engine::CreateTableRequest;
-use tokio::sync::oneshot;
 
 use crate::{
     instance::{
-        engine::{CreateTableData, InvalidOptions, OperateByWriteWorker, Result, WriteManifest},
-        write_worker::{self, CreateTableCommand, WorkerLocal},
+        engine::{CreateOpenFailedTable, InvalidOptions, Result, TableNotExist, WriteManifest},
         Instance,
     },
-    manifest::meta_update::{AddTableMeta, MetaUpdate, MetaUpdateRequest},
+    manifest::meta_edit::{AddTableMeta, MetaEdit, MetaEditRequest, MetaUpdate},
     space::SpaceRef,
-    table::data::{TableData, TableDataRef},
+    table::data::{TableDataRef, TableShardInfo},
     table_options,
 };
 
@@ -30,6 +26,13 @@ impl Instance {
         request: CreateTableRequest,
     ) -> Result<TableDataRef> {
         info!("Instance create table, request:{:?}", request);
+
+        if space.is_open_failed_table(&request.table_name) {
+            return CreateOpenFailedTable {
+                table: request.table_name,
+            }
+            .fail();
+        }
 
         let mut table_opts =
             table_options::merge_table_options_for_create(&request.options, &self.table_opts)
@@ -46,81 +49,38 @@ impl Instance {
             return Ok(table_data);
         }
 
-        // Choose a write worker for this table
-        let write_handle = space.write_group.choose_worker(request.table_id);
-        let (table_name, table_id) = (request.table_name.clone(), request.table_id);
-
-        let table_data = Arc::new(
-            TableData::new(
-                space.id,
-                request,
-                write_handle,
-                table_opts,
-                &self.file_purger,
-                space.mem_usage_collector.clone(),
-            )
-            .context(CreateTableData {
-                space_id: space.id,
-                table: &table_name,
-                table_id,
-            })?,
-        );
-
-        let space_id = space.id;
-        let (tx, rx) = oneshot::channel();
-        let cmd = CreateTableCommand {
-            space,
-            table_data: table_data.clone(),
-            tx,
-        };
-        write_worker::process_command_in_write_worker(cmd.into_command(), &table_data, rx)
-            .await
-            .context(OperateByWriteWorker {
-                space_id,
-                table: table_name,
-                table_id: table_data.id,
-            })
-    }
-
-    /// Do the actual create table job, must be called by write worker in write
-    /// thread sequentially.
-    pub(crate) async fn process_create_table_command(
-        self: &Arc<Self>,
-        _worker_local: &mut WorkerLocal,
-        space: SpaceRef,
-        table_data: TableDataRef,
-    ) -> Result<TableDataRef> {
-        if let Some(table_data) = space.find_table_by_id(table_data.id) {
-            // Use the table data from the space instead of the table_data in params.
-            return Ok(table_data);
-        };
-
-        // Store table info into meta
-        let update_req = {
+        // Store table info into meta both memory and storage.
+        let edit_req = {
             let meta_update = MetaUpdate::AddTable(AddTableMeta {
                 space_id: space.id,
-                table_id: table_data.id,
-                table_name: table_data.name.clone(),
-                schema: table_data.schema(),
-                opts: table_data.table_options().as_ref().clone(),
-                partition_info: table_data.partition_info.clone(),
+                table_id: request.table_id,
+                table_name: request.table_name.clone(),
+                schema: request.table_schema,
+                opts: table_opts,
             });
-            MetaUpdateRequest {
-                shard_info: table_data.shard_info,
-                meta_update,
+            MetaEditRequest {
+                shard_info: TableShardInfo::new(request.shard_id),
+                meta_edit: MetaEdit::Update(meta_update),
             }
         };
         self.space_store
             .manifest
-            .store_update(update_req)
+            .apply_edit(edit_req)
             .await
-            .context(WriteManifest {
+            .with_context(|| WriteManifest {
                 space_id: space.id,
-                table: &table_data.name,
-                table_id: table_data.id,
+                table: request.table_name.clone(),
+                table_id: request.table_id,
             })?;
 
-        space.insert_table(table_data.clone());
-        Ok(table_data)
+        // Table is sure to exist here.
+        space
+            .find_table_by_id(request.table_id)
+            .with_context(|| TableNotExist {
+                msg: format!(
+                    "table not exist, space_id:{}, table_id:{}, table_name:{}",
+                    space.id, request.table_id, request.table_name
+                ),
+            })
     }
 }

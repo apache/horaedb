@@ -1,12 +1,12 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Interpreter for select statement
 
 use async_trait::async_trait;
 use log::debug;
 use query_engine::executor::{Executor, Query};
+use query_frontend::plan::QueryPlan;
 use snafu::{ResultExt, Snafu};
-use sql::plan::QueryPlan;
 
 use crate::{
     context::Context,

@@ -10,8 +10,10 @@ use common_types::{
     time::{TimeRange, Timestamp},
 };
 use common_util::error::{BoxError, GenericError};
-use datafusion::scalar::ScalarValue;
-use datafusion_expr::{Expr, Operator};
+use datafusion::{
+    logical_expr::{Expr, Operator},
+    scalar::ScalarValue,
+};
 use datafusion_proto::bytes::Serializeable;
 use log::debug;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -355,10 +357,10 @@ impl<'a> TimeRangeExtractor<'a> {
     /// how to handle it, returns `TimeRange::zero_to_max()`.
     fn extract_time_range_from_expr(&self, expr: &Expr) -> TimeRange {
         match expr {
-            Expr::BinaryExpr(datafusion_expr::BinaryExpr { left, op, right }) => {
+            Expr::BinaryExpr(datafusion::logical_expr::BinaryExpr { left, op, right }) => {
                 self.extract_time_range_from_binary_expr(left, right, op)
             }
-            Expr::Between(datafusion_expr::Between {
+            Expr::Between(datafusion::logical_expr::Between {
                 expr,
                 negated,
                 low,
@@ -419,6 +421,7 @@ impl<'a> TimeRangeExtractor<'a> {
             | Expr::QualifiedWildcard { .. }
             | Expr::GroupingSet(_)
             | Expr::GetIndexedField { .. }
+            | Expr::OuterReferenceColumn { .. }
             | Expr::Placeholder { .. } => TimeRange::min_to_max(),
         }
     }

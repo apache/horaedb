@@ -11,8 +11,6 @@ use crate::{
 
 /// Id for a sst file
 pub type FileId = u64;
-/// We use two level merge tree, the max level should less than u16::MAX
-pub const MAX_LEVEL: usize = 2;
 
 /// A table level manager that manages all the sst files of the table
 pub struct LevelsController {
@@ -30,13 +28,10 @@ impl Drop for LevelsController {
 impl LevelsController {
     /// Create an empty LevelsController
     pub fn new(purge_queue: FilePurgeQueue) -> Self {
-        let mut levels = Vec::with_capacity(MAX_LEVEL);
-        for level in 0..MAX_LEVEL {
-            levels.push(LevelHandler::new(level as Level));
-        }
-
         Self {
-            levels,
+            levels: (Level::MIN.as_u16()..=Level::MAX.as_u16())
+                .map(|v| LevelHandler::new(v.into()))
+                .collect::<Vec<_>>(),
             purge_queue,
         }
     }
@@ -45,14 +40,14 @@ impl LevelsController {
     ///
     /// Panic: If the level is greater than the max level
     pub fn add_sst_to_level(&mut self, level: Level, file_meta: FileMeta) {
-        let level_handler = &mut self.levels[usize::from(level)];
+        let level_handler = &mut self.levels[level.as_usize()];
         let file = FileHandle::new(file_meta, self.purge_queue.clone());
 
         level_handler.insert(file);
     }
 
     pub fn latest_sst(&self, level: Level) -> Option<FileHandle> {
-        self.levels[usize::from(level)].latest_sst()
+        self.levels[level.as_usize()].latest_sst()
     }
 
     /// Pick the ssts and collect it by `append_sst`.
@@ -71,20 +66,19 @@ impl LevelsController {
     ///
     /// Panic: If the level is greater than the max level
     pub fn remove_ssts_from_level(&mut self, level: Level, file_ids: &[FileId]) {
-        let level_handler = &mut self.levels[usize::from(level)];
+        let level_handler = &mut self.levels[level.as_usize()];
         level_handler.remove_ssts(file_ids);
     }
 
-    /// Total number of levels.
-    pub fn num_levels(&self) -> Level {
-        self.levels.len() as Level
+    pub fn levels(&self) -> impl Iterator<Item = Level> + '_ {
+        self.levels.iter().map(|v| v.level)
     }
 
     /// Iter ssts at given `level`.
     ///
     /// Panic if level is out of bound.
     pub fn iter_ssts_at_level(&self, level: Level) -> Iter {
-        let level_handler = &self.levels[usize::from(level)];
+        let level_handler = &self.levels[level.as_usize()];
         level_handler.iter_ssts()
     }
 
@@ -93,7 +87,7 @@ impl LevelsController {
         level: Level,
         expire_time: Option<Timestamp>,
     ) -> Vec<FileHandle> {
-        let level_handler = &self.levels[usize::from(level)];
+        let level_handler = &self.levels[level.as_usize()];
         let mut expired = Vec::new();
         level_handler.collect_expired(expire_time, &mut expired);
 
@@ -107,14 +101,12 @@ impl LevelsController {
     }
 
     pub fn expired_ssts(&self, expire_time: Option<Timestamp>) -> Vec<ExpiredFiles> {
-        let mut expired = Vec::new();
-        let num_levels = self.num_levels();
-        for level in 0..num_levels {
-            let files = self.collect_expired_at_level(level, expire_time);
-            expired.push(ExpiredFiles { level, files });
-        }
-
-        expired
+        self.levels()
+            .map(|level| {
+                let files = self.collect_expired_at_level(level, expire_time);
+                ExpiredFiles { level, files }
+            })
+            .collect()
     }
 }
 
@@ -125,7 +117,7 @@ pub mod tests {
 
     use crate::{
         sst::{
-            file::{FileMeta, FilePurgeQueue},
+            file::{FileMeta, FilePurgeQueue, Level},
             manager::{FileId, LevelsController},
             meta_data::SstMetaData,
         },
@@ -150,7 +142,7 @@ pub mod tests {
             let mut levels_controller = LevelsController::new(file_purge_queue);
             for (id, sst_meta) in self.sst_meta_vec.into_iter().enumerate() {
                 levels_controller.add_sst_to_level(
-                    0,
+                    Level::MIN,
                     FileMeta {
                         id: id as FileId,
                         size: 0,

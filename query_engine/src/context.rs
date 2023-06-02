@@ -6,12 +6,13 @@ use std::{sync::Arc, time::Instant};
 
 use common_types::request_id::RequestId;
 use datafusion::{
-    execution::context::default_session_builder,
+    execution::{context::SessionState, runtime_env::RuntimeEnv},
     optimizer::{
-        common_subexpr_eliminate::CommonSubexprEliminate, eliminate_limit::EliminateLimit,
-        optimizer::OptimizerRule, push_down_filter::PushDownFilter, push_down_limit::PushDownLimit,
+        analyzer::AnalyzerRule, common_subexpr_eliminate::CommonSubexprEliminate,
+        eliminate_limit::EliminateLimit, optimizer::OptimizerRule,
+        push_down_filter::PushDownFilter, push_down_limit::PushDownLimit,
         push_down_projection::PushDownProjection, simplify_expressions::SimplifyExpressions,
-        single_distinct_to_groupby::SingleDistinctToGroupBy, type_coercion::TypeCoercion,
+        single_distinct_to_groupby::SingleDistinctToGroupBy,
     },
     physical_optimizer::optimizer::PhysicalOptimizerRule,
     prelude::{SessionConfig, SessionContext},
@@ -56,15 +57,19 @@ impl Context {
                 self.default_schema.clone(),
             )
             .with_target_partitions(config.read_parallelism);
+
         df_session_config
-            .config_options_mut()
+            .options_mut()
             .extensions
             .insert(ceresdb_options);
 
         let logical_optimize_rules = Self::logical_optimize_rules();
-        let state = default_session_builder(df_session_config)
-            .with_query_planner(Arc::new(QueryPlannerAdapter))
-            .with_optimizer_rules(logical_optimize_rules);
+        let state =
+            SessionState::with_config_rt(df_session_config, Arc::new(RuntimeEnv::default()))
+                .with_query_planner(Arc::new(QueryPlannerAdapter))
+                .with_analyzer_rules(Self::analyzer_rules())
+                .with_optimizer_rules(logical_optimize_rules);
+        let state = influxql_query::logical_optimizer::register_iox_logical_optimizers(state);
         let physical_optimizer =
             Self::apply_adapters_for_physical_optimize_rules(state.physical_optimizers());
         SessionContext::with_state(state.with_physical_optimizer_rules(physical_optimizer))
@@ -83,7 +88,6 @@ impl Context {
 
     fn logical_optimize_rules() -> Vec<Arc<dyn OptimizerRule + Send + Sync>> {
         let mut optimizers: Vec<Arc<dyn OptimizerRule + Send + Sync>> = vec![
-            Arc::new(TypeConversion),
             // These rules are the default settings of the datafusion.
             Arc::new(SimplifyExpressions::new()),
             Arc::new(CommonSubexprEliminate::new()),
@@ -91,7 +95,6 @@ impl Context {
             Arc::new(PushDownProjection::new()),
             Arc::new(PushDownFilter::new()),
             Arc::new(PushDownLimit::new()),
-            Arc::new(TypeCoercion::new()),
             Arc::new(SingleDistinctToGroupBy::new()),
         ];
 
@@ -101,5 +104,12 @@ impl Context {
         }
 
         optimizers
+    }
+
+    fn analyzer_rules() -> Vec<Arc<dyn AnalyzerRule + Send + Sync>> {
+        vec![
+            Arc::new(TypeConversion),
+            Arc::new(datafusion::optimizer::analyzer::type_coercion::TypeCoercion::new()),
+        ]
     }
 }

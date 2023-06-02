@@ -1,16 +1,15 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Cached router
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::RwLock};
 
 use ceresdbproto::storage::{self, RequestContext};
 use log::debug;
-use router::RouterRef;
+use router::{endpoint::Endpoint, RouterRef};
 use snafu::{OptionExt, ResultExt};
 use table_engine::remote::model::TableIdentifier;
-use tokio::sync::RwLock;
-use tonic::transport::Channel;
+use tonic::transport::Channel as TonicChannel;
 
 use crate::{channel::ChannelPool, config::Config, error::*};
 
@@ -20,10 +19,16 @@ pub struct CachedRouter {
 
     /// Cache mapping table to channel of its endpoint
     // TODO: we should add gc for the cache
-    cache: RwLock<HashMap<TableIdentifier, Channel>>,
+    cache: RwLock<HashMap<TableIdentifier, RouteContext>>,
 
     /// Channel pool
     channel_pool: ChannelPool,
+}
+
+#[derive(Clone)]
+pub struct RouteContext {
+    pub channel: TonicChannel,
+    pub endpoint: Endpoint,
 }
 
 impl CachedRouter {
@@ -37,21 +42,21 @@ impl CachedRouter {
         }
     }
 
-    pub async fn route(&self, table_ident: &TableIdentifier) -> Result<Channel> {
+    pub async fn route(&self, table_ident: &TableIdentifier) -> Result<RouteContext> {
         // Find in cache first.
         let channel_opt = {
-            let cache = self.cache.read().await;
+            let cache = self.cache.read().unwrap();
             cache.get(table_ident).cloned()
         };
 
-        let channel = if let Some(channel) = channel_opt {
+        if let Some(channel) = channel_opt {
             // If found, return it.
             debug!(
                 "CachedRouter found channel in cache, table_ident:{:?}",
                 table_ident
             );
 
-            channel
+            Ok(channel)
         } else {
             // If not found, do real route work, and try to put it into cache(may have been
             // put by other threads).
@@ -62,9 +67,9 @@ impl CachedRouter {
             let channel = self.do_route(table_ident).await?;
 
             {
-                let mut cache = self.cache.write().await;
+                let mut cache = self.cache.write().unwrap();
                 // Double check here, if still not found, we put it.
-                let channel_opt = cache.get(table_ident).cloned();
+                let channel_opt = cache.get(table_ident);
                 if channel_opt.is_none() {
                     debug!(
                         "CachedRouter put the new channel to cache, table_ident:{:?}",
@@ -74,18 +79,18 @@ impl CachedRouter {
                 }
             }
 
-            channel
-        };
-
-        Ok(channel)
+            Ok(channel)
+        }
     }
 
-    pub async fn evict(&self, table_ident: &TableIdentifier) {
-        let mut cache = self.cache.write().await;
-        let _ = cache.remove(table_ident);
+    pub async fn evict(&self, table_idents: &[TableIdentifier]) {
+        let mut cache = self.cache.write().unwrap();
+        for table_ident in table_idents {
+            let _ = cache.remove(table_ident);
+        }
     }
 
-    async fn do_route(&self, table_ident: &TableIdentifier) -> Result<Channel> {
+    async fn do_route(&self, table_ident: &TableIdentifier) -> Result<RouteContext> {
         let schema = &table_ident.schema;
         let table = table_ident.table.clone();
         let route_request = storage::RouteRequest {
@@ -124,6 +129,6 @@ impl CachedRouter {
         let endpoint = endpoint.into();
         let channel = self.channel_pool.get(&endpoint).await?;
 
-        Ok(channel)
+        Ok(RouteContext { channel, endpoint })
     }
 }

@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 // Compaction scheduler.
 
@@ -21,12 +21,12 @@ use common_util::{
     time::DurationExt,
 };
 use log::{debug, error, info, warn};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::{
     sync::{
-        mpsc::{self, error::SendError, Receiver, Sender},
+        mpsc::{self, error::TrySendError, Receiver, Sender},
         Mutex,
     },
     time,
@@ -38,10 +38,10 @@ use crate::{
         PickerManager, TableCompactionRequest, WaitError, WaiterNotifier,
     },
     instance::{
-        flush_compaction::{self, TableFlushOptions},
-        write_worker::CompactionNotifier,
-        Instance, SpaceStore,
+        flush_compaction::{Flusher, TableFlushOptions},
+        SpaceStore,
     },
+    sst::factory::{ScanOptions, SstWriteOptions},
     table::data::TableDataRef,
     TableOptions,
 };
@@ -54,7 +54,7 @@ pub enum Error {
 
 define_result!(Error);
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct SchedulerConfig {
     pub schedule_channel_len: usize,
@@ -62,22 +62,20 @@ pub struct SchedulerConfig {
     pub max_ongoing_tasks: usize,
     pub max_unflushed_duration: ReadableDuration,
     pub memory_limit: ReadableSize,
+    pub max_pending_compaction_tasks: usize,
 }
-
-// TODO(boyan), a better default value?
-const MAX_GOING_COMPACTION_TASKS: usize = 8;
-const MAX_PENDING_COMPACTION_TASKS: usize = 1024;
 
 impl Default for SchedulerConfig {
     fn default() -> Self {
         Self {
             schedule_channel_len: 16,
-            // 30 minutes schedule interval.
-            schedule_interval: ReadableDuration(Duration::from_secs(60 * 30)),
-            max_ongoing_tasks: MAX_GOING_COMPACTION_TASKS,
+            // 30 seconds schedule interval.
+            schedule_interval: ReadableDuration(Duration::from_secs(30)),
+            max_ongoing_tasks: 8,
             // flush_interval default is 5h.
             max_unflushed_duration: ReadableDuration(Duration::from_secs(60 * 60 * 5)),
             memory_limit: ReadableSize::gb(4),
+            max_pending_compaction_tasks: 1024,
         }
     }
 }
@@ -94,7 +92,7 @@ pub trait CompactionScheduler {
     async fn stop_scheduler(&self) -> Result<()>;
 
     /// Schedule a compaction job to background workers.
-    async fn schedule_table_compaction(&self, request: TableCompactionRequest);
+    async fn schedule_table_compaction(&self, request: TableCompactionRequest) -> bool;
 }
 
 // A FIFO queue that remove duplicate values by key.
@@ -202,6 +200,7 @@ struct OngoingTaskLimit {
     ongoing_tasks: AtomicUsize,
     /// Buffer to hold pending requests
     request_buf: RequestBuf,
+    max_pending_compaction_tasks: usize,
 }
 
 impl OngoingTaskLimit {
@@ -223,8 +222,8 @@ impl OngoingTaskLimit {
             let mut req_buf = self.request_buf.write().unwrap();
 
             // Remove older requests
-            if req_buf.len() >= MAX_PENDING_COMPACTION_TASKS {
-                while req_buf.len() >= MAX_PENDING_COMPACTION_TASKS {
+            if req_buf.len() >= self.max_pending_compaction_tasks {
+                while req_buf.len() >= self.max_pending_compaction_tasks {
                     req_buf.pop_front();
                     dropped += 1;
                 }
@@ -239,7 +238,7 @@ impl OngoingTaskLimit {
         if dropped > 0 {
             warn!(
                 "Too many compaction pending tasks,  limit: {}, dropped {} older tasks.",
-                MAX_PENDING_COMPACTION_TASKS, dropped,
+                self.max_pending_compaction_tasks, dropped,
             );
         }
     }
@@ -289,6 +288,8 @@ impl SchedulerImpl {
         space_store: Arc<SpaceStore>,
         runtime: Arc<Runtime>,
         config: SchedulerConfig,
+        write_sst_max_buffer_size: usize,
+        scan_options: ScanOptions,
     ) -> Self {
         let (tx, rx) = mpsc::channel(config.schedule_channel_len);
         let running = Arc::new(AtomicBool::new(true));
@@ -302,12 +303,15 @@ impl SchedulerImpl {
             picker_manager: PickerManager::default(),
             max_ongoing_tasks: config.max_ongoing_tasks,
             max_unflushed_duration: config.max_unflushed_duration.0,
+            write_sst_max_buffer_size,
+            scan_options,
             limit: Arc::new(OngoingTaskLimit {
                 ongoing_tasks: AtomicUsize::new(0),
                 request_buf: RwLock::new(RequestQueue::default()),
+                max_pending_compaction_tasks: config.max_pending_compaction_tasks,
             }),
             running: running.clone(),
-            memory_limit: MemoryLimit::new(config.memory_limit.as_bytes() as usize),
+            memory_limit: MemoryLimit::new(config.memory_limit.as_byte() as usize),
         };
 
         let handle = runtime.spawn(async move {
@@ -336,11 +340,19 @@ impl CompactionScheduler for SchedulerImpl {
         Ok(())
     }
 
-    async fn schedule_table_compaction(&self, request: TableCompactionRequest) {
-        let send_res = self.sender.send(ScheduleTask::Request(request)).await;
+    async fn schedule_table_compaction(&self, request: TableCompactionRequest) -> bool {
+        let send_res = self.sender.try_send(ScheduleTask::Request(request));
 
-        if let Err(e) = send_res {
-            error!("Compaction scheduler failed to send request, err:{}", e);
+        match send_res {
+            Err(TrySendError::Full(_)) => {
+                debug!("Compaction scheduler is busy, drop compaction request");
+                false
+            }
+            Err(TrySendError::Closed(_)) => {
+                error!("Compaction scheduler is closed, drop compaction request");
+                false
+            }
+            Ok(_) => true,
         }
     }
 }
@@ -369,6 +381,8 @@ struct ScheduleWorker {
     max_unflushed_duration: Duration,
     picker_manager: PickerManager,
     max_ongoing_tasks: usize,
+    write_sst_max_buffer_size: usize,
+    scan_options: ScanOptions,
     limit: Arc<OngoingTaskLimit>,
     running: Arc<AtomicBool>,
     memory_limit: MemoryLimit,
@@ -445,7 +459,6 @@ impl ScheduleWorker {
         &self,
         table_data: TableDataRef,
         compaction_task: CompactionTask,
-        compaction_notifier: Option<CompactionNotifier>,
         waiter_notifier: WaiterNotifier,
         token: MemoryUsageToken,
     ) {
@@ -464,13 +477,29 @@ impl ScheduleWorker {
 
         let sender = self.sender.clone();
         let request_id = RequestId::next_id();
+        let storage_format_hint = table_data.table_options().storage_format_hint;
+        let sst_write_options = SstWriteOptions {
+            storage_format_hint,
+            num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
+            compression: table_data.table_options().compression,
+            max_buffer_size: self.write_sst_max_buffer_size,
+        };
+        let scan_options = self.scan_options.clone();
+
         // Do actual costly compact job in background.
         self.runtime.spawn(async move {
             // Release the token after compaction finished.
             let _token = token;
 
             let res = space_store
-                .compact_table(runtime, &table_data, request_id, &compaction_task)
+                .compact_table(
+                    request_id,
+                    &table_data,
+                    &compaction_task,
+                    scan_options,
+                    &sst_write_options,
+                    runtime,
+                )
                 .await;
 
             if let Err(e) = &res {
@@ -489,27 +518,18 @@ impl ScheduleWorker {
             // Notify the background compact table result.
             match res {
                 Ok(()) => {
-                    if let Some(notifier) = compaction_notifier.clone() {
-                        notifier.notify_ok();
-                    }
                     waiter_notifier.notify_wait_result(Ok(()));
 
                     if keep_scheduling_compaction {
                         schedule_table_compaction(
                             sender,
-                            TableCompactionRequest::no_waiter(
-                                table_data.clone(),
-                                compaction_notifier.clone(),
-                            ),
+                            TableCompactionRequest::no_waiter(table_data.clone()),
                         )
                         .await;
                     }
                 }
                 Err(e) => {
                     let e = Arc::new(e);
-                    if let Some(notifier) = compaction_notifier {
-                        notifier.notify_err(e.clone());
-                    }
 
                     let wait_err = WaitError::Compaction { source: e };
                     waiter_notifier.notify_wait_result(Err(wait_err));
@@ -525,7 +545,9 @@ impl ScheduleWorker {
         task: &CompactionTask,
     ) -> Option<MemoryUsageToken> {
         let input_size = task.estimated_total_input_file_size();
-        let estimate_memory_usage = input_size * 2;
+        // Currently sst build is in a streaming way, so it wouldn't consume memory more
+        // than its size.
+        let estimate_memory_usage = input_size;
 
         let token = self.memory_limit.try_apply_token(estimate_memory_usage);
 
@@ -574,49 +596,18 @@ impl ScheduleWorker {
             None => {
                 // Memory usage exceeds the threshold, let's put pack the
                 // request.
-                debug!(
-                    "Compaction task is ignored, because of high memory usage:{}, task:{:?}",
+                warn!(
+                    "Compaction task is ignored, because of high memory usage:{}, task:{:?}, table:{}",
                     self.memory_limit.usage.load(Ordering::Relaxed),
-                    compaction_task,
+                    compaction_task, table_data.name
                 );
-                self.put_back_compaction_request(compact_req).await;
                 return;
             }
         };
 
-        let compaction_notifier = compact_req.compaction_notifier;
         let waiter_notifier = WaiterNotifier::new(compact_req.waiter);
 
-        self.do_table_compaction_task(
-            table_data,
-            compaction_task,
-            compaction_notifier,
-            waiter_notifier,
-            token,
-        );
-    }
-
-    async fn put_back_compaction_request(&self, req: TableCompactionRequest) {
-        if let Err(SendError(ScheduleTask::Request(TableCompactionRequest {
-            compaction_notifier,
-            waiter,
-            ..
-        }))) = self.sender.send(ScheduleTask::Request(req)).await
-        {
-            let e = Arc::new(
-                flush_compaction::Other {
-                    msg: "Failed to put back the compaction request for memory usage exceeds",
-                }
-                .build(),
-            );
-            if let Some(notifier) = compaction_notifier {
-                notifier.notify_err(e.clone());
-            }
-
-            let waiter_notifier = WaiterNotifier::new(waiter);
-            let wait_err = WaitError::Compaction { source: e };
-            waiter_notifier.notify_wait_result(Err(wait_err));
-        }
+        self.do_table_compaction_task(table_data, compaction_task, waiter_notifier, token);
     }
 
     async fn schedule(&mut self) {
@@ -635,27 +626,42 @@ impl ScheduleWorker {
                 table_data.name, table_data.id, request_id
             );
 
-            // This will spawn a background job to purge ssts and avoid schedule thread
+            // This will add a compaction request to queue and avoid schedule thread
             // blocked.
-            self.handle_table_compaction_request(TableCompactionRequest::no_waiter(
-                table_data, None,
-            ))
-            .await;
+            self.limit
+                .add_request(TableCompactionRequest::no_waiter(table_data));
+        }
+        if let Err(e) = self.sender.send(ScheduleTask::Schedule).await {
+            error!("Fail to schedule table compaction request, err:{}", e);
         }
     }
 
     async fn flush_tables(&self) {
         let mut tables_buf = Vec::new();
         self.space_store.list_all_tables(&mut tables_buf);
+        let flusher = Flusher {
+            space_store: self.space_store.clone(),
+            runtime: self.runtime.clone(),
+            write_sst_max_buffer_size: self.write_sst_max_buffer_size,
+        };
 
         for table_data in &tables_buf {
             let last_flush_time = table_data.last_flush_time();
-            if last_flush_time + self.max_unflushed_duration.as_millis_u64()
-                > common_util::time::current_time_millis()
-            {
+            let flush_deadline_ms = last_flush_time + self.max_unflushed_duration.as_millis_u64();
+            let now_ms = common_util::time::current_time_millis();
+            if now_ms > flush_deadline_ms {
+                info!(
+                    "Scheduled flush is triggered, table:{}, last_flush_time:{last_flush_time}ms, max_unflushed_duration:{:?}",
+                    table_data.name,
+                    self.max_unflushed_duration,
+                );
+
+                let mut serial_exec = table_data.serial_exec.lock().await;
+                let flush_scheduler = serial_exec.flush_scheduler();
                 // Instance flush the table asynchronously.
-                if let Err(e) =
-                    Instance::flush_table(table_data.clone(), TableFlushOptions::default()).await
+                if let Err(e) = flusher
+                    .schedule_flush(flush_scheduler, table_data, TableFlushOptions::default())
+                    .await
                 {
                     error!("Failed to flush table, err:{}", e);
                 }

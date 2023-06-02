@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Sst implementation based on parquet.
 
@@ -7,7 +7,7 @@ pub mod encoding;
 mod hybrid;
 pub mod meta_data;
 // pub mod page_filter;
-pub(crate) mod row_group_pruner;
+pub mod row_group_pruner;
 pub mod writer;
 
 pub use async_reader::{Reader as AsyncParquetReader, ThreadedReader};

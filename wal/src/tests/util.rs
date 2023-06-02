@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! utilities for testing wal module.
 
@@ -53,8 +53,7 @@ impl WalBuilder for RocksWalBuilder {
     type Wal = RocksImpl;
 
     async fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
-        let wal_builder =
-            rocks_impl::manager::Builder::with_default_rocksdb_config(data_path, runtime);
+        let wal_builder = rocks_impl::manager::Builder::new(data_path, runtime);
 
         Arc::new(
             wal_builder
@@ -89,7 +88,7 @@ impl WalBuilder for MemoryTableWalBuilder {
         let wal_runtimes = WalRuntimes {
             read_runtime: runtime.clone(),
             write_runtime: runtime.clone(),
-            bg_runtime: runtime.clone(),
+            default_runtime: runtime.clone(),
         };
         let namespace_wal =
             WalNamespaceImpl::open(self.table_kv.clone(), wal_runtimes, WAL_NAMESPACE, config)

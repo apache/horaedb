@@ -1,28 +1,23 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
+use common_util::error::BoxError;
 use interpreters::interpreter::Output;
 use log::{error, info};
 use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaWriter};
+use proxy::{context::RequestContext, http::sql::Request, Proxy};
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::ResultExt;
-use table_engine::engine::EngineRuntimes;
 
-use crate::{
-    context::RequestContext,
-    handlers::{self, sql::Request},
-    instance::Instance,
-    mysql::{
-        error::{CreateContext, HandleSql, Result},
-        writer::MysqlQueryResultWriter,
-    },
+use crate::mysql::{
+    error::{CreateContext, HandleSql, Result},
+    writer::MysqlQueryResultWriter,
 };
 
 pub struct MysqlWorker<W: std::io::Write + Send + Sync, Q> {
     generic_hold: PhantomData<W>,
-    instance: Arc<Instance<Q>>,
-    runtimes: Arc<EngineRuntimes>,
+    proxy: Arc<Proxy<Q>>,
     timeout: Option<Duration>,
 }
 
@@ -31,15 +26,10 @@ where
     W: std::io::Write + Send + Sync,
     Q: QueryExecutor + 'static,
 {
-    pub fn new(
-        instance: Arc<Instance<Q>>,
-        runtimes: Arc<EngineRuntimes>,
-        timeout: Option<Duration>,
-    ) -> Self {
+    pub fn new(proxy: Arc<Proxy<Q>>, timeout: Option<Duration>) -> Self {
         Self {
             generic_hold: PhantomData::default(),
-            instance,
-            runtimes,
+            proxy,
             timeout,
         }
     }
@@ -109,14 +99,17 @@ where
 {
     async fn do_query<'a>(&'a mut self, sql: &'a str) -> Result<Output> {
         let ctx = self.create_ctx()?;
-
-        let req = Request::from(sql.to_string());
-        handlers::sql::handle_sql(&ctx, self.instance.clone(), req)
+        let req = Request {
+            query: sql.to_string(),
+        };
+        self.proxy
+            .handle_http_sql_query(&ctx, req)
             .await
             .map_err(|e| {
                 error!("Mysql service Failed to handle sql, err: {}", e);
                 e
             })
+            .box_err()
             .context(HandleSql {
                 sql: sql.to_string(),
             })
@@ -124,21 +117,21 @@ where
 
     fn create_ctx(&self) -> Result<RequestContext> {
         let default_catalog = self
-            .instance
+            .proxy
+            .instance()
             .catalog_manager
             .default_catalog_name()
             .to_string();
         let default_schema = self
-            .instance
+            .proxy
+            .instance()
             .catalog_manager
             .default_schema_name()
             .to_string();
-        let runtime = self.runtimes.bg_runtime.clone();
 
         RequestContext::builder()
             .catalog(default_catalog)
             .schema(default_schema)
-            .runtime(runtime)
             .enable_partition_table_access(false)
             .timeout(self.timeout)
             .build()

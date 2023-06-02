@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{convert::TryInto, sync::Arc};
 
@@ -9,8 +9,8 @@ use arrow::{
 };
 use async_trait::async_trait;
 use query_engine::executor::RecordBatchVec;
+use query_frontend::plan::ExistsTablePlan;
 use snafu::{ResultExt, Snafu};
-use sql::plan::ExistsTablePlan;
 
 use crate::interpreter::{
     Exists, Interpreter, InterpreterPtr, Output, Result as InterpreterResult,

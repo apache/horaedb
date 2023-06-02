@@ -1,6 +1,6 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{convert::TryFrom, sync::Arc};
+use std::{convert::TryFrom, mem, sync::Arc};
 
 use arrow::{
     array::{make_array, Array, ArrayData, ArrayRef},
@@ -9,11 +9,12 @@ use arrow::{
     record_batch::RecordBatch as ArrowRecordBatch,
     util::bit_util,
 };
+use async_trait::async_trait;
 use ceresdbproto::sst as sst_pb;
 use common_types::{
     bytes::{BytesMut, SafeBufMut},
     datum::DatumKind,
-    schema::{ArrowSchema, ArrowSchemaRef, DataType, Field},
+    schema::{ArrowSchema, ArrowSchemaRef, DataType, Field, Schema},
 };
 use common_util::{
     define_result,
@@ -21,12 +22,13 @@ use common_util::{
 };
 use log::trace;
 use parquet::{
-    arrow::ArrowWriter,
+    arrow::AsyncArrowWriter,
     basic::Compression,
     file::{metadata::KeyValue, properties::WriterProperties},
 };
 use prost::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
+use tokio::io::AsyncWrite;
 
 use crate::sst::parquet::{
     hybrid::{self, IndexedType},
@@ -215,40 +217,48 @@ pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<ParquetMetaData> {
 /// RecordEncoder is used for encoding ArrowBatch.
 ///
 /// TODO: allow pre-allocate buffer
+#[async_trait]
 trait RecordEncoder {
     /// Encode vector of arrow batch, return encoded row number
-    fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize>;
+    async fn encode(&mut self, record_batches: Vec<ArrowRecordBatch>) -> Result<usize>;
+
+    fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()>;
 
     /// Return encoded bytes
     /// Note: trait method cannot receive `self`, so take a &mut self here to
     /// indicate this encoder is already consumed
-    fn close(&mut self) -> Result<Vec<u8>>;
+    async fn close(&mut self) -> Result<()>;
 }
 
-struct ColumnarRecordEncoder {
+struct ColumnarRecordEncoder<W> {
     // wrap in Option so ownership can be taken out behind `&mut self`
-    arrow_writer: Option<ArrowWriter<Vec<u8>>>,
+    arrow_writer: Option<AsyncArrowWriter<W>>,
     arrow_schema: ArrowSchemaRef,
 }
 
-impl ColumnarRecordEncoder {
+impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
     fn try_new(
+        sink: W,
+        schema: &Schema,
         num_rows_per_row_group: usize,
+        max_buffer_size: usize,
         compression: Compression,
-        meta_data: ParquetMetaData,
     ) -> Result<Self> {
-        let arrow_schema = meta_data.schema.to_arrow_schema_ref();
+        let arrow_schema = schema.to_arrow_schema_ref();
 
         let write_props = WriterProperties::builder()
-            .set_key_value_metadata(Some(vec![encode_sst_meta_data(meta_data)?]))
             .set_max_row_group_size(num_rows_per_row_group)
             .set_compression(compression)
             .build();
 
-        let arrow_writer =
-            ArrowWriter::try_new(Vec::new(), arrow_schema.clone(), Some(write_props))
-                .box_err()
-                .context(EncodeRecordBatch)?;
+        let arrow_writer = AsyncArrowWriter::try_new(
+            sink,
+            arrow_schema.clone(),
+            max_buffer_size,
+            Some(write_props),
+        )
+        .box_err()
+        .context(EncodeRecordBatch)?;
 
         Ok(Self {
             arrow_writer: Some(arrow_writer),
@@ -257,8 +267,9 @@ impl ColumnarRecordEncoder {
     }
 }
 
-impl RecordEncoder for ColumnarRecordEncoder {
-    fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
+#[async_trait]
+impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
+    async fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
         assert!(self.arrow_writer.is_some());
 
         let record_batch = compute::concat_batches(&self.arrow_schema, &arrow_record_batch_vec)
@@ -269,62 +280,78 @@ impl RecordEncoder for ColumnarRecordEncoder {
             .as_mut()
             .unwrap()
             .write(&record_batch)
+            .await
             .box_err()
             .context(EncodeRecordBatch)?;
 
         Ok(record_batch.num_rows())
     }
 
-    fn close(&mut self) -> Result<Vec<u8>> {
+    fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
+        let key_value = encode_sst_meta_data(meta_data)?;
+        self.arrow_writer
+            .as_mut()
+            .unwrap()
+            .append_key_value_metadata(key_value);
+
+        Ok(())
+    }
+
+    async fn close(&mut self) -> Result<()> {
         assert!(self.arrow_writer.is_some());
 
         let arrow_writer = self.arrow_writer.take().unwrap();
-        let bytes = arrow_writer
-            .into_inner()
+        arrow_writer
+            .close()
+            .await
             .box_err()
             .context(EncodeRecordBatch)?;
 
-        Ok(bytes)
+        Ok(())
     }
 }
 
-struct HybridRecordEncoder {
+struct HybridRecordEncoder<W> {
     // wrap in Option so ownership can be taken out behind `&mut self`
-    arrow_writer: Option<ArrowWriter<Vec<u8>>>,
+    arrow_writer: Option<AsyncArrowWriter<W>>,
     arrow_schema: ArrowSchemaRef,
     tsid_type: IndexedType,
     non_collapsible_col_types: Vec<IndexedType>,
     // columns that can be collapsed into list
     collapsible_col_types: Vec<IndexedType>,
+    collapsible_col_idx: Vec<u32>,
 }
 
-impl HybridRecordEncoder {
+impl<W: AsyncWrite + Unpin + Send> HybridRecordEncoder<W> {
     fn try_new(
+        sink: W,
+        schema: &Schema,
         num_rows_per_row_group: usize,
+        max_buffer_size: usize,
         compression: Compression,
-        mut meta_data: ParquetMetaData,
     ) -> Result<Self> {
         // TODO: What we really want here is a unique ID, tsid is one case
         // Maybe support other cases later.
-        let tsid_idx = meta_data.schema.index_of_tsid().context(TsidRequired)?;
+        let tsid_idx = schema.index_of_tsid().context(TsidRequired)?;
         let tsid_type = IndexedType {
             idx: tsid_idx,
-            data_type: meta_data.schema.column(tsid_idx).data_type,
+            data_type: schema.column(tsid_idx).data_type,
         };
 
         let mut non_collapsible_col_types = Vec::new();
         let mut collapsible_col_types = Vec::new();
-        for (idx, col) in meta_data.schema.columns().iter().enumerate() {
+        let mut collapsible_col_idx = Vec::new();
+        for (idx, col) in schema.columns().iter().enumerate() {
             if idx == tsid_idx {
                 continue;
             }
 
-            if meta_data.schema.is_collapsible_column(idx) {
+            if schema.is_collapsible_column(idx) {
                 collapsible_col_types.push(IndexedType {
                     idx,
-                    data_type: meta_data.schema.column(idx).data_type,
+                    data_type: schema.column(idx).data_type,
                 });
-                meta_data.collapsible_cols_idx.push(idx as u32);
+                collapsible_col_idx.push(idx as u32);
             } else {
                 // TODO: support non-string key columns
                 ensure!(
@@ -340,30 +367,35 @@ impl HybridRecordEncoder {
             }
         }
 
-        let arrow_schema = hybrid::build_hybrid_arrow_schema(&meta_data.schema);
+        let arrow_schema = hybrid::build_hybrid_arrow_schema(schema);
 
         let write_props = WriterProperties::builder()
-            .set_key_value_metadata(Some(vec![encode_sst_meta_data(meta_data)?]))
             .set_max_row_group_size(num_rows_per_row_group)
             .set_compression(compression)
             .build();
 
-        let arrow_writer =
-            ArrowWriter::try_new(Vec::new(), arrow_schema.clone(), Some(write_props))
-                .box_err()
-                .context(EncodeRecordBatch)?;
+        let arrow_writer = AsyncArrowWriter::try_new(
+            sink,
+            arrow_schema.clone(),
+            max_buffer_size,
+            Some(write_props),
+        )
+        .box_err()
+        .context(EncodeRecordBatch)?;
         Ok(Self {
             arrow_writer: Some(arrow_writer),
             arrow_schema,
             tsid_type,
             non_collapsible_col_types,
             collapsible_col_types,
+            collapsible_col_idx,
         })
     }
 }
 
-impl RecordEncoder for HybridRecordEncoder {
-    fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
+#[async_trait]
+impl<W: AsyncWrite + Unpin + Send> RecordEncoder for HybridRecordEncoder<W> {
+    async fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
         assert!(self.arrow_writer.is_some());
 
         let record_batch = hybrid::convert_to_hybrid_record(
@@ -380,21 +412,35 @@ impl RecordEncoder for HybridRecordEncoder {
             .as_mut()
             .unwrap()
             .write(&record_batch)
+            .await
             .box_err()
             .context(EncodeRecordBatch)?;
 
         Ok(record_batch.num_rows())
     }
 
-    fn close(&mut self) -> Result<Vec<u8>> {
+    fn set_meta_data(&mut self, mut meta_data: ParquetMetaData) -> Result<()> {
+        meta_data.collapsible_cols_idx = mem::take(&mut self.collapsible_col_idx);
+        let key_value = encode_sst_meta_data(meta_data)?;
+        self.arrow_writer
+            .as_mut()
+            .unwrap()
+            .append_key_value_metadata(key_value);
+
+        Ok(())
+    }
+
+    async fn close(&mut self) -> Result<()> {
         assert!(self.arrow_writer.is_some());
 
         let arrow_writer = self.arrow_writer.take().unwrap();
-        let bytes = arrow_writer
-            .into_inner()
+        arrow_writer
+            .close()
+            .await
             .box_err()
             .context(EncodeRecordBatch)?;
-        Ok(bytes)
+
+        Ok(())
     }
 }
 
@@ -403,23 +449,29 @@ pub struct ParquetEncoder {
 }
 
 impl ParquetEncoder {
-    pub fn try_new(
+    pub fn try_new<W: AsyncWrite + Unpin + Send + 'static>(
+        sink: W,
+        schema: &Schema,
         hybrid_encoding: bool,
         num_rows_per_row_group: usize,
+        max_buffer_size: usize,
         compression: Compression,
-        meta_data: ParquetMetaData,
     ) -> Result<Self> {
         let record_encoder: Box<dyn RecordEncoder + Send> = if hybrid_encoding {
             Box::new(HybridRecordEncoder::try_new(
+                sink,
+                schema,
                 num_rows_per_row_group,
+                max_buffer_size,
                 compression,
-                meta_data,
             )?)
         } else {
             Box::new(ColumnarRecordEncoder::try_new(
+                sink,
+                schema,
                 num_rows_per_row_group,
+                max_buffer_size,
                 compression,
-                meta_data,
             )?)
         };
 
@@ -428,19 +480,23 @@ impl ParquetEncoder {
 
     /// Encode the record batch with [ArrowWriter] and the encoded contents is
     /// written to the buffer.
-    pub fn encode_record_batch(
+    pub async fn encode_record_batches(
         &mut self,
-        arrow_record_batch_vec: Vec<ArrowRecordBatch>,
+        arrow_record_batches: Vec<ArrowRecordBatch>,
     ) -> Result<usize> {
-        if arrow_record_batch_vec.is_empty() {
+        if arrow_record_batches.is_empty() {
             return Ok(0);
         }
 
-        self.record_encoder.encode(arrow_record_batch_vec)
+        self.record_encoder.encode(arrow_record_batches).await
     }
 
-    pub fn close(mut self) -> Result<Vec<u8>> {
-        self.record_encoder.close()
+    pub fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
+        self.record_encoder.set_meta_data(meta_data)
+    }
+
+    pub async fn close(mut self) -> Result<()> {
+        self.record_encoder.close().await
     }
 }
 
@@ -470,7 +526,7 @@ impl HybridRecordDecoder {
             .iter()
             .map(|f| {
                 if let DataType::List(nested_field) = f.data_type() {
-                    Field::new(f.name(), nested_field.data_type().clone(), true)
+                    Arc::new(Field::new(f.name(), nested_field.data_type().clone(), true))
                 } else {
                     f.clone()
                 }
@@ -498,14 +554,14 @@ impl HybridRecordDecoder {
         assert_eq!(array_ref.len() + 1, value_offsets.len());
 
         let values_num = *value_offsets.last().unwrap() as usize;
-        let offset_slices = array_ref.data().buffers()[0].as_slice();
-        let value_slices = array_ref.data().buffers()[1].as_slice();
-        let null_bitmap = array_ref.data().null_bitmap();
+        let array_data = array_ref.to_data();
+        let offset_slices = array_data.buffers()[0].as_slice();
+        let value_slices = array_data.buffers()[1].as_slice();
+        let nulls = array_data.nulls();
         trace!(
-            "raw buffer slice, offsets:{:#02x?}, values:{:#02x?}, bitmap:{:#02x?}",
+            "raw buffer slice, offsets:{:#02x?}, values:{:#02x?}",
             offset_slices,
             value_slices,
-            null_bitmap.map(|v| v.buffer_ref().as_slice())
         );
 
         let i32_offsets = Self::get_array_offsets(offset_slices);
@@ -529,8 +585,8 @@ impl HybridRecordDecoder {
             let value_len = current - prev;
             let value_num = value_offsets[idx + 1] - value_offsets[idx];
 
-            if let Some(bitmap) = null_bitmap {
-                if !bitmap.is_set(idx) {
+            if let Some(nulls) = nulls {
+                if nulls.is_null(idx) {
                     for i in 0..value_num {
                         bit_util::unset_bit(null_slice, bitmap_length_so_far + i as usize);
                     }
@@ -575,8 +631,9 @@ impl HybridRecordDecoder {
         assert!(!value_offsets.is_empty());
 
         let values_num = *value_offsets.last().unwrap() as usize;
-        let old_values_buffer = array_ref.data().buffers()[0].as_slice();
-        let old_null_bitmap = array_ref.data().null_bitmap();
+        let array_data = array_ref.to_data();
+        let old_values_buffer = array_data.buffers()[0].as_slice();
+        let old_nulls = array_data.nulls();
 
         let mut new_values_buffer = MutableBuffer::new(value_size * values_num);
         let mut new_null_buffer = hybrid::new_ones_buffer(values_num);
@@ -585,8 +642,8 @@ impl HybridRecordDecoder {
 
         for (idx, offset) in (0..old_values_buffer.len()).step_by(value_size).enumerate() {
             let value_num = (value_offsets[idx + 1] - value_offsets[idx]) as usize;
-            if let Some(bitmap) = old_null_bitmap {
-                if !bitmap.is_set(idx) {
+            if let Some(nulls) = old_nulls {
+                if nulls.is_null(idx) {
                     for i in 0..value_num {
                         bit_util::unset_bit(null_slice, length_so_far + i);
                     }
@@ -628,7 +685,8 @@ impl RecordDecoder for HybridRecordDecoder {
         let mut value_offsets = None;
         // Find value offsets from the first col in collapsible_cols_idx.
         if let Some(idx) = self.collapsible_cols_idx.first() {
-            let offset_slices = arrays[*idx as usize].data().buffers()[0].as_slice();
+            let array_data = arrays[*idx as usize].to_data();
+            let offset_slices = array_data.buffers()[0].as_slice();
             value_offsets = Some(Self::get_array_offsets(offset_slices));
         } else {
             CollapsibleColsIdxEmpty.fail()?;
@@ -648,7 +706,7 @@ impl RecordDecoder for HybridRecordDecoder {
                     // are collapsed by hybrid storage format, to differentiate
                     // List column in original records
                     DataType::List(_nested_field) => {
-                        Ok(make_array(array_ref.data().child_data()[0].clone()))
+                        Ok(make_array(array_ref.to_data().child_data()[0].clone()))
                     }
                     _ => {
                         let datum_kind = DatumKind::from_data_type(data_type).unwrap();
@@ -699,6 +757,8 @@ impl ParquetDecoder {
 #[cfg(test)]
 mod tests {
 
+    use std::{pin::Pin, sync::Mutex, task::Poll};
+
     use arrow::array::{Int32Array, StringArray, TimestampMillisecondArray, UInt64Array};
     use common_types::{
         bytes::Bytes,
@@ -707,6 +767,7 @@ mod tests {
         time::{TimeRange, Timestamp},
     };
     use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+    use pin_project_lite::pin_project;
 
     use super::*;
 
@@ -852,11 +913,60 @@ mod tests {
         }
     }
 
-    #[test]
-    fn hybrid_record_encode_and_decode() {
+    pin_project! {
+        struct CopiedBuffer {
+            #[pin]
+            buffer: Vec<u8>,
+            copied_buffer: Arc<Mutex<Vec<u8>>>,
+        }
+    }
+
+    impl CopiedBuffer {
+        fn new(buffer: Vec<u8>) -> Self {
+            Self {
+                buffer,
+                copied_buffer: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+
+        fn copied_buffer(&self) -> Arc<Mutex<Vec<u8>>> {
+            self.copied_buffer.clone()
+        }
+    }
+
+    impl AsyncWrite for CopiedBuffer {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+            buf: &[u8],
+        ) -> Poll<std::result::Result<usize, std::io::Error>> {
+            self.copied_buffer.lock().unwrap().extend_from_slice(buf);
+            let buffer = self.project().buffer;
+            buffer.poll_write(cx, buf)
+        }
+
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> Poll<std::result::Result<(), std::io::Error>> {
+            let buffer = self.project().buffer;
+            buffer.poll_flush(cx)
+        }
+
+        fn poll_shutdown(
+            self: Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> Poll<std::result::Result<(), std::io::Error>> {
+            let buffer = self.project().buffer;
+            buffer.poll_shutdown(cx)
+        }
+    }
+
+    #[tokio::test]
+    async fn hybrid_record_encode_and_decode() {
         let schema = build_schema();
 
-        let mut meta_data = ParquetMetaData {
+        let meta_data = ParquetMetaData {
             min_key: Bytes::from_static(b"100"),
             max_key: Bytes::from_static(b"200"),
             time_range: TimeRange::new_unchecked(Timestamp::new(100), Timestamp::new(101)),
@@ -865,8 +975,19 @@ mod tests {
             parquet_filter: Default::default(),
             collapsible_cols_idx: Vec::new(),
         };
-        let mut encoder =
-            HybridRecordEncoder::try_new(100, Compression::ZSTD, meta_data.clone()).unwrap();
+        let copied_buffer = CopiedBuffer::new(Vec::new());
+        let copied_encoded_buffer = copied_buffer.copied_buffer();
+        let mut encoder = HybridRecordEncoder::try_new(
+            copied_buffer,
+            &meta_data.schema,
+            100,
+            0,
+            Compression::ZSTD(Default::default()),
+        )
+        .unwrap();
+        encoder
+            .set_meta_data(meta_data.clone())
+            .expect("Failed to set meta data");
 
         let columns = vec![
             Arc::new(UInt64Array::from(vec![1, 1, 2])) as ArrayRef,
@@ -911,20 +1032,24 @@ mod tests {
             ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns2).unwrap();
         let row_nums = encoder
             .encode(vec![input_record_batch, input_record_batch2])
+            .await
             .unwrap();
         assert_eq!(2, row_nums);
 
         // read encoded records back, and then compare with input records
-        let encoded_bytes = encoder.close().unwrap();
+        encoder.close().await.unwrap();
+
+        let encoded_bytes = copied_encoded_buffer.lock().unwrap().clone();
         let mut reader = ParquetRecordBatchReaderBuilder::try_new(Bytes::from(encoded_bytes))
             .unwrap()
             .build()
             .unwrap();
         let hybrid_record_batch = reader.next().unwrap().unwrap();
-        collect_collapsible_cols_idx(&meta_data.schema, &mut meta_data.collapsible_cols_idx);
+        let mut collapsible_cols_idx = Vec::new();
+        collect_collapsible_cols_idx(&meta_data.schema, &mut collapsible_cols_idx);
 
         let decoder = HybridRecordDecoder {
-            collapsible_cols_idx: meta_data.collapsible_cols_idx.clone(),
+            collapsible_cols_idx,
         };
         let decoded_record_batch = decoder.decode(hybrid_record_batch).unwrap();
 

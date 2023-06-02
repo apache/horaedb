@@ -956,6 +956,7 @@ pub mod arrow_convert {
             match data_type {
                 DataType::Null => Some(Self::Null),
                 DataType::Timestamp(TimeUnit::Millisecond, None) => Some(Self::Timestamp),
+                DataType::Timestamp(TimeUnit::Nanosecond, None) => Some(Self::Timestamp),
                 DataType::Float64 => Some(Self::Double),
                 DataType::Float32 => Some(Self::Float),
                 DataType::Binary => Some(Self::Varbinary),
@@ -976,7 +977,7 @@ pub mod arrow_convert {
                 | DataType::LargeBinary
                 | DataType::FixedSizeBinary(_)
                 | DataType::Struct(_)
-                | DataType::Union(_, _, _)
+                | DataType::Union(_, _)
                 | DataType::List(_)
                 | DataType::LargeList(_)
                 | DataType::FixedSizeList(_, _)

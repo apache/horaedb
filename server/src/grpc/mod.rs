@@ -1,15 +1,15 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Grpc services
 
 use std::{
     net::{AddrParseError, SocketAddr},
-    str::FromStr,
     stringify,
     sync::Arc,
     time::Duration,
 };
 
+use analytic_engine::setup::OpenedWals;
 use ceresdbproto::{
     meta_event::meta_event_service_server::MetaEventServiceServer,
     remote_engine::remote_engine_service_server::RemoteEngineServiceServer,
@@ -24,30 +24,33 @@ use common_util::{
 };
 use futures::FutureExt;
 use log::{info, warn};
+use proxy::{
+    forward,
+    instance::InstanceRef,
+    schema_config_provider::{self},
+    Proxy,
+};
 use query_engine::executor::Executor as QueryExecutor;
-use router::{endpoint::Endpoint, RouterRef};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
-use crate::{
-    grpc::{
-        forward::Forwarder, meta_event_service::MetaServiceImpl,
-        remote_engine_service::RemoteEngineServiceImpl, storage_service::StorageServiceImpl,
-    },
-    instance::InstanceRef,
-    schema_config_provider::{self, SchemaConfigProviderRef},
+use crate::grpc::{
+    meta_event_service::MetaServiceImpl, remote_engine_service::RemoteEngineServiceImpl,
+    storage_service::StorageServiceImpl,
 };
 
-pub mod forward;
 mod meta_event_service;
 mod metrics;
 mod remote_engine_service;
-pub(crate) mod storage_service;
+mod storage_service;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
+    #[snafu(display("Internal error, message:{}, cause:{}", msg, source))]
+    Internal { msg: String, source: GenericError },
+
     #[snafu(display(
         "Failed to keep grpc service, err:{}.\nBacktrace:\n{}",
         source,
@@ -77,26 +80,17 @@ pub enum Error {
     #[snafu(display("Missing runtimes.\nBacktrace:\n{}", backtrace))]
     MissingRuntimes { backtrace: Backtrace },
 
-    #[snafu(display(
-        "Missing local endpoint when forwarder enabled.\nBacktrace:\n{}",
-        backtrace
-    ))]
-    MissingLocalEndpoint { backtrace: Backtrace },
-
-    #[snafu(display("Invalid local endpoint when forwarder enabled, err:{}", source,))]
-    InvalidLocalEndpoint { source: GenericError },
-
     #[snafu(display("Missing instance.\nBacktrace:\n{}", backtrace))]
     MissingInstance { backtrace: Backtrace },
 
-    #[snafu(display("Missing router.\nBacktrace:\n{}", backtrace))]
-    MissingRouter { backtrace: Backtrace },
-
-    #[snafu(display("Missing schema config provider.\nBacktrace:\n{}", backtrace))]
-    MissingSchemaConfigProvider { backtrace: Backtrace },
+    #[snafu(display("Missing wals.\nBacktrace:\n{}", backtrace))]
+    MissingWals { backtrace: Backtrace },
 
     #[snafu(display("Missing timeout.\nBacktrace:\n{}", backtrace))]
     MissingTimeout { backtrace: Backtrace },
+
+    #[snafu(display("Missing proxy.\nBacktrace:\n{}", backtrace))]
+    MissingProxy { backtrace: Backtrace },
 
     #[snafu(display("Catalog name is not utf8.\nBacktrace:\n{}", backtrace))]
     ParseCatalogName {
@@ -114,7 +108,7 @@ pub enum Error {
     BuildForwarder { source: forward::Error },
 
     #[snafu(display(
-        "Fail to build column schema from column: {}, err:{}",
+        "Fail to build column schema from column:{}, err:{}",
         column_name,
         source
     ))]
@@ -123,7 +117,7 @@ pub enum Error {
         source: column_schema::Error,
     },
 
-    #[snafu(display("Invalid column: {} schema, err:{}", column_name, source))]
+    #[snafu(display("Invalid column schema, column:{}, err:{}", column_name, source))]
     InvalidColumnSchema {
         column_name: String,
         source: column_schema::Error,
@@ -199,14 +193,11 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
 pub struct Builder<Q> {
     endpoint: String,
     timeout: Option<Duration>,
-    resp_compress_min_length: usize,
-    local_endpoint: Option<String>,
     runtimes: Option<Arc<EngineRuntimes>>,
     instance: Option<InstanceRef<Q>>,
-    router: Option<RouterRef>,
     cluster: Option<ClusterRef>,
-    schema_config_provider: Option<SchemaConfigProviderRef>,
-    forward_config: Option<forward::Config>,
+    opened_wals: Option<OpenedWals>,
+    proxy: Option<Arc<Proxy<Q>>>,
 }
 
 impl<Q> Builder<Q> {
@@ -214,30 +205,16 @@ impl<Q> Builder<Q> {
         Self {
             endpoint: "0.0.0.0:8381".to_string(),
             timeout: None,
-            resp_compress_min_length: 81920,
-            local_endpoint: None,
             runtimes: None,
             instance: None,
-            router: None,
             cluster: None,
-            schema_config_provider: None,
-            forward_config: None,
+            opened_wals: None,
+            proxy: None,
         }
     }
 
     pub fn endpoint(mut self, endpoint: String) -> Self {
         self.endpoint = endpoint;
-        self
-    }
-
-    pub fn resp_compress_min_length(mut self, threshold: usize) -> Self {
-        self.resp_compress_min_length = threshold;
-        self
-    }
-
-    pub fn local_endpoint(mut self, endpoint: String) -> Self {
-        self.local_endpoint = Some(endpoint);
-
         self
     }
 
@@ -251,29 +228,24 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn router(mut self, router: RouterRef) -> Self {
-        self.router = Some(router);
-        self
-    }
-
     // Cluster is an optional field for building [RpcServices].
     pub fn cluster(mut self, cluster: Option<ClusterRef>) -> Self {
         self.cluster = cluster;
         self
     }
 
-    pub fn schema_config_provider(mut self, provider: SchemaConfigProviderRef) -> Self {
-        self.schema_config_provider = Some(provider);
-        self
-    }
-
-    pub fn forward_config(mut self, config: forward::Config) -> Self {
-        self.forward_config = Some(config);
+    pub fn opened_wals(mut self, opened_wals: OpenedWals) -> Self {
+        self.opened_wals = Some(opened_wals);
         self
     }
 
     pub fn timeout(mut self, timeout: Option<Duration>) -> Self {
         self.timeout = timeout;
+        self
+    }
+
+    pub fn proxy(mut self, proxy: Arc<Proxy<Q>>) -> Self {
+        self.proxy = Some(proxy);
         self
     }
 }
@@ -282,50 +254,33 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
     pub fn build(self) -> Result<RpcServices<Q>> {
         let runtimes = self.runtimes.context(MissingRuntimes)?;
         let instance = self.instance.context(MissingInstance)?;
-        let router = self.router.context(MissingRouter)?;
-        let schema_config_provider = self
-            .schema_config_provider
-            .context(MissingSchemaConfigProvider)?;
+        let opened_wals = self.opened_wals.context(MissingWals)?;
+        let proxy = self.proxy.context(MissingProxy)?;
 
         let meta_rpc_server = self.cluster.map(|v| {
-            let meta_service = MetaServiceImpl {
+            let builder = meta_event_service::Builder {
                 cluster: v,
                 instance: instance.clone(),
-                runtime: runtimes.meta_runtime.clone(),
+                runtime: runtimes.default_runtime.clone(),
+                opened_wals,
             };
-            MetaEventServiceServer::new(meta_service)
+            MetaEventServiceServer::new(builder.build())
         });
 
         let remote_engine_server = {
             let service = RemoteEngineServiceImpl {
-                instance: instance.clone(),
+                instance,
                 runtimes: runtimes.clone(),
             };
             RemoteEngineServiceServer::new(service)
         };
 
-        let forward_config = self.forward_config.unwrap_or_default();
-        let forwarder = if forward_config.enable {
-            let local_endpoint =
-                Endpoint::from_str(&self.local_endpoint.context(MissingLocalEndpoint)?)
-                    .context(InvalidLocalEndpoint)?;
-            let forwarder = Arc::new(
-                Forwarder::try_new(forward_config, router.clone(), local_endpoint)
-                    .context(BuildForwarder)?,
-            );
-            Some(forwarder)
-        } else {
-            None
-        };
-        let bg_runtime = runtimes.bg_runtime.clone();
+        let runtime = runtimes.default_runtime.clone();
+
         let storage_service = StorageServiceImpl {
-            router,
-            instance,
+            proxy,
             runtimes,
-            schema_config_provider,
-            forwarder,
             timeout: self.timeout,
-            resp_compress_min_length: self.resp_compress_min_length,
         };
         let rpc_server = StorageServiceServer::new(storage_service);
 
@@ -336,7 +291,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             rpc_server,
             meta_rpc_server,
             remote_engine_server,
-            runtime: bg_runtime,
+            runtime,
             stop_tx: None,
             join_handle: None,
         })

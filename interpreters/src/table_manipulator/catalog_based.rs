@@ -1,32 +1,30 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use async_trait::async_trait;
 use catalog::{
-    manager::ManagerRef,
     schema::{CreateOptions, CreateTableRequest, DropOptions, DropTableRequest},
+    table_operator::TableOperator,
 };
-use common_types::table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID};
-use log::warn;
-use snafu::{ensure, OptionExt, ResultExt};
-use sql::plan::{CreateTablePlan, DropTablePlan};
+use common_types::table::DEFAULT_SHARD_ID;
+use query_frontend::plan::{CreateTablePlan, DropTablePlan};
+use snafu::{ensure, ResultExt};
 use table_engine::engine::{TableEngineRef, TableState};
 
 use crate::{
     context::Context,
     interpreter::Output,
     table_manipulator::{
-        CatalogNotExists, FindCatalog, FindSchema, PartitionTableNotSupported, Result,
-        SchemaCreateTable, SchemaDropTable, SchemaNotExists, TableManipulator,
+        PartitionTableNotSupported, Result, TableManipulator, TableOperator as TableOperatorErr,
     },
 };
 
 pub struct TableManipulatorImpl {
-    catalog_manager: ManagerRef,
+    table_operator: TableOperator,
 }
 
 impl TableManipulatorImpl {
-    pub fn new(catalog_manager: ManagerRef) -> Self {
-        Self { catalog_manager }
+    pub fn new(table_operator: TableOperator) -> Self {
+        Self { table_operator }
     }
 }
 
@@ -43,25 +41,7 @@ impl TableManipulator for TableManipulatorImpl {
             PartitionTableNotSupported { table: plan.table }
         );
         let default_catalog = ctx.default_catalog();
-        let catalog = self
-            .catalog_manager
-            .catalog_by_name(default_catalog)
-            .context(FindCatalog {
-                name: default_catalog,
-            })?
-            .context(CatalogNotExists {
-                name: default_catalog,
-            })?;
-
         let default_schema = ctx.default_schema();
-        let schema = catalog
-            .schema_by_name(default_schema)
-            .context(FindSchema {
-                name: default_schema,
-            })?
-            .context(SchemaNotExists {
-                name: default_schema,
-            })?;
 
         let CreateTablePlan {
             engine,
@@ -73,16 +53,15 @@ impl TableManipulator for TableManipulatorImpl {
         } = plan;
 
         let request = CreateTableRequest {
-            catalog_name: catalog.name().to_string(),
-            schema_name: schema.name().to_string(),
-            schema_id: schema.id(),
+            catalog_name: default_catalog.to_string(),
+            schema_name: default_schema.to_string(),
             table_name: table.clone(),
+            table_id: None,
             table_schema,
             engine,
             options,
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
-            cluster_version: DEFAULT_CLUSTER_VERSION,
             partition_info: None,
         };
 
@@ -91,10 +70,11 @@ impl TableManipulator for TableManipulatorImpl {
             create_if_not_exists: if_not_exists,
         };
 
-        schema
-            .create_table(request, opts)
+        let _ = self
+            .table_operator
+            .create_table_on_shard(request, opts)
             .await
-            .context(SchemaCreateTable { table })?;
+            .context(TableOperatorErr)?;
 
         Ok(Output::AffectedRows(0))
     }
@@ -106,44 +86,22 @@ impl TableManipulator for TableManipulatorImpl {
         table_engine: TableEngineRef,
     ) -> Result<Output> {
         let default_catalog = ctx.default_catalog();
-        let catalog = self
-            .catalog_manager
-            .catalog_by_name(default_catalog)
-            .context(FindCatalog {
-                name: default_catalog,
-            })?
-            .context(CatalogNotExists {
-                name: default_catalog,
-            })?;
-
         let default_schema = ctx.default_schema();
-        let schema = catalog
-            .schema_by_name(default_schema)
-            .context(FindSchema {
-                name: default_schema,
-            })?
-            .context(SchemaNotExists {
-                name: default_schema,
-            })?;
 
         let table = plan.table;
         let request = DropTableRequest {
-            catalog_name: catalog.name().to_string(),
-            schema_name: schema.name().to_string(),
-            schema_id: schema.id(),
+            catalog_name: default_catalog.to_string(),
+            schema_name: default_schema.to_string(),
             table_name: table.clone(),
             engine: plan.engine,
         };
 
         let opts = DropOptions { table_engine };
 
-        if schema
-            .drop_table(request, opts)
+        self.table_operator
+            .drop_table_on_shard(request, opts)
             .await
-            .context(SchemaDropTable { table: &table })?
-        {
-            warn!("Table {} has been dropped already", &table);
-        }
+            .context(TableOperatorErr)?;
 
         Ok(Output::AffectedRows(0))
     }

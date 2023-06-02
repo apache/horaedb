@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{collections::HashMap, convert::TryInto, sync::Arc};
 
@@ -7,12 +7,12 @@ use arrow::{
     datatypes::{DataType, Field, Schema},
     record_batch::RecordBatch,
 };
-use datafusion_expr::Expr;
+use datafusion::logical_expr::Expr;
 use datafusion_proto::bytes::Serializeable;
 use log::error;
 use query_engine::executor::RecordBatchVec;
+use query_frontend::{ast::ShowCreateObject, plan::ShowCreatePlan};
 use snafu::ensure;
-use sql::{ast::ShowCreateObject, plan::ShowCreatePlan};
 use table_engine::{partition::PartitionInfo, table::TableRef};
 
 use crate::{
@@ -181,7 +181,7 @@ impl ShowCreateInterpreter {
 mod test {
     use std::ops::Add;
 
-    use datafusion_expr::col;
+    use datafusion::logical_expr::col;
     use datafusion_proto::bytes::Serializeable;
     use table_engine::partition::{
         HashPartitionInfo, KeyPartitionInfo, PartitionDefinition, PartitionInfo,

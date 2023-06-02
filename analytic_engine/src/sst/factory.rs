@@ -10,9 +10,11 @@ use common_util::{define_result, runtime::Runtime};
 use object_store::{ObjectStoreRef, Path};
 use snafu::{ResultExt, Snafu};
 use table_engine::predicate::PredicateRef;
+use trace_metric::MetricsCollector;
 
 use crate::{
     sst::{
+        file::Level,
         header,
         header::HeaderParser,
         meta_data::cache::MetaCacheRef,
@@ -65,6 +67,7 @@ pub trait Factory: Send + Sync + Debug {
         options: &SstReadOptions,
         hint: SstReadHint,
         store_picker: &'a ObjectStorePickerRef,
+        metrics_collector: Option<MetricsCollector>,
     ) -> Result<Box<dyn SstReader + Send + 'a>>;
 
     async fn create_writer<'a>(
@@ -72,6 +75,7 @@ pub trait Factory: Send + Sync + Debug {
         options: &SstWriteOptions,
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
+        level: Level,
     ) -> Result<Box<dyn SstWriter + Send + 'a>>;
 }
 
@@ -93,18 +97,31 @@ pub struct SstReadHint {
 }
 
 #[derive(Debug, Clone)]
+pub struct ScanOptions {
+    /// The suggested parallelism while reading sst
+    pub background_read_parallelism: usize,
+    /// The max record batches in flight
+    pub max_record_batches_in_flight: usize,
+}
+
+impl Default for ScanOptions {
+    fn default() -> Self {
+        Self {
+            background_read_parallelism: 1,
+            max_record_batches_in_flight: 64,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SstReadOptions {
-    pub read_batch_row_num: usize,
     pub reverse: bool,
     pub frequency: ReadFrequency,
+    pub num_rows_per_row_group: usize,
     pub projected_schema: ProjectedSchema,
     pub predicate: PredicateRef,
     pub meta_cache: Option<MetaCacheRef>,
-
-    /// The max number of rows in one row group
-    pub num_rows_per_row_group: usize,
-    /// The suggested parallelism while reading sst
-    pub background_read_parallelism: usize,
+    pub scan_options: ScanOptions,
 
     pub runtime: Arc<Runtime>,
 }
@@ -114,6 +131,7 @@ pub struct SstWriteOptions {
     pub storage_format_hint: StorageFormatHint,
     pub num_rows_per_row_group: usize,
     pub compression: Compression,
+    pub max_buffer_size: usize,
 }
 
 #[derive(Debug, Default)]
@@ -127,6 +145,7 @@ impl Factory for FactoryImpl {
         options: &SstReadOptions,
         hint: SstReadHint,
         store_picker: &'a ObjectStorePickerRef,
+        metrics_collector: Option<MetricsCollector>,
     ) -> Result<Box<dyn SstReader + Send + 'a>> {
         let storage_format = match hint.file_format {
             Some(v) => v,
@@ -138,11 +157,18 @@ impl Factory for FactoryImpl {
 
         match storage_format {
             StorageFormat::Columnar | StorageFormat::Hybrid => {
-                let reader = AsyncParquetReader::new(path, options, hint.file_size, store_picker);
+                let reader = AsyncParquetReader::new(
+                    path,
+                    options,
+                    hint.file_size,
+                    store_picker,
+                    metrics_collector,
+                );
                 let reader = ThreadedReader::new(
                     reader,
                     options.runtime.clone(),
-                    options.background_read_parallelism,
+                    options.scan_options.background_read_parallelism,
+                    options.scan_options.max_record_batches_in_flight,
                 );
                 Ok(Box::new(reader))
             }
@@ -154,6 +180,7 @@ impl Factory for FactoryImpl {
         options: &SstWriteOptions,
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
+        level: Level,
     ) -> Result<Box<dyn SstWriter + Send + 'a>> {
         let hybrid_encoding = match options.storage_format_hint {
             StorageFormatHint::Specific(format) => matches!(format, StorageFormat::Hybrid),
@@ -163,6 +190,7 @@ impl Factory for FactoryImpl {
 
         Ok(Box::new(ParquetSstWriter::new(
             path,
+            level,
             hybrid_encoding,
             store_picker,
             options,

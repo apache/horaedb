@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! WalManager implementation based on RocksDB
 
@@ -19,7 +19,7 @@ use common_types::{
 };
 use common_util::{error::BoxError, runtime::Runtime};
 use log::{debug, info, warn};
-use rocksdb::{DBIterator, DBOptions, ReadOptions, SeekKey, Writable, WriteBatch, DB};
+use rocksdb::{DBIterator, DBOptions, ReadOptions, SeekKey, Statistics, Writable, WriteBatch, DB};
 use snafu::ResultExt;
 use tokio::sync::Mutex;
 
@@ -27,8 +27,8 @@ use crate::{
     kv_encoder::{CommonLogEncoding, CommonLogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
-        error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, ScanContext, ScanRequest,
-        SyncLogIterator, WalLocation, WalManager, WriteContext,
+        error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
+        ScanRequest, SyncLogIterator, WalLocation, WalManager, WriteContext,
     },
 };
 
@@ -162,7 +162,7 @@ impl TableUnit {
             return Ok(RocksLogIterator::new_empty(self.log_encoding.clone(), iter));
         };
 
-        let region_id = req.location.versioned_region_id.id;
+        let region_id = req.location.region_id;
         let (min_log_key, max_log_key) = (
             self.log_key(region_id, start_sequence),
             self.log_key(region_id, end_sequence),
@@ -187,7 +187,7 @@ impl TableUnit {
             let mut key_buf = BytesMut::new();
 
             for entry in &batch.entries {
-                let region_id = batch.location.versioned_region_id.id;
+                let region_id = batch.location.region_id;
                 self.log_encoding
                     .encode_key(
                         &mut key_buf,
@@ -235,6 +235,8 @@ pub struct RocksImpl {
     max_seq_meta_encoding: MaxSeqMetaEncoding,
     /// Table units
     table_units: RwLock<HashMap<TableId, Arc<TableUnit>>>,
+    /// Stats of underlying rocksdb
+    stats: Option<Statistics>,
 }
 
 impl Drop for RocksImpl {
@@ -522,36 +524,49 @@ impl RocksImpl {
 /// Builder for `RocksImpl`.
 pub struct Builder {
     wal_path: String,
-    rocksdb_config: DBOptions,
     runtime: Arc<Runtime>,
+    max_background_jobs: Option<i32>,
+    enable_statistics: Option<bool>,
 }
 
 impl Builder {
-    pub fn with_default_rocksdb_config(
-        wal_path: impl Into<PathBuf>,
-        runtime: Arc<Runtime>,
-    ) -> Self {
-        let mut rocksdb_config = DBOptions::default();
-        // TODO(yingwen): Move to another function?
-        rocksdb_config.create_if_missing(true);
-        Self::new(wal_path, runtime, rocksdb_config)
-    }
-
-    pub fn new(
-        wal_path: impl Into<PathBuf>,
-        runtime: Arc<Runtime>,
-        rocksdb_config: DBOptions,
-    ) -> Self {
+    pub fn new(wal_path: impl Into<PathBuf>, runtime: Arc<Runtime>) -> Self {
         let wal_path: PathBuf = wal_path.into();
         Self {
             wal_path: wal_path.to_str().unwrap().to_owned(),
-            rocksdb_config,
             runtime,
+            max_background_jobs: None,
+            enable_statistics: None,
         }
     }
 
+    pub fn max_background_jobs(mut self, v: i32) -> Self {
+        self.max_background_jobs = Some(v);
+        self
+    }
+
+    pub fn enable_statistics(mut self, v: bool) -> Self {
+        self.enable_statistics = Some(v);
+        self
+    }
+
     pub fn build(self) -> Result<RocksImpl> {
-        let db = DB::open(self.rocksdb_config, &self.wal_path)
+        let mut rocksdb_config = DBOptions::default();
+        rocksdb_config.create_if_missing(true);
+
+        if let Some(v) = self.max_background_jobs {
+            rocksdb_config.set_max_background_jobs(v);
+        }
+
+        let stats = if self.enable_statistics.unwrap_or_default() {
+            let stats = Statistics::new();
+            rocksdb_config.set_statistics(&stats);
+            Some(stats)
+        } else {
+            None
+        };
+
+        let db = DB::open(rocksdb_config, &self.wal_path)
             .map_err(|e| e.into())
             .context(Open {
                 wal_path: self.wal_path.clone(),
@@ -563,6 +578,7 @@ impl Builder {
             log_encoding: CommonLogEncoding::newest(),
             max_seq_meta_encoding: MaxSeqMetaEncoding::newest(),
             table_units: RwLock::new(HashMap::new()),
+            stats,
         };
         rocks_impl.build_table_units()?;
 
@@ -722,11 +738,20 @@ impl WalManager for RocksImpl {
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         if let Some(table_unit) = self.table_unit(&location) {
-            let region_id = location.versioned_region_id.id;
+            let region_id = location.region_id;
             return table_unit
                 .delete_entries_up_to(region_id, sequence_num)
                 .await;
         }
+
+        Ok(())
+    }
+
+    async fn close_region(&self, region_id: RegionId) -> Result<()> {
+        debug!(
+            "Close region for RocksDB based WAL is noop operation, region_id:{}",
+            region_id
+        );
 
         Ok(())
     }
@@ -768,7 +793,7 @@ impl WalManager for RocksImpl {
         let read_opts = ReadOptions::default();
         let iter = DBIterator::new(self.db.clone(), read_opts);
 
-        let region_id = req.versioned_region_id.id;
+        let region_id = req.region_id;
         let (min_log_key, max_log_key) = (
             CommonLogKey::new(region_id, TableId::MIN, SequenceNumber::MIN),
             CommonLogKey::new(region_id, TableId::MAX, SequenceNumber::MAX),
@@ -782,6 +807,14 @@ impl WalManager for RocksImpl {
             self.runtime.clone(),
             ctx.batch_size,
         ))
+    }
+
+    fn get_statistics(&self) -> Option<String> {
+        if let Some(stats) = &self.stats {
+            stats.to_string()
+        } else {
+            None
+        }
     }
 }
 

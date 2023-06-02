@@ -1,11 +1,15 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Namespace of wal on message queue
 
 use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 
 use common_types::SequenceNumber;
-use common_util::{define_result, runtime::Runtime};
+use common_util::{
+    define_result,
+    runtime::Runtime,
+    timed_task::{TaskHandle, TimedTask},
+};
 use log::{debug, error, info};
 use message_queue::{ConsumeIterator, MessageQueue};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -15,15 +19,13 @@ use crate::{
     kv_encoder::LogEncoding,
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
-        ReadContext, ReadRequest, ScanContext, ScanRequest, VersionedRegionId, WalLocation,
-        WriteContext,
+        ReadContext, ReadRequest, RegionId, ScanContext, ScanRequest, WalLocation, WriteContext,
     },
     message_queue_impl::{
         config::Config,
         encoding::MetaEncoding,
         region::{self, MessageQueueLogIterator, Region},
     },
-    table_kv_impl::timed_task::{TaskHandle, TimedTask},
 };
 
 #[derive(Debug, Snafu)]
@@ -150,17 +152,26 @@ impl<M: MessageQueue> Namespace<M> {
     pub fn open(
         namespace: String,
         message_queue: Arc<M>,
-        bg_runtime: Arc<Runtime>,
+        default_runtime: Arc<Runtime>,
         config: Config,
     ) -> Self {
         let inner = Arc::new(NamespaceInner::new(namespace, message_queue));
-        let cleaner_handle =
-            start_log_cleaner(bg_runtime.as_ref(), config.clean_period.0, inner.clone());
+        let cleaner_handle = start_log_cleaner(
+            default_runtime.as_ref(),
+            config.clean_period.0,
+            inner.clone(),
+        );
 
         Self {
             inner,
             cleaner_handle,
         }
+    }
+
+    pub async fn close_region(&self, region_id: RegionId) -> Result<()> {
+        let mut regions = self.inner.regions.write().await;
+        regions.remove(&region_id);
+        Ok(())
     }
 
     /// Close namespace
@@ -239,7 +250,7 @@ impl<M: MessageQueue> fmt::Debug for Namespace<M> {
 struct NamespaceInner<M: MessageQueue> {
     namespace: String,
     // TODO: should use some strategies(such as lru) to clean the invalid region.
-    regions: Arc<RwLock<HashMap<VersionedRegionId, RegionRef<M>>>>,
+    regions: Arc<RwLock<HashMap<RegionId, RegionRef<M>>>>,
     message_queue: Arc<M>,
     meta_encoding: MetaEncoding,
     log_encoding: LogEncoding,
@@ -265,14 +276,14 @@ impl<M: MessageQueue> NamespaceInner<M> {
     /// about above operations on an empty region.
     async fn get_or_open_region(
         &self,
-        versioned_region_id: VersionedRegionId,
+        region_id: RegionId,
     ) -> std::result::Result<RegionRef<M>, region::Error> {
         {
             let regions = self.regions.read().await;
-            if let Some(region) = regions.get(&versioned_region_id) {
+            if let Some(region) = regions.get(&region_id) {
                 debug!(
-                    "Region exists and return it, namespace:{}, versioned region id:{:?}",
-                    self.namespace, versioned_region_id
+                    "Region exists and return it, namespace:{}, region id:{:?}",
+                    self.namespace, region_id
                 );
                 return Ok(region.clone());
             }
@@ -280,27 +291,21 @@ impl<M: MessageQueue> NamespaceInner<M> {
 
         let mut regions = self.regions.write().await;
         // Multiple tables share one region, so double check here is needed.
-        if let Some(region) = regions.get(&versioned_region_id) {
+        if let Some(region) = regions.get(&region_id) {
             debug!(
-                "Region exists and return it, namespace:{}, versioned region id:{:?}",
-                self.namespace, versioned_region_id
+                "Region exists and return it, namespace:{}, region id:{:?}",
+                self.namespace, region_id
             );
             return Ok(region.clone());
         }
 
-        let region = Arc::new(
-            Region::open(
-                &self.namespace,
-                versioned_region_id.id,
-                self.message_queue.clone(),
-            )
-            .await?,
-        );
-        regions.insert(versioned_region_id, region.clone());
+        let region =
+            Arc::new(Region::open(&self.namespace, region_id, self.message_queue.clone()).await?);
+        regions.insert(region_id, region.clone());
 
         info!(
-            "Region open successfully, namespace:{}, versioned region id:{:?}",
-            self.namespace, versioned_region_id
+            "Region open successfully, namespace:{}, region id:{:?}",
+            self.namespace, region_id
         );
 
         Ok(region)
@@ -308,7 +313,7 @@ impl<M: MessageQueue> NamespaceInner<M> {
 
     pub async fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber> {
         let region = self
-            .get_or_open_region(location.versioned_region_id)
+            .get_or_open_region(location.region_id)
             .await
             .context(GetSequence {
                 namespace: self.namespace.clone(),
@@ -340,7 +345,7 @@ impl<M: MessageQueue> NamespaceInner<M> {
         );
 
         let region = self
-            .get_or_open_region(request.location.versioned_region_id)
+            .get_or_open_region(request.location.region_id)
             .await
             .context(ReadWithCause {
                 namespace: self.namespace.clone(),
@@ -375,7 +380,7 @@ impl<M: MessageQueue> NamespaceInner<M> {
         );
 
         let region = self
-            .get_or_open_region(request.versioned_region_id)
+            .get_or_open_region(request.region_id)
             .await
             .context(ScanWithCause {
                 namespace: self.namespace.clone(),
@@ -414,7 +419,7 @@ impl<M: MessageQueue> NamespaceInner<M> {
         );
 
         let region = self
-            .get_or_open_region(log_batch.location.versioned_region_id)
+            .get_or_open_region(log_batch.location.region_id)
             .await
             .context(Write {
                 namespace: self.namespace.clone(),
@@ -437,7 +442,7 @@ impl<M: MessageQueue> NamespaceInner<M> {
         debug!("Mark table logs delete in namespace, namespace:{}, location:{:?}, delete to sequence number:{}", self.namespace, location, sequence_num);
 
         let region = self
-            .get_or_open_region(location.versioned_region_id)
+            .get_or_open_region(location.region_id)
             .await
             .context(MarkDeleteTo {
                 namespace: self.namespace.clone(),

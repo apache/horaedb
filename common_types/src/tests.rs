@@ -13,7 +13,7 @@ use crate::{
         Row,
     },
     schema,
-    schema::{IndexInWriterSchema, Schema},
+    schema::{IndexInWriterSchema, Schema, TSID_COLUMN},
     string::StringBytes,
     time::Timestamp,
 };
@@ -143,6 +143,54 @@ pub fn build_schema() -> Schema {
 /// field5(uint32, default field4 + 2)
 pub fn build_default_value_schema() -> Schema {
     default_value_schema_builder().build().unwrap()
+}
+
+/// Build a schema for testing:
+/// (tsid(uint64), key2(timestamp), tag1(string), tag2(string), value(int8),
+/// field2(float))
+pub fn build_schema_for_cpu() -> Schema {
+    let builder = schema::Builder::new()
+        .auto_increment_column_id(true)
+        .add_key_column(
+            column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
+                .build()
+                .unwrap(),
+        )
+        .unwrap()
+        .add_key_column(
+            column_schema::Builder::new("time".to_string(), DatumKind::Timestamp)
+                .build()
+                .unwrap(),
+        )
+        .unwrap()
+        .add_normal_column(
+            column_schema::Builder::new("tag1".to_string(), DatumKind::String)
+                .is_tag(true)
+                .build()
+                .unwrap(),
+        )
+        .unwrap()
+        .add_normal_column(
+            column_schema::Builder::new("tag2".to_string(), DatumKind::String)
+                .is_tag(true)
+                .build()
+                .unwrap(),
+        )
+        .unwrap()
+        .add_normal_column(
+            column_schema::Builder::new("value".to_string(), DatumKind::Int8)
+                .build()
+                .unwrap(),
+        )
+        .unwrap()
+        .add_normal_column(
+            column_schema::Builder::new("field2".to_string(), DatumKind::Float)
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+
+    builder.build().unwrap()
 }
 
 pub fn build_projected_schema() -> ProjectedSchema {

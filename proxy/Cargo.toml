@@ -1,0 +1,56 @@
+[package]
+name = "proxy"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies]
+arrow = { workspace = true }
+arrow_ext = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+catalog = { workspace = true }
+ceresdbproto = { workspace = true }
+clru = { workspace = true }
+cluster = { workspace = true }
+common_types = { workspace = true }
+common_util = { workspace = true }
+datafusion = { workspace = true }
+df_operator = { workspace = true }
+futures = { workspace = true }
+http = "0.2"
+influxdb-line-protocol = "1.0"
+interpreters = { workspace = true }
+lazy_static = { workspace = true }
+log = { workspace = true }
+logger = { workspace = true }
+meta_client = { workspace = true }
+paste = { workspace = true }
+prom-remote-api = { workspace = true, features = ["warp"] }
+prometheus = { workspace = true }
+prost = { workspace = true }
+query_engine = { workspace = true }
+query_frontend = { workspace = true }
+router = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+spin = { workspace = true }
+sqlparser = { workspace = true }
+table_engine = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic = { workspace = true }
+warp = "0.3"
+zstd = { workspace = true }
+
+[dev-dependencies]
+json_pretty = "0.1.2"
+query_frontend = { workspace = true, features = ["test"] }
+system_catalog = { workspace = true }

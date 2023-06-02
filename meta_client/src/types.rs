@@ -1,6 +1,6 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use ceresdbproto::{cluster as cluster_pb, meta_service as meta_service_pb};
 pub use common_types::table::{ShardId, ShardVersion};
@@ -8,12 +8,12 @@ use common_types::{
     schema::{SchemaId, SchemaName},
     table::{TableId, TableName},
 };
-use common_util::config::ReadableDuration;
+use common_util::{config::ReadableDuration, error::BoxError};
 use serde::Deserialize;
-use snafu::OptionExt;
+use snafu::{OptionExt, ResultExt};
 use table_engine::partition::PartitionInfo;
 
-use crate::{Error, MissingShardInfo, MissingTableInfo, Result};
+use crate::{Convert, Error, MissingShardInfo, MissingTableInfo, Result};
 pub type ClusterNodesRef = Arc<Vec<NodeShard>>;
 
 #[derive(Debug, Clone)]
@@ -39,7 +39,7 @@ pub struct PartitionTableInfo {
     pub partition_info: PartitionInfo,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct CreateTableRequest {
     pub schema_name: String,
     pub name: String,
@@ -48,6 +48,20 @@ pub struct CreateTableRequest {
     pub create_if_not_exist: bool,
     pub options: HashMap<String, String>,
     pub partition_table_info: Option<PartitionTableInfo>,
+}
+
+impl fmt::Debug for CreateTableRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // ignore encoded_schema
+        f.debug_struct("CreateTableRequest")
+            .field("schema_name", &self.schema_name)
+            .field("name", &self.name)
+            .field("engine", &self.engine)
+            .field("create_if_not_exist", &self.create_if_not_exist)
+            .field("options", &self.options)
+            .field("partition_table_info", &self.partition_table_info)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -87,16 +101,35 @@ pub struct TableInfo {
     pub name: String,
     pub schema_id: SchemaId,
     pub schema_name: String,
+    pub partition_info: Option<PartitionInfo>,
 }
 
-impl From<meta_service_pb::TableInfo> for TableInfo {
-    fn from(pb_table_info: meta_service_pb::TableInfo) -> Self {
-        TableInfo {
+impl TableInfo {
+    pub fn is_partition_table(&self) -> bool {
+        self.partition_info.is_some()
+    }
+}
+
+impl TryFrom<meta_service_pb::TableInfo> for TableInfo {
+    type Error = Error;
+
+    fn try_from(pb_table_info: meta_service_pb::TableInfo) -> Result<Self> {
+        let partition_info = pb_table_info
+            .partition_info
+            .map(|v| {
+                PartitionInfo::try_from(v).box_err().context(Convert {
+                    msg: "Failed to parse partition",
+                })
+            })
+            .transpose()?;
+
+        Ok(TableInfo {
             id: pb_table_info.id,
             name: pb_table_info.name,
             schema_id: pb_table_info.schema_id,
             schema_name: pb_table_info.schema_name,
-        }
+            partition_info,
+        })
     }
 }
 
@@ -205,8 +238,8 @@ impl From<ShardInfo> for meta_service_pb::ShardInfo {
     }
 }
 
-impl From<meta_service_pb::ShardInfo> for ShardInfo {
-    fn from(pb_shard_info: meta_service_pb::ShardInfo) -> Self {
+impl From<&meta_service_pb::ShardInfo> for ShardInfo {
+    fn from(pb_shard_info: &meta_service_pb::ShardInfo) -> Self {
         ShardInfo {
             id: pb_shard_info.id,
             role: pb_shard_info.role().into(),
@@ -270,12 +303,12 @@ impl TryFrom<meta_service_pb::TablesOfShard> for TablesOfShard {
                 msg: "in meta_service_pb::TablesOfShard",
             })?;
         Ok(Self {
-            shard_info: ShardInfo::from(shard_info),
+            shard_info: ShardInfo::from(&shard_info),
             tables: pb_tables_of_shard
                 .tables
                 .into_iter()
-                .map(Into::into)
-                .collect(),
+                .map(TryInto::<TableInfo>::try_into)
+                .collect::<Result<Vec<_>>>()?,
         })
     }
 }
@@ -340,8 +373,8 @@ impl TryFrom<meta_service_pb::CreateTableResponse> for CreateTableResponse {
         })?;
 
         Ok(Self {
-            created_table: TableInfo::from(pb_table_info),
-            shard_info: ShardInfo::from(pb_shard_info),
+            created_table: TableInfo::try_from(pb_table_info)?,
+            shard_info: ShardInfo::from(&pb_shard_info),
         })
     }
 }
@@ -363,11 +396,13 @@ impl From<DropTableRequest> for meta_service_pb::DropTableRequest {
     }
 }
 
-impl From<meta_service_pb::DropTableResponse> for DropTableResponse {
-    fn from(pb_resp: meta_service_pb::DropTableResponse) -> Self {
-        Self {
-            dropped_table: pb_resp.dropped_table.map(TableInfo::from),
-        }
+impl TryFrom<meta_service_pb::DropTableResponse> for DropTableResponse {
+    type Error = Error;
+
+    fn try_from(pb_resp: meta_service_pb::DropTableResponse) -> Result<Self> {
+        Ok(Self {
+            dropped_table: pb_resp.dropped_table.map(TableInfo::try_from).transpose()?,
+        })
     }
 }
 
@@ -385,7 +420,7 @@ pub struct NodeShard {
 
 #[derive(Debug, Clone)]
 pub struct RouteEntry {
-    pub table: TableInfo,
+    pub table_info: TableInfo,
     pub node_shards: Vec<NodeShard>,
 }
 
@@ -422,7 +457,7 @@ impl TryFrom<meta_service_pb::NodeShard> for NodeShard {
         })?;
         Ok(NodeShard {
             endpoint: pb.endpoint,
-            shard_info: ShardInfo::from(pb_shard_info),
+            shard_info: ShardInfo::from(&pb_shard_info),
         })
     }
 }
@@ -441,7 +476,7 @@ impl TryFrom<meta_service_pb::RouteEntry> for RouteEntry {
             msg: "table info is missing in route entry",
         })?;
         Ok(RouteEntry {
-            table: TableInfo::from(table_info),
+            table_info: TableInfo::try_from(table_info)?,
             node_shards,
         })
     }

@@ -1,79 +1,81 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Metrics of table.
 
-use std::time::Duration;
+use std::{
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use lazy_static::lazy_static;
 use prometheus::{
-    exponential_buckets, local::LocalHistogram, register_histogram_vec, register_int_counter_vec,
-    Histogram, HistogramVec, IntCounter, IntCounterVec,
+    exponential_buckets,
+    local::{LocalHistogram, LocalHistogramTimer},
+    register_histogram, register_histogram_vec, register_int_counter, Histogram, HistogramTimer,
+    HistogramVec, IntCounter,
 };
+use table_engine::table::TableStats;
 
 const KB: f64 = 1024.0;
 
 lazy_static! {
     // Counters:
-    static ref TABLE_WRITE_REQUEST_COUNTER: IntCounterVec = register_int_counter_vec!(
+    static ref TABLE_WRITE_REQUEST_COUNTER: IntCounter = register_int_counter!(
         "table_write_request_counter",
-        "Write request counter of table",
-        &["table"]
+        "Write request counter of table"
     )
     .unwrap();
 
-    static ref TABLE_WRITE_ROWS_COUNTER: IntCounterVec = register_int_counter_vec!(
-        "table_write_rows_counter",
-        "Number of rows wrote to table",
-        &["table"]
+    static ref TABLE_WRITE_BATCH_HISTOGRAM: Histogram = register_histogram!(
+        "table_write_batch_size",
+        "Histogram of write batch size",
+        vec![10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0]
     )
     .unwrap();
 
-    static ref TABLE_READ_REQUEST_COUNTER: IntCounterVec = register_int_counter_vec!(
+    static ref TABLE_READ_REQUEST_COUNTER: IntCounter = register_int_counter!(
         "table_read_request_counter",
-        "Read request counter of table",
-        &["table"]
+        "Read request counter of table"
     )
     .unwrap();
     // End of counters.
 
     // Histograms:
     // Buckets: 0, 0.002, .., 0.002 * 4^9
-    static ref TABLE_FLUSH_DURATION_HISTOGRAM: HistogramVec = register_histogram_vec!(
+    static ref TABLE_FLUSH_DURATION_HISTOGRAM: Histogram = register_histogram!(
         "table_flush_duration",
         "Histogram for flush duration of the table in seconds",
-        &["table"],
         exponential_buckets(0.002, 4.0, 10).unwrap()
     ).unwrap();
 
     // Buckets: 0, 1, .., 2^7
-    static ref TABLE_FLUSH_SST_NUM_HISTOGRAM: HistogramVec = register_histogram_vec!(
+    static ref TABLE_FLUSH_SST_NUM_HISTOGRAM: Histogram = register_histogram!(
         "table_flush_sst_num",
         "Histogram for number of ssts flushed by the table",
-        &["table"],
         exponential_buckets(1.0, 2.0, 8).unwrap()
     ).unwrap();
 
     // Buckets: 0, 1, ..., 4^11 (4GB)
-    static ref TABLE_FLUSH_SST_SIZE_HISTOGRAM: HistogramVec = register_histogram_vec!(
+    static ref TABLE_FLUSH_SST_SIZE_HISTOGRAM: Histogram = register_histogram!(
         "table_flush_sst_size",
         "Histogram for size of ssts flushed by the table in KB",
-        &["table"],
         exponential_buckets(1.0, 4.0, 12).unwrap()
     ).unwrap();
 
     // Buckets: 0, 0.02, .., 0.02 * 4^9
-    static ref TABLE_COMPACT_DURATION_HISTOGRAM: HistogramVec = register_histogram_vec!(
+    static ref TABLE_COMPACTION_DURATION_HISTOGRAM: Histogram = register_histogram!(
         "table_compaction_duration",
         "Histogram for compaction duration of the table in seconds",
-        &["table"],
         exponential_buckets(0.02, 4.0, 10).unwrap()
     ).unwrap();
 
     // Buckets: 0, 1, .., 2^7
-    static ref TABLE_COMPACTION_SST_NUM_HISTOGRAM: HistogramVec = register_histogram_vec!(
+    static ref TABLE_COMPACTION_SST_NUM_HISTOGRAM: Histogram = register_histogram!(
         "table_compaction_sst_num",
         "Histogram for number of ssts compacted by the table",
-        &["table"],
         exponential_buckets(1.0, 2.0, 8).unwrap()
     ).unwrap();
 
@@ -81,7 +83,7 @@ lazy_static! {
     static ref TABLE_COMPACTION_SST_SIZE_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "table_compaction_sst_size",
         "Histogram for size of ssts compacted by the table in KB",
-        &["table", "type"],
+        &["type"],
         exponential_buckets(1.0, 4.0, 12).unwrap()
     ).unwrap();
 
@@ -89,36 +91,36 @@ lazy_static! {
     static ref TABLE_COMPACTION_SST_ROW_NUM_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "table_compaction_sst_row_num",
         "Histogram for row num of ssts compacted by the table",
-        &["table", "type"],
+        &["type"],
         exponential_buckets(1.0, 10.0, 13).unwrap()
     ).unwrap();
 
     // Buckets: 0, 0.01, .., 0.01 * 2^12
-    static ref TABLE_WRITE_STALL_DURATION_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "table_write_stall_duration",
+    static ref TABLE_WRITE_DURATION_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        "table_write_duration",
         "Histogram for write stall duration of the table in seconds",
-        &["table"],
+        &["type"],
         exponential_buckets(0.01, 2.0, 13).unwrap()
     ).unwrap();
 
-    // Buckets: 0, 0.01, .., 0.01 * 2^12
-    pub static ref PARTITION_TABLE_WRITE_DURATION_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "partition_table_write_duration",
-        "Histogram for write duration of the partition table in seconds",
-        &["type", "table"],
-        exponential_buckets(0.01, 2.0, 13).unwrap()
-        )
-    .unwrap();
-
-    // Buckets: 0, 0.01, .., 0.01 * 2^12
-    pub static ref PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "partition_table_partitioned_read_duration",
-        "Histogram for partitioned read duration of the partition table in seconds",
-        &["type", "table"],
-        exponential_buckets(0.01, 2.0, 13).unwrap()
-        )
-    .unwrap();
     // End of histograms.
+}
+
+#[derive(Default)]
+struct AtomicTableStats {
+    num_write: AtomicU64,
+    num_read: AtomicU64,
+    num_flush: AtomicU64,
+}
+
+impl From<&AtomicTableStats> for TableStats {
+    fn from(stats: &AtomicTableStats) -> Self {
+        Self {
+            num_write: stats.num_write.load(Ordering::Relaxed),
+            num_read: stats.num_read.load(Ordering::Relaxed),
+            num_flush: stats.num_flush.load(Ordering::Relaxed),
+        }
+    }
 }
 
 /// Table metrics.
@@ -126,128 +128,201 @@ lazy_static! {
 /// Now the registered labels won't remove from the metrics vec to avoid panic
 /// on concurrent removal.
 pub struct Metrics {
-    // Counters:
-    pub write_request_counter: IntCounter,
-    write_rows_counter: IntCounter,
-    pub read_request_counter: IntCounter,
-    // End of counters.
+    // Stats of a single table.
+    stats: Arc<AtomicTableStats>,
 
-    // Histograms:
-    pub flush_duration_histogram: Histogram,
-    flush_sst_num_histogram: Histogram,
-    flush_sst_size_histogram: Histogram,
-    flush_memtables_num_histogram: Histogram,
-
-    pub compaction_duration_histogram: Histogram,
-    compaction_sst_num_histogram: Histogram,
     compaction_input_sst_size_histogram: Histogram,
     compaction_output_sst_size_histogram: Histogram,
     compaction_input_sst_row_num_histogram: Histogram,
     compaction_output_sst_row_num_histogram: Histogram,
 
-    // Write stall metrics.
-    write_stall_duration_histogram: Histogram,
-    // End of histograms.
+    table_write_stall_duration: Histogram,
+    table_write_encode_duration: Histogram,
+    table_write_wal_duration: Histogram,
+    table_write_memtable_duration: Histogram,
+    table_write_preprocess_duration: Histogram,
+    table_write_space_flush_wait_duration: Histogram,
+    table_write_instance_flush_wait_duration: Histogram,
+    table_write_flush_wait_duration: Histogram,
+    table_write_execute_duration: Histogram,
+    table_write_total_duration: Histogram,
+}
+
+impl Default for Metrics {
+    fn default() -> Self {
+        Self {
+            stats: Arc::new(AtomicTableStats::default()),
+            compaction_input_sst_size_histogram: TABLE_COMPACTION_SST_SIZE_HISTOGRAM
+                .with_label_values(&["input"]),
+            compaction_output_sst_size_histogram: TABLE_COMPACTION_SST_SIZE_HISTOGRAM
+                .with_label_values(&["output"]),
+            compaction_input_sst_row_num_histogram: TABLE_COMPACTION_SST_ROW_NUM_HISTOGRAM
+                .with_label_values(&["input"]),
+            compaction_output_sst_row_num_histogram: TABLE_COMPACTION_SST_ROW_NUM_HISTOGRAM
+                .with_label_values(&["output"]),
+
+            table_write_stall_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["stall"]),
+            table_write_encode_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["encode"]),
+            table_write_wal_duration: TABLE_WRITE_DURATION_HISTOGRAM.with_label_values(&["wal"]),
+            table_write_memtable_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["memtable"]),
+            table_write_preprocess_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["preprocess"]),
+            table_write_space_flush_wait_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["wait_space_flush"]),
+            table_write_instance_flush_wait_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["wait_instance_flush"]),
+            table_write_flush_wait_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["wait_flush"]),
+            table_write_execute_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["execute"]),
+            table_write_total_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["total"]),
+        }
+    }
 }
 
 impl Metrics {
-    pub fn new(table_name: &str) -> Self {
-        Self {
-            write_request_counter: TABLE_WRITE_REQUEST_COUNTER.with_label_values(&[table_name]),
-            write_rows_counter: TABLE_WRITE_ROWS_COUNTER.with_label_values(&[table_name]),
-            read_request_counter: TABLE_READ_REQUEST_COUNTER.with_label_values(&[table_name]),
-
-            flush_duration_histogram: TABLE_FLUSH_DURATION_HISTOGRAM
-                .with_label_values(&[table_name]),
-            flush_sst_num_histogram: TABLE_FLUSH_SST_NUM_HISTOGRAM.with_label_values(&[table_name]),
-            flush_sst_size_histogram: TABLE_FLUSH_SST_SIZE_HISTOGRAM
-                .with_label_values(&[table_name]),
-            flush_memtables_num_histogram: TABLE_FLUSH_SST_NUM_HISTOGRAM
-                .with_label_values(&[table_name]),
-
-            compaction_duration_histogram: TABLE_COMPACT_DURATION_HISTOGRAM
-                .with_label_values(&[table_name]),
-            compaction_sst_num_histogram: TABLE_COMPACTION_SST_NUM_HISTOGRAM
-                .with_label_values(&[table_name]),
-            compaction_input_sst_size_histogram: TABLE_COMPACTION_SST_SIZE_HISTOGRAM
-                .with_label_values(&[table_name, "input"]),
-            compaction_output_sst_size_histogram: TABLE_COMPACTION_SST_SIZE_HISTOGRAM
-                .with_label_values(&[table_name, "output"]),
-            compaction_input_sst_row_num_histogram: TABLE_COMPACTION_SST_ROW_NUM_HISTOGRAM
-                .with_label_values(&[table_name, "input"]),
-            compaction_output_sst_row_num_histogram: TABLE_COMPACTION_SST_ROW_NUM_HISTOGRAM
-                .with_label_values(&[table_name, "output"]),
-
-            write_stall_duration_histogram: TABLE_WRITE_STALL_DURATION_HISTOGRAM
-                .with_label_values(&[table_name]),
-        }
+    pub fn table_stats(&self) -> TableStats {
+        TableStats::from(&*self.stats)
     }
 
     #[inline]
     pub fn on_write_request_begin(&self) {
-        self.write_request_counter.inc();
+        self.stats.num_write.fetch_add(1, Ordering::Relaxed);
+        TABLE_WRITE_REQUEST_COUNTER.inc();
     }
 
     #[inline]
     pub fn on_write_request_done(&self, num_rows: usize) {
-        self.write_rows_counter.inc_by(num_rows as u64);
+        TABLE_WRITE_BATCH_HISTOGRAM.observe(num_rows as f64);
     }
 
     #[inline]
     pub fn on_read_request_begin(&self) {
-        self.read_request_counter.inc();
+        self.stats.num_read.fetch_add(1, Ordering::Relaxed);
+        TABLE_READ_REQUEST_COUNTER.inc();
     }
 
     #[inline]
     pub fn on_write_stall(&self, duration: Duration) {
-        self.write_stall_duration_histogram
+        self.table_write_stall_duration
             .observe(duration.as_secs_f64());
     }
 
-    pub fn local_flush_metrics(&self) -> LocalFlushMetrics {
-        LocalFlushMetrics {
-            flush_duration_histogram: self.flush_duration_histogram.local(),
-            flush_sst_num_histogram: self.flush_sst_num_histogram.local(),
-            flush_sst_size_histogram: self.flush_sst_size_histogram.local(),
-            flush_memtables_num_histogram: self.flush_memtables_num_histogram.local(),
-        }
+    #[inline]
+    pub fn start_table_total_timer(&self) -> HistogramTimer {
+        self.table_write_total_duration.start_timer()
     }
 
+    #[inline]
+    pub fn start_table_write_execute_timer(&self) -> HistogramTimer {
+        self.table_write_execute_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_encode_timer(&self) -> HistogramTimer {
+        self.table_write_encode_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_memtable_timer(&self) -> HistogramTimer {
+        self.table_write_memtable_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_wal_timer(&self) -> HistogramTimer {
+        self.table_write_wal_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_preprocess_timer(&self) -> HistogramTimer {
+        self.table_write_preprocess_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_space_flush_wait_timer(&self) -> HistogramTimer {
+        self.table_write_space_flush_wait_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_instance_flush_wait_timer(&self) -> HistogramTimer {
+        self.table_write_instance_flush_wait_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_flush_wait_timer(&self) -> HistogramTimer {
+        self.table_write_flush_wait_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_compaction_timer(&self) -> HistogramTimer {
+        TABLE_COMPACTION_DURATION_HISTOGRAM.start_timer()
+    }
+
+    #[inline]
+    pub fn compaction_observe_duration(&self, duration: Duration) {
+        TABLE_COMPACTION_DURATION_HISTOGRAM.observe(duration.as_secs_f64());
+    }
+
+    #[inline]
     pub fn compaction_observe_sst_num(&self, sst_num: usize) {
-        self.compaction_sst_num_histogram.observe(sst_num as f64);
+        TABLE_COMPACTION_SST_NUM_HISTOGRAM.observe(sst_num as f64);
     }
 
+    #[inline]
     pub fn compaction_observe_input_sst_size(&self, sst_size: u64) {
         // Convert bytes to KB.
         self.compaction_input_sst_size_histogram
             .observe(sst_size as f64 / KB);
     }
 
+    #[inline]
     pub fn compaction_observe_output_sst_size(&self, sst_size: u64) {
         // Convert bytes to KB.
         self.compaction_output_sst_size_histogram
             .observe(sst_size as f64 / KB);
     }
 
+    #[inline]
     pub fn compaction_observe_input_sst_row_num(&self, sst_row_num: u64) {
         self.compaction_input_sst_row_num_histogram
             .observe(sst_row_num as f64);
     }
 
+    #[inline]
     pub fn compaction_observe_output_sst_row_num(&self, sst_row_num: u64) {
         self.compaction_output_sst_row_num_histogram
             .observe(sst_row_num as f64);
     }
+
+    #[inline]
+    pub fn local_flush_metrics(&self) -> LocalFlushMetrics {
+        LocalFlushMetrics {
+            stats: self.stats.clone(),
+            flush_duration_histogram: TABLE_FLUSH_DURATION_HISTOGRAM.local(),
+            flush_sst_num_histogram: TABLE_FLUSH_SST_NUM_HISTOGRAM.local(),
+            flush_sst_size_histogram: TABLE_FLUSH_SST_SIZE_HISTOGRAM.local(),
+        }
+    }
 }
 
 pub struct LocalFlushMetrics {
-    pub flush_duration_histogram: LocalHistogram,
+    stats: Arc<AtomicTableStats>,
+
+    flush_duration_histogram: LocalHistogram,
     flush_sst_num_histogram: LocalHistogram,
     flush_sst_size_histogram: LocalHistogram,
-    flush_memtables_num_histogram: LocalHistogram,
 }
 
 impl LocalFlushMetrics {
+    pub fn start_flush_timer(&self) -> LocalHistogramTimer {
+        self.stats.num_flush.fetch_add(1, Ordering::Relaxed);
+        self.flush_duration_histogram.start_timer()
+    }
+
     pub fn observe_sst_num(&self, sst_num: usize) {
         self.flush_sst_num_histogram.observe(sst_num as f64);
     }
@@ -255,9 +330,5 @@ impl LocalFlushMetrics {
     pub fn observe_sst_size(&self, sst_size: u64) {
         // Convert bytes to KB.
         self.flush_sst_size_histogram.observe(sst_size as f64 / KB);
-    }
-
-    pub fn observe_memtables_num(&self, num: usize) {
-        self.flush_memtables_num_histogram.observe(num as f64);
     }
 }

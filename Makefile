@@ -2,6 +2,8 @@ SHELL = /bin/bash
 
 DIR=$(shell pwd)
 
+.DEFAULT_GOAL := integration-test
+
 init:
 	echo "init"
 	echo "Git branch: $GITBRANCH"
@@ -27,10 +29,14 @@ build-arm64:
 	ls -alh
 	cd $(DIR); cargo build --release --no-default-features
 
+build-with-console:
+	ls -alh
+	cd $(DIR); RUSTFLAGS="--cfg tokio_unstable" cargo build --release
+
 test:
 	cd $(DIR); cargo test --workspace -- --test-threads=4
 
-test-black:
+integration-test:
 	cd $(DIR)/integration_tests; make run
 
 # grcov needs build first, then run test
@@ -56,6 +62,9 @@ check-cargo-toml:
 
 check-license:
 	cd $(DIR); sh scripts/check-license.sh
+
+udeps:
+	cd $(DIR); cargo udeps --all-targets --all-features --workspace
 
 clippy:
 	cd $(DIR); cargo clippy --all-targets --all-features --workspace -- -D warnings
@@ -84,3 +93,41 @@ miri:
 ensure-disk-quota:
 	# ensure the target directory not to exceed 40GB
 	python3 ./scripts/clean-large-folder.py ./target 42949672960
+
+tsbs: build
+	cd $(DIR); sh scripts/run-tsbs.sh
+
+# install dev dependencies
+ifeq ($(shell uname), Darwin)
+dev-setup:
+	echo "Detecting macOS system..."
+	brew --version >/dev/null 2>&1 || { echo "Error: Homebrew is not installed. Exiting..."; exit 1; }
+	echo "Installing dependencies using Homebrew..."
+	HOMEBREW_NO_AUTO_UPDATE=1 brew install git openssl protobuf cmake pre-commit
+	cargo install cargo-udeps
+	cargo install cargo-sort
+else ifeq ($(shell uname), Linux)
+dev-setup:
+	echo "Detecting Linux system..."
+	os_id=$(shell awk -F= '/^ID=/{print $$2}' /etc/os-release) && \
+	if [ "$$os_id" = "ubuntu" ]; then \
+		echo "Detected Ubuntu system..."; \
+		echo "Installing dependencies using apt-get..."; \
+		sudo apt-get update; \
+		sudo apt install -y git gcc g++ libssl-dev pkg-config protobuf-compiler cmake pre-commit; \
+		cargo install cargo-udeps; \
+		cargo install cargo-sort; \
+	else \
+		echo "Error: Unsupported Linux distribution. Exiting..."; \
+		exit 1; \
+	fi
+else
+dev-setup:
+	echo "Error: Unsupported OS. Exiting..."
+	exit 1
+endif
+
+fix:
+	cargo fmt
+	cargo sort --workspace
+	cargo clippy --fix --all-targets --all-features --workspace -- -D warnings

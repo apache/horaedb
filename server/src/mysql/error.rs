@@ -1,5 +1,6 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+use common_util::error::GenericError;
 use snafu::{Backtrace, Snafu};
 
 #[derive(Debug, Snafu)]
@@ -11,6 +12,9 @@ pub enum Error {
 
     #[snafu(display("Missing instance to build service.\nBacktrace:\n{}", backtrace))]
     MissingInstance { backtrace: Backtrace },
+
+    #[snafu(display("Missing router to build service.\nBacktrace:\n{}", backtrace))]
+    MissingRouter { backtrace: Backtrace },
 
     #[snafu(display(
         "Failed to parse ip addr, ip:{}, err:{}.\nBacktrace:\n{}",
@@ -25,13 +29,10 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to create request context, err:{}", source))]
-    CreateContext { source: crate::context::Error },
+    CreateContext { source: proxy::context::Error },
 
     #[snafu(display("Failed to handle sql:{}, err:{}", sql, source))]
-    HandleSql {
-        sql: String,
-        source: crate::handlers::error::Error,
-    },
+    HandleSql { sql: String, source: GenericError },
 
     #[snafu(display("Unexpected error, err:{}", source))]
     Unexpected { source: std::io::Error },

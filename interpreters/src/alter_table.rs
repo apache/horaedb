@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Interpreter for insert statement
 
@@ -8,8 +8,8 @@ use common_types::{
     schema::{self, Schema},
 };
 use common_util::define_result;
+use query_frontend::plan::{AlterTableOperation, AlterTablePlan};
 use snafu::{ensure, ResultExt, Snafu};
-use sql::plan::{AlterTableOperation, AlterTablePlan};
 use table_engine::table::AlterSchemaRequest;
 
 use crate::interpreter::{self, AlterTable, Interpreter, InterpreterPtr, Output};

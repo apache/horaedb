@@ -2,7 +2,7 @@
 
 //! Version edits
 
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 
 use ceresdbproto::manifest as manifest_pb;
 use common_types::{time::TimeRange, SequenceNumber};
@@ -10,7 +10,10 @@ use common_util::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
-    sst::{file::FileMeta, manager::FileId},
+    sst::{
+        file::{FileMeta, Level},
+        manager::FileId,
+    },
     table::data::MemTableId,
     table_options::StorageFormat,
 };
@@ -43,7 +46,7 @@ define_result!(Error);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddFile {
     /// The level of the file intended to add.
-    pub level: u16,
+    pub level: Level,
     /// Meta data of the file to add.
     pub file: FileMeta,
 }
@@ -52,7 +55,7 @@ impl From<AddFile> for manifest_pb::AddFileMeta {
     /// Convert into protobuf struct
     fn from(v: AddFile) -> manifest_pb::AddFileMeta {
         manifest_pb::AddFileMeta {
-            level: v.level as u32,
+            level: v.level.as_u32(),
             file_id: v.file.id,
             time_range: Some(v.file.time_range.into()),
             max_seq: v.file.max_seq,
@@ -74,10 +77,7 @@ impl TryFrom<manifest_pb::AddFileMeta> for AddFile {
         };
 
         let target = Self {
-            level: src
-                .level
-                .try_into()
-                .context(InvalidLevel { level: src.level })?,
+            level: (src.level as u16).into(),
             file: FileMeta {
                 id: src.file_id,
                 size: src.size,
@@ -96,7 +96,7 @@ impl TryFrom<manifest_pb::AddFileMeta> for AddFile {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteFile {
     /// The level of the file intended to delete.
-    pub level: u16,
+    pub level: Level,
     /// Id of the file to delete.
     pub file_id: FileId,
 }
@@ -104,7 +104,7 @@ pub struct DeleteFile {
 impl From<DeleteFile> for manifest_pb::DeleteFileMeta {
     fn from(v: DeleteFile) -> Self {
         manifest_pb::DeleteFileMeta {
-            level: v.level as u32,
+            level: v.level.as_u32(),
             file_id: v.file_id,
         }
     }
@@ -114,10 +114,7 @@ impl TryFrom<manifest_pb::DeleteFileMeta> for DeleteFile {
     type Error = Error;
 
     fn try_from(src: manifest_pb::DeleteFileMeta) -> Result<Self> {
-        let level = src
-            .level
-            .try_into()
-            .context(InvalidLevel { level: src.level })?;
+        let level = (src.level as u16).into();
 
         Ok(Self {
             level,
@@ -173,7 +170,7 @@ pub mod tests {
 
         pub fn build(&self) -> AddFile {
             AddFile {
-                level: 0,
+                level: Level::MIN,
                 file: FileMeta {
                     id: self.file_id,
                     size: 0,

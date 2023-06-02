@@ -3,81 +3,100 @@
 //! Partitioned locks
 
 use std::{
-    collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
-    num::NonZeroUsize,
-    sync::Arc,
+    sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-use tokio::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
-
+use common_types::hash::build_fixed_seed_ahasher;
 /// Simple partitioned `RwLock`
 pub struct PartitionedRwLock<T> {
-    partitions: Vec<Arc<RwLock<T>>>,
+    partitions: Vec<RwLock<T>>,
+    partition_mask: usize,
 }
 
 impl<T> PartitionedRwLock<T> {
-    // TODO: we should get the nearest 2^n of `partition_num` as real
-    // `partition_num`. By doing so, we can use "&" to get partition rather than
-    // "%".
-    pub fn new(t: T, partition_num: NonZeroUsize) -> Self {
-        let partition_num = partition_num.get();
-        let locked_content = Arc::new(RwLock::new(t));
+    pub fn new<F>(init_fn: F, partition_bit: usize) -> Self
+    where
+        F: Fn() -> T,
+    {
+        let partition_num = 1 << partition_bit;
+        let partitions = (1..partition_num)
+            .map(|_| RwLock::new(init_fn()))
+            .collect::<Vec<RwLock<T>>>();
         Self {
-            partitions: vec![locked_content; partition_num],
+            partitions,
+            partition_mask: partition_num - 1,
         }
     }
 
-    pub async fn read<K: Eq + Hash>(&self, key: &K) -> RwLockReadGuard<'_, T> {
+    pub fn read<K: Eq + Hash>(&self, key: &K) -> RwLockReadGuard<'_, T> {
         let rwlock = self.get_partition(key);
 
-        rwlock.read().await
+        rwlock.read().unwrap()
     }
 
-    pub async fn write<K: Eq + Hash>(&self, key: &K) -> RwLockWriteGuard<'_, T> {
+    pub fn write<K: Eq + Hash>(&self, key: &K) -> RwLockWriteGuard<'_, T> {
         let rwlock = self.get_partition(key);
 
-        rwlock.write().await
+        rwlock.write().unwrap()
     }
 
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &RwLock<T> {
-        let mut hasher = DefaultHasher::new();
-        key.hash(&mut hasher);
-        let partition_num = self.partitions.len();
+        let mut hasher = build_fixed_seed_ahasher();
 
-        &self.partitions[(hasher.finish() as usize) % partition_num]
+        key.hash(&mut hasher);
+
+        &self.partitions[(hasher.finish() as usize) & self.partition_mask]
+    }
+
+    #[cfg(test)]
+    fn get_partition_by_index(&self, index: usize) -> &RwLock<T> {
+        &self.partitions[index]
     }
 }
 
 /// Simple partitioned `Mutex`
+#[derive(Debug)]
 pub struct PartitionedMutex<T> {
-    partitions: Vec<Arc<Mutex<T>>>,
+    partitions: Vec<Mutex<T>>,
+    partition_mask: usize,
 }
 
 impl<T> PartitionedMutex<T> {
-    // TODO: we should get the nearest 2^n of `partition_num` as real
-    // `partition_num`. By doing so, we can use "&" to get partition rather than
-    // "%".
-    pub fn new(t: T, partition_num: NonZeroUsize) -> Self {
-        let partition_num = partition_num.get();
-        let locked_content = Arc::new(Mutex::new(t));
+    pub fn new<F>(init_fn: F, partition_bit: usize) -> Self
+    where
+        F: Fn() -> T,
+    {
+        let partition_num = 1 << partition_bit;
+        let partitions = (0..partition_num)
+            .map(|_| Mutex::new(init_fn()))
+            .collect::<Vec<Mutex<T>>>();
         Self {
-            partitions: vec![locked_content; partition_num],
+            partitions,
+            partition_mask: partition_num - 1,
         }
     }
 
-    pub async fn lock<K: Eq + Hash>(&self, key: &K) -> MutexGuard<'_, T> {
+    pub fn lock<K: Eq + Hash>(&self, key: &K) -> MutexGuard<'_, T> {
         let mutex = self.get_partition(key);
 
-        mutex.lock().await
+        mutex.lock().unwrap()
     }
 
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &Mutex<T> {
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = build_fixed_seed_ahasher();
         key.hash(&mut hasher);
-        let partition_num = self.partitions.len();
+        &self.partitions[(hasher.finish() as usize) & self.partition_mask]
+    }
 
-        &self.partitions[(hasher.finish() as usize) % partition_num]
+    #[cfg(test)]
+    fn get_partition_by_index(&self, index: usize) -> &Mutex<T> {
+        &self.partitions[index]
+    }
+
+    /// This function should be marked with `#[cfg(test)]`, but there is [an issue](https://github.com/rust-lang/cargo/issues/8379) in cargo, so public this function now.
+    pub fn get_all_partition(&self) -> &Vec<Mutex<T>> {
+        &self.partitions
     }
 }
 
@@ -87,38 +106,66 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_partitioned_rwlock() {
-        let test_locked_map =
-            PartitionedRwLock::new(HashMap::new(), NonZeroUsize::new(10).unwrap());
+    #[test]
+    fn test_partitioned_rwlock() {
+        let init_hmap = HashMap::new;
+        let test_locked_map = PartitionedRwLock::new(init_hmap, 4);
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
 
         {
-            let mut map = test_locked_map.write(&test_key).await;
+            let mut map = test_locked_map.write(&test_key);
             map.insert(test_key.clone(), test_value.clone());
         }
 
         {
-            let map = test_locked_map.read(&test_key).await;
+            let map = test_locked_map.read(&test_key);
             assert_eq!(map.get(&test_key).unwrap(), &test_value);
         }
     }
 
-    #[tokio::test]
-    async fn test_partitioned_mutex() {
-        let test_locked_map = PartitionedMutex::new(HashMap::new(), NonZeroUsize::new(10).unwrap());
+    #[test]
+    fn test_partitioned_mutex() {
+        let init_hmap = HashMap::new;
+        let test_locked_map = PartitionedMutex::new(init_hmap, 4);
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
 
         {
-            let mut map = test_locked_map.lock(&test_key).await;
+            let mut map = test_locked_map.lock(&test_key);
             map.insert(test_key.clone(), test_value.clone());
         }
 
         {
-            let map = test_locked_map.lock(&test_key).await;
+            let map = test_locked_map.lock(&test_key);
             assert_eq!(map.get(&test_key).unwrap(), &test_value);
         }
+    }
+
+    #[test]
+    fn test_partitioned_mutex_vis_different_partition() {
+        let init_vec = Vec::<i32>::new;
+        let test_locked_map = PartitionedMutex::new(init_vec, 4);
+        let mutex_first = test_locked_map.get_partition_by_index(0);
+
+        let mut _tmp_data = mutex_first.lock().unwrap();
+        assert!(mutex_first.try_lock().is_err());
+
+        let mutex_second = test_locked_map.get_partition_by_index(1);
+        assert!(mutex_second.try_lock().is_ok());
+        assert!(mutex_first.try_lock().is_err());
+    }
+
+    #[test]
+    fn test_partitioned_rwmutex_vis_different_partition() {
+        let init_vec = Vec::<i32>::new;
+        let test_locked_map = PartitionedRwLock::new(init_vec, 4);
+        let mutex_first = test_locked_map.get_partition_by_index(0);
+        let mut _tmp = mutex_first.write().unwrap();
+        assert!(mutex_first.try_write().is_err());
+
+        let mutex_second_try_lock = test_locked_map.get_partition_by_index(1);
+        assert!(mutex_second_try_lock.try_write().is_ok());
+        assert!(mutex_first.try_write().is_err());
     }
 }

@@ -13,7 +13,7 @@ workspace = true
 [dependencies]
 common_util = { workspace = true }
 log = { workspace = true }
-obkv-table-client-rs = { git = "https://github.com/oceanbase/obkv-table-client-rs.git", rev = "211e5718630577a7f8c1a2d74055bad4d31dea57" }
+obkv-table-client-rs = { git = "https://github.com/oceanbase/obkv-table-client-rs.git", rev = "f7c7a2c866fc83af4862b02447538f2abc5e8839" }
 serde = { workspace = true }
 
 snafu = { workspace = true }

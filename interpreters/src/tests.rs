@@ -1,16 +1,17 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::sync::Arc;
 
-use analytic_engine::tests::util::{EngineContext, RocksDBEngineContext, TestEnv};
+use analytic_engine::tests::util::{EngineBuildContext, RocksDBEngineBuildContext, TestEnv};
 use catalog::{
     consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA},
     manager::ManagerRef,
+    table_operator::TableOperator,
 };
 use catalog_impls::table_based::TableBasedManager;
 use common_types::request_id::RequestId;
 use query_engine::{executor::ExecutorImpl, Config as QueryConfig};
-use sql::{
+use query_frontend::{
     parser::Parser, plan::Plan, planner::Planner, provider::MetaProvider, tests::MockMetaProvider,
 };
 use table_engine::engine::TableEngineRef;
@@ -138,8 +139,8 @@ where
             "+------------+---------------------+--------+--------+------------+--------------+",
             "| key1       | key2                | field1 | field2 | field3     | field4       |",
             "+------------+---------------------+--------+--------+------------+--------------+",
-            "| 7461676b   | 2021-12-02T07:00:34 | 100    | hello3 | 2022-10-10 | 10:10:10.234 |",
-            "| 7461676b32 | 2021-12-02T07:00:34 | 100    | hello3 | 2022-10-11 | 11:10:10.234 |",
+            "| 7461676b   | 2021-12-02T07:00:34 | 100.0  | hello3 | 2022-10-10 | 10:10:10.234 |",
+            "| 7461676b32 | 2021-12-02T07:00:34 | 100.0  | hello3 | 2022-10-11 | 11:10:10.234 |",
             "+------------+---------------------+--------+--------+------------+--------------+",
         ];
         common_util::record_batch::assert_record_batches_eq(&expected, records);
@@ -209,7 +210,8 @@ where
         let ctx = Context::builder(RequestId::next_id(), None)
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .build();
-        let table_manipulator = Arc::new(TableManipulatorImpl::new(catalog_manager.clone()));
+        let table_operator = TableOperator::new(catalog_manager.clone());
+        let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
         let insert_factory = Factory::new(
             ExecutorImpl::new(QueryConfig::default()),
             catalog_manager.clone(),
@@ -337,18 +339,19 @@ where
 #[tokio::test]
 async fn test_interpreters_rocks() {
     common_util::tests::init_log_for_test();
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_interpreters(rocksdb_ctx).await;
 }
 
-async fn test_interpreters<T: EngineContext>(engine_context: T) {
+async fn test_interpreters<T: EngineBuildContext>(engine_context: T) {
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context(engine_context);
     test_ctx.open().await;
     let mock = MockMetaProvider::default();
     let engine = test_ctx.clone_engine();
     let catalog_manager = Arc::new(build_catalog_manager(engine.clone()).await);
-    let table_manipulator = Arc::new(TableManipulatorImpl::new(catalog_manager.clone()));
+    let table_operator = TableOperator::new(catalog_manager.clone());
+    let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
 
     let env = Env {
         engine: test_ctx.clone_engine(),

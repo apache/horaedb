@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table based catalog implementation
 
@@ -12,15 +12,15 @@ use catalog::{
     self, consts,
     manager::{self, Manager},
     schema::{
-        self, AllocateTableId, CatalogMismatch, CloseOptions, CloseTableRequest, CreateExistTable,
-        CreateOptions, CreateTableRequest, CreateTableWithCause, DropOptions, DropTableRequest,
-        DropTableWithCause, NameRef, OpenOptions, OpenTableRequest, Schema, SchemaMismatch,
-        SchemaRef, TooManyTable, WriteTableMeta,
+        self, AllocateTableId, CatalogMismatch, CreateExistTable, CreateOptions,
+        CreateTableRequest, CreateTableWithCause, DropOptions, DropTableRequest,
+        DropTableWithCause, NameRef, Schema, SchemaMismatch, SchemaRef, TooManyTable,
+        WriteTableMeta,
     },
     Catalog, CatalogRef,
 };
 use common_util::{define_result, error::BoxError};
-use log::{debug, error, info};
+use log::{debug, info};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use system_catalog::sys_catalog_table::{
     self, CreateCatalogRequest, CreateSchemaRequest, SysCatalogTable, VisitOptions,
@@ -604,6 +604,12 @@ impl SchemaImpl {
         tables.insert(table_id, table);
     }
 
+    /// Remove table in memory, wont check existence
+    fn remove_table_in_memory(&self, table_name: &str) {
+        let mut tables = self.tables.write().unwrap();
+        tables.remove(table_name);
+    }
+
     /// Check table existence in read lock
     ///
     /// If table exists:
@@ -733,7 +739,7 @@ impl Schema for SchemaImpl {
 
         // Create table
         let table_id = self.alloc_table_id(&request.table_name).await?;
-        let request = request.into_engine_create_request(table_id);
+        let request = request.into_engine_create_request(Some(table_id), self.schema_id);
         let table_name = request.table_name.clone();
         let table = opts
             .table_engine
@@ -786,6 +792,7 @@ impl Schema for SchemaImpl {
         // Determine the real engine type of the table to drop.
         // FIXME(xikai): the engine should not be part of the DropRequest.
         request.engine = table.engine_type().to_string();
+        let request = request.into_engine_drop_request(self.schema_id);
 
         // Prepare to drop table info in the sys_catalog.
         self.catalog_table
@@ -830,65 +837,6 @@ impl Schema for SchemaImpl {
         return Ok(true);
     }
 
-    async fn open_table(
-        &self,
-        request: OpenTableRequest,
-        opts: OpenOptions,
-    ) -> schema::Result<Option<TableRef>> {
-        debug!(
-            "Table based catalog manager open table, request:{:?}",
-            request
-        );
-
-        self.validate_schema_info(&request.catalog_name, &request.schema_name)?;
-
-        // Do opening work.
-        let table_name = request.table_name.clone();
-        let table_id = request.table_id;
-        let table_opt = opts
-            .table_engine
-            .open_table(request.clone())
-            .await
-            .box_err()
-            .context(schema::OpenTableWithCause)?;
-
-        match table_opt {
-            Some(table) => {
-                self.insert_table_into_memory(table_id, table.clone());
-
-                Ok(Some(table))
-            }
-
-            None => {
-                // Now we ignore the error that table not in engine but in catalog.
-                error!(
-                    "Visitor found table not in engine, table_name:{:?}, table_id:{}",
-                    table_name, table_id,
-                );
-
-                Ok(None)
-            }
-        }
-    }
-
-    async fn close_table(
-        &self,
-        request: CloseTableRequest,
-        _opts: CloseOptions,
-    ) -> schema::Result<()> {
-        debug!(
-            "Table based catalog manager close table, request:{:?}",
-            request
-        );
-
-        self.validate_schema_info(&request.catalog_name, &request.schema_name)?;
-
-        schema::UnSupported {
-            msg: "close table is not supported",
-        }
-        .fail()
-    }
-
     fn all_tables(&self) -> schema::Result<Vec<TableRef>> {
         Ok(self
             .tables
@@ -899,22 +847,31 @@ impl Schema for SchemaImpl {
             .cloned()
             .collect())
     }
+
+    fn register_table(&self, table: TableRef) {
+        self.insert_table_into_memory(table.id(), table);
+    }
+
+    fn unregister_table(&self, table_name: &str) {
+        self.remove_table_in_memory(table_name);
+    }
 }
 
 #[cfg(any(test, feature = "test"))]
 mod tests {
     use std::{collections::HashMap, sync::Arc};
 
-    use analytic_engine::tests::util::{EngineContext, RocksDBEngineContext, TestEnv};
+    use analytic_engine::tests::util::{EngineBuildContext, RocksDBEngineBuildContext, TestEnv};
     use catalog::{
         consts::DEFAULT_CATALOG,
         manager::Manager,
         schema::{CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, SchemaRef},
     };
-    use common_types::table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID};
-    use server::table_engine::{MemoryTableEngine, TableEngineProxy};
+    use common_types::table::DEFAULT_SHARD_ID;
     use table_engine::{
         engine::{TableEngineRef, TableState},
+        memory::MemoryTableEngine,
+        proxy::TableEngineProxy,
         ANALYTIC_ENGINE_TYPE,
     };
 
@@ -947,27 +904,26 @@ mod tests {
         CreateTableRequest {
             catalog_name: DEFAULT_CATALOG.to_string(),
             schema_name: schema.name().to_string(),
-            schema_id: schema.id(),
             table_name: table_name.to_string(),
+            table_id: None,
             table_schema: common_types::tests::build_schema(),
             engine: ANALYTIC_ENGINE_TYPE.to_string(),
             options: HashMap::new(),
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
-            cluster_version: DEFAULT_CLUSTER_VERSION,
             partition_info: None,
         }
     }
 
     #[tokio::test]
     async fn test_catalog_by_name_schema_by_name_rocks() {
-        let rocksdb_ctx = RocksDBEngineContext::default();
+        let rocksdb_ctx = RocksDBEngineBuildContext::default();
         test_catalog_by_name_schema_by_name(rocksdb_ctx).await;
     }
 
     async fn test_catalog_by_name_schema_by_name<T>(engine_context: T)
     where
-        T: EngineContext,
+        T: EngineBuildContext,
     {
         let env = TestEnv::builder().build();
         let mut test_ctx = env.new_context(engine_context);
@@ -1007,13 +963,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_maybe_create_schema_by_name_rocks() {
-        let rocksdb_ctx = RocksDBEngineContext::default();
+        let rocksdb_ctx = RocksDBEngineBuildContext::default();
         test_maybe_create_schema_by_name(rocksdb_ctx).await;
     }
 
     async fn test_maybe_create_schema_by_name<T>(engine_context: T)
     where
-        T: EngineContext,
+        T: EngineBuildContext,
     {
         let env = TestEnv::builder().build();
         let mut test_ctx = env.new_context(engine_context);
@@ -1039,11 +995,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_table_rocks() {
-        let rocksdb_ctx = RocksDBEngineContext::default();
+        let rocksdb_ctx = RocksDBEngineBuildContext::default();
         test_create_table(rocksdb_ctx).await;
     }
 
-    async fn test_create_table<T: EngineContext>(engine_context: T) {
+    async fn test_create_table<T: EngineBuildContext>(engine_context: T) {
         let env = TestEnv::builder().build();
         let mut test_ctx = env.new_context(engine_context);
         test_ctx.open().await;
@@ -1085,11 +1041,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_drop_table_rocks() {
-        let rocksdb_ctx = RocksDBEngineContext::default();
+        let rocksdb_ctx = RocksDBEngineBuildContext::default();
         test_drop_table(rocksdb_ctx).await;
     }
 
-    async fn test_drop_table<T: EngineContext>(engine_context: T) {
+    async fn test_drop_table<T: EngineBuildContext>(engine_context: T) {
         let env = TestEnv::builder().build();
         let mut test_ctx = env.new_context(engine_context);
         test_ctx.open().await;
@@ -1109,7 +1065,6 @@ mod tests {
         let drop_table_request = DropTableRequest {
             catalog_name: DEFAULT_CATALOG.to_string(),
             schema_name: schema.name().to_string(),
-            schema_id: schema.id(),
             table_name: table_name.to_string(),
             engine: engine_name.to_string(),
         };

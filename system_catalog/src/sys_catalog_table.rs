@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table to store system catalog
 
@@ -16,7 +16,7 @@ use common_types::{
     request_id::RequestId,
     row::{Row, RowGroup, RowGroupBuilder},
     schema::{self, Schema},
-    table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
+    table::DEFAULT_SHARD_ID,
     time::Timestamp,
 };
 use common_util::{
@@ -40,6 +40,7 @@ use table_engine::{
     },
 };
 use tokio::sync::Mutex;
+use trace_metric::MetricsCollector;
 
 use crate::{SYSTEM_SCHEMA_ID, SYS_CATALOG_TABLE_ID, SYS_CATALOG_TABLE_NAME};
 
@@ -270,7 +271,6 @@ impl SysCatalogTable {
             table_id: SYS_CATALOG_TABLE_ID,
             engine: table_engine.engine_type().to_string(),
             shard_id: DEFAULT_SHARD_ID,
-            cluster_version: DEFAULT_CLUSTER_VERSION,
         };
 
         let table_opt = table_engine
@@ -311,7 +311,6 @@ impl SysCatalogTable {
             options,
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
-            cluster_version: DEFAULT_CLUSTER_VERSION,
         };
 
         let table = table_engine
@@ -448,13 +447,13 @@ impl SysCatalogTable {
             table_info
         );
 
-        let table_writer = TableWriter {
+        let serializer = TableWriter {
             catalog_table: self.table.clone(),
             table_to_write: table_info,
             typ,
         };
 
-        table_writer.write().await?;
+        serializer.write().await?;
 
         Ok(())
     }
@@ -533,6 +532,7 @@ impl SysCatalogTable {
             projected_schema: ProjectedSchema::no_projection(self.table.schema()),
             predicate: PredicateBuilder::default().build(),
             order: ReadOrder::None,
+            metrics_collector: MetricsCollector::default(),
         };
         let mut batch_stream = self.table.read(read_request).await.context(ReadTable)?;
 

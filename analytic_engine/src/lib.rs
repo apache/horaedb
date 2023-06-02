@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Analytic table engine implementations
 
@@ -19,10 +19,11 @@ mod storage_options;
 pub mod table;
 pub mod table_options;
 
+pub mod table_meta_set_impl;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
-use common_util::config::ReadableDuration;
+use common_util::config::{ReadableDuration, ReadableSize};
 use manifest::details::Options as ManifestOptions;
 use message_queue::kafka::config::Config as KafkaConfig;
 use serde::{Deserialize, Serialize};
@@ -30,13 +31,13 @@ use storage_options::StorageOptions;
 use table_kv::config::ObkvConfig;
 use wal::{
     message_queue_impl::config::Config as MessageQueueWalConfig,
-    table_kv_impl::model::NamespaceConfig,
+    rocks_impl::config::Config as RocksDBWalConfig, table_kv_impl::model::NamespaceConfig,
 };
 
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
 
 /// Config of analytic engine
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
     /// Storage options of the engine
@@ -46,14 +47,11 @@ pub struct Config {
     pub replay_batch_size: usize,
     /// Batch size to replay tables
     pub max_replay_tables_per_batch: usize,
-    // Write group options:
-    pub write_group_worker_num: usize,
-    pub write_group_command_channel_cap: usize,
-    // End of write group options.
+
     /// Default options for table
     pub table_opts: TableOptions,
 
-    pub compaction_config: SchedulerConfig,
+    pub compaction: SchedulerConfig,
 
     /// sst meta cache capacity
     pub sst_meta_cache_cap: Option<usize>,
@@ -63,18 +61,34 @@ pub struct Config {
     /// Manifest options
     pub manifest: ManifestOptions,
 
-    // Global write buffer options:
+    /// The maximum rows in the write queue.
+    pub max_rows_in_write_queue: usize,
     /// The maximum write buffer size used for single space.
     pub space_write_buffer_size: usize,
     /// The maximum size of all Write Buffers across all spaces.
     pub db_write_buffer_size: usize,
-    /// End of global write buffer options.
+    /// The ratio of table's write buffer size to trigger preflush, and it
+    /// should be in the range (0, 1].
+    pub preflush_write_buffer_size_ratio: f32,
 
     // Iterator scanning options
-    /// Batch size for iterator
-    pub scan_batch_size: usize,
+    /// Batch size for iterator.
+    ///
+    /// The `num_rows_per_row_group` in `table options` will be used if this is
+    /// not set.
+    pub scan_batch_size: Option<usize>,
+    /// Max record batches in flight when scan
+    pub scan_max_record_batches_in_flight: usize,
     /// Sst background reading parallelism
     pub sst_background_read_parallelism: usize,
+    /// Max buffer size for writing sst
+    pub write_sst_max_buffer_size: ReadableSize,
+    /// Max retry limit After flush failed
+    pub max_retry_flush_limit: usize,
+    /// Max bytes per write batch.
+    ///
+    /// If this is set, the atomicity of write request will be broken.
+    pub max_bytes_per_write_batch: Option<ReadableSize>,
 
     /// Wal storage config
     ///
@@ -93,21 +107,25 @@ impl Default for Config {
             storage: Default::default(),
             replay_batch_size: 500,
             max_replay_tables_per_batch: 64,
-            write_group_worker_num: 8,
-            write_group_command_channel_cap: 128,
             table_opts: TableOptions::default(),
-            compaction_config: SchedulerConfig::default(),
+            compaction: SchedulerConfig::default(),
             sst_meta_cache_cap: Some(1000),
             sst_data_cache_cap: Some(1000),
             manifest: ManifestOptions::default(),
+            max_rows_in_write_queue: 0,
             /// Zero means disabling this param, give a positive value to enable
             /// it.
             space_write_buffer_size: 0,
             /// Zero means disabling this param, give a positive value to enable
             /// it.
             db_write_buffer_size: 0,
-            scan_batch_size: 500,
+            preflush_write_buffer_size_ratio: 0.75,
+            scan_batch_size: None,
             sst_background_read_parallelism: 8,
+            scan_max_record_batches_in_flight: 1024,
+            write_sst_max_buffer_size: ReadableSize::mb(10),
+            max_retry_flush_limit: 0,
+            max_bytes_per_write_batch: None,
             wal: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
         }
@@ -115,7 +133,7 @@ impl Default for Config {
 }
 
 /// Config of wal based on obkv
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ObkvWalConfig {
     /// Obkv client config
@@ -222,7 +240,7 @@ impl From<WalNamespaceConfig> for NamespaceConfig {
 }
 
 /// Config of wal based on obkv
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct KafkaWalConfig {
     /// Kafka client config
@@ -235,22 +253,27 @@ pub struct KafkaWalConfig {
 }
 
 /// Config for wal based on RocksDB
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RocksDBConfig {
     /// Data directory used by RocksDB.
     pub data_dir: String,
+
+    pub data_namespace: RocksDBWalConfig,
+    pub meta_namespace: RocksDBWalConfig,
 }
 
 impl Default for RocksDBConfig {
     fn default() -> Self {
         Self {
             data_dir: "/tmp/ceresdb".to_string(),
+            data_namespace: Default::default(),
+            meta_namespace: Default::default(),
         }
     }
 }
 /// Options for wal storage backend
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum WalStorageConfig {
     RocksDB(Box<RocksDBConfig>),

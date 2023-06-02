@@ -6,12 +6,12 @@ use std::sync::Arc;
 
 use datafusion::{
     execution::context::{QueryPlanner, SessionState},
+    logical_expr::logical_plan::LogicalPlan,
     physical_plan::{
         planner::{DefaultPhysicalPlanner, ExtensionPlanner},
         ExecutionPlan, PhysicalPlanner,
     },
 };
-use datafusion_expr::logical_plan::LogicalPlan;
 
 pub mod prom_align;
 pub mod table_scan_by_primary_key;
@@ -30,6 +30,7 @@ impl QueryPlanner for QueryPlannerAdapter {
         let extension_planners: Vec<Arc<dyn ExtensionPlanner + Send + Sync>> = vec![
             Arc::new(table_scan_by_primary_key::Planner),
             Arc::new(prom_align::PromAlignPlanner),
+            Arc::new(influxql_query::exec::context::IOxExtensionPlanner {}),
         ];
 
         let physical_planner = DefaultPhysicalPlanner::with_extension_planners(extension_planners);
