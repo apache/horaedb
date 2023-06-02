@@ -3,8 +3,8 @@
 //! Http service
 
 use std::{
-    collections::HashMap, convert::Infallible, error::Error as StdError, fs::File, net::IpAddr,
-    sync::Arc, thread, time::Duration,
+    collections::HashMap, convert::Infallible, error::Error as StdError, net::IpAddr, sync::Arc,
+    time::Duration,
 };
 
 use analytic_engine::setup::OpenedWals;
@@ -70,12 +70,14 @@ pub enum Error {
     #[snafu(display("Missing proxy.\nBacktrace:\n{}", backtrace))]
     MissingProxy { backtrace: Backtrace },
 
-    #[snafu(display(
-        "Fail to do heap profiling, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
-    ))]
-    ProfileHeap {
+    #[snafu(display("Fail to do mem profiling, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    ProfileMem {
+        source: profile::Error,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Fail to do cpu profiling, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    ProfileCPU {
         source: profile::Error,
         backtrace: Backtrace,
     },
@@ -184,8 +186,8 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             // debug APIs
             .or(self.flush_memtable())
             .or(self.update_log_level())
-            .or(self.heap_profile())
-            .or(self.cpu_profile())
+            .or(self.profile_cpu())
+            .or(self.profile_mem())
             .or(self.server_config())
             .or(self.stats())
             .with(warp::log("http_requests"))
@@ -393,11 +395,34 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::path!("metrics").and(warp::get()).map(metrics::dump)
     }
 
-    // GET /debug/heap_profile/{seconds}
-    fn heap_profile(
+    // GET /debug/profile/cpu/{seconds}
+    fn profile_cpu(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        warp::path!("debug" / "heap_profile" / ..)
+        warp::path!("debug" / "profile" / "cpu" / ..)
+            .and(warp::path::param::<u64>())
+            .and(warp::get())
+            .and(self.with_profiler())
+            .and(self.with_runtime())
+            .and_then(
+                |duration_sec: u64, profiler: Arc<Profiler>, runtime: Arc<Runtime>| async move {
+                    let handle = runtime.spawn_blocking(move || -> Result<()> {
+                        profiler.dump_cpu_prof(duration_sec).context(ProfileCPU)
+                    });
+                    let result = handle.await.context(JoinAsyncTask);
+                    match result {
+                        Ok(_) => Ok("ok"),
+                        Err(e) => Err(reject::custom(e)),
+                    }
+                },
+            )
+    }
+
+    // GET /debug/profile/mem/{seconds}
+    fn profile_mem(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("debug" / "profile" / "mem" / ..)
             .and(warp::path::param::<u64>())
             .and(warp::get())
             .and(self.with_profiler())
@@ -405,7 +430,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and_then(
                 |duration_sec: u64, profiler: Arc<Profiler>, runtime: Arc<Runtime>| async move {
                     let handle = runtime.spawn_blocking(move || {
-                        profiler.dump_mem_prof(duration_sec).context(ProfileHeap)
+                        profiler.dump_mem_prof(duration_sec).context(ProfileMem)
                     });
                     let result = handle.await.context(JoinAsyncTask);
                     match result {
@@ -415,40 +440,6 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     }
                 },
             )
-    }
-
-    // GET /debug/cpu_profile/{seconds}
-    fn cpu_profile(
-        &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        warp::path!("debug" / "cpu_profile" / ..)
-            .and(warp::path::param::<u64>())
-            .and(warp::get())
-            .and(self.with_runtime())
-            .and_then(|duration_sec: u64, runtime: Arc<Runtime>| async move {
-                let handle = runtime.spawn_blocking(move || -> Result<()> {
-                    let guard = pprof::ProfilerGuardBuilder::default()
-                        .frequency(100)
-                        .blocklist(&["libc", "libgcc", "pthread", "vdso"])
-                        .build()
-                        .box_err()
-                        .context(Internal)?;
-
-                    thread::sleep(Duration::from_secs(duration_sec));
-
-                    let report = guard.report().build().box_err().context(Internal)?;
-                    let file = File::create("/tmp/flamegraph.svg")
-                        .box_err()
-                        .context(Internal)?;
-                    report.flamegraph(file).box_err().context(Internal)?;
-                    Ok(())
-                });
-                let result = handle.await.context(JoinAsyncTask);
-                match result {
-                    Ok(_) => Ok("ok"),
-                    Err(e) => Err(reject::custom(e)),
-                }
-            })
     }
 
     // GET /debug/config
@@ -694,7 +685,8 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::MissingSchemaConfigProvider { .. }
         | Error::MissingProxy { .. }
         | Error::ParseIpAddr { .. }
-        | Error::ProfileHeap { .. }
+        | Error::ProfileMem { .. }
+        | Error::ProfileCPU { .. }
         | Error::Internal { .. }
         | Error::JoinAsyncTask { .. }
         | Error::AlreadyStarted { .. }

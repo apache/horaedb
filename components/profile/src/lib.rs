@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Memory profiler for running application based on jemalloc features.
 
@@ -9,6 +9,7 @@ use std::{
     io::Read,
     sync::{Mutex, MutexGuard},
     thread, time,
+    time::Duration,
 };
 
 use jemalloc_ctl::{Access, AsName};
@@ -36,8 +37,9 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 const PROF_ACTIVE: &[u8] = b"prof.active\0";
 const PROF_DUMP: &[u8] = b"prof.dump\0";
-const PROFILE_OUTPUT_FILE_OS_PATH: &[u8] = b"/tmp/profile.out\0";
-const PROFILE_OUTPUT_FILE_PATH: &str = "/tmp/profile.out";
+const PROFILE_MEM_OUTPUT_FILE_OS_PATH: &[u8] = b"/tmp/profile_mem.out\0";
+const PROFILE_MEM_OUTPUT_FILE_PATH: &str = "/tmp/profile_mem.out";
+const PROFILE_CPU_OUTPUT_FILE_PATH: &str = "/tmp/flamegraph_cpu.svg";
 
 fn set_prof_active(active: bool) -> Result<()> {
     let name = PROF_ACTIVE.name();
@@ -46,7 +48,7 @@ fn set_prof_active(active: bool) -> Result<()> {
 
 fn dump_profile() -> Result<()> {
     let name = PROF_DUMP.name();
-    name.write(PROFILE_OUTPUT_FILE_OS_PATH)
+    name.write(PROFILE_MEM_OUTPUT_FILE_OS_PATH)
         .map_err(Error::Jemalloc)
 }
 
@@ -109,7 +111,7 @@ impl Profiler {
             .create(true)
             .write(true)
             .truncate(true)
-            .open(PROFILE_OUTPUT_FILE_PATH)
+            .open(PROFILE_MEM_OUTPUT_FILE_PATH)
             .map_err(|e| {
                 error!("Failed to open prof data file, err:{}", e);
                 Error::IO(e)
@@ -119,13 +121,13 @@ impl Profiler {
         dump_profile().map_err(|e| {
             error!(
                 "Failed to dump prof to {}, err:{}",
-                PROFILE_OUTPUT_FILE_PATH, e
+                PROFILE_MEM_OUTPUT_FILE_PATH, e
             );
             e
         })?;
 
         // read the profile results into buffer
-        let mut f = File::open(PROFILE_OUTPUT_FILE_PATH).map_err(|e| {
+        let mut f = File::open(PROFILE_MEM_OUTPUT_FILE_PATH).map_err(|e| {
             error!("Failed to open prof data file, err:{}", e);
             Error::IO(e)
         })?;
@@ -137,5 +139,29 @@ impl Profiler {
         })?;
 
         Ok(buffer)
+    }
+
+    pub fn dump_cpu_prof(&self, seconds: u64) -> Result<()> {
+        let guard = pprof::ProfilerGuardBuilder::default()
+            .frequency(100)
+            .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+            .build()
+            .map_err(|e| Error::Internal {
+                msg: format!("Profiler guard, err:{e}"),
+            })?;
+
+        thread::sleep(Duration::from_secs(seconds));
+
+        let report = guard.report().build().map_err(|e| Error::Internal {
+            msg: format!("Report build, err:{e}"),
+        })?;
+        let file = File::create(PROFILE_CPU_OUTPUT_FILE_PATH).map_err(|e| {
+            error!("Failed to create cpu profile svg file, err:{}", e);
+            Error::IO(e)
+        })?;
+        report.flamegraph(file).map_err(|e| Error::Internal {
+            msg: format!("Flamegraph output, err:{e}"),
+        })?;
+        Ok(())
     }
 }

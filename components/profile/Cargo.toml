@@ -18,3 +18,4 @@ features = ["stats", "profiling", "unprefixed_malloc_on_supported_platforms"]
 jemalloc-ctl = "0.3.2"
 jemallocator = "0.3.2"
 log = { workspace = true }
+pprof = { version = "0.11.1", features = ["flamegraph"] }
