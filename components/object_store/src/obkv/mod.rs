@@ -153,7 +153,7 @@ pub struct ObkvObjectStore<T> {
     /// The manager to manage object store meta, which persist in obkv
     meta_manager: Arc<MetaManager<T>>,
     client: Arc<T>,
-    upload_id: AtomicI64,
+    current_upload_id: AtomicI64,
     /// The size of one object part persited in obkv
     /// It may cause problem to save huge data in one obkv value, so we
     /// need to split data into small parts.
@@ -199,7 +199,7 @@ impl<T: TableKv> ObkvObjectStore<T> {
             shard_manager,
             meta_manager: Arc::new(meta_manager),
             client,
-            upload_id,
+            current_upload_id: upload_id,
             part_size,
             max_object_size,
             max_upload_concurrency,
@@ -325,13 +325,13 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
         let instant = Instant::now();
 
-        let upload_id = self.upload_id.fetch_add(1, Ordering::Relaxed);
+        let upload_id = self.current_upload_id.fetch_add(1, Ordering::Relaxed);
         let multi_part_id = format!("{upload_id}");
         let table_name = self.pick_shard_table(location);
 
         let upload = ObkvMultiPartUpload {
             location: location.clone(),
-            current_upload_id: multi_part_id.clone(),
+            upload_id: multi_part_id.clone(),
             table_name: table_name.to_string(),
             size: AtomicU64::new(0),
             client: Arc::clone(&self.client),
@@ -646,7 +646,7 @@ struct ObkvMultiPartUpload<T> {
     /// The full path to the object.
     location: Path,
     /// The id of multi upload tasks, we use this id as object version.
-    current_upload_id: String,
+    upload_id: String,
     /// The table name of obkv to save data.
     table_name: String,
     /// The client of object store.
@@ -668,7 +668,7 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
         part_idx: usize,
     ) -> Result<UploadPart, std::io::Error> {
         let mut batch = T::WriteBatch::default();
-        let key = format!("{}@{}@{}", self.location, self.current_upload_id, part_idx);
+        let key = format!("{}@{}@{}", self.location, self.upload_id, part_idx);
         batch.insert(key.as_bytes(), buf.as_ref());
 
         self.client
@@ -699,11 +699,11 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
             size: self.size.load(Ordering::SeqCst) as usize,
             unique_id: Some(format!(
                 "{}@{}@{}",
-                self.table_name, self.location, self.current_upload_id
+                self.table_name, self.location, self.upload_id
             )),
             part_size: self.part_size,
             parts: paths,
-            version: self.current_upload_id.clone(),
+            version: self.upload_id.clone(),
         };
 
         // Save meta info to specify obkv table.
