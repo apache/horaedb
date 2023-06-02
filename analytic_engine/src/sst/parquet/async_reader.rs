@@ -287,6 +287,7 @@ impl<'a> Reader<'a> {
             if let Some(selection) = row_selection {
                 builder = builder.with_row_selection(selection);
             };
+
             let stream = builder
                 .with_batch_size(self.num_rows_per_row_group)
                 .with_row_groups(chunk)

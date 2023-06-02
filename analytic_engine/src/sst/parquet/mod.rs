@@ -6,7 +6,6 @@ pub mod async_reader;
 pub mod encoding;
 mod hybrid;
 pub mod meta_data;
-// pub mod page_filter;
 pub mod row_group_pruner;
 pub mod writer;
 
