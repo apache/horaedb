@@ -1,6 +1,9 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{fmt, time::Instant};
+use std::{
+    fmt,
+    time::{Duration, Instant},
+};
 
 use async_trait::async_trait;
 use common_types::{
@@ -12,6 +15,7 @@ use futures::StreamExt;
 use log::debug;
 use snafu::{ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
+use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 use crate::{
     row_iter::{
@@ -48,6 +52,7 @@ define_result!(Error);
 #[derive(Clone, Debug)]
 pub struct ChainConfig<'a> {
     pub request_id: RequestId,
+    pub metrics_collector: Option<MetricsCollector>,
     pub deadline: Option<Instant>,
     pub space_id: SpaceId,
     pub table_id: TableId,
@@ -116,7 +121,7 @@ impl<'a> Builder<'a> {
                 false,
                 self.config.predicate.as_ref(),
                 self.config.deadline,
-                None,
+                self.config.metrics_collector.clone(),
             )
             .context(BuildStreamFromMemtable)?;
             streams.push(stream);
@@ -132,7 +137,7 @@ impl<'a> Builder<'a> {
                 false,
                 self.config.predicate.as_ref(),
                 self.config.deadline,
-                None,
+                self.config.metrics_collector.clone(),
             )
             .context(BuildStreamFromMemtable)?;
             streams.push(stream);
@@ -147,7 +152,7 @@ impl<'a> Builder<'a> {
                     self.config.sst_factory,
                     &self.config.sst_read_options,
                     self.config.store_picker,
-                    None,
+                    self.config.metrics_collector.clone(),
                 )
                 .await
                 .context(BuildStreamFromSst)?;
@@ -168,40 +173,55 @@ impl<'a> Builder<'a> {
             streams,
             ssts: self.ssts,
             next_stream_idx: 0,
-            inited: false,
-            metrics: Metrics::new(self.memtables.len(), total_sst_streams),
+            inited_at: None,
+            created_at: Instant::now(),
+            metrics: Metrics::new(
+                self.memtables.len(),
+                total_sst_streams,
+                self.config.metrics_collector.clone(),
+            ),
         })
     }
 }
 
 /// Metrics for [ChainIterator].
+#[derive(TraceMetricWhenDrop)]
 struct Metrics {
+    #[metric(number)]
     num_memtables: usize,
+    #[metric(number)]
     num_ssts: usize,
     /// Total batch fetched.
+    #[metric(number)]
     total_batch_fetched: usize,
     /// Total rows fetched.
+    #[metric(number)]
     total_rows_fetched: usize,
     /// Create time of the metrics.
-    create_at: Instant,
+    #[metric(duration)]
+    since_create: Duration,
     /// Inited time of the iterator.
-    inited_at: Option<Instant>,
+    #[metric(duration)]
+    since_init: Duration,
+    #[metric(collector)]
+    metrics_collector: Option<MetricsCollector>,
 }
 
 impl Metrics {
-    fn new(num_memtables: usize, num_ssts: usize) -> Self {
+    fn new(
+        num_memtables: usize,
+        num_ssts: usize,
+        metrics_collector: Option<MetricsCollector>,
+    ) -> Self {
         Self {
             num_memtables,
             num_ssts,
             total_batch_fetched: 0,
             total_rows_fetched: 0,
-            create_at: Instant::now(),
-            inited_at: None,
+            since_create: Duration::default(),
+            since_init: Duration::default(),
+            metrics_collector,
         }
-    }
-
-    fn set_inited_time(&mut self) {
-        self.inited_at = Some(Instant::now());
     }
 }
 
@@ -212,8 +232,8 @@ impl fmt::Debug for Metrics {
             .field("num_ssts", &self.num_ssts)
             .field("total_batch_fetched", &self.total_batch_fetched)
             .field("total_rows_fetched", &self.total_rows_fetched)
-            .field("duration_since_create", &self.create_at.elapsed())
-            .field("duration_since_init", &self.inited_at.map(|v| v.elapsed()))
+            .field("duration_since_create", &self.since_create)
+            .field("duration_since_init", &self.since_init)
             .finish()
     }
 }
@@ -234,19 +254,19 @@ pub struct ChainIterator {
     /// The range of the index is [0, streams.len()] and the iterator is
     /// exhausted if it reaches `streams.len()`.
     next_stream_idx: usize,
-    inited: bool,
 
+    inited_at: Option<Instant>,
+    created_at: Instant,
     // metrics for the iterator.
     metrics: Metrics,
 }
 
 impl ChainIterator {
     fn init_if_necessary(&mut self) {
-        if self.inited {
+        if self.inited_at.is_some() {
             return;
         }
-        self.inited = true;
-        self.metrics.set_inited_time();
+        self.inited_at = Some(Instant::now());
 
         debug!("Init ChainIterator, space_id:{}, table_id:{:?}, request_id:{}, total_streams:{}, schema:{:?}",
             self.space_id, self.table_id, self.request_id, self.streams.len(), self.schema
@@ -257,8 +277,8 @@ impl ChainIterator {
 impl Drop for ChainIterator {
     fn drop(&mut self) {
         debug!(
-            "Chain iterator dropped, space_id:{}, table_id:{:?}, request_id:{}, metrics:{:?}",
-            self.space_id, self.table_id, self.request_id, self.metrics,
+            "Chain iterator dropped, space_id:{}, table_id:{:?}, request_id:{}, inited_at:{:?}, metrics:{:?}",
+            self.space_id, self.table_id, self.request_id, self.inited_at, self.metrics,
         );
     }
 }
@@ -296,6 +316,13 @@ impl RecordBatchWithKeyIterator for ChainIterator {
             }
         }
 
+        self.metrics.since_create = self.created_at.elapsed();
+        self.metrics.since_init = self
+            .inited_at
+            .as_ref()
+            .map(|v| v.elapsed())
+            .unwrap_or_default();
+
         Ok(None)
     }
 }
@@ -331,8 +358,9 @@ mod tests {
             streams,
             ssts: Vec::new(),
             next_stream_idx: 0,
-            inited: false,
-            metrics: Metrics::new(0, 0),
+            inited_at: None,
+            created_at: Instant::now(),
+            metrics: Metrics::new(0, 0, None),
         };
 
         check_iterator(&mut chain_iter, expect_rows).await;
