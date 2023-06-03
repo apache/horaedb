@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Read logic of instance
 
@@ -71,6 +71,7 @@ define_result!(Error);
 const MERGE_SORT_METRIC_NAME: &str = "do_merge_sort";
 const ITER_NUM_METRIC_NAME: &str = "iter_num";
 const MERGE_ITER_METRICS_COLLECTOR_NAME_PREFIX: &str = "merge_iter";
+const CHAIN_ITER_METRICS_COLLECTOR_NAME_PREFIX: &str = "chain_iter";
 
 /// Check whether it needs to apply merge sorting when reading the table with
 /// the `table_options` by the `read_request`.
@@ -247,9 +248,13 @@ impl Instance {
         let read_views = self.partition_ssts_and_memtables(time_range, version, table_options);
 
         let mut iters = Vec::with_capacity(read_views.len());
-        for read_view in read_views {
+        for (idx, read_view) in read_views.into_iter().enumerate() {
+            let metrics_collector = request
+                .metrics_collector
+                .span(format!("{CHAIN_ITER_METRICS_COLLECTOR_NAME_PREFIX}_{idx}"));
             let chain_config = ChainConfig {
                 request_id: request.request_id,
+                metrics_collector: Some(metrics_collector),
                 deadline: request.opts.deadline,
                 space_id: table_data.space_id,
                 table_id: table_data.id,
