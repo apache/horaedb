@@ -34,6 +34,7 @@ meta_client = { workspace = true }
 paste = { workspace = true }
 prom-remote-api = { workspace = true, features = ["warp"] }
 prometheus = { workspace = true }
+prometheus-static-metric = { workspace = true }
 prost = { workspace = true }
 query_engine = { workspace = true }
 query_frontend = { workspace = true }

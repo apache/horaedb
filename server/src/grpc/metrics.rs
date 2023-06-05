@@ -3,9 +3,7 @@
 // Grpc server metrics
 
 use lazy_static::lazy_static;
-use prometheus::{
-    exponential_buckets, register_histogram_vec, register_int_counter, HistogramVec, IntCounter,
-};
+use prometheus::{exponential_buckets, register_histogram_vec, HistogramVec};
 use prometheus_static_metric::{auto_flush_from, make_auto_flush_static_metric};
 
 // Register auto flush static metrics.
@@ -72,17 +70,6 @@ lazy_static! {
             "Bucketed histogram of meta event grpc server handler",
             &["type"],
             exponential_buckets(0.0005, 2.0, 20).unwrap()
-        )
-        .unwrap();
-    pub static ref GRPC_WRITE_RERQUEST_FAILED_COUNTER: IntCounter = register_int_counter!(
-        "grpc_write_request_failed_counter",
-        "Grpc write request failed counter"
-    )
-    .unwrap();
-    pub static ref REMOTE_ENGINE_GRPC_WRITE_RERQUEST_FAILED_COUNTER: IntCounter =
-        register_int_counter!(
-            "remote_engine_grpc_write_request_failed_counter",
-            "Remote engine grpc write request failed counter"
         )
         .unwrap();
 }
