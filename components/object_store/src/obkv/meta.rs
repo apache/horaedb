@@ -173,12 +173,6 @@ impl ObkvObjectMeta {
         let end_index = range.end / batch_size;
         let end_offset = range.end % batch_size;
 
-        // let mut convered_parts = Vec::with_capacity(end_index - start_index + 1);
-
-        // for key in &self.parts[start_index..=end_index] {
-        //     convered_parts.push(key.clone());
-        // }
-
         Ok(ConveredParts {
             part_keys: &self.parts[start_index..=end_index],
             start_offset,
