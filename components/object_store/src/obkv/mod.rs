@@ -21,7 +21,7 @@ use futures::{
     StreamExt,
 };
 use log::debug;
-use snafu::{ensure, ResultExt, Snafu};
+use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
 use tokio::{
     io::{AsyncWrite, AsyncWriteExt},
@@ -68,17 +68,31 @@ pub enum Error {
     #[snafu(display("Failed to read meta, path:{path}, err:{source}"))]
     ReadMeta { path: String, source: GenericError },
 
-    #[snafu(display("None data found in part_key:{part_key}"))]
-    NoneDataPart { part_key: String },
+    #[snafu(display("Data part is not found in part_key:{part_key}. \nBacktrace:\n{backtrace}"))]
+    DataPartNotFound {
+        part_key: String,
+        backtrace: Backtrace,
+    },
 
-    #[snafu(display("No meta found, path:{path}"))]
-    MetaNotExists { path: String },
+    #[snafu(display("No meta found, path:{path}. \nBacktrace:\n{backtrace}"))]
+    MetaNotExists { path: String, backtrace: Backtrace },
 
-    #[snafu(display("Data is too large to put, size:{size}, limit:{limit}"))]
-    TooLargeData { size: usize, limit: usize },
+    #[snafu(display(
+        "Data is too large to put, size:{size}, limit:{limit}. \nBacktrace:\n{backtrace}"
+    ))]
+    TooLargeData {
+        size: usize,
+        limit: usize,
+        backtrace: Backtrace,
+    },
 
-    #[snafu(display("Convert timestamp to date time fail, timestamp:{timestamp}"))]
-    ConvertTimestamp { timestamp: i64 },
+    #[snafu(display(
+        "Convert timestamp to date time fail, timestamp:{timestamp}. \nBacktrace:\n{backtrace}"
+    ))]
+    ConvertTimestamp {
+        timestamp: i64,
+        backtrace: Backtrace,
+    },
 }
 
 impl<T: TableKv> MetaManager<T> {
@@ -468,7 +482,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 }
                 range_buffer.extend_from_slice(&bytes[begin..end]);
             } else {
-                NoneDataPart { part_key: key }
+                DataPartNotFound { part_key: key }
                     .fail()
                     .map_err(|source| StoreError::NotFound {
                         path: location.to_string(),

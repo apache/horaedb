@@ -58,11 +58,23 @@ pub enum Error {
         source: GenericError,
     },
 
-    #[snafu(display("Invalid header found, header:{header}, expect:{expect}"))]
-    InvalidHeader { header: u8, expect: u8 },
+    #[snafu(display(
+        "Invalid header found, header:{header}, expect:{expect}.\nBacktrace:\n{backtrace}"
+    ))]
+    InvalidHeader {
+        header: u8,
+        expect: u8,
+        backtrace: Backtrace,
+    },
 
-    #[snafu(display("Out of range occurs, end:{end}, object_size:{object_size}"))]
-    OutOfRange { end: usize, object_size: usize },
+    #[snafu(display(
+        "Out of range occurs, end:{end}, object_size:{object_size}.\nBacktrace:\n{backtrace}"
+    ))]
+    OutOfRange {
+        end: usize,
+        object_size: usize,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
@@ -339,6 +351,13 @@ mod test {
         assert!(expect.part_keys.len() == 1);
         assert!(expect.start_offset == 1021);
         assert!(expect.end_offset == 1022);
+
+        let range1 = Range {
+            start: 8189,
+            end: 8199,
+        };
+        let expect = meta.compute_covered_parts(range1);
+        assert!(expect.is_err());
     }
 
     fn build_test_meta() -> ObkvObjectMeta {
