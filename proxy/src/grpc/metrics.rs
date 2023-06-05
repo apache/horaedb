@@ -1,6 +1,6 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-// Grpc server metrics
+// Grpc proxy metrics
 
 use lazy_static::lazy_static;
 use prometheus::{register_int_counter_vec, IntCounterVec};
