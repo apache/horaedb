@@ -10,7 +10,10 @@ use common_types::{
     schema::Schema,
     table::{ShardId, DEFAULT_SHARD_ID},
 };
-use common_util::{error::GenericError, runtime::RuntimeRef};
+use common_util::{
+    error::{GenericError, GenericResult},
+    runtime::RuntimeRef,
+};
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{
@@ -63,6 +66,21 @@ pub enum Error {
 
     #[snafu(display("Failed to close the table engine, err:{}", source))]
     Close { source: GenericError },
+
+    #[snafu(display("Failed to open shard, err:{}", source))]
+    OpenShard { source: GenericError },
+
+    #[snafu(display("Failed to open table, msg:{:?}.\nBacktrace:\n{}", msg, backtrace))]
+    OpenTableNoCause {
+        msg: Option<String>,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Failed to open table, msg:{:?}, err:{}", msg, source))]
+    OpenTableWithCause {
+        msg: Option<String>,
+        source: GenericError,
+    },
 }
 
 define_result!(Error);
@@ -299,11 +317,13 @@ pub trait TableEngine: Send + Sync {
     async fn close_table(&self, request: CloseTableRequest) -> Result<()>;
 
     /// Open tables on same shard.
-    async fn open_shard(&self, request: OpenShardRequest) -> Vec<Result<Option<TableRef>>>;
+    async fn open_shard(&self, request: OpenShardRequest) -> Result<OpenShardResult>;
 
     /// Close tables on same shard.
     async fn close_shard(&self, request: CloseShardRequest) -> Vec<Result<String>>;
 }
+
+pub type OpenShardResult = HashMap<TableId, GenericResult<Option<TableRef>>>;
 
 /// A reference counted pointer to table engine
 pub type TableEngineRef = Arc<dyn TableEngine>;
