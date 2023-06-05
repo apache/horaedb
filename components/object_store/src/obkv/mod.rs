@@ -68,8 +68,8 @@ pub enum Error {
     #[snafu(display("Failed to read meta, path:{path}, err:{source}"))]
     ReadMeta { path: String, source: GenericError },
 
-    #[snafu(display("Empty data found in path:{path}, index:{index}"))]
-    EmptyDataPart { path: String, index: usize },
+    #[snafu(display("None data found in part_key:{part_key}"))]
+    NoneDataPart { part_key: String },
 
     #[snafu(display("No meta found, path:{path}"))]
     MetaNotExists { path: String },
@@ -467,6 +467,13 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                     end = covered_parts.end_offset;
                 }
                 range_buffer.extend_from_slice(&bytes[begin..end]);
+            } else {
+                NoneDataPart { part_key: key }
+                    .fail()
+                    .map_err(|source| StoreError::NotFound {
+                        path: location.to_string(),
+                        source: Box::new(source),
+                    })?;
             }
         }
 
