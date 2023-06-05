@@ -45,6 +45,7 @@ pub enum ObjectStoreOptions {
     Local(LocalOptions),
     Aliyun(AliyunOptions),
     Obkv(ObkvOptions),
+    S3(S3Options),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -117,5 +118,40 @@ impl ObkvOptions {
 
     fn default_upload_parallelism() -> usize {
         8
+    }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct S3Options {
+    pub region: String,
+    pub key_id: String,
+    pub key_secret: String,
+    pub endpoint: String,
+    pub bucket: String,
+    pub prefix: String,
+    #[serde(default = "S3Options::default_pool_max_idle_per_host")]
+    pub pool_max_idle_per_host: usize,
+    #[serde(default = "S3Options::default_timeout")]
+    pub timeout: ReadableDuration,
+    #[serde(default = "S3Options::default_keep_alive_time")]
+    pub keep_alive_timeout: ReadableDuration,
+    #[serde(default = "S3Options::default_keep_alive_inverval")]
+    pub keep_alive_interval: ReadableDuration,
+}
+
+impl S3Options {
+    fn default_pool_max_idle_per_host() -> usize {
+        1024
+    }
+
+    fn default_timeout() -> ReadableDuration {
+        ReadableDuration::from(Duration::from_secs(60))
+    }
+
+    fn default_keep_alive_time() -> ReadableDuration {
+        ReadableDuration::from(Duration::from_secs(60))
+    }
+
+    fn default_keep_alive_inverval() -> ReadableDuration {
+        ReadableDuration::from(Duration::from_secs(2))
     }
 }

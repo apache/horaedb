@@ -16,5 +16,5 @@ pub mod metrics;
 pub mod multipart;
 pub mod obkv;
 pub mod prefix;
-
+pub mod s3;
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
