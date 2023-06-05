@@ -76,8 +76,8 @@ cluster = { path = "cluster" }
 criterion = "0.3"
 common_types = { path = "common_types" }
 common_util = { path = "common_util" }
-datafusion = { git = "https://github.com/apache/arrow-datafusion.git", rev = "06e9f53637f20dd91bef43b74942ec36c38c22d5" }
-datafusion-proto = { git = "https://github.com/apache/arrow-datafusion.git", rev = "06e9f53637f20dd91bef43b74942ec36c38c22d5" }
+datafusion = { git = "https://github.com/jiacai2050/arrow-datafusion.git", rev = "13314c37020b90246db9b80f8294370c06e61018" }
+datafusion-proto = { git = "https://github.com/jiacai2050/arrow-datafusion.git", rev = "13314c37020b90246db9b80f8294370c06e61018" }
 df_operator = { path = "df_operator" }
 etcd-client = "0.10.3"
 env_logger = "0.6"
@@ -89,10 +89,10 @@ lazy_static = "1.4.0"
 log = "0.4"
 logger = { path = "components/logger" }
 lru = "0.7.6"
-influxql-logical-planner = { git = "https://github.com/CeresDB/influxql", package = "iox_query_influxql" }
-influxql-parser = { git = "https://github.com/CeresDB/influxql", package = "influxdb_influxql_parser" }
-influxql-query = { git = "https://github.com/CeresDB/influxql", package = "iox_query" }
-influxql-schema = { git = "https://github.com/CeresDB/influxql", package = "schema" }
+influxql-logical-planner = { git = "https://github.com/CeresDB/influxql", rev = "efbc589", package = "iox_query_influxql" }
+influxql-parser = { git = "https://github.com/CeresDB/influxql", rev = "efbc589", package = "influxdb_influxql_parser" }
+influxql-query = { git = "https://github.com/CeresDB/influxql", rev = "efbc589", package = "iox_query" }
+influxql-schema = { git = "https://github.com/CeresDB/influxql", rev = "efbc589", package = "schema" }
 interpreters = { path = "interpreters" }
 itertools = "0.10.5"
 meta_client = { path = "meta_client" }

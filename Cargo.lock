@@ -448,7 +448,7 @@ dependencies = [
 [[package]]
 name = "arrow_util"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
+source = "git+https://github.com/CeresDB/influxql?rev=efbc589#efbc589fb4e884e4ce057f066e63183f02a99c51"
 dependencies = [
  "ahash 0.8.3",
  "arrow 38.0.0",
@@ -1824,7 +1824,7 @@ dependencies = [
 [[package]]
 name = "datafusion"
 version = "23.0.0"
-source = "git+https://github.com/apache/arrow-datafusion.git?rev=06e9f53637f20dd91bef43b74942ec36c38c22d5#06e9f53637f20dd91bef43b74942ec36c38c22d5"
+source = "git+https://github.com/jiacai2050/arrow-datafusion.git?rev=13314c37020b90246db9b80f8294370c06e61018#13314c37020b90246db9b80f8294370c06e61018"
 dependencies = [
  "ahash 0.8.3",
  "arrow 38.0.0",
@@ -1873,7 +1873,7 @@ dependencies = [
 [[package]]
 name = "datafusion-common"
 version = "23.0.0"
-source = "git+https://github.com/apache/arrow-datafusion.git?rev=06e9f53637f20dd91bef43b74942ec36c38c22d5#06e9f53637f20dd91bef43b74942ec36c38c22d5"
+source = "git+https://github.com/jiacai2050/arrow-datafusion.git?rev=13314c37020b90246db9b80f8294370c06e61018#13314c37020b90246db9b80f8294370c06e61018"
 dependencies = [
  "arrow 38.0.0",
  "arrow-array",
@@ -1887,7 +1887,7 @@ dependencies = [
 [[package]]
 name = "datafusion-execution"
 version = "23.0.0"
-source = "git+https://github.com/apache/arrow-datafusion.git?rev=06e9f53637f20dd91bef43b74942ec36c38c22d5#06e9f53637f20dd91bef43b74942ec36c38c22d5"
+source = "git+https://github.com/jiacai2050/arrow-datafusion.git?rev=13314c37020b90246db9b80f8294370c06e61018#13314c37020b90246db9b80f8294370c06e61018"
 dependencies = [
  "dashmap 5.4.0",
  "datafusion-common",
@@ -1904,7 +1904,7 @@ dependencies = [
 [[package]]
 name = "datafusion-expr"
 version = "23.0.0"
-source = "git+https://github.com/apache/arrow-datafusion.git?rev=06e9f53637f20dd91bef43b74942ec36c38c22d5#06e9f53637f20dd91bef43b74942ec36c38c22d5"
+source = "git+https://github.com/jiacai2050/arrow-datafusion.git?rev=13314c37020b90246db9b80f8294370c06e61018#13314c37020b90246db9b80f8294370c06e61018"
 dependencies = [
  "ahash 0.8.3",
  "arrow 38.0.0",
@@ -1915,7 +1915,7 @@ dependencies = [
 [[package]]
 name = "datafusion-optimizer"
 version = "23.0.0"
-source = "git+https://github.com/apache/arrow-datafusion.git?rev=06e9f53637f20dd91bef43b74942ec36c38c22d5#06e9f53637f20dd91bef43b74942ec36c38c22d5"
+source = "git+https://github.com/jiacai2050/arrow-datafusion.git?rev=13314c37020b90246db9b80f8294370c06e61018#13314c37020b90246db9b80f8294370c06e61018"
 dependencies = [
  "arrow 38.0.0",
  "async-trait",
@@ -1932,7 +1932,7 @@ dependencies = [
 [[package]]
 name = "datafusion-physical-expr"
 version = "23.0.0"
-source = "git+https://github.com/apache/arrow-datafusion.git?rev=06e9f53637f20dd91bef43b74942ec36c38c22d5#06e9f53637f20dd91bef43b74942ec36c38c22d5"
+source = "git+https://github.com/jiacai2050/arrow-datafusion.git?rev=13314c37020b90246db9b80f8294370c06e61018#13314c37020b90246db9b80f8294370c06e61018"
 dependencies = [
  "ahash 0.8.3",
  "arrow 38.0.0",
@@ -1964,7 +1964,7 @@ dependencies = [
 [[package]]
 name = "datafusion-proto"
 version = "23.0.0"
-source = "git+https://github.com/apache/arrow-datafusion.git?rev=06e9f53637f20dd91bef43b74942ec36c38c22d5#06e9f53637f20dd91bef43b74942ec36c38c22d5"
+source = "git+https://github.com/jiacai2050/arrow-datafusion.git?rev=13314c37020b90246db9b80f8294370c06e61018#13314c37020b90246db9b80f8294370c06e61018"
 dependencies = [
  "arrow 38.0.0",
  "chrono",
@@ -1978,7 +1978,7 @@ dependencies = [
 [[package]]
 name = "datafusion-row"
 version = "23.0.0"
-source = "git+https://github.com/apache/arrow-datafusion.git?rev=06e9f53637f20dd91bef43b74942ec36c38c22d5#06e9f53637f20dd91bef43b74942ec36c38c22d5"
+source = "git+https://github.com/jiacai2050/arrow-datafusion.git?rev=13314c37020b90246db9b80f8294370c06e61018#13314c37020b90246db9b80f8294370c06e61018"
 dependencies = [
  "arrow 38.0.0",
  "datafusion-common",
@@ -1989,7 +1989,7 @@ dependencies = [
 [[package]]
 name = "datafusion-sql"
 version = "23.0.0"
-source = "git+https://github.com/apache/arrow-datafusion.git?rev=06e9f53637f20dd91bef43b74942ec36c38c22d5#06e9f53637f20dd91bef43b74942ec36c38c22d5"
+source = "git+https://github.com/jiacai2050/arrow-datafusion.git?rev=13314c37020b90246db9b80f8294370c06e61018#13314c37020b90246db9b80f8294370c06e61018"
 dependencies = [
  "arrow 38.0.0",
  "arrow-schema",
@@ -2002,7 +2002,7 @@ dependencies = [
 [[package]]
 name = "datafusion_util"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
+source = "git+https://github.com/CeresDB/influxql?rev=efbc589#efbc589fb4e884e4ce057f066e63183f02a99c51"
 dependencies = [
  "async-trait",
  "datafusion",
@@ -2537,7 +2537,7 @@ checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
 [[package]]
 name = "generated_types"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
+source = "git+https://github.com/CeresDB/influxql?rev=efbc589#efbc589fb4e884e4ce057f066e63183f02a99c51"
 dependencies = [
  "pbjson",
  "pbjson-build",
@@ -2930,7 +2930,7 @@ dependencies = [
 [[package]]
 name = "influxdb_influxql_parser"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
+source = "git+https://github.com/CeresDB/influxql?rev=efbc589#efbc589fb4e884e4ce057f066e63183f02a99c51"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -2992,7 +2992,7 @@ dependencies = [
 [[package]]
 name = "iox_query"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
+source = "git+https://github.com/CeresDB/influxql?rev=efbc589#efbc589fb4e884e4ce057f066e63183f02a99c51"
 dependencies = [
  "arrow 38.0.0",
  "arrow_util",
@@ -3016,7 +3016,7 @@ dependencies = [
 [[package]]
 name = "iox_query_influxql"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
+source = "git+https://github.com/CeresDB/influxql?rev=efbc589#efbc589fb4e884e4ce057f066e63183f02a99c51"
 dependencies = [
  "arrow 38.0.0",
  "chrono",
@@ -4072,7 +4072,7 @@ dependencies = [
 [[package]]
 name = "observability_deps"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
+source = "git+https://github.com/CeresDB/influxql?rev=efbc589#efbc589fb4e884e4ce057f066e63183f02a99c51"
 dependencies = [
  "tracing",
 ]
@@ -4968,7 +4968,7 @@ dependencies = [
 [[package]]
 name = "query_functions"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
+source = "git+https://github.com/CeresDB/influxql?rev=efbc589#efbc589fb4e884e4ce057f066e63183f02a99c51"
 dependencies = [
  "arrow 38.0.0",
  "chrono",
@@ -5575,7 +5575,7 @@ dependencies = [
 [[package]]
 name = "schema"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
+source = "git+https://github.com/CeresDB/influxql?rev=efbc589#efbc589fb4e884e4ce057f066e63183f02a99c51"
 dependencies = [
  "arrow 38.0.0",
  "hashbrown 0.13.2",
@@ -6384,7 +6384,7 @@ dependencies = [
 [[package]]
 name = "test_helpers"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql#4cef2d2fb84fc77af1a7a88ad4c978a5b344ad23"
+source = "git+https://github.com/CeresDB/influxql?rev=efbc589#efbc589fb4e884e4ce057f066e63183f02a99c51"
 dependencies = [
  "dotenvy",
  "observability_deps",

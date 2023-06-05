@@ -51,6 +51,9 @@ pub struct RowGroupPruner<'a> {
 }
 
 impl<'a> RowGroupPruner<'a> {
+    // TODO: DataFusion already change predicates to PhyscialExpr, we should keep up
+    // with upstream.
+    // https://github.com/apache/arrow-datafusion/issues/4695
     pub fn try_new(
         schema: &'a SchemaRef,
         row_groups: &'a [RowGroupMetaData],
