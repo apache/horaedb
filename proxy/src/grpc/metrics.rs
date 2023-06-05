@@ -8,26 +8,18 @@ use prometheus_static_metric::{auto_flush_from, make_auto_flush_static_metric};
 
 make_auto_flush_static_metric! {
     pub label_enum GrpcTypeKind {
-        write,
-    }
-
-    pub label_enum GrpcResultKind {
-        failed,
+        write_failed,
     }
 
     pub struct GrpcHandlerCounterVec: LocalIntCounter {
         "type" => GrpcTypeKind,
-        "result" => GrpcResultKind,
     }
 }
 
 lazy_static! {
-    pub static ref GRPC_HANDLER_COUNTER_VEC_GLOBAL: IntCounterVec = register_int_counter_vec!(
-        "grpc_handler_counter",
-        "Grpc handler counter",
-        &["type", "result"]
-    )
-    .unwrap();
+    pub static ref GRPC_HANDLER_COUNTER_VEC_GLOBAL: IntCounterVec =
+        register_int_counter_vec!("grpc_handler_counter", "Grpc handler counter", &["type"])
+            .unwrap();
 }
 
 lazy_static! {

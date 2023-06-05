@@ -11,18 +11,18 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_write(&self, ctx: Context, req: WriteRequest) -> WriteResponse {
         self.hotspot_recorder.inc_write_reqs(&req).await;
 
-        let mut row_count = 0;
+        let mut num_rows = 0;
         for table_request in &req.table_requests {
             for entry in &table_request.entries {
-                row_count += entry.field_groups.len();
+                num_rows += entry.field_groups.len();
             }
         }
-        let row_count = row_count as u64;
+        let num_rows = num_rows as u64;
 
         match self.handle_write_internal(ctx, req).await {
             Err(e) => {
                 error!("Failed to handle write, err:{e}");
-                GRPC_HANDLER_COUNTER_VEC.write.failed.inc_by(row_count);
+                GRPC_HANDLER_COUNTER_VEC.write_failed.inc_by(num_rows);
                 WriteResponse {
                     header: Some(error::build_err_header(e)),
                     ..Default::default()
@@ -30,9 +30,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             }
             Ok(v) => {
                 GRPC_HANDLER_COUNTER_VEC
-                    .write
-                    .failed
-                    .inc_by(row_count - v.success as u64);
+                    .write_failed
+                    .inc_by(v.failed as u64);
                 WriteResponse {
                     header: Some(build_ok_header()),
                     success: v.success,

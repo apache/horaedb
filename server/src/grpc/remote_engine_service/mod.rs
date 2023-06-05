@@ -340,26 +340,29 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
             msg: "fail to convert write request",
         })?;
 
-    let row_count = write_request.write_request.row_group.num_rows();
+    let num_rows = write_request.write_request.row_group.num_rows();
     let table = find_table_by_identifier(&ctx, &write_request.table)?;
 
-    let affected_rows = table
+    let res = table
         .write(write_request.write_request)
         .await
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
             msg: format!("fail to write table, table:{:?}", write_request.table),
-        })?;
-    REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
-        .write
-        .failed
-        .inc_by((row_count - affected_rows) as u64);
-
-    Ok(WriteResponse {
-        header: None,
-        affected_rows: affected_rows as u64,
-    })
+        });
+    match res {
+        Ok(affected_rows) => Ok(WriteResponse {
+            header: None,
+            affected_rows: affected_rows as u64,
+        }),
+        Err(e) => {
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+                .write_failed
+                .inc_by(num_rows as u64);
+            Err(e)
+        }
+    }
 }
 
 async fn handle_get_table_info(

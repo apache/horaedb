@@ -35,13 +35,12 @@ make_auto_flush_static_metric! {
         "type" => RemoteEngineTypeKind,
     }
 
-    pub label_enum RemoteEngineResultKind {
-        failed,
+    pub label_enum RemoteEngineGrpcTypeKind {
+        write_failed,
     }
 
     pub struct RemoteEngineGrpcHandlerCounterVec: LocalIntCounter {
-        "type" => RemoteEngineTypeKind,
-        "result" => RemoteEngineResultKind,
+        "type" => RemoteEngineGrpcTypeKind,
     }
 
     pub label_enum MetaEventTypeKind {
@@ -80,7 +79,7 @@ lazy_static! {
         register_int_counter_vec!(
             "remote_engine_grpc_handler_counter",
             "Remote engine grpc handler counter",
-            &["type", "result"]
+            &["type"]
         )
         .unwrap();
     pub static ref META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC_GLOBAL: HistogramVec =
