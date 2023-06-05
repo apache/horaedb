@@ -321,8 +321,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 source: Box::new(source),
             })?;
         debug!(
-            "ObkvObjectStore put operation, location:{location},cost:{}",
-            instant.elapsed().as_millis()
+            "ObkvObjectStore put operation, location:{location}, cost:{:?}",
+            instant.elapsed()
         );
         Ok(())
     }
@@ -350,8 +350,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             CloudMultiPartUpload::new(upload, self.max_upload_concurrency, self.part_size);
 
         debug!(
-            "ObkvObjectStore put_multipart operation, location:{location}, table_name:{table_name}, cost:{}",
-            instant.elapsed().as_millis()
+            "ObkvObjectStore put_multipart operation, location:{location}, table_name:{table_name}, cost:{:?}",
+            instant.elapsed()
         );
         Ok((multi_part_id, Box::new(multi_part_upload)))
     }
@@ -368,7 +368,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             batch_size: meta::SCAN_BATCH_SIZE,
         };
 
-        let prefix = Prefix::build(location, multipart_id);
+        let prefix = PathKeyEncoder::part_key_prefix(location, multipart_id);
         let scan_request = util::scan_request_with_prefix(prefix.as_bytes());
 
         let mut iter = self
@@ -405,8 +405,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             })?;
 
         debug!(
-            "ObkvObjectStore abort_multipart operation, location:{location}, table_name:{table_name}, cost:{}",
-            instant.elapsed().as_millis()
+            "ObkvObjectStore abort_multipart operation, location:{location}, table_name:{table_name}, cost:{:?}",
+            instant.elapsed()
         );
         Ok(())
     }
@@ -416,8 +416,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         let result = self.get_internal(location).await;
 
         debug!(
-            "ObkvObjectStore get operation, location:{location}, cost:{}",
-            instant.elapsed().as_millis()
+            "ObkvObjectStore get operation, location:{location}, cost:{:?}",
+            instant.elapsed()
         );
         result.box_err().map_err(|source| StoreError::NotFound {
             path: location.to_string(),
@@ -448,7 +448,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             })?;
 
         for (index, key) in covered_parts.part_keys.iter().enumerate() {
-            let values = self
+            let part_bytes = self
                 .client
                 .get(table_name, key.as_bytes())
                 .map_err(|source| StoreError::NotFound {
@@ -456,7 +456,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                     source: Box::new(source),
                 })?;
 
-            if let Some(bytes) = values {
+            if let Some(bytes) = part_bytes {
                 let mut begin = 0;
                 let mut end = bytes.len();
                 if index == 0 {
@@ -471,8 +471,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         }
 
         debug!(
-            "ObkvObjectStore get_range operation, location:{location}, table:{table_name}, cost:{}",
-            instant.elapsed().as_millis()
+            "ObkvObjectStore get_range operation, location:{location}, table:{table_name}, cost:{:?}",
+            instant.elapsed()
         );
 
         Ok(range_buffer.into())
@@ -492,8 +492,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 })?;
 
         debug!(
-            "ObkvObjectStore head operation, location:{location}, cost:{}",
-            instant.elapsed().as_millis()
+            "ObkvObjectStore head operation, location:{location}, cost:{:?}",
+            instant.elapsed()
         );
 
         let last_modified = self
@@ -546,8 +546,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             })?;
 
         debug!(
-            "ObkvObjectStore delete operation, location:{location}, table:{table_name}, cost:{}",
-            instant.elapsed().as_millis()
+            "ObkvObjectStore delete operation, location:{location}, table:{table_name}, cost:{:?}",
+            instant.elapsed()
         );
 
         Ok(())
@@ -583,8 +583,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
 
         let iter = futures::stream::iter(meta_list.into_iter());
         debug!(
-            "ObkvObjectStore list operation, prefix:{path}, cost:{}",
-            instant.elapsed().as_millis()
+            "ObkvObjectStore list operation, prefix:{path}, cost:{:?}",
+            instant.elapsed()
         );
         Ok(iter.boxed())
     }
@@ -626,8 +626,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
 
         let common_prefixes = Vec::from_iter(common_prefixes.into_iter());
         debug!(
-            "ObkvObjectStore list_with_delimiter operation, prefix:{path}, cost:{}",
-            instant.elapsed().as_millis()
+            "ObkvObjectStore list_with_delimiter operation, prefix:{path}, cost:{:?}",
+            instant.elapsed()
         );
         Ok(ListResult {
             common_prefixes,
@@ -664,11 +664,22 @@ struct ObkvMultiPartUpload<T> {
     meta_manager: Arc<MetaManager<T>>,
 }
 
-struct Prefix;
+struct PathKeyEncoder;
 
-impl Prefix {
-    fn build(location: &Path, upload_id: &str) -> String {
+impl PathKeyEncoder {
+    #[inline]
+    fn part_key(location: &Path, upload_id: &str, part_idx: usize) -> String {
+        format!("{location}@{upload_id}@{part_idx}")
+    }
+
+    #[inline]
+    fn part_key_prefix(location: &Path, upload_id: &str) -> String {
         format!("{location}@{upload_id}@")
+    }
+
+    #[inline]
+    fn unique_id(table: &str, location: &Path, upload_id: &str) -> String {
+        format!("{table}@{location}@{upload_id}")
     }
 }
 
@@ -680,9 +691,8 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
         part_idx: usize,
     ) -> Result<UploadPart, std::io::Error> {
         let mut batch = T::WriteBatch::default();
-        let prefix = Prefix::build(&self.location, &self.upload_id);
-        let key = format!("{prefix}{part_idx}");
-        batch.insert(key.as_bytes(), buf.as_ref());
+        let part_key = PathKeyEncoder::part_key(&self.location, &self.upload_id, part_idx);
+        batch.insert(part_key.as_bytes(), buf.as_ref());
 
         self.client
             .write(WriteContext::default(), &self.table_name, batch)
@@ -692,7 +702,9 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
             })?;
         // Record size of object.
         self.size.fetch_add(buf.len() as u64, Ordering::Relaxed);
-        Ok(UploadPart { content_id: key })
+        Ok(UploadPart {
+            content_id: part_key,
+        })
     }
 
     async fn complete(&self, completed_parts: Vec<UploadPart>) -> Result<(), std::io::Error> {
@@ -710,9 +722,10 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
             location: self.location.as_ref().to_string(),
             last_modified,
             size: self.size.load(Ordering::SeqCst) as usize,
-            unique_id: Some(format!(
-                "{}@{}@{}",
-                self.table_name, self.location, self.upload_id
+            unique_id: Some(PathKeyEncoder::unique_id(
+                &self.table_name,
+                &self.location,
+                &self.upload_id,
             )),
             part_size: self.part_size,
             parts: paths,

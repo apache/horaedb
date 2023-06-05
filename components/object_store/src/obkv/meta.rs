@@ -11,10 +11,7 @@ use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
 use upstream::{path::Path, Error as StoreError, Result as StoreResult};
 
-use super::{
-    util::{self},
-    OBKV,
-};
+use crate::obkv::{util, OBKV};
 
 pub const HEADER: u8 = 0x00_u8;
 
@@ -64,8 +61,8 @@ pub enum Error {
     #[snafu(display("Invalid header found, header:{header}, expect:{expect}"))]
     InvalidHeader { header: u8, expect: u8 },
 
-    #[snafu(display("Invalid range, start:{start}, end:{end}"))]
-    InvalidRange { start: usize, end: usize },
+    #[snafu(display("Out of range occurs, end:{end}, object_size:{object_size}"))]
+    OutOfRange { end: usize, object_size: usize },
 }
 
 define_result!(Error);
@@ -164,10 +161,10 @@ impl ObkvObjectMeta {
     /// Compute the convered parts based on given range parameter
     pub fn compute_covered_parts(&self, range: Range<usize>) -> Result<ConveredParts> {
         ensure!(
-            range.start <= range.end && range.end <= self.size,
-            InvalidRange {
-                start: range.start,
+            range.end <= self.size,
+            OutOfRange {
                 end: range.end,
+                object_size: self.size,
             }
         );
         let batch_size = self.part_size;
@@ -176,14 +173,14 @@ impl ObkvObjectMeta {
         let end_index = range.end / batch_size;
         let end_offset = range.end % batch_size;
 
-        let mut convered_parts = Vec::with_capacity(end_index - start_index + 1);
+        // let mut convered_parts = Vec::with_capacity(end_index - start_index + 1);
 
-        for key in self.parts.iter().take(end_index + 1).skip(start_index) {
-            convered_parts.push(key.clone());
-        }
+        // for key in &self.parts[start_index..=end_index] {
+        //     convered_parts.push(key.clone());
+        // }
 
         Ok(ConveredParts {
-            part_keys: convered_parts,
+            part_keys: &self.parts[start_index..=end_index],
             start_offset,
             end_offset,
         })
@@ -191,9 +188,9 @@ impl ObkvObjectMeta {
 }
 
 #[derive(Debug, Clone)]
-pub struct ConveredParts {
+pub struct ConveredParts<'a> {
     /// The table kv client
-    pub part_keys: Vec<String>,
+    pub part_keys: &'a [String],
     pub start_offset: usize,
     pub end_offset: usize,
 }
