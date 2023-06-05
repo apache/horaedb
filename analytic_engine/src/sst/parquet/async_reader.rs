@@ -203,7 +203,6 @@ impl<'a> Reader<'a> {
     ) -> Result<Option<RowSelection>> {
         // TODO: remove fixed partition
         let partition = 0;
-        let metrics = ParquetFileMetrics::new(partition, self.path.as_ref(), &self.df_plan_metrics);
         let exprs = datafusion::optimizer::utils::conjunction(self.predicate.exprs().to_vec());
         let exprs = match exprs {
             Some(exprs) => exprs,
@@ -220,6 +219,7 @@ impl<'a> Reader<'a> {
         let page_predicate = PagePruningPredicate::try_new(&physical_expr, arrow_schema.clone())
             .context(DataFusionError)?;
 
+        let metrics = ParquetFileMetrics::new(partition, self.path.as_ref(), &self.df_plan_metrics);
         page_predicate
             .prune(row_groups, file_metadata, &metrics)
             .context(DataFusionError)
