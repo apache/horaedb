@@ -5,7 +5,7 @@
 use std::{num::NonZeroUsize, path::Path, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
-use common_util::{define_result, runtime::Runtime};
+use common_util::define_result;
 use futures::Future;
 use message_queue::kafka::kafka_impl::KafkaImpl;
 use object_store::{
@@ -13,6 +13,7 @@ use object_store::{
     disk_cache::DiskCacheStore,
     mem_cache::{MemCache, MemCacheStore},
     metrics::StoreWithMetrics,
+    obkv,
     prefix::StoreWithPrefix,
     LocalFileSystem, ObjectStoreRef,
 };
@@ -110,11 +111,8 @@ pub struct EngineBuilder<'a> {
 
 impl<'a> EngineBuilder<'a> {
     pub async fn build(self) -> Result<TableEngineRef> {
-        let opened_storages = open_storage(
-            self.config.storage.clone(),
-            self.engine_runtimes.io_runtime.clone(),
-        )
-        .await?;
+        let opened_storages =
+            open_storage(self.config.storage.clone(), self.engine_runtimes.clone()).await?;
         let manifest_storages = ManifestStorages {
             wal_manager: self.opened_wals.manifest_wal.clone(),
             oss_storage: opened_storages.default_store().clone(),
@@ -412,7 +410,7 @@ impl ObjectStorePicker for OpenedStorages {
 // ```
 fn open_storage(
     opts: StorageOptions,
-    runtime: Arc<Runtime>,
+    engine_runtimes: Arc<EngineRuntimes>,
 ) -> Pin<Box<dyn Future<Output = Result<OpenedStorages>> + Send>> {
     Box::pin(async move {
         let mut store = match opts.object_store {
@@ -444,6 +442,26 @@ fn open_storage(
                 let store_with_prefix = StoreWithPrefix::new(aliyun_opts.prefix, oss);
                 Arc::new(store_with_prefix.context(OpenObjectStore)?) as _
             }
+            ObjectStoreOptions::Obkv(obkv_opts) => {
+                let obkv_config = obkv_opts.client;
+                let obkv = engine_runtimes
+                    .write_runtime
+                    .spawn_blocking(move || ObkvImpl::new(obkv_config).context(OpenObkv))
+                    .await
+                    .context(RuntimeExec)??;
+
+                let oss: ObjectStoreRef = Arc::new(
+                    obkv::ObkvObjectStore::try_new(
+                        Arc::new(obkv),
+                        obkv_opts.shard_num,
+                        obkv_opts.part_size.0 as usize,
+                        obkv_opts.max_object_size.0 as usize,
+                        obkv_opts.upload_parallelism,
+                    )
+                    .context(OpenObjectStore)?,
+                );
+                Arc::new(StoreWithPrefix::new(obkv_opts.prefix, oss).context(OpenObjectStore)?) as _
+            }
         };
 
         if opts.disk_cache_capacity.as_byte() > 0 {
@@ -464,7 +482,10 @@ fn open_storage(
             ) as _;
         }
 
-        store = Arc::new(StoreWithMetrics::new(store, runtime));
+        store = Arc::new(StoreWithMetrics::new(
+            store,
+            engine_runtimes.io_runtime.clone(),
+        ));
 
         if opts.mem_cache_capacity.as_byte() > 0 {
             let mem_cache = Arc::new(
