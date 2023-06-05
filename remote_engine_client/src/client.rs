@@ -9,7 +9,10 @@ use std::{
     task::{Context, Poll},
 };
 
-use arrow_ext::{ipc, ipc::CompressionMethod};
+use arrow_ext::{
+    ipc,
+    ipc::{CompressOptions, CompressionMethod},
+};
 use ceresdbproto::{
     remote_engine::{self, read_response::Output::Arrow, remote_engine_service_client::*},
     storage::arrow_payload,
@@ -42,15 +45,18 @@ struct WriteBatchContext {
 pub struct Client {
     cached_router: Arc<CachedRouter>,
     io_runtime: Arc<Runtime>,
+    pub compression: CompressOptions,
 }
 
 impl Client {
     pub fn new(config: Config, router: RouterRef, io_runtime: Arc<Runtime>) -> Self {
+        let compression = config.compression;
         let cached_router = CachedRouter::new(router, config);
 
         Self {
             cached_router: Arc::new(cached_router),
             io_runtime,
+            compression,
         }
     }
 
@@ -102,8 +108,7 @@ impl Client {
 
         // Write to remote.
         let table_ident = request.table.clone();
-
-        let request_pb = ceresdbproto::remote_engine::WriteRequest::try_from(request)
+        let request_pb = WriteRequest::convert_to_pb(request, self.compression)
             .box_err()
             .context(Convert {
                 msg: "Failed to convert WriteRequest to pb",
@@ -166,9 +171,10 @@ impl Client {
                 request,
                 channel,
             } = context;
+            let compress_options = self.compression;
             let handle = self.io_runtime.spawn(async move {
                 let batch_request_pb =
-                    match ceresdbproto::remote_engine::WriteBatchRequest::try_from(request)
+                    match WriteBatchRequest::convert_write_batch_to_pb(request, compress_options)
                         .box_err()
                     {
                         Ok(pb) => pb,

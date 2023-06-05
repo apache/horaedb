@@ -8,6 +8,7 @@ use arrow::{
     ipc::{reader::StreamReader, writer::StreamWriter},
     record_batch::RecordBatch,
 };
+use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, ResultExt, Snafu};
 
 #[derive(Snafu, Debug)]
@@ -28,7 +29,9 @@ pub enum Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub enum CompressionMethod {
     #[default]
     None,
@@ -48,11 +51,20 @@ pub struct RecordBatchesEncoder {
     compress_opts: CompressOptions,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct CompressOptions {
     /// The minimum length of the payload to be compressed.
     pub compress_min_length: usize,
     pub method: CompressionMethod,
+}
+
+impl Default for CompressOptions {
+    fn default() -> Self {
+        Self {
+            compress_min_length: DEFAULT_COMPRESS_MIN_LENGTH,
+            method: CompressionMethod::Zstd,
+        }
+    }
 }
 
 #[derive(Clone, Default, Debug)]
