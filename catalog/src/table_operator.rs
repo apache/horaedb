@@ -3,7 +3,7 @@
 use std::time::Instant;
 
 use common_util::{error::BoxError, time::InstantExt};
-use log::{info, warn};
+use log::{error, info, warn};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{engine, table::TableRef};
 
@@ -36,39 +36,52 @@ impl TableOperator {
         let shard_id = request.shard_id;
 
         // Generate open requests.
-        let mut schemas = Vec::with_capacity(request.table_defs.len());
+        let mut related_schemas = Vec::with_capacity(request.table_defs.len());
         let mut engine_table_defs = Vec::with_capacity(request.table_defs.len());
         for open_ctx in request.table_defs {
             let schema = self.schema_by_name(&open_ctx.catalog_name, &open_ctx.schema_name)?;
+            let table_id = open_ctx.id;
             engine_table_defs.push(open_ctx.into_engine_table_def(schema.id()));
-            schemas.push(schema);
+            related_schemas.push((table_id, schema));
         }
 
         // Open tables by table engine.
-        // TODO: add the `open_shard` method into table engine.
         let engine_open_shard_req = engine::OpenShardRequest {
-            shard_id: request.shard_id,
+            shard_id,
             table_defs: engine_table_defs,
             engine: request.engine,
         };
-        let open_results = table_engine.open_shard(engine_open_shard_req).await;
+        let mut shard_result = table_engine
+            .open_shard(engine_open_shard_req)
+            .await
+            .box_err()
+            .context(TableOperatorWithCause { msg: None })?;
 
         // Check and register successful opened table into schema.
         let mut success_count = 0_u32;
         let mut missing_table_count = 0_u32;
         let mut open_table_errs = Vec::new();
 
-        for (schema, open_result) in schemas.into_iter().zip(open_results.into_iter()) {
-            match open_result {
+        for (table_id, schema) in related_schemas {
+            let table_result = shard_result
+                .remove(&table_id)
+                .context(TableOperatorNoCause {
+                    msg: Some(format!(
+                        "table not exist, shard_id:{shard_id}, table_id:{table_id}"
+                    )),
+                })?;
+
+            match table_result {
                 Ok(Some(table)) => {
                     schema.register_table(table);
                     success_count += 1;
                 }
                 Ok(None) => {
+                    error!("TableOperator failed to open a missing table, table_id:{table_id}, schema_id:{:?}, shard_id:{shard_id}", schema.id());
                     missing_table_count += 1;
                 }
-                // Has printed error log for it.
                 Err(e) => {
+                    error!("TableOperator failed to open table, table_id:{table_id}, schema_id:{:?}, shard_id:{shard_id}, err:{}", schema.id(), e);
                     open_table_errs.push(e);
                 }
             }

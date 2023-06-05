@@ -347,8 +347,12 @@ impl CompactionTask {
         total_input_size as usize
     }
 
-    pub fn num_input_files(&self) -> usize {
+    pub fn num_compact_files(&self) -> usize {
         self.compaction_inputs.iter().map(|v| v.files.len()).sum()
+    }
+
+    pub fn num_expired_files(&self) -> usize {
+        self.expired.iter().map(|v| v.files.len()).sum()
     }
 }
 

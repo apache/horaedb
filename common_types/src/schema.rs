@@ -514,6 +514,10 @@ impl RecordSchemaWithKey {
         &self.primary_key_indexes
     }
 
+    pub fn is_primary_key_index(&self, idx: usize) -> bool {
+        self.primary_key_indexes.contains(&idx)
+    }
+
     pub fn index_of(&self, name: &str) -> Option<usize> {
         self.record_schema.index_of(name)
     }

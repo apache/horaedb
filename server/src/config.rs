@@ -115,8 +115,11 @@ pub struct ServerConfig {
     // Config of route
     pub route_cache: router::RouteCacheConfig,
 
-    /// record hotspot query or write requests
+    /// Record hotspot query or write requests
     pub hotspot: hotspot::Config,
+
+    /// Config of remote engine client
+    pub remote_client: remote_engine_client::Config,
 }
 
 impl Default for ServerConfig {
@@ -135,6 +138,7 @@ impl Default for ServerConfig {
             default_schema_config: Default::default(),
             route_cache: router::RouteCacheConfig::default(),
             hotspot: hotspot::Config::default(),
+            remote_client: remote_engine_client::Config::default(),
         }
     }
 }

@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Merge SST bench.
 
@@ -183,6 +183,7 @@ impl MergeSstBench {
         let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
         let builder = chain::Builder::new(ChainConfig {
             request_id,
+            metrics_collector: None,
             deadline: None,
             space_id,
             table_id,

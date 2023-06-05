@@ -1,11 +1,11 @@
 [package]
 name = "ceresdb"
-version = "1.2.0"
+version = "1.2.2"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
 
 [workspace.package]
-version = "1.2.0"
+version = "1.2.2"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
 
@@ -162,7 +162,7 @@ toml = { workspace = true }
 tracing_util = { workspace = true }
 
 [build-dependencies]
-vergen = { version = "7", default-features = false, features = ["build", "git", "rustc"] }
+vergen = { version = "8", default-features = false, features = ["build", "cargo", "git", "gitcl", "rustc"] }
 
 # This profile optimizes for good runtime performance.
 [profile.release]

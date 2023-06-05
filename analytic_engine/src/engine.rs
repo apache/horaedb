@@ -6,12 +6,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_util::error::BoxError;
-use log::{error, info, warn};
-use snafu::ResultExt;
+use log::{error, info};
+use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{
         Close, CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
-        OpenShardRequest, OpenTableRequest, Result, TableEngine,
+        OpenShard, OpenShardRequest, OpenShardResult, OpenTableNoCause, OpenTableRequest,
+        OpenTableWithCause, Result, TableDef, TableEngine,
     },
     table::{SchemaId, TableRef},
     ANALYTIC_ENGINE_TYPE,
@@ -36,42 +37,6 @@ impl Clone for TableEngineImpl {
 impl TableEngineImpl {
     pub fn new(instance: InstanceRef) -> Self {
         Self { instance }
-    }
-
-    async fn open_tables_of_shard(
-        &self,
-        open_requests: Vec<table_engine::engine::OpenTableRequest>,
-    ) -> Vec<table_engine::engine::Result<Option<TableRef>>> {
-        if open_requests.is_empty() {
-            return Vec::new();
-        }
-
-        let mut open_results = Vec::with_capacity(open_requests.len());
-        for request in open_requests {
-            let result = self
-                .open_table(request.clone())
-                .await
-                .map_err(|e| {
-                    error!("Failed to open table, open_request:{request:?}, err:{e}");
-                    e
-                })
-                .map(|table_opt| {
-                    if table_opt.is_none() {
-                        error!(
-                            "Table engine returns none when opening table, open_request:{request:?}"
-                        );
-                    }
-                    table_opt
-                });
-
-            if let Ok(None) = result {
-                warn!("Try to open a missing table, open request:{request:?}");
-            }
-
-            open_results.push(result);
-        }
-
-        open_results
     }
 
     async fn close_tables_of_shard(
@@ -133,14 +98,7 @@ impl TableEngine for TableEngineImpl {
 
         let space_table = self.instance.create_table(space_id, request).await?;
 
-        let table_impl: TableRef = Arc::new(TableImpl::new(
-            self.instance.clone(),
-            ANALYTIC_ENGINE_TYPE.to_string(),
-            space_id,
-            space_table.table_data().id,
-            space_table.table_data().clone(),
-            space_table,
-        ));
+        let table_impl: TableRef = Arc::new(TableImpl::new(self.instance.clone(), space_table));
 
         Ok(table_impl)
     }
@@ -158,27 +116,42 @@ impl TableEngine for TableEngineImpl {
     }
 
     async fn open_table(&self, request: OpenTableRequest) -> Result<Option<TableRef>> {
+        let shard_id = request.shard_id;
         let space_id = build_space_id(request.schema_id);
+        let table_id = request.table_id;
 
         info!(
             "Table engine impl open table, space_id:{}, request:{:?}",
             space_id, request
         );
-        let space_table = match self.instance.open_table(space_id, &request).await? {
-            Some(v) => v,
-            None => return Ok(None),
+
+        let table_def = TableDef {
+            catalog_name: request.catalog_name,
+            schema_name: request.schema_name,
+            schema_id: request.schema_id,
+            id: table_id,
+            name: request.table_name,
         };
 
-        let table_impl = Arc::new(TableImpl::new(
-            self.instance.clone(),
-            ANALYTIC_ENGINE_TYPE.to_string(),
-            space_id,
-            space_table.table_data().id,
-            space_table.table_data().clone(),
-            space_table,
-        ));
+        let shard_request = OpenShardRequest {
+            shard_id,
+            table_defs: vec![table_def],
+            engine: request.engine,
+        };
 
-        Ok(Some(table_impl))
+        let mut shard_result = self.instance.open_tables_of_shard(shard_request).await?;
+        let table_opt = shard_result.remove(&table_id).with_context(|| OpenTableNoCause {
+            msg: Some(format!("table not exist, table_id:{table_id}, space_id:{space_id}, shard_id:{shard_id}")),
+        })?
+        .box_err()
+        .context(OpenTableWithCause {
+            msg: None,
+        })?;
+
+        let table_opt = table_opt
+            .map(|space_table| Arc::new(TableImpl::new(self.instance.clone(), space_table)) as _);
+
+        Ok(table_opt)
     }
 
     async fn close_table(&self, request: CloseTableRequest) -> Result<()> {
@@ -194,22 +167,31 @@ impl TableEngine for TableEngineImpl {
         Ok(())
     }
 
-    async fn open_shard(&self, request: OpenShardRequest) -> Vec<Result<Option<TableRef>>> {
-        let table_defs = request.table_defs;
-        let open_requests = table_defs
-            .into_iter()
-            .map(|def| OpenTableRequest {
-                catalog_name: def.catalog_name,
-                schema_name: def.schema_name,
-                schema_id: def.schema_id,
-                table_name: def.name,
-                table_id: def.id,
-                engine: request.engine.clone(),
-                shard_id: request.shard_id,
-            })
-            .collect();
+    async fn open_shard(&self, request: OpenShardRequest) -> Result<OpenShardResult> {
+        let shard_result = self
+            .instance
+            .open_tables_of_shard(request)
+            .await
+            .box_err()
+            .context(OpenShard)?;
 
-        self.open_tables_of_shard(open_requests).await
+        let mut engine_shard_result = OpenShardResult::with_capacity(shard_result.len());
+        for (table_id, table_res) in shard_result {
+            match table_res.box_err() {
+                Ok(Some(space_table)) => {
+                    let table_impl = Arc::new(TableImpl::new(self.instance.clone(), space_table));
+                    engine_shard_result.insert(table_id, Ok(Some(table_impl)));
+                }
+                Ok(None) => {
+                    engine_shard_result.insert(table_id, Ok(None));
+                }
+                Err(e) => {
+                    engine_shard_result.insert(table_id, Err(e));
+                }
+            }
+        }
+
+        Ok(engine_shard_result)
     }
 
     async fn close_shard(

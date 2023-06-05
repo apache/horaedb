@@ -73,6 +73,7 @@ impl fmt::Debug for SpaceAndTable {
 // TODO(yingwen): Or just use something like uuid as space id?
 pub type SpaceId = u32;
 
+#[derive(Debug)]
 pub struct SpaceContext {
     /// Catalog name
     pub catalog_name: String,
@@ -188,10 +189,24 @@ impl Space {
     pub fn list_all_tables(&self, tables: &mut Vec<TableDataRef>) {
         self.table_datas.read().unwrap().list_all_tables(tables)
     }
+
+    pub fn space_id(&self) -> SpaceId {
+        self.id
+    }
 }
 
 /// A reference to space
 pub type SpaceRef = Arc<Space>;
+
+impl fmt::Debug for Space {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Space")
+            .field("id", &self.id)
+            .field("context", &self.context)
+            .field("write_buffer_size", &self.write_buffer_size)
+            .finish()
+    }
+}
 
 /// Spaces states
 #[derive(Default)]

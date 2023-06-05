@@ -14,7 +14,8 @@ use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{
         CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
-        OpenShardRequest, OpenTableRequest, Result, TableEngine, Unexpected, UnexpectedNoCause,
+        OpenShardRequest, OpenShardResult, OpenTableRequest, Result, TableEngine, Unexpected,
+        UnexpectedNoCause,
     },
     remote::RemoteEngineRef,
     table::TableRef,
@@ -76,8 +77,8 @@ impl TableEngine for PartitionTableEngine {
         Ok(())
     }
 
-    async fn open_shard(&self, _request: OpenShardRequest) -> Vec<Result<Option<TableRef>>> {
-        vec![Ok(None)]
+    async fn open_shard(&self, _request: OpenShardRequest) -> Result<OpenShardResult> {
+        Ok(OpenShardResult::default())
     }
 
     async fn close_shard(&self, _request: CloseShardRequest) -> Vec<Result<String>> {
