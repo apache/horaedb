@@ -1,6 +1,6 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{str, sync::Arc, time};
+use std::{ops::Range, str, sync::Arc, time};
 
 use common_util::{
     define_result,
@@ -63,6 +63,9 @@ pub enum Error {
 
     #[snafu(display("Invalid header found, header:{header}, expect:{expect}"))]
     InvalidHeader { header: u8, expect: u8 },
+
+    #[snafu(display("Invalid range, start:{start}, end:{end}"))]
+    InvalidRange { start: usize, end: usize },
 }
 
 define_result!(Error);
@@ -157,6 +160,42 @@ impl ObkvObjectMeta {
         size += self.version.len();
         size
     }
+
+    /// Compute the convered parts based on given range parameter
+    pub fn compute_covered_parts(&self, range: Range<usize>) -> Result<ConveredParts> {
+        ensure!(
+            range.start <= range.end && range.end <= self.size,
+            InvalidRange {
+                start: range.start,
+                end: range.end,
+            }
+        );
+        let batch_size = self.part_size;
+        let start_index = range.start / batch_size;
+        let start_offset = range.start % batch_size;
+        let end_index = range.end / batch_size;
+        let end_offset = range.end % batch_size;
+
+        let mut convered_parts = Vec::with_capacity(end_index - start_index + 1);
+
+        for key in self.parts.iter().take(end_index + 1).skip(start_index) {
+            convered_parts.push(key.clone());
+        }
+
+        Ok(ConveredParts {
+            part_keys: convered_parts,
+            start_offset,
+            end_offset,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ConveredParts {
+    /// The table kv client
+    pub part_keys: Vec<String>,
+    pub start_offset: usize,
+    pub end_offset: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -258,14 +297,64 @@ impl<T: TableKv> MetaManager<T> {
 #[cfg(test)]
 mod test {
 
+    use std::ops::Range;
+
     use crate::obkv::meta::ObkvObjectMeta;
 
     #[test]
     fn test_estimate_size() {
-        let meta = ObkvObjectMeta {
+        let meta = build_test_meta();
+
+        let expect = meta.estimate_size_of_json();
+        let json = &serde_json::to_string(&meta).unwrap();
+        let real = json.len();
+        println!("expect:{expect},real:{real}");
+        assert!(expect.abs_diff(real) as f32 / (real as f32) < 0.1);
+    }
+
+    #[test]
+    fn test_compute_convered_parts() {
+        let meta = build_test_meta();
+
+        let range1 = Range { start: 0, end: 1 };
+        let expect = meta.compute_covered_parts(range1).unwrap();
+        assert!(expect.part_keys.len() == 1);
+        assert!(expect.start_offset == 0);
+        assert!(expect.end_offset == 1);
+
+        let range1 = Range {
+            start: 0,
+            end: 8190,
+        };
+        let expect = meta.compute_covered_parts(range1).unwrap();
+        assert!(expect.part_keys.len() == 8);
+        assert!(expect.start_offset == 0);
+        assert!(expect.end_offset == 1022);
+
+        let range1 = Range {
+            start: 1023,
+            end: 1025,
+        };
+        let expect = meta.compute_covered_parts(range1).unwrap();
+        assert!(expect.part_keys.len() == 2);
+        assert!(expect.start_offset == 1023);
+        assert!(expect.end_offset == 1);
+
+        let range1 = Range {
+            start: 8189,
+            end: 8190,
+        };
+        let expect = meta.compute_covered_parts(range1).unwrap();
+        assert!(expect.part_keys.len() == 1);
+        assert!(expect.start_offset == 1021);
+        assert!(expect.end_offset == 1022);
+    }
+
+    fn build_test_meta() -> ObkvObjectMeta {
+        ObkvObjectMeta {
             location: String::from("/test/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxfdsfjlajflk"),
             last_modified: 123456789,
-            size: 10000000,
+            size: 8190,
             unique_id: Some(String::from("1245689u438uferjalfjkda")),
             part_size: 1024,
             parts: vec![
@@ -279,12 +368,6 @@ mod test {
                 String::from("/test/xx/5"),
             ],
             version: String::from("123456fsdalfkassa;l;kjfaklasadffsd"),
-        };
-
-        let expect = meta.estimate_size_of_json();
-        let json = &serde_json::to_string(&meta).unwrap();
-        let real = json.len();
-        println!("expect:{expect},real:{real}");
-        assert!(expect.abs_diff(real) as f32 / (real as f32) < 0.1);
+        }
     }
 }

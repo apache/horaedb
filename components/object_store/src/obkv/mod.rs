@@ -21,7 +21,7 @@ use futures::{
     StreamExt,
 };
 use log::debug;
-use snafu::{ensure, OptionExt, ResultExt, Snafu};
+use snafu::{ensure, ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
 use tokio::{
     io::{AsyncWrite, AsyncWriteExt},
@@ -368,7 +368,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             batch_size: meta::SCAN_BATCH_SIZE,
         };
 
-        let prefix = format!("{location}@{multipart_id}@");
+        let prefix = Prefix::build(location, multipart_id);
         let scan_request = util::scan_request_with_prefix(prefix.as_bytes());
 
         let mut iter = self
@@ -438,20 +438,16 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                     source,
                 })?;
 
-        let batch_size = meta.part_size;
-        let key_list = meta.parts;
-        let start_index = range.start / batch_size;
-        let start_offset = range.start % batch_size;
-        let end_index = range.end / batch_size;
-        let end_offset = range.end % batch_size;
         let mut range_buffer = Vec::with_capacity(range.end - range.start);
-        for (index, key) in key_list
-            .iter()
-            .enumerate()
-            .take(end_index + 1)
-            .skip(start_index)
-        {
-            // let key = &key_list[index];
+        let covered_parts = meta
+            .compute_covered_parts(range)
+            .box_err()
+            .map_err(|source| StoreError::NotFound {
+                path: location.to_string(),
+                source,
+            })?;
+
+        for (index, key) in covered_parts.part_keys.iter().enumerate() {
             let values = self
                 .client
                 .get(table_name, key.as_bytes())
@@ -463,11 +459,12 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             if let Some(bytes) = values {
                 let mut begin = 0;
                 let mut end = bytes.len();
-                if index == start_index {
-                    begin = start_offset;
+                if index == 0 {
+                    begin = covered_parts.start_offset;
                 }
-                if index == end_index {
-                    end = end_offset;
+                // the last one
+                if index == covered_parts.part_keys.len() - 1 {
+                    end = covered_parts.end_offset;
                 }
                 range_buffer.extend_from_slice(&bytes[begin..end]);
             }
@@ -667,6 +664,14 @@ struct ObkvMultiPartUpload<T> {
     meta_manager: Arc<MetaManager<T>>,
 }
 
+struct Prefix;
+
+impl Prefix {
+    fn build(location: &Path, upload_id: &str) -> String {
+        format!("{location}@{upload_id}@")
+    }
+}
+
 #[async_trait]
 impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
     async fn put_multipart_part(
@@ -675,7 +680,8 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
         part_idx: usize,
     ) -> Result<UploadPart, std::io::Error> {
         let mut batch = T::WriteBatch::default();
-        let key = format!("{}@{}@{}", self.location, self.upload_id, part_idx);
+        let prefix = Prefix::build(&self.location, &self.upload_id);
+        let key = format!("{prefix}{part_idx}");
         batch.insert(key.as_bytes(), buf.as_ref());
 
         self.client
