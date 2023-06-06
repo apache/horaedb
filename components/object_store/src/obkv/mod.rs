@@ -32,7 +32,6 @@ use upstream::{
     path::{Path, DELIMITER},
     Error as StoreError, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result,
 };
-
 use uuid::Uuid;
 
 use crate::{
