@@ -27,7 +27,6 @@ pub fn try_new(
         .with_http2_keep_alive_interval(keep_alive_interval)
         .with_timeout(timeout);
     let retry_config = RetryConfig {
-        // TODO: add to config
         max_retries: 3,
         ..Default::default()
     };
