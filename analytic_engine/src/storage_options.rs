@@ -60,8 +60,22 @@ pub struct AliyunOptions {
     pub endpoint: String,
     pub bucket: String,
     pub prefix: String,
+    #[serde(default = "AliyunOptions::default_max_retries")]
+    pub max_retries: usize,
+    #[serde(default = "AliyunOptions::default_retry_timeout")]
+    pub retry_timeout: ReadableDuration,
     #[serde(default)]
-    pub http_options: HttpOptions,
+    pub http: HttpOptions,
+}
+
+impl AliyunOptions {
+    fn default_max_retries() -> usize {
+        3
+    }
+
+    fn default_retry_timeout() -> ReadableDuration {
+        ReadableDuration::from(Duration::from_secs(3 * 60))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,8 +119,22 @@ pub struct S3Options {
     pub endpoint: String,
     pub bucket: String,
     pub prefix: String,
+    #[serde(default = "S3Options::default_max_retries")]
+    pub max_retries: usize,
+    #[serde(default = "S3Options::default_retry_timeout")]
+    pub retry_timeout: ReadableDuration,
     #[serde(default)]
-    pub http_options: HttpOptions,
+    pub http: HttpOptions,
+}
+
+impl S3Options {
+    fn default_max_retries() -> usize {
+        3
+    }
+
+    fn default_retry_timeout() -> ReadableDuration {
+        ReadableDuration::from(Duration::from_secs(3 * 60))
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
