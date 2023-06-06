@@ -33,6 +33,8 @@ use upstream::{
     Error as StoreError, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result,
 };
 
+use uuid::Uuid;
+
 use crate::{
     multipart::{CloudMultiPartUpload, CloudMultiPartUploadImpl, UploadPart},
     obkv::meta::{MetaManager, ObkvObjectMeta, OBJECT_STORE_META},
@@ -167,7 +169,6 @@ pub struct ObkvObjectStore<T> {
     /// The manager to manage object store meta, which persist in obkv
     meta_manager: Arc<MetaManager<T>>,
     client: Arc<T>,
-    current_upload_id: AtomicU64,
     /// The size of one object part persited in obkv
     /// It may cause problem to save huge data in one obkv value, so we
     /// need to split data into small parts.
@@ -212,7 +213,6 @@ impl<T: TableKv> ObkvObjectStore<T> {
             shard_manager,
             meta_manager: Arc::new(meta_manager),
             client,
-            current_upload_id: AtomicU64::new(0),
             part_size,
             max_object_size,
             max_upload_concurrency,
@@ -347,7 +347,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
         let instant = Instant::now();
 
-        let upload_id = self.current_upload_id.fetch_add(1, Ordering::Relaxed);
+        let upload_id = Uuid::new_v4();
         let multi_part_id = format!("{upload_id}");
         let table_name = self.pick_shard_table(location);
 
@@ -754,6 +754,7 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
         };
 
         // Save meta info to specify obkv table.
+        // TODO: We should remove the previous object data when update object.
         self.meta_manager
             .save(meta)
             .await
