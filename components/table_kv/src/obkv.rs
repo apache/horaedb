@@ -158,6 +158,15 @@ pub enum Error {
     },
 
     #[snafu(display(
+        "Failed to get batch value from table, table:{table_name}, err:{source}.\nBacktrace:\n{backtrace}"
+    ))]
+    GetBatchValue {
+        table_name: String,
+        source: obkv::error::Error,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
         "Failed to delete data from table, table:{}, err:{}.\nBacktrace:\n{}",
         table_name,
         source,
@@ -499,6 +508,30 @@ impl TableKv for ObkvImpl {
             .context(GetValue { table_name })?;
 
         Ok(values.remove(VALUE_COLUMN_NAME).map(Value::as_bytes))
+    }
+
+    fn get_batch(&self, table_name: &str, keys: Vec<&[u8]>) -> Result<Vec<Option<Vec<u8>>>> {
+        let mut batch_ops = ObTableBatchOperation::with_ops_num_raw(keys.len());
+        let mut batch_res = Vec::with_capacity(keys.len());
+
+        for key in keys {
+            batch_ops.get(bytes_to_values(key), vec![VALUE_COLUMN_NAME.to_string()]);
+        }
+
+        let result = self
+            .client
+            .execute_batch(table_name, batch_ops)
+            .context(GetBatchValue { table_name })?;
+
+        for table_ops_result in result {
+            match table_ops_result {
+                TableOpResult::RetrieveRows(mut values) => {
+                    batch_res.push(values.remove(VALUE_COLUMN_NAME).map(Value::as_bytes))
+                }
+                TableOpResult::AffectedRows(_) => {}
+            }
+        }
+        Ok(batch_res)
     }
 
     fn delete(&self, table_name: &str, key: &[u8]) -> std::result::Result<(), Self::Error> {

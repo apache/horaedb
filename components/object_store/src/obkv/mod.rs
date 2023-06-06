@@ -34,8 +34,6 @@ use upstream::{
 };
 use uuid::Uuid;
 
-use uuid::Uuid;
-
 use crate::{
     multipart::{CloudMultiPartUpload, CloudMultiPartUploadImpl, UploadPart},
     obkv::meta::{MetaManager, ObkvObjectMeta, OBJECT_STORE_META},
@@ -277,11 +275,11 @@ impl<T: TableKv> ObkvObjectStore<T> {
         let table_name = self.pick_shard_table(location);
         // TODO: Let table_kv provide a api `get_batch` to avoid extra IO operations.
         let mut futures = FuturesOrdered::new();
-        for path in meta.parts {
+        for part_key in meta.parts {
             let client = self.client.clone();
             let table_name = table_name.to_string();
             let future = async move {
-                match client.get(&table_name, path.as_bytes()) {
+                match client.get(&table_name, part_key.as_bytes()) {
                     Ok(res) => Ok(Bytes::from(res.unwrap())),
                     Err(err) => Err(StoreError::Generic {
                         store: OBKV,
@@ -461,16 +459,21 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 source,
             })?;
 
-        for (index, key) in covered_parts.part_keys.iter().enumerate() {
-            let part_bytes = self
-                .client
-                .get(table_name, key.as_bytes())
+        let keys: Vec<&[u8]> = covered_parts
+            .part_keys
+            .iter()
+            .map(|key| key.as_bytes())
+            .collect();
+        let values =
+            self.client
+                .get_batch(table_name, keys)
                 .map_err(|source| StoreError::NotFound {
                     path: location.to_string(),
                     source: Box::new(source),
                 })?;
 
-            if let Some(bytes) = part_bytes {
+        for (index, key) in covered_parts.part_keys.iter().enumerate() {
+            if let Some(bytes) = &values[index] {
                 let mut begin = 0;
                 let mut end = bytes.len();
                 if index == 0 {
