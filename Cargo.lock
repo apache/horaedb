@@ -4848,6 +4848,7 @@ dependencies = [
  "paste 1.0.12",
  "prom-remote-api",
  "prometheus 0.12.0",
+ "prometheus-static-metric",
  "prost",
  "query_engine",
  "query_frontend",
