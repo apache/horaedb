@@ -122,7 +122,6 @@ impl Filter for Xor8Filter {
 
 pub struct RowGroupFilterBuilder {
     builders: Vec<Option<Xor8Builder>>,
-    column_filters: Vec<Option<Box<dyn Filter + Send + Sync>>>
 }
 
 impl RowGroupFilterBuilder {
@@ -150,8 +149,8 @@ impl RowGroupFilterBuilder {
                 Some(Xor8Builder::default())
             })
             .collect();
-        let column_filters = Vec::with_capacity(record_schema.num_columns());
-        Self { builders, column_filters }
+
+        Self { builders }
     }
 
     pub(crate) fn add_key(&mut self, col_idx: usize, key: &[u8]) {
@@ -160,25 +159,19 @@ impl RowGroupFilterBuilder {
         }
     }
 
-    pub(crate) fn has_builder(&mut self, col_idx: usize) -> bool {
-        self.builders[col_idx].is_some()
-    }
-
-    pub(crate) fn push_none(&mut self) {
-        self.column_filters.push(Option::None)
-    }
-
-    pub(crate) fn push_filter(&mut self, digests: &[u64]) {
-        let mut builder = Xor8Builder::new();
-        let xor8 = builder.build_from_digests(digests)
-            .context(BuildXor8Filter)
-            .map(|xor8| Box::new(Xor8Filter{xor8}) as _)
-            .unwrap();
-        self.column_filters.push(Some(xor8));
-    }
-
     pub(crate) fn build(self) -> Result<RowGroupFilter> {
-        Ok(RowGroupFilter { column_filters: self.column_filters as Vec<Option<Box<dyn Filter + Send + Sync>>> })
+        self.builders
+            .into_iter()
+            .map(|b| {
+                b.map(|mut b| {
+                    b.build()
+                        .context(BuildXor8Filter)
+                        .map(|xor8| Box::new(Xor8Filter { xor8 }) as _)
+                })
+                .transpose()
+            })
+            .collect::<Result<Vec<_>>>()
+            .map(|column_filters| RowGroupFilter { column_filters })
     }
 }
 

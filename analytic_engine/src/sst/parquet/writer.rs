@@ -2,7 +2,6 @@
 
 //! Sst writer implementation based on parquet.
 
-use arrow::array::{Array, AsArray};
 use async_trait::async_trait;
 use common_types::{record_batch::RecordBatchWithKey, request_id::RequestId};
 use common_util::error::BoxError;
@@ -12,7 +11,6 @@ use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use snafu::ResultExt;
 use tokio::io::AsyncWrite;
-use common_types::datum::DatumKind;
 
 use super::meta_data::RowGroupFilter;
 use crate::{
@@ -30,7 +28,6 @@ use crate::{
     },
     table_options::StorageFormat,
 };
-use crate::sst::parquet::hash::{bytes_hash, null_hash, string_hash};
 
 /// The implementation of sst based on parquet and object storage.
 #[derive(Debug)]
@@ -152,48 +149,17 @@ impl RecordBatchGroupWriter {
     ) -> Result<RowGroupFilter> {
         let mut builder = RowGroupFilterBuilder::new(row_group_batch[0].schema_with_key());
 
-        let mut total_num_rows = 0;
         for partial_batch in row_group_batch {
-            total_num_rows += partial_batch.num_rows();
-        }
-        let mut digests = Vec::with_capacity(total_num_rows);
-
-        for (col_idx, col) in row_group_batch[0].columns().iter().enumerate() {
-            if !builder.has_builder(col_idx) {
-                builder.push_none();
-            } else {
-                digests.clear();
-                match col.datum_kind() {
-                    DatumKind::String=> {
-                        for partial_batch in row_group_batch {
-                            let column = partial_batch.column(col_idx);
-                            let arrow_array = column.to_arrow_array_ref();
-                            let string_array = arrow_array.as_string::<i32>();
-                            for row in 0..column.num_rows() {
-                                if string_array.is_null(row) {
-                                    digests.push(null_hash());
-                                } else {
-                                    digests.push(string_hash(string_array.value(row)));
-                                }
-                            }
-                        }
-                    }
-                    _ => {
-                        for partial_batch in row_group_batch {
-                            let column = partial_batch.column(col_idx);
-                            for row in 0..column.num_rows() {
-                                let datum = column.datum(row);
-                                let bytes = datum.to_bytes();
-                                digests.push(bytes_hash(&bytes));
-                            }
-                        }
-                    }
+            for (col_idx, column) in partial_batch.columns().iter().enumerate() {
+                for row in 0..column.num_rows() {
+                    let datum = column.datum(row);
+                    datum.call_mut(|data| {
+                        builder.add_key(col_idx, data);
+                    });
                 }
-                digests.sort_unstable();
-                digests.dedup(); // TODO: replace sort+dedup with a special u64 set
-                builder.push_filter(&digests);
             }
         }
+
         builder.build().box_err().context(BuildParquetFilter)
     }
 
