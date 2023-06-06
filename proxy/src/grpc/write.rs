@@ -17,12 +17,13 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 num_rows += entry.field_groups.len();
             }
         }
-        let num_rows = num_rows as u64;
 
         match self.handle_write_internal(ctx, req).await {
             Err(e) => {
                 error!("Failed to handle write, err:{e}");
-                GRPC_HANDLER_COUNTER_VEC.write_failed.inc_by(num_rows);
+                GRPC_HANDLER_COUNTER_VEC
+                    .write_failed
+                    .inc_by(num_rows as u64);
                 WriteResponse {
                     header: Some(error::build_err_header(e)),
                     ..Default::default()
