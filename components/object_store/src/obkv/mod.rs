@@ -32,6 +32,7 @@ use upstream::{
     path::{Path, DELIMITER},
     Error as StoreError, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result,
 };
+use uuid::Uuid;
 
 use crate::{
     multipart::{CloudMultiPartUpload, CloudMultiPartUploadImpl, UploadPart},
@@ -167,7 +168,6 @@ pub struct ObkvObjectStore<T> {
     /// The manager to manage object store meta, which persist in obkv
     meta_manager: Arc<MetaManager<T>>,
     client: Arc<T>,
-    current_upload_id: AtomicU64,
     /// The size of one object part persited in obkv
     /// It may cause problem to save huge data in one obkv value, so we
     /// need to split data into small parts.
@@ -212,7 +212,6 @@ impl<T: TableKv> ObkvObjectStore<T> {
             shard_manager,
             meta_manager: Arc::new(meta_manager),
             client,
-            current_upload_id: AtomicU64::new(0),
             part_size,
             max_object_size,
             max_upload_concurrency,
@@ -347,13 +346,12 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
         let instant = Instant::now();
 
-        let upload_id = self.current_upload_id.fetch_add(1, Ordering::Relaxed);
-        let multi_part_id = format!("{upload_id}");
+        let upload_id = Uuid::new_v4().to_string();
         let table_name = self.pick_shard_table(location);
 
         let upload = ObkvMultiPartUpload {
             location: location.clone(),
-            upload_id: multi_part_id.clone(),
+            upload_id: upload_id.clone(),
             table_name: table_name.to_string(),
             size: AtomicU64::new(0),
             client: Arc::clone(&self.client),
@@ -367,7 +365,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             "ObkvObjectStore put_multipart operation, location:{location}, table_name:{table_name}, cost:{:?}",
             instant.elapsed()
         );
-        Ok((multi_part_id, Box::new(multi_part_upload)))
+        Ok((upload_id, Box::new(multi_part_upload)))
     }
 
     async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
@@ -754,6 +752,7 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
         };
 
         // Save meta info to specify obkv table.
+        // TODO: We should remove the previous object data when update object.
         self.meta_manager
             .save(meta)
             .await

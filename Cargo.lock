@@ -459,7 +459,7 @@ dependencies = [
  "once_cell",
  "regex",
  "snafu 0.7.4",
- "uuid 1.3.0",
+ "uuid 1.3.3",
 ]
 
 [[package]]
@@ -1865,7 +1865,7 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "url",
- "uuid 1.3.0",
+ "uuid 1.3.3",
  "xz2",
  "zstd 0.12.3+zstd.1.5.2",
 ]
@@ -1958,7 +1958,7 @@ dependencies = [
  "regex",
  "sha2 0.10.6",
  "unicode-segmentation",
- "uuid 1.3.0",
+ "uuid 1.3.3",
 ]
 
 [[package]]
@@ -2019,7 +2019,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef552e6f588e446098f6ba40d89ac146c8c7b64aade83c051ee00bb5d2bc18d"
 dependencies = [
- "uuid 1.3.0",
+ "uuid 1.3.3",
 ]
 
 [[package]]
@@ -3492,7 +3492,7 @@ dependencies = [
  "serde",
  "snafu 0.6.10",
  "tokio",
- "uuid 1.3.0",
+ "uuid 1.3.3",
 ]
 
 [[package]]
@@ -3582,7 +3582,7 @@ dependencies = [
  "tagptr",
  "thiserror",
  "triomphe",
- "uuid 1.3.0",
+ "uuid 1.3.3",
 ]
 
 [[package]]
@@ -3732,7 +3732,7 @@ dependencies = [
  "subprocess",
  "thiserror",
  "time 0.3.20",
- "uuid 1.3.0",
+ "uuid 1.3.3",
 ]
 
 [[package]]
@@ -4031,6 +4031,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "twox-hash",
+ "uuid 1.3.3",
 ]
 
 [[package]]
@@ -4065,7 +4066,7 @@ dependencies = [
  "spin 0.9.8",
  "tokio",
  "tokio-util",
- "uuid 1.3.0",
+ "uuid 1.3.3",
  "zstd 0.12.3+zstd.1.5.2",
 ]
 
@@ -6199,7 +6200,7 @@ dependencies = [
  "debugid",
  "memmap2",
  "stable_deref_trait",
- "uuid 1.3.0",
+ "uuid 1.3.3",
 ]
 
 [[package]]
@@ -6211,7 +6212,7 @@ dependencies = [
  "debugid",
  "memmap2",
  "stable_deref_trait",
- "uuid 1.3.0",
+ "uuid 1.3.3",
 ]
 
 [[package]]
@@ -7042,9 +7043,9 @@ checksum = "90dbc611eb48397705a6b0f6e917da23ae517e4d127123d2cf7674206627d32a"
 
 [[package]]
 name = "uuid"
-version = "1.3.0"
+version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1674845326ee10d37ca60470760d4288a6f80f304007d92e5c53bab78c9cfd79"
+checksum = "345444e32442451b267fc254ae85a209c64be56d2890e601a0c37ff0c3c5ecd2"
 dependencies = [
  "getrandom 0.2.8",
  "rand 0.8.5",
@@ -7053,13 +7054,13 @@ dependencies = [
 
 [[package]]
 name = "uuid-macro-internal"
-version = "1.3.0"
+version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1b300a878652a387d2a0de915bdae8f1a548f0c6d45e072fe2688794b656cc9"
+checksum = "3f67b459f42af2e6e1ee213cb9da4dbd022d3320788c3fb3e1b893093f1e45da"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.12",
 ]
 
 [[package]]
@@ -7133,7 +7134,7 @@ dependencies = [
  "table_kv",
  "tempfile",
  "tokio",
- "uuid 1.3.0",
+ "uuid 1.3.3",
 ]
 
 [[package]]

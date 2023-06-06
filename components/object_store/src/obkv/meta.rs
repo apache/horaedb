@@ -107,10 +107,7 @@ pub struct ObkvObjectMeta {
     /// The paths of multi upload parts.
     #[serde(rename = "parts")]
     pub parts: Vec<String>,
-    /// The version of object, we use the upload_id as version.
-    /// TODO: Since `upload_id` is used by multiple objects, it may become very
-    /// large. Should we assign a version number to each object to avoid
-    /// this issue?
+    /// The version of object, Now we use the upload_id as version.
     #[serde(rename = "version")]
     pub version: String,
 }
