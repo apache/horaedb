@@ -346,13 +346,12 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
         let instant = Instant::now();
 
-        let upload_id = Uuid::new_v4();
-        let multi_part_id = format!("{upload_id}");
+        let upload_id = Uuid::new_v4().to_string();
         let table_name = self.pick_shard_table(location);
 
         let upload = ObkvMultiPartUpload {
             location: location.clone(),
-            upload_id: multi_part_id.clone(),
+            upload_id: upload_id.clone(),
             table_name: table_name.to_string(),
             size: AtomicU64::new(0),
             client: Arc::clone(&self.client),
@@ -366,7 +365,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             "ObkvObjectStore put_multipart operation, location:{location}, table_name:{table_name}, cost:{:?}",
             instant.elapsed()
         );
-        Ok((multi_part_id, Box::new(multi_part_upload)))
+        Ok((upload_id, Box::new(multi_part_upload)))
     }
 
     async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
