@@ -562,7 +562,7 @@ impl Datum {
         }
     }
 
-    pub fn call_mut<F>(&self, mut f: F)
+    pub fn do_with_bytes<F>(&self, mut f: F)
     where
         F: FnMut(&[u8]),
     {

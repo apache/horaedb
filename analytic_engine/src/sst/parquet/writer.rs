@@ -153,8 +153,8 @@ impl RecordBatchGroupWriter {
             for (col_idx, column) in partial_batch.columns().iter().enumerate() {
                 for row in 0..column.num_rows() {
                     let datum = column.datum(row);
-                    datum.call_mut(|data| {
-                        builder.add_key(col_idx, data);
+                    datum.do_with_bytes(|bytes| {
+                        builder.add_key(col_idx, bytes);
                     });
                 }
             }

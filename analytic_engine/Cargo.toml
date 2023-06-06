@@ -11,7 +11,7 @@ workspace = true
 workspace = true
 
 [features]
-test = []
+test = ["tempfile"]
 
 [dependencies]
 # In alphabetical order
@@ -44,7 +44,7 @@ smallvec = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
 table_kv = { workspace = true }
-tempfile = { workspace = true}
+tempfile = { workspace = true, optional = true }
 tokio = { workspace = true }
 trace_metric = { workspace = true }
 wal = { workspace = true }
