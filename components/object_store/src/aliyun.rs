@@ -29,6 +29,8 @@ pub fn try_new(
     timeout: Duration,
     keep_alive_timeout: Duration,
     keep_alive_interval: Duration,
+    max_retries: usize,
+    retry_timeout: Duration,
 ) -> upstream::Result<AmazonS3> {
     let cli_opt = ClientOptions::new()
         .with_allow_http(true)
@@ -38,8 +40,8 @@ pub fn try_new(
         .with_http2_keep_alive_interval(keep_alive_interval)
         .with_timeout(timeout);
     let retry_config = RetryConfig {
-        // TODO: add to config
-        max_retries: 3,
+        max_retries,
+        retry_timeout,
         ..Default::default()
     };
 

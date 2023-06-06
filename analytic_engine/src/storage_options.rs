@@ -45,6 +45,7 @@ pub enum ObjectStoreOptions {
     Local(LocalOptions),
     Aliyun(AliyunOptions),
     Obkv(ObkvOptions),
+    S3(S3Options),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -59,32 +60,10 @@ pub struct AliyunOptions {
     pub endpoint: String,
     pub bucket: String,
     pub prefix: String,
-    #[serde(default = "AliyunOptions::default_pool_max_idle_per_host")]
-    pub pool_max_idle_per_host: usize,
-    #[serde(default = "AliyunOptions::default_timeout")]
-    pub timeout: ReadableDuration,
-    #[serde(default = "AliyunOptions::default_keep_alive_time")]
-    pub keep_alive_timeout: ReadableDuration,
-    #[serde(default = "AliyunOptions::default_keep_alive_inverval")]
-    pub keep_alive_interval: ReadableDuration,
-}
-
-impl AliyunOptions {
-    fn default_pool_max_idle_per_host() -> usize {
-        1024
-    }
-
-    fn default_timeout() -> ReadableDuration {
-        ReadableDuration::from(Duration::from_secs(60))
-    }
-
-    fn default_keep_alive_time() -> ReadableDuration {
-        ReadableDuration::from(Duration::from_secs(60))
-    }
-
-    fn default_keep_alive_inverval() -> ReadableDuration {
-        ReadableDuration::from(Duration::from_secs(2))
-    }
+    #[serde(default)]
+    pub http: HttpOptions,
+    #[serde(default)]
+    pub retry: RetryOptions,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,5 +96,53 @@ impl ObkvOptions {
 
     fn default_upload_parallelism() -> usize {
         8
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct S3Options {
+    pub region: String,
+    pub key_id: String,
+    pub key_secret: String,
+    pub endpoint: String,
+    pub bucket: String,
+    pub prefix: String,
+    #[serde(default)]
+    pub http: HttpOptions,
+    #[serde(default)]
+    pub retry: RetryOptions,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct HttpOptions {
+    pub pool_max_idle_per_host: usize,
+    pub timeout: ReadableDuration,
+    pub keep_alive_timeout: ReadableDuration,
+    pub keep_alive_interval: ReadableDuration,
+}
+
+impl Default for HttpOptions {
+    fn default() -> Self {
+        Self {
+            pool_max_idle_per_host: 1024,
+            timeout: ReadableDuration::from(Duration::from_secs(60)),
+            keep_alive_timeout: ReadableDuration::from(Duration::from_secs(60)),
+            keep_alive_interval: ReadableDuration::from(Duration::from_secs(2)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RetryOptions {
+    pub max_retries: usize,
+    pub retry_timeout: ReadableDuration,
+}
+
+impl Default for RetryOptions {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            retry_timeout: ReadableDuration::from(Duration::from_secs(3 * 60)),
+        }
     }
 }
