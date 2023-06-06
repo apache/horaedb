@@ -147,14 +147,15 @@ impl RecordBatchGroupWriter {
         &self,
         row_group_batch: &[RecordBatchWithKey],
     ) -> Result<RowGroupFilter> {
-        let mut builder = RowGroupFilterBuilder::with_num_columns(row_group_batch[0].num_columns());
+        let mut builder = RowGroupFilterBuilder::new(row_group_batch[0].schema_with_key());
 
         for partial_batch in row_group_batch {
             for (col_idx, column) in partial_batch.columns().iter().enumerate() {
                 for row in 0..column.num_rows() {
                     let datum = column.datum(row);
-                    let bytes = datum.to_bytes();
-                    builder.add_key(col_idx, &bytes);
+                    datum.do_with_bytes(|bytes| {
+                        builder.add_key(col_idx, bytes);
+                    });
                 }
             }
         }

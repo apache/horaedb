@@ -19,6 +19,7 @@ fn normalize_endpoint(endpoint: &str, bucket: &str) -> String {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn try_new(
     key_id: impl Into<String>,
     key_secret: impl Into<String>,
@@ -26,14 +27,21 @@ pub fn try_new(
     bucket: impl Into<String>,
     pool_max_idle_per_host: impl Into<usize>,
     timeout: Duration,
+    keep_alive_timeout: Duration,
+    keep_alive_interval: Duration,
+    max_retries: usize,
+    retry_timeout: Duration,
 ) -> upstream::Result<AmazonS3> {
     let cli_opt = ClientOptions::new()
         .with_allow_http(true)
         .with_pool_max_idle_per_host(pool_max_idle_per_host.into())
+        .with_http2_keep_alive_timeout(keep_alive_timeout)
+        .with_http2_keep_alive_while_idle()
+        .with_http2_keep_alive_interval(keep_alive_interval)
         .with_timeout(timeout);
     let retry_config = RetryConfig {
-        // TODO: add to config
-        max_retries: 3,
+        max_retries,
+        retry_timeout,
         ..Default::default()
     };
 

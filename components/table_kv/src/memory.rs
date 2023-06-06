@@ -277,6 +277,29 @@ impl TableKv for MemoryImpl {
 
         Ok(table.get(key))
     }
+
+    fn delete(&self, table_name: &str, key: &[u8]) -> std::result::Result<(), Self::Error> {
+        let table = self
+            .find_table(table_name)
+            .context(TableNotFound { table_name })?;
+        table.delete(key)?;
+        Ok(())
+    }
+
+    fn delete_batch(
+        &self,
+        table_name: &str,
+        keys: Vec<Vec<u8>>,
+    ) -> std::result::Result<(), Self::Error> {
+        let table = self
+            .find_table(table_name)
+            .context(TableNotFound { table_name })?;
+        for key in keys {
+            table.delete(&key)?;
+        }
+
+        Ok(())
+    }
 }
 
 type Range = (Bound<Vec<u8>>, Bound<Vec<u8>>);

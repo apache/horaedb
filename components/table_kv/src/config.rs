@@ -23,7 +23,6 @@ pub struct ObkvConfig {
     pub enable_purge_recyclebin: bool,
     pub max_create_table_retries: usize,
     pub create_table_retry_interval: ReadableDuration,
-
     pub client: ClientConfig,
 }
 
@@ -37,7 +36,6 @@ impl Default for ObkvConfig {
             enable_purge_recyclebin: false,
             max_create_table_retries: 2,
             create_table_retry_interval: ReadableDuration::secs(5),
-
             client: ClientConfig::default(),
         }
     }

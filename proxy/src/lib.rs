@@ -6,11 +6,10 @@
 #![feature(trait_alias)]
 
 pub mod context;
-pub(crate) mod error;
-pub(crate) mod error_util;
-#[allow(dead_code)]
+mod error;
+mod error_util;
 pub mod forward;
-pub(crate) mod grpc;
+mod grpc;
 pub mod handlers;
 pub mod hotspot;
 mod hotspot_lru;
@@ -18,9 +17,10 @@ pub mod http;
 pub mod influxdb;
 pub mod instance;
 pub mod limiter;
+mod read;
 pub mod schema_config_provider;
-pub(crate) mod util;
-pub(crate) mod write;
+mod util;
+mod write;
 
 use std::{
     sync::Arc,
@@ -29,19 +29,23 @@ use std::{
 
 use ::http::StatusCode;
 use catalog::schema::{
-    CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, SchemaRef,
+    CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, SchemaRef,
 };
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
-    PrometheusRemoteQueryResponse, Route, RouteRequest, SqlQueryRequest, SqlQueryResponse,
+    PrometheusRemoteQueryResponse, Route, RouteRequest,
 };
 use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID};
 use common_util::{error::BoxError, runtime::Runtime};
 use futures::FutureExt;
-use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
-use log::{error, info, warn};
+use interpreters::{
+    context::Context as InterpreterContext,
+    factory::Factory,
+    interpreter::{InterpreterPtr, Output},
+};
+use log::{error, info};
 use query_engine::executor::Executor as QueryExecutor;
-use query_frontend::{frontend, plan::Plan};
+use query_frontend::plan::Plan;
 use router::{endpoint::Endpoint, Router};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
@@ -69,6 +73,7 @@ pub struct Proxy<Q> {
     schema_config_provider: SchemaConfigProviderRef,
     hotspot_recorder: Arc<HotspotRecorder>,
     engine_runtimes: Arc<EngineRuntimes>,
+    cluster_with_meta: bool,
 }
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
@@ -83,6 +88,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         schema_config_provider: SchemaConfigProviderRef,
         hotspot_config: hotspot::Config,
         engine_runtimes: Arc<EngineRuntimes>,
+        cluster_with_meta: bool,
     ) -> Self {
         let forwarder = Arc::new(Forwarder::new(
             forward_config,
@@ -103,6 +109,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             schema_config_provider,
             hotspot_recorder,
             engine_runtimes,
+            cluster_with_meta,
         }
     }
 
@@ -110,53 +117,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         self.instance.clone()
     }
 
-    async fn maybe_forward_sql_query(
-        &self,
-        req: &SqlQueryRequest,
-    ) -> Result<Option<ForwardResult<SqlQueryResponse, Error>>> {
-        let table_name = frontend::parse_table_name_with_sql(&req.sql)
-            .box_err()
-            .with_context(|| Internal {
-                msg: format!("Failed to parse table name with sql, sql:{}", req.sql),
-            })?;
-        if table_name.is_none() {
-            warn!("Unable to forward sql query without table name, req:{req:?}",);
-            return Ok(None);
-        }
-
-        let req_ctx = req.context.as_ref().unwrap();
-        let forward_req = ForwardRequest {
-            schema: req_ctx.database.clone(),
-            table: table_name.unwrap(),
-            req: req.clone().into_request(),
-        };
-        let do_query = |mut client: StorageServiceClient<Channel>,
-                        request: tonic::Request<SqlQueryRequest>,
-                        _: &Endpoint| {
-            let query = async move {
-                client
-                    .sql_query(request)
-                    .await
-                    .map(|resp| resp.into_inner())
-                    .box_err()
-                    .context(ErrWithCause {
-                        code: StatusCode::INTERNAL_SERVER_ERROR,
-                        msg: "Forwarded sql query failed",
-                    })
-            }
-            .boxed();
-
-            Box::new(query) as _
-        };
-
-        let forward_result = self.forwarder.forward(forward_req, do_query).await;
-        Ok(match forward_result {
-            Ok(forward_res) => Some(forward_res),
-            Err(e) => {
-                error!("Failed to forward sql req but the error is ignored, err:{e}");
-                None
-            }
-        })
+    fn default_catalog_name(&self) -> NameRef {
+        self.instance.catalog_manager.default_catalog_name()
     }
 
     async fn maybe_forward_prom_remote_query(
@@ -240,12 +202,19 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 msg: format!("Failed to find table, table_name:{table_name}"),
             })?;
 
-        let partition_table_info_in_meta = self
+        let table_info_in_meta = self
             .router
-            .fetch_partition_table_info(schema_name, table_name)
+            .fetch_table_info(schema_name, table_name)
             .await?;
 
-        match (table, &partition_table_info_in_meta) {
+        if let Some(table_info_in_meta) = &table_info_in_meta {
+            // No need to handle non-partition table.
+            if !table_info_in_meta.is_partition_table() {
+                return Ok(());
+            }
+        }
+
+        match (table, &table_info_in_meta) {
             (Some(table), Some(partition_table_info)) => {
                 // No need to create partition table when table_id match.
                 if table.id().as_u64() == partition_table_info.id {
@@ -285,13 +254,13 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             (None, Some(_)) => (),
         }
 
-        let partition_table_info = partition_table_info_in_meta.unwrap();
+        let partition_table_info = table_info_in_meta.unwrap();
 
         // If table not exists, open it.
         // Get table_schema from first sub partition table.
         let first_sub_partition_table_name = util::get_sub_partition_name(
             &partition_table_info.name,
-            &partition_table_info.partition_info,
+            partition_table_info.partition_info.as_ref().unwrap(),
             0usize,
         );
         let table = self
@@ -324,7 +293,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             options: table.options,
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
-            partition_info: Some(partition_table_info.partition_info),
+            partition_info: partition_table_info.partition_info,
         };
         let create_opts = CreateOptions {
             table_engine: self.instance.partition_table_engine.clone(),
@@ -393,14 +362,49 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .limiter
             .try_limit(&plan)
             .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+            .context(Internal {
                 msg: "Request is blocked",
             })?;
 
+        let interpreter =
+            self.build_interpreter(request_id, catalog, schema, plan, deadline, false)?;
+        Self::interpreter_execute_plan(interpreter, deadline).await
+    }
+
+    async fn execute_plan_involving_partition_table(
+        &self,
+        request_id: RequestId,
+        catalog: &str,
+        schema: &str,
+        plan: Plan,
+        deadline: Option<Instant>,
+    ) -> Result<Output> {
+        self.instance
+            .limiter
+            .try_limit(&plan)
+            .box_err()
+            .context(Internal {
+                msg: "Request is blocked",
+            })?;
+
+        let interpreter =
+            self.build_interpreter(request_id, catalog, schema, plan, deadline, true)?;
+        Self::interpreter_execute_plan(interpreter, deadline).await
+    }
+
+    fn build_interpreter(
+        &self,
+        request_id: RequestId,
+        catalog: &str,
+        schema: &str,
+        plan: Plan,
+        deadline: Option<Instant>,
+        enable_partition_table_access: bool,
+    ) -> Result<InterpreterPtr> {
         let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
             // Use current ctx's catalog and schema as default catalog and schema
             .default_catalog_and_schema(catalog.to_string(), schema.to_string())
+            .enable_partition_table_access(enable_partition_table_access)
             .build();
         let interpreter_factory = Factory::new(
             self.instance.query_executor.clone(),
@@ -408,14 +412,18 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             self.instance.table_engine.clone(),
             self.instance.table_manipulator.clone(),
         );
-        let interpreter = interpreter_factory
+        interpreter_factory
             .create(interpreter_ctx, plan)
             .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+            .context(Internal {
                 msg: "Failed to create interpreter",
-            })?;
+            })
+    }
 
+    async fn interpreter_execute_plan(
+        interpreter: InterpreterPtr,
+        deadline: Option<Instant>,
+    ) -> Result<Output> {
         if let Some(deadline) = deadline {
             tokio::time::timeout_at(
                 tokio::time::Instant::from_std(deadline),
@@ -423,19 +431,16 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             )
             .await
             .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+            .context(Internal {
                 msg: "Plan execution timeout",
             })
             .and_then(|v| {
-                v.box_err().context(ErrWithCause {
-                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                v.box_err().context(Internal {
                     msg: "Failed to execute interpreter",
                 })
             })
         } else {
-            interpreter.execute().await.box_err().context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+            interpreter.execute().await.box_err().context(Internal {
                 msg: "Failed to execute interpreter",
             })
         }
@@ -446,4 +451,5 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 pub struct Context {
     pub timeout: Option<Duration>,
     pub runtime: Arc<Runtime>,
+    pub enable_partition_table_access: bool,
 }

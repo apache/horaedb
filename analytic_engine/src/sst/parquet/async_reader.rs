@@ -22,15 +22,25 @@ use common_util::{
     runtime::{AbortOnDropMany, JoinHandle, Runtime},
     time::InstantExt,
 };
+use datafusion::{
+    common::ToDFSchema,
+    physical_expr::{create_physical_expr, execution_props::ExecutionProps},
+    physical_plan::{
+        file_format::{parquet::page_filter::PagePruningPredicate, ParquetFileMetrics},
+        metrics::ExecutionPlanMetricsSet,
+    },
+};
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
 use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
-    arrow::{async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask},
+    arrow::{
+        arrow_reader::RowSelection, async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder,
+        ProjectionMask,
+    },
     file::metadata::RowGroupMetaData,
 };
 use parquet_ext::meta_data::ChunkReader;
-use prometheus::local::LocalHistogram;
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -42,7 +52,6 @@ use crate::sst::{
         cache::{MetaCacheRef, MetaData},
         SstMetaData,
     },
-    metrics,
     parquet::{
         encoding::ParquetDecoder,
         meta_data::{ParquetFilter, ParquetMetaDataRef},
@@ -73,6 +82,7 @@ pub struct Reader<'a> {
 
     /// Options for `read_parallelly`
     metrics: Metrics,
+    df_plan_metrics: ExecutionPlanMetricsSet,
 }
 
 #[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
@@ -96,7 +106,7 @@ impl<'a> Reader<'a> {
         metrics_collector: Option<MetricsCollector>,
     ) -> Self {
         let store = store_picker.pick_by_freq(options.frequency);
-
+        let df_plan_metrics = ExecutionPlanMetricsSet::new();
         let metrics = Metrics {
             metrics_collector,
             ..Default::default()
@@ -114,6 +124,7 @@ impl<'a> Reader<'a> {
             meta_data: None,
             row_projector: None,
             metrics,
+            df_plan_metrics,
         }
     }
 
@@ -184,6 +195,36 @@ impl<'a> Reader<'a> {
         suggested.min(num_row_groups).max(1)
     }
 
+    fn build_row_selection(
+        &self,
+        arrow_schema: SchemaRef,
+        row_groups: &[usize],
+        file_metadata: &parquet_ext::ParquetMetaData,
+    ) -> Result<Option<RowSelection>> {
+        // TODO: remove fixed partition
+        let partition = 0;
+        let exprs = datafusion::optimizer::utils::conjunction(self.predicate.exprs().to_vec());
+        let exprs = match exprs {
+            Some(exprs) => exprs,
+            None => return Ok(None),
+        };
+
+        let df_schema = arrow_schema
+            .clone()
+            .to_dfschema()
+            .context(DataFusionError)?;
+        let physical_expr =
+            create_physical_expr(&exprs, &df_schema, &arrow_schema, &ExecutionProps::new())
+                .context(DataFusionError)?;
+        let page_predicate = PagePruningPredicate::try_new(&physical_expr, arrow_schema.clone())
+            .context(DataFusionError)?;
+
+        let metrics = ParquetFileMetrics::new(partition, self.path.as_ref(), &self.df_plan_metrics);
+        page_predicate
+            .prune(row_groups, file_metadata, &metrics)
+            .context(DataFusionError)
+    }
+
     async fn fetch_record_batch_streams(
         &mut self,
         suggested_parallelism: usize,
@@ -192,10 +233,10 @@ impl<'a> Reader<'a> {
 
         let meta_data = self.meta_data.as_ref().unwrap();
         let row_projector = self.row_projector.as_ref().unwrap();
-
+        let arrow_schema = meta_data.custom().schema.to_arrow_schema_ref();
         // Get target row groups.
         let target_row_groups = self.prune_row_groups(
-            meta_data.custom().schema.to_arrow_schema_ref(),
+            arrow_schema.clone(),
             meta_data.parquet().row_groups(),
             meta_data.custom().parquet_filter.as_ref(),
         )?;
@@ -221,10 +262,6 @@ impl<'a> Reader<'a> {
         let chunks_num = parallelism;
         let chunk_size = target_row_groups.len() / parallelism;
         self.metrics.parallelism = parallelism;
-        debug!(
-            "Reader fetch record batches parallelly, parallelism suggest:{}, real:{}, chunk_size:{}",
-            suggested_parallelism, parallelism, chunk_size
-        );
 
         let mut target_row_group_chunks = vec![Vec::with_capacity(chunk_size); chunks_num];
         for (row_group_idx, row_group) in target_row_groups.into_iter().enumerate() {
@@ -232,18 +269,29 @@ impl<'a> Reader<'a> {
             target_row_group_chunks[chunk_idx].push(row_group);
         }
 
+        let parquet_metadata = meta_data.parquet();
         let proj_mask = ProjectionMask::leaves(
             meta_data.parquet().file_metadata().schema_descr(),
             row_projector.existed_source_projection().iter().copied(),
+        );
+        debug!(
+            "Reader fetch record batches, parallelism suggest:{}, real:{}, chunk_size:{}, project:{:?}",
+            suggested_parallelism, parallelism, chunk_size, proj_mask
         );
 
         let mut streams = Vec::with_capacity(target_row_group_chunks.len());
         for chunk in target_row_group_chunks {
             let object_store_reader =
                 ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
-            let builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
+            let mut builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
                 .await
                 .with_context(|| ParquetError)?;
+            let row_selection =
+                self.build_row_selection(arrow_schema.clone(), &chunk, parquet_metadata)?;
+            if let Some(selection) = row_selection {
+                builder = builder.with_row_selection(selection);
+            };
+
             let stream = builder
                 .with_batch_size(self.num_rows_per_row_group)
                 .with_row_groups(chunk)
@@ -294,12 +342,9 @@ impl<'a> Reader<'a> {
 
     async fn load_meta_data_from_storage(&self) -> Result<parquet_ext::ParquetMetaDataRef> {
         let file_size = self.load_file_size().await?;
-        let chunk_reader_adapter = ChunkReaderAdapter {
-            path: self.path,
-            store: self.store,
-        };
+        let chunk_reader_adapter = ChunkReaderAdapter::new(self.path, self.store);
 
-        let meta_data =
+        let (meta_data, _) =
             parquet_ext::meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter)
                 .await
                 .with_context(|| FetchAndDecodeSstMeta {
@@ -358,10 +403,14 @@ impl<'a> Reader<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
-struct ObjectReaderMetrics {
-    bytes_scanned: usize,
-    sst_get_range_length_histogram: LocalHistogram,
+impl<'a> Drop for Reader<'a> {
+    fn drop(&mut self) {
+        debug!(
+            "Parquet reader dropped, path:{:?}, df_plan_metrics:{}",
+            self.path,
+            self.df_plan_metrics.clone_inner().to_string()
+        );
+    }
 }
 
 #[derive(Clone)]
@@ -369,7 +418,7 @@ struct ObjectStoreReader {
     storage: ObjectStoreRef,
     path: Path,
     meta_data: MetaData,
-    metrics: ObjectReaderMetrics,
+    begin: Instant,
 }
 
 impl ObjectStoreReader {
@@ -378,27 +427,23 @@ impl ObjectStoreReader {
             storage,
             path,
             meta_data,
-            metrics: ObjectReaderMetrics {
-                bytes_scanned: 0,
-                sst_get_range_length_histogram: metrics::SST_GET_RANGE_HISTOGRAM.local(),
-            },
+            begin: Instant::now(),
         }
     }
 }
 
 impl Drop for ObjectStoreReader {
     fn drop(&mut self) {
-        debug!("ObjectStoreReader is dropped, metrics:{:?}", self.metrics);
+        debug!(
+            "ObjectStoreReader dropped, path:{}, elapsed:{:?}",
+            &self.path,
+            self.begin.elapsed()
+        );
     }
 }
 
 impl AsyncFileReader for ObjectStoreReader {
     fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
-        self.metrics.bytes_scanned += range.end - range.start;
-        self.metrics
-            .sst_get_range_length_histogram
-            .observe((range.end - range.start) as f64);
-
         self.storage
             .get_range(&self.path, range)
             .map_err(|e| {
@@ -413,13 +458,6 @@ impl AsyncFileReader for ObjectStoreReader {
         &mut self,
         ranges: Vec<Range<usize>>,
     ) -> BoxFuture<'_, parquet::errors::Result<Vec<Bytes>>> {
-        for range in &ranges {
-            self.metrics.bytes_scanned += range.end - range.start;
-            self.metrics
-                .sst_get_range_length_histogram
-                .observe((range.end - range.start) as f64);
-        }
-
         async move {
             self.storage
                 .get_ranges(&self.path, &ranges)
@@ -440,9 +478,15 @@ impl AsyncFileReader for ObjectStoreReader {
     }
 }
 
-struct ChunkReaderAdapter<'a> {
+pub struct ChunkReaderAdapter<'a> {
     path: &'a Path,
     store: &'a ObjectStoreRef,
+}
+
+impl<'a> ChunkReaderAdapter<'a> {
+    pub fn new(path: &'a Path, store: &'a ObjectStoreRef) -> Self {
+        Self { path, store }
+    }
 }
 
 #[async_trait]

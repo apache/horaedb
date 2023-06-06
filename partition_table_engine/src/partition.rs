@@ -10,7 +10,7 @@ use common_types::{
     schema::Schema,
 };
 use common_util::error::BoxError;
-use futures::future::try_join_all;
+use futures::{stream::FuturesUnordered, StreamExt};
 use snafu::ResultExt;
 use table_engine::{
     partition::{
@@ -242,27 +242,28 @@ impl Table for PartitionTableImpl {
         };
 
         // Query streams through remote engine.
-        let mut futures = Vec::with_capacity(partitions.len());
+        let mut futures = FuturesUnordered::new();
         for partition in partitions {
-            let remote_engine = self.remote_engine.clone();
-            let request_clone = request.clone();
-            futures.push(async move {
-                remote_engine
-                    .read(RemoteReadRequest {
-                        table: self.get_sub_table_ident(partition),
-                        read_request: request_clone,
-                    })
-                    .await
-            })
+            let read_partition = self.remote_engine.read(RemoteReadRequest {
+                table: self.get_sub_table_ident(partition),
+                read_request: request.clone(),
+            });
+            futures.push(read_partition);
+        }
+
+        let mut record_batch_streams = Vec::with_capacity(futures.len());
+        while let Some(record_batch_stream) = futures.next().await {
+            let record_batch_stream = record_batch_stream
+                .box_err()
+                .context(Scan { table: self.name() })?;
+            record_batch_streams.push(record_batch_stream);
         }
 
         let streams = {
             let _remote_timer = PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM
                 .with_label_values(&["remote_read"])
                 .start_timer();
-            try_join_all(futures).await.box_err().context(Scan {
-                table: self.name().to_string(),
-            })?
+            record_batch_streams
         };
 
         Ok(PartitionedStreams { streams })

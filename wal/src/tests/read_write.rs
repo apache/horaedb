@@ -404,12 +404,10 @@ async fn write_multiple_regions_parallelly<B: WalBuilder + 'static>(env: Arc<Tes
         handles.push(read_write_0);
         handles.push(read_write_1);
     }
-    futures::future::join_all(handles)
-        .await
-        .into_iter()
-        .for_each(|res| {
-            res.expect("should succeed to join the write");
-        });
+
+    for handle in handles {
+        handle.await.expect("should succeed to join the write")
+    }
 
     wal.close_gracefully().await.unwrap();
 }

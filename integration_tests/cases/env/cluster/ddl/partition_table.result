@@ -4,7 +4,7 @@ affected_rows: 0
 
 DROP TABLE IF EXISTS `__partition_table_t_0`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create interpreter. Caused by: Failed to check permission, msg:only can process sub tables in table partition directly when enable partition table access" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql: DROP TABLE IF EXISTS `__partition_table_t_0`;. Caused by: Internal error, msg:Failed to create interpreter, err:Failed to check permission, msg:only can process sub tables in table partition directly when enable partition table access" })
 
 CREATE TABLE `partition_table_t`(
                                     `name`string TAG,
@@ -24,7 +24,7 @@ String("partition_table_t"),String("CREATE TABLE `partition_table_t` (`tsid` uin
 
 SHOW CREATE TABLE __partition_table_t_0;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create interpreter. Caused by: Failed to check permission, msg:only can process sub tables in table partition directly when enable partition table access" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql: SHOW CREATE TABLE __partition_table_t_0;. Caused by: Internal error, msg:Failed to create interpreter, err:Failed to check permission, msg:only can process sub tables in table partition directly when enable partition table access" })
 
 INSERT INTO partition_table_t (t, name, value)
 VALUES (1651737067000, "ceresdb0", 100),
@@ -43,7 +43,7 @@ affected_rows: 11
 
 SELECT * from __partition_table_t_0 where name = "ceresdb0";
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create interpreter. Caused by: Failed to check permission, msg:only can process sub tables in table partition directly when enable partition table access" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql: SELECT * from __partition_table_t_0 where name = \"ceresdb0\";. Caused by: Internal error, msg:Failed to create interpreter, err:Failed to check permission, msg:only can process sub tables in table partition directly when enable partition table access" })
 
 SELECT * from partition_table_t where name = "ceresdb0";
 

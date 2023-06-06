@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Partition rule datafusion adapter
 
@@ -13,7 +13,7 @@ use crate::partition::{
     BuildPartitionRule, PartitionInfo, Result,
 };
 
-pub(crate) mod extractor;
+mod extractor;
 
 /// Partition rule's adapter for datafusion
 pub struct DfPartitionRuleAdapter {

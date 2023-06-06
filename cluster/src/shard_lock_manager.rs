@@ -466,10 +466,13 @@ impl ShardLock {
 
         // Wait for the lease check worker to stop.
         if let Some(handle) = self.lease_check_handle.take() {
-            if let Err(e) = handle.await {
-                warn!("Failed to wait for the lease check worker to stop, maybe it has exited so ignore it, shard_id:{}, err:{e}", self.shard_id);
-            }
+            handle.abort();
         }
+
+        info!(
+            "Finish exiting from background keepalive task, shard_id:{}",
+            self.shard_id
+        );
     }
 
     async fn acquire_lock_with_lease(&self, lease_id: i64, etcd_client: &mut Client) -> Result<()> {
@@ -669,7 +672,7 @@ impl ShardLockManager {
         OnExpired: FnOnce(ShardId) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
-        info!("Try to grant lock for shard:{shard_id}");
+        info!("Try to grant lock for shard, shard_id:{shard_id}");
 
         let mut shard_locks = self.shard_locks.write().await;
         if let Some(shard_lock) = shard_locks.get_mut(&shard_id) {
@@ -698,7 +701,7 @@ impl ShardLockManager {
             shard_locks.insert(shard_id, shard_lock);
         }
 
-        info!("Finish granting lock for shard:{shard_id}");
+        info!("Finish granting lock for shard, shard_id:{shard_id}");
         Ok(true)
     }
 
@@ -707,23 +710,26 @@ impl ShardLockManager {
     /// If the lock is not exist, return false. And the `on_lock_expired` won't
     /// be triggered.
     pub async fn revoke_lock(&self, shard_id: u32) -> Result<bool> {
-        info!("Try to revoke lock for shard:{shard_id}");
+        info!("Try to revoke lock for shard, shard_id:{shard_id}");
 
         let mut shard_locks = self.shard_locks.write().await;
         let shard_lock = shard_locks.remove(&shard_id);
-        match shard_lock {
+        let res = match shard_lock {
             Some(mut v) => {
                 let mut etcd_client = self.etcd_client.clone();
                 v.revoke(&mut etcd_client).await?;
 
-                info!("Finish revoking lock for shard:{shard_id}");
+                info!("Finish revoking lock for shard, shard_id:{shard_id}");
                 Ok(true)
             }
             None => {
                 warn!("The lock is not exist, shard_id:{shard_id}");
                 Ok(false)
             }
-        }
+        };
+
+        info!("Finish revoke lock for shard, shard_id:{shard_id}");
+        res
     }
 }
 

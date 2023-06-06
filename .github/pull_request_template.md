@@ -1,11 +1,7 @@
-## Which issue does this PR close?
+## Rationale
 
-Closes #
 
-## Rationale for this change
+## Detailed Changes
 
-## What changes are included in this PR?
 
-## Are there any user-facing changes?
-
-## How does this change test
+## Test Plan

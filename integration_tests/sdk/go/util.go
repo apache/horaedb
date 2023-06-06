@@ -10,7 +10,7 @@ import (
 const table = "godemo"
 
 func createTable(ctx context.Context, client ceresdb.Client, timestampName string) error {
-	_, err := ddl(ctx, client, fmt.Sprintf("create table %s (%s timestamp not null, name string tag, value int64,TIMESTAMP KEY(t))", table, timestampName))
+	_, err := ddl(ctx, client, fmt.Sprintf("create table %s (`%s` timestamp not null, name string tag, value int64,TIMESTAMP KEY(%s))", table, timestampName, timestampName))
 	return err
 }
 
@@ -60,9 +60,13 @@ func ensureRow(expectedVals []ceresdb.Value, actualRow []ceresdb.Column) error {
 }
 
 func query(ctx context.Context, client ceresdb.Client, ts int64, timestampName string, addNewColumn bool) error {
+	sql := fmt.Sprintf("select timestamp, name, value from %s where %s = %d order by name", table, timestampName, ts)
+	if addNewColumn {
+		sql = fmt.Sprintf("select timestamp, name, value, new_tag, new_field from %s where %s = %d order by name", table, timestampName, ts)
+	}
 	resp, err := client.SQLQuery(ctx, ceresdb.SQLQueryRequest{
 		Tables: []string{table},
-		SQL:    fmt.Sprintf("select * from %s where %s = %d order by name", table, timestampName, ts),
+		SQL:    sql,
 	})
 	if err != nil {
 		return err
@@ -73,23 +77,19 @@ func query(ctx context.Context, client ceresdb.Client, ts int64, timestampName s
 	}
 
 	row0 := []ceresdb.Value{
-		ceresdb.NewUint64Value(4024844655630594205),
 		ceresdb.NewInt64Value(ts),
 		ceresdb.NewStringValue("tag-0"),
 		ceresdb.NewInt64Value(0)}
 
 	row1 := []ceresdb.Value{
-		ceresdb.NewUint64Value(14230010170561829440),
 		ceresdb.NewInt64Value(ts),
 		ceresdb.NewStringValue("tag-1"),
 		ceresdb.NewInt64Value(1),
 	}
 
 	if addNewColumn {
-		row0[0] = ceresdb.NewUint64Value(8341999341185504339)
-		row1[0] = ceresdb.NewUint64Value(4452331151453582498)
-		row0 = append(row0, ceresdb.NewInt64Value(0), ceresdb.NewStringValue("new-tag-0"))
-		row1 = append(row1, ceresdb.NewInt64Value(1), ceresdb.NewStringValue("new-tag-1"))
+		row0 = append(row0, ceresdb.NewStringValue("new-tag-0"), ceresdb.NewInt64Value(0))
+		row1 = append(row1, ceresdb.NewStringValue("new-tag-1"), ceresdb.NewInt64Value(1))
 	}
 
 	if err := ensureRow(row0,

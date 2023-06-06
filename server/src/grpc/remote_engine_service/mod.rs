@@ -17,11 +17,8 @@ use ceresdbproto::{
 };
 use common_types::record_batch::RecordBatch;
 use common_util::{error::BoxError, time::InstantExt};
-use futures::{
-    future::try_join_all,
-    stream::{self, BoxStream, StreamExt},
-};
-use log::error;
+use futures::stream::{self, BoxStream, StreamExt};
+use log::{error, info};
 use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
@@ -34,11 +31,13 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
 use crate::grpc::{
-    metrics::REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+    metrics::{
+        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC, REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+    },
     remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
 };
 
-pub(crate) mod error;
+mod error;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
@@ -162,31 +161,43 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
     ) -> std::result::Result<Response<WriteResponse>, Status> {
         let begin_instant = Instant::now();
         let request = request.into_inner();
-        let mut write_table_futures = Vec::with_capacity(request.batch.len());
+        let mut write_table_handles = Vec::with_capacity(request.batch.len());
         for one_request in request.batch {
             let ctx = self.handler_ctx();
-            write_table_futures.push(async move { handle_write(ctx, one_request).await });
+            let handle = self
+                .runtimes
+                .write_runtime
+                .spawn(handle_write(ctx, one_request));
+            write_table_handles.push(handle);
         }
 
-        let handle = self
-            .runtimes
-            .write_runtime
-            .spawn(try_join_all(write_table_futures));
-        let batch_result = handle.await.box_err().context(ErrWithCause {
-            code: StatusCode::Internal,
-            msg: "fail to run the join task",
-        });
-
-        let mut batch_resp = WriteResponse::default();
-        match batch_result {
-            Ok(Ok(v)) => {
-                batch_resp.header = Some(error::build_ok_header());
-                batch_resp.affected_rows = v.into_iter().map(|resp| resp.affected_rows).sum();
-            }
-            Ok(Err(e)) | Err(e) => {
-                batch_resp.header = Some(error::build_err_header(e));
-            }
+        let mut batch_resp = WriteResponse {
+            header: Some(error::build_ok_header()),
+            affected_rows: 0,
         };
+        for write_handle in write_table_handles {
+            let write_result = write_handle.await.box_err().context(ErrWithCause {
+                code: StatusCode::Internal,
+                msg: "fail to run the join task",
+            });
+            // The underlying write can't be cancelled, so just ignore the left write
+            // handles (don't abort them) if any error is encountered.
+            match write_result {
+                Ok(res) => match res {
+                    Ok(resp) => batch_resp.affected_rows += resp.affected_rows,
+                    Err(e) => {
+                        error!("Failed to write batches, err:{e}");
+                        batch_resp.header = Some(error::build_err_header(e));
+                        break;
+                    }
+                },
+                Err(e) => {
+                    error!("Failed to write batches, err:{e}");
+                    batch_resp.header = Some(error::build_err_header(e));
+                    break;
+                }
+            };
+        }
 
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .write_batch
@@ -302,22 +313,37 @@ async fn handle_stream_read(
     ctx: HandlerContext,
     request: ReadRequest,
 ) -> Result<PartitionedStreams> {
-    let read_request: table_engine::remote::model::ReadRequest =
-        request.try_into().box_err().context(ErrWithCause {
-            code: StatusCode::BadRequest,
-            msg: "fail to convert read request",
-        })?;
+    let table_engine::remote::model::ReadRequest {
+        table: table_ident,
+        read_request,
+    } = request.try_into().box_err().context(ErrWithCause {
+        code: StatusCode::BadRequest,
+        msg: "fail to convert read request",
+    })?;
 
-    let table = find_table_by_identifier(&ctx, &read_request.table)?;
+    let request_id = read_request.request_id;
+    info!(
+        "Handle stream read, request_id:{request_id}, table:{table_ident:?}, read_options:{:?}, read_order:{:?}, predicate:{:?} ",
+        read_request.opts,
+        read_request.order,
+        read_request.predicate,
+    );
 
+    let begin = Instant::now();
+    let table = find_table_by_identifier(&ctx, &table_ident)?;
     let streams = table
-        .partitioned_read(read_request.read_request)
+        .partitioned_read(read_request)
         .await
         .box_err()
-        .context(ErrWithCause {
+        .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to read table, table:{:?}", read_request.table),
+            msg: format!("fail to read table, table:{table_ident:?}"),
         })?;
+
+    info!(
+        "Handle stream read success, request_id:{request_id}, table:{table_ident:?}, cost:{:?}",
+        begin.elapsed(),
+    );
 
     Ok(streams)
 }
@@ -329,20 +355,29 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
             msg: "fail to convert write request",
         })?;
 
+    let num_rows = write_request.write_request.row_group.num_rows();
     let table = find_table_by_identifier(&ctx, &write_request.table)?;
 
-    let affected_rows = table
+    let res = table
         .write(write_request.write_request)
         .await
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
             msg: format!("fail to write table, table:{:?}", write_request.table),
-        })?;
-    Ok(WriteResponse {
-        header: None,
-        affected_rows: affected_rows as u64,
-    })
+        });
+    match res {
+        Ok(affected_rows) => Ok(WriteResponse {
+            header: None,
+            affected_rows: affected_rows as u64,
+        }),
+        Err(e) => {
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+                .write_failed
+                .inc_by(num_rows as u64);
+            Err(e)
+        }
+    }
 }
 
 async fn handle_get_table_info(

@@ -19,19 +19,26 @@ const NODE_ADDR: &str = "CERESDB_SERVER_ADDR";
 /// overridden.
 const CLUSTER_NAME: &str = "CLUSTER_NAME";
 
+/// Default value for version information is not found from environment
+const UNKNOWN: &str = "Unknown";
+
 fn fetch_version() -> String {
-    let build_version = option_env!("VERGEN_BUILD_SEMVER").unwrap_or("NONE");
-    let git_branch = option_env!("VERGEN_GIT_BRANCH").unwrap_or("NONE");
-    let git_commit_id = option_env!("VERGEN_GIT_SHA_SHORT").unwrap_or("NONE");
-    let build_time = option_env!("VERGEN_BUILD_TIMESTAMP").unwrap_or("NONE");
-    let rustc_version = option_env!("VERGEN_RUSTC_SEMVER").unwrap_or("NONE");
+    let version = option_env!("CARGO_PKG_VERSION").unwrap_or(UNKNOWN);
+    let git_branch = option_env!("VERGEN_GIT_BRANCH").unwrap_or(UNKNOWN);
+    let git_commit_id = option_env!("VERGEN_GIT_SHA").unwrap_or(UNKNOWN);
+    let build_time = option_env!("VERGEN_BUILD_TIMESTAMP").unwrap_or(UNKNOWN);
+    let rustc_version = option_env!("VERGEN_RUSTC_SEMVER").unwrap_or(UNKNOWN);
+    let opt_level = option_env!("VERGEN_CARGO_OPT_LEVEL").unwrap_or(UNKNOWN);
+    let target = option_env!("VERGEN_CARGO_TARGET_TRIPLE").unwrap_or(UNKNOWN);
 
     [
-        ("\nCeresDB version", build_version),
-        ("Git branch", git_branch),
+        ("\nVersion", version),
         ("Git commit", git_commit_id),
-        ("Build time", build_time),
+        ("Git branch", git_branch),
+        ("Opt level", opt_level),
         ("Rustc version", rustc_version),
+        ("Target", target),
+        ("Build date", build_time),
     ]
     .iter()
     .map(|(label, value)| format!("{label}: {value}"))

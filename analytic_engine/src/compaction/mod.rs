@@ -2,7 +2,7 @@
 
 //! Compaction.
 
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use std::{collections::HashMap, fmt, str::FromStr, sync::Arc};
 
 use common_util::config::{ReadableSize, TimeUnit};
 use serde::{Deserialize, Serialize};
@@ -316,7 +316,7 @@ pub struct ExpiredFiles {
     pub files: Vec<FileHandle>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
 pub struct CompactionTask {
     pub compaction_inputs: Vec<CompactionInputFiles>,
     pub expired: Vec<ExpiredFiles>,
@@ -347,8 +347,36 @@ impl CompactionTask {
         total_input_size as usize
     }
 
-    pub fn num_input_files(&self) -> usize {
+    pub fn num_compact_files(&self) -> usize {
         self.compaction_inputs.iter().map(|v| v.files.len()).sum()
+    }
+
+    pub fn num_expired_files(&self) -> usize {
+        self.expired.iter().map(|v| v.files.len()).sum()
+    }
+}
+
+impl fmt::Debug for CompactionTask {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CompactionTask")
+            .field("inputs", &self.compaction_inputs)
+            .field(
+                "expired",
+                &self
+                    .expired
+                    .iter()
+                    .map(|expired| {
+                        format!(
+                            "level:{}, files:{:?}",
+                            expired.level,
+                            expired.files.iter().map(|f| f.id())
+                        )
+                    })
+                    // only print first 10 files
+                    .take(10)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
     }
 }
 

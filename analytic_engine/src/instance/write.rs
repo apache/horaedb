@@ -353,7 +353,7 @@ impl<'a> MemTableWriter<'a> {
 
 impl<'a> Writer<'a> {
     pub(crate) async fn write(&mut self, request: WriteRequest) -> Result<usize> {
-        let _timer = self.table_data.metrics.start_table_write_timer();
+        let _timer = self.table_data.metrics.start_table_write_execute_timer();
         self.table_data.metrics.on_write_request_begin();
 
         self.validate_before_write(&request)?;
@@ -592,7 +592,6 @@ impl<'a> Writer<'a> {
     async fn handle_memtable_flush(&mut self, table_data: &TableDataRef) -> Result<()> {
         let opts = TableFlushOptions {
             res_sender: None,
-            compact_after_flush: None,
             max_retry_flush_limit: self.instance.max_retry_flush_limit(),
         };
         let flusher = self.instance.make_flusher();

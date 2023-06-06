@@ -6,7 +6,12 @@ use std::{fmt, ops::Index, sync::Arc};
 
 use bytes::Bytes;
 use ceresdbproto::{schema as schema_pb, sst as sst_pb};
-use common_types::{schema::Schema, time::TimeRange, SequenceNumber};
+use common_types::{
+    datum::DatumKind,
+    schema::{RecordSchemaWithKey, Schema},
+    time::TimeRange,
+    SequenceNumber,
+};
 use common_util::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use xorfilter::{Xor8, Xor8Builder};
@@ -64,6 +69,11 @@ trait Filter: fmt::Debug {
     /// Serialize the bitmap index to binary array.
     fn to_bytes(&self) -> Vec<u8>;
 
+    /// Serialized size
+    fn size(&self) -> usize {
+        self.to_bytes().len()
+    }
+
     /// Deserialize the binary array to bitmap index.
     fn from_bytes(buf: Vec<u8>) -> Result<Self>
     where
@@ -115,14 +125,38 @@ pub struct RowGroupFilterBuilder {
 }
 
 impl RowGroupFilterBuilder {
-    pub(crate) fn with_num_columns(num_col: usize) -> Self {
-        Self {
-            builders: vec![None; num_col],
-        }
+    pub(crate) fn new(record_schema: &RecordSchemaWithKey) -> Self {
+        let builders = record_schema
+            .columns()
+            .iter()
+            .enumerate()
+            .map(|(i, col)| {
+                if record_schema.is_primary_key_index(i) {
+                    return None;
+                }
+
+                if matches!(
+                    col.data_type,
+                    DatumKind::Null
+                        | DatumKind::Double
+                        | DatumKind::Float
+                        | DatumKind::Varbinary
+                        | DatumKind::Boolean
+                ) {
+                    return None;
+                }
+
+                Some(Xor8Builder::default())
+            })
+            .collect();
+
+        Self { builders }
     }
 
     pub(crate) fn add_key(&mut self, col_idx: usize, key: &[u8]) {
-        self.builders[col_idx].get_or_insert_default().insert(key)
+        if let Some(b) = self.builders[col_idx].as_mut() {
+            b.insert(key)
+        }
     }
 
     pub(crate) fn build(self) -> Result<RowGroupFilter> {
@@ -189,6 +223,13 @@ impl RowGroupFilter {
             .as_ref()
             .map(|v| v.contains(data))
     }
+
+    fn size(&self) -> usize {
+        self.column_filters
+            .iter()
+            .map(|cf| cf.as_ref().map(|cf| cf.size()).unwrap_or(0))
+            .sum()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -208,6 +249,10 @@ impl ParquetFilter {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn size(&self) -> usize {
+        self.row_group_filters.iter().map(|f| f.size()).sum()
     }
 }
 
@@ -324,14 +369,22 @@ impl From<ParquetMetaData> for MetaData {
 
 impl fmt::Debug for ParquetMetaData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use common_util::byte::encode;
+
         f.debug_struct("ParquetMetaData")
-            .field("min_key", &self.min_key)
-            .field("max_key", &self.max_key)
+            .field("min_key", &encode(&self.min_key))
+            .field("max_key", &encode(&self.max_key))
             .field("time_range", &self.time_range)
             .field("max_sequence", &self.max_sequence)
             .field("schema", &self.schema)
-            // Avoid the messy output from filter.
-            .field("has_filter", &self.parquet_filter.is_some())
+            .field(
+                "filter_size",
+                &self
+                    .parquet_filter
+                    .as_ref()
+                    .map(|filter| filter.size())
+                    .unwrap_or(0),
+            )
             .field("collapsible_cols_idx", &self.collapsible_cols_idx)
             .finish()
     }
@@ -379,6 +432,8 @@ impl TryFrom<sst_pb::ParquetMetaData> for ParquetMetaData {
 
 #[cfg(test)]
 mod tests {
+    use common_types::tests::build_schema;
+
     use super::*;
 
     #[test]
@@ -423,16 +478,22 @@ mod tests {
 
     #[test]
     fn test_row_group_filter_builder() {
-        let mut builders = RowGroupFilterBuilder::with_num_columns(1);
+        // (key1(varbinary), key2(timestamp), field1(double), field2(string))
+        let schema = build_schema();
+        let record_schema = schema.to_record_schema_with_key();
+        let mut builders = RowGroupFilterBuilder::new(&record_schema);
         for key in ["host-123", "host-456", "host-789"] {
-            builders.add_key(0, key.as_bytes());
+            builders.add_key(3, key.as_bytes());
         }
         let row_group_filter = builders.build().unwrap();
+        for i in 0..3 {
+            assert!(row_group_filter.column_filters[i].is_none());
+        }
 
         let testcase = [("host-123", true), ("host-321", false)];
         for (key, expected) in testcase {
             let actual = row_group_filter
-                .contains_column_data(0, key.as_bytes())
+                .contains_column_data(3, key.as_bytes())
                 .unwrap();
 
             assert_eq!(expected, actual);

@@ -1,5 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+//! Contains common methods used by the write process.
+
 use std::{
     cmp::max,
     collections::{BTreeMap, HashMap},
@@ -8,7 +10,7 @@ use std::{
 
 use bytes::Bytes;
 use ceresdbproto::storage::{
-    storage_service_client::StorageServiceClient, value, RouteRequest, WriteRequest,
+    storage_service_client::StorageServiceClient, value, RouteRequest, Value, WriteRequest,
     WriteResponse as WriteResponsePB, WriteSeriesEntry, WriteTableRequest,
 };
 use cluster::config::SchemaConfig;
@@ -21,7 +23,7 @@ use common_types::{
     time::Timestamp,
 };
 use common_util::error::BoxError;
-use futures::{future::try_join_all, FutureExt};
+use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, error, info};
@@ -29,7 +31,7 @@ use query_engine::executor::Executor as QueryExecutor;
 use query_frontend::{
     frontend::{Context as FrontendContext, Frontend},
     plan::{AlterTableOperation, AlterTablePlan, InsertPlan, Plan},
-    planner::build_schema_from_write_table_request,
+    planner::{build_column_schema, try_get_data_type_from_value},
     provider::CatalogMetaProvider,
 };
 use router::endpoint::Endpoint;
@@ -38,10 +40,13 @@ use table_engine::table::TableRef;
 use tonic::transport::Channel;
 
 use crate::{
-    error::{ErrNoCause, ErrWithCause, InternalNoCause, Result},
+    error::{ErrNoCause, ErrWithCause, Internal, InternalNoCause, Result},
     forward::{ForwardResult, ForwarderRef},
     Context, Proxy,
 };
+
+type WriteResponseFutures<'a> =
+    Vec<BoxFuture<'a, common_util::runtime::Result<Result<WriteResponse>>>>;
 
 #[derive(Debug)]
 pub struct WriteContext {
@@ -64,10 +69,38 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
+        let write_context = req.context.clone();
+        let resp = if self.cluster_with_meta {
+            self.handle_write_with_meta(ctx, req).await?
+        } else {
+            self.handle_write_without_meta(ctx, req).await?
+        };
+
+        debug!(
+            "Handle write finished, write_context:{:?}, resp:{:?}",
+            write_context, resp
+        );
+        Ok(resp)
+    }
+
+    // Handle write requests based on ceresmeta.
+    // 1. Create table via ceresmeta if it does not exist.
+    // 2. Split write request.
+    // 3. Process write.
+    async fn handle_write_with_meta(
+        &self,
+        ctx: Context,
+        req: WriteRequest,
+    ) -> Result<WriteResponse> {
+        let request_id = RequestId::next_id();
+
         let write_context = req.context.clone().context(ErrNoCause {
             msg: "Missing context",
             code: StatusCode::BAD_REQUEST,
         })?;
+
+        self.handle_auto_create_table_with_meta(request_id, &write_context.database, &req)
+            .await?;
 
         let (write_request_to_local, write_requests_to_forward) =
             self.split_write_request(req).await?;
@@ -75,44 +108,184 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let mut futures = Vec::with_capacity(write_requests_to_forward.len() + 1);
 
         // Write to remote.
-        for (endpoint, table_write_request) in write_requests_to_forward {
-            let forwarder = self.forwarder.clone();
-            let write_handle = self.engine_runtimes.io_runtime.spawn(async move {
-                Self::write_to_remote(forwarder, endpoint, table_write_request).await
-            });
-
-            futures.push(write_handle.boxed());
-        }
+        self.collect_write_to_remote_future(&mut futures, write_requests_to_forward)
+            .await;
 
         // Write to local.
-        if !write_request_to_local.table_requests.is_empty() {
-            let local_handle =
-                async move { Ok(self.write_to_local(ctx, write_request_to_local).await) };
-            futures.push(local_handle.boxed());
+        self.collect_write_to_local_future(&mut futures, ctx, request_id, write_request_to_local)
+            .await;
+
+        self.collect_write_response(futures).await
+    }
+
+    // Handle write requests without ceresmeta.
+    // 1. Split write request.
+    // 2. Create table if not exist.
+    // 3. Process write.
+    async fn handle_write_without_meta(
+        &self,
+        ctx: Context,
+        req: WriteRequest,
+    ) -> Result<WriteResponse> {
+        let request_id = RequestId::next_id();
+
+        let write_context = req.context.clone().context(ErrNoCause {
+            msg: "Missing context",
+            code: StatusCode::BAD_REQUEST,
+        })?;
+        let (write_request_to_local, write_requests_to_forward) =
+            self.split_write_request(req).await?;
+
+        let mut futures = Vec::with_capacity(write_requests_to_forward.len() + 1);
+
+        // Write to remote.
+        self.collect_write_to_remote_future(&mut futures, write_requests_to_forward)
+            .await;
+
+        // Create table.
+        self.handle_auto_create_table_without_meta(
+            request_id,
+            &write_request_to_local,
+            &write_context.database,
+        )
+        .await?;
+
+        // Write to local.
+        self.collect_write_to_local_future(&mut futures, ctx, request_id, write_request_to_local)
+            .await;
+
+        self.collect_write_response(futures).await
+    }
+
+    async fn handle_auto_create_table_with_meta(
+        &self,
+        request_id: RequestId,
+        schema: &str,
+        req: &WriteRequest,
+    ) -> Result<()> {
+        if !self.auto_create_table {
+            return Ok(());
         }
 
-        let resps = try_join_all(futures)
-            .await
+        let schema_config = self
+            .schema_config_provider
+            .schema_config(schema)
             .box_err()
-            .context(ErrWithCause {
+            .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to join task",
+                msg: format!("Fail to fetch schema config, schema_name:{schema}"),
+            })?
+            .cloned()
+            .unwrap_or_default();
+
+        // TODO: Consider whether to build tables concurrently when there are too many
+        // tables.
+        for write_table_req in &req.table_requests {
+            let table_info = self
+                .router
+                .fetch_table_info(schema, &write_table_req.table)
+                .await?;
+            if table_info.is_some() {
+                continue;
+            }
+            self.create_table(
+                request_id,
+                self.instance.catalog_manager.default_catalog_name(),
+                schema,
+                write_table_req,
+                &schema_config,
+                None,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    async fn handle_auto_create_table_without_meta(
+        &self,
+        request_id: RequestId,
+        write_request: &WriteRequest,
+        schema: &str,
+    ) -> Result<()> {
+        let table_names = write_request
+            .table_requests
+            .iter()
+            .map(|v| v.table.clone())
+            .collect::<Vec<String>>();
+
+        let catalog = self.default_catalog_name();
+        let schema_config = self
+            .schema_config_provider
+            .schema_config(schema)
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!("Fail to fetch schema config, schema:{schema}"),
+            })?
+            .cloned()
+            .unwrap_or_default();
+
+        if self.auto_create_table {
+            for (idx, table_name) in table_names.iter().enumerate() {
+                let table = self.try_get_table(catalog, schema, table_name)?;
+                if table.is_none() {
+                    self.create_table(
+                        request_id,
+                        catalog,
+                        schema,
+                        &write_request.table_requests[idx],
+                        &schema_config,
+                        None,
+                    )
+                    .await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn create_table(
+        &self,
+        request_id: RequestId,
+        catalog: &str,
+        schema: &str,
+        write_table_req: &WriteTableRequest,
+        schema_config: &SchemaConfig,
+        deadline: Option<Instant>,
+    ) -> Result<()> {
+        let provider = CatalogMetaProvider {
+            manager: self.instance.catalog_manager.clone(),
+            default_catalog: catalog,
+            default_schema: schema,
+            function_registry: &*self.instance.function_registry,
+        };
+        let frontend = Frontend::new(provider);
+        let mut ctx = FrontendContext::new(request_id, deadline);
+        let plan = frontend
+            .write_req_to_plan(&mut ctx, schema_config, write_table_req)
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!(
+                    "Failed to build creating table plan, table:{}",
+                    write_table_req.table
+                ),
             })?;
 
-        debug!(
-            "Grpc handle write finished, schema:{}, resps:{:?}",
-            write_context.database, resps
+        debug!("Execute create table begin, plan:{:?}", plan);
+
+        let output = self
+            .execute_plan(request_id, catalog, schema, plan, deadline)
+            .await?;
+
+        ensure!(
+            matches!(output, Output::AffectedRows(_)),
+            ErrNoCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "Invalid output type, expect AffectedRows, found Records",
+            }
         );
-
-        let mut success = 0;
-        for resp in resps {
-            success += resp?.success;
-        }
-
-        Ok(WriteResponse {
-            success,
-            ..Default::default()
-        })
+        Ok(())
     }
 
     async fn split_write_request(
@@ -182,6 +355,58 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         Ok((table_requests_to_local, table_requests_to_forward))
     }
 
+    async fn collect_write_to_remote_future(
+        &self,
+        futures: &mut WriteResponseFutures<'_>,
+        write_request: HashMap<Endpoint, WriteRequest>,
+    ) {
+        for (endpoint, table_write_request) in write_request {
+            let forwarder = self.forwarder.clone();
+            let write_handle = self.engine_runtimes.io_runtime.spawn(async move {
+                Self::write_to_remote(forwarder, endpoint, table_write_request).await
+            });
+
+            futures.push(write_handle.boxed());
+        }
+    }
+
+    #[inline]
+    async fn collect_write_to_local_future<'a>(
+        &'a self,
+        futures: &mut WriteResponseFutures<'a>,
+        ctx: Context,
+        request_id: RequestId,
+        write_request: WriteRequest,
+    ) {
+        if write_request.table_requests.is_empty() {
+            return;
+        }
+
+        let local_handle =
+            async move { Ok(self.write_to_local(ctx, request_id, write_request).await) };
+        futures.push(local_handle.boxed());
+    }
+
+    async fn collect_write_response(
+        &self,
+        futures: Vec<BoxFuture<'_, common_util::runtime::Result<Result<WriteResponse>>>>,
+    ) -> Result<WriteResponse> {
+        let mut futures: FuturesUnordered<_> = futures.into_iter().collect();
+        let mut success = 0;
+        while let Some(resp) = futures.next().await {
+            let resp = resp.box_err().context(ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "Failed to join task",
+            })?;
+            success += resp?.success;
+        }
+
+        Ok(WriteResponse {
+            success,
+            ..Default::default()
+        })
+    }
+
     async fn write_to_remote(
         forwarder: ForwarderRef,
         endpoint: Endpoint,
@@ -232,8 +457,12 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         }
     }
 
-    async fn write_to_local(&self, ctx: Context, req: WriteRequest) -> Result<WriteResponse> {
-        let request_id = RequestId::next_id();
+    async fn write_to_local(
+        &self,
+        ctx: Context,
+        request_id: RequestId,
+        req: WriteRequest,
+    ) -> Result<WriteResponse> {
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
@@ -242,17 +471,9 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             code: StatusCode::BAD_REQUEST,
         })?;
         let schema = req_ctx.database;
-        let schema_config = self
-            .schema_config_provider
-            .schema_config(&schema)
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Fail to fetch schema config, schema_name:{schema}"),
-            })?;
 
         debug!(
-            "Grpc handle write begin, catalog:{catalog}, schema:{schema}, request_id:{request_id}, first_table:{:?}, num_tables:{}",
+            "Local write begin, catalog:{catalog}, schema:{schema}, request_id:{request_id}, first_table:{:?}, num_tables:{}",
             req.table_requests
                 .first()
                 .map(|m| (&m.table, &m.tag_names, &m.field_names)),
@@ -268,7 +489,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         };
 
         let plan_vec = self
-            .write_request_to_insert_plan(req.table_requests, schema_config, write_context)
+            .write_request_to_insert_plan(req.table_requests, write_context)
             .await?;
 
         let mut success = 0;
@@ -287,7 +508,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     async fn write_request_to_insert_plan(
         &self,
         table_requests: Vec<WriteTableRequest>,
-        schema_config: Option<&SchemaConfig>,
         write_context: WriteContext,
     ) -> Result<Vec<InsertPlan>> {
         let mut plan_vec = Vec::with_capacity(table_requests.len());
@@ -299,64 +519,42 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             deadline,
             auto_create_table,
         } = write_context;
-        let schema_config = schema_config.cloned().unwrap_or_default();
         for write_table_req in table_requests {
             let table_name = &write_table_req.table;
             self.maybe_open_partition_table_if_not_exist(&catalog, &schema, table_name)
                 .await?;
-            let mut table = self.try_get_table(&catalog, &schema, table_name)?;
+            let table = self
+                .try_get_table(&catalog, &schema, table_name)?
+                .with_context(|| ErrNoCause {
+                    code: StatusCode::BAD_REQUEST,
+                    msg: format!("Table not found, schema:{schema}, table:{table_name}"),
+                })?;
 
-            match table.clone() {
-                None => {
-                    if auto_create_table {
-                        self.create_table(
-                            request_id,
-                            &catalog,
-                            &schema,
-                            &write_table_req,
-                            &schema_config,
-                            deadline,
-                        )
-                        .await?;
-                        // try to get table again
-                        table = self.try_get_table(&catalog, &schema, table_name)?;
-                    }
-                }
-                Some(t) => {
-                    if auto_create_table {
-                        // The reasons for making the decision to add columns before writing are as
-                        // follows:
-                        // * If judged based on the error message returned, it may cause data that
-                        //   has already been successfully written to be written again and affect
-                        //   the accuracy of the data.
-                        // * Currently, the decision to add columns is made at the request level,
-                        //   not at the row level, so the cost is relatively small.
-                        let table_schema = t.schema();
-                        let columns =
-                            find_new_columns(&table_schema, &schema_config, &write_table_req)?;
-                        if !columns.is_empty() {
-                            self.execute_add_columns_plan(
-                                request_id, &catalog, &schema, t, columns, deadline,
-                            )
-                            .await?;
-                        }
-                    }
+            if auto_create_table {
+                // The reasons for making the decision to add columns before writing are as
+                // follows:
+                // * If judged based on the error message returned, it may cause data that has
+                //   already been successfully written to be written again and affect the
+                //   accuracy of the data.
+                // * Currently, the decision to add columns is made at the request level, not at
+                //   the row level, so the cost is relatively small.
+                let table_schema = table.schema();
+                let columns = find_new_columns(&table_schema, &write_table_req)?;
+                if !columns.is_empty() {
+                    self.execute_add_columns_plan(
+                        request_id,
+                        &catalog,
+                        &schema,
+                        table.clone(),
+                        columns,
+                        deadline,
+                    )
+                    .await?;
                 }
             }
 
-            match table {
-                Some(table) => {
-                    let plan = write_table_request_to_insert_plan(table, write_table_req)?;
-                    plan_vec.push(plan);
-                }
-                None => {
-                    return ErrNoCause {
-                        code: StatusCode::BAD_REQUEST,
-                        msg: format!("Table not found, schema:{schema}, table:{table_name}"),
-                    }
-                    .fail();
-                }
-            }
+            let plan = write_table_request_to_insert_plan(table, write_table_req)?;
+            plan_vec.push(plan);
         }
 
         Ok(plan_vec)
@@ -371,7 +569,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         deadline: Option<Instant>,
     ) -> Result<usize> {
         debug!(
-            "Grpc handle write table begin, table:{}, row_num:{}",
+            "Execute insert plan begin, table:{}, row_num:{}",
             insert_plan.table.name(),
             insert_plan.rows.num_rows()
         );
@@ -425,49 +623,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             })
     }
 
-    async fn create_table(
-        &self,
-        request_id: RequestId,
-        catalog: &str,
-        schema: &str,
-        write_table_req: &WriteTableRequest,
-        schema_config: &SchemaConfig,
-        deadline: Option<Instant>,
-    ) -> Result<()> {
-        let provider = CatalogMetaProvider {
-            manager: self.instance.catalog_manager.clone(),
-            default_catalog: catalog,
-            default_schema: schema,
-            function_registry: &*self.instance.function_registry,
-        };
-        let frontend = Frontend::new(provider);
-        let mut ctx = FrontendContext::new(request_id, deadline);
-        let plan = frontend
-            .write_req_to_plan(&mut ctx, schema_config, write_table_req)
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!(
-                    "Failed to build creating table plan, table:{}",
-                    write_table_req.table
-                ),
-            })?;
-
-        debug!("Grpc handle create table begin, plan:{:?}", plan);
-
-        let output = self
-            .execute_plan(request_id, catalog, schema, plan, deadline)
-            .await;
-        output.and_then(|output| match output {
-            Output::AffectedRows(_) => Ok(()),
-            Output::Records(_) => ErrNoCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Invalid output type, expect AffectedRows, found Records",
-            }
-            .fail(),
-        })
-    }
-
     async fn execute_add_columns_plan(
         &self,
         request_id: RequestId,
@@ -497,32 +652,93 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
 fn find_new_columns(
     schema: &Schema,
-    schema_config: &SchemaConfig,
-    write_req: &WriteTableRequest,
+    write_table_req: &WriteTableRequest,
 ) -> Result<Vec<ColumnSchema>> {
-    let new_schema = build_schema_from_write_table_request(schema_config, write_req)
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Build schema from write table request failed",
+    let WriteTableRequest {
+        table,
+        field_names,
+        tag_names,
+        entries: write_entries,
+    } = write_table_req;
+
+    let mut columns: HashMap<_, ColumnSchema> = HashMap::new();
+    for write_entry in write_entries {
+        // Parse tags.
+        for tag in &write_entry.tags {
+            let name_index = tag.name_index as usize;
+            ensure!(
+                name_index < tag_names.len(),
+                InternalNoCause {
+                    msg: format!(
+                        "Tag {tag:?} is not found in tag_names:{tag_names:?}, table:{table}",
+                    ),
+                }
+            );
+
+            let tag_name = &tag_names[name_index];
+
+            build_column(&mut columns, schema, tag_name, &tag.value, true)?;
+        }
+
+        // Parse fields.
+        for field_group in &write_entry.field_groups {
+            for field in &field_group.fields {
+                let field_index = field.name_index as usize;
+                ensure!(
+                    field_index < field_names.len(),
+                    InternalNoCause {
+                        msg: format!(
+                        "Field {field:?} is not found in field_names:{field_names:?}, table:{table}",
+                    ),
+                    }
+                );
+                let field_name = &field_names[field.name_index as usize];
+                build_column(&mut columns, schema, field_name, &field.value, false)?;
+            }
+        }
+    }
+
+    Ok(columns.into_iter().map(|v| v.1).collect())
+}
+
+fn build_column<'a>(
+    columns: &mut HashMap<&'a str, ColumnSchema>,
+    schema: &Schema,
+    name: &'a str,
+    value: &Option<Value>,
+    is_tag: bool,
+) -> Result<()> {
+    // Skip adding columns, the following cases:
+    // 1. Column already exists.
+    // 2. The new column has been added.
+    if schema.index_of(name).is_some() || columns.get(name).is_some() {
+        return Ok(());
+    }
+
+    let column_value = value
+        .as_ref()
+        .with_context(|| InternalNoCause {
+            msg: format!("Column value is needed, column:{name}"),
+        })?
+        .value
+        .as_ref()
+        .with_context(|| InternalNoCause {
+            msg: format!("Column value type is not supported, column:{name}"),
         })?;
 
-    let columns = new_schema.columns();
-    let old_columns = schema.columns();
+    let data_type = try_get_data_type_from_value(column_value)
+        .box_err()
+        .context(Internal {
+            msg: "Failed to get data type",
+        })?;
 
-    // find new columns:
-    // 1. timestamp column can't be a new column;
-    // 2. column not in old schema is a new column.
-    let new_columns = columns
-        .iter()
-        .enumerate()
-        .filter(|(idx, column)| {
-            *idx != new_schema.timestamp_index()
-                && !old_columns.iter().any(|c| c.name == column.name)
-        })
-        .map(|(_, column)| column.clone())
-        .collect();
-    Ok(new_columns)
+    let column_schema = build_column_schema(name, data_type, is_tag)
+        .box_err()
+        .context(Internal {
+            msg: "Failed to build column schema",
+        })?;
+    columns.insert(name, column_schema);
+    Ok(())
 }
 
 fn write_table_request_to_insert_plan(
@@ -727,7 +943,7 @@ fn convert_proto_value_to_datum(
 mod test {
     use ceresdbproto::storage::{value, Field, FieldGroup, Tag, Value, WriteSeriesEntry};
     use common_types::{
-        column_schema::{self, ColumnSchema},
+        column_schema::{self},
         datum::{Datum, DatumKind},
         row::Row,
         schema::Builder,
@@ -737,45 +953,136 @@ mod test {
 
     use super::*;
 
-    const TAG_K: &str = "tagk";
-    const TAG_V: &str = "tagv";
-    const TAG_K1: &str = "tagk1";
-    const TAG_V1: &str = "tagv1";
-    const FIELD_NAME: &str = "field";
-    const FIELD_NAME1: &str = "field1";
-    const FIELD_VALUE_STRING: &str = "stringValue";
+    const NAME_COL1: &str = "col1";
+    const NAME_NEW_COL1: &str = "new_col1";
+    const NAME_COL2: &str = "col2";
+    const NAME_COL3: &str = "col3";
+    const NAME_COL4: &str = "col4";
+    const NAME_COL5: &str = "col5";
+
+    #[test]
+    fn test_write_entry_to_row_group() {
+        let (schema, tag_names, field_names, write_entry) = generate_write_entry();
+        let rows =
+            write_entry_to_rows("test_table", &schema, &tag_names, &field_names, write_entry)
+                .unwrap();
+        let row0 = vec![
+            Datum::Timestamp(Timestamp::new(1000)),
+            Datum::String(NAME_COL1.into()),
+            Datum::String(NAME_COL2.into()),
+            Datum::Int64(100),
+            Datum::Null,
+        ];
+        let row1 = vec![
+            Datum::Timestamp(Timestamp::new(2000)),
+            Datum::String(NAME_COL1.into()),
+            Datum::String(NAME_COL2.into()),
+            Datum::Null,
+            Datum::Int64(10),
+        ];
+        let row2 = vec![
+            Datum::Timestamp(Timestamp::new(3000)),
+            Datum::String(NAME_COL1.into()),
+            Datum::String(NAME_COL2.into()),
+            Datum::Null,
+            Datum::Int64(10),
+        ];
+
+        let expect_rows = vec![
+            Row::from_datums(row0),
+            Row::from_datums(row1),
+            Row::from_datums(row2),
+        ];
+        assert_eq!(rows, expect_rows);
+    }
+
+    #[test]
+    fn test_find_new_columns() {
+        let write_table_request = generate_write_table_request();
+        let schema = build_schema();
+        let new_columns = find_new_columns(&schema, &write_table_request)
+            .unwrap()
+            .into_iter()
+            .map(|v| (v.name.clone(), v))
+            .collect::<HashMap<_, _>>();
+
+        assert_eq!(new_columns.len(), 2);
+        assert!(new_columns.get(NAME_NEW_COL1).is_some());
+        assert!(new_columns.get(NAME_NEW_COL1).unwrap().is_tag);
+        assert!(new_columns.get(NAME_COL5).is_some());
+        assert!(!new_columns.get(NAME_COL5).unwrap().is_tag);
+    }
+
+    fn build_schema() -> Schema {
+        Builder::new()
+            .auto_increment_column_id(true)
+            .add_key_column(
+                column_schema::Builder::new(
+                    TIMESTAMP_COLUMN_NAME.to_string(),
+                    DatumKind::Timestamp,
+                )
+                .build()
+                .unwrap(),
+            )
+            .unwrap()
+            .add_key_column(
+                column_schema::Builder::new(NAME_COL1.to_string(), DatumKind::String)
+                    .is_tag(true)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap()
+            .add_key_column(
+                column_schema::Builder::new(NAME_COL2.to_string(), DatumKind::String)
+                    .is_tag(true)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new(NAME_COL3.to_string(), DatumKind::Int64)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new(NAME_COL4.to_string(), DatumKind::Int64)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap()
+            .build()
+            .unwrap()
+    }
+
+    fn make_tag(name_index: u32, val: &str) -> Tag {
+        Tag {
+            name_index,
+            value: Some(Value {
+                value: Some(value::Value::StringValue(val.to_string())),
+            }),
+        }
+    }
+
+    fn make_field(name_index: u32, val: value::Value) -> Field {
+        Field {
+            name_index,
+            value: Some(Value { value: Some(val) }),
+        }
+    }
 
     // tag_names field_names write_entry
     fn generate_write_entry() -> (Schema, Vec<String>, Vec<String>, WriteSeriesEntry) {
-        let tag_names = vec![TAG_K.to_string(), TAG_K1.to_string()];
-        let field_names = vec![FIELD_NAME.to_string(), FIELD_NAME1.to_string()];
+        let tag_names = vec![NAME_COL1.to_string(), NAME_COL2.to_string()];
+        let field_names = vec![NAME_COL3.to_string(), NAME_COL4.to_string()];
 
-        let tag = Tag {
-            name_index: 0,
-            value: Some(Value {
-                value: Some(value::Value::StringValue(TAG_V.to_string())),
-            }),
-        };
-        let tag1 = Tag {
-            name_index: 1,
-            value: Some(Value {
-                value: Some(value::Value::StringValue(TAG_V1.to_string())),
-            }),
-        };
+        let tag = make_tag(0, NAME_COL1);
+        let tag1 = make_tag(1, NAME_COL2);
         let tags = vec![tag, tag1];
 
-        let field = Field {
-            name_index: 0,
-            value: Some(Value {
-                value: Some(value::Value::Float64Value(100.0)),
-            }),
-        };
-        let field1 = Field {
-            name_index: 1,
-            value: Some(Value {
-                value: Some(value::Value::StringValue(FIELD_VALUE_STRING.to_string())),
-            }),
-        };
+        let field = make_field(0, value::Value::Int64Value(100));
+        let field1 = make_field(1, value::Value::Int64Value(10));
+
         let field_group = FieldGroup {
             timestamp: 1000,
             fields: vec![field],
@@ -794,102 +1101,44 @@ mod test {
             field_groups: vec![field_group, field_group1, field_group2],
         };
 
-        let schema_builder = Builder::new();
-        let schema = schema_builder
-            .auto_increment_column_id(true)
-            .add_key_column(ColumnSchema {
-                id: column_schema::COLUMN_ID_UNINIT,
-                name: TIMESTAMP_COLUMN_NAME.to_string(),
-                data_type: DatumKind::Timestamp,
-                is_nullable: false,
-                is_tag: false,
-                comment: String::new(),
-                escaped_name: TIMESTAMP_COLUMN_NAME.escape_debug().to_string(),
-                default_value: None,
-            })
-            .unwrap()
-            .add_key_column(ColumnSchema {
-                id: column_schema::COLUMN_ID_UNINIT,
-                name: TAG_K.to_string(),
-                data_type: DatumKind::String,
-                is_nullable: false,
-                is_tag: true,
-                comment: String::new(),
-                escaped_name: TAG_K.escape_debug().to_string(),
-                default_value: None,
-            })
-            .unwrap()
-            .add_normal_column(ColumnSchema {
-                id: column_schema::COLUMN_ID_UNINIT,
-                name: TAG_K1.to_string(),
-                data_type: DatumKind::String,
-                is_nullable: false,
-                is_tag: true,
-                comment: String::new(),
-                escaped_name: TAG_K1.escape_debug().to_string(),
-                default_value: None,
-            })
-            .unwrap()
-            .add_normal_column(ColumnSchema {
-                id: column_schema::COLUMN_ID_UNINIT,
-                name: FIELD_NAME.to_string(),
-                data_type: DatumKind::Double,
-                is_nullable: true,
-                is_tag: false,
-                comment: String::new(),
-                escaped_name: FIELD_NAME.escape_debug().to_string(),
-                default_value: None,
-            })
-            .unwrap()
-            .add_normal_column(ColumnSchema {
-                id: column_schema::COLUMN_ID_UNINIT,
-                name: FIELD_NAME1.to_string(),
-                data_type: DatumKind::String,
-                is_nullable: true,
-                is_tag: false,
-                comment: String::new(),
-                escaped_name: FIELD_NAME1.escape_debug().to_string(),
-                default_value: None,
-            })
-            .unwrap()
-            .build()
-            .unwrap();
+        let schema = build_schema();
         (schema, tag_names, field_names, write_entry)
     }
 
-    #[test]
-    fn test_write_entry_to_row_group() {
-        let (schema, tag_names, field_names, write_entry) = generate_write_entry();
-        let rows =
-            write_entry_to_rows("test_table", &schema, &tag_names, &field_names, write_entry)
-                .unwrap();
-        let row0 = vec![
-            Datum::Timestamp(Timestamp::new(1000)),
-            Datum::String(TAG_V.into()),
-            Datum::String(TAG_V1.into()),
-            Datum::Double(100.0),
-            Datum::Null,
-        ];
-        let row1 = vec![
-            Datum::Timestamp(Timestamp::new(2000)),
-            Datum::String(TAG_V.into()),
-            Datum::String(TAG_V1.into()),
-            Datum::Null,
-            Datum::String(FIELD_VALUE_STRING.into()),
-        ];
-        let row2 = vec![
-            Datum::Timestamp(Timestamp::new(3000)),
-            Datum::String(TAG_V.into()),
-            Datum::String(TAG_V1.into()),
-            Datum::Null,
-            Datum::String(FIELD_VALUE_STRING.into()),
-        ];
+    fn generate_write_table_request() -> WriteTableRequest {
+        let tag1 = make_tag(0, NAME_NEW_COL1);
+        let tag2 = make_tag(1, NAME_COL1);
+        let tags = vec![tag1, tag2];
 
-        let expect_rows = vec![
-            Row::from_datums(row0),
-            Row::from_datums(row1),
-            Row::from_datums(row2),
-        ];
-        assert_eq!(rows, expect_rows);
+        let field1 = make_field(0, value::Value::Int64Value(100));
+        let field2 = make_field(1, value::Value::Int64Value(10));
+
+        let field_group1 = FieldGroup {
+            timestamp: 1000,
+            fields: vec![field1.clone(), field2.clone()],
+        };
+        let field_group2 = FieldGroup {
+            timestamp: 2000,
+            fields: vec![field1],
+        };
+        let field_group3 = FieldGroup {
+            timestamp: 3000,
+            fields: vec![field2],
+        };
+
+        let write_entry = WriteSeriesEntry {
+            tags,
+            field_groups: vec![field_group1, field_group2, field_group3],
+        };
+
+        let tag_names = vec![NAME_NEW_COL1.to_string(), NAME_COL1.to_string()];
+        let field_names = vec![NAME_COL3.to_string(), NAME_COL5.to_string()];
+
+        WriteTableRequest {
+            table: "test".to_string(),
+            tag_names,
+            field_names,
+            entries: vec![write_entry],
+        }
     }
 }

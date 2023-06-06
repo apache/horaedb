@@ -364,6 +364,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             provider.clone(),
             self.server_config.hotspot,
             engine_runtimes.clone(),
+            self.cluster.is_some(),
         ));
 
         let http_service = http::Builder::new(http_config)

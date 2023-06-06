@@ -13,7 +13,7 @@ pub mod container;
 pub mod frontend;
 pub mod influxql;
 pub mod parser;
-pub(crate) mod partition;
+mod partition;
 pub mod plan;
 pub mod planner;
 pub mod promql;

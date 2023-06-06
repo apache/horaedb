@@ -50,13 +50,16 @@ pub enum Error {
     #[snafu(display("Unsupported method, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     UnSupported { msg: String, backtrace: Backtrace },
 
-    #[snafu(display("Failed to operate table, msg:{}, err:{}", msg, source))]
-    TableOperatorWithCause { msg: String, source: GenericError },
+    #[snafu(display("Failed to operate table, msg:{:?}, err:{}", msg, source))]
+    TableOperatorWithCause {
+        msg: Option<String>,
+        source: GenericError,
+    },
 
     // Fixme: Temporarily remove the stack information, otherwise you will encounter a
     // segmentation fault.
-    #[snafu(display("Failed to operate table, msg:{}.\n", msg))]
-    TableOperatorNoCause { msg: String },
+    #[snafu(display("Failed to operate table, msg:{:?}.\n", msg))]
+    TableOperatorNoCause { msg: Option<String> },
 }
 
 define_result!(Error);

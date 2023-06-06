@@ -21,7 +21,7 @@ pub trait ChunkReader: Sync + Send {
 pub async fn fetch_parquet_metadata(
     file_size: usize,
     file_reader: &dyn ChunkReader,
-) -> Result<ParquetMetaData> {
+) -> Result<(ParquetMetaData, usize)> {
     const FOOTER_LEN: usize = 8;
 
     if file_size < FOOTER_LEN {
@@ -63,5 +63,5 @@ pub async fn fetch_parquet_metadata(
             ParquetError::General(err_msg)
         })?;
 
-    footer::decode_metadata(&metadata_bytes)
+    footer::decode_metadata(&metadata_bytes).map(|v| (v, metadata_len))
 }

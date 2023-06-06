@@ -13,8 +13,9 @@ use object_store::{
     disk_cache::DiskCacheStore,
     mem_cache::{MemCache, MemCacheStore},
     metrics::StoreWithMetrics,
+    obkv,
     prefix::StoreWithPrefix,
-    LocalFileSystem, ObjectStoreRef,
+    s3, LocalFileSystem, ObjectStoreRef,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
@@ -110,7 +111,8 @@ pub struct EngineBuilder<'a> {
 
 impl<'a> EngineBuilder<'a> {
     pub async fn build(self) -> Result<TableEngineRef> {
-        let opened_storages = open_storage(self.config.storage.clone()).await?;
+        let opened_storages =
+            open_storage(self.config.storage.clone(), self.engine_runtimes.clone()).await?;
         let manifest_storages = ManifestStorages {
             wal_manager: self.opened_wals.manifest_wal.clone(),
             oss_storage: opened_storages.default_store().clone(),
@@ -408,6 +410,7 @@ impl ObjectStorePicker for OpenedStorages {
 // ```
 fn open_storage(
     opts: StorageOptions,
+    engine_runtimes: Arc<EngineRuntimes>,
 ) -> Pin<Box<dyn Future<Output = Result<OpenedStorages>> + Send>> {
     Box::pin(async move {
         let mut store = match opts.object_store {
@@ -429,16 +432,57 @@ fn open_storage(
                         aliyun_opts.key_secret,
                         aliyun_opts.endpoint,
                         aliyun_opts.bucket,
-                        aliyun_opts.pool_max_idle_per_host,
-                        aliyun_opts.timeout.0,
+                        aliyun_opts.http.pool_max_idle_per_host,
+                        aliyun_opts.http.timeout.0,
+                        aliyun_opts.http.keep_alive_timeout.0,
+                        aliyun_opts.http.keep_alive_interval.0,
+                        aliyun_opts.retry.max_retries,
+                        aliyun_opts.retry.retry_timeout.0,
                     )
                     .context(OpenObjectStore)?,
                 );
-                let oss_with_metrics = Arc::new(StoreWithMetrics::new(oss));
-                Arc::new(
-                    StoreWithPrefix::new(aliyun_opts.prefix, oss_with_metrics)
-                        .context(OpenObjectStore)?,
-                ) as _
+                let store_with_prefix = StoreWithPrefix::new(aliyun_opts.prefix, oss);
+                Arc::new(store_with_prefix.context(OpenObjectStore)?) as _
+            }
+            ObjectStoreOptions::Obkv(obkv_opts) => {
+                let obkv_config = obkv_opts.client;
+                let obkv = engine_runtimes
+                    .write_runtime
+                    .spawn_blocking(move || ObkvImpl::new(obkv_config).context(OpenObkv))
+                    .await
+                    .context(RuntimeExec)??;
+
+                let oss: ObjectStoreRef = Arc::new(
+                    obkv::ObkvObjectStore::try_new(
+                        Arc::new(obkv),
+                        obkv_opts.shard_num,
+                        obkv_opts.part_size.0 as usize,
+                        obkv_opts.max_object_size.0 as usize,
+                        obkv_opts.upload_parallelism,
+                    )
+                    .context(OpenObjectStore)?,
+                );
+                Arc::new(StoreWithPrefix::new(obkv_opts.prefix, oss).context(OpenObjectStore)?) as _
+            }
+            ObjectStoreOptions::S3(s3_option) => {
+                let oss: ObjectStoreRef = Arc::new(
+                    s3::try_new(
+                        s3_option.region,
+                        s3_option.key_id,
+                        s3_option.key_secret,
+                        s3_option.endpoint,
+                        s3_option.bucket,
+                        s3_option.http.pool_max_idle_per_host,
+                        s3_option.http.timeout.0,
+                        s3_option.http.keep_alive_timeout.0,
+                        s3_option.http.keep_alive_interval.0,
+                        s3_option.retry.max_retries,
+                        s3_option.retry.retry_timeout.0,
+                    )
+                    .context(OpenObjectStore)?,
+                );
+                let store_with_prefix = StoreWithPrefix::new(s3_option.prefix, oss);
+                Arc::new(store_with_prefix.context(OpenObjectStore)?) as _
             }
         };
 
@@ -459,6 +503,11 @@ fn open_storage(
                 .context(OpenObjectStore)?,
             ) as _;
         }
+
+        store = Arc::new(StoreWithMetrics::new(
+            store,
+            engine_runtimes.io_runtime.clone(),
+        ));
 
         if opts.mem_cache_capacity.as_byte() > 0 {
             let mem_cache = Arc::new(

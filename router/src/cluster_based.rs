@@ -7,13 +7,12 @@ use ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
 use common_util::error::BoxError;
 use log::trace;
-use meta_client::types::{RouteTablesRequest, TableInfo};
+use meta_client::types::RouteTablesRequest;
 use moka::future::Cache;
 use snafu::ResultExt;
 
 use crate::{
-    endpoint::Endpoint, OtherWithCause, ParseEndpoint, PartitionTableInfo, Result,
-    RouteCacheConfig, Router,
+    endpoint::Endpoint, OtherWithCause, ParseEndpoint, Result, RouteCacheConfig, Router, TableInfo,
 };
 
 #[derive(Clone, Debug)]
@@ -145,11 +144,7 @@ impl Router for ClusterBasedRouter {
             .collect())
     }
 
-    async fn fetch_partition_table_info(
-        &self,
-        schema: &str,
-        table: &str,
-    ) -> Result<Option<PartitionTableInfo>> {
+    async fn fetch_table_info(&self, schema: &str, table: &str) -> Result<Option<TableInfo>> {
         let mut route_data_vec = self
             .route_with_cache(&vec![table.to_string()], schema.to_string())
             .await?;
@@ -159,17 +154,7 @@ impl Router for ClusterBasedRouter {
 
         let route_data = route_data_vec.remove(0);
         let table_info = route_data.table_info;
-        if table_info.partition_info.is_some() {
-            return Ok(Some(PartitionTableInfo {
-                id: table_info.id,
-                name: table_info.name,
-                schema_id: table_info.schema_id,
-                schema_name: table_info.schema_name,
-                partition_info: table_info.partition_info.unwrap(),
-            }));
-        }
-
-        Ok(None)
+        Ok(Some(table_info))
     }
 }
 
@@ -211,6 +196,10 @@ mod tests {
         }
 
         async fn close_shard(&self, _: ShardId) -> cluster::Result<TablesOfShard> {
+            unimplemented!();
+        }
+
+        async fn freeze_shard(&self, _: ShardId) -> cluster::Result<TablesOfShard> {
             unimplemented!();
         }
 

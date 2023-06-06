@@ -180,13 +180,8 @@ impl Instance {
         request: FlushRequest,
     ) -> Result<()> {
         let mut rx_opt = None;
-        let compaction_scheduler = if request.compact_after_flush {
-            Some(self.compaction_scheduler.clone())
-        } else {
-            None
-        };
+
         let flush_opts = TableFlushOptions {
-            compact_after_flush: compaction_scheduler,
             res_sender: if request.sync {
                 let (tx, rx) = oneshot::channel();
                 rx_opt = Some(rx);

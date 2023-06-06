@@ -362,6 +362,40 @@ pub struct AlterTableRequest {
     pub operations: Vec<AlterTableOperation>,
 }
 
+#[derive(Debug, Clone)]
+pub struct OpenShardRequest {
+    /// Shard id
+    pub shard_id: ShardId,
+
+    /// Table infos
+    pub table_defs: Vec<TableDef>,
+
+    /// Table engine type
+    pub engine: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct TableDef {
+    pub catalog_name: String,
+    pub schema_name: String,
+    pub id: TableId,
+    pub name: String,
+}
+
+impl TableDef {
+    pub fn into_engine_table_def(self, schema_id: SchemaId) -> engine::TableDef {
+        engine::TableDef {
+            catalog_name: self.catalog_name,
+            schema_name: self.schema_name,
+            schema_id,
+            id: self.id,
+            name: self.name,
+        }
+    }
+}
+
+pub type CloseShardRequest = OpenShardRequest;
+
 /// Schema manage tables.
 #[async_trait]
 pub trait Schema {

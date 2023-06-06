@@ -29,6 +29,10 @@ build-arm64:
 	ls -alh
 	cd $(DIR); cargo build --release --no-default-features
 
+build-with-console:
+	ls -alh
+	cd $(DIR); RUSTFLAGS="--cfg tokio_unstable" cargo build --release
+
 test:
 	cd $(DIR); cargo test --workspace -- --test-threads=4
 
@@ -122,3 +126,8 @@ dev-setup:
 	echo "Error: Unsupported OS. Exiting..."
 	exit 1
 endif
+
+fix:
+	cargo fmt
+	cargo sort --workspace
+	cargo clippy --fix --all-targets --all-features --workspace -- -D warnings

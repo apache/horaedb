@@ -562,6 +562,76 @@ impl Datum {
         }
     }
 
+    pub fn do_with_bytes<F>(&self, mut f: F)
+    where
+        F: FnMut(&[u8]),
+    {
+        match self {
+            Datum::Double(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            Datum::Float(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            Datum::UInt64(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            Datum::UInt32(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            Datum::UInt16(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            Datum::UInt8(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            Datum::Int64(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            Datum::Int32(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            Datum::Int16(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            Datum::Int8(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            Datum::Boolean(v) => {
+                if *v {
+                    f(&[1])
+                } else {
+                    f(&[0])
+                }
+            }
+            Datum::Null => f(&[0]),
+            Datum::Timestamp(v) => {
+                let arr = v.as_i64().to_le_bytes();
+                f(arr.as_slice())
+            }
+            Datum::Varbinary(v) => f(v.as_ref()),
+            Datum::String(v) => f(v.as_bytes()),
+            Datum::Date(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            Datum::Time(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+        }
+    }
+
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
             Datum::Double(v) => v.to_le_bytes().to_vec(),

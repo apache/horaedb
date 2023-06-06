@@ -482,18 +482,13 @@ pub struct AlterSchemaRequest {
 
 #[derive(Debug)]
 pub struct FlushRequest {
-    /// Trigger a compaction after flush, default is true.
-    pub compact_after_flush: bool,
     /// Whether to wait flush task finishes, default is true.
     pub sync: bool,
 }
 
 impl Default for FlushRequest {
     fn default() -> Self {
-        Self {
-            compact_after_flush: true,
-            sync: true,
-        }
+        Self { sync: true }
     }
 }
 

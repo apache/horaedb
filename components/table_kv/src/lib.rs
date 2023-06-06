@@ -32,7 +32,7 @@ pub trait WriteBatch: Default {
 }
 
 /// Key to seek.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SeekKey(Vec<u8>);
 
 impl From<&[u8]> for SeekKey {
@@ -52,7 +52,7 @@ impl SeekKey {
 }
 
 /// Boundary of key to seek.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum KeyBoundary {
     /// Included key boudary.
     Included(SeekKey),
@@ -110,7 +110,7 @@ impl Default for ScanContext {
 }
 
 /// Scan request.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ScanRequest {
     /// Start bound.
     pub start: KeyBoundary,
@@ -185,4 +185,14 @@ pub trait TableKv: Clone + Send + Sync + fmt::Debug + 'static {
 
     /// Get value by key from table with `table_name`.
     fn get(&self, table_name: &str, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error>;
+
+    /// Delete data by key from table with `table_name`.
+    fn delete(&self, table_name: &str, key: &[u8]) -> Result<(), Self::Error>;
+
+    /// Delete a batch of data by key list from table with `table_name`.
+    fn delete_batch(
+        &self,
+        table_name: &str,
+        keys: Vec<Vec<u8>>,
+    ) -> std::result::Result<(), Self::Error>;
 }

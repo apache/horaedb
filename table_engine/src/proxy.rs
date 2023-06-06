@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Table engine proxy
 
@@ -6,8 +6,9 @@ use async_trait::async_trait;
 
 use crate::{
     engine::{
-        CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest, TableEngine,
-        TableEngineRef, UnknownEngineType,
+        CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
+        OpenShardRequest, OpenShardResult, OpenTableRequest, TableEngine, TableEngineRef,
+        UnknownEngineType,
     },
     memory::MemoryTableEngine,
     table::TableRef,
@@ -70,6 +71,26 @@ impl TableEngine for TableEngineProxy {
             MEMORY_ENGINE_TYPE => self.memory.close_table(request).await,
             ANALYTIC_ENGINE_TYPE => self.analytic.close_table(request).await,
             engine_type => UnknownEngineType { engine_type }.fail(),
+        }
+    }
+
+    async fn open_shard(
+        &self,
+        request: OpenShardRequest,
+    ) -> crate::engine::Result<OpenShardResult> {
+        match request.engine.as_str() {
+            MEMORY_ENGINE_TYPE => self.memory.open_shard(request).await,
+            ANALYTIC_ENGINE_TYPE => self.analytic.open_shard(request).await,
+            engine_type => UnknownEngineType { engine_type }.fail(),
+        }
+    }
+
+    /// Close tables on same shard.
+    async fn close_shard(&self, request: CloseShardRequest) -> Vec<crate::engine::Result<String>> {
+        match request.engine.as_str() {
+            MEMORY_ENGINE_TYPE => self.memory.close_shard(request).await,
+            ANALYTIC_ENGINE_TYPE => self.analytic.close_shard(request).await,
+            engine_type => vec![UnknownEngineType { engine_type }.fail()],
         }
     }
 }

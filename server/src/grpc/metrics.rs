@@ -3,7 +3,10 @@
 // Grpc server metrics
 
 use lazy_static::lazy_static;
-use prometheus::{exponential_buckets, register_histogram_vec, HistogramVec};
+use prometheus::{
+    exponential_buckets, register_histogram_vec, register_int_counter_vec, HistogramVec,
+    IntCounterVec,
+};
 use prometheus_static_metric::{auto_flush_from, make_auto_flush_static_metric};
 
 // Register auto flush static metrics.
@@ -30,6 +33,14 @@ make_auto_flush_static_metric! {
 
     pub struct RemoteEngineGrpcHandlerDurationHistogramVec: LocalHistogram {
         "type" => RemoteEngineTypeKind,
+    }
+
+    pub label_enum RemoteEngineGrpcTypeKind {
+        write_failed,
+    }
+
+    pub struct RemoteEngineGrpcHandlerCounterVec: LocalIntCounter {
+        "type" => RemoteEngineGrpcTypeKind,
     }
 
     pub label_enum MetaEventTypeKind {
@@ -64,6 +75,13 @@ lazy_static! {
             exponential_buckets(0.0005, 2.0, 20).unwrap()
         )
         .unwrap();
+    pub static ref REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC_GLOBAL: IntCounterVec =
+        register_int_counter_vec!(
+            "remote_engine_grpc_handler_counter",
+            "Remote engine grpc handler counter",
+            &["type"]
+        )
+        .unwrap();
     pub static ref META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC_GLOBAL: HistogramVec =
         register_histogram_vec!(
             "meta_event_grpc_handler_duration",
@@ -83,6 +101,10 @@ lazy_static! {
     pub static ref REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC: RemoteEngineGrpcHandlerDurationHistogramVec = auto_flush_from!(
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC_GLOBAL,
         RemoteEngineGrpcHandlerDurationHistogramVec
+    );
+    pub static ref REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC: RemoteEngineGrpcHandlerCounterVec = auto_flush_from!(
+        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC_GLOBAL,
+        RemoteEngineGrpcHandlerCounterVec
     );
     pub static ref META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC: MetaEventGrpcHandlerDurationHistogramVec = auto_flush_from!(
         META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC_GLOBAL,

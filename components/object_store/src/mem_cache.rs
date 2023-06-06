@@ -5,17 +5,17 @@
 //! 2. Builtin Partition to reduce lock contention
 
 use std::{
-    collections::hash_map::{DefaultHasher, RandomState},
+    collections::hash_map::RandomState,
     fmt::{self, Display},
-    hash::{Hash, Hasher},
     num::NonZeroUsize,
     ops::Range,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use clru::{CLruCache, CLruCacheConfig, WeightScale};
+use common_util::partitioned_lock::PartitionedMutex;
 use futures::stream::BoxStream;
 use snafu::{OptionExt, Snafu};
 use tokio::io::AsyncWrite;
@@ -37,54 +37,10 @@ impl WeightScale<String, Bytes> for CustomScale {
     }
 }
 
-struct Partition {
-    inner: Mutex<CLruCache<String, Bytes, RandomState, CustomScale>>,
-}
-
-impl Partition {
-    fn new(mem_cap: NonZeroUsize) -> Self {
-        let cache = CLruCache::with_config(CLruCacheConfig::new(mem_cap).with_scale(CustomScale));
-
-        Self {
-            inner: Mutex::new(cache),
-        }
-    }
-}
-
-impl Partition {
-    fn get(&self, key: &str) -> Option<Bytes> {
-        let mut guard = self.inner.lock().unwrap();
-        guard.get(key).cloned()
-    }
-
-    fn peek(&self, key: &str) -> Option<Bytes> {
-        // FIXME: actually, here write lock is not necessary.
-        let guard = self.inner.lock().unwrap();
-        guard.peek(key).cloned()
-    }
-
-    fn insert(&self, key: String, value: Bytes) {
-        let mut guard = self.inner.lock().unwrap();
-        // don't care error now.
-        _ = guard.put_with_weight(key, value);
-    }
-
-    #[cfg(test)]
-    fn keys(&self) -> Vec<String> {
-        let guard = self.inner.lock().unwrap();
-        guard
-            .iter()
-            .map(|(key, _)| key)
-            .cloned()
-            .collect::<Vec<_>>()
-    }
-}
-
 pub struct MemCache {
     /// Max memory this store can use
     mem_cap: NonZeroUsize,
-    partitions: Vec<Arc<Partition>>,
-    partition_mask: usize,
+    inner: PartitionedMutex<CLruCache<String, Bytes, RandomState, CustomScale>>,
 }
 
 pub type MemCacheRef = Arc<MemCache>;
@@ -95,47 +51,41 @@ impl MemCache {
         mem_cap: NonZeroUsize,
     ) -> std::result::Result<Self, Error> {
         let partition_num = 1 << partition_bits;
-        let cap_per_part = mem_cap
-            .checked_mul(NonZeroUsize::new(partition_num).unwrap())
-            .context(InvalidCapacity)?;
-        let partitions = (0..partition_num)
-            .map(|_| Arc::new(Partition::new(cap_per_part)))
-            .collect::<Vec<_>>();
-
-        Ok(Self {
-            mem_cap,
-            partitions,
-            partition_mask: partition_num - 1,
-        })
-    }
-
-    fn locate_partition(&self, key: &str) -> Arc<Partition> {
-        let mut hasher = DefaultHasher::new();
-        key.hash(&mut hasher);
-        self.partitions[hasher.finish() as usize & self.partition_mask].clone()
+        let cap_per_part =
+            NonZeroUsize::new((mem_cap.get() as f64 / partition_num as f64) as usize)
+                .context(InvalidCapacity)?;
+        let inin_lru =
+            || CLruCache::with_config(CLruCacheConfig::new(cap_per_part).with_scale(CustomScale));
+        let inner = PartitionedMutex::new(inin_lru, partition_bits);
+        Ok(Self { mem_cap, inner })
     }
 
     fn get(&self, key: &str) -> Option<Bytes> {
-        let partition = self.locate_partition(key);
-        partition.get(key)
+        self.inner.lock(&key).get(key).cloned()
     }
 
     fn peek(&self, key: &str) -> Option<Bytes> {
-        let partition = self.locate_partition(key);
-        partition.peek(key)
+        self.inner.lock(&key).peek(key).cloned()
     }
 
     fn insert(&self, key: String, value: Bytes) {
-        let partition = self.locate_partition(&key);
-        partition.insert(key, value);
+        // don't care error now.
+        _ = self.inner.lock(&key).put_with_weight(key, value);
     }
 
     /// Give a description of the cache state.
+
+    #[cfg(test)]
+    fn keys(&self, part: &CLruCache<String, Bytes, RandomState, CustomScale>) -> Vec<String> {
+        part.iter().map(|(key, _)| key).cloned().collect::<Vec<_>>()
+    }
+
     #[cfg(test)]
     fn state_desc(&self) -> String {
-        self.partitions
+        self.inner
+            .get_all_partition()
             .iter()
-            .map(|part| part.keys().join(","))
+            .map(|part| self.keys(&part.lock().unwrap()).join(","))
             .enumerate()
             .map(|(part_no, keys)| format!("{part_no}: [{keys}]"))
             .collect::<Vec<_>>()
@@ -147,8 +97,7 @@ impl Display for MemCache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MemCache")
             .field("mem_cap", &self.mem_cap)
-            .field("mask", &self.partition_mask)
-            .field("partitions", &self.partitions.len())
+            .field("partitions", &self.inner.get_all_partition().len())
             .finish()
     }
 }
@@ -375,10 +324,10 @@ mod test {
             .unwrap();
 
         assert_eq!(
-            r#"0: []
-1: [partition.sst-100-105]
-2: []
-3: [partition.sst-0-5]"#,
+            r#"0: [partition.sst-0-5]
+1: []
+2: [partition.sst-100-105]
+3: []"#,
             store.cache.as_ref().state_desc()
         );
 
@@ -390,5 +339,22 @@ mod test {
             .cache
             .get(&MemCacheStore::cache_key(&location, &range100_105))
             .is_some());
+    }
+
+    #[test]
+    fn test_mem_cache_capacity() {
+        // 4 partitions
+        let store = prepare_store(2, 100);
+        assert_eq!(
+            "25,25,25,25",
+            store
+                .cache
+                .inner
+                .get_all_partition()
+                .iter()
+                .map(|p| p.lock().unwrap().capacity().to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        );
     }
 }

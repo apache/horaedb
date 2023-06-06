@@ -1,6 +1,6 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-pub(crate) mod error;
+mod error;
 #[allow(dead_code)]
 mod header;
 
@@ -137,6 +137,7 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
         let ctx = Context {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
+            enable_partition_table_access: false,
         };
         let stream = Self::stream_sql_query_internal(ctx, proxy, req).await;
 
@@ -159,6 +160,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let ctx = Context {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
+            enable_partition_table_access: false,
         };
 
         let join_handle = self
@@ -189,6 +191,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let ctx = Context {
             runtime: self.runtimes.write_runtime.clone(),
             timeout: self.timeout,
+            enable_partition_table_access: false,
         };
 
         let join_handle = self.runtimes.write_runtime.spawn(async move {
@@ -228,20 +231,12 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let ctx = Context {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
+            enable_partition_table_access: false,
         };
-        let join_handle = self.runtimes.read_runtime.spawn(async move {
-            if req.context.is_none() {
-                return SqlQueryResponse {
-                    header: Some(error::build_err_header(
-                        StatusCode::BAD_REQUEST.as_u16() as u32,
-                        "database is not set".to_string(),
-                    )),
-                    ..Default::default()
-                };
-            }
-
-            proxy.handle_sql_query(ctx, req).await
-        });
+        let join_handle = self
+            .runtimes
+            .read_runtime
+            .spawn(async move { proxy.handle_sql_query(ctx, req).await });
 
         let resp = match join_handle.await {
             Ok(v) => v,
@@ -299,6 +294,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let ctx = Context {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
+            enable_partition_table_access: false,
         };
         let join_handle = self.runtimes.read_runtime.spawn(async move {
             if req.context.is_none() {
@@ -338,6 +334,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let ctx = Context {
             runtime: self.runtimes.write_runtime.clone(),
             timeout: self.timeout,
+            enable_partition_table_access: false,
         };
 
         let join_handle = self.runtimes.write_runtime.spawn(async move {
@@ -407,19 +404,6 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
 
         let runtime = ctx.runtime.clone();
         let join_handle = runtime.spawn(async move {
-            if query_req.context.is_none() {
-                return stream::once(async move {
-                    Ok(SqlQueryResponse {
-                        header: Some(error::build_err_header(
-                            StatusCode::BAD_REQUEST.as_u16() as u32,
-                            "database is not set".to_string(),
-                        )),
-                        ..Default::default()
-                    })
-                })
-                .boxed();
-            }
-
             proxy
                 .handle_stream_sql_query(ctx, query_req)
                 .await

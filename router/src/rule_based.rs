@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! A router based on rules.
 
@@ -12,9 +12,7 @@ use meta_client::types::ShardId;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt};
 
-use crate::{
-    endpoint::Endpoint, hash, PartitionTableInfo, Result, RouteNotFound, Router, ShardNotFound,
-};
+use crate::{endpoint::Endpoint, hash, Result, RouteNotFound, Router, ShardNotFound, TableInfo};
 
 pub type ShardNodes = HashMap<ShardId, Endpoint>;
 
@@ -173,11 +171,7 @@ impl Router for RuleBasedRouter {
         Ok(Vec::new())
     }
 
-    async fn fetch_partition_table_info(
-        &self,
-        _schema: &str,
-        _table: &str,
-    ) -> Result<Option<PartitionTableInfo>> {
+    async fn fetch_table_info(&self, _schema: &str, _table: &str) -> Result<Option<TableInfo>> {
         return Ok(None);
     }
 }

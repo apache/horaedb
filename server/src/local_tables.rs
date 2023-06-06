@@ -2,17 +2,17 @@
 
 //! Recover tables in standalone mode
 
-use catalog::{schema::OpenOptions, table_operator::TableOperator};
+use catalog::{
+    schema::{OpenOptions, OpenShardRequest, TableDef},
+    table_operator::TableOperator,
+};
 use common_types::table::DEFAULT_SHARD_ID;
 use common_util::{
     define_result,
     error::{BoxError, GenericError},
 };
 use snafu::{Backtrace, ResultExt, Snafu};
-use table_engine::{
-    engine::{OpenShardRequest, TableDef},
-    table::TableInfo,
-};
+use table_engine::table::TableInfo;
 
 #[derive(Debug, Snafu)]
 pub enum Error {

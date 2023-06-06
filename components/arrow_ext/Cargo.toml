@@ -12,5 +12,6 @@ workspace = true
 
 [dependencies]
 arrow = { workspace = true }
+serde = { workspace = true }
 snafu = { workspace = true }
 zstd = { workspace = true }
