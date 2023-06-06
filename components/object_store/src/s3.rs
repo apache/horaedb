@@ -34,7 +34,6 @@ pub fn try_new(
     let endpoint = endpoint.into();
     let bucket = bucket.into();
     AmazonS3Builder::new()
-        .with_virtual_hosted_style_request(true)
         .with_region(region)
         .with_access_key_id(key_id)
         .with_secret_access_key(key_secret)
