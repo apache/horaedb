@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use common_util::config::{ReadableDuration, ReadableSize};
 use serde::{Deserialize, Serialize};
+use table_kv::config::ObkvConfig;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -39,9 +40,11 @@ impl Default for StorageOptions {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
+#[allow(clippy::large_enum_variant)]
 pub enum ObjectStoreOptions {
     Local(LocalOptions),
     Aliyun(AliyunOptions),
+    Obkv(ObkvOptions),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -81,5 +84,38 @@ impl AliyunOptions {
 
     fn default_keep_alive_inverval() -> ReadableDuration {
         ReadableDuration::from(Duration::from_secs(2))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObkvOptions {
+    pub prefix: String,
+    #[serde(default = "ObkvOptions::default_shard_num")]
+    pub shard_num: usize,
+    #[serde(default = "ObkvOptions::default_part_size")]
+    pub part_size: ReadableSize,
+    #[serde(default = "ObkvOptions::default_max_object_size")]
+    pub max_object_size: ReadableSize,
+    #[serde(default = "ObkvOptions::default_upload_parallelism")]
+    pub upload_parallelism: usize,
+    /// Obkv client config
+    pub client: ObkvConfig,
+}
+
+impl ObkvOptions {
+    fn default_max_object_size() -> ReadableSize {
+        ReadableSize::gb(1)
+    }
+
+    fn default_part_size() -> ReadableSize {
+        ReadableSize::mb(1)
+    }
+
+    fn default_shard_num() -> usize {
+        512
+    }
+
+    fn default_upload_parallelism() -> usize {
+        8
     }
 }
