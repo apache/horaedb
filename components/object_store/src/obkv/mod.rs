@@ -34,6 +34,8 @@ use upstream::{
 };
 use uuid::Uuid;
 
+use uuid::Uuid;
+
 use crate::{
     multipart::{CloudMultiPartUpload, CloudMultiPartUploadImpl, UploadPart},
     obkv::meta::{MetaManager, ObkvObjectMeta, OBJECT_STORE_META},
