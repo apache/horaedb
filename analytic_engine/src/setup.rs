@@ -436,8 +436,8 @@ fn open_storage(
                         aliyun_opts.http.timeout.0,
                         aliyun_opts.http.keep_alive_timeout.0,
                         aliyun_opts.http.keep_alive_interval.0,
-                        aliyun_opts.max_retries,
-                        aliyun_opts.retry_timeout.0,
+                        aliyun_opts.retry.max_retries,
+                        aliyun_opts.retry.retry_timeout.0,
                     )
                     .context(OpenObjectStore)?,
                 );
@@ -476,8 +476,8 @@ fn open_storage(
                         s3_option.http.timeout.0,
                         s3_option.http.keep_alive_timeout.0,
                         s3_option.http.keep_alive_interval.0,
-                        s3_option.max_retries,
-                        s3_option.retry_timeout.0,
+                        s3_option.retry.max_retries,
+                        s3_option.retry.retry_timeout.0,
                     )
                     .context(OpenObjectStore)?,
                 );
