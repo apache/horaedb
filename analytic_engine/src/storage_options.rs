@@ -60,32 +60,7 @@ pub struct AliyunOptions {
     pub endpoint: String,
     pub bucket: String,
     pub prefix: String,
-    #[serde(default = "AliyunOptions::default_pool_max_idle_per_host")]
-    pub pool_max_idle_per_host: usize,
-    #[serde(default = "AliyunOptions::default_timeout")]
-    pub timeout: ReadableDuration,
-    #[serde(default = "AliyunOptions::default_keep_alive_time")]
-    pub keep_alive_timeout: ReadableDuration,
-    #[serde(default = "AliyunOptions::default_keep_alive_inverval")]
-    pub keep_alive_interval: ReadableDuration,
-}
-
-impl AliyunOptions {
-    fn default_pool_max_idle_per_host() -> usize {
-        1024
-    }
-
-    fn default_timeout() -> ReadableDuration {
-        ReadableDuration::from(Duration::from_secs(60))
-    }
-
-    fn default_keep_alive_time() -> ReadableDuration {
-        ReadableDuration::from(Duration::from_secs(60))
-    }
-
-    fn default_keep_alive_inverval() -> ReadableDuration {
-        ReadableDuration::from(Duration::from_secs(2))
-    }
+    pub http_options: HttpOptions,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,17 +103,22 @@ pub struct S3Options {
     pub endpoint: String,
     pub bucket: String,
     pub prefix: String,
-    #[serde(default = "S3Options::default_pool_max_idle_per_host")]
+    pub http_options: HttpOptions,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct HttpOptions {
+    #[serde(default = "HttpOptions::default_pool_max_idle_per_host")]
     pub pool_max_idle_per_host: usize,
-    #[serde(default = "S3Options::default_timeout")]
+    #[serde(default = "HttpOptions::default_timeout")]
     pub timeout: ReadableDuration,
-    #[serde(default = "S3Options::default_keep_alive_time")]
+    #[serde(default = "HttpOptions::default_keep_alive_time")]
     pub keep_alive_timeout: ReadableDuration,
-    #[serde(default = "S3Options::default_keep_alive_inverval")]
+    #[serde(default = "HttpOptions::default_keep_alive_inverval")]
     pub keep_alive_interval: ReadableDuration,
 }
 
-impl S3Options {
+impl HttpOptions {
     fn default_pool_max_idle_per_host() -> usize {
         1024
     }

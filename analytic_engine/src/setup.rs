@@ -432,10 +432,10 @@ fn open_storage(
                         aliyun_opts.key_secret,
                         aliyun_opts.endpoint,
                         aliyun_opts.bucket,
-                        aliyun_opts.pool_max_idle_per_host,
-                        aliyun_opts.timeout.0,
-                        aliyun_opts.keep_alive_timeout.0,
-                        aliyun_opts.keep_alive_interval.0,
+                        aliyun_opts.http_options.pool_max_idle_per_host,
+                        aliyun_opts.http_options.timeout.0,
+                        aliyun_opts.http_options.keep_alive_timeout.0,
+                        aliyun_opts.http_options.keep_alive_interval.0,
                     )
                     .context(OpenObjectStore)?,
                 );
@@ -470,10 +470,10 @@ fn open_storage(
                         s3_option.key_secret,
                         s3_option.endpoint,
                         s3_option.bucket,
-                        s3_option.pool_max_idle_per_host,
-                        s3_option.timeout.0,
-                        s3_option.keep_alive_timeout.0,
-                        s3_option.keep_alive_interval.0,
+                        s3_option.http_options.pool_max_idle_per_host,
+                        s3_option.http_options.timeout.0,
+                        s3_option.http_options.keep_alive_timeout.0,
+                        s3_option.http_options.keep_alive_interval.0,
                     )
                     .context(OpenObjectStore)?,
                 );

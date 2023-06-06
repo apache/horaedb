@@ -7,18 +7,6 @@ use upstream::{
     ClientOptions, RetryConfig,
 };
 
-fn normalize_endpoint(endpoint: &str, bucket: &str) -> String {
-    if endpoint.starts_with("https") {
-        format!(
-            "https://{}.{}",
-            bucket,
-            endpoint.replacen("https://", "", 1)
-        )
-    } else {
-        format!("http://{}.{}", bucket, endpoint.replacen("http://", "", 1))
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub fn try_new(
     region: impl Into<String>,
@@ -46,7 +34,6 @@ pub fn try_new(
 
     let endpoint = endpoint.into();
     let bucket = bucket.into();
-    let endpoint = normalize_endpoint(&endpoint, &bucket);
     AmazonS3Builder::new()
         .with_virtual_hosted_style_request(true)
         .with_region(region)
