@@ -546,7 +546,7 @@ mod test {
         cache_dir: TempDir,
     }
 
-    async fn prepare_store(page_size: usize, cap: usize) -> StoreWithCacheDir {
+    async fn prepare_store(page_size: usize, cap: usize, partition_bits: usize) -> StoreWithCacheDir {
         let local_path = tempdir().unwrap();
         let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
 
@@ -556,7 +556,7 @@ mod test {
             cap,
             page_size,
             local_store,
-            0,
+            partition_bits,
         )
         .await
         .unwrap();
@@ -581,7 +581,7 @@ mod test {
             ),
         ];
 
-        let store = prepare_store(page_size, 1024).await;
+        let store = prepare_store(page_size, 1024, 0).await;
         for (input, expected) in testcases {
             assert_eq!(store.inner.normalize_range(1024, &input), expected);
         }
@@ -598,7 +598,7 @@ mod test {
             (32..100, vec![]),
         ];
 
-        let store = prepare_store(page_size, 1024).await;
+        let store = prepare_store(page_size, 1024, 0).await;
         for (input, expected) in testcases {
             assert_eq!(store.inner.normalize_range(20, &input), expected);
         }
@@ -617,7 +617,7 @@ mod test {
         // 51 byte
         let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
         let location = Path::from("1.sst");
-        let store = prepare_store(page_size, 1024).await;
+        let store = prepare_store(page_size, 1024, 0).await;
 
         let mut buf = BytesMut::with_capacity(data.len() * 4);
         // extend 4 times, then location will contain 200 bytes
@@ -683,7 +683,7 @@ mod test {
         // 51 byte
         let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
         let location = Path::from("remove_cache_file.sst");
-        let store = prepare_store(page_size, 32).await;
+        let store = prepare_store(page_size, 32, 0).await;
         let mut buf = BytesMut::with_capacity(data.len() * 4);
         // extend 4 times, then location will contain 200 bytes, but cache cap is 32
         for _ in 0..4 {
@@ -708,6 +708,70 @@ mod test {
         assert!(test_file_exists(&store.cache_dir, &location, &(48..64)));
     }
 
+    #[tokio::test]
+    async fn test_disk_cache_remove_cache_file_two_partition() {
+        let page_size = 16;
+        // 51 byte
+        let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
+        let location = Path::from("remove_cache_file_two_partition.sst");
+        // partition_cap: 64 / 16 / 2 = 2
+        let store = prepare_store(page_size, 64, 1).await;
+        let mut buf = BytesMut::with_capacity(data.len() * 8);
+        // extend 8 times
+        for _ in 0..8 {
+            buf.extend_from_slice(data);
+        }
+        store.inner.put(&location, buf.freeze()).await.unwrap();
+        // 0..16: partition 1  
+        // 16..32 partition 0
+        // 32..48 partition 0
+        // 48..64 partition 0
+        // 64..80 partition 0
+        // 80..96 partition 1
+        // 96..112 partition 0
+        // 112..128 partition 1
+        let _ = store.inner.get_range(&location, 0..16).await.unwrap();
+        let _ = store.inner.get_range(&location, 80..96).await.unwrap();
+        // partition 1 cache is full now
+        assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(80..96)));
+
+        let _ = store.inner.get_range(&location, 16..32).await.unwrap();
+        let _ = store.inner.get_range(&location, 32..48).await.unwrap();
+        // partition 0 cache is full now
+
+        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(32..48)));
+
+        // insert new entry into partition 0, evict partition 0's oldest entry
+        let _ = store.inner.get_range(&location, 48..64).await.unwrap();
+        assert!(!test_file_exists(&store.cache_dir, &location, &(16..32)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(32..48)));
+
+        assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(80..96)));
+        
+        // insert new entry into partition 0, evict partition 0's oldest entry
+        let _ = store.inner.get_range(&location, 64..80).await.unwrap();
+        assert!(!test_file_exists(&store.cache_dir, &location, &(32..48)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(48..64)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(64..80)));
+
+        assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(80..96)));
+    
+
+        // insert new entry into partition 1, evict partition 1's oldest entry
+        let _ = store.inner.get_range(&location, 112..128).await.unwrap();
+        assert!(!test_file_exists(&store.cache_dir, &location, &(0..16)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(80..96)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(112..128)));
+
+        assert!(test_file_exists(&store.cache_dir, &location, &(48..64)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(64..80)));
+
+
+    }
     #[tokio::test]
     async fn test_disk_cache_manifest() {
         let cache_dir = tempdir().unwrap();
@@ -835,7 +899,7 @@ mod test {
         let StoreWithCacheDir {
             inner: store,
             cache_dir,
-        } = prepare_store(16, 1024).await;
+        } = prepare_store(16, 1024, 0).await;
         let test_file_name = "corrupted_disk_cache_file";
         let test_file_path = Path::from(test_file_name);
         let test_file_bytes = Bytes::from("corrupted_disk_cache_file_data");
