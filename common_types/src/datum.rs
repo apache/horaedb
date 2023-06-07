@@ -1010,6 +1010,76 @@ impl<'a> DatumView<'a> {
             DatumView::Time(_) => DatumKind::Time,
         }
     }
+
+    pub fn do_with_bytes<F>(&self, mut f: F)
+    where
+        F: FnMut(&[u8]),
+    {
+        match self {
+            DatumView::Double(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            DatumView::Float(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            DatumView::UInt64(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            DatumView::UInt32(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            DatumView::UInt16(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            DatumView::UInt8(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            DatumView::Int64(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            DatumView::Int32(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            DatumView::Int16(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            DatumView::Int8(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            DatumView::Boolean(v) => {
+                if *v {
+                    f(&[1])
+                } else {
+                    f(&[0])
+                }
+            }
+            DatumView::Null => f(&[0]),
+            DatumView::Timestamp(v) => {
+                let arr = v.as_i64().to_le_bytes();
+                f(arr.as_slice())
+            }
+            DatumView::Varbinary(v) => f(v),
+            DatumView::String(v) => f(v.as_bytes()),
+            DatumView::Date(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+            DatumView::Time(v) => {
+                let arr = v.to_le_bytes();
+                f(arr.as_slice())
+            }
+        }
+    }
 }
 
 #[cfg(feature = "arrow")]
