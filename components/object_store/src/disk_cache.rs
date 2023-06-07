@@ -18,7 +18,7 @@ use log::{debug, error, info};
 use lru::LruCache;
 use prost::Message;
 use serde::{Deserialize, Serialize};
-use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use tokio::{
     fs::{File, OpenOptions},
     io::{AsyncReadExt, AsyncWrite, AsyncWriteExt},
