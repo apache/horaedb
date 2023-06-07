@@ -546,7 +546,11 @@ mod test {
         cache_dir: TempDir,
     }
 
-    async fn prepare_store(page_size: usize, cap: usize, partition_bits: usize) -> StoreWithCacheDir {
+    async fn prepare_store(
+        page_size: usize,
+        cap: usize,
+        partition_bits: usize,
+    ) -> StoreWithCacheDir {
         let local_path = tempdir().unwrap();
         let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
 
@@ -722,7 +726,7 @@ mod test {
             buf.extend_from_slice(data);
         }
         store.inner.put(&location, buf.freeze()).await.unwrap();
-        // 0..16: partition 1  
+        // 0..16: partition 1
         // 16..32 partition 0
         // 32..48 partition 0
         // 48..64 partition 0
@@ -750,7 +754,7 @@ mod test {
 
         assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
         assert!(test_file_exists(&store.cache_dir, &location, &(80..96)));
-        
+
         // insert new entry into partition 0, evict partition 0's oldest entry
         let _ = store.inner.get_range(&location, 64..80).await.unwrap();
         assert!(!test_file_exists(&store.cache_dir, &location, &(32..48)));
@@ -759,7 +763,6 @@ mod test {
 
         assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
         assert!(test_file_exists(&store.cache_dir, &location, &(80..96)));
-    
 
         // insert new entry into partition 1, evict partition 1's oldest entry
         let _ = store.inner.get_range(&location, 112..128).await.unwrap();
@@ -769,8 +772,6 @@ mod test {
 
         assert!(test_file_exists(&store.cache_dir, &location, &(48..64)));
         assert!(test_file_exists(&store.cache_dir, &location, &(64..80)));
-
-
     }
     #[tokio::test]
     async fn test_disk_cache_manifest() {
