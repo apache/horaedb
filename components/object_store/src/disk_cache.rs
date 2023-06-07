@@ -11,7 +11,7 @@ use std::{collections::BTreeMap, fmt::Display, ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
-use common_util::time::current_as_rfc3339;
+use common_util::{time::current_as_rfc3339, partitioned_lock::PartitionedMutexAsync};
 use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
 use log::{debug, error, info};
@@ -117,15 +117,19 @@ struct DiskCache {
     root_dir: String,
     cap: usize,
     // Cache key is used as filename on disk.
-    cache: Mutex<LruCache<String, ()>>,
+    // cache: Mutex<LruCache<String, ()>>,
+    tmp_cache: PartitionedMutexAsync<LruCache<String, ()>>,
 }
 
 impl DiskCache {
-    fn new(root_dir: String, cap: usize) -> Self {
+    fn new(root_dir: String, cap: usize, partition_bits: usize) -> Self {
+        let init_lru =
+            || LruCache::new(cap);
         Self {
             root_dir,
             cap,
-            cache: Mutex::new(LruCache::new(cap)),
+            // cache: Mutex::new(LruCache::new(cap)),
+            tmp_cache:  PartitionedMutexAsync::new(init_lru, partition_bits)
         }
     }
 
@@ -134,7 +138,8 @@ impl DiskCache {
     /// The returned value denotes whether succeed.
     // TODO: We now hold lock when doing IO, possible to release it?
     async fn update_cache(&self, key: String, value: Option<Bytes>) -> bool {
-        let mut cache = self.cache.lock().await;
+        // let mut cache = self.cache.lock().await;
+        let mut cache = self.tmp_cache.lock(&key).await;
         debug!(
             "Disk cache update, key:{}, len:{}, cap:{}.",
             &key,
@@ -180,7 +185,8 @@ impl DiskCache {
     }
 
     async fn get(&self, key: &str) -> Option<Bytes> {
-        let mut cache = self.cache.lock().await;
+        // let mut cache = self.cache.lock().await;
+        let mut cache = self.tmp_cache.lock(&key).await;
         if cache.get(key).is_some() {
             // TODO: release lock when doing IO
             match self.read_bytes(key).await {
@@ -252,7 +258,7 @@ impl Display for DiskCache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DiskCache")
             .field("path", &self.root_dir)
-            .field("cache", &self.cache)
+            .field("cache", &self.tmp_cache)
             .finish()
     }
 }
@@ -286,11 +292,13 @@ impl DiskCacheStore {
         cap: usize,
         page_size: usize,
         underlying_store: Arc<dyn ObjectStore>,
+        partition_bits: usize,
     ) -> Result<Self> {
         assert!(cap % page_size == 0);
 
         let _ = Self::create_manifest_if_not_exists(&cache_dir, page_size).await?;
-        let cache = DiskCache::new(cache_dir.clone(), cap / page_size);
+        // TODO fix cap size
+        let cache = DiskCache::new(cache_dir.clone(), cap / page_size / (1 << partition_bits), partition_bits);
         Self::recover_cache(&cache_dir, &cache).await?;
 
         let size_cache = Arc::new(Mutex::new(LruCache::new(cap / page_size)));
@@ -546,6 +554,7 @@ mod test {
             cap,
             page_size,
             local_store,
+            0,
         )
         .await
         .unwrap();
@@ -634,13 +643,15 @@ mod test {
 
         // remove cached values, then get again
         {
-            let mut data_cache = store.inner.cache.cache.lock().await;
+            // let mut data_cache = store.inner.cache.cache.lock().await;
             for range in vec![0..16, 16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
+                let data_cache = store.inner.cache.tmp_cache.lock(&DiskCacheStore::cache_key(&location, &range).as_str()).await;
                 assert!(data_cache.contains(DiskCacheStore::cache_key(&location, &range).as_str()));
                 assert!(test_file_exists(&store.cache_dir, &location, &range));
             }
 
             for range in vec![16..32, 48..64, 80..96] {
+                let mut data_cache = store.inner.cache.tmp_cache.lock(&DiskCacheStore::cache_key(&location, &range).as_str()).await;
                 assert!(data_cache
                     .pop(&DiskCacheStore::cache_key(&location, &range))
                     .is_some());
@@ -696,7 +707,7 @@ mod test {
                 let local_path = tempdir().unwrap();
                 let local_store =
                     Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-                DiskCacheStore::try_new(cache_root_dir.clone(), 160, 8, local_store)
+                DiskCacheStore::try_new(cache_root_dir.clone(), 160, 8, local_store, 0)
                     .await
                     .unwrap()
             };
@@ -716,7 +727,7 @@ mod test {
                 let local_path = tempdir().unwrap();
                 let local_store =
                     Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-                DiskCacheStore::try_new(cache_root_dir.clone(), 160, 8, local_store)
+                DiskCacheStore::try_new(cache_root_dir.clone(), 160, 8, local_store, 0)
                     .await
                     .unwrap()
             };
@@ -740,6 +751,7 @@ mod test {
                 160,
                 page_size * 2,
                 local_store,
+                0,
             )
             .await;
 
@@ -758,7 +770,7 @@ mod test {
                 let local_path = tempdir().unwrap();
                 let local_store =
                     Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-                DiskCacheStore::try_new(cache_root_dir.clone(), 10240, page_size, local_store)
+                DiskCacheStore::try_new(cache_root_dir.clone(), 10240, page_size, local_store, 0)
                     .await
                     .unwrap()
             };
@@ -781,12 +793,13 @@ mod test {
                 let local_path = tempdir().unwrap();
                 let local_store =
                     Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-                DiskCacheStore::try_new(cache_root_dir.clone(), 160, page_size, local_store)
+                DiskCacheStore::try_new(cache_root_dir.clone(), 160, page_size, local_store, 0)
                     .await
                     .unwrap()
             };
-            let cache = store.cache.cache.lock().await;
+            // let cache = store.cache.cache.lock().await;
             for range in vec![16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
+                let cache = store.cache.tmp_cache.lock(&DiskCacheStore::cache_key(&location, &range).as_str()).await;
                 assert!(cache.contains(&DiskCacheStore::cache_key(&location, &range)));
                 assert!(test_file_exists(&cache_dir, &location, &range));
             }
