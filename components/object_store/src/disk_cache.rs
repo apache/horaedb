@@ -773,6 +773,7 @@ mod test {
         assert!(test_file_exists(&store.cache_dir, &location, &(96..112)));
         assert!(test_file_exists(&store.cache_dir, &location, &(128..144)));
     }
+
     #[tokio::test]
     async fn test_disk_cache_manifest() {
         let cache_dir = tempdir().unwrap();

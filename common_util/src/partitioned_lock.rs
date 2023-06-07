@@ -7,8 +7,7 @@ use std::{
     sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-use common_types::hash::build_fixed_seed_ahasher;
-use common_types::hash::SeaHasher;
+use common_types::hash::{build_fixed_seed_ahasher, SeaHasher};
 use tokio;
 /// Simple partitioned `RwLock`
 pub struct PartitionedRwLock<T> {
