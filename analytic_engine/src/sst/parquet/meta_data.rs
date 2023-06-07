@@ -14,7 +14,7 @@ use common_types::{
 };
 use common_util::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use xorfilter::{Xor8, Xor8Builder};
+use xorfilter::xor8::{Xor8, Xor8Builder};
 
 use crate::sst::writer::MetaData;
 
