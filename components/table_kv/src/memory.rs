@@ -278,6 +278,23 @@ impl TableKv for MemoryImpl {
         Ok(table.get(key))
     }
 
+    fn get_batch(
+        &self,
+        table_name: &str,
+        keys: Vec<&[u8]>,
+    ) -> std::result::Result<Vec<Option<Vec<u8>>>, Self::Error> {
+        let table = self
+            .find_table(table_name)
+            .context(TableNotFound { table_name })?;
+
+        let mut result = Vec::with_capacity(keys.len());
+        for key in keys {
+            result.push(table.get(key));
+        }
+
+        Ok(result)
+    }
+
     fn delete(&self, table_name: &str, key: &[u8]) -> std::result::Result<(), Self::Error> {
         let table = self
             .find_table(table_name)
