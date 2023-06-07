@@ -469,13 +469,14 @@ fn open_storage(
             tokio::fs::create_dir_all(&path).await.context(CreateDir {
                 path: path.to_string_lossy().into_owned(),
             })?;
-
+            // TODO check the partition_bits
             store = Arc::new(
                 DiskCacheStore::try_new(
                     path.to_string_lossy().into_owned(),
                     opts.disk_cache_capacity.as_byte() as usize,
                     opts.disk_cache_page_size.as_byte() as usize,
                     store,
+                    4,
                 )
                 .await
                 .context(OpenObjectStore)?,

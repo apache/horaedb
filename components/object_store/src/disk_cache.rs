@@ -7,18 +7,18 @@
 //! Page is used for reasons below:
 //! - reduce file size in case of there are too many request with small range.
 
-use std::{collections::BTreeMap, fmt::Display, ops::Range, sync::Arc};
+use std::{collections::BTreeMap, fmt::Display, num::NonZeroUsize, ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
-use common_util::{time::current_as_rfc3339, partitioned_lock::PartitionedMutexAsync};
+use common_util::{partitioned_lock::PartitionedMutexAsync, time::current_as_rfc3339};
 use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
 use log::{debug, error, info};
 use lru::LruCache;
 use prost::Message;
 use serde::{Deserialize, Serialize};
-use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use tokio::{
     fs::{File, OpenOptions},
     io::{AsyncReadExt, AsyncWrite, AsyncWriteExt},
@@ -93,6 +93,8 @@ enum Error {
         source: prost::DecodeError,
         backtrace: Backtrace,
     },
+    #[snafu(display("disk cache cap must large than 0",))]
+    InvalidCapacity,
 }
 
 impl From<Error> for ObjectStoreError {
@@ -117,19 +119,17 @@ struct DiskCache {
     root_dir: String,
     cap: usize,
     // Cache key is used as filename on disk.
-    // cache: Mutex<LruCache<String, ()>>,
-    tmp_cache: PartitionedMutexAsync<LruCache<String, ()>>,
+    cache: PartitionedMutexAsync<LruCache<String, ()>>,
 }
 
 impl DiskCache {
     fn new(root_dir: String, cap: usize, partition_bits: usize) -> Self {
-        let init_lru =
-            || LruCache::new(cap);
+        let init_lru = || LruCache::new(cap);
         Self {
             root_dir,
             cap,
             // cache: Mutex::new(LruCache::new(cap)),
-            tmp_cache:  PartitionedMutexAsync::new(init_lru, partition_bits)
+            cache: PartitionedMutexAsync::new(init_lru, partition_bits),
         }
     }
 
@@ -138,8 +138,7 @@ impl DiskCache {
     /// The returned value denotes whether succeed.
     // TODO: We now hold lock when doing IO, possible to release it?
     async fn update_cache(&self, key: String, value: Option<Bytes>) -> bool {
-        // let mut cache = self.cache.lock().await;
-        let mut cache = self.tmp_cache.lock(&key).await;
+        let mut cache = self.cache.lock(&key).await;
         debug!(
             "Disk cache update, key:{}, len:{}, cap:{}.",
             &key,
@@ -185,8 +184,7 @@ impl DiskCache {
     }
 
     async fn get(&self, key: &str) -> Option<Bytes> {
-        // let mut cache = self.cache.lock().await;
-        let mut cache = self.tmp_cache.lock(&key).await;
+        let mut cache = self.cache.lock(&key).await;
         if cache.get(key).is_some() {
             // TODO: release lock when doing IO
             match self.read_bytes(key).await {
@@ -258,7 +256,7 @@ impl Display for DiskCache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DiskCache")
             .field("path", &self.root_dir)
-            .field("cache", &self.tmp_cache)
+            .field("cache", &self.cache)
             .finish()
     }
 }
@@ -294,11 +292,15 @@ impl DiskCacheStore {
         underlying_store: Arc<dyn ObjectStore>,
         partition_bits: usize,
     ) -> Result<Self> {
-        assert!(cap % page_size == 0);
-
+        debug_assert!(cap % page_size == 0);
+        debug_assert!(cap / page_size % (1 << partition_bits) == 0);
+        let all_page_num =
+            NonZeroUsize::new((cap as f64 / page_size as f64) as usize).context(InvalidCapacity)?;
+        let cap_per_part =
+            NonZeroUsize::new((all_page_num.get() as f64 / (1 << partition_bits) as f64) as usize)
+                .context(InvalidCapacity)?;
         let _ = Self::create_manifest_if_not_exists(&cache_dir, page_size).await?;
-        // TODO fix cap size
-        let cache = DiskCache::new(cache_dir.clone(), cap / page_size / (1 << partition_bits), partition_bits);
+        let cache = DiskCache::new(cache_dir.clone(), cap_per_part.get(), partition_bits);
         Self::recover_cache(&cache_dir, &cache).await?;
 
         let size_cache = Arc::new(Mutex::new(LruCache::new(cap / page_size)));
@@ -643,15 +645,24 @@ mod test {
 
         // remove cached values, then get again
         {
-            // let mut data_cache = store.inner.cache.cache.lock().await;
             for range in vec![0..16, 16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
-                let data_cache = store.inner.cache.tmp_cache.lock(&DiskCacheStore::cache_key(&location, &range).as_str()).await;
+                let data_cache = store
+                    .inner
+                    .cache
+                    .cache
+                    .lock(&DiskCacheStore::cache_key(&location, &range).as_str())
+                    .await;
                 assert!(data_cache.contains(DiskCacheStore::cache_key(&location, &range).as_str()));
                 assert!(test_file_exists(&store.cache_dir, &location, &range));
             }
 
             for range in vec![16..32, 48..64, 80..96] {
-                let mut data_cache = store.inner.cache.tmp_cache.lock(&DiskCacheStore::cache_key(&location, &range).as_str()).await;
+                let mut data_cache = store
+                    .inner
+                    .cache
+                    .cache
+                    .lock(&DiskCacheStore::cache_key(&location, &range).as_str())
+                    .await;
                 assert!(data_cache
                     .pop(&DiskCacheStore::cache_key(&location, &range))
                     .is_some());
@@ -797,9 +808,12 @@ mod test {
                     .await
                     .unwrap()
             };
-            // let cache = store.cache.cache.lock().await;
             for range in vec![16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
-                let cache = store.cache.tmp_cache.lock(&DiskCacheStore::cache_key(&location, &range).as_str()).await;
+                let cache = store
+                    .cache
+                    .cache
+                    .lock(&DiskCacheStore::cache_key(&location, &range).as_str())
+                    .await;
                 assert!(cache.contains(&DiskCacheStore::cache_key(&location, &range)));
                 assert!(test_file_exists(&cache_dir, &location, &range));
             }

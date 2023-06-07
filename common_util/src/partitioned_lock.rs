@@ -4,12 +4,11 @@
 
 use std::{
     hash::{Hash, Hasher},
-    sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard, self},
+    sync::{self, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-use tokio;
-
 
 use common_types::hash::build_fixed_seed_ahasher;
+use tokio;
 /// Simple partitioned `RwLock`
 pub struct PartitionedRwLock<T> {
     partitions: Vec<RwLock<T>>,
@@ -145,7 +144,6 @@ impl<T> PartitionedMutexAsync<T> {
         &self.partitions
     }
 }
-
 
 #[cfg(test)]
 mod tests {
