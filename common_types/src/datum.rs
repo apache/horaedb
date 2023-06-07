@@ -1012,8 +1012,8 @@ impl<'a> DatumView<'a> {
     }
 
     pub fn do_with_bytes<F>(&self, mut f: F)
-        where
-            F: FnMut(&[u8]),
+    where
+        F: FnMut(&[u8]),
     {
         match self {
             DatumView::Double(v) => {
@@ -1068,7 +1068,7 @@ impl<'a> DatumView<'a> {
                 let arr = v.as_i64().to_le_bytes();
                 f(arr.as_slice())
             }
-            DatumView::Varbinary(v) => f(v.as_ref()),
+            DatumView::Varbinary(v) => f(v),
             DatumView::String(v) => f(v.as_bytes()),
             DatumView::Date(v) => {
                 let arr = v.to_le_bytes();

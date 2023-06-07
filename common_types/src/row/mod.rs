@@ -11,12 +11,11 @@ use snafu::{ensure, Backtrace, OptionExt, Snafu};
 
 use crate::{
     column_schema::ColumnSchema,
-    datum::{Datum, DatumKind},
+    datum::{Datum, DatumKind, DatumView},
     record_batch::RecordBatchWithKey,
     schema::{RecordSchemaWithKey, Schema},
     time::Timestamp,
 };
-use crate::datum::DatumView;
 
 pub mod contiguous;
 
