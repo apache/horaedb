@@ -9,6 +9,7 @@ use std::{
 
 use common_types::hash::{build_fixed_seed_ahasher, SeaHasher};
 use tokio;
+
 /// Simple partitioned `RwLock`
 pub struct PartitionedRwLock<T> {
     partitions: Vec<RwLock<T>>,
