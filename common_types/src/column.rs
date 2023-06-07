@@ -235,6 +235,14 @@ macro_rules! impl_column {
                 Some(self.datum(index))
             }
 
+            pub fn datum_view_opt(&self, index: usize) -> Option<DatumView> {
+                if index >= self.0.len() {
+                    return None;
+                }
+
+                Some(self.datum_view(index))
+            }
+
             pub fn datum_view(&self, index: usize) -> DatumView {
                 // If this datum is null.
                 if self.0.is_null(index) {
@@ -542,6 +550,12 @@ macro_rules! impl_column_block {
             pub fn datum_opt(&self, index: usize) -> Option<Datum> {
                 match self {
                     $(ColumnBlock::$Kind(col) => col.datum_opt(index),)*
+                }
+            }
+
+            pub fn datum_view_opt(&self, index: usize) -> Option<DatumView> {
+                match self {
+                    $(ColumnBlock::$Kind(col) => col.datum_view_opt(index),)*
                 }
             }
 

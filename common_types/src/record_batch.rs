@@ -535,9 +535,9 @@ impl RecordBatchWithKeyBuilder {
     ///
     /// REQUIRE: The `row_view` and the builder must have the same schema.
     pub fn append_row_view(&mut self, row_view: &RowViewOnBatch) -> Result<()> {
-        for (builder, datum) in self.builders.iter_mut().zip(row_view.iter_columns()) {
-            let datum = datum.context(IterateDatum)?;
-            builder.append(datum).context(AppendDatum)?;
+        for (builder, datum_view) in self.builders.iter_mut().zip(row_view.iter_columns()) {
+            let datum_view = datum_view.context(IterateDatum)?;
+            builder.append_view(datum_view).context(AppendDatum)?;
         }
 
         Ok(())
