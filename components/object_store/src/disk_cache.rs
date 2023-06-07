@@ -7,7 +7,7 @@
 //! Page is used for reasons below:
 //! - reduce file size in case of there are too many request with small range.
 
-use std::{collections::BTreeMap, fmt::Display, num::NonZeroUsize, ops::Range, sync::Arc};
+use std::{collections::BTreeMap, fmt::Display, ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
