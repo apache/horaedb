@@ -428,6 +428,7 @@ impl Builder {
                 disk_cache_dir: "".to_string(),
                 disk_cache_capacity: ReadableSize::mb(0),
                 disk_cache_page_size: ReadableSize::mb(0),
+                disk_cache_partition_bits: 0,
                 object_store: ObjectStoreOptions::Local(LocalOptions {
                     data_dir: dir.path().to_str().unwrap().to_string(),
                 }),
@@ -490,6 +491,7 @@ impl Default for RocksDBEngineBuildContext {
                 disk_cache_dir: "".to_string(),
                 disk_cache_capacity: ReadableSize::mb(0),
                 disk_cache_page_size: ReadableSize::mb(0),
+                disk_cache_partition_bits: 0,
                 object_store: ObjectStoreOptions::Local(LocalOptions {
                     data_dir: dir.path().to_str().unwrap().to_string(),
                 }),
@@ -517,6 +519,7 @@ impl Clone for RocksDBEngineBuildContext {
             disk_cache_dir: "".to_string(),
             disk_cache_capacity: ReadableSize::mb(0),
             disk_cache_page_size: ReadableSize::mb(0),
+            disk_cache_partition_bits: 0,
             object_store: ObjectStoreOptions::Local(LocalOptions {
                 data_dir: dir.path().to_str().unwrap().to_string(),
             }),
@@ -560,6 +563,7 @@ impl Default for MemoryEngineBuildContext {
                 disk_cache_dir: "".to_string(),
                 disk_cache_capacity: ReadableSize::mb(0),
                 disk_cache_page_size: ReadableSize::mb(0),
+                disk_cache_partition_bits: 0,
                 object_store: ObjectStoreOptions::Local(LocalOptions {
                     data_dir: dir.path().to_str().unwrap().to_string(),
                 }),
