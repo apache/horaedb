@@ -152,8 +152,8 @@ impl RecordBatchGroupWriter {
         for partial_batch in row_group_batch {
             for (col_idx, column) in partial_batch.columns().iter().enumerate() {
                 for row in 0..column.num_rows() {
-                    let datum = column.datum(row);
-                    datum.do_with_bytes(|bytes| {
+                    let datum_view = column.datum_view(row);
+                    datum_view.do_with_bytes(|bytes| {
                         builder.add_key(col_idx, bytes);
                     });
                 }
