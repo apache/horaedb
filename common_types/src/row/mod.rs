@@ -16,6 +16,7 @@ use crate::{
     schema::{RecordSchemaWithKey, Schema},
     time::Timestamp,
 };
+use crate::datum::DatumView;
 
 pub mod contiguous;
 
@@ -607,7 +608,7 @@ impl<'a> RowView for RowViewOnBatch<'a> {
 }
 
 impl<'a> Iterator for RowViewOnBatchColumnIter<'a> {
-    type Item = Result<Datum>;
+    type Item = Result<DatumView<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.next_column_idx >= self.record_batch.num_columns() {
@@ -616,11 +617,11 @@ impl<'a> Iterator for RowViewOnBatchColumnIter<'a> {
 
         let curr_column_idx = self.next_column_idx;
         let column = self.record_batch.column(curr_column_idx);
-        let datum = column.datum_opt(self.row_idx).map(Ok);
+        let datum_view = column.datum_view_opt(self.row_idx).map(Ok);
 
         self.next_column_idx += 1;
 
-        datum
+        datum_view
     }
 }
 
