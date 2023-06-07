@@ -8,6 +8,7 @@ use std::{
 };
 
 use common_types::hash::build_fixed_seed_ahasher;
+use common_types::hash::SeaHasher;
 use tokio;
 /// Simple partitioned `RwLock`
 pub struct PartitionedRwLock<T> {
@@ -129,7 +130,7 @@ impl<T> PartitionedMutexAsync<T> {
     }
 
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &tokio::sync::Mutex<T> {
-        let mut hasher = build_fixed_seed_ahasher();
+        let mut hasher = SeaHasher::new();
         key.hash(&mut hasher);
         &self.partitions[(hasher.finish() as usize) & self.partition_mask]
     }

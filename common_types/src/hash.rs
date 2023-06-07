@@ -14,6 +14,7 @@ use std::hash::BuildHasher;
     https://github.com/tkaitchuck/aHash/blob/master/README.md#goals-and-non-goals
 */
 use ahash::AHasher;
+pub use seahash::SeaHasher;
 use byteorder::{ByteOrder, LittleEndian};
 use murmur3::murmur3_x64_128;
 pub fn hash64(mut bytes: &[u8]) -> u64 {

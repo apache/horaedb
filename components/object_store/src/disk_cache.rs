@@ -724,52 +724,54 @@ mod test {
             buf.extend_from_slice(data);
         }
         store.inner.put(&location, buf.freeze()).await.unwrap();
+        // use seahash
         // 0..16: partition 1
-        // 16..32 partition 0
+        // 16..32 partition 1
         // 32..48 partition 0
-        // 48..64 partition 0
-        // 64..80 partition 0
-        // 80..96 partition 1
+        // 48..64 partition 1
+        // 64..80 partition 1
+        // 80..96 partition 0
         // 96..112 partition 0
-        // 112..128 partition 1
+        // 112..128 partition 0
+        // 128..144 partition 0
         let _ = store.inner.get_range(&location, 0..16).await.unwrap();
-        let _ = store.inner.get_range(&location, 80..96).await.unwrap();
+        let _ = store.inner.get_range(&location, 16..32).await.unwrap();
         // partition 1 cache is full now
         assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(80..96)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
 
-        let _ = store.inner.get_range(&location, 16..32).await.unwrap();
         let _ = store.inner.get_range(&location, 32..48).await.unwrap();
+        let _ = store.inner.get_range(&location, 80..96).await.unwrap();
         // partition 0 cache is full now
 
-        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
         assert!(test_file_exists(&store.cache_dir, &location, &(32..48)));
-
-        // insert new entry into partition 0, evict partition 0's oldest entry
-        let _ = store.inner.get_range(&location, 48..64).await.unwrap();
-        assert!(!test_file_exists(&store.cache_dir, &location, &(16..32)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(32..48)));
-
-        assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
         assert!(test_file_exists(&store.cache_dir, &location, &(80..96)));
 
         // insert new entry into partition 0, evict partition 0's oldest entry
-        let _ = store.inner.get_range(&location, 64..80).await.unwrap();
+        let _ = store.inner.get_range(&location, 96..112).await.unwrap();
         assert!(!test_file_exists(&store.cache_dir, &location, &(32..48)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(48..64)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(64..80)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(80..96)));
 
         assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(80..96)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
+
+        // insert new entry into partition 0, evict partition 0's oldest entry
+        let _ = store.inner.get_range(&location, 128..144).await.unwrap();
+        assert!(!test_file_exists(&store.cache_dir, &location, &(80..96)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(96..112)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(128..144)));
+
+        assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
 
         // insert new entry into partition 1, evict partition 1's oldest entry
-        let _ = store.inner.get_range(&location, 112..128).await.unwrap();
+        let _ = store.inner.get_range(&location, 64..80).await.unwrap();
         assert!(!test_file_exists(&store.cache_dir, &location, &(0..16)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(80..96)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(112..128)));
-
-        assert!(test_file_exists(&store.cache_dir, &location, &(48..64)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
         assert!(test_file_exists(&store.cache_dir, &location, &(64..80)));
+
+        assert!(test_file_exists(&store.cache_dir, &location, &(96..112)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(128..144)));
     }
     #[tokio::test]
     async fn test_disk_cache_manifest() {
