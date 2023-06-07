@@ -128,7 +128,6 @@ impl DiskCache {
         Self {
             root_dir,
             cap,
-            // cache: Mutex::new(LruCache::new(cap)),
             cache: PartitionedMutexAsync::new(init_lru, partition_bits),
         }
     }
@@ -292,15 +291,14 @@ impl DiskCacheStore {
         underlying_store: Arc<dyn ObjectStore>,
         partition_bits: usize,
     ) -> Result<Self> {
-        debug_assert!(cap % page_size == 0);
-        debug_assert!(cap / page_size % (1 << partition_bits) == 0);
-        let all_page_num =
-            NonZeroUsize::new((cap as f64 / page_size as f64) as usize).context(InvalidCapacity)?;
-        let cap_per_part =
-            NonZeroUsize::new((all_page_num.get() as f64 / (1 << partition_bits) as f64) as usize)
-                .context(InvalidCapacity)?;
+        ensure!(
+            cap % (page_size * (1 << partition_bits)) == 0,
+            InvalidCapacity
+        );
+        let cap_per_part = cap / page_size / (1 << partition_bits);
+        ensure!(cap_per_part != 0, InvalidCapacity);
         let _ = Self::create_manifest_if_not_exists(&cache_dir, page_size).await?;
-        let cache = DiskCache::new(cache_dir.clone(), cap_per_part.get(), partition_bits);
+        let cache = DiskCache::new(cache_dir.clone(), cap_per_part, partition_bits);
         Self::recover_cache(&cache_dir, &cache).await?;
 
         let size_cache = Arc::new(Mutex::new(LruCache::new(cap / page_size)));

@@ -138,11 +138,6 @@ impl<T> PartitionedMutexAsync<T> {
     async fn get_partition_by_index(&self, index: usize) -> &tokio::sync::Mutex<T> {
         &self.partitions[index]
     }
-
-    /// This function should be marked with `#[cfg(test)]`, but there is [an issue](https://github.com/rust-lang/cargo/issues/8379) in cargo, so public this function now.
-    pub fn get_all_partition(&self) -> &Vec<tokio::sync::Mutex<T>> {
-        &self.partitions
-    }
 }
 
 #[cfg(test)]
@@ -231,6 +226,7 @@ mod tests {
         assert!(mutex_second_try_lock.try_write().is_ok());
         assert!(mutex_first.try_write().is_err());
     }
+
     #[tokio::test]
     async fn test_partitioned_mutex_async_vis_different_partition() {
         let init_vec = Vec::<i32>::new;
