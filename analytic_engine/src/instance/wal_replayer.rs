@@ -1,5 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+//! Wal replayer
+
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Display,
@@ -31,7 +33,8 @@ use crate::{
     table::data::TableDataRef,
 };
 
-/// Wal replayer
+/// Wal replayer supporting both table based and region based
+// TODO: limit the memory usage in `RegionBased` mode.
 pub struct WalReplayer<'a> {
     context: ReplayContext,
     mode: ReplayMode,
@@ -46,6 +49,7 @@ impl<'a> WalReplayer<'a> {
         wal_replay_batch_size: usize,
         flusher: Flusher,
         max_retry_flush_limit: usize,
+        replay_mode: ReplayMode,
     ) -> Self {
         let context = ReplayContext {
             shard_id,
@@ -56,7 +60,7 @@ impl<'a> WalReplayer<'a> {
         };
 
         Self {
-            mode: ReplayMode::RegionBased,
+            mode: replay_mode,
             context,
             table_datas,
         }
@@ -107,7 +111,7 @@ impl Display for ReplayContext {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum ReplayMode {
+pub enum ReplayMode {
     RegionBased,
     TableBased,
 }
