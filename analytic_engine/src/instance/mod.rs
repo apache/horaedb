@@ -45,7 +45,7 @@ use crate::{
         meta_data::cache::MetaCacheRef,
     },
     table::data::{TableDataRef, TableShardInfo},
-    TableOptions,
+    RecoverMode, TableOptions,
 };
 
 #[allow(clippy::enum_variant_names)]
@@ -160,6 +160,7 @@ pub struct Instance {
     /// Options for scanning sst
     pub(crate) scan_options: ScanOptions,
     pub(crate) iter_options: Option<IterOptions>,
+    pub(crate) recover_mode: RecoverMode,
 }
 
 impl Instance {

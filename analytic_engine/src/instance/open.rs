@@ -22,7 +22,7 @@ use crate::{
     instance::{
         engine::{OpenManifest, ReadMetaUpdate, Result},
         mem_collector::MemUsageCollector,
-        wal_replayer::WalReplayer,
+        wal_replayer::{ReplayMode, WalReplayer},
         Instance, SpaceStore,
     },
     manifest::{details::ManifestImpl, LoadRequest, Manifest, ManifestRef},
@@ -34,6 +34,7 @@ use crate::{
     },
     table::data::TableDataRef,
     table_meta_set_impl::TableMetaSetImpl,
+    RecoverMode,
 };
 
 const MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ: usize = 64;
@@ -126,6 +127,7 @@ impl Instance {
                 .map(|v| v.as_byte() as usize),
             iter_options,
             scan_options,
+            recover_mode: ctx.config.recover_mode,
         });
 
         Ok(instance)
@@ -143,6 +145,7 @@ impl Instance {
             self.replay_batch_size,
             self.make_flusher(),
             self.max_retry_flush_limit,
+            self.recover_mode,
         )?;
 
         shard_opener.open().await
@@ -194,6 +197,7 @@ struct ShardOpener {
     wal_replay_batch_size: usize,
     flusher: Flusher,
     max_retry_flush_limit: usize,
+    recover_mode: RecoverMode,
 }
 
 impl ShardOpener {
@@ -204,6 +208,7 @@ impl ShardOpener {
         wal_replay_batch_size: usize,
         flusher: Flusher,
         max_retry_flush_limit: usize,
+        recover_mode: RecoverMode,
     ) -> Result<Self> {
         let mut states = HashMap::with_capacity(shard_context.table_ctxs.len());
         for table_ctx in shard_context.table_ctxs {
@@ -230,6 +235,7 @@ impl ShardOpener {
             wal_replay_batch_size,
             flusher,
             max_retry_flush_limit,
+            recover_mode,
         })
     }
 
@@ -333,6 +339,11 @@ impl ShardOpener {
                 }
             }
         }
+
+        let replay_mode = match self.recover_mode {
+            RecoverMode::TableBased => ReplayMode::TableBased,
+            RecoverMode::ShardBased => ReplayMode::RegionBased,
+        };
         let mut wal_replayer = WalReplayer::new(
             &replay_table_datas,
             self.shard_id,
@@ -340,6 +351,7 @@ impl ShardOpener {
             self.wal_replay_batch_size,
             self.flusher.clone(),
             self.max_retry_flush_limit,
+            replay_mode,
         );
         let mut table_results = wal_replayer.replay().await?;
 
