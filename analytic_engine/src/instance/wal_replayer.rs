@@ -70,8 +70,8 @@ impl<'a> WalReplayer<'a> {
         info!("Replay wal in mode:{mode:?}");
 
         match mode {
-            ReplayMode::RegionBased => Box::new(TableBasedCore),
-            ReplayMode::TableBased => Box::new(RegionBasedCore),
+            ReplayMode::RegionBased => Box::new(RegionBasedCore),
+            ReplayMode::TableBased => Box::new(TableBasedCore),
         }
     }
 
@@ -155,9 +155,6 @@ impl ReplayCore for TableBasedCore {
 }
 
 impl TableBasedCore {
-    /// Recover table data from wal.
-    ///
-    /// Called by write worker
     async fn recover_table_logs(
         context: &ReplayContext,
         table_data: &TableDataRef,
@@ -224,7 +221,11 @@ impl ReplayCore for RegionBasedCore {
     ) -> Result<HashMap<TableId, Result<()>>> {
         debug!("Replay wal logs on region mode, context:{context}, states:{table_datas:?}",);
 
-        let mut results = HashMap::with_capacity(table_datas.len());
+        // Init all table results to be oks, and modify to errs when failed to replay.
+        let mut results = table_datas
+            .iter()
+            .map(|table_data| (table_data.id, Ok(())))
+            .collect();
         let scan_ctx = ScanContext {
             batch_size: context.wal_replay_batch_size,
             ..Default::default()
@@ -307,25 +308,27 @@ impl RegionBasedCore {
         let mut table_batches = Vec::with_capacity(serial_exec_ctxs.len());
         Self::split_log_batch_by_table(log_batch, &mut table_batches);
         for table_batch in table_batches {
+            // Some tables may have failed in previous replay, ignore them.
             let table_result = table_results.get(&table_batch.table_id);
             if let Some(Err(_)) = table_result {
                 return Ok(());
             }
 
-            // Replay all log entries of current table
-            let serial_exec_ctx = serial_exec_ctxs.get_mut(&table_batch.table_id).unwrap();
-            let last_sequence = table_batch.last_sequence;
-            let result = replay_table_log_entries(
-                &context.flusher,
-                context.max_retry_flush_limit,
-                &mut serial_exec_ctx.serial_exec,
-                &serial_exec_ctx.table_data,
-                log_batch.range(table_batch.start_log_idx..table_batch.end_log_idx),
-                last_sequence,
-            )
-            .await;
-
-            table_results.insert(table_batch.table_id, result);
+            // Replay all log entries of current table.
+            // Some tables may have been moved to other shards or dropped, ignore such logs.
+            if let Some(ctx) = serial_exec_ctxs.get_mut(&table_batch.table_id) {
+                let last_sequence = table_batch.last_sequence;
+                let result = replay_table_log_entries(
+                    &context.flusher,
+                    context.max_retry_flush_limit,
+                    &mut ctx.serial_exec,
+                    &ctx.table_data,
+                    log_batch.range(table_batch.start_log_idx..table_batch.end_log_idx),
+                    last_sequence,
+                )
+                .await;
+                table_results.insert(table_batch.table_id, result);
+            }
         }
 
         Ok(())
@@ -398,7 +401,7 @@ struct SerialExecContext<'a> {
     serial_exec: MutexGuard<'a, TableOpSerialExecutor>,
 }
 
-/// Replay all log entries into memtable and flush if necessary.
+/// Replay all log entries into memtable and flush if necessary
 async fn replay_table_log_entries(
     flusher: &Flusher,
     max_retry_flush_limit: usize,
