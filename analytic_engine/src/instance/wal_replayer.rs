@@ -3,28 +3,26 @@
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Display,
-    sync::Arc,
 };
 
 use async_trait::async_trait;
 use common_types::{schema::IndexInWriterSchema, table::ShardId, SequenceNumber};
-use common_util::error::{BoxError, GenericError, GenericResult};
+use common_util::error::BoxError;
 use log::{debug, error, info, trace};
 use snafu::ResultExt;
-use table_engine::table::{TableId, TableRef};
-use tokio::sync::{Mutex, MutexGuard};
+use table_engine::table::TableId;
+use tokio::sync::MutexGuard;
 use wal::{
     log_batch::LogEntry,
     manager::{
-        ReadBoundary, ReadContext, ReadRequest, RegionId, ScanContext, ScanRequest, WalManager,
-        WalManagerRef,
+        ReadBoundary, ReadContext, ReadRequest, RegionId, ScanContext, ScanRequest, WalManagerRef,
     },
 };
 
 use crate::{
     instance::{
         self,
-        engine::{ReplayWalNoCause, ReplayWalWithCause, Result},
+        engine::{ReplayWalWithCause, Result},
         flush_compaction::{Flusher, TableFlushOptions},
         serial_executor::TableOpSerialExecutor,
         write::MemTableWriter,
@@ -34,13 +32,36 @@ use crate::{
 };
 
 /// Wal replayer
-pub struct WalReplayer {
-    results: HashMap<TableId, Result<()>>,
+pub struct WalReplayer<'a> {
     context: ReplayContext,
     mode: ReplayMode,
+    table_datas: &'a [TableDataRef],
 }
 
-impl WalReplayer {
+impl<'a> WalReplayer<'a> {
+    pub fn new(
+        table_datas: &'a [TableDataRef],
+        shard_id: ShardId,
+        wal_manager: WalManagerRef,
+        wal_replay_batch_size: usize,
+        flusher: Flusher,
+        max_retry_flush_limit: usize,
+    ) -> Self {
+        let context = ReplayContext {
+            shard_id,
+            wal_manager,
+            wal_replay_batch_size,
+            flusher,
+            max_retry_flush_limit,
+        };
+
+        Self {
+            mode: ReplayMode::RegionBased,
+            context,
+            table_datas,
+        }
+    }
+
     fn build_core(mode: ReplayMode) -> Box<dyn ReplayCore> {
         info!("Replay wal in mode:{mode:?}");
 
@@ -50,27 +71,24 @@ impl WalReplayer {
         }
     }
 
-    pub async fn replay(
-        &mut self,
-        table_datas: Vec<TableDataRef>,
-    ) -> Result<HashMap<TableId, Result<()>>> {
+    pub async fn replay(&mut self) -> Result<HashMap<TableId, Result<()>>> {
         // Build core according to mode.
         let core = Self::build_core(self.mode);
         info!(
             "Replay wal logs begin, context:{}, tables:{:?}",
-            self.context, table_datas
+            self.context, self.table_datas
         );
-        let result = core.replay(&self.context, &table_datas).await;
+        let result = core.replay(&self.context, self.table_datas).await;
         info!(
             "Replay wal logs finish, context:{}, tables:{:?}",
-            self.context, table_datas,
+            self.context, self.table_datas,
         );
 
         result
     }
 }
 
-struct ReplayContext {
+pub struct ReplayContext {
     pub shard_id: ShardId,
     pub wal_manager: WalManagerRef,
     pub wal_replay_batch_size: usize,
@@ -96,7 +114,7 @@ enum ReplayMode {
 
 /// Replay core, the abstract of different replay strategies
 #[async_trait]
-trait ReplayCore {
+trait ReplayCore: Send + Sync + 'static {
     async fn replay(
         &self,
         context: &ReplayContext,
@@ -123,15 +141,7 @@ impl ReplayCore for TableBasedCore {
         };
         for table_data in table_datas {
             let table_id = table_data.id;
-            let result = Self::recover_table_logs(
-                &context.flusher,
-                context.max_retry_flush_limit,
-                context.wal_manager.as_ref(),
-                table_data,
-                context.wal_replay_batch_size,
-                &read_ctx,
-            )
-            .await;
+            let result = Self::recover_table_logs(context, table_data, &read_ctx).await;
 
             results.insert(table_id, result);
         }
@@ -145,11 +155,8 @@ impl TableBasedCore {
     ///
     /// Called by write worker
     async fn recover_table_logs(
-        flusher: &Flusher,
-        max_retry_flush_limit: usize,
-        wal_manager: &dyn WalManager,
+        context: &ReplayContext,
         table_data: &TableDataRef,
-        replay_batch_size: usize,
         read_ctx: &ReadContext,
     ) -> Result<()> {
         let table_location = table_data.table_location();
@@ -162,14 +169,15 @@ impl TableBasedCore {
         };
 
         // Read all wal of current table.
-        let mut log_iter = wal_manager
+        let mut log_iter = context
+            .wal_manager
             .read_batch(read_ctx, &read_req)
             .await
             .box_err()
             .context(ReplayWalWithCause { msg: None })?;
 
         let mut serial_exec = table_data.serial_exec.lock().await;
-        let mut log_entry_buf = VecDeque::with_capacity(replay_batch_size);
+        let mut log_entry_buf = VecDeque::with_capacity(context.wal_replay_batch_size);
         loop {
             // fetch entries to log_entry_buf
             let decoder = WalDecoder::default();
@@ -186,8 +194,8 @@ impl TableBasedCore {
             // Replay all log entries of current table
             let last_sequence = log_entry_buf.back().unwrap().sequence;
             replay_table_log_entries(
-                flusher,
-                max_retry_flush_limit,
+                &context.flusher,
+                context.max_retry_flush_limit,
                 &mut serial_exec,
                 table_data,
                 log_entry_buf.iter(),
@@ -218,17 +226,7 @@ impl ReplayCore for RegionBasedCore {
             ..Default::default()
         };
 
-        Self::replay_region_logs(
-            &table_datas,
-            context.shard_id,
-            &context.flusher,
-            context.max_retry_flush_limit,
-            context.wal_manager.as_ref(),
-            context.wal_replay_batch_size,
-            &scan_ctx,
-            &mut results,
-        )
-        .await?;
+        Self::replay_region_logs(context, table_datas, &scan_ctx, &mut results).await?;
 
         Ok(results)
     }
@@ -242,26 +240,23 @@ impl RegionBasedCore {
     /// + Split logs according to table ids.
     /// + Replay logs to recover data of tables.
     async fn replay_region_logs(
+        context: &ReplayContext,
         table_datas: &[TableDataRef],
-        shard_id: ShardId,
-        flusher: &Flusher,
-        max_retry_flush_limit: usize,
-        wal_manager: &dyn WalManager,
-        replay_batch_size: usize,
         scan_ctx: &ScanContext,
         table_results: &mut HashMap<TableId, Result<()>>,
     ) -> Result<()> {
         // Scan all wal logs of current shard.
         let scan_req = ScanRequest {
-            region_id: shard_id as RegionId,
+            region_id: context.shard_id as RegionId,
         };
 
-        let mut log_iter = wal_manager
+        let mut log_iter = context
+            .wal_manager
             .scan(scan_ctx, &scan_req)
             .await
             .box_err()
             .context(ReplayWalWithCause { msg: None })?;
-        let mut log_entry_buf = VecDeque::with_capacity(replay_batch_size);
+        let mut log_entry_buf = VecDeque::with_capacity(context.wal_replay_batch_size);
 
         // Lock all related tables.
         let mut serial_exec_ctxs = HashMap::with_capacity(table_datas.len());
@@ -288,12 +283,8 @@ impl RegionBasedCore {
             }
 
             Self::replay_single_batch(
+                context,
                 &log_entry_buf,
-                flusher,
-                max_retry_flush_limit,
-                wal_manager,
-                replay_batch_size,
-                scan_ctx,
                 &mut serial_exec_ctxs,
                 table_results,
             )
@@ -304,17 +295,13 @@ impl RegionBasedCore {
     }
 
     async fn replay_single_batch(
+        context: &ReplayContext,
         log_batch: &VecDeque<LogEntry<ReadPayload>>,
-        flusher: &Flusher,
-        max_retry_flush_limit: usize,
-        wal_manager: &dyn WalManager,
-        replay_batch_size: usize,
-        read_ctx: &ReadContext,
         serial_exec_ctxs: &mut HashMap<TableId, SerialExecContext<'_>>,
         table_results: &mut HashMap<TableId, Result<()>>,
     ) -> Result<()> {
         let mut table_batches = Vec::with_capacity(serial_exec_ctxs.len());
-        Self::split_log_batch_by_table(&log_batch, &mut table_batches);
+        Self::split_log_batch_by_table(log_batch, &mut table_batches);
         for table_batch in table_batches {
             let table_result = table_results.get(&table_batch.table_id);
             if let Some(Err(_)) = table_result {
@@ -325,8 +312,8 @@ impl RegionBasedCore {
             let serial_exec_ctx = serial_exec_ctxs.get_mut(&table_batch.table_id).unwrap();
             let last_sequence = table_batch.last_sequence;
             let result = replay_table_log_entries(
-                flusher,
-                max_retry_flush_limit,
+                &context.flusher,
+                context.max_retry_flush_limit,
                 &mut serial_exec_ctx.serial_exec,
                 &serial_exec_ctx.table_data,
                 log_batch.range(table_batch.start_log_idx..table_batch.end_log_idx),
@@ -365,11 +352,7 @@ impl RegionBasedCore {
                 true
             } else {
                 let current_table_id = log_batch.get(curr_log_idx).unwrap().table_id;
-                if current_table_id != start_table_id {
-                    true
-                } else {
-                    false
-                }
+                current_table_id != start_table_id
             };
 
             if found_end_idx {

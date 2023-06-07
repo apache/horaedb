@@ -163,6 +163,7 @@ pub struct TableFlushRequest {
     pub max_sequence: SequenceNumber,
 }
 
+#[derive(Clone)]
 pub struct Flusher {
     pub space_store: SpaceStoreRef,
 
