@@ -167,6 +167,14 @@ pub enum Error {
     },
 
     #[snafu(display(
+        "Unexpected batch result found, table:{table_name}.\nBacktrace:\n{backtrace}"
+    ))]
+    UnexpectedBatchResult {
+        table_name: String,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
         "Failed to delete data from table, table:{}, err:{}.\nBacktrace:\n{}",
         table_name,
         source,
@@ -528,7 +536,7 @@ impl TableKv for ObkvImpl {
                 TableOpResult::RetrieveRows(mut values) => {
                     batch_res.push(values.remove(VALUE_COLUMN_NAME).map(Value::as_bytes))
                 }
-                TableOpResult::AffectedRows(_) => {}
+                TableOpResult::AffectedRows(_) => UnexpectedBatchResult { table_name }.fail()?,
             }
         }
         Ok(batch_res)
