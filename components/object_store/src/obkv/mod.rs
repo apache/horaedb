@@ -94,6 +94,15 @@ pub enum Error {
         timestamp: i64,
         backtrace: Backtrace,
     },
+
+    #[snafu(display(
+        "The length of data parts is inconsistent with the length of values, parts length:{part_len}, values length:{value_len} \nBacktrace:\n{backtrace}"
+    ))]
+    DataPartsLength {
+        part_len: usize,
+        value_len: usize,
+        backtrace: Backtrace,
+    },
 }
 
 impl<T: TableKv> MetaManager<T> {
@@ -472,8 +481,20 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                     source: Box::new(source),
                 })?;
 
-        for (index, key) in covered_parts.part_keys.iter().enumerate() {
-            if let Some(bytes) = &values[index] {
+        if covered_parts.part_keys.len() != values.len() {
+            DataPartsLength {
+                part_len: covered_parts.part_keys.len(),
+                value_len: values.len(),
+            }
+            .fail()
+            .map_err(|source| StoreError::Generic {
+                store: OBKV,
+                source: Box::new(source),
+            })?
+        }
+
+        for (index, (key, value)) in covered_parts.part_keys.iter().zip(values).enumerate() {
+            if let Some(bytes) = value {
                 let mut begin = 0;
                 let mut end = bytes.len();
                 if index == 0 {
