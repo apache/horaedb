@@ -11,7 +11,7 @@ use std::{collections::BTreeMap, fmt::Display, ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
-use common_util::time::current_as_rfc3339;
+use common_util::{partitioned_lock::PartitionedMutexAsync, time::current_as_rfc3339};
 use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
 use log::{debug, error, info};
@@ -93,6 +93,8 @@ enum Error {
         source: prost::DecodeError,
         backtrace: Backtrace,
     },
+    #[snafu(display("disk cache cap must large than 0",))]
+    InvalidCapacity,
 }
 
 impl From<Error> for ObjectStoreError {
@@ -117,15 +119,16 @@ struct DiskCache {
     root_dir: String,
     cap: usize,
     // Cache key is used as filename on disk.
-    cache: Mutex<LruCache<String, ()>>,
+    cache: PartitionedMutexAsync<LruCache<String, ()>>,
 }
 
 impl DiskCache {
-    fn new(root_dir: String, cap: usize) -> Self {
+    fn new(root_dir: String, cap: usize, partition_bits: usize) -> Self {
+        let init_lru = || LruCache::new(cap);
         Self {
             root_dir,
             cap,
-            cache: Mutex::new(LruCache::new(cap)),
+            cache: PartitionedMutexAsync::new(init_lru, partition_bits),
         }
     }
 
@@ -134,7 +137,7 @@ impl DiskCache {
     /// The returned value denotes whether succeed.
     // TODO: We now hold lock when doing IO, possible to release it?
     async fn update_cache(&self, key: String, value: Option<Bytes>) -> bool {
-        let mut cache = self.cache.lock().await;
+        let mut cache = self.cache.lock(&key).await;
         debug!(
             "Disk cache update, key:{}, len:{}, cap:{}.",
             &key,
@@ -180,7 +183,7 @@ impl DiskCache {
     }
 
     async fn get(&self, key: &str) -> Option<Bytes> {
-        let mut cache = self.cache.lock().await;
+        let mut cache = self.cache.lock(&key).await;
         if cache.get(key).is_some() {
             // TODO: release lock when doing IO
             match self.read_bytes(key).await {
@@ -286,11 +289,16 @@ impl DiskCacheStore {
         cap: usize,
         page_size: usize,
         underlying_store: Arc<dyn ObjectStore>,
+        partition_bits: usize,
     ) -> Result<Self> {
-        assert!(cap % page_size == 0);
-
+        ensure!(
+            cap % (page_size * (1 << partition_bits)) == 0,
+            InvalidCapacity
+        );
+        let cap_per_part = cap / page_size / (1 << partition_bits);
+        ensure!(cap_per_part != 0, InvalidCapacity);
         let _ = Self::create_manifest_if_not_exists(&cache_dir, page_size).await?;
-        let cache = DiskCache::new(cache_dir.clone(), cap / page_size);
+        let cache = DiskCache::new(cache_dir.clone(), cap_per_part, partition_bits);
         Self::recover_cache(&cache_dir, &cache).await?;
 
         let size_cache = Arc::new(Mutex::new(LruCache::new(cap / page_size)));
@@ -536,7 +544,11 @@ mod test {
         cache_dir: TempDir,
     }
 
-    async fn prepare_store(page_size: usize, cap: usize) -> StoreWithCacheDir {
+    async fn prepare_store(
+        page_size: usize,
+        cap: usize,
+        partition_bits: usize,
+    ) -> StoreWithCacheDir {
         let local_path = tempdir().unwrap();
         let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
 
@@ -546,6 +558,7 @@ mod test {
             cap,
             page_size,
             local_store,
+            partition_bits,
         )
         .await
         .unwrap();
@@ -570,7 +583,7 @@ mod test {
             ),
         ];
 
-        let store = prepare_store(page_size, 1024).await;
+        let store = prepare_store(page_size, 1024, 0).await;
         for (input, expected) in testcases {
             assert_eq!(store.inner.normalize_range(1024, &input), expected);
         }
@@ -587,7 +600,7 @@ mod test {
             (32..100, vec![]),
         ];
 
-        let store = prepare_store(page_size, 1024).await;
+        let store = prepare_store(page_size, 1024, 0).await;
         for (input, expected) in testcases {
             assert_eq!(store.inner.normalize_range(20, &input), expected);
         }
@@ -606,7 +619,7 @@ mod test {
         // 51 byte
         let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
         let location = Path::from("1.sst");
-        let store = prepare_store(page_size, 1024).await;
+        let store = prepare_store(page_size, 1024, 0).await;
 
         let mut buf = BytesMut::with_capacity(data.len() * 4);
         // extend 4 times, then location will contain 200 bytes
@@ -634,13 +647,24 @@ mod test {
 
         // remove cached values, then get again
         {
-            let mut data_cache = store.inner.cache.cache.lock().await;
             for range in vec![0..16, 16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
+                let data_cache = store
+                    .inner
+                    .cache
+                    .cache
+                    .lock(&DiskCacheStore::cache_key(&location, &range).as_str())
+                    .await;
                 assert!(data_cache.contains(DiskCacheStore::cache_key(&location, &range).as_str()));
                 assert!(test_file_exists(&store.cache_dir, &location, &range));
             }
 
             for range in vec![16..32, 48..64, 80..96] {
+                let mut data_cache = store
+                    .inner
+                    .cache
+                    .cache
+                    .lock(&DiskCacheStore::cache_key(&location, &range).as_str())
+                    .await;
                 assert!(data_cache
                     .pop(&DiskCacheStore::cache_key(&location, &range))
                     .is_some());
@@ -661,7 +685,7 @@ mod test {
         // 51 byte
         let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
         let location = Path::from("remove_cache_file.sst");
-        let store = prepare_store(page_size, 32).await;
+        let store = prepare_store(page_size, 32, 0).await;
         let mut buf = BytesMut::with_capacity(data.len() * 4);
         // extend 4 times, then location will contain 200 bytes, but cache cap is 32
         for _ in 0..4 {
@@ -687,6 +711,70 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_disk_cache_remove_cache_file_two_partition() {
+        let page_size = 16;
+        // 51 byte
+        let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
+        let location = Path::from("remove_cache_file_two_partition.sst");
+        // partition_cap: 64 / 16 / 2 = 2
+        let store = prepare_store(page_size, 64, 1).await;
+        let mut buf = BytesMut::with_capacity(data.len() * 8);
+        // extend 8 times
+        for _ in 0..8 {
+            buf.extend_from_slice(data);
+        }
+        store.inner.put(&location, buf.freeze()).await.unwrap();
+        // use seahash
+        // 0..16: partition 1
+        // 16..32 partition 1
+        // 32..48 partition 0
+        // 48..64 partition 1
+        // 64..80 partition 1
+        // 80..96 partition 0
+        // 96..112 partition 0
+        // 112..128 partition 0
+        // 128..144 partition 0
+        let _ = store.inner.get_range(&location, 0..16).await.unwrap();
+        let _ = store.inner.get_range(&location, 16..32).await.unwrap();
+        // partition 1 cache is full now
+        assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
+
+        let _ = store.inner.get_range(&location, 32..48).await.unwrap();
+        let _ = store.inner.get_range(&location, 80..96).await.unwrap();
+        // partition 0 cache is full now
+
+        assert!(test_file_exists(&store.cache_dir, &location, &(32..48)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(80..96)));
+
+        // insert new entry into partition 0, evict partition 0's oldest entry
+        let _ = store.inner.get_range(&location, 96..112).await.unwrap();
+        assert!(!test_file_exists(&store.cache_dir, &location, &(32..48)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(80..96)));
+
+        assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
+
+        // insert new entry into partition 0, evict partition 0's oldest entry
+        let _ = store.inner.get_range(&location, 128..144).await.unwrap();
+        assert!(!test_file_exists(&store.cache_dir, &location, &(80..96)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(96..112)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(128..144)));
+
+        assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
+
+        // insert new entry into partition 1, evict partition 1's oldest entry
+        let _ = store.inner.get_range(&location, 64..80).await.unwrap();
+        assert!(!test_file_exists(&store.cache_dir, &location, &(0..16)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(64..80)));
+
+        assert!(test_file_exists(&store.cache_dir, &location, &(96..112)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(128..144)));
+    }
+
+    #[tokio::test]
     async fn test_disk_cache_manifest() {
         let cache_dir = tempdir().unwrap();
         let cache_root_dir = cache_dir.as_ref().to_string_lossy().to_string();
@@ -696,7 +784,7 @@ mod test {
                 let local_path = tempdir().unwrap();
                 let local_store =
                     Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-                DiskCacheStore::try_new(cache_root_dir.clone(), 160, 8, local_store)
+                DiskCacheStore::try_new(cache_root_dir.clone(), 160, 8, local_store, 0)
                     .await
                     .unwrap()
             };
@@ -716,7 +804,7 @@ mod test {
                 let local_path = tempdir().unwrap();
                 let local_store =
                     Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-                DiskCacheStore::try_new(cache_root_dir.clone(), 160, 8, local_store)
+                DiskCacheStore::try_new(cache_root_dir.clone(), 160, 8, local_store, 0)
                     .await
                     .unwrap()
             };
@@ -740,6 +828,7 @@ mod test {
                 160,
                 page_size * 2,
                 local_store,
+                0,
             )
             .await;
 
@@ -758,7 +847,7 @@ mod test {
                 let local_path = tempdir().unwrap();
                 let local_store =
                     Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-                DiskCacheStore::try_new(cache_root_dir.clone(), 10240, page_size, local_store)
+                DiskCacheStore::try_new(cache_root_dir.clone(), 10240, page_size, local_store, 0)
                     .await
                     .unwrap()
             };
@@ -781,12 +870,16 @@ mod test {
                 let local_path = tempdir().unwrap();
                 let local_store =
                     Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-                DiskCacheStore::try_new(cache_root_dir.clone(), 160, page_size, local_store)
+                DiskCacheStore::try_new(cache_root_dir.clone(), 160, page_size, local_store, 0)
                     .await
                     .unwrap()
             };
-            let cache = store.cache.cache.lock().await;
             for range in vec![16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
+                let cache = store
+                    .cache
+                    .cache
+                    .lock(&DiskCacheStore::cache_key(&location, &range).as_str())
+                    .await;
                 assert!(cache.contains(&DiskCacheStore::cache_key(&location, &range)));
                 assert!(test_file_exists(&cache_dir, &location, &range));
             }
@@ -808,7 +901,7 @@ mod test {
         let StoreWithCacheDir {
             inner: store,
             cache_dir,
-        } = prepare_store(16, 1024).await;
+        } = prepare_store(16, 1024, 0).await;
         let test_file_name = "corrupted_disk_cache_file";
         let test_file_path = Path::from(test_file_name);
         let test_file_bytes = Bytes::from("corrupted_disk_cache_file_data");

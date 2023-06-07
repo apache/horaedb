@@ -498,6 +498,7 @@ fn open_storage(
                     opts.disk_cache_capacity.as_byte() as usize,
                     opts.disk_cache_page_size.as_byte() as usize,
                     store,
+                    opts.disk_cache_partition_bits,
                 )
                 .await
                 .context(OpenObjectStore)?,

@@ -1333,6 +1333,7 @@ dependencies = [
  "murmur3",
  "paste 1.0.12",
  "prost",
+ "seahash",
  "serde",
  "serde_json",
  "snafu 0.6.10",

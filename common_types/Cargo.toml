@@ -27,6 +27,7 @@ datafusion = { workspace = true, optional = true }
 murmur3 = "0.4.1"
 paste = { workspace = true }
 prost = { workspace = true }
+seahash = "4.1.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
