@@ -82,9 +82,7 @@ df_operator = { path = "df_operator" }
 etcd-client = "0.10.3"
 env_logger = "0.6"
 futures = "0.3"
-xorfilter-rs = { git = "https://github.com/datafuse-extras/xorfilter", features = [
-    "cbordata",
-], tag = "databend-alpha.4" }
+xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
 lazy_static = "1.4.0"
 log = "0.4"
 logger = { path = "components/logger" }
