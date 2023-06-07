@@ -15,6 +15,7 @@ pub(crate) mod mem_collector;
 pub mod open;
 mod read;
 pub(crate) mod serial_executor;
+pub mod wal_replayer;
 pub(crate) mod write;
 
 use std::sync::Arc;
