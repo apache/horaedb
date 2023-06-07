@@ -31,7 +31,9 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
 use crate::grpc::{
-    metrics::REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+    metrics::{
+        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC, REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+    },
     remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
 };
 
@@ -353,20 +355,29 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
             msg: "fail to convert write request",
         })?;
 
+    let num_rows = write_request.write_request.row_group.num_rows();
     let table = find_table_by_identifier(&ctx, &write_request.table)?;
 
-    let affected_rows = table
+    let res = table
         .write(write_request.write_request)
         .await
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
             msg: format!("fail to write table, table:{:?}", write_request.table),
-        })?;
-    Ok(WriteResponse {
-        header: None,
-        affected_rows: affected_rows as u64,
-    })
+        });
+    match res {
+        Ok(affected_rows) => Ok(WriteResponse {
+            header: None,
+            affected_rows: affected_rows as u64,
+        }),
+        Err(e) => {
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+                .write_failed
+                .inc_by(num_rows as u64);
+            Err(e)
+        }
+    }
 }
 
 async fn handle_get_table_info(
