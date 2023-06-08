@@ -11,6 +11,7 @@ use std::{collections::BTreeMap, fmt::Display, ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
+use common_types::hash::SeaHasherBuilder;
 use common_util::{partitioned_lock::PartitionedMutexAsync, time::current_as_rfc3339};
 use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
@@ -119,7 +120,7 @@ struct DiskCache {
     root_dir: String,
     cap: usize,
     // Cache key is used as filename on disk.
-    cache: PartitionedMutexAsync<LruCache<String, ()>>,
+    cache: PartitionedMutexAsync<LruCache<String, ()>, SeaHasherBuilder>,
 }
 
 impl DiskCache {
@@ -128,7 +129,7 @@ impl DiskCache {
         Self {
             root_dir,
             cap,
-            cache: PartitionedMutexAsync::new(init_lru, partition_bits),
+            cache: PartitionedMutexAsync::new(init_lru, partition_bits, SeaHasherBuilder {}),
         }
     }
 
