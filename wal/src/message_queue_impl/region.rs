@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Region in wal on message queue
 
@@ -909,7 +909,7 @@ mod tests {
     async fn test_region_kafka_impl() {
         // Test region
         let mut config = Config::default();
-        config.client.boost_broker = Some("127.0.0.1:9011".to_string());
+        config.client.boost_brokers = Some(vec!["127.0.0.1:9011".to_string()]);
         let kafka_impl = KafkaImpl::new(config).await.unwrap();
         let message_queue = Arc::new(kafka_impl);
         test_region(message_queue).await;
