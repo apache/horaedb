@@ -79,19 +79,20 @@ impl<T, B> PartitionedMutex<T, B>
 where
     B: BuildHasher,
 {
-    pub fn new<F>(init_fn: F, partition_bit: usize, hash_builder: B) -> Self
+    pub fn try_new<F, E>(init_fn: F, partition_bit: usize, hash_builder: B) -> Result<Self, E>
     where
-        F: Fn() -> T,
+        F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = 1 << partition_bit;
         let partitions = (0..partition_num)
-            .map(|_| Mutex::new(init_fn()))
-            .collect::<Vec<Mutex<T>>>();
-        Self {
+            .map(|_| init_fn(partition_num).map(Mutex::new))
+            .collect::<Result<Vec<Mutex<T>>, E>>()?;
+
+        Ok(Self {
             partitions,
             partition_mask: partition_num - 1,
             hash_builder,
-        }
+        })
     }
 
     pub fn lock<K: Eq + Hash>(&self, key: &K) -> MutexGuard<'_, T> {
@@ -193,9 +194,9 @@ mod tests {
 
     #[test]
     fn test_partitioned_mutex() {
-        let init_hmap = HashMap::new;
+        let init_hmap = |_: usize| Ok::<_, ()>(HashMap::new());
         let test_locked_map =
-            PartitionedMutex::new(init_hmap, 4, build_fixed_seed_ahasher_builder());
+            PartitionedMutex::try_new(init_hmap, 4, build_fixed_seed_ahasher_builder()).unwrap();
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
 
@@ -230,9 +231,9 @@ mod tests {
 
     #[test]
     fn test_partitioned_mutex_vis_different_partition() {
-        let init_vec = Vec::<i32>::new;
+        let init_vec = |_: usize| Ok::<_, ()>(Vec::<i32>::new());
         let test_locked_map =
-            PartitionedMutex::new(init_vec, 4, build_fixed_seed_ahasher_builder());
+            PartitionedMutex::try_new(init_vec, 4, build_fixed_seed_ahasher_builder()).unwrap();
         let mutex_first = test_locked_map.get_partition_by_index(0);
 
         let mut _tmp_data = mutex_first.lock().unwrap();
