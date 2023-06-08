@@ -17,4 +17,6 @@ pub mod multipart;
 pub mod obkv;
 pub mod prefix;
 pub mod s3;
+pub mod storage_options;
+
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;

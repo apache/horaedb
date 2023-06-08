@@ -27,11 +27,11 @@ use table_engine::{
         TableId, TableRef, WriteRequest,
     },
 };
+use object_store::storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions};
 use tempfile::TempDir;
 
 use crate::{
     setup::{EngineBuilder, MemWalsOpener, OpenedWals, RocksDBWalsOpener, WalsOpener},
-    storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions},
     tests::table::{self, FixedSchemaTable, RowTuple},
     Config, RocksDBConfig, WalStorageConfig,
 };

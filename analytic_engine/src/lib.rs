@@ -15,7 +15,6 @@ mod sampler;
 pub mod setup;
 pub mod space;
 pub mod sst;
-mod storage_options;
 pub mod table;
 pub mod table_options;
 
@@ -27,7 +26,7 @@ use common_util::config::{ReadableDuration, ReadableSize};
 use manifest::details::Options as ManifestOptions;
 use message_queue::kafka::config::Config as KafkaConfig;
 use serde::{Deserialize, Serialize};
-use storage_options::StorageOptions;
+use object_store::storage_options::StorageOptions;
 use table_kv::config::ObkvConfig;
 use wal::{
     message_queue_impl::config::Config as MessageQueueWalConfig,
