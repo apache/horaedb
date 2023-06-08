@@ -6,7 +6,6 @@ use upstream::{
 };
 use crate::storage_options::S3Options;
 
-#[allow(clippy::too_many_arguments)]
 pub fn try_new(
     s3_option: &S3Options
 ) -> upstream::Result<AmazonS3> {
