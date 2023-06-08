@@ -3982,6 +3982,7 @@ dependencies = [
  "ceresdbproto",
  "chrono",
  "clru",
+ "common_types",
  "common_util",
  "crc",
  "futures 0.3.28",

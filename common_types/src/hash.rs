@@ -1,25 +1,29 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-// custom hash mod
-
+/// Which Hash to use:
+/// - Memory : aHash
+/// - Disk: SeaHash
+/// https://github.com/CeresDB/hash-benchmark-rs
 use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{self, BuildHasher, Hasher},
+    hash::{BuildHasher, Hasher},
 };
 
-/* We compared the speed difference between murmur3 and ahash for a string of
-    length 10, and the results show that ahash has a clear advantage.
-    Average time to DefaultHash a string of length 10: 33.6364 nanoseconds
-    Average time to ahash a string of length 10: 19.0412 nanoseconds
-    Average time to murmur3 a string of length 10: 33.0394 nanoseconds
-    Warning: Do not use this hash in non-memory scenarios,
-    One of the reasons is as follows:
-    https://github.com/tkaitchuck/aHash/blob/master/README.md#goals-and-non-goals
-*/
-use ahash::AHasher;
+pub use ahash;
 use byteorder::{ByteOrder, LittleEndian};
 use murmur3::murmur3_x64_128;
-pub use seahash::SeaHasher;
+use seahash::{self, SeaHasher};
+
+#[derive(Debug)]
+pub struct SeaHasherBuilder;
+
+impl BuildHasher for SeaHasherBuilder {
+    type Hasher = SeaHasher;
+
+    fn build_hasher(&self) -> Self::Hasher {
+        seahash::SeaHasher::new()
+    }
+}
+
 pub fn hash64(mut bytes: &[u8]) -> u64 {
     let mut out = [0; 16];
     murmur3_x64_128(&mut bytes, 0, &mut out);
@@ -27,31 +31,8 @@ pub fn hash64(mut bytes: &[u8]) -> u64 {
     LittleEndian::read_u64(&out[0..8])
 }
 
-pub fn build_fixed_seed_ahasher() -> AHasher {
-    ahash::RandomState::with_seeds(0, 0, 0, 0).build_hasher()
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct HasherWrapper<H = hash::BuildHasherDefault<DefaultHasher>>
-where
-    H: BuildHasher,
-{
-    pub hash_builder: H,
-}
-
-impl<H> HasherWrapper<H>
-where
-    H: BuildHasher,
-{
-    fn new(hash_builder: H) -> Self {
-        Self { hash_builder }
-    }
-
-    fn hash<K: std::hash::Hash>(&self, key: K) -> u64 {
-        let mut hasher = self.hash_builder.build_hasher();
-        key.hash(&mut hasher);
-        hasher.finish()
-    }
+pub fn build_fixed_seed_ahasher_builder() -> ahash::RandomState {
+    ahash::RandomState::with_seeds(0, 0, 0, 0)
 }
 
 #[cfg(test)]
