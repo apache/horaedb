@@ -2,7 +2,10 @@
 
 // custom hash mod
 
-use std::hash::BuildHasher;
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{self, BuildHasher, Hasher},
+};
 
 /* We compared the speed difference between murmur3 and ahash for a string of
     length 10, and the results show that ahash has a clear advantage.
@@ -26,6 +29,29 @@ pub fn hash64(mut bytes: &[u8]) -> u64 {
 
 pub fn build_fixed_seed_ahasher() -> AHasher {
     ahash::RandomState::with_seeds(0, 0, 0, 0).build_hasher()
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct HasherWrapper<H = hash::BuildHasherDefault<DefaultHasher>>
+where
+    H: BuildHasher,
+{
+    pub hash_builder: H,
+}
+
+impl<H> HasherWrapper<H>
+where
+    H: BuildHasher,
+{
+    fn new(hash_builder: H) -> Self {
+        Self { hash_builder }
+    }
+
+    fn hash<K: std::hash::Hash>(&self, key: K) -> u64 {
+        let mut hasher = self.hash_builder.build_hasher();
+        key.hash(&mut hasher);
+        hasher.finish()
+    }
 }
 
 #[cfg(test)]
