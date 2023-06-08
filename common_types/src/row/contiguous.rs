@@ -286,8 +286,6 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
         self.inner
             .reset(datum_buffer_len, DatumKind::Null.into_u8());
 
-        assert_eq!(row.num_columns(), self.table_schema.num_columns());
-
         // Offset to next string in string buffer.
         let mut next_string_offset: OffsetSize = 0;
         for index_in_table in 0..self.table_schema.num_columns() {
