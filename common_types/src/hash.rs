@@ -4,9 +4,7 @@
 /// - Memory : aHash
 /// - Disk: SeaHash
 /// https://github.com/CeresDB/hash-benchmark-rs
-use std::{
-    hash::{BuildHasher, Hasher},
-};
+use std::hash::BuildHasher;
 
 pub use ahash;
 use byteorder::{ByteOrder, LittleEndian};
