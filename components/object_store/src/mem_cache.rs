@@ -5,7 +5,6 @@
 //! 2. Builtin Partition to reduce lock contention
 
 use std::{
-    collections::hash_map::RandomState,
     fmt::{self, Display},
     num::NonZeroUsize,
     ops::Range,
@@ -15,6 +14,7 @@ use std::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use clru::{CLruCache, CLruCacheConfig, WeightScale};
+use common_types::hash::{ahash::RandomState, build_fixed_seed_ahasher_builder};
 use common_util::partitioned_lock::PartitionedMutex;
 use futures::stream::BoxStream;
 use snafu::{OptionExt, Snafu};
@@ -40,7 +40,7 @@ impl WeightScale<String, Bytes> for CustomScale {
 pub struct MemCache {
     /// Max memory this store can use
     mem_cap: NonZeroUsize,
-    inner: PartitionedMutex<CLruCache<String, Bytes, RandomState, CustomScale>>,
+    inner: PartitionedMutex<CLruCache<String, Bytes, RandomState, CustomScale>, RandomState>,
 }
 
 pub type MemCacheRef = Arc<MemCache>;
@@ -54,9 +54,15 @@ impl MemCache {
         let cap_per_part =
             NonZeroUsize::new((mem_cap.get() as f64 / partition_num as f64) as usize)
                 .context(InvalidCapacity)?;
-        let init_lru =
-            || CLruCache::with_config(CLruCacheConfig::new(cap_per_part).with_scale(CustomScale));
-        let inner = PartitionedMutex::new(init_lru, partition_bits);
+        let init_lru = || {
+            CLruCache::with_config(
+                CLruCacheConfig::new(cap_per_part)
+                    .with_hasher(build_fixed_seed_ahasher_builder())
+                    .with_scale(CustomScale),
+            )
+        };
+        let inner =
+            PartitionedMutex::new(init_lru, partition_bits, build_fixed_seed_ahasher_builder());
         Ok(Self { mem_cap, inner })
     }
 

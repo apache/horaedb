@@ -16,6 +16,7 @@ bytes = { workspace = true }
 ceresdbproto = { workspace = true }
 chrono = { workspace = true }
 clru = { workspace = true }
+common_types = { workspace = true }
 common_util = { workspace = true }
 crc = "3.0.0"
 futures = { workspace = true }
