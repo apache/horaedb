@@ -1,7 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 /// Which Hash to use:
-/// - Memory : aHash
+/// - Memory: aHash
 /// - Disk: SeaHash
 /// https://github.com/CeresDB/hash-benchmark-rs
 use std::hash::BuildHasher;
@@ -9,7 +9,7 @@ use std::hash::BuildHasher;
 pub use ahash;
 use byteorder::{ByteOrder, LittleEndian};
 use murmur3::murmur3_x64_128;
-use seahash::{self, SeaHasher};
+use seahash::SeaHasher;
 
 #[derive(Debug)]
 pub struct SeaHasherBuilder;
@@ -18,7 +18,7 @@ impl BuildHasher for SeaHasherBuilder {
     type Hasher = SeaHasher;
 
     fn build_hasher(&self) -> Self::Hasher {
-        seahash::SeaHasher::new()
+        SeaHasher::new()
     }
 }
 
@@ -35,27 +35,51 @@ pub fn build_fixed_seed_ahasher_builder() -> ahash::RandomState {
 
 #[cfg(test)]
 mod test {
+    use std::{collections::hash_map::DefaultHasher, hash::Hasher};
+
     use super::*;
 
     #[test]
-    fn empty_hash_test() {
-        let res1 = hash64(&[]);
-        let res2 = hash64(&[]);
-        assert_eq!(res1, res2);
+    fn test_murmur_hash() {
+        assert_eq!(hash64(&[]), 0);
+
+        for (key, code) in [
+            (b"cse_engine_hash_mod_test_bytes1", 6401327391689448380),
+            (b"cse_engine_hash_mod_test_bytes2", 10824100215277000151),
+        ] {
+            assert_eq!(code, hash64(key));
+        }
     }
 
     #[test]
-    fn hash_test() {
-        let test_bytes_1 = b"cse_engine_hash_mod_test_bytes1".to_vec();
-        let test_bytes_2 = b"cse_engine_hash_mod_test_bytes2".to_vec();
-        {
-            // hash64 testing
-            let res1 = hash64(&test_bytes_1);
-            let res1_1 = hash64(&test_bytes_1);
-            assert_eq!(res1, res1_1);
+    fn test_sea_hash() {
+        let mut hasher = SeaHasher::new();
+        hasher.write(&[]);
+        assert_eq!(14492805990617963705, hasher.finish());
 
-            let res2 = hash64(&test_bytes_2);
-            assert_ne!(res1, res2);
+        for (key, code) in [
+            (b"cse_engine_hash_mod_test_bytes1", 16301057587465450460),
+            (b"cse_engine_hash_mod_test_bytes2", 10270658030298139083),
+        ] {
+            let mut hasher = SeaHasher::new();
+            hasher.write(key);
+            assert_eq!(code, hasher.finish());
+        }
+    }
+
+    #[test]
+    fn test_default_hash() {
+        let mut hasher = DefaultHasher::new();
+        hasher.write(&[]);
+        assert_eq!(15130871412783076140, hasher.finish());
+
+        for (key, code) in [
+            (b"cse_engine_hash_mod_test_bytes1", 8669533354716427219),
+            (b"cse_engine_hash_mod_test_bytes2", 6496951441253214618),
+        ] {
+            let mut hasher = DefaultHasher::new();
+            hasher.write(key);
+            assert_eq!(code, hasher.finish());
         }
     }
 }
