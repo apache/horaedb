@@ -15,8 +15,9 @@ use object_store::{
     metrics::StoreWithMetrics,
     obkv,
     prefix::StoreWithPrefix,
-    s3, LocalFileSystem, ObjectStoreRef,
+    s3,
     storage_options::{ObjectStoreOptions, StorageOptions},
+    LocalFileSystem, ObjectStoreRef,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
@@ -426,12 +427,8 @@ fn open_storage(
                 Arc::new(store) as _
             }
             ObjectStoreOptions::Aliyun(aliyun_opts) => {
-                let oss: ObjectStoreRef = Arc::new(
-                    aliyun::try_new(
-                        &aliyun_opts
-                    )
-                    .context(OpenObjectStore)?,
-                );
+                let oss: ObjectStoreRef =
+                    Arc::new(aliyun::try_new(&aliyun_opts).context(OpenObjectStore)?);
                 let store_with_prefix = StoreWithPrefix::new(aliyun_opts.prefix, oss);
                 Arc::new(store_with_prefix.context(OpenObjectStore)?) as _
             }
@@ -456,12 +453,8 @@ fn open_storage(
                 Arc::new(StoreWithPrefix::new(obkv_opts.prefix, oss).context(OpenObjectStore)?) as _
             }
             ObjectStoreOptions::S3(s3_option) => {
-                let oss: ObjectStoreRef = Arc::new(
-                    s3::try_new(
-                        &s3_option
-                    )
-                    .context(OpenObjectStore)?,
-                );
+                let oss: ObjectStoreRef =
+                    Arc::new(s3::try_new(&s3_option).context(OpenObjectStore)?);
                 let store_with_prefix = StoreWithPrefix::new(s3_option.prefix, oss);
                 Arc::new(store_with_prefix.context(OpenObjectStore)?) as _
             }

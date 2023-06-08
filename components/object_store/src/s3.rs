@@ -4,11 +4,10 @@ use upstream::{
     aws::{AmazonS3, AmazonS3Builder},
     ClientOptions, RetryConfig,
 };
+
 use crate::storage_options::S3Options;
 
-pub fn try_new(
-    s3_option: &S3Options
-) -> upstream::Result<AmazonS3> {
+pub fn try_new(s3_option: &S3Options) -> upstream::Result<AmazonS3> {
     let cli_opt = ClientOptions::new()
         .with_allow_http(true)
         .with_pool_max_idle_per_host(s3_option.http.pool_max_idle_per_host)

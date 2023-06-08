@@ -4,6 +4,7 @@ use upstream::{
     aws::{AmazonS3, AmazonS3Builder},
     ClientOptions, RetryConfig,
 };
+
 use crate::storage_options::AliyunOptions;
 
 fn normalize_endpoint(endpoint: &str, bucket: &str) -> String {
@@ -18,9 +19,7 @@ fn normalize_endpoint(endpoint: &str, bucket: &str) -> String {
     }
 }
 
-pub fn try_new(
-    aliyun_opts: &AliyunOptions
-) -> upstream::Result<AmazonS3> {
+pub fn try_new(aliyun_opts: &AliyunOptions) -> upstream::Result<AmazonS3> {
     let cli_opt = ClientOptions::new()
         .with_allow_http(true)
         .with_pool_max_idle_per_host(aliyun_opts.http.pool_max_idle_per_host)
