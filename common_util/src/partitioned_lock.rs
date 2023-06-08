@@ -118,13 +118,13 @@ where
 }
 
 #[derive(Debug)]
-pub struct PartitionedMutexAsync<T, H>
+pub struct PartitionedMutexAsync<T, B>
 where
-    H: BuildHasher,
+    B: BuildHasher,
 {
     partitions: Vec<tokio::sync::Mutex<T>>,
     partition_mask: usize,
-    hash_builder: H,
+    hash_builder: B,
 }
 
 impl<T, B> PartitionedMutexAsync<T, B>
