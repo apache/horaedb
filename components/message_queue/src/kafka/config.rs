@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Kafka implementation's config
 
@@ -21,7 +21,7 @@ pub struct Config {
 pub struct ClientConfig {
     /// The endpoint of boost broker, must be set and will panic if found it
     /// None.
-    pub boost_broker: Option<String>,
+    pub boost_brokers: Option<Vec<String>>,
 
     /// Maximum message size in bytes.
     ///
