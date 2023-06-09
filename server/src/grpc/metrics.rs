@@ -37,6 +37,7 @@ make_auto_flush_static_metric! {
 
     pub label_enum RemoteEngineGrpcTypeKind {
         write_failed,
+        query_success
     }
 
     pub struct RemoteEngineGrpcHandlerCounterVec: LocalIntCounter {

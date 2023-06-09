@@ -9,6 +9,7 @@ use prometheus_static_metric::{auto_flush_from, make_auto_flush_static_metric};
 make_auto_flush_static_metric! {
     pub label_enum GrpcTypeKind {
         write_failed,
+        query_success
     }
 
     pub struct GrpcHandlerCounterVec: LocalIntCounter {

@@ -339,6 +339,9 @@ async fn handle_stream_read(
             code: StatusCode::Internal,
             msg: format!("fail to read table, table:{table_ident:?}"),
         })?;
+    REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+        .query_success
+        .inc_by(streams.streams.len() as u64);
 
     info!(
         "Handle stream read success, request_id:{request_id}, table:{table_ident:?}, cost:{:?}",

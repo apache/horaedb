@@ -28,6 +28,7 @@ use tonic::{transport::Channel, IntoRequest};
 use crate::{
     error::{self, ErrNoCause, ErrWithCause, Error, Result},
     forward::{ForwardRequest, ForwardResult},
+    grpc::metrics::GRPC_HANDLER_COUNTER_VEC,
     read::SqlResponse,
     Context, Proxy,
 };
@@ -45,7 +46,12 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     ..Default::default()
                 }
             }
-            Ok(v) => v,
+            Ok(v) => {
+                if let Some(sql_query_response::Output::AffectedRows(value)) = v.output {
+                    GRPC_HANDLER_COUNTER_VEC.query_success.inc_by(value as u64)
+                }
+                v
+            }
         }
     }
 
