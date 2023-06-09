@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Test cases for message queue
 
@@ -22,7 +22,7 @@ use crate::{
 #[ignore = "It can just run with a Kafka cluster"]
 async fn test_kafka() {
     let mut config = Config::default();
-    config.client.boost_broker = Some("127.0.0.1:9011".to_string());
+    config.client.boost_brokers = Some(vec!["127.0.0.1:9011".to_string()]);
     let kafka_impl = Arc::new(KafkaImpl::new(config).await.unwrap());
 
     run_message_queue_test(kafka_impl).await;
