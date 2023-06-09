@@ -1,47 +1,32 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::time::Duration;
-
 use upstream::{
     aws::{AmazonS3, AmazonS3Builder},
     ClientOptions, RetryConfig,
 };
 
-#[allow(clippy::too_many_arguments)]
-pub fn try_new(
-    region: impl Into<String>,
-    key_id: impl Into<String>,
-    key_secret: impl Into<String>,
-    endpoint: impl Into<String>,
-    bucket: impl Into<String>,
-    pool_max_idle_per_host: impl Into<usize>,
-    timeout: Duration,
-    keep_alive_timeout: Duration,
-    keep_alive_interval: Duration,
-    max_retries: usize,
-    retry_timeout: Duration,
-) -> upstream::Result<AmazonS3> {
+use crate::config::S3Options;
+
+pub fn try_new(s3_option: &S3Options) -> upstream::Result<AmazonS3> {
     let cli_opt = ClientOptions::new()
         .with_allow_http(true)
-        .with_pool_max_idle_per_host(pool_max_idle_per_host.into())
-        .with_http2_keep_alive_timeout(keep_alive_timeout)
+        .with_pool_max_idle_per_host(s3_option.http.pool_max_idle_per_host)
+        .with_http2_keep_alive_timeout(s3_option.http.keep_alive_timeout.0)
         .with_http2_keep_alive_while_idle()
-        .with_http2_keep_alive_interval(keep_alive_interval)
-        .with_timeout(timeout);
+        .with_http2_keep_alive_interval(s3_option.http.keep_alive_interval.0)
+        .with_timeout(s3_option.http.timeout.0);
     let retry_config = RetryConfig {
-        max_retries,
-        retry_timeout,
+        max_retries: s3_option.retry.max_retries,
+        retry_timeout: s3_option.retry.retry_timeout.0,
         ..Default::default()
     };
 
-    let endpoint = endpoint.into();
-    let bucket = bucket.into();
     AmazonS3Builder::new()
-        .with_region(region)
-        .with_access_key_id(key_id)
-        .with_secret_access_key(key_secret)
-        .with_endpoint(endpoint)
-        .with_bucket_name(bucket)
+        .with_region(&s3_option.region)
+        .with_access_key_id(&s3_option.key_id)
+        .with_secret_access_key(&s3_option.key_secret)
+        .with_endpoint(&s3_option.endpoint)
+        .with_bucket_name(&s3_option.bucket)
         .with_client_options(cli_opt)
         .with_retry(retry_config)
         .build()

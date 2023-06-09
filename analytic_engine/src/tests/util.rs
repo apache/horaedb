@@ -17,6 +17,7 @@ use common_util::{
 };
 use futures::stream::StreamExt;
 use log::info;
+use object_store::config::{LocalOptions, ObjectStoreOptions, StorageOptions};
 use table_engine::{
     engine::{
         CreateTableRequest, DropTableRequest, EngineRuntimes, OpenTableRequest,
@@ -31,7 +32,6 @@ use tempfile::TempDir;
 
 use crate::{
     setup::{EngineBuilder, MemWalsOpener, OpenedWals, RocksDBWalsOpener, WalsOpener},
-    storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions},
     tests::table::{self, FixedSchemaTable, RowTuple},
     Config, RocksDBConfig, WalStorageConfig,
 };
