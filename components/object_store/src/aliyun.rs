@@ -5,7 +5,7 @@ use upstream::{
     ClientOptions, RetryConfig,
 };
 
-use crate::storage_options::AliyunOptions;
+use crate::config::AliyunOptions;
 
 fn normalize_endpoint(endpoint: &str, bucket: &str) -> String {
     if endpoint.starts_with("https") {

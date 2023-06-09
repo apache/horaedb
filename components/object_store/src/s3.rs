@@ -5,7 +5,7 @@ use upstream::{
     ClientOptions, RetryConfig,
 };
 
-use crate::storage_options::S3Options;
+use crate::config::S3Options;
 
 pub fn try_new(s3_option: &S3Options) -> upstream::Result<AmazonS3> {
     let cli_opt = ClientOptions::new()

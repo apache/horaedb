@@ -10,14 +10,13 @@ use futures::Future;
 use message_queue::kafka::kafka_impl::KafkaImpl;
 use object_store::{
     aliyun,
+    config::{ObjectStoreOptions, StorageOptions},
     disk_cache::DiskCacheStore,
     mem_cache::{MemCache, MemCacheStore},
     metrics::StoreWithMetrics,
     obkv,
     prefix::StoreWithPrefix,
-    s3,
-    storage_options::{ObjectStoreOptions, StorageOptions},
-    LocalFileSystem, ObjectStoreRef,
+    s3, LocalFileSystem, ObjectStoreRef,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};

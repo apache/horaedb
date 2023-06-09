@@ -25,7 +25,7 @@ pub mod tests;
 use common_util::config::{ReadableDuration, ReadableSize};
 use manifest::details::Options as ManifestOptions;
 use message_queue::kafka::config::Config as KafkaConfig;
-use object_store::storage_options::StorageOptions;
+use object_store::config::StorageOptions;
 use serde::{Deserialize, Serialize};
 use table_kv::config::ObkvConfig;
 use wal::{

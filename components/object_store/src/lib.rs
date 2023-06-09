@@ -10,6 +10,7 @@ pub use upstream::{
 };
 
 pub mod aliyun;
+pub mod config;
 pub mod disk_cache;
 pub mod mem_cache;
 pub mod metrics;
@@ -17,6 +18,5 @@ pub mod multipart;
 pub mod obkv;
 pub mod prefix;
 pub mod s3;
-pub mod storage_options;
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;

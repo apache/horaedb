@@ -17,7 +17,7 @@ use common_util::{
 };
 use futures::stream::StreamExt;
 use log::info;
-use object_store::storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions};
+use object_store::config::{LocalOptions, ObjectStoreOptions, StorageOptions};
 use table_engine::{
     engine::{
         CreateTableRequest, DropTableRequest, EngineRuntimes, OpenTableRequest,
