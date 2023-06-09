@@ -23,19 +23,20 @@ impl<T, B> PartitionedRwLock<T, B>
 where
     B: BuildHasher,
 {
-    pub fn new<F>(init_fn: F, partition_bit: usize, hash_builder: B) -> Self
+    pub fn try_new<F, E>(init_fn: F, partition_bit: usize, hash_builder: B) -> Result<Self, E>
     where
-        F: Fn() -> T,
+        F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = 1 << partition_bit;
         let partitions = (1..partition_num)
-            .map(|_| RwLock::new(init_fn()))
-            .collect::<Vec<RwLock<T>>>();
-        Self {
+            .map(|_| init_fn(partition_num).map(RwLock::new))
+            .collect::<Result<Vec<RwLock<T>>, E>>()?;
+
+        Ok(Self {
             partitions,
             partition_mask: partition_num - 1,
             hash_builder,
-        }
+        })
     }
 
     pub fn read<K: Eq + Hash>(&self, key: &K) -> RwLockReadGuard<'_, T> {
@@ -79,19 +80,20 @@ impl<T, B> PartitionedMutex<T, B>
 where
     B: BuildHasher,
 {
-    pub fn new<F>(init_fn: F, partition_bit: usize, hash_builder: B) -> Self
+    pub fn try_new<F, E>(init_fn: F, partition_bit: usize, hash_builder: B) -> Result<Self, E>
     where
-        F: Fn() -> T,
+        F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = 1 << partition_bit;
         let partitions = (0..partition_num)
-            .map(|_| Mutex::new(init_fn()))
-            .collect::<Vec<Mutex<T>>>();
-        Self {
+            .map(|_| init_fn(partition_num).map(Mutex::new))
+            .collect::<Result<Vec<Mutex<T>>, E>>()?;
+
+        Ok(Self {
             partitions,
             partition_mask: partition_num - 1,
             hash_builder,
-        }
+        })
     }
 
     pub fn lock<K: Eq + Hash>(&self, key: &K) -> MutexGuard<'_, T> {
@@ -131,19 +133,20 @@ impl<T, B> PartitionedMutexAsync<T, B>
 where
     B: BuildHasher,
 {
-    pub fn new<F>(init_fn: F, partition_bit: usize, hash_builder: B) -> Self
+    pub fn try_new<F, E>(init_fn: F, partition_bit: usize, hash_builder: B) -> Result<Self, E>
     where
-        F: Fn() -> T,
+        F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = 1 << partition_bit;
         let partitions = (0..partition_num)
-            .map(|_| tokio::sync::Mutex::new(init_fn()))
-            .collect::<Vec<tokio::sync::Mutex<T>>>();
-        Self {
+            .map(|_| init_fn(partition_num).map(tokio::sync::Mutex::new))
+            .collect::<Result<Vec<tokio::sync::Mutex<T>>, E>>()?;
+
+        Ok(Self {
             partitions,
             partition_mask: partition_num - 1,
             hash_builder,
-        }
+        })
     }
 
     pub async fn lock<K: Eq + Hash>(&self, key: &K) -> tokio::sync::MutexGuard<'_, T> {
@@ -174,9 +177,9 @@ mod tests {
 
     #[test]
     fn test_partitioned_rwlock() {
-        let init_hmap = HashMap::new;
+        let init_hmap = |_: usize| Ok::<_, ()>(HashMap::new());
         let test_locked_map =
-            PartitionedRwLock::new(init_hmap, 4, build_fixed_seed_ahasher_builder());
+            PartitionedRwLock::try_new(init_hmap, 4, build_fixed_seed_ahasher_builder()).unwrap();
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
 
@@ -193,9 +196,9 @@ mod tests {
 
     #[test]
     fn test_partitioned_mutex() {
-        let init_hmap = HashMap::new;
+        let init_hmap = |_: usize| Ok::<_, ()>(HashMap::new());
         let test_locked_map =
-            PartitionedMutex::new(init_hmap, 4, build_fixed_seed_ahasher_builder());
+            PartitionedMutex::try_new(init_hmap, 4, build_fixed_seed_ahasher_builder()).unwrap();
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
 
@@ -212,8 +215,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_partitioned_mutex_async() {
-        let init_hmap = HashMap::new;
-        let test_locked_map = PartitionedMutexAsync::new(init_hmap, 4, SeaHasherBuilder);
+        let init_hmap = |_: usize| Ok::<_, ()>(HashMap::new());
+        let test_locked_map =
+            PartitionedMutexAsync::try_new(init_hmap, 4, SeaHasherBuilder).unwrap();
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
 
@@ -230,9 +234,9 @@ mod tests {
 
     #[test]
     fn test_partitioned_mutex_vis_different_partition() {
-        let init_vec = Vec::<i32>::new;
+        let init_vec = |_: usize| Ok::<_, ()>(Vec::<i32>::new());
         let test_locked_map =
-            PartitionedMutex::new(init_vec, 4, build_fixed_seed_ahasher_builder());
+            PartitionedMutex::try_new(init_vec, 4, build_fixed_seed_ahasher_builder()).unwrap();
         let mutex_first = test_locked_map.get_partition_by_index(0);
 
         let mut _tmp_data = mutex_first.lock().unwrap();
@@ -245,9 +249,9 @@ mod tests {
 
     #[test]
     fn test_partitioned_rwmutex_vis_different_partition() {
-        let init_vec = Vec::<i32>::new;
+        let init_vec = |_: usize| Ok::<_, ()>(Vec::<i32>::new());
         let test_locked_map =
-            PartitionedRwLock::new(init_vec, 4, build_fixed_seed_ahasher_builder());
+            PartitionedRwLock::try_new(init_vec, 4, build_fixed_seed_ahasher_builder()).unwrap();
         let mutex_first = test_locked_map.get_partition_by_index(0);
         let mut _tmp = mutex_first.write().unwrap();
         assert!(mutex_first.try_write().is_err());
@@ -259,8 +263,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_partitioned_mutex_async_vis_different_partition() {
-        let init_vec = Vec::<i32>::new;
-        let test_locked_map = PartitionedMutexAsync::new(init_vec, 4, SeaHasherBuilder);
+        let init_vec = |_: usize| Ok::<_, ()>(Vec::<i32>::new());
+        let test_locked_map =
+            PartitionedMutexAsync::try_new(init_vec, 4, SeaHasherBuilder).unwrap();
         let mutex_first = test_locked_map.get_partition_by_index(0).await;
 
         let mut _tmp_data = mutex_first.lock().await;
