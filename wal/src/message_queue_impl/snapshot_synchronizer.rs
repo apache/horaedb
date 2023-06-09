@@ -9,7 +9,7 @@ use common_util::{
     define_result,
     error::{BoxError, GenericError},
 };
-use log::info;
+use log::{debug, info};
 use message_queue::MessageQueue;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
@@ -67,11 +67,6 @@ impl<Mq: MessageQueue> SnapshotSynchronizer<Mq> {
         meta_topic: String,
         meta_encoding: MetaEncoding,
     ) -> Self {
-        info!(
-            "Snapshot synchronizer init, region id:{}, meta topic:{}",
-            region_id, meta_topic
-        );
-
         Self {
             region_id,
             message_queue,
@@ -81,7 +76,7 @@ impl<Mq: MessageQueue> SnapshotSynchronizer<Mq> {
     }
 
     pub async fn sync(&self, snapshot: RegionMetaSnapshot) -> Result<()> {
-        info!(
+        debug!(
             "Begin to sync snapshot to meta topic, snapshot:{:?}, topic:{}",
             snapshot, self.meta_topic
         );
@@ -140,7 +135,7 @@ impl<Mq: MessageQueue> SnapshotSynchronizer<Mq> {
                 topic: self.meta_topic.clone(),
             })?;
 
-        info!(
+        debug!(
             "Finished to sync snapshot to meta topic, topic:{}",
             self.meta_topic
         );

@@ -18,7 +18,7 @@ use util::*;
 use crate::{
     kv_encoder::CommonLogEncoding,
     log_batch::{LogEntry, LogWriteBatch},
-    manager::{self},
+    manager,
     message_queue_impl::{
         encoding::{format_wal_data_topic_name, format_wal_meta_topic_name, MetaEncoding},
         log_cleaner::LogCleaner,
@@ -258,7 +258,7 @@ impl<M: MessageQueue> Region<M> {
             })?;
 
         ensure!(returned_high_watermark == high_watermark, OpenNoCause { namespace , region_id, msg: format!(
-            "failed while recover from meta, high watermark shouldn't changed while opening region, 
+            "failed while recover from meta, high watermark shouldn't changed while opening region,
             origin high watermark:{high_watermark}, returned high watermark:{returned_high_watermark}")
         });
 
@@ -375,7 +375,7 @@ impl<M: MessageQueue> Region<M> {
                 })?;
 
             ensure!(returned_high_watermark == high_watermark, OpenNoCause { namespace , region_id, msg: format!(
-                "failed while recover from log, high watermark shouldn't changed while opening region, 
+                "failed while recover from log, high watermark shouldn't changed while opening region,
                 origin high watermark:{high_watermark}, returned high watermark:{returned_high_watermark}")
             });
 
@@ -702,7 +702,7 @@ impl<M: MessageQueue> RegionInner<M> {
             .await
             .map_err(Box::new)?;
 
-        debug!("Create scanning iterator successfully, region id:{}, table id:{:?}, log topic:{}, scan range{:?}", self.region_context.region_id(), 
+        debug!("Create scanning iterator successfully, region id:{}, table id:{:?}, log topic:{}, scan range{:?}", self.region_context.region_id(),
             table_id, self.log_topic, scan_range);
 
         Ok(MessageQueueLogIterator::new(
