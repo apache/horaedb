@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Kafka implementation's detail
 
@@ -137,12 +137,12 @@ impl KafkaImplInner {
     async fn new(config: Config) -> Result<Self> {
         info!("Kafka init, config:{:?}", config);
 
-        if config.client.boost_broker.is_none() {
+        if config.client.boost_brokers.is_none() {
             panic!("The boost broker must be set");
         }
 
         let mut client_builder =
-            ClientBuilder::new(vec![config.client.boost_broker.clone().unwrap()]);
+            ClientBuilder::new(dbg!(config.client.boost_brokers.clone().unwrap()));
         if let Some(max_message_size) = config.client.max_message_size {
             client_builder = client_builder.max_message_size(max_message_size);
         }
