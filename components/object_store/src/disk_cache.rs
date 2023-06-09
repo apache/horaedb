@@ -297,10 +297,10 @@ impl DiskCacheStore {
         underlying_store: Arc<dyn ObjectStore>,
         partition_bits: usize,
     ) -> Result<Self> {
-        let pagenum_per_part = cap / page_size;
-        ensure!(pagenum_per_part != 0, InvalidCapacity);
+        let page_num_per_part = cap / page_size;
+        ensure!(page_num_per_part != 0, InvalidCapacity);
         let _ = Self::create_manifest_if_not_exists(&cache_dir, page_size).await?;
-        let cache = DiskCache::try_new(cache_dir.clone(), pagenum_per_part, partition_bits)?;
+        let cache = DiskCache::try_new(cache_dir.clone(), page_num_per_part, partition_bits)?;
         Self::recover_cache(&cache_dir, &cache).await?;
 
         let size_cache = Arc::new(Mutex::new(LruCache::new(cap / page_size)));
