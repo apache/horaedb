@@ -67,7 +67,7 @@ udeps:
 	cd $(DIR); cargo udeps --all-targets --all-features --workspace
 
 clippy:
-	cd $(DIR); cargo clippy --all-targets --all-features --workspace -- -D warnings
+	cd $(DIR); cargo clippy --all-targets --all-features --workspace -- -D warnings -D clippy::dbg-macro
 
 # test with address sanitizer
 asan-test:
