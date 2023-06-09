@@ -124,8 +124,8 @@ struct DiskCache {
 }
 
 impl DiskCache {
-    fn try_new(root_dir: String, cap: usize, partition_bits: usize) -> Result<Self, Error> {
-        let init_lru = |partition_num: usize| -> Result<_, Error> {
+    fn try_new(root_dir: String, cap: usize, partition_bits: usize) -> Result<Self> {
+        let init_lru = |partition_num: usize| -> Result<_> {
             let cap_per_par = cap / partition_num;
             ensure!(cap_per_par != 0, InvalidCapacity);
             Ok(LruCache::new(cap / partition_num))
