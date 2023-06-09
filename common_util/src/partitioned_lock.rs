@@ -31,6 +31,7 @@ where
         let partitions = (1..partition_num)
             .map(|_| init_fn(partition_num).map(RwLock::new))
             .collect::<Result<Vec<RwLock<T>>, E>>()?;
+
         Ok(Self {
             partitions,
             partition_mask: partition_num - 1,
@@ -140,6 +141,7 @@ where
         let partitions = (0..partition_num)
             .map(|_| init_fn(partition_num).map(tokio::sync::Mutex::new))
             .collect::<Result<Vec<tokio::sync::Mutex<T>>, E>>()?;
+
         Ok(Self {
             partitions,
             partition_mask: partition_num - 1,
