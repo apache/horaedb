@@ -142,7 +142,7 @@ impl KafkaImplInner {
         }
 
         let mut client_builder =
-            ClientBuilder::new(dbg!(config.client.boost_brokers.clone().unwrap()));
+            ClientBuilder::new(config.client.boost_brokers.clone().unwrap());
         if let Some(max_message_size) = config.client.max_message_size {
             client_builder = client_builder.max_message_size(max_message_size);
         }
