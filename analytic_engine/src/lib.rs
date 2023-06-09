@@ -44,8 +44,15 @@ pub struct Config {
 
     /// Batch size to read records from wal to replay
     pub replay_batch_size: usize,
+
     /// Batch size to replay tables
     pub max_replay_tables_per_batch: usize,
+
+    /// Replay retry limit
+    pub replay_retry_limit: usize,
+
+    /// Replay retry interval
+    pub replay_retry_interval: ReadableDuration,
 
     /// Default options for table
     pub table_opts: TableOptions,
@@ -140,6 +147,8 @@ impl Default for Config {
             wal: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
             recover_mode: RecoverMode::TableBased,
+            replay_retry_limit: 5,
+            replay_retry_interval: ReadableDuration::millis(500),
         }
     }
 }

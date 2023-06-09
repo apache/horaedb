@@ -210,7 +210,11 @@ where
         let ctx = Context::builder(RequestId::next_id(), None)
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .build();
-        let table_operator = TableOperator::new(catalog_manager.clone());
+        let table_operator = TableOperator::new(
+            catalog_manager.clone(),
+            0,
+            std::time::Duration::from_millis(0),
+        );
         let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
         let insert_factory = Factory::new(
             ExecutorImpl::new(QueryConfig::default()),
@@ -350,7 +354,11 @@ async fn test_interpreters<T: EngineBuildContext>(engine_context: T) {
     let mock = MockMetaProvider::default();
     let engine = test_ctx.clone_engine();
     let catalog_manager = Arc::new(build_catalog_manager(engine.clone()).await);
-    let table_operator = TableOperator::new(catalog_manager.clone());
+    let table_operator = TableOperator::new(
+        catalog_manager.clone(),
+        0,
+        std::time::Duration::from_millis(0),
+    );
     let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
 
     let env = Env {

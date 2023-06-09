@@ -2,7 +2,10 @@
 
 // Meta event rpc service implementation.
 
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use analytic_engine::setup::OpenedWals;
 use async_trait::async_trait;
@@ -173,7 +176,12 @@ impl<Q: QueryExecutor + 'static> MetaServiceImpl<Q> {
                 .catalog_manager
                 .default_catalog_name()
                 .to_string(),
-            table_operator: TableOperator::new(self.instance.catalog_manager.clone()),
+            // FIXME: use the exposed configs.
+            table_operator: TableOperator::new(
+                self.instance.catalog_manager.clone(),
+                5,
+                Duration::from_secs(5),
+            ),
             table_engine: self.instance.table_engine.clone(),
             partition_table_engine: self.instance.partition_table_engine.clone(),
             wal_region_closer: self.wal_region_closer.clone(),

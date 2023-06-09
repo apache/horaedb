@@ -17,3 +17,4 @@ common_util = { workspace = true }
 log = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
+tokio = { workspace = true }

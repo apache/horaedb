@@ -1,17 +1,25 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::time::Instant;
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
+use common_types::table::ShardId;
 use common_util::{error::BoxError, time::InstantExt};
 use log::{error, info, warn};
 use snafu::{OptionExt, ResultExt};
-use table_engine::{engine, table::TableRef};
+use table_engine::{
+    engine,
+    table::{TableId, TableRef},
+};
 
 use crate::{
     manager::ManagerRef,
     schema::{
         CloseOptions, CloseShardRequest, CloseTableRequest, CreateOptions, CreateTableRequest,
         DropOptions, DropTableRequest, OpenOptions, OpenShardRequest, OpenTableRequest, SchemaRef,
+        TableDef,
     },
     Result, TableOperatorNoCause, TableOperatorWithCause,
 };
@@ -23,25 +31,85 @@ use crate::{
 #[derive(Clone)]
 pub struct TableOperator {
     catalog_manager: ManagerRef,
+    retry_limit: usize,
+    retry_interval: Duration,
+}
+
+enum OpenShardResult {
+    Success,
+    Retry(HashMap<TableId, TableDef>),
+}
+
+struct OpenShardContext<'a> {
+    shard_id: ShardId,
+    table_defs: HashMap<TableId, TableDef>,
+    engine: String,
+    retry: &'a mut usize,
+    retry_limit: usize,
 }
 
 impl TableOperator {
-    pub fn new(catalog_manager: ManagerRef) -> Self {
-        Self { catalog_manager }
+    pub fn new(catalog_manager: ManagerRef, retry_limit: usize, retry_interval: Duration) -> Self {
+        Self {
+            catalog_manager,
+            retry_limit,
+            retry_interval,
+        }
     }
 
     pub async fn open_shard(&self, request: OpenShardRequest, opts: OpenOptions) -> Result<()> {
+        let mut retry = 0;
+        let mut table_defs = request
+            .table_defs
+            .into_iter()
+            .map(|def| (def.id, def))
+            .collect::<HashMap<_, _>>();
+
+        loop {
+            let context = OpenShardContext {
+                shard_id: request.shard_id,
+                table_defs,
+                engine: request.engine.clone(),
+                retry: &mut retry,
+                retry_limit: self.retry_limit,
+            };
+
+            let once_result = self.open_shard_with_retry(context, opts.clone()).await;
+            match once_result {
+                Ok(OpenShardResult::Success) => break Ok(()),
+                Ok(OpenShardResult::Retry(retry_table_defs)) => {
+                    table_defs = retry_table_defs;
+
+                    // Sleep a while before next attempt.
+                    tokio::time::sleep(self.retry_interval).await;
+                    continue;
+                }
+                Err(e) => break Err(e),
+            }
+        }
+    }
+
+    async fn open_shard_with_retry(
+        &self,
+        context: OpenShardContext<'_>,
+        opts: OpenOptions,
+    ) -> Result<OpenShardResult> {
+        info!(
+            "TableOperator retry to open shard, retry:{}, retry_limit:{}, shard_id:{}",
+            context.retry, context.retry_limit, context.shard_id
+        );
+
         let instant = Instant::now();
         let table_engine = opts.table_engine;
-        let shard_id = request.shard_id;
+        let shard_id = context.shard_id;
 
         // Generate open requests.
-        let mut related_schemas = Vec::with_capacity(request.table_defs.len());
-        let mut engine_table_defs = Vec::with_capacity(request.table_defs.len());
-        for open_ctx in request.table_defs {
+        let mut related_schemas = Vec::with_capacity(context.table_defs.len());
+        let mut engine_table_defs = Vec::with_capacity(context.table_defs.len());
+        for open_ctx in context.table_defs.values() {
             let schema = self.schema_by_name(&open_ctx.catalog_name, &open_ctx.schema_name)?;
             let table_id = open_ctx.id;
-            engine_table_defs.push(open_ctx.into_engine_table_def(schema.id()));
+            engine_table_defs.push(open_ctx.clone().into_engine_table_def(schema.id()));
             related_schemas.push((table_id, schema));
         }
 
@@ -49,7 +117,7 @@ impl TableOperator {
         let engine_open_shard_req = engine::OpenShardRequest {
             shard_id,
             table_defs: engine_table_defs,
-            engine: request.engine,
+            engine: context.engine,
         };
         let mut shard_result = table_engine
             .open_shard(engine_open_shard_req)
@@ -62,6 +130,8 @@ impl TableOperator {
         let mut missing_table_count = 0_u32;
         let mut open_table_errs = Vec::new();
 
+        // Iter the table results, register the success ones and collect the fail ones.
+        let mut table_defs = context.table_defs;
         for (table_id, schema) in related_schemas {
             let table_result = shard_result
                 .remove(&table_id)
@@ -75,10 +145,14 @@ impl TableOperator {
                 Ok(Some(table)) => {
                     schema.register_table(table);
                     success_count += 1;
+                    // Success ones should be remove, we just return the failed ones for retrying.
+                    table_defs.remove(&table_id);
                 }
                 Ok(None) => {
                     error!("TableOperator failed to open a missing table, table_id:{table_id}, schema_id:{:?}, shard_id:{shard_id}", schema.id());
                     missing_table_count += 1;
+                    // A special failed case unable to recover by retrying, we just ignore them.
+                    table_defs.remove(&table_id);
                 }
                 Err(e) => {
                     error!("TableOperator failed to open table, table_id:{table_id}, schema_id:{:?}, shard_id:{shard_id}, err:{}", schema.id(), e);
@@ -92,8 +166,10 @@ impl TableOperator {
             instant.saturating_elapsed().as_millis(),
         );
 
-        if missing_table_count == 0 && open_table_errs.is_empty() {
-            Ok(())
+        let result = if missing_table_count == 0 && open_table_errs.is_empty() {
+            Ok(OpenShardResult::Success)
+        } else if *context.retry < context.retry_limit && !table_defs.is_empty() {
+            Ok(OpenShardResult::Retry(table_defs))
         } else {
             let msg = format!(
                 "Failed to open shard, some tables open failed, shard id:{shard_id}, \
@@ -103,7 +179,10 @@ impl TableOperator {
             );
 
             TableOperatorNoCause { msg }.fail()
-        }
+        };
+
+        *context.retry += 1;
+        result
     }
 
     pub async fn close_shard(&self, request: CloseShardRequest, opts: CloseOptions) -> Result<()> {

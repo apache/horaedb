@@ -292,7 +292,11 @@ async fn build_without_meta<Q: Executor + 'static, T: WalsOpener>(
         .expect("Failed to fetch table infos for opening");
 
     let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));
-    let table_operator = TableOperator::new(catalog_manager.clone());
+    let table_operator = TableOperator::new(
+        catalog_manager.clone(),
+        config.analytic.replay_retry_limit,
+        config.analytic.replay_retry_interval.0,
+    );
     let table_manipulator = Arc::new(catalog_based::TableManipulatorImpl::new(
         table_operator.clone(),
     ));

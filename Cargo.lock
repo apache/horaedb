@@ -992,6 +992,7 @@ dependencies = [
  "log",
  "snafu 0.6.10",
  "table_engine",
+ "tokio",
 ]
 
 [[package]]
