@@ -10,6 +10,7 @@ use futures::Future;
 use message_queue::kafka::kafka_impl::KafkaImpl;
 use object_store::{
     aliyun,
+    config::{ObjectStoreOptions, StorageOptions},
     disk_cache::DiskCacheStore,
     mem_cache::{MemCache, MemCacheStore},
     metrics::StoreWithMetrics,
@@ -35,7 +36,6 @@ use crate::{
         factory::{FactoryImpl, ObjectStorePicker, ObjectStorePickerRef, ReadFrequency},
         meta_data::cache::{MetaCache, MetaCacheRef},
     },
-    storage_options::{ObjectStoreOptions, StorageOptions},
     Config, ObkvWalConfig, WalStorageConfig,
 };
 
@@ -426,21 +426,8 @@ fn open_storage(
                 Arc::new(store) as _
             }
             ObjectStoreOptions::Aliyun(aliyun_opts) => {
-                let oss: ObjectStoreRef = Arc::new(
-                    aliyun::try_new(
-                        aliyun_opts.key_id,
-                        aliyun_opts.key_secret,
-                        aliyun_opts.endpoint,
-                        aliyun_opts.bucket,
-                        aliyun_opts.http.pool_max_idle_per_host,
-                        aliyun_opts.http.timeout.0,
-                        aliyun_opts.http.keep_alive_timeout.0,
-                        aliyun_opts.http.keep_alive_interval.0,
-                        aliyun_opts.retry.max_retries,
-                        aliyun_opts.retry.retry_timeout.0,
-                    )
-                    .context(OpenObjectStore)?,
-                );
+                let oss: ObjectStoreRef =
+                    Arc::new(aliyun::try_new(&aliyun_opts).context(OpenObjectStore)?);
                 let store_with_prefix = StoreWithPrefix::new(aliyun_opts.prefix, oss);
                 Arc::new(store_with_prefix.context(OpenObjectStore)?) as _
             }
@@ -465,22 +452,8 @@ fn open_storage(
                 Arc::new(StoreWithPrefix::new(obkv_opts.prefix, oss).context(OpenObjectStore)?) as _
             }
             ObjectStoreOptions::S3(s3_option) => {
-                let oss: ObjectStoreRef = Arc::new(
-                    s3::try_new(
-                        s3_option.region,
-                        s3_option.key_id,
-                        s3_option.key_secret,
-                        s3_option.endpoint,
-                        s3_option.bucket,
-                        s3_option.http.pool_max_idle_per_host,
-                        s3_option.http.timeout.0,
-                        s3_option.http.keep_alive_timeout.0,
-                        s3_option.http.keep_alive_interval.0,
-                        s3_option.retry.max_retries,
-                        s3_option.retry.retry_timeout.0,
-                    )
-                    .context(OpenObjectStore)?,
-                );
+                let oss: ObjectStoreRef =
+                    Arc::new(s3::try_new(&s3_option).context(OpenObjectStore)?);
                 let store_with_prefix = StoreWithPrefix::new(s3_option.prefix, oss);
                 Arc::new(store_with_prefix.context(OpenObjectStore)?) as _
             }
