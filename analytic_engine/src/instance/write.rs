@@ -281,9 +281,7 @@ impl<'a> MemTableWriter<'a> {
     // inserting memtable? RocksDB checks memtable size in MemTableInserter
     /// Write data into memtable.
     ///
-    /// The data in `encoded_rows` will be moved to memtable.
-    ///
-    /// The len of `row_group` and `encoded_rows` must be equal.
+    /// index_in_writer must match the schema in table_data.
     pub fn write(
         &self,
         sequence: SequenceNumber,
@@ -295,7 +293,7 @@ impl<'a> MemTableWriter<'a> {
             return Ok(());
         }
 
-        let schema = row_group.schema();
+        let schema = &self.table_data.schema();
         // Store all memtables we wrote and update their last sequence later.
         let mut wrote_memtables: SmallVec<[_; 4]> = SmallVec::new();
         let mut last_mutable_mem: Option<MemTableForWrite> = None;
