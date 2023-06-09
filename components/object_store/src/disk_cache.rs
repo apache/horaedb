@@ -118,19 +118,22 @@ struct Manifest {
 #[derive(Debug)]
 struct DiskCache {
     root_dir: String,
-    cap: usize,
     // Cache key is used as filename on disk.
     cache: PartitionedMutexAsync<LruCache<String, ()>, SeaHasherBuilder>,
 }
 
 impl DiskCache {
-    fn new(root_dir: String, cap: usize, partition_bits: usize) -> Self {
-        let init_lru = || LruCache::new(cap);
-        Self {
+    fn try_new(root_dir: String, cap: usize, partition_bits: usize) -> Result<Self> {
+        let init_lru = |partition_num: usize| -> Result<_> {
+            let cap_per_part = cap / partition_num;
+            ensure!(cap_per_part != 0, InvalidCapacity);
+            Ok(LruCache::new(cap_per_part))
+        };
+
+        Ok(Self {
             root_dir,
-            cap,
-            cache: PartitionedMutexAsync::new(init_lru, partition_bits, SeaHasherBuilder {}),
-        }
+            cache: PartitionedMutexAsync::try_new(init_lru, partition_bits, SeaHasherBuilder {})?,
+        })
     }
 
     /// Update the cache.
@@ -140,14 +143,14 @@ impl DiskCache {
     async fn update_cache(&self, key: String, value: Option<Bytes>) -> bool {
         let mut cache = self.cache.lock(&key).await;
         debug!(
-            "Disk cache update, key:{}, len:{}, cap:{}.",
+            "Disk cache update, key:{}, len:{}, cap_per_part:{}.",
             &key,
+            cache.cap(),
             cache.len(),
-            self.cap
         );
 
         // TODO: remove a batch of files to avoid IO during the following update cache.
-        if cache.len() >= self.cap {
+        if cache.len() >= cache.cap() {
             let (filename, _) = cache.pop_lru().unwrap();
             let file_path = std::path::Path::new(&self.root_dir)
                 .join(filename)
@@ -292,14 +295,10 @@ impl DiskCacheStore {
         underlying_store: Arc<dyn ObjectStore>,
         partition_bits: usize,
     ) -> Result<Self> {
-        ensure!(
-            cap % (page_size * (1 << partition_bits)) == 0,
-            InvalidCapacity
-        );
-        let cap_per_part = cap / page_size / (1 << partition_bits);
-        ensure!(cap_per_part != 0, InvalidCapacity);
+        let page_num_per_part = cap / page_size;
+        ensure!(page_num_per_part != 0, InvalidCapacity);
         let _ = Self::create_manifest_if_not_exists(&cache_dir, page_size).await?;
-        let cache = DiskCache::new(cache_dir.clone(), cap_per_part, partition_bits);
+        let cache = DiskCache::try_new(cache_dir.clone(), page_num_per_part, partition_bits)?;
         Self::recover_cache(&cache_dir, &cache).await?;
 
         let size_cache = Arc::new(Mutex::new(LruCache::new(cap / page_size)));

@@ -15,11 +15,14 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use clru::{CLruCache, CLruCacheConfig, WeightScale};
 use common_types::hash::{ahash::RandomState, build_fixed_seed_ahasher_builder};
-use common_util::partitioned_lock::PartitionedMutex;
+use common_util::{define_result, partitioned_lock::PartitionedMutex};
 use futures::stream::BoxStream;
 use snafu::{OptionExt, Snafu};
 use tokio::io::AsyncWrite;
-use upstream::{path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result};
+use upstream::{
+    path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore,
+    Result as ObjectStoreResult,
+};
 
 use crate::ObjectStoreRef;
 
@@ -28,6 +31,8 @@ pub enum Error {
     #[snafu(display("mem cache cap must large than 0",))]
     InvalidCapacity,
 }
+
+define_result!(Error);
 
 struct CustomScale;
 
@@ -46,23 +51,23 @@ pub struct MemCache {
 pub type MemCacheRef = Arc<MemCache>;
 
 impl MemCache {
-    pub fn try_new(
-        partition_bits: usize,
-        mem_cap: NonZeroUsize,
-    ) -> std::result::Result<Self, Error> {
-        let partition_num = 1 << partition_bits;
-        let cap_per_part =
-            NonZeroUsize::new((mem_cap.get() as f64 / partition_num as f64) as usize)
-                .context(InvalidCapacity)?;
-        let init_lru = || {
-            CLruCache::with_config(
+    pub fn try_new(partition_bits: usize, mem_cap: NonZeroUsize) -> Result<Self> {
+        let init_lru = |partition_num: usize| -> Result<_> {
+            let cap_per_part =
+                NonZeroUsize::new(mem_cap.get() / partition_num).context(InvalidCapacity)?;
+            Ok(CLruCache::with_config(
                 CLruCacheConfig::new(cap_per_part)
                     .with_hasher(build_fixed_seed_ahasher_builder())
                     .with_scale(CustomScale),
-            )
+            ))
         };
-        let inner =
-            PartitionedMutex::new(init_lru, partition_bits, build_fixed_seed_ahasher_builder());
+
+        let inner = PartitionedMutex::try_new(
+            init_lru,
+            partition_bits,
+            build_fixed_seed_ahasher_builder(),
+        )?;
+
         Ok(Self { mem_cap, inner })
     }
 
@@ -143,7 +148,11 @@ impl MemCacheStore {
         format!("{}-{}-{}", location, range.start, range.end)
     }
 
-    async fn get_range_with_rw_cache(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
+    async fn get_range_with_rw_cache(
+        &self,
+        location: &Path,
+        range: Range<usize>,
+    ) -> ObjectStoreResult<Bytes> {
         // TODO(chenxiang): What if there are some overlapping range in cache?
         // A request with range [5, 10) can also use [0, 20) cache
         let cache_key = Self::cache_key(location, &range);
@@ -159,7 +168,11 @@ impl MemCacheStore {
         Ok(bytes)
     }
 
-    async fn get_range_with_ro_cache(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
+    async fn get_range_with_ro_cache(
+        &self,
+        location: &Path,
+        range: Range<usize>,
+    ) -> ObjectStoreResult<Bytes> {
         let cache_key = Self::cache_key(location, &range);
         if let Some(bytes) = self.cache.peek(&cache_key) {
             return Ok(bytes);
@@ -185,18 +198,22 @@ impl fmt::Debug for MemCacheStore {
 
 #[async_trait]
 impl ObjectStore for MemCacheStore {
-    async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
+    async fn put(&self, location: &Path, bytes: Bytes) -> ObjectStoreResult<()> {
         self.underlying_store.put(location, bytes).await
     }
 
     async fn put_multipart(
         &self,
         location: &Path,
-    ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
+    ) -> ObjectStoreResult<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
         self.underlying_store.put_multipart(location).await
     }
 
-    async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
+    async fn abort_multipart(
+        &self,
+        location: &Path,
+        multipart_id: &MultipartId,
+    ) -> ObjectStoreResult<()> {
         self.underlying_store
             .abort_multipart(location, multipart_id)
             .await
@@ -205,11 +222,11 @@ impl ObjectStore for MemCacheStore {
     // TODO(chenxiang): don't cache whole path for reasons below
     // 1. cache key don't support overlapping
     // 2. In sst module, we only use get_range, get is not used
-    async fn get(&self, location: &Path) -> Result<GetResult> {
+    async fn get(&self, location: &Path) -> ObjectStoreResult<GetResult> {
         self.underlying_store.get(location).await
     }
 
-    async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
+    async fn get_range(&self, location: &Path, range: Range<usize>) -> ObjectStoreResult<Bytes> {
         if self.readonly_cache {
             self.get_range_with_ro_cache(location, range).await
         } else {
@@ -217,27 +234,30 @@ impl ObjectStore for MemCacheStore {
         }
     }
 
-    async fn head(&self, location: &Path) -> Result<ObjectMeta> {
+    async fn head(&self, location: &Path) -> ObjectStoreResult<ObjectMeta> {
         self.underlying_store.head(location).await
     }
 
-    async fn delete(&self, location: &Path) -> Result<()> {
+    async fn delete(&self, location: &Path) -> ObjectStoreResult<()> {
         self.underlying_store.delete(location).await
     }
 
-    async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
+    async fn list(
+        &self,
+        prefix: Option<&Path>,
+    ) -> ObjectStoreResult<BoxStream<'_, ObjectStoreResult<ObjectMeta>>> {
         self.underlying_store.list(prefix).await
     }
 
-    async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {
+    async fn list_with_delimiter(&self, prefix: Option<&Path>) -> ObjectStoreResult<ListResult> {
         self.underlying_store.list_with_delimiter(prefix).await
     }
 
-    async fn copy(&self, from: &Path, to: &Path) -> Result<()> {
+    async fn copy(&self, from: &Path, to: &Path) -> ObjectStoreResult<()> {
         self.underlying_store.copy(from, to).await
     }
 
-    async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
+    async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> ObjectStoreResult<()> {
         self.underlying_store.copy_if_not_exists(from, to).await
     }
 }
