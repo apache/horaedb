@@ -130,6 +130,7 @@ impl DiskCache {
             ensure!(cap_per_par != 0, InvalidCapacity);
             Ok(LruCache::new(cap / partition_num))
         };
+
         Ok(Self {
             root_dir,
             cap: cap / (1 << partition_bits),

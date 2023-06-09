@@ -61,11 +61,13 @@ impl MemCache {
                     .with_scale(CustomScale),
             ))
         };
+
         let inner = PartitionedMutex::try_new(
             init_lru,
             partition_bits,
             build_fixed_seed_ahasher_builder(),
         )?;
+
         Ok(Self { mem_cap, inner })
     }
 
