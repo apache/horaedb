@@ -118,7 +118,6 @@ struct Manifest {
 #[derive(Debug)]
 struct DiskCache {
     root_dir: String,
-    cap: usize,
     // Cache key is used as filename on disk.
     cache: PartitionedMutexAsync<LruCache<String, ()>, SeaHasherBuilder>,
 }
@@ -126,14 +125,13 @@ struct DiskCache {
 impl DiskCache {
     fn try_new(root_dir: String, cap: usize, partition_bits: usize) -> Result<Self> {
         let init_lru = |partition_num: usize| -> Result<_> {
-            let cap_per_par = cap / partition_num;
-            ensure!(cap_per_par != 0, InvalidCapacity);
-            Ok(LruCache::new(cap / partition_num))
+            let cap_per_part = cap / partition_num;
+            ensure!(cap_per_part != 0, InvalidCapacity);
+            Ok(LruCache::new(cap_per_part))
         };
 
         Ok(Self {
             root_dir,
-            cap: cap / (1 << partition_bits),
             cache: PartitionedMutexAsync::try_new(init_lru, partition_bits, SeaHasherBuilder {})?,
         })
     }
@@ -145,14 +143,14 @@ impl DiskCache {
     async fn update_cache(&self, key: String, value: Option<Bytes>) -> bool {
         let mut cache = self.cache.lock(&key).await;
         debug!(
-            "Disk cache update, key:{}, len:{}, cap:{}.",
+            "Disk cache update, key:{}, len:{}, cap_per_part:{}.",
             &key,
+            cache.cap(),
             cache.len(),
-            self.cap
         );
 
         // TODO: remove a batch of files to avoid IO during the following update cache.
-        if cache.len() >= self.cap {
+        if cache.len() >= cache.cap() {
             let (filename, _) = cache.pop_lru().unwrap();
             let file_path = std::path::Path::new(&self.root_dir)
                 .join(filename)
