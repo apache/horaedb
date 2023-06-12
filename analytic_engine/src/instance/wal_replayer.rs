@@ -8,7 +8,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use common_types::{schema::IndexInWriterSchema, table::ShardId, SequenceNumber};
+use common_types::{schema::IndexInWriterSchema, table::ShardId};
 use common_util::error::BoxError;
 use log::{debug, error, info, trace};
 use snafu::ResultExt;
@@ -193,14 +193,12 @@ impl TableBasedCore {
             }
 
             // Replay all log entries of current table
-            let last_sequence = log_entry_buf.back().unwrap().sequence;
             replay_table_log_entries(
                 &context.flusher,
                 context.max_retry_flush_limit,
                 &mut serial_exec,
                 table_data,
                 log_entry_buf.iter(),
-                last_sequence,
             )
             .await?;
         }
@@ -317,14 +315,12 @@ impl RegionBasedCore {
             // Replay all log entries of current table.
             // Some tables may have been moved to other shards or dropped, ignore such logs.
             if let Some(ctx) = serial_exec_ctxs.get_mut(&table_batch.table_id) {
-                let last_sequence = table_batch.last_sequence;
                 let result = replay_table_log_entries(
                     &context.flusher,
                     context.max_retry_flush_limit,
                     &mut ctx.serial_exec,
                     &ctx.table_data,
                     log_batch.range(table_batch.start_log_idx..table_batch.end_log_idx),
-                    last_sequence,
                 )
                 .await;
                 table_results.insert(table_batch.table_id, result);
@@ -363,10 +359,8 @@ impl RegionBasedCore {
             };
 
             if found_end_idx {
-                let last_sequence = log_batch.get(curr_log_idx - 1).unwrap().sequence;
                 table_batches.push(TableBatch {
                     table_id: TableId::new(start_table_id),
-                    last_sequence,
                     start_log_idx,
                     end_log_idx: curr_log_idx,
                 });
@@ -391,7 +385,6 @@ impl RegionBasedCore {
 #[derive(Debug, Eq, PartialEq)]
 struct TableBatch {
     table_id: TableId,
-    last_sequence: SequenceNumber,
     start_log_idx: usize,
     end_log_idx: usize,
 }
@@ -408,17 +401,22 @@ async fn replay_table_log_entries(
     serial_exec: &mut TableOpSerialExecutor,
     table_data: &TableDataRef,
     log_entries: impl Iterator<Item = &LogEntry<ReadPayload>>,
-    last_sequence: SequenceNumber,
 ) -> Result<()> {
+    let flushed_sequence = table_data.current_version().flushed_sequence();
     debug!(
-        "Replay table log entries begin, table:{}, table_id:{:?}, sequence:{}",
-        table_data.name, table_data.id, last_sequence
+        "Replay table log entries begin, table:{}, table_id:{:?}, last_sequence:{}, flushed_sequence:{flushed_sequence}",
+        table_data.name, table_data.id, table_data.last_sequence(),
     );
 
     for log_entry in log_entries {
         let (sequence, payload) = (log_entry.sequence, &log_entry.payload);
 
-        // Apply to memtable
+        // Ignore too old logs(sequence <= `flushed_sequence`).
+        if sequence <= flushed_sequence {
+            continue;
+        }
+
+        // Apply logs to memtable.
         match payload {
             ReadPayload::Write { row_group } => {
                 trace!(
@@ -443,7 +441,7 @@ async fn replay_table_log_entries(
                         table_data.id,
                         table_schema_version,
                         row_group.schema().version(),
-                        last_sequence,
+                        table_data.last_sequence(),
                         sequence,
                     );
 
@@ -489,14 +487,14 @@ async fn replay_table_log_entries(
                 //   Manifest on start.
             }
         }
+
+        table_data.set_last_sequence(sequence);
     }
 
     debug!(
-        "Replay table log entries finish, table:{}, table_id:{:?}, last_sequence:{}",
-        table_data.name, table_data.id, last_sequence
+        "Replay table log entries finish, table:{}, table_id:{:?}, last_sequence:{}, flushed_sequence:{}",
+        table_data.name, table_data.id, table_data.last_sequence(), table_data.current_version().flushed_sequence()
     );
-
-    table_data.set_last_sequence(last_sequence);
 
     Ok(())
 }
@@ -554,19 +552,16 @@ mod tests {
         let expected1 = vec![
             TableBatch {
                 table_id: TableId::new(0),
-                last_sequence: 3,
                 start_log_idx: 0,
                 end_log_idx: 3,
             },
             TableBatch {
                 table_id: TableId::new(1),
-                last_sequence: 2,
                 start_log_idx: 3,
                 end_log_idx: 5,
             },
             TableBatch {
                 table_id: TableId::new(2),
-                last_sequence: 1,
                 start_log_idx: 5,
                 end_log_idx: 6,
             },
@@ -579,7 +574,6 @@ mod tests {
         }]);
         let expected2 = vec![TableBatch {
             table_id: TableId::new(0),
-            last_sequence: 1,
             start_log_idx: 0,
             end_log_idx: 1,
         }];
