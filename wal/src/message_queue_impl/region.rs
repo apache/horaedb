@@ -586,7 +586,7 @@ impl<M: MessageQueue> Region<M> {
                 table_id
             );
 
-            inner.mark_delete_to(table_id, sequence_num).await.unwrap();
+            inner.mark_delete_to(table_id, sequence_num).await?;
 
             (
                 inner.make_meta_snapshot().await,
