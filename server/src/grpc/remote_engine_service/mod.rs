@@ -75,6 +75,11 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             let tx = tx.clone();
             self.runtimes.read_runtime.spawn(async move {
                 while let Some(batch) = stream.next().await {
+                    if let Ok(record_batch) = &batch {
+                        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+                            .query_success
+                            .inc_by(record_batch.num_rows() as u64);
+                    }
                     if let Err(e) = tx.send(batch).await {
                         error!("Failed to send handler result, err:{}.", e);
                         break;
@@ -339,9 +344,6 @@ async fn handle_stream_read(
             code: StatusCode::Internal,
             msg: format!("fail to read table, table:{table_ident:?}"),
         })?;
-    REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
-        .query_success
-        .inc_by(streams.streams.len() as u64);
 
     info!(
         "Handle stream read success, request_id:{request_id}, table:{table_ident:?}, cost:{:?}",
