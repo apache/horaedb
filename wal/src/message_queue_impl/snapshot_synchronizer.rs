@@ -9,7 +9,7 @@ use common_util::{
     define_result,
     error::{BoxError, GenericError},
 };
-use log::{debug, info};
+use log::debug;
 use message_queue::MessageQueue;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
