@@ -139,6 +139,16 @@ impl Space {
             .find_maximum_memory_usage_table()
     }
 
+    /// Find the table whose mutable memtable consumes the most memory in the
+    /// space by specifying Worker.
+    #[inline]
+    pub fn find_maximum_mutable_memory_usage_table(&self) -> Option<TableDataRef> {
+        self.table_datas
+            .read()
+            .unwrap()
+            .find_maximum_mutable_memory_usage_table()
+    }
+
     #[inline]
     pub fn memtable_memory_usage(&self) -> usize {
         self.mem_usage_collector.total_memory_allocated()
