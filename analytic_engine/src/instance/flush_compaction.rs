@@ -283,7 +283,16 @@ impl Flusher {
             runtime: self.runtime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
         };
-        let flush_job = async move { flush_task.run().await };
+        let flush_job = async move {
+            let table_data = &flush_task.table_data;
+            flush_task.run().await.map_err(|e| {
+                error!(
+                    "Instance flush memtables failed, table:{}, table_id:{}, err{e}",
+                    table_data.name, table_data.id
+                );
+                e
+            })
+        };
 
         flush_scheduler
             .flush_sequentially(flush_job, block_on, opts, &self.runtime, table_data.clone())
