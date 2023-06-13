@@ -490,6 +490,12 @@ impl RecordBatchWithKeyBuilder {
             .columns()
             .iter()
             .map(|column_schema| {
+                // If the tag column is a string column, then use the dictionary
+                let data_type: DataType = if column_schema.is_dictionary {
+                    DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8))
+                }else {
+                    column_schema
+                };
                 ColumnBlockBuilder::with_capacity(&column_schema.data_type, capacity)
             })
             .collect();

@@ -333,7 +333,7 @@ mod tests {
     use common_types::{
         bytes::Bytes,
         projected_schema::ProjectedSchema,
-        tests::{build_row, build_schema},
+        tests::{build_row, build_schema, build_schema_for_cpu, build_row_for_dictionary},
         time::{TimeRange, Timestamp},
     };
     use common_util::{
@@ -359,7 +359,125 @@ mod tests {
     };
 
     // TODO(xikai): add test for reverse reader
+    #[test]
+    fn test_parquet_use_dictionary() {
+        let runtime = Arc::new(runtime::Builder::default().build().unwrap());
+        let num_rows_per_row_group = 4;
+        runtime.block_on(async {
+            let sst_factory = FactoryImpl;
+            let sst_write_options = SstWriteOptions {
+                storage_format_hint: StorageFormatHint::Auto,
+                num_rows_per_row_group,
+                compression: table_options::Compression::Uncompressed,
+                max_buffer_size: 0,
+            };
 
+            let dir = tempdir().unwrap();
+            let root = dir.path();
+            let store: ObjectStoreRef = Arc::new(LocalFileSystem::new_with_prefix(root).unwrap());
+            let store_picker: ObjectStorePickerRef = Arc::new(store);
+            let sst_file_path = Path::from("test_dictionary.par");
+
+            let schema = build_schema_for_cpu();
+            let projected_schema = ProjectedSchema::no_projection(schema.clone());
+            let sst_meta = MetaData {
+                min_key: Bytes::from_static(b"100"),
+                max_key: Bytes::from_static(b"200"),
+                time_range: TimeRange::new_unchecked(Timestamp::new(1), Timestamp::new(2)),
+                max_sequence: 200,
+                schema: schema.clone(),
+            };
+
+            let mut counter = 5;
+            let record_batch_stream = Box::new(stream::poll_fn(move |_| -> Poll<Option<_>> {
+                if counter == 0 {
+                    return Poll::Ready(None);
+                }
+                counter -= 1;
+
+                // reach here when counter is 9 7 5 3 1
+                let ts = 100 + counter;
+                let rows = vec![
+                    build_row_for_dictionary(1, ts, "tagv1", "tagv2", 1),
+                    build_row_for_dictionary(1, ts, "tagv2", "tagv2", 2),
+                    build_row_for_dictionary(1, ts, "tagv3", "tagv3", 3),
+                ];
+                let batch = build_record_batch_with_key(schema.clone(), rows);
+                Poll::Ready(Some(Ok(batch)))
+            }));
+
+            let mut writer = sst_factory
+                .create_writer(
+                    &sst_write_options,
+                    &sst_file_path,
+                    &store_picker,
+                    Level::MAX,
+                )
+                .await
+                .unwrap();
+            let sst_info = writer
+                .write(RequestId::next_id(), &sst_meta, record_batch_stream)
+                .await
+                .unwrap();
+
+            assert_eq!(15, sst_info.row_num);
+
+            let scan_options = ScanOptions::default();
+            // read sst back to test
+            let sst_read_options = SstReadOptions {
+                reverse: false,
+                frequency: ReadFrequency::Frequent,
+                num_rows_per_row_group: 5,
+                projected_schema,
+                predicate: Arc::new(Predicate::empty()),
+                meta_cache: None,
+                scan_options,
+                runtime: runtime.clone(),
+            };
+
+            let mut reader: Box<dyn SstReader + Send> = {
+                let mut reader = AsyncParquetReader::new(
+                    &sst_file_path,
+                    &sst_read_options,
+                    None,
+                    &store_picker,
+                    None,
+                );
+                let mut sst_meta_readback = reader
+                    .meta_data()
+                    .await
+                    .unwrap()
+                    .as_parquet()
+                    .unwrap()
+                    .as_ref()
+                    .clone();
+                // sst filter is built insider sst writer, so overwrite to default for
+                // comparison.
+                sst_meta_readback.parquet_filter = Default::default();
+                assert_eq!(&sst_meta_readback, &ParquetMetaData::from(sst_meta));
+                // assert_eq!(
+                //     expected_num_rows,
+                //     reader
+                //         .row_groups()
+                //         .await
+                //         .iter()
+                //         .map(|g| g.num_rows())
+                //         .collect::<Vec<_>>()
+                // );
+
+                Box::new(reader)
+            };
+
+            let mut stream = reader.read().await.unwrap();
+            let mut expect_rows = vec![];
+            for counter in &[4, 3, 2, 1, 0] {
+                expect_rows.push(build_row(b"a", 100 + counter, 10.0, "v4", 1000, 1_000_000));
+                expect_rows.push(build_row(b"b", 100 + counter, 10.0, "v4", 1000, 1_000_000));
+                expect_rows.push(build_row(b"c", 100 + counter, 10.0, "v4", 1000, 1_000_000));
+            }
+            check_stream(&mut stream, expect_rows).await;
+        });
+    }
     #[test]
     fn test_parquet_build_and_read() {
         init_log_for_test();
@@ -391,7 +509,7 @@ mod tests {
             let sst_file_path = Path::from("data.par");
 
             let schema = build_schema();
-            let projected_schema = ProjectedSchema::no_projection(schema.clone());
+            let reader_projected_schema = ProjectedSchema::no_projection(schema.clone());
             let sst_meta = MetaData {
                 min_key: Bytes::from_static(b"100"),
                 max_key: Bytes::from_static(b"200"),
@@ -440,7 +558,7 @@ mod tests {
                 reverse: false,
                 frequency: ReadFrequency::Frequent,
                 num_rows_per_row_group: 5,
-                projected_schema,
+                projected_schema: reader_projected_schema,
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: None,
                 scan_options,
