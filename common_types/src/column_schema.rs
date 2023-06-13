@@ -119,6 +119,7 @@ pub enum ReadOp {
 struct ArrowFieldMeta {
     id: u32,
     is_tag: bool,
+    is_dictionary: bool,
     comment: String,
 }
 
@@ -126,6 +127,7 @@ struct ArrowFieldMeta {
 pub enum ArrowFieldMetaKey {
     Id,
     IsTag,
+    IsDictionary,
     Comment,
 }
 
@@ -134,6 +136,7 @@ impl ArrowFieldMetaKey {
         match self {
             ArrowFieldMetaKey::Id => "field::id",
             ArrowFieldMetaKey::IsTag => "field::is_tag",
+            ArrowFieldMetaKey::IsDictionary => "field::is_dictionary",
             ArrowFieldMetaKey::Comment => "field::comment",
         }
     }
@@ -159,6 +162,8 @@ pub struct ColumnSchema {
     /// Is tag, tag is just a hint for a column, there is no restriction that a
     /// tag column must be a part of primary key
     pub is_tag: bool,
+    // Whether to use dictionary types for parquet store
+    pub is_dictionary: bool,
     /// Comment of the column
     pub comment: String,
     /// Column name in response
@@ -273,6 +278,7 @@ impl TryFrom<schema_pb::ColumnSchema> for ColumnSchema {
             data_type: DatumKind::from(data_type),
             is_nullable: column_schema.is_nullable,
             is_tag: column_schema.is_tag,
+            is_dictionary: false,
             comment: column_schema.comment,
             escaped_name,
             default_value,
@@ -287,6 +293,7 @@ impl TryFrom<&Arc<Field>> for ColumnSchema {
         let ArrowFieldMeta {
             id,
             is_tag,
+            is_dictionary,
             comment,
         } = decode_arrow_field_meta_data(field.metadata())?;
         Ok(Self {
@@ -299,6 +306,7 @@ impl TryFrom<&Arc<Field>> for ColumnSchema {
             )?,
             is_nullable: field.is_nullable(),
             is_tag,
+            is_dictionary,
             comment,
             escaped_name: field.name().escape_debug().to_string(),
             default_value: None,
@@ -309,9 +317,15 @@ impl TryFrom<&Arc<Field>> for ColumnSchema {
 impl From<&ColumnSchema> for Field {
     fn from(col_schema: &ColumnSchema) -> Self {
         let metadata = encode_arrow_field_meta_data(col_schema);
+        // If the tag column is a string column, then use the dictionary
+        let data_type: DataType = if col_schema.is_tag && col_schema.data_type == DatumKind::String {
+            DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8))
+        }else {
+            col_schema.data_type.into()
+        };
         let mut field = Field::new(
             &col_schema.name,
-            col_schema.data_type.into(),
+            data_type,
             col_schema.is_nullable,
         );
         field.set_metadata(metadata);
@@ -343,6 +357,7 @@ fn decode_arrow_field_meta_data(meta: &HashMap<String, String>) -> Result<ArrowF
         Ok(ArrowFieldMeta {
             id: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::Id)?,
             is_tag: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::IsTag)?,
+            is_dictionary: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::IsDictionary)?,
             comment: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::Comment)?,
         })
     }
@@ -372,6 +387,7 @@ pub struct Builder {
     data_type: DatumKind,
     is_nullable: bool,
     is_tag: bool,
+    is_dictionary: bool,
     comment: String,
     default_value: Option<Expr>,
 }
@@ -385,6 +401,7 @@ impl Builder {
             data_type,
             is_nullable: false,
             is_tag: false,
+            is_dictionary: false,
             comment: String::new(),
             default_value: None,
         }
@@ -404,6 +421,12 @@ impl Builder {
     /// Set this column is tag, default is false (not a tag).
     pub fn is_tag(mut self, is_tag: bool) -> Self {
         self.is_tag = is_tag;
+        self
+    }
+
+    /// Set this column is tag, default is false (not a tag).
+    pub fn is_dictionary(mut self, is_dictionary: bool) -> Self {
+        self.is_dictionary = is_dictionary;
         self
     }
 
@@ -439,6 +462,7 @@ impl Builder {
             data_type: self.data_type,
             is_nullable: self.is_nullable,
             is_tag: self.is_tag,
+            is_dictionary: self.is_dictionary,
             comment: self.comment,
             escaped_name,
             default_value: self.default_value,
@@ -494,6 +518,7 @@ mod tests {
             data_type: DatumKind::Boolean,
             is_nullable: true,
             is_tag: true,
+            is_dictionary: false, 
             comment: "Comment of this column".to_string(),
             escaped_name: "test_column_schema".escape_debug().to_string(),
             default_value: Some(Expr::Value(Value::Boolean(true))),

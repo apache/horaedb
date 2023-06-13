@@ -12,7 +12,7 @@ use arrow::{
         Int64Array, Int64Builder, Int8Array, Int8Builder, NullArray, StringArray, StringBuilder,
         Time64NanosecondArray as TimeArray, Time64NanosecondBuilder as TimeBuilder,
         TimestampMillisecondArray, TimestampMillisecondBuilder, UInt16Array, UInt16Builder,
-        UInt32Array, UInt32Builder, UInt64Array, UInt64Builder, UInt8Array, UInt8Builder,
+        UInt32Array, UInt32Builder, UInt64Array, UInt64Builder, UInt8Array, UInt8Builder, StringDictionaryBuilder,
     },
     datatypes::{DataType, TimeUnit},
     error::ArrowError,
