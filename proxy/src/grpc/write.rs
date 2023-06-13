@@ -33,6 +33,9 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 GRPC_HANDLER_COUNTER_VEC
                     .write_failed
                     .inc_by(v.failed as u64);
+                GRPC_HANDLER_COUNTER_VEC
+                    .write_succeeded
+                    .inc_by(v.success as u64);
                 WriteResponse {
                     header: Some(build_ok_header()),
                     success: v.success,

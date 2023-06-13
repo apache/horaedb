@@ -372,10 +372,15 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
             msg: format!("fail to write table, table:{:?}", write_request.table),
         });
     match res {
-        Ok(affected_rows) => Ok(WriteResponse {
-            header: None,
-            affected_rows: affected_rows as u64,
-        }),
+        Ok(affected_rows) => {
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+                .write_succeeded
+                .inc_by(affected_rows as u64);
+            Ok(WriteResponse {
+                header: None,
+                affected_rows: affected_rows as u64,
+            })
+        }
         Err(e) => {
             REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
                 .write_failed
