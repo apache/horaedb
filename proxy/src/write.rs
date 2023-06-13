@@ -108,7 +108,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let mut futures = Vec::with_capacity(write_requests_to_forward.len() + 1);
 
         // Write to remote.
-        self.collect_write_to_remote_future(&mut futures, write_requests_to_forward)
+        self.collect_write_to_remote_future(&mut futures, ctx.clone(), write_requests_to_forward)
             .await;
 
         // Write to local.
@@ -139,7 +139,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let mut futures = Vec::with_capacity(write_requests_to_forward.len() + 1);
 
         // Write to remote.
-        self.collect_write_to_remote_future(&mut futures, write_requests_to_forward)
+        self.collect_write_to_remote_future(&mut futures, ctx.clone(), write_requests_to_forward)
             .await;
 
         // Create table.
@@ -358,12 +358,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     async fn collect_write_to_remote_future(
         &self,
         futures: &mut WriteResponseFutures<'_>,
+        ctx: Context,
         write_request: HashMap<Endpoint, WriteRequest>,
     ) {
         for (endpoint, table_write_request) in write_request {
             let forwarder = self.forwarder.clone();
+            let ctx = ctx.clone();
             let write_handle = self.engine_runtimes.io_runtime.spawn(async move {
-                Self::write_to_remote(forwarder, endpoint, table_write_request).await
+                Self::write_to_remote(ctx, forwarder, endpoint, table_write_request).await
             });
 
             futures.push(write_handle.boxed());
@@ -408,6 +410,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     }
 
     async fn write_to_remote(
+        ctx: Context,
         forwarder: ForwarderRef,
         endpoint: Endpoint,
         table_write_request: WriteRequest,
@@ -432,7 +435,12 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         };
 
         let forward_result = forwarder
-            .forward_with_endpoint(endpoint, tonic::Request::new(table_write_request), do_write)
+            .forward_with_endpoint(
+                endpoint,
+                tonic::Request::new(table_write_request),
+                ctx.forwarded_from,
+                do_write,
+            )
             .await;
         let forward_res = forward_result
             .map_err(|e| {
@@ -676,8 +684,8 @@ fn find_new_columns(
             );
 
             let tag_name = &tag_names[name_index];
-
-            build_column(&mut columns, schema, tag_name, &tag.value, true)?;
+            // todo is_dictionary set true or false ?
+            build_column(&mut columns, schema, tag_name, &tag.value, true, false)?;
         }
 
         // Parse fields.
@@ -693,7 +701,8 @@ fn find_new_columns(
                     }
                 );
                 let field_name = &field_names[field.name_index as usize];
-                build_column(&mut columns, schema, field_name, &field.value, false)?;
+                // todo is_dictionary set true or false ?
+                build_column(&mut columns, schema, field_name, &field.value, false, false)?;
             }
         }
     }
@@ -707,6 +716,7 @@ fn build_column<'a>(
     name: &'a str,
     value: &Option<Value>,
     is_tag: bool,
+    is_dictionary: bool,
 ) -> Result<()> {
     // Skip adding columns, the following cases:
     // 1. Column already exists.
@@ -732,7 +742,7 @@ fn build_column<'a>(
             msg: "Failed to get data type",
         })?;
 
-    let column_schema = build_column_schema(name, data_type, is_tag)
+    let column_schema = build_column_schema(name, data_type, is_tag, is_dictionary)
         .box_err()
         .context(Internal {
             msg: "Failed to build column schema",

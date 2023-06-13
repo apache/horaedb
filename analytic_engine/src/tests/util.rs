@@ -8,7 +8,7 @@ use common_types::{
     datum::Datum,
     record_batch::RecordBatch,
     row::{Row, RowGroup},
-    table::DEFAULT_SHARD_ID,
+    table::{ShardId, DEFAULT_SHARD_ID},
     time::Timestamp,
 };
 use common_util::{
@@ -20,8 +20,8 @@ use log::info;
 use object_store::config::{LocalOptions, ObjectStoreOptions, StorageOptions};
 use table_engine::{
     engine::{
-        CreateTableRequest, DropTableRequest, EngineRuntimes, OpenTableRequest,
-        Result as EngineResult, TableEngineRef,
+        CreateTableRequest, DropTableRequest, EngineRuntimes, OpenShardRequest, OpenTableRequest,
+        Result as EngineResult, TableDef, TableEngineRef,
     },
     table::{
         AlterSchemaRequest, FlushRequest, GetRequest, ReadOrder, ReadRequest, Result, SchemaId,
@@ -33,7 +33,7 @@ use tempfile::TempDir;
 use crate::{
     setup::{EngineBuilder, MemWalsOpener, OpenedWals, RocksDBWalsOpener, WalsOpener},
     tests::table::{self, FixedSchemaTable, RowTuple},
-    Config, RocksDBConfig, WalStorageConfig,
+    Config, RecoverMode, RocksDBConfig, WalStorageConfig,
 };
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
@@ -113,6 +113,7 @@ pub struct TestContext<T> {
     opened_wals: Option<OpenedWals>,
     schema_id: SchemaId,
     last_table_seq: u32,
+    open_method: OpenTablesMethod,
 
     name_to_tables: HashMap<String, TableRef>,
 }
@@ -169,8 +170,69 @@ impl<T: WalsOpener> TestContext<T> {
 
         self.open().await;
 
-        for (id, name) in table_infos {
-            self.open_table(id, name).await;
+        match self.open_method {
+            OpenTablesMethod::WithOpenTable => {
+                for (id, name) in table_infos {
+                    self.open_table(id, name).await;
+                }
+            }
+            OpenTablesMethod::WithOpenShard => {
+                self.open_tables_of_shard(table_infos, DEFAULT_SHARD_ID)
+                    .await;
+            }
+        }
+    }
+
+    pub async fn reopen_with_tables_of_shard(&mut self, tables: &[&str], shard_id: ShardId) {
+        let table_infos: Vec<_> = tables
+            .iter()
+            .map(|name| {
+                let table_id = self.name_to_tables.get(*name).unwrap().id();
+                (table_id, *name)
+            })
+            .collect();
+        {
+            // Close all tables.
+            self.name_to_tables.clear();
+
+            // Close engine.
+            let engine = self.engine.take().unwrap();
+            engine.close().await.unwrap();
+        }
+
+        self.open().await;
+
+        self.open_tables_of_shard(table_infos, shard_id).await
+    }
+
+    async fn open_tables_of_shard(&mut self, table_infos: Vec<(TableId, &str)>, shard_id: ShardId) {
+        let table_defs = table_infos
+            .into_iter()
+            .map(|table| TableDef {
+                catalog_name: "ceresdb".to_string(),
+                schema_name: "public".to_string(),
+                schema_id: self.schema_id,
+                id: table.0,
+                name: table.1.to_string(),
+            })
+            .collect();
+
+        let open_shard_request = OpenShardRequest {
+            shard_id,
+            table_defs,
+            engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
+        };
+
+        let tables = self
+            .engine()
+            .open_shard(open_shard_request)
+            .await
+            .unwrap()
+            .into_values()
+            .map(|result| result.unwrap().unwrap());
+
+        for table in tables {
+            self.name_to_tables.insert(table.name().to_string(), table);
         }
     }
 
@@ -368,6 +430,12 @@ impl<T: WalsOpener> TestContext<T> {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum OpenTablesMethod {
+    WithOpenTable,
+    WithOpenShard,
+}
+
 impl<T> TestContext<T> {
     pub fn config_mut(&mut self) -> &mut Config {
         &mut self.config
@@ -405,6 +473,7 @@ impl TestEnv {
             schema_id: SchemaId::from_u32(100),
             last_table_seq: 1,
             name_to_tables: HashMap::new(),
+            open_method: build_context.open_method(),
         }
     }
 
@@ -474,10 +543,22 @@ pub trait EngineBuildContext: Clone + Default {
 
     fn wals_opener(&self) -> Self::WalsOpener;
     fn config(&self) -> Config;
+    fn open_method(&self) -> OpenTablesMethod;
 }
 
 pub struct RocksDBEngineBuildContext {
     config: Config,
+    open_method: OpenTablesMethod,
+}
+
+impl RocksDBEngineBuildContext {
+    pub fn new(mode: RecoverMode, open_method: OpenTablesMethod) -> Self {
+        let mut context = Self::default();
+        context.config.recover_mode = mode;
+        context.open_method = open_method;
+
+        context
+    }
 }
 
 impl Default for RocksDBEngineBuildContext {
@@ -504,7 +585,10 @@ impl Default for RocksDBEngineBuildContext {
             ..Default::default()
         };
 
-        Self { config }
+        Self {
+            config,
+            open_method: OpenTablesMethod::WithOpenTable,
+        }
     }
 }
 
@@ -531,7 +615,10 @@ impl Clone for RocksDBEngineBuildContext {
             ..Default::default()
         }));
 
-        Self { config }
+        Self {
+            config,
+            open_method: self.open_method,
+        }
     }
 }
 
@@ -545,11 +632,26 @@ impl EngineBuildContext for RocksDBEngineBuildContext {
     fn config(&self) -> Config {
         self.config.clone()
     }
+
+    fn open_method(&self) -> OpenTablesMethod {
+        self.open_method
+    }
 }
 
 #[derive(Clone)]
 pub struct MemoryEngineBuildContext {
     config: Config,
+    open_method: OpenTablesMethod,
+}
+
+impl MemoryEngineBuildContext {
+    pub fn new(mode: RecoverMode, open_method: OpenTablesMethod) -> Self {
+        let mut context = Self::default();
+        context.config.recover_mode = mode;
+        context.open_method = open_method;
+
+        context
+    }
 }
 
 impl Default for MemoryEngineBuildContext {
@@ -572,7 +674,10 @@ impl Default for MemoryEngineBuildContext {
             ..Default::default()
         };
 
-        Self { config }
+        Self {
+            config,
+            open_method: OpenTablesMethod::WithOpenTable,
+        }
     }
 }
 
@@ -586,4 +691,26 @@ impl EngineBuildContext for MemoryEngineBuildContext {
     fn config(&self) -> Config {
         self.config.clone()
     }
+
+    fn open_method(&self) -> OpenTablesMethod {
+        self.open_method
+    }
+}
+
+pub fn rocksdb_ctxs() -> Vec<RocksDBEngineBuildContext> {
+    vec![
+        RocksDBEngineBuildContext::new(RecoverMode::TableBased, OpenTablesMethod::WithOpenTable),
+        RocksDBEngineBuildContext::new(RecoverMode::ShardBased, OpenTablesMethod::WithOpenTable),
+        RocksDBEngineBuildContext::new(RecoverMode::TableBased, OpenTablesMethod::WithOpenShard),
+        RocksDBEngineBuildContext::new(RecoverMode::ShardBased, OpenTablesMethod::WithOpenShard),
+    ]
+}
+
+pub fn memory_ctxs() -> Vec<MemoryEngineBuildContext> {
+    vec![
+        MemoryEngineBuildContext::new(RecoverMode::TableBased, OpenTablesMethod::WithOpenTable),
+        MemoryEngineBuildContext::new(RecoverMode::ShardBased, OpenTablesMethod::WithOpenTable),
+        MemoryEngineBuildContext::new(RecoverMode::TableBased, OpenTablesMethod::WithOpenShard),
+        MemoryEngineBuildContext::new(RecoverMode::ShardBased, OpenTablesMethod::WithOpenShard),
+    ]
 }

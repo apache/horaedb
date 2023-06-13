@@ -19,7 +19,10 @@ use common_types::{
 };
 use common_util::{error::BoxError, runtime::Runtime};
 use log::{debug, info, warn};
-use rocksdb::{DBIterator, DBOptions, ReadOptions, SeekKey, Statistics, Writable, WriteBatch, DB};
+use rocksdb::{
+    rocksdb_options::ColumnFamilyDescriptor, ColumnFamilyOptions, DBCompactionStyle, DBIterator,
+    DBOptions, FifoCompactionOptions, ReadOptions, SeekKey, Statistics, Writable, WriteBatch, DB,
+};
 use snafu::ResultExt;
 use tokio::sync::Mutex;
 
@@ -525,8 +528,15 @@ impl RocksImpl {
 pub struct Builder {
     wal_path: String,
     runtime: Arc<Runtime>,
+    max_subcompactions: Option<u32>,
     max_background_jobs: Option<i32>,
     enable_statistics: Option<bool>,
+    write_buffer_size: Option<u64>,
+    max_write_buffer_number: Option<i32>,
+    level_zero_file_num_compaction_trigger: Option<i32>,
+    level_zero_slowdown_writes_trigger: Option<i32>,
+    level_zero_stop_writes_trigger: Option<i32>,
+    fifo_compaction_max_table_files_size: Option<u64>,
 }
 
 impl Builder {
@@ -535,9 +545,21 @@ impl Builder {
         Self {
             wal_path: wal_path.to_str().unwrap().to_owned(),
             runtime,
+            max_subcompactions: None,
             max_background_jobs: None,
             enable_statistics: None,
+            write_buffer_size: None,
+            max_write_buffer_number: None,
+            level_zero_file_num_compaction_trigger: None,
+            level_zero_slowdown_writes_trigger: None,
+            level_zero_stop_writes_trigger: None,
+            fifo_compaction_max_table_files_size: None,
         }
+    }
+
+    pub fn max_subcompactions(mut self, v: u32) -> Self {
+        self.max_subcompactions = Some(v);
+        self
     }
 
     pub fn max_background_jobs(mut self, v: i32) -> Self {
@@ -550,10 +572,43 @@ impl Builder {
         self
     }
 
+    pub fn write_buffer_size(mut self, v: u64) -> Self {
+        self.write_buffer_size = Some(v);
+        self
+    }
+
+    pub fn max_write_buffer_number(mut self, v: i32) -> Self {
+        self.max_write_buffer_number = Some(v);
+        self
+    }
+
+    pub fn level_zero_file_num_compaction_trigger(mut self, v: i32) -> Self {
+        self.level_zero_file_num_compaction_trigger = Some(v);
+        self
+    }
+
+    pub fn level_zero_slowdown_writes_trigger(mut self, v: i32) -> Self {
+        self.level_zero_slowdown_writes_trigger = Some(v);
+        self
+    }
+
+    pub fn level_zero_stop_writes_trigger(mut self, v: i32) -> Self {
+        self.level_zero_stop_writes_trigger = Some(v);
+        self
+    }
+
+    pub fn fifo_compaction_max_table_files_size(mut self, v: u64) -> Self {
+        self.fifo_compaction_max_table_files_size = Some(v);
+        self
+    }
+
     pub fn build(self) -> Result<RocksImpl> {
         let mut rocksdb_config = DBOptions::default();
         rocksdb_config.create_if_missing(true);
 
+        if let Some(v) = self.max_subcompactions {
+            rocksdb_config.set_max_subcompactions(v);
+        }
         if let Some(v) = self.max_background_jobs {
             rocksdb_config.set_max_background_jobs(v);
         }
@@ -566,7 +621,38 @@ impl Builder {
             None
         };
 
-        let db = DB::open(rocksdb_config, &self.wal_path)
+        let mut cf_opts = ColumnFamilyOptions::new();
+        if let Some(v) = self.write_buffer_size {
+            cf_opts.set_write_buffer_size(v);
+        }
+        if let Some(v) = self.max_write_buffer_number {
+            cf_opts.set_max_write_buffer_number(v);
+        }
+        if let Some(v) = self.level_zero_file_num_compaction_trigger {
+            cf_opts.set_level_zero_file_num_compaction_trigger(v);
+        }
+        if let Some(v) = self.level_zero_slowdown_writes_trigger {
+            cf_opts.set_level_zero_slowdown_writes_trigger(v);
+        }
+        if let Some(v) = self.level_zero_stop_writes_trigger {
+            cf_opts.set_level_zero_stop_writes_trigger(v);
+        }
+
+        // FIFO compaction strategy let rocksdb looks like a message queue.
+        if let Some(v) = self.fifo_compaction_max_table_files_size {
+            if v > 0 {
+                let mut fifo_opts = FifoCompactionOptions::new();
+                fifo_opts.set_max_table_files_size(v);
+                cf_opts.set_fifo_compaction_options(fifo_opts);
+                cf_opts.set_compaction_style(DBCompactionStyle::Fifo);
+            }
+        }
+
+        let default_cfd = ColumnFamilyDescriptor {
+            options: cf_opts,
+            ..ColumnFamilyDescriptor::default()
+        };
+        let db = DB::open_cf(rocksdb_config, &self.wal_path, vec![default_cfd])
             .map_err(|e| e.into())
             .context(Open {
                 wal_path: self.wal_path.clone(),

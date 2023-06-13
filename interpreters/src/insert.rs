@@ -341,7 +341,11 @@ fn get_or_extract_column_from_row_groups(
         .unwrap_or_else(|| {
             let data_type = row_groups.schema().column(column_idx).data_type;
             let iter = row_groups.iter_column(column_idx);
-            let mut builder = ColumnBlockBuilder::with_capacity(&data_type, iter.size_hint().0);
+            let mut builder = ColumnBlockBuilder::with_capacity(
+                &data_type,
+                iter.size_hint().0,
+                row_groups.schema().column(column_idx).is_dictionary,
+            );
 
             for datum in iter {
                 builder.append(datum.clone()).context(BuildColumnBlock)?;

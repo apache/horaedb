@@ -358,6 +358,12 @@ impl TableData {
         self.current_version.total_memory_usage()
     }
 
+    /// Returns mutable memtable memory usage in bytes.
+    #[inline]
+    pub fn mutable_memory_usage(&self) -> usize {
+        self.current_version.mutable_memory_usage()
+    }
+
     /// Find memtable for given timestamp to insert, create if not exists
     ///
     /// If the memtable schema is outdated, switch all memtables and create the
@@ -443,12 +449,11 @@ impl TableData {
 
         let mutable_usage = self.current_version.mutable_memory_usage();
         let total_usage = self.current_version.total_memory_usage();
-
         let in_flush = serial_exec.flush_scheduler().is_in_flush();
         // Inspired by https://github.com/facebook/rocksdb/blob/main/include/rocksdb/write_buffer_manager.h#L94
         if mutable_usage > mutable_limit && !in_flush {
             info!(
-                "TableData should flush, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
+                "TableData should flush by mutable limit, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
                 self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size
             );
             return true;
@@ -467,7 +472,7 @@ impl TableData {
 
         if should_flush {
             info!(
-                "TableData should flush, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
+                "TableData should flush by total usage, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
                 self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size
             );
         }
@@ -589,6 +594,14 @@ impl TableDataSet {
         self.table_datas
             .values()
             .max_by_key(|t| t.memtable_memory_usage())
+            .cloned()
+    }
+
+    pub fn find_maximum_mutable_memory_usage_table(&self) -> Option<TableDataRef> {
+        // TODO: Possible performance issue here when there are too many tables.
+        self.table_datas
+            .values()
+            .max_by_key(|t| t.mutable_memory_usage())
             .cloned()
     }
 
@@ -766,7 +779,7 @@ pub mod tests {
             Some(ReadableDuration(table_options::DEFAULT_SEGMENT_DURATION));
         table_data.set_table_options(table_opts);
         // Freeze sampling memtable.
-        current_version.freeze_sampling();
+        current_version.freeze_sampling_memtable();
 
         // A new mutable memtable should be created.
         let mutable = table_data.find_or_create_mutable(now_ts, &schema).unwrap();

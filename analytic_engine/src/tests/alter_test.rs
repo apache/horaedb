@@ -20,24 +20,25 @@ use crate::{
     tests::{
         row_util,
         table::{self, FixedSchemaTable},
-        util::{
-            EngineBuildContext, MemoryEngineBuildContext, Null, RocksDBEngineBuildContext,
-            TestContext, TestEnv,
-        },
+        util::{memory_ctxs, rocksdb_ctxs, EngineBuildContext, Null, TestContext, TestEnv},
     },
 };
 
 #[test]
 fn test_alter_table_add_column_rocks() {
-    let rocksdb_ctx = RocksDBEngineBuildContext::default();
-    test_alter_table_add_column(rocksdb_ctx);
+    let rocksdb_ctxs = rocksdb_ctxs();
+    for ctx in rocksdb_ctxs {
+        test_alter_table_add_column(ctx);
+    }
 }
 
 #[ignore = "Enable this test when manifest use another snapshot implementation"]
 #[test]
 fn test_alter_table_add_column_mem_wal() {
-    let memory_ctx = MemoryEngineBuildContext::default();
-    test_alter_table_add_column(memory_ctx);
+    let memory_ctxs = memory_ctxs();
+    for ctx in memory_ctxs {
+        test_alter_table_add_column(ctx);
+    }
 }
 
 fn test_alter_table_add_column<T: EngineBuildContext>(engine_context: T) {
@@ -370,15 +371,19 @@ async fn check_read_row_group<T: WalsOpener>(
 
 #[test]
 fn test_alter_table_options_rocks() {
-    let rocksdb_ctx = RocksDBEngineBuildContext::default();
-    test_alter_table_options(rocksdb_ctx);
+    let rocksdb_ctxs = rocksdb_ctxs();
+    for ctx in rocksdb_ctxs {
+        test_alter_table_options(ctx);
+    }
 }
 
 #[ignore = "Enable this test when manifest use another snapshot implementation"]
 #[test]
 fn test_alter_table_options_mem_wal() {
-    let memory_ctx = MemoryEngineBuildContext::default();
-    test_alter_table_options(memory_ctx);
+    let memory_ctxs = memory_ctxs();
+    for ctx in memory_ctxs {
+        test_alter_table_options(ctx);
+    }
 }
 
 fn test_alter_table_options<T: EngineBuildContext>(engine_context: T) {

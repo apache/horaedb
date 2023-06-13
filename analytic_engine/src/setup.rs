@@ -173,15 +173,63 @@ impl WalsOpener for RocksDBWalsOpener {
         let data_path = Path::new(&rocksdb_wal_config.data_dir);
         let wal_path = data_path.join(WAL_DIR_NAME);
         let data_wal = RocksWalBuilder::new(wal_path, write_runtime.clone())
+            .max_subcompactions(rocksdb_wal_config.data_namespace.max_subcompactions)
             .max_background_jobs(rocksdb_wal_config.data_namespace.max_background_jobs)
             .enable_statistics(rocksdb_wal_config.data_namespace.enable_statistics)
+            .write_buffer_size(rocksdb_wal_config.data_namespace.write_buffer_size.0)
+            .max_write_buffer_number(rocksdb_wal_config.data_namespace.max_write_buffer_number)
+            .level_zero_file_num_compaction_trigger(
+                rocksdb_wal_config
+                    .data_namespace
+                    .level_zero_file_num_compaction_trigger,
+            )
+            .level_zero_slowdown_writes_trigger(
+                rocksdb_wal_config
+                    .data_namespace
+                    .level_zero_slowdown_writes_trigger,
+            )
+            .level_zero_stop_writes_trigger(
+                rocksdb_wal_config
+                    .data_namespace
+                    .level_zero_stop_writes_trigger,
+            )
+            .fifo_compaction_max_table_files_size(
+                rocksdb_wal_config
+                    .data_namespace
+                    .fifo_compaction_max_table_files_size
+                    .0,
+            )
             .build()
             .context(OpenWal)?;
 
         let manifest_path = data_path.join(MANIFEST_DIR_NAME);
         let manifest_wal = RocksWalBuilder::new(manifest_path, write_runtime)
+            .max_subcompactions(rocksdb_wal_config.meta_namespace.max_subcompactions)
             .max_background_jobs(rocksdb_wal_config.meta_namespace.max_background_jobs)
             .enable_statistics(rocksdb_wal_config.meta_namespace.enable_statistics)
+            .write_buffer_size(rocksdb_wal_config.meta_namespace.write_buffer_size.0)
+            .max_write_buffer_number(rocksdb_wal_config.meta_namespace.max_write_buffer_number)
+            .level_zero_file_num_compaction_trigger(
+                rocksdb_wal_config
+                    .meta_namespace
+                    .level_zero_file_num_compaction_trigger,
+            )
+            .level_zero_slowdown_writes_trigger(
+                rocksdb_wal_config
+                    .meta_namespace
+                    .level_zero_slowdown_writes_trigger,
+            )
+            .level_zero_stop_writes_trigger(
+                rocksdb_wal_config
+                    .meta_namespace
+                    .level_zero_stop_writes_trigger,
+            )
+            .fifo_compaction_max_table_files_size(
+                rocksdb_wal_config
+                    .meta_namespace
+                    .fifo_compaction_max_table_files_size
+                    .0,
+            )
             .build()
             .context(OpenManifestWal)?;
         let opened_wals = OpenedWals {

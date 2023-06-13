@@ -62,6 +62,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             runtime: self.engine_runtimes.write_runtime.clone(),
             timeout: ctx.timeout,
             enable_partition_table_access: false,
+            forwarded_from: None,
         };
 
         let result = self.handle_write_internal(ctx, table_request).await?;
@@ -241,6 +242,7 @@ impl Converter {
         let value_idx = schema.index_of(field_col_name).context(InternalNoCause {
             msg: "Value column is missing in query response",
         })?;
+        // Todo is there need add is_dictionary check?
         let tags = schema
             .columns()
             .iter()

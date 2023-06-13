@@ -526,7 +526,16 @@ impl HybridRecordDecoder {
             .iter()
             .map(|f| {
                 if let DataType::List(nested_field) = f.data_type() {
-                    Arc::new(Field::new(f.name(), nested_field.data_type().clone(), true))
+                    match f.data_type() {
+                        DataType::Dictionary(_, _) => Arc::new(Field::new_dict(
+                            f.name(),
+                            nested_field.data_type().clone(),
+                            true,
+                            f.dict_id().unwrap(),
+                            f.dict_is_ordered().unwrap(),
+                        )),
+                        _ => Arc::new(Field::new(f.name(), nested_field.data_type().clone(), true)),
+                    }
                 } else {
                     f.clone()
                 }
@@ -1030,11 +1039,11 @@ mod tests {
             ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns).unwrap();
         let input_record_batch2 =
             ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns2).unwrap();
-        let row_nums = encoder
+        let num_rows = encoder
             .encode(vec![input_record_batch, input_record_batch2])
             .await
             .unwrap();
-        assert_eq!(2, row_nums);
+        assert_eq!(2, num_rows);
 
         // read encoded records back, and then compare with input records
         encoder.close().await.unwrap();

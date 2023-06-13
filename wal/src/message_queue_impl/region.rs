@@ -579,14 +579,14 @@ impl<M: MessageQueue> Region<M> {
         let (snapshot, synchronizer) = {
             let inner = self.inner.write().await;
 
-            debug!(
+            info!(
                 "Mark deleted entries to sequence num:{}, region id:{}, table id:{}",
                 sequence_num,
                 inner.region_context.region_id(),
                 table_id
             );
 
-            inner.mark_delete_to(table_id, sequence_num).await.unwrap();
+            inner.mark_delete_to(table_id, sequence_num).await?;
 
             (
                 inner.make_meta_snapshot().await,
@@ -618,6 +618,8 @@ impl<M: MessageQueue> Region<M> {
         };
 
         let safe_delete_offset = snapshot.safe_delete_offset();
+        info!("Region clean logs, snapshot:{snapshot:?}, safe_delete_offset:{safe_delete_offset}");
+
         // Sync snapshot first.
         synchronizer
             .sync(snapshot)

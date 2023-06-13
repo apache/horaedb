@@ -154,7 +154,11 @@ impl TableFlushScheduler {
                         *flush_state = FlushState::Flushing;
                         break;
                     }
-                    FlushState::Flushing => (),
+                    FlushState::Flushing => {
+                        if !block_on_write_thread {
+                            return Ok(());
+                        }
+                    }
                     FlushState::Failed { err_msg } => {
                         if self
                             .schedule_sync
@@ -223,6 +227,8 @@ fn on_flush_finished(schedule_sync: ScheduleSyncRef, res: &Result<()>) {
                 *flush_state = FlushState::Ready;
             }
             Err(e) => {
+                error!("Failed to run flush task, err:{e}");
+
                 schedule_sync.inc_flush_failure_count();
                 let err_msg = e.to_string();
                 *flush_state = FlushState::Failed { err_msg };

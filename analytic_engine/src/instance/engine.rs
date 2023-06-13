@@ -218,6 +218,18 @@ pub enum Error {
 
     #[snafu(display("Failed to open shard, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     OpenTablesOfShard { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Failed to replay wal, msg:{:?}, err:{}", msg, source))]
+    ReplayWalWithCause {
+        msg: Option<String>,
+        source: GenericError,
+    },
+
+    #[snafu(display("Failed to replay wal, msg:{:?}.\nBacktrace:\n{}", msg, backtrace))]
+    ReplayWalNoCause {
+        msg: Option<String>,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
@@ -250,7 +262,9 @@ impl From<Error> for table_engine::engine::Error {
             | Error::DoManifestSnapshot { .. }
             | Error::OpenManifest { .. }
             | Error::TableNotExist { .. }
-            | Error::OpenTablesOfShard { .. } => Self::Unexpected {
+            | Error::OpenTablesOfShard { .. }
+            | Error::ReplayWalNoCause { .. }
+            | Error::ReplayWalWithCause { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
         }

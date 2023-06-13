@@ -2,18 +2,37 @@
 
 //! Kafka implementation's config
 
+use common_util::config::ReadableDuration;
 use serde::{Deserialize, Serialize};
 
 /// Generic client config that is used for consumers, producers as well as admin
 /// operations (like "create topic").
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub client: ClientConfig,
     pub topic_management: TopicManagementConfig,
     pub consumer: ConsumerConfig,
+    pub retry_interval_factor: f64,
+    pub init_retry_interval: ReadableDuration,
+    pub max_retry_interval: ReadableDuration,
+    pub max_retry: usize,
     // TODO: may need some config options for producer,
     // but it seems nothing needed now.
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            client: Default::default(),
+            topic_management: Default::default(),
+            consumer: Default::default(),
+            retry_interval_factor: 2.0,
+            init_retry_interval: ReadableDuration::secs(1),
+            max_retry_interval: ReadableDuration::secs(10),
+            max_retry: 10,
+        }
+    }
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
