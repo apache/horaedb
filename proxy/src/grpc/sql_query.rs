@@ -128,7 +128,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     if tx.send(resp).await.is_err() {
                         error!("Failed to send affected rows resp in stream sql query");
                     }
-                    GRPC_HANDLER_COUNTER_VEC.query_success.inc_by(rows as u64);
+                    GRPC_HANDLER_COUNTER_VEC.query_succeeded.inc_by(rows as u64);
                 }
                 Output::Records(batches) => {
                     for batch in &batches {
@@ -143,7 +143,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                             break;
                         }
                         GRPC_HANDLER_COUNTER_VEC
-                            .query_success
+                            .query_succeeded
                             .inc_by(batch.num_rows() as u64);
                     }
                 }
@@ -226,13 +226,15 @@ pub fn convert_output(
             writer.write_batches(batches)?;
             for batch in batches {
                 GRPC_HANDLER_COUNTER_VEC
-                    .query_success
+                    .query_succeeded
                     .inc_by(batch.num_rows() as u64);
             }
             writer.finish()
         }
         Output::AffectedRows(rows) => {
-            GRPC_HANDLER_COUNTER_VEC.query_success.inc_by(*rows as u64);
+            GRPC_HANDLER_COUNTER_VEC
+                .query_succeeded
+                .inc_by(*rows as u64);
             Ok(QueryResponseBuilder::with_ok_header().build_with_affected_rows(*rows))
         }
     }

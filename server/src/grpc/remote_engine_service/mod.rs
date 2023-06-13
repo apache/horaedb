@@ -77,7 +77,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
                 while let Some(batch) = stream.next().await {
                     if let Ok(record_batch) = &batch {
                         REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
-                            .query_success
+                            .query_succeeded
                             .inc_by(record_batch.num_rows() as u64);
                     }
                     if let Err(e) = tx.send(batch).await {
