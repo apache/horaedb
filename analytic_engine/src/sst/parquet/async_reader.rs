@@ -292,6 +292,10 @@ impl<'a> Reader<'a> {
 
             let row_selection =
                 self.build_row_selection(arrow_schema.clone(), &chunk, parquet_metadata)?;
+            
+            debug!(
+                    "Row selection, result:{row_selection:?}, indexes:{:?}",  parquet_metadata.page_indexes()
+                );
             if let Some(selection) = row_selection {
                 builder = builder.with_row_selection(selection);
             };
