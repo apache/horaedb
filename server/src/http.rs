@@ -70,8 +70,12 @@ pub enum Error {
     #[snafu(display("Missing proxy.\nBacktrace:\n{}", backtrace))]
     MissingProxy { backtrace: Backtrace },
 
-    #[snafu(display("Fail to do mem profiling, err:{}.\nBacktrace:\n{}", source, backtrace))]
-    ProfileMem {
+    #[snafu(display(
+        "Fail to do heap profiling, err:{}.\nBacktrace:\n{}",
+        source,
+        backtrace
+    ))]
+    ProfileHeap {
         source: profile::Error,
         backtrace: Backtrace,
     },
@@ -187,7 +191,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .or(self.flush_memtable())
             .or(self.update_log_level())
             .or(self.profile_cpu())
-            .or(self.profile_mem())
+            .or(self.profile_heap())
             .or(self.server_config())
             .or(self.stats())
             .with(warp::log("http_requests"))
@@ -418,11 +422,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             )
     }
 
-    // GET /debug/profile/mem/{seconds}
-    fn profile_mem(
+    // GET /debug/profile/heap/{seconds}
+    fn profile_heap(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        warp::path!("debug" / "profile" / "mem" / ..)
+        warp::path!("debug" / "profile" / "heap" / ..)
             .and(warp::path::param::<u64>())
             .and(warp::get())
             .and(self.with_profiler())
@@ -430,7 +434,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and_then(
                 |duration_sec: u64, profiler: Arc<Profiler>, runtime: Arc<Runtime>| async move {
                     let handle = runtime.spawn_blocking(move || {
-                        profiler.dump_mem_prof(duration_sec).context(ProfileMem)
+                        profiler.dump_heap_prof(duration_sec).context(ProfileHeap)
                     });
                     let result = handle.await.context(JoinAsyncTask);
                     match result {
@@ -685,7 +689,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::MissingSchemaConfigProvider { .. }
         | Error::MissingProxy { .. }
         | Error::ParseIpAddr { .. }
-        | Error::ProfileMem { .. }
+        | Error::ProfileHeap { .. }
         | Error::ProfileCPU { .. }
         | Error::Internal { .. }
         | Error::JoinAsyncTask { .. }

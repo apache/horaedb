@@ -1,6 +1,6 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Memory profiler for running application based on jemalloc features.
+//! Profiler for running application.
 
 use std::{
     fmt::Formatter,
@@ -37,8 +37,8 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 const PROF_ACTIVE: &[u8] = b"prof.active\0";
 const PROF_DUMP: &[u8] = b"prof.dump\0";
-const PROFILE_MEM_OUTPUT_FILE_OS_PATH: &[u8] = b"/tmp/profile_mem.out\0";
-const PROFILE_MEM_OUTPUT_FILE_PATH: &str = "/tmp/profile_mem.out";
+const PROFILE_HEAP_OUTPUT_FILE_OS_PATH: &[u8] = b"/tmp/profile_heap.out\0";
+const PROFILE_HEAP_OUTPUT_FILE_PATH: &str = "/tmp/profile_heap.out";
 const PROFILE_CPU_OUTPUT_FILE_PATH: &str = "/tmp/flamegraph_cpu.svg";
 
 fn set_prof_active(active: bool) -> Result<()> {
@@ -48,15 +48,15 @@ fn set_prof_active(active: bool) -> Result<()> {
 
 fn dump_profile() -> Result<()> {
     let name = PROF_DUMP.name();
-    name.write(PROFILE_MEM_OUTPUT_FILE_OS_PATH)
+    name.write(PROFILE_HEAP_OUTPUT_FILE_OS_PATH)
         .map_err(Error::Jemalloc)
 }
 
 struct ProfLockGuard<'a>(MutexGuard<'a, ()>);
 
 /// ProfLockGuard hold the profile lock and take responsibilities for
-/// (de)activating mem profiling. NOTE: Keeping mem profiling on may cause some
-/// extra runtime cost so we choose to activating it  dynamically.
+/// (de)activating heap profiling. NOTE: Keeping heap profiling on may cause
+/// some extra runtime cost so we choose to activating it  dynamically.
 impl<'a> ProfLockGuard<'a> {
     pub fn new(guard: MutexGuard<'a, ()>) -> Result<Self> {
         set_prof_active(true)?;
@@ -73,7 +73,7 @@ impl<'a> Drop for ProfLockGuard<'a> {
 }
 
 pub struct Profiler {
-    mem_prof_lock: Mutex<()>,
+    heap_prof_lock: Mutex<()>,
 }
 
 impl Default for Profiler {
@@ -85,19 +85,22 @@ impl Default for Profiler {
 impl Profiler {
     pub fn new() -> Self {
         Self {
-            mem_prof_lock: Mutex::new(()),
+            heap_prof_lock: Mutex::new(()),
         }
     }
 
-    // dump_mem_prof collects mem profiling data in `seconds`.
+    // dump_heap_prof collects heap profiling data in `seconds`.
     // TODO(xikai): limit the profiling duration
-    pub fn dump_mem_prof(&self, seconds: u64) -> Result<Vec<u8>> {
+    pub fn dump_heap_prof(&self, seconds: u64) -> Result<Vec<u8>> {
         // concurrent profiling is disabled.
-        let lock_guard = self.mem_prof_lock.try_lock().map_err(|e| Error::Internal {
-            msg: format!("failed to acquire mem_prof_lock, err:{e}"),
-        })?;
+        let lock_guard = self
+            .heap_prof_lock
+            .try_lock()
+            .map_err(|e| Error::Internal {
+                msg: format!("failed to acquire heap_prof_lock, err:{e}"),
+            })?;
         info!(
-            "Profiler::dump_mem_prof start memory profiling {} seconds",
+            "Profiler::dump_heap_prof start heap profiling {} seconds",
             seconds
         );
 
@@ -111,7 +114,7 @@ impl Profiler {
             .create(true)
             .write(true)
             .truncate(true)
-            .open(PROFILE_MEM_OUTPUT_FILE_PATH)
+            .open(PROFILE_HEAP_OUTPUT_FILE_PATH)
             .map_err(|e| {
                 error!("Failed to open prof data file, err:{}", e);
                 Error::IO(e)
@@ -121,13 +124,13 @@ impl Profiler {
         dump_profile().map_err(|e| {
             error!(
                 "Failed to dump prof to {}, err:{}",
-                PROFILE_MEM_OUTPUT_FILE_PATH, e
+                PROFILE_HEAP_OUTPUT_FILE_PATH, e
             );
             e
         })?;
 
         // read the profile results into buffer
-        let mut f = File::open(PROFILE_MEM_OUTPUT_FILE_PATH).map_err(|e| {
+        let mut f = File::open(PROFILE_HEAP_OUTPUT_FILE_PATH).map_err(|e| {
             error!("Failed to open prof data file, err:{}", e);
             Error::IO(e)
         })?;
