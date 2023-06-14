@@ -4,7 +4,10 @@ use ceresdbproto::storage::{WriteRequest, WriteResponse};
 use query_engine::executor::Executor as QueryExecutor;
 
 use crate::{
-    error, error::build_ok_header, grpc::metrics::GRPC_HANDLER_ROW_COUNTER_VEC, Context, Proxy,
+    error,
+    error::build_ok_header,
+    grpc::metrics::{GRPC_HANDLER_COUNTER_VEC, GRPC_HANDLER_ROW_COUNTER_VEC},
+    Context, Proxy,
 };
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
@@ -21,6 +24,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         match self.handle_write_internal(ctx, req).await {
             Err(e) => {
                 error!("Failed to handle write, err:{e}");
+                GRPC_HANDLER_COUNTER_VEC.write_failed.inc();
                 GRPC_HANDLER_ROW_COUNTER_VEC
                     .write_failed
                     .inc_by(num_rows as u64);
@@ -30,6 +34,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 }
             }
             Ok(v) => {
+                GRPC_HANDLER_COUNTER_VEC.write_succeeded.inc();
                 GRPC_HANDLER_ROW_COUNTER_VEC
                     .write_failed
                     .inc_by(v.failed as u64);

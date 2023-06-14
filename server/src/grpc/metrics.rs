@@ -42,6 +42,10 @@ make_auto_flush_static_metric! {
         query_failed
     }
 
+    pub struct RemoteEngineGrpcHandlerCounterVec: LocalIntCounter {
+        "type" => RemoteEngineGrpcTypeKind,
+    }
+
     pub struct RemoteEngineGrpcHandlerRowCounterVec: LocalIntCounter {
         "type" => RemoteEngineGrpcTypeKind,
     }
@@ -78,6 +82,13 @@ lazy_static! {
             exponential_buckets(0.0005, 2.0, 20).unwrap()
         )
         .unwrap();
+    pub static ref REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC_GLOBAL: IntCounterVec =
+        register_int_counter_vec!(
+            "remote_engine_grpc_handler_counter",
+            "Remote engine grpc handler counter",
+            &["type"]
+        )
+        .unwrap();
     pub static ref REMOTE_ENGINE_GRPC_HANDLER_ROW_COUNTER_VEC_GLOBAL: IntCounterVec =
         register_int_counter_vec!(
             "remote_engine_grpc_handler_row_counter",
@@ -104,6 +115,10 @@ lazy_static! {
     pub static ref REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC: RemoteEngineGrpcHandlerDurationHistogramVec = auto_flush_from!(
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC_GLOBAL,
         RemoteEngineGrpcHandlerDurationHistogramVec
+    );
+    pub static ref REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC: RemoteEngineGrpcHandlerCounterVec = auto_flush_from!(
+        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC_GLOBAL,
+        RemoteEngineGrpcHandlerCounterVec
     );
     pub static ref REMOTE_ENGINE_GRPC_HANDLER_ROW_COUNTER_VEC: RemoteEngineGrpcHandlerRowCounterVec = auto_flush_from!(
         REMOTE_ENGINE_GRPC_HANDLER_ROW_COUNTER_VEC_GLOBAL,

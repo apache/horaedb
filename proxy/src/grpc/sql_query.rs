@@ -28,7 +28,7 @@ use tonic::{transport::Channel, IntoRequest};
 use crate::{
     error::{self, ErrNoCause, ErrWithCause, Error, Result},
     forward::{ForwardRequest, ForwardResult},
-    grpc::metrics::GRPC_HANDLER_ROW_COUNTER_VEC,
+    grpc::metrics::{GRPC_HANDLER_COUNTER_VEC, GRPC_HANDLER_ROW_COUNTER_VEC},
     read::SqlResponse,
     Context, Proxy,
 };
@@ -41,12 +41,16 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         match self.handle_sql_query_internal(ctx, req).await {
             Err(e) => {
                 error!("Failed to handle sql query, err:{e}");
+                GRPC_HANDLER_COUNTER_VEC.query_failed.inc();
                 SqlQueryResponse {
                     header: Some(error::build_err_header(e)),
                     ..Default::default()
                 }
             }
-            Ok(v) => v,
+            Ok(v) => {
+                GRPC_HANDLER_COUNTER_VEC.query_succeeded.inc();
+                v
+            }
         }
     }
 
@@ -80,13 +84,17 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         match self.clone().handle_stream_query_internal(ctx, req).await {
             Err(e) => stream::once(async {
                 error!("Failed to handle stream sql query, err:{e}");
+                GRPC_HANDLER_COUNTER_VEC.query_failed.inc();
                 SqlQueryResponse {
                     header: Some(error::build_err_header(e)),
                     ..Default::default()
                 }
             })
             .boxed(),
-            Ok(v) => v,
+            Ok(v) => {
+                GRPC_HANDLER_COUNTER_VEC.query_succeeded.inc();
+                v
+            }
         }
     }
 

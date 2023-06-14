@@ -32,7 +32,7 @@ use tonic::{Request, Response, Status};
 
 use crate::grpc::{
     metrics::{
-        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC, REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
         REMOTE_ENGINE_GRPC_HANDLER_ROW_COUNTER_VEC,
     },
     remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
@@ -337,21 +337,28 @@ async fn handle_stream_read(
 
     let begin = Instant::now();
     let table = find_table_by_identifier(&ctx, &table_ident)?;
-    let streams = table
+    let res = table
         .partitioned_read(read_request)
         .await
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
             msg: format!("fail to read table, table:{table_ident:?}"),
-        })?;
-
-    info!(
+        });
+    match res {
+        Ok(streams) => {
+            info!(
         "Handle stream read success, request_id:{request_id}, table:{table_ident:?}, cost:{:?}",
         begin.elapsed(),
     );
-
-    Ok(streams)
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC.query_succeeded.inc();
+            Ok(streams)
+        }
+        Err(e) => {
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC.query_failed.inc();
+            Err(e)
+        }
+    }
 }
 
 async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<WriteResponse> {
@@ -374,6 +381,7 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
         });
     match res {
         Ok(affected_rows) => {
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC.write_succeeded.inc();
             REMOTE_ENGINE_GRPC_HANDLER_ROW_COUNTER_VEC
                 .write_succeeded
                 .inc_by(affected_rows as u64);
@@ -383,6 +391,7 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
             })
         }
         Err(e) => {
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC.write_failed.inc();
             REMOTE_ENGINE_GRPC_HANDLER_ROW_COUNTER_VEC
                 .write_failed
                 .inc_by(num_rows as u64);
