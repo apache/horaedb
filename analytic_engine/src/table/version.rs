@@ -727,7 +727,8 @@ impl TableVersion {
         picker_ctx: PickerContext,
         picker: &CompactionPickerRef,
     ) -> picker::Result<CompactionTask> {
-        let inner = self.inner.read().unwrap();
+        // pick will set FileHandle to being_compacted state
+        let inner = self.inner.write().unwrap();
 
         picker.pick_compaction(picker_ctx, &inner.levels_controller)
     }

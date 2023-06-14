@@ -237,7 +237,7 @@ impl OngoingTaskLimit {
 
         if dropped > 0 {
             warn!(
-                "Too many compaction pending tasks,  limit: {}, dropped {} older tasks.",
+                "Too many compaction pending tasks, limit:{}, dropped:{}.",
                 self.max_pending_compaction_tasks, dropped,
             );
         }
