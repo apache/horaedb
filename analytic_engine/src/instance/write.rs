@@ -8,7 +8,7 @@ use common_types::{
     row::{RowGroup, RowGroupSlicer},
     schema::{IndexInWriterSchema, Schema},
 };
-use common_util::{codec::row, define_result, error::GenericError};
+use common_util::{codec::row, define_result};
 use log::{debug, error, info, trace, warn};
 use smallvec::SmallVec;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};

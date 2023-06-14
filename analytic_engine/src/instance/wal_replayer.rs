@@ -304,8 +304,11 @@ impl RegionBasedCore {
         serial_exec_ctxs: &mut HashMap<TableId, SerialExecContext<'_>>,
         table_results: &mut HashMap<TableId, Result<()>>,
     ) -> Result<()> {
-        let mut table_batches = Vec::with_capacity(serial_exec_ctxs.len());
+        let mut table_batches = Vec::new();
+        // TODO: No `group_by` method in `VecDeque`, so implement it manually here...
         Self::split_log_batch_by_table(log_batch, &mut table_batches);
+
+        // TODO: Replay logs of different tables in parallel.
         for table_batch in table_batches {
             // Some tables may have failed in previous replay, ignore them.
             let table_result = table_results.get(&table_batch.table_id);

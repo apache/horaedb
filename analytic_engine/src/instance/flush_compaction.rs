@@ -296,7 +296,7 @@ impl Flusher {
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
         };
         let flush_job = async move {
-            let table_data = &flush_task.table_data;
+            let _table_data = &flush_task.table_data;
             flush_task.run().await
         };
 
