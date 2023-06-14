@@ -344,11 +344,11 @@ impl<'a> Reader<'a> {
         Ok(file_size)
     }
 
-    async fn load_meta_data_from_storage(&self) -> Result<parquet_ext::ParquetMetaDataRef> {
+    async fn load_meta_data_from_storage(&self, ignore_sst_filter: bool) -> Result<MetaData> {
         let file_size = self.load_file_size().await?;
         let chunk_reader_adapter = ChunkReaderAdapter::new(self.path, self.store);
 
-        let (meta_data, _) =
+        let (parquet_meta_data, _) =
             parquet_ext::meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter)
                 .await
                 .with_context(|| FetchAndDecodeSstMeta {
@@ -356,8 +356,11 @@ impl<'a> Reader<'a> {
                 })?;
         
 
+        let meta_data = MetaData::try_new(&parquet_meta_data, ignore_sst_filter).unwrap();
+        let custom = meta_data.custom().clone();
+
         let object_store_reader =
-        ObjectStoreReader::new(self.store.clone(), self.path.clone(), MetaData::try_new(&meta_data, true).unwrap());
+        ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data);
         let  read_options = ArrowReaderOptions::new().with_page_index(true);
         let  builder = ParquetRecordBatchStreamBuilder::new_with_options(
                 object_store_reader,
@@ -365,8 +368,11 @@ impl<'a> Reader<'a> {
             )
             .await
             .with_context(|| ParquetError)?;
-
-        Ok(builder.metadata().clone())
+       
+        Ok( MetaData{
+            parquet:builder.metadata().clone(),
+            custom,
+        })
     }
 
     fn need_update_cache(&self) -> bool {
@@ -390,12 +396,12 @@ impl<'a> Reader<'a> {
         let empty_predicate = self.predicate.exprs().is_empty();
 
         let meta_data = {
-            let parquet_meta_data = self.load_meta_data_from_storage().await?;
-
             let ignore_sst_filter = avoid_update_cache && empty_predicate;
-            MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
-                .box_err()
-                .context(DecodeSstMeta)?
+            self.load_meta_data_from_storage(ignore_sst_filter ).await?
+
+            // MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
+            //     .box_err()
+            //     .context(DecodeSstMeta)?
         };
 
         if avoid_update_cache || self.meta_cache.is_none() {
