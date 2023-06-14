@@ -86,10 +86,10 @@ pub struct CommonCompactionPicker {
 impl CommonCompactionPicker {
     pub fn new(strategy: CompactionStrategy) -> Self {
         let level_picker: LevelPickerRef = match strategy {
-            CompactionStrategy::SizeTiered(_) | CompactionStrategy::Default => {
-                Arc::new(SizeTieredPicker::default())
+            CompactionStrategy::SizeTiered(_) => Arc::new(SizeTieredPicker::default()),
+            CompactionStrategy::TimeWindow(_) | CompactionStrategy::Default => {
+                Arc::new(TimeWindowPicker::default())
             }
-            CompactionStrategy::TimeWindow(_) => Arc::new(TimeWindowPicker::default()),
         };
         Self { level_picker }
     }

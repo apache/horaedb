@@ -380,36 +380,17 @@ impl fmt::Debug for CompactionTask {
     }
 }
 
-pub struct PickerManager {
-    default_picker: CompactionPickerRef,
-    time_window_picker: CompactionPickerRef,
-    size_tiered_picker: CompactionPickerRef,
-}
+pub struct PickerManager {}
 
 impl Default for PickerManager {
     fn default() -> Self {
-        let size_tiered_picker = Arc::new(CommonCompactionPicker::new(
-            CompactionStrategy::SizeTiered(SizeTieredCompactionOptions::default()),
-        ));
-        let time_window_picker = Arc::new(CommonCompactionPicker::new(
-            CompactionStrategy::TimeWindow(TimeWindowCompactionOptions::default()),
-        ));
-
-        Self {
-            default_picker: time_window_picker.clone(),
-            size_tiered_picker,
-            time_window_picker,
-        }
+        Self {}
     }
 }
 
 impl PickerManager {
     pub fn get_picker(&self, strategy: CompactionStrategy) -> CompactionPickerRef {
-        match strategy {
-            CompactionStrategy::Default => self.default_picker.clone(),
-            CompactionStrategy::SizeTiered(_) => self.size_tiered_picker.clone(),
-            CompactionStrategy::TimeWindow(_) => self.time_window_picker.clone(),
-        }
+        return Arc::new(CommonCompactionPicker::new(strategy));
     }
 }
 
