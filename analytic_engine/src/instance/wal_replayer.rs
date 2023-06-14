@@ -37,7 +37,7 @@ use crate::{
 // TODO: limit the memory usage in `RegionBased` mode.
 pub struct WalReplayer<'a> {
     context: ReplayContext,
-    mode: ReplayMode,
+    core: Box<dyn ReplayCore>,
     table_datas: &'a [TableDataRef],
 }
 
@@ -59,8 +59,10 @@ impl<'a> WalReplayer<'a> {
             max_retry_flush_limit,
         };
 
+        let core = Self::build_core(replay_mode);
+
         Self {
-            mode: replay_mode,
+            core,
             context,
             table_datas,
         }
@@ -77,12 +79,11 @@ impl<'a> WalReplayer<'a> {
 
     pub async fn replay(&mut self) -> Result<HashMap<TableId, Result<()>>> {
         // Build core according to mode.
-        let core = Self::build_core(self.mode);
         info!(
             "Replay wal logs begin, context:{}, tables:{:?}",
             self.context, self.table_datas
         );
-        let result = core.replay(&self.context, self.table_datas).await;
+        let result = self.core.replay(&self.context, self.table_datas).await;
         info!(
             "Replay wal logs finish, context:{}, tables:{:?}",
             self.context, self.table_datas,
