@@ -4,10 +4,7 @@ use ceresdbproto::storage::{WriteRequest, WriteResponse};
 use query_engine::executor::Executor as QueryExecutor;
 
 use crate::{
-    error,
-    error::build_ok_header,
-    grpc::metrics::{GRPC_HANDLER_COUNTER_VEC, GRPC_HANDLER_ROW_COUNTER_VEC},
-    Context, Proxy,
+    error, error::build_ok_header, grpc::metrics::GRPC_HANDLER_COUNTER_VEC, Context, Proxy,
 };
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
@@ -25,8 +22,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             Err(e) => {
                 error!("Failed to handle write, err:{e}");
                 GRPC_HANDLER_COUNTER_VEC.write_failed.inc();
-                GRPC_HANDLER_ROW_COUNTER_VEC
-                    .write_failed
+                GRPC_HANDLER_COUNTER_VEC
+                    .write_failed_row
                     .inc_by(num_rows as u64);
                 WriteResponse {
                     header: Some(error::build_err_header(e)),
@@ -35,11 +32,11 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             }
             Ok(v) => {
                 GRPC_HANDLER_COUNTER_VEC.write_succeeded.inc();
-                GRPC_HANDLER_ROW_COUNTER_VEC
-                    .write_failed
+                GRPC_HANDLER_COUNTER_VEC
+                    .write_failed_row
                     .inc_by(v.failed as u64);
-                GRPC_HANDLER_ROW_COUNTER_VEC
-                    .write_succeeded
+                GRPC_HANDLER_COUNTER_VEC
+                    .write_succeeded_row
                     .inc_by(v.success as u64);
                 WriteResponse {
                     header: Some(build_ok_header()),

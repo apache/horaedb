@@ -28,7 +28,7 @@ use tonic::{transport::Channel, IntoRequest};
 use crate::{
     error::{self, ErrNoCause, ErrWithCause, Error, Result},
     forward::{ForwardRequest, ForwardResult},
-    grpc::metrics::{GRPC_HANDLER_COUNTER_VEC, GRPC_HANDLER_ROW_COUNTER_VEC},
+    grpc::metrics::GRPC_HANDLER_COUNTER_VEC,
     read::SqlResponse,
     Context, Proxy,
 };
@@ -136,8 +136,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     if tx.send(resp).await.is_err() {
                         error!("Failed to send affected rows resp in stream sql query");
                     }
-                    GRPC_HANDLER_ROW_COUNTER_VEC
-                        .query_succeeded
+                    GRPC_HANDLER_COUNTER_VEC
+                        .query_succeeded_row
                         .inc_by(rows as u64);
                 }
                 Output::Records(batches) => {
@@ -152,8 +152,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                             error!("Failed to send record batches resp in stream sql query");
                             break;
                         }
-                        GRPC_HANDLER_ROW_COUNTER_VEC
-                            .query_succeeded
+                        GRPC_HANDLER_COUNTER_VEC
+                            .query_succeeded_row
                             .inc_by(batch.num_rows() as u64);
                     }
                 }
@@ -235,15 +235,15 @@ pub fn convert_output(
             let mut writer = QueryResponseWriter::new(resp_compress_min_length);
             writer.write_batches(batches)?;
             for batch in batches {
-                GRPC_HANDLER_ROW_COUNTER_VEC
-                    .query_succeeded
+                GRPC_HANDLER_COUNTER_VEC
+                    .query_succeeded_row
                     .inc_by(batch.num_rows() as u64);
             }
             writer.finish()
         }
         Output::AffectedRows(rows) => {
-            GRPC_HANDLER_ROW_COUNTER_VEC
-                .query_succeeded
+            GRPC_HANDLER_COUNTER_VEC
+                .query_succeeded_row
                 .inc_by(*rows as u64);
             Ok(QueryResponseBuilder::with_ok_header().build_with_affected_rows(*rows))
         }

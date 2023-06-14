@@ -39,14 +39,13 @@ make_auto_flush_static_metric! {
         write_succeeded,
         write_failed,
         query_succeeded,
-        query_failed
+        query_failed,
+        write_succeeded_row,
+        write_failed_row,
+        query_succeeded_row,
     }
 
     pub struct RemoteEngineGrpcHandlerCounterVec: LocalIntCounter {
-        "type" => RemoteEngineGrpcTypeKind,
-    }
-
-    pub struct RemoteEngineGrpcHandlerRowCounterVec: LocalIntCounter {
         "type" => RemoteEngineGrpcTypeKind,
     }
 
@@ -89,13 +88,6 @@ lazy_static! {
             &["type"]
         )
         .unwrap();
-    pub static ref REMOTE_ENGINE_GRPC_HANDLER_ROW_COUNTER_VEC_GLOBAL: IntCounterVec =
-        register_int_counter_vec!(
-            "remote_engine_grpc_handler_row_counter",
-            "Remote engine grpc handler row counter",
-            &["type"]
-        )
-        .unwrap();
     pub static ref META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC_GLOBAL: HistogramVec =
         register_histogram_vec!(
             "meta_event_grpc_handler_duration",
@@ -119,10 +111,6 @@ lazy_static! {
     pub static ref REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC: RemoteEngineGrpcHandlerCounterVec = auto_flush_from!(
         REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC_GLOBAL,
         RemoteEngineGrpcHandlerCounterVec
-    );
-    pub static ref REMOTE_ENGINE_GRPC_HANDLER_ROW_COUNTER_VEC: RemoteEngineGrpcHandlerRowCounterVec = auto_flush_from!(
-        REMOTE_ENGINE_GRPC_HANDLER_ROW_COUNTER_VEC_GLOBAL,
-        RemoteEngineGrpcHandlerRowCounterVec
     );
     pub static ref META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC: MetaEventGrpcHandlerDurationHistogramVec = auto_flush_from!(
         META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC_GLOBAL,

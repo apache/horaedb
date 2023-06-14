@@ -11,14 +11,13 @@ make_auto_flush_static_metric! {
         write_succeeded,
         write_failed,
         query_succeeded,
-        query_failed
+        query_failed,
+        write_succeeded_row,
+        write_failed_row,
+        query_succeeded_row,
     }
 
     pub struct GrpcHandlerCounterVec: LocalIntCounter {
-        "type" => GrpcTypeKind,
-    }
-
-    pub struct GrpcHandlerRowCounterVec: LocalIntCounter {
         "type" => GrpcTypeKind,
     }
 }
@@ -27,19 +26,9 @@ lazy_static! {
     pub static ref GRPC_HANDLER_COUNTER_VEC_GLOBAL: IntCounterVec =
         register_int_counter_vec!("grpc_handler_counter", "Grpc handler counter", &["type"])
             .unwrap();
-    pub static ref GRPC_HANDLER_ROW_COUNTER_VEC_GLOBAL: IntCounterVec = register_int_counter_vec!(
-        "grpc_handler_row_counter",
-        "Grpc handler row counter",
-        &["type"]
-    )
-    .unwrap();
 }
 
 lazy_static! {
     pub static ref GRPC_HANDLER_COUNTER_VEC: GrpcHandlerCounterVec =
         auto_flush_from!(GRPC_HANDLER_COUNTER_VEC_GLOBAL, GrpcHandlerCounterVec);
-    pub static ref GRPC_HANDLER_ROW_COUNTER_VEC: GrpcHandlerRowCounterVec = auto_flush_from!(
-        GRPC_HANDLER_ROW_COUNTER_VEC_GLOBAL,
-        GrpcHandlerRowCounterVec
-    );
 }
