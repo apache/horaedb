@@ -35,8 +35,9 @@ use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{
-        arrow_reader::RowSelection, async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder,
-        ProjectionMask,
+        arrow_reader::{ArrowReaderOptions, RowSelection},
+        async_reader::AsyncFileReader,
+        ParquetRecordBatchStreamBuilder, ProjectionMask,
     },
     file::metadata::RowGroupMetaData,
 };
@@ -283,9 +284,12 @@ impl<'a> Reader<'a> {
         for chunk in target_row_group_chunks {
             let object_store_reader =
                 ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
-            let mut builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
-                .await
-                .with_context(|| ParquetError)?;
+            let mut builder = ParquetRecordBatchStreamBuilder::new(
+                object_store_reader
+            )
+            .await
+            .with_context(|| ParquetError)?;
+
             let row_selection =
                 self.build_row_selection(arrow_schema.clone(), &chunk, parquet_metadata)?;
             if let Some(selection) = row_selection {
@@ -350,8 +354,19 @@ impl<'a> Reader<'a> {
                 .with_context(|| FetchAndDecodeSstMeta {
                     file_path: self.path.to_string(),
                 })?;
+        
 
-        Ok(Arc::new(meta_data))
+        let object_store_reader =
+        ObjectStoreReader::new(self.store.clone(), self.path.clone(), MetaData::try_new(&meta_data, true).unwrap());
+        let  read_options = ArrowReaderOptions::new().with_page_index(true);
+        let  builder = ParquetRecordBatchStreamBuilder::new_with_options(
+                object_store_reader,
+                read_options,
+            )
+            .await
+            .with_context(|| ParquetError)?;
+
+        Ok(builder.metadata().clone())
     }
 
     fn need_update_cache(&self) -> bool {
@@ -414,7 +429,7 @@ impl<'a> Drop for Reader<'a> {
 }
 
 #[derive(Clone)]
-struct ObjectStoreReader {
+pub struct ObjectStoreReader {
     storage: ObjectStoreRef,
     path: Path,
     meta_data: MetaData,
@@ -422,7 +437,7 @@ struct ObjectStoreReader {
 }
 
 impl ObjectStoreReader {
-    fn new(storage: ObjectStoreRef, path: Path, meta_data: MetaData) -> Self {
+    pub fn new(storage: ObjectStoreRef, path: Path, meta_data: MetaData) -> Self {
         Self {
             storage,
             path,

@@ -13,6 +13,7 @@ use common_util::{
 };
 use futures::StreamExt;
 use object_store::{LocalFileSystem, ObjectMeta, ObjectStoreRef, Path};
+use parquet::file::serialized_reader::{ReadOptionsBuilder, SerializedFileReader};
 use parquet_ext::meta_data::fetch_parquet_metadata;
 use tokio::{runtime::Handle, task::JoinSet};
 
@@ -128,6 +129,8 @@ fn as_mb(v: usize) -> f64 {
     v as f64 / 1024.0 / 1024.0
 }
 
+use parquet::file::reader::FileReader;
+
 async fn parse_metadata(
     storage: ObjectStoreRef,
     path: Path,
@@ -155,6 +158,16 @@ async fn parse_metadata(
         })
         .unwrap_or(0);
 
-    let md = MetaData::try_new(&parquet_metadata, false)?;
+    // let md = MetaData::try_new(&parquet_metadata, false)?;
+    let get_result = storage.get(&path).await.unwrap();
+    let bytes = get_result.bytes().await.unwrap();
+
+    let mt = SerializedFileReader::new_with_options(
+        bytes,
+        ReadOptionsBuilder::new().with_page_index().build(),
+    )?;
+    let md1 = mt.metadata();
+
+    let md = MetaData::try_new(md1, false)?;
     Ok((md, metadata_size, kv_size))
 }
