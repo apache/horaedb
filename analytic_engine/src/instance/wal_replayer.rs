@@ -5,6 +5,7 @@
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Display,
+    ops::Range,
 };
 
 use async_trait::async_trait;
@@ -318,7 +319,7 @@ impl RegionBasedReplay {
                     context.max_retry_flush_limit,
                     &mut ctx.serial_exec,
                     &ctx.table_data,
-                    log_batch.range(table_batch.start_log_idx..table_batch.end_log_idx),
+                    log_batch.range(table_batch.range),
                 )
                 .await;
 
@@ -363,8 +364,7 @@ impl RegionBasedReplay {
             if found_end_idx {
                 table_batches.push(TableBatch {
                     table_id: TableId::new(start_table_id),
-                    start_log_idx,
-                    end_log_idx: curr_log_idx,
+                    range: start_log_idx..curr_log_idx,
                 });
 
                 // Step to next start idx.
@@ -388,8 +388,7 @@ impl RegionBasedReplay {
 #[derive(Debug, Eq, PartialEq)]
 struct TableBatch {
     table_id: TableId,
-    start_log_idx: usize,
-    end_log_idx: usize,
+    range: Range<usize>,
 }
 
 struct SerialExecContext<'a> {
@@ -557,18 +556,15 @@ mod tests {
         let expected1 = vec![
             TableBatch {
                 table_id: TableId::new(0),
-                start_log_idx: 0,
-                end_log_idx: 3,
+                range: 0..3,
             },
             TableBatch {
                 table_id: TableId::new(1),
-                start_log_idx: 3,
-                end_log_idx: 5,
+                range: 3..5,
             },
             TableBatch {
                 table_id: TableId::new(2),
-                start_log_idx: 5,
-                end_log_idx: 6,
+                range: 5..6,
             },
         ];
 
@@ -579,8 +575,7 @@ mod tests {
         }]);
         let expected2 = vec![TableBatch {
             table_id: TableId::new(0),
-            start_log_idx: 0,
-            end_log_idx: 1,
+            range: 0..1,
         }];
 
         let test_log_batch3: VecDeque<LogEntry<u32>> = VecDeque::default();

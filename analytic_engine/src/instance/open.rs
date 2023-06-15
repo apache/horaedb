@@ -210,7 +210,7 @@ impl ShardOpener {
         max_retry_flush_limit: usize,
         recover_mode: RecoverMode,
     ) -> Result<Self> {
-        let mut states = HashMap::with_capacity(shard_context.table_ctxs.len());
+        let mut stages = HashMap::with_capacity(shard_context.table_ctxs.len());
         for table_ctx in shard_context.table_ctxs {
             let space = &table_ctx.space;
             let table_id = table_ctx.table_def.id;
@@ -224,14 +224,14 @@ impl ShardOpener {
                     space: table_ctx.space,
                 })
             };
-            states.insert(table_id, state);
+            stages.insert(table_id, state);
         }
 
         Ok(Self {
             shard_id: shard_context.shard_id,
             manifest,
             wal_manager,
-            stages: states,
+            stages,
             wal_replay_batch_size,
             flusher,
             max_retry_flush_limit,
@@ -247,9 +247,9 @@ impl ShardOpener {
         self.recover_table_datas().await?;
 
         // Retrieve the table results and return.
-        let states = std::mem::take(&mut self.stages);
-        let mut table_results = HashMap::with_capacity(states.len());
-        for (table_id, state) in states {
+        let stages = std::mem::take(&mut self.stages);
+        let mut table_results = HashMap::with_capacity(stages.len());
+        for (table_id, state) in stages {
             match state {
                 TableOpenStage::Failed(e) => {
                     table_results.insert(table_id, Err(e));
