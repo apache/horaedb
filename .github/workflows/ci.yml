@@ -233,10 +233,10 @@ jobs:
           path: |
             /tmp/ceresdb-stdout.log
 
-  recover-test:
-    name: recover-test
+  recovery-test:
+    name: recovery-test
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
         with:

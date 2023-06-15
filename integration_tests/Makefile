@@ -71,4 +71,4 @@ run-prom:
 	cd prom && ./run-tests.sh
 
 run-recovery: clean build-ceresdb kill-old-process
-	cd recovery && sh ./run.sh && sh ./run.sh shard_based
+	cd recovery && ./run.sh && ./run.sh shard_based
