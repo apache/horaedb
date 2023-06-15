@@ -24,7 +24,7 @@ use wal::{
 use crate::{
     instance::{
         self,
-        engine::{ReplayWalWithCause, Result},
+        engine::{Error, ReplayWalWithCause, Result},
         flush_compaction::{Flusher, TableFlushOptions},
         serial_executor::TableOpSerialExecutor,
         write::MemTableWriter,
@@ -77,7 +77,8 @@ impl<'a> WalReplayer<'a> {
         }
     }
 
-    pub async fn replay(&mut self) -> Result<HashMap<TableId, Result<()>>> {
+    /// Replay tables and return the failed tables and the causes.
+    pub async fn replay(&mut self) -> Result<FailedTables> {
         // Build core according to mode.
         info!(
             "Replay wal logs begin, context:{}, tables:{:?}",
@@ -117,14 +118,17 @@ pub enum ReplayMode {
     TableBased,
 }
 
+pub type FailedTables = HashMap<TableId, Error>;
+
 /// Replay core, the abstract of different replay strategies
 #[async_trait]
 trait ReplayCore: Send + Sync + 'static {
+    /// Replay tables, return the failed tables and the causes.
     async fn replay(
         &self,
         context: &ReplayContext,
         table_datas: &[TableDataRef],
-    ) -> Result<HashMap<TableId, Result<()>>>;
+    ) -> Result<FailedTables>;
 }
 
 /// Table based wal replay core
@@ -136,22 +140,22 @@ impl ReplayCore for TableBasedCore {
         &self,
         context: &ReplayContext,
         table_datas: &[TableDataRef],
-    ) -> Result<HashMap<TableId, Result<()>>> {
+    ) -> Result<FailedTables> {
         debug!("Replay wal logs on table mode, context:{context}, tables:{table_datas:?}",);
 
-        let mut results = HashMap::with_capacity(table_datas.len());
+        let mut faileds = HashMap::new();
         let read_ctx = ReadContext {
             batch_size: context.wal_replay_batch_size,
             ..Default::default()
         };
         for table_data in table_datas {
             let table_id = table_data.id;
-            let result = Self::recover_table_logs(context, table_data, &read_ctx).await;
-
-            results.insert(table_id, result);
+            if let Err(e) = Self::recover_table_logs(context, table_data, &read_ctx).await {
+                faileds.insert(table_id, e);
+            }
         }
 
-        Ok(results)
+        Ok(faileds)
     }
 }
 
@@ -217,22 +221,19 @@ impl ReplayCore for RegionBasedCore {
         &self,
         context: &ReplayContext,
         table_datas: &[TableDataRef],
-    ) -> Result<HashMap<TableId, Result<()>>> {
+    ) -> Result<FailedTables> {
         debug!("Replay wal logs on region mode, context:{context}, states:{table_datas:?}",);
 
         // Init all table results to be oks, and modify to errs when failed to replay.
-        let mut results = table_datas
-            .iter()
-            .map(|table_data| (table_data.id, Ok(())))
-            .collect();
+        let mut faileds = FailedTables::new();
         let scan_ctx = ScanContext {
             batch_size: context.wal_replay_batch_size,
             ..Default::default()
         };
 
-        Self::replay_region_logs(context, table_datas, &scan_ctx, &mut results).await?;
+        Self::replay_region_logs(context, table_datas, &scan_ctx, &mut faileds).await?;
 
-        Ok(results)
+        Ok(faileds)
     }
 }
 
@@ -247,7 +248,7 @@ impl RegionBasedCore {
         context: &ReplayContext,
         table_datas: &[TableDataRef],
         scan_ctx: &ScanContext,
-        table_results: &mut HashMap<TableId, Result<()>>,
+        faileds: &mut FailedTables,
     ) -> Result<()> {
         // Scan all wal logs of current shard.
         let scan_req = ScanRequest {
@@ -286,13 +287,8 @@ impl RegionBasedCore {
                 break;
             }
 
-            Self::replay_single_batch(
-                context,
-                &log_entry_buf,
-                &mut serial_exec_ctxs,
-                table_results,
-            )
-            .await?;
+            Self::replay_single_batch(context, &log_entry_buf, &mut serial_exec_ctxs, faileds)
+                .await?;
         }
 
         Ok(())
@@ -302,7 +298,7 @@ impl RegionBasedCore {
         context: &ReplayContext,
         log_batch: &VecDeque<LogEntry<ReadPayload>>,
         serial_exec_ctxs: &mut HashMap<TableId, SerialExecContext<'_>>,
-        table_results: &mut HashMap<TableId, Result<()>>,
+        faileds: &mut FailedTables,
     ) -> Result<()> {
         let mut table_batches = Vec::new();
         // TODO: No `group_by` method in `VecDeque`, so implement it manually here...
@@ -311,9 +307,8 @@ impl RegionBasedCore {
         // TODO: Replay logs of different tables in parallel.
         for table_batch in table_batches {
             // Some tables may have failed in previous replay, ignore them.
-            let table_result = table_results.get(&table_batch.table_id);
-            if let Some(Err(_)) = table_result {
-                return Ok(());
+            if faileds.contains_key(&table_batch.table_id) {
+                continue;
             }
 
             // Replay all log entries of current table.
@@ -327,7 +322,11 @@ impl RegionBasedCore {
                     log_batch.range(table_batch.start_log_idx..table_batch.end_log_idx),
                 )
                 .await;
-                table_results.insert(table_batch.table_id, result);
+
+                // If occur error, mark this table as failed and store the cause.
+                if let Err(e) = result {
+                    faileds.insert(table_batch.table_id, e);
+                }
             }
         }
 
@@ -372,6 +371,7 @@ impl RegionBasedCore {
                 // Step to next start idx.
                 start_log_idx = curr_log_idx;
                 start_table_id = if time_to_break {
+                    // The final round, just set it to max as an invalid flag.
                     u64::MAX
                 } else {
                     log_batch.get(start_log_idx).unwrap().table_id

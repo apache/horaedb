@@ -359,15 +359,15 @@ impl ShardOpener {
         for table_data in replay_table_datas {
             let table_id = table_data.id;
             let stage = self.states.get_mut(&table_id).unwrap();
-            let table_result = table_results.remove(&table_id).unwrap();
+            let failed_table_opt = table_results.remove(&table_id);
 
-            match (&stage, table_result) {
-                (TableOpenStage::RecoverTableData(ctx), Ok(())) => {
+            match (&stage, failed_table_opt) {
+                (TableOpenStage::RecoverTableData(ctx), None) => {
                     let space_table = SpaceAndTable::new(ctx.space.clone(), ctx.table_data.clone());
                     *stage = TableOpenStage::Success(Some(space_table));
                 }
 
-                (TableOpenStage::RecoverTableData(_), Err(e)) => {
+                (TableOpenStage::RecoverTableData(_), Some(e)) => {
                     *stage = TableOpenStage::Failed(e);
                 }
 
