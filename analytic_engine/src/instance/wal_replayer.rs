@@ -428,6 +428,8 @@ async fn replay_table_log_entries(
                     row_group
                 );
 
+                // TODO: too strict check here, should be modified to like what in
+                // `ColumnSchema::compatible_for_write`.`
                 let table_schema_version = table_data.schema_version();
                 if table_schema_version != row_group.schema().version() {
                     // Data with old schema should already been flushed, but we avoid panic
