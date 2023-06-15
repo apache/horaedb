@@ -41,7 +41,10 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         schema: &str,
         sql: &str,
     ) -> Result<SqlResponse> {
-        if let Some(resp) = self.maybe_forward_sql_query(schema, sql).await? {
+        if let Some(resp) = self
+            .maybe_forward_sql_query(ctx.clone(), schema, sql)
+            .await?
+        {
             match resp {
                 ForwardResult::Forwarded(resp) => return Ok(SqlResponse::Forwarded(resp?)),
                 ForwardResult::Local => (),
@@ -149,6 +152,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
     async fn maybe_forward_sql_query(
         &self,
+        ctx: Context,
         schema: &str,
         sql: &str,
     ) -> Result<Option<ForwardResult<SqlQueryResponse, Error>>> {
@@ -174,6 +178,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             schema: schema.to_string(),
             table: table_name.unwrap(),
             req: sql_request.into_request(),
+            forwarded: ctx.forwarded,
         };
         let do_query = |mut client: StorageServiceClient<Channel>,
                         request: tonic::Request<SqlQueryRequest>,

@@ -104,7 +104,11 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         let req_context = req.context.as_ref().unwrap();
         let schema = req_context.database.clone();
-        let req = match self.clone().maybe_forward_stream_sql_query(&req).await {
+        let req = match self
+            .clone()
+            .maybe_forward_stream_sql_query(ctx.clone(), &req)
+            .await
+        {
             Some(resp) => match resp {
                 ForwardResult::Forwarded(resp) => return resp,
                 ForwardResult::Local => req,
@@ -150,6 +154,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
     async fn maybe_forward_stream_sql_query(
         self: Arc<Self>,
+        ctx: Context,
         req: &SqlQueryRequest,
     ) -> Option<ForwardResult<BoxStream<'static, SqlQueryResponse>, Error>> {
         if req.tables.len() != 1 {
@@ -163,6 +168,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             schema: req_ctx.database.clone(),
             table: req.tables[0].clone(),
             req: req.clone().into_request(),
+            forwarded: ctx.forwarded,
         };
         let do_query = |mut client: StorageServiceClient<Channel>,
                         request: tonic::Request<SqlQueryRequest>,
