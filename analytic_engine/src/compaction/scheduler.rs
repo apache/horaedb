@@ -449,6 +449,13 @@ impl ScheduleWorker {
                         self.handle_table_compaction_request(compact_req).await;
                     }
                     debug!("Scheduled {} pending compaction tasks.", len);
+                }else {
+                    warn!(
+                        "Too many compaction ongoing tasks:{}, max:{}, buf_len:{}",
+                        ongoing,
+                        self.max_ongoing_tasks,
+                        self.limit.request_buf_len()
+                    );
                 }
             }
             ScheduleTask::Exit => (),
