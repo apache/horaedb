@@ -318,16 +318,13 @@ impl From<&ColumnSchema> for Field {
     fn from(col_schema: &ColumnSchema) -> Self {
         let metadata = encode_arrow_field_meta_data(col_schema);
         // If the tag column is a string column, then use the dictionary
-        let data_type: DataType = if col_schema.is_tag && col_schema.data_type == DatumKind::String {
+        let data_type: DataType = if col_schema.is_tag && col_schema.data_type == DatumKind::String
+        {
             DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8))
-        }else {
+        } else {
             col_schema.data_type.into()
         };
-        let mut field = Field::new(
-            &col_schema.name,
-            data_type,
-            col_schema.is_nullable,
-        );
+        let mut field = Field::new(&col_schema.name, data_type, col_schema.is_nullable);
         field.set_metadata(metadata);
 
         field
@@ -518,7 +515,7 @@ mod tests {
             data_type: DatumKind::Boolean,
             is_nullable: true,
             is_tag: true,
-            is_dictionary: false, 
+            is_dictionary: false,
             comment: "Comment of this column".to_string(),
             escaped_name: "test_column_schema".escape_debug().to_string(),
             default_value: Some(Expr::Value(Value::Boolean(true))),
