@@ -1080,7 +1080,46 @@ macro_rules! define_column_block_builder {
                         Self::Date(builder) => append_block!(Date, builder, ColumnBlock, block, start, len),
                         Self::Time(builder) => append_block!(Time, builder, ColumnBlock, block, start, len),
                         Self::Dictionary(builder) => {
-                            Ok(())
+                                match block {
+                                    ColumnBlock::Null(v) => {
+                                        let end = std::cmp::min(start + len, v.num_rows());
+                                        for _ in start..end {
+                                            builder.append_null();
+                                        }
+                                        Ok(())
+                                    }
+                                    ColumnBlock::StringDictionary(v) => {
+                                        // There is no convenient api to copy a range of data from array to builder, so
+                                        // we still need to clone value one by one using a for loop.
+                                        let end = std::cmp::min(start + len, v.num_rows());
+                                        for i in start..end {
+                                            // let value_opt = v.0.keys().value(i);
+                                            if v.0.is_null(i) {
+                                                builder.append_null();
+                                            } else {
+                                                let value = v.datum(i);
+                                                builder.append_value(value.as_str().unwrap());
+                                                // let rd_buf: &StringArray =
+                                                // v.0.values().as_any().downcast_ref::<StringArray>().unwrap();
+                                                // let value_opt = rd_buf.value(i);
+                                            }
+                                            // match value_opt {
+                                            //     Some(value) => {
+                                            //         builder.append_value(value.as_str().unwrap());
+                                            //     }
+                                            //     None => {
+                                            //         builder.append_null();
+                                            //     }
+                                            // }
+                                        }
+                                        Ok(())
+                                    }
+                                    _ => ConflictType {
+                                        expect: DatumKind::String,
+                                        given: block.datum_kind(),
+                                    }
+                                    .fail(),
+                                }
                         },
                         $(
                             Self::$Kind(builder) => append_block!($Kind, builder, ColumnBlock, block, start, len),
@@ -1207,35 +1246,37 @@ mod tests {
     #[test]
     fn test_column_block_string_dictionary_builder() {
         let schema = build_schema_for_dictionary();
-        let rows = vec![build_row_for_dictionary(1, 1, "tag1_1", "tag2_1", 1),
-        build_row_for_dictionary(2, 2, "tag1_2", "tag2_2", 2),
-        build_row_for_dictionary(3, 3, "tag1_3", "tag2_3", 3),
-        build_row_for_dictionary(4, 4, "tag1_1", "tag2_4", 3),
-        build_row_for_dictionary(5, 5, "tag1_3", "tag2_4", 4)];
+        let rows = vec![build_row_for_dictionary(1, 1, Some("tag1_1"), "tag2_1", 1),
+        build_row_for_dictionary(2, 2, Some("tag1_2"), "tag2_2", 2),
+        build_row_for_dictionary(3, 3, Some("tag1_3"), "tag2_3", 3),
+        build_row_for_dictionary(4, 4, Some("tag1_1"), "tag2_4", 3),
+        build_row_for_dictionary(5, 5, Some("tag1_3"), "tag2_4", 4),
+        build_row_for_dictionary(6, 6, None, "tag2_4", 4)];
         // DatumKind::String , is_dictionary = true
         let column = schema.column(2);
         println!("{:?}", column);
         let mut builder = ColumnBlockBuilder::with_capacity(&column.data_type, 0, column.is_dictionary);
         // append
-        builder.append(rows[0][2].clone()).unwrap();
+        (0..rows.len()).for_each(|i| builder.append(rows[i][2].clone() ).unwrap());
+
         let ret = builder.append(rows[0][0].clone());
         assert!(ret.is_err());
 
         // append_view
-        builder.append_view(rows[1][2].as_view()).unwrap();
+        builder.append_view(rows[5][2].as_view()).unwrap();
         let ret = builder.append_view(rows[1][0].as_view());
+
         assert!(ret.is_err());
 
         let column_block = builder.build();
-        assert_eq!(column_block.num_rows(), 2);
+        assert_eq!(column_block.num_rows(), 7);
         let mut builder = ColumnBlockBuilder::with_capacity(&column.data_type, 2, column.is_dictionary);
 
         // append_block_range
-        builder.append_block_range(&column_block, 0, 1).unwrap();
-        builder.append_block_range(&column_block, 1, 1).unwrap();
+        (0..rows.len()).for_each(|i| builder.append_block_range(&column_block, i, 1).unwrap());
 
         let column_block = builder.build();
-        assert_eq!(column_block.num_rows(), 2);
+        assert_eq!(column_block.num_rows(), 6);
         assert_eq!(
             column_block.datum(0),
             Datum::String(StringBytes::from("tag1_1"))
@@ -1244,7 +1285,22 @@ mod tests {
             column_block.datum(1),
             Datum::String(StringBytes::from("tag1_2"))
         );
-        println!("{:?}", column_block);
+        assert_eq!(
+            column_block.datum(2),
+            Datum::String(StringBytes::from("tag1_3"))
+        );
+        assert_eq!(
+            column_block.datum(3),
+            Datum::String(StringBytes::from("tag1_1"))
+        );
+        assert_eq!(
+            column_block.datum(4),
+            Datum::String(StringBytes::from("tag1_3"))
+        );
+        assert_eq!(
+            column_block.datum(5),
+            Datum::Null
+        );
     }
 
 }
