@@ -15,8 +15,8 @@ use snafu::Snafu;
 
 use crate::{
     compaction::{
-        CompactionInputFiles, CompactionStrategy, CompactionTask, SizeTieredCompactionOptions,
-        TimeWindowCompactionOptions,
+        CompactionInputFiles, CompactionStrategy, CompactionTask, CompactionTaskBuilder,
+        SizeTieredCompactionOptions, TimeWindowCompactionOptions,
     },
     sst::{
         file::{FileHandle, Level},
@@ -126,10 +126,8 @@ impl CompactionPicker for CommonCompactionPicker {
         levels_controller: &LevelsController,
     ) -> Result<CompactionTask> {
         let expire_time = ctx.ttl.map(Timestamp::expire_time);
-        let mut compaction_task = CompactionTask {
-            expired: levels_controller.expired_ssts(expire_time),
-            compaction_inputs: Vec::new(),
-        };
+        let mut builder =
+            CompactionTaskBuilder::with_expired(levels_controller.expired_ssts(expire_time));
 
         if let Some(input_files) =
             self.pick_compact_candidates(&ctx, levels_controller, expire_time)
@@ -139,11 +137,10 @@ impl CompactionPicker for CommonCompactionPicker {
                 ctx.strategy, input_files
             );
 
-            compaction_task.compaction_inputs = vec![input_files];
-            compaction_task.mark_files_being_compacted(true);
+            builder.add_inputs(input_files);
         }
 
-        Ok(compaction_task)
+        Ok(builder.build())
     }
 }
 
@@ -737,9 +734,9 @@ mod tests {
         {
             let lc = build_old_bucket_case(now.as_i64());
             let task = twp.pick_compaction(ctx.clone(), &lc).unwrap();
-            assert_eq!(task.compaction_inputs[0].files.len(), 2);
-            assert_eq!(task.compaction_inputs[0].files[0].id(), 0);
-            assert_eq!(task.compaction_inputs[0].files[1].id(), 1);
+            assert_eq!(task.inputs[0].files.len(), 2);
+            assert_eq!(task.inputs[0].files[0].id(), 0);
+            assert_eq!(task.inputs[0].files[1].id(), 1);
             assert_eq!(task.expired[0].files.len(), 1);
             assert_eq!(task.expired[0].files[0].id(), 3);
         }
@@ -747,17 +744,17 @@ mod tests {
         {
             let lc = build_newest_bucket_case(now.as_i64());
             let task = twp.pick_compaction(ctx.clone(), &lc).unwrap();
-            assert_eq!(task.compaction_inputs[0].files.len(), 4);
-            assert_eq!(task.compaction_inputs[0].files[0].id(), 2);
-            assert_eq!(task.compaction_inputs[0].files[1].id(), 3);
-            assert_eq!(task.compaction_inputs[0].files[2].id(), 4);
-            assert_eq!(task.compaction_inputs[0].files[3].id(), 5);
+            assert_eq!(task.inputs[0].files.len(), 4);
+            assert_eq!(task.inputs[0].files[0].id(), 2);
+            assert_eq!(task.inputs[0].files[1].id(), 3);
+            assert_eq!(task.inputs[0].files[2].id(), 4);
+            assert_eq!(task.inputs[0].files[3].id(), 5);
         }
 
         {
             let lc = build_newest_bucket_no_match_case(now.as_i64());
             let task = twp.pick_compaction(ctx.clone(), &lc).unwrap();
-            assert_eq!(task.compaction_inputs.len(), 0);
+            assert_eq!(task.inputs.len(), 0);
         }
 
         // If ttl is None, then no file is expired.
@@ -765,9 +762,9 @@ mod tests {
         {
             let lc = build_old_bucket_case(now.as_i64());
             let task = twp.pick_compaction(ctx, &lc).unwrap();
-            assert_eq!(task.compaction_inputs[0].files.len(), 2);
-            assert_eq!(task.compaction_inputs[0].files[0].id(), 0);
-            assert_eq!(task.compaction_inputs[0].files[1].id(), 1);
+            assert_eq!(task.inputs[0].files.len(), 2);
+            assert_eq!(task.inputs[0].files[0].id(), 0);
+            assert_eq!(task.inputs[0].files[1].id(), 1);
             assert!(task.expired[0].files.is_empty());
         }
     }

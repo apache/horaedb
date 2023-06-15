@@ -318,8 +318,8 @@ pub struct ExpiredFiles {
 
 #[derive(Default, Clone)]
 pub struct CompactionTask {
-    pub compaction_inputs: Vec<CompactionInputFiles>,
-    pub expired: Vec<ExpiredFiles>,
+    inputs: Vec<CompactionInputFiles>,
+    expired: Vec<ExpiredFiles>,
 }
 
 impl Drop for CompactionTask {
@@ -331,8 +331,8 @@ impl Drop for CompactionTask {
 }
 
 impl CompactionTask {
-    pub fn mark_files_being_compacted(&self, being_compacted: bool) {
-        for input in &self.compaction_inputs {
+    fn mark_files_being_compacted(&self, being_compacted: bool) {
+        for input in &self.inputs {
             for file in &input.files {
                 file.set_being_compacted(being_compacted);
             }
@@ -347,7 +347,7 @@ impl CompactionTask {
     // Estimate the size of the total input files.
     pub fn estimated_total_input_file_size(&self) -> usize {
         let total_input_size: u64 = self
-            .compaction_inputs
+            .inputs
             .iter()
             .map(|v| v.files.iter().map(|f| f.size()).sum::<u64>())
             .sum();
@@ -356,18 +356,63 @@ impl CompactionTask {
     }
 
     pub fn num_compact_files(&self) -> usize {
-        self.compaction_inputs.iter().map(|v| v.files.len()).sum()
+        self.inputs.iter().map(|v| v.files.len()).sum()
     }
 
     pub fn num_expired_files(&self) -> usize {
         self.expired.iter().map(|v| v.files.len()).sum()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.is_input_empty() && self.expired.is_empty()
+    }
+
+    pub fn is_input_empty(&self) -> bool {
+        self.inputs.is_empty()
+    }
+
+    pub fn expired(&self) -> &[ExpiredFiles] {
+        &self.expired
+    }
+
+    pub fn inputs(&self) -> &[CompactionInputFiles] {
+        &self.inputs
+    }
+}
+
+pub struct CompactionTaskBuilder {
+    expired: Vec<ExpiredFiles>,
+    inputs: Vec<CompactionInputFiles>,
+}
+
+impl CompactionTaskBuilder {
+    pub fn with_expired(expired: Vec<ExpiredFiles>) -> Self {
+        Self {
+            expired,
+            inputs: Vec::new(),
+        }
+    }
+
+    pub fn add_inputs(&mut self, files: CompactionInputFiles) {
+        self.inputs.push(files);
+    }
+
+    pub fn build(self) -> CompactionTask {
+        let task = CompactionTask {
+            expired: self.expired,
+            inputs: self.inputs,
+        };
+
+        task.mark_files_being_compacted(true);
+
+        task
     }
 }
 
 impl fmt::Debug for CompactionTask {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CompactionTask")
-            .field("inputs", &self.compaction_inputs)
+            .field("inputs", &self.inputs)
             .field(
                 "expired",
                 &self

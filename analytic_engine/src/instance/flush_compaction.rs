@@ -648,22 +648,23 @@ impl SpaceStore {
             "Begin compact table, table_name:{}, id:{}, task:{:?}",
             table_data.name, table_data.id, task
         );
+        let inputs = task.inputs();
         let mut edit_meta = VersionEditMeta {
             space_id: table_data.space_id,
             table_id: table_data.id,
             flushed_sequence: 0,
             // Use the number of compaction inputs as the estimated number of files to add.
-            files_to_add: Vec::with_capacity(task.compaction_inputs.len()),
+            files_to_add: Vec::with_capacity(inputs.len()),
             files_to_delete: vec![],
             mems_to_remove: vec![],
         };
 
-        if task.num_expired_files() == 0 && task.num_compact_files() == 0 {
+        if task.is_empty() {
             // Nothing to compact.
             return Ok(());
         }
 
-        for files in &task.expired {
+        for files in task.expired() {
             self.delete_expired_files(table_data, request_id, files, &mut edit_meta);
         }
 
@@ -675,7 +676,7 @@ impl SpaceStore {
             task.num_compact_files(),
         );
 
-        for input in &task.compaction_inputs {
+        for input in inputs {
             self.compact_input_files(
                 request_id,
                 table_data,

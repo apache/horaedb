@@ -462,7 +462,7 @@ impl ScheduleWorker {
         waiter_notifier: WaiterNotifier,
         token: MemoryUsageToken,
     ) {
-        let keep_scheduling_compaction = !compaction_task.compaction_inputs.is_empty();
+        let keep_scheduling_compaction = !compaction_task.is_input_empty();
 
         let runtime = self.runtime.clone();
         let space_store = self.space_store.clone();
