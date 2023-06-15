@@ -193,7 +193,7 @@ struct ShardOpener {
     shard_id: ShardId,
     manifest: ManifestRef,
     wal_manager: WalManagerRef,
-    states: HashMap<TableId, TableOpenStage>,
+    stages: HashMap<TableId, TableOpenStage>,
     wal_replay_batch_size: usize,
     flusher: Flusher,
     max_retry_flush_limit: usize,
@@ -231,7 +231,7 @@ impl ShardOpener {
             shard_id: shard_context.shard_id,
             manifest,
             wal_manager,
-            states,
+            stages: states,
             wal_replay_batch_size,
             flusher,
             max_retry_flush_limit,
@@ -247,7 +247,7 @@ impl ShardOpener {
         self.recover_table_datas().await?;
 
         // Retrieve the table results and return.
-        let states = std::mem::take(&mut self.states);
+        let states = std::mem::take(&mut self.stages);
         let mut table_results = HashMap::with_capacity(states.len());
         for (table_id, state) in states {
             match state {
@@ -273,7 +273,7 @@ impl ShardOpener {
 
     /// Recover table meta data from manifest based on shard.
     async fn recover_table_metas(&mut self) -> Result<()> {
-        for (table_id, state) in self.states.iter_mut() {
+        for (table_id, state) in self.stages.iter_mut() {
             match state {
                 // Only do the meta recovery work in `RecoverTableMeta` state.
                 TableOpenStage::RecoverTableMeta(ctx) => {
@@ -319,8 +319,8 @@ impl ShardOpener {
     /// Recover table data based on shard.
     async fn recover_table_datas(&mut self) -> Result<()> {
         // Replay wal logs of tables.
-        let mut replay_table_datas = Vec::with_capacity(self.states.len());
-        for (table_id, stage) in self.states.iter_mut() {
+        let mut replay_table_datas = Vec::with_capacity(self.stages.len());
+        for (table_id, stage) in self.stages.iter_mut() {
             match stage {
                 // Only do the wal recovery work in `RecoverTableData` state.
                 TableOpenStage::RecoverTableData(ctx) => {
@@ -358,7 +358,9 @@ impl ShardOpener {
         // Process the replay results.
         for table_data in replay_table_datas {
             let table_id = table_data.id;
-            let stage = self.states.get_mut(&table_id).unwrap();
+            // Each `table_data` has its related `stage` in `stages`, impossible to panic
+            // here.
+            let stage = self.stages.get_mut(&table_id).unwrap();
             let failed_table_opt = table_results.remove(&table_id);
 
             match (&stage, failed_table_opt) {

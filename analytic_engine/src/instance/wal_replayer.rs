@@ -37,7 +37,7 @@ use crate::{
 // TODO: limit the memory usage in `RegionBased` mode.
 pub struct WalReplayer<'a> {
     context: ReplayContext,
-    core: Box<dyn ReplayCore>,
+    replay: Box<dyn Replay>,
     table_datas: &'a [TableDataRef],
 }
 
@@ -59,32 +59,32 @@ impl<'a> WalReplayer<'a> {
             max_retry_flush_limit,
         };
 
-        let core = Self::build_core(replay_mode);
+        let replay = Self::build_replay(replay_mode);
 
         Self {
-            core,
+            replay,
             context,
             table_datas,
         }
     }
 
-    fn build_core(mode: ReplayMode) -> Box<dyn ReplayCore> {
+    fn build_replay(mode: ReplayMode) -> Box<dyn Replay> {
         info!("Replay wal in mode:{mode:?}");
 
         match mode {
-            ReplayMode::RegionBased => Box::new(RegionBasedCore),
-            ReplayMode::TableBased => Box::new(TableBasedCore),
+            ReplayMode::RegionBased => Box::new(RegionBasedReplay),
+            ReplayMode::TableBased => Box::new(TableBasedReplay),
         }
     }
 
     /// Replay tables and return the failed tables and the causes.
     pub async fn replay(&mut self) -> Result<FailedTables> {
-        // Build core according to mode.
+        // Build replay action according to mode.
         info!(
             "Replay wal logs begin, context:{}, tables:{:?}",
             self.context, self.table_datas
         );
-        let result = self.core.replay(&self.context, self.table_datas).await;
+        let result = self.replay.run(&self.context, self.table_datas).await;
         info!(
             "Replay wal logs finish, context:{}, tables:{:?}",
             self.context, self.table_datas,
@@ -120,23 +120,22 @@ pub enum ReplayMode {
 
 pub type FailedTables = HashMap<TableId, Error>;
 
-/// Replay core, the abstract of different replay strategies
+/// Replay action, the abstract of different replay strategies
 #[async_trait]
-trait ReplayCore: Send + Sync + 'static {
-    /// Replay tables, return the failed tables and the causes.
-    async fn replay(
+trait Replay: Send + Sync + 'static {
+    async fn run(
         &self,
         context: &ReplayContext,
         table_datas: &[TableDataRef],
     ) -> Result<FailedTables>;
 }
 
-/// Table based wal replay core
-struct TableBasedCore;
+/// Table based wal replay
+struct TableBasedReplay;
 
 #[async_trait]
-impl ReplayCore for TableBasedCore {
-    async fn replay(
+impl Replay for TableBasedReplay {
+    async fn run(
         &self,
         context: &ReplayContext,
         table_datas: &[TableDataRef],
@@ -159,7 +158,7 @@ impl ReplayCore for TableBasedCore {
     }
 }
 
-impl TableBasedCore {
+impl TableBasedReplay {
     async fn recover_table_logs(
         context: &ReplayContext,
         table_data: &TableDataRef,
@@ -212,17 +211,17 @@ impl TableBasedCore {
     }
 }
 
-/// Region based wal replay core
-struct RegionBasedCore;
+/// Region based wal replay
+struct RegionBasedReplay;
 
 #[async_trait]
-impl ReplayCore for RegionBasedCore {
-    async fn replay(
+impl Replay for RegionBasedReplay {
+    async fn run(
         &self,
         context: &ReplayContext,
         table_datas: &[TableDataRef],
     ) -> Result<FailedTables> {
-        debug!("Replay wal logs on region mode, context:{context}, states:{table_datas:?}",);
+        debug!("Replay wal logs on region mode, context:{context}, tables:{table_datas:?}",);
 
         // Init all table results to be oks, and modify to errs when failed to replay.
         let mut faileds = FailedTables::new();
@@ -237,7 +236,7 @@ impl ReplayCore for RegionBasedCore {
     }
 }
 
-impl RegionBasedCore {
+impl RegionBasedReplay {
     /// Replay logs in same region.
     ///
     /// Steps:
@@ -510,7 +509,7 @@ mod tests {
     use table_engine::table::TableId;
     use wal::log_batch::LogEntry;
 
-    use crate::instance::wal_replayer::{RegionBasedCore, TableBatch};
+    use crate::instance::wal_replayer::{RegionBasedReplay, TableBatch};
 
     #[test]
     fn test_split_log_batch_by_table() {
@@ -594,7 +593,7 @@ mod tests {
 
     fn check_split_result(batch: &VecDeque<LogEntry<u32>>, expected: &[TableBatch]) {
         let mut table_batches = Vec::new();
-        RegionBasedCore::split_log_batch_by_table(batch, &mut table_batches);
+        RegionBasedReplay::split_log_batch_by_table(batch, &mut table_batches);
         assert_eq!(&table_batches, expected);
     }
 }
