@@ -322,6 +322,14 @@ pub struct CompactionTask {
     pub expired: Vec<ExpiredFiles>,
 }
 
+impl Drop for CompactionTask {
+    fn drop(&mut self) {
+        // When task is cancelled for some reason,
+        // we need to mark files as not compacted in order for them to be rescheduled.
+        self.mark_files_being_compacted(false);
+    }
+}
+
 impl CompactionTask {
     pub fn mark_files_being_compacted(&self, being_compacted: bool) {
         for input in &self.compaction_inputs {

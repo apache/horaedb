@@ -140,6 +140,7 @@ impl CompactionPicker for CommonCompactionPicker {
             );
 
             compaction_task.compaction_inputs = vec![input_files];
+            compaction_task.mark_files_being_compacted(true);
         }
 
         Ok(compaction_task)

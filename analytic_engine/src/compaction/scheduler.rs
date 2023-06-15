@@ -462,9 +462,6 @@ impl ScheduleWorker {
         waiter_notifier: WaiterNotifier,
         token: MemoryUsageToken,
     ) {
-        // Mark files being in compaction.
-        compaction_task.mark_files_being_compacted(true);
-
         let keep_scheduling_compaction = !compaction_task.compaction_inputs.is_empty();
 
         let runtime = self.runtime.clone();
@@ -503,9 +500,6 @@ impl ScheduleWorker {
                 .await;
 
             if let Err(e) = &res {
-                // Compaction is failed, we need to unset the compaction mark.
-                compaction_task.mark_files_being_compacted(false);
-
                 error!(
                     "Failed to compact table, table_name:{}, table_id:{}, request_id:{}, err:{}",
                     table_data.name, table_data.id, request_id, e
