@@ -130,6 +130,18 @@ pub enum Error {
 
     #[snafu(display("Other failure, msg:{}.\nBacktrace:\n{:?}", msg, backtrace))]
     Other { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Failed to run flush job, msg:{:?}, err:{}", msg, source))]
+    FlushJobWithCause {
+        msg: Option<String>,
+        source: GenericError,
+    },
+
+    #[snafu(display("Failed to run flush job, msg:{:?}.\nBacktrace:\n{}", msg, backtrace))]
+    FlushJobNoCause {
+        msg: Option<String>,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
@@ -163,6 +175,7 @@ pub struct TableFlushRequest {
     pub max_sequence: SequenceNumber,
 }
 
+#[derive(Clone)]
 pub struct Flusher {
     pub space_store: SpaceStoreRef,
 
@@ -311,7 +324,15 @@ impl FlushTask {
         // Start flush duration timer.
         let local_metrics = self.table_data.metrics.local_flush_metrics();
         let _timer = local_metrics.start_flush_timer();
-        self.dump_memtables(request_id, &mems_to_flush).await?;
+        self.dump_memtables(request_id, &mems_to_flush)
+            .await
+            .box_err()
+            .context(FlushJobWithCause {
+                msg: Some(format!(
+                    "table:{}, table_id:{}, request_id:{request_id}",
+                    self.table_data.name, self.table_data.id
+                )),
+            })?;
 
         self.table_data
             .set_last_flush_time(time::current_time_millis());

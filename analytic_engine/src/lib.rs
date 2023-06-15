@@ -97,7 +97,19 @@ pub struct Config {
     /// + Kafka
     pub wal: WalStorageConfig,
 
+    /// Recover mode
+    ///
+    /// + TableBased, tables on same shard will be recovered table by table.
+    /// + ShardBased, tables on same shard will be recovered together.
+    pub recover_mode: RecoverMode,
+
     pub remote_engine_client: remote_engine_client::config::Config,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+pub enum RecoverMode {
+    TableBased,
+    ShardBased,
 }
 
 impl Default for Config {
@@ -127,6 +139,7 @@ impl Default for Config {
             max_bytes_per_write_batch: None,
             wal: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
+            recover_mode: RecoverMode::TableBased,
         }
     }
 }
