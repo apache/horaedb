@@ -128,7 +128,7 @@ impl CompactionPicker for CommonCompactionPicker {
         let expire_time = ctx.ttl.map(Timestamp::expire_time);
         let mut compaction_task = CompactionTask {
             expired: levels_controller.expired_ssts(expire_time),
-            ..Default::default()
+            compaction_inputs: Vec::new(),
         };
 
         if let Some(input_files) =

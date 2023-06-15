@@ -388,17 +388,12 @@ impl fmt::Debug for CompactionTask {
     }
 }
 
-pub struct PickerManager {}
-
-impl Default for PickerManager {
-    fn default() -> Self {
-        Self {}
-    }
-}
+#[derive(Default)]
+pub struct PickerManager;
 
 impl PickerManager {
     pub fn get_picker(&self, strategy: CompactionStrategy) -> CompactionPickerRef {
-        return Arc::new(CommonCompactionPicker::new(strategy));
+        Arc::new(CommonCompactionPicker::new(strategy))
     }
 }
 
