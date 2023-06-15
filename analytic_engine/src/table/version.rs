@@ -727,7 +727,8 @@ impl TableVersion {
         picker_ctx: PickerContext,
         picker: &CompactionPickerRef,
     ) -> picker::Result<CompactionTask> {
-        // pick will set FileHandle to being_compacted state
+        // Pick will set FileHandle to being_compacted state, so we require
+        // write lock here to prevent other threads pick same file to compact.
         let inner = self.inner.write().unwrap();
 
         picker.pick_compaction(picker_ctx, &inner.levels_controller)
