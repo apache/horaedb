@@ -496,7 +496,6 @@ impl RecordBatchWithKeyBuilder {
             .columns()
             .iter()
             .map(|column_schema| {
-                // If the tag column is a string column, then use the dictionary
                 ColumnBlockBuilder::with_capacity(
                     &column_schema.data_type,
                     capacity,

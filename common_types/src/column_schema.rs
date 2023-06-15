@@ -317,9 +317,8 @@ impl TryFrom<&Arc<Field>> for ColumnSchema {
 impl From<&ColumnSchema> for Field {
     fn from(col_schema: &ColumnSchema) -> Self {
         let metadata = encode_arrow_field_meta_data(col_schema);
-        // If the tag column is a string column, then use the dictionary
-        let data_type: DataType = if col_schema.is_tag && col_schema.data_type == DatumKind::String
-        {
+        // If the column sholud use dictionary, create correspond dictionary type.
+        let data_type: DataType = if col_schema.is_dictionary {
             DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8))
         } else {
             col_schema.data_type.into()
@@ -367,6 +366,10 @@ fn encode_arrow_field_meta_data(col_schema: &ColumnSchema) -> HashMap<String, St
     meta.insert(
         ArrowFieldMetaKey::IsTag.to_string(),
         col_schema.is_tag.to_string(),
+    );
+    meta.insert(
+        ArrowFieldMetaKey::IsDictionary.to_string(),
+        col_schema.is_dictionary.to_string(),
     );
     meta.insert(
         ArrowFieldMetaKey::Comment.to_string(),

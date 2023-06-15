@@ -185,12 +185,6 @@ pub fn build_schema_for_dictionary() -> Schema {
                 .build()
                 .unwrap(),
         )
-        .unwrap()
-        .add_normal_column(
-            column_schema::Builder::new("field2".to_string(), DatumKind::Float)
-                .build()
-                .unwrap(),
-        )
         .unwrap();
 
     builder.build().unwrap()
