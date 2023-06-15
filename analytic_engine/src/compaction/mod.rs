@@ -324,8 +324,13 @@ pub struct CompactionTask {
 
 impl Drop for CompactionTask {
     fn drop(&mut self) {
-        // When task is cancelled for some reason,
-        // we need to mark files as not compacted in order for them to be rescheduled.
+        // When a CompactionTask is dropped, it means
+        // 1. the task finished successfully, or
+        // 2. the task is cancelled for some reason, like memory limit
+        //
+        // In case 2, we need to mark files as not compacted in order for them to be
+        // scheduled again. In case 1, the files will be moved out of level controller,
+        // so it doesn't care what the flag is, so it's safe to set false here.
         self.mark_files_being_compacted(false);
     }
 }
@@ -357,10 +362,6 @@ impl CompactionTask {
 
     pub fn num_compact_files(&self) -> usize {
         self.inputs.iter().map(|v| v.files.len()).sum()
-    }
-
-    pub fn num_expired_files(&self) -> usize {
-        self.expired.iter().map(|v| v.files.len()).sum()
     }
 
     pub fn is_empty(&self) -> bool {
