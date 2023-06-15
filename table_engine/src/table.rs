@@ -249,6 +249,7 @@ impl From<TableId> for TableSeq {
 pub struct TableId(u64);
 
 impl TableId {
+    pub const MAX: TableId = TableId(u64::MAX);
     /// Min table id.
     pub const MIN: TableId = TableId(0);
 
