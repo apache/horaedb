@@ -375,13 +375,12 @@ mod tests {
             };
 
             let dir = tempdir().unwrap();
-            let _root = dir.path();
-            let mypath = std::path::Path::new("/Users/tanruixiang");
-            // let store: ObjectStoreRef =
-            // Arc::new(LocalFileSystem::new_with_prefix(root).unwrap());
+            let root = dir.path();
+            // let mypath = std::path::Path::new("/Users/tanruixiang");
+            let store: ObjectStoreRef = Arc::new(LocalFileSystem::new_with_prefix(root).unwrap());
             // let store: ObjectStoreRef = Arc::new(LocalFileSystem::new());
             // println!("{:?}", LocalFileSystem::new());
-            let store: ObjectStoreRef = Arc::new(LocalFileSystem::new_with_prefix(mypath).unwrap());
+            // let store: ObjectStoreRef = Arc::new(LocalFileSystem::new_with_prefix(mypath).unwrap());
             // println!("path : {:?}",LocalFileSystem::new_with_prefix(root).unwrap());
             let store_picker: ObjectStorePickerRef = Arc::new(store);
             let sst_file_path = Path::from("test_dictionary.par");
