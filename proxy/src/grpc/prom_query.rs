@@ -395,26 +395,26 @@ mod tests {
             build_row(1000000, 2, 10.0, "v4"),
             build_row(1000000, 3, 10.0, "v3"),
         ];
-
-        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::Timestamp, 2);
+        // TODO missing is_dictionary paramms
+        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::Timestamp, 2, false);
         for row in &rows {
             builder.append(row[0].clone()).unwrap();
         }
         let timestamp_block = builder.build();
-
-        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::UInt64, 2);
+        // TODO missing is_dictionary paramms
+        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::UInt64, 2, false);
         for row in &rows {
             builder.append(row[1].clone()).unwrap();
         }
         let tsid_block = builder.build();
-
-        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::Double, 2);
+        // TODO missing is_dictionary paramms
+        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::Double, 2, false);
         for row in &rows {
             builder.append(row[2].clone()).unwrap();
         }
         let field_block = builder.build();
-
-        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::String, 2);
+        // TODO missing is_dictionary paramms
+        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::String, 2, false);
         for row in &rows {
             builder.append(row[3].clone()).unwrap();
         }

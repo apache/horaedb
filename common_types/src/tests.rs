@@ -129,7 +129,8 @@ fn default_value_schema_builder() -> schema::Builder {
 }
 
 /// Build a schema for testing:
-/// (key1(varbinary), key2(timestamp), field1(double), field2(string), field3(date), field4(time))
+/// (key1(varbinary), key2(timestamp), field1(double), field2(string),
+/// field3(date), field4(time))
 pub fn build_schema() -> Schema {
     base_schema_builder().build().unwrap()
 }
@@ -164,14 +165,17 @@ pub fn build_schema_for_dictionary() -> Schema {
         .unwrap()
         .add_normal_column(
             column_schema::Builder::new("tag1".to_string(), DatumKind::String)
-                .is_tag(true).is_dictionary(true).is_nullable(true)
+                .is_tag(true)
+                .is_dictionary(true)
+                .is_nullable(true)
                 .build()
                 .unwrap(),
         )
         .unwrap()
         .add_normal_column(
             column_schema::Builder::new("tag2".to_string(), DatumKind::String)
-                .is_tag(true).is_dictionary(true)
+                .is_tag(true)
+                .is_dictionary(true)
                 .build()
                 .unwrap(),
         )
@@ -240,14 +244,18 @@ pub fn build_schema_for_cpu() -> Schema {
     builder.build().unwrap()
 }
 
-
-pub fn build_row_for_dictionary(key1: u64, key2 : i64, tag1: Option<&str>, tag2: &str, value: i8) -> Row {
+pub fn build_row_for_dictionary(
+    key1: u64,
+    key2: i64,
+    tag1: Option<&str>,
+    tag2: &str,
+    value: i8,
+) -> Row {
     let datums = vec![
         Datum::UInt64(key1),
         Datum::Timestamp(Timestamp::new(key2)),
-        tag1
-        .map(|v| Datum::String(StringBytes::from(v)))
-        .unwrap_or(Datum::Null),
+        tag1.map(|v| Datum::String(StringBytes::from(v)))
+            .unwrap_or(Datum::Null),
         Datum::String(StringBytes::from(tag2)),
         Datum::Int8(value),
     ];

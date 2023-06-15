@@ -5,16 +5,17 @@ use std::sync::Arc;
 
 use arrow::{
     array::{
-        Array, ArrayBuilder, ArrayRef, BinaryArray, BinaryBuilder, BooleanArray, BooleanBuilder,
-        Date32Array as DateArray, Date32Builder as DateBuilder, Float32Array as FloatArray,
-        Float32Builder as FloatBuilder, Float64Array as DoubleArray,
+        Array, ArrayAccessor, ArrayBuilder, ArrayRef, BinaryArray, BinaryBuilder, BooleanArray,
+        BooleanBuilder, Date32Array as DateArray, Date32Builder as DateBuilder, DictionaryArray,
+        Float32Array as FloatArray, Float32Builder as FloatBuilder, Float64Array as DoubleArray,
         Float64Builder as DoubleBuilder, Int16Array, Int16Builder, Int32Array, Int32Builder,
         Int64Array, Int64Builder, Int8Array, Int8Builder, NullArray, StringArray, StringBuilder,
-        Time64NanosecondArray as TimeArray, Time64NanosecondBuilder as TimeBuilder,
-        TimestampMillisecondArray, TimestampMillisecondBuilder, UInt16Array, UInt16Builder,
-        UInt32Array, UInt32Builder, UInt64Array, UInt64Builder, UInt8Array, UInt8Builder, StringDictionaryBuilder, DictionaryArray, ArrayAccessor,
+        StringDictionaryBuilder, Time64NanosecondArray as TimeArray,
+        Time64NanosecondBuilder as TimeBuilder, TimestampMillisecondArray,
+        TimestampMillisecondBuilder, UInt16Array, UInt16Builder, UInt32Array, UInt32Builder,
+        UInt64Array, UInt64Builder, UInt8Array, UInt8Builder,
     },
-    datatypes::{Int32Type, DataType, TimeUnit},
+    datatypes::{DataType, Int32Type, TimeUnit},
     error::ArrowError,
 };
 use datafusion::physical_plan::{
@@ -291,7 +292,8 @@ impl_column!(
 impl_column!(StringColumn, get_string_datum, get_string_datum_view);
 
 // TODO
-// impl_column!(StringDictionaryColumn, get_string_datum, get_string_datum_view);
+// impl_column!(StringDictionaryColumn, get_string_datum,
+// get_string_datum_view);
 impl StringDictionaryColumn {
     #[doc = " Get datum by index."]
     pub fn datum_opt(&self, index: usize) -> Option<Datum> {
@@ -312,8 +314,8 @@ impl StringDictionaryColumn {
         if self.0.is_null(index) {
             return DatumView::Null;
         }
-       // TODO : Is this the efficient way?
-       DatumView::String(self.0.downcast_dict::<StringArray>().unwrap().value(index).into())
+        // TODO : Is this the efficient way?
+        DatumView::String(self.0.downcast_dict::<StringArray>().unwrap().value(index))
     }
 
     pub fn datum(&self, index: usize) -> Datum {
@@ -321,7 +323,13 @@ impl StringDictionaryColumn {
             return Datum::Null;
         }
         // TODO : Is this the efficient way?
-        Datum::String(self.0.downcast_dict::<StringArray>().unwrap().value(index).into())
+        Datum::String(
+            self.0
+                .downcast_dict::<StringArray>()
+                .unwrap()
+                .value(index)
+                .into(),
+        )
     }
 
     #[inline]
@@ -334,7 +342,6 @@ impl StringDictionaryColumn {
         self.num_rows() == 0
     }
 }
-
 
 macro_rules! impl_dedup {
     ($Column: ident) => {
@@ -462,8 +469,8 @@ impl_from_array_and_slice!(NullColumn, NullArray);
 impl_from_array_and_slice!(TimestampColumn, TimestampMillisecondArray);
 impl_from_array_and_slice!(VarbinaryColumn, BinaryArray);
 impl_from_array_and_slice!(StringColumn, StringArray);
-// impl_from_array_and_slice!(StringDictionaryColumn, DictionaryArray<Int32Type>);
-
+// impl_from_array_and_slice!(StringDictionaryColumn,
+// DictionaryArray<Int32Type>);
 
 impl From<DictionaryArray<Int32Type>> for StringDictionaryColumn {
     fn from(array: DictionaryArray<Int32Type>) -> Self {
@@ -494,7 +501,6 @@ impl StringDictionaryColumn {
         Self(array)
     }
 }
-
 
 macro_rules! impl_iter {
     ($Column: ident, $Value: ident) => {
@@ -556,7 +562,6 @@ impl StringDictionaryColumn {
         Self(array)
     }
 }
-
 
 macro_rules! impl_numeric_column {
     ($(($Kind: ident, $type: ty)), *) =>  {
@@ -672,7 +677,6 @@ impl StringColumn {
 //     }
 // }
 
-
 macro_rules! impl_column_block {
     ($($Kind: ident), *) => {
         impl ColumnBlock {
@@ -786,7 +790,7 @@ macro_rules! define_column_block {
 
             impl ColumnBlock {
                 pub fn try_from_arrow_array_ref(datum_kind: &DatumKind, array: &ArrayRef) -> Result<Self> {
-                    let is_dictionary : bool =  if let DataType::Dictionary(..)  = array.data_type() {
+                    let _is_dictionary : bool =  if let DataType::Dictionary(..)  = array.data_type() {
                         true
                     } else {
                         false
@@ -1186,8 +1190,8 @@ define_column_block_builder!(
 
 impl ColumnBlockBuilder {
     /// Create by data type
-    pub fn new(data_type: &DatumKind, is_dictionry : bool) -> Self {
-        Self::with_capacity(data_type.into(), 0, is_dictionry)
+    pub fn new(data_type: &DatumKind, is_dictionry: bool) -> Self {
+        Self::with_capacity(data_type, 0, is_dictionry)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -1203,7 +1207,9 @@ impl ColumnBlockBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::{build_rows, build_schema, build_row_for_dictionary, build_schema_for_dictionary};
+    use crate::tests::{
+        build_row_for_dictionary, build_rows, build_schema, build_schema_for_dictionary,
+    };
 
     #[test]
     fn test_column_block_builder() {
@@ -1246,18 +1252,21 @@ mod tests {
     #[test]
     fn test_column_block_string_dictionary_builder() {
         let schema = build_schema_for_dictionary();
-        let rows = vec![build_row_for_dictionary(1, 1, Some("tag1_1"), "tag2_1", 1),
-        build_row_for_dictionary(2, 2, Some("tag1_2"), "tag2_2", 2),
-        build_row_for_dictionary(3, 3, Some("tag1_3"), "tag2_3", 3),
-        build_row_for_dictionary(4, 4, Some("tag1_1"), "tag2_4", 3),
-        build_row_for_dictionary(5, 5, Some("tag1_3"), "tag2_4", 4),
-        build_row_for_dictionary(6, 6, None, "tag2_4", 4)];
+        let rows = vec![
+            build_row_for_dictionary(1, 1, Some("tag1_1"), "tag2_1", 1),
+            build_row_for_dictionary(2, 2, Some("tag1_2"), "tag2_2", 2),
+            build_row_for_dictionary(3, 3, Some("tag1_3"), "tag2_3", 3),
+            build_row_for_dictionary(4, 4, Some("tag1_1"), "tag2_4", 3),
+            build_row_for_dictionary(5, 5, Some("tag1_3"), "tag2_4", 4),
+            build_row_for_dictionary(6, 6, None, "tag2_4", 4),
+        ];
         // DatumKind::String , is_dictionary = true
         let column = schema.column(2);
-        println!("{:?}", column);
-        let mut builder = ColumnBlockBuilder::with_capacity(&column.data_type, 0, column.is_dictionary);
+        println!("{column:?}");
+        let mut builder =
+            ColumnBlockBuilder::with_capacity(&column.data_type, 0, column.is_dictionary);
         // append
-        (0..rows.len()).for_each(|i| builder.append(rows[i][2].clone() ).unwrap());
+        (0..rows.len()).for_each(|i| builder.append(rows[i][2].clone()).unwrap());
 
         let ret = builder.append(rows[0][0].clone());
         assert!(ret.is_err());
@@ -1270,7 +1279,8 @@ mod tests {
 
         let column_block = builder.build();
         assert_eq!(column_block.num_rows(), 7);
-        let mut builder = ColumnBlockBuilder::with_capacity(&column.data_type, 2, column.is_dictionary);
+        let mut builder =
+            ColumnBlockBuilder::with_capacity(&column.data_type, 2, column.is_dictionary);
 
         // append_block_range
         (0..rows.len()).for_each(|i| builder.append_block_range(&column_block, i, 1).unwrap());
@@ -1297,10 +1307,6 @@ mod tests {
             column_block.datum(4),
             Datum::String(StringBytes::from("tag1_3"))
         );
-        assert_eq!(
-            column_block.datum(5),
-            Datum::Null
-        );
+        assert_eq!(column_block.datum(5), Datum::Null);
     }
-
 }

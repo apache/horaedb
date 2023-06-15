@@ -477,7 +477,13 @@ impl RecordBatchWithKeyBuilder {
         let builders = schema_with_key
             .columns()
             .iter()
-            .map(|column_schema| ColumnBlockBuilder::with_capacity(&column_schema.data_type, 0, column_schema.is_dictionary))
+            .map(|column_schema| {
+                ColumnBlockBuilder::with_capacity(
+                    &column_schema.data_type,
+                    0,
+                    column_schema.is_dictionary,
+                )
+            })
             .collect();
         Self {
             schema_with_key,
@@ -491,7 +497,11 @@ impl RecordBatchWithKeyBuilder {
             .iter()
             .map(|column_schema| {
                 // If the tag column is a string column, then use the dictionary
-                ColumnBlockBuilder::with_capacity(&column_schema.data_type, capacity, column_schema.is_dictionary)
+                ColumnBlockBuilder::with_capacity(
+                    &column_schema.data_type,
+                    capacity,
+                    column_schema.is_dictionary,
+                )
             })
             .collect();
         Self {
