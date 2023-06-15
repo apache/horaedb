@@ -484,6 +484,7 @@ impl From<ColumnSchema> for schema_pb::ColumnSchema {
             is_nullable: src.is_nullable,
             id: src.id,
             is_tag: src.is_tag,
+            is_dictionary: src.is_dictionary,
             comment: src.comment,
             default_value,
         }
