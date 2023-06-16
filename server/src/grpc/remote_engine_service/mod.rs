@@ -74,12 +74,19 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             });
             let tx = tx.clone();
             self.runtimes.read_runtime.spawn(async move {
+                let mut num_rows = 0;
                 while let Some(batch) = stream.next().await {
+                    if let Ok(record_batch) = &batch {
+                        num_rows += record_batch.num_rows();
+                    }
                     if let Err(e) = tx.send(batch).await {
                         error!("Failed to send handler result, err:{}.", e);
                         break;
                     }
                 }
+                REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+                    .query_succeeded_row
+                    .inc_by(num_rows as u64);
             });
         }
 
@@ -331,21 +338,32 @@ async fn handle_stream_read(
 
     let begin = Instant::now();
     let table = find_table_by_identifier(&ctx, &table_ident)?;
-    let streams = table
+    let res = table
         .partitioned_read(read_request)
         .await
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
             msg: format!("fail to read table, table:{table_ident:?}"),
-        })?;
-
-    info!(
+        });
+    match res {
+        Ok(streams) => {
+            info!(
         "Handle stream read success, request_id:{request_id}, table:{table_ident:?}, cost:{:?}",
         begin.elapsed(),
     );
-
-    Ok(streams)
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+                .stream_query_succeeded
+                .inc();
+            Ok(streams)
+        }
+        Err(e) => {
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+                .stream_query_failed
+                .inc();
+            Err(e)
+        }
+    }
 }
 
 async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<WriteResponse> {
@@ -367,13 +385,20 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
             msg: format!("fail to write table, table:{:?}", write_request.table),
         });
     match res {
-        Ok(affected_rows) => Ok(WriteResponse {
-            header: None,
-            affected_rows: affected_rows as u64,
-        }),
-        Err(e) => {
+        Ok(affected_rows) => {
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC.write_succeeded.inc();
             REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
-                .write_failed
+                .write_succeeded_row
+                .inc_by(affected_rows as u64);
+            Ok(WriteResponse {
+                header: None,
+                affected_rows: affected_rows as u64,
+            })
+        }
+        Err(e) => {
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC.write_failed.inc();
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+                .write_failed_row
                 .inc_by(num_rows as u64);
             Err(e)
         }
