@@ -350,11 +350,15 @@ async fn handle_stream_read(
         "Handle stream read success, request_id:{request_id}, table:{table_ident:?}, cost:{:?}",
         begin.elapsed(),
     );
-            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC.query_succeeded.inc();
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+                .stream_query_succeeded
+                .inc();
             Ok(streams)
         }
         Err(e) => {
-            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC.query_failed.inc();
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+                .stream_query_failed
+                .inc();
             Err(e)
         }
     }

@@ -84,7 +84,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         match self.clone().handle_stream_query_internal(ctx, req).await {
             Err(e) => stream::once(async {
                 error!("Failed to handle stream sql query, err:{e}");
-                GRPC_HANDLER_COUNTER_VEC.query_failed.inc();
+                GRPC_HANDLER_COUNTER_VEC.stream_query_failed.inc();
                 SqlQueryResponse {
                     header: Some(error::build_err_header(e)),
                     ..Default::default()
@@ -92,7 +92,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             })
             .boxed(),
             Ok(v) => {
-                GRPC_HANDLER_COUNTER_VEC.query_succeeded.inc();
+                GRPC_HANDLER_COUNTER_VEC.stream_query_succeeded.inc();
                 v
             }
         }
@@ -137,7 +137,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                         error!("Failed to send affected rows resp in stream sql query");
                     }
                     GRPC_HANDLER_COUNTER_VEC
-                        .query_succeeded_row
+                        .query_affected_row
                         .inc_by(rows as u64);
                 }
                 Output::Records(batches) => {
