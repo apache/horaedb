@@ -70,10 +70,10 @@ impl Closer {
         let removed_table = self.space.remove_table(&request.table_name);
         assert!(removed_table.is_some());
 
-        serial_exec_ctx.mark_closed();
+        serial_exec_ctx.invalidate();
         info!(
-            "table:{}-{} has been removed from the space_id:{}",
-            table_data.name, table_data.id, self.space.id
+            "table:{} has been removed from the space_id:{}, table_id:{}",
+            table_data.name, self.space.id, table_data.id,
         );
         Ok(())
     }

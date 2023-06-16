@@ -90,13 +90,17 @@ impl TableShardInfo {
 
 /// The context for execution of serial operation on the table.
 pub struct SerialExecContext {
-    closed: bool,
+    /// Denotes whether `serial_exec` is valid.
+    ///
+    /// The `serial_exec` will be invalidated if the table is closed.
+    invalid: bool,
     serial_exec: TableOpSerialExecutor,
 }
 
 impl SerialExecContext {
-    pub fn mark_closed(&mut self) {
-        self.closed = true;
+    #[inline]
+    pub fn invalidate(&mut self) {
+        self.invalid = true;
     }
 }
 
@@ -245,7 +249,7 @@ impl TableData {
         ));
 
         let serial_exec_ctx = tokio::sync::Mutex::new(SerialExecContext {
-            closed: false,
+            invalid: false,
             serial_exec: TableOpSerialExecutor::new(table_id),
         });
         Ok(Self {
@@ -368,7 +372,7 @@ impl TableData {
     /// Acquire the [`SerialExecContext`] if the table is not closed.
     pub async fn acquire_serial_exec_ctx(&self) -> Option<MutexGuard<'_, SerialExecContext>> {
         let v = self.serial_exec_ctx.lock().await;
-        if v.closed {
+        if v.invalid {
             None
         } else {
             Some(v)
@@ -383,7 +387,7 @@ impl TableData {
         let v = self.serial_exec_ctx.try_lock();
         match v {
             Ok(ctx) => {
-                if ctx.closed {
+                if ctx.invalid {
                     None
                 } else {
                     Some(ctx)
