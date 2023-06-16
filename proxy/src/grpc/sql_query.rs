@@ -141,6 +141,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                         .inc_by(rows as u64);
                 }
                 Output::Records(batches) => {
+                    let mut num_rows = 0;
                     for batch in &batches {
                         let resp = {
                             let mut writer = QueryResponseWriter::new(resp_compress_min_length);
@@ -152,10 +153,11 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                             error!("Failed to send record batches resp in stream sql query");
                             break;
                         }
-                        GRPC_HANDLER_COUNTER_VEC
-                            .query_succeeded_row
-                            .inc_by(batch.num_rows() as u64);
+                        num_rows += batch.num_rows();
                     }
+                    GRPC_HANDLER_COUNTER_VEC
+                        .query_succeeded_row
+                        .inc_by(num_rows as u64);
                 }
             }
             Ok::<(), Error>(())
@@ -234,16 +236,18 @@ pub fn convert_output(
         Output::Records(batches) => {
             let mut writer = QueryResponseWriter::new(resp_compress_min_length);
             writer.write_batches(batches)?;
+            let mut num_rows = 0;
             for batch in batches {
-                GRPC_HANDLER_COUNTER_VEC
-                    .query_succeeded_row
-                    .inc_by(batch.num_rows() as u64);
+                num_rows += batch.num_rows();
             }
+            GRPC_HANDLER_COUNTER_VEC
+                .query_succeeded_row
+                .inc_by(num_rows as u64);
             writer.finish()
         }
         Output::AffectedRows(rows) => {
             GRPC_HANDLER_COUNTER_VEC
-                .query_succeeded_row
+                .query_affected_row
                 .inc_by(*rows as u64);
             Ok(QueryResponseBuilder::with_ok_header().build_with_affected_rows(*rows))
         }

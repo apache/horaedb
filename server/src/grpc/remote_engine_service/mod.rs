@@ -74,17 +74,19 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             });
             let tx = tx.clone();
             self.runtimes.read_runtime.spawn(async move {
+                let mut num_rows = 0;
                 while let Some(batch) = stream.next().await {
                     if let Ok(record_batch) = &batch {
-                        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
-                            .query_succeeded_row
-                            .inc_by(record_batch.num_rows() as u64);
+                        num_rows += record_batch.num_rows();
                     }
                     if let Err(e) = tx.send(batch).await {
                         error!("Failed to send handler result, err:{}.", e);
                         break;
                     }
                 }
+                REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+                    .query_succeeded_row
+                    .inc_by(num_rows as u64);
             });
         }
 
