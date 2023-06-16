@@ -28,6 +28,7 @@ use tonic::{transport::Channel, IntoRequest};
 use crate::{
     error::{self, ErrNoCause, ErrWithCause, Error, Result},
     forward::{ForwardRequest, ForwardResult},
+    grpc::metrics::GRPC_HANDLER_COUNTER_VEC,
     read::SqlResponse,
     Context, Proxy,
 };
@@ -40,12 +41,16 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         match self.handle_sql_query_internal(ctx, req).await {
             Err(e) => {
                 error!("Failed to handle sql query, err:{e}");
+                GRPC_HANDLER_COUNTER_VEC.query_failed.inc();
                 SqlQueryResponse {
                     header: Some(error::build_err_header(e)),
                     ..Default::default()
                 }
             }
-            Ok(v) => v,
+            Ok(v) => {
+                GRPC_HANDLER_COUNTER_VEC.query_succeeded.inc();
+                v
+            }
         }
     }
 
@@ -79,13 +84,17 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         match self.clone().handle_stream_query_internal(ctx, req).await {
             Err(e) => stream::once(async {
                 error!("Failed to handle stream sql query, err:{e}");
+                GRPC_HANDLER_COUNTER_VEC.stream_query_failed.inc();
                 SqlQueryResponse {
                     header: Some(error::build_err_header(e)),
                     ..Default::default()
                 }
             })
             .boxed(),
-            Ok(v) => v,
+            Ok(v) => {
+                GRPC_HANDLER_COUNTER_VEC.stream_query_succeeded.inc();
+                v
+            }
         }
     }
 
@@ -127,8 +136,12 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     if tx.send(resp).await.is_err() {
                         error!("Failed to send affected rows resp in stream sql query");
                     }
+                    GRPC_HANDLER_COUNTER_VEC
+                        .query_affected_row
+                        .inc_by(rows as u64);
                 }
                 Output::Records(batches) => {
+                    let mut num_rows = 0;
                     for batch in &batches {
                         let resp = {
                             let mut writer = QueryResponseWriter::new(resp_compress_min_length);
@@ -140,7 +153,11 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                             error!("Failed to send record batches resp in stream sql query");
                             break;
                         }
+                        num_rows += batch.num_rows();
                     }
+                    GRPC_HANDLER_COUNTER_VEC
+                        .query_succeeded_row
+                        .inc_by(num_rows as u64);
                 }
             }
             Ok::<(), Error>(())
@@ -219,9 +236,19 @@ pub fn convert_output(
         Output::Records(batches) => {
             let mut writer = QueryResponseWriter::new(resp_compress_min_length);
             writer.write_batches(batches)?;
+            let mut num_rows = 0;
+            for batch in batches {
+                num_rows += batch.num_rows();
+            }
+            GRPC_HANDLER_COUNTER_VEC
+                .query_succeeded_row
+                .inc_by(num_rows as u64);
             writer.finish()
         }
         Output::AffectedRows(rows) => {
+            GRPC_HANDLER_COUNTER_VEC
+                .query_affected_row
+                .inc_by(*rows as u64);
             Ok(QueryResponseBuilder::with_ok_header().build_with_affected_rows(*rows))
         }
     }
