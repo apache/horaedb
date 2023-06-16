@@ -21,7 +21,7 @@ use ceresdbproto::{
 use common_util::time::InstantExt;
 use futures::{stream, stream::BoxStream, StreamExt};
 use http::StatusCode;
-use proxy::{Context, Proxy, FORWARDED};
+use proxy::{Context, Proxy, FORWARDED_FROM};
 use query_engine::executor::Executor as QueryExecutor;
 use table_engine::engine::EngineRuntimes;
 
@@ -138,7 +138,10 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
             enable_partition_table_access: false,
-            forwarded: req.metadata().contains_key(FORWARDED),
+            forwarded_from: req
+                .metadata()
+                .get(FORWARDED_FROM)
+                .map(|value| value.to_str().unwrap().to_string()),
         };
         let stream = Self::stream_sql_query_internal(ctx, proxy, req).await;
 
@@ -160,7 +163,10 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
             enable_partition_table_access: false,
-            forwarded: req.metadata().contains_key(FORWARDED),
+            forwarded_from: req
+                .metadata()
+                .get(FORWARDED_FROM)
+                .map(|value| value.to_str().unwrap().to_string()),
         };
         let req = req.into_inner();
         let proxy = self.proxy.clone();
@@ -192,7 +198,10 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             runtime: self.runtimes.write_runtime.clone(),
             timeout: self.timeout,
             enable_partition_table_access: false,
-            forwarded: req.metadata().contains_key(FORWARDED),
+            forwarded_from: req
+                .metadata()
+                .get(FORWARDED_FROM)
+                .map(|value| value.to_str().unwrap().to_string()),
         };
         let req = req.into_inner();
         let proxy = self.proxy.clone();
@@ -233,7 +242,10 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
             enable_partition_table_access: false,
-            forwarded: req.metadata().contains_key(FORWARDED),
+            forwarded_from: req
+                .metadata()
+                .get(FORWARDED_FROM)
+                .map(|value| value.to_str().unwrap().to_string()),
         };
         let req = req.into_inner();
         let proxy = self.proxy.clone();
@@ -298,7 +310,10 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
             enable_partition_table_access: false,
-            forwarded: req.metadata().contains_key(FORWARDED),
+            forwarded_from: req
+                .metadata()
+                .get(FORWARDED_FROM)
+                .map(|value| value.to_str().unwrap().to_string()),
         };
         let req = req.into_inner();
         let proxy = self.proxy.clone();
@@ -340,7 +355,10 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             runtime: self.runtimes.write_runtime.clone(),
             timeout: self.timeout,
             enable_partition_table_access: false,
-            forwarded: req.metadata().contains_key(FORWARDED),
+            forwarded_from: req
+                .metadata()
+                .get(FORWARDED_FROM)
+                .map(|value| value.to_str().unwrap().to_string()),
         };
         let mut stream = req.into_inner();
         let proxy = self.proxy.clone();

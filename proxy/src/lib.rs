@@ -22,7 +22,7 @@ pub mod schema_config_provider;
 mod util;
 mod write;
 
-pub const FORWARDED: &str = "forwarded";
+pub const FORWARDED_FROM: &str = "forwarded-from";
 
 use std::{
     sync::Arc,
@@ -133,7 +133,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             schema: req_ctx.database.clone(),
             table: metric,
             req: req.into_request(),
-            forwarded: false,
+            forwarded_from: None,
         };
         let do_query = |mut client: StorageServiceClient<Channel>,
                         request: tonic::Request<PrometheusRemoteQueryRequest>,
@@ -455,5 +455,5 @@ pub struct Context {
     pub timeout: Option<Duration>,
     pub runtime: Arc<Runtime>,
     pub enable_partition_table_access: bool,
-    pub forwarded: bool,
+    pub forwarded_from: Option<String>,
 }

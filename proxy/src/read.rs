@@ -178,7 +178,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             schema: schema.to_string(),
             table: table_name.unwrap(),
             req: sql_request.into_request(),
-            forwarded: ctx.forwarded,
+            forwarded_from: ctx.forwarded_from,
         };
         let do_query = |mut client: StorageServiceClient<Channel>,
                         request: tonic::Request<SqlQueryRequest>,

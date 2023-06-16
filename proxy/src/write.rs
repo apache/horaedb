@@ -438,7 +438,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .forward_with_endpoint(
                 endpoint,
                 tonic::Request::new(table_write_request),
-                ctx.forwarded,
+                ctx.forwarded_from,
                 do_write,
             )
             .await;

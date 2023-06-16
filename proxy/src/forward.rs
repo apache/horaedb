@@ -21,7 +21,7 @@ use tonic::{
     transport::{self, Channel},
 };
 
-use crate::FORWARDED;
+use crate::FORWARDED_FROM;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -71,10 +71,7 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-        "Request should not be forwarded multiple times, forward endpoint:{}",
-        endpoint
-    ))]
+    #[snafu(display("Request should not be forwarded twice, forward from:{}", endpoint))]
     ForwardedErr { endpoint: String },
 }
 
@@ -192,7 +189,7 @@ pub struct ForwardRequest<Req> {
     pub schema: String,
     pub table: String,
     pub req: tonic::Request<Req>,
-    pub forwarded: bool,
+    pub forwarded_from: Option<String>,
 }
 
 impl Forwarder<DefaultClientBuilder> {
@@ -269,7 +266,7 @@ impl<B: ClientBuilder> Forwarder<B> {
             schema,
             table,
             req,
-            forwarded,
+            forwarded_from,
         } = forward_req;
 
         let route_req = RouteRequest {
@@ -295,7 +292,7 @@ impl<B: ClientBuilder> Forwarder<B> {
             }
         };
 
-        self.forward_with_endpoint(endpoint, req, forwarded, do_rpc)
+        self.forward_with_endpoint(endpoint, req, forwarded_from, do_rpc)
             .await
     }
 
@@ -303,7 +300,7 @@ impl<B: ClientBuilder> Forwarder<B> {
         &self,
         endpoint: Endpoint,
         mut req: tonic::Request<Req>,
-        forwarded: bool,
+        forwarded_from: Option<String>,
         do_rpc: F,
     ) -> Result<ForwardResult<Resp, Err>>
     where
@@ -327,13 +324,15 @@ impl<B: ClientBuilder> Forwarder<B> {
             endpoint, req,
         );
 
-        if forwarded {
-            let endpoint = endpoint.to_string();
+        if let Some(endpoint) = forwarded_from {
             return ForwardedErr { endpoint }.fail();
         }
 
         // mark forwarded
-        req.metadata_mut().insert(FORWARDED, "".parse().unwrap());
+        req.metadata_mut().insert(
+            FORWARDED_FROM,
+            self.local_endpoint.to_string().parse().unwrap(),
+        );
 
         let client = self.get_or_create_client(&endpoint).await?;
         match do_rpc(client, req, &endpoint).await {
@@ -486,7 +485,7 @@ mod tests {
                 schema: DEFAULT_SCHEMA.to_string(),
                 table: table.to_string(),
                 req: query_request.into_request(),
-                forwarded: false,
+                forwarded_from: None,
             }
         };
 
