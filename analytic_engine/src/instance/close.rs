@@ -3,12 +3,12 @@
 //! Close table logic of instance
 
 use log::{info, warn};
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use table_engine::engine::CloseTableRequest;
 
 use crate::{
     instance::{
-        engine::{DoManifestSnapshot, FlushTable, Result},
+        engine::{DoManifestSnapshot, FlushTable, OperateClosedTable, Result},
         flush_compaction::{Flusher, TableFlushOptions},
     },
     manifest::{ManifestRef, SnapshotRequest},
@@ -37,8 +37,11 @@ impl Closer {
 
         // Flush table.
         let opts = TableFlushOptions::default();
-        let mut serial_exec = table_data.serial_exec.lock().await;
-        let flush_scheduler = serial_exec.flush_scheduler();
+        let mut serial_exec_ctx = table_data
+            .acquire_serial_exec_ctx()
+            .await
+            .context(OperateClosedTable)?;
+        let flush_scheduler = serial_exec_ctx.flush_scheduler();
 
         self.flusher
             .do_flush(flush_scheduler, &table_data, opts)
@@ -67,6 +70,7 @@ impl Closer {
         let removed_table = self.space.remove_table(&request.table_name);
         assert!(removed_table.is_some());
 
+        serial_exec_ctx.mark_closed();
         info!(
             "table:{}-{} has been removed from the space_id:{}",
             table_data.name, table_data.id, self.space.id

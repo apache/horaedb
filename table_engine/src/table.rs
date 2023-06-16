@@ -135,6 +135,9 @@ pub enum Error {
         source: GenericError,
     },
 
+    #[snafu(display("Try to operate a closed table.\nBacktrace:\n{backtrace}"))]
+    OperateClosedTable { backtrace: Backtrace },
+
     #[snafu(display(
         "Failed to wait for pending writes, table:{table}.\nBacktrace:\n{backtrace}"
     ))]
