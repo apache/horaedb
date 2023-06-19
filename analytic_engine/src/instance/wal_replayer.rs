@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use common_types::{schema::IndexInWriterSchema, table::ShardId};
 use common_util::error::BoxError;
 use log::{debug, error, info, trace};
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use table_engine::table::TableId;
 use tokio::sync::MutexGuard;
 use wal::{
@@ -25,13 +25,13 @@ use wal::{
 use crate::{
     instance::{
         self,
-        engine::{Error, ReplayWalWithCause, Result},
+        engine::{Error, OperateClosedTable, ReplayWalWithCause, Result},
         flush_compaction::{Flusher, TableFlushOptions},
         serial_executor::TableOpSerialExecutor,
         write::MemTableWriter,
     },
     payload::{ReadPayload, WalDecoder},
-    table::data::TableDataRef,
+    table::data::{SerialExecContext, TableDataRef},
 };
 
 /// Wal replayer supporting both table based and region based
@@ -182,7 +182,10 @@ impl TableBasedReplay {
             .box_err()
             .context(ReplayWalWithCause { msg: None })?;
 
-        let mut serial_exec = table_data.serial_exec.lock().await;
+        let mut serial_exec = table_data
+            .acquire_serial_exec_ctx()
+            .await
+            .context(OperateClosedTable)?;
         let mut log_entry_buf = VecDeque::with_capacity(context.wal_replay_batch_size);
         loop {
             // fetch entries to log_entry_buf
@@ -264,14 +267,17 @@ impl RegionBasedReplay {
         let mut log_entry_buf = VecDeque::with_capacity(context.wal_replay_batch_size);
 
         // Lock all related tables.
-        let mut serial_exec_ctxs = HashMap::with_capacity(table_datas.len());
+        let mut replay_table_ctxs = HashMap::with_capacity(table_datas.len());
         for table_data in table_datas {
-            let serial_exec = table_data.serial_exec.lock().await;
-            let serial_exec_ctx = SerialExecContext {
+            let serial_exec_ctx = table_data
+                .acquire_serial_exec_ctx()
+                .await
+                .context(OperateClosedTable)?;
+            let replay_table_ctx = TableReplayContext {
                 table_data: table_data.clone(),
-                serial_exec,
+                serial_exec_ctx,
             };
-            serial_exec_ctxs.insert(table_data.id, serial_exec_ctx);
+            replay_table_ctxs.insert(table_data.id, replay_table_ctx);
         }
 
         // Split and replay logs.
@@ -287,7 +293,7 @@ impl RegionBasedReplay {
                 break;
             }
 
-            Self::replay_single_batch(context, &log_entry_buf, &mut serial_exec_ctxs, faileds)
+            Self::replay_single_batch(context, &log_entry_buf, &mut replay_table_ctxs, faileds)
                 .await?;
         }
 
@@ -297,7 +303,7 @@ impl RegionBasedReplay {
     async fn replay_single_batch(
         context: &ReplayContext,
         log_batch: &VecDeque<LogEntry<ReadPayload>>,
-        serial_exec_ctxs: &mut HashMap<TableId, SerialExecContext<'_>>,
+        serial_exec_ctxs: &mut HashMap<TableId, TableReplayContext<'_>>,
         faileds: &mut FailedTables,
     ) -> Result<()> {
         let mut table_batches = Vec::new();
@@ -317,7 +323,7 @@ impl RegionBasedReplay {
                 let result = replay_table_log_entries(
                     &context.flusher,
                     context.max_retry_flush_limit,
-                    &mut ctx.serial_exec,
+                    &mut ctx.serial_exec_ctx,
                     &ctx.table_data,
                     log_batch.range(table_batch.range),
                 )
@@ -391,9 +397,9 @@ struct TableBatch {
     range: Range<usize>,
 }
 
-struct SerialExecContext<'a> {
+struct TableReplayContext<'a> {
     table_data: TableDataRef,
-    serial_exec: MutexGuard<'a, TableOpSerialExecutor>,
+    serial_exec_ctx: MutexGuard<'a, SerialExecContext>,
 }
 
 /// Replay all log entries into memtable and flush if necessary
