@@ -697,7 +697,7 @@ impl Schema {
         self.column_schemas.num_columns()
     }
 
-    /// Returns true if idx is primary key idnex
+    /// Returns true if idx is primary key index
     pub fn is_primary_key_index(&self, idx: &usize) -> bool {
         self.primary_key_indexes.contains(idx)
     }
