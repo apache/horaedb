@@ -31,7 +31,7 @@ use datafusion::{
     },
 };
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
-use log::{debug, error, info};
+use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{arrow_reader::RowSelection, ParquetRecordBatchStreamBuilder, ProjectionMask},
@@ -148,7 +148,7 @@ impl<'a> Reader<'a> {
             // metadata must be inited after `init_if_necessary`.
             .unwrap()
             .custom();
-        // println!("sst_meta_data_stream {:?}", sst_meta_data); // 这也是对的
+
         let streams: Vec<_> = streams
             .into_iter()
             .map(|stream| {
@@ -230,8 +230,7 @@ impl<'a> Reader<'a> {
 
         let meta_data = self.meta_data.as_ref().unwrap();
         let row_projector = self.row_projector.as_ref().unwrap();
-        let arrow_schema = meta_data.custom().schema.to_arrow_schema_ref(); 
-        // println!("arrow_schema in fetch_record: {:?}", arrow_schema);// this arrow_schema is ok
+        let arrow_schema = meta_data.custom().schema.to_arrow_schema_ref();
         // Get target row groups.
         let target_row_groups = self.prune_row_groups(
             arrow_schema.clone(),
@@ -239,10 +238,6 @@ impl<'a> Reader<'a> {
             meta_data.custom().parquet_filter.as_ref(),
         )?;
 
-        // println!(            "Reader fetch record batches, path:{}, row_groups total:{}, after prune:{}",
-        // self.path,
-        // meta_data.parquet().num_row_groups(),
-        // target_row_groups.len());
         debug!(
             "Reader fetch record batches, path:{}, row_groups total:{}, after prune:{}",
             self.path,
@@ -270,12 +265,12 @@ impl<'a> Reader<'a> {
             let chunk_idx = row_group_idx % chunks_num;
             target_row_group_chunks[chunk_idx].push(row_group);
         }
+
         let parquet_metadata = meta_data.parquet();
         let proj_mask = ProjectionMask::leaves(
             meta_data.parquet().file_metadata().schema_descr(),
             row_projector.existed_source_projection().iter().copied(),
         );
-        // println!("arrow meta_data is {:?}",meta_data.parquet().file_metadata().schema_descr());     
         debug!(
             "Reader fetch record batches, parallelism suggest:{}, real:{}, chunk_size:{}, project:{:?}",
             suggested_parallelism, parallelism, chunk_size, proj_mask
@@ -329,7 +324,7 @@ impl<'a> Reader<'a> {
             self.metrics.read_meta_data_duration = start.elapsed();
             meta_data
         };
-        // println!("source schema from sst: {:?}", meta_data.custom().schema); // 在这里是arrow_schema 是对的
+
         let row_projector = self
             .projected_schema
             .try_project_with_key(&meta_data.custom().schema)
@@ -337,7 +332,6 @@ impl<'a> Reader<'a> {
             .context(Projection)?;
         self.meta_data = Some(meta_data);
         self.row_projector = Some(row_projector);
-        // println!("row_projector: {:?}", self.row_projector); // 这里row_projecotr也是对的
         Ok(())
     }
 
@@ -506,7 +500,6 @@ impl Stream for RecordBatchProjector {
                     Ok(record_batch) => {
                         let parquet_decoder =
                             ParquetDecoder::new(&projector.sst_meta.collapsible_cols_idx);
-                        // println!("before decode : {:?}",record_batch);
                         let record_batch = parquet_decoder
                             .decode_record_batch(record_batch)
                             .box_err()
@@ -538,7 +531,7 @@ impl Stream for RecordBatchProjector {
 impl<'a> SstReader for Reader<'a> {
     async fn meta_data(&mut self) -> Result<SstMetaData> {
         self.init_if_necessary().await?;
-        // println!("reader meta_data {:?}", self.meta_data.as_ref().unwrap().custom()); // 在这里也是对的
+
         Ok(SstMetaData::Parquet(
             self.meta_data.as_ref().unwrap().custom().clone(),
         ))

@@ -66,13 +66,13 @@ impl MetaData {
                 file_meta_data.schema_descr_ptr(),
                 file_meta_data.column_orders().cloned(),
             );
-            // println!("thin_parquet_meta_data {:?}", thin_file_meta_data.schema_descr());
             let thin_parquet_meta_data = parquet_ext::ParquetMetaData::new_with_page_index(
                 thin_file_meta_data,
                 parquet_meta_data.row_groups().to_vec(),
                 parquet_meta_data.page_indexes().cloned(),
                 parquet_meta_data.offset_indexes().cloned(),
             );
+
             Arc::new(thin_parquet_meta_data)
         };
 
