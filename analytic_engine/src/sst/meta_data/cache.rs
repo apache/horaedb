@@ -44,6 +44,8 @@ impl MetaData {
         let mut other_kv_metas = Vec::with_capacity(kv_metas.len() - 1);
         let mut custom_kv_meta = None;
         for kv_meta in kv_metas {
+            // Remove our extended custom meta data from the parquet metadata for small
+            // memory consumption in the cache.
             if kv_meta.key == encoding::META_KEY {
                 custom_kv_meta = Some(kv_meta);
             } else {
@@ -64,13 +66,17 @@ impl MetaData {
 
         // let's build a new parquet metadata without the extended key value
         // metadata.
+        let other_kv_metas = if other_kv_metas.is_empty() {
+            None
+        } else {
+            Some(other_kv_metas)
+        };
         let parquet = {
             let thin_file_meta_data = FileMetaData::new(
                 file_meta_data.version(),
                 file_meta_data.num_rows(),
                 file_meta_data.created_by().map(|v| v.to_string()),
-                // Remove the key value metadata.
-                Some(other_kv_metas),
+                other_kv_metas,
                 file_meta_data.schema_descr_ptr(),
                 file_meta_data.column_orders().cloned(),
             );
