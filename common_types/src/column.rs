@@ -800,7 +800,7 @@ macro_rules! define_column_block {
                     let column = match datum_kind {
                         DatumKind::Null => ColumnBlock::Null(NullColumn::new_null(array.len())),
                         DatumKind::String => {
-                            if is_dictionary {
+                            if !is_dictionary {
                                 let mills_array;
                                 let cast_column = match array.data_type() {
                                     DataType::Timestamp(TimeUnit::Nanosecond, None) => {
