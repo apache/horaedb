@@ -237,7 +237,7 @@ impl OngoingTaskLimit {
 
         if dropped > 0 {
             warn!(
-                "Too many compaction pending tasks,  limit: {}, dropped {} older tasks.",
+                "Too many compaction pending tasks, limit:{}, dropped:{}.",
                 self.max_pending_compaction_tasks, dropped,
             );
         }
@@ -462,10 +462,7 @@ impl ScheduleWorker {
         waiter_notifier: WaiterNotifier,
         token: MemoryUsageToken,
     ) {
-        // Mark files being in compaction.
-        compaction_task.mark_files_being_compacted(true);
-
-        let keep_scheduling_compaction = !compaction_task.compaction_inputs.is_empty();
+        let keep_scheduling_compaction = !compaction_task.is_input_empty();
 
         let runtime = self.runtime.clone();
         let space_store = self.space_store.clone();
@@ -503,9 +500,6 @@ impl ScheduleWorker {
                 .await;
 
             if let Err(e) = &res {
-                // Compaction is failed, we need to unset the compaction mark.
-                compaction_task.mark_files_being_compacted(false);
-
                 error!(
                     "Failed to compact table, table_name:{}, table_id:{}, request_id:{}, err:{}",
                     table_data.name, table_data.id, request_id, e
