@@ -11,6 +11,10 @@ use log::debug;
 use object_store::{ObjectStoreRef, Path};
 use parquet::{arrow::async_reader::AsyncFileReader, file::metadata::ParquetMetaData};
 
+/// Implemention AsyncFileReader based on `ObjectStore`
+///
+/// TODO: Perhaps we should avoid importing object_store in parquet_ext to keep
+/// the parquet_ext crate more pure.
 #[derive(Clone)]
 pub struct ObjectStoreReader {
     storage: ObjectStoreRef,
