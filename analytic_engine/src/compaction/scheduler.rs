@@ -449,7 +449,7 @@ impl ScheduleWorker {
                         self.handle_table_compaction_request(compact_req).await;
                     }
                     debug!("Scheduled {} pending compaction tasks.", len);
-                }else {
+                } else {
                     warn!(
                         "Too many compaction ongoing tasks:{}, max:{}, buf_len:{}",
                         ongoing,
