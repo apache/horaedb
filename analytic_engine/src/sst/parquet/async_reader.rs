@@ -31,7 +31,7 @@ use datafusion::{
     },
 };
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
-use log::{debug, error};
+use log::{debug, error, info};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{
@@ -233,8 +233,8 @@ impl<'a> Reader<'a> {
 
         let meta_data = self.meta_data.as_ref().unwrap();
         let row_projector = self.row_projector.as_ref().unwrap();
-        let arrow_schema = meta_data.custom().schema.to_arrow_schema_ref();
-        println!("arrow_schema in fetch_record: {:?}", arrow_schema);
+        let arrow_schema = meta_data.custom().schema.to_arrow_schema_ref(); 
+        // println!("arrow_schema in fetch_record: {:?}", arrow_schema);// this arrow_schema is ok
         // Get target row groups.
         let target_row_groups = self.prune_row_groups(
             arrow_schema.clone(),
@@ -242,6 +242,10 @@ impl<'a> Reader<'a> {
             meta_data.custom().parquet_filter.as_ref(),
         )?;
 
+        // println!(            "Reader fetch record batches, path:{}, row_groups total:{}, after prune:{}",
+        // self.path,
+        // meta_data.parquet().num_row_groups(),
+        // target_row_groups.len());
         debug!(
             "Reader fetch record batches, path:{}, row_groups total:{}, after prune:{}",
             self.path,
@@ -269,12 +273,12 @@ impl<'a> Reader<'a> {
             let chunk_idx = row_group_idx % chunks_num;
             target_row_group_chunks[chunk_idx].push(row_group);
         }
-
         let parquet_metadata = meta_data.parquet();
         let proj_mask = ProjectionMask::leaves(
             meta_data.parquet().file_metadata().schema_descr(),
             row_projector.existed_source_projection().iter().copied(),
         );
+        // println!("arrow meta_data is {:?}",meta_data.parquet().file_metadata().schema_descr());     
         debug!(
             "Reader fetch record batches, parallelism suggest:{}, real:{}, chunk_size:{}, project:{:?}",
             suggested_parallelism, parallelism, chunk_size, proj_mask
@@ -284,9 +288,17 @@ impl<'a> Reader<'a> {
         for chunk in target_row_group_chunks {
             let object_store_reader =
                 ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
+            // use crate::arrow::schema::parquet_to_array_schema_and_fields;
+            // let (schema, fields) = parquet_to_array_schema_and_fields(
+            //     meta_data.parquet().clone().file_metadata().schema_descr(),
+            //     ProjectionMask::all(),
+            //     meta_data.parquet().clone().file_metadata().key_value_metadata(),
+            // )?;
+
             let mut builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
                 .await
                 .with_context(|| ParquetError)?;
+            println!("builder schema : {:?}",builder.schema().all_fields()); // there schema is error
             let row_selection =
                 self.build_row_selection(arrow_schema.clone(), &chunk, parquet_metadata)?;
             if let Some(selection) = row_selection {
