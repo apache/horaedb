@@ -350,6 +350,7 @@ impl CompactionTask {
     }
 
     // Estimate the size of the total input files.
+    #[inline]
     pub fn estimated_total_input_file_size(&self) -> usize {
         let total_input_size: u64 = self
             .inputs
@@ -360,22 +361,27 @@ impl CompactionTask {
         total_input_size as usize
     }
 
+    #[inline]
     pub fn num_compact_files(&self) -> usize {
         self.inputs.iter().map(|v| v.files.len()).sum()
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.is_input_empty() && self.expired.is_empty()
     }
 
+    #[inline]
     pub fn is_input_empty(&self) -> bool {
         self.inputs.is_empty()
     }
 
+    #[inline]
     pub fn expired(&self) -> &[ExpiredFiles] {
         &self.expired
     }
 
+    #[inline]
     pub fn inputs(&self) -> &[CompactionInputFiles] {
         &self.inputs
     }
