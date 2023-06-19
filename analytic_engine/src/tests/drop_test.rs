@@ -10,7 +10,8 @@ use table_engine::table::AlterSchemaRequest;
 use crate::tests::{
     table::FixedSchemaTable,
     util::{
-        self, EngineBuildContext, MemoryEngineBuildContext, RocksDBEngineBuildContext, TestEnv,
+        self, memory_ctxs, rocksdb_ctxs, EngineBuildContext, MemoryEngineBuildContext,
+        RocksDBEngineBuildContext, TestEnv,
     },
 };
 
@@ -209,14 +210,18 @@ fn test_drop_create_same_table_case<T: EngineBuildContext>(flush: bool, engine_c
 
 #[test]
 fn test_drop_create_same_table_rocks() {
-    let rocksdb_ctx = RocksDBEngineBuildContext::default();
-    test_drop_create_same_table(rocksdb_ctx);
+    let rocksdb_ctxs = rocksdb_ctxs();
+    for ctx in rocksdb_ctxs {
+        test_drop_create_same_table(ctx);
+    }
 }
 
 #[test]
 fn test_drop_create_same_table_mem_wal() {
-    let memory_ctx = MemoryEngineBuildContext::default();
-    test_drop_create_same_table(memory_ctx);
+    let memory_ctxs = memory_ctxs();
+    for ctx in memory_ctxs {
+        test_drop_create_same_table(ctx);
+    }
 }
 
 fn test_drop_create_same_table<T: EngineBuildContext>(engine_context: T) {
@@ -227,14 +232,18 @@ fn test_drop_create_same_table<T: EngineBuildContext>(engine_context: T) {
 
 #[test]
 fn test_alter_schema_drop_create_rocks() {
-    let rocksdb_ctx = RocksDBEngineBuildContext::default();
-    test_alter_schema_drop_create(rocksdb_ctx);
+    let rocksdb_ctxs = rocksdb_ctxs();
+    for ctx in rocksdb_ctxs {
+        test_alter_schema_drop_create(ctx);
+    }
 }
 
 #[test]
 fn test_alter_schema_drop_create_mem_wal() {
-    let memory_ctx = MemoryEngineBuildContext::default();
-    test_alter_schema_drop_create(memory_ctx);
+    let memory_ctxs = memory_ctxs();
+    for ctx in memory_ctxs {
+        test_alter_schema_drop_create(ctx);
+    }
 }
 
 fn test_alter_schema_drop_create<T: EngineBuildContext>(engine_context: T) {
@@ -284,14 +293,18 @@ fn test_alter_schema_drop_create<T: EngineBuildContext>(engine_context: T) {
 
 #[test]
 fn test_alter_options_drop_create_rocks() {
-    let rocksdb_ctx = RocksDBEngineBuildContext::default();
-    test_alter_options_drop_create(rocksdb_ctx);
+    let rocksdb_ctxs = rocksdb_ctxs();
+    for ctx in rocksdb_ctxs {
+        test_alter_options_drop_create(ctx);
+    }
 }
 
 #[test]
 fn test_alter_options_drop_create_mem_wal() {
-    let memory_ctx = MemoryEngineBuildContext::default();
-    test_alter_options_drop_create(memory_ctx);
+    let memory_ctxs = memory_ctxs();
+    for ctx in memory_ctxs {
+        test_alter_options_drop_create(ctx);
+    }
 }
 
 fn test_alter_options_drop_create<T: EngineBuildContext>(engine_context: T) {

@@ -21,7 +21,7 @@ use ceresdbproto::{
 use common_util::time::InstantExt;
 use futures::{stream, stream::BoxStream, StreamExt};
 use http::StatusCode;
-use proxy::{Context, Proxy};
+use proxy::{Context, Proxy, FORWARDED_FROM};
 use query_engine::executor::Executor as QueryExecutor;
 use table_engine::engine::EngineRuntimes;
 
@@ -138,6 +138,10 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
             enable_partition_table_access: false,
+            forwarded_from: req
+                .metadata()
+                .get(FORWARDED_FROM)
+                .map(|value| value.to_str().unwrap().to_string()),
         };
         let stream = Self::stream_sql_query_internal(ctx, proxy, req).await;
 
@@ -155,13 +159,17 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         &self,
         req: tonic::Request<RouteRequest>,
     ) -> Result<tonic::Response<RouteResponse>, tonic::Status> {
-        let req = req.into_inner();
-        let proxy = self.proxy.clone();
         let ctx = Context {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
             enable_partition_table_access: false,
+            forwarded_from: req
+                .metadata()
+                .get(FORWARDED_FROM)
+                .map(|value| value.to_str().unwrap().to_string()),
         };
+        let req = req.into_inner();
+        let proxy = self.proxy.clone();
 
         let join_handle = self
             .runtimes
@@ -186,13 +194,17 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         &self,
         req: tonic::Request<WriteRequest>,
     ) -> Result<tonic::Response<WriteResponse>, tonic::Status> {
-        let req = req.into_inner();
-        let proxy = self.proxy.clone();
         let ctx = Context {
             runtime: self.runtimes.write_runtime.clone(),
             timeout: self.timeout,
             enable_partition_table_access: false,
+            forwarded_from: req
+                .metadata()
+                .get(FORWARDED_FROM)
+                .map(|value| value.to_str().unwrap().to_string()),
         };
+        let req = req.into_inner();
+        let proxy = self.proxy.clone();
 
         let join_handle = self.runtimes.write_runtime.spawn(async move {
             if req.context.is_none() {
@@ -226,13 +238,18 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         &self,
         req: tonic::Request<SqlQueryRequest>,
     ) -> Result<tonic::Response<SqlQueryResponse>, tonic::Status> {
-        let req = req.into_inner();
-        let proxy = self.proxy.clone();
         let ctx = Context {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
             enable_partition_table_access: false,
+            forwarded_from: req
+                .metadata()
+                .get(FORWARDED_FROM)
+                .map(|value| value.to_str().unwrap().to_string()),
         };
+        let req = req.into_inner();
+        let proxy = self.proxy.clone();
+
         let join_handle = self
             .runtimes
             .read_runtime
@@ -289,13 +306,18 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         &self,
         req: tonic::Request<PrometheusQueryRequest>,
     ) -> Result<tonic::Response<PrometheusQueryResponse>, tonic::Status> {
-        let req = req.into_inner();
-        let proxy = self.proxy.clone();
         let ctx = Context {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
             enable_partition_table_access: false,
+            forwarded_from: req
+                .metadata()
+                .get(FORWARDED_FROM)
+                .map(|value| value.to_str().unwrap().to_string()),
         };
+        let req = req.into_inner();
+        let proxy = self.proxy.clone();
+
         let join_handle = self.runtimes.read_runtime.spawn(async move {
             if req.context.is_none() {
                 return PrometheusQueryResponse {
@@ -329,13 +351,17 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
     ) -> Result<tonic::Response<WriteResponse>, tonic::Status> {
         let mut total_success = 0;
 
-        let mut stream = req.into_inner();
-        let proxy = self.proxy.clone();
         let ctx = Context {
             runtime: self.runtimes.write_runtime.clone(),
             timeout: self.timeout,
             enable_partition_table_access: false,
+            forwarded_from: req
+                .metadata()
+                .get(FORWARDED_FROM)
+                .map(|value| value.to_str().unwrap().to_string()),
         };
+        let mut stream = req.into_inner();
+        let proxy = self.proxy.clone();
 
         let join_handle = self.runtimes.write_runtime.spawn(async move {
             let mut resp = WriteResponse::default();

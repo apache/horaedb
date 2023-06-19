@@ -4586,6 +4586,7 @@ dependencies = [
  "jemalloc-sys",
  "jemallocator",
  "log",
+ "pprof 0.11.1",
 ]
 
 [[package]]
@@ -5706,7 +5707,6 @@ dependencies = [
  "opensrv-mysql",
  "partition_table_engine",
  "paste 1.0.12",
- "pprof 0.11.1",
  "profile",
  "prom-remote-api",
  "prometheus 0.12.0",

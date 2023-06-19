@@ -135,6 +135,9 @@ pub enum Error {
         source: GenericError,
     },
 
+    #[snafu(display("Try to operate a closed table.\nBacktrace:\n{backtrace}"))]
+    OperateClosedTable { backtrace: Backtrace },
+
     #[snafu(display(
         "Failed to wait for pending writes, table:{table}.\nBacktrace:\n{backtrace}"
     ))]
@@ -249,6 +252,7 @@ impl From<TableId> for TableSeq {
 pub struct TableId(u64);
 
 impl TableId {
+    pub const MAX: TableId = TableId(u64::MAX);
     /// Min table id.
     pub const MIN: TableId = TableId(0);
 

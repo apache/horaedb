@@ -15,6 +15,7 @@ pub(crate) mod mem_collector;
 pub mod open;
 mod read;
 pub(crate) mod serial_executor;
+pub mod wal_replayer;
 pub(crate) mod write;
 
 use std::sync::Arc;
@@ -27,14 +28,14 @@ use common_util::{
 };
 use log::{error, info};
 use mem_collector::MemUsageCollector;
-use snafu::{ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
 use tokio::sync::oneshot::{self, error::RecvError};
 use wal::manager::{WalLocation, WalManagerRef};
 
-use self::flush_compaction::{Flusher, TableFlushOptions};
 use crate::{
     compaction::{scheduler::CompactionSchedulerRef, TableCompactionRequest},
+    instance::flush_compaction::{Flusher, TableFlushOptions},
     manifest::ManifestRef,
     row_iter::IterOptions,
     space::{SpaceId, SpaceRef, SpacesRef},
@@ -44,7 +45,7 @@ use crate::{
         meta_data::cache::MetaCacheRef,
     },
     table::data::{TableDataRef, TableShardInfo},
-    TableOptions,
+    RecoverMode, TableOptions,
 };
 
 #[allow(clippy::enum_variant_names)]
@@ -64,6 +65,9 @@ pub enum Error {
         table: String,
         source: GenericError,
     },
+
+    #[snafu(display("Try to operate a closed table, table:{table}.\nBacktrace:\n{backtrace}"))]
+    OperateClosedTable { table: String, backtrace: Backtrace },
 
     #[snafu(display("Failed to receive {} result, table:{}, err:{}", op, table, source))]
     RecvManualOpResult {
@@ -159,6 +163,7 @@ pub struct Instance {
     /// Options for scanning sst
     pub(crate) scan_options: ScanOptions,
     pub(crate) iter_options: Option<IterOptions>,
+    pub(crate) recover_mode: RecoverMode,
 }
 
 impl Instance {
@@ -193,7 +198,13 @@ impl Instance {
         };
 
         let flusher = self.make_flusher();
-        let mut serial_exec = table_data.serial_exec.lock().await;
+        let mut serial_exec =
+            table_data
+                .acquire_serial_exec_ctx()
+                .await
+                .context(OperateClosedTable {
+                    table: &table_data.name,
+                })?;
         let flush_scheduler = serial_exec.flush_scheduler();
         flusher
             .schedule_flush(flush_scheduler, table_data, flush_opts)

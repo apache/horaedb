@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Read write test.
 
@@ -11,22 +11,23 @@ use table_engine::table::ReadOrder;
 use crate::{
     setup::WalsOpener,
     table_options,
-    tests::util::{
-        self, EngineBuildContext, MemoryEngineBuildContext, RocksDBEngineBuildContext, TestContext,
-        TestEnv,
-    },
+    tests::util::{self, memory_ctxs, rocksdb_ctxs, EngineBuildContext, TestContext, TestEnv},
 };
 
 #[test]
 fn test_multi_table_read_write_rocks() {
-    let rocksdb_ctx = RocksDBEngineBuildContext::default();
-    test_multi_table_read_write(rocksdb_ctx);
+    let rocksdb_ctxs = rocksdb_ctxs();
+    for ctx in rocksdb_ctxs {
+        test_multi_table_read_write(ctx);
+    }
 }
 
 #[test]
 fn test_multi_table_read_write_mem_wal() {
-    let memory_ctx = MemoryEngineBuildContext::default();
-    test_multi_table_read_write(memory_ctx);
+    let memory_ctxs = memory_ctxs();
+    for ctx in memory_ctxs {
+        test_multi_table_read_write(ctx);
+    }
 }
 
 fn test_multi_table_read_write<T: EngineBuildContext>(engine_context: T) {
@@ -171,14 +172,18 @@ fn test_multi_table_read_write<T: EngineBuildContext>(engine_context: T) {
 
 #[test]
 fn test_table_write_read_rocks() {
-    let rocksdb_ctx = RocksDBEngineBuildContext::default();
-    test_table_write_read(rocksdb_ctx);
+    let rocksdb_ctxs = rocksdb_ctxs();
+    for ctx in rocksdb_ctxs {
+        test_table_write_read(ctx);
+    }
 }
 
 #[test]
 fn test_table_write_read_mem_wal() {
-    let memory_ctx = MemoryEngineBuildContext::default();
-    test_table_write_read(memory_ctx);
+    let memory_ctxs = memory_ctxs();
+    for ctx in memory_ctxs {
+        test_table_write_read(ctx);
+    }
 }
 
 fn test_table_write_read<T: EngineBuildContext>(engine_context: T) {
@@ -192,7 +197,7 @@ fn test_table_write_read<T: EngineBuildContext>(engine_context: T) {
         let fixed_schema_table = test_ctx.create_fixed_schema_table(test_table1).await;
 
         let start_ms = test_ctx.start_ms();
-        let rows = [
+        let rows: [(&str, Timestamp, &str, f64, f64, &str); 3] = [
             (
                 "key1",
                 Timestamp::new(start_ms),
@@ -250,14 +255,18 @@ fn test_table_write_read<T: EngineBuildContext>(engine_context: T) {
 
 #[test]
 fn test_table_write_get_rocks() {
-    let rocksdb_ctx = RocksDBEngineBuildContext::default();
-    test_table_write_get(rocksdb_ctx);
+    let rocksdb_ctxs = rocksdb_ctxs();
+    for ctx in rocksdb_ctxs {
+        test_table_write_get(ctx);
+    }
 }
 
 #[test]
 fn test_table_write_get_mem_wal() {
-    let memory_ctx = MemoryEngineBuildContext::default();
-    test_table_write_get(memory_ctx);
+    let memory_ctxs = memory_ctxs();
+    for ctx in memory_ctxs {
+        test_table_write_get(ctx);
+    }
 }
 
 fn test_table_write_get<T: EngineBuildContext>(engine_context: T) {
@@ -327,22 +336,28 @@ fn test_table_write_get<T: EngineBuildContext>(engine_context: T) {
 
 #[test]
 fn test_table_write_get_override_rocks() {
-    test_table_write_get_override::<RocksDBEngineBuildContext>();
+    let rocksdb_ctxs = rocksdb_ctxs();
+    for ctx in rocksdb_ctxs {
+        test_table_write_get_override(ctx);
+    }
 }
 
 #[test]
 fn test_table_write_get_override_mem_wal() {
-    test_table_write_get_override::<MemoryEngineBuildContext>();
+    let memory_ctxs = memory_ctxs();
+    for ctx in memory_ctxs {
+        test_table_write_get_override(ctx);
+    }
 }
 
-fn test_table_write_get_override<T: EngineBuildContext>() {
-    test_table_write_get_override_case::<T>(FlushPoint::NoFlush, T::default());
+fn test_table_write_get_override<T: EngineBuildContext>(engine_context: T) {
+    test_table_write_get_override_case::<T>(FlushPoint::NoFlush, engine_context.clone());
 
-    test_table_write_get_override_case::<T>(FlushPoint::AfterFirstWrite, T::default());
+    test_table_write_get_override_case::<T>(FlushPoint::AfterFirstWrite, engine_context.clone());
 
-    test_table_write_get_override_case::<T>(FlushPoint::AfterOverwrite, T::default());
+    test_table_write_get_override_case::<T>(FlushPoint::AfterOverwrite, engine_context.clone());
 
-    test_table_write_get_override_case::<T>(FlushPoint::FirstAndOverwrite, T::default());
+    test_table_write_get_override_case::<T>(FlushPoint::FirstAndOverwrite, engine_context);
 }
 
 #[derive(Debug)]
@@ -506,16 +521,20 @@ fn test_table_write_get_override_case<T: EngineBuildContext>(
 
 #[test]
 fn test_db_write_buffer_size_rocks() {
-    let rocksdb_ctx = RocksDBEngineBuildContext::default();
-    // Use different table name to avoid metrics collision.
-    test_db_write_buffer_size("test_db_write_buffer_size_rocks", rocksdb_ctx);
+    let rocksdb_ctxs = rocksdb_ctxs();
+    for ctx in rocksdb_ctxs {
+        // Use different table name to avoid metrics collision.
+        test_db_write_buffer_size("test_db_write_buffer_size_rocks", ctx);
+    }
 }
 
 #[test]
 fn test_db_write_buffer_size_mem_wal() {
-    let memory_ctx = MemoryEngineBuildContext::default();
-    // Use different table name to avoid metrics collision.
-    test_db_write_buffer_size("test_db_write_buffer_size_mem_wal", memory_ctx);
+    let memory_ctxs = memory_ctxs();
+    for ctx in memory_ctxs {
+        // Use different table name to avoid metrics collision.
+        test_db_write_buffer_size("test_db_write_buffer_size_mem_wal", ctx);
+    }
 }
 
 fn test_db_write_buffer_size<T: EngineBuildContext>(table_name: &str, engine_context: T) {
@@ -527,16 +546,20 @@ fn test_db_write_buffer_size<T: EngineBuildContext>(table_name: &str, engine_con
 
 #[test]
 fn test_space_write_buffer_size_rocks() {
-    let rocksdb_ctx = RocksDBEngineBuildContext::default();
-    // Use different table name to avoid metrics collision.
-    test_space_write_buffer_size("test_space_write_buffer_size_rocks", rocksdb_ctx);
+    let rocksdb_ctxs = rocksdb_ctxs();
+    for ctx in rocksdb_ctxs {
+        // Use different table name to avoid metrics collision.
+        test_space_write_buffer_size("test_space_write_buffer_size_rocks", ctx);
+    }
 }
 
 #[test]
 fn test_space_write_buffer_size_mem_wal() {
-    let memory_ctx = MemoryEngineBuildContext::default();
-    // Use different table name to avoid metrics collision.
-    test_space_write_buffer_size("test_space_write_buffer_size_mem_wal", memory_ctx);
+    let memory_ctxs = memory_ctxs();
+    for ctx in memory_ctxs {
+        // Use different table name to avoid metrics collision.
+        test_space_write_buffer_size("test_space_write_buffer_size_mem_wal", ctx);
+    }
 }
 
 fn test_space_write_buffer_size<T: EngineBuildContext>(table_name: &str, engine_context: T) {
@@ -660,14 +683,18 @@ fn test_write_buffer_size_overflow<T: WalsOpener>(
 
 #[test]
 fn test_table_write_read_reverse_rocks() {
-    let rocksdb_ctx = RocksDBEngineBuildContext::default();
-    test_table_write_read_reverse(rocksdb_ctx);
+    let rocksdb_ctxs = rocksdb_ctxs();
+    for ctx in rocksdb_ctxs {
+        test_table_write_read_reverse(ctx);
+    }
 }
 
 #[test]
 fn test_table_write_read_reverse_mem_wal() {
-    let memory_ctx = MemoryEngineBuildContext::default();
-    test_table_write_read_reverse(memory_ctx);
+    let memory_ctxs = memory_ctxs();
+    for ctx in memory_ctxs {
+        test_table_write_read_reverse(ctx);
+    }
 }
 
 fn test_table_write_read_reverse<T: EngineBuildContext>(engine_context: T) {
@@ -746,15 +773,19 @@ fn test_table_write_read_reverse<T: EngineBuildContext>(engine_context: T) {
 #[test]
 #[ignore = "https://github.com/CeresDB/ceresdb/issues/313"]
 fn test_table_write_read_reverse_after_flush_rocks() {
-    let rocksdb_ctx = RocksDBEngineBuildContext::default();
-    test_table_write_read_reverse_after_flush(rocksdb_ctx);
+    let rocksdb_ctxs = rocksdb_ctxs();
+    for ctx in rocksdb_ctxs {
+        test_table_write_read_reverse_after_flush(ctx);
+    }
 }
 
 #[test]
 #[ignore = "https://github.com/CeresDB/ceresdb/issues/313"]
 fn test_table_write_read_reverse_after_flush_mem_wal() {
-    let memory_ctx = MemoryEngineBuildContext::default();
-    test_table_write_read_reverse_after_flush(memory_ctx);
+    let memory_ctxs = memory_ctxs();
+    for ctx in memory_ctxs {
+        test_table_write_read_reverse_after_flush(ctx);
+    }
 }
 
 fn test_table_write_read_reverse_after_flush<T: EngineBuildContext>(engine_context: T) {

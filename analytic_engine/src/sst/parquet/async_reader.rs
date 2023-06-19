@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Sst reader implementation based on parquet.
 
@@ -340,7 +340,7 @@ impl<'a> Reader<'a> {
         Ok(file_size)
     }
 
-    async fn load_meta_data_from_storage(&self) -> Result<parquet_ext::ParquetMetaDataRef> {
+    async fn load_meta_data_from_storage(&self) -> Result<parquet_ext::ParquetMetaData> {
         let file_size = self.load_file_size().await?;
         let chunk_reader_adapter = ChunkReaderAdapter::new(self.path, self.store);
 
@@ -351,7 +351,7 @@ impl<'a> Reader<'a> {
                     file_path: self.path.to_string(),
                 })?;
 
-        Ok(Arc::new(meta_data))
+        Ok(meta_data)
     }
 
     fn need_update_cache(&self) -> bool {
