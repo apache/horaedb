@@ -40,9 +40,8 @@ impl MetaData {
             .key_value_metadata()
             .context(KvMetaDataNotFound)?;
 
-        ensure!(!kv_metas.is_empty(), KvMetaDataNotFound,);
+        ensure!(!kv_metas.is_empty(), KvMetaDataNotFound);
         let mut other_kv_metas = Vec::with_capacity(kv_metas.len() - 1);
-
         let mut custom_kv_meta = None;
         for kv_meta in kv_metas {
             if kv_meta.key == encoding::META_KEY {
