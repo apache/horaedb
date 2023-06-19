@@ -860,8 +860,8 @@ macro_rules! define_column_block {
 
 // Define column blocks, Null is defined explicitly in macro.
 define_column_block!(
-    Timestamp, Double, Float, Varbinary, UInt64, UInt32, UInt16, UInt8, Int64, Int32,
-    Int16, Int8, Boolean, Date, Time
+    Timestamp, Double, Float, Varbinary, UInt64, UInt32, UInt16, UInt8, Int64, Int32, Int16, Int8,
+    Boolean, Date, Time
 );
 
 impl ColumnBlock {

@@ -472,10 +472,28 @@ mod tests {
             let mut stream = reader.read().await.unwrap();
             let mut expect_rows = vec![];
             for counter in &[4, 3, 2, 1, 0] {
-                expect_rows.push(build_row_for_dictionary(1, 100 + counter, Some("tagv1"), "tagv2", 1));
-                expect_rows.push(build_row_for_dictionary(2, 100 + counter, Some("tagv2"), "tagv2", 2));
+                expect_rows.push(build_row_for_dictionary(
+                    1,
+                    100 + counter,
+                    Some("tagv1"),
+                    "tagv2",
+                    1,
+                ));
+                expect_rows.push(build_row_for_dictionary(
+                    2,
+                    100 + counter,
+                    Some("tagv2"),
+                    "tagv2",
+                    2,
+                ));
                 expect_rows.push(build_row_for_dictionary(3, 100 + counter, None, "tagv3", 3));
-                expect_rows.push(build_row_for_dictionary(4, 100 + counter, Some("tagv3"), "tagv2", 2));
+                expect_rows.push(build_row_for_dictionary(
+                    4,
+                    100 + counter,
+                    Some("tagv3"),
+                    "tagv2",
+                    2,
+                ));
             }
             check_stream(&mut stream, expect_rows).await;
         });

@@ -672,7 +672,6 @@ impl ArrowRecordBatchProjector {
                     let column_block =
                         ColumnBlock::try_from_arrow_array_ref(&column_schema.data_type, array)
                             .context(CreateColumnBlock)?;
-                    println!("column datatype: {:?} column block {:?} is_dictionary: {:?}", column_schema.data_type, column_block, is_dictionary);
                     column_blocks.push(column_block);
                 }
                 None => {
@@ -684,7 +683,6 @@ impl ArrowRecordBatchProjector {
                 }
             }
         }
-        // println!("to_arrow_schema_ref: {:?} column_block {:?}",schema_with_key.to_arrow_schema_ref(), column_blocks );
         let data = RecordBatchData::new(schema_with_key.to_arrow_schema_ref(), column_blocks)?;
 
         Ok(RecordBatchWithKey {
