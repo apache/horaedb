@@ -452,7 +452,6 @@ mod tests {
                     .unwrap()
                     .as_ref()
                     .clone();
-                // println!("sst_meta: {:?}", sst_meta_readback);
                 // sst filter is built insider sst writer, so overwrite to default for
                 // comparison.
                 sst_meta_readback.parquet_filter = Default::default();
