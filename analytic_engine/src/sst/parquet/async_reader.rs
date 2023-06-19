@@ -284,18 +284,17 @@ impl<'a> Reader<'a> {
         for chunk in target_row_group_chunks {
             let object_store_reader =
                 ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
-            let mut builder = ParquetRecordBatchStreamBuilder::new(
-                object_store_reader
-            )
-            .await
-            .with_context(|| ParquetError)?;
+            let mut builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
+                .await
+                .with_context(|| ParquetError)?;
 
             let row_selection =
                 self.build_row_selection(arrow_schema.clone(), &chunk, parquet_metadata)?;
-            
+
             debug!(
-                    "Row selection, result:{row_selection:?}, indexes:{:?}",  parquet_metadata.page_indexes()
-                );
+                "Row selection, result:{row_selection:?}, indexes:{:?}",
+                parquet_metadata.page_indexes()
+            );
             if let Some(selection) = row_selection {
                 builder = builder.with_row_selection(selection);
             };
@@ -358,23 +357,20 @@ impl<'a> Reader<'a> {
                 .with_context(|| FetchAndDecodeSstMeta {
                     file_path: self.path.to_string(),
                 })?;
-        
 
         let meta_data = MetaData::try_new(&parquet_meta_data, ignore_sst_filter).unwrap();
         let custom = meta_data.custom().clone();
 
         let object_store_reader =
-        ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data);
-        let  read_options = ArrowReaderOptions::new().with_page_index(true);
-        let  builder = ParquetRecordBatchStreamBuilder::new_with_options(
-                object_store_reader,
-                read_options,
-            )
-            .await
-            .with_context(|| ParquetError)?;
-       
-        Ok( MetaData{
-            parquet:builder.metadata().clone(),
+            ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data);
+        let read_options = ArrowReaderOptions::new().with_page_index(true);
+        let builder =
+            ParquetRecordBatchStreamBuilder::new_with_options(object_store_reader, read_options)
+                .await
+                .with_context(|| ParquetError)?;
+
+        Ok(MetaData {
+            parquet: builder.metadata().clone(),
             custom,
         })
     }
@@ -401,7 +397,7 @@ impl<'a> Reader<'a> {
 
         let meta_data = {
             let ignore_sst_filter = avoid_update_cache && empty_predicate;
-            self.load_meta_data_from_storage(ignore_sst_filter ).await?
+            self.load_meta_data_from_storage(ignore_sst_filter).await?
 
             // MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
             //     .box_err()
