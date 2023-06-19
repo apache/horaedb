@@ -60,7 +60,7 @@ pub trait CompactionPicker {
     fn pick_compaction(
         &self,
         ctx: PickerContext,
-        levels_controller: &LevelsController,
+        levels_controller: &mut LevelsController,
     ) -> Result<CompactionTask>;
 }
 
@@ -123,7 +123,7 @@ impl CompactionPicker for CommonCompactionPicker {
     fn pick_compaction(
         &self,
         ctx: PickerContext,
-        levels_controller: &LevelsController,
+        levels_controller: &mut LevelsController,
     ) -> Result<CompactionTask> {
         let expire_time = ctx.ttl.map(Timestamp::expire_time);
         let mut builder =
@@ -732,8 +732,8 @@ mod tests {
         };
         let now = Timestamp::now();
         {
-            let lc = build_old_bucket_case(now.as_i64());
-            let task = twp.pick_compaction(ctx.clone(), &lc).unwrap();
+            let mut lc = build_old_bucket_case(now.as_i64());
+            let task = twp.pick_compaction(ctx.clone(), &mut lc).unwrap();
             assert_eq!(task.inputs[0].files.len(), 2);
             assert_eq!(task.inputs[0].files[0].id(), 0);
             assert_eq!(task.inputs[0].files[1].id(), 1);
@@ -742,8 +742,8 @@ mod tests {
         }
 
         {
-            let lc = build_newest_bucket_case(now.as_i64());
-            let task = twp.pick_compaction(ctx.clone(), &lc).unwrap();
+            let mut lc = build_newest_bucket_case(now.as_i64());
+            let task = twp.pick_compaction(ctx.clone(), &mut lc).unwrap();
             assert_eq!(task.inputs[0].files.len(), 4);
             assert_eq!(task.inputs[0].files[0].id(), 2);
             assert_eq!(task.inputs[0].files[1].id(), 3);
@@ -752,16 +752,16 @@ mod tests {
         }
 
         {
-            let lc = build_newest_bucket_no_match_case(now.as_i64());
-            let task = twp.pick_compaction(ctx.clone(), &lc).unwrap();
+            let mut lc = build_newest_bucket_no_match_case(now.as_i64());
+            let task = twp.pick_compaction(ctx.clone(), &mut lc).unwrap();
             assert_eq!(task.inputs.len(), 0);
         }
 
         // If ttl is None, then no file is expired.
         ctx.ttl = None;
         {
-            let lc = build_old_bucket_case(now.as_i64());
-            let task = twp.pick_compaction(ctx, &lc).unwrap();
+            let mut lc = build_old_bucket_case(now.as_i64());
+            let task = twp.pick_compaction(ctx, &mut lc).unwrap();
             assert_eq!(task.inputs[0].files.len(), 2);
             assert_eq!(task.inputs[0].files[0].id(), 0);
             assert_eq!(task.inputs[0].files[1].id(), 1);
