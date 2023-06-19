@@ -292,8 +292,9 @@ impl<'a> Reader<'a> {
                 self.build_row_selection(arrow_schema.clone(), &chunk, parquet_metadata)?;
 
             debug!(
-                "Row selection, result:{row_selection:?}, indexes:{:?}",
-                parquet_metadata.page_indexes()
+                "Build row selection for file path:{}, result:{row_selection:?}, page indexes:{}",
+                self.path,
+                parquet_metadata.page_indexes().is_some()
             );
             if let Some(selection) = row_selection {
                 builder = builder.with_row_selection(selection);
@@ -360,7 +361,8 @@ impl<'a> Reader<'a> {
 
         let meta_data = MetaData::try_new(&parquet_meta_data, ignore_sst_filter).unwrap();
         let custom = meta_data.custom().clone();
-
+        // There is no page index in the `meta_data`, we should build page index if we
+        // want to use row selection.
         let object_store_reader =
             ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data);
         let read_options = ArrowReaderOptions::new().with_page_index(true);
@@ -368,9 +370,10 @@ impl<'a> Reader<'a> {
             ParquetRecordBatchStreamBuilder::new_with_options(object_store_reader, read_options)
                 .await
                 .with_context(|| ParquetError)?;
+        let meta_data_with_page_index = builder.metadata();
 
         Ok(MetaData {
-            parquet: builder.metadata().clone(),
+            parquet: meta_data_with_page_index.clone(),
             custom,
         })
     }
