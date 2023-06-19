@@ -1,14 +1,17 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::ops::Range;
+use std::{ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use common_util::error::GenericResult;
 use parquet::{
+    arrow::{arrow_reader::ArrowReaderOptions, ParquetRecordBatchStreamBuilder},
     errors::{ParquetError, Result},
     file::{footer, metadata::ParquetMetaData},
 };
+
+use crate::reader::ObjectStoreReader;
 
 #[async_trait]
 pub trait ChunkReader: Sync + Send {
@@ -64,4 +67,22 @@ pub async fn fetch_parquet_metadata(
         })?;
 
     footer::decode_metadata(&metadata_bytes).map(|v| (v, metadata_len))
+}
+
+/// Build page indexes for meta data
+/// 
+/// TODO: Currently there is no method to build page indexes for meta data in
+/// `parquet`, maybe we can write a issue in `arrow-rs` .
+pub async fn meta_with_page_indexes(
+    object_store_reader: ObjectStoreReader,
+) -> Result<Arc<ParquetMetaData>> {
+    let read_options = ArrowReaderOptions::new().with_page_index(true);
+    let builder =
+        ParquetRecordBatchStreamBuilder::new_with_options(object_store_reader, read_options)
+            .await
+            .map_err(|e| {
+                let err_msg = format!("failed to build page indexes in metadata, err:{e}");
+                ParquetError::General(err_msg)
+            })?;
+    Ok(builder.metadata().clone())
 }

@@ -30,18 +30,14 @@ use datafusion::{
         metrics::ExecutionPlanMetricsSet,
     },
 };
-use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
+use futures::{Stream, StreamExt};
 use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
-    arrow::{
-        arrow_reader::{ArrowReaderOptions, RowSelection},
-        async_reader::AsyncFileReader,
-        ParquetRecordBatchStreamBuilder, ProjectionMask,
-    },
+    arrow::{arrow_reader::RowSelection, ParquetRecordBatchStreamBuilder, ProjectionMask},
     file::metadata::RowGroupMetaData,
 };
-use parquet_ext::meta_data::ChunkReader;
+use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader};
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -282,8 +278,11 @@ impl<'a> Reader<'a> {
 
         let mut streams = Vec::with_capacity(target_row_group_chunks.len());
         for chunk in target_row_group_chunks {
-            let object_store_reader =
-                ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
+            let object_store_reader = ObjectStoreReader::new(
+                self.store.clone(),
+                self.path.clone(),
+                parquet_metadata.clone(),
+            );
             let mut builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
                 .await
                 .with_context(|| ParquetError)?;
@@ -359,23 +358,21 @@ impl<'a> Reader<'a> {
                     file_path: self.path.to_string(),
                 })?;
 
-        let meta_data = MetaData::try_new(&parquet_meta_data, ignore_sst_filter).unwrap();
-        let custom = meta_data.custom().clone();
-        // There is no page index in the `meta_data`, we should build page index if we
-        // want to use row selection.
-        let object_store_reader =
-            ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data);
-        let read_options = ArrowReaderOptions::new().with_page_index(true);
-        let builder =
-            ParquetRecordBatchStreamBuilder::new_with_options(object_store_reader, read_options)
-                .await
-                .with_context(|| ParquetError)?;
-        let meta_data_with_page_index = builder.metadata();
+        let object_store_reader = parquet_ext::reader::ObjectStoreReader::new(
+            self.store.clone(),
+            self.path.clone(),
+            Arc::new(parquet_meta_data),
+        );
 
-        Ok(MetaData {
-            parquet: meta_data_with_page_index.clone(),
-            custom,
-        })
+        let parquet_meta_data = parquet_ext::meta_data::meta_with_page_indexes(object_store_reader)
+            .await
+            .with_context(|| DecodePageIndexes {
+                file_path: self.path.to_string(),
+            })?;
+
+        MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
+            .box_err()
+            .context(DecodeSstMeta)
     }
 
     fn need_update_cache(&self) -> bool {
@@ -430,71 +427,6 @@ impl<'a> Drop for Reader<'a> {
             self.path,
             self.df_plan_metrics.clone_inner().to_string()
         );
-    }
-}
-
-#[derive(Clone)]
-struct ObjectStoreReader {
-    storage: ObjectStoreRef,
-    path: Path,
-    meta_data: MetaData,
-    begin: Instant,
-}
-
-impl ObjectStoreReader {
-    fn new(storage: ObjectStoreRef, path: Path, meta_data: MetaData) -> Self {
-        Self {
-            storage,
-            path,
-            meta_data,
-            begin: Instant::now(),
-        }
-    }
-}
-
-impl Drop for ObjectStoreReader {
-    fn drop(&mut self) {
-        debug!(
-            "ObjectStoreReader dropped, path:{}, elapsed:{:?}",
-            &self.path,
-            self.begin.elapsed()
-        );
-    }
-}
-
-impl AsyncFileReader for ObjectStoreReader {
-    fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
-        self.storage
-            .get_range(&self.path, range)
-            .map_err(|e| {
-                parquet::errors::ParquetError::General(format!(
-                    "Failed to fetch range from object store, err:{e}"
-                ))
-            })
-            .boxed()
-    }
-
-    fn get_byte_ranges(
-        &mut self,
-        ranges: Vec<Range<usize>>,
-    ) -> BoxFuture<'_, parquet::errors::Result<Vec<Bytes>>> {
-        async move {
-            self.storage
-                .get_ranges(&self.path, &ranges)
-                .map_err(|e| {
-                    parquet::errors::ParquetError::General(format!(
-                        "Failed to fetch ranges from object store, err:{e}"
-                    ))
-                })
-                .await
-        }
-        .boxed()
-    }
-
-    fn get_metadata(
-        &mut self,
-    ) -> BoxFuture<'_, parquet::errors::Result<Arc<parquet::file::metadata::ParquetMetaData>>> {
-        Box::pin(async move { Ok(self.meta_data.parquet().clone()) })
     }
 }
 
