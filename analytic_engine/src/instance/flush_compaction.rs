@@ -10,7 +10,7 @@ use common_types::{
     request_id::RequestId,
     row::RowViewOnBatch,
     time::TimeRange,
-    SequenceNumber, 
+    SequenceNumber,
 };
 use common_util::{
     config::ReadableDuration,
@@ -231,7 +231,6 @@ impl Flusher {
         opts: TableFlushOptions,
         block_on: bool,
     ) -> Result<()> {
-
         let flush_task = FlushTask {
             table_data: table_data.clone(),
             space_store: self.space_store.clone(),
@@ -251,7 +250,7 @@ impl FlushTask {
     /// should be ensured by the caller.
     async fn run(&self) -> Result<()> {
         let instant = Instant::now();
-        
+
         let flush_req = self.preprocess_flush(&self.table_data).await?;
 
         let current_version = self.table_data.current_version();
