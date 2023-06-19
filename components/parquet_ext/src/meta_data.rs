@@ -70,7 +70,7 @@ pub async fn fetch_parquet_metadata(
 }
 
 /// Build page indexes for meta data
-/// 
+///
 /// TODO: Currently there is no method to build page indexes for meta data in
 /// `parquet`, maybe we can write a issue in `arrow-rs` .
 pub async fn meta_with_page_indexes(
