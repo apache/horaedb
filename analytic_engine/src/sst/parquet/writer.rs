@@ -364,7 +364,7 @@ mod tests {
     fn test_parquet_use_dictionary() {
         let runtime = Arc::new(runtime::Builder::default().build().unwrap());
         let num_rows_per_row_group = 4;
-        let expected_num_rows = vec![3, 3, 3, 3, 3];
+        let expected_num_rows = vec![4, 4, 4, 4, 4];
         runtime.block_on(async {
             let sst_factory = FactoryImpl;
             let sst_write_options = SstWriteOptions {
@@ -376,12 +376,7 @@ mod tests {
 
             let dir = tempdir().unwrap();
             let root = dir.path();
-            // let mypath = std::path::Path::new("/Users/tanruixiang");
             let store: ObjectStoreRef = Arc::new(LocalFileSystem::new_with_prefix(root).unwrap());
-            // let store: ObjectStoreRef = Arc::new(LocalFileSystem::new());
-            // println!("{:?}", LocalFileSystem::new());
-            // let store: ObjectStoreRef = Arc::new(LocalFileSystem::new_with_prefix(mypath).unwrap());
-            // println!("path : {:?}",LocalFileSystem::new_with_prefix(root).unwrap());
             let store_picker: ObjectStorePickerRef = Arc::new(store);
             let sst_file_path = Path::from("test_dictionary.par");
 
@@ -441,7 +436,7 @@ mod tests {
                 runtime: runtime.clone(),
             };
 
-            let _reader: Box<dyn SstReader + Send> = {
+            let mut reader: Box<dyn SstReader + Send> = {
                 let mut reader = AsyncParquetReader::new(
                     &sst_file_path,
                     &sst_read_options,
@@ -457,6 +452,7 @@ mod tests {
                     .unwrap()
                     .as_ref()
                     .clone();
+                println!("sst_meta: {:?}", sst_meta_readback);
                 // sst filter is built insider sst writer, so overwrite to default for
                 // comparison.
                 sst_meta_readback.parquet_filter = Default::default();
@@ -473,16 +469,15 @@ mod tests {
 
                 Box::new(reader)
             };
-
-            // let mut stream = reader.read().await.unwrap();
-            // let mut expect_rows = vec![];
-            // for counter in &[4, 3, 2, 1, 0] {
-            //     expect_rows.push(build_row(b"a", 100 + counter, 10.0, "v4",
-            // 1000, 1_000_000));     expect_rows.push(build_row(b"
-            // b", 100 + counter, 10.0, "v4", 1000, 1_000_000));
-            //     expect_rows.push(build_row(b"c", 100 + counter, 10.0, "v4",
-            // 1000, 1_000_000)); }
-            // check_stream(&mut stream, expect_rows).await;
+            let mut stream = reader.read().await.unwrap();
+            let mut expect_rows = vec![];
+            for counter in &[4, 3, 2, 1, 0] {
+                expect_rows.push(build_row_for_dictionary(1, 100 + counter, Some("tagv1"), "tagv2", 1));
+                expect_rows.push(build_row_for_dictionary(2, 100 + counter, Some("tagv2"), "tagv2", 2));
+                expect_rows.push(build_row_for_dictionary(3, 100 + counter, None, "tagv3", 3));
+                expect_rows.push(build_row_for_dictionary(4, 100 + counter, Some("tagv3"), "tagv2", 2));
+            }
+            check_stream(&mut stream, expect_rows).await;
         });
     }
 

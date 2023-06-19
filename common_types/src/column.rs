@@ -783,6 +783,7 @@ macro_rules! define_column_block {
             pub enum ColumnBlock {
                 Null(NullColumn),
                 StringDictionary(StringDictionaryColumn),
+                String(StringColumn),
                 $(
                     $Kind([<$Kind Column>]),
                 )*
@@ -790,13 +791,37 @@ macro_rules! define_column_block {
 
             impl ColumnBlock {
                 pub fn try_from_arrow_array_ref(datum_kind: &DatumKind, array: &ArrayRef) -> Result<Self> {
-                    let _is_dictionary : bool =  if let DataType::Dictionary(..)  = array.data_type() {
+                    let is_dictionary : bool =  if let DataType::Dictionary(..)  = array.data_type() {
                         true
                     } else {
                         false
                     };
+                    // todo!
                     let column = match datum_kind {
                         DatumKind::Null => ColumnBlock::Null(NullColumn::new_null(array.len())),
+                        DatumKind::String => {
+                            if is_dictionary {
+                                let mills_array;
+                                let cast_column = match array.data_type() {
+                                    DataType::Timestamp(TimeUnit::Nanosecond, None) => {
+                                        mills_array = cast_nanosecond_to_mills(array)?;
+                                        cast_array(datum_kind, &mills_array)?
+                                    }
+                                    _ => cast_array(datum_kind, array)?,
+                                };
+                                ColumnBlock::String(StringColumn::from(cast_column))
+                            } else {
+                                let mills_array;
+                                let cast_column = match array.data_type() {
+                                    DataType::Timestamp(TimeUnit::Nanosecond, None) => {
+                                        mills_array = cast_nanosecond_to_mills(array)?;
+                                        cast_array(datum_kind, &mills_array)?
+                                    }
+                                    _ => cast_array(datum_kind, array)?,
+                                };
+                                ColumnBlock::StringDictionary(StringDictionaryColumn::from(cast_column))
+                            }
+                        },
                         $(
                             DatumKind::$Kind => {
                                 let mills_array;
@@ -820,6 +845,7 @@ macro_rules! define_column_block {
                 pub fn new_null_with_type(kind: &DatumKind, rows: usize) -> Result<Self> {
                     let block = match kind {
                         DatumKind::Null => ColumnBlock::Null(NullColumn::new_null(rows)),
+                        DatumKind::String => ColumnBlock::String(StringColumn::new_null(rows)),
                         $(
                             DatumKind::$Kind => ColumnBlock::$Kind([<$Kind Column>]::new_null(rows)),
                         )*
@@ -834,7 +860,7 @@ macro_rules! define_column_block {
 
 // Define column blocks, Null is defined explicitly in macro.
 define_column_block!(
-    Timestamp, Double, Float, Varbinary, String, UInt64, UInt32, UInt16, UInt8, Int64, Int32,
+    Timestamp, Double, Float, Varbinary, UInt64, UInt32, UInt16, UInt8, Int64, Int32,
     Int16, Int8, Boolean, Date, Time
 );
 

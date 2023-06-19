@@ -278,7 +278,7 @@ impl TryFrom<schema_pb::ColumnSchema> for ColumnSchema {
             data_type: DatumKind::from(data_type),
             is_nullable: column_schema.is_nullable,
             is_tag: column_schema.is_tag,
-            is_dictionary: false,
+            is_dictionary: column_schema.is_dictionary,
             comment: column_schema.comment,
             escaped_name,
             default_value,
