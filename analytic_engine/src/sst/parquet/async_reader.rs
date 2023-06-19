@@ -401,10 +401,6 @@ impl<'a> Reader<'a> {
         let meta_data = {
             let ignore_sst_filter = avoid_update_cache && empty_predicate;
             self.load_meta_data_from_storage(ignore_sst_filter).await?
-
-            // MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
-            //     .box_err()
-            //     .context(DecodeSstMeta)?
         };
 
         if avoid_update_cache || self.meta_cache.is_none() {
@@ -438,7 +434,7 @@ impl<'a> Drop for Reader<'a> {
 }
 
 #[derive(Clone)]
-pub struct ObjectStoreReader {
+struct ObjectStoreReader {
     storage: ObjectStoreRef,
     path: Path,
     meta_data: MetaData,
@@ -446,7 +442,7 @@ pub struct ObjectStoreReader {
 }
 
 impl ObjectStoreReader {
-    pub fn new(storage: ObjectStoreRef, path: Path, meta_data: MetaData) -> Self {
+    fn new(storage: ObjectStoreRef, path: Path, meta_data: MetaData) -> Self {
         Self {
             storage,
             path,
