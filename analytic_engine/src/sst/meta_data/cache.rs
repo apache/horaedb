@@ -22,8 +22,8 @@ pub type MetaCacheRef = Arc<MetaCache>;
 pub struct MetaData {
     /// The extended information in the parquet is removed for less memory
     /// consumption.
-    pub parquet: parquet_ext::ParquetMetaDataRef,
-    pub custom: ParquetMetaDataRef,
+    parquet: parquet_ext::ParquetMetaDataRef,
+    custom: ParquetMetaDataRef,
 }
 
 impl MetaData {
