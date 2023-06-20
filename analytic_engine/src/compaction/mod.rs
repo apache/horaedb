@@ -318,26 +318,13 @@ pub struct ExpiredFiles {
 
 #[derive(Default, Clone)]
 pub struct CompactionTask {
-    inputs: Vec<CompactionInputFiles>,
-    expired: Vec<ExpiredFiles>,
-}
-
-impl Drop for CompactionTask {
-    fn drop(&mut self) {
-        // When a CompactionTask is dropped, it means
-        // 1. the task finished successfully, or
-        // 2. the task is cancelled for some reason, like memory limit
-        //
-        // In case 2, we need to mark files as not compacted in order for them to be
-        // scheduled again. In case 1, the files will be moved out of level controller,
-        // so it doesn't care what the flag is, so it's safe to set false here.
-        self.mark_files_being_compacted(false);
-    }
+    pub compaction_inputs: Vec<CompactionInputFiles>,
+    pub expired: Vec<ExpiredFiles>,
 }
 
 impl CompactionTask {
-    fn mark_files_being_compacted(&self, being_compacted: bool) {
-        for input in &self.inputs {
+    pub fn mark_files_being_compacted(&self, being_compacted: bool) {
+        for input in &self.compaction_inputs {
             for file in &input.files {
                 file.set_being_compacted(being_compacted);
             }
@@ -350,10 +337,9 @@ impl CompactionTask {
     }
 
     // Estimate the size of the total input files.
-    #[inline]
     pub fn estimated_total_input_file_size(&self) -> usize {
         let total_input_size: u64 = self
-            .inputs
+            .compaction_inputs
             .iter()
             .map(|v| v.files.iter().map(|f| f.size()).sum::<u64>())
             .sum();
@@ -361,65 +347,19 @@ impl CompactionTask {
         total_input_size as usize
     }
 
-    #[inline]
     pub fn num_compact_files(&self) -> usize {
-        self.inputs.iter().map(|v| v.files.len()).sum()
+        self.compaction_inputs.iter().map(|v| v.files.len()).sum()
     }
 
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.is_input_empty() && self.expired.is_empty()
-    }
-
-    #[inline]
-    pub fn is_input_empty(&self) -> bool {
-        self.inputs.is_empty()
-    }
-
-    #[inline]
-    pub fn expired(&self) -> &[ExpiredFiles] {
-        &self.expired
-    }
-
-    #[inline]
-    pub fn inputs(&self) -> &[CompactionInputFiles] {
-        &self.inputs
-    }
-}
-
-pub struct CompactionTaskBuilder {
-    expired: Vec<ExpiredFiles>,
-    inputs: Vec<CompactionInputFiles>,
-}
-
-impl CompactionTaskBuilder {
-    pub fn with_expired(expired: Vec<ExpiredFiles>) -> Self {
-        Self {
-            expired,
-            inputs: Vec::new(),
-        }
-    }
-
-    pub fn add_inputs(&mut self, files: CompactionInputFiles) {
-        self.inputs.push(files);
-    }
-
-    pub fn build(self) -> CompactionTask {
-        let task = CompactionTask {
-            expired: self.expired,
-            inputs: self.inputs,
-        };
-
-        task.mark_files_being_compacted(true);
-
-        task
+    pub fn num_expired_files(&self) -> usize {
+        self.expired.iter().map(|v| v.files.len()).sum()
     }
 }
 
 impl fmt::Debug for CompactionTask {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CompactionTask")
-            .field("inputs", &self.inputs)
+            .field("inputs", &self.compaction_inputs)
             .field(
                 "expired",
                 &self
@@ -440,12 +380,36 @@ impl fmt::Debug for CompactionTask {
     }
 }
 
-#[derive(Default)]
-pub struct PickerManager;
+pub struct PickerManager {
+    default_picker: CompactionPickerRef,
+    time_window_picker: CompactionPickerRef,
+    size_tiered_picker: CompactionPickerRef,
+}
+
+impl Default for PickerManager {
+    fn default() -> Self {
+        let size_tiered_picker = Arc::new(CommonCompactionPicker::new(
+            CompactionStrategy::SizeTiered(SizeTieredCompactionOptions::default()),
+        ));
+        let time_window_picker = Arc::new(CommonCompactionPicker::new(
+            CompactionStrategy::TimeWindow(TimeWindowCompactionOptions::default()),
+        ));
+
+        Self {
+            default_picker: time_window_picker.clone(),
+            size_tiered_picker,
+            time_window_picker,
+        }
+    }
+}
 
 impl PickerManager {
     pub fn get_picker(&self, strategy: CompactionStrategy) -> CompactionPickerRef {
-        Arc::new(CommonCompactionPicker::new(strategy))
+        match strategy {
+            CompactionStrategy::Default => self.default_picker.clone(),
+            CompactionStrategy::SizeTiered(_) => self.size_tiered_picker.clone(),
+            CompactionStrategy::TimeWindow(_) => self.time_window_picker.clone(),
+        }
     }
 }
 

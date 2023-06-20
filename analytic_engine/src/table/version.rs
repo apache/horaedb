@@ -727,9 +727,9 @@ impl TableVersion {
         picker_ctx: PickerContext,
         picker: &CompactionPickerRef,
     ) -> picker::Result<CompactionTask> {
-        let mut inner = self.inner.write().unwrap();
+        let inner = self.inner.read().unwrap();
 
-        picker.pick_compaction(picker_ctx, &mut inner.levels_controller)
+        picker.pick_compaction(picker_ctx, &inner.levels_controller)
     }
 
     pub fn has_expired_sst(&self, expire_time: Option<Timestamp>) -> bool {

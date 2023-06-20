@@ -1,4 +1,4 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Sst reader implementation based on parquet.
 
@@ -30,17 +30,14 @@ use datafusion::{
         metrics::ExecutionPlanMetricsSet,
     },
 };
-use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
+use futures::{Stream, StreamExt};
 use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
-    arrow::{
-        arrow_reader::RowSelection, async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder,
-        ProjectionMask,
-    },
+    arrow::{arrow_reader::RowSelection, ParquetRecordBatchStreamBuilder, ProjectionMask},
     file::metadata::RowGroupMetaData,
 };
-use parquet_ext::meta_data::ChunkReader;
+use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader};
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -281,13 +278,23 @@ impl<'a> Reader<'a> {
 
         let mut streams = Vec::with_capacity(target_row_group_chunks.len());
         for chunk in target_row_group_chunks {
-            let object_store_reader =
-                ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
+            let object_store_reader = ObjectStoreReader::new(
+                self.store.clone(),
+                self.path.clone(),
+                parquet_metadata.clone(),
+            );
             let mut builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
                 .await
                 .with_context(|| ParquetError)?;
+
             let row_selection =
                 self.build_row_selection(arrow_schema.clone(), &chunk, parquet_metadata)?;
+
+            debug!(
+                "Build row selection for file path:{}, result:{row_selection:?}, page indexes:{}",
+                self.path,
+                parquet_metadata.page_indexes().is_some()
+            );
             if let Some(selection) = row_selection {
                 builder = builder.with_row_selection(selection);
             };
@@ -340,18 +347,32 @@ impl<'a> Reader<'a> {
         Ok(file_size)
     }
 
-    async fn load_meta_data_from_storage(&self) -> Result<parquet_ext::ParquetMetaData> {
+    async fn load_meta_data_from_storage(&self, ignore_sst_filter: bool) -> Result<MetaData> {
         let file_size = self.load_file_size().await?;
         let chunk_reader_adapter = ChunkReaderAdapter::new(self.path, self.store);
 
-        let (meta_data, _) =
+        let (parquet_meta_data, _) =
             parquet_ext::meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter)
                 .await
                 .with_context(|| FetchAndDecodeSstMeta {
                     file_path: self.path.to_string(),
                 })?;
 
-        Ok(meta_data)
+        let object_store_reader = parquet_ext::reader::ObjectStoreReader::new(
+            self.store.clone(),
+            self.path.clone(),
+            Arc::new(parquet_meta_data),
+        );
+
+        let parquet_meta_data = parquet_ext::meta_data::meta_with_page_indexes(object_store_reader)
+            .await
+            .with_context(|| DecodePageIndexes {
+                file_path: self.path.to_string(),
+            })?;
+
+        MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
+            .box_err()
+            .context(DecodeSstMeta)
     }
 
     fn need_update_cache(&self) -> bool {
@@ -375,12 +396,8 @@ impl<'a> Reader<'a> {
         let empty_predicate = self.predicate.exprs().is_empty();
 
         let meta_data = {
-            let parquet_meta_data = self.load_meta_data_from_storage().await?;
-
             let ignore_sst_filter = avoid_update_cache && empty_predicate;
-            MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
-                .box_err()
-                .context(DecodeSstMeta)?
+            self.load_meta_data_from_storage(ignore_sst_filter).await?
         };
 
         if avoid_update_cache || self.meta_cache.is_none() {
@@ -410,71 +427,6 @@ impl<'a> Drop for Reader<'a> {
             self.path,
             self.df_plan_metrics.clone_inner().to_string()
         );
-    }
-}
-
-#[derive(Clone)]
-struct ObjectStoreReader {
-    storage: ObjectStoreRef,
-    path: Path,
-    meta_data: MetaData,
-    begin: Instant,
-}
-
-impl ObjectStoreReader {
-    fn new(storage: ObjectStoreRef, path: Path, meta_data: MetaData) -> Self {
-        Self {
-            storage,
-            path,
-            meta_data,
-            begin: Instant::now(),
-        }
-    }
-}
-
-impl Drop for ObjectStoreReader {
-    fn drop(&mut self) {
-        debug!(
-            "ObjectStoreReader dropped, path:{}, elapsed:{:?}",
-            &self.path,
-            self.begin.elapsed()
-        );
-    }
-}
-
-impl AsyncFileReader for ObjectStoreReader {
-    fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
-        self.storage
-            .get_range(&self.path, range)
-            .map_err(|e| {
-                parquet::errors::ParquetError::General(format!(
-                    "Failed to fetch range from object store, err:{e}"
-                ))
-            })
-            .boxed()
-    }
-
-    fn get_byte_ranges(
-        &mut self,
-        ranges: Vec<Range<usize>>,
-    ) -> BoxFuture<'_, parquet::errors::Result<Vec<Bytes>>> {
-        async move {
-            self.storage
-                .get_ranges(&self.path, &ranges)
-                .map_err(|e| {
-                    parquet::errors::ParquetError::General(format!(
-                        "Failed to fetch ranges from object store, err:{e}"
-                    ))
-                })
-                .await
-        }
-        .boxed()
-    }
-
-    fn get_metadata(
-        &mut self,
-    ) -> BoxFuture<'_, parquet::errors::Result<Arc<parquet::file::metadata::ParquetMetaData>>> {
-        Box::pin(async move { Ok(self.meta_data.parquet().clone()) })
     }
 }
 
