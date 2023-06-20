@@ -502,9 +502,9 @@ impl<'a> Writer<'a> {
         if self.instance.should_flush_instance() {
             if let Some(space) = self.instance.space_store.find_maximum_memory_usage_space() {
                 if let Some(table) = space.find_maximum_memory_usage_table() {
-                    info!("Trying to flush table {} bytes {} in space {} because engine total memtable memory usage exceeds db_write_buffer_size {}.",
+                    println!("Trying to flush table {} bytes {} in space {} because engine total memtable memory usage exceeds db_write_buffer_size {}.",
                           table.name,
-                          table.mutable_memory_usage(),
+                          table.memtable_memory_usage(),
                           space.id,
                           self.instance.db_write_buffer_size,
                     );
@@ -519,9 +519,9 @@ impl<'a> Writer<'a> {
 
         if self.space.should_flush_space() {
             if let Some(table) = self.space.find_maximum_memory_usage_table() {
-                info!("Trying to flush table {} bytes {} in space {} because space total memtable memory usage exceeds space_write_buffer_size {}.",
+                println!("Trying to flush table {} bytes {} in space {} because space total memtable memory usage exceeds space_write_buffer_size {}.",
                       table.name,
-                      table.mutable_memory_usage() ,
+                      table.memtable_memory_usage() ,
                       self.space.id,
                       self.space.write_buffer_size,
                 );

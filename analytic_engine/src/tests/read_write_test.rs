@@ -646,9 +646,6 @@ fn test_write_buffer_size_overflow<T: WalsOpener>(
         rows.extend_from_slice(&rows1);
         rows.extend_from_slice(&rows2);
 
-        // TODO(boyan) a better way to wait  table flushing finishes.
-        thread::sleep(time::Duration::from_millis(500));
-
         // Read with different opts.
         util::check_read(
             &test_ctx,
@@ -659,9 +656,13 @@ fn test_write_buffer_size_overflow<T: WalsOpener>(
         )
         .await;
 
+        // TODO(lee) a better way to wait table flushing finishes.
+        thread::sleep(time::Duration::from_millis(500));
+
         let stats = table.stats();
         assert_eq!(old_stats.num_read + 5, stats.num_read);
         assert_eq!(old_stats.num_write + 2, stats.num_write);
+
         // Flush when reaches (db/space) write_buffer size limitation.
         assert_eq!(old_stats.num_flush + 1, stats.num_flush);
 
