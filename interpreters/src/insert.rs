@@ -344,7 +344,7 @@ fn get_or_extract_column_from_row_groups(
             let mut builder = ColumnBlockBuilder::with_capacity(
                 &data_type,
                 iter.size_hint().0,
-                row_groups.schema().column(column_idx).is_dictionary,
+                row_groups.schema().column(column_idx).is_tag,
             );
 
             for datum in iter {
