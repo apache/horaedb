@@ -265,10 +265,6 @@ where
         }
 
         if has_logs {
-            debug!(
-                "Manifest recover with only logs, table_id:{}, space_id:{}",
-                self.table_id, self.space_id
-            );
             Ok(Some(Snapshot {
                 end_seq: latest_seq,
                 data: manifest_data_builder.build(),
@@ -494,7 +490,7 @@ impl Manifest for ManifestImpl {
     }
 
     async fn recover(&self, load_req: &LoadRequest) -> GenericResult<()> {
-        info!("Manifest recover begin, request:{:?}", load_req);
+        info!("Manifest recover begin, request:{load_req:?}");
 
         // Load table meta snapshot from storage.
         let location = WalLocation::new(load_req.shard_id as u64, load_req.table_id.as_u64());
@@ -527,7 +523,7 @@ impl Manifest for ManifestImpl {
             self.table_meta_set.apply_edit_to_table(request)?;
         }
 
-        info!("Manifest recover finish, request:{:?}", load_req);
+        info!("Manifest recover finish, request:{load_req:?}");
 
         Ok(())
     }
