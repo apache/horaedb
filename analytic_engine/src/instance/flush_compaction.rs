@@ -250,7 +250,6 @@ impl FlushTask {
     /// should be ensured by the caller.
     async fn run(&self) -> Result<()> {
         let instant = Instant::now();
-
         let flush_req = self.preprocess_flush(&self.table_data).await?;
 
         let current_version = self.table_data.current_version();
@@ -261,10 +260,6 @@ impl FlushTask {
         }
 
         let request_id = RequestId::next_id();
-        info!(
-            "Instance try to flush memtables, table:{}, table_id:{}, request_id:{}, mems_to_flush:{:?}",
-            self.table_data.name, self.table_data.id, request_id, mems_to_flush
-        );
 
         // Start flush duration timer.
         let local_metrics = self.table_data.metrics.local_flush_metrics();
@@ -295,12 +290,10 @@ impl FlushTask {
 
     async fn preprocess_flush(&self, table_data: &TableDataRef) -> Result<TableFlushRequest> {
         let current_version = table_data.current_version();
-        let last_sequence = table_data.last_sequence();
+        let mut last_sequence = table_data.last_sequence();
         // Switch (freeze) all mutable memtables. And update segment duration if
         // suggestion is returned.
-        if let Some(suggest_segment_duration) =
-            current_version.switch_memtables_or_suggest_duration()
-        {
+        if let Some(suggest_segment_duration) = current_version.suggest_duration() {
             info!(
                 "Update segment duration, table:{}, table_id:{}, segment_duration:{:?}",
                 table_data.name, table_data.id, suggest_segment_duration
@@ -329,11 +322,15 @@ impl FlushTask {
 
             // Now the segment duration is applied, we can stop sampling and freeze the
             // sampling memtable.
-            current_version.freeze_sampling();
+            if let Some(seq) = current_version.freeze_sampling() {
+                last_sequence = seq.max(last_sequence);
+            }
+        } else if let Some(seq) = current_version.switch_memtables() {
+            last_sequence = seq.max(last_sequence);
         }
 
-        info!("Try to trigger memtable flush of table, table:{}, table_id:{}, max_memtable_id:{}, last_sequence:{}",
-            table_data.name, table_data.id, table_data.last_memtable_id(), last_sequence);
+        info!("Try to trigger memtable flush of table, table:{}, table_id:{}, max_memtable_id:{}, last_sequence:{last_sequence}",
+            table_data.name, table_data.id, table_data.last_memtable_id());
 
         // Try to flush all memtables of current table
         Ok(TableFlushRequest {

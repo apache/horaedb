@@ -278,16 +278,19 @@ impl MemTableView {
         mutable_usage + immutable_usage
     }
 
-    /// Switch all memtables or just sample the segment duration.
+    /// Instead of replace the old memtable by a new memtable, we just move the
+    /// old memtable to immutable memtables and left mutable memtables
+    /// empty. New mutable memtable will be constructed via put request.
+    fn switch_memtables(&mut self) -> Option<SequenceNumber> {
+        self.mutables.move_to_inmem(&mut self.immutables)
+    }
+
+    /// Sample the segment duration.
     ///
     /// If the sampling memtable is still active, return the suggested segment
     /// duration or move all mutable memtables into immutable memtables if
     /// the sampling memtable is freezed and returns None.
-    ///
-    /// Instead of replace the old memtable by a new memtable, we just move the
-    /// old memtable to immutable memtables and left mutable memtables
-    /// empty. New mutable memtable will be constructed via put request.
-    fn switch_memtables_or_suggest_duration(&mut self) -> Option<Duration> {
+    fn suggest_duration(&mut self) -> Option<Duration> {
         if let Some(v) = &mut self.sampling_mem {
             if !v.freezed {
                 // Other memtable should be empty during sampling phase.
@@ -304,15 +307,15 @@ impl MemTableView {
             }
         }
 
-        self.mutables.move_to_inmem(&mut self.immutables);
-
         None
     }
 
-    fn freeze_sampling_memtable(&mut self) {
+    fn freeze_sampling_memtable(&mut self) -> Option<SequenceNumber> {
         if let Some(v) = &mut self.sampling_mem {
             v.freezed = true;
+            return Some(v.mem.last_sequence());
         }
+        None
     }
 
     /// Returns memtables need to be flushed. Only sampling memtable and
@@ -414,13 +417,21 @@ impl MutableMemTableSet {
     }
 
     /// Move all mutable memtables to immutable memtables.
-    fn move_to_inmem(&mut self, immem: &mut ImmutableMemTableSet) {
-        for m in self.0.values() {
-            let state = m.clone();
+    fn move_to_inmem(&mut self, immem: &mut ImmutableMemTableSet) -> Option<SequenceNumber> {
+        let last_seq = self
+            .0
+            .values()
+            .map(|m| {
+                let state = m.clone();
 
-            immem.0.insert(m.id, state);
-        }
+                let last_sequence = state.mem.last_sequence();
+                immem.0.insert(m.id, state);
+                last_sequence
+            })
+            .max();
+
         self.0.clear();
+        last_seq
     }
 
     fn memtables_for_read(&self, time_range: TimeRange, mems: &mut MemTableVec) {
@@ -568,29 +579,35 @@ impl TableVersion {
             .total_memory_usage()
     }
 
-    /// Switch all mutable memtables or just return the suggested segment
+    /// Return the suggested segment
     /// duration if sampling memtable is still active.
     ///
     /// Returns a duration if a sampled segment duration needs to be persisted.
     ///
     /// REQUIRE: Do in write worker
-    pub fn switch_memtables_or_suggest_duration(&self) -> Option<Duration> {
-        self.inner
-            .write()
-            .unwrap()
-            .memtable_view
-            .switch_memtables_or_suggest_duration()
+    pub fn suggest_duration(&self) -> Option<Duration> {
+        self.inner.write().unwrap().memtable_view.suggest_duration()
+    }
+
+    /// Switch all mutable memtables
+    ///
+    /// Returns the maxium `SequenceNumber` in the mutable memtables needs to be
+    /// freezed.
+    ///
+    /// REQUIRE: Do in write worker
+    pub fn switch_memtables(&self) -> Option<SequenceNumber> {
+        self.inner.write().unwrap().memtable_view.switch_memtables()
     }
 
     /// Stop timestamp sampling and freezed the sampling memtable.
     ///
     /// REQUIRE: Do in write worker
-    pub fn freeze_sampling(&self) {
+    pub fn freeze_sampling(&self) -> Option<SequenceNumber> {
         self.inner
             .write()
             .unwrap()
             .memtable_view
-            .freeze_sampling_memtable();
+            .freeze_sampling_memtable()
     }
 
     /// See [MemTableView::pick_memtables_to_flush]
@@ -870,7 +887,8 @@ mod tests {
         assert!(mutable.is_none());
 
         // Nothing to switch.
-        assert!(version.switch_memtables_or_suggest_duration().is_none());
+        assert!(version.suggest_duration().is_none());
+        assert!(version.switch_memtables().is_none());
     }
 
     fn check_flushable_mem_with_sampling(
@@ -936,8 +954,9 @@ mod tests {
 
         version.set_sampling(sampling_mem);
 
-        let duration = version.switch_memtables_or_suggest_duration().unwrap();
+        let duration = version.suggest_duration().unwrap();
         assert_eq!(table_options::DEFAULT_SEGMENT_DURATION, duration);
+        assert!(version.switch_memtables().is_none());
 
         // Flushable memtables only contains sampling memtable.
         let flushable_mems = version.pick_memtables_to_flush(last_sequence);
@@ -954,9 +973,11 @@ mod tests {
         assert_eq!(memtable_id, actual_memtable.id);
 
         // Switch still return duration before freezed.
-        let duration = version.switch_memtables_or_suggest_duration().unwrap();
+        let duration = version.suggest_duration().unwrap();
         assert_eq!(table_options::DEFAULT_SEGMENT_DURATION, duration);
+        assert!(version.switch_memtables().is_none());
 
+        version.switch_memtables();
         // Flushable memtables only contains sampling memtable before sampling
         // memtable is freezed.
         let flushable_mems = version.pick_memtables_to_flush(last_sequence);
@@ -977,9 +998,9 @@ mod tests {
         version.set_sampling(sampling_mem);
         assert_eq!(
             table_options::DEFAULT_SEGMENT_DURATION,
-            version.switch_memtables_or_suggest_duration().unwrap()
+            version.suggest_duration().unwrap()
         );
-
+        assert!(version.switch_memtables().is_none());
         // Freeze the sampling memtable.
         version.freeze_sampling();
 
@@ -1029,7 +1050,8 @@ mod tests {
         assert_eq!(memtable_id2, read_view.memtables[0].id);
 
         // Switch mutable memtable.
-        assert!(version.switch_memtables_or_suggest_duration().is_none());
+        assert!(version.suggest_duration().is_none());
+        assert!(version.switch_memtables().is_some());
         // No memtable after switch.
         let now = Timestamp::now();
         assert!(version
@@ -1073,8 +1095,8 @@ mod tests {
         version.insert_mutable(mem_state);
 
         // Switch memtable.
-        assert!(version.switch_memtables_or_suggest_duration().is_none());
-
+        assert!(version.suggest_duration().is_none());
+        assert!(version.switch_memtables().is_some());
         let max_sequence = 120;
         let file_id = 13;
         let add_file = AddFileMocker::new(file_id)
