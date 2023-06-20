@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Functions.
 
@@ -8,7 +8,7 @@ use std::{
 };
 
 use arrow::datatypes::DataType;
-use common_types::{column::ColumnBlock, datum::DatumKind};
+use common_types::{column_block::ColumnBlock, datum::DatumKind};
 use common_util::{define_result, error::GenericError};
 use datafusion::{
     error::DataFusionError,
@@ -31,7 +31,9 @@ const FUNC_ARG_NUM: usize = 5;
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display("Failed to convert array to ColumnarValue, err:{}", source))]
-    InvalidArray { source: common_types::column::Error },
+    InvalidArray {
+        source: common_types::column_block::Error,
+    },
 
     #[snafu(display("Invalid function arguments, err:{}", source))]
     InvalidArguments { source: GenericError },
