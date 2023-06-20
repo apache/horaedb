@@ -23,21 +23,29 @@ use crate::{
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
-    #[snafu(display("The space of the table does not exist, space_id:{space_id}, table:{table}.\nBacktrace:\n{backtrace}"))]
+    #[snafu(display(
+        "The space of the table does not exist, space_id:{}, table:{}.\nBacktrace:\n{}",
+        space_id,
+        table,
+        backtrace,
+    ))]
     SpaceNotExist {
         space_id: SpaceId,
         table: String,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to read meta update, table_id:{table_id}, err:{source}"))]
+    #[snafu(display("Failed to read meta update, table_id:{}, err:{}", table_id, source))]
     ReadMetaUpdate {
         table_id: TableId,
         source: GenericError,
     },
 
     #[snafu(display(
-        "Failed to recover table data, space_id:{space_id}, table:{table}, err:{source}"
+        "Failed to recover table data, space_id:{}, table:{}, err:{}",
+        space_id,
+        table,
+        source
     ))]
     RecoverTableData {
         space_id: SpaceId,
@@ -45,11 +53,14 @@ pub enum Error {
         source: crate::table::data::Error,
     },
 
-    #[snafu(display("Failed to read wal, err:{source}"))]
+    #[snafu(display("Failed to read wal, err:{}", source))]
     ReadWal { source: wal::manager::Error },
 
     #[snafu(display(
-        "Failed to apply log entry to memtable, table:{table}, table_id:{table_id}, err:{source}",
+        "Failed to apply log entry to memtable, table:{}, table_id:{}, err:{}",
+        table,
+        table_id,
+        source
     ))]
     ApplyMemTable {
         space_id: SpaceId,
@@ -59,7 +70,11 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Flush failed, space_id:{space_id}, table:{table}, table_id:{table_id}, err:{source}",
+        "Flush failed, space_id:{}, table:{}, table_id:{}, err:{}",
+        space_id,
+        table,
+        table_id,
+        source
     ))]
     FlushTable {
         space_id: SpaceId,
@@ -69,7 +84,11 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to persist meta update to manifest, space_id:{space_id}, table:{table}, table_id:{table_id}, err:{source}",
+        "Failed to persist meta update to manifest, space_id:{}, table:{}, table_id:{}, err:{}",
+        space_id,
+        table,
+        table_id,
+        source
     ))]
     WriteManifest {
         space_id: SpaceId,
@@ -79,7 +98,11 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to persist meta update to WAL, space_id:{space_id}, table:{table}, table_id:{table_id}, err:{source}",
+        "Failed to persist meta update to WAL, space_id:{}, table:{}, table_id:{}, err:{}",
+        space_id,
+        table,
+        table_id,
+        source
     ))]
     WriteWal {
         space_id: SpaceId,
@@ -89,7 +112,11 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid options, space_id:{space_id}, table:{table}, table_id:{table_id}, err:{source}",
+        "Invalid options, space_id:{}, table:{}, table_id:{}, err:{}",
+        space_id,
+        table,
+        table_id,
+        source
     ))]
     InvalidOptions {
         space_id: SpaceId,
@@ -99,7 +126,11 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to create table data, space_id:{space_id}, table:{table}, table_id:{table_id}, err:{source}",
+        "Failed to create table data, space_id:{}, table:{}, table_id:{}, err:{}",
+        space_id,
+        table,
+        table_id,
+        source
     ))]
     CreateTableData {
         space_id: SpaceId,
@@ -109,8 +140,11 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Try to update schema to elder version, table:{table}, current_version:{current_version}, \
-        given_version:{given_version}.\nBacktrace:\n{backtrace}",
+    "Try to update schema to elder version, table:{}, current_version:{}, given_version:{}.\nBacktrace:\n{}",
+    table,
+    current_version,
+    given_version,
+    backtrace,
     ))]
     InvalidSchemaVersion {
         table: String,
@@ -120,8 +154,11 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid previous schema version, table:{table}, current_version:{current_version}, \
-        pre_version:{pre_version}.\nBacktrace:\n{backtrace}",
+    "Invalid previous schema version, table:{}, current_version:{}, pre_version:{}.\nBacktrace:\n{}",
+    table,
+    current_version,
+    pre_version,
+    backtrace,
     ))]
     InvalidPreVersion {
         table: String,
@@ -130,14 +167,21 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Alter schema of a dropped table:{table}.\nBacktrace:\n{backtrace}"))]
+    #[snafu(display(
+        "Alter schema of a dropped table:{}.\nBacktrace:\n{}",
+        table,
+        backtrace
+    ))]
     AlterDroppedTable { table: String, backtrace: Backtrace },
 
-    #[snafu(display("Failed to store version edit, err:{source}"))]
+    #[snafu(display("Failed to store version edit, err:{}", source))]
     StoreVersionEdit { source: GenericError },
 
     #[snafu(display(
-        "Failed to encode payloads, table:{table}, wal_location:{wal_location:?}, err:{source}"
+        "Failed to encode payloads, table:{}, wal_location:{:?}, err:{}",
+        table,
+        wal_location,
+        source
     ))]
     EncodePayloads {
         table: String,
@@ -146,7 +190,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to do manifest snapshot for table, space_id:{space_id}, table:{table}, err:{source}",
+        "Failed to do manifest snapshot for table, space_id:{}, table:{}, err:{}",
+        space_id,
+        table,
+        source
     ))]
     DoManifestSnapshot {
         space_id: SpaceId,
@@ -155,31 +202,30 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Table open failed and can not be created again, table:{table}.\nBacktrace:\n{backtrace}",
+        "Table open failed and can not be created again, table:{}.\nBacktrace:\n{}",
+        table,
+        backtrace,
     ))]
     CreateOpenFailedTable { table: String, backtrace: Backtrace },
 
-    #[snafu(display("Failed to open manifest, err:{source}"))]
+    #[snafu(display("Failed to open manifest, err:{}", source))]
     OpenManifest {
         source: crate::manifest::details::Error,
     },
 
-    #[snafu(display("Failed to find table, msg:{msg}.\nBacktrace:\n{backtrace}"))]
+    #[snafu(display("Failed to find table, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     TableNotExist { msg: String, backtrace: Backtrace },
 
-    #[snafu(display("Failed to open shard, msg:{msg}.\nBacktrace:\n{backtrace}"))]
+    #[snafu(display("Failed to open shard, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     OpenTablesOfShard { msg: String, backtrace: Backtrace },
 
-    #[snafu(display("Try to operate a closed table.\nBacktrace:\n{backtrace}"))]
-    OperateClosedTable { backtrace: Backtrace },
-
-    #[snafu(display("Failed to replay wal, msg:{msg:?}, err:{source}"))]
+    #[snafu(display("Failed to replay wal, msg:{:?}, err:{}", msg, source))]
     ReplayWalWithCause {
         msg: Option<String>,
         source: GenericError,
     },
 
-    #[snafu(display("Failed to replay wal, msg:{msg:?}.\nBacktrace:\n{backtrace}"))]
+    #[snafu(display("Failed to replay wal, msg:{:?}.\nBacktrace:\n{}", msg, backtrace))]
     ReplayWalNoCause {
         msg: Option<String>,
         backtrace: Backtrace,
@@ -218,7 +264,6 @@ impl From<Error> for table_engine::engine::Error {
             | Error::TableNotExist { .. }
             | Error::OpenTablesOfShard { .. }
             | Error::ReplayWalNoCause { .. }
-            | Error::OperateClosedTable { .. }
             | Error::ReplayWalWithCause { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
