@@ -579,7 +579,7 @@ impl<M: MessageQueue> Region<M> {
         let (snapshot, synchronizer) = {
             let inner = self.inner.write().await;
 
-            debug!(
+            info!(
                 "Mark deleted entries to sequence num:{}, region id:{}, table id:{}",
                 sequence_num,
                 inner.region_context.region_id(),
