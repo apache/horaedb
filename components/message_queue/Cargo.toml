@@ -16,8 +16,8 @@ snafu = { workspace = true }
 tokio = { workspace = true }
 
 [dependencies.rskafka]
-git = "https://github.com/influxdata/rskafka.git"
-rev = "00988a564b1db0249d858065fc110476c075efad"
+git = "https://github.com/Rachelint/rskafka.git"
+rev = "f0fd8e278d8164cb0cfca5a80476361fc308ecc3"
 default-features = false
 features = ["compression-gzip", "compression-lz4", "compression-snappy"]
 
