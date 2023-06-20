@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Common utils shared by the whole project
 
@@ -9,6 +9,7 @@ pub mod macros;
 
 // TODO(yingwen): Move some mod into components as a crate
 pub mod alloc_tracker;
+pub mod bitset;
 pub mod byte;
 pub mod codec;
 pub mod config;
