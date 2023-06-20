@@ -322,7 +322,7 @@ impl FlushTask {
 
             // Now the segment duration is applied, we can stop sampling and freeze the
             // sampling memtable.
-            if let Some(seq) = current_version.freeze_sampling() {
+            if let Some(seq) = current_version.freeze_sampling_memtable() {
                 last_sequence = seq.max(last_sequence);
             }
         } else if let Some(seq) = current_version.switch_memtables() {

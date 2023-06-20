@@ -422,10 +422,9 @@ impl MutableMemTableSet {
             .0
             .values()
             .map(|m| {
-                let state = m.clone();
+                let last_sequence = m.mem.last_sequence();
+                immem.0.insert(m.id, m.clone());
 
-                let last_sequence = state.mem.last_sequence();
-                immem.0.insert(m.id, state);
                 last_sequence
             })
             .max();
@@ -579,12 +578,8 @@ impl TableVersion {
             .total_memory_usage()
     }
 
-    /// Return the suggested segment
-    /// duration if sampling memtable is still active.
-    ///
-    /// Returns a duration if a sampled segment duration needs to be persisted.
-    ///
-    /// REQUIRE: Do in write worker
+    /// Return the suggested segment duration if sampling memtable is still
+    /// active.
     pub fn suggest_duration(&self) -> Option<Duration> {
         self.inner.write().unwrap().memtable_view.suggest_duration()
     }
@@ -593,8 +588,6 @@ impl TableVersion {
     ///
     /// Returns the maxium `SequenceNumber` in the mutable memtables needs to be
     /// freezed.
-    ///
-    /// REQUIRE: Do in write worker
     pub fn switch_memtables(&self) -> Option<SequenceNumber> {
         self.inner.write().unwrap().memtable_view.switch_memtables()
     }
@@ -602,7 +595,7 @@ impl TableVersion {
     /// Stop timestamp sampling and freezed the sampling memtable.
     ///
     /// REQUIRE: Do in write worker
-    pub fn freeze_sampling(&self) -> Option<SequenceNumber> {
+    pub fn freeze_sampling_memtable(&self) -> Option<SequenceNumber> {
         self.inner
             .write()
             .unwrap()
@@ -1002,7 +995,7 @@ mod tests {
         );
         assert!(version.switch_memtables().is_none());
         // Freeze the sampling memtable.
-        version.freeze_sampling();
+        version.freeze_sampling_memtable();
 
         // No memtable after switch and freezed.
         let now = Timestamp::now();
@@ -1077,7 +1070,7 @@ mod tests {
 
         // Prepare sampling memtable.
         version.set_sampling(sampling_mem);
-        version.freeze_sampling();
+        version.freeze_sampling_memtable();
 
         let now = Timestamp::now();
         let time_range =

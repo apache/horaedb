@@ -780,7 +780,7 @@ pub mod tests {
             Some(ReadableDuration(table_options::DEFAULT_SEGMENT_DURATION));
         table_data.set_table_options(table_opts);
         // Freeze sampling memtable.
-        current_version.freeze_sampling();
+        current_version.freeze_sampling_memtable();
 
         // A new mutable memtable should be created.
         let mutable = table_data.find_or_create_mutable(now_ts, &schema).unwrap();
