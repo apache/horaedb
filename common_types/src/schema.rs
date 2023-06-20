@@ -607,7 +607,6 @@ impl fmt::Debug for Schema {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Schema")
             // arrow_schema is ignored.
-            .field("arrow_schema ", &self.arrow_schema)
             .field("timestamp_index", &self.timestamp_index)
             .field("tsid_index", &self.tsid_index)
             .field("column_schemas", &self.column_schemas)
