@@ -8,7 +8,7 @@ use std::{
 };
 
 use common_types::table::ShardId;
-use log::info;
+use log::{error, info};
 use object_store::ObjectStoreRef;
 use snafu::ResultExt;
 use table_engine::{engine::TableDef, table::TableId};
@@ -273,6 +273,11 @@ impl ShardOpener {
 
     /// Recover table meta data from manifest based on shard.
     async fn recover_table_metas(&mut self) -> Result<()> {
+        info!(
+            "ShardOpener recover table metas begin, shard_id:{}",
+            self.shard_id
+        );
+
         for (table_id, state) in self.stages.iter_mut() {
             match state {
                 // Only do the meta recovery work in `RecoverTableMeta` state.
@@ -288,7 +293,10 @@ impl ShardOpener {
                             let table_data = ctx.space.find_table_by_id(*table_id);
                             Ok(table_data.map(|data| (data, ctx.space.clone())))
                         }
-                        Err(e) => Err(e),
+                        Err(e) => {
+                            error!("ShardOpener recover single table meta failed, table:{:?}, shard_id:{}", ctx.table_def, self.shard_id);
+                            Err(e)
+                        }
                     };
 
                     match result {
@@ -313,11 +321,20 @@ impl ShardOpener {
             }
         }
 
+        info!(
+            "ShardOpener recover table metas finish, shard_id:{}",
+            self.shard_id
+        );
         Ok(())
     }
 
     /// Recover table data based on shard.
     async fn recover_table_datas(&mut self) -> Result<()> {
+        info!(
+            "ShardOpener recover table datas begin, shard_id:{}",
+            self.shard_id
+        );
+
         // Replay wal logs of tables.
         let mut replay_table_datas = Vec::with_capacity(self.stages.len());
         for (table_id, stage) in self.stages.iter_mut() {
@@ -370,6 +387,7 @@ impl ShardOpener {
                 }
 
                 (TableOpenStage::RecoverTableData(_), Some(e)) => {
+                    error!("ShardOpener replay wals of single table failed, table:{}, table_id:{}, shard_id:{}", table_data.name, table_data.id, self.shard_id);
                     *stage = TableOpenStage::Failed(e);
                 }
 
@@ -381,6 +399,10 @@ impl ShardOpener {
             }
         }
 
+        info!(
+            "ShardOpener recover table datas finish, shard_id:{}",
+            self.shard_id
+        );
         Ok(())
     }
 
