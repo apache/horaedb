@@ -1030,11 +1030,11 @@ mod tests {
             ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns).unwrap();
         let input_record_batch2 =
             ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns2).unwrap();
-        let num_rows = encoder
+        let row_nums = encoder
             .encode(vec![input_record_batch, input_record_batch2])
             .await
             .unwrap();
-        assert_eq!(2, num_rows);
+        assert_eq!(2, row_nums);
 
         // read encoded records back, and then compare with input records
         encoder.close().await.unwrap();

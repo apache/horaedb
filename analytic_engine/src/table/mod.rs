@@ -21,9 +21,9 @@ use table_engine::{
     stream::{PartitionedStreams, SendableRecordBatchStream},
     table::{
         AlterOptions, AlterSchema, AlterSchemaRequest, Compact, Flush, FlushRequest, Get,
-        GetInvalidPrimaryKey, GetNullPrimaryKey, GetRequest, MergeWrite, OperateClosedTable,
-        ReadOptions, ReadOrder, ReadRequest, Result, Scan, Table, TableId, TableStats,
-        TooManyPendingWrites, WaitForPendingWrites, Write, WriteRequest,
+        GetInvalidPrimaryKey, GetNullPrimaryKey, GetRequest, MergeWrite, ReadOptions, ReadOrder,
+        ReadRequest, Result, Scan, Table, TableId, TableStats, TooManyPendingWrites,
+        WaitForPendingWrites, Write, WriteRequest,
     },
     ANALYTIC_ENGINE_TYPE,
 };
@@ -255,7 +255,7 @@ impl TableImpl {
                 // This is the first request in the queue, and we should
                 // take responsibilities for merging and writing the
                 // requests in the queue.
-                let serial_exec_ctx = self.table_data.acquire_serial_exec_ctx().await;
+                let serial_exec = self.table_data.serial_exec.lock().await;
                 // The `serial_exec` is acquired, let's merge the pending requests and write
                 // them all.
                 let pending_writes = {
@@ -266,22 +266,9 @@ impl TableImpl {
                     !pending_writes.is_empty(),
                     "The pending writes should contain at least the one just pushed."
                 );
-                match serial_exec_ctx {
-                    Some(v) => {
-                        let merged_write_request = merge_pending_write_requests(
-                            pending_writes.writes,
-                            pending_writes.num_rows,
-                        );
-                        (merged_write_request, v, pending_writes.notifiers)
-                    }
-                    None => {
-                        // The table has been closed, notify all the waiters in
-                        // the queue.
-                        let write_err = OperateClosedTable.fail();
-                        self.notify_waiters(pending_writes.notifiers, &write_err);
-                        return write_err;
-                    }
-                }
+                let merged_write_request =
+                    merge_pending_write_requests(pending_writes.writes, pending_writes.num_rows);
+                (merged_write_request, serial_exec, pending_writes.notifiers)
             }
             QueueResult::Waiter(rx) => {
                 // The request is successfully pushed into the queue, and just wait for the
@@ -316,18 +303,12 @@ impl TableImpl {
             .box_err()
             .context(Write { table: self.name() });
 
+        // There is no waiter for pending writes, return the write result.
+        if notifiers.is_empty() {
+            return write_res;
+        }
+
         // Notify the waiters for the pending writes.
-        self.notify_waiters(notifiers, &write_res);
-
-        write_res.map(|_| num_rows)
-    }
-
-    #[inline]
-    fn should_queue_write_request(&self, request: &WriteRequest) -> bool {
-        request.row_group.num_rows() < self.instance.max_rows_in_write_queue
-    }
-
-    fn notify_waiters(&self, notifiers: Vec<Sender<Result<()>>>, write_res: &Result<usize>) {
         match write_res {
             Ok(_) => {
                 for notifier in notifiers {
@@ -338,6 +319,7 @@ impl TableImpl {
                         );
                     }
                 }
+                Ok(num_rows)
             }
             Err(e) => {
                 let err_msg = format!("Failed to do merge write, err:{e}");
@@ -350,8 +332,14 @@ impl TableImpl {
                         );
                     }
                 }
+                Err(e)
             }
         }
+    }
+
+    #[inline]
+    fn should_queue_write_request(&self, request: &WriteRequest) -> bool {
+        request.row_group.num_rows() < self.instance.max_rows_in_write_queue
     }
 }
 
@@ -396,15 +384,11 @@ impl Table for TableImpl {
             return self.write_with_pending_queue(request).await;
         }
 
-        let mut serial_exec_ctx = self
-            .table_data
-            .acquire_serial_exec_ctx()
-            .await
-            .context(OperateClosedTable)?;
+        let mut serial_exec = self.table_data.serial_exec.lock().await;
         let mut writer = Writer::new(
             self.instance.clone(),
             self.space_table.clone(),
-            &mut serial_exec_ctx,
+            &mut serial_exec,
         );
         writer
             .write(request)
@@ -517,14 +501,10 @@ impl Table for TableImpl {
     }
 
     async fn alter_schema(&self, request: AlterSchemaRequest) -> Result<usize> {
-        let mut serial_exec_ctx = self
-            .table_data
-            .acquire_serial_exec_ctx()
-            .await
-            .context(OperateClosedTable)?;
+        let mut serial_exec = self.table_data.serial_exec.lock().await;
         let mut alterer = Alterer::new(
             self.table_data.clone(),
-            &mut serial_exec_ctx,
+            &mut serial_exec,
             self.instance.clone(),
         )
         .await;
@@ -538,14 +518,10 @@ impl Table for TableImpl {
     }
 
     async fn alter_options(&self, options: HashMap<String, String>) -> Result<usize> {
-        let mut serial_exec_ctx = self
-            .table_data
-            .acquire_serial_exec_ctx()
-            .await
-            .context(OperateClosedTable)?;
+        let mut serial_exec = self.table_data.serial_exec.lock().await;
         let alterer = Alterer::new(
             self.table_data.clone(),
-            &mut serial_exec_ctx,
+            &mut serial_exec,
             self.instance.clone(),
         )
         .await;
