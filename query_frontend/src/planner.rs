@@ -1250,7 +1250,6 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
     // Process column options
     let mut is_nullable = true; // A column is nullable by default.
     let mut is_tag = false;
-    let mut is_dictionary = false;
     let mut is_unsign = false;
     let mut comment = String::new();
     let mut default_value = None;
@@ -1259,8 +1258,6 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
             is_nullable = false;
         } else if parser::is_tag_column(&option_def.option) {
             is_tag = true;
-        } else if parser::is_dictionary_column(&option_def.option) {
-            is_dictionary = true;
         } else if parser::is_unsign_column(&option_def.option) {
             is_unsign = true;
         } else if let Some(default_value_expr) = parser::get_default_value(&option_def.option) {
@@ -1279,7 +1276,6 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
     let builder = column_schema::Builder::new(col.name.value.clone(), data_type)
         .is_nullable(is_nullable)
         .is_tag(is_tag)
-        .is_dictionary(is_dictionary)
         .comment(comment)
         .default_value(default_value);
 
