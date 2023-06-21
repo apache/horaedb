@@ -4214,7 +4214,9 @@ dependencies = [
  "bytes",
  "common_util",
  "datafusion",
+ "futures 0.3.28",
  "log",
+ "object_store 1.2.2",
  "parquet",
  "tokio",
 ]
@@ -5350,8 +5352,8 @@ dependencies = [
 
 [[package]]
 name = "rskafka"
-version = "0.3.0"
-source = "git+https://github.com/influxdata/rskafka.git?rev=00988a564b1db0249d858065fc110476c075efad#00988a564b1db0249d858065fc110476c075efad"
+version = "0.4.0"
+source = "git+https://github.com/Rachelint/rskafka.git?rev=f0fd8e278d8164cb0cfca5a80476361fc308ecc3#f0fd8e278d8164cb0cfca5a80476361fc308ecc3"
 dependencies = [
  "async-trait",
  "bytes",

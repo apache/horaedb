@@ -3,12 +3,12 @@
 //! Drop table logic of instance
 
 use log::{info, warn};
-use snafu::{OptionExt, ResultExt};
+use snafu::ResultExt;
 use table_engine::engine::DropTableRequest;
 
 use crate::{
     instance::{
-        engine::{FlushTable, OperateClosedTable, Result, WriteManifest},
+        engine::{FlushTable, Result, WriteManifest},
         flush_compaction::{Flusher, TableFlushOptions},
         SpaceStoreRef,
     },
@@ -36,10 +36,7 @@ impl Dropper {
             }
         };
 
-        let mut serial_exec_ctx = table_data
-            .acquire_serial_exec_ctx()
-            .await
-            .context(OperateClosedTable)?;
+        let mut serial_exec = table_data.serial_exec.lock().await;
 
         if table_data.is_dropped() {
             warn!(
@@ -54,7 +51,7 @@ impl Dropper {
         //  be avoided.
 
         let opts = TableFlushOptions::default();
-        let flush_scheduler = serial_exec_ctx.flush_scheduler();
+        let flush_scheduler = serial_exec.flush_scheduler();
         self.flusher
             .do_flush(flush_scheduler, &table_data, opts)
             .await

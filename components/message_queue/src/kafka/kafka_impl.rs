@@ -21,6 +21,7 @@ use rskafka::{
         Client, ClientBuilder,
     },
     record::{Record, RecordAndOffset},
+    BackoffConfig,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::sync::RwLock;
@@ -141,7 +142,14 @@ impl KafkaImplInner {
             panic!("The boost broker must be set");
         }
 
-        let mut client_builder = ClientBuilder::new(config.client.boost_brokers.clone().unwrap());
+        let backoff_config = BackoffConfig {
+            init_backoff: config.init_retry_interval.0,
+            max_backoff: config.max_retry_interval.0,
+            base: config.retry_interval_factor,
+            max_retry: config.max_retry,
+        };
+        let mut client_builder = ClientBuilder::new(config.client.boost_brokers.clone().unwrap())
+            .backoff_config(backoff_config);
         if let Some(max_message_size) = config.client.max_message_size {
             client_builder = client_builder.max_message_size(max_message_size);
         }

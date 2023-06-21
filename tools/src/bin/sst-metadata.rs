@@ -13,7 +13,7 @@ use common_util::{
 };
 use futures::StreamExt;
 use object_store::{LocalFileSystem, ObjectMeta, ObjectStoreRef, Path};
-use parquet_ext::meta_data::fetch_parquet_metadata;
+use parquet_ext::{meta_data::fetch_parquet_metadata, reader::ObjectStoreReader};
 use tokio::{runtime::Handle, task::JoinSet};
 
 #[derive(Parser, Debug)]
@@ -30,6 +30,10 @@ struct Args {
     /// Thread num, 0 means cpu num
     #[clap(short, long, default_value_t = 0)]
     threads: usize,
+
+    /// Print page indexes
+    #[clap(short, long, required(false))]
+    page_indexes: bool,
 }
 
 fn new_runtime(thread_num: usize) -> Runtime {
@@ -64,6 +68,7 @@ async fn run(args: Args) -> Result<()> {
     let mut join_set = JoinSet::new();
     let mut ssts = storage.list(None).await?;
     let verbose = args.verbose;
+    let page_indexes = args.page_indexes;
     while let Some(object_meta) = ssts.next().await {
         let object_meta = object_meta?;
         let storage = storage.clone();
@@ -71,7 +76,8 @@ async fn run(args: Args) -> Result<()> {
         join_set.spawn_on(
             async move {
                 let (metadata, metadata_size, kv_size) =
-                    parse_metadata(storage, location, object_meta.size, verbose).await?;
+                    parse_metadata(storage, location, object_meta.size, verbose, page_indexes)
+                        .await?;
                 Ok::<_, anyhow::Error>((object_meta, metadata, metadata_size, kv_size))
             },
             &handle,
@@ -133,9 +139,11 @@ async fn parse_metadata(
     path: Path,
     size: usize,
     verbose: bool,
+    page_indexes: bool,
 ) -> Result<(MetaData, usize, usize)> {
     let reader = ChunkReaderAdapter::new(&path, &storage);
     let (parquet_metadata, metadata_size) = fetch_parquet_metadata(size, &reader).await?;
+
     let kv_metadata = parquet_metadata.file_metadata().key_value_metadata();
     let kv_size = kv_metadata
         .map(|kvs| {
@@ -155,6 +163,15 @@ async fn parse_metadata(
         })
         .unwrap_or(0);
 
-    let md = MetaData::try_new(&parquet_metadata, false)?;
+    let md = if page_indexes {
+        let object_store_reader =
+            ObjectStoreReader::new(storage, path.clone(), Arc::new(parquet_metadata));
+        let parquet_metadata =
+            parquet_ext::meta_data::meta_with_page_indexes(object_store_reader).await?;
+        MetaData::try_new(&parquet_metadata, false)?
+    } else {
+        MetaData::try_new(&parquet_metadata, false)?
+    };
+
     Ok((md, metadata_size, kv_size))
 }
