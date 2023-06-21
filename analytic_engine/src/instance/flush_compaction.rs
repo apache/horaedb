@@ -33,7 +33,8 @@ use crate::{
     compaction::{CompactionInputFiles, CompactionTask, ExpiredFiles},
     instance::{self, serial_executor::TableFlushScheduler, SpaceStore, SpaceStoreRef},
     manifest::meta_edit::{
-        AlterOptionsMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
+        AlterOptionsMeta, AlterSstIdMeta, MetaEdit, MetaEditRequest, MetaUpdate,
+        MetaUpdate::AlterSstId, VersionEditMeta,
     },
     memtable::{ColumnarIterPtr, MemTableRef, ScanContext, ScanRequest},
     row_iter::{
@@ -142,6 +143,9 @@ pub enum Error {
         msg: Option<String>,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Failed to persist file id, err:{}", source))]
+    PersistFileId { source: GenericError },
 }
 
 define_result!(Error);
@@ -477,6 +481,25 @@ impl FlushTask {
             let (batch_record_sender, batch_record_receiver) =
                 channel::<Result<RecordBatchWithKey>>(DEFAULT_CHANNEL_SIZE);
             let file_id = self.table_data.alloc_file_id();
+            // persist file id
+            let manifest_update = AlterSstIdMeta {
+                space_id: self.table_data.space_id,
+                table_id: self.table_data.id,
+                last_file_id: file_id,
+            };
+            let edit_req = {
+                let meta_update = MetaUpdate::AlterSstId(manifest_update);
+                MetaEditRequest {
+                    shard_info: self.table_data.shard_info,
+                    meta_edit: MetaEdit::Update(meta_update),
+                }
+            };
+            self.space_store
+                .manifest
+                .apply_edit(edit_req)
+                .await
+                .context(PersistFileId)?;
+
             let sst_file_path = self.table_data.set_sst_file_path(file_id);
 
             // TODO: `min_key` & `max_key` should be figured out when writing sst.
@@ -597,6 +620,25 @@ impl FlushTask {
 
         // Alloc file id for next sst file
         let file_id = self.table_data.alloc_file_id();
+        // persist file id
+        let manifest_update = AlterSstIdMeta {
+            space_id: self.table_data.space_id,
+            table_id: self.table_data.id,
+            last_file_id: file_id,
+        };
+        let edit_req = {
+            let meta_update = MetaUpdate::AlterSstId(manifest_update);
+            MetaEditRequest {
+                shard_info: self.table_data.shard_info,
+                meta_edit: MetaEdit::Update(meta_update),
+            }
+        };
+        self.space_store
+            .manifest
+            .apply_edit(edit_req)
+            .await
+            .context(PersistFileId)?;
+
         let sst_file_path = self.table_data.set_sst_file_path(file_id);
 
         let storage_format_hint = self.table_data.table_options().storage_format_hint;
@@ -833,6 +875,24 @@ impl SpaceStore {
 
         // Alloc file id for the merged sst.
         let file_id = table_data.alloc_file_id();
+        // persist file id
+        let manifest_update = AlterSstIdMeta {
+            space_id: table_data.space_id,
+            table_id: table_data.id,
+            last_file_id: file_id,
+        };
+        let edit_req = {
+            let meta_update = AlterSstId(manifest_update);
+            MetaEditRequest {
+                shard_info: table_data.shard_info,
+                meta_edit: MetaEdit::Update(meta_update),
+            }
+        };
+        self.manifest
+            .apply_edit(edit_req)
+            .await
+            .context(PersistFileId)?;
+
         let sst_file_path = table_data.set_sst_file_path(file_id);
 
         let mut sst_writer = self

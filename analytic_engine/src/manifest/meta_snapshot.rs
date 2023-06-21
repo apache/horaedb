@@ -2,6 +2,8 @@
 
 //! Meta data of manifest.
 
+use std::cmp;
+
 use common_util::define_result;
 use log::debug;
 use snafu::{ensure, Backtrace, Snafu};
@@ -99,7 +101,7 @@ impl MetaSnapshotBuilder {
             }
             MetaUpdate::AlterSstId(meta) => {
                 let mut version = self.version_meta.take().unwrap_or_default();
-                version.max_file_id = meta.last_file_id;
+                version.max_file_id = cmp::max(version.max_file_id, meta.last_file_id);
             }
         }
 

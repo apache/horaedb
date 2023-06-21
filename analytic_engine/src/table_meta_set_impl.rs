@@ -192,9 +192,7 @@ impl TableMetaSetImpl {
                 };
                 self.find_space_and_apply_edit(space_id, alter_option)
             }
-            MetaUpdate::AlterSstId(_) => {
-                Ok(())
-            }
+            MetaUpdate::AlterSstId(_) => Ok(()),
         }
     }
 

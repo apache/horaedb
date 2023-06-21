@@ -483,7 +483,8 @@ impl Manifest for ManifestImpl {
         self.maybe_do_snapshot(space_id, table_id, location, false)
             .await?;
 
-        self.store_update_to_wal(meta_update.clone(), location).await?;
+        self.store_update_to_wal(meta_update.clone(), location)
+            .await?;
 
         match meta_update {
             MetaUpdate::AlterSstId(_) => return Ok(()),

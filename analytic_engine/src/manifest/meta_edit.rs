@@ -75,7 +75,7 @@ pub enum MetaUpdate {
     VersionEdit(VersionEditMeta),
     AlterSchema(AlterSchemaMeta),
     AlterOptions(AlterOptionsMeta),
-    AlterSstId(AlterSstIdMeta)
+    AlterSstId(AlterSstIdMeta),
 }
 
 impl From<MetaUpdate> for manifest_pb::MetaUpdate {
