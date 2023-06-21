@@ -170,7 +170,6 @@ where
         let sql = "desc table test_table";
         let output = self.sql_to_output(sql).await.unwrap();
         let records = output.try_into().unwrap();
-        // todo this maybe need to change
         let expected = vec![
             "+--------+-----------+------------+-------------+--------+",
             "| name   | type      | is_primary | is_nullable | is_tag |",

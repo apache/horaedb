@@ -756,11 +756,6 @@ impl Schema {
         self.column(i).is_tag
     }
 
-    /// whether i-nth column is dictionary column
-    pub fn is_dictionary_column(&self, i: usize) -> bool {
-        self.column(i).is_dictionary
-    }
-
     /// Whether i-nth column can be collapsed to List describe in
     /// `StorageFormat::Hybrid`
     pub fn is_collapsible_column(&self, i: usize) -> bool {
