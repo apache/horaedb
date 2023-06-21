@@ -26,6 +26,7 @@ use crate::{
     },
     table_options, TableOptions,
 };
+use crate::sst::manager::FileId;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -86,7 +87,7 @@ impl From<MetaUpdate> for manifest_pb::MetaUpdate {
             MetaUpdate::AlterSchema(v) => manifest_pb::meta_update::Meta::AlterSchema(v.into()),
             MetaUpdate::AlterOptions(v) => manifest_pb::meta_update::Meta::AlterOptions(v.into()),
             MetaUpdate::DropTable(v) => manifest_pb::meta_update::Meta::DropTable(v.into()),
-            MetaUpdate::AlterSstId(_) => todo!(),
+            MetaUpdate::AlterSstId(v) => manifest_pb::meta_update::Meta::AlterSstId(v.into()),
         };
 
         manifest_pb::MetaUpdate { meta: Some(meta) }
@@ -141,6 +142,10 @@ impl TryFrom<manifest_pb::MetaUpdate> for MetaUpdate {
             manifest_pb::meta_update::Meta::DropTable(v) => {
                 let drop_table = DropTableMeta::from(v);
                 MetaUpdate::DropTable(drop_table)
+            }
+            manifest_pb::meta_update::Meta::AlterSstId(v) => {
+                let alter_sst_id = AlterSstIdMeta::try_from(v)?;
+                MetaUpdate::AlterSstId(alter_sst_id)
             }
         };
 
@@ -364,7 +369,29 @@ impl TryFrom<manifest_pb::AlterOptionsMeta> for AlterOptionsMeta {
 pub struct AlterSstIdMeta {
     pub space_id: SpaceId,
     pub table_id: TableId,
-    pub last_file_id: u64,
+    pub last_file_id: FileId,
+}
+
+impl From<AlterSstIdMeta> for manifest_pb::AlterSstIdMeta {
+    fn from(v: AlterSstIdMeta) -> Self {
+        manifest_pb::AlterSstIdMeta {
+            space_id: v.space_id,
+            table_id: v.table_id.as_u64(),
+            last_file_id: v.last_file_id,
+        }
+    }
+}
+
+impl TryFrom<manifest_pb::AlterSstIdMeta> for AlterSstIdMeta {
+    type Error = Error;
+
+    fn try_from(src: manifest_pb::AlterSstIdMeta) -> Result<Self> {
+        Ok(Self {
+            space_id: src.space_id,
+            table_id: TableId::from(src.table_id),
+            last_file_id: src.last_file_id,
+        })
+    }
 }
 
 /// An adapter to implement [wal::log_batch::Payload] for
