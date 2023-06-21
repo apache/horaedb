@@ -278,7 +278,7 @@ impl TryFrom<schema_pb::ColumnSchema> for ColumnSchema {
             data_type: DatumKind::from(data_type),
             is_nullable: column_schema.is_nullable,
             is_tag: column_schema.is_tag,
-            is_dictionary: column_schema.is_tag,
+            is_dictionary: column_schema.is_dictionary,
             comment: column_schema.comment,
             escaped_name,
             default_value,
@@ -296,7 +296,6 @@ impl TryFrom<&Arc<Field>> for ColumnSchema {
             is_dictionary,
             comment,
         } = decode_arrow_field_meta_data(field.metadata())?;
-
         Ok(Self {
             id,
             name: field.name().clone(),
@@ -307,7 +306,7 @@ impl TryFrom<&Arc<Field>> for ColumnSchema {
             )?,
             is_nullable: field.is_nullable(),
             is_tag,
-            is_dictionary: is_tag,
+            is_dictionary,
             comment,
             escaped_name: field.name().escape_debug().to_string(),
             default_value: None,
@@ -319,7 +318,7 @@ impl From<&ColumnSchema> for Field {
     fn from(col_schema: &ColumnSchema) -> Self {
         let metadata = encode_arrow_field_meta_data(col_schema);
         // If the column sholud use dictionary, create correspond dictionary type.
-        let data_type: DataType = if col_schema.is_tag {
+        let data_type: DataType = if col_schema.is_dictionary {
             DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8))
         } else {
             col_schema.data_type.into()
@@ -463,7 +462,7 @@ impl Builder {
             data_type: self.data_type,
             is_nullable: self.is_nullable,
             is_tag: self.is_tag,
-            is_dictionary: self.is_tag,
+            is_dictionary: self.is_dictionary,
             comment: self.comment,
             escaped_name,
             default_value: self.default_value,
@@ -485,7 +484,7 @@ impl From<ColumnSchema> for schema_pb::ColumnSchema {
             is_nullable: src.is_nullable,
             id: src.id,
             is_tag: src.is_tag,
-            is_dictionary: src.is_tag,
+            is_dictionary: src.is_dictionary,
             comment: src.comment,
             default_value,
         }
@@ -520,7 +519,7 @@ mod tests {
             data_type: DatumKind::Boolean,
             is_nullable: true,
             is_tag: true,
-            is_dictionary: true,
+            is_dictionary: false,
             comment: "Comment of this column".to_string(),
             escaped_name: "test_column_schema".escape_debug().to_string(),
             default_value: Some(Expr::Value(Value::Boolean(true))),

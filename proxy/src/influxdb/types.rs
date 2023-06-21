@@ -814,7 +814,7 @@ mod tests {
         // TODO missing is_dictionary paramms
         let mut measurement_builder =
             ColumnBlockBuilder::with_capacity(&DatumKind::String, 3, false);
-        let mut tag_builder = ColumnBlockBuilder::with_capacity(&DatumKind::String, 3, true);
+        let mut tag_builder = ColumnBlockBuilder::with_capacity(&DatumKind::String, 3, false);
         let mut time_builder = ColumnBlockBuilder::with_capacity(&DatumKind::Timestamp, 3, false);
         let mut field_builder1 = ColumnBlockBuilder::with_capacity(&DatumKind::String, 3, false);
         let mut field_builder2 = ColumnBlockBuilder::with_capacity(&DatumKind::UInt64, 3, false);
