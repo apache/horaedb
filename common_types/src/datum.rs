@@ -1209,7 +1209,6 @@ pub mod arrow_convert {
                 }
                 ScalarValue::Date32(v) => v.map(Datum::Date),
                 ScalarValue::Time64Nanosecond(v) => v.map(Datum::Time),
-                ScalarValue::Dictionary(_, literal) => Datum::from_scalar_value(literal),
                 ScalarValue::List(_, _)
                 | ScalarValue::Date64(_)
                 | ScalarValue::Time32Second(_)
@@ -1223,7 +1222,8 @@ pub mod arrow_convert {
                 | ScalarValue::Struct(_, _)
                 | ScalarValue::Decimal128(_, _, _)
                 | ScalarValue::Null
-                | ScalarValue::IntervalMonthDayNano(_) => None,
+                | ScalarValue::IntervalMonthDayNano(_)
+                | ScalarValue::Dictionary(_, _) => None,
             }
         }
     }
@@ -1255,7 +1255,6 @@ pub mod arrow_convert {
                 ScalarValue::TimestampMillisecond(v, _) => {
                     v.map(|v| DatumView::Timestamp(Timestamp::new(v)))
                 }
-                ScalarValue::Dictionary(_, literal) => DatumView::from_scalar_value(&literal),
                 ScalarValue::List(_, _)
                 | ScalarValue::Date64(_)
                 | ScalarValue::Time32Second(_)
@@ -1269,7 +1268,8 @@ pub mod arrow_convert {
                 | ScalarValue::Struct(_, _)
                 | ScalarValue::Decimal128(_, _, _)
                 | ScalarValue::Null
-                | ScalarValue::IntervalMonthDayNano(_) => None,
+                | ScalarValue::IntervalMonthDayNano(_)
+                | ScalarValue::Dictionary(_, _) => None,
             }
         }
     }

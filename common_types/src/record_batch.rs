@@ -478,7 +478,11 @@ impl RecordBatchWithKeyBuilder {
             .columns()
             .iter()
             .map(|column_schema| {
-                ColumnBlockBuilder::with_capacity(&column_schema.data_type, 0, column_schema.is_tag)
+                ColumnBlockBuilder::with_capacity(
+                    &column_schema.data_type,
+                    0,
+                    column_schema.is_tag,
+                )
             })
             .collect();
         Self {
