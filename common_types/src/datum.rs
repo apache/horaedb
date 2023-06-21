@@ -1128,6 +1128,7 @@ pub mod arrow_convert {
                 | DataType::Date64
                 | DataType::Interval(_)
                 | DataType::Duration(_)
+                | DataType::Dictionary(_, _)
                 | DataType::Decimal128(_, _)
                 | DataType::Decimal256(_, _)
                 | DataType::RunEndEncoded(_, _)
