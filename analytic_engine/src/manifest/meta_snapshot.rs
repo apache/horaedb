@@ -97,6 +97,10 @@ impl MetaSnapshotBuilder {
                     meta.table_name,
                 );
             }
+            MetaUpdate::AlterSstId(meta) => {
+                let mut version = self.version_meta.take().unwrap_or_default();
+                version.max_file_id = meta.last_file_id;
+            }
         }
 
         Ok(())

@@ -75,6 +75,7 @@ pub enum MetaUpdate {
     VersionEdit(VersionEditMeta),
     AlterSchema(AlterSchemaMeta),
     AlterOptions(AlterOptionsMeta),
+    AlterSstId(AlterSstIdMeta)
 }
 
 impl From<MetaUpdate> for manifest_pb::MetaUpdate {
@@ -85,6 +86,7 @@ impl From<MetaUpdate> for manifest_pb::MetaUpdate {
             MetaUpdate::AlterSchema(v) => manifest_pb::meta_update::Meta::AlterSchema(v.into()),
             MetaUpdate::AlterOptions(v) => manifest_pb::meta_update::Meta::AlterOptions(v.into()),
             MetaUpdate::DropTable(v) => manifest_pb::meta_update::Meta::DropTable(v.into()),
+            MetaUpdate::AlterSstId(_) => todo!(),
         };
 
         manifest_pb::MetaUpdate { meta: Some(meta) }
@@ -99,6 +101,7 @@ impl MetaUpdate {
             MetaUpdate::AlterSchema(v) => v.table_id,
             MetaUpdate::AlterOptions(v) => v.table_id,
             MetaUpdate::DropTable(v) => v.table_id,
+            MetaUpdate::AlterSstId(v) => v.table_id,
         }
     }
 
@@ -109,6 +112,7 @@ impl MetaUpdate {
             MetaUpdate::AlterSchema(v) => v.space_id,
             MetaUpdate::AlterOptions(v) => v.space_id,
             MetaUpdate::DropTable(v) => v.space_id,
+            MetaUpdate::AlterSstId(v) => v.space_id,
         }
     }
 }
@@ -353,6 +357,14 @@ impl TryFrom<manifest_pb::AlterOptionsMeta> for AlterOptionsMeta {
             options: TableOptions::try_from(table_options).context(ConvertTableOptions)?,
         })
     }
+}
+
+/// Meta data of sst id update.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlterSstIdMeta {
+    pub space_id: SpaceId,
+    pub table_id: TableId,
+    pub last_file_id: u64,
 }
 
 /// An adapter to implement [wal::log_batch::Payload] for

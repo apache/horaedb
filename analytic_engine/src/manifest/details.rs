@@ -483,10 +483,15 @@ impl Manifest for ManifestImpl {
         self.maybe_do_snapshot(space_id, table_id, location, false)
             .await?;
 
-        self.store_update_to_wal(meta_update, location).await?;
+        self.store_update_to_wal(meta_update.clone(), location).await?;
 
-        // Update memory.
-        self.table_meta_set.apply_edit_to_table(request).box_err()
+        match meta_update {
+            MetaUpdate::AlterSstId(_) => return Ok(()),
+            _ => {
+                // Update memory.
+                self.table_meta_set.apply_edit_to_table(request).box_err()
+            }
+        }
     }
 
     async fn recover(&self, load_req: &LoadRequest) -> GenericResult<()> {
