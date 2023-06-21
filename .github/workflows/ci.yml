@@ -41,7 +41,6 @@ jobs:
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-        with:
           submodules: true
       - run: |
           rustup set auto-self-update disable
@@ -93,7 +92,6 @@ jobs:
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-        with:
           submodules: true
       - run: |
           rustup set auto-self-update disable
@@ -136,7 +134,6 @@ jobs:
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-        with:
           submodules: true
       - name: Cache Rust Dependencies
         uses: actions/cache@v3
@@ -184,7 +181,6 @@ jobs:
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-        with:
           submodules: true
       - name: Cache Rust Dependencies
         uses: actions/cache@v3
@@ -249,7 +245,6 @@ jobs:
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-        with:
           submodules: true
       - name: Cache Rust Dependencies
         uses: actions/cache@v3
