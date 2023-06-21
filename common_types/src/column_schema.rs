@@ -29,6 +29,12 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display("Invalid dictionary type:{}.\nBacktrace:\n{}", data_type, backtrace))]
+    InvalidDictionaryType {
+        data_type: DataType,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display(
         "Arrow field meta data is missing, field name:{}.\nBacktrace:\n{}",
         field_name,
@@ -193,6 +199,14 @@ impl ColumnSchema {
             DatumKind::Boolean => true,
             DatumKind::Date => true,
             DatumKind::Time => true,
+        }
+    }
+
+    /// Check whether a type is valid dictionary type.
+    pub fn is_valid_dictionary_type(typ: DatumKind) -> bool {
+        match typ {
+            DatumKind::String => true,
+            _ => false,
         }
     }
 
@@ -449,7 +463,14 @@ impl Builder {
                 }
             );
         }
-
+        if self.is_dictionary {
+            ensure!(
+                ColumnSchema::is_valid_dictionary_type(self.data_type),
+                InvalidDictionaryType {
+                    data_type: self.data_type
+                }
+            );
+        }
         Ok(())
     }
 
