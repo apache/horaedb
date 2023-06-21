@@ -1,10 +1,12 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Contains common types
 
+pub mod bitset;
 pub mod bytes;
-#[cfg(feature = "arrow")]
 pub mod column;
+#[cfg(feature = "arrow")]
+pub mod column_block;
 #[cfg(feature = "arrow")]
 pub mod column_schema;
 pub mod datum;
