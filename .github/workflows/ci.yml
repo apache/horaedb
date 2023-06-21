@@ -40,6 +40,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
+        with:
           submodules: true
       - run: |
           rustup set auto-self-update disable
@@ -90,6 +92,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
+        with:
           submodules: true
       - run: |
           rustup set auto-self-update disable
@@ -129,7 +133,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
         with:
           submodules: true
       - name: Cache Rust Dependencies
@@ -175,7 +181,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
         with:
           submodules: true
       - name: Cache Rust Dependencies
@@ -239,6 +247,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
         with:
           submodules: true
       - name: Cache Rust Dependencies
