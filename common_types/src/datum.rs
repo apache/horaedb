@@ -1112,7 +1112,6 @@ pub mod arrow_convert {
                 DataType::Boolean => Some(Self::Boolean),
                 DataType::Date32 => Some(Self::Date),
                 DataType::Time64(TimeUnit::Nanosecond) => Some(Self::Time),
-                DataType::Dictionary(_, _) => Some(Self::String),
                 DataType::Float16
                 | DataType::LargeUtf8
                 | DataType::LargeBinary
