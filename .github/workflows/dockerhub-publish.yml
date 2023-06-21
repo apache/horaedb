@@ -11,6 +11,8 @@ jobs:
     if: github.repository_owner == 'CeresDB'
     runs-on: ubuntu-latest
     steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
       - name: Checkout
         uses: actions/checkout@v3
       - name: Set up Docker Buildx
@@ -27,8 +29,9 @@ jobs:
           username: ${{ secrets.ALIYUN_DOCKERHUB_USERNAME }}
           password: ${{ secrets.ALIYUN_DOCKERHUB_TOKEN }}
       - name: Build and Push CeresDB Server Docker Image
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v4
         with:
+          platforms: linux/amd64,linux/arm64
           context: .
           push: true
           tags: |

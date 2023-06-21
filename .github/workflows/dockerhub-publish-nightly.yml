@@ -17,6 +17,8 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
       - name: Checkout
         uses: actions/checkout@v3
       - name: Set up Docker Buildx
@@ -38,8 +40,9 @@ jobs:
             echo "BUILD_DATE=$(TZ=':Asia/Shanghai' date '+%Y%m%d')" >> $GITHUB_ENV
             echo "SHORT_SHA=`echo ${GITHUB_SHA} | cut -c1-8`" >> $GITHUB_ENV
       - name: Build and Push Docker Image
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v4
         with:
+          platforms: linux/amd64,linux/arm64
           context: .
           push: true
           tags: |

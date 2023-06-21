@@ -140,6 +140,7 @@ analytic_engine = { workspace = true }
 catalog = { workspace = true }
 catalog_impls = { workspace = true }
 clap = { workspace = true }
+cli_env_toml = "0.0.3"
 cluster = { workspace = true }
 common_util = { workspace = true }
 df_operator = { workspace = true }

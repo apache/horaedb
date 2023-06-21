@@ -16,4 +16,21 @@ mkdir -p ${DATA_DIR}
 chmod +777 -R ${DATA_DIR}
 chown -R ${USER}.${USER} ${DATA_DIR}
 
-exec /usr/bin/ceresdb-server --config ${CONFIG_FILE}
+server=/usr/bin/ceresdb-server
+cmd="/tini -- $server"
+
+config="--config ${CONFIG_FILE}"
+
+if [ -v 1 ]; then
+  args="$@"
+  if echo "$@" | grep -q -- "--help\|-h"; then
+    cmd=$server
+  fi
+  if ! echo "$@" | grep -q -- "--config\|-c"; then
+    args="$config $args"
+  fi
+else
+  args="$config"
+fi
+
+exec $cmd $args

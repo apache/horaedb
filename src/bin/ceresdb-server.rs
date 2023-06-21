@@ -9,7 +9,7 @@ use ceresdb::{
     setup,
 };
 use clap::{App, Arg};
-use common_util::{panic, toml};
+use common_util::panic;
 use log::info;
 
 /// By this environment variable, the address of current node can be overridden.
@@ -58,15 +58,33 @@ fn main() {
                 .takes_value(true)
                 .help("Set configuration file, eg: \"/path/server.toml\""),
         )
+        .arg(
+            Arg::with_name("set")
+                .short('s')
+                .required(false)
+                .multiple(true)
+                .takes_value(true)
+                .help("set config, eg: \"-s server.http_port=9980 -s server.grpc_port=9981\""),
+        )
         .get_matches();
 
-    let mut config = match matches.value_of("config") {
-        Some(path) => {
-            let mut toml_buf = String::new();
-            toml::parse_toml_from_path(path, &mut toml_buf).expect("Failed to parse config.")
-        }
-        None => Config::default(),
-    };
+    // let toml = cli_env_toml::cli_env_toml_str(
+    //     matches
+    //         .values_of("set")
+    //         .map(|li| li.map(|s| s.to_string()).collect()),
+    //     "ceresdb_",
+    //     matches.value_of("config"),
+    // );
+    // dbg!(toml);
+
+    let mut config: Config = cli_env_toml::cli_env_toml(
+        matches
+            .values_of("set")
+            .map(|li| li.map(|s| s.to_string()).collect()),
+        "ceresdb_",
+        matches.value_of("config"),
+    )
+    .expect("Failed to load config.");
 
     if let Ok(node_addr) = env::var(NODE_ADDR) {
         config.node.addr = node_addr;

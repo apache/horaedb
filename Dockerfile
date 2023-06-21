@@ -7,13 +7,13 @@ USER root
 
 RUN apt update && apt install --yes git gcc g++ libssl-dev pkg-config cmake protobuf-compiler && rm -rf /var/lib/apt/lists/*
 
-COPY . /ceresdb
 WORKDIR /ceresdb
+COPY . .
 
 RUN make build
 
 ## CeresDB
-FROM ubuntu:20.04
+FROM ubuntu:22.10
 
 RUN useradd -m -s /bin/bash ceres
 
@@ -34,4 +34,5 @@ RUN chmod +x /tini
 
 ARG USER ceres
 
-ENTRYPOINT ["/tini", "--", "/entrypoint.sh"]
+ENTRYPOINT ["/entrypoint.sh" ]
+
