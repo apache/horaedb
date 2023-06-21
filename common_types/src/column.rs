@@ -791,7 +791,7 @@ macro_rules! define_column_block {
 
             impl ColumnBlock {
                 pub fn try_from_arrow_array_ref(datum_kind: &DatumKind, array: &ArrayRef) -> Result<Self> {
-                    let is_dictionary : bool =  if let DataType::Dictionary(..)  = array.data_type() {
+                    let is_tag : bool =  if let DataType::Dictionary(..)  = array.data_type() {
                         true
                     } else {
                         false
@@ -800,7 +800,7 @@ macro_rules! define_column_block {
                     let column = match datum_kind {
                         DatumKind::Null => ColumnBlock::Null(NullColumn::new_null(array.len())),
                         DatumKind::String => {
-                            if !is_dictionary {
+                            if !is_tag {
                                 let mills_array;
                                 let cast_column = match array.data_type() {
                                     DataType::Timestamp(TimeUnit::Nanosecond, None) => {
@@ -1288,8 +1288,7 @@ mod tests {
         ];
         // DatumKind::String , is_dictionary = true
         let column = schema.column(2);
-        let mut builder =
-            ColumnBlockBuilder::with_capacity(&column.data_type, 0, column.is_dictionary);
+        let mut builder = ColumnBlockBuilder::with_capacity(&column.data_type, 0, column.is_tag);
         // append
         (0..rows.len()).for_each(|i| builder.append(rows[i][2].clone()).unwrap());
 
@@ -1304,8 +1303,7 @@ mod tests {
 
         let column_block = builder.build();
         assert_eq!(column_block.num_rows(), 7);
-        let mut builder =
-            ColumnBlockBuilder::with_capacity(&column.data_type, 2, column.is_dictionary);
+        let mut builder = ColumnBlockBuilder::with_capacity(&column.data_type, 2, column.is_tag);
 
         // append_block_range
         (0..rows.len()).for_each(|i| builder.append_block_range(&column_block, i, 1).unwrap());
