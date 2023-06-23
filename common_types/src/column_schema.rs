@@ -525,6 +525,7 @@ mod tests {
             .id(18)
             .is_nullable(true)
             .is_tag(true)
+            .is_dictionary(true)
             .comment("Comment of this column".to_string())
             .default_value(Some(Expr::Value(Value::Boolean(true))))
             .build()
@@ -540,7 +541,7 @@ mod tests {
             data_type: DatumKind::Boolean,
             is_nullable: true,
             is_tag: true,
-            is_dictionary: false,
+            is_dictionary: true,
             comment: "Comment of this column".to_string(),
             escaped_name: "test_column_schema".escape_debug().to_string(),
             default_value: Some(Expr::Value(Value::Boolean(true))),
@@ -555,6 +556,8 @@ mod tests {
         let pb_schema = schema_pb::ColumnSchema::from(column_schema.clone());
         // Check pb specific fields
         assert!(pb_schema.is_tag);
+        assert!(pb_schema.is_dictionary);
+        assert!(pb_schema.is_nullable);
 
         let schema_from_pb = ColumnSchema::try_from(pb_schema).unwrap();
         assert_eq!(&schema_from_pb, &column_schema);
@@ -571,4 +574,17 @@ mod tests {
             );
         }
     }
+    
+    #[test]
+    fn test_valid_dictionary_type() {
+        let valid_dictionary_types = vec![DatumKind::String];
+
+        for v in &DatumKind::VALUES {
+            assert_eq!(
+                ColumnSchema::is_valid_dictionary_type(*v),
+                !valid_dictionary_types.contains(v)
+            );
+        }
+    }
+
 }

@@ -171,6 +171,11 @@ impl DatumKind {
         )
     }
 
+    /// Can column of this datum kind used as dictionary encode column
+    pub fn is_dictionary_kind(&self) -> bool {
+        matches!(self, DatumKind::String)
+    }
+
     pub fn unsign_kind(&self) -> Option<Self> {
         match self {
             Self::Int64 | Self::UInt64 => Some(Self::UInt64),
