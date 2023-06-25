@@ -358,13 +358,11 @@ mod tests {
         table_options::{self, StorageFormatHint},
     };
 
-    // TODO(xikai): add test for reverse reader
-
-    #[test]
-    fn test_parquet_use_dictionary() {
-        let runtime = Arc::new(runtime::Builder::default().build().unwrap());
-        let num_rows_per_row_group = 4;
-        let expected_num_rows = vec![4, 4, 4, 4, 4];
+    fn write_parquet_with_dictionary_encode_and_read_back(
+        runtime: Arc<Runtime>,
+        num_rows_per_row_group: usize,
+        expected_num_rows: Vec<i64>,
+    ) {
         runtime.block_on(async {
             let sst_factory = FactoryImpl;
             let sst_write_options = SstWriteOptions {
@@ -498,6 +496,25 @@ mod tests {
         });
     }
 
+    // TODO(xikai): add test for reverse reader
+    #[test]
+    fn test_parquet_use_dictionary() {
+        init_log_for_test();
+
+        let runtime = Arc::new(runtime::Builder::default().build().unwrap());
+        write_parquet_with_dictionary_encode_and_read_back(runtime.clone(), 5, vec![5, 5, 5, 5]);
+        write_parquet_with_dictionary_encode_and_read_back(runtime.clone(), 4, vec![4, 4, 4, 4, 4]);
+        write_parquet_with_dictionary_encode_and_read_back(
+            runtime.clone(),
+            3,
+            vec![3, 3, 3, 3, 3, 3, 2],
+        );
+        write_parquet_with_dictionary_encode_and_read_back(
+            runtime.clone(),
+            2,
+            vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+        );
+    }
     #[test]
     fn test_parquet_build_and_read() {
         init_log_for_test();

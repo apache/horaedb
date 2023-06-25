@@ -574,7 +574,7 @@ mod tests {
             );
         }
     }
-    
+
     #[test]
     fn test_valid_dictionary_type() {
         let valid_dictionary_types = vec![DatumKind::String];
@@ -586,5 +586,4 @@ mod tests {
             );
         }
     }
-
 }
