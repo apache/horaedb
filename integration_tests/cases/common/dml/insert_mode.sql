@@ -52,7 +52,7 @@ WITH(
 
 
 INSERT INTO `03_dml_insert_mode_table2` (`timestamp`, `value`, `dic`)
-    VALUES (1, 10, "d1"), (2, 20, ""), (3, "d2");
+    VALUES (1, 10, "d1"), (2, 20, ""), (3, 30, "d2");
 
 SELECT
     *
