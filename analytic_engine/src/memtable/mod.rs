@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! MemTable
 
@@ -181,6 +181,11 @@ pub trait MemTable {
 
     /// Returns an estimate of the number of bytes of data in used
     fn approximate_memory_usage(&self) -> usize;
+
+    /// Returns an estimate of the number of bytes of data in used
+    fn wrote_data_size(&self) -> usize;
+
+    fn wrote_data_encode_size(&self) -> usize;
 
     /// Set last sequence of the memtable, returns error if the given `sequence`
     /// is less than existing last sequence.

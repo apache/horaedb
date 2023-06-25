@@ -95,6 +95,14 @@ impl SamplingMemTable {
     fn suggest_segment_duration(&self) -> Duration {
         self.sampler.suggest_duration()
     }
+
+    fn wrote_data_size(&self) -> usize {
+        self.mem.wrote_data_size()
+    }
+
+    fn wrote_data_encode_size(&self) -> usize {
+        self.mem.wrote_data_encode_size()
+    }
 }
 
 impl fmt::Debug for SamplingMemTable {
@@ -270,12 +278,44 @@ impl MemTableView {
                 .unwrap_or(0)
     }
 
+    fn mutable_wrote_data_size(&self) -> usize {
+        self.mutables.wrote_data_size()
+            + self
+                .sampling_mem
+                .as_ref()
+                .map(|v| v.wrote_data_size())
+                .unwrap_or(0)
+    }
+
+    fn mutable_wrote_data_encode_size(&self) -> usize {
+        self.mutables.wrote_data_encode_size()
+            + self
+                .sampling_mem
+                .as_ref()
+                .map(|v| v.wrote_data_encode_size())
+                .unwrap_or(0)
+    }
+
     /// Get the total memory usage of mutable and immutable memtables.
     fn total_memory_usage(&self) -> usize {
         let mutable_usage = self.mutable_memory_usage();
         let immutable_usage = self.immutables.memory_usage();
 
         mutable_usage + immutable_usage
+    }
+
+    fn total_wrote_data_size(&self) -> usize {
+        let mutable = self.mutable_wrote_data_size();
+        let immutable = self.immutables.wrote_data_size();
+
+        mutable + immutable
+    }
+
+    fn total_wrote_data_encode_size(&self) -> usize {
+        let mutable = self.mutable_wrote_data_encode_size();
+        let immutable = self.immutables.wrote_data_encode_size();
+
+        mutable + immutable
     }
 
     /// Switch all memtables or just sample the segment duration.
@@ -413,6 +453,17 @@ impl MutableMemTableSet {
             .sum()
     }
 
+    fn wrote_data_size(&self) -> usize {
+        self.0.values().map(|m| m.mem.wrote_data_size()).sum()
+    }
+
+    fn wrote_data_encode_size(&self) -> usize {
+        self.0
+            .values()
+            .map(|m| m.mem.wrote_data_encode_size())
+            .sum()
+    }
+
     /// Move all mutable memtables to immutable memtables.
     fn move_to_inmem(&mut self, immem: &mut ImmutableMemTableSet) {
         for m in self.0.values() {
@@ -467,6 +518,17 @@ impl ImmutableMemTableSet {
 
     fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    fn wrote_data_size(&self) -> usize {
+        self.0.values().map(|m| m.mem.wrote_data_size()).sum()
+    }
+
+    fn wrote_data_encode_size(&self) -> usize {
+        self.0
+            .values()
+            .map(|m| m.mem.wrote_data_encode_size())
+            .sum()
     }
 }
 
@@ -559,6 +621,22 @@ impl TableVersion {
             .mutable_memory_usage()
     }
 
+    pub fn mutable_wrote_data_size(&self) -> usize {
+        self.inner
+            .read()
+            .unwrap()
+            .memtable_view
+            .mutable_wrote_data_size()
+    }
+
+    pub fn mutable_wrote_data_encode_size(&self) -> usize {
+        self.inner
+            .read()
+            .unwrap()
+            .memtable_view
+            .mutable_wrote_data_encode_size()
+    }
+
     /// See [MemTableView::total_memory_usage]
     pub fn total_memory_usage(&self) -> usize {
         self.inner
@@ -566,6 +644,22 @@ impl TableVersion {
             .unwrap()
             .memtable_view
             .total_memory_usage()
+    }
+
+    pub fn total_wrote_data_size(&self) -> usize {
+        self.inner
+            .read()
+            .unwrap()
+            .memtable_view
+            .total_wrote_data_size()
+    }
+
+    pub fn total_wrote_data_encode_size(&self) -> usize {
+        self.inner
+            .read()
+            .unwrap()
+            .memtable_view
+            .total_wrote_data_encode_size()
     }
 
     /// Switch all mutable memtables or just return the suggested segment

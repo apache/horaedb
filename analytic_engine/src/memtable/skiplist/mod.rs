@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! MemTable based on skiplist
 
@@ -8,7 +8,7 @@ pub mod iter;
 use std::{
     cmp::Ordering,
     convert::TryInto,
-    sync::atomic::{self, AtomicU64},
+    sync::atomic::{self, AtomicU64, AtomicUsize},
 };
 
 use arena::{Arena, BasicStats};
@@ -38,6 +38,9 @@ pub struct SkiplistMemTable<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
     /// The last sequence of the rows in this memtable. Update to this field
     /// require external synchronization.
     last_sequence: AtomicU64,
+
+    wrote_data_size: AtomicUsize,
+    wrote_data_encode_size: AtomicUsize,
 }
 
 impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
@@ -79,6 +82,9 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
     ) -> Result<()> {
         trace!("skiplist put row, sequence:{:?}, row:{:?}", sequence, row);
 
+        // Stats data size.
+        self.wrote_data_size
+            .fetch_add(row.size(), atomic::Ordering::SeqCst);
         let key_encoder = ComparableInternalKey::new(sequence, schema);
 
         let internal_key = &mut ctx.key_buf;
@@ -96,6 +102,11 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
         let mut row_writer = ContiguousRowWriter::new(row_value, schema, &ctx.index_in_writer);
         row_writer.write_row(row).box_err().context(InvalidRow)?;
 
+        // Stats encode size.
+        self.wrote_data_encode_size.fetch_add(
+            internal_key.len() + row_value.len(),
+            atomic::Ordering::SeqCst,
+        );
         self.skiplist.put(internal_key, row_value);
 
         Ok(())
@@ -146,6 +157,14 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
 
     fn last_sequence(&self) -> SequenceNumber {
         self.last_sequence.load(atomic::Ordering::Relaxed)
+    }
+
+    fn wrote_data_size(&self) -> usize {
+        self.wrote_data_size.load(atomic::Ordering::SeqCst)
+    }
+
+    fn wrote_data_encode_size(&self) -> usize {
+        self.wrote_data_encode_size.load(atomic::Ordering::SeqCst)
     }
 }
 
