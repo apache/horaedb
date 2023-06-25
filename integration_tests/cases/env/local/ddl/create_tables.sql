@@ -6,6 +6,7 @@ DROP TABLE IF EXISTS `05_create_tables_t5`;
 DROP TABLE IF EXISTS `05_create_tables_t6`;
 DROP TABLE IF EXISTS `05_create_tables_t7`;
 DROP TABLE IF EXISTS `05_create_tables_t8`;
+DROP TABLE IF EXISTS `05_create_tables_t9`;
 
 -- no TIMESTAMP column
 CREATE TABLE `05_create_tables_t`(c1 int) ENGINE = Analytic;
@@ -60,6 +61,22 @@ drop table `05_create_tables_t8`;
 CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'hybrid');
 show create table `05_create_tables_t8`;
 drop table `05_create_tables_t8`;
+
+-- Use Dictionary Encode
+CREATE TABLE `05_create_tables_t9`(c1 int, d string dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'hybrid');
+show create table `05_create_tables_t9`;
+drop table `05_create_tables_t9`;
+
+CREATE TABLE `05_create_tables_t9`(c1 int, d string dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'columnar');
+show create table `05_create_tables_t9`;
+drop table `05_create_tables_t9`;
+
+CREATE TABLE `05_create_tables_t9`(c1 int, d string dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
+show create table `05_create_tables_t9`;
+drop table `05_create_tables_t9`;
+
+-- Error: dictionary must be string type
+CREATE TABLE `05_create_tables_t9`(c1 int, d double dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
 
 -- Ignore now, table_id is not stable now
 -- CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'unknown');
