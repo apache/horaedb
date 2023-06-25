@@ -642,10 +642,12 @@ impl ArrowRecordBatchProjector {
         let schema_with_key = self.row_projector.schema_with_key().clone();
         let source_projection = self.row_projector.source_projection();
         let mut column_blocks = Vec::with_capacity(schema_with_key.num_columns());
+
         let num_rows = arrow_record_batch.num_rows();
         // ensure next_arrow_column_idx < num_columns
         let mut next_arrow_column_idx = 0;
         let num_columns = arrow_record_batch.num_columns();
+
         for (source_idx, column_schema) in source_projection.iter().zip(schema_with_key.columns()) {
             match source_idx {
                 Some(_) => {
@@ -659,6 +661,7 @@ impl ArrowRecordBatchProjector {
 
                     let array = arrow_record_batch.column(next_arrow_column_idx);
                     next_arrow_column_idx += 1;
+
                     let column_block =
                         ColumnBlock::try_from_arrow_array_ref(&column_schema.data_type, array)
                             .context(CreateColumnBlock)?;

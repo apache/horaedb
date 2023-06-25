@@ -4,7 +4,7 @@ http_port = 5440
 grpc_port = 8831
 
 [logger]
-level = "debug"
+level = "info"
 
 [tracing]
 dir = "/tmp/ceresdb"

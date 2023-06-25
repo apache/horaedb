@@ -291,9 +291,6 @@ impl_column!(
 );
 impl_column!(StringColumn, get_string_datum, get_string_datum_view);
 
-// TODO
-// impl_column!(StringDictionaryColumn, get_string_datum,
-// get_string_datum_view);
 impl StringDictionaryColumn {
     #[doc = " Get datum by index."]
     pub fn datum_opt(&self, index: usize) -> Option<Datum> {
@@ -376,8 +373,6 @@ macro_rules! impl_dedup {
 impl_dedup!(TimestampColumn);
 impl_dedup!(VarbinaryColumn);
 impl_dedup!(StringColumn);
-// impl_dedup!(StringDictionaryColumn);
-// TODO
 impl StringDictionaryColumn {
     #[doc = " If datum i is not equal to previous datum i - 1, mark `selected[i]` to"]
     #[doc = " true."]
@@ -469,8 +464,6 @@ impl_from_array_and_slice!(NullColumn, NullArray);
 impl_from_array_and_slice!(TimestampColumn, TimestampMillisecondArray);
 impl_from_array_and_slice!(VarbinaryColumn, BinaryArray);
 impl_from_array_and_slice!(StringColumn, StringArray);
-// impl_from_array_and_slice!(StringDictionaryColumn,
-// DictionaryArray<Int32Type>);
 
 impl From<DictionaryArray<Int32Type>> for StringDictionaryColumn {
     fn from(array: DictionaryArray<Int32Type>) -> Self {
@@ -662,20 +655,6 @@ impl StringColumn {
         }
     }
 }
-
-// impl StringDictionaryColumn {
-//     pub fn iter(&self) -> impl Iterator<Item = Option<&str>> + '_ {
-//         self.0.iter()
-//     }
-
-//     pub fn value(&self, index: usize) -> Option<&str> {
-//         if self.0.is_valid(index) {
-//             unsafe { Some(self.0.value_unchecked(index)) }
-//         } else {
-//             None
-//         }
-//     }
-// }
 
 macro_rules! impl_column_block {
     ($($Kind: ident), *) => {
@@ -982,7 +961,6 @@ macro_rules! append_block {
 macro_rules! define_column_block_builder {
     ($(($Kind: ident, $Builder: ident)), *) => {
         paste! {
-            // #[derive(Debug)]
             pub enum ColumnBlockBuilder {
                 Null { rows: usize },
                 Timestamp(TimestampMillisecondBuilder),
@@ -1004,9 +982,13 @@ macro_rules! define_column_block_builder {
                         DatumKind::Timestamp => Self::Timestamp(TimestampMillisecondBuilder::with_capacity(item_capacity)),
                         // The data_capacity is set as 1024, because the item is variable-size type.
                         DatumKind::Varbinary => Self::Varbinary(BinaryBuilder::with_capacity(item_capacity, 1024)),
-                        DatumKind::String if !is_dictionary => Self::String(StringBuilder::with_capacity(item_capacity, 1024)),
-                        DatumKind::String if is_dictionary => Self::Dictionary(StringDictionaryBuilder::<Int32Type>::new()),
-                        DatumKind::String => Self::Dictionary(StringDictionaryBuilder::<Int32Type>::new()),
+                        DatumKind::String =>{
+                            if !is_dictionary{
+                                Self::String(StringBuilder::with_capacity(item_capacity, 1024))
+                            }else {
+                                Self::Dictionary(StringDictionaryBuilder::<Int32Type>::new())
+                            }
+                        }
                         DatumKind::Date => Self::Date(DateBuilder::with_capacity(item_capacity)),
                         DatumKind::Time => Self::Time(TimeBuilder::with_capacity(item_capacity)),
                         $(
@@ -1129,18 +1111,7 @@ macro_rules! define_column_block_builder {
                                             } else {
                                                 let value = v.datum(i);
                                                 builder.append_value(value.as_str().unwrap());
-                                                // let rd_buf: &StringArray =
-                                                // v.0.values().as_any().downcast_ref::<StringArray>().unwrap();
-                                                // let value_opt = rd_buf.value(i);
                                             }
-                                            // match value_opt {
-                                            //     Some(value) => {
-                                            //         builder.append_value(value.as_str().unwrap());
-                                            //     }
-                                            //     None => {
-                                            //         builder.append_null();
-                                            //     }
-                                            // }
                                         }
                                         Ok(())
                                     }

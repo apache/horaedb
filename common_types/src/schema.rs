@@ -188,13 +188,6 @@ pub enum Error {
         source: ParseIntError,
         backtrace: Backtrace,
     },
-
-    #[snafu(display(
-        "Column {} use dictionary encode, but type is not string.\nBacktrace:\n{}",
-        name,
-        backtrace
-    ))]
-    EncodeDictionaryTypeErr { name: String, backtrace: Backtrace },
 }
 
 pub type CatalogName = String;
@@ -697,7 +690,7 @@ impl Schema {
         self.column_schemas.num_columns()
     }
 
-    /// Returns true if idx is primary key index
+    /// Returns true if idx is primary key idnex
     pub fn is_primary_key_index(&self, idx: &usize) -> bool {
         self.primary_key_indexes.contains(idx)
     }
@@ -761,11 +754,6 @@ impl Schema {
     /// Whether i-nth column is tag column
     pub fn is_tag_column(&self, i: usize) -> bool {
         self.column(i).is_tag
-    }
-
-    /// whether i-nth column is dictionary column
-    pub fn is_dictionary_column(&self, i: usize) -> bool {
-        self.column(i).is_dictionary
     }
 
     /// Whether i-nth column can be collapsed to List describe in
@@ -1129,15 +1117,6 @@ impl Builder {
             );
         }
 
-        // if use dictionary encode , check datum kind is string
-        // TODO: support more datum kinds
-        if column.is_dictionary {
-            ensure!(
-                column.data_type.is_dictionary_kind(),
-                EncodeDictionaryTypeErr { name: &column.name }
-            );
-        }
-
         ensure!(
             !self.column_ids.contains(&column.id),
             ColumnIdExists {
@@ -1336,13 +1315,6 @@ mod tests {
                     .expect("should succeed build column schema"),
             )
             .unwrap()
-            .add_key_column(
-                column_schema::Builder::new("dictionary_string".to_string(), DatumKind::String)
-                    .is_dictionary(true)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
             .add_normal_column(
                 column_schema::Builder::new("field1".to_string(), DatumKind::Double)
                     .build()
@@ -1379,16 +1351,15 @@ mod tests {
         let schema = build_test_schema();
 
         // Length related test
-        assert_eq!(5, schema.columns().len());
-        assert_eq!(5, schema.num_columns());
-        assert_eq!(3, schema.primary_key_indexes.len());
+        assert_eq!(4, schema.columns().len());
+        assert_eq!(4, schema.num_columns());
+        assert_eq!(2, schema.primary_key_indexes.len());
         assert_eq!(1, schema.timestamp_index());
 
         // Test key columns
-        assert_eq!(3, schema.key_columns().len());
+        assert_eq!(2, schema.key_columns().len());
         assert_eq!("key1", &schema.key_columns()[0].name);
         assert_eq!("timestamp", &schema.key_columns()[1].name);
-        assert_eq!("dictionary_string", &schema.key_columns()[2].name);
 
         // Test normal columns
         assert_eq!(2, schema.normal_columns().len());
@@ -1397,18 +1368,18 @@ mod tests {
 
         // Test column_with_name()
         let field1 = schema.column_with_name("field1").unwrap();
-        assert_eq!(4, field1.id);
+        assert_eq!(3, field1.id);
         assert_eq!("field1", field1.name);
         assert!(schema.column_with_name("not exists").is_none());
 
         // Test column()
-        assert_eq!(field1, schema.column(3));
+        assert_eq!(field1, schema.column(2));
 
         // Test arrow schema
         let arrow_schema = schema.as_arrow_schema_ref();
         let key1 = arrow_schema.field(0);
         assert_eq!("key1", key1.name());
-        let field2 = arrow_schema.field(4);
+        let field2 = arrow_schema.field(3);
         assert_eq!("field2", field2.name());
 
         // Test index_of()
@@ -1512,41 +1483,6 @@ mod tests {
                     .expect("should succeed build column schema")
             )
             .is_err());
-    }
-
-    #[test]
-    fn test_dictionary_column_type() {
-        for kind in DatumKind::VALUES {
-            if kind == DatumKind::String {
-                assert!(Builder::new()
-                    .add_key_column(
-                        column_schema::Builder::new("dictionary_string".to_string(), kind)
-                            .id(1)
-                            .is_dictionary(true)
-                            .build()
-                            .expect("should succeed build column schema")
-                    )
-                    .is_ok());
-                assert!(Builder::new()
-                    .add_normal_column(
-                        column_schema::Builder::new("dictionary_string".to_string(), kind)
-                            .id(1)
-                            .is_dictionary(true)
-                            .build()
-                            .expect("should succeed build column schema")
-                    )
-                    .is_ok());
-                continue;
-            }
-
-            assert!(
-                column_schema::Builder::new("dictionary_string".to_string(), kind)
-                    .id(1)
-                    .is_dictionary(true)
-                    .build()
-                    .is_err()
-            );
-        }
     }
 
     #[test]
