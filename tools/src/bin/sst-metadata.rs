@@ -27,10 +27,6 @@ struct Args {
     #[clap(short, long, required(false))]
     verbose: bool,
 
-    /// File & Field Statistics print
-    #[clap(short, long, required(false))]
-    stats: bool,
-
     /// Thread num, 0 means cpu num
     #[clap(short, long, default_value_t = 0)]
     threads: usize,
@@ -123,52 +119,6 @@ async fn run(args: Args) -> Result<()> {
         metas.push(meta);
     }
 
-    if args.stats {
-        let mut file_stats = FileStatistics::default();
-        let mut field_stats_map = HashMap::new();
-        for (object_meta, sst_metadata, metadata_size, kv_size) in metas {
-            let parquet_meta = sst_metadata.parquet();
-
-            file_stats.file_count += 1;
-            file_stats.size += object_meta.size;
-            file_stats.metadata_size += metadata_size;
-            file_stats.kv_size += kv_size;
-            let filter_size = sst_metadata
-                .custom()
-                .parquet_filter
-                .as_ref()
-                .map(|f| f.size())
-                .unwrap_or(0);
-            file_stats.filter_size += filter_size;
-            file_stats.row_num += parquet_meta.file_metadata().num_rows();
-
-            let fields = parquet_meta.file_metadata().schema().get_fields();
-            for (_, row_group) in parquet_meta.row_groups().iter().enumerate() {
-                for i in 0..fields.len() {
-                    let column_meta = row_group.column(i);
-                    let field_name = fields.get(i).unwrap().get_basic_info().name().to_string();
-                    if !field_stats_map.contains_key(&field_name) {
-                        field_stats_map.insert(field_name.clone(), FieldStatistics::default());
-                    }
-                    let field_stats = field_stats_map.get_mut(&field_name).unwrap();
-                    field_stats.compressed_size += column_meta.compressed_size();
-                    field_stats.uncompressed_size += column_meta.uncompressed_size();
-                }
-            }
-        }
-        println!("{}", file_stats.to_string());
-
-        println!("FieldStatistics: ");
-        for (k, v) in field_stats_map.iter() {
-            println!("{},\t compressed_size: {:.2}mb,\t uncompressed_size: {:.2}mb,\t compress_ratio: {:.2}",
-                     k,
-                     as_mb(v.compressed_size as usize),
-                     as_mb(v.uncompressed_size as usize),
-                     v.uncompressed_size as f64 / v.compressed_size as f64);
-        }
-        return Ok(());
-    }
-
     // sort by time_range asc
     metas.sort_by(|a, b| {
         a.1.custom()
@@ -177,6 +127,8 @@ async fn run(args: Args) -> Result<()> {
             .cmp(&b.1.custom().time_range.inclusive_start())
     });
 
+    let mut file_stats = FileStatistics::default();
+    let mut field_stats_map = HashMap::new();
     for (object_meta, sst_metadata, metadata_size, kv_size) in metas {
         let ObjectMeta { location, size, .. } = &object_meta;
         let custom_meta = sst_metadata.custom();
@@ -192,6 +144,28 @@ async fn run(args: Args) -> Result<()> {
             .unwrap_or(0);
         let file_metadata = parquet_meta.file_metadata();
         let row_num = file_metadata.num_rows();
+
+        file_stats.file_count += 1;
+        file_stats.size += object_meta.size;
+        file_stats.metadata_size += metadata_size;
+        file_stats.kv_size += kv_size;
+        file_stats.filter_size += filter_size;
+        file_stats.row_num += row_num;
+
+        let fields = file_metadata.schema().get_fields();
+        for (_, row_group) in parquet_meta.row_groups().iter().enumerate() {
+            for i in 0..fields.len() {
+                let column_meta = row_group.column(i);
+                let field_name = fields.get(i).unwrap().get_basic_info().name().to_string();
+                if !field_stats_map.contains_key(&field_name) {
+                    field_stats_map.insert(field_name.clone(), FieldStatistics::default());
+                }
+                let field_stats = field_stats_map.get_mut(&field_name).unwrap();
+                field_stats.compressed_size += column_meta.compressed_size();
+                field_stats.uncompressed_size += column_meta.uncompressed_size();
+            }
+        }
+
         if verbose {
             println!("object_meta:{object_meta:?}, parquet_meta:{parquet_meta:?}, custom_meta:{custom_meta:?}");
         } else {
@@ -205,6 +179,15 @@ async fn run(args: Args) -> Result<()> {
         }
     }
 
+    println!("{}", file_stats.to_string());
+    println!("FieldStatistics: ");
+    for (k, v) in field_stats_map.iter() {
+        println!("{},\t compressed_size: {:.2}mb,\t uncompressed_size: {:.2}mb,\t compress_ratio: {:.2}",
+                 k,
+                 as_mb(v.compressed_size as usize),
+                 as_mb(v.uncompressed_size as usize),
+                 v.uncompressed_size as f64 / v.compressed_size as f64);
+    }
     Ok(())
 }
 
