@@ -63,9 +63,9 @@ WITH(
 affected_rows: 0
 
 INSERT INTO `03_dml_insert_mode_table2` (`timestamp`, `value`, `dic`)
-    VALUES (1, 10, "d1"), (2, 20, Null), (3, "d2");
+    VALUES (1, 10, "d1"), (2, 20, ""), (3, "d2");
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: INSERT INTO `03_dml_insert_mode_table2` (`timestamp`, `value`, `dic`) \n     VALUES (1, 10, \"d1\"), (2, 20, Null), (3, \"d2\");. Caused by: Failed to create plan, err:Insert Failed to convert value, err:Invalid insert value, kind:string, value:Null." })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: INSERT INTO `03_dml_insert_mode_table2` (`timestamp`, `value`, `dic`) \n     VALUES (1, 10, \"d1\"), (2, 20, \"\"), (3, \"d2\");. Caused by: Failed to create plan, err:Insert Failed to convert value, err:Invalid insert value, kind:double, value:DoubleQuotedString(\"d2\")." })
 
 SELECT
     *
@@ -77,9 +77,9 @@ ORDER BY
 affected_rows: 0
 
 INSERT INTO `03_dml_insert_mode_table2` (`timestamp`, `value`, `dic`)
-    VALUES (1, 100, "d2"), (2, 200, "d1"), (3, 300, Null);
+    VALUES (1, 100, "d2"), (2, 200, "d1"), (3, 300, "");
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: INSERT INTO `03_dml_insert_mode_table2` (`timestamp`, `value`, `dic`) \n     VALUES (1, 100, \"d2\"), (2, 200, \"d1\"), (3, 300, Null);. Caused by: Failed to create plan, err:Insert Failed to convert value, err:Invalid insert value, kind:string, value:Null." })
+affected_rows: 3
 
 SELECT
     *
@@ -88,7 +88,7 @@ FROM
 ORDER BY
     `value` ASC;
 
-affected_rows: 0
+Failed to execute query, err: BuildRows("Unsupported arrow type:Dictionary(Int32, Utf8)")
 
 DROP TABLE `03_dml_insert_mode_table2`;
 
@@ -114,10 +114,6 @@ INSERT INTO `03_dml_insert_mode_table3` (`timestamp`, `value`, `dic`)
 
 affected_rows: 3
 
-    -- VALUES (1, 100, "d2"), (2, 200, "d1"), (3, 300, Null);
-
-Failed to execute query, err: Rpc(Status { code: Unknown, message: "transport error", source: Some(tonic::transport::Error(Transport, hyper::Error(Io, Custom { kind: BrokenPipe, error: "stream closed because of a broken pipe" }))) })
-
 SELECT
     *
 FROM
@@ -125,12 +121,12 @@ FROM
 ORDER BY
     `value` ASC;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: BuildRows("Unsupported arrow type:Dictionary(Int32, Utf8)")
 
 INSERT INTO `03_dml_insert_mode_table3` (`timestamp`, `value`)
     VALUES (1, 100, "d5"), (2, 200, "d6"), (3, 300, "d7");
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 3
 
 SELECT
     *
@@ -139,15 +135,15 @@ FROM
 ORDER BY
     `value` ASC;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: BuildRows("Unsupported arrow type:Dictionary(Int32, Utf8)")
 
 DROP TABLE `03_dml_insert_mode_table3`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `03_dml_insert_mode_table4`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE `03_dml_insert_mode_table4` (
     `timestamp` timestamp NOT NULL,
@@ -162,12 +158,12 @@ WITH(
 	 enable_ttl='false'
 );
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 INSERT INTO `03_dml_insert_mode_table4` (`timestamp`, `c1`, `c5`)
     VALUES (1, 10, 3), (2, 20, 4), (3, 30, 5);
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 3
 
 SELECT
     *
@@ -176,9 +172,13 @@ FROM
 ORDER BY
     `c1` ASC;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+tsid,timestamp,c1,c2,c3,c4,c5,c6,
+UInt64(0),Timestamp(1),UInt32(10),String("123"),UInt32(11),UInt32(12),UInt32(3),String("default"),
+UInt64(0),Timestamp(2),UInt32(20),String("123"),UInt32(21),UInt32(22),UInt32(4),String("default"),
+UInt64(0),Timestamp(3),UInt32(30),String("123"),UInt32(31),UInt32(32),UInt32(5),String("default"),
+
 
 DROP TABLE IF EXISTS `03_dml_insert_mode_table4`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 

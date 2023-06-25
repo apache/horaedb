@@ -1,6 +1,6 @@
 DROP TABLE IF EXISTS `02_function_aggregate_table1`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE `02_function_aggregate_table1` (
     `timestamp` timestamp NOT NULL,
@@ -13,7 +13,7 @@ WITH(
 	 enable_ttl='false'
 );
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 INSERT INTO `02_function_aggregate_table1`
     (`timestamp`, `arch`, `datacenter`, `value`, `uvalue`)
@@ -23,11 +23,13 @@ VALUES
     (1658304762, 'arm64', 'china', 110, 0),
     (1658304763, 'arm64', 'china', 210, 0);
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 4
 
 SELECT sum(`value`) FROM `02_function_aggregate_table1`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+SUM(02_function_aggregate_table1.value),
+Int64(620),
+
 
 SELECT
     `arch`,
@@ -41,44 +43,61 @@ GROUP BY
 ORDER BY
     `arch` DESC;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+arch,SUM(02_function_aggregate_table1.value),
+String("x86-64"),Int64(200),
+String("arm64"),Int64(210),
+
 
 SELECT count(`value`) FROM `02_function_aggregate_table1`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+COUNT(02_function_aggregate_table1.value),
+Int64(4),
+
 
 SELECT avg(`value`) FROM `02_function_aggregate_table1`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+AVG(02_function_aggregate_table1.value),
+Double(155.0),
+
 
 SELECT max(`value`) FROM `02_function_aggregate_table1`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+MAX(02_function_aggregate_table1.value),
+Int32(210),
+
 
 SELECT min(`value`) FROM `02_function_aggregate_table1`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+MIN(02_function_aggregate_table1.value),
+Int32(100),
+
 
 SELECT min(`uvalue`) - max(`uvalue`) FROM `02_function_aggregate_table1`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+MIN(02_function_aggregate_table1.uvalue) - MAX(02_function_aggregate_table1.uvalue),
+UInt64(18446744073709551606),
+
 
 INSERT INTO `02_function_aggregate_table1`
     (`timestamp`, `arch`, `datacenter`, `value`)
 VALUES
     (1658304762, 'x86-64', 'china', 100);
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 1
 
 SELECT count(`arch`) FROM `02_function_aggregate_table1`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+COUNT(02_function_aggregate_table1.arch),
+Int64(4),
+
 
 SELECT count(distinct(`arch`)) FROM `02_function_aggregate_table1`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+COUNT(DISTINCT 02_function_aggregate_table1.arch),
+Int64(2),
+
 
 DROP TABLE `02_function_aggregate_table1`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 

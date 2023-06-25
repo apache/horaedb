@@ -1,296 +1,335 @@
 DROP TABLE IF EXISTS `05_create_tables_t`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t2`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t3`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t4`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t5`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t6`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t7`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t8`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t9`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE `05_create_tables_t`(c1 int) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: CREATE TABLE `05_create_tables_t`(c1 int) ENGINE = Analytic;. Caused by: Failed to create plan, err:Table must contain timestamp constraint" })
 
 CREATE TABLE `05_create_tables_t`(c1 int, t timestamp, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: CREATE TABLE `05_create_tables_t`(c1 int, t timestamp, TIMESTAMP KEY(t)) ENGINE = Analytic;. Caused by: Failed to create plan, err:Failed to build schema, err:Key column cannot be nullable, name:t." })
 
 CREATE TABLE `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE IF NOT EXISTS `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql: CREATE TABLE `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute create table, err:Failed to create table by table manipulator, err:Failed to operate table, err:Failed to operate table, msg:Some(\"failed to create table on shard, request:CreateTableRequest { catalog_name: \\\"ceresdb\\\", schema_name: \\\"public\\\", table_name: \\\"05_create_tables_t\\\", table_id: None, table_schema: Schema { timestamp_index: 1, tsid_index: Some(0), column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: \\\"tsid\\\", data_type: UInt64, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"tsid\\\", default_value: None }, ColumnSchema { id: 2, name: \\\"t\\\", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"t\\\", default_value: None }, ColumnSchema { id: 3, name: \\\"c1\\\", data_type: Int32, is_nullable: true, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"c1\\\", default_value: None }] }, version: 1, primary_key_indexes: [0, 1] }, engine: \\\"Analytic\\\", options: {}, state: Stable, shard_id: 0, partition_info: None }\"), err:Failed to create table, table already exists, table:05_create_tables_t." })
 
 create table `05_create_tables_t2`(a int, b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic with (enable_ttl='false');
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 insert into `05_create_tables_t2`(a, b, t) values(1,1,1),(2,2,2);
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 2
 
 select a+b from `05_create_tables_t2`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+05_create_tables_t2.a + 05_create_tables_t2.b,
+Int32(2),
+Int32(4),
+
 
 create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql: create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute create table, err:Failed to create table by table manipulator, err:Failed to operate table, err:Failed to operate table, msg:Some(\"failed to create table on shard, request:CreateTableRequest { catalog_name: \\\"ceresdb\\\", schema_name: \\\"public\\\", table_name: \\\"05_create_tables_t2\\\", table_id: None, table_schema: Schema { timestamp_index: 1, tsid_index: Some(0), column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: \\\"tsid\\\", data_type: UInt64, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"tsid\\\", default_value: None }, ColumnSchema { id: 2, name: \\\"t\\\", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"t\\\", default_value: None }, ColumnSchema { id: 3, name: \\\"a\\\", data_type: Int32, is_nullable: true, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"a\\\", default_value: None }, ColumnSchema { id: 4, name: \\\"b\\\", data_type: Int32, is_nullable: true, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"b\\\", default_value: None }] }, version: 1, primary_key_indexes: [0, 1] }, engine: \\\"Analytic\\\", options: {}, state: Stable, shard_id: 0, partition_info: None }\"), err:Failed to create table, table already exists, table:05_create_tables_t2." })
 
 create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql: create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute create table, err:Failed to create table by table manipulator, err:Failed to operate table, err:Failed to operate table, msg:Some(\"failed to create table on shard, request:CreateTableRequest { catalog_name: \\\"ceresdb\\\", schema_name: \\\"public\\\", table_name: \\\"05_create_tables_t2\\\", table_id: None, table_schema: Schema { timestamp_index: 1, tsid_index: Some(0), column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: \\\"tsid\\\", data_type: UInt64, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"tsid\\\", default_value: None }, ColumnSchema { id: 2, name: \\\"t\\\", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"t\\\", default_value: None }, ColumnSchema { id: 3, name: \\\"a\\\", data_type: Int32, is_nullable: true, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"a\\\", default_value: None }, ColumnSchema { id: 4, name: \\\"b\\\", data_type: Int32, is_nullable: true, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"b\\\", default_value: None }] }, version: 1, primary_key_indexes: [0, 1] }, engine: \\\"Analytic\\\", options: {}, state: Stable, shard_id: 0, partition_info: None }\"), err:Failed to create table, table already exists, table:05_create_tables_t2." })
 
 create table `05_create_tables_t3`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 create table `05_create_tables_t4`(`a` int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 describe table `05_create_tables_t4`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+name,type,is_primary,is_nullable,is_tag,is_dictionary,
+String("tsid"),String("uint64"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
+String("t"),String("timestamp"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
+String("a"),String("int"),Boolean(false),Boolean(true),Boolean(false),Boolean(false),
+
 
 show create table `05_create_tables_t4`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Table,Create Table,
+String("05_create_tables_t4"),String("CREATE TABLE `05_create_tables_t4` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `a` int, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
 
 CREATE TABLE `05_create_tables_t5`(c1 int, t timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 describe table `05_create_tables_t5`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+name,type,is_primary,is_nullable,is_tag,is_dictionary,
+String("tsid"),String("uint64"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
+String("t"),String("timestamp"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
+String("c1"),String("int"),Boolean(false),Boolean(true),Boolean(false),Boolean(false),
+
 
 show create table `05_create_tables_t5`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Table,Create Table,
+String("05_create_tables_t5"),String("CREATE TABLE `05_create_tables_t5` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `c1` int, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
 
 CREATE TABLE `05_create_tables_t6`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY, t2 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: CREATE TABLE `05_create_tables_t6`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY, t2 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;. Caused by: Failed to create plan, err:Table must contain only one timestamp key and it's data type must be TIMESTAMP" })
 
 CREATE TABLE `05_create_tables_t7`(c1 int COMMENT 'id', t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 describe table `05_create_tables_t7`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+name,type,is_primary,is_nullable,is_tag,is_dictionary,
+String("tsid"),String("uint64"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
+String("t"),String("timestamp"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
+String("c1"),String("int"),Boolean(false),Boolean(true),Boolean(false),Boolean(false),
+
 
 show create table `05_create_tables_t7`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Table,Create Table,
+String("05_create_tables_t7"),String("CREATE TABLE `05_create_tables_t7` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `c1` int COMMENT 'id', PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
 
 CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 show create table `05_create_tables_t8`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Table,Create Table,
+String("05_create_tables_t8"),String("CREATE TABLE `05_create_tables_t8` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
 
 drop table `05_create_tables_t8`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'columnar');
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 show create table `05_create_tables_t8`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Table,Create Table,
+String("05_create_tables_t8"),String("CREATE TABLE `05_create_tables_t8` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='COLUMNAR', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
 
 drop table `05_create_tables_t8`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'hybrid');
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 show create table `05_create_tables_t8`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Table,Create Table,
+String("05_create_tables_t8"),String("CREATE TABLE `05_create_tables_t8` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='HYBRID', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
 
 drop table `05_create_tables_t8`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE `05_create_tables_t9`(c1 int, d string dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'hybrid');
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 show create table `05_create_tables_t9`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Table,Create Table,
+String("05_create_tables_t9"),String("CREATE TABLE `05_create_tables_t9` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, `d` string DICTIONARY, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='HYBRID', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
 
 drop table `05_create_tables_t9`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE `05_create_tables_t9`(c1 int, d string dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'columnar');
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 show create table `05_create_tables_t9`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Table,Create Table,
+String("05_create_tables_t9"),String("CREATE TABLE `05_create_tables_t9` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, `d` string DICTIONARY, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='COLUMNAR', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
 
 drop table `05_create_tables_t9`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE `05_create_tables_t9`(c1 int, d string dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 show create table `05_create_tables_t9`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Table,Create Table,
+String("05_create_tables_t9"),String("CREATE TABLE `05_create_tables_t9` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, `d` string DICTIONARY, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
 
 drop table `05_create_tables_t9`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE `05_create_tables_t9`(c1 int, d double dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to parse table name with sql, sql: CREATE TABLE `05_create_tables_t9`(c1 int, d double dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;. Caused by: Invalid sql, sql: CREATE TABLE `05_create_tables_t9`(c1 int, d double dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;, err:sql parser error: Only string column can be dictionary encoded: \"d DOUBLE DICTIONARY\"" })
 
 CREATE TABLE `05_create_tables_t9`(c1 int, c2 bigint default 0, c3 uint32 default 1 + 1, c4 string default 'xxx', c5 uint32 default c3*2 + 1, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 show create table `05_create_tables_t9`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Table,Create Table,
+String("05_create_tables_t9"),String("CREATE TABLE `05_create_tables_t9` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, `c2` bigint DEFAULT 0, `c3` uint32 DEFAULT 1 + 1, `c4` string DEFAULT 'xxx', `c5` uint32 DEFAULT c3 * 2 + 1, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
 
 drop table `05_create_tables_t9`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE `05_create_tables_t10`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(tsid, t1)) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 show create table `05_create_tables_t10`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Table,Create Table,
+String("05_create_tables_t10"),String("CREATE TABLE `05_create_tables_t10` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
 
 drop table `05_create_tables_t10`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE `05_create_tables_t11`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(t1, tsid)) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 show create table `05_create_tables_t11`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Table,Create Table,
+String("05_create_tables_t11"),String("CREATE TABLE `05_create_tables_t11` (`t1` timestamp NOT NULL, `tsid` uint64 NOT NULL, `c1` int, PRIMARY KEY(t1,tsid), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
 
 drop table `05_create_tables_t11`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE `05_create_tables_t12`(c1 int not null, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(tsid, t1, c1)) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: CREATE TABLE `05_create_tables_t12`(c1 int not null, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(tsid, t1, c1)) ENGINE = Analytic;. Caused by: Failed to create plan, err:Failed to build schema, err:Primary key with tsid should only contains tsid and timestamp key." })
 
 show create table `05_create_tables_t12`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: show create table `05_create_tables_t12`;. Caused by: Failed to create plan, err:Table not found, table:05_create_tables_t12" })
 
 drop table `05_create_tables_t12`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: drop table `05_create_tables_t12`;. Caused by: Failed to create plan, err:Table not found, table:05_create_tables_t12" })
 
 CREATE TABLE `05_timestamp_not_in_primary_key`(c1 int NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t), PRIMARY KEY(c1)) ENGINE = Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: CREATE TABLE `05_timestamp_not_in_primary_key`(c1 int NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t), PRIMARY KEY(c1)) ENGINE = Analytic;. Caused by: Failed to create plan, err:Failed to build schema, err:Timestamp not in primary key." })
 
 DROP TABLE IF EXISTS `05_create_tables_t`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t2`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t3`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t4`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t5`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t6`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t7`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t8`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t9`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t10`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t11`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t12`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 

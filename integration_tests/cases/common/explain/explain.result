@@ -1,16 +1,19 @@
 DROP TABLE `04_explain_t`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: DROP TABLE `04_explain_t`;. Caused by: Failed to create plan, err:Table not found, table:04_explain_t" })
 
 CREATE TABLE `04_explain_t` (t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 EXPLAIN SELECT t FROM `04_explain_t`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+plan_type,plan,
+String("logical_plan"),String("Projection: 04_explain_t.t\n  TableScan: 04_explain_t projection=[t]"),
+String("physical_plan"),String("ProjectionExec: expr=[t@0 as t]\n  ScanTable: table=04_explain_t, parallelism=8, order=None, \n"),
+
 
 DROP TABLE `04_explain_t`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 

@@ -1,48 +1,68 @@
 SELECT 1;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Int64(1),
+Int64(1),
+
 
 SELECT x;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SELECT x;. Caused by: Failed to create plan, err:Failed to generate datafusion plan, err:Schema error: No field named x." })
 
 SELECT 'a';
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Utf8("a"),
+String("a"),
+
 
 SELECT NOT(1=1);
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+NOT Int64(1) = Int64(1),
+Boolean(false),
+
 
 SELECT NOT(1);
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+NOT Int64(1),
+Int64(-2),
+
 
 SELECT TRUE;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Boolean(true),
+Boolean(true),
+
 
 SELECT FALSE;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Boolean(false),
+Boolean(false),
+
 
 SELECT NOT(TRUE);
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+NOT Boolean(true),
+Boolean(false),
+
 
 SELECT 10 - 2 * 3;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Int64(10) - Int64(2) * Int64(3),
+Int64(4),
+
 
 SELECT (10 - 2) * 3;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Int64(10) - Int64(2) * Int64(3),
+Int64(24),
+
 
 SELECT "That is not good.";
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Utf8("That is not good."),
+String("That is not good."),
+
 
 SELECT *;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SELECT *;. Caused by: Failed to create plan, err:Failed to generate datafusion plan, err:Error during planning: SELECT * with no tables specified is not valid" })
 

@@ -1,6 +1,6 @@
 DROP TABLE IF EXISTS `02_function_thetasketch_distinct_table`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE `02_function_thetasketch_distinct_table` (
     `timestamp` timestamp NOT NULL,
@@ -12,7 +12,7 @@ WITH(
 	 enable_ttl='false'
 );
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 INSERT INTO `02_function_thetasketch_distinct_table`
 (`timestamp`, `arch`, `datacenter`, `value`)
@@ -418,11 +418,13 @@ VALUES
     (1658304960, 'arm', 'china', 46),
     (1658304961, 'arm', 'china', 82);
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 400
 
 SELECT thetasketch_distinct(`value`) FROM `02_function_thetasketch_distinct_table`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+thetasketch_distinct(02_function_thetasketch_distinct_table.value),
+UInt64(147),
+
 
 SELECT
     `arch`,
@@ -436,9 +438,12 @@ GROUP BY
 ORDER BY
     `arch` DESC;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+arch,thetasketch_distinct(02_function_thetasketch_distinct_table.value),
+String("x86"),UInt64(115),
+String("arm"),UInt64(117),
+
 
 DROP TABLE `02_function_thetasketch_distinct_table`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 

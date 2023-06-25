@@ -52,7 +52,7 @@ WITH(
 
 
 INSERT INTO `03_dml_insert_mode_table2` (`timestamp`, `value`, `dic`)
-    VALUES (1, 10, "d1"), (2, 20, Null), (3, "d2");
+    VALUES (1, 10, "d1"), (2, 20, ""), (3, "d2");
 
 SELECT
     *
@@ -62,7 +62,7 @@ ORDER BY
     `value` ASC;
 
 INSERT INTO `03_dml_insert_mode_table2` (`timestamp`, `value`, `dic`)
-    VALUES (1, 100, "d2"), (2, 200, "d1"), (3, 300, Null);
+    VALUES (1, 100, "d2"), (2, 200, "d1"), (3, 300, "");
 
 SELECT
     *
@@ -89,10 +89,8 @@ WITH(
 INSERT INTO `03_dml_insert_mode_table3` (`timestamp`, `value`, `dic`)
     VALUES (1, 100, "d2"), (2, 200, "d1"), (3, 300, "d1");
 
--- Todo support insert Null
-
--- INSERT INTO `03_dml_insert_mode_table3` (`timestamp`, `value`, `dic`)
-    -- VALUES (1, 100, "d2"), (2, 200, "d1"), (3, 300, Null);
+-- TODO support insert Null
+-- INSERT INTO `03_dml_insert_mode_table3` (`timestamp`, `value`, `dic`) VALUES (1, 100, "d2"), (2, 200, "d1"), (3, 300, Null);
 
 SELECT
     *

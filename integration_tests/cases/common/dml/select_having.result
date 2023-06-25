@@ -1,6 +1,6 @@
 DROP TABLE IF EXISTS `03_dml_select_having_table1`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 CREATE TABLE `03_dml_select_having_table1` (
     `timestamp` timestamp NOT NULL,
@@ -10,7 +10,7 @@ WITH(
 	 enable_ttl='false'
 );
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
 INSERT INTO `03_dml_select_having_table1`
     (`timestamp`, `value`)
@@ -22,7 +22,7 @@ VALUES
     (5, 4405),
     (6, 406);
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 6
 
 SELECT
     `value` % 3,
@@ -34,7 +34,11 @@ GROUP BY
 ORDER BY
     max ASC;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+03_dml_select_having_table1.value % Int64(3),max,
+Int64(2),Int32(203),
+Int64(0),Int32(1002),
+Int64(1),Int32(30004),
+
 
 SELECT
     `value` % 3,
@@ -48,9 +52,11 @@ HAVING
 ORDER BY
     max ASC;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+03_dml_select_having_table1.value % Int64(3),max,
+Int64(1),Int32(30004),
+
 
 DROP TABLE `03_dml_select_having_table1`;
 
-Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
+affected_rows: 0
 
