@@ -12,7 +12,9 @@ affected_rows: 1
 
 SELECT * FROM `05_alter_table_t0`;
 
-Failed to execute query, err: BuildRows("Unsupported arrow type:Dictionary(Int32, Utf8)")
+tsid,t,a,dic,
+UInt64(0),Timestamp(1),Int32(1),String("d1"),
+
 
 ALTER TABLE `05_alter_table_t0` RENAME TO `t1`;
 
@@ -38,7 +40,10 @@ affected_rows: 1
 
 SELECT * FROM `05_alter_table_t0`;
 
-Failed to execute query, err: BuildRows("Unsupported arrow type:Dictionary(Int32, Utf8)")
+tsid,t,a,dic,b,
+UInt64(0),Timestamp(1),Int32(1),String("d1"),String(""),
+UInt64(0),Timestamp(2),Int32(2),String("d2"),String("2"),
+
 
 ALTER TABLE `05_alter_table_t0` add COLUMN (add_dic string dictionary);
 
