@@ -488,7 +488,7 @@ impl FlushTask {
                 last_file_id: file_id,
             };
             let edit_req = {
-                let meta_update = MetaUpdate::AlterSstId(manifest_update);
+                let meta_update = AlterSstId(manifest_update);
                 MetaEditRequest {
                     shard_info: self.table_data.shard_info,
                     meta_edit: MetaEdit::Update(meta_update),
@@ -627,7 +627,7 @@ impl FlushTask {
             last_file_id: file_id,
         };
         let edit_req = {
-            let meta_update = MetaUpdate::AlterSstId(manifest_update);
+            let meta_update = AlterSstId(manifest_update);
             MetaEditRequest {
                 shard_info: self.table_data.shard_info,
                 meta_edit: MetaEdit::Update(meta_update),

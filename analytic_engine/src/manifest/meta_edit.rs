@@ -19,6 +19,7 @@ use wal::log_batch::{Payload, PayloadDecoder};
 use crate::{
     manifest::meta_snapshot::MetaSnapshot,
     space::SpaceId,
+    sst::manager::FileId,
     table::{
         data::{MemTableId, TableShardInfo},
         version::TableVersionMeta,
@@ -26,7 +27,6 @@ use crate::{
     },
     table_options, TableOptions,
 };
-use crate::sst::manager::FileId;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
