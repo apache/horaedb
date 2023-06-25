@@ -526,7 +526,7 @@ fn ensure_data_type_compatible(
     table_name: &str,
     column_name: &str,
     is_tag: bool,
-    is_dictionary: bool,
+    _is_dictionary: bool,
     data_type: DatumKind,
     column_schema: &ColumnSchema,
 ) -> Result<()> {

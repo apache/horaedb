@@ -387,11 +387,11 @@ impl StringDictionaryColumn {
             return;
         }
         selected[0] = true;
-        for i in 1..self.0.len() {
+        for (i, v) in selected.iter_mut().enumerate().take(self.0.len()).skip(1) {
             let current = self.0.key(i);
             let prev = self.0.key(i - 1);
             if current != prev {
-                selected[i] = true;
+                *v = true;
             }
         }
     }
@@ -535,18 +535,6 @@ impl StringColumn {
     /// Create a column that all values are null.
     fn new_null(num_rows: usize) -> Self {
         let mut builder = StringBuilder::with_capacity(num_rows, 0usize);
-        for _ in 0..num_rows {
-            builder.append_null();
-        }
-        let array = builder.finish();
-
-        Self(array)
-    }
-}
-impl StringDictionaryColumn {
-    /// Create a column that all values are null.
-    fn new_null(num_rows: usize) -> Self {
-        let mut builder = StringDictionaryBuilder::<Int32Type>::new();
         for _ in 0..num_rows {
             builder.append_null();
         }

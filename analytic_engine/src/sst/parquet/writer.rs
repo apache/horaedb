@@ -510,7 +510,7 @@ mod tests {
             vec![3, 3, 3, 3, 3, 3, 2],
         );
         write_parquet_with_dictionary_encode_and_read_back(
-            runtime.clone(),
+            runtime,
             2,
             vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
         );
