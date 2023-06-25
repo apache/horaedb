@@ -182,11 +182,13 @@ async fn run(args: Args) -> Result<()> {
     println!("{}", file_stats.to_string());
     println!("FieldStatistics: ");
     for (k, v) in field_stats_map.iter() {
-        println!("{},\t compressed_size: {:.2}mb,\t uncompressed_size: {:.2}mb,\t compress_ratio: {:.2}",
-                 k,
-                 as_mb(v.compressed_size as usize),
-                 as_mb(v.uncompressed_size as usize),
-                 v.uncompressed_size as f64 / v.compressed_size as f64);
+        println!(
+            "{},\t compressed_size: {:.2}mb,\t uncompressed_size: {:.2}mb,\t compress_ratio: {:.2}",
+            k,
+            as_mb(v.compressed_size as usize),
+            as_mb(v.uncompressed_size as usize),
+            v.uncompressed_size as f64 / v.compressed_size as f64
+        );
     }
     Ok(())
 }
