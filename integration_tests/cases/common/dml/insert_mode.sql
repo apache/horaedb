@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS `03_dml_insert_mode_table1`;
 CREATE TABLE `03_dml_insert_mode_table1` (
     `timestamp` timestamp NOT NULL,
     `value` double,
+    `dic` string dictionary,
     timestamp KEY (timestamp)) ENGINE=Analytic
 WITH(
 	 enable_ttl='false',
@@ -11,8 +12,8 @@ WITH(
 );
 
 
-INSERT INTO `03_dml_insert_mode_table1` (`timestamp`, `value`)
-    VALUES (1, +10), (2, 0), (3, -30);
+INSERT INTO `03_dml_insert_mode_table1` (`timestamp`, `value`, `dic`)
+    VALUES (1, +10, "d1"), (2, 0, "d2"), (3, -30, "d1");
 
 
 SELECT
@@ -42,6 +43,7 @@ DROP TABLE IF EXISTS `03_dml_insert_mode_table2`;
 CREATE TABLE `03_dml_insert_mode_table2` (
     `timestamp` timestamp NOT NULL,
     `value` double,
+    `dic` string dictionary,
     timestamp KEY (timestamp)) ENGINE=Analytic
 WITH(
 	 enable_ttl='false',
@@ -49,8 +51,8 @@ WITH(
 );
 
 
-INSERT INTO `03_dml_insert_mode_table2` (`timestamp`, `value`)
-    VALUES (1, 10), (2, 20), (3, 30);
+INSERT INTO `03_dml_insert_mode_table2` (`timestamp`, `value`, `dic`)
+    VALUES (1, 10, "d1"), (2, 20, Null), (3, "d2");
 
 SELECT
     *
@@ -59,8 +61,8 @@ FROM
 ORDER BY
     `value` ASC;
 
-INSERT INTO `03_dml_insert_mode_table2` (`timestamp`, `value`)
-    VALUES (1, 100), (2, 200), (3, 300);
+INSERT INTO `03_dml_insert_mode_table2` (`timestamp`, `value`, `dic`)
+    VALUES (1, 100, "d2"), (2, 200, "d1"), (3, 300, Null);
 
 SELECT
     *
@@ -77,14 +79,20 @@ DROP TABLE IF EXISTS `03_dml_insert_mode_table3`;
 CREATE TABLE `03_dml_insert_mode_table3` (
     `timestamp` timestamp NOT NULL,
     `value` double,
+    `dic` string dictionary,
     timestamp KEY (timestamp)) ENGINE=Analytic
 WITH(
 	 enable_ttl='false'
 );
 
 
-INSERT INTO `03_dml_insert_mode_table3` (`timestamp`, `value`)
-    VALUES (1, 10), (2, 20), (3, 30);
+INSERT INTO `03_dml_insert_mode_table3` (`timestamp`, `value`, `dic`)
+    VALUES (1, 100, "d2"), (2, 200, "d1"), (3, 300, "d1");
+
+-- Todo support insert Null
+
+-- INSERT INTO `03_dml_insert_mode_table3` (`timestamp`, `value`, `dic`)
+    -- VALUES (1, 100, "d2"), (2, 200, "d1"), (3, 300, Null);
 
 SELECT
     *
@@ -94,7 +102,7 @@ ORDER BY
     `value` ASC;
 
 INSERT INTO `03_dml_insert_mode_table3` (`timestamp`, `value`)
-    VALUES (1, 100), (2, 200), (3, 300);
+    VALUES (1, 100, "d5"), (2, 200, "d6"), (3, 300, "d7");
 
 
 SELECT
@@ -116,6 +124,7 @@ CREATE TABLE `03_dml_insert_mode_table4` (
     `c3` uint32 default c1 + 1,
     `c4` uint32 default c3 + 1,
     `c5` uint32 default c3 + 10,
+    `c6` string default "default",
     timestamp KEY (timestamp)) ENGINE=Analytic
 WITH(
 	 enable_ttl='false'

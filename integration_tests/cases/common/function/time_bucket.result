@@ -1,6 +1,6 @@
 DROP TABLE IF EXISTS `02_function_time_bucket_table`;
 
-affected_rows: 0
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 CREATE TABLE `02_function_time_bucket_table` (
   `timestamp` timestamp NOT NULL,
@@ -10,7 +10,7 @@ WITH(
 	 enable_ttl='false'
 );
 
-affected_rows: 0
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 INSERT INTO `02_function_time_bucket_table`
 (`timestamp`, `value`)
@@ -22,119 +22,49 @@ VALUES
     (1659484800000, 5),
     (1656777600000, 6);
 
-affected_rows: 6
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT time_bucket(`timestamp`, 'P1Y') FROM `02_function_time_bucket_table`;
 
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("P1Y")),
-Timestamp(1640966400000),
-Timestamp(1640966400000),
-Timestamp(1640966400000),
-Timestamp(1640966400000),
-Timestamp(1640966400000),
-Timestamp(1640966400000),
-
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT time_bucket(`timestamp`, 'P1M') FROM `02_function_time_bucket_table`;
 
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("P1M")),
-Timestamp(1656604800000),
-Timestamp(1659283200000),
-Timestamp(1659283200000),
-Timestamp(1659283200000),
-Timestamp(1659283200000),
-Timestamp(1659283200000),
-
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT time_bucket(`timestamp`, 'P1W') FROM `02_function_time_bucket_table`;
 
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("P1W")),
-Timestamp(1652918400000),
-Timestamp(1657756800000),
-Timestamp(1657756800000),
-Timestamp(1657756800000),
-Timestamp(1657756800000),
-Timestamp(1657756800000),
-
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT time_bucket(`timestamp`, 'P1D') FROM `02_function_time_bucket_table`;
 
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("P1D")),
-Timestamp(1656777600000),
-Timestamp(1659456000000),
-Timestamp(1659542400000),
-Timestamp(1659542400000),
-Timestamp(1659542400000),
-Timestamp(1659542400000),
-
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT time_bucket(`timestamp`, 'PT1H') FROM `02_function_time_bucket_table`;
 
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1H")),
-Timestamp(1656777600000),
-Timestamp(1659484800000),
-Timestamp(1659571200000),
-Timestamp(1659574800000),
-Timestamp(1659574800000),
-Timestamp(1659574800000),
-
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT time_bucket(`timestamp`, 'PT1M') FROM `02_function_time_bucket_table`;
 
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1M")),
-Timestamp(1656777600000),
-Timestamp(1659484800000),
-Timestamp(1659571200000),
-Timestamp(1659577320000),
-Timestamp(1659577380000),
-Timestamp(1659577380000),
-
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT time_bucket(`timestamp`, 'PT1S') FROM `02_function_time_bucket_table`;
 
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1S")),
-Timestamp(1656777600000),
-Timestamp(1659484800000),
-Timestamp(1659571200000),
-Timestamp(1659577320000),
-Timestamp(1659577422000),
-Timestamp(1659577423000),
-
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT time_bucket(`timestamp`, 'PT1H', 'yyyy-MM-dd HH:mm:ss') FROM `02_function_time_bucket_table`;
 
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1H"),Utf8("yyyy-MM-dd HH:mm:ss")),
-Timestamp(1656777600000),
-Timestamp(1659484800000),
-Timestamp(1659571200000),
-Timestamp(1659574800000),
-Timestamp(1659574800000),
-Timestamp(1659574800000),
-
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT time_bucket(`timestamp`, 'PT1H', 'yyyy-MM-dd HH:mm:ss', '+0800') FROM `02_function_time_bucket_table`;
 
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1H"),Utf8("yyyy-MM-dd HH:mm:ss"),Utf8("+0800")),
-Timestamp(1656777600000),
-Timestamp(1659484800000),
-Timestamp(1659571200000),
-Timestamp(1659574800000),
-Timestamp(1659574800000),
-Timestamp(1659574800000),
-
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT time_bucket(`timestamp`, 'PT1H', 'yyyy-MM-dd HH:mm:ss', '+0800', 'yyyy-MM-dd HH') FROM `02_function_time_bucket_table`;
 
-time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1H"),Utf8("yyyy-MM-dd HH:mm:ss"),Utf8("+0800"),Utf8("yyyy-MM-dd HH")),
-Timestamp(1656777600000),
-Timestamp(1659484800000),
-Timestamp(1659571200000),
-Timestamp(1659574800000),
-Timestamp(1659574800000),
-Timestamp(1659574800000),
-
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 DROP TABLE `02_function_time_bucket_table`;
 
-affected_rows: 0
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 

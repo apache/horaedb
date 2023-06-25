@@ -1,6 +1,6 @@
 DROP TABLE IF EXISTS `issue637`;
 
-affected_rows: 0
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 CREATE TABLE IF NOT EXISTS `issue637`
 (
@@ -14,20 +14,18 @@ CREATE TABLE IF NOT EXISTS `issue637`
      TIMESTAMP KEY (t)
 ) ENGINE=Analytic with(enable_ttl = 'false');
 
-affected_rows: 0
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 INSERT INTO issue637
     (`str_tag`,`int_tag`,`var_tag`,`str_field`,`int_field`,`bin_field`,`t`)
 VALUES
     ("t1",1,"v1","s1",1,"b1",1651737067000);
 
-affected_rows: 1
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT * FROM `issue637`;
 
-tsid,t,str_tag,int_tag,var_tag,str_field,int_field,bin_field,
-UInt64(15527369105987057363),Timestamp(1651737067000),String("t1"),Int32(1),Varbinary([118, 49]),String("s1"),Int32(1),String("b1"),
-
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 CREATE TABLE IF NOT EXISTS `issue637_1`
 (
@@ -48,26 +46,24 @@ CREATE TABLE IF NOT EXISTS `issue637_1`
     TIMESTAMP KEY (t)
 ) ENGINE=Analytic with(enable_ttl = 'false');
 
-affected_rows: 0
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 INSERT INTO issue637_1
     (`t`,`double_filed`,`float_filed`,`str_field`,`var_field`,`u64_field`,`u32_field`,`u16_field`,`u8_field`,`i64_field`,`i32_field`,`i16_field`,`i8_field`,`bool_field`)
 VALUES
     (1651737067000,100,100,"s","v",100,100,100,100,100,100,100,100,false);
 
-affected_rows: 1
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT * FROM `issue637_1`;
 
-tsid,t,double_filed,float_filed,str_field,var_field,u64_field,u32_field,u16_field,u8_field,i64_field,i32_field,i16_field,i8_field,bool_field,
-UInt64(0),Timestamp(1651737067000),Double(100.0),Float(100.0),String("s"),Varbinary([118]),UInt64(100),UInt32(100),UInt16(100),UInt8(100),Int64(100),Int32(100),Int16(100),Int8(100),Boolean(false),
-
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 DROP TABLE IF EXISTS issue637;
 
-affected_rows: 0
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 DROP TABLE IF EXISTS issue637_1;
 
-affected_rows: 0
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 

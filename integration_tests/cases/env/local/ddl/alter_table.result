@@ -1,88 +1,68 @@
 DROP TABLE IF EXISTS `05_alter_table_t0`;
 
-affected_rows: 0
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 CREATE TABLE `05_alter_table_t0`(a int, t timestamp NOT NULL, dic string dictionary, TIMESTAMP KEY(t)) ENGINE = Analytic with (enable_ttl='false');
 
-affected_rows: 0
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 INSERT INTO TABLE `05_alter_table_t0`(a, t, dic) values(1, 1 , "d1");
 
-affected_rows: 1
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT * FROM `05_alter_table_t0`;
 
-Failed to execute query, err: BuildRows("Unsupported arrow type:Dictionary(Int32, Utf8)")
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 ALTER TABLE `05_alter_table_t0` RENAME TO `t1`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: ALTER TABLE `05_alter_table_t0` RENAME TO `t1`;. Caused by: Failed to create plan, err:Unsupported SQL statement" })
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 ALTER TABLE `05_alter_table_t0` add COLUMN (b string);
 
-affected_rows: 0
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 DESCRIBE TABLE `05_alter_table_t0`;
 
-name,type,is_primary,is_nullable,is_tag,is_dictionary,
-String("tsid"),String("uint64"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
-String("t"),String("timestamp"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
-String("a"),String("int"),Boolean(false),Boolean(true),Boolean(false),Boolean(false),
-String("dic"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean(true),
-String("b"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean(false),
-
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 INSERT INTO TABLE `05_alter_table_t0`(a, b, t, dic) values (2, '2', 2, "d2");
 
-affected_rows: 1
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT * FROM `05_alter_table_t0`;
 
-Failed to execute query, err: BuildRows("Unsupported arrow type:Dictionary(Int32, Utf8)")
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 ALTER TABLE `05_alter_table_t0` add COLUMN (add_dic string dictionary);
 
-affected_rows: 0
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 DESCRIBE TABLE `05_alter_table_t0`;
 
-name,type,is_primary,is_nullable,is_tag,is_dictionary,
-String("tsid"),String("uint64"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
-String("t"),String("timestamp"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
-String("a"),String("int"),Boolean(false),Boolean(true),Boolean(false),Boolean(false),
-String("dic"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean(true),
-String("b"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean(false),
-String("add_dic"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean(true),
-
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 INSERT INTO TABLE `05_alter_table_t0`(a, b, t, dic, add_dic) values (2, '2', 2, "d2", "d3");
 
-affected_rows: 1
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT * FROM `05_alter_table_t0`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql: SELECT * FROM `05_alter_table_t0`;. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute select, err:Failed to execute logical plan, err:Failed to collect record batch stream, err:Stream error, msg:convert from arrow record batch, err:External error: Stream error, msg:Read record batch, err:Failed to read data from the sub iterator, err:PullRecordBatch { source: DecodeRecordBatch { source: CreateArrow { source: InvalidArgumentError(\"column types must match schema types, expected Dictionary(Int32, Utf8) but found Utf8 at column index 5\"), backtrace:" })
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 ALTER TABLE `05_alter_table_t0` DROP COLUMN b;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: ALTER TABLE `05_alter_table_t0` DROP COLUMN b;. Caused by: Failed to create plan, err:Unsupported SQL statement" })
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 DESCRIBE TABLE `05_alter_table_t0`;
 
-name,type,is_primary,is_nullable,is_tag,is_dictionary,
-String("tsid"),String("uint64"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
-String("t"),String("timestamp"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
-String("a"),String("int"),Boolean(false),Boolean(true),Boolean(false),Boolean(false),
-String("dic"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean(true),
-String("b"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean(false),
-String("add_dic"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean(true),
-
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 SELECT * FROM `05_alter_table_t0`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql: SELECT * FROM `05_alter_table_t0`;. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute select, err:Failed to execute logical plan, err:Failed to collect record batch stream, err:Stream error, msg:convert from arrow record batch, err:External error: Stream error, msg:Read record batch, err:Failed to read data from the sub iterator, err:PullRecordBatch { source: DecodeRecordBatch { source: CreateArrow { source: InvalidArgumentError(\"column types must match schema types, expected Dictionary(Int32, Utf8) but found Utf8 at column index 5\"), backtrace:" })
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
 DROP TABLE `05_alter_table_t0`;
 
-affected_rows: 0
+Failed to execute query, err: Rpc(Status { code: Unavailable, message: "error trying to connect: tcp connect error: Connection refused (os error 61)", source: Some(tonic::transport::Error(Transport, hyper::Error(Connect, ConnectError("tcp connect error", Os { code: 61, kind: ConnectionRefused, message: "Connection refused" })))) })
 
