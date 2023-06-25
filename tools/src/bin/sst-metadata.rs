@@ -157,10 +157,9 @@ async fn run(args: Args) -> Result<()> {
             for i in 0..fields.len() {
                 let column_meta = row_group.column(i);
                 let field_name = fields.get(i).unwrap().get_basic_info().name().to_string();
-                if !field_stats_map.contains_key(&field_name) {
-                    field_stats_map.insert(field_name.clone(), FieldStatistics::default());
-                }
-                let field_stats = field_stats_map.get_mut(&field_name).unwrap();
+                let mut field_stats = field_stats_map
+                    .entry(field_name)
+                    .or_insert(FieldStatistics::default());
                 field_stats.compressed_size += column_meta.compressed_size();
                 field_stats.uncompressed_size += column_meta.uncompressed_size();
             }
