@@ -618,6 +618,8 @@ impl<M: MessageQueue> Region<M> {
         };
 
         let safe_delete_offset = snapshot.safe_delete_offset();
+        info!("Region clean logs, snapshot:{snapshot:?}, safe_delete_offset:{safe_delete_offset}");
+
         // Sync snapshot first.
         synchronizer
             .sync(snapshot)

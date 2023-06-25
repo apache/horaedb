@@ -294,7 +294,7 @@ impl ShardOpener {
                             Ok(table_data.map(|data| (data, ctx.space.clone())))
                         }
                         Err(e) => {
-                            error!("ShardOpener recover single table meta failed, table:{:?}, shard_id:{}", ctx.table_def, self.shard_id);
+                            error!("ShardOpener recover single table meta failed, table:{:?}, shard_id:{}, err:{e}", ctx.table_def, self.shard_id);
                             Err(e)
                         }
                     };
@@ -387,7 +387,7 @@ impl ShardOpener {
                 }
 
                 (TableOpenStage::RecoverTableData(_), Some(e)) => {
-                    error!("ShardOpener replay wals of single table failed, table:{}, table_id:{}, shard_id:{}", table_data.name, table_data.id, self.shard_id);
+                    error!("ShardOpener replay wals of single table failed, table:{}, table_id:{}, shard_id:{}, err:{e}", table_data.name, table_data.id, self.shard_id);
                     *stage = TableOpenStage::Failed(e);
                 }
 
