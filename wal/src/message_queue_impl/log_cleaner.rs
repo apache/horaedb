@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Log cleaner
 
@@ -68,7 +68,7 @@ impl<M: MessageQueue> LogCleaner<M> {
 
     pub async fn maybe_clean_logs(&mut self, safe_delete_offset: Offset) -> Result<()> {
         info!(
-            "Begin to check and clean logs, region id:{}, topic:{}, safe delete offset:{:?}",
+            "Region clean logs begin, region id:{}, topic:{}, safe delete offset:{:?}",
             self.region_id, self.log_topic, safe_delete_offset
         );
 
@@ -102,7 +102,7 @@ impl<M: MessageQueue> LogCleaner<M> {
         }
 
         info!(
-            "Finished to check and clean logs, do clean:{}, region id:{}, topic:{}, prepare delete to offset:{:?}",
+            "Region clean logs finish, do clean:{}, region id:{}, topic:{}, prepare delete to offset:{:?}",
             do_clean, self.region_id, self.log_topic, safe_delete_offset
         );
 
