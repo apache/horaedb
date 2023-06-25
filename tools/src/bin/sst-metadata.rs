@@ -2,7 +2,7 @@
 
 //! A cli to query sst meta data
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use analytic_engine::sst::{meta_data::cache::MetaData, parquet::async_reader::ChunkReaderAdapter};
 use anyhow::{Context, Result};
@@ -34,6 +34,34 @@ struct Args {
     /// Print page indexes
     #[clap(short, long, required(false))]
     page_indexes: bool,
+}
+
+#[derive(Default, Debug)]
+struct FileStatistics {
+    file_count: u64,
+    size: usize,
+    metadata_size: usize,
+    kv_size: usize,
+    filter_size: usize,
+    row_num: i64,
+}
+
+impl ToString for FileStatistics {
+    fn to_string(&self) -> String {
+        format!("FileStatistics {{\n\tfile_count: {},\n\tsize: {:.2},\n\tmetadata_size: {:.2}, \n\tkv_size: {:.2},\n\tfilter_size: {:.2},\n\trow_num: {},\n}}",
+                self.file_count,
+                as_mb(self.size),
+                as_mb(self.metadata_size),
+                as_mb(self.kv_size),
+                as_mb(self.filter_size),
+                self.row_num)
+    }
+}
+
+#[derive(Default, Debug)]
+struct FieldStatistics {
+    compressed_size: i64,
+    uncompressed_size: i64,
 }
 
 fn new_runtime(thread_num: usize) -> Runtime {
@@ -99,6 +127,8 @@ async fn run(args: Args) -> Result<()> {
             .cmp(&b.1.custom().time_range.inclusive_start())
     });
 
+    let mut file_stats = FileStatistics::default();
+    let mut field_stats_map = HashMap::new();
     for (object_meta, sst_metadata, metadata_size, kv_size) in metas {
         let ObjectMeta { location, size, .. } = &object_meta;
         let custom_meta = sst_metadata.custom();
@@ -114,6 +144,27 @@ async fn run(args: Args) -> Result<()> {
             .unwrap_or(0);
         let file_metadata = parquet_meta.file_metadata();
         let row_num = file_metadata.num_rows();
+
+        file_stats.file_count += 1;
+        file_stats.size += object_meta.size;
+        file_stats.metadata_size += metadata_size;
+        file_stats.kv_size += kv_size;
+        file_stats.filter_size += filter_size;
+        file_stats.row_num += row_num;
+
+        let fields = file_metadata.schema().get_fields();
+        for (_, row_group) in parquet_meta.row_groups().iter().enumerate() {
+            for i in 0..fields.len() {
+                let column_meta = row_group.column(i);
+                let field_name = fields.get(i).unwrap().get_basic_info().name().to_string();
+                let mut field_stats = field_stats_map
+                    .entry(field_name)
+                    .or_insert(FieldStatistics::default());
+                field_stats.compressed_size += column_meta.compressed_size();
+                field_stats.uncompressed_size += column_meta.uncompressed_size();
+            }
+        }
+
         if verbose {
             println!("object_meta:{object_meta:?}, parquet_meta:{parquet_meta:?}, custom_meta:{custom_meta:?}");
         } else {
@@ -127,6 +178,17 @@ async fn run(args: Args) -> Result<()> {
         }
     }
 
+    println!("{}", file_stats.to_string());
+    println!("FieldStatistics: ");
+    for (k, v) in field_stats_map.iter() {
+        println!(
+            "{},\t compressed_size: {:.2}mb,\t uncompressed_size: {:.2}mb,\t compress_ratio: {:.2}",
+            k,
+            as_mb(v.compressed_size as usize),
+            as_mb(v.uncompressed_size as usize),
+            v.uncompressed_size as f64 / v.compressed_size as f64
+        );
+    }
     Ok(())
 }
 
