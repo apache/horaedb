@@ -999,6 +999,8 @@ mod tests {
     #[test]
     fn test_dictionary_column() {
         let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag dictionary, c2 float dictionary, c3 bigint unsign)";
+        assert!(Parser::parse_sql(sql).is_err());
+        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag dictionary, c2 string dictionary, c3 bigint unsign)";
         let statements = Parser::parse_sql(sql).unwrap();
         assert_eq!(statements.len(), 1);
         match &statements[0] {

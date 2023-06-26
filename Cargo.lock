@@ -1053,8 +1053,7 @@ dependencies = [
 [[package]]
 name = "ceresdb-client"
 version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5f27e14a7a0c030015c0fdb06c59c46cd6f9765e381bd920e02ff316b3be48b"
+source = "git+https://github.com/CeresDB/ceresdb-client-rs.git?rev=3803d66053164cb7de0d915171b8dac8f037d396#3803d66053164cb7de0d915171b8dac8f037d396"
 dependencies = [
  "arrow",
  "async-trait",
