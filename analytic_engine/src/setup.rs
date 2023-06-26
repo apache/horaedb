@@ -193,6 +193,11 @@ impl WalsOpener for RocksDBWalsOpener {
                     .data_namespace
                     .level_zero_stop_writes_trigger,
             )
+            .fifo_compaction_max_table_files_size(
+                rocksdb_wal_config
+                    .data_namespace
+                    .fifo_compaction_max_table_files_size,
+            )
             .build()
             .context(OpenWal)?;
 
@@ -217,6 +222,11 @@ impl WalsOpener for RocksDBWalsOpener {
                 rocksdb_wal_config
                     .meta_namespace
                     .level_zero_stop_writes_trigger,
+            )
+            .fifo_compaction_max_table_files_size(
+                rocksdb_wal_config
+                    .meta_namespace
+                    .fifo_compaction_max_table_files_size,
             )
             .build()
             .context(OpenManifestWal)?;

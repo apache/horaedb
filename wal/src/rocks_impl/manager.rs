@@ -20,8 +20,8 @@ use common_types::{
 use common_util::{error::BoxError, runtime::Runtime};
 use log::{debug, info, warn};
 use rocksdb::{
-    ColumnFamilyOptions, DBIterator, DBOptions, ReadOptions, SeekKey, Statistics, Writable,
-    WriteBatch, DB,
+    ColumnFamilyOptions, DBIterator, DBOptions, FifoCompactionOptions, ReadOptions, SeekKey,
+    Statistics, Writable, WriteBatch, DB,
 };
 use snafu::ResultExt;
 use tokio::sync::Mutex;
@@ -536,6 +536,7 @@ pub struct Builder {
     level_zero_file_num_compaction_trigger: Option<i32>,
     level_zero_slowdown_writes_trigger: Option<i32>,
     level_zero_stop_writes_trigger: Option<i32>,
+    fifo_compaction_max_table_files_size: Option<u64>,
 }
 
 impl Builder {
@@ -552,6 +553,7 @@ impl Builder {
             level_zero_file_num_compaction_trigger: None,
             level_zero_slowdown_writes_trigger: None,
             level_zero_stop_writes_trigger: None,
+            fifo_compaction_max_table_files_size: None,
         }
     }
 
@@ -595,6 +597,11 @@ impl Builder {
         self
     }
 
+    pub fn fifo_compaction_max_table_files_size(mut self, v: u64) -> Self {
+        self.fifo_compaction_max_table_files_size = Some(v);
+        self
+    }
+
     pub fn build(self) -> Result<RocksImpl> {
         let mut rocksdb_config = DBOptions::default();
         rocksdb_config.create_if_missing(true);
@@ -629,6 +636,15 @@ impl Builder {
         }
         if let Some(v) = self.level_zero_stop_writes_trigger {
             cf_opts.set_level_zero_stop_writes_trigger(v);
+        }
+
+        // FIFO compaction strategy let rocksdb looks like a message queue.
+        if let Some(v) = self.fifo_compaction_max_table_files_size {
+            if v > 0 {
+                let mut fifo_opts = FifoCompactionOptions::new();
+                fifo_opts.set_max_table_files_size(v);
+                cf_opts.set_fifo_compaction_options(fifo_opts);
+            }
         }
 
         let db = DB::open_cf(rocksdb_config, &self.wal_path, vec![("default", cf_opts)])

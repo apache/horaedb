@@ -15,6 +15,7 @@ pub struct Config {
     pub level_zero_file_num_compaction_trigger: i32,
     pub level_zero_slowdown_writes_trigger: i32,
     pub level_zero_stop_writes_trigger: i32,
+    pub fifo_compaction_max_table_files_size: u64,
 }
 
 impl Default for Config {
@@ -30,6 +31,7 @@ impl Default for Config {
             level_zero_file_num_compaction_trigger: 4,
             level_zero_slowdown_writes_trigger: 20,
             level_zero_stop_writes_trigger: 36,
+            fifo_compaction_max_table_files_size: 0, // default is 1G, use 0 to disable fifo
         }
     }
 }
