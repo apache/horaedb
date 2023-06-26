@@ -517,13 +517,8 @@ impl TableData {
                     meta_edit: MetaEdit::Update(meta_update),
                 }
             };
-            // TODO: call async in sync
-            futures::executor::block_on(async {
-                manifest
-                    .apply_edit(edit_req)
-                    .await
-                    .expect("update last file id failed");
-            });
+            let f = manifest.apply_edit(edit_req);
+            futures::executor::block_on(f).expect("failed to update last file id");
         }
         let last = self.last_file_id.fetch_add(1, Ordering::Relaxed);
         last + 1

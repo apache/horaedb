@@ -379,6 +379,7 @@ impl From<AlterSstIdMeta> for manifest_pb::AlterSstIdMeta {
             space_id: v.space_id,
             table_id: v.table_id.as_u64(),
             last_file_id: v.last_file_id,
+            max_file_id: v.max_file_id,
         }
     }
 }
@@ -391,7 +392,7 @@ impl TryFrom<manifest_pb::AlterSstIdMeta> for AlterSstIdMeta {
             space_id: src.space_id,
             table_id: TableId::from(src.table_id),
             last_file_id: src.last_file_id,
-            max_file_id: 0,
+            max_file_id: src.max_file_id,
         })
     }
 }
