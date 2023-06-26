@@ -4,6 +4,7 @@ package metadata_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 func TestClusterMetadata(t *testing.T) {
 	ctx := context.Background()
 	re := require.New(t)
+
 	metadata := test.InitStableCluster(ctx, t).GetMetadata()
 
 	testUpdateClusterView(ctx, re, metadata)
@@ -30,6 +32,8 @@ func testUpdateClusterView(ctx context.Context, re *require.Assertions, m *metad
 	currentShardNodes := m.GetClusterSnapshot().Topology.ClusterView.ShardNodes
 	removeTarget := currentShardNodes[0]
 	newShardNodes := make(map[string][]storage.ShardNode)
+	newShardNodes[removeTarget.NodeName] = []storage.ShardNode{}
+
 	for i := 1; i < len(currentShardNodes); i++ {
 		if removeTarget.NodeName == currentShardNodes[i].NodeName {
 			if removeTarget.ID != currentShardNodes[i].ID {
@@ -41,7 +45,7 @@ func testUpdateClusterView(ctx context.Context, re *require.Assertions, m *metad
 	re.NoError(err)
 	// New topology shard not contains the target shardNode.
 	for _, shardNode := range m.GetClusterSnapshot().Topology.ClusterView.ShardNodes {
-		re.NotEqual(removeTarget.ID, shardNode.ID)
+		re.NotEqualf(removeTarget.ID, shardNode.ID, fmt.Sprintf("%v \n %v", m.GetClusterSnapshot().Topology.ClusterView.ShardNodes, newShardNodes))
 	}
 	re.Equal(len(currentShardNodes)-1, len(m.GetClusterSnapshot().Topology.ClusterView.ShardNodes))
 
