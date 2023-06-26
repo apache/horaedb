@@ -184,11 +184,60 @@ mod tests {
     use std::sync::Arc;
 
     use arrow::{
-        array::{Int32Array, StringArray},
-        datatypes::{DataType, Field, Schema},
+        array::{
+            Int32Array, StringArray, StringDictionaryBuilder, TimestampMillisecondArray,
+            UInt64Array,
+        },
+        datatypes::{DataType, Field, Int32Type, Schema, TimeUnit},
     };
 
     use super::*;
+
+    fn create_dictionary_record_batch() -> RecordBatch {
+        let mut col1 = Field::new("tsid", DataType::UInt64, false);
+        let mut col2 = Field::new("t", DataType::Timestamp(TimeUnit::Millisecond, None), false);
+        let mut col3 = Field::new("a", DataType::Int32, false);
+        let mut col4 = Field::new(
+            "dic",
+            DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+            false,
+        );
+        let mut col5 = Field::new("b", DataType::UInt64, true);
+        let mut col6 = Field::new(
+            "add_dic",
+            DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+            true,
+        );
+        let schema = Schema::new(vec![col1, col2, col3, col4, col5, col6]);
+        let tsid = UInt64Array::from_iter_values(vec![0, 0]);
+        let t = TimestampMillisecondArray::from_iter_values(vec![1, 2]);
+        let a = Int32Array::from_iter_values(vec![1, 2]);
+        let mut builder = UInt64Array::builder(2);
+        builder.append_null();
+        builder.append_value(1);
+        let b = builder.finish();
+        let mut builder = StringDictionaryBuilder::<Int32Type>::new();
+        builder.append_value("d1");
+        builder.append_value("d2");
+        let dic = builder.finish();
+        let mut builder = StringDictionaryBuilder::<Int32Type>::new();
+        builder.append_null();
+        builder.append_value("d3");
+        let add_dic = builder.finish();
+
+        RecordBatch::try_new(
+            Arc::new(schema),
+            vec![
+                Arc::new(tsid),
+                Arc::new(t),
+                Arc::new(a),
+                Arc::new(dic),
+                Arc::new(b),
+                Arc::new(add_dic),
+            ],
+        )
+        .unwrap()
+    }
 
     fn create_batch(rows: usize) -> RecordBatch {
         let schema = Schema::new(vec![
@@ -217,6 +266,18 @@ mod tests {
     #[test]
     fn test_ipc_encode_decode() {
         let batch = create_batch(1024);
+        for compression in [CompressionMethod::None, CompressionMethod::Zstd] {
+            let compress_opts = CompressOptions {
+                compress_min_length: 0,
+                method: compression,
+            };
+            ensure_encoding_and_decoding(&batch, compress_opts, compression);
+        }
+    }
+
+    #[test]
+    fn test_ipc_encode_decode_with_dicitonary_encode() {
+        let batch = create_dictionary_record_batch();
         for compression in [CompressionMethod::None, CompressionMethod::Zstd] {
             let compress_opts = CompressOptions {
                 compress_min_length: 0,
