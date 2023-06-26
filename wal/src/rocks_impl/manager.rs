@@ -35,6 +35,8 @@ use crate::{
     },
 };
 
+const ROCKSDB_DEFAULT_COLUMN_FAMILY: &str = "default";
+
 /// Table unit in the Wal.
 struct TableUnit {
     /// id of the Region
@@ -648,11 +650,15 @@ impl Builder {
             }
         }
 
-        let db = DB::open_cf(rocksdb_config, &self.wal_path, vec![("default", cf_opts)])
-            .map_err(|e| e.into())
-            .context(Open {
-                wal_path: self.wal_path.clone(),
-            })?;
+        let db = DB::open_cf(
+            rocksdb_config,
+            &self.wal_path,
+            vec![(ROCKSDB_DEFAULT_COLUMN_FAMILY, cf_opts)],
+        )
+        .map_err(|e| e.into())
+        .context(Open {
+            wal_path: self.wal_path.clone(),
+        })?;
         let rocks_impl = RocksImpl {
             wal_path: self.wal_path,
             db: Arc::new(db),

@@ -176,7 +176,7 @@ impl WalsOpener for RocksDBWalsOpener {
             .max_subcompactions(rocksdb_wal_config.data_namespace.max_subcompactions)
             .max_background_jobs(rocksdb_wal_config.data_namespace.max_background_jobs)
             .enable_statistics(rocksdb_wal_config.data_namespace.enable_statistics)
-            .write_buffer_size(rocksdb_wal_config.data_namespace.write_buffer_size)
+            .write_buffer_size(rocksdb_wal_config.data_namespace.write_buffer_size.0)
             .max_write_buffer_number(rocksdb_wal_config.data_namespace.max_write_buffer_number)
             .level_zero_file_num_compaction_trigger(
                 rocksdb_wal_config
@@ -196,7 +196,8 @@ impl WalsOpener for RocksDBWalsOpener {
             .fifo_compaction_max_table_files_size(
                 rocksdb_wal_config
                     .data_namespace
-                    .fifo_compaction_max_table_files_size,
+                    .fifo_compaction_max_table_files_size
+                    .0,
             )
             .build()
             .context(OpenWal)?;
@@ -206,7 +207,7 @@ impl WalsOpener for RocksDBWalsOpener {
             .max_subcompactions(rocksdb_wal_config.meta_namespace.max_subcompactions)
             .max_background_jobs(rocksdb_wal_config.meta_namespace.max_background_jobs)
             .enable_statistics(rocksdb_wal_config.meta_namespace.enable_statistics)
-            .write_buffer_size(rocksdb_wal_config.meta_namespace.write_buffer_size)
+            .write_buffer_size(rocksdb_wal_config.meta_namespace.write_buffer_size.0)
             .max_write_buffer_number(rocksdb_wal_config.meta_namespace.max_write_buffer_number)
             .level_zero_file_num_compaction_trigger(
                 rocksdb_wal_config
@@ -226,7 +227,8 @@ impl WalsOpener for RocksDBWalsOpener {
             .fifo_compaction_max_table_files_size(
                 rocksdb_wal_config
                     .meta_namespace
-                    .fifo_compaction_max_table_files_size,
+                    .fifo_compaction_max_table_files_size
+                    .0,
             )
             .build()
             .context(OpenManifestWal)?;
