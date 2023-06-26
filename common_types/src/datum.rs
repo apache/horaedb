@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Datum holds different kind of data
 
@@ -8,78 +8,78 @@ use arrow::temporal_conversions::{EPOCH_DAYS_FROM_CE, NANOSECONDS};
 use ceresdbproto::schema::DataType as DataTypePb;
 use chrono::{Datelike, Local, NaiveDate, NaiveTime, TimeZone, Timelike};
 use serde::ser::{Serialize, Serializer};
-use snafu::{Backtrace, ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{DataType as SqlDataType, Value};
 
-use crate::{bytes::Bytes, hash::hash64, string::StringBytes, time::Timestamp};
+use crate::{bytes::Bytes, hash::hash64, hex, string::StringBytes, time::Timestamp};
 
 const DATE_FORMAT: &str = "%Y-%m-%d";
 const TIME_FORMAT: &str = "%H:%M:%S%.3f";
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display(
-        "Unsupported SQL data type, type:{}.\nBacktrace:\n{}",
-        sql_type,
-        backtrace
-    ))]
+    #[snafu(display("Unsupported SQL data type, type:{sql_type}.\nBacktrace:\n{backtrace}"))]
     UnsupportedDataType {
         sql_type: SqlDataType,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid double or float, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    #[snafu(display("Invalid double or float, err:{source}.\nBacktrace:\n{backtrace}"))]
     InvalidDouble {
         source: std::num::ParseFloatError,
         backtrace: Backtrace,
     },
 
     #[snafu(display(
-        "Invalid insert value, kind:{}, value:{:?}.\nBacktrace:\n{}",
-        kind,
-        value,
-        backtrace
+        "Invalid insert value, kind:{kind}, value:{value:?}.\nBacktrace:\n{backtrace}"
     ))]
     InvalidValueType {
         kind: DatumKind,
         value: Value,
         backtrace: Backtrace,
     },
-    #[snafu(display("Invalid timestamp, err:{}.\nBacktrace:\n{}", source, backtrace))]
+
+    #[snafu(display("Invalid timestamp, err:{source}.\nBacktrace:\n{backtrace}"))]
     InvalidTimestamp {
         source: std::num::ParseIntError,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid date, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    #[snafu(display("Invalid date, err:{source}.\nBacktrace:\n{backtrace}"))]
     InvalidDate {
         source: chrono::ParseError,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid time, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    #[snafu(display("Invalid time, err:{source}.\nBacktrace:\n{backtrace}"))]
     InvalidTimeCause {
         source: chrono::ParseError,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid time, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    #[snafu(display("Invalid time, err:{source}.\nBacktrace:\n{backtrace}"))]
     InvalidTimeHourFormat {
         source: std::num::ParseIntError,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid time, err:{}", msg))]
-    InvalidTimeNoCause { msg: String },
+    #[snafu(display("Invalid time, err:{msg}.\nBacktrace:\n{backtrace}"))]
+    InvalidTimeNoCause { msg: String, backtrace: Backtrace },
 
-    #[snafu(display("Invalid integer, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    #[snafu(display("Invalid integer, err:{source}.\nBacktrace:\n{backtrace}"))]
     InvalidInt {
         source: std::num::ParseIntError,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid datum byte, byte:{}.\nBacktrace:\n{}", value, backtrace))]
+    #[snafu(display("Invalid datum byte, byte:{value}.\nBacktrace:\n{backtrace}"))]
     InvalidDatumByte { value: u8, backtrace: Backtrace },
+
+    #[snafu(display("Invalid hex value, hex_val:{hex_val}.\nBacktrace:\n{backtrace}"))]
+    InvalidHexValue {
+        hex_val: String,
+        backtrace: Backtrace,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -748,6 +748,10 @@ impl Datum {
             }
             (DatumKind::Varbinary, Value::DoubleQuotedString(s)) => {
                 Ok(Datum::Varbinary(Bytes::from(s)))
+            }
+            (DatumKind::Varbinary, Value::HexStringLiteral(s)) => {
+                let bytes = hex::try_decode(&s).context(InvalidHexValue { hex_val: s })?;
+                Ok(Datum::Varbinary(Bytes::from(bytes)))
             }
             (DatumKind::String, Value::DoubleQuotedString(s)) => {
                 Ok(Datum::String(StringBytes::from(s)))
@@ -1476,6 +1480,51 @@ mod tests {
 
         for source in err_cases {
             assert!(Datum::parse_datum_time_from_str(source).is_err());
+        }
+    }
+
+    #[test]
+    fn test_convert_from_sql_value() {
+        let cases = vec![
+            (
+                Value::Boolean(false),
+                DatumKind::Boolean,
+                true,
+                Some(Datum::Boolean(false)),
+            ),
+            (
+                Value::Number("100.1".to_string(), false),
+                DatumKind::Float,
+                true,
+                Some(Datum::Float(100.1)),
+            ),
+            (
+                Value::SingleQuotedString("string_literal".to_string()),
+                DatumKind::String,
+                true,
+                Some(Datum::String(StringBytes::from_static("string_literal"))),
+            ),
+            (
+                Value::HexStringLiteral("c70a0b".to_string()),
+                DatumKind::Varbinary,
+                true,
+                Some(Datum::Varbinary(Bytes::from(vec![199, 10, 11]))),
+            ),
+            (
+                Value::EscapedStringLiteral("string_literal".to_string()),
+                DatumKind::String,
+                false,
+                None,
+            ),
+        ];
+
+        for (input, kind, succeed, expect) in cases {
+            let res = Datum::try_from_sql_value(&kind, input);
+            if succeed {
+                assert_eq!(res.unwrap(), expect.unwrap());
+            } else {
+                assert!(res.is_err());
+            }
         }
     }
 }
