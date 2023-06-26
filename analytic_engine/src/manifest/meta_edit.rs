@@ -371,6 +371,7 @@ pub struct AlterSstIdMeta {
     pub table_id: TableId,
     pub last_file_id: FileId,
     pub max_file_id: FileId,
+    pub alloc_step: u64,
 }
 
 impl From<AlterSstIdMeta> for manifest_pb::AlterSstIdMeta {
@@ -380,6 +381,7 @@ impl From<AlterSstIdMeta> for manifest_pb::AlterSstIdMeta {
             table_id: v.table_id.as_u64(),
             last_file_id: v.last_file_id,
             max_file_id: v.max_file_id,
+            alloc_step: v.alloc_step,
         }
     }
 }
@@ -393,6 +395,7 @@ impl TryFrom<manifest_pb::AlterSstIdMeta> for AlterSstIdMeta {
             table_id: TableId::from(src.table_id),
             last_file_id: src.last_file_id,
             max_file_id: src.max_file_id,
+            alloc_step: src.alloc_step,
         })
     }
 }

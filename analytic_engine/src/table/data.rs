@@ -80,6 +80,8 @@ define_result!(Error);
 
 pub type MemTableId = u64;
 
+const ALLOC_STEP: u64 = 1000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TableShardInfo {
     pub shard_id: ShardId,
@@ -139,6 +141,8 @@ pub struct TableData {
     last_file_id: AtomicU64,
 
     max_file_id: AtomicU64,
+
+    alloc_step: u64,
 
     /// Last flush time
     ///
@@ -239,6 +243,7 @@ impl TableData {
             last_memtable_id: AtomicU64::new(0),
             last_file_id: AtomicU64::new(0),
             max_file_id: AtomicU64::new(0),
+            alloc_step: ALLOC_STEP,
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
@@ -281,6 +286,7 @@ impl TableData {
             last_memtable_id: AtomicU64::new(0),
             last_file_id: AtomicU64::new(0),
             max_file_id: AtomicU64::new(0),
+            alloc_step: ALLOC_STEP,
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
@@ -502,13 +508,14 @@ impl TableData {
     }
 
     /// Alloc a file id for a new file
-    pub fn alloc_file_id(&self, manifest: &ManifestRef) -> FileId {
+    pub async fn alloc_file_id(&self, manifest: &ManifestRef) -> FileId {
         if self.last_file_id() >= self.max_file_id() {
             let manifest_update = AlterSstIdMeta {
                 space_id: self.space_id,
                 table_id: self.id,
                 last_file_id: self.last_file_id(),
                 max_file_id: self.max_file_id(),
+                alloc_step: self.alloc_step,
             };
             let edit_req = {
                 let meta_update = AlterSstId(manifest_update);
@@ -517,8 +524,10 @@ impl TableData {
                     meta_edit: MetaEdit::Update(meta_update),
                 }
             };
-            let f = manifest.apply_edit(edit_req);
-            futures::executor::block_on(f).expect("failed to update last file id");
+            manifest
+                .apply_edit(edit_req)
+                .await
+                .expect("failed to update last file id");
         }
         let last = self.last_file_id.fetch_add(1, Ordering::Relaxed);
         last + 1

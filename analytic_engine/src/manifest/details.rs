@@ -504,10 +504,12 @@ impl Manifest for ManifestImpl {
             if let Some(meta_snapshot) = meta_snapshot_opt {
                 if let Some(table_version_meta) = meta_snapshot.version_meta {
                     alter_sst_id_meta.last_file_id = table_version_meta.max_file_id;
-                    alter_sst_id_meta.max_file_id = alter_sst_id_meta.last_file_id + 1000;
+                    alter_sst_id_meta.max_file_id =
+                        alter_sst_id_meta.last_file_id + alter_sst_id_meta.alloc_step;
                 }
             } else {
-                alter_sst_id_meta.max_file_id = alter_sst_id_meta.last_file_id + 1000;
+                alter_sst_id_meta.max_file_id =
+                    alter_sst_id_meta.last_file_id + alter_sst_id_meta.alloc_step;
             }
 
             let meta_update = MetaUpdate::AlterSstId(alter_sst_id_meta);

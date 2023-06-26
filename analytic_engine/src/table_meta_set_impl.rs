@@ -197,6 +197,7 @@ impl TableMetaSetImpl {
                 table_id,
                 last_file_id,
                 max_file_id,
+                ..
             }) => {
                 let alter_sst_id = move |space: Arc<Space>| {
                     let table_data = space.find_table_by_id(table_id).with_context(|| {
