@@ -1330,7 +1330,6 @@ dependencies = [
  "ceresdbproto",
  "chrono",
  "datafusion",
- "hex",
  "murmur3",
  "paste 1.0.12",
  "prost",

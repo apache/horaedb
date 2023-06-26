@@ -8,10 +8,10 @@ use arrow::temporal_conversions::{EPOCH_DAYS_FROM_CE, NANOSECONDS};
 use ceresdbproto::schema::DataType as DataTypePb;
 use chrono::{Datelike, Local, NaiveDate, NaiveTime, TimeZone, Timelike};
 use serde::ser::{Serialize, Serializer};
-use snafu::{Backtrace, ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{DataType as SqlDataType, Value};
 
-use crate::{bytes::Bytes, hash::hash64, string::StringBytes, time::Timestamp};
+use crate::{bytes::Bytes, hash::hash64, hex, string::StringBytes, time::Timestamp};
 
 const DATE_FORMAT: &str = "%Y-%m-%d";
 const TIME_FORMAT: &str = "%H:%M:%S%.3f";
@@ -75,12 +75,9 @@ pub enum Error {
     #[snafu(display("Invalid datum byte, byte:{value}.\nBacktrace:\n{backtrace}"))]
     InvalidDatumByte { value: u8, backtrace: Backtrace },
 
-    #[snafu(display(
-        "Invalid hex value, hex_val:{hex_val}, err:{source}.\nBacktrace:\n{backtrace}"
-    ))]
+    #[snafu(display("Invalid hex value, hex_val:{hex_val}.\nBacktrace:\n{backtrace}"))]
     InvalidHexValue {
         hex_val: String,
-        source: hex::FromHexError,
         backtrace: Backtrace,
     },
 }
@@ -753,7 +750,7 @@ impl Datum {
                 Ok(Datum::Varbinary(Bytes::from(s)))
             }
             (DatumKind::Varbinary, Value::HexStringLiteral(s)) => {
-                let bytes = hex::decode(&s).context(InvalidHexValue { hex_val: s })?;
+                let bytes = hex::try_decode(&s).context(InvalidHexValue { hex_val: s })?;
                 Ok(Datum::Varbinary(Bytes::from(bytes)))
             }
             (DatumKind::String, Value::DoubleQuotedString(s)) => {
