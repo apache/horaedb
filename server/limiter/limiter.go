@@ -50,3 +50,11 @@ func (f *FlowLimiter) UpdateLimiter(config config.LimiterConfig) error {
 	f.enable = config.Enable
 	return nil
 }
+
+func (f *FlowLimiter) GetConfig() *config.LimiterConfig {
+	return &config.LimiterConfig{
+		Limit:  f.limit,
+		Burst:  f.burst,
+		Enable: f.enable,
+	}
+}

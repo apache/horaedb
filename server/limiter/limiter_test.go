@@ -44,6 +44,11 @@ func TestFlowLimiter(t *testing.T) {
 	})
 	re.NoError(err)
 
+	limiter := flowLimiter.GetConfig()
+	re.Equal(defaultUpdateLimiterRate, limiter.Limit)
+	re.Equal(defaultUpdateLimiterCapacity, limiter.Burst)
+	re.Equal(defaultEnableLimiter, limiter.Enable)
+
 	time.Sleep(time.Millisecond)
 	for i := 0; i < defaultUpdateLimiterRate/1000; i++ {
 		flag := flowLimiter.Allow()

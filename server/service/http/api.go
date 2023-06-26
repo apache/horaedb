@@ -58,6 +58,7 @@ func (a *API) NewAPIRouter() *Router {
 	router.Post("/route", a.route)
 	router.Post("/dropTable", a.dropTable)
 	router.Post("/getNodeShards", a.getNodeShards)
+	router.Get("/flowLimiter", a.getFlowLimiter)
 	router.Put("/flowLimiter", a.updateFlowLimiter)
 	router.Get("/healthCheck", a.healthCheck)
 
@@ -555,6 +556,23 @@ func (a *API) updateCluster(writer http.ResponseWriter, req *http.Request) {
 	}
 
 	a.respond(writer, c.GetMetadata().GetClusterID())
+}
+
+func (a *API) getFlowLimiter(writer http.ResponseWriter, req *http.Request) {
+	resp, isLeader, err := a.forwardClient.forwardToLeader(req)
+	if err != nil {
+		log.Error("forward to leader failed", zap.Error(err))
+		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("err: %s", err.Error()))
+		return
+	}
+
+	if !isLeader {
+		a.respondForward(writer, resp)
+		return
+	}
+
+	limiter := a.flowLimiter.GetConfig()
+	a.respond(writer, limiter)
 }
 
 type UpdateFlowLimiterRequest struct {
