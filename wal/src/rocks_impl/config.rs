@@ -9,6 +9,11 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     pub max_background_jobs: i32,
     pub enable_statistics: bool,
+    pub write_buffer_size: u64,
+    pub max_write_buffer_number: i32,
+    pub level_zero_file_num_compaction_trigger: i32,
+    pub level_zero_slowdown_writes_trigger: i32,
+    pub level_zero_stop_writes_trigger: i32,
 }
 
 impl Default for Config {
@@ -18,6 +23,11 @@ impl Default for Config {
             // https://github.com/facebook/rocksdb/blob/v6.4.6/include/rocksdb/options.h#L537
             max_background_jobs: 2,
             enable_statistics: false,
+            write_buffer_size: 64 << 20,
+            max_write_buffer_number: 2,
+            level_zero_file_num_compaction_trigger: 4,
+            level_zero_slowdown_writes_trigger: 20,
+            level_zero_stop_writes_trigger: 36,
         }
     }
 }

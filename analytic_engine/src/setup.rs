@@ -175,6 +175,11 @@ impl WalsOpener for RocksDBWalsOpener {
         let data_wal = RocksWalBuilder::new(wal_path, write_runtime.clone())
             .max_background_jobs(rocksdb_wal_config.data_namespace.max_background_jobs)
             .enable_statistics(rocksdb_wal_config.data_namespace.enable_statistics)
+            .write_buffer_size(rocksdb_wal_config.data_namespace.write_buffer_size)
+            .max_write_buffer_number(rocksdb_wal_config.data_namespace.max_write_buffer_number)
+            .level_zero_file_num_compaction_trigger(rocksdb_wal_config.data_namespace.level_zero_file_num_compaction_trigger)
+            .level_zero_slowdown_writes_trigger(rocksdb_wal_config.data_namespace.level_zero_slowdown_writes_trigger)
+            .level_zero_stop_writes_trigger(rocksdb_wal_config.data_namespace.level_zero_stop_writes_trigger)
             .build()
             .context(OpenWal)?;
 
@@ -182,6 +187,11 @@ impl WalsOpener for RocksDBWalsOpener {
         let manifest_wal = RocksWalBuilder::new(manifest_path, write_runtime)
             .max_background_jobs(rocksdb_wal_config.meta_namespace.max_background_jobs)
             .enable_statistics(rocksdb_wal_config.meta_namespace.enable_statistics)
+            .write_buffer_size(rocksdb_wal_config.meta_namespace.write_buffer_size)
+            .max_write_buffer_number(rocksdb_wal_config.meta_namespace.max_write_buffer_number)
+            .level_zero_file_num_compaction_trigger(rocksdb_wal_config.meta_namespace.level_zero_file_num_compaction_trigger)
+            .level_zero_slowdown_writes_trigger(rocksdb_wal_config.meta_namespace.level_zero_slowdown_writes_trigger)
+            .level_zero_stop_writes_trigger(rocksdb_wal_config.meta_namespace.level_zero_stop_writes_trigger)
             .build()
             .context(OpenManifestWal)?;
         let opened_wals = OpenedWals {

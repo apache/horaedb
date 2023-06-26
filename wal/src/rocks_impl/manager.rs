@@ -19,7 +19,7 @@ use common_types::{
 };
 use common_util::{error::BoxError, runtime::Runtime};
 use log::{debug, info, warn};
-use rocksdb::{DBIterator, DBOptions, ReadOptions, SeekKey, Statistics, Writable, WriteBatch, DB};
+use rocksdb::{DBIterator, DBOptions, ReadOptions, SeekKey, Statistics, Writable, WriteBatch, DB, ColumnFamilyOptions};
 use snafu::ResultExt;
 use tokio::sync::Mutex;
 
@@ -525,6 +525,11 @@ impl RocksImpl {
 pub struct Builder {
     wal_path: String,
     runtime: Arc<Runtime>,
+    write_buffer_size: Option<u64>,
+    max_write_buffer_number: Option<i32>,
+    level_zero_file_num_compaction_trigger: Option<i32>,
+    level_zero_slowdown_writes_trigger: Option<i32>,
+    level_zero_stop_writes_trigger: Option<i32>,
     max_background_jobs: Option<i32>,
     enable_statistics: Option<bool>,
 }
@@ -537,6 +542,11 @@ impl Builder {
             runtime,
             max_background_jobs: None,
             enable_statistics: None,
+            write_buffer_size: None,
+            max_write_buffer_number: None,
+            level_zero_file_num_compaction_trigger: None,
+            level_zero_slowdown_writes_trigger: None,
+            level_zero_stop_writes_trigger: None,
         }
     }
 
@@ -547,6 +557,31 @@ impl Builder {
 
     pub fn enable_statistics(mut self, v: bool) -> Self {
         self.enable_statistics = Some(v);
+        self
+    }
+
+    pub fn write_buffer_size(mut self, v: u64) -> Self {
+        self.write_buffer_size = Some(v);
+        self
+    }
+
+    pub fn max_write_buffer_number(mut self, v: i32) -> Self {
+        self.max_write_buffer_number = Some(v);
+        self
+    }
+
+    pub fn level_zero_file_num_compaction_trigger(mut self, v: i32) -> Self {
+        self.level_zero_file_num_compaction_trigger = Some(v);
+        self
+    }
+
+    pub fn level_zero_slowdown_writes_trigger(mut self, v: i32) -> Self {
+        self.level_zero_slowdown_writes_trigger = Some(v);
+        self
+    }
+
+    pub fn level_zero_stop_writes_trigger(mut self, v: i32) -> Self {
+        self.level_zero_stop_writes_trigger = Some(v);
         self
     }
 
@@ -566,7 +601,24 @@ impl Builder {
             None
         };
 
-        let db = DB::open(rocksdb_config, &self.wal_path)
+        let mut cf_opts = ColumnFamilyOptions::new();
+        if let Some(v) = self.write_buffer_size {
+            cf_opts.set_write_buffer_size(v);
+        }
+        if let Some(v) = self.max_write_buffer_number {
+            cf_opts.set_max_write_buffer_number(v);
+        }
+        if let Some(v) = self.level_zero_file_num_compaction_trigger {
+            cf_opts.set_level_zero_file_num_compaction_trigger(v);
+        }
+        if let Some(v) = self.level_zero_slowdown_writes_trigger {
+            cf_opts.set_level_zero_slowdown_writes_trigger(v);
+        }
+        if let Some(v) = self.level_zero_stop_writes_trigger {
+            cf_opts.set_level_zero_stop_writes_trigger(v);
+        }
+
+        let db = DB::open_cf(rocksdb_config, &self.wal_path, vec![("default", cf_opts)])
             .map_err(|e| e.into())
             .context(Open {
                 wal_path: self.wal_path.clone(),
