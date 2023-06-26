@@ -382,8 +382,8 @@ mod tests {
             &[(0, 2 * HOUR_MS as i64)],
         );
 
-        let now_ts = Timestamp::now();
-        let now = now_ts.as_i64();
+        let now = 1672502400000i64;
+        let now_ts = Timestamp::new(now);
         let sec_ms_i64 = SEC_MS as i64;
 
         let bucket = TimeRange::bucket_of(now_ts, Duration::from_millis(2 * HOUR_MS)).unwrap();
