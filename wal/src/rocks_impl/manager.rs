@@ -19,7 +19,10 @@ use common_types::{
 };
 use common_util::{error::BoxError, runtime::Runtime};
 use log::{debug, info, warn};
-use rocksdb::{DBIterator, DBOptions, ReadOptions, SeekKey, Statistics, Writable, WriteBatch, DB, ColumnFamilyOptions};
+use rocksdb::{
+    ColumnFamilyOptions, DBIterator, DBOptions, ReadOptions, SeekKey, Statistics, Writable,
+    WriteBatch, DB,
+};
 use snafu::ResultExt;
 use tokio::sync::Mutex;
 
@@ -525,13 +528,14 @@ impl RocksImpl {
 pub struct Builder {
     wal_path: String,
     runtime: Arc<Runtime>,
+    max_subcompactions: Option<u32>,
+    max_background_jobs: Option<i32>,
+    enable_statistics: Option<bool>,
     write_buffer_size: Option<u64>,
     max_write_buffer_number: Option<i32>,
     level_zero_file_num_compaction_trigger: Option<i32>,
     level_zero_slowdown_writes_trigger: Option<i32>,
     level_zero_stop_writes_trigger: Option<i32>,
-    max_background_jobs: Option<i32>,
-    enable_statistics: Option<bool>,
 }
 
 impl Builder {
@@ -540,6 +544,7 @@ impl Builder {
         Self {
             wal_path: wal_path.to_str().unwrap().to_owned(),
             runtime,
+            max_subcompactions: None,
             max_background_jobs: None,
             enable_statistics: None,
             write_buffer_size: None,
@@ -548,6 +553,11 @@ impl Builder {
             level_zero_slowdown_writes_trigger: None,
             level_zero_stop_writes_trigger: None,
         }
+    }
+
+    pub fn max_subcompactions(mut self, v: u32) -> Self {
+        self.max_subcompactions = Some(v);
+        self
     }
 
     pub fn max_background_jobs(mut self, v: i32) -> Self {
@@ -589,6 +599,9 @@ impl Builder {
         let mut rocksdb_config = DBOptions::default();
         rocksdb_config.create_if_missing(true);
 
+        if let Some(v) = self.max_subcompactions {
+            rocksdb_config.set_max_subcompactions(v);
+        }
         if let Some(v) = self.max_background_jobs {
             rocksdb_config.set_max_background_jobs(v);
         }

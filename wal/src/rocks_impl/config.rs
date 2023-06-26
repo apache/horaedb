@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    pub max_subcompactions: u32,
     pub max_background_jobs: i32,
     pub enable_statistics: bool,
     pub write_buffer_size: u64,
@@ -21,6 +22,7 @@ impl Default for Config {
         Self {
             // Same with rocksdb
             // https://github.com/facebook/rocksdb/blob/v6.4.6/include/rocksdb/options.h#L537
+            max_subcompactions: 1,
             max_background_jobs: 2,
             enable_statistics: false,
             write_buffer_size: 64 << 20,
