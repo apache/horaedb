@@ -204,10 +204,7 @@ impl ColumnSchema {
 
     /// Check whether a type is valid dictionary type.
     pub fn is_valid_dictionary_type(typ: DatumKind) -> bool {
-        match typ {
-            DatumKind::String => true,
-            _ => false,
-        }
+        matches!(typ, DatumKind::String)
     }
 
     /// Convert `self` to [`arrow::datatypes::Field`]
@@ -521,7 +518,7 @@ mod tests {
     /// Create a column schema for test, each field is filled with non-default
     /// value
     fn new_test_column_schema() -> ColumnSchema {
-        Builder::new("test_column_schema".to_string(), DatumKind::Boolean)
+        Builder::new("test_column_schema".to_string(), DatumKind::String)
             .id(18)
             .is_nullable(true)
             .is_tag(true)
@@ -538,7 +535,7 @@ mod tests {
         let rhs = ColumnSchema {
             id: 18,
             name: "test_column_schema".to_string(),
-            data_type: DatumKind::Boolean,
+            data_type: DatumKind::String,
             is_nullable: true,
             is_tag: true,
             is_dictionary: true,
@@ -582,7 +579,7 @@ mod tests {
         for v in &DatumKind::VALUES {
             assert_eq!(
                 ColumnSchema::is_valid_dictionary_type(*v),
-                !valid_dictionary_types.contains(v)
+                valid_dictionary_types.contains(v)
             );
         }
     }
