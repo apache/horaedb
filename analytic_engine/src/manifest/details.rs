@@ -507,7 +507,6 @@ impl Manifest for ManifestImpl {
                     alter_sst_id_meta.max_file_id = alter_sst_id_meta.last_file_id + 1000;
                 }
             } else {
-                alter_sst_id_meta.last_file_id = 0;
                 alter_sst_id_meta.max_file_id = alter_sst_id_meta.last_file_id + 1000;
             }
 
