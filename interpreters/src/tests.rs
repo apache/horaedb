@@ -172,16 +172,16 @@ where
         let records = output.try_into().unwrap();
         // todo this maybe need to change
         let expected = vec![
-            "+--------+-----------+------------+-------------+--------+",
-            "| name   | type      | is_primary | is_nullable | is_tag |",
-            "+--------+-----------+------------+-------------+--------+",
-            "| key1   | varbinary | true       | false       | false  |",
-            "| key2   | timestamp | true       | false       | false  |",
-            "| field1 | double    | false      | true        | false  |",
-            "| field2 | string    | false      | true        | false  |",
-            "| field3 | date      | false      | true        | false  |",
-            "| field4 | time      | false      | true        | false  |",
-            "+--------+-----------+------------+-------------+--------+",
+            "+--------+-----------+------------+-------------+--------+---------------+",
+            "| name   | type      | is_primary | is_nullable | is_tag | is_dictionary |",
+            "+--------+-----------+------------+-------------+--------+---------------+",
+            "| key1   | varbinary | true       | false       | false  | false         |",
+            "| key2   | timestamp | true       | false       | false  | false         |",
+            "| field1 | double    | false      | true        | false  | false         |",
+            "| field2 | string    | false      | true        | false  | false         |",
+            "| field3 | date      | false      | true        | false  | false         |",
+            "| field4 | time      | false      | true        | false  | false         |",
+            "+--------+-----------+------------+-------------+--------+---------------+",
         ];
         common_util::record_batch::assert_record_batches_eq(&expected, records);
     }
