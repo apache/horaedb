@@ -382,7 +382,7 @@ mod tests {
             &[(0, 2 * HOUR_MS as i64)],
         );
 
-        let now = 1687747471000i64;
+        let now = 1672502400000i64;
         let now_ts = Timestamp::new(now);
         let sec_ms_i64 = SEC_MS as i64;
 
