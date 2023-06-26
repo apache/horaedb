@@ -483,15 +483,49 @@ impl Manifest for ManifestImpl {
         self.maybe_do_snapshot(space_id, table_id, location, false)
             .await?;
 
-        self.store_update_to_wal(meta_update.clone(), location)
-            .await?;
+        if let MetaUpdate::AlterSstId(mut alter_sst_id_meta) = meta_update {
+            // get max file id from snapshot
+            let log_store = WalBasedLogStore {
+                opts: self.opts.clone(),
+                location,
+                wal_manager: self.wal_manager.clone(),
+            };
+            let snapshot_store =
+                ObjectStoreBasedSnapshotStore::new(space_id, table_id, self.store.clone());
+            let reoverer = SnapshotRecoverer {
+                table_id,
+                space_id,
+                log_store,
+                snapshot_store,
+            };
+            let meta_snapshot_opt = reoverer.recover().await?.and_then(|v| v.data);
 
-        match meta_update {
-            MetaUpdate::AlterSstId(_) => return Ok(()),
-            _ => {
-                // Update memory.
-                self.table_meta_set.apply_edit_to_table(request).box_err()
+            // TODO: remove magic number
+            if let Some(meta_snapshot) = meta_snapshot_opt {
+                if let Some(table_version_meta) = meta_snapshot.version_meta {
+                    alter_sst_id_meta.last_file_id = table_version_meta.max_file_id;
+                    alter_sst_id_meta.max_file_id = alter_sst_id_meta.last_file_id + 1000;
+                }
+            } else {
+                alter_sst_id_meta.last_file_id = 0;
+                alter_sst_id_meta.max_file_id = alter_sst_id_meta.last_file_id + 1000;
             }
+
+            let meta_update = MetaUpdate::AlterSstId(alter_sst_id_meta);
+            self.store_update_to_wal(meta_update.clone(), location)
+                .await?;
+
+            // Update memory.
+            let request = MetaEditRequest {
+                shard_info,
+                meta_edit: MetaEdit::Update(meta_update),
+            };
+            self.table_meta_set.apply_edit_to_table(request).box_err()
+        } else {
+            self.store_update_to_wal(meta_update, location).await?;
+
+            // Update memory.
+            self.table_meta_set.apply_edit_to_table(request).box_err()
         }
     }
 

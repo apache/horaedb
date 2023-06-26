@@ -31,7 +31,12 @@ use table_engine::table::TableId;
 
 use crate::{
     instance::serial_executor::TableOpSerialExecutor,
-    manifest::meta_edit::AddTableMeta,
+    manifest::{
+        meta_edit::{
+            AddTableMeta, AlterSstIdMeta, MetaEdit, MetaEditRequest, MetaUpdate::AlterSstId,
+        },
+        ManifestRef,
+    },
     memtable::{
         factory::{FactoryRef as MemTableFactoryRef, Options as MemTableOptions},
         skiplist::factory::SkiplistMemTableFactory,
@@ -133,6 +138,8 @@ pub struct TableData {
     /// Write to last_file_id require external synchronization
     last_file_id: AtomicU64,
 
+    max_file_id: AtomicU64,
+
     /// Last flush time
     ///
     /// Not persist, used to determine if this table should flush.
@@ -231,6 +238,7 @@ impl TableData {
             last_sequence: AtomicU64::new(0),
             last_memtable_id: AtomicU64::new(0),
             last_file_id: AtomicU64::new(0),
+            max_file_id: AtomicU64::new(0),
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
@@ -272,6 +280,7 @@ impl TableData {
             last_sequence: AtomicU64::new(0),
             last_memtable_id: AtomicU64::new(0),
             last_file_id: AtomicU64::new(0),
+            max_file_id: AtomicU64::new(0),
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
@@ -493,9 +502,43 @@ impl TableData {
     }
 
     /// Alloc a file id for a new file
-    pub fn alloc_file_id(&self) -> FileId {
+    pub fn alloc_file_id(&self, manifest: &ManifestRef) -> FileId {
+        if self.last_file_id() >= self.max_file_id() {
+            let manifest_update = AlterSstIdMeta {
+                space_id: self.space_id,
+                table_id: self.id,
+                last_file_id: self.last_file_id(),
+                max_file_id: self.max_file_id(),
+            };
+            let edit_req = {
+                let meta_update = AlterSstId(manifest_update);
+                MetaEditRequest {
+                    shard_info: self.shard_info,
+                    meta_edit: MetaEdit::Update(meta_update),
+                }
+            };
+            // TODO: call async in sync
+            futures::executor::block_on(async {
+                manifest
+                    .apply_edit(edit_req)
+                    .await
+                    .expect("update last file id failed");
+            });
+        }
         let last = self.last_file_id.fetch_add(1, Ordering::Relaxed);
         last + 1
+    }
+
+    /// Set `max_file_id`, mainly used in recover
+    ///
+    /// This operation require external synchronization
+    pub fn set_max_file_id(&self, max_file_id: FileId) {
+        self.max_file_id.store(max_file_id, Ordering::Relaxed);
+    }
+
+    /// Returns the max file id
+    pub fn max_file_id(&self) -> FileId {
+        self.max_file_id.load(Ordering::Relaxed)
     }
 
     /// Set the sst file path into the object storage path.

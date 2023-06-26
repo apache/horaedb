@@ -370,6 +370,7 @@ pub struct AlterSstIdMeta {
     pub space_id: SpaceId,
     pub table_id: TableId,
     pub last_file_id: FileId,
+    pub max_file_id: FileId,
 }
 
 impl From<AlterSstIdMeta> for manifest_pb::AlterSstIdMeta {
@@ -390,6 +391,7 @@ impl TryFrom<manifest_pb::AlterSstIdMeta> for AlterSstIdMeta {
             space_id: src.space_id,
             table_id: TableId::from(src.table_id),
             last_file_id: src.last_file_id,
+            max_file_id: 0,
         })
     }
 }
