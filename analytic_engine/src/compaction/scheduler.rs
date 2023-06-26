@@ -650,16 +650,7 @@ impl ScheduleWorker {
                     self.max_unflushed_duration,
                 );
 
-                let mut serial_exec = if let Some(v) = table_data.acquire_serial_exec_ctx().await {
-                    v
-                } else {
-                    warn!(
-                        "Table is closed, ignore this periodical flush, table:{}",
-                        table_data.name
-                    );
-                    continue;
-                };
-
+                let mut serial_exec = table_data.serial_exec.lock().await;
                 let flush_scheduler = serial_exec.flush_scheduler();
                 // Instance flush the table asynchronously.
                 if let Err(e) = flusher
