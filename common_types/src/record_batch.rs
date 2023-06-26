@@ -670,9 +670,12 @@ impl ArrowRecordBatchProjector {
                 }
                 None => {
                     // Need to push row with specific type.
-                    let null_block =
-                        ColumnBlock::new_null_with_type(&column_schema.data_type, num_rows)
-                            .context(CreateColumnBlock)?;
+                    let null_block = ColumnBlock::new_null_with_type(
+                        &column_schema.data_type,
+                        num_rows,
+                        column_schema.is_dictionary,
+                    )
+                    .context(CreateColumnBlock)?;
                     column_blocks.push(null_block);
                 }
             }

@@ -544,6 +544,19 @@ impl StringColumn {
     }
 }
 
+impl StringDictionaryColumn {
+    /// Create a column that all values are null.
+    fn new_null(num_rows: usize) -> Self {
+        let mut builder = StringDictionaryBuilder::<Int32Type>::new();
+        for _ in 0..num_rows {
+            builder.append_null();
+        }
+        let array = builder.finish();
+
+        Self(array)
+    }
+}
+
 macro_rules! impl_numeric_column {
     ($(($Kind: ident, $type: ty)), *) =>  {
         $(
@@ -763,7 +776,6 @@ macro_rules! define_column_block {
                     } else {
                         false
                     };
-                    // todo!
                     let column = match datum_kind {
                         DatumKind::Null => ColumnBlock::Null(NullColumn::new_null(array.len())),
                         DatumKind::String => {
@@ -809,10 +821,16 @@ macro_rules! define_column_block {
                     Ok(column)
                 }
 
-                pub fn new_null_with_type(kind: &DatumKind, rows: usize) -> Result<Self> {
+                pub fn new_null_with_type(kind: &DatumKind, rows: usize, is_dictionary: bool) -> Result<Self> {
                     let block = match kind {
                         DatumKind::Null => ColumnBlock::Null(NullColumn::new_null(rows)),
-                        DatumKind::String => ColumnBlock::String(StringColumn::new_null(rows)),
+                        DatumKind::String => {
+                            if is_dictionary {
+                                ColumnBlock::StringDictionary(StringDictionaryColumn::new_null(rows))
+                            }else {
+                                ColumnBlock::String(StringColumn::new_null(rows))
+                            }
+                        },
                         $(
                             DatumKind::$Kind => ColumnBlock::$Kind([<$Kind Column>]::new_null(rows)),
                         )*

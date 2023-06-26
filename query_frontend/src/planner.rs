@@ -1965,6 +1965,119 @@ mod tests {
     }
 
     #[test]
+    fn test_alter_column_with_dictionary_encode() {
+        let sql = "ALTER TABLE test_table ADD column dic string dictionary;";
+        quick_test(
+            sql,
+            r#"AlterTable(
+    AlterTablePlan {
+        table: MemoryTable {
+            name: "test_table",
+            id: TableId(
+                100,
+            ),
+            schema: Schema {
+                timestamp_index: 1,
+                tsid_index: None,
+                column_schemas: ColumnSchemas {
+                    columns: [
+                        ColumnSchema {
+                            id: 1,
+                            name: "key1",
+                            data_type: Varbinary,
+                            is_nullable: false,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "key1",
+                            default_value: None,
+                        },
+                        ColumnSchema {
+                            id: 2,
+                            name: "key2",
+                            data_type: Timestamp,
+                            is_nullable: false,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "key2",
+                            default_value: None,
+                        },
+                        ColumnSchema {
+                            id: 3,
+                            name: "field1",
+                            data_type: Double,
+                            is_nullable: true,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "field1",
+                            default_value: None,
+                        },
+                        ColumnSchema {
+                            id: 4,
+                            name: "field2",
+                            data_type: String,
+                            is_nullable: true,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "field2",
+                            default_value: None,
+                        },
+                        ColumnSchema {
+                            id: 5,
+                            name: "field3",
+                            data_type: Date,
+                            is_nullable: true,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "field3",
+                            default_value: None,
+                        },
+                        ColumnSchema {
+                            id: 6,
+                            name: "field4",
+                            data_type: Time,
+                            is_nullable: true,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "field4",
+                            default_value: None,
+                        },
+                    ],
+                },
+                version: 1,
+                primary_key_indexes: [
+                    0,
+                    1,
+                ],
+            },
+        },
+        operations: AddColumn(
+            [
+                ColumnSchema {
+                    id: 0,
+                    name: "dic",
+                    data_type: String,
+                    is_nullable: true,
+                    is_tag: false,
+                    is_dictionary: true,
+                    comment: "",
+                    escaped_name: "dic",
+                    default_value: None,
+                },
+            ],
+        ),
+    },
+)"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
     fn test_alter_column_statement_to_plan() {
         let sql = "ALTER TABLE test_tablex ADD column add_col string;";
         assert!(quick_test(sql, "").is_err());
