@@ -20,8 +20,8 @@ use common_types::{
 use common_util::{error::BoxError, runtime::Runtime};
 use log::{debug, info, warn};
 use rocksdb::{
-    ColumnFamilyOptions, DBIterator, DBOptions, FifoCompactionOptions, ReadOptions, SeekKey,
-    Statistics, Writable, WriteBatch, DB,
+    ColumnFamilyOptions, DBCompactionStyle, DBIterator, DBOptions, FifoCompactionOptions,
+    ReadOptions, SeekKey, Statistics, Writable, WriteBatch, DB,
 };
 use snafu::ResultExt;
 use tokio::sync::Mutex;
@@ -644,6 +644,7 @@ impl Builder {
                 let mut fifo_opts = FifoCompactionOptions::new();
                 fifo_opts.set_max_table_files_size(v);
                 cf_opts.set_fifo_compaction_options(fifo_opts);
+                cf_opts.set_compaction_style(DBCompactionStyle::Fifo);
             }
         }
 
