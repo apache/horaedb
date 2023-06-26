@@ -28,6 +28,10 @@ func NewRandomBalancedShardPicker() ShardPicker {
 
 // PickShards will pick a specified number of shards as expectShardNum.
 func (p *RandomBalancedShardPicker) PickShards(_ context.Context, snapshot metadata.Snapshot, expectShardNum int) ([]storage.ShardNode, error) {
+	if len(snapshot.Topology.ClusterView.ShardNodes) == 0 {
+		return nil, errors.WithMessage(ErrNodeNumberNotEnough, "no shard is assigned")
+	}
+
 	shardNodes := snapshot.Topology.ClusterView.ShardNodes
 
 	nodeShardsMapping := make(map[string][]storage.ShardNode, 0)
