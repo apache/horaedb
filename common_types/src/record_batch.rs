@@ -318,7 +318,23 @@ fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch>
                     DataType::Timestamp(TimeUnit::Millisecond, None),
                     field.is_nullable(),
                 ),
-                _ => Field::new(field.name(), field.data_type().clone(), field.is_nullable()),
+                _ => {
+                    let (dict_id, dict_is_ordered) = {
+                        match field.data_type() {
+                            DataType::Dictionary(_, _) => {
+                                (field.dict_id().unwrap(), field.dict_is_ordered().unwrap())
+                            }
+                            _ => (0, false),
+                        }
+                    };
+                    Field::new_dict(
+                        field.name(),
+                        field.data_type().clone(),
+                        field.is_nullable(),
+                        dict_id,
+                        dict_is_ordered,
+                    )
+                }
             };
             f.set_metadata(field.metadata().clone());
             f

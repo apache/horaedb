@@ -127,6 +127,7 @@ pub fn build_hybrid_arrow_schema(schema: &Schema) -> ArrowSchemaRef {
                     field.data_type().clone(),
                     true,
                 )));
+                // TODO is there need to use new_dict?
                 Arc::new(Field::new(field.name(), field_type, true))
             } else {
                 field.clone()
@@ -418,6 +419,7 @@ impl ListArrayBuilder {
         let array_len = self.multi_row_arrays.len();
         let mut offsets = MutableBuffer::new(array_len * std::mem::size_of::<i32>());
         let child_data = self.build_child_data(&mut offsets)?;
+        // TODO is there need to use new_dict?
         let field = Arc::new(Field::new(
             LIST_ITEM_NAME,
             self.datum_kind.to_arrow_data_type(),
