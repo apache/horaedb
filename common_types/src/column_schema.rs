@@ -329,12 +329,23 @@ impl From<&ColumnSchema> for Field {
     fn from(col_schema: &ColumnSchema) -> Self {
         let metadata = encode_arrow_field_meta_data(col_schema);
         // If the column sholud use dictionary, create correspond dictionary type.
-        let data_type: DataType = if col_schema.is_dictionary {
-            DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8))
+        let mut field = if col_schema.is_dictionary {
+            Field::new_dict(
+                &col_schema.name,
+                DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+                false,
+                col_schema.id.into(),
+                false,
+                // Todo how to use dict_is_ordered
+            )
         } else {
-            col_schema.data_type.into()
+            Field::new(
+                &col_schema.name,
+                col_schema.data_type.into(),
+                col_schema.is_nullable,
+            )
         };
-        let mut field = Field::new(&col_schema.name, data_type, col_schema.is_nullable);
+
         field.set_metadata(metadata);
 
         field
