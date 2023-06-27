@@ -20,8 +20,8 @@ use common_types::{
 use common_util::{error::BoxError, runtime::Runtime};
 use log::{debug, info, warn};
 use rocksdb::{
-    ColumnFamilyOptions, DBCompactionStyle, DBIterator, DBOptions, FifoCompactionOptions,
-    ReadOptions, SeekKey, Statistics, Writable, WriteBatch, DB,
+    rocksdb_options::ColumnFamilyDescriptor, ColumnFamilyOptions, DBCompactionStyle, DBIterator,
+    DBOptions, FifoCompactionOptions, ReadOptions, SeekKey, Statistics, Writable, WriteBatch, DB,
 };
 use snafu::ResultExt;
 use tokio::sync::Mutex;
@@ -34,8 +34,6 @@ use crate::{
         ScanRequest, SyncLogIterator, WalLocation, WalManager, WriteContext,
     },
 };
-
-const ROCKSDB_DEFAULT_COLUMN_FAMILY: &str = "default";
 
 /// Table unit in the Wal.
 struct TableUnit {
@@ -650,20 +648,15 @@ impl Builder {
             }
         }
 
-        let default_cfd = {
-            let mut cfd = ColumnFamilyDescriptor::default();
-            cfd.options = cf_opts;
-            cfd
-         };
-        let db = DB::open_cf(
-            rocksdb_config,
-            &self.wal_path,
-            vec![default_cfd],
-        )
-        .map_err(|e| e.into())
-        .context(Open {
-            wal_path: self.wal_path.clone(),
-        })?;
+        let default_cfd = ColumnFamilyDescriptor {
+            options: cf_opts,
+            ..ColumnFamilyDescriptor::default()
+        };
+        let db = DB::open_cf(rocksdb_config, &self.wal_path, vec![default_cfd])
+            .map_err(|e| e.into())
+            .context(Open {
+                wal_path: self.wal_path.clone(),
+            })?;
         let rocks_impl = RocksImpl {
             wal_path: self.wal_path,
             db: Arc::new(db),
