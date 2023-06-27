@@ -16,8 +16,8 @@ use crate::{
             BuildSnapshotNoCause, TableMetaSet,
         },
         meta_edit::{
-            self, AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, AlterSstIdMeta, DropTableMeta,
-            MetaEditRequest, MetaUpdate, VersionEditMeta,
+            self, AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEditRequest,
+            MetaUpdate, VersionEditMeta,
         },
         meta_snapshot::MetaSnapshot,
     },
@@ -192,27 +192,8 @@ impl TableMetaSetImpl {
                 };
                 self.find_space_and_apply_edit(space_id, alter_option)
             }
-            MetaUpdate::AlterSstId(AlterSstIdMeta {
-                space_id,
-                table_id,
-                last_file_id,
-                max_file_id,
-                ..
-            }) => {
-                let alter_sst_id = move |space: Arc<Space>| {
-                    let table_data = space.find_table_by_id(table_id).with_context(|| {
-                        ApplyUpdateToTableNoCause {
-                            msg: format!(
-                                "table not found, space_id:{space_id}, table_id:{table_id}"
-                            ),
-                        }
-                    })?;
-                    table_data.set_last_file_id(last_file_id);
-                    table_data.set_max_file_id(max_file_id);
-                    Ok(())
-                };
-                self.find_space_and_apply_edit(space_id, alter_sst_id)
-            }
+            // no need to update memory.
+            MetaUpdate::AllocSstId(_) => Ok(()),
         }
     }
 

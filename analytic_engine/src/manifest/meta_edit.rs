@@ -76,7 +76,7 @@ pub enum MetaUpdate {
     VersionEdit(VersionEditMeta),
     AlterSchema(AlterSchemaMeta),
     AlterOptions(AlterOptionsMeta),
-    AlterSstId(AlterSstIdMeta),
+    AllocSstId(AllocSstIdMeta),
 }
 
 impl From<MetaUpdate> for manifest_pb::MetaUpdate {
@@ -87,7 +87,7 @@ impl From<MetaUpdate> for manifest_pb::MetaUpdate {
             MetaUpdate::AlterSchema(v) => manifest_pb::meta_update::Meta::AlterSchema(v.into()),
             MetaUpdate::AlterOptions(v) => manifest_pb::meta_update::Meta::AlterOptions(v.into()),
             MetaUpdate::DropTable(v) => manifest_pb::meta_update::Meta::DropTable(v.into()),
-            MetaUpdate::AlterSstId(v) => manifest_pb::meta_update::Meta::AlterSstId(v.into()),
+            MetaUpdate::AllocSstId(v) => manifest_pb::meta_update::Meta::AllocSstId(v.into()),
         };
 
         manifest_pb::MetaUpdate { meta: Some(meta) }
@@ -102,7 +102,7 @@ impl MetaUpdate {
             MetaUpdate::AlterSchema(v) => v.table_id,
             MetaUpdate::AlterOptions(v) => v.table_id,
             MetaUpdate::DropTable(v) => v.table_id,
-            MetaUpdate::AlterSstId(v) => v.table_id,
+            MetaUpdate::AllocSstId(v) => v.table_id,
         }
     }
 
@@ -113,7 +113,7 @@ impl MetaUpdate {
             MetaUpdate::AlterSchema(v) => v.space_id,
             MetaUpdate::AlterOptions(v) => v.space_id,
             MetaUpdate::DropTable(v) => v.space_id,
-            MetaUpdate::AlterSstId(v) => v.space_id,
+            MetaUpdate::AllocSstId(v) => v.space_id,
         }
     }
 }
@@ -143,9 +143,9 @@ impl TryFrom<manifest_pb::MetaUpdate> for MetaUpdate {
                 let drop_table = DropTableMeta::from(v);
                 MetaUpdate::DropTable(drop_table)
             }
-            manifest_pb::meta_update::Meta::AlterSstId(v) => {
-                let alter_sst_id = AlterSstIdMeta::try_from(v)?;
-                MetaUpdate::AlterSstId(alter_sst_id)
+            manifest_pb::meta_update::Meta::AllocSstId(v) => {
+                let alter_sst_id = AllocSstIdMeta::try_from(v)?;
+                MetaUpdate::AllocSstId(alter_sst_id)
             }
         };
 
@@ -366,36 +366,30 @@ impl TryFrom<manifest_pb::AlterOptionsMeta> for AlterOptionsMeta {
 
 /// Meta data of sst id update.
 #[derive(Debug, Clone, PartialEq)]
-pub struct AlterSstIdMeta {
+pub struct AllocSstIdMeta {
     pub space_id: SpaceId,
     pub table_id: TableId,
-    pub last_file_id: FileId,
     pub max_file_id: FileId,
-    pub alloc_step: u64,
 }
 
-impl From<AlterSstIdMeta> for manifest_pb::AlterSstIdMeta {
-    fn from(v: AlterSstIdMeta) -> Self {
-        manifest_pb::AlterSstIdMeta {
+impl From<AllocSstIdMeta> for manifest_pb::AllocSstIdMeta {
+    fn from(v: AllocSstIdMeta) -> Self {
+        manifest_pb::AllocSstIdMeta {
             space_id: v.space_id,
             table_id: v.table_id.as_u64(),
-            last_file_id: v.last_file_id,
             max_file_id: v.max_file_id,
-            alloc_step: v.alloc_step,
         }
     }
 }
 
-impl TryFrom<manifest_pb::AlterSstIdMeta> for AlterSstIdMeta {
+impl TryFrom<manifest_pb::AllocSstIdMeta> for AllocSstIdMeta {
     type Error = Error;
 
-    fn try_from(src: manifest_pb::AlterSstIdMeta) -> Result<Self> {
+    fn try_from(src: manifest_pb::AllocSstIdMeta) -> Result<Self> {
         Ok(Self {
             space_id: src.space_id,
             table_id: TableId::from(src.table_id),
-            last_file_id: src.last_file_id,
             max_file_id: src.max_file_id,
-            alloc_step: src.alloc_step,
         })
     }
 }

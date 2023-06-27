@@ -33,7 +33,7 @@ use crate::{
     instance::serial_executor::TableOpSerialExecutor,
     manifest::{
         meta_edit::{
-            AddTableMeta, AlterSstIdMeta, MetaEdit, MetaEditRequest, MetaUpdate::AlterSstId,
+            AddTableMeta, AllocSstIdMeta, MetaEdit, MetaEditRequest, MetaUpdate::AllocSstId,
         },
         ManifestRef,
     },
@@ -510,15 +510,17 @@ impl TableData {
     /// Alloc a file id for a new file
     pub async fn alloc_file_id(&self, manifest: &ManifestRef) -> FileId {
         if self.last_file_id() >= self.max_file_id() {
-            let manifest_update = AlterSstIdMeta {
+            // update new max file id
+            self.set_max_file_id(self.last_file_id() + self.alloc_step);
+
+            // persist max file id
+            let manifest_update = AllocSstIdMeta {
                 space_id: self.space_id,
                 table_id: self.id,
-                last_file_id: self.last_file_id(),
                 max_file_id: self.max_file_id(),
-                alloc_step: self.alloc_step,
             };
             let edit_req = {
-                let meta_update = AlterSstId(manifest_update);
+                let meta_update = AllocSstId(manifest_update);
                 MetaEditRequest {
                     shard_info: self.shard_info,
                     meta_edit: MetaEdit::Update(meta_update),
