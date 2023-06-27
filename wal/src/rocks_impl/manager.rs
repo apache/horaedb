@@ -650,10 +650,15 @@ impl Builder {
             }
         }
 
+        let default_cfd = {
+            let mut cfd = ColumnFamilyDescriptor::default();
+            cfd.options = cf_opts;
+            cfd
+         };
         let db = DB::open_cf(
             rocksdb_config,
             &self.wal_path,
-            vec![(ROCKSDB_DEFAULT_COLUMN_FAMILY, cf_opts)],
+            vec![default_cfd],
         )
         .map_err(|e| e.into())
         .context(Open {
