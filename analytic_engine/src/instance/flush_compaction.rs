@@ -49,6 +49,7 @@ use crate::{
         writer::{MetaData, RecordBatchStream},
     },
     table::{
+        data,
         data::{TableData, TableDataRef},
         version::{FlushableMemTables, MemTableState, SamplingMemTable},
         version_edit::{AddFile, DeleteFile},
@@ -142,6 +143,9 @@ pub enum Error {
         msg: Option<String>,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Failed to alloc file id. err:{}", source))]
+    AllocFileId { source: data::Error },
 }
 
 define_result!(Error);
@@ -479,7 +483,8 @@ impl FlushTask {
             let file_id = self
                 .table_data
                 .alloc_file_id(&self.space_store.manifest)
-                .await;
+                .await
+                .context(AllocFileId)?;
 
             let sst_file_path = self.table_data.set_sst_file_path(file_id);
 
@@ -603,7 +608,8 @@ impl FlushTask {
         let file_id = self
             .table_data
             .alloc_file_id(&self.space_store.manifest)
-            .await;
+            .await
+            .context(AllocFileId)?;
 
         let sst_file_path = self.table_data.set_sst_file_path(file_id);
 
@@ -840,7 +846,10 @@ impl SpaceStore {
         };
 
         // Alloc file id for the merged sst.
-        let file_id = table_data.alloc_file_id(&self.manifest).await;
+        let file_id = table_data
+            .alloc_file_id(&self.manifest)
+            .await
+            .context(AllocFileId)?;
 
         let sst_file_path = table_data.set_sst_file_path(file_id);
 
