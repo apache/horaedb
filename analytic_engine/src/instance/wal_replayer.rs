@@ -204,21 +204,20 @@ impl TableBasedReplay {
         let mut log_entry_buf = VecDeque::with_capacity(context.wal_replay_batch_size);
         loop {
             // fetch entries to log_entry_buf
-            let timer = PULL_LOGS_DURATION_HISTOGRAM.start_timer();
+            let _timer = PULL_LOGS_DURATION_HISTOGRAM.start_timer();
             let decoder = WalDecoder::default();
             log_entry_buf = log_iter
                 .next_log_entries(decoder, log_entry_buf)
                 .await
                 .box_err()
                 .context(ReplayWalWithCause { msg: None })?;
-            drop(timer);
 
             if log_entry_buf.is_empty() {
                 break;
             }
 
             // Replay all log entries of current table
-            let timer = APPLY_LOGS_DURATION_HISTOGRAM.start_timer();
+            let _timer = APPLY_LOGS_DURATION_HISTOGRAM.start_timer();
             replay_table_log_entries(
                 &context.flusher,
                 context.max_retry_flush_limit,
@@ -227,7 +226,6 @@ impl TableBasedReplay {
                 log_entry_buf.iter(),
             )
             .await?;
-            drop(timer);
         }
 
         Ok(())
@@ -298,23 +296,21 @@ impl RegionBasedReplay {
 
         // Split and replay logs.
         loop {
-            let timer = PULL_LOGS_DURATION_HISTOGRAM.start_timer();
+            let _timer = PULL_LOGS_DURATION_HISTOGRAM.start_timer();
             let decoder = WalDecoder::default();
             log_entry_buf = log_iter
                 .next_log_entries(decoder, log_entry_buf)
                 .await
                 .box_err()
                 .context(ReplayWalWithCause { msg: None })?;
-            drop(timer);
 
             if log_entry_buf.is_empty() {
                 break;
             }
 
-            let timer = APPLY_LOGS_DURATION_HISTOGRAM.start_timer();
+            let _timer = APPLY_LOGS_DURATION_HISTOGRAM.start_timer();
             Self::replay_single_batch(context, &log_entry_buf, &mut serial_exec_ctxs, faileds)
                 .await?;
-            drop(timer);
         }
 
         Ok(())

@@ -358,6 +358,12 @@ impl TableData {
         self.current_version.total_memory_usage()
     }
 
+    /// Returns mutable memtable memory usage in bytes.
+    #[inline]
+    pub fn mutable_memory_usage(&self) -> usize {
+        self.current_version.mutable_memory_usage()
+    }
+
     /// Find memtable for given timestamp to insert, create if not exists
     ///
     /// If the memtable schema is outdated, switch all memtables and create the
@@ -599,6 +605,14 @@ impl TableDataSet {
             .cloned()
     }
 
+    pub fn find_maximum_mutable_memory_usage_table(&self) -> Option<TableDataRef> {
+        // TODO: Possible performance issue here when there are too many tables.
+        self.table_datas
+            .values()
+            .max_by_key(|t| t.mutable_memory_usage())
+            .cloned()
+    }
+
     /// List all tables to `tables`
     pub fn list_all_tables(&self, tables: &mut Vec<TableDataRef>) {
         for table_data in self.table_datas.values().cloned() {
@@ -773,7 +787,7 @@ pub mod tests {
             Some(ReadableDuration(table_options::DEFAULT_SEGMENT_DURATION));
         table_data.set_table_options(table_opts);
         // Freeze sampling memtable.
-        current_version.freeze_sampling();
+        current_version.freeze_sampling_memtable();
 
         // A new mutable memtable should be created.
         let mutable = table_data.find_or_create_mutable(now_ts, &schema).unwrap();

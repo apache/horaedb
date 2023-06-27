@@ -177,6 +177,10 @@ impl<P: MetaProvider> Frontend<P> {
 }
 
 pub fn parse_table_name(statements: &StatementVec) -> Option<String> {
+    // maybe have empty sql
+    if statements.is_empty() {
+        return None;
+    }
     match &statements[0] {
         Statement::Standard(s) => match *s.clone() {
             SqlStatement::Insert { table_name, .. } => {
@@ -269,5 +273,8 @@ mod tests {
                 Some(table.to_string())
             );
         }
+        assert!(frontend::parse_table_name_with_sql("-- just comment")
+            .unwrap()
+            .is_none());
     }
 }
