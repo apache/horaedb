@@ -107,16 +107,16 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
         let encoded_size = internal_key.len() + row_value.len();
         self.skiplist.put(internal_key, row_value);
 
-        // Stats data size.
+        // Update metrics
         self.metrics
             .row_raw_size
-            .fetch_add(row.size(), atomic::Ordering::SeqCst);
+            .fetch_add(row.size(), atomic::Ordering::Relaxed);
         self.metrics
             .row_count
-            .fetch_add(1, atomic::Ordering::SeqCst);
+            .fetch_add(1, atomic::Ordering::Relaxed);
         self.metrics
             .row_encoded_size
-            .fetch_add(encoded_size, atomic::Ordering::SeqCst);
+            .fetch_add(encoded_size, atomic::Ordering::Relaxed);
 
         Ok(())
     }
@@ -169,9 +169,12 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
     }
 
     fn metrics(&self) -> MemtableMetrics {
-        let row_raw_size = self.metrics.row_raw_size.load(atomic::Ordering::SeqCst);
-        let row_encoded_size = self.metrics.row_encoded_size.load(atomic::Ordering::SeqCst);
-        let row_count = self.metrics.row_count.load(atomic::Ordering::SeqCst);
+        let row_raw_size = self.metrics.row_raw_size.load(atomic::Ordering::Relaxed);
+        let row_encoded_size = self
+            .metrics
+            .row_encoded_size
+            .load(atomic::Ordering::Relaxed);
+        let row_count = self.metrics.row_count.load(atomic::Ordering::Relaxed);
         MemtableMetrics {
             row_raw_size,
             row_encoded_size,

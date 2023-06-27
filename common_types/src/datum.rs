@@ -851,6 +851,28 @@ impl Datum {
         Ok(Datum::Date(days))
     }
 
+    pub fn size(&self) -> usize {
+        match self {
+            Datum::Null => 1,
+            Datum::Timestamp(_) => 8,
+            Datum::Double(_) => 8,
+            Datum::Float(_) => 4,
+            Datum::Varbinary(v) => v.len(),
+            Datum::String(v) => v.len(),
+            Datum::UInt64(_) => 8,
+            Datum::UInt32(_) => 4,
+            Datum::UInt16(_) => 2,
+            Datum::UInt8(_) => 1,
+            Datum::Int64(_) => 8,
+            Datum::Int32(_) => 4,
+            Datum::Int16(_) => 2,
+            Datum::Int8(_) => 1,
+            Datum::Boolean(_) => 1,
+            Datum::Date(_) => 4,
+            Datum::Time(_) => 8,
+        }
+    }
+
     #[cfg(test)]
     pub fn as_view(&self) -> DatumView {
         match self {

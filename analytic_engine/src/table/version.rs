@@ -280,7 +280,6 @@ impl MemTableView {
         mutable_usage + immutable_usage
     }
 
-    /// Switch all memtables or just sample the segment duration.
     /// Instead of replace the old memtable by a new memtable, we just move the
     /// old memtable to immutable memtables and left mutable memtables
     /// empty. New mutable memtable will be constructed via put request.
@@ -581,8 +580,6 @@ impl TableVersion {
             .total_memory_usage()
     }
 
-    /// Switch all mutable memtables or just return the suggested segment
-    /// duration if sampling memtable is still active.
     /// Return the suggested segment duration if sampling memtable is still
     /// active.
     pub fn suggest_duration(&self) -> Option<Duration> {
