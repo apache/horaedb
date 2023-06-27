@@ -2,10 +2,7 @@
 
 //! Skiplist memtable factory
 
-use std::sync::{
-    atomic::{AtomicU64, AtomicUsize},
-    Arc,
-};
+use std::sync::{atomic::AtomicU64, Arc};
 
 use arena::MonoIncArena;
 use skiplist::Skiplist;
@@ -28,8 +25,7 @@ impl Factory for SkiplistMemTableFactory {
             schema: opts.schema,
             skiplist,
             last_sequence: AtomicU64::new(opts.creation_sequence),
-            wrote_data_size: AtomicUsize::new(0),
-            wrote_data_encode_size: AtomicUsize::new(0),
+            metrics: Default::default(),
         });
 
         Ok(memtable)

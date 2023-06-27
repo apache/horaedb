@@ -30,6 +30,13 @@ use crate::memtable::{
     Result, ScanContext, ScanRequest,
 };
 
+#[derive(Default, Debug)]
+struct Metrics {
+    raw_size: AtomicUsize,
+    encoded_size: AtomicUsize,
+    row_count: AtomicUsize,
+}
+
 /// MemTable implementation based on skiplist
 pub struct SkiplistMemTable<A: Arena<Stats = BasicStats> + Clone + Sync + Send> {
     /// Schema of this memtable, is immutable.
@@ -39,8 +46,7 @@ pub struct SkiplistMemTable<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
     /// require external synchronization.
     last_sequence: AtomicU64,
 
-    wrote_data_size: AtomicUsize,
-    wrote_data_encode_size: AtomicUsize,
+    metrics: Metrics,
 }
 
 impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
@@ -82,9 +88,6 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
     ) -> Result<()> {
         trace!("skiplist put row, sequence:{:?}, row:{:?}", sequence, row);
 
-        // Stats data size.
-        self.wrote_data_size
-            .fetch_add(row.size(), atomic::Ordering::SeqCst);
         let key_encoder = ComparableInternalKey::new(sequence, schema);
 
         let internal_key = &mut ctx.key_buf;
@@ -101,13 +104,19 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
         let row_value = &mut ctx.value_buf;
         let mut row_writer = ContiguousRowWriter::new(row_value, schema, &ctx.index_in_writer);
         row_writer.write_row(row).box_err().context(InvalidRow)?;
-
-        // Stats encode size.
-        self.wrote_data_encode_size.fetch_add(
-            internal_key.len() + row_value.len(),
-            atomic::Ordering::SeqCst,
-        );
+        let encoded_size = internal_key.len() + row_value.len();
         self.skiplist.put(internal_key, row_value);
+
+        // Stats data size.
+        self.metrics
+            .raw_size
+            .fetch_add(row.size(), atomic::Ordering::SeqCst);
+        self.metrics
+            .row_count
+            .fetch_add(1, atomic::Ordering::SeqCst);
+        self.metrics
+            .encoded_size
+            .fetch_add(encoded_size, atomic::Ordering::SeqCst);
 
         Ok(())
     }
@@ -160,11 +169,15 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
     }
 
     fn wrote_data_size(&self) -> usize {
-        self.wrote_data_size.load(atomic::Ordering::SeqCst)
+        self.metrics.raw_size.load(atomic::Ordering::SeqCst)
+    }
+
+    fn row_count(&self) -> usize {
+        self.metrics.row_count.load(atomic::Ordering::SeqCst)
     }
 
     fn wrote_data_encode_size(&self) -> usize {
-        self.wrote_data_encode_size.load(atomic::Ordering::SeqCst)
+        self.metrics.encoded_size.load(atomic::Ordering::SeqCst)
     }
 }
 

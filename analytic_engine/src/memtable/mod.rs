@@ -183,6 +183,9 @@ pub trait MemTable {
     fn approximate_memory_usage(&self) -> usize;
 
     /// Returns an estimate of the number of bytes of data in used
+    fn row_count(&self) -> usize;
+
+    /// Returns an estimate of the number of bytes of data in used
     fn wrote_data_size(&self) -> usize;
 
     fn wrote_data_encode_size(&self) -> usize;
