@@ -4,6 +4,7 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
@@ -54,7 +55,7 @@ func (a AssignShardScheduler) Schedule(ctx context.Context, clusterSnapshot meta
 		}
 		return ScheduleResult{
 			Procedure: p,
-			Reason:    AssignReason,
+			Reason:    fmt.Sprintf("try to assign shard:%d to node:%s ,reason:%v", shardView.ShardID, newLeaderNode.Node.Name, AssignReason),
 		}, nil
 	}
 	return ScheduleResult{}, nil

@@ -45,6 +45,15 @@ func getForwardedHTTPClient() *http.Client {
 	}
 }
 
+func (s *ForwardClient) GetLeaderAddr(ctx context.Context) (string, error) {
+	resp, err := s.member.GetLeaderAddr(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	return resp.LeaderEndpoint, nil
+}
+
 func (s *ForwardClient) getForwardedAddr(ctx context.Context) (string, bool, error) {
 	resp, err := s.member.GetLeaderAddr(ctx)
 	if err != nil {

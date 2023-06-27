@@ -15,6 +15,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/looplab/fsm"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 const (
@@ -60,6 +61,8 @@ func prepareCallback(event *fsm.Event) {
 		return
 	}
 
+	log.Debug("create table metadata finish", zap.String("tableName", createTableMetadataRequest.TableName))
+
 	shardVersionUpdate := metadata.ShardVersionUpdate{
 		ShardID:     params.ShardID,
 		CurrVersion: req.p.relatedVersionInfo.ShardWithVersion[params.ShardID] + 1,
@@ -72,11 +75,15 @@ func prepareCallback(event *fsm.Event) {
 		return
 	}
 
+	log.Debug("dispatch createTableOnShard finish", zap.String("tableName", createTableMetadataRequest.TableName))
+
 	createTableResult, err := params.ClusterMetadata.AddTableTopology(req.ctx, params.ShardID, result.Table)
 	if err != nil {
-		procedure.CancelEventWithLog(event, err, "create table metadata")
+		procedure.CancelEventWithLog(event, err, "add table topology")
 		return
 	}
+
+	log.Debug("add table topology finish", zap.String("tableName", createTableMetadataRequest.TableName))
 
 	req.createTableResult = createTableResult
 }

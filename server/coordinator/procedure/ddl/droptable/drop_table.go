@@ -63,11 +63,15 @@ func prepareCallback(event *fsm.Event) {
 		return
 	}
 
+	log.Debug("dispatch dropTableOnShard finish", zap.String("tableName", params.SourceReq.GetName()), zap.Uint64("procedureID", params.ID))
+
 	result, err := params.ClusterMetadata.DropTable(req.ctx, params.SourceReq.GetSchemaName(), params.SourceReq.GetName())
 	if err != nil {
 		procedure.CancelEventWithLog(event, err, "cluster drop table")
 		return
 	}
+
+	log.Debug("drop table finish", zap.String("tableName", params.SourceReq.GetName()), zap.Uint64("procedureID", params.ID))
 
 	if len(result.ShardVersionUpdate) != 1 {
 		procedure.CancelEventWithLog(event, procedure.ErrDropTableResult, fmt.Sprintf("legnth of shardVersionResult is %d", len(result.ShardVersionUpdate)))
