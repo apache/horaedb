@@ -333,7 +333,7 @@ impl From<&ColumnSchema> for Field {
             Field::new_dict(
                 &col_schema.name,
                 DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
-                false,
+                col_schema.is_nullable,
                 col_schema.id.into(),
                 false,
                 // Todo how to use dict_is_ordered
