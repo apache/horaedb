@@ -182,14 +182,6 @@ pub trait MemTable {
     /// Returns an estimate of the number of bytes of data in used
     fn approximate_memory_usage(&self) -> usize;
 
-    /// Returns an estimate of the number of bytes of data in used
-    fn row_count(&self) -> usize;
-
-    /// Returns an estimate of the number of bytes of data in used
-    fn wrote_data_size(&self) -> usize;
-
-    fn wrote_data_encode_size(&self) -> usize;
-
     /// Set last sequence of the memtable, returns error if the given `sequence`
     /// is less than existing last sequence.
     ///
@@ -201,6 +193,19 @@ pub trait MemTable {
     ///
     /// If the memtable is empty, then the last sequence is 0.
     fn last_sequence(&self) -> SequenceNumber;
+
+    /// Metrics of inner state.
+    fn metrics(&self) -> Metrics;
+}
+
+#[derive(Debug)]
+pub struct Metrics {
+    /// Size of original rows.
+    pub row_raw_size: usize,
+    /// Size of rows after encoded.
+    pub row_encoded_size: usize,
+    /// Row number count.
+    pub row_count: usize,
 }
 
 /// A reference to memtable

@@ -26,14 +26,14 @@ use snafu::{ensure, ResultExt};
 use crate::memtable::{
     key::{ComparableInternalKey, KeySequence},
     skiplist::iter::{ColumnarIterImpl, ReversedColumnarIterator},
-    ColumnarIterPtr, EncodeInternalKey, InvalidPutSequence, InvalidRow, MemTable, PutContext,
-    Result, ScanContext, ScanRequest,
+    ColumnarIterPtr, EncodeInternalKey, InvalidPutSequence, InvalidRow, MemTable,
+    Metrics as MemtableMetrics, PutContext, Result, ScanContext, ScanRequest,
 };
 
 #[derive(Default, Debug)]
 struct Metrics {
-    raw_size: AtomicUsize,
-    encoded_size: AtomicUsize,
+    row_raw_size: AtomicUsize,
+    row_encoded_size: AtomicUsize,
     row_count: AtomicUsize,
 }
 
@@ -109,13 +109,13 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
 
         // Stats data size.
         self.metrics
-            .raw_size
+            .row_raw_size
             .fetch_add(row.size(), atomic::Ordering::SeqCst);
         self.metrics
             .row_count
             .fetch_add(1, atomic::Ordering::SeqCst);
         self.metrics
-            .encoded_size
+            .row_encoded_size
             .fetch_add(encoded_size, atomic::Ordering::SeqCst);
 
         Ok(())
@@ -168,16 +168,15 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
         self.last_sequence.load(atomic::Ordering::Relaxed)
     }
 
-    fn wrote_data_size(&self) -> usize {
-        self.metrics.raw_size.load(atomic::Ordering::SeqCst)
-    }
-
-    fn row_count(&self) -> usize {
-        self.metrics.row_count.load(atomic::Ordering::SeqCst)
-    }
-
-    fn wrote_data_encode_size(&self) -> usize {
-        self.metrics.encoded_size.load(atomic::Ordering::SeqCst)
+    fn metrics(&self) -> MemtableMetrics {
+        let row_raw_size = self.metrics.row_raw_size.load(atomic::Ordering::SeqCst);
+        let row_encoded_size = self.metrics.row_encoded_size.load(atomic::Ordering::SeqCst);
+        let row_count = self.metrics.row_count.load(atomic::Ordering::SeqCst);
+        MemtableMetrics {
+            row_raw_size,
+            row_encoded_size,
+            row_count,
+        }
     }
 }
 

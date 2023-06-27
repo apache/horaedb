@@ -449,19 +449,12 @@ impl TableData {
 
         let mutable_usage = self.current_version.mutable_memory_usage();
         let total_usage = self.current_version.total_memory_usage();
-        let mutable_wrote_data_size = self.current_version().mutable_wrote_data_size();
-        let mutable_wrote_data_encode_size =
-            self.current_version().mutable_wrote_data_encode_size();
-        let total_wrote_data_size = self.current_version().total_wrote_data_size();
-        let total_wrote_data_encode_size = self.current_version().total_wrote_data_encode_size();
-
         let in_flush = serial_exec.flush_scheduler().is_in_flush();
         // Inspired by https://github.com/facebook/rocksdb/blob/main/include/rocksdb/write_buffer_manager.h#L94
         if mutable_usage > mutable_limit && !in_flush {
             info!(
-                "TableData should flush by mutable limit, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}, wrote_data_size:{}, wrote_data_encode_size:{}, total_wrote_data_size:{}, total_data_encode_size:{}",
+                "TableData should flush by mutable limit, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}.",
                 self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size,
-                mutable_wrote_data_size, mutable_wrote_data_encode_size, total_wrote_data_size, total_wrote_data_encode_size,
             );
             return true;
         }
@@ -479,9 +472,8 @@ impl TableData {
 
         if should_flush {
             info!(
-                "TableData should flush by total usage, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}, wrote_data_size:{}, wrote_data_encode_size:{}, total_wrote_data_size:{}, total_data_encode_size:{}",
+                "TableData should flush by total usage, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}.",
                 self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size,
-                mutable_wrote_data_size, mutable_wrote_data_encode_size, total_wrote_data_size, total_wrote_data_encode_size,
             );
         }
 
