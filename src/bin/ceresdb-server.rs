@@ -68,15 +68,6 @@ fn main() {
         )
         .get_matches();
 
-    // let toml = cli_env_toml::cli_env_toml_str(
-    //     matches
-    //         .values_of("set")
-    //         .map(|li| li.map(|s| s.to_string()).collect()),
-    //     "ceresdb_",
-    //     matches.value_of("config"),
-    // );
-    // dbg!(toml);
-
     let mut config: Config = cli_env_toml::cli_env_toml(
         matches
             .values_of("set")
