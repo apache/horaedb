@@ -186,8 +186,6 @@ pub struct Flusher {
 struct FlushTask {
     space_store: SpaceStoreRef,
     table_data: TableDataRef,
-    max_sequence: SequenceNumber,
-
     runtime: RuntimeRef,
     write_sst_max_buffer_size: usize,
 }
@@ -205,9 +203,7 @@ impl Flusher {
             table_data, opts
         );
 
-        let flush_req = self.preprocess_flush(table_data).await?;
-
-        self.schedule_table_flush(flush_scheduler, flush_req, opts, false)
+        self.schedule_table_flush(flush_scheduler, table_data.clone(), opts, false)
             .await
     }
 
@@ -223,20 +219,81 @@ impl Flusher {
             table_data, opts
         );
 
-        let flush_req = self.preprocess_flush(table_data).await?;
-
-        self.schedule_table_flush(flush_scheduler, flush_req, opts, true)
+        self.schedule_table_flush(flush_scheduler, table_data.clone(), opts, true)
             .await
+    }
+
+    /// Schedule table flush request to background workers
+    async fn schedule_table_flush(
+        &self,
+        flush_scheduler: &mut TableFlushScheduler,
+        table_data: TableDataRef,
+        opts: TableFlushOptions,
+        block_on: bool,
+    ) -> Result<()> {
+        let flush_task = FlushTask {
+            table_data: table_data.clone(),
+            space_store: self.space_store.clone(),
+            runtime: self.runtime.clone(),
+            write_sst_max_buffer_size: self.write_sst_max_buffer_size,
+        };
+        let flush_job = async move { flush_task.run().await };
+
+        flush_scheduler
+            .flush_sequentially(flush_job, block_on, opts, &self.runtime, table_data.clone())
+            .await
+    }
+}
+
+impl FlushTask {
+    /// Each table can only have one running flush task at the same time, which
+    /// should be ensured by the caller.
+    async fn run(&self) -> Result<()> {
+        let instant = Instant::now();
+        let flush_req = self.preprocess_flush(&self.table_data).await?;
+
+        let current_version = self.table_data.current_version();
+        let mems_to_flush = current_version.pick_memtables_to_flush(flush_req.max_sequence);
+
+        if mems_to_flush.is_empty() {
+            return Ok(());
+        }
+
+        let request_id = RequestId::next_id();
+
+        // Start flush duration timer.
+        let local_metrics = self.table_data.metrics.local_flush_metrics();
+        let _timer = local_metrics.start_flush_timer();
+        self.dump_memtables(request_id, &mems_to_flush)
+            .await
+            .box_err()
+            .context(FlushJobWithCause {
+                msg: Some(format!(
+                    "table:{}, table_id:{}, request_id:{request_id}",
+                    self.table_data.name, self.table_data.id
+                )),
+            })?;
+
+        self.table_data
+            .set_last_flush_time(time::current_time_millis());
+
+        info!(
+            "Instance flush memtables done, table:{}, table_id:{}, request_id:{}, cost:{}ms",
+            self.table_data.name,
+            self.table_data.id,
+            request_id,
+            instant.elapsed().as_millis()
+        );
+
+        Ok(())
     }
 
     async fn preprocess_flush(&self, table_data: &TableDataRef) -> Result<TableFlushRequest> {
         let current_version = table_data.current_version();
-        let last_sequence = table_data.last_sequence();
+        let mut last_sequence = table_data.last_sequence();
         // Switch (freeze) all mutable memtables. And update segment duration if
         // suggestion is returned.
-        if let Some(suggest_segment_duration) =
-            current_version.switch_memtables_or_suggest_duration()
-        {
+        if let Some(suggest_segment_duration) = current_version.suggest_duration() {
             info!(
                 "Update segment duration, table:{}, table_id:{}, segment_duration:{:?}",
                 table_data.name, table_data.id, suggest_segment_duration
@@ -265,87 +322,21 @@ impl Flusher {
 
             // Now the segment duration is applied, we can stop sampling and freeze the
             // sampling memtable.
-            current_version.freeze_sampling();
+            if let Some(seq) = current_version.freeze_sampling_memtable() {
+                last_sequence = seq.max(last_sequence);
+            }
+        } else if let Some(seq) = current_version.switch_memtables() {
+            last_sequence = seq.max(last_sequence);
         }
 
-        info!("Try to trigger memtable flush of table, table:{}, table_id:{}, max_memtable_id:{}, last_sequence:{}",
-            table_data.name, table_data.id, table_data.last_memtable_id(), last_sequence);
+        info!("Try to trigger memtable flush of table, table:{}, table_id:{}, max_memtable_id:{}, last_sequence:{last_sequence}",
+            table_data.name, table_data.id, table_data.last_memtable_id());
 
         // Try to flush all memtables of current table
         Ok(TableFlushRequest {
             table_data: table_data.clone(),
             max_sequence: last_sequence,
         })
-    }
-
-    /// Schedule table flush request to background workers
-    async fn schedule_table_flush(
-        &self,
-        flush_scheduler: &mut TableFlushScheduler,
-        flush_req: TableFlushRequest,
-        opts: TableFlushOptions,
-        block_on: bool,
-    ) -> Result<()> {
-        let table_data = flush_req.table_data.clone();
-
-        let flush_task = FlushTask {
-            table_data: table_data.clone(),
-            max_sequence: flush_req.max_sequence,
-            space_store: self.space_store.clone(),
-            runtime: self.runtime.clone(),
-            write_sst_max_buffer_size: self.write_sst_max_buffer_size,
-        };
-        let flush_job = async move { flush_task.run().await };
-
-        flush_scheduler
-            .flush_sequentially(flush_job, block_on, opts, &self.runtime, table_data.clone())
-            .await
-    }
-}
-
-impl FlushTask {
-    /// Each table can only have one running flush task at the same time, which
-    /// should be ensured by the caller.
-    async fn run(&self) -> Result<()> {
-        let instant = Instant::now();
-        let current_version = self.table_data.current_version();
-        let mems_to_flush = current_version.pick_memtables_to_flush(self.max_sequence);
-
-        if mems_to_flush.is_empty() {
-            return Ok(());
-        }
-
-        let request_id = RequestId::next_id();
-        info!(
-            "Instance try to flush memtables, table:{}, table_id:{}, request_id:{}, mems_to_flush:{:?}",
-            self.table_data.name, self.table_data.id, request_id, mems_to_flush
-        );
-
-        // Start flush duration timer.
-        let local_metrics = self.table_data.metrics.local_flush_metrics();
-        let _timer = local_metrics.start_flush_timer();
-        self.dump_memtables(request_id, &mems_to_flush)
-            .await
-            .box_err()
-            .context(FlushJobWithCause {
-                msg: Some(format!(
-                    "table:{}, table_id:{}, request_id:{request_id}",
-                    self.table_data.name, self.table_data.id
-                )),
-            })?;
-
-        self.table_data
-            .set_last_flush_time(time::current_time_millis());
-
-        info!(
-            "Instance flush memtables done, table:{}, table_id:{}, request_id:{}, cost:{}ms",
-            self.table_data.name,
-            self.table_data.id,
-            request_id,
-            instant.elapsed().as_millis()
-        );
-
-        Ok(())
     }
 
     /// This will write picked memtables [FlushableMemTables] to level 0 sst
