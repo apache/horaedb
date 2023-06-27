@@ -535,9 +535,7 @@ impl TableData {
         last + 1
     }
 
-    /// Set `max_file_id`, mainly used in recover
-    ///
-    /// This operation require external synchronization
+    /// Set `max_file_id`, mainly used in update max file id
     pub fn set_max_file_id(&self, max_file_id: FileId) {
         self.max_file_id.store(max_file_id, Ordering::Relaxed);
     }

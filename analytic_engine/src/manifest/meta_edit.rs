@@ -144,8 +144,8 @@ impl TryFrom<manifest_pb::MetaUpdate> for MetaUpdate {
                 MetaUpdate::DropTable(drop_table)
             }
             manifest_pb::meta_update::Meta::AllocSstId(v) => {
-                let alter_sst_id = AllocSstIdMeta::try_from(v)?;
-                MetaUpdate::AllocSstId(alter_sst_id)
+                let alloc_sst_id = AllocSstIdMeta::try_from(v)?;
+                MetaUpdate::AllocSstId(alloc_sst_id)
             }
         };
 
