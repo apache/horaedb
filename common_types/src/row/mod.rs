@@ -128,6 +128,10 @@ impl Row {
 
         self.cols[timestamp_index].as_timestamp()
     }
+
+    pub fn size(&self) -> usize {
+        self.cols.iter().map(|col| col.size()).sum()
+    }
 }
 
 #[derive(Debug)]

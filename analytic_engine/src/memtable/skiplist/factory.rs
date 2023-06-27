@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Skiplist memtable factory
 
@@ -25,6 +25,7 @@ impl Factory for SkiplistMemTableFactory {
             schema: opts.schema,
             skiplist,
             last_sequence: AtomicU64::new(opts.creation_sequence),
+            metrics: Default::default(),
         });
 
         Ok(memtable)
