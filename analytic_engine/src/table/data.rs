@@ -453,8 +453,8 @@ impl TableData {
         // Inspired by https://github.com/facebook/rocksdb/blob/main/include/rocksdb/write_buffer_manager.h#L94
         if mutable_usage > mutable_limit && !in_flush {
             info!(
-                "TableData should flush by mutable limit, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}.",
-                self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size,
+                "TableData should flush by mutable limit, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
+                self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size
             );
             return true;
         }
@@ -472,8 +472,8 @@ impl TableData {
 
         if should_flush {
             info!(
-                "TableData should flush by total usage, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}.",
-                self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size,
+                "TableData should flush by total usage, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
+                self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size
             );
         }
 
