@@ -47,8 +47,7 @@ pub type PutResponse = ();
 ///     http://opentsdb.net/docs/build/html/api_http/put.html#requests
 ///
 /// NOTE:
-///     - `db` is not required and default to `public` in CeresDB.
-///     - `precision`'s default value is `ms` but not `ns` in CeresDB.
+///     - all the params is unimplemented.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct PutParams {
@@ -59,14 +58,13 @@ pub struct PutParams {
     pub details: bool,
     pub sync: bool,
     pub sync_timeout: i32,
-    // TODO: now these params is unimplemented.
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Point {
     pub metric: String,
     pub timestamp: u64,
-    // TODO: OpenTSDB's value support Integer, Float, String. How to represent it?
+    // TODO: OpenTSDB's value support Integer, Float, String. How to represent it and parse from json ?
     pub value: f64,
     pub tags: HashMap<String, String>,
 }
@@ -95,7 +93,7 @@ pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableReque
     let mut points_per_metric = HashMap::new();
     for point in points.into_iter() {
         points_per_metric
-            .entry(point.metric.clone())
+            .entry(point.metric.clone()) // TODO: how to reduce string copy ?
             .or_insert(Vec::new())
             .push(point);
     }
@@ -106,7 +104,7 @@ pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableReque
             let mut tag_names_set = HashSet::new();
             for point in points.iter() {
                 for tag_name in point.tags.keys() {
-                    tag_names_set.insert(tag_name.clone());
+                    tag_names_set.insert(tag_name.clone()); // TODO: how to reduce string copy ?
                 }
             }
 
@@ -121,7 +119,7 @@ pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableReque
                 table: metric,
                 tag_names,
                 field_names: vec![String::from(OPENTSDB_DEFAULT_FIELD)],
-                entries: Vec::new(),
+                entries: Vec::with_capacity(points.len()),
             };
 
             for point in points {
@@ -169,7 +167,7 @@ pub(crate) fn validate(points: &[Point]) -> Result<()> {
     for point in points.iter() {
         if point.metric.is_empty() {
             return InternalNoCause {
-                msg: "`params` is not supported now",
+                msg: "metric must not be empty",
             }
             .fail();
         }
