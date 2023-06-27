@@ -7,7 +7,6 @@ use std::{
     convert::TryInto,
     fmt,
     fmt::Formatter,
-    ops::{Deref, DerefMut},
     sync::{
         atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
         Arc, Mutex,
@@ -29,7 +28,6 @@ use log::{debug, info};
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
-use tokio::sync::MutexGuard;
 
 use crate::{
     instance::serial_executor::TableOpSerialExecutor,
@@ -85,36 +83,6 @@ pub struct TableShardInfo {
 impl TableShardInfo {
     pub fn new(shard_id: ShardId) -> Self {
         Self { shard_id }
-    }
-}
-
-/// The context for execution of serial operation on the table.
-pub struct SerialExecContext {
-    /// Denotes whether `serial_exec` is valid.
-    ///
-    /// The `serial_exec` will be invalidated if the table is closed.
-    invalid: bool,
-    serial_exec: TableOpSerialExecutor,
-}
-
-impl SerialExecContext {
-    #[inline]
-    pub fn invalidate(&mut self) {
-        self.invalid = true;
-    }
-}
-
-impl Deref for SerialExecContext {
-    type Target = TableOpSerialExecutor;
-
-    fn deref(&self) -> &Self::Target {
-        &self.serial_exec
-    }
-}
-
-impl DerefMut for SerialExecContext {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.serial_exec
     }
 }
 
@@ -175,13 +143,14 @@ pub struct TableData {
     /// No write/alter is allowed if the table is dropped.
     dropped: AtomicBool,
 
-    serial_exec_ctx: tokio::sync::Mutex<SerialExecContext>,
-
     /// Metrics of this table
     pub metrics: Metrics,
 
     /// Shard info of the table
     pub shard_info: TableShardInfo,
+
+    /// The table operation serial_exec
+    pub serial_exec: tokio::sync::Mutex<TableOpSerialExecutor>,
 }
 
 impl fmt::Debug for TableData {
@@ -248,10 +217,6 @@ impl TableData {
             preflush_write_buffer_size_ratio,
         ));
 
-        let serial_exec_ctx = tokio::sync::Mutex::new(SerialExecContext {
-            invalid: false,
-            serial_exec: TableOpSerialExecutor::new(table_id),
-        });
         Ok(Self {
             id: table_id,
             name: table_name,
@@ -270,7 +235,7 @@ impl TableData {
             dropped: AtomicBool::new(false),
             metrics,
             shard_info: TableShardInfo::new(shard_id),
-            serial_exec_ctx,
+            serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(table_id)),
         })
     }
 
@@ -284,17 +249,35 @@ impl TableData {
         preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
     ) -> Result<Self> {
-        Self::new(
-            add_meta.space_id,
-            add_meta.table_id,
-            add_meta.table_name,
-            add_meta.schema,
-            shard_id,
-            add_meta.opts,
-            purger,
+        let memtable_factory = Arc::new(SkiplistMemTableFactory);
+        let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
+        let current_version = TableVersion::new(purge_queue);
+        let metrics = Metrics::default();
+        let mutable_limit = AtomicU32::new(compute_mutable_limit(
+            add_meta.opts.write_buffer_size,
             preflush_write_buffer_size_ratio,
+        ));
+
+        Ok(Self {
+            id: add_meta.table_id,
+            name: add_meta.table_name,
+            schema: Mutex::new(add_meta.schema),
+            space_id: add_meta.space_id,
+            mutable_limit,
+            mutable_limit_write_buffer_ratio: preflush_write_buffer_size_ratio,
+            opts: ArcSwap::new(Arc::new(add_meta.opts)),
+            memtable_factory,
             mem_usage_collector,
-        )
+            current_version,
+            last_sequence: AtomicU64::new(0),
+            last_memtable_id: AtomicU64::new(0),
+            last_file_id: AtomicU64::new(0),
+            last_flush_time_ms: AtomicU64::new(0),
+            dropped: AtomicBool::new(false),
+            metrics,
+            shard_info: TableShardInfo::new(shard_id),
+            serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(add_meta.table_id)),
+        })
     }
 
     /// Get current schema of the table.
@@ -369,38 +352,16 @@ impl TableData {
         self.dropped.store(true, Ordering::SeqCst);
     }
 
-    /// Acquire the [`SerialExecContext`] if the table is not closed.
-    pub async fn acquire_serial_exec_ctx(&self) -> Option<MutexGuard<'_, SerialExecContext>> {
-        let v = self.serial_exec_ctx.lock().await;
-        if v.invalid {
-            None
-        } else {
-            Some(v)
-        }
-    }
-
-    /// Try to acquire the [SerialExecContext].
-    ///
-    /// [None] will be returned if the serial_exec_ctx has been acquired
-    /// already, or the table is closed.
-    pub fn try_acquire_serial_exec_ctx(&self) -> Option<MutexGuard<'_, SerialExecContext>> {
-        let v = self.serial_exec_ctx.try_lock();
-        match v {
-            Ok(ctx) => {
-                if ctx.invalid {
-                    None
-                } else {
-                    Some(ctx)
-                }
-            }
-            Err(_) => None,
-        }
-    }
-
     /// Returns total memtable memory usage in bytes.
     #[inline]
     pub fn memtable_memory_usage(&self) -> usize {
         self.current_version.total_memory_usage()
+    }
+
+    /// Returns mutable memtable memory usage in bytes.
+    #[inline]
+    pub fn mutable_memory_usage(&self) -> usize {
+        self.current_version.mutable_memory_usage()
     }
 
     /// Find memtable for given timestamp to insert, create if not exists
@@ -488,12 +449,11 @@ impl TableData {
 
         let mutable_usage = self.current_version.mutable_memory_usage();
         let total_usage = self.current_version.total_memory_usage();
-
         let in_flush = serial_exec.flush_scheduler().is_in_flush();
         // Inspired by https://github.com/facebook/rocksdb/blob/main/include/rocksdb/write_buffer_manager.h#L94
         if mutable_usage > mutable_limit && !in_flush {
             info!(
-                "TableData should flush, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
+                "TableData should flush by mutable limit, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
                 self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size
             );
             return true;
@@ -512,7 +472,7 @@ impl TableData {
 
         if should_flush {
             info!(
-                "TableData should flush, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
+                "TableData should flush by total usage, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
                 self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size
             );
         }
@@ -634,6 +594,14 @@ impl TableDataSet {
         self.table_datas
             .values()
             .max_by_key(|t| t.memtable_memory_usage())
+            .cloned()
+    }
+
+    pub fn find_maximum_mutable_memory_usage_table(&self) -> Option<TableDataRef> {
+        // TODO: Possible performance issue here when there are too many tables.
+        self.table_datas
+            .values()
+            .max_by_key(|t| t.mutable_memory_usage())
             .cloned()
     }
 
@@ -811,7 +779,7 @@ pub mod tests {
             Some(ReadableDuration(table_options::DEFAULT_SEGMENT_DURATION));
         table_data.set_table_options(table_opts);
         // Freeze sampling memtable.
-        current_version.freeze_sampling();
+        current_version.freeze_sampling_memtable();
 
         // A new mutable memtable should be created.
         let mutable = table_data.find_or_create_mutable(now_ts, &schema).unwrap();

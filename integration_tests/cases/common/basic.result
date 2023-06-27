@@ -57,3 +57,31 @@ DROP TABLE `DeMo`;
 
 affected_rows: 0
 
+DROP TABLE IF EXISTS `binary_demo`;
+
+affected_rows: 0
+
+CREATE TABLE `binary_demo` (
+    `name` string TAG,
+    `value` varbinary NOT NULL,
+    `t` timestamp NOT NULL,
+    timestamp KEY (t)) ENGINE=Analytic WITH (
+    enable_ttl = 'false'
+);
+
+affected_rows: 0
+
+INSERT INTO binary_demo(t, name, value) VALUES(1667374200022, 'ceresdb', x'11');
+
+affected_rows: 1
+
+SELECT * FROM binary_demo WHERE value = x'11';
+
+tsid,t,name,value,
+UInt64(12128845460635970325),Timestamp(1667374200022),String("ceresdb"),Varbinary([17]),
+
+
+DROP TABLE `binary_demo`;
+
+affected_rows: 0
+

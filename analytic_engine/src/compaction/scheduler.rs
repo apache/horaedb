@@ -428,12 +428,11 @@ impl ScheduleWorker {
         let ongoing = self.limit.ongoing_tasks();
         match schedule_task {
             ScheduleTask::Request(compact_req) => {
-                debug!("Ongoing compaction tasks:{}", ongoing);
+                debug!("Ongoing compaction tasks:{ongoing}");
                 if ongoing >= self.max_ongoing_tasks {
                     self.limit.add_request(compact_req);
                     warn!(
-                        "Too many compaction ongoing tasks:{}, max:{}, buf_len:{}",
-                        ongoing,
+                        "Too many compaction ongoing tasks:{ongoing}, max:{}, buf_len:{}",
                         self.max_ongoing_tasks,
                         self.limit.request_buf_len()
                     );
@@ -448,7 +447,13 @@ impl ScheduleWorker {
                     for compact_req in pending {
                         self.handle_table_compaction_request(compact_req).await;
                     }
-                    debug!("Scheduled {} pending compaction tasks.", len);
+                    debug!("Scheduled {len} pending compaction tasks.");
+                } else {
+                    warn!(
+                        "Too many compaction ongoing tasks:{ongoing}, max:{}, buf_len:{}",
+                        self.max_ongoing_tasks,
+                        self.limit.request_buf_len()
+                    );
                 }
             }
             ScheduleTask::Exit => (),
@@ -650,16 +655,7 @@ impl ScheduleWorker {
                     self.max_unflushed_duration,
                 );
 
-                let mut serial_exec = if let Some(v) = table_data.acquire_serial_exec_ctx().await {
-                    v
-                } else {
-                    warn!(
-                        "Table is closed, ignore this periodical flush, table:{}",
-                        table_data.name
-                    );
-                    continue;
-                };
-
+                let mut serial_exec = table_data.serial_exec.lock().await;
                 let flush_scheduler = serial_exec.flush_scheduler();
                 // Instance flush the table asynchronously.
                 if let Err(e) = flusher
