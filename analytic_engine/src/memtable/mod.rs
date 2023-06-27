@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! MemTable
 
@@ -193,6 +193,19 @@ pub trait MemTable {
     ///
     /// If the memtable is empty, then the last sequence is 0.
     fn last_sequence(&self) -> SequenceNumber;
+
+    /// Metrics of inner state.
+    fn metrics(&self) -> Metrics;
+}
+
+#[derive(Debug)]
+pub struct Metrics {
+    /// Size of original rows.
+    pub row_raw_size: usize,
+    /// Size of rows after encoded.
+    pub row_encoded_size: usize,
+    /// Row number count.
+    pub row_count: usize,
 }
 
 /// A reference to memtable

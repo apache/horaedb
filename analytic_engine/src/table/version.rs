@@ -130,6 +130,8 @@ impl fmt::Debug for MemTableState {
         f.debug_struct("MemTableState")
             .field("time_range", &self.time_range)
             .field("id", &self.id)
+            .field("mem", &self.mem.approximate_memory_usage())
+            .field("metrics", &self.mem.metrics())
             .field("last_sequence", &self.mem.last_sequence())
             .finish()
     }
