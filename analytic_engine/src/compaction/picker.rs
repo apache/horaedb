@@ -3,7 +3,7 @@
 //! Compaction picker.
 
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     sync::Arc,
     time::Duration,
 };
@@ -241,44 +241,39 @@ impl LevelPicker for SizeTieredPicker {
             return None;
         }
 
-        let all_segments: BTreeSet<_> = files_by_segment.keys().collect();
         let opts = ctx.size_tiered_opts();
-
         // Iterate the segment in reverse order, so newest segment is examined first.
-        for (idx, segment_key) in all_segments.iter().rev().enumerate() {
-            // segment_key should always exist.
-            if let Some(segment) = files_by_segment.get(segment_key) {
-                let buckets = Self::get_buckets(
-                    segment.to_vec(),
-                    opts.bucket_high,
-                    opts.bucket_low,
-                    opts.min_sstable_size.as_byte() as f32,
-                );
+        for (idx, (segment_key, segment)) in files_by_segment.iter().rev().enumerate() {
+            let buckets = Self::get_buckets(
+                segment.to_vec(),
+                opts.bucket_high,
+                opts.bucket_low,
+                opts.min_sstable_size.as_byte() as f32,
+            );
 
-                let files = Self::most_interesting_bucket(
-                    buckets,
-                    opts.min_threshold,
-                    opts.max_threshold,
-                    opts.max_input_sstable_size.as_byte(),
-                );
+            let files = Self::most_interesting_bucket(
+                buckets,
+                opts.min_threshold,
+                opts.max_threshold,
+                opts.max_input_sstable_size.as_byte(),
+            );
 
-                if files.is_some() {
-                    info!(
-                        "Compact segment, idx: {}, size:{}, segment_key:{:?}, files:{:?}",
-                        idx,
-                        segment.len(),
-                        segment_key,
-                        segment
-                    );
-                    return files;
-                }
-                debug!(
-                    "No compaction necessary for segment, size:{}, segment_key:{:?}, idx:{}",
+            if files.is_some() {
+                info!(
+                    "Compact segment, idx: {}, size:{}, segment_key:{:?}, files:{:?}",
+                    idx,
                     segment.len(),
                     segment_key,
-                    idx
+                    segment
                 );
+                return files;
             }
+            debug!(
+                "No compaction necessary for segment, size:{}, segment_key:{:?}, idx:{}",
+                segment.len(),
+                segment_key,
+                idx
+            );
         }
 
         None
@@ -378,8 +373,8 @@ impl SizeTieredPicker {
         level: Level,
         segment_duration: Duration,
         expire_time: Option<Timestamp>,
-    ) -> HashMap<Timestamp, Vec<FileHandle>> {
-        let mut files_by_segment = HashMap::new();
+    ) -> BTreeMap<Timestamp, Vec<FileHandle>> {
+        let mut files_by_segment = BTreeMap::new();
         let uncompact_files = find_uncompact_files(levels_controller, level, expire_time);
         for file in uncompact_files {
             // We use the end time of the range to calculate segment.
