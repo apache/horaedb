@@ -1099,6 +1099,7 @@ dependencies = [
 name = "ceresdbproto"
 version = "1.0.5"
 source = "git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39#6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39"
+
 dependencies = [
  "prost",
  "protoc-bin-vendored",
