@@ -86,11 +86,6 @@ impl ShowCreateInterpreter {
             if col.is_tag {
                 res += " TAG";
             }
-
-            if col.is_dictionary {
-                res += " DICTIONARY";
-            }
-
             if !col.is_nullable {
                 res += " NOT NULL";
             }
