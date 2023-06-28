@@ -85,11 +85,7 @@ dependencies = [
  "async-trait",
  "base64 0.13.1",
  "bytes",
-<<<<<<< HEAD
- "ceresdbproto 1.0.4",
-=======
  "ceresdbproto 1.0.5 (git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39)",
->>>>>>> 0abc9181 (update pb)
  "common_types",
  "common_util",
  "datafusion",
@@ -1062,11 +1058,7 @@ checksum = "f5f27e14a7a0c030015c0fdb06c59c46cd6f9765e381bd920e02ff316b3be48b"
 dependencies = [
  "arrow",
  "async-trait",
-<<<<<<< HEAD
- "ceresdbproto 1.0.5",
-=======
  "ceresdbproto 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
->>>>>>> 0abc9181 (update pb)
  "dashmap 5.4.0",
  "futures 0.3.28",
  "paste 1.0.12",
@@ -1092,8 +1084,9 @@ dependencies = [
 
 [[package]]
 name = "ceresdbproto"
-version = "1.0.4"
-source = "git+https://github.com/tanruixiang/ceresdbproto.git?rev=53f5c74a54d8a08ebb08c41e8b862b2369df4a02#53f5c74a54d8a08ebb08c41e8b862b2369df4a02"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbfdcd9746d2b027e2880ef80bb6c5735ea45ad590f21b2cd2168eb11ba66f7a"
 dependencies = [
  "prost",
  "protoc-bin-vendored",
@@ -1105,12 +1098,7 @@ dependencies = [
 [[package]]
 name = "ceresdbproto"
 version = "1.0.5"
-<<<<<<< HEAD
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbfdcd9746d2b027e2880ef80bb6c5735ea45ad590f21b2cd2168eb11ba66f7a"
-=======
 source = "git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39#6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39"
->>>>>>> 0abc9181 (update pb)
 dependencies = [
  "prost",
  "protoc-bin-vendored",
@@ -1263,11 +1251,7 @@ name = "cluster"
 version = "1.2.2"
 dependencies = [
  "async-trait",
-<<<<<<< HEAD
- "ceresdbproto 1.0.4",
-=======
  "ceresdbproto 1.0.5 (git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39)",
->>>>>>> 0abc9181 (update pb)
  "common_types",
  "common_util",
  "etcd-client",
@@ -1320,11 +1304,7 @@ dependencies = [
  "arrow_ext",
  "byteorder",
  "bytes_ext",
-<<<<<<< HEAD
- "ceresdbproto 1.0.4",
-=======
  "ceresdbproto 1.0.5 (git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39)",
->>>>>>> 0abc9181 (update pb)
  "chrono",
  "datafusion",
  "murmur3",
@@ -1343,11 +1323,7 @@ version = "1.2.2"
 dependencies = [
  "arrow",
  "backtrace",
-<<<<<<< HEAD
- "ceresdbproto 1.0.4",
-=======
  "ceresdbproto 1.0.5 (git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39)",
->>>>>>> 0abc9181 (update pb)
  "chrono",
  "common_types",
  "crossbeam-utils 0.8.15",
@@ -3460,11 +3436,7 @@ name = "meta_client"
 version = "1.2.2"
 dependencies = [
  "async-trait",
-<<<<<<< HEAD
- "ceresdbproto 1.0.4",
-=======
  "ceresdbproto 1.0.5 (git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39)",
->>>>>>> 0abc9181 (update pb)
  "common_types",
  "common_util",
  "futures 0.3.28",
@@ -3953,11 +3925,7 @@ version = "1.2.2"
 dependencies = [
  "async-trait",
  "bytes",
-<<<<<<< HEAD
- "ceresdbproto 1.0.4",
-=======
  "ceresdbproto 1.0.5 (git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39)",
->>>>>>> 0abc9181 (update pb)
  "chrono",
  "clru",
  "common_types",
@@ -4755,11 +4723,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "catalog",
-<<<<<<< HEAD
- "ceresdbproto 1.0.4",
-=======
  "ceresdbproto 1.0.5 (git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39)",
->>>>>>> 0abc9181 (update pb)
  "clru",
  "cluster",
  "common_types",
@@ -4872,11 +4836,7 @@ dependencies = [
  "arrow",
  "async-trait",
  "catalog",
-<<<<<<< HEAD
- "ceresdbproto 1.0.4",
-=======
  "ceresdbproto 1.0.5 (git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39)",
->>>>>>> 0abc9181 (update pb)
  "cluster",
  "common_types",
  "common_util",
@@ -5184,11 +5144,7 @@ version = "1.2.2"
 dependencies = [
  "arrow_ext",
  "async-trait",
-<<<<<<< HEAD
- "ceresdbproto 1.0.4",
-=======
  "ceresdbproto 1.0.5 (git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39)",
->>>>>>> 0abc9181 (update pb)
  "common_types",
  "common_util",
  "futures 0.3.28",
@@ -5314,11 +5270,7 @@ name = "router"
 version = "1.2.2"
 dependencies = [
  "async-trait",
-<<<<<<< HEAD
- "ceresdbproto 1.0.4",
-=======
  "ceresdbproto 1.0.5 (git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39)",
->>>>>>> 0abc9181 (update pb)
  "cluster",
  "common_types",
  "common_util",
@@ -5673,11 +5625,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "catalog",
-<<<<<<< HEAD
- "ceresdbproto 1.0.4",
-=======
  "ceresdbproto 1.0.5 (git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39)",
->>>>>>> 0abc9181 (update pb)
  "clru",
  "cluster",
  "common_types",
@@ -6216,11 +6164,7 @@ dependencies = [
  "arrow",
  "async-trait",
  "catalog",
-<<<<<<< HEAD
- "ceresdbproto 1.0.4",
-=======
  "ceresdbproto 1.0.5 (git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39)",
->>>>>>> 0abc9181 (update pb)
  "common_types",
  "common_util",
  "futures 0.3.28",
@@ -6239,11 +6183,7 @@ dependencies = [
  "arrow",
  "arrow_ext",
  "async-trait",
-<<<<<<< HEAD
- "ceresdbproto 1.0.4",
-=======
  "ceresdbproto 1.0.5 (git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39)",
->>>>>>> 0abc9181 (update pb)
  "common_types",
  "common_util",
  "datafusion",
@@ -7057,11 +6997,7 @@ name = "wal"
 version = "1.2.2"
 dependencies = [
  "async-trait",
-<<<<<<< HEAD
- "ceresdbproto 1.0.4",
-=======
  "ceresdbproto 1.0.5 (git+https://github.com/tanruixiang/ceresdbproto.git?rev=6a03a3fe5a3de32a96ad4ede87a7d5350e7a3a39)",
->>>>>>> 0abc9181 (update pb)
  "chrono",
  "common_types",
  "common_util",
