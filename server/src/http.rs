@@ -363,8 +363,6 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                 let result = proxy.handle_opentsdb_put(ctx, request).await;
                 match result {
                     Ok(_res) => Ok(reply::with_status(warp::reply(), StatusCode::NO_CONTENT)),
-                    // TODO: when reject, how to set the status code ? OpenTSDB response 400 when
-                    // fail.
                     Err(e) => Err(reject::custom(e)),
                 }
             });

@@ -5,7 +5,6 @@ use std::{
     fmt::{Debug, Display, Formatter},
     num::ParseFloatError,
 };
-use std::fmt::format;
 
 use bytes::Bytes;
 use ceresdbproto::storage::{
@@ -20,15 +19,14 @@ use snafu::{OptionExt, ResultExt};
 use crate::error::{ErrNoCause, ErrWithCause, Result};
 
 const OPENTSDB_DEFAULT_FIELD: &str = "value";
-const OPENTSDB_DEFAULT_ERROR_CODE: StatusCode = StatusCode::BAD_REQUEST;
 
 #[derive(Debug)]
 pub struct PutRequest {
     pub points: Bytes,
 
-    pub summary: bool,
-    pub details: bool,
-    pub sync: bool,
+    pub summary: Option<String>,
+    pub details: Option<String>,
+    pub sync: Option<String>,
     pub sync_timeout: i32,
 }
 
@@ -57,12 +55,9 @@ pub type PutResponse = ();
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct PutParams {
-    // TODO: How to represent a `Present` param ?
-    // now use bool to represent it, so the URL must be "?summary=true/false"
-    // but the `Present` datatype means "?summary" is ok.
-    pub summary: bool,
-    pub details: bool,
-    pub sync: bool,
+    pub summary: Option<String>,
+    pub details: Option<String>,
+    pub sync: Option<String>,
     pub sync_timeout: i32,
 }
 
@@ -119,7 +114,7 @@ pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableReque
         }
     };
     let points = points.box_err().with_context(|| ErrWithCause {
-        code: OPENTSDB_DEFAULT_ERROR_CODE,
+        code: StatusCode::BAD_REQUEST,
         msg: "Json parse error".to_string(),
     })?;
     validate(&points)?;
@@ -159,7 +154,7 @@ pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableReque
             let timestamp = point.timestamp;
             let timestamp = try_to_millis(timestamp)
                 .with_context(|| ErrNoCause {
-                    code: OPENTSDB_DEFAULT_ERROR_CODE,
+                    code: StatusCode::BAD_REQUEST,
                     msg: format!("Invalid timestamp: {}", point.timestamp),
                 })?
                 .as_i64();
@@ -180,8 +175,8 @@ pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableReque
                 .try_to_f64()
                 .box_err()
                 .with_context(|| ErrWithCause {
-                    code: OPENTSDB_DEFAULT_ERROR_CODE,
-                    msg: format!("can't parse to f64: {}", point.value),
+                    code: StatusCode::BAD_REQUEST,
+                    msg: format!("Can't parse to f64: {}", point.value),
                 })?;
             let fields = vec![Field {
                 name_index: 0,
@@ -204,14 +199,14 @@ pub(crate) fn validate(points: &[Point]) -> Result<()> {
     for point in points.iter() {
         if point.metric.is_empty() {
             return ErrNoCause {
-                code: OPENTSDB_DEFAULT_ERROR_CODE,
+                code: StatusCode::BAD_REQUEST,
                 msg: "Metric must not be empty",
             }
             .fail();
         }
         if point.tags.is_empty() {
             return ErrNoCause {
-                code: OPENTSDB_DEFAULT_ERROR_CODE,
+                code: StatusCode::BAD_REQUEST,
                 msg: "At least one tag must be supplied",
             }
             .fail();
@@ -219,7 +214,7 @@ pub(crate) fn validate(points: &[Point]) -> Result<()> {
         for tag_name in point.tags.keys() {
             if tag_name.is_empty() {
                 return ErrNoCause {
-                    code: OPENTSDB_DEFAULT_ERROR_CODE,
+                    code: StatusCode::BAD_REQUEST,
                     msg: "Tag name must not be empty",
                 }
                 .fail();
