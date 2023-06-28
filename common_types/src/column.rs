@@ -373,6 +373,7 @@ macro_rules! impl_dedup {
 impl_dedup!(TimestampColumn);
 impl_dedup!(VarbinaryColumn);
 impl_dedup!(StringColumn);
+
 impl StringDictionaryColumn {
     #[doc = " If datum i is not equal to previous datum i - 1, mark `selected[i]` to"]
     #[doc = " true."]
@@ -1107,11 +1108,8 @@ macro_rules! define_column_block_builder {
                                         Ok(())
                                     }
                                     ColumnBlock::StringDictionary(v) => {
-                                        // There is no convenient api to copy a range of data from array to builder, so
-                                        // we still need to clone value one by one using a for loop.
                                         let end = std::cmp::min(start + len, v.num_rows());
                                         for i in start..end {
-                                            // let value_opt = v.0.keys().value(i);
                                             if v.0.is_null(i) {
                                                 builder.append_null();
                                             } else {

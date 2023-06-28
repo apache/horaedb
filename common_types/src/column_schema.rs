@@ -446,7 +446,7 @@ impl Builder {
         self
     }
 
-    /// Set this column is tag, default is false (not a tag).
+    /// Set this column is dictionary, default is false (not a dictionary).
     pub fn is_dictionary(mut self, is_dictionary: bool) -> Self {
         self.is_dictionary = is_dictionary;
         self
@@ -471,6 +471,7 @@ impl Builder {
                 }
             );
         }
+
         if self.is_dictionary {
             ensure!(
                 ColumnSchema::is_valid_dictionary_type(self.data_type),
@@ -479,6 +480,7 @@ impl Builder {
                 }
             );
         }
+
         Ok(())
     }
 
