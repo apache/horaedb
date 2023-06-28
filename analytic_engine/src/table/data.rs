@@ -87,42 +87,46 @@ const ALLOC_STEP: u64 = 1000;
 
 #[derive(Debug)]
 pub struct Allocator {
-    last_file_id: AtomicU64,
+    table_id: TableId,
+    space_id: SpaceId,
+    shard_info: TableShardInfo,
 
-    max_file_id: AtomicU64,
-
+    last_file_id: FileId,
+    max_file_id: FileId,
     alloc_step: u64,
 }
 
-impl Default for Allocator {
-    fn default() -> Self {
+impl Allocator {
+    ///New a allocator
+    pub fn new(table_id: TableId, space_id: SpaceId, shard_info: TableShardInfo) -> Self {
         Self {
-            last_file_id: AtomicU64::new(0),
-            max_file_id: AtomicU64::new(0),
+            table_id,
+            space_id,
+            shard_info,
+            last_file_id: 0,
+            max_file_id: 0,
             alloc_step: ALLOC_STEP,
         }
     }
-}
 
-impl Allocator {
     /// Set `last_file_id`
-    pub fn set_last_file_id(&self, last_file_id: FileId) {
-        self.last_file_id.store(last_file_id, Ordering::Relaxed);
+    pub fn set_last_file_id(&mut self, last_file_id: FileId) {
+        self.last_file_id = last_file_id;
     }
 
     /// Returns the last file id
     pub fn last_file_id(&self) -> FileId {
-        self.last_file_id.load(Ordering::Relaxed)
+        self.last_file_id
     }
 
     /// Set `max_file_id`
-    pub fn set_max_file_id(&self, max_file_id: FileId) {
-        self.max_file_id.store(max_file_id, Ordering::Relaxed);
+    pub fn set_max_file_id(&mut self, max_file_id: FileId) {
+        self.max_file_id = max_file_id;
     }
 
     /// Returns the max file id
     pub fn max_file_id(&self) -> FileId {
-        self.max_file_id.load(Ordering::Relaxed)
+        self.max_file_id
     }
 
     /// Return the alloc step
@@ -136,9 +140,36 @@ impl Allocator {
     }
 
     /// Alloc file id
-    pub fn alloc_file_id(&self) -> FileId {
-        let last = self.last_file_id.fetch_add(1, Ordering::Relaxed);
-        last + 1
+    pub fn alloc_file_id(&mut self, manifest: &ManifestRef) -> Result<FileId> {
+        if !self.is_exhausted() {
+            self.last_file_id += 1;
+            return Ok(self.last_file_id);
+        }
+
+        // Update new max file id.
+        let new_max_file_id = self.last_file_id() + self.alloc_step();
+
+        // Use manifest to persist max file id.
+        let manifest_update = AllocSstIdMeta {
+            space_id: self.space_id,
+            table_id: self.table_id,
+            max_file_id: new_max_file_id,
+        };
+        let edit_req = {
+            let meta_update = AllocSstId(manifest_update);
+            MetaEditRequest {
+                shard_info: self.shard_info,
+                meta_edit: MetaEdit::Update(meta_update),
+            }
+        };
+        let f = manifest.apply_edit(edit_req);
+        futures::executor::block_on(f).context(PersistFileId)?;
+
+        // Update memory.
+        self.set_max_file_id(new_max_file_id);
+
+        self.last_file_id += 1;
+        Ok(self.last_file_id)
     }
 }
 
@@ -196,7 +227,7 @@ pub struct TableData {
     last_memtable_id: AtomicU64,
 
     /// Allocating sst id
-    allocator: Allocator,
+    allocator: Mutex<Allocator>,
 
     /// Last flush time
     ///
@@ -295,7 +326,11 @@ impl TableData {
             current_version,
             last_sequence: AtomicU64::new(0),
             last_memtable_id: AtomicU64::new(0),
-            allocator: Allocator::default(),
+            allocator: Mutex::new(Allocator::new(
+                table_id,
+                space_id,
+                TableShardInfo::new(shard_id),
+            )),
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
@@ -336,7 +371,11 @@ impl TableData {
             current_version,
             last_sequence: AtomicU64::new(0),
             last_memtable_id: AtomicU64::new(0),
-            allocator: Allocator::default(),
+            allocator: Mutex::new(Allocator::new(
+                add_meta.table_id,
+                add_meta.space_id,
+                TableShardInfo::new(shard_id),
+            )),
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
@@ -545,52 +584,29 @@ impl TableData {
         should_flush
     }
 
-    /// Set `last_file_id`, mainly used in recover
+    /// Set the last file id of allocator, mainly used in recover
     ///
     /// This operation require external synchronization
     pub fn set_last_file_id(&self, last_file_id: FileId) {
-        self.allocator.set_last_file_id(last_file_id);
+        self.allocator
+            .lock()
+            .unwrap()
+            .set_last_file_id(last_file_id);
     }
 
-    /// Returns the last file id.
+    /// Returns the last file id of allocator.
     pub fn last_file_id(&self) -> FileId {
-        self.allocator.last_file_id()
+        self.allocator.lock().unwrap().last_file_id()
     }
 
-    /// Alloc a file id for a new file.
-    pub async fn alloc_file_id(&self, manifest: &ManifestRef) -> Result<FileId> {
-        // TODO: add mutex
-        if !self.allocator.is_exhausted() {
-            return Ok(self.allocator.alloc_file_id());
-        }
-
-        // Update allocator new max file id.
-        let new_max_file_id = self.allocator.last_file_id() + self.allocator.alloc_step();
-
-        // Use manifest to persist allocator max file id.
-        let manifest_update = AllocSstIdMeta {
-            space_id: self.space_id,
-            table_id: self.id,
-            max_file_id: new_max_file_id,
-        };
-        let edit_req = {
-            let meta_update = AllocSstId(manifest_update);
-            MetaEditRequest {
-                shard_info: self.shard_info,
-                meta_edit: MetaEdit::Update(meta_update),
-            }
-        };
-        manifest.apply_edit(edit_req).await.context(PersistFileId)?;
-
-        // Update memory.
-        self.allocator.set_max_file_id(new_max_file_id);
-
-        Ok(self.allocator.alloc_file_id())
+    /// Use allocator to alloc a file id for a new file.
+    pub fn alloc_file_id(&self, manifest: &ManifestRef) -> Result<FileId> {
+        self.allocator.lock().unwrap().alloc_file_id(manifest)
     }
 
-    /// Returns the max file id.
+    /// Returns the max file id of allocator.
     pub fn max_file_id(&self) -> FileId {
-        self.allocator.max_file_id()
+        self.allocator.lock().unwrap().max_file_id()
     }
 
     /// Set the sst file path into the object storage path.
