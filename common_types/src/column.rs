@@ -375,13 +375,6 @@ impl_dedup!(VarbinaryColumn);
 impl_dedup!(StringColumn);
 
 impl StringDictionaryColumn {
-    #[doc = " If datum i is not equal to previous datum i - 1, mark `selected[i]` to"]
-    #[doc = " true."]
-    #[doc = ""]
-    #[doc = " The first datum is marked to true."]
-    #[doc = ""]
-    #[doc = " The size of selected must equal to the size of this column and"]
-    #[doc = " initialized to false."]
     #[allow(clippy::float_cmp)]
     pub fn dedup(&self, selected: &mut [bool]) {
         if self.0.is_empty() {
