@@ -483,6 +483,7 @@ impl FlushTask {
             let file_id = self
                 .table_data
                 .alloc_file_id(&self.space_store.manifest)
+                .await
                 .context(AllocFileId)?;
 
             let sst_file_path = self.table_data.set_sst_file_path(file_id);
@@ -607,6 +608,7 @@ impl FlushTask {
         let file_id = self
             .table_data
             .alloc_file_id(&self.space_store.manifest)
+            .await
             .context(AllocFileId)?;
 
         let sst_file_path = self.table_data.set_sst_file_path(file_id);
@@ -846,6 +848,7 @@ impl SpaceStore {
         // Alloc file id for the merged sst.
         let file_id = table_data
             .alloc_file_id(&self.manifest)
+            .await
             .context(AllocFileId)?;
 
         let sst_file_path = table_data.set_sst_file_path(file_id);
