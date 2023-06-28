@@ -139,7 +139,6 @@ zstd = { version = "0.12", default-features = false }
 analytic_engine = { workspace = true }
 catalog = { workspace = true }
 catalog_impls = { workspace = true }
-ceresdbproto.workspace = true
 clap = { workspace = true }
 cluster = { workspace = true }
 common_util = { workspace = true }
