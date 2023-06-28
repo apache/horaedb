@@ -527,7 +527,13 @@ impl HybridRecordDecoder {
             .map(|f| {
                 if let DataType::List(nested_field) = f.data_type() {
                     match f.data_type() {
-                        DataType::Dictionary(_, _) => Arc::new(Field::new_dict(f.name(), nested_field.data_type().clone(), true, f.dict_id().unwrap(), f.dict_is_ordered().unwrap())),
+                        DataType::Dictionary(_, _) => Arc::new(Field::new_dict(
+                            f.name(),
+                            nested_field.data_type().clone(),
+                            true,
+                            f.dict_id().unwrap(),
+                            f.dict_is_ordered().unwrap(),
+                        )),
                         _ => Arc::new(Field::new(f.name(), nested_field.data_type().clone(), true)),
                     }
                 } else {
