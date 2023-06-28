@@ -1,20 +1,26 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{Debug, Display, Formatter},
+    num::ParseFloatError,
+};
+use std::fmt::format;
 
 use bytes::Bytes;
 use ceresdbproto::storage::{
-    value, Field, FieldGroup, Tag, Value, WriteSeriesEntry, WriteTableRequest,
+    value, Field, FieldGroup, Tag, Value as ProtoValue, WriteSeriesEntry, WriteTableRequest,
 };
-use common_util::error::BoxError;
-use itertools::Itertools;
+use common_util::{error::BoxError, time::try_to_millis};
+use http::StatusCode;
 use serde::Deserialize;
 use serde_json::from_slice;
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 
-use crate::error::{Internal, InternalNoCause, Result};
+use crate::error::{ErrNoCause, ErrWithCause, Result};
 
 const OPENTSDB_DEFAULT_FIELD: &str = "value";
+const OPENTSDB_DEFAULT_ERROR_CODE: StatusCode = StatusCode::BAD_REQUEST;
 
 #[derive(Debug)]
 pub struct PutRequest {
@@ -63,10 +69,37 @@ pub struct PutParams {
 #[derive(Debug, Deserialize)]
 pub struct Point {
     pub metric: String,
-    pub timestamp: u64,
-    // TODO: OpenTSDB's value support Integer, Float, String. How to represent it and parse from json ?
-    pub value: f64,
+    pub timestamp: i64,
+    pub value: Value,
     pub tags: HashMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum Value {
+    IntegerValue(i64),
+    F64Value(f64),
+    StringValue(String),
+}
+
+impl Value {
+    fn try_to_f64(&self) -> std::result::Result<f64, ParseFloatError> {
+        match self {
+            Value::IntegerValue(v) => Ok(*v as f64),
+            Value::F64Value(v) => Ok(*v),
+            Value::StringValue(v) => v.parse(),
+        }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::IntegerValue(v) => Display::fmt(v, f),
+            Value::F64Value(v) => Display::fmt(v, f),
+            Value::StringValue(v) => Display::fmt(v, f),
+        }
+    }
 }
 
 pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableRequest>> {
@@ -85,80 +118,84 @@ pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableReque
             }
         }
     };
-    let points = points.box_err().with_context(|| Internal {
-        msg: "json parse error",
+    let points = points.box_err().with_context(|| ErrWithCause {
+        code: OPENTSDB_DEFAULT_ERROR_CODE,
+        msg: "Json parse error".to_string(),
     })?;
     validate(&points)?;
 
     let mut points_per_metric = HashMap::new();
     for point in points.into_iter() {
         points_per_metric
-            .entry(point.metric.clone()) // TODO: how to reduce string copy ?
+            .entry(point.metric.clone())
             .or_insert(Vec::new())
             .push(point);
     }
 
-    let requests = points_per_metric
-        .into_iter()
-        .map(|(metric, points)| {
-            let mut tag_names_set = HashSet::new();
-            for point in points.iter() {
-                for tag_name in point.tags.keys() {
-                    tag_names_set.insert(tag_name.clone()); // TODO: how to reduce string copy ?
-                }
+    let mut requests = Vec::with_capacity(points_per_metric.len());
+    for (metric, points) in points_per_metric {
+        let mut tag_names_set = HashSet::new();
+        for point in points.iter() {
+            for tag_name in point.tags.keys() {
+                tag_names_set.insert(tag_name.clone());
             }
+        }
 
-            let mut tag_name_to_tag_index: HashMap<String, u32> = HashMap::new();
-            let mut tag_names = Vec::with_capacity(tag_names_set.len());
-            for (idx, tag_name) in tag_names_set.into_iter().enumerate() {
-                tag_name_to_tag_index.insert(tag_name.clone(), idx as u32);
-                tag_names.push(tag_name);
-            }
+        let mut tag_name_to_tag_index: HashMap<String, u32> = HashMap::new();
+        let mut tag_names = Vec::with_capacity(tag_names_set.len());
+        for (idx, tag_name) in tag_names_set.into_iter().enumerate() {
+            tag_name_to_tag_index.insert(tag_name.clone(), idx as u32);
+            tag_names.push(tag_name);
+        }
 
-            let mut req = WriteTableRequest {
-                table: metric,
-                tag_names,
-                field_names: vec![String::from(OPENTSDB_DEFAULT_FIELD)],
-                entries: Vec::with_capacity(points.len()),
-            };
+        let mut req = WriteTableRequest {
+            table: metric,
+            tag_names,
+            field_names: vec![String::from(OPENTSDB_DEFAULT_FIELD)],
+            entries: Vec::with_capacity(points.len()),
+        };
 
-            for point in points {
-                let mut timestamp = point.timestamp;
-                // TODO: Is there a util function to detect timestamp precision and convert it?
-                if timestamp < 1000000000000 {
-                    // seconds
-                    timestamp *= 1000;
-                } // else milliseconds
+        for point in points {
+            let timestamp = point.timestamp;
+            let timestamp = try_to_millis(timestamp)
+                .with_context(|| ErrNoCause {
+                    code: OPENTSDB_DEFAULT_ERROR_CODE,
+                    msg: format!("Invalid timestamp: {}", point.timestamp),
+                })?
+                .as_i64();
 
-                let mut tags = Vec::with_capacity(point.tags.len());
-                for (tag_name, tag_value) in point.tags {
-                    let &tag_index = tag_name_to_tag_index.get(&tag_name).unwrap();
-                    tags.push(Tag {
-                        name_index: tag_index,
-                        value: Some(Value {
-                            value: Some(value::Value::StringValue(tag_value)),
-                        }),
-                    });
-                }
-
-                let fields = vec![Field {
-                    name_index: 0,
-                    value: Some(Value {
-                        value: Some(value::Value::Float64Value(point.value)),
+            let mut tags = Vec::with_capacity(point.tags.len());
+            for (tag_name, tag_value) in point.tags {
+                let &tag_index = tag_name_to_tag_index.get(&tag_name).unwrap();
+                tags.push(Tag {
+                    name_index: tag_index,
+                    value: Some(ProtoValue {
+                        value: Some(value::Value::StringValue(tag_value)),
                     }),
-                }];
-
-                let field_groups = vec![FieldGroup {
-                    timestamp: timestamp as i64,
-                    fields,
-                }];
-
-                req.entries.push(WriteSeriesEntry { tags, field_groups });
+                });
             }
 
-            req
-        })
-        .collect_vec();
+            let f64_value = point
+                .value
+                .try_to_f64()
+                .box_err()
+                .with_context(|| ErrWithCause {
+                    code: OPENTSDB_DEFAULT_ERROR_CODE,
+                    msg: format!("can't parse to f64: {}", point.value),
+                })?;
+            let fields = vec![Field {
+                name_index: 0,
+                value: Some(ProtoValue {
+                    value: Some(value::Value::Float64Value(f64_value)),
+                }),
+            }];
+
+            let field_groups = vec![FieldGroup { timestamp, fields }];
+
+            req.entries.push(WriteSeriesEntry { tags, field_groups });
+        }
+        requests.push(req);
+    }
 
     Ok(requests)
 }
@@ -166,21 +203,24 @@ pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableReque
 pub(crate) fn validate(points: &[Point]) -> Result<()> {
     for point in points.iter() {
         if point.metric.is_empty() {
-            return InternalNoCause {
-                msg: "metric must not be empty",
+            return ErrNoCause {
+                code: OPENTSDB_DEFAULT_ERROR_CODE,
+                msg: "Metric must not be empty",
             }
             .fail();
         }
         if point.tags.is_empty() {
-            return InternalNoCause {
-                msg: "at least one tag must be supplied",
+            return ErrNoCause {
+                code: OPENTSDB_DEFAULT_ERROR_CODE,
+                msg: "At least one tag must be supplied",
             }
             .fail();
         }
         for tag_name in point.tags.keys() {
             if tag_name.is_empty() {
-                return InternalNoCause {
-                    msg: "tag name must not be empty",
+                return ErrNoCause {
+                    code: OPENTSDB_DEFAULT_ERROR_CODE,
+                    msg: "Tag name must not be empty",
                 }
                 .fail();
             }
