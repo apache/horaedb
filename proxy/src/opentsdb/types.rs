@@ -97,8 +97,8 @@ pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableReque
     })?;
     validate(&points)?;
 
-    let mut points_per_metric = HashMap::new();
-    for point in points.into_iter() {
+    let mut points_per_metric = HashMap::with_capacity(100);
+    for point in points {
         points_per_metric
             .entry(point.metric.clone())
             .or_insert(Vec::new())
@@ -107,14 +107,15 @@ pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableReque
 
     let mut requests = Vec::with_capacity(points_per_metric.len());
     for (metric, points) in points_per_metric {
-        let mut tag_names_set = HashSet::new();
-        for point in points.iter() {
+        let mut tag_names_set = HashSet::with_capacity(points[0].tags.len() * 2);
+        for point in &points {
             for tag_name in point.tags.keys() {
                 tag_names_set.insert(tag_name.clone());
             }
         }
 
-        let mut tag_name_to_tag_index: HashMap<String, u32> = HashMap::new();
+        let mut tag_name_to_tag_index: HashMap<String, u32> =
+            HashMap::with_capacity(tag_names_set.len());
         let mut tag_names = Vec::with_capacity(tag_names_set.len());
         for (idx, tag_name) in tag_names_set.into_iter().enumerate() {
             tag_name_to_tag_index.insert(tag_name.clone(), idx as u32);
@@ -168,7 +169,7 @@ pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableReque
 }
 
 pub(crate) fn validate(points: &[Point]) -> Result<()> {
-    for point in points.iter() {
+    for point in points {
         if point.metric.is_empty() {
             return ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
