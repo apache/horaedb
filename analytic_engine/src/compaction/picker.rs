@@ -280,26 +280,27 @@ impl SizeTieredPicker {
         max_threshold: usize,
         max_input_sstable_size: u64,
     ) -> Option<Vec<FileHandle>> {
-        // large seq come first
+        // Sort files by max_seq desc.
         files.sort_unstable_by_key(|f| u64::MAX - f.max_sequence());
 
         'outer: for start in 0..files.len() {
-            let mut step = max_threshold;
-            while step >= min_threshold {
+            // Try max_threshold first, since we hope to compact as many small files as we
+            // can.
+            for step in (min_threshold..=max_threshold).rev() {
                 let end = (start + step).min(files.len());
                 if end - start < min_threshold {
-                    // too little files, switch to next start idx and find again.
+                    // too little files, switch to next loop and find again.
                     continue 'outer;
                 }
+
                 let curr_size: u64 = files[start..end].iter().map(|f| f.size()).sum();
                 if curr_size <= max_input_sstable_size {
-                    return Some(files[start..end].iter().cloned().collect());
+                    return Some(files[start..end].to_vec());
                 }
-                step -= 1;
             }
         }
 
-        return None;
+        None
     }
 
     ///  Group files of similar size into buckets.
@@ -513,14 +514,8 @@ impl TimeWindowPicker {
                 let max_input_sstable_size = size_tiered_opts.max_input_sstable_size.as_byte();
                 if bucket.len() >= size_tiered_opts.min_threshold && *key >= now {
                     // If we're in the newest bucket, we'll use STCS to prioritize sstables
-                    let buckets = SizeTieredPicker::get_buckets(
+                    let files = SizeTieredPicker::pick_by_seq(
                         bucket.to_vec(),
-                        size_tiered_opts.bucket_high,
-                        size_tiered_opts.bucket_low,
-                        size_tiered_opts.min_sstable_size.as_byte() as f32,
-                    );
-                    let files = SizeTieredPicker::most_interesting_bucket(
-                        buckets,
                         size_tiered_opts.min_threshold,
                         size_tiered_opts.max_threshold,
                         max_input_sstable_size,
@@ -953,7 +948,7 @@ mod tests {
         );
         assert_eq!(
             vec![20, 10],
-            SizeTieredPicker::pick_by_seq(input_files.clone(), 2, 5, 30)
+            SizeTieredPicker::pick_by_seq(input_files, 2, 5, 30)
                 .unwrap()
                 .iter()
                 .map(|f| f.max_sequence())
