@@ -10,6 +10,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
+use common_types::time::Timestamp;
 
 pub trait DurationExt {
     /// Convert into u64.
@@ -64,6 +65,17 @@ pub fn current_as_rfc3339() -> String {
 pub fn format_as_ymdhms(unix_timestamp: i64) -> String {
     let dt = DateTime::<Utc>::from(UNIX_EPOCH + Duration::from_millis(unix_timestamp as u64));
     dt.format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+pub fn try_to_millis(ts: i64) -> Option<Timestamp> {
+    // https://help.aliyun.com/document_detail/60683.html
+    if (4294968..=4294967295).contains(&ts) {
+        return Some(Timestamp::new(ts * 1000));
+    }
+    if (4294967296..=9999999999999).contains(&ts) {
+        return Some(Timestamp::new(ts));
+    }
+    None
 }
 
 #[cfg(test)]

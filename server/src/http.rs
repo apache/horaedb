@@ -23,6 +23,7 @@ use proxy::{
     http::sql::{convert_output, Request},
     influxdb::types::{InfluxqlParams, InfluxqlRequest, WriteParams, WriteRequest},
     instance::InstanceRef,
+    opentsdb::types::{PutParams, PutRequest},
     Proxy,
 };
 use query_engine::executor::Executor as QueryExecutor;
@@ -183,6 +184,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .or(self.metrics())
             .or(self.sql())
             .or(self.influxdb_api())
+            .or(self.opentsdb_api())
             .or(self.prom_api())
             .or(self.route())
             // admin APIs
@@ -342,6 +344,30 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             );
 
         warp::path!("influxdb" / "v1" / ..).and(write_api.or(query_api))
+    }
+
+    fn opentsdb_api(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        let body_limit = warp::body::content_length_limit(self.config.max_body_size);
+
+        let put_api = warp::path!("put")
+            .and(warp::post())
+            .and(body_limit)
+            .and(self.with_context())
+            .and(warp::query::<PutParams>())
+            .and(warp::body::bytes())
+            .and(self.with_proxy())
+            .and_then(|ctx, params, points, proxy: Arc<Proxy<Q>>| async move {
+                let request = PutRequest::new(points, params);
+                let result = proxy.handle_opentsdb_put(ctx, request).await;
+                match result {
+                    Ok(_res) => Ok(reply::with_status(warp::reply(), StatusCode::NO_CONTENT)),
+                    Err(e) => Err(reject::custom(e)),
+                }
+            });
+
+        warp::path!("opentsdb" / "api" / ..).and(put_api)
     }
 
     // POST /debug/flush_memtable
