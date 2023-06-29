@@ -2,7 +2,7 @@
 
 //! A cli to query sst meta data
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, fmt, str::FromStr, sync::Arc};
 
 use analytic_engine::sst::{meta_data::cache::MetaData, parquet::async_reader::ChunkReaderAdapter};
 use anyhow::{Context, Result};
@@ -34,6 +34,31 @@ struct Args {
     /// Print page indexes
     #[clap(short, long, required(false))]
     page_indexes: bool,
+
+    /// Which field to sort ssts.
+    #[clap(short, long, default_value_t=SortBy::Time)]
+    sort: SortBy,
+}
+
+#[derive(Debug)]
+enum SortBy {
+    Seq,
+    Time,
+    Size,
+}
+
+impl fmt::Display for SortBy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl FromStr for SortBy {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        todo!()
+    }
 }
 
 #[derive(Default, Debug)]
