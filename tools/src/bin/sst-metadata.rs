@@ -35,21 +35,26 @@ struct Args {
     #[clap(short, long, required(false))]
     page_indexes: bool,
 
-    /// Which field to sort ssts.
-    #[clap(short, long, default_value_t=SortBy::Time)]
+    /// Which field to sort ssts[valid: seq/time/size/row].
+    #[clap(short, long, default_value = "time")]
     sort: SortBy,
 }
 
 #[derive(Debug)]
 enum SortBy {
+    /// Max Sequence number
     Seq,
+    /// Time range
     Time,
+    /// File size
     Size,
+    /// Row numbers
+    Row,
 }
 
 impl fmt::Display for SortBy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -57,7 +62,15 @@ impl FromStr for SortBy {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        todo!()
+        let sort_by = match s {
+            "seq" => Self::Seq,
+            "time" => Self::Time,
+            "size" => Self::Size,
+            "row" => Self::Row,
+            _ => return Err(format!("Invalid sort by, value:{s}")),
+        };
+
+        Ok(sort_by)
     }
 }
 
@@ -144,13 +157,24 @@ async fn run(args: Args) -> Result<()> {
         metas.push(meta);
     }
 
-    // sort by time_range asc
-    metas.sort_by(|a, b| {
-        a.1.custom()
-            .time_range
-            .inclusive_start()
-            .cmp(&b.1.custom().time_range.inclusive_start())
-    });
+    match args.sort {
+        SortBy::Time => metas.sort_by(|a, b| {
+            a.1.custom()
+                .time_range
+                .inclusive_start()
+                .cmp(&b.1.custom().time_range.inclusive_start())
+        }),
+        SortBy::Seq => {
+            metas.sort_by(|a, b| a.1.custom().max_sequence.cmp(&b.1.custom().max_sequence))
+        }
+        SortBy::Size => metas.sort_by(|a, b| a.0.size.cmp(&b.0.size)),
+        SortBy::Row => metas.sort_by(|a, b| {
+            a.1.parquet()
+                .file_metadata()
+                .num_rows()
+                .cmp(&b.1.parquet().file_metadata().num_rows())
+        }),
+    };
 
     let mut file_stats = FileStatistics::default();
     let mut field_stats_map = HashMap::new();
