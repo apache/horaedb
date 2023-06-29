@@ -2,8 +2,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{Debug, Display, Formatter},
-    num::ParseFloatError,
+    fmt::Debug,
 };
 
 use bytes::Bytes;
@@ -74,27 +73,7 @@ pub struct Point {
 pub enum Value {
     IntegerValue(i64),
     F64Value(f64),
-    StringValue(String),
-}
-
-impl Value {
-    fn try_to_f64(&self) -> std::result::Result<f64, ParseFloatError> {
-        match self {
-            Value::IntegerValue(v) => Ok(*v as f64),
-            Value::F64Value(v) => Ok(*v),
-            Value::StringValue(v) => v.parse(),
-        }
-    }
-}
-
-impl Display for Value {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Value::IntegerValue(v) => Display::fmt(v, f),
-            Value::F64Value(v) => Display::fmt(v, f),
-            Value::StringValue(v) => Display::fmt(v, f),
-        }
-    }
+    // StringValue(String),
 }
 
 pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableRequest>> {
@@ -170,19 +149,13 @@ pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableReque
                 });
             }
 
-            let f64_value = point
-                .value
-                .try_to_f64()
-                .box_err()
-                .with_context(|| ErrWithCause {
-                    code: StatusCode::BAD_REQUEST,
-                    msg: format!("Can't parse to f64: {}", point.value),
-                })?;
+            let value = match point.value {
+                Value::IntegerValue(v) => value::Value::Int64Value(v),
+                Value::F64Value(v) => value::Value::Float64Value(v),
+            };
             let fields = vec![Field {
                 name_index: 0,
-                value: Some(ProtoValue {
-                    value: Some(value::Value::Float64Value(f64_value)),
-                }),
+                value: Some(ProtoValue { value: Some(value) }),
             }];
 
             let field_groups = vec![FieldGroup { timestamp, fields }];
