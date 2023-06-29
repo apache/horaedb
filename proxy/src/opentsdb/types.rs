@@ -73,7 +73,6 @@ pub struct Point {
 pub enum Value {
     IntegerValue(i64),
     F64Value(f64),
-    // StringValue(String),
 }
 
 pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableRequest>> {
