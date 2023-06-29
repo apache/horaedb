@@ -244,15 +244,8 @@ impl LevelPicker for SizeTieredPicker {
         let opts = ctx.size_tiered_opts();
         // Iterate the segment in reverse order, so newest segment is examined first.
         for (idx, (segment_key, segment)) in files_by_segment.iter().rev().enumerate() {
-            let buckets = Self::get_buckets(
+            let files = Self::pick_by_seq(
                 segment.to_vec(),
-                opts.bucket_high,
-                opts.bucket_low,
-                opts.min_sstable_size.as_byte() as f32,
-            );
-
-            let files = Self::most_interesting_bucket(
-                buckets,
                 opts.min_threshold,
                 opts.max_threshold,
                 opts.max_input_sstable_size.as_byte(),
@@ -281,6 +274,34 @@ impl LevelPicker for SizeTieredPicker {
 }
 
 impl SizeTieredPicker {
+    fn pick_by_seq(
+        mut files: Vec<FileHandle>,
+        min_threshold: usize,
+        max_threshold: usize,
+        max_input_sstable_size: u64,
+    ) -> Option<Vec<FileHandle>> {
+        // large seq come first
+        files.sort_unstable_by_key(|f| u64::MAX - f.max_sequence());
+
+        'outer: for start in 0..files.len() {
+            let mut step = max_threshold;
+            while step >= min_threshold {
+                let end = (start + step).min(files.len());
+                if end - start < min_threshold {
+                    // too little files, switch to next start idx and find again.
+                    continue 'outer;
+                }
+                let curr_size: u64 = files[start..end].iter().map(|f| f.size()).sum();
+                if curr_size <= max_input_sstable_size {
+                    return Some(files[start..end].iter().cloned().collect());
+                }
+                step -= 1;
+            }
+        }
+
+        return None;
+    }
+
     ///  Group files of similar size into buckets.
     fn get_buckets(
         mut files: Vec<FileHandle>,
@@ -784,6 +805,26 @@ mod tests {
             .collect()
     }
 
+    fn build_file_handles_seq(sizes: Vec<(u64, u64)>) -> Vec<FileHandle> {
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        sizes
+            .into_iter()
+            .map(|(size, max_seq)| {
+                let file_meta = FileMeta {
+                    size,
+                    time_range: TimeRange::new_unchecked_for_test(0, 1),
+                    id: 1,
+                    row_num: 0,
+                    max_seq,
+                    storage_format: StorageFormat::default(),
+                };
+                let queue = FilePurgeQueue::new(1, 1.into(), tx.clone());
+                FileHandle::new(file_meta, queue)
+            })
+            .collect()
+    }
+
     #[test]
     fn test_size_tiered_picker() {
         let time_range = TimeRange::empty();
@@ -872,5 +913,51 @@ mod tests {
             let bucket = TimeWindowPicker::newest_bucket(buckets, size_tiered_opts, 200);
             assert_eq!(None, bucket);
         }
+    }
+
+    #[test]
+    fn test_size_pick_by_max_seq() {
+        let input_files = build_file_handles_seq(vec![
+            // size, seq
+            (20, 10),
+            (10, 20),
+            (201, 25),
+            (100, 30),
+            (100, 40),
+            (100, 50),
+        ]);
+
+        assert_eq!(
+            vec![50, 40, 30],
+            SizeTieredPicker::pick_by_seq(input_files.clone(), 2, 5, 300)
+                .unwrap()
+                .iter()
+                .map(|f| f.max_sequence())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            vec![50, 40, 30],
+            SizeTieredPicker::pick_by_seq(input_files.clone(), 2, 5, 500)
+                .unwrap()
+                .iter()
+                .map(|f| f.max_sequence())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            vec![50, 40, 30, 25],
+            SizeTieredPicker::pick_by_seq(input_files.clone(), 2, 5, 501)
+                .unwrap()
+                .iter()
+                .map(|f| f.max_sequence())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            vec![20, 10],
+            SizeTieredPicker::pick_by_seq(input_files.clone(), 2, 5, 30)
+                .unwrap()
+                .iter()
+                .map(|f| f.max_sequence())
+                .collect::<Vec<_>>()
+        );
     }
 }
