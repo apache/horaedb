@@ -22,11 +22,11 @@ def execute_sql(sql):
 
 def drop_table(table_name):
     sql = """
-DROP TABLE {}    
+DROP TABLE IF EXISTS {}
     """.format(table_name)
     r = execute_sql(sql)
     # 200 for success, 500 for table not found.
-    assert r.status_code == 200 or r.status_code == 500, r.text
+    assert r.status_code == 200, r.text
 
 
 def show_create_table(table_name):
