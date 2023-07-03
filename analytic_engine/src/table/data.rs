@@ -114,32 +114,32 @@ impl Allocator {
     }
 
     /// Returns the last file id
-    pub fn last_file_id(&self) -> FileId {
+    fn last_file_id(&self) -> FileId {
         self.last_file_id
     }
 
-    /// Set `max_file_id`
-    pub fn set_max_file_id(&mut self, max_file_id: FileId) {
+    /// Set max file id
+    fn set_max_file_id(&mut self, max_file_id: FileId) {
         self.max_file_id = max_file_id;
     }
 
     /// Returns the max file id
-    pub fn max_file_id(&self) -> FileId {
+    fn max_file_id(&self) -> FileId {
         self.max_file_id
     }
 
     /// Return the alloc step
-    pub fn alloc_step(&self) -> u64 {
+    fn alloc_step(&self) -> u64 {
         self.alloc_step
     }
 
     /// Determine whether the ID is used up
-    pub fn is_exhausted(&self) -> bool {
+    fn is_exhausted(&self) -> bool {
         self.last_file_id() >= self.max_file_id()
     }
 
     /// Alloc file id
-    pub async fn alloc_file_id(
+    async fn alloc_file_id(
         &mut self,
         manifest: &ManifestRef,
         space_id: SpaceId,
@@ -230,7 +230,7 @@ pub struct TableData {
     /// Allocating memtable id should be guarded by write lock
     last_memtable_id: AtomicU64,
 
-    /// Allocating sst id
+    /// Allocating file id
     allocator: RwLock<Allocator>,
 
     /// Last flush time

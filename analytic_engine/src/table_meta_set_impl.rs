@@ -218,7 +218,6 @@ impl TableMetaSetImpl {
                 msg: format!("space not found, space_id:{space_id}"),
             })?;
 
-        let table_name = table_meta.table_name.clone();
         // Apply max file id to the allocator
         let allocator = match version_meta.clone() {
             Some(version_meta) => {
@@ -228,6 +227,7 @@ impl TableMetaSetImpl {
             None => Allocator::default(),
         };
 
+        let table_name = table_meta.table_name.clone();
         let table_data = Arc::new(
             TableData::recover_from_add(
                 table_meta,

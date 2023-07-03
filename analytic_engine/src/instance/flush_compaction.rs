@@ -144,7 +144,7 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to alloc file id. err:{}", source))]
+    #[snafu(display("Failed to alloc file id, err:{source}"))]
     AllocFileId { source: data::Error },
 }
 
