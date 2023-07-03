@@ -940,7 +940,7 @@ mod tests {
     #[test]
     fn test_time_window_newest_bucket() {
         let size_tiered_opts = SizeTieredCompactionOptions::default();
-        let tw_picker = TimeWindowPicker::default();
+        let tw_picker = TimeWindowPicker { pick_by_seq: false };
         // old bucket have enough sst for compaction
         {
             let old_bucket = build_file_handles(vec![
@@ -959,6 +959,47 @@ mod tests {
                 .unwrap();
             assert_eq!(
                 vec![100, 101, 102],
+                bucket.into_iter().map(|f| f.size()).collect::<Vec<_>>()
+            );
+        }
+
+        // old bucket have only 1 sst, which is not enough for compaction
+        {
+            let old_bucket =
+                build_file_handles(vec![(100, TimeRange::new_unchecked_for_test(100, 200))]);
+            let new_bucket = build_file_handles(vec![
+                (200, TimeRange::new_unchecked_for_test(200, 300)),
+                (201, TimeRange::new_unchecked_for_test(200, 300)),
+            ]);
+
+            let buckets = hash_map! { 100 => old_bucket, 200 => new_bucket };
+            let bucket = tw_picker.newest_bucket(buckets, size_tiered_opts, 200);
+            assert_eq!(None, bucket);
+        }
+    }
+
+    #[test]
+    fn test_time_window_newest_bucket_for_seq() {
+        let size_tiered_opts = SizeTieredCompactionOptions::default();
+        let tw_picker = TimeWindowPicker { pick_by_seq: true };
+        // old bucket have enough sst for compaction
+        {
+            let old_bucket = build_file_handles(vec![
+                (102, TimeRange::new_unchecked_for_test(100, 200)),
+                (100, TimeRange::new_unchecked_for_test(100, 200)),
+                (101, TimeRange::new_unchecked_for_test(100, 200)),
+            ]);
+            let new_bucket = build_file_handles(vec![
+                (200, TimeRange::new_unchecked_for_test(200, 300)),
+                (201, TimeRange::new_unchecked_for_test(200, 300)),
+            ]);
+
+            let buckets = hash_map! { 100 => old_bucket, 200 => new_bucket };
+            let bucket = tw_picker
+                .newest_bucket(buckets, size_tiered_opts, 200)
+                .unwrap();
+            assert_eq!(
+                vec![102, 100, 101],
                 bucket.into_iter().map(|f| f.size()).collect::<Vec<_>>()
             );
         }
