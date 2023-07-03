@@ -176,28 +176,28 @@ fn trim_to_threshold(
         .collect()
 }
 
-// Remove this when pick_by_seq is stable.
+/// Origin solution will only consider file size, but this will cause data
+/// corrupt, see https://github.com/CeresDB/ceresdb/pull/1041
+///
+/// So we could only compact files with adjacent seq, or ssts without
+/// overlapping key range among them. Currently solution is relative simple,
+/// only pick adjacent sst. Maybe a better, but more complex solution could be
+/// introduced later.
+// TODO: Remove this function when pick_by_seq is stable.
 fn prefer_pick_by_seq() -> bool {
-    std::env::var("CERESDB_SIZE_PICKER_PREFER_BY_SEQ").unwrap_or_else(|_| "true".to_string())
-        == "true"
+    std::env::var("CERESDB_COMPACT_PICK_BY_SEQ").unwrap_or_else(|_| "true".to_string()) == "true"
 }
 
 /// Size tiered compaction strategy
 /// See https://github.com/jeffjirsa/twcs/blob/master/src/main/java/com/jeffjirsa/cassandra/db/compaction/SizeTieredCompactionStrategy.java
 pub struct SizeTieredPicker {
-    // Origin solution will only consider file size, but this will cause data corrupt, see
-    // https://github.com/CeresDB/ceresdb/pull/1041
-    //
-    // So we could only compact files with adjacent seq, or ssts without overlapping key range
-    // among them. Currently solution is relative simple, only pick adjacent sst.
-    // Maybe a better, but more complex solution could be introduced later.
-    prefer_seq: bool,
+    pick_by_seq: bool,
 }
 
 impl Default for SizeTieredPicker {
     fn default() -> Self {
         Self {
-            prefer_seq: prefer_pick_by_seq(),
+            pick_by_seq: prefer_pick_by_seq(),
         }
     }
 }
@@ -283,7 +283,7 @@ impl SizeTieredPicker {
         files: Vec<FileHandle>,
         opts: &SizeTieredCompactionOptions,
     ) -> Option<Vec<FileHandle>> {
-        if self.prefer_seq {
+        if self.pick_by_seq {
             return Self::pick_by_seq(
                 files,
                 opts.min_threshold,
@@ -478,13 +478,13 @@ impl SizeTieredPicker {
 /// Time window compaction strategy
 /// See https://github.com/jeffjirsa/twcs/blob/master/src/main/java/com/jeffjirsa/cassandra/db/compaction/TimeWindowCompactionStrategy.java
 pub struct TimeWindowPicker {
-    prefer_seq: bool,
+    pick_by_seq: bool,
 }
 
 impl Default for TimeWindowPicker {
     fn default() -> Self {
         Self {
-            prefer_seq: prefer_pick_by_seq(),
+            pick_by_seq: prefer_pick_by_seq(),
         }
     }
 }
@@ -595,15 +595,14 @@ impl TimeWindowPicker {
         size_tiered_opts: &SizeTieredCompactionOptions,
     ) -> Option<Vec<FileHandle>> {
         let max_input_size = size_tiered_opts.max_input_sstable_size.as_byte();
-        // For old bucket, sst is likely already compacted, so its thresold is not very
+        // For old bucket, sst is likely already compacted, so min_thresold is not very
         // strict, and greedy as `size_tiered_opts`.
         let min_threshold = 2;
-        let max_threshold = 4;
-        if self.prefer_seq {
+        if self.pick_by_seq {
             return SizeTieredPicker::pick_by_seq(
                 files,
                 min_threshold,
-                max_threshold,
+                size_tiered_opts.max_threshold,
                 max_input_size,
             );
         }
