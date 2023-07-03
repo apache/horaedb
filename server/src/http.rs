@@ -346,6 +346,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::path!("influxdb" / "v1" / ..).and(write_api.or(query_api))
     }
 
+    // POST /opentsdb/api/put
     fn opentsdb_api(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {

@@ -225,6 +225,10 @@ jobs:
         working-directory: integration_tests
         run: |
           make run-prom
+      - name: Run OpenTSDB tests
+        working-directory: integration_tests
+        run: |
+          make run-opentsdb
       - name: Upload Logs
         if: always()
         uses: actions/upload-artifact@v3
