@@ -331,6 +331,8 @@ SELECT timestamp, dc, host, value FROM {metric}
 
 
 def main():
+    print("OpenTSDB test start.")
+
     test_put_validate_error()
 
     test_put_single_point_with_int_value()
@@ -340,6 +342,8 @@ def main():
     test_put_multi_points_with_different_tags_in_one_table()
     test_put_multi_points_with_different_datatype_in_one_table()
     test_put_multi_points_in_multi_table()
+
+    print("OpenTSDB test finished.")
 
 
 if __name__ == '__main__':
