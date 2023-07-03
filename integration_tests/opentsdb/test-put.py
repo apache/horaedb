@@ -20,12 +20,12 @@ def execute_sql(sql):
     r = requests.post('{}/sql'.format(api_root), json={'query': sql}, headers=headers)
     return r
 
+
 def drop_table(table_name):
     sql = """
 DROP TABLE IF EXISTS {}
     """.format(table_name)
     r = execute_sql(sql)
-    # 200 for success, 500 for table not found.
     assert r.status_code == 200, r.text
 
 
