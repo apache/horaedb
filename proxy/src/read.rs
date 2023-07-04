@@ -9,7 +9,6 @@ use ceresdbproto::storage::{
 };
 use common_types::request_id::RequestId;
 use common_util::{error::BoxError, time::InstantExt};
-
 use futures::FutureExt;
 use http::StatusCode;
 use interpreters::interpreter::Output;
