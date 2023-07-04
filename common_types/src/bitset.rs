@@ -63,31 +63,6 @@ impl BitSet {
         Some(set)
     }
 
-    /// Compute the number of the set bits before the bit at `index`.
-    pub fn num_unset_bits_before(&self, index: usize) -> Option<usize> {
-        self.num_set_bits_before(index).map(|num_set_bits| {
-            let num_bits = 1 + index;
-            num_bits - num_set_bits
-        })
-    }
-
-    /// Compute the number of the set bits before the bit at `index`.
-    pub fn num_set_bits_before(&self, index: usize) -> Option<usize> {
-        if index >= self.num_bits {
-            return None;
-        }
-        let (byte_index, bit_index) = Self::compute_byte_bit_index(index);
-
-        let mut num_set_bits = 0;
-        for b in &self.buffer[0..byte_index] {
-            num_set_bits += count_set_bits(*b) as u32;
-        }
-
-        num_set_bits += count_set_bits_before(self.buffer[byte_index], bit_index) as u32;
-
-        Some(num_set_bits as usize)
-    }
-
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         &self.buffer
@@ -101,21 +76,6 @@ impl BitSet {
     fn compute_byte_bit_index(index: usize) -> (usize, usize) {
         (index >> 3, index & 7)
     }
-}
-
-fn count_set_bits(b: u8) -> u8 {
-    static LOOKUP: [u8; 16] = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
-
-    LOOKUP[(b & 0x0F) as usize] + LOOKUP[(b >> 4) as usize]
-}
-
-fn count_set_bits_before(b: u8, idx: usize) -> u8 {
-    let mut num_bits = 0;
-    for i in 0..idx {
-        num_bits += b >> i & 1;
-    }
-
-    num_bits
 }
 
 #[cfg(test)]
@@ -151,24 +111,6 @@ mod tests {
                 0b00000010
             ]
         );
-    }
-
-    #[test]
-    fn test_num_bits_before() {
-        let raw_bytes: Vec<u8> = vec![0b11111111, 0b11110000, 0b00001111, 0b00001100, 0b00001001];
-        let bit_set = BitSet::try_from_raw(raw_bytes, 35).unwrap();
-        assert_eq!(bit_set.num_set_bits_before(1), Some(1));
-        assert_eq!(bit_set.num_set_bits_before(9), Some(8));
-        assert_eq!(bit_set.num_set_bits_before(13), Some(9));
-        assert_eq!(bit_set.num_set_bits_before(30), Some(18));
-        assert_eq!(bit_set.num_set_bits_before(34), Some(19));
-        assert_eq!(bit_set.num_set_bits_before(49), None);
-
-        assert_eq!(bit_set.is_set(7), Some(true));
-        assert_eq!(bit_set.is_set(8), Some(false));
-        assert_eq!(bit_set.is_set(34), Some(false));
-        assert_eq!(bit_set.is_set(35), None);
-        assert_eq!(bit_set.is_set(36), None);
     }
 
     #[test]
