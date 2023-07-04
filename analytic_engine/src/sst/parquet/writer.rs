@@ -359,7 +359,7 @@ mod tests {
     };
 
     // TODO(xikai): add test for reverse reader
-    
+
     #[test]
     fn test_parquet_build_and_read() {
         init_log_for_test();

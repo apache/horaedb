@@ -1201,7 +1201,7 @@ impl ColumnBlockBuilder {
 mod tests {
     use super::*;
     use crate::tests::{
-        build_row_for_dictionary, build_rows, build_schema, build_schema_for_dictionary,
+        build_row_for_dictionary, build_rows, build_schema, build_schema_with_dictionary,
     };
 
     #[test]
@@ -1244,28 +1244,72 @@ mod tests {
 
     #[test]
     fn test_column_block_string_dictionary_builder() {
-        let schema = build_schema_for_dictionary();
+        let schema = build_schema_with_dictionary();
         let rows = vec![
-            build_row_for_dictionary(1, 1, Some("tag1_1"), "tag2_1", 1),
-            build_row_for_dictionary(2, 2, Some("tag1_2"), "tag2_2", 2),
-            build_row_for_dictionary(3, 3, Some("tag1_3"), "tag2_3", 3),
-            build_row_for_dictionary(4, 4, Some("tag1_1"), "tag2_4", 3),
-            build_row_for_dictionary(5, 5, Some("tag1_3"), "tag2_4", 4),
-            build_row_for_dictionary(6, 6, None, "tag2_4", 4),
+            build_row_for_dictionary(
+                b"a",
+                1,
+                10.0,
+                "v4",
+                1000,
+                1_000_000,
+                Some("tag1_1"),
+                "tag2_1",
+            ),
+            build_row_for_dictionary(
+                b"b",
+                2,
+                10.0,
+                "v4",
+                1000,
+                1_000_000,
+                Some("tag1_2"),
+                "tag2_2",
+            ),
+            build_row_for_dictionary(
+                b"c",
+                3,
+                10.0,
+                "v4",
+                1000,
+                1_000_000,
+                Some("tag1_3"),
+                "tag2_3",
+            ),
+            build_row_for_dictionary(
+                b"d",
+                4,
+                10.0,
+                "v4",
+                1000,
+                1_000_000,
+                Some("tag1_1"),
+                "tag2_4",
+            ),
+            build_row_for_dictionary(
+                b"e",
+                5,
+                10.0,
+                "v4",
+                1000,
+                1_000_000,
+                Some("tag1_3"),
+                "tag2_4",
+            ),
+            build_row_for_dictionary(b"f", 6, 10.0, "v4", 1000, 1_000_000, None, "tag2_4"),
         ];
         // DatumKind::String , is_dictionary = true
-        let column = schema.column(2);
-        println!("{column:?}");
+        let column = schema.column(6);
         let mut builder =
             ColumnBlockBuilder::with_capacity(&column.data_type, 0, column.is_dictionary);
         // append
-        (0..rows.len()).for_each(|i| builder.append(rows[i][2].clone()).unwrap());
+        (0..rows.len()).for_each(|i| builder.append(rows[i][6].clone()).unwrap());
 
         let ret = builder.append(rows[0][0].clone());
         assert!(ret.is_err());
 
         // append_view
-        builder.append_view(rows[5][2].as_view()).unwrap();
+        builder.append_view(rows[5][6].as_view()).unwrap();
         let ret = builder.append_view(rows[1][0].as_view());
 
         assert!(ret.is_err());
