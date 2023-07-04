@@ -124,7 +124,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         // Create logical plan
         // Note: Remember to store sql in error when creating logical plan
-        println!("stmts: {:?}", stmts);
         let plan = frontend
             // TODO(yingwen): Check error, some error may indicate that the sql is invalid. Now we
             // return internal server error in those cases
@@ -134,11 +133,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: format!("Failed to create plan, query:{sql}"),
             })?;
-
-        if let Plan::Query(tmp) = &plan {
-            println!("{:?}", stmts);
-            println!("{:?}", tmp.df_plan.all_out_ref_exprs());
-        };
 
         let output = if ctx.enable_partition_table_access {
             self.execute_plan_involving_partition_table(request_id, catalog, schema, plan, deadline)
