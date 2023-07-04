@@ -476,10 +476,6 @@ impl StringDictionaryColumn {
         DictionaryArray::<Int32Type>::from(array_data)
     }
 
-    #[doc = " Returns a zero-copy slice of this array with the indicated offset and"]
-    #[doc = " length."]
-    #[doc = ""]
-    #[doc = " Panics if offset with length is greater than column length."]
     fn slice(&self, offset: usize, length: usize) -> Self {
         let array_slice = self.0.slice(offset, length);
         let array_data = array_slice.into_data();

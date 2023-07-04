@@ -242,7 +242,7 @@ impl Converter {
         let value_idx = schema.index_of(field_col_name).context(InternalNoCause {
             msg: "Value column is missing in query response",
         })?;
-        // Todo is there need add is_dictionary check?
+        // TODO(tanruixiang): is there need add is_dictionary check?
         let tags = schema
             .columns()
             .iter()
