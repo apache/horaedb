@@ -292,7 +292,7 @@ impl_column!(
 impl_column!(StringColumn, get_string_datum, get_string_datum_view);
 
 impl StringDictionaryColumn {
-    #[doc = " Get datum by index."]
+    /// Get datum by index
     pub fn datum_opt(&self, index: usize) -> Option<Datum> {
         if index >= self.0.len() {
             return None;
@@ -311,7 +311,7 @@ impl StringDictionaryColumn {
         if self.0.is_null(index) {
             return DatumView::Null;
         }
-        // TODO : Is this the efficient way?
+        // TODO(tanruixiang): Is this the efficient way?
         DatumView::String(self.0.downcast_dict::<StringArray>().unwrap().value(index))
     }
 
@@ -319,7 +319,7 @@ impl StringDictionaryColumn {
         if self.0.is_null(index) {
             return Datum::Null;
         }
-        // TODO : Is this the efficient way?
+        // TODO(tanruixiang): Is this the efficient way?
         Datum::String(
             self.0
                 .downcast_dict::<StringArray>()
@@ -375,7 +375,6 @@ impl_dedup!(VarbinaryColumn);
 impl_dedup!(StringColumn);
 
 impl StringDictionaryColumn {
-    #[allow(clippy::float_cmp)]
     pub fn dedup(&self, selected: &mut [bool]) {
         if self.0.is_empty() {
             return;

@@ -336,7 +336,7 @@ impl From<&ColumnSchema> for Field {
                 col_schema.is_nullable,
                 col_schema.id.into(),
                 false,
-                // Todo how to use dict_is_ordered
+                // TODO(tanruixiang) how to use dict_is_ordered
             )
         } else {
             Field::new(

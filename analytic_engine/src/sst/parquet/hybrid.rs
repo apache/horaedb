@@ -127,7 +127,7 @@ pub fn build_hybrid_arrow_schema(schema: &Schema) -> ArrowSchemaRef {
                     field.data_type().clone(),
                     true,
                 )));
-                // TODO is there need to use new_dict?
+                // TODO(tanruixiang) is there need to use new_dict?
                 Arc::new(Field::new(field.name(), field_type, true))
             } else {
                 field.clone()
