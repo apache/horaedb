@@ -23,15 +23,28 @@ make_auto_flush_static_metric! {
     pub struct GrpcHandlerCounterVec: LocalIntCounter {
         "type" => GrpcTypeKind,
     }
+
+    pub label_enum HttpTypeKind {
+        write_failed,
+    }
+
+    pub struct HttpHandlerCounterVec: LocalIntCounter {
+        "type" => HttpTypeKind,
+    }
 }
 
 lazy_static! {
     pub static ref GRPC_HANDLER_COUNTER_VEC_GLOBAL: IntCounterVec =
         register_int_counter_vec!("grpc_handler_counter", "Grpc handler counter", &["type"])
             .unwrap();
+    pub static ref HTTP_HANDLER_COUNTER_VEC_GLOBAL: IntCounterVec =
+        register_int_counter_vec!("http_handler_counter", "Http handler counter", &["type"])
+            .unwrap();
 }
 
 lazy_static! {
     pub static ref GRPC_HANDLER_COUNTER_VEC: GrpcHandlerCounterVec =
         auto_flush_from!(GRPC_HANDLER_COUNTER_VEC_GLOBAL, GrpcHandlerCounterVec);
+    pub static ref HTTP_HANDLER_COUNTER_VEC: HttpHandlerCounterVec =
+        auto_flush_from!(HTTP_HANDLER_COUNTER_VEC_GLOBAL, HttpHandlerCounterVec);
 }

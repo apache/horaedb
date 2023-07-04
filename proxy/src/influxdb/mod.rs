@@ -30,6 +30,7 @@ use crate::{
         convert_influxql_output, convert_write_request, InfluxqlRequest, InfluxqlResponse,
         WriteRequest, WriteResponse,
     },
+    metrics::HTTP_HANDLER_COUNTER_VEC,
     Context, Proxy,
 };
 
@@ -60,16 +61,33 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             enable_partition_table_access: false,
             forwarded_from: None,
         };
-        let result = self
+
+        match self
             .handle_write_internal(proxy_context, table_request)
-            .await?;
+            .await
+        {
+            Ok(result) => {
+                if result.failed != 0 {
+                    HTTP_HANDLER_COUNTER_VEC.write_failed.inc();
+                    ErrNoCause {
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        msg: format!("fail to write storage, failed rows:{:?}", result.failed),
+                    }
+                    .fail()?;
+                }
 
-        debug!(
-            "Influxdb write finished, catalog:{}, schema:{}, result:{result:?}",
-            ctx.catalog, ctx.schema
-        );
+                debug!(
+                    "Influxdb write finished, catalog:{}, schema:{}, result:{result:?}",
+                    ctx.catalog, ctx.schema
+                );
 
-        Ok(())
+                Ok(())
+            }
+            Err(e) => {
+                HTTP_HANDLER_COUNTER_VEC.write_failed.inc();
+                Err(e)
+            }
+        }
     }
 
     async fn fetch_influxdb_query_output(

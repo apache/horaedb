@@ -28,7 +28,7 @@ use tonic::{transport::Channel, IntoRequest};
 use crate::{
     error::{self, ErrNoCause, ErrWithCause, Error, Result},
     forward::{ForwardRequest, ForwardResult},
-    grpc::metrics::GRPC_HANDLER_COUNTER_VEC,
+    metrics::GRPC_HANDLER_COUNTER_VEC,
     read::SqlResponse,
     Context, Proxy,
 };

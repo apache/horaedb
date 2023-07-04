@@ -3,9 +3,7 @@
 use ceresdbproto::storage::{WriteRequest, WriteResponse};
 use query_engine::executor::Executor as QueryExecutor;
 
-use crate::{
-    error, error::build_ok_header, grpc::metrics::GRPC_HANDLER_COUNTER_VEC, Context, Proxy,
-};
+use crate::{error, error::build_ok_header, metrics::GRPC_HANDLER_COUNTER_VEC, Context, Proxy};
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_write(&self, ctx: Context, req: WriteRequest) -> WriteResponse {
