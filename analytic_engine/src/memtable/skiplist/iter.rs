@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Skiplist memtable iterator
 
@@ -21,8 +21,8 @@ use snafu::ResultExt;
 use crate::memtable::{
     key::{self, KeySequence},
     skiplist::{BytewiseComparator, SkiplistMemTable},
-    AppendRow, BuildRecordBatch, DecodeInternalKey, EncodeInternalKey, IterReverse, IterTimeout,
-    ProjectSchema, Result, ScanContext, ScanRequest,
+    AppendRow, BuildRecordBatch, DecodeContinuousRow, DecodeInternalKey, EncodeInternalKey,
+    IterReverse, IterTimeout, ProjectSchema, Result, ScanContext, ScanRequest,
 };
 
 /// Iterator state
@@ -147,7 +147,8 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         let mut num_rows = 0;
         while self.iter.valid() && num_rows < self.batch_size {
             if let Some(row) = self.fetch_next_row()? {
-                let row_reader = ContiguousRowReader::with_schema(&row, &self.memtable_schema);
+                let row_reader = ContiguousRowReader::try_new(&row, &self.memtable_schema)
+                    .context(DecodeContinuousRow)?;
                 let projected_row = ProjectedContiguousRow::new(row_reader, &self.projector);
 
                 trace!("Column iterator fetch next row, row:{:?}", projected_row);

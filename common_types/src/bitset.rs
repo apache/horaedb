@@ -13,16 +13,28 @@ pub struct BitSet {
 impl BitSet {
     /// Initialize a unset [`BitSet`].
     pub fn new(num_bits: usize) -> Self {
-        let len = (num_bits + 7) >> 3;
         Self {
-            buffer: vec![0; len],
+            buffer: vec![0; Self::num_bytes(num_bits)],
             num_bits,
         }
     }
 
+    #[inline]
+    pub fn num_bits(&self) -> usize {
+        self.num_bits
+    }
+
+    #[inline]
+    pub fn num_bytes(num_bits: usize) -> usize {
+        (num_bits + 7) >> 3
+    }
+
     /// Initialize directly from a buffer.
+    ///
+    /// None will be returned if the buffer's length is not enough to cover the
+    /// bits of `num_bits`.
     pub fn try_from_raw(buffer: Vec<u8>, num_bits: usize) -> Option<Self> {
-        if buffer.len() < num_bits >> 3 {
+        if buffer.len() < Self::num_bytes(num_bits) {
             None
         } else {
             Some(Self { buffer, num_bits })
@@ -74,6 +86,11 @@ impl BitSet {
         num_set_bits += count_set_bits_before(self.buffer[byte_index], bit_index) as u32;
 
         Some(num_set_bits as usize)
+    }
+
+    #[inline]
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.buffer
     }
 
     pub fn into_bytes(self) -> Vec<u8> {

@@ -856,6 +856,27 @@ impl Datum {
         Ok(Datum::Date(days))
     }
 
+    pub fn is_fixed_sized(&self) -> bool {
+        match self {
+            Datum::Null
+            | Datum::Timestamp(_)
+            | Datum::Double(_)
+            | Datum::Float(_)
+            | Datum::UInt64(_)
+            | Datum::UInt32(_)
+            | Datum::UInt16(_)
+            | Datum::UInt8(_)
+            | Datum::Int64(_)
+            | Datum::Int32(_)
+            | Datum::Int16(_)
+            | Datum::Int8(_)
+            | Datum::Boolean(_)
+            | Datum::Date(_)
+            | Datum::Time(_) => true,
+            Datum::Varbinary(_) | Datum::String(_) => false,
+        }
+    }
+
     pub fn size(&self) -> usize {
         match self {
             Datum::Null => 1,

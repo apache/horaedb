@@ -2,6 +2,7 @@
 
 //! Contains common types
 
+pub mod bitset;
 pub mod bytes;
 #[cfg(feature = "arrow")]
 pub mod column;

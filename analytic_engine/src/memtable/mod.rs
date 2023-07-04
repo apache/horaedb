@@ -48,6 +48,11 @@ pub enum Error {
         source: common_types::record_batch::Error,
     },
 
+    #[snafu(display("Failed to decode continuous row, err:{}", source))]
+    DecodeContinuousRow {
+        source: common_types::row::contiguous::Error,
+    },
+
     #[snafu(display("Failed to project memtable schema, err:{}", source))]
     ProjectSchema {
         source: common_types::projected_schema::Error,

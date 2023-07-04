@@ -1,10 +1,10 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Contiguous row.
 
 use std::{
     convert::{TryFrom, TryInto},
-    fmt, mem,
+    debug_assert_eq, fmt, mem,
     ops::{Deref, DerefMut},
     str,
 };
@@ -12,6 +12,7 @@ use std::{
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{
+    bitset::BitSet,
     datum::{Datum, DatumKind, DatumView},
     projected_schema::RowProjector,
     row::Row,
@@ -22,21 +23,35 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "String is too long to encode into row (max is {}), len:{}.\nBacktrace:\n{}",
-        MAX_STRING_LEN,
-        len,
-        backtrace
+        "String is too long to encode into row (max is {MAX_STRING_LEN}), len:{len}.\nBacktrace:\n{backtrace}",
     ))]
     StringTooLong { len: usize, backtrace: Backtrace },
+
+    #[snafu(display(
+        "Row is too long to encode(max is {MAX_ROW_LEN}), len:{len}.\nBacktrace:\n{backtrace}",
+    ))]
+    RowTooLong { len: usize, backtrace: Backtrace },
+
+    #[snafu(display("Number of null columns is missing.\nBacktrace:\n{backtrace}"))]
+    NumNullColsMissing { backtrace: Backtrace },
+
+    #[snafu(display("The raw bytes of bit set is invalid, expect_len:{expect_len}, give_len:{given_len}.\nBacktrace:\n{backtrace}"))]
+    InvalidBitSetBytes {
+        expect_len: usize,
+        given_len: usize,
+        backtrace: Backtrace,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Size to store the offset of string buffer.
-type OffsetSize = usize;
+type OffsetSize = u32;
 
 /// Max allowed string length of datum to store in a contiguous row (16 MB).
 const MAX_STRING_LEN: usize = 1024 * 1024 * 16;
+/// Max allowed length of total bytes in a contiguous row (1 GB).
+const MAX_ROW_LEN: usize = 1024 * 1024 * 1024;
 
 /// Row encoded in a contiguous buffer.
 pub trait ContiguousRow {
@@ -50,45 +65,133 @@ pub trait ContiguousRow {
     fn datum_view_at(&self, index: usize) -> DatumView;
 }
 
-pub struct ContiguousRowReader<'a, T> {
-    inner: &'a T,
-    byte_offsets: &'a [usize],
-    string_buffer_offset: usize,
+pub enum ContiguousRowReader<'a, T> {
+    NoNulls(ContiguousRowReaderNoNulls<'a, T>),
+    WithNulls(ContiguousRowReaderWithNulls<'a, T>),
 }
 
-impl<'a, T> ContiguousRowReader<'a, T> {
-    pub fn with_schema(inner: &'a T, schema: &'a Schema) -> Self {
-        Self {
-            inner,
-            byte_offsets: schema.byte_offsets(),
-            string_buffer_offset: schema.string_buffer_offset(),
+pub struct ContiguousRowReaderNoNulls<'a, T> {
+    inner: &'a T,
+    byte_offsets: &'a [usize],
+    datum_offset: usize,
+}
+
+pub struct ContiguousRowReaderWithNulls<'a, T> {
+    inner: &'a T,
+    byte_offsets: Vec<isize>,
+    datum_offset: usize,
+}
+
+impl<'a, T: Deref<Target = [u8]>> ContiguousRowReader<'a, T> {
+    pub fn try_new(inner: &'a T, schema: &'a Schema) -> Result<Self> {
+        let byte_offsets = schema.byte_offsets();
+        ensure!(inner.len() >= 4, NumNullColsMissing);
+        let num_null_cols = u32::from_ne_bytes(inner[0..4].try_into().unwrap()) as usize;
+        if num_null_cols > 0 {
+            ContiguousRowReaderWithNulls::try_new(inner, schema, num_null_cols).map(Self::WithNulls)
+        } else {
+            let reader = ContiguousRowReaderNoNulls {
+                inner,
+                byte_offsets,
+                datum_offset: 4,
+            };
+            Ok(Self::NoNulls(reader))
         }
     }
 }
 
 impl<'a, T: Deref<Target = [u8]>> ContiguousRow for ContiguousRowReader<'a, T> {
     fn num_datum_views(&self) -> usize {
+        match self {
+            Self::NoNulls(v) => v.num_datum_views(),
+            Self::WithNulls(v) => v.num_datum_views(),
+        }
+    }
+
+    fn datum_view_at(&self, index: usize) -> DatumView {
+        match self {
+            Self::NoNulls(v) => v.datum_view_at(index),
+            Self::WithNulls(v) => v.datum_view_at(index),
+        }
+    }
+}
+
+impl<'a, T: Deref<Target = [u8]>> ContiguousRowReaderWithNulls<'a, T> {
+    fn try_new(inner: &'a T, schema: &'a Schema, num_null_cols: usize) -> Result<Self> {
+        assert!(num_null_cols > 0);
+        let bit_set_size = BitSet::num_bytes(num_null_cols);
+        let bit_set_buf = &inner[4..];
+        ensure!(
+            bit_set_buf.len() >= bit_set_size,
+            InvalidBitSetBytes {
+                expect_len: bit_set_size,
+                given_len: bit_set_buf.len()
+            }
+        );
+
+        let nulls_bit_set =
+            BitSet::try_from_raw(bit_set_buf[..bit_set_size].to_vec(), num_null_cols).unwrap();
+
+        let mut col_offsets = Vec::with_capacity(schema.num_columns());
+        let mut acc_null_bytes = 0;
+        for (index, expect_offset) in schema.byte_offsets().iter().enumerate() {
+            match nulls_bit_set.is_set(index) {
+                Some(true) => col_offsets.push((expect_offset - acc_null_bytes) as isize),
+                Some(false) => {
+                    col_offsets.push(-1);
+                    acc_null_bytes += byte_size_of_datum(&schema.column(index).data_type);
+                }
+                None => col_offsets.push(-1),
+            }
+        }
+
+        Ok(Self {
+            inner,
+            byte_offsets: col_offsets,
+            datum_offset: 4 + bit_set_size,
+        })
+    }
+}
+
+impl<'a, T: Deref<Target = [u8]>> ContiguousRow for ContiguousRowReaderWithNulls<'a, T> {
+    fn num_datum_views(&self) -> usize {
         self.byte_offsets.len()
     }
 
     fn datum_view_at(&self, index: usize) -> DatumView<'a> {
         let offset = self.byte_offsets[index];
-        let buf = &self.inner[offset..];
-
-        // Get datum kind, if the datum kind is unknown, returns null.
-        let datum_kind = match DatumKind::try_from(buf[0]) {
-            Ok(v) => v,
-            Err(_) => return DatumView::Null,
-        };
-
-        // Advance 1 byte to skip the header byte.
-        let datum_buf = &buf[1..];
-        // If no string column in this schema, the string buffer offset should
-        // equal to the buffer len, and string buf is an empty slice.
-        let string_buf = &self.inner[self.string_buffer_offset..];
-
-        must_read_view(&datum_kind, datum_buf, string_buf)
+        if offset < 0 {
+            DatumView::Null
+        } else {
+            let datum_offset = self.datum_offset + offset as usize;
+            let datum_buf = &self.inner[datum_offset..];
+            datum_view_at(datum_buf, self.inner)
+        }
     }
+}
+
+impl<'a, T: Deref<Target = [u8]>> ContiguousRow for ContiguousRowReaderNoNulls<'a, T> {
+    fn num_datum_views(&self) -> usize {
+        self.byte_offsets.len()
+    }
+
+    fn datum_view_at(&self, index: usize) -> DatumView<'a> {
+        let offset = self.byte_offsets[index];
+        let datum_buf = &self.inner[self.datum_offset + offset..];
+        datum_view_at(datum_buf, self.inner)
+    }
+}
+
+fn datum_view_at<'a>(datum_buf: &'a [u8], string_buf: &'a [u8]) -> DatumView<'a> {
+    // Get datum kind, if the datum kind is unknown, returns null.
+    let datum_kind = match DatumKind::try_from(datum_buf[0]) {
+        Ok(v) => v,
+        Err(_) => return DatumView::Null,
+    };
+
+    // Advance 1 byte to skip the header byte.
+    let datum_buf = &datum_buf[1..];
+    must_read_view(&datum_kind, datum_buf, string_buf)
 }
 
 /// Contiguous row with projection information.
@@ -172,106 +275,116 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
     fn write_datum(
         inner: &mut T,
         datum: &Datum,
-        byte_offset: usize,
+        offset: &mut usize,
         next_string_offset: &mut usize,
     ) -> Result<()> {
-        let datum_offset = byte_offset + 1;
-
         match datum {
             // Already filled by null, nothing to do.
-            Datum::Null => (),
+            Datum::Null => {}
             Datum::Timestamp(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::Timestamp.into_u8());
+                Self::write_byte_to_offset(inner, offset, DatumKind::Timestamp.into_u8());
                 let value_buf = v.as_i64().to_ne_bytes();
-                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
+                Self::write_slice_to_offset(inner, offset, &value_buf);
             }
             Datum::Double(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::Double.into_u8());
+                Self::write_byte_to_offset(inner, offset, DatumKind::Double.into_u8());
                 let value_buf = v.to_ne_bytes();
-                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
+                Self::write_slice_to_offset(inner, offset, &value_buf);
             }
             Datum::Float(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::Float.into_u8());
+                Self::write_byte_to_offset(inner, offset, DatumKind::Float.into_u8());
                 let value_buf = v.to_ne_bytes();
-                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
+                Self::write_slice_to_offset(inner, offset, &value_buf);
             }
             Datum::Varbinary(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::Varbinary.into_u8());
-                let value_buf = next_string_offset.to_ne_bytes();
-                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
-                // Use u32 to store length of string.
+                Self::write_byte_to_offset(inner, offset, DatumKind::Varbinary.into_u8());
+
+                ensure!(
+                    *next_string_offset <= MAX_ROW_LEN,
+                    StringTooLong {
+                        len: *next_string_offset
+                    }
+                );
+                // Encode the string offset as a u32.
+                let value_buf = (*next_string_offset as u32).to_ne_bytes();
+                Self::write_slice_to_offset(inner, offset, &value_buf);
+
+                // Encode length of string as a u32.
                 *next_string_offset += mem::size_of::<u32>() + v.len();
-
                 ensure!(v.len() <= MAX_STRING_LEN, StringTooLong { len: v.len() });
-
                 let string_len = v.len() as u32;
-                inner.append_slice(&string_len.to_ne_bytes());
-                inner.append_slice(v);
+                Self::write_slice_to_offset(inner, next_string_offset, &string_len.to_ne_bytes());
+                Self::write_slice_to_offset(inner, next_string_offset, v);
             }
             Datum::String(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::String.into_u8());
-                let value_buf = next_string_offset.to_ne_bytes();
-                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
-                // Use u32 to store length of string.
+                Self::write_byte_to_offset(inner, offset, DatumKind::String.into_u8());
+                ensure!(
+                    *next_string_offset <= MAX_ROW_LEN,
+                    StringTooLong {
+                        len: *next_string_offset
+                    }
+                );
+                // Encode the string offset as a u32.
+                let value_buf = (*next_string_offset as u32).to_ne_bytes();
+                Self::write_slice_to_offset(inner, offset, &value_buf);
+                // Encode length of string as a u32.
                 *next_string_offset += mem::size_of::<u32>() + v.len();
-
                 ensure!(v.len() <= MAX_STRING_LEN, StringTooLong { len: v.len() });
-
-                let string_len = v.len() as u32;
-                inner.append_slice(&string_len.to_ne_bytes());
-                inner.append_slice(v.as_bytes());
+                let bytes_len = v.len() as u32;
+                Self::write_slice_to_offset(inner, next_string_offset, &bytes_len.to_ne_bytes());
+                Self::write_slice_to_offset(inner, next_string_offset, v.as_bytes());
             }
             Datum::UInt64(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::UInt64.into_u8());
+                Self::write_byte_to_offset(inner, offset, DatumKind::UInt64.into_u8());
                 let value_buf = v.to_ne_bytes();
-                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
+                Self::write_slice_to_offset(inner, offset, &value_buf);
             }
             Datum::UInt32(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::UInt32.into_u8());
+                Self::write_byte_to_offset(inner, offset, DatumKind::UInt32.into_u8());
                 let value_buf = v.to_ne_bytes();
-                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
+                Self::write_slice_to_offset(inner, offset, &value_buf);
             }
             Datum::UInt16(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::UInt16.into_u8());
+                Self::write_byte_to_offset(inner, offset, DatumKind::UInt16.into_u8());
                 let value_buf = v.to_ne_bytes();
-                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
+                Self::write_slice_to_offset(inner, offset, &value_buf);
             }
             Datum::UInt8(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::UInt8.into_u8());
-                Self::write_slice_to_offset(inner, datum_offset, &[*v]);
+                Self::write_byte_to_offset(inner, offset, DatumKind::UInt8.into_u8());
+                Self::write_slice_to_offset(inner, offset, &[*v]);
             }
             Datum::Int64(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::Int64.into_u8());
+                Self::write_byte_to_offset(inner, offset, DatumKind::Int64.into_u8());
                 let value_buf = v.to_ne_bytes();
-                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
+                Self::write_slice_to_offset(inner, offset, &value_buf);
             }
             Datum::Int32(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::Int32.into_u8());
+                Self::write_byte_to_offset(inner, offset, DatumKind::Int32.into_u8());
                 let value_buf = v.to_ne_bytes();
-                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
+                Self::write_slice_to_offset(inner, offset, &value_buf);
             }
             Datum::Int16(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::Int16.into_u8());
+                Self::write_byte_to_offset(inner, offset, DatumKind::Int16.into_u8());
                 let value_buf = v.to_ne_bytes();
-                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
+                Self::write_slice_to_offset(inner, offset, &value_buf);
             }
             Datum::Int8(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::Int8.into_u8());
-                Self::write_slice_to_offset(inner, datum_offset, &[*v as u8]);
+                Self::write_byte_to_offset(inner, offset, DatumKind::Int8.into_u8());
+                Self::write_slice_to_offset(inner, offset, &[*v as u8]);
             }
             Datum::Boolean(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::Boolean.into_u8());
-                Self::write_slice_to_offset(inner, datum_offset, &[*v as u8]);
+                Self::write_byte_to_offset(inner, offset, DatumKind::Boolean.into_u8());
+                Self::write_slice_to_offset(inner, offset, &[*v as u8]);
             }
             Datum::Date(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::Date.into_u8());
+                Self::write_byte_to_offset(inner, offset, DatumKind::Date.into_u8());
                 let value_buf = v.to_ne_bytes();
-                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
+                Self::write_slice_to_offset(inner, offset, &value_buf);
             }
             Datum::Time(v) => {
-                Self::write_byte_to_offset(inner, byte_offset, DatumKind::Time.into_u8());
+                Self::write_byte_to_offset(inner, offset, DatumKind::Time.into_u8());
                 let value_buf = v.to_ne_bytes();
-                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
+                Self::write_slice_to_offset(inner, offset, &value_buf);
             }
         }
 
@@ -280,45 +393,137 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
 
     /// Write a row to the buffer, the buffer will be reset first.
     pub fn write_row(&mut self, row: &Row) -> Result<()> {
-        let datum_buffer_len = self.table_schema.string_buffer_offset();
-        // Reset the buffer and fill the buffer by null, now new slice will be
-        // appended to the string buffer.
-        self.inner
-            .reset(datum_buffer_len, DatumKind::Null.into_u8());
-
-        // Offset to next string in string buffer.
-        let mut next_string_offset: OffsetSize = 0;
+        let mut num_null_cols = 0;
         for index_in_table in 0..self.table_schema.num_columns() {
             if let Some(writer_index) = self.index_in_writer.column_index_in_writer(index_in_table)
             {
                 let datum = &row[writer_index];
-                let byte_offset = self.table_schema.byte_offset(index_in_table);
-
-                // Write datum bytes to the buffer.
-                Self::write_datum(self.inner, datum, byte_offset, &mut next_string_offset)?;
+                if datum.is_null() {
+                    num_null_cols += 1;
+                }
+            } else {
+                num_null_cols += 1;
             }
-            // Column not in row is already filled by null.
         }
+
+        if num_null_cols > 0 {
+            self.write_row_with_nulls(row)
+        } else {
+            self.write_row_without_nulls(row)
+        }
+    }
+
+    fn write_row_with_nulls(&mut self, row: &Row) -> Result<()> {
+        let mut encoded_len = 0;
+        let mut num_bytes_of_string = 0;
+        for index_in_table in 0..self.table_schema.num_columns() {
+            if let Some(writer_index) = self.index_in_writer.column_index_in_writer(index_in_table)
+            {
+                let datum = &row[writer_index];
+                // No need to store null column.
+                if !datum.is_null() {
+                    encoded_len += byte_size_of_datum(&datum.kind());
+                }
+
+                if !datum.is_fixed_sized() {
+                    // For the datum content and the length of it
+                    num_bytes_of_string += datum.size() + 4;
+                }
+            }
+        }
+
+        let num_bits = self.table_schema.num_columns();
+        let mut nulls_bit_set = BitSet::new(num_bits);
+        // The flag for the BitSet, denoting the number of the columns.
+        encoded_len += 4 + nulls_bit_set.as_bytes().len();
+
+        // Pre-allocate the memory.
+        self.inner.reset(encoded_len, 0);
+        let mut next_string_offset = encoded_len - num_bytes_of_string;
+        let mut datum_offset = 4 + nulls_bit_set.as_bytes().len();
+        for index_in_table in 0..self.table_schema.num_columns() {
+            if let Some(writer_index) = self.index_in_writer.column_index_in_writer(index_in_table)
+            {
+                let datum = &row[writer_index];
+                // Write datum bytes to the buffer.
+                Self::write_datum(
+                    self.inner,
+                    datum,
+                    &mut datum_offset,
+                    &mut next_string_offset,
+                )?;
+
+                nulls_bit_set.set(writer_index);
+            }
+        }
+
+        // Storing the number of null columns as u32 is enough.
+        Self::write_slice_to_offset(self.inner, &mut 0, &(num_bits as u32).to_ne_bytes());
+        Self::write_slice_to_offset(self.inner, &mut 4, nulls_bit_set.as_bytes());
+
+        debug_assert_eq!(datum_offset, encoded_len - num_bytes_of_string);
+        debug_assert_eq!(next_string_offset, encoded_len);
 
         Ok(())
     }
 
-    #[inline]
-    fn write_byte_to_offset(inner: &mut T, offset: usize, value: u8) {
-        inner[offset] = value;
+    fn write_row_without_nulls(&mut self, row: &Row) -> Result<()> {
+        let datum_buffer_len = self.table_schema.string_buffer_offset() + 4;
+        let mut encoded_len = datum_buffer_len;
+        for index_in_table in 0..self.table_schema.num_columns() {
+            if let Some(writer_index) = self.index_in_writer.column_index_in_writer(index_in_table)
+            {
+                let datum = &row[writer_index];
+                if !datum.is_fixed_sized() {
+                    // For the datum content and the length of it
+                    encoded_len += datum.size() + 4;
+                }
+            }
+        }
+
+        // Pre-allocate memory for row.
+        self.inner.reset(encoded_len, DatumKind::Null.into_u8());
+
+        // Offset to next string in string buffer.
+        let mut next_string_offset = datum_buffer_len;
+        let mut datum_offset = 4;
+        for index_in_table in 0..self.table_schema.num_columns() {
+            if let Some(writer_index) = self.index_in_writer.column_index_in_writer(index_in_table)
+            {
+                let datum = &row[writer_index];
+                // Write datum bytes to the buffer.
+                Self::write_datum(
+                    self.inner,
+                    datum,
+                    &mut datum_offset,
+                    &mut next_string_offset,
+                )?;
+            }
+        }
+
+        debug_assert_eq!(datum_offset, datum_buffer_len);
+        debug_assert_eq!(next_string_offset, encoded_len);
+        Ok(())
     }
 
     #[inline]
-    fn write_slice_to_offset(inner: &mut T, offset: usize, value_buf: &[u8]) {
-        let dst = &mut inner[offset..offset + value_buf.len()];
+    fn write_byte_to_offset(inner: &mut T, offset: &mut usize, value: u8) {
+        inner[*offset] = value;
+        *offset += 1;
+    }
+
+    #[inline]
+    fn write_slice_to_offset(inner: &mut T, offset: &mut usize, value_buf: &[u8]) {
+        let dst = &mut inner[*offset..*offset + value_buf.len()];
         dst.copy_from_slice(value_buf);
+        *offset += value_buf.len();
     }
 }
 
 /// The byte size to encode the datum of this kind in memory.
 ///
 /// Returns the (datum size + 1) for header. For integer types, the datum
-/// size is the memory size of the interger type. For string types, the
+/// size is the memory size of the integer type. For string types, the
 /// datum size is the memory size to hold the offset.
 pub(crate) fn byte_size_of_datum(kind: &DatumKind) -> usize {
     let datum_size = match kind {
@@ -433,7 +638,7 @@ fn must_read_bytes<'a>(datum_buf: &'a [u8], string_buf: &'a [u8]) -> &'a [u8] {
     let value_buf = datum_buf[..mem::size_of::<OffsetSize>()]
         .try_into()
         .unwrap();
-    let offset = OffsetSize::from_ne_bytes(value_buf);
+    let offset = OffsetSize::from_ne_bytes(value_buf) as usize;
     let string_buf = &string_buf[offset..];
 
     // Read len of the string.
@@ -491,7 +696,7 @@ mod tests {
 
             writer.write_row(&row).unwrap();
 
-            let reader = ContiguousRowReader::with_schema(&buf, &schema);
+            let reader = ContiguousRowReader::try_new(&buf, &schema).unwrap();
             check_contiguous_row(&row, reader, None);
         }
     }
@@ -513,7 +718,7 @@ mod tests {
 
             writer.write_row(&row).unwrap();
 
-            let source_row = ContiguousRowReader::with_schema(&buf, &schema);
+            let source_row = ContiguousRowReader::try_new(&buf, &schema).unwrap();
             let projected_row = ProjectedContiguousRow::new(source_row, &row_projected_schema);
             check_contiguous_row(&row, projected_row, Some(projection.clone()));
         }
