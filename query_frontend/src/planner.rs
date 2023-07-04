@@ -367,12 +367,10 @@ pub fn build_column_schema(
     column_name: &str,
     data_type: DatumKind,
     is_tag: bool,
-    is_dictionary: bool,
 ) -> Result<ColumnSchema> {
     let builder = column_schema::Builder::new(column_name.to_string(), data_type)
         .is_nullable(true)
-        .is_tag(is_tag)
-        .is_dictionary(is_dictionary);
+        .is_tag(is_tag);
 
     builder.build().with_context(|| InvalidColumnSchema {
         column_name: column_name.to_string(),
@@ -431,21 +429,10 @@ pub fn build_schema_from_write_table_request(
             let data_type = try_get_data_type_from_value(tag_value)?;
 
             if let Some(column_schema) = name_column_map.get(tag_name) {
-                // TODO(tanruixiang): is_dictionary set true or false ? Do we need modify the
-                // pb?
-                ensure_data_type_compatible(
-                    table,
-                    tag_name,
-                    true,
-                    false,
-                    data_type,
-                    column_schema,
-                )?;
+                ensure_data_type_compatible(table, tag_name, true, data_type, column_schema)?;
             }
 
-            // TODO(tanruixiang): is_dictionary set true or false ? Do we need modify the
-            // pb?
-            let column_schema = build_column_schema(tag_name, data_type, true, false)?;
+            let column_schema = build_column_schema(tag_name, data_type, true)?;
             name_column_map.insert(tag_name, column_schema);
         }
 
@@ -471,18 +458,15 @@ pub fn build_schema_from_write_table_request(
                     let data_type = try_get_data_type_from_value(field_value)?;
 
                     if let Some(column_schema) = name_column_map.get(field_name) {
-                        // TODO(tanruixiang):  is_dictionary set true or false ?
                         ensure_data_type_compatible(
                             table,
                             field_name,
-                            false,
                             false,
                             data_type,
                             column_schema,
                         )?;
                     }
-                    // TODO(tanruixiang):  is_dictionary set true or false ?
-                    let column_schema = build_column_schema(field_name, data_type, false, false)?;
+                    let column_schema = build_column_schema(field_name, data_type, false)?;
                     name_column_map.insert(field_name, column_schema);
                 }
             }
@@ -528,11 +512,9 @@ fn ensure_data_type_compatible(
     table_name: &str,
     column_name: &str,
     is_tag: bool,
-    _is_dictionary: bool,
     data_type: DatumKind,
     column_schema: &ColumnSchema,
 ) -> Result<()> {
-    // TODO(tanruixiang) : how to check is_dictionary ?
     ensure!(
         column_schema.is_tag == is_tag,
         InvalidWriteEntry {

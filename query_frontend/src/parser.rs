@@ -532,7 +532,6 @@ impl<'a> Parser<'a> {
                 Token::make_keyword(TAG),
             ])))
         } else if self.consume_token(DICTIONARY) {
-            // Support DICTIONARY for ceresdb
             Ok(Some(ColumnOption::DialectSpecific(vec![
                 Token::make_keyword(DICTIONARY),
             ])))

@@ -463,6 +463,7 @@ impl From<DictionaryArray<Int32Type>> for StringDictionaryColumn {
         Self(array)
     }
 }
+
 impl From<&DictionaryArray<Int32Type>> for StringDictionaryColumn {
     fn from(array_ref: &DictionaryArray<Int32Type>) -> Self {
         let array_data = array_ref.into_data();
@@ -470,6 +471,7 @@ impl From<&DictionaryArray<Int32Type>> for StringDictionaryColumn {
         Self(array)
     }
 }
+
 impl StringDictionaryColumn {
     fn to_arrow_array(&self) -> DictionaryArray<Int32Type> {
         let array_data = self.0.clone().into_data();
@@ -533,6 +535,7 @@ impl StringColumn {
     }
 }
 
+/// dictionary encode type is difference from other types
 impl StringDictionaryColumn {
     /// Create a column that all values are null.
     fn new_null(num_rows: usize) -> Self {
@@ -768,26 +771,13 @@ macro_rules! define_column_block {
                     let column = match datum_kind {
                         DatumKind::Null => ColumnBlock::Null(NullColumn::new_null(array.len())),
                         DatumKind::String => {
-                            if !is_dictionary {
-                                let mills_array;
-                                let cast_column = match array.data_type() {
-                                    DataType::Timestamp(TimeUnit::Nanosecond, None) => {
-                                        mills_array = cast_nanosecond_to_mills(array)?;
-                                        cast_array(datum_kind, &mills_array)?
-                                    }
-                                    _ => cast_array(datum_kind, array)?,
-                                };
-                                ColumnBlock::String(StringColumn::from(cast_column))
-                            } else {
-                                let mills_array;
-                                let cast_column = match array.data_type() {
-                                    DataType::Timestamp(TimeUnit::Nanosecond, None) => {
-                                        mills_array = cast_nanosecond_to_mills(array)?;
-                                        cast_array(datum_kind, &mills_array)?
-                                    }
-                                    _ => cast_array(datum_kind, array)?,
-                                };
+                            if is_dictionary {
+                                let cast_column = cast_array(datum_kind, array)?;
                                 ColumnBlock::StringDictionary(StringDictionaryColumn::from(cast_column))
+
+                            } else {
+                                let cast_column = cast_array(datum_kind, array)?;
+                                ColumnBlock::String(StringColumn::from(cast_column))
                             }
                         },
                         $(

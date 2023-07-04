@@ -684,8 +684,7 @@ fn find_new_columns(
             );
 
             let tag_name = &tag_names[name_index];
-            // TODO(tanruixiang):  is_dictionary set true or false ?
-            build_column(&mut columns, schema, tag_name, &tag.value, true, false)?;
+            build_column(&mut columns, schema, tag_name, &tag.value, true)?;
         }
 
         // Parse fields.
@@ -701,8 +700,7 @@ fn find_new_columns(
                     }
                 );
                 let field_name = &field_names[field.name_index as usize];
-                // TODO(tanruixiang):  is_dictionary set true or false ?
-                build_column(&mut columns, schema, field_name, &field.value, false, false)?;
+                build_column(&mut columns, schema, field_name, &field.value, false)?;
             }
         }
     }
@@ -716,7 +714,6 @@ fn build_column<'a>(
     name: &'a str,
     value: &Option<Value>,
     is_tag: bool,
-    is_dictionary: bool,
 ) -> Result<()> {
     // Skip adding columns, the following cases:
     // 1. Column already exists.
@@ -742,7 +739,7 @@ fn build_column<'a>(
             msg: "Failed to get data type",
         })?;
 
-    let column_schema = build_column_schema(name, data_type, is_tag, is_dictionary)
+    let column_schema = build_column_schema(name, data_type, is_tag)
         .box_err()
         .context(Internal {
             msg: "Failed to build column schema",
