@@ -220,6 +220,7 @@ pub fn build_schema_for_cpu() -> Schema {
     builder.build().unwrap()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn build_row_for_dictionary(
     key1: &[u8],
     key2: i64,
