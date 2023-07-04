@@ -9,7 +9,7 @@ use ceresdbproto::storage::{
 };
 use common_types::request_id::RequestId;
 use common_util::{error::BoxError, time::InstantExt};
-use datafusion::common::tree_node::TreeNode;
+
 use futures::FutureExt;
 use http::StatusCode;
 use interpreters::interpreter::Output;
@@ -18,7 +18,6 @@ use query_engine::executor::Executor as QueryExecutor;
 use query_frontend::{
     frontend,
     frontend::{Context as SqlContext, Frontend},
-    plan::Plan,
     provider::CatalogMetaProvider,
 };
 use router::endpoint::Endpoint;
