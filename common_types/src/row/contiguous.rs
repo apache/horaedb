@@ -86,9 +86,9 @@ impl<'a, T: Deref<Target = [u8]>> ContiguousRowReader<'a, T> {
     pub fn try_new(inner: &'a T, schema: &'a Schema) -> Result<Self> {
         let byte_offsets = schema.byte_offsets();
         ensure!(inner.len() >= 4, NumNullColsMissing);
-        let num_null_cols = u32::from_ne_bytes(inner[0..4].try_into().unwrap()) as usize;
-        if num_null_cols > 0 {
-            ContiguousRowReaderWithNulls::try_new(inner, schema, num_null_cols).map(Self::WithNulls)
+        let num_bits = u32::from_ne_bytes(inner[0..4].try_into().unwrap()) as usize;
+        if num_bits > 0 {
+            ContiguousRowReaderWithNulls::try_new(inner, schema, num_bits).map(Self::WithNulls)
         } else {
             let reader = ContiguousRowReaderNoNulls {
                 inner,
@@ -117,9 +117,9 @@ impl<'a, T: Deref<Target = [u8]>> ContiguousRow for ContiguousRowReader<'a, T> {
 }
 
 impl<'a, T: Deref<Target = [u8]>> ContiguousRowReaderWithNulls<'a, T> {
-    fn try_new(inner: &'a T, schema: &'a Schema, num_null_cols: usize) -> Result<Self> {
-        assert!(num_null_cols > 0);
-        let bit_set_size = BitSet::num_bytes(num_null_cols);
+    fn try_new(inner: &'a T, schema: &'a Schema, num_bits: usize) -> Result<Self> {
+        assert!(num_bits > 0);
+        let bit_set_size = BitSet::num_bytes(num_bits);
         let bit_set_buf = &inner[4..];
         ensure!(
             bit_set_buf.len() >= bit_set_size,
@@ -130,13 +130,13 @@ impl<'a, T: Deref<Target = [u8]>> ContiguousRowReaderWithNulls<'a, T> {
         );
 
         let nulls_bit_set =
-            BitSet::try_from_raw(bit_set_buf[..bit_set_size].to_vec(), num_null_cols).unwrap();
+            BitSet::try_from_raw(bit_set_buf[..bit_set_size].to_vec(), num_bits).unwrap();
 
         let mut col_offsets = Vec::with_capacity(schema.num_columns());
         let mut acc_null_bytes = 0;
         for (index, expect_offset) in schema.byte_offsets().iter().enumerate() {
             match nulls_bit_set.is_set(index) {
-                Some(true) => col_offsets.push((expect_offset - acc_null_bytes) as isize),
+                Some(true) => col_offsets.push((*expect_offset - acc_null_bytes) as isize),
                 Some(false) => {
                     col_offsets.push(-1);
                     acc_null_bytes += byte_size_of_datum(&schema.column(index).data_type);
@@ -310,7 +310,6 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                 Self::write_slice_to_offset(inner, offset, &value_buf);
 
                 // Encode length of string as a u32.
-                *next_string_offset += mem::size_of::<u32>() + v.len();
                 ensure!(v.len() <= MAX_STRING_LEN, StringTooLong { len: v.len() });
                 let string_len = v.len() as u32;
                 Self::write_slice_to_offset(inner, next_string_offset, &string_len.to_ne_bytes());
@@ -327,8 +326,6 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                 // Encode the string offset as a u32.
                 let value_buf = (*next_string_offset as u32).to_ne_bytes();
                 Self::write_slice_to_offset(inner, offset, &value_buf);
-                // Encode length of string as a u32.
-                *next_string_offset += mem::size_of::<u32>() + v.len();
                 ensure!(v.len() <= MAX_STRING_LEN, StringTooLong { len: v.len() });
                 let bytes_len = v.len() as u32;
                 Self::write_slice_to_offset(inner, next_string_offset, &bytes_len.to_ne_bytes());
@@ -427,7 +424,9 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
 
                 if !datum.is_fixed_sized() {
                     // For the datum content and the length of it
-                    num_bytes_of_string += datum.size() + 4;
+                    let size = datum.size() + 4;
+                    num_bytes_of_string += size;
+                    encoded_len += size;
                 }
             }
         }
@@ -453,7 +452,9 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                     &mut next_string_offset,
                 )?;
 
-                nulls_bit_set.set(writer_index);
+                if !datum.is_null() {
+                    nulls_bit_set.set(writer_index);
+                }
             }
         }
 
@@ -498,6 +499,9 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                     &mut datum_offset,
                     &mut next_string_offset,
                 )?;
+            } else {
+                datum_offset +=
+                    byte_size_of_datum(&self.table_schema.column(index_in_table).data_type);
             }
         }
 

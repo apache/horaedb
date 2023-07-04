@@ -128,9 +128,13 @@ fn default_value_schema_builder() -> schema::Builder {
         .unwrap()
 }
 
-/// Build a schema for testing:
-/// (key1(varbinary), key2(timestamp), field1(double), field2(string),
-/// field3(date), field4(time))
+/// Build a schema for testing, which contains 6 columns:
+/// - key1(varbinary)
+/// - key2(timestamp)
+/// - field1(double)
+/// - field2(string)
+/// - field3(Time)
+/// - field4(Date)
 pub fn build_schema() -> Schema {
     base_schema_builder().build().unwrap()
 }
