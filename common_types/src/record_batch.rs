@@ -318,7 +318,23 @@ fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch>
                     DataType::Timestamp(TimeUnit::Millisecond, None),
                     field.is_nullable(),
                 ),
-                _ => Field::new(field.name(), field.data_type().clone(), field.is_nullable()),
+                _ => {
+                    let (dict_id, dict_is_ordered) = {
+                        match field.data_type() {
+                            DataType::Dictionary(_, _) => {
+                                (field.dict_id().unwrap(), field.dict_is_ordered().unwrap())
+                            }
+                            _ => (0, false),
+                        }
+                    };
+                    Field::new_dict(
+                        field.name(),
+                        field.data_type().clone(),
+                        field.is_nullable(),
+                        dict_id,
+                        dict_is_ordered,
+                    )
+                }
             };
             f.set_metadata(field.metadata().clone());
             f
@@ -477,7 +493,13 @@ impl RecordBatchWithKeyBuilder {
         let builders = schema_with_key
             .columns()
             .iter()
-            .map(|column_schema| ColumnBlockBuilder::with_capacity(&column_schema.data_type, 0))
+            .map(|column_schema| {
+                ColumnBlockBuilder::with_capacity(
+                    &column_schema.data_type,
+                    0,
+                    column_schema.is_dictionary,
+                )
+            })
             .collect();
         Self {
             schema_with_key,
@@ -490,7 +512,11 @@ impl RecordBatchWithKeyBuilder {
             .columns()
             .iter()
             .map(|column_schema| {
-                ColumnBlockBuilder::with_capacity(&column_schema.data_type, capacity)
+                ColumnBlockBuilder::with_capacity(
+                    &column_schema.data_type,
+                    capacity,
+                    column_schema.is_dictionary,
+                )
             })
             .collect();
         Self {
@@ -660,9 +686,12 @@ impl ArrowRecordBatchProjector {
                 }
                 None => {
                     // Need to push row with specific type.
-                    let null_block =
-                        ColumnBlock::new_null_with_type(&column_schema.data_type, num_rows)
-                            .context(CreateColumnBlock)?;
+                    let null_block = ColumnBlock::new_null_with_type(
+                        &column_schema.data_type,
+                        num_rows,
+                        column_schema.is_dictionary,
+                    )
+                    .context(CreateColumnBlock)?;
                     column_blocks.push(null_block);
                 }
             }

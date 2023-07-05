@@ -171,6 +171,11 @@ impl DatumKind {
         )
     }
 
+    /// Can column of this datum kind used as dictionary encode column
+    pub fn is_dictionary_kind(&self) -> bool {
+        matches!(self, DatumKind::String)
+    }
+
     pub fn unsign_kind(&self) -> Option<Self> {
         match self {
             Self::Int64 | Self::UInt64 => Some(Self::UInt64),
@@ -1138,6 +1143,7 @@ pub mod arrow_convert {
                 DataType::Boolean => Some(Self::Boolean),
                 DataType::Date32 => Some(Self::Date),
                 DataType::Time64(TimeUnit::Nanosecond) => Some(Self::Time),
+                DataType::Dictionary(_, _) => Some(Self::String),
                 DataType::Float16
                 | DataType::LargeUtf8
                 | DataType::LargeBinary
@@ -1153,7 +1159,6 @@ pub mod arrow_convert {
                 | DataType::Date64
                 | DataType::Interval(_)
                 | DataType::Duration(_)
-                | DataType::Dictionary(_, _)
                 | DataType::Decimal128(_, _)
                 | DataType::Decimal256(_, _)
                 | DataType::RunEndEncoded(_, _)
@@ -1235,6 +1240,7 @@ pub mod arrow_convert {
                 }
                 ScalarValue::Date32(v) => v.map(Datum::Date),
                 ScalarValue::Time64Nanosecond(v) => v.map(Datum::Time),
+                ScalarValue::Dictionary(_, literal) => Datum::from_scalar_value(literal),
                 ScalarValue::List(_, _)
                 | ScalarValue::Date64(_)
                 | ScalarValue::Time32Second(_)
@@ -1248,8 +1254,7 @@ pub mod arrow_convert {
                 | ScalarValue::Struct(_, _)
                 | ScalarValue::Decimal128(_, _, _)
                 | ScalarValue::Null
-                | ScalarValue::IntervalMonthDayNano(_)
-                | ScalarValue::Dictionary(_, _) => None,
+                | ScalarValue::IntervalMonthDayNano(_) => None,
             }
         }
     }
@@ -1281,6 +1286,7 @@ pub mod arrow_convert {
                 ScalarValue::TimestampMillisecond(v, _) => {
                     v.map(|v| DatumView::Timestamp(Timestamp::new(v)))
                 }
+                ScalarValue::Dictionary(_, literal) => DatumView::from_scalar_value(literal),
                 ScalarValue::List(_, _)
                 | ScalarValue::Date64(_)
                 | ScalarValue::Time32Second(_)
@@ -1294,8 +1300,7 @@ pub mod arrow_convert {
                 | ScalarValue::Struct(_, _)
                 | ScalarValue::Decimal128(_, _, _)
                 | ScalarValue::Null
-                | ScalarValue::IntervalMonthDayNano(_)
-                | ScalarValue::Dictionary(_, _) => None,
+                | ScalarValue::IntervalMonthDayNano(_) => None,
             }
         }
     }

@@ -129,7 +129,8 @@ fn default_value_schema_builder() -> schema::Builder {
 }
 
 /// Build a schema for testing:
-/// (key1(varbinary), key2(timestamp), field1(double), field2(string))
+/// (key1(varbinary), key2(timestamp), field1(double), field2(string),
+/// field3(date), field4(time))
 pub fn build_schema() -> Schema {
     base_schema_builder().build().unwrap()
 }
@@ -143,6 +144,32 @@ pub fn build_schema() -> Schema {
 /// field5(uint32, default field4 + 2)
 pub fn build_default_value_schema() -> Schema {
     default_value_schema_builder().build().unwrap()
+}
+
+/// Build a schema for testing:
+/// (key1(varbinary), key2(timestamp), field1(double), field2(string),
+/// field3(date), field4(time)) tag1(string dictionary), tag2(string dictionary)
+pub fn build_schema_with_dictionary() -> Schema {
+    let builder = base_schema_builder()
+        .add_normal_column(
+            column_schema::Builder::new("tag1".to_string(), DatumKind::String)
+                .is_tag(true)
+                .is_dictionary(true)
+                .is_nullable(true)
+                .build()
+                .unwrap(),
+        )
+        .unwrap()
+        .add_normal_column(
+            column_schema::Builder::new("tag2".to_string(), DatumKind::String)
+                .is_tag(true)
+                .is_dictionary(true)
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+
+    builder.build().unwrap()
 }
 
 /// Build a schema for testing:
@@ -193,6 +220,31 @@ pub fn build_schema_for_cpu() -> Schema {
     builder.build().unwrap()
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn build_row_for_dictionary(
+    key1: &[u8],
+    key2: i64,
+    field1: f64,
+    field2: &str,
+    field3: i32,
+    field4: i64,
+    tag1: Option<&str>,
+    tag2: &str,
+) -> Row {
+    let datums = vec![
+        Datum::Varbinary(Bytes::copy_from_slice(key1)),
+        Datum::Timestamp(Timestamp::new(key2)),
+        Datum::Double(field1),
+        Datum::String(StringBytes::from(field2)),
+        Datum::Date(field3),
+        Datum::Time(field4),
+        tag1.map(|v| Datum::String(StringBytes::from(v)))
+            .unwrap_or(Datum::Null),
+        Datum::String(StringBytes::from(tag2)),
+    ];
+
+    Row::from_datums(datums)
+}
 pub fn build_projected_schema() -> ProjectedSchema {
     let schema = build_schema();
     assert!(schema.num_columns() > 1);

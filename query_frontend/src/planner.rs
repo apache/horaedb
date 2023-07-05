@@ -431,6 +431,7 @@ pub fn build_schema_from_write_table_request(
             if let Some(column_schema) = name_column_map.get(tag_name) {
                 ensure_data_type_compatible(table, tag_name, true, data_type, column_schema)?;
             }
+
             let column_schema = build_column_schema(tag_name, data_type, true)?;
             name_column_map.insert(tag_name, column_schema);
         }
@@ -465,7 +466,6 @@ pub fn build_schema_from_write_table_request(
                             column_schema,
                         )?;
                     }
-
                     let column_schema = build_column_schema(field_name, data_type, false)?;
                     name_column_map.insert(field_name, column_schema);
                 }
@@ -1234,6 +1234,7 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
     // Process column options
     let mut is_nullable = true; // A column is nullable by default.
     let mut is_tag = false;
+    let mut is_dictionary = false;
     let mut is_unsign = false;
     let mut comment = String::new();
     let mut default_value = None;
@@ -1242,6 +1243,8 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
             is_nullable = false;
         } else if parser::is_tag_column(&option_def.option) {
             is_tag = true;
+        } else if parser::is_dictionary_column(&option_def.option) {
+            is_dictionary = true;
         } else if parser::is_unsign_column(&option_def.option) {
             is_unsign = true;
         } else if let Some(default_value_expr) = parser::get_default_value(&option_def.option) {
@@ -1260,6 +1263,7 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
     let builder = column_schema::Builder::new(col.name.value.clone(), data_type)
         .is_nullable(is_nullable)
         .is_tag(is_tag)
+        .is_dictionary(is_dictionary)
         .comment(comment)
         .default_value(default_value);
 
@@ -1441,6 +1445,7 @@ mod tests {
                         data_type: String,
                         is_nullable: false,
                         is_tag: true,
+                        is_dictionary: false,
                         comment: "",
                         escaped_name: "c1",
                         default_value: None,
@@ -1451,6 +1456,7 @@ mod tests {
                         data_type: Timestamp,
                         is_nullable: false,
                         is_tag: false,
+                        is_dictionary: false,
                         comment: "",
                         escaped_name: "ts",
                         default_value: None,
@@ -1461,6 +1467,7 @@ mod tests {
                         data_type: String,
                         is_nullable: true,
                         is_tag: false,
+                        is_dictionary: false,
                         comment: "",
                         escaped_name: "c3",
                         default_value: None,
@@ -1471,6 +1478,7 @@ mod tests {
                         data_type: UInt32,
                         is_nullable: true,
                         is_tag: false,
+                        is_dictionary: false,
                         comment: "",
                         escaped_name: "c4",
                         default_value: Some(
@@ -1488,6 +1496,7 @@ mod tests {
                         data_type: UInt32,
                         is_nullable: true,
                         is_tag: false,
+                        is_dictionary: false,
                         comment: "",
                         escaped_name: "c5",
                         default_value: Some(
@@ -1514,6 +1523,7 @@ mod tests {
                         data_type: String,
                         is_nullable: true,
                         is_tag: false,
+                        is_dictionary: false,
                         comment: "",
                         escaped_name: "c6",
                         default_value: Some(
@@ -1612,6 +1622,7 @@ mod tests {
                             data_type: Varbinary,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key1",
                             default_value: None,
@@ -1622,6 +1633,7 @@ mod tests {
                             data_type: Timestamp,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key2",
                             default_value: None,
@@ -1632,6 +1644,7 @@ mod tests {
                             data_type: Double,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field1",
                             default_value: None,
@@ -1642,6 +1655,7 @@ mod tests {
                             data_type: String,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field2",
                             default_value: None,
@@ -1652,6 +1666,7 @@ mod tests {
                             data_type: Date,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field3",
                             default_value: None,
@@ -1662,6 +1677,7 @@ mod tests {
                             data_type: Time,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field4",
                             default_value: None,
@@ -1687,6 +1703,7 @@ mod tests {
                             data_type: Varbinary,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key1",
                             default_value: None,
@@ -1697,6 +1714,7 @@ mod tests {
                             data_type: Timestamp,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key2",
                             default_value: None,
@@ -1707,6 +1725,7 @@ mod tests {
                             data_type: Double,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field1",
                             default_value: None,
@@ -1717,6 +1736,7 @@ mod tests {
                             data_type: String,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field2",
                             default_value: None,
@@ -1727,6 +1747,7 @@ mod tests {
                             data_type: Date,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field3",
                             default_value: None,
@@ -1737,6 +1758,7 @@ mod tests {
                             data_type: Time,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field4",
                             default_value: None,
@@ -1851,6 +1873,7 @@ mod tests {
                             data_type: Varbinary,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key1",
                             default_value: None,
@@ -1861,6 +1884,7 @@ mod tests {
                             data_type: Timestamp,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key2",
                             default_value: None,
@@ -1871,6 +1895,7 @@ mod tests {
                             data_type: Double,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field1",
                             default_value: None,
@@ -1881,6 +1906,7 @@ mod tests {
                             data_type: String,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field2",
                             default_value: None,
@@ -1891,6 +1917,7 @@ mod tests {
                             data_type: Date,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field3",
                             default_value: None,
@@ -1901,6 +1928,7 @@ mod tests {
                             data_type: Time,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field4",
                             default_value: None,
@@ -1914,6 +1942,119 @@ mod tests {
                 ],
             },
         },
+    },
+)"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_alter_column_with_dictionary_encode() {
+        let sql = "ALTER TABLE test_table ADD column dic string dictionary;";
+        quick_test(
+            sql,
+            r#"AlterTable(
+    AlterTablePlan {
+        table: MemoryTable {
+            name: "test_table",
+            id: TableId(
+                100,
+            ),
+            schema: Schema {
+                timestamp_index: 1,
+                tsid_index: None,
+                column_schemas: ColumnSchemas {
+                    columns: [
+                        ColumnSchema {
+                            id: 1,
+                            name: "key1",
+                            data_type: Varbinary,
+                            is_nullable: false,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "key1",
+                            default_value: None,
+                        },
+                        ColumnSchema {
+                            id: 2,
+                            name: "key2",
+                            data_type: Timestamp,
+                            is_nullable: false,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "key2",
+                            default_value: None,
+                        },
+                        ColumnSchema {
+                            id: 3,
+                            name: "field1",
+                            data_type: Double,
+                            is_nullable: true,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "field1",
+                            default_value: None,
+                        },
+                        ColumnSchema {
+                            id: 4,
+                            name: "field2",
+                            data_type: String,
+                            is_nullable: true,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "field2",
+                            default_value: None,
+                        },
+                        ColumnSchema {
+                            id: 5,
+                            name: "field3",
+                            data_type: Date,
+                            is_nullable: true,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "field3",
+                            default_value: None,
+                        },
+                        ColumnSchema {
+                            id: 6,
+                            name: "field4",
+                            data_type: Time,
+                            is_nullable: true,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "field4",
+                            default_value: None,
+                        },
+                    ],
+                },
+                version: 1,
+                primary_key_indexes: [
+                    0,
+                    1,
+                ],
+            },
+        },
+        operations: AddColumn(
+            [
+                ColumnSchema {
+                    id: 0,
+                    name: "dic",
+                    data_type: String,
+                    is_nullable: true,
+                    is_tag: false,
+                    is_dictionary: true,
+                    comment: "",
+                    escaped_name: "dic",
+                    default_value: None,
+                },
+            ],
+        ),
     },
 )"#,
         )
@@ -1946,6 +2087,7 @@ mod tests {
                             data_type: Varbinary,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key1",
                             default_value: None,
@@ -1956,6 +2098,7 @@ mod tests {
                             data_type: Timestamp,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key2",
                             default_value: None,
@@ -1966,6 +2109,7 @@ mod tests {
                             data_type: Double,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field1",
                             default_value: None,
@@ -1976,6 +2120,7 @@ mod tests {
                             data_type: String,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field2",
                             default_value: None,
@@ -1986,6 +2131,7 @@ mod tests {
                             data_type: Date,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field3",
                             default_value: None,
@@ -1996,6 +2142,7 @@ mod tests {
                             data_type: Time,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field4",
                             default_value: None,
@@ -2017,6 +2164,7 @@ mod tests {
                     data_type: String,
                     is_nullable: true,
                     is_tag: false,
+                    is_dictionary: false,
                     comment: "",
                     escaped_name: "add_col",
                     default_value: None,
@@ -2055,6 +2203,7 @@ mod tests {
                             data_type: Varbinary,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key1",
                             default_value: None,
@@ -2065,6 +2214,7 @@ mod tests {
                             data_type: Timestamp,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key2",
                             default_value: None,
@@ -2075,6 +2225,7 @@ mod tests {
                             data_type: Double,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field1",
                             default_value: None,
@@ -2085,6 +2236,7 @@ mod tests {
                             data_type: String,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field2",
                             default_value: None,
@@ -2095,6 +2247,7 @@ mod tests {
                             data_type: Date,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field3",
                             default_value: None,
@@ -2105,6 +2258,7 @@ mod tests {
                             data_type: Time,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field4",
                             default_value: None,
@@ -2156,6 +2310,7 @@ mod tests {
                                 data_type: Varbinary,
                                 is_nullable: false,
                                 is_tag: false,
+                                is_dictionary: false,
                                 comment: "",
                                 escaped_name: "key1",
                                 default_value: None,
@@ -2166,6 +2321,7 @@ mod tests {
                                 data_type: Timestamp,
                                 is_nullable: false,
                                 is_tag: false,
+                                is_dictionary: false,
                                 comment: "",
                                 escaped_name: "key2",
                                 default_value: None,
@@ -2176,6 +2332,7 @@ mod tests {
                                 data_type: Double,
                                 is_nullable: true,
                                 is_tag: false,
+                                is_dictionary: false,
                                 comment: "",
                                 escaped_name: "field1",
                                 default_value: None,
@@ -2186,6 +2343,7 @@ mod tests {
                                 data_type: String,
                                 is_nullable: true,
                                 is_tag: false,
+                                is_dictionary: false,
                                 comment: "",
                                 escaped_name: "field2",
                                 default_value: None,
@@ -2196,6 +2354,7 @@ mod tests {
                                 data_type: Date,
                                 is_nullable: true,
                                 is_tag: false,
+                                is_dictionary: false,
                                 comment: "",
                                 escaped_name: "field3",
                                 default_value: None,
@@ -2206,6 +2365,7 @@ mod tests {
                                 data_type: Time,
                                 is_nullable: true,
                                 is_tag: false,
+                                is_dictionary: false,
                                 comment: "",
                                 escaped_name: "field4",
                                 default_value: None,

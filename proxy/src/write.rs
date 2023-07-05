@@ -684,7 +684,6 @@ fn find_new_columns(
             );
 
             let tag_name = &tag_names[name_index];
-
             build_column(&mut columns, schema, tag_name, &tag.value, true)?;
         }
 
