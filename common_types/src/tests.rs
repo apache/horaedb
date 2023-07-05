@@ -242,6 +242,7 @@ pub fn build_row_for_dictionary(
             .unwrap_or(Datum::Null),
         Datum::String(StringBytes::from(tag2)),
     ];
+
     Row::from_datums(datums)
 }
 pub fn build_projected_schema() -> ProjectedSchema {

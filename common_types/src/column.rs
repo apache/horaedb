@@ -143,6 +143,8 @@ pub struct VarbinaryColumn(BinaryArray);
 #[derive(Debug)]
 pub struct StringColumn(StringArray);
 
+/// dictionary encode type is difference from other types, need implement
+/// without macro
 #[derive(Debug)]
 pub struct StringDictionaryColumn(DictionaryArray<Int32Type>);
 
@@ -535,7 +537,6 @@ impl StringColumn {
     }
 }
 
-/// dictionary encode type is difference from other types
 impl StringDictionaryColumn {
     /// Create a column that all values are null.
     fn new_null(num_rows: usize) -> Self {
@@ -968,10 +969,10 @@ macro_rules! define_column_block_builder {
                         // The data_capacity is set as 1024, because the item is variable-size type.
                         DatumKind::Varbinary => Self::Varbinary(BinaryBuilder::with_capacity(item_capacity, 1024)),
                         DatumKind::String =>{
-                            if !is_dictionary{
-                                Self::String(StringBuilder::with_capacity(item_capacity, 1024))
-                            }else {
+                            if is_dictionary {
                                 Self::Dictionary(StringDictionaryBuilder::<Int32Type>::new())
+                            }else {
+                                Self::String(StringBuilder::with_capacity(item_capacity, 1024))
                             }
                         }
                         DatumKind::Date => Self::Date(DateBuilder::with_capacity(item_capacity)),
