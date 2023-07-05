@@ -429,14 +429,7 @@ pub fn build_schema_from_write_table_request(
             let data_type = try_get_data_type_from_value(tag_value)?;
 
             if let Some(column_schema) = name_column_map.get(tag_name) {
-                ensure_data_type_compatible(
-                    table,
-                    tag_name,
-                    true,
-                    false,
-                    data_type,
-                    column_schema,
-                )?;
+                ensure_data_type_compatible(table, tag_name, true, data_type, column_schema)?;
             }
 
             let column_schema = build_column_schema(tag_name, data_type, true)?;
