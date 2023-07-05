@@ -148,6 +148,7 @@ impl<M: MessageQueue> Region<M> {
                 region_id,
                 msg: "failed while trying to create topic",
             })?;
+
         message_queue
             .create_topic_if_not_exist(&meta_topic)
             .await
@@ -160,7 +161,7 @@ impl<M: MessageQueue> Region<M> {
 
         // Build region meta.
         let mut region_meta_builder = RegionContextBuilder::new(region_id);
-        let high_watermark_in_snapshot = Self::recover_region_meta_from_meta(
+        let region_safe_delete_offset = Self::recover_region_meta_from_meta(
             namespace,
             region_id,
             message_queue.as_ref(),
@@ -174,7 +175,7 @@ impl<M: MessageQueue> Region<M> {
             namespace,
             region_id,
             message_queue.as_ref(),
-            high_watermark_in_snapshot,
+            region_safe_delete_offset,
             &log_topic,
             &log_encoding,
             &mut region_meta_builder,
@@ -217,7 +218,7 @@ impl<M: MessageQueue> Region<M> {
         meta_topic: &str,
         meta_encoding: &MetaEncoding,
         builder: &mut RegionContextBuilder,
-    ) -> Result<Offset> {
+    ) -> Result<Option<Offset>> {
         info!(
             "Recover region meta from meta, namespace:{}, region id:{}",
             namespace, region_id
@@ -236,7 +237,7 @@ impl<M: MessageQueue> Region<M> {
 
         if high_watermark == 0 {
             debug!("Meta topic is empty, it just needs to recover from log topic, namespace:{}, region id:{}", namespace, region_id);
-            return Ok(0);
+            return Ok(None);
         }
 
         // Fetch snapshot from meta topic(just fetch the last snapshot).
@@ -304,10 +305,18 @@ impl<M: MessageQueue> Region<M> {
                 msg: "failed while recover from meta",
             })?;
 
-        let high_watermark_in_snapshot = value
-            .entries
-            .iter()
-            .fold(0, |hw, entry| cmp::max(hw, entry.current_high_watermark));
+        let min_safe_delete_offset = value.entries.iter().fold(i64::MAX, |min_offset, entry| {
+            match entry.safe_delete_offset {
+                Some(offset) => cmp::min(min_offset, offset),
+                None => min_offset,
+            }
+        });
+
+        let region_safe_delete_offset = if min_safe_delete_offset == i64::MAX {
+            None
+        } else {
+            Some(min_safe_delete_offset)
+        };
 
         builder
             .apply_region_meta_snapshot(value)
@@ -318,24 +327,32 @@ impl<M: MessageQueue> Region<M> {
                 msg: "failed while recover from meta",
             })?;
 
-        Ok(high_watermark_in_snapshot)
+        Ok(region_safe_delete_offset)
     }
 
     async fn recover_region_meta_from_log(
         namespace: &str,
         region_id: u64,
         message_queue: &M,
-        start_offset: Offset,
+        region_safe_delete_offset: Option<Offset>,
         log_topic: &str,
         log_encoding: &CommonLogEncoding,
         builder: &mut RegionContextBuilder,
     ) -> Result<()> {
         info!(
-            "Recover region meta from log, namespace:{}, region id:{}, start offset:{}",
-            namespace, region_id, start_offset
+            "Recover region meta from log, namespace:{}, region_id:{}, region_safe_delete_offset:{:?}",
+            namespace, region_id, region_safe_delete_offset
         );
 
-        // Fetch high watermark and check.
+        let start_offset = match region_safe_delete_offset {
+            Some(offset) => StartOffset::At(offset),
+            None => StartOffset::Earliest,
+        };
+
+        // Fetch snapshot from meta topic(just fetch the last snapshot).
+        // FIXME: should not judge whether topic is empty or not by caller.
+        // The consumer iterator should return immediately rather than hanging when
+        // topic empty.
         let high_watermark = message_queue
             .fetch_offset(log_topic, OffsetType::HighWaterMark)
             .await
@@ -345,19 +362,12 @@ impl<M: MessageQueue> Region<M> {
                 region_id,
                 msg: "failed while recover from log",
             })?;
-
-        ensure!(start_offset <= high_watermark, OpenNoCause { namespace , region_id, msg: format!(
-            "failed while recover from log, start offset should be less than or equal to high watermark, now are:{start_offset} and {high_watermark}")
-        });
-
-        if start_offset == high_watermark {
-            debug!("No region meta delta from log topic is needed, just return, namespace:{}, region id:{}", namespace, region_id);
+        if high_watermark == 0 {
             return Ok(());
         }
 
-        // Fetch snapshot from meta topic(just fetch the last snapshot).
         let mut iter = message_queue
-            .consume(log_topic, StartOffset::At(start_offset))
+            .consume(log_topic, start_offset)
             .await
             .box_err()
             .context(OpenWithCause {
@@ -637,7 +647,7 @@ impl<M: MessageQueue> Region<M> {
     }
 
     /// Return snapshot, just used for test.
-    #[allow(unused)]
+    #[allow(dead_code)]
     async fn make_meta_snapshot(&self) -> RegionMetaSnapshot {
         let inner = self.inner.write().await;
         inner.make_meta_snapshot().await
@@ -907,7 +917,7 @@ mod tests {
     };
 
     #[tokio::test]
-    #[ignore]
+    #[ignore = "this test need a kafka cluster"]
     async fn test_region_kafka_impl() {
         // Test region
         let mut config = Config::default();
@@ -962,7 +972,7 @@ mod tests {
                 .write(&WriteContext::default(), test_log_batch)
                 .await
                 .unwrap();
-            assert_eq!(sequence_num, test_log_batch.len() as u64 - 1);
+            assert_eq!(sequence_num, test_log_batch.len() as u64);
 
             mixed_test_payloads.extend_from_slice(test_payloads);
         }
@@ -1079,18 +1089,18 @@ mod tests {
             .write(&WriteContext::default(), test_log_batch)
             .await
             .unwrap();
-        assert_eq!(sequence_num, test_log_batch.len() as u64 - 1);
+        assert_eq!(sequence_num, test_log_batch.len() as u64);
         let sequence_num = test_context
             .region
             .write(&WriteContext::default(), test_log_batch)
             .await
             .unwrap();
-        assert_eq!(sequence_num, test_log_batch.len() as u64 * 2 - 1);
+        assert_eq!(sequence_num, test_log_batch.len() as u64 * 2);
 
         // Mark deleted.
         test_context
             .region
-            .mark_delete_to(table_id, test_log_batch.len() as u64)
+            .mark_delete_to(table_id, test_log_batch.len() as u64 + 1)
             .await
             .unwrap();
         let table_meta = test_context
@@ -1101,11 +1111,11 @@ mod tests {
             .unwrap();
         assert_eq!(
             table_meta.next_sequence_num,
-            test_log_batch.len() as u64 * 2
+            test_log_batch.len() as u64 * 2 + 1,
         );
         assert_eq!(
             table_meta.latest_marked_deleted,
-            test_log_batch.len() as u64
+            test_log_batch.len() as u64 + 1
         );
         assert_eq!(
             table_meta.current_high_watermark,
@@ -1151,7 +1161,7 @@ mod tests {
                     .write(&WriteContext::default(), test_log_batch)
                     .await
                     .unwrap();
-                assert_eq!(sequence_num, test_log_batch.len() as u64 - 1);
+                assert_eq!(sequence_num, test_log_batch.len() as u64);
 
                 mixed_test_payloads.extend_from_slice(test_payloads);
             }
