@@ -1,7 +1,8 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! BitSet supports counting set/unset bits.
+//! Simple BitSet implementation.
 
+/// A basic implementation supporting read/write.
 #[derive(Debug, Default, Clone)]
 pub struct BitSet {
     /// The bits are stored as bytes in the least significant bit order.
@@ -48,9 +49,45 @@ impl BitSet {
         if index >= self.num_bits {
             return false;
         }
-        let (byte_index, bit_index) = Self::compute_byte_bit_index(index);
+        let (byte_index, bit_index) = RoBitSet::compute_byte_bit_index(index);
         self.buffer[byte_index] |= 1 << bit_index;
         true
+    }
+
+    /// Tells whether the bit at the `index` is set.
+    pub fn is_set(&self, index: usize) -> Option<bool> {
+        let ro = RoBitSet {
+            buffer: &self.buffer,
+            num_bits: self.num_bits,
+        };
+        ro.is_set(index)
+    }
+
+    #[inline]
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.buffer
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.buffer
+    }
+}
+
+/// A readonly version of [BitSet], only supports read.
+pub struct RoBitSet<'a> {
+    /// The bits are stored as bytes in the least significant bit order.
+    buffer: &'a [u8],
+    /// The number of real bits in the `buffer`
+    num_bits: usize,
+}
+
+impl<'a> RoBitSet<'a> {
+    pub fn try_new(buffer: &'a [u8], num_bits: usize) -> Option<Self> {
+        if buffer.len() < BitSet::num_bytes(num_bits) {
+            None
+        } else {
+            Some(Self { buffer, num_bits })
+        }
     }
 
     /// Tells whether the bit at the `index` is set.
@@ -61,15 +98,6 @@ impl BitSet {
         let (byte_index, bit_index) = Self::compute_byte_bit_index(index);
         let set = (self.buffer[byte_index] & (1 << bit_index)) != 0;
         Some(set)
-    }
-
-    #[inline]
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.buffer
-    }
-
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.buffer
     }
 
     #[inline]

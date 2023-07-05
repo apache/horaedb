@@ -12,7 +12,7 @@ use std::{
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{
-    bitset::BitSet,
+    bitset::{BitSet, RoBitSet},
     datum::{Datum, DatumKind, DatumView},
     projected_schema::RowProjector,
     row::Row,
@@ -192,25 +192,24 @@ impl<'a, T: Deref<Target = [u8]>> ContiguousRowReaderWithNulls<'a, T> {
             }
         );
 
-        let nulls_bit_set =
-            BitSet::try_from_raw(bit_set_buf[..bit_set_size].to_vec(), num_bits).unwrap();
+        let nulls_bit_set = RoBitSet::try_new(&bit_set_buf[..bit_set_size], num_bits).unwrap();
 
-        let mut col_offsets = Vec::with_capacity(schema.num_columns());
+        let mut fixed_byte_offsets = Vec::with_capacity(schema.num_columns());
         let mut acc_null_bytes = 0;
         for (index, expect_offset) in schema.byte_offsets().iter().enumerate() {
             match nulls_bit_set.is_set(index) {
-                Some(true) => col_offsets.push((*expect_offset - acc_null_bytes) as isize),
+                Some(true) => fixed_byte_offsets.push((*expect_offset - acc_null_bytes) as isize),
                 Some(false) => {
-                    col_offsets.push(-1);
+                    fixed_byte_offsets.push(-1);
                     acc_null_bytes += byte_size_of_datum(&schema.column(index).data_type);
                 }
-                None => col_offsets.push(-1),
+                None => fixed_byte_offsets.push(-1),
             }
         }
 
         Ok(Self {
             buf,
-            byte_offsets: col_offsets,
+            byte_offsets: fixed_byte_offsets,
             datum_offset: Encoding::size_of_num_bits() + bit_set_size,
         })
     }
@@ -475,7 +474,7 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
 
     fn write_row_with_nulls(&mut self, row: &Row) -> Result<()> {
         let mut encoded_len = 0;
-        let mut num_bytes_of_string = 0;
+        let mut num_bytes_of_variable_col = 0;
         for index_in_table in 0..self.table_schema.num_columns() {
             if let Some(writer_index) = self.index_in_writer.column_index_in_writer(index_in_table)
             {
@@ -488,7 +487,7 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                 if !datum.is_fixed_sized() {
                     // For the datum content and the length of it
                     let size = datum.size() + Encoding::size_of_offset();
-                    num_bytes_of_string += size;
+                    num_bytes_of_variable_col += size;
                     encoded_len += size;
                 }
             }
@@ -501,7 +500,7 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
 
         // Pre-allocate the memory.
         self.inner.reset(encoded_len, 0);
-        let mut next_string_offset = encoded_len - num_bytes_of_string;
+        let mut next_string_offset = encoded_len - num_bytes_of_variable_col;
         let mut datum_offset = Encoding::size_of_num_bits() + nulls_bit_set.as_bytes().len();
         for index_in_table in 0..self.table_schema.num_columns() {
             if let Some(writer_index) = self.index_in_writer.column_index_in_writer(index_in_table)
@@ -529,7 +528,7 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
             nulls_bit_set.as_bytes(),
         );
 
-        debug_assert_eq!(datum_offset, encoded_len - num_bytes_of_string);
+        debug_assert_eq!(datum_offset, encoded_len - num_bytes_of_variable_col);
         debug_assert_eq!(next_string_offset, encoded_len);
 
         Ok(())
