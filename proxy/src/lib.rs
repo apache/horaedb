@@ -27,10 +27,11 @@ pub const FORWARDED_FROM: &str = "forwarded-from";
 
 use std::{
     sync::Arc,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use ::http::StatusCode;
+use analytic_engine::table_options::{parse_duration, ENABLE_TTL, TTL};
 use catalog::schema::{
     CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, SchemaRef,
 };
@@ -40,7 +41,9 @@ use ceresdbproto::storage::{
 };
 use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID};
 use common_util::{error::BoxError, runtime::Runtime};
+use datafusion::prelude::{Column, Expr};
 use futures::FutureExt;
+use influxql_query::logical_optimizer::range_predicate::find_time_range;
 use interpreters::{
     context::Context as InterpreterContext,
     factory::Factory,
@@ -54,7 +57,7 @@ use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{EngineRuntimes, TableState},
     remote::model::{GetTableInfoRequest, TableIdentifier},
-    table::TableId,
+    table::{TableId, TableRef},
     PARTITION_TABLE_ENGINE_TYPE,
 };
 use tonic::{transport::Channel, IntoRequest};
@@ -163,6 +166,108 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 None
             }
         })
+    }
+
+    fn valid_ttl_range(
+        &self,
+        plan: &Plan,
+        catalog_name: &str,
+        schema_name: &str,
+        table_name: &str,
+    ) -> bool {
+        if let Plan::Query(query) = &plan {
+            // TODO(tanruixiang): beauty this code
+            let tableref = self
+                .get_table(catalog_name, schema_name, table_name)
+                .unwrap()
+                .unwrap();
+
+            if let Some(value) = tableref.options().get(ENABLE_TTL) {
+                if value == "false" {
+                    return true;
+                }
+            }
+
+            let ttl_duration = match tableref.options().get(TTL) {
+                Some(value) => parse_duration(value),
+                None => return false,
+            };
+            assert!(ttl_duration.is_ok(), "ttl_duration muse be vaild");
+            let ttl_duration = ttl_duration.unwrap();
+
+            // TODO(tanruixiang): use sql's timestamp as nowtime(need sql support)
+            let nowtime = match SystemTime::now().duration_since(UNIX_EPOCH) {
+                Ok(duration) => duration.as_secs() as i64,
+                Err(_) => {
+                    return false;
+                }
+            };
+
+            let ddl = nowtime - ttl_duration.as_secs() as i64;
+
+            let timestamp_name = &tableref
+                .schema()
+                .column(tableref.schema().timestamp_index())
+                .name
+                .clone();
+            let ts_col = Column::from_name(timestamp_name);
+            let range = find_time_range(&query.df_plan, &ts_col).unwrap();
+            match range.end {
+                std::ops::Bound::Included(x) | std::ops::Bound::Excluded(x) => {
+                    if let Expr::Literal(datafusion::scalar::ScalarValue::Int64(Some(x))) = x {
+                        if x <= ddl {
+                            return false;
+                        }
+                    }
+                }
+                std::ops::Bound::Unbounded => (),
+            }
+        }
+        true
+    }
+
+    fn get_table(
+        &self,
+        catalog_name: &str,
+        schema_name: &str,
+        table_name: &str,
+    ) -> Result<Option<TableRef>> {
+        // TODO(tanruixiang): split this function and safer this funtion
+        let catalog = self
+            .instance
+            .catalog_manager
+            .catalog_by_name(catalog_name)
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!("Failed to find catalog, catalog_name:{catalog_name}"),
+            })?
+            .with_context(|| ErrNoCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: format!("Catalog not found, catalog_name:{catalog_name}"),
+            })?;
+
+        // TODO: support create schema if not exist
+        let schema = catalog
+            .schema_by_name(schema_name)
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!("Failed to find schema, schema_name:{schema_name}"),
+            })?
+            .context(ErrNoCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: format!("Schema not found, schema_name:{schema_name}"),
+            })?;
+
+        let table = schema
+            .table_by_name(table_name)
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!("Failed to find table, table_name:{table_name}"),
+            })?;
+        Ok(table)
     }
 
     async fn maybe_open_partition_table_if_not_exist(

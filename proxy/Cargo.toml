@@ -11,6 +11,7 @@ workspace = true
 workspace = true
 
 [dependencies]
+analytic_engine = { workspace = true }
 arrow = { workspace = true }
 arrow_ext = { workspace = true }
 async-trait = { workspace = true }
@@ -26,6 +27,7 @@ df_operator = { workspace = true }
 futures = { workspace = true }
 http = "0.2"
 influxdb-line-protocol = "1.0"
+influxql-query = { workspace = true }
 interpreters = { workspace = true }
 itertools = { workspace = true }
 lazy_static = { workspace = true }

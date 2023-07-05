@@ -744,7 +744,7 @@ fn merge_table_options(
     Ok(table_opts)
 }
 
-fn parse_duration(v: &str) -> Result<ReadableDuration> {
+pub fn parse_duration(v: &str) -> Result<ReadableDuration> {
     v.parse::<ReadableDuration>()
         .map_err(|err| Error::ParseDuration {
             err,

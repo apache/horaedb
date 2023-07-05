@@ -115,8 +115,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         // Open partition table if needed.
         let table_name = frontend::parse_table_name(&stmts);
-        if let Some(table_name) = table_name {
-            self.maybe_open_partition_table_if_not_exist(catalog, schema, &table_name)
+        if let Some(table_name) = &table_name {
+            self.maybe_open_partition_table_if_not_exist(catalog, schema, table_name)
                 .await?;
         }
 
@@ -131,6 +131,13 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: format!("Failed to create plan, query:{sql}"),
             })?;
+
+        if let Some(table_name) = &table_name {
+            println!(
+                "vaild ttl range: {:?}",
+                self.valid_ttl_range(&plan, catalog, schema, table_name)
+            );
+        }
 
         let output = if ctx.enable_partition_table_access {
             self.execute_plan_involving_partition_table(request_id, catalog, schema, plan, deadline)
