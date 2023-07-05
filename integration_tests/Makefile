@@ -70,5 +70,8 @@ run-mysql:
 run-prom:
 	cd prom && ./run-tests.sh
 
+run-opentsdb:
+	cd opentsdb && ./run-tests.sh
+
 run-recovery: clean build-ceresdb kill-old-process
 	cd recovery && ./run.sh && ./run.sh shard_based

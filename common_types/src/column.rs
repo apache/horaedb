@@ -143,6 +143,8 @@ pub struct VarbinaryColumn(BinaryArray);
 #[derive(Debug)]
 pub struct StringColumn(StringArray);
 
+/// dictionary encode type is difference from other types, need implement
+/// without macro
 #[derive(Debug)]
 pub struct StringDictionaryColumn(DictionaryArray<Int32Type>);
 
@@ -292,7 +294,7 @@ impl_column!(
 impl_column!(StringColumn, get_string_datum, get_string_datum_view);
 
 impl StringDictionaryColumn {
-    #[doc = " Get datum by index."]
+    /// Get datum by index
     pub fn datum_opt(&self, index: usize) -> Option<Datum> {
         if index >= self.0.len() {
             return None;
@@ -311,7 +313,7 @@ impl StringDictionaryColumn {
         if self.0.is_null(index) {
             return DatumView::Null;
         }
-        // TODO : Is this the efficient way?
+        // TODO(tanruixiang): Is this the efficient way?
         DatumView::String(self.0.downcast_dict::<StringArray>().unwrap().value(index))
     }
 
@@ -319,7 +321,7 @@ impl StringDictionaryColumn {
         if self.0.is_null(index) {
             return Datum::Null;
         }
-        // TODO : Is this the efficient way?
+        // TODO(tanruixiang): Is this the efficient way?
         Datum::String(
             self.0
                 .downcast_dict::<StringArray>()
@@ -375,14 +377,6 @@ impl_dedup!(VarbinaryColumn);
 impl_dedup!(StringColumn);
 
 impl StringDictionaryColumn {
-    #[doc = " If datum i is not equal to previous datum i - 1, mark `selected[i]` to"]
-    #[doc = " true."]
-    #[doc = ""]
-    #[doc = " The first datum is marked to true."]
-    #[doc = ""]
-    #[doc = " The size of selected must equal to the size of this column and"]
-    #[doc = " initialized to false."]
-    #[allow(clippy::float_cmp)]
     pub fn dedup(&self, selected: &mut [bool]) {
         if self.0.is_empty() {
             return;
@@ -484,10 +478,6 @@ impl StringDictionaryColumn {
         DictionaryArray::<Int32Type>::from(array_data)
     }
 
-    #[doc = " Returns a zero-copy slice of this array with the indicated offset and"]
-    #[doc = " length."]
-    #[doc = ""]
-    #[doc = " Panics if offset with length is greater than column length."]
     fn slice(&self, offset: usize, length: usize) -> Self {
         let array_slice = self.0.slice(offset, length);
         let array_data = array_slice.into_data();
@@ -780,26 +770,13 @@ macro_rules! define_column_block {
                     let column = match datum_kind {
                         DatumKind::Null => ColumnBlock::Null(NullColumn::new_null(array.len())),
                         DatumKind::String => {
-                            if !is_dictionary {
-                                let mills_array;
-                                let cast_column = match array.data_type() {
-                                    DataType::Timestamp(TimeUnit::Nanosecond, None) => {
-                                        mills_array = cast_nanosecond_to_mills(array)?;
-                                        cast_array(datum_kind, &mills_array)?
-                                    }
-                                    _ => cast_array(datum_kind, array)?,
-                                };
-                                ColumnBlock::String(StringColumn::from(cast_column))
-                            } else {
-                                let mills_array;
-                                let cast_column = match array.data_type() {
-                                    DataType::Timestamp(TimeUnit::Nanosecond, None) => {
-                                        mills_array = cast_nanosecond_to_mills(array)?;
-                                        cast_array(datum_kind, &mills_array)?
-                                    }
-                                    _ => cast_array(datum_kind, array)?,
-                                };
+                            if is_dictionary {
+                                let cast_column = cast_array(datum_kind, array)?;
                                 ColumnBlock::StringDictionary(StringDictionaryColumn::from(cast_column))
+
+                            } else {
+                                let cast_column = cast_array(datum_kind, array)?;
+                                ColumnBlock::String(StringColumn::from(cast_column))
                             }
                         },
                         $(
@@ -990,10 +967,10 @@ macro_rules! define_column_block_builder {
                         // The data_capacity is set as 1024, because the item is variable-size type.
                         DatumKind::Varbinary => Self::Varbinary(BinaryBuilder::with_capacity(item_capacity, 1024)),
                         DatumKind::String =>{
-                            if !is_dictionary{
-                                Self::String(StringBuilder::with_capacity(item_capacity, 1024))
-                            }else {
+                            if is_dictionary {
                                 Self::Dictionary(StringDictionaryBuilder::<Int32Type>::new())
+                            }else {
+                                Self::String(StringBuilder::with_capacity(item_capacity, 1024))
                             }
                         }
                         DatumKind::Date => Self::Date(DateBuilder::with_capacity(item_capacity)),
@@ -1209,7 +1186,7 @@ impl ColumnBlockBuilder {
 mod tests {
     use super::*;
     use crate::tests::{
-        build_row_for_dictionary, build_rows, build_schema, build_schema_for_dictionary,
+        build_row_for_dictionary, build_rows, build_schema, build_schema_with_dictionary,
     };
 
     #[test]
@@ -1252,28 +1229,72 @@ mod tests {
 
     #[test]
     fn test_column_block_string_dictionary_builder() {
-        let schema = build_schema_for_dictionary();
+        let schema = build_schema_with_dictionary();
         let rows = vec![
-            build_row_for_dictionary(1, 1, Some("tag1_1"), "tag2_1", 1),
-            build_row_for_dictionary(2, 2, Some("tag1_2"), "tag2_2", 2),
-            build_row_for_dictionary(3, 3, Some("tag1_3"), "tag2_3", 3),
-            build_row_for_dictionary(4, 4, Some("tag1_1"), "tag2_4", 3),
-            build_row_for_dictionary(5, 5, Some("tag1_3"), "tag2_4", 4),
-            build_row_for_dictionary(6, 6, None, "tag2_4", 4),
+            build_row_for_dictionary(
+                b"a",
+                1,
+                10.0,
+                "v4",
+                1000,
+                1_000_000,
+                Some("tag1_1"),
+                "tag2_1",
+            ),
+            build_row_for_dictionary(
+                b"b",
+                2,
+                10.0,
+                "v4",
+                1000,
+                1_000_000,
+                Some("tag1_2"),
+                "tag2_2",
+            ),
+            build_row_for_dictionary(
+                b"c",
+                3,
+                10.0,
+                "v4",
+                1000,
+                1_000_000,
+                Some("tag1_3"),
+                "tag2_3",
+            ),
+            build_row_for_dictionary(
+                b"d",
+                4,
+                10.0,
+                "v4",
+                1000,
+                1_000_000,
+                Some("tag1_1"),
+                "tag2_4",
+            ),
+            build_row_for_dictionary(
+                b"e",
+                5,
+                10.0,
+                "v4",
+                1000,
+                1_000_000,
+                Some("tag1_3"),
+                "tag2_4",
+            ),
+            build_row_for_dictionary(b"f", 6, 10.0, "v4", 1000, 1_000_000, None, "tag2_4"),
         ];
         // DatumKind::String , is_dictionary = true
-        let column = schema.column(2);
-        println!("{column:?}");
+        let column = schema.column(6);
         let mut builder =
             ColumnBlockBuilder::with_capacity(&column.data_type, 0, column.is_dictionary);
         // append
-        (0..rows.len()).for_each(|i| builder.append(rows[i][2].clone()).unwrap());
+        (0..rows.len()).for_each(|i| builder.append(rows[i][6].clone()).unwrap());
 
         let ret = builder.append(rows[0][0].clone());
         assert!(ret.is_err());
 
         // append_view
-        builder.append_view(rows[5][2].as_view()).unwrap();
+        builder.append_view(rows[5][6].as_view()).unwrap();
         let ret = builder.append_view(rows[1][0].as_view());
 
         assert!(ret.is_err());

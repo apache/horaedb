@@ -141,7 +141,7 @@ impl<'a> TimeBucket<'a> {
     }
 
     fn call(&self) -> Result<ColumnBlock> {
-        // TODO mising is_dictionary params
+        // TODO(tanruixiang) : mising is_dictionary params
         let mut out_column_builder =
             ColumnBlockBuilder::with_capacity(&DatumKind::Timestamp, self.column.num_rows(), false);
         for ts_opt in self.column.iter() {

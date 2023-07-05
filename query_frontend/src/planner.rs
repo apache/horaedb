@@ -367,12 +367,10 @@ pub fn build_column_schema(
     column_name: &str,
     data_type: DatumKind,
     is_tag: bool,
-    is_dictionary: bool,
 ) -> Result<ColumnSchema> {
     let builder = column_schema::Builder::new(column_name.to_string(), data_type)
         .is_nullable(true)
-        .is_tag(is_tag)
-        .is_dictionary(is_dictionary);
+        .is_tag(is_tag);
 
     builder.build().with_context(|| InvalidColumnSchema {
         column_name: column_name.to_string(),
@@ -442,8 +440,7 @@ pub fn build_schema_from_write_table_request(
                 )?;
             }
 
-            // Todo is_dictionary set true or false ? Do we need modify the pb ?
-            let column_schema = build_column_schema(tag_name, data_type, true, false)?;
+            let column_schema = build_column_schema(tag_name, data_type, true)?;
             name_column_map.insert(tag_name, column_schema);
         }
 
@@ -479,8 +476,7 @@ pub fn build_schema_from_write_table_request(
                             column_schema,
                         )?;
                     }
-                    // todo is_dictionary set true or false ?
-                    let column_schema = build_column_schema(field_name, data_type, false, false)?;
+                    let column_schema = build_column_schema(field_name, data_type, false)?;
                     name_column_map.insert(field_name, column_schema);
                 }
             }

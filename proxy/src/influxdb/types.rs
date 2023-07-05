@@ -811,7 +811,6 @@ mod tests {
     }
 
     fn build_test_column_blocks() -> Vec<ColumnBlock> {
-        // TODO missing is_dictionary paramms
         let mut measurement_builder =
             ColumnBlockBuilder::with_capacity(&DatumKind::String, 3, false);
         let mut tag_builder = ColumnBlockBuilder::with_capacity(&DatumKind::String, 3, false);

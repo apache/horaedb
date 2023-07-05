@@ -229,7 +229,7 @@ fn row_group_to_record_batch(
                 ),
             })?;
         let cols = rows.iter_column(col_index);
-        let column_block = build_column_block(&column.data_type, cols)?;
+        let column_block = build_column_block(&column.data_type, cols, column.is_dictionary)?;
         column_blocks.push(column_block);
     }
 
@@ -243,10 +243,10 @@ fn row_group_to_record_batch(
 fn build_column_block<'a, I: Iterator<Item = &'a Datum>>(
     data_type: &DatumKind,
     iter: I,
+    is_dictionary: bool,
 ) -> stream::Result<ColumnBlock> {
-    // TODO ensure there don't use is_dictionary and the datum.clone() is necessary
-    // ?
-    let mut builder = ColumnBlockBuilder::with_capacity(data_type, iter.size_hint().0, false);
+    let mut builder =
+        ColumnBlockBuilder::with_capacity(data_type, iter.size_hint().0, is_dictionary);
     for datum in iter {
         builder
             .append(datum.clone())

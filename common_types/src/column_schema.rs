@@ -168,7 +168,7 @@ pub struct ColumnSchema {
     /// Is tag, tag is just a hint for a column, there is no restriction that a
     /// tag column must be a part of primary key
     pub is_tag: bool,
-    // Whether to use dictionary types for parquet store
+    // Whether to use dictionary types for encoding column
     pub is_dictionary: bool,
     /// Comment of the column
     pub comment: String,
@@ -335,8 +335,8 @@ impl From<&ColumnSchema> for Field {
                 DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
                 col_schema.is_nullable,
                 col_schema.id.into(),
+                // TODO(tanruixiang): how to use dict_is_ordered
                 false,
-                // Todo how to use dict_is_ordered
             )
         } else {
             Field::new(

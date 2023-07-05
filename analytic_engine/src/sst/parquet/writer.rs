@@ -333,7 +333,7 @@ mod tests {
     use common_types::{
         bytes::Bytes,
         projected_schema::ProjectedSchema,
-        tests::{build_row, build_row_for_dictionary, build_schema, build_schema_for_dictionary},
+        tests::{build_row, build_row_for_dictionary, build_schema, build_schema_with_dictionary},
         time::{TimeRange, Timestamp},
     };
     use common_util::{
@@ -520,9 +520,10 @@ mod tests {
         init_log_for_test();
 
         let runtime = Arc::new(runtime::Builder::default().build().unwrap());
-        parquet_write_and_then_read_back(runtime.clone(), 3, vec![3, 3, 3, 3, 3]);
-        parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 4, 4, 3]);
-        parquet_write_and_then_read_back(runtime, 5, vec![5, 5, 5]);
+        parquet_write_and_then_read_back(runtime.clone(), 2, vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
+        parquet_write_and_then_read_back(runtime.clone(), 3, vec![3, 3, 3, 3, 3, 3, 2]);
+        parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 4, 4, 4, 4]);
+        parquet_write_and_then_read_back(runtime, 5, vec![5, 5, 5, 5]);
     }
 
     fn parquet_write_and_then_read_back(
@@ -545,7 +546,7 @@ mod tests {
             let store_picker: ObjectStorePickerRef = Arc::new(store);
             let sst_file_path = Path::from("data.par");
 
-            let schema = build_schema();
+            let schema = build_schema_with_dictionary();
             let reader_projected_schema = ProjectedSchema::no_projection(schema.clone());
             let sst_meta = MetaData {
                 min_key: Bytes::from_static(b"100"),
@@ -565,9 +566,37 @@ mod tests {
                 // reach here when counter is 9 7 5 3 1
                 let ts = 100 + counter;
                 let rows = vec![
-                    build_row(b"a", ts, 10.0, "v4", 1000, 1_000_000),
-                    build_row(b"b", ts, 10.0, "v4", 1000, 1_000_000),
-                    build_row(b"c", ts, 10.0, "v4", 1000, 1_000_000),
+                    build_row_for_dictionary(
+                        b"a",
+                        ts,
+                        10.0,
+                        "v4",
+                        1000,
+                        1_000_000,
+                        Some("tagv1"),
+                        "tagv2",
+                    ),
+                    build_row_for_dictionary(
+                        b"b",
+                        ts,
+                        10.0,
+                        "v4",
+                        1000,
+                        1_000_000,
+                        Some("tagv2"),
+                        "tagv4",
+                    ),
+                    build_row_for_dictionary(b"c", ts, 10.0, "v4", 1000, 1_000_000, None, "tagv2"),
+                    build_row_for_dictionary(
+                        b"d",
+                        ts,
+                        10.0,
+                        "v4",
+                        1000,
+                        1_000_000,
+                        Some("tagv3"),
+                        "tagv2",
+                    ),
                 ];
                 let batch = build_record_batch_with_key(schema.clone(), rows);
                 Poll::Ready(Some(Ok(batch)))
@@ -587,7 +616,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(15, sst_info.row_num);
+            assert_eq!(20, sst_info.row_num);
 
             let scan_options = ScanOptions::default();
             // read sst back to test
@@ -638,9 +667,46 @@ mod tests {
             let mut stream = reader.read().await.unwrap();
             let mut expect_rows = vec![];
             for counter in &[4, 3, 2, 1, 0] {
-                expect_rows.push(build_row(b"a", 100 + counter, 10.0, "v4", 1000, 1_000_000));
-                expect_rows.push(build_row(b"b", 100 + counter, 10.0, "v4", 1000, 1_000_000));
-                expect_rows.push(build_row(b"c", 100 + counter, 10.0, "v4", 1000, 1_000_000));
+                expect_rows.push(build_row_for_dictionary(
+                    b"a",
+                    100 + counter,
+                    10.0,
+                    "v4",
+                    1000,
+                    1_000_000,
+                    Some("tagv1"),
+                    "tagv2",
+                ));
+                expect_rows.push(build_row_for_dictionary(
+                    b"b",
+                    100 + counter,
+                    10.0,
+                    "v4",
+                    1000,
+                    1_000_000,
+                    Some("tagv2"),
+                    "tagv4",
+                ));
+                expect_rows.push(build_row_for_dictionary(
+                    b"c",
+                    100 + counter,
+                    10.0,
+                    "v4",
+                    1000,
+                    1_000_000,
+                    None,
+                    "tagv2",
+                ));
+                expect_rows.push(build_row_for_dictionary(
+                    b"d",
+                    100 + counter,
+                    10.0,
+                    "v4",
+                    1000,
+                    1_000_000,
+                    Some("tagv3"),
+                    "tagv2",
+                ));
             }
             check_stream(&mut stream, expect_rows).await;
         });
