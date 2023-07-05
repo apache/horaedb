@@ -45,8 +45,8 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Size to store the offset of string buffer.
-type OffsetSize = u32;
+/// Offset used in row's encoding
+type Offset = u32;
 
 /// Max allowed string length of datum to store in a contiguous row (16 MB).
 const MAX_STRING_LEN: usize = 1024 * 1024 * 16;
@@ -65,6 +65,64 @@ pub trait ContiguousRow {
     fn datum_view_at(&self, index: usize) -> DatumView;
 }
 
+struct Encoding;
+
+/// Here is the encoding of the continuous row. The encoding format depends on
+/// whether the row contains null columns:
+///
+/// # Row with null columns
+/// This row will be encoded as:
+/// ```plaintext
+/// +------------------+-----------------+-------------------------+-------------------------+
+/// | num_bits(u32)    |  nulls_bit_set  | datum encoding block... | var-len payload block   |
+/// +------------------+-----------------+-------------------------+-------------------------+
+/// ```
+/// The first block is the number of bits of the `nulls_bit_set`, which is used
+/// to rebuild the bit set. The `nulls_bit_set` is used to record which columns
+/// are null. With the bitset, any null column won't be encoded in the following
+/// datum encoding block.
+///
+/// As for the datum encoding block, most type shares the similar pattern:
+/// ```plaintext
+/// +--------+----------------+
+/// |type(1B)| payload/offset |
+/// +--------+----------------+
+/// ```
+/// If the type has a fixed size, the data payload will follow the data type.
+/// Otherwise, a offset in the var-len payload block pointing the real payload
+/// follows the type.
+///
+/// Here is the payload for variable length type:
+/// ```plaintext
+/// +-----------------+-------------------+
+/// |  var_len(u32)   |   var payload...  |
+/// +-----------------+-------------------+
+/// ```
+///
+/// # Row without null columns
+/// This encoding way is similar:
+/// ```plaintext
+/// +-----------------+---------------------------+-----------------------+
+/// |    0(u32)       | datum encoding block ...  | var-len payload block |
+/// +-----------------+---------------------------+-----------------------+
+/// ```
+///
+/// From the diagram above, `num_bits` is equal to zero but still takes 4B.
+/// And there is no space for `nulls_bit_set`.
+impl Encoding {
+    const fn size_of_offset() -> usize {
+        mem::size_of::<Offset>()
+    }
+
+    const fn size_of_num_bits() -> usize {
+        mem::size_of::<u32>()
+    }
+
+    const fn size_of_var_len() -> usize {
+        mem::size_of::<u32>()
+    }
+}
+
 pub enum ContiguousRowReader<'a, T> {
     NoNulls(ContiguousRowReaderNoNulls<'a, T>),
     WithNulls(ContiguousRowReaderWithNulls<'a, T>),
@@ -77,23 +135,27 @@ pub struct ContiguousRowReaderNoNulls<'a, T> {
 }
 
 pub struct ContiguousRowReaderWithNulls<'a, T> {
-    inner: &'a T,
+    buf: &'a T,
     byte_offsets: Vec<isize>,
     datum_offset: usize,
 }
 
 impl<'a, T: Deref<Target = [u8]>> ContiguousRowReader<'a, T> {
-    pub fn try_new(inner: &'a T, schema: &'a Schema) -> Result<Self> {
+    pub fn try_new(buf: &'a T, schema: &'a Schema) -> Result<Self> {
         let byte_offsets = schema.byte_offsets();
-        ensure!(inner.len() >= 4, NumNullColsMissing);
-        let num_bits = u32::from_ne_bytes(inner[0..4].try_into().unwrap()) as usize;
+        ensure!(
+            buf.len() >= Encoding::size_of_num_bits(),
+            NumNullColsMissing
+        );
+        let num_bits =
+            u32::from_ne_bytes(buf[0..Encoding::size_of_num_bits()].try_into().unwrap()) as usize;
         if num_bits > 0 {
-            ContiguousRowReaderWithNulls::try_new(inner, schema, num_bits).map(Self::WithNulls)
+            ContiguousRowReaderWithNulls::try_new(buf, schema, num_bits).map(Self::WithNulls)
         } else {
             let reader = ContiguousRowReaderNoNulls {
-                inner,
+                inner: buf,
                 byte_offsets,
-                datum_offset: 4,
+                datum_offset: Encoding::size_of_num_bits(),
             };
             Ok(Self::NoNulls(reader))
         }
@@ -117,10 +179,11 @@ impl<'a, T: Deref<Target = [u8]>> ContiguousRow for ContiguousRowReader<'a, T> {
 }
 
 impl<'a, T: Deref<Target = [u8]>> ContiguousRowReaderWithNulls<'a, T> {
-    fn try_new(inner: &'a T, schema: &'a Schema, num_bits: usize) -> Result<Self> {
+    fn try_new(buf: &'a T, schema: &'a Schema, num_bits: usize) -> Result<Self> {
         assert!(num_bits > 0);
+
         let bit_set_size = BitSet::num_bytes(num_bits);
-        let bit_set_buf = &inner[4..];
+        let bit_set_buf = &buf[Encoding::size_of_num_bits()..];
         ensure!(
             bit_set_buf.len() >= bit_set_size,
             InvalidBitSetBytes {
@@ -146,9 +209,9 @@ impl<'a, T: Deref<Target = [u8]>> ContiguousRowReaderWithNulls<'a, T> {
         }
 
         Ok(Self {
-            inner,
+            buf,
             byte_offsets: col_offsets,
-            datum_offset: 4 + bit_set_size,
+            datum_offset: Encoding::size_of_num_bits() + bit_set_size,
         })
     }
 }
@@ -164,8 +227,8 @@ impl<'a, T: Deref<Target = [u8]>> ContiguousRow for ContiguousRowReaderWithNulls
             DatumView::Null
         } else {
             let datum_offset = self.datum_offset + offset as usize;
-            let datum_buf = &self.inner[datum_offset..];
-            datum_view_at(datum_buf, self.inner)
+            let datum_buf = &self.buf[datum_offset..];
+            datum_view_at(datum_buf, self.buf)
         }
     }
 }
@@ -424,7 +487,7 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
 
                 if !datum.is_fixed_sized() {
                     // For the datum content and the length of it
-                    let size = datum.size() + 4;
+                    let size = datum.size() + Encoding::size_of_offset();
                     num_bytes_of_string += size;
                     encoded_len += size;
                 }
@@ -434,12 +497,12 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
         let num_bits = self.table_schema.num_columns();
         let mut nulls_bit_set = BitSet::new(num_bits);
         // The flag for the BitSet, denoting the number of the columns.
-        encoded_len += 4 + nulls_bit_set.as_bytes().len();
+        encoded_len += Encoding::size_of_num_bits() + nulls_bit_set.as_bytes().len();
 
         // Pre-allocate the memory.
         self.inner.reset(encoded_len, 0);
         let mut next_string_offset = encoded_len - num_bytes_of_string;
-        let mut datum_offset = 4 + nulls_bit_set.as_bytes().len();
+        let mut datum_offset = Encoding::size_of_num_bits() + nulls_bit_set.as_bytes().len();
         for index_in_table in 0..self.table_schema.num_columns() {
             if let Some(writer_index) = self.index_in_writer.column_index_in_writer(index_in_table)
             {
@@ -460,7 +523,11 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
 
         // Storing the number of null columns as u32 is enough.
         Self::write_slice_to_offset(self.inner, &mut 0, &(num_bits as u32).to_ne_bytes());
-        Self::write_slice_to_offset(self.inner, &mut 4, nulls_bit_set.as_bytes());
+        Self::write_slice_to_offset(
+            self.inner,
+            &mut Encoding::size_of_num_bits(),
+            nulls_bit_set.as_bytes(),
+        );
 
         debug_assert_eq!(datum_offset, encoded_len - num_bytes_of_string);
         debug_assert_eq!(next_string_offset, encoded_len);
@@ -469,7 +536,8 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
     }
 
     fn write_row_without_nulls(&mut self, row: &Row) -> Result<()> {
-        let datum_buffer_len = self.table_schema.string_buffer_offset() + 4;
+        let datum_buffer_len =
+            self.table_schema.string_buffer_offset() + Encoding::size_of_num_bits();
         let mut encoded_len = datum_buffer_len;
         for index_in_table in 0..self.table_schema.num_columns() {
             if let Some(writer_index) = self.index_in_writer.column_index_in_writer(index_in_table)
@@ -477,7 +545,7 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                 let datum = &row[writer_index];
                 if !datum.is_fixed_sized() {
                     // For the datum content and the length of it
-                    encoded_len += datum.size() + 4;
+                    encoded_len += Encoding::size_of_var_len() + datum.size();
                 }
             }
         }
@@ -487,7 +555,7 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
 
         // Offset to next string in string buffer.
         let mut next_string_offset = datum_buffer_len;
-        let mut datum_offset = 4;
+        let mut datum_offset = Encoding::size_of_num_bits();
         for index_in_table in 0..self.table_schema.num_columns() {
             if let Some(writer_index) = self.index_in_writer.column_index_in_writer(index_in_table)
             {
@@ -536,7 +604,7 @@ pub(crate) fn byte_size_of_datum(kind: &DatumKind) -> usize {
         DatumKind::Double => mem::size_of::<f64>(),
         DatumKind::Float => mem::size_of::<f32>(),
         // The size of offset.
-        DatumKind::Varbinary | DatumKind::String => mem::size_of::<OffsetSize>(),
+        DatumKind::Varbinary | DatumKind::String => Encoding::size_of_offset(),
         DatumKind::UInt64 => mem::size_of::<u64>(),
         DatumKind::UInt32 => mem::size_of::<u32>(),
         DatumKind::UInt16 => mem::size_of::<u16>(),
@@ -639,10 +707,8 @@ fn must_read_view<'a>(
 
 fn must_read_bytes<'a>(datum_buf: &'a [u8], string_buf: &'a [u8]) -> &'a [u8] {
     // Read offset of string in string buf.
-    let value_buf = datum_buf[..mem::size_of::<OffsetSize>()]
-        .try_into()
-        .unwrap();
-    let offset = OffsetSize::from_ne_bytes(value_buf) as usize;
+    let value_buf = datum_buf[..mem::size_of::<Offset>()].try_into().unwrap();
+    let offset = Offset::from_ne_bytes(value_buf) as usize;
     let string_buf = &string_buf[offset..];
 
     // Read len of the string.
