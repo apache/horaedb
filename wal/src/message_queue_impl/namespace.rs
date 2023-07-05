@@ -31,7 +31,7 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Failed to open region, namespace:{}, location:{:?}, err:{}",
+        "Failed to get sequence, namespace:{}, location:{:?}, err:{}",
         namespace,
         location,
         source
@@ -43,7 +43,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to open region, namespace:{}, request:{:?}, err:{}",
+        "Failed to read table logs, namespace:{}, request:{:?}, err:{}",
         namespace,
         request,
         source
@@ -56,7 +56,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to open region, namespace:{}, request:{:?}, \nBacktrace:\n{}",
+        "Failed to read table logs, namespace:{}, request:{:?}, \nBacktrace:\n{}",
         namespace,
         request,
         backtrace,
@@ -69,7 +69,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to open region, namespace:{}, request:{:?}, err:{}",
+        "Failed to scan region logs, namespace:{}, request:{:?}, err:{}",
         namespace,
         request,
         source
@@ -82,7 +82,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to open region, namespace:{}, request:{:?}, \nBacktrace:\n{}",
+        "Failed to scan region logs, namespace:{}, request:{:?}, \nBacktrace:\n{}",
         namespace,
         request,
         backtrace,
@@ -95,7 +95,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to open region, namespace:{}, location:{:?}, batch_size:{}, err:{}",
+        "Failed to write logs, namespace:{}, location:{:?}, batch_size:{}, err:{}",
         namespace,
         location,
         batch_size,
@@ -109,7 +109,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to open region, namespace:{}, location:{:?}, sequence_num:{}, err:{}",
+        "Failed to mark logs deleted, namespace:{}, location:{:?}, sequence_num:{}, err:{}",
         namespace,
         location,
         sequence_num,

@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Meta encoding of wal's message queue implementation
 
@@ -90,25 +90,23 @@ pub enum Error {
 define_result!(Error);
 
 /// Generate wal data topic name
-#[allow(unused)]
+
 pub fn format_wal_data_topic_name(namespace: &str, region_id: u64) -> String {
     format!("{namespace}_data_{region_id}")
 }
 
 /// Generate wal meta topic name
-#[allow(unused)]
+
 pub fn format_wal_meta_topic_name(namespace: &str, region_id: u64) -> String {
     format!("{namespace}_meta_{region_id}")
 }
 
-#[allow(unused)]
 #[derive(Clone, Debug)]
 pub struct MetaEncoding {
     key_enc: MetaKeyEncoder,
     value_enc: MetaValueEncoder,
 }
 
-#[allow(unused)]
 impl MetaEncoding {
     pub fn encode_key(&self, buf: &mut BytesMut, meta_key: &MetaKey) -> manager::Result<()> {
         buf.clear();
@@ -153,6 +151,7 @@ impl MetaEncoding {
         Ok(meta_value.into())
     }
 
+    #[allow(dead_code)]
     pub fn is_meta_key(&self, mut buf: &[u8]) -> manager::Result<bool> {
         self.key_enc
             .is_valid(&mut buf)
@@ -174,20 +173,19 @@ impl MetaEncoding {
 }
 
 /// Message queue implementation's meta key
-#[allow(unused)]
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MetaKey(pub u64);
 
-#[allow(unused)]
 #[derive(Clone, Debug)]
 pub struct MetaKeyEncoder {
     pub namespace: Namespace,
     pub version: u8,
 }
 
-#[allow(unused)]
 impl MetaKeyEncoder {
     /// Determine whether the raw bytes is a valid meta key.
+    #[allow(dead_code)]
     pub fn is_valid<B: Buf>(&self, buf: &mut B) -> Result<bool> {
         let namespace = buf.try_get_u8().context(DecodeMetaKey)?;
         let version = buf.try_get_u8().context(DecodeMetaKey)?;
