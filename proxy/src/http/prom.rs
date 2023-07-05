@@ -53,6 +53,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     /// Handle write samples to remote storage with remote storage protocol.
     async fn handle_prom_write(&self, ctx: RequestContext, req: WriteRequest) -> Result<()> {
         let write_table_requests = convert_write_request(req)?;
+
+        let mut num_rows = 0;
+        for write_table_request in &write_table_requests {
+            for entry in &write_table_request.entries {
+                num_rows += entry.field_groups.len();
+            }
+        }
+
         let table_request = GrpcWriteRequest {
             context: Some(GrpcRequestContext {
                 database: ctx.schema.clone(),
@@ -70,6 +78,9 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             Ok(result) => {
                 if result.failed != 0 {
                     HTTP_HANDLER_COUNTER_VEC.write_failed.inc();
+                    HTTP_HANDLER_COUNTER_VEC
+                        .write_failed_row
+                        .inc_by(result.failed as u64);
                     ErrNoCause {
                         code: StatusCode::INTERNAL_SERVER_ERROR,
                         msg: format!("fail to write storage, failed rows:{:?}", result.failed),
@@ -81,6 +92,9 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             }
             Err(e) => {
                 HTTP_HANDLER_COUNTER_VEC.write_failed.inc();
+                HTTP_HANDLER_COUNTER_VEC
+                    .write_failed_row
+                    .inc_by(num_rows as u64);
                 Err(e)
             }
         }

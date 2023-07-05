@@ -26,6 +26,7 @@ make_auto_flush_static_metric! {
 
     pub label_enum HttpTypeKind {
         write_failed,
+        write_failed_row,
     }
 
     pub struct HttpHandlerCounterVec: LocalIntCounter {
