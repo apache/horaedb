@@ -75,10 +75,10 @@ Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to cr
 
 DESC case_SENSITIVE_table1;
 
-name,type,is_primary,is_nullable,is_tag,
-String("tsid"),String("uint64"),Boolean(true),Boolean(false),Boolean(false),
-String("ts"),String("timestamp"),Boolean(true),Boolean(false),Boolean(false),
-String("VALUE1"),String("double"),Boolean(false),Boolean(true),Boolean(false),
+name,type,is_primary,is_nullable,is_tag,is_dictionary,
+String("tsid"),String("uint64"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
+String("ts"),String("timestamp"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
+String("VALUE1"),String("double"),Boolean(false),Boolean(true),Boolean(false),Boolean(false),
 
 
 DESC CASE_SENSITIVE_TABLE1;
@@ -87,10 +87,10 @@ Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to cr
 
 DESC `case_SENSITIVE_table1`;
 
-name,type,is_primary,is_nullable,is_tag,
-String("tsid"),String("uint64"),Boolean(true),Boolean(false),Boolean(false),
-String("ts"),String("timestamp"),Boolean(true),Boolean(false),Boolean(false),
-String("VALUE1"),String("double"),Boolean(false),Boolean(true),Boolean(false),
+name,type,is_primary,is_nullable,is_tag,is_dictionary,
+String("tsid"),String("uint64"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
+String("ts"),String("timestamp"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
+String("VALUE1"),String("double"),Boolean(false),Boolean(true),Boolean(false),Boolean(false),
 
 
 DESC `CASE_SENSITIVE_TABLE1`;

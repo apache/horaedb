@@ -184,11 +184,39 @@ mod tests {
     use std::sync::Arc;
 
     use arrow::{
-        array::{Int32Array, StringArray},
-        datatypes::{DataType, Field, Schema},
+        array::{Int32Array, StringArray, StringDictionaryBuilder},
+        datatypes::{DataType, Field, Int32Type, Schema},
     };
 
     use super::*;
+
+    fn create_dictionary_record_batch() -> RecordBatch {
+        let col1 = Field::new_dict(
+            "dic1",
+            DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+            false,
+            1,
+            false,
+        );
+        let col2 = Field::new_dict(
+            "dic2",
+            DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+            true,
+            0,
+            false,
+        );
+        let schema = Schema::new(vec![col1, col2]);
+        let mut builder = StringDictionaryBuilder::<Int32Type>::new();
+        builder.append_value("d1");
+        builder.append_value("d2");
+        let dic1 = builder.finish();
+        let mut builder = StringDictionaryBuilder::<Int32Type>::new();
+        builder.append_null();
+        builder.append_value("d3");
+        let dic2 = builder.finish();
+
+        RecordBatch::try_new(Arc::new(schema), vec![Arc::new(dic1), Arc::new(dic2)]).unwrap()
+    }
 
     fn create_batch(rows: usize) -> RecordBatch {
         let schema = Schema::new(vec![
@@ -217,6 +245,18 @@ mod tests {
     #[test]
     fn test_ipc_encode_decode() {
         let batch = create_batch(1024);
+        for compression in [CompressionMethod::None, CompressionMethod::Zstd] {
+            let compress_opts = CompressOptions {
+                compress_min_length: 0,
+                method: compression,
+            };
+            ensure_encoding_and_decoding(&batch, compress_opts, compression);
+        }
+    }
+
+    #[test]
+    fn test_ipc_encode_decode_with_dicitonary_encode() {
+        let batch = create_dictionary_record_batch();
         for compression in [CompressionMethod::None, CompressionMethod::Zstd] {
             let compress_opts = CompressOptions {
                 compress_min_length: 0,
