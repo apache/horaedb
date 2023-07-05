@@ -51,12 +51,15 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     ) -> Result<WriteResponse> {
         let write_table_requests = convert_write_request(req)?;
 
-        let mut num_rows = 0;
-        for write_table_request in &write_table_requests {
-            for entry in &write_table_request.entries {
-                num_rows += entry.field_groups.len();
-            }
-        }
+        let num_rows: usize = write_table_requests
+            .iter()
+            .map(|req| {
+                req.entries
+                    .iter()
+                    .map(|e| e.field_groups.len())
+                    .sum::<usize>()
+            })
+            .sum();
 
         let table_request = GrpcWriteRequest {
             context: Some(GrpcRequestContext {
