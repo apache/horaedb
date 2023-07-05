@@ -429,7 +429,6 @@ pub fn build_schema_from_write_table_request(
             let data_type = try_get_data_type_from_value(tag_value)?;
 
             if let Some(column_schema) = name_column_map.get(tag_name) {
-                // Todo is_dictionary set true or false ? Do we need modify the pb ?
                 ensure_data_type_compatible(
                     table,
                     tag_name,
@@ -466,11 +465,9 @@ pub fn build_schema_from_write_table_request(
                     let data_type = try_get_data_type_from_value(field_value)?;
 
                     if let Some(column_schema) = name_column_map.get(field_name) {
-                        // todo is_dictionary set true or false ?
                         ensure_data_type_compatible(
                             table,
                             field_name,
-                            false,
                             false,
                             data_type,
                             column_schema,
@@ -522,11 +519,9 @@ fn ensure_data_type_compatible(
     table_name: &str,
     column_name: &str,
     is_tag: bool,
-    _is_dictionary: bool,
     data_type: DatumKind,
     column_schema: &ColumnSchema,
 ) -> Result<()> {
-    // Todo how to check is_dictionary ?
     ensure!(
         column_schema.is_tag == is_tag,
         InvalidWriteEntry {

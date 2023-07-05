@@ -465,6 +465,7 @@ impl From<DictionaryArray<Int32Type>> for StringDictionaryColumn {
         Self(array)
     }
 }
+
 impl From<&DictionaryArray<Int32Type>> for StringDictionaryColumn {
     fn from(array_ref: &DictionaryArray<Int32Type>) -> Self {
         let array_data = array_ref.into_data();
@@ -472,6 +473,7 @@ impl From<&DictionaryArray<Int32Type>> for StringDictionaryColumn {
         Self(array)
     }
 }
+
 impl StringDictionaryColumn {
     fn to_arrow_array(&self) -> DictionaryArray<Int32Type> {
         let array_data = self.0.clone().into_data();

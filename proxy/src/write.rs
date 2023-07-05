@@ -700,7 +700,6 @@ fn find_new_columns(
                     }
                 );
                 let field_name = &field_names[field.name_index as usize];
-                // todo is_dictionary set true or false ?
                 build_column(&mut columns, schema, field_name, &field.value, false)?;
             }
         }
