@@ -6,5 +6,5 @@ version = "0.1.0"
 workspace = true
 
 [dependencies]
-ceresdb-client = { git = "https://github.com/CeresDB/ceresdb-client-rs.git", rev = "3803d66053164cb7de0d915171b8dac8f037d396" }
+ceresdb-client = "1.0.2"
 tokio = { version = "1.25", features = ["full"] }
