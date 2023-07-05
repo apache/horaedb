@@ -13,6 +13,7 @@ pub mod byte;
 pub mod codec;
 pub mod config;
 pub mod error;
+pub mod id_allocator;
 pub mod metric;
 pub mod panic;
 pub mod partitioned_lock;

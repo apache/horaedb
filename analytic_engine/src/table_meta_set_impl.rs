@@ -4,8 +4,7 @@
 
 use std::{fmt, sync::Arc};
 
-use async_trait::async_trait;
-use common_util::error::BoxError;
+use common_util::{error::BoxError, id_allocator::IdAllocator};
 use log::debug;
 use snafu::{OptionExt, ResultExt};
 use table_engine::table::TableId;
@@ -17,15 +16,15 @@ use crate::{
             BuildSnapshotNoCause, TableMetaSet,
         },
         meta_edit::{
-            self, AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEditRequest,
-            MetaUpdate, VersionEditMeta,
+            self, AddTableMeta, AllocSstIdMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta,
+            MetaEditRequest, MetaUpdate, VersionEditMeta,
         },
         meta_snapshot::MetaSnapshot,
     },
     space::{Space, SpaceId, SpacesRef},
     sst::file::FilePurgerRef,
     table::{
-        data::{Allocator, TableData, TableShardInfo},
+        data::{TableData, TableShardInfo, DEFAULT_ALLOC_STEP},
         version::{TableVersionMeta, TableVersionSnapshot},
         version_edit::VersionEdit,
     },
@@ -193,8 +192,24 @@ impl TableMetaSetImpl {
                 };
                 self.find_space_and_apply_edit(space_id, alter_option)
             }
-            // no need to update memory.
-            MetaUpdate::AllocSstId(_) => Ok(()),
+            MetaUpdate::AllocSstId(AllocSstIdMeta {
+                space_id,
+                table_id,
+                max_file_id,
+            }) => {
+                let alter_id = move |space: Arc<Space>| {
+                    let table_data = space.find_table_by_id(table_id).with_context(|| {
+                        ApplyUpdateToTableNoCause {
+                            msg: format!(
+                                "table not found, space_id:{space_id}, table_id:{table_id}"
+                            ),
+                        }
+                    })?;
+                    table_data.set_max_file_id(max_file_id);
+                    Ok(())
+                };
+                self.find_space_and_apply_edit(space_id, alter_id)
+            }
         }
     }
 
@@ -222,9 +237,9 @@ impl TableMetaSetImpl {
         let allocator = match version_meta.clone() {
             Some(version_meta) => {
                 let max_file_id = version_meta.max_file_id_to_add();
-                Allocator::new(max_file_id, max_file_id)
+                IdAllocator::new(max_file_id, max_file_id, DEFAULT_ALLOC_STEP)
             }
-            None => Allocator::default(),
+            None => IdAllocator::new(0, 0, DEFAULT_ALLOC_STEP),
         };
 
         let table_name = table_meta.table_name.clone();
@@ -253,7 +268,12 @@ impl TableMetaSetImpl {
                 version_meta
             );
 
+            let max_file_id = version_meta.max_file_id_to_add();
             table_data.current_version().apply_meta(version_meta);
+            // In recovery case, we need to maintain last file id of the table manually.
+            if table_data.max_file_id() < max_file_id {
+                table_data.set_max_file_id(max_file_id);
+            }
         }
 
         debug!(
@@ -267,9 +287,8 @@ impl TableMetaSetImpl {
     }
 }
 
-#[async_trait]
 impl TableMetaSet for TableMetaSetImpl {
-    async fn get_table_snapshot(
+    fn get_table_snapshot(
         &self,
         space_id: SpaceId,
         table_id: TableId,
@@ -305,7 +324,7 @@ impl TableMetaSet for TableMetaSetImpl {
             let version_meta = TableVersionMeta {
                 flushed_sequence,
                 files,
-                max_file_id: table_data.max_file_id().await,
+                max_file_id: table_data.max_file_id(),
             };
 
             Some(MetaSnapshot {

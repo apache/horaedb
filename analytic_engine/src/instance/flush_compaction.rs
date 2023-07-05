@@ -49,7 +49,6 @@ use crate::{
         writer::{MetaData, RecordBatchStream},
     },
     table::{
-        data,
         data::{TableData, TableDataRef},
         version::{FlushableMemTables, MemTableState, SamplingMemTable},
         version_edit::{AddFile, DeleteFile},
@@ -144,8 +143,8 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to alloc file id, err:{source}"))]
-    AllocFileId { source: data::Error },
+    #[snafu(display("Failed to alloc file id, err:{}", source))]
+    AllocFileId { source: GenericError },
 }
 
 define_result!(Error);

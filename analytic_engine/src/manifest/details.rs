@@ -182,9 +182,8 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
 /// Table meta set
 ///
 /// Get snapshot of or modify table's metadata through it.
-#[async_trait]
 pub(crate) trait TableMetaSet: fmt::Debug + Send + Sync {
-    async fn get_table_snapshot(
+    fn get_table_snapshot(
         &self,
         space_id: SpaceId,
         table_id: TableId,
@@ -306,8 +305,7 @@ where
         // Get snapshot data from memory.
         let table_snapshot_opt = self
             .snapshot_data_provider
-            .get_table_snapshot(self.space_id, self.table_id)
-            .await?;
+            .get_table_snapshot(self.space_id, self.table_id)?;
         let snapshot = Snapshot {
             end_seq: self.end_seq,
             data: table_snapshot_opt,
@@ -772,9 +770,8 @@ mod tests {
         builder: std::sync::Mutex<MetaSnapshotBuilder>,
     }
 
-    #[async_trait]
     impl TableMetaSet for MockProviderImpl {
-        async fn get_table_snapshot(
+        fn get_table_snapshot(
             &self,
             _space_id: SpaceId,
             _table_id: TableId,
