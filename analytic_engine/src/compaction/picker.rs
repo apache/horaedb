@@ -176,20 +176,22 @@ fn trim_to_threshold(
         .collect()
 }
 
-/// Origin solution will only consider file size, but this will cause data
-/// corrupt, see https://github.com/CeresDB/ceresdb/pull/1041
-///
-/// So we could only compact files with adjacent seq, or ssts without
-/// overlapping key range among them. Currently solution is relative simple,
-/// only pick adjacent sst. Maybe a better, but more complex solution could be
-/// introduced later.
 // TODO: Remove this function when pick_by_seq is stable.
 fn prefer_pick_by_seq() -> bool {
     std::env::var("CERESDB_COMPACT_PICK_BY_SEQ").unwrap_or_else(|_| "true".to_string()) == "true"
 }
 
 /// Size tiered compaction strategy
-/// See https://github.com/jeffjirsa/twcs/blob/master/src/main/java/com/jeffjirsa/cassandra/db/compaction/SizeTieredCompactionStrategy.java
+///
+/// Origin solution[1] will only consider file size, but this will cause data
+/// corrupt, see https://github.com/CeresDB/ceresdb/pull/1041
+///
+/// So we could only compact files with adjacent seq, or ssts without
+/// overlapping key range among them. Currently solution is relative simple,
+/// only pick adjacent sst. Maybe a better, but more complex solution could be
+/// introduced later.
+///
+/// [1]: https://github.com/jeffjirsa/twcs/blob/master/src/main/java/com/jeffjirsa/cassandra/db/compaction/SizeTieredCompactionStrategy.java
 pub struct SizeTieredPicker {
     pick_by_seq: bool,
 }
@@ -302,7 +304,7 @@ impl SizeTieredPicker {
         max_input_sstable_size: u64,
     ) -> Option<Vec<FileHandle>> {
         // Sort files by max_seq desc.
-        files.sort_unstable_by_key(|f| u64::MAX - f.max_sequence());
+        files.sort_unstable_by_key(|b| std::cmp::Reverse(b.max_sequence()));
 
         'outer: for start in 0..files.len() {
             // Try max_threshold first, since we hope to compact as many small files as we
