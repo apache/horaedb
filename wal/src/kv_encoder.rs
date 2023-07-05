@@ -115,7 +115,6 @@ pub enum Namespace {
 }
 
 /// Log key in old wal design, map the `TableId` to `RegionId`
-
 pub type LogKey = (u64, SequenceNumber);
 
 #[derive(Debug, Clone)]
@@ -581,7 +580,6 @@ impl LogBatchEncoder {
 }
 
 /// Common log key used in multiple wal implementation
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct CommonLogKey {
     /// Id of region which the table belongs to,

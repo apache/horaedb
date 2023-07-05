@@ -90,13 +90,11 @@ pub enum Error {
 define_result!(Error);
 
 /// Generate wal data topic name
-
 pub fn format_wal_data_topic_name(namespace: &str, region_id: u64) -> String {
     format!("{namespace}_data_{region_id}")
 }
 
 /// Generate wal meta topic name
-
 pub fn format_wal_meta_topic_name(namespace: &str, region_id: u64) -> String {
     format!("{namespace}_meta_{region_id}")
 }
@@ -173,7 +171,6 @@ impl MetaEncoding {
 }
 
 /// Message queue implementation's meta key
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MetaKey(pub u64);
 
