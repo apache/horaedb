@@ -329,9 +329,9 @@ impl<'a> Parser<'a> {
         let options = self.parser.parse_options(Keyword::WITH)?;
 
         // Only String Column Can Be Dictionary Encoded
-        for c in columns.iter() {
+        for c in &columns {
             let mut is_dictionary = false;
-            for op in c.options.iter() {
+            for op in &c.options {
                 if is_dictionary_column(&op.option) {
                     is_dictionary = true;
                 }

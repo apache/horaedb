@@ -245,8 +245,6 @@ fn build_column_block<'a, I: Iterator<Item = &'a Datum>>(
     iter: I,
     is_dictionary: bool,
 ) -> stream::Result<ColumnBlock> {
-    // TODO(tanruixiang): ensure there don't use is_dictionary and the
-    // datum.clone() is necessary ?
     let mut builder =
         ColumnBlockBuilder::with_capacity(data_type, iter.size_hint().0, is_dictionary);
     for datum in iter {
