@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use bytes_ext::Bytes;
 use sqlparser::ast::{BinaryOperator, Expr, Value};
@@ -128,9 +128,13 @@ fn default_value_schema_builder() -> schema::Builder {
         .unwrap()
 }
 
-/// Build a schema for testing:
-/// (key1(varbinary), key2(timestamp), field1(double), field2(string),
-/// field3(date), field4(time))
+/// Build a schema for testing, which contains 6 columns:
+/// - key1(varbinary)
+/// - key2(timestamp)
+/// - field1(double)
+/// - field2(string)
+/// - field3(Time)
+/// - field4(Date)
 pub fn build_schema() -> Schema {
     base_schema_builder().build().unwrap()
 }
@@ -335,7 +339,7 @@ pub fn build_record_batch_with_key_by_rows(rows: Vec<Row>) -> RecordBatchWithKey
 
         writer.write_row(&row).unwrap();
 
-        let source_row = ContiguousRowReader::with_schema(&buf, &schema);
+        let source_row = ContiguousRowReader::try_new(&buf, &schema).unwrap();
         let projected_row = ProjectedContiguousRow::new(source_row, &row_projected_schema);
         builder
             .append_projected_contiguous_row(&projected_row)

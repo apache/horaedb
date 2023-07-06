@@ -106,16 +106,19 @@ pub struct Row {
 
 impl Row {
     /// Convert vec of Datum into Row
+    #[inline]
     pub fn from_datums(cols: Vec<Datum>) -> Self {
         Self { cols }
     }
 
     /// Returns the column num
+    #[inline]
     pub fn num_columns(&self) -> usize {
         self.cols.len()
     }
 
     /// Iterate all datums
+    #[inline]
     pub fn iter(&self) -> IterDatum {
         IterDatum {
             iter: self.cols.iter(),
@@ -123,12 +126,14 @@ impl Row {
     }
 
     /// Get the timestamp column
+    #[inline]
     pub fn timestamp(&self, schema: &Schema) -> Option<Timestamp> {
         let timestamp_index = schema.timestamp_index();
 
         self.cols[timestamp_index].as_timestamp()
     }
 
+    #[inline]
     pub fn size(&self) -> usize {
         self.cols.iter().map(|col| col.size()).sum()
     }

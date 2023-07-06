@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use async_trait::async_trait;
 use common_types::{
@@ -71,7 +71,7 @@ pub fn build_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> RecordBatc
 
         writer.write_row(&row).unwrap();
 
-        let source_row = ContiguousRowReader::with_schema(&buf, &schema);
+        let source_row = ContiguousRowReader::try_new(&buf, &schema).unwrap();
         let projected_row = ProjectedContiguousRow::new(source_row, &row_projected_schema);
         builder
             .append_projected_contiguous_row(&projected_row)
