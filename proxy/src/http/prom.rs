@@ -43,6 +43,7 @@ use crate::{
     context::RequestContext,
     error::{build_ok_header, ErrNoCause, ErrWithCause, Error, Internal, InternalNoCause, Result},
     forward::ForwardResult,
+    metrics::HTTP_HANDLER_COUNTER_VEC,
     Context as ProxyContext, Proxy,
 };
 
@@ -52,6 +53,17 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     /// Handle write samples to remote storage with remote storage protocol.
     async fn handle_prom_write(&self, ctx: RequestContext, req: WriteRequest) -> Result<()> {
         let write_table_requests = convert_write_request(req)?;
+
+        let num_rows: usize = write_table_requests
+            .iter()
+            .map(|req| {
+                req.entries
+                    .iter()
+                    .map(|e| e.field_groups.len())
+                    .sum::<usize>()
+            })
+            .sum();
+
         let table_request = GrpcWriteRequest {
             context: Some(GrpcRequestContext {
                 database: ctx.schema.clone(),
@@ -65,16 +77,30 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             forwarded_from: None,
         };
 
-        let result = self.handle_write_internal(ctx, table_request).await?;
-        if result.failed != 0 {
-            ErrNoCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("fail to write storage, failed rows:{:?}", result.failed),
-            }
-            .fail()?;
-        }
+        match self.handle_write_internal(ctx, table_request).await {
+            Ok(result) => {
+                if result.failed != 0 {
+                    HTTP_HANDLER_COUNTER_VEC.write_failed.inc();
+                    HTTP_HANDLER_COUNTER_VEC
+                        .write_failed_row
+                        .inc_by(result.failed as u64);
+                    ErrNoCause {
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        msg: format!("fail to write storage, failed rows:{:?}", result.failed),
+                    }
+                    .fail()?;
+                }
 
-        Ok(())
+                Ok(())
+            }
+            Err(e) => {
+                HTTP_HANDLER_COUNTER_VEC.write_failed.inc();
+                HTTP_HANDLER_COUNTER_VEC
+                    .write_failed_row
+                    .inc_by(num_rows as u64);
+                Err(e)
+            }
+        }
     }
 
     /// Handle one query with remote storage protocol.

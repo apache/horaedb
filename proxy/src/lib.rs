@@ -17,6 +17,7 @@ pub mod http;
 pub mod influxdb;
 pub mod instance;
 pub mod limiter;
+mod metrics;
 pub mod opentsdb;
 mod read;
 pub mod schema_config_provider;

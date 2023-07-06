@@ -30,6 +30,7 @@ use crate::{
         convert_influxql_output, convert_write_request, InfluxqlRequest, InfluxqlResponse,
         WriteRequest, WriteResponse,
     },
+    metrics::HTTP_HANDLER_COUNTER_VEC,
     Context, Proxy,
 };
 
@@ -48,11 +49,23 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: RequestContext,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
+        let write_table_requests = convert_write_request(req)?;
+
+        let num_rows: usize = write_table_requests
+            .iter()
+            .map(|req| {
+                req.entries
+                    .iter()
+                    .map(|e| e.field_groups.len())
+                    .sum::<usize>()
+            })
+            .sum();
+
         let table_request = GrpcWriteRequest {
             context: Some(GrpcRequestContext {
                 database: ctx.schema.clone(),
             }),
-            table_requests: convert_write_request(req)?,
+            table_requests: write_table_requests,
         };
         let proxy_context = Context {
             timeout: ctx.timeout,
@@ -60,16 +73,39 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             enable_partition_table_access: false,
             forwarded_from: None,
         };
-        let result = self
+
+        match self
             .handle_write_internal(proxy_context, table_request)
-            .await?;
+            .await
+        {
+            Ok(result) => {
+                if result.failed != 0 {
+                    HTTP_HANDLER_COUNTER_VEC.write_failed.inc();
+                    HTTP_HANDLER_COUNTER_VEC
+                        .write_failed_row
+                        .inc_by(result.failed as u64);
+                    ErrNoCause {
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        msg: format!("fail to write storage, failed rows:{:?}", result.failed),
+                    }
+                    .fail()?;
+                }
 
-        debug!(
-            "Influxdb write finished, catalog:{}, schema:{}, result:{result:?}",
-            ctx.catalog, ctx.schema
-        );
+                debug!(
+                    "Influxdb write finished, catalog:{}, schema:{}, result:{result:?}",
+                    ctx.catalog, ctx.schema
+                );
 
-        Ok(())
+                Ok(())
+            }
+            Err(e) => {
+                HTTP_HANDLER_COUNTER_VEC.write_failed.inc();
+                HTTP_HANDLER_COUNTER_VEC
+                    .write_failed_row
+                    .inc_by(num_rows as u64);
+                Err(e)
+            }
+        }
     }
 
     async fn fetch_influxdb_query_output(
