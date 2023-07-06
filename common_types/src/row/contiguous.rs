@@ -65,13 +65,7 @@ pub trait ContiguousRow {
     fn datum_view_at(&self, index: usize) -> DatumView;
 }
 
-struct Encoding;
-
-/// Here is the encoding of the continuous row. The encoding format depends on
-/// whether the row contains null columns:
-///
-/// # Row with null columns
-/// This row will be encoded as:
+/// Here is the layout of the encoded continuous row:
 /// ```plaintext
 /// +------------------+-----------------+-------------------------+-------------------------+
 /// | num_bits(u32)    |  nulls_bit_set  | datum encoding block... | var-len payload block   |
@@ -82,6 +76,9 @@ struct Encoding;
 /// are null. With the bitset, any null column won't be encoded in the following
 /// datum encoding block.
 ///
+/// And if `num_bits` is equal to zero, it will still take 4B while the
+/// `nulls_bit_set` block will be ignored.
+///
 /// As for the datum encoding block, most type shares the similar pattern:
 /// ```plaintext
 /// +--------+----------------+
@@ -91,24 +88,8 @@ struct Encoding;
 /// If the type has a fixed size, the data payload will follow the data type.
 /// Otherwise, a offset in the var-len payload block pointing the real payload
 /// follows the type.
-///
-/// Here is the payload for variable length type:
-/// ```plaintext
-/// +-----------------+-------------------+
-/// |  var_len(u32)   |   var payload...  |
-/// +-----------------+-------------------+
-/// ```
-///
-/// # Row without null columns
-/// This encoding way is similar:
-/// ```plaintext
-/// +-----------------+---------------------------+-----------------------+
-/// |    0(u32)       | datum encoding block ...  | var-len payload block |
-/// +-----------------+---------------------------+-----------------------+
-/// ```
-///
-/// From the diagram above, `num_bits` is equal to zero but still takes 4B.
-/// And there is no space for `nulls_bit_set`.
+struct Encoding;
+
 impl Encoding {
     const fn size_of_offset() -> usize {
         mem::size_of::<Offset>()
@@ -494,7 +475,8 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
         }
 
         let num_bits = self.table_schema.num_columns();
-        let mut nulls_bit_set = BitSet::new(num_bits);
+        // Assume most columns are not null, so use a bitset with all bit set at first.
+        let mut nulls_bit_set = BitSet::all_set(num_bits);
         // The flag for the BitSet, denoting the number of the columns.
         encoded_len += Encoding::size_of_num_bits() + nulls_bit_set.as_bytes().len();
 
@@ -514,8 +496,8 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                     &mut next_string_offset,
                 )?;
 
-                if !datum.is_null() {
-                    nulls_bit_set.set(writer_index);
+                if datum.is_null() {
+                    nulls_bit_set.unset(writer_index);
                 }
             }
         }

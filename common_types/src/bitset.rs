@@ -2,6 +2,18 @@
 
 //! Simple BitSet implementation.
 
+const BIT_MASK: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
+const UNSET_BIT_MASK: [u8; 8] = [
+    255 - 1,
+    255 - 2,
+    255 - 4,
+    255 - 8,
+    255 - 16,
+    255 - 32,
+    255 - 64,
+    255 - 128,
+];
+
 /// A basic implementation supporting read/write.
 #[derive(Debug, Default, Clone)]
 pub struct BitSet {
@@ -16,6 +28,14 @@ impl BitSet {
     pub fn new(num_bits: usize) -> Self {
         Self {
             buffer: vec![0; Self::num_bytes(num_bits)],
+            num_bits,
+        }
+    }
+
+    /// Initialize a [`BitSet`] with all bits set.
+    pub fn all_set(num_bits: usize) -> Self {
+        Self {
+            buffer: vec![0xFF; Self::num_bytes(num_bits)],
             num_bits,
         }
     }
@@ -50,7 +70,19 @@ impl BitSet {
             return false;
         }
         let (byte_index, bit_index) = RoBitSet::compute_byte_bit_index(index);
-        self.buffer[byte_index] |= 1 << bit_index;
+        self.buffer[byte_index] |= BIT_MASK[bit_index];
+        true
+    }
+
+    /// Set the bit at the `index`.
+    ///
+    /// Return false if the index is outside the range.
+    pub fn unset(&mut self, index: usize) -> bool {
+        if index >= self.num_bits {
+            return false;
+        }
+        let (byte_index, bit_index) = RoBitSet::compute_byte_bit_index(index);
+        self.buffer[byte_index] &= UNSET_BIT_MASK[bit_index];
         true
     }
 
@@ -61,6 +93,15 @@ impl BitSet {
             num_bits: self.num_bits,
         };
         ro.is_set(index)
+    }
+
+    /// Tells whether the bit at the `index` is unset.
+    pub fn is_unset(&self, index: usize) -> Option<bool> {
+        let ro = RoBitSet {
+            buffer: &self.buffer,
+            num_bits: self.num_bits,
+        };
+        ro.is_unset(index)
     }
 
     #[inline]
@@ -100,6 +141,12 @@ impl<'a> RoBitSet<'a> {
         Some(set)
     }
 
+    /// Tells whether the bit at the `index` is set.
+    #[inline]
+    pub fn is_unset(&self, index: usize) -> Option<bool> {
+        self.is_set(index).map(|v| !v)
+    }
+
     #[inline]
     fn compute_byte_bit_index(index: usize) -> (usize, usize) {
         (index >> 3, index & 7)
@@ -123,6 +170,8 @@ mod tests {
         assert!(bit_set.is_set(20).unwrap());
         assert!(bit_set.set(49));
         assert!(bit_set.is_set(49).unwrap());
+        assert!(bit_set.unset(49));
+        assert!(bit_set.is_unset(49).unwrap());
 
         assert!(!bit_set.set(100));
         assert!(bit_set.is_set(100).is_none());
@@ -130,13 +179,30 @@ mod tests {
         assert_eq!(
             bit_set.into_bytes(),
             vec![
-                0b00000010,
-                0b00000000,
-                0b00010000,
-                0b000000000,
-                0b00000000,
-                0b00000000,
-                0b00000010
+                0b00000010, 0b00000000, 0b00010000, 0b00000000, 0b00000000, 0b00000000, 0b00000000
+            ]
+        );
+    }
+
+    #[test]
+    fn test_unset() {
+        let mut bit_set = BitSet::all_set(50);
+
+        assert!(bit_set.unset(1));
+        assert!(bit_set.is_unset(1).unwrap());
+
+        assert!(bit_set.unset(20));
+        assert!(bit_set.is_unset(20).unwrap());
+        assert!(bit_set.unset(49));
+        assert!(bit_set.is_unset(49).unwrap());
+
+        assert!(!bit_set.unset(100));
+        assert!(bit_set.is_unset(100).is_none());
+
+        assert_eq!(
+            bit_set.into_bytes(),
+            vec![
+                0b11111101, 0b11111111, 0b11101111, 0b11111111, 0b11111111, 0b11111111, 0b11111101
             ]
         );
     }
