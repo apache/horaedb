@@ -13,15 +13,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use ceresdbproto::meta_event::{
-    CloseTableOnShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest,
-    OpenTableOnShardRequest,
-};
+
 use common_types::schema::SchemaName;
 use common_util::{define_result, error::GenericError};
 use meta_client::types::{
     ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId, ShardInfo, ShardVersion,
-    TablesOfShard,
 };
 use shard_lock_manager::ShardLockManagerRef;
 use snafu::{Backtrace, Snafu};

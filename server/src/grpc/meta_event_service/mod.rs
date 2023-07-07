@@ -14,7 +14,7 @@ use catalog::{
     table_operator::TableOperator,
 };
 use ceresdbproto::meta_event::{
-    self, meta_event_service_server::MetaEventService, ChangeShardRoleRequest,
+    meta_event_service_server::MetaEventService, ChangeShardRoleRequest,
     ChangeShardRoleResponse, CloseShardRequest, CloseShardResponse, CloseTableOnShardRequest,
     CloseTableOnShardResponse, CreateTableOnShardRequest, CreateTableOnShardResponse,
     DropTableOnShardRequest, DropTableOnShardResponse, MergeShardsRequest, MergeShardsResponse,
@@ -24,7 +24,7 @@ use ceresdbproto::meta_event::{
 use cluster::{shard_set::UpdatedTableInfo, ClusterRef};
 use common_types::{schema::SchemaEncoder, table::ShardId};
 use common_util::{
-    error::{BoxError, GenericError},
+    error::{BoxError},
     runtime::Runtime,
     time::InstantExt,
 };

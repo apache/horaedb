@@ -163,10 +163,6 @@ mod tests {
     use std::{collections::HashMap, sync::Arc, thread::sleep, time::Duration};
 
     use ceresdbproto::{
-        meta_event::{
-            CloseTableOnShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest,
-            OpenTableOnShardRequest,
-        },
         storage::RequestContext,
     };
     use cluster::{
@@ -176,7 +172,6 @@ mod tests {
     use common_util::config::ReadableDuration;
     use meta_client::types::{
         NodeShard, RouteEntry, RouteTablesResponse, ShardInfo, ShardRole::Leader, TableInfo,
-        TablesOfShard,
     };
 
     use super::*;

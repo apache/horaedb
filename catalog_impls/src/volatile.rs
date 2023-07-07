@@ -308,7 +308,7 @@ impl Schema for SchemaImpl {
                     .get(request.shard_id)
                     .with_context(|| schema::CreateTable {
                         request: request.clone(),
-                        msg: format!("shard not found"),
+                        msg: "shard not found".to_string(),
                     })?;
 
             let shard = shard.read().await;
@@ -320,7 +320,7 @@ impl Schema for SchemaImpl {
                 })
                 .with_context(|| schema::CreateTable {
                     request: request.clone(),
-                    msg: format!("table not found in shard"),
+                    msg: "table not found in shard".to_string(),
                 })?;
         }
         let request = request.into_engine_create_request(None, self.schema_id);

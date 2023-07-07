@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use meta_client::types::{ShardId, ShardInfo, ShardVersion, TableInfo, TablesOfShard};
+use meta_client::types::{ShardId, ShardInfo, TableInfo, TablesOfShard};
 use snafu::{ensure, OptionExt};
 
 use crate::{Result, ShardVersionMismatch, TableAlreadyExists, TableNotFound, UpdateFrozenShard};

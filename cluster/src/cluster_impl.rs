@@ -6,13 +6,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto::{
-    meta_event::{
-        CloseTableOnShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest,
-        OpenTableOnShardRequest, UpdateShardInfo,
-    },
-    meta_service::TableInfo as TableInfoPb,
-};
+
 use common_types::table::ShardId;
 use common_util::{
     error::BoxError,
@@ -23,7 +17,7 @@ use log::{error, info, warn};
 use meta_client::{
     types::{
         GetNodesRequest, GetTablesOfShardsRequest, RouteTablesRequest, RouteTablesResponse,
-        ShardInfo, TableInfo, TablesOfShard,
+        ShardInfo,
     },
     MetaClientRef,
 };
@@ -38,9 +32,8 @@ use crate::{
     shard_lock_manager::{ShardLockManager, ShardLockManagerRef},
     shard_set::{ShardRef, ShardSet},
     topology::ClusterTopology,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause, Internal,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause,
     InvalidArguments, MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound,
-    TableNotFound,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
