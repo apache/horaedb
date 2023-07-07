@@ -133,10 +133,12 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             })?;
 
         if let Some(table_name) = &table_name {
-            println!(
-                "vaild ttl range: {:?}",
-                self.valid_ttl_range(&plan, catalog, schema, table_name)
-            );
+            if !self.valid_ttl_range(&plan, catalog, schema, table_name) {
+                return Err(Error::SqlQueryOverTTL {
+                    code: StatusCode::OK,
+                    msg: format!("The query {sql}'s timestamp is already out of date"),
+                });
+            }
         }
 
         let output = if ctx.enable_partition_table_access {

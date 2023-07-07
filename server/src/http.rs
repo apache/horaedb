@@ -115,6 +115,9 @@ pub enum Error {
 
     #[snafu(display("Missing wal.\nBacktrace:\n{}", backtrace))]
     MissingWal { backtrace: Backtrace },
+
+    #[snafu(display("{}", msg))]
+    SqlQueryOverTTL { code: StatusCode, msg: String },
 }
 
 define_result!(Error);
@@ -260,12 +263,18 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                 let result = proxy
                     .handle_http_sql_query(&ctx, req)
                     .await
-                    .map(convert_output)
-                    .box_err()
-                    .context(HandleRequest);
+                    .map(convert_output);
+
                 match result {
                     Ok(res) => Ok(reply::json(&res)),
-                    Err(e) => Err(reject::custom(e)),
+                    Err(e) => match e {
+                        proxy::error::Error::SqlQueryOverTTL { code, msg } => {
+                            Err(reject::custom(Error::SqlQueryOverTTL { code, msg }))
+                        }
+                        _ => Err(reject::custom(Error::Internal {
+                            source: Box::new(e),
+                        })),
+                    },
                 }
             })
     }
@@ -723,6 +732,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::MissingRouter { .. }
         | Error::MissingWal { .. }
         | Error::HandleUpdateLogLevel { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        Error::SqlQueryOverTTL { code: _, msg: _ } => StatusCode::OK,
     }
 }
 

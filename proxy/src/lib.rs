@@ -6,7 +6,7 @@
 #![feature(trait_alias)]
 
 pub mod context;
-mod error;
+pub mod error;
 mod error_util;
 pub mod forward;
 mod grpc;
@@ -32,10 +32,13 @@ use std::{
 
 use ::http::StatusCode;
 use analytic_engine::table_options::{parse_duration, ENABLE_TTL, TTL};
-use catalog::{schema::{
-    CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, SchemaRef,
-}, CatalogRef};
-use catalog::Catalog;
+
+use catalog::{
+    schema::{
+        CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, SchemaRef,
+    },
+    CatalogRef,
+};
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
     PrometheusRemoteQueryResponse, Route, RouteRequest,
@@ -202,7 +205,10 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 }
             };
 
-            let ddl = nowtime - ttl_duration.as_secs() as i64;
+            // Because the clock may have errors, choose 1 hour as the error buffer
+            let buffer_duration = Duration::new(60 * 60, 0);
+
+            let ddl = nowtime - ttl_duration.as_secs() as i64 - buffer_duration.as_secs() as i64;
 
             let timestamp_name = &tableref
                 .schema()
@@ -242,7 +248,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         Ok(catalog)
     }
 
-    fn get_schema(&self,catalog: &CatalogRef, schema_name: &str) ->Result<SchemaRef>{
+    fn get_schema(&self, catalog: &CatalogRef, schema_name: &str) -> Result<SchemaRef> {
         // TODO: support create schema if not exist
         let schema = catalog
             .schema_by_name(schema_name)
