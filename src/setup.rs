@@ -11,7 +11,7 @@ use analytic_engine::{
 };
 use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
-use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_tables_cache::ShardSet};
+use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
 use common_util::runtime;
 use df_operator::registry::FunctionRegistryImpl;
 use interpreters::table_manipulator::{catalog_based, meta_based};

@@ -6,7 +6,6 @@ use std::{sync::Arc, time::Instant};
 
 use analytic_engine::setup::OpenedWals;
 use async_trait::async_trait;
-use snafu::OptionExt;
 use catalog::{
     schema::{
         CloseOptions, CloseTableRequest, CreateOptions, CreateTableRequest, DropOptions,
@@ -15,16 +14,20 @@ use catalog::{
     table_operator::TableOperator,
 };
 use ceresdbproto::meta_event::{
-    meta_event_service_server::MetaEventService, ChangeShardRoleRequest, ChangeShardRoleResponse,
-    CloseShardRequest, CloseShardResponse, CloseTableOnShardRequest, CloseTableOnShardResponse,
-    CreateTableOnShardRequest, CreateTableOnShardResponse, DropTableOnShardRequest,
-    DropTableOnShardResponse, MergeShardsRequest, MergeShardsResponse, OpenShardRequest,
-    OpenShardResponse, OpenTableOnShardRequest, OpenTableOnShardResponse, SplitShardRequest,
-    SplitShardResponse,
+    self, meta_event_service_server::MetaEventService, ChangeShardRoleRequest,
+    ChangeShardRoleResponse, CloseShardRequest, CloseShardResponse, CloseTableOnShardRequest,
+    CloseTableOnShardResponse, CreateTableOnShardRequest, CreateTableOnShardResponse,
+    DropTableOnShardRequest, DropTableOnShardResponse, MergeShardsRequest, MergeShardsResponse,
+    OpenShardRequest, OpenShardResponse, OpenTableOnShardRequest, OpenTableOnShardResponse,
+    SplitShardRequest, SplitShardResponse,
 };
-use cluster::ClusterRef;
+use cluster::{shard_set::UpdatedTableInfo, ClusterRef};
 use common_types::{schema::SchemaEncoder, table::ShardId};
-use common_util::{error::{BoxError, GenericError}, runtime::Runtime, time::InstantExt};
+use common_util::{
+    error::{BoxError, GenericError},
+    runtime::Runtime,
+    time::InstantExt,
+};
 use log::{error, info, warn};
 use meta_client::types::{ShardInfo, TableInfo};
 use paste::paste;
@@ -50,6 +53,41 @@ use crate::grpc::{
 
 mod error;
 mod shard_operation;
+
+macro_rules! extract_updated_table_info {
+    ($request: expr) => {{
+        let update_shard_info = $request.update_shard_info.clone();
+        let table_info = $request.table_info.clone();
+
+        let update_shard_info = update_shard_info.context(ErrNoCause {
+            code: StatusCode::Internal,
+            msg: "update shard info is missing",
+        })?;
+        let curr_shard_info = update_shard_info.curr_shard_info.context(ErrNoCause {
+            code: StatusCode::Internal,
+            msg: "update shard info is missing",
+        })?;
+        let table_info = table_info.context(ErrNoCause {
+            code: StatusCode::Internal,
+            msg: "update shard info is missing",
+        })?;
+
+        let prev_version = update_shard_info.prev_version;
+        let shard_info = ShardInfo::from(&curr_shard_info);
+        let table_info = TableInfo::try_from(table_info)
+            .box_err()
+            .context(ErrWithCause {
+                code: StatusCode::Internal,
+                msg: "failed to parse tableInfo",
+            })?;
+
+        UpdatedTableInfo {
+            prev_version,
+            shard_info,
+            table_info,
+        }
+    }};
+}
 
 /// Builder for [MetaServiceImpl].
 pub struct Builder<Q> {
@@ -261,9 +299,10 @@ async fn do_open_shard(ctx: HandlerContext, shard_info: ShardInfo) -> Result<()>
             code: StatusCode::Internal,
             msg: "fail to open shards in cluster",
         })?;
-    
+
     // Lock the shard in local, and then recover it.
     let shard = shard.write().await;
+
     let catalog_name = &ctx.default_catalog;
     let shard_info = shard.shard_info.clone();
     let table_defs = shard
@@ -321,27 +360,30 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
 }
 
 async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
-    let tables_of_shard =
-        ctx.cluster
-            .freeze_shard(shard_id)
-            .await
-            .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::Internal,
-                msg: "fail to freeze shard before close it in cluster",
-            })?;
+    let shard = ctx
+        .cluster
+        .get_shard(shard_id)
+        .with_context(|| ErrNoCause {
+            code: StatusCode::Internal,
+            msg: format!("shard not found when closing shard, shard_id:{shard_id}",),
+        })?;
+
+    let mut shard = shard.write().await;
+
+    shard.freeze();
+
     info!("Shard is frozen before closed, shard_id:{shard_id}");
 
     let catalog_name = &ctx.default_catalog.clone();
-    let shard_info = tables_of_shard.shard_info;
-    let table_defs = tables_of_shard
+    let shard_info = shard.shard_info.clone();
+    let table_defs = shard
         .tables
-        .into_iter()
+        .iter()
         .map(|info| TableDef {
             catalog_name: catalog_name.clone(),
-            schema_name: info.schema_name,
+            schema_name: info.schema_name.clone(),
             id: TableId::from(info.id),
-            name: info.name,
+            name: info.name.clone(),
         })
         .collect();
     let close_shard_request = catalog::schema::CloseShardRequest {
@@ -409,13 +451,30 @@ async fn handle_create_table_on_shard(
     ctx: HandlerContext,
     request: CreateTableOnShardRequest,
 ) -> Result<()> {
-    ctx.cluster
-        .create_table_on_shard(&request)
-        .await
+    let updated_table_info = extract_updated_table_info!(request);
+    let shard = ctx
+        .cluster
+        .get_shard(updated_table_info.shard_info.id)
+        .with_context(|| ErrNoCause {
+            code: StatusCode::Internal,
+            msg: format!(
+                "shard not found when creating table on shard, req:{:?}",
+                request.clone()
+            ),
+        })?;
+
+    let mut shard = shard.write().await;
+
+    // FIXME: should insert table from cluster after having created table.
+    shard
+        .try_insert_table(updated_table_info)
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to create table on shard in cluster, req:{request:?}"),
+            msg: format!(
+                "fail to insert table to cluster when creating table on shard, req:{:?}",
+                request.clone()
+            ),
         })?;
 
     // Create the table by operator afterwards.
@@ -497,14 +556,30 @@ async fn handle_drop_table_on_shard(
     ctx: HandlerContext,
     request: DropTableOnShardRequest,
 ) -> Result<()> {
+    let updated_table_info = extract_updated_table_info!(request);
     let shard = ctx
         .cluster
-        .drop_table_on_shard(&request)
-        .await
+        .get_shard(updated_table_info.shard_info.id)
+        .with_context(|| ErrNoCause {
+            code: StatusCode::Internal,
+            msg: format!(
+                "shard not found when dropping table on shard, req:{:?}",
+                request.clone()
+            ),
+        })?;
+
+    let mut shard = shard.write().await;
+
+    // FIXME: should insert table from cluster after having dropped table.
+    shard
+        .try_remove_table(updated_table_info)
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to drop table on shard in cluster, req:{request:?}"),
+            msg: format!(
+                "fail to remove table to cluster when dropping table on shard, req:{:?}",
+                request.clone()
+            ),
         })?;
 
     // Drop the table by operator afterwards.
@@ -540,13 +615,30 @@ async fn handle_open_table_on_shard(
     ctx: HandlerContext,
     request: OpenTableOnShardRequest,
 ) -> Result<()> {
-    ctx.cluster
-        .open_table_on_shard(&request)
-        .await
+    let updated_table_info = extract_updated_table_info!(request);
+    let shard = ctx
+        .cluster
+        .get_shard(updated_table_info.shard_info.id)
+        .with_context(|| ErrNoCause {
+            code: StatusCode::Internal,
+            msg: format!(
+                "shard not found when opening table on shard, req:{:?}",
+                request.clone()
+            ),
+        })?;
+
+    let mut shard = shard.write().await;
+
+    // FIXME: should insert table from cluster after having opened table.
+    shard
+        .try_insert_table(updated_table_info)
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to open table on shard in cluster, req:{request:?}"),
+            msg: format!(
+                "fail to insert table to cluster when opening table on shard, req:{:?}",
+                request.clone()
+            ),
         })?;
 
     // Open the table by operator afterwards.
@@ -595,16 +687,33 @@ async fn handle_close_table_on_shard(
     ctx: HandlerContext,
     request: CloseTableOnShardRequest,
 ) -> Result<()> {
-    let shard = ctx.cluster
-        .get_shard(shard_id)
+    let updated_table_info = extract_updated_table_info!(request);
+    let shard = ctx
+        .cluster
+        .get_shard(updated_table_info.shard_info.id)
         .with_context(|| ErrNoCause {
             code: StatusCode::Internal,
-            msg: format!("fail to close table on shard in cluster, req:{:?}", request.clone()),
+            msg: format!(
+                "shard not found when closing table on shard, req:{:?}",
+                request.clone()
+            ),
         })?;
 
-    let shard = shard.write().await;
+    let mut shard = shard.write().await;
 
-    // Close the table by catalog manager afterwards.    
+    // FIXME: should remove table from cluster after having closed table.
+    shard
+        .try_remove_table(updated_table_info)
+        .box_err()
+        .with_context(|| ErrWithCause {
+            code: StatusCode::Internal,
+            msg: format!(
+                "fail to remove table from cluster when closing table on shard, req:{:?}",
+                request.clone()
+            ),
+        })?;
+
+    // Close the table by catalog manager afterwards.
     let catalog_name = &ctx.default_catalog;
     let table_info = request.table_info.context(ErrNoCause {
         code: StatusCode::BadRequest,
@@ -632,20 +741,6 @@ async fn handle_close_table_on_shard(
         })?;
 
     Ok(())
-}
-
-struct UpdateShardInfo {
-    prev_version: u64,
-    shard_info: ShardInfo,
-    table_info: TableInfo,     
-}
-
-impl TryFrom<ceresdbproto::meta_event::UpdateShardInfo> for UpdateShardInfo {
-    type Error = GenericError;
-
-    fn try_from(value: ceresdbproto::meta_event::UpdateShardInfo) -> std::result::Result<Self, Self::Error> {
-        todo!()
-    }
 }
 
 #[async_trait]

@@ -8,10 +8,7 @@ use std::{
 use meta_client::types::{ShardId, ShardInfo, ShardVersion, TableInfo, TablesOfShard};
 use snafu::{ensure, OptionExt};
 
-use crate::{
-    Result, ShardNotFound, ShardVersionMismatch, TableAlreadyExists, TableNotFound,
-    UpdateFrozenShard,
-};
+use crate::{Result, ShardVersionMismatch, TableAlreadyExists, TableNotFound, UpdateFrozenShard};
 
 /// [ShardTablesCache] caches the information about tables and shards, and the
 /// relationship between them is: one shard -> multiple tables.
@@ -24,6 +21,12 @@ pub struct ShardSet {
 pub struct TableWithShards {
     pub table_info: TableInfo,
     pub shard_infos: Vec<ShardInfo>,
+}
+
+pub struct UpdatedTableInfo {
+    pub prev_version: u64,
+    pub shard_info: ShardInfo,
+    pub table_info: TableInfo,
 }
 
 impl ShardSet {
@@ -61,16 +64,17 @@ pub struct Shard {
 }
 
 impl Shard {
-    fn freeze(&mut self) {
+    pub fn freeze(&mut self) {
         self.frozen = true;
     }
 
-    fn try_insert_table(
-        &mut self,
-        prev_shard_version: ShardVersion,
-        curr_shard: ShardInfo,
-        new_table: TableInfo,
-    ) -> Result<()> {
+    pub fn try_insert_table(&mut self, updated_info: UpdatedTableInfo) -> Result<()> {
+        let UpdatedTableInfo {
+            prev_version: prev_shard_version,
+            shard_info: curr_shard,
+            table_info: new_table,
+        } = updated_info;
+
         ensure!(
             !self.frozen,
             UpdateFrozenShard {
@@ -101,12 +105,13 @@ impl Shard {
         Ok(())
     }
 
-    fn try_remove_table(
-        &mut self,
-        prev_shard_version: ShardVersion,
-        curr_shard: ShardInfo,
-        new_table: TableInfo,
-    ) -> Result<()> {
+    pub fn try_remove_table(&mut self, updated_info: UpdatedTableInfo) -> Result<()> {
+        let UpdatedTableInfo {
+            prev_version: prev_shard_version,
+            shard_info: curr_shard,
+            table_info: new_table,
+        } = updated_info;
+
         ensure!(
             !self.frozen,
             UpdateFrozenShard {
