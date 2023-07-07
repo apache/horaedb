@@ -169,7 +169,9 @@ mod tests {
         },
         storage::RequestContext,
     };
-    use cluster::{shard_lock_manager::ShardLockManagerRef, Cluster, ClusterNodesResp};
+    use cluster::{
+        shard_lock_manager::ShardLockManagerRef, shard_set::ShardRef, Cluster, ClusterNodesResp,
+    };
     use common_types::table::ShardId;
     use common_util::config::ReadableDuration;
     use meta_client::types::{
@@ -191,37 +193,15 @@ mod tests {
             unimplemented!();
         }
 
-        async fn open_shard(&self, _: &ShardInfo) -> cluster::Result<TablesOfShard> {
+        async fn open_shard(&self, _: &ShardInfo) -> cluster::Result<ShardRef> {
             unimplemented!();
         }
 
-        async fn close_shard(&self, _: ShardId) -> cluster::Result<TablesOfShard> {
+        fn get_shard(&self, _: ShardId) -> Option<ShardRef> {
             unimplemented!();
         }
 
-        async fn freeze_shard(&self, _: ShardId) -> cluster::Result<TablesOfShard> {
-            unimplemented!();
-        }
-
-        async fn create_table_on_shard(
-            &self,
-            _req: &CreateTableOnShardRequest,
-        ) -> cluster::Result<()> {
-            unimplemented!();
-        }
-
-        async fn drop_table_on_shard(&self, _req: &DropTableOnShardRequest) -> cluster::Result<()> {
-            unimplemented!();
-        }
-
-        async fn open_table_on_shard(&self, _req: &OpenTableOnShardRequest) -> cluster::Result<()> {
-            unimplemented!();
-        }
-
-        async fn close_table_on_shard(
-            &self,
-            _req: &CloseTableOnShardRequest,
-        ) -> cluster::Result<()> {
+        async fn close_shard(&self, _: ShardId) -> cluster::Result<ShardRef> {
             unimplemented!();
         }
 

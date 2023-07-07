@@ -6,6 +6,7 @@ use std::{sync::Arc, time::Instant};
 
 use analytic_engine::setup::OpenedWals;
 use async_trait::async_trait;
+use snafu::OptionExt;
 use catalog::{
     schema::{
         CloseOptions, CloseTableRequest, CreateOptions, CreateTableRequest, DropOptions,
@@ -23,9 +24,9 @@ use ceresdbproto::meta_event::{
 };
 use cluster::ClusterRef;
 use common_types::{schema::SchemaEncoder, table::ShardId};
-use common_util::{error::BoxError, runtime::Runtime, time::InstantExt};
+use common_util::{error::{BoxError, GenericError}, runtime::Runtime, time::InstantExt};
 use log::{error, info, warn};
-use meta_client::types::ShardInfo;
+use meta_client::types::{ShardInfo, TableInfo};
 use paste::paste;
 use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
@@ -247,9 +248,11 @@ impl HandlerContext {
 }
 
 async fn do_open_shard(ctx: HandlerContext, shard_info: ShardInfo) -> Result<()> {
+    // Try to lock the shard in node level.
     ctx.acquire_shard_lock(shard_info.id).await?;
 
-    let tables_of_shard = ctx
+    // Success to lock the shard in this node, fetch and open shard now.
+    let shard = ctx
         .cluster
         .open_shard(&shard_info)
         .await
@@ -258,17 +261,19 @@ async fn do_open_shard(ctx: HandlerContext, shard_info: ShardInfo) -> Result<()>
             code: StatusCode::Internal,
             msg: "fail to open shards in cluster",
         })?;
-
+    
+    // Lock the shard in local, and then recover it.
+    let shard = shard.write().await;
     let catalog_name = &ctx.default_catalog;
-    let shard_info = tables_of_shard.shard_info;
-    let table_defs = tables_of_shard
+    let shard_info = shard.shard_info.clone();
+    let table_defs = shard
         .tables
-        .into_iter()
+        .iter()
         .map(|info| TableDef {
             catalog_name: catalog_name.clone(),
-            schema_name: info.schema_name,
+            schema_name: info.schema_name.clone(),
             id: TableId::from(info.id),
-            name: info.name,
+            name: info.name.clone(),
         })
         .collect();
 
@@ -294,7 +299,6 @@ async fn do_open_shard(ctx: HandlerContext, shard_info: ShardInfo) -> Result<()>
 // TODO: maybe we should encapsulate the logic of handling meta event into a
 // trait, so that we don't need to expose the logic to the meta event service
 // implementation.
-
 async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Result<()> {
     info!("Receive open shard request, request:{request:?}");
     let shard_info = ShardInfo::from(&request.shard.context(ErrNoCause {
@@ -493,7 +497,8 @@ async fn handle_drop_table_on_shard(
     ctx: HandlerContext,
     request: DropTableOnShardRequest,
 ) -> Result<()> {
-    ctx.cluster
+    let shard = ctx
+        .cluster
         .drop_table_on_shard(&request)
         .await
         .box_err()
@@ -590,16 +595,16 @@ async fn handle_close_table_on_shard(
     ctx: HandlerContext,
     request: CloseTableOnShardRequest,
 ) -> Result<()> {
-    ctx.cluster
-        .close_table_on_shard(&request)
-        .await
-        .box_err()
-        .with_context(|| ErrWithCause {
+    let shard = ctx.cluster
+        .get_shard(shard_id)
+        .with_context(|| ErrNoCause {
             code: StatusCode::Internal,
-            msg: format!("fail to close table on shard in cluster, req:{request:?}"),
+            msg: format!("fail to close table on shard in cluster, req:{:?}", request.clone()),
         })?;
 
-    // Close the table by catalog manager afterwards.
+    let shard = shard.write().await;
+
+    // Close the table by catalog manager afterwards.    
     let catalog_name = &ctx.default_catalog;
     let table_info = request.table_info.context(ErrNoCause {
         code: StatusCode::BadRequest,
@@ -627,6 +632,20 @@ async fn handle_close_table_on_shard(
         })?;
 
     Ok(())
+}
+
+struct UpdateShardInfo {
+    prev_version: u64,
+    shard_info: ShardInfo,
+    table_info: TableInfo,     
+}
+
+impl TryFrom<ceresdbproto::meta_event::UpdateShardInfo> for UpdateShardInfo {
+    type Error = GenericError;
+
+    fn try_from(value: ceresdbproto::meta_event::UpdateShardInfo) -> std::result::Result<Self, Self::Error> {
+        todo!()
+    }
 }
 
 #[async_trait]
