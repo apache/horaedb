@@ -20,7 +20,7 @@ use catalog::{
     },
     Catalog, CatalogRef, CreateSchemaWithCause,
 };
-use cluster::shard_tables_cache::ShardTablesCache;
+use cluster::shard_set::ShardSet;
 use common_types::schema::SchemaName;
 use common_util::error::BoxError;
 use log::{debug, info};
@@ -32,12 +32,12 @@ use tokio::sync::Mutex;
 /// ManagerImpl manages multiple volatile catalogs.
 pub struct ManagerImpl {
     catalogs: HashMap<String, Arc<CatalogImpl>>,
-    shard_tables_cache: ShardTablesCache,
+    shard_tables_cache: ShardSet,
     meta_client: MetaClientRef,
 }
 
 impl ManagerImpl {
-    pub fn new(shard_tables_cache: ShardTablesCache, meta_client: MetaClientRef) -> Self {
+    pub fn new(shard_tables_cache: ShardSet, meta_client: MetaClientRef) -> Self {
         let mut manager = ManagerImpl {
             catalogs: HashMap::new(),
             shard_tables_cache,
@@ -107,7 +107,7 @@ struct CatalogImpl {
     name: String,
     /// All the schemas belonging to the catalog.
     schemas: RwLock<HashMap<SchemaName, SchemaRef>>,
-    shard_tables_cache: ShardTablesCache,
+    shard_tables_cache: ShardSet,
     meta_client: MetaClientRef,
 }
 
@@ -188,7 +188,7 @@ struct SchemaImpl {
     /// Schema name
     schema_name: String,
     schema_id: SchemaId,
-    shard_tables_cache: ShardTablesCache,
+    shard_tables_cache: ShardSet,
     /// Tables of schema
     tables: RwLock<HashMap<String, TableRef>>,
     /// Guard for creating/dropping table
@@ -200,7 +200,7 @@ impl SchemaImpl {
         catalog_name: String,
         schema_name: String,
         schema_id: SchemaId,
-        shard_tables_cache: ShardTablesCache,
+        shard_tables_cache: ShardSet,
     ) -> Self {
         Self {
             catalog_name,

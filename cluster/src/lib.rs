@@ -26,10 +26,12 @@ use meta_client::types::{
 use shard_lock_manager::ShardLockManagerRef;
 use snafu::{Backtrace, Snafu};
 
+use crate::shard_set::ShardRef;
+
 pub mod cluster_impl;
 pub mod config;
 pub mod shard_lock_manager;
-pub mod shard_tables_cache;
+pub mod shard_set;
 #[allow(dead_code)]
 pub mod topology;
 
@@ -132,19 +134,14 @@ pub struct ClusterNodesResp {
 pub trait Cluster {
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
-    async fn open_shard(&self, shard_info: &ShardInfo) -> Result<TablesOfShard>;
+    async fn open_shard(&self, shard_info: &ShardInfo) -> Result<ShardRef>;
     /// Close the shard.
     ///
     /// Return error if the shard is not found.
-    async fn close_shard(&self, req: ShardId) -> Result<TablesOfShard>;
+    async fn close_shard(&self, req: ShardId) -> Result<ShardRef>;
     /// Freeze the shard to reject create/drop table on the shard.
     ///
     /// Return error if the shard is not found.
-    async fn freeze_shard(&self, req: ShardId) -> Result<TablesOfShard>;
-    async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()>;
-    async fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()>;
-    async fn open_table_on_shard(&self, req: &OpenTableOnShardRequest) -> Result<()>;
-    async fn close_table_on_shard(&self, req: &CloseTableOnShardRequest) -> Result<()>;
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;
     async fn fetch_nodes(&self) -> Result<ClusterNodesResp>;
     fn shard_lock_manager(&self) -> ShardLockManagerRef;
