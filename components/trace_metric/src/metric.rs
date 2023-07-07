@@ -3,9 +3,15 @@
 use std::{fmt, time::Duration};
 
 #[derive(Clone)]
+pub enum MetricOp {
+    Add,
+}
+
+#[derive(Clone)]
 pub struct MetricValue<T: Clone + fmt::Debug> {
     pub name: String,
     pub val: T,
+    pub op: Option<MetricOp>,
 }
 
 #[derive(Clone)]
@@ -17,18 +23,18 @@ pub enum Metric {
 
 impl Metric {
     #[inline]
-    pub fn number(name: String, val: usize) -> Self {
-        Metric::Number(MetricValue { name, val })
+    pub fn number(name: String, val: usize, op: Option<MetricOp>) -> Self {
+        Metric::Number(MetricValue { name, val, op })
     }
 
     #[inline]
-    pub fn duration(name: String, val: Duration) -> Self {
-        Metric::Duration(MetricValue { name, val })
+    pub fn duration(name: String, val: Duration, op: Option<MetricOp>) -> Self {
+        Metric::Duration(MetricValue { name, val, op })
     }
 
     #[inline]
-    pub fn boolean(name: String, val: bool) -> Self {
-        Metric::Boolean(MetricValue { name, val })
+    pub fn boolean(name: String, val: bool, op: Option<MetricOp>) -> Self {
+        Metric::Boolean(MetricValue { name, val, op })
     }
 }
 

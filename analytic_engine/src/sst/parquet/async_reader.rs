@@ -5,7 +5,10 @@
 use std::{
     ops::Range,
     pin::Pin,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     task::{Context, Poll},
     time::{Duration, Instant},
 };
@@ -128,6 +131,7 @@ impl<'a> Reader<'a> {
     async fn maybe_read_parallelly(
         &mut self,
         read_parallelism: usize,
+        row_mem: Arc<AtomicU64>,
     ) -> Result<Vec<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>>> {
         assert!(read_parallelism > 0);
 
@@ -153,10 +157,11 @@ impl<'a> Reader<'a> {
             .into_iter()
             .map(|stream| {
                 Box::new(RecordBatchProjector::new(
-                    self.path.to_string(),
                     stream,
                     row_projector.clone(),
                     sst_meta_data.clone(),
+                    self.metrics.metrics_collector.clone(),
+                    row_mem.clone(),
                 )) as _
             })
             .collect();
@@ -370,7 +375,8 @@ impl<'a> Reader<'a> {
                 file_path: self.path.to_string(),
             })?;
 
-        MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
+        //TODO: unstore origin value
+        MetaData::try_new(&parquet_meta_data, true)
             .box_err()
             .context(DecodeSstMeta)
     }
@@ -422,7 +428,7 @@ impl<'a> Reader<'a> {
 
 impl<'a> Drop for Reader<'a> {
     fn drop(&mut self) {
-        debug!(
+        log::info!(
             "Parquet reader dropped, path:{:?}, df_plan_metrics:{}",
             self.path,
             self.df_plan_metrics.clone_inner().to_string()
@@ -448,42 +454,49 @@ impl<'a> ChunkReader for ChunkReaderAdapter<'a> {
     }
 }
 
+#[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
+pub(crate) struct ProjectorMetrics {
+    #[metric(number, add)]
+    pub row_num: usize,
+    #[metric(number)]
+    pub row_mem: usize,
+    #[metric(duration)]
+    pub project_record_batch: Duration,
+    #[metric(collector)]
+    pub metrics_collector: Option<MetricsCollector>,
+}
+
 struct RecordBatchProjector {
-    path: String,
     stream: SendableRecordBatchStream,
     row_projector: ArrowRecordBatchProjector,
 
-    row_num: usize,
+    metrics: ProjectorMetrics,
     start_time: Instant,
     sst_meta: ParquetMetaDataRef,
+    row_mem: Arc<AtomicU64>,
 }
 
 impl RecordBatchProjector {
     fn new(
-        path: String,
         stream: SendableRecordBatchStream,
         row_projector: ArrowRecordBatchProjector,
         sst_meta: ParquetMetaDataRef,
+        metrics_collector: Option<MetricsCollector>,
+        row_mem: Arc<AtomicU64>,
     ) -> Self {
+        let metrics = ProjectorMetrics {
+            metrics_collector,
+            ..Default::default()
+        };
+
         Self {
-            path,
             stream,
             row_projector,
-            row_num: 0,
+            metrics,
             start_time: Instant::now(),
             sst_meta,
+            row_mem,
         }
-    }
-}
-
-impl Drop for RecordBatchProjector {
-    fn drop(&mut self) {
-        debug!(
-            "RecordBatchProjector dropped, path:{} rows:{}, cost:{}ms.",
-            self.path,
-            self.row_num,
-            self.start_time.saturating_elapsed().as_millis(),
-        );
     }
 }
 
@@ -505,7 +518,13 @@ impl Stream for RecordBatchProjector {
                             .box_err()
                             .context(DecodeRecordBatch)?;
 
-                        projector.row_num += record_batch.num_rows();
+                        for col in record_batch.columns() {
+                            projector.metrics.row_mem += col.get_array_memory_size();
+                            projector
+                                .row_mem
+                                .fetch_add(col.get_array_memory_size() as u64, Ordering::SeqCst);
+                        }
+                        projector.metrics.row_num += record_batch.num_rows();
 
                         let projected_batch = projector
                             .row_projector
@@ -518,7 +537,10 @@ impl Stream for RecordBatchProjector {
                 }
             }
             Poll::Pending => Poll::Pending,
-            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Ready(None) => {
+                projector.metrics.project_record_batch += projector.start_time.saturating_elapsed();
+                Poll::Ready(None)
+            }
         }
     }
 
@@ -540,7 +562,9 @@ impl<'a> SstReader for Reader<'a> {
     async fn read(
         &mut self,
     ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>> {
-        let mut streams = self.maybe_read_parallelly(1).await?;
+        let mut streams = self
+            .maybe_read_parallelly(1, Arc::new(AtomicU64::new(0)))
+            .await?;
         assert_eq!(streams.len(), 1);
         let stream = streams.pop().expect("impossible to fetch no stream");
 
@@ -553,6 +577,16 @@ struct RecordBatchReceiver {
     cur_rx_idx: usize,
     #[allow(dead_code)]
     drop_helper: AbortOnDropMany<()>,
+    row_mem: Arc<AtomicU64>,
+}
+
+impl Drop for RecordBatchReceiver {
+    fn drop(&mut self) {
+        log::info!(
+            "RecordBatchReceiver row_mem:{}",
+            self.row_mem.load(Ordering::SeqCst)
+        );
+    }
 }
 
 impl Stream for RecordBatchReceiver {
@@ -605,6 +639,7 @@ pub struct ThreadedReader<'a> {
 
     channel_cap: usize,
     read_parallelism: usize,
+    row_mem: Arc<AtomicU64>,
 }
 
 impl<'a> ThreadedReader<'a> {
@@ -624,6 +659,7 @@ impl<'a> ThreadedReader<'a> {
             runtime,
             channel_cap,
             read_parallelism,
+            row_mem: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -654,13 +690,14 @@ impl<'a> SstReader for ThreadedReader<'a> {
         // Get underlying sst readers and channels.
         let sub_readers = self
             .inner
-            .maybe_read_parallelly(self.read_parallelism)
+            .maybe_read_parallelly(self.read_parallelism, self.row_mem.clone())
             .await?;
         if sub_readers.is_empty() {
             return Ok(Box::new(RecordBatchReceiver {
                 rx_group: Vec::new(),
                 cur_rx_idx: 0,
                 drop_helper: AbortOnDropMany(Vec::new()),
+                row_mem: self.row_mem.clone(),
             }) as _);
         }
 
@@ -685,6 +722,7 @@ impl<'a> SstReader for ThreadedReader<'a> {
             rx_group,
             cur_rx_idx: 0,
             drop_helper: AbortOnDropMany(handles),
+            row_mem: self.row_mem.clone(),
         }) as _)
     }
 }

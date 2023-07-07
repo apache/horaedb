@@ -1,13 +1,24 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use proc_macro::TokenStream;
-use quote::{quote, ToTokens};
+use quote::{quote, ToTokens, TokenStreamExt};
 use syn::{DeriveInput, Field, Generics, Ident};
 
 const COLLECTOR_FIELD_TOKENS: &str = "(collector)";
-const NUMBER_FIELD_TOKENS: &str = "(number)";
-const DURATION_FIELD_TOKENS: &str = "(duration)";
-const BOOLEAN_FIELD_TOKENS: &str = "(boolean)";
+const NUMBER_FIELD_TOKENS: &str = "number";
+const DURATION_FIELD_TOKENS: &str = "duration";
+const BOOLEAN_FIELD_TOKENS: &str = "boolean";
+
+#[derive(Debug, Clone)]
+enum MetricOp {
+    Add,
+}
+
+impl ToTokens for MetricOp {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        tokens.append_all(format!("{self:?}").as_bytes());
+    }
+}
 
 enum MetricType {
     Number,
@@ -15,22 +26,58 @@ enum MetricType {
     Boolean,
 }
 
-impl MetricType {
-    fn try_from_tokens(s: &str) -> Option<Self> {
+struct MetricMetadata {
+    typ: MetricType,
+    op: Option<MetricOp>,
+}
+
+impl MetricMetadata {
+    fn parse_op(s: &str) -> Option<MetricOp> {
+        match s {
+            "add" => Some(MetricOp::Add),
+            _ => None,
+        }
+    }
+
+    fn parse_type(s: &str) -> Option<MetricType> {
         if s == NUMBER_FIELD_TOKENS {
-            Some(Self::Number)
+            Some(MetricType::Number)
         } else if s == DURATION_FIELD_TOKENS {
-            Some(Self::Duration)
+            Some(MetricType::Duration)
         } else if s == BOOLEAN_FIELD_TOKENS {
-            Some(Self::Boolean)
+            Some(MetricType::Boolean)
         } else {
             None
         }
     }
+
+    fn try_from_tokens(tokens: &proc_macro2::TokenStream) -> Option<Self> {
+        for tree in tokens.clone().into_iter() {
+            if let proc_macro2::TokenTree::Group(group) = tree {
+                let trees = group.stream().into_iter().collect::<Vec<_>>();
+                match trees.len() {
+                    // #[metric(number)]
+                    1 => {
+                        return Self::parse_type(&trees[0].to_string())
+                            .map(|typ| Self { typ, op: None })
+                    }
+                    // #[metric(number, add)]
+                    3 => {
+                        let typ = Self::parse_type(&trees[0].to_string())?;
+                        let op = Self::parse_op(&trees[2].to_string())?;
+                        return Some(Self { typ, op: Some(op) });
+                    }
+                    _ => return None,
+                }
+            }
+        }
+
+        None
+    }
 }
 
 struct MetricField {
-    metric_type: MetricType,
+    metric_metadata: MetricMetadata,
     field_name: Ident,
 }
 
@@ -42,11 +89,10 @@ impl MetricField {
             }
 
             let field_name = field.ident.expect("Metric field must have a name");
-            let metric_type_tokens = attr.tokens.to_string();
-            let metric_type =
-                MetricType::try_from_tokens(&metric_type_tokens).expect("Unknown metric type");
+            let metric_metadata =
+                MetricMetadata::try_from_tokens(&attr.tokens).expect("Unknown metric type");
             return Some(Self {
-                metric_type,
+                metric_metadata,
                 field_name,
             });
         }
@@ -124,15 +170,27 @@ impl Builder {
         let mut collect_statements = Vec::with_capacity(self.metric_fields.len());
         for metric_field in self.metric_fields.iter() {
             let field_name = &metric_field.field_name;
-            let metric = match metric_field.metric_type {
+            let md = &metric_field.metric_metadata;
+            let op = &md.op;
+            let metric = match md.typ {
                 MetricType::Number => {
-                    quote! { ::trace_metric::Metric::number(stringify!(#field_name).to_string(), self.#field_name) }
+                    quote! { ::trace_metric::Metric::number(stringify!(#field_name).to_string(),
+                                                            self.#field_name,
+                                                            ::trace_metric::Metric::MetricOp::stringify!(#op))
+                    }
                 }
                 MetricType::Duration => {
-                    quote! { ::trace_metric::Metric::duration(stringify!(#field_name).to_string(), self.#field_name) }
+                    quote! { ::trace_metric::Metric::duration(stringify!(#field_name).to_string(),
+                                                              self.#field_name,
+                                                              ::trace_metric::Metric::MetricOp::stringify!(#op))
+                    }
                 }
                 MetricType::Boolean => {
-                    quote! { ::trace_metric::Metric::boolean(stringify!(#field_name).to_string(), self.#field_name) }
+                    quote! { ::trace_metric::Metric::boolean(stringify!(#field_name).to_string(),
+                                                             self.#field_name,
+                                                             ::trace_metric::Metric::MetricOp::stringify!(#op))
+
+                    }
                 }
             };
             let statement = quote! {

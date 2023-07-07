@@ -104,6 +104,7 @@ impl Instance {
         request.metrics_collector.collect(Metric::boolean(
             MERGE_SORT_METRIC_NAME.to_string(),
             need_merge_sort,
+            None,
         ));
 
         if need_merge_sort {
@@ -216,6 +217,7 @@ impl Instance {
         request.metrics_collector.collect(Metric::number(
             ITER_NUM_METRIC_NAME.to_string(),
             iters.len(),
+            None,
         ));
 
         Ok(iters)
