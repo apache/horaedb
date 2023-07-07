@@ -49,7 +49,7 @@ use crate::{
         writer::{MetaData, RecordBatchStream},
     },
     table::{
-        data::{TableData, TableDataRef},
+        data::{self, TableData, TableDataRef},
         version::{FlushableMemTables, MemTableState, SamplingMemTable},
         version_edit::{AddFile, DeleteFile},
     },
@@ -144,7 +144,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to alloc file id, err:{}", source))]
-    AllocFileId { source: GenericError },
+    AllocFileId { source: data::Error },
 }
 
 define_result!(Error);
@@ -411,6 +411,7 @@ impl FlushTask {
                 files_to_add: files_to_level0.clone(),
                 files_to_delete: vec![],
                 mems_to_remove: mems_to_flush.ids(),
+                max_file_id: 0,
             };
             let meta_update = MetaUpdate::VersionEdit(edit_meta);
             MetaEditRequest {
@@ -682,6 +683,7 @@ impl SpaceStore {
             files_to_add: Vec::with_capacity(inputs.len()),
             files_to_delete: vec![],
             mems_to_remove: vec![],
+            max_file_id: 0,
         };
 
         if task.is_empty() {

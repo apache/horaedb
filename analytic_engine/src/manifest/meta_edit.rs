@@ -76,7 +76,6 @@ pub enum MetaUpdate {
     VersionEdit(VersionEditMeta),
     AlterSchema(AlterSchemaMeta),
     AlterOptions(AlterOptionsMeta),
-    AllocSstId(AllocSstIdMeta),
 }
 
 impl From<MetaUpdate> for manifest_pb::MetaUpdate {
@@ -87,7 +86,6 @@ impl From<MetaUpdate> for manifest_pb::MetaUpdate {
             MetaUpdate::AlterSchema(v) => manifest_pb::meta_update::Meta::AlterSchema(v.into()),
             MetaUpdate::AlterOptions(v) => manifest_pb::meta_update::Meta::AlterOptions(v.into()),
             MetaUpdate::DropTable(v) => manifest_pb::meta_update::Meta::DropTable(v.into()),
-            MetaUpdate::AllocSstId(v) => manifest_pb::meta_update::Meta::AllocSstId(v.into()),
         };
 
         manifest_pb::MetaUpdate { meta: Some(meta) }
@@ -102,7 +100,6 @@ impl MetaUpdate {
             MetaUpdate::AlterSchema(v) => v.table_id,
             MetaUpdate::AlterOptions(v) => v.table_id,
             MetaUpdate::DropTable(v) => v.table_id,
-            MetaUpdate::AllocSstId(v) => v.table_id,
         }
     }
 
@@ -113,7 +110,6 @@ impl MetaUpdate {
             MetaUpdate::AlterSchema(v) => v.space_id,
             MetaUpdate::AlterOptions(v) => v.space_id,
             MetaUpdate::DropTable(v) => v.space_id,
-            MetaUpdate::AllocSstId(v) => v.space_id,
         }
     }
 }
@@ -142,10 +138,6 @@ impl TryFrom<manifest_pb::MetaUpdate> for MetaUpdate {
             manifest_pb::meta_update::Meta::DropTable(v) => {
                 let drop_table = DropTableMeta::from(v);
                 MetaUpdate::DropTable(drop_table)
-            }
-            manifest_pb::meta_update::Meta::AllocSstId(v) => {
-                let alloc_sst_id = AllocSstIdMeta::try_from(v)?;
-                MetaUpdate::AllocSstId(alloc_sst_id)
             }
         };
 
@@ -239,6 +231,7 @@ pub struct VersionEditMeta {
     /// Id of memtables to remove from immutable memtable lists.
     /// No need to persist.
     pub mems_to_remove: Vec<MemTableId>,
+    pub max_file_id: FileId,
 }
 
 impl VersionEditMeta {
@@ -250,6 +243,7 @@ impl VersionEditMeta {
             flushed_sequence: self.flushed_sequence,
             files_to_add: self.files_to_add,
             files_to_delete: self.files_to_delete,
+            max_file_id: self.max_file_id,
         }
     }
 }
@@ -268,6 +262,7 @@ impl From<VersionEditMeta> for manifest_pb::VersionEditMeta {
             flushed_sequence: v.flushed_sequence,
             files_to_add,
             files_to_delete,
+            max_file_id: v.max_file_id,
         }
     }
 }
@@ -293,6 +288,7 @@ impl TryFrom<manifest_pb::VersionEditMeta> for VersionEditMeta {
             files_to_add,
             files_to_delete,
             mems_to_remove: Vec::default(),
+            max_file_id: src.max_file_id,
         })
     }
 }
@@ -360,36 +356,6 @@ impl TryFrom<manifest_pb::AlterOptionsMeta> for AlterOptionsMeta {
             space_id: src.space_id,
             table_id: TableId::from(src.table_id),
             options: TableOptions::try_from(table_options).context(ConvertTableOptions)?,
-        })
-    }
-}
-
-/// Meta data of sst id update.
-#[derive(Debug, Clone, PartialEq)]
-pub struct AllocSstIdMeta {
-    pub space_id: SpaceId,
-    pub table_id: TableId,
-    pub max_file_id: FileId,
-}
-
-impl From<AllocSstIdMeta> for manifest_pb::AllocSstIdMeta {
-    fn from(v: AllocSstIdMeta) -> Self {
-        manifest_pb::AllocSstIdMeta {
-            space_id: v.space_id,
-            table_id: v.table_id.as_u64(),
-            max_file_id: v.max_file_id,
-        }
-    }
-}
-
-impl TryFrom<manifest_pb::AllocSstIdMeta> for AllocSstIdMeta {
-    type Error = Error;
-
-    fn try_from(src: manifest_pb::AllocSstIdMeta) -> Result<Self> {
-        Ok(Self {
-            space_id: src.space_id,
-            table_id: TableId::from(src.table_id),
-            max_file_id: src.max_file_id,
         })
     }
 }
@@ -490,6 +456,7 @@ impl From<Snapshot> for manifest_pb::Snapshot {
                 files_to_add: version_meta.ordered_files(),
                 files_to_delete: vec![],
                 mems_to_remove: vec![],
+                max_file_id: version_meta.max_file_id,
             });
             (
                 table_meta,

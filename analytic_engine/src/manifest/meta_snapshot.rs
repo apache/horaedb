@@ -2,8 +2,6 @@
 
 //! Meta data of manifest.
 
-use std::cmp;
-
 use common_util::define_result;
 use log::debug;
 use snafu::{ensure, Backtrace, Snafu};
@@ -98,11 +96,6 @@ impl MetaSnapshotBuilder {
                     "Apply drop table meta update, removed table:{}",
                     meta.table_name,
                 );
-            }
-            MetaUpdate::AllocSstId(meta) => {
-                let mut version = self.version_meta.take().unwrap_or_default();
-                version.max_file_id = cmp::max(version.max_file_id, meta.max_file_id);
-                self.version_meta = Some(version);
             }
         }
 

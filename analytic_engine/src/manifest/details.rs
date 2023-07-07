@@ -914,6 +914,7 @@ mod tests {
                 files_to_add: vec![],
                 files_to_delete: vec![],
                 mems_to_remove: vec![],
+                max_file_id: 0,
             })
         }
 

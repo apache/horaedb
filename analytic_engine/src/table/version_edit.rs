@@ -136,6 +136,7 @@ pub struct VersionEdit {
     pub files_to_add: Vec<AddFile>,
     /// Sst files to delete.
     pub files_to_delete: Vec<DeleteFile>,
+    pub max_file_id: FileId,
 }
 
 #[cfg(test)]

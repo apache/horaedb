@@ -6,14 +6,14 @@ use tokio::sync::RwLock;
 
 use crate::error::GenericResult;
 
-pub struct Allocator {
+struct Inner {
     last_id: u64,
     max_id: u64,
     alloc_step: u64,
 }
 
-impl Allocator {
-    ///New a allocator
+impl Inner {
+    /// New a allocator
     pub fn new(last_id: u64, max_id: u64, alloc_step: u64) -> Self {
         Self {
             last_id,
@@ -48,45 +48,15 @@ impl Allocator {
 }
 
 pub struct IdAllocator {
-    inner: RwLock<Allocator>,
+    inner: RwLock<Inner>,
 }
 
 impl IdAllocator {
     /// New a id allocator
     pub fn new(last_id: u64, max_id: u64, alloc_step: u64) -> Self {
         Self {
-            inner: RwLock::new(Allocator::new(last_id, max_id, alloc_step)),
+            inner: RwLock::new(Inner::new(last_id, max_id, alloc_step)),
         }
-    }
-
-    /// Returns the last id
-    pub async fn last_id(&self) -> u64 {
-        self.inner.read().await.last_id
-    }
-
-    /// Set last id
-    pub async fn set_last_id(&self, last_id: u64) {
-        self.inner.write().await.last_id = last_id
-    }
-
-    /// Returns the max id
-    pub async fn max_id(&self) -> u64 {
-        self.inner.read().await.max_id
-    }
-
-    /// Set max id
-    pub async fn set_max_id(&self, max_id: u64) {
-        self.inner.write().await.max_id = max_id;
-    }
-
-    /// Return the alloc step
-    pub async fn alloc_step(&self) -> u64 {
-        self.inner.read().await.alloc_step
-    }
-
-    /// Set alloc step
-    pub async fn set_alloc_step(&self, alloc_step: u64) {
-        self.inner.write().await.alloc_step = alloc_step;
     }
 
     /// Alloc id
@@ -112,13 +82,6 @@ mod test {
         let allocator = IdAllocator::new(0, 0, 100);
 
         rt.block_on(async move {
-            let res = allocator.last_id().await;
-            assert_eq!(res, 0);
-            let res = allocator.max_id().await;
-            assert_eq!(res, 0);
-            let res = allocator.alloc_step().await;
-            assert_eq!(res, 100);
-
             let persist_max_file_id = move |next_max_file_id| async move {
                 assert_eq!(next_max_file_id, 100);
                 Ok(())
@@ -129,36 +92,15 @@ mod test {
                 assert_eq!(res, i);
             }
 
-            let res = allocator.last_id().await;
-            assert_eq!(res, 100);
-            let res = allocator.max_id().await;
-            assert_eq!(res, 100);
-
-            allocator.set_last_id(200).await;
-            allocator.set_max_id(300).await;
-            allocator.set_alloc_step(200).await;
-
-            let res = allocator.last_id().await;
-            assert_eq!(res, 200);
-            let res = allocator.max_id().await;
-            assert_eq!(res, 300);
-            let res = allocator.alloc_step().await;
-            assert_eq!(res, 200);
-
             let persist_max_file_id = move |next_max_file_id| async move {
-                assert_eq!(next_max_file_id, 500);
+                assert_eq!(next_max_file_id, 200);
                 Ok(())
             };
 
-            for i in 201..=500 {
+            for i in 101..=200 {
                 let res = allocator.alloc_id(persist_max_file_id).await.unwrap();
                 assert_eq!(res, i);
             }
-
-            let res = allocator.last_id().await;
-            assert_eq!(res, 500);
-            let res = allocator.max_id().await;
-            assert_eq!(res, 500);
         });
     }
 }

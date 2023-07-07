@@ -520,6 +520,12 @@ struct TableVersionInner {
     /// The earliest sequence number of the entries already flushed (inclusive).
     /// All log entry with sequence <= `flushed_sequence` can be deleted
     flushed_sequence: SequenceNumber,
+    /// Max id of the sst file.
+    ///
+    /// The id is allocated by step, so there are some still unused ids smaller
+    /// than the max one. And this field is only a mem state for Manifest,
+    /// it can only be updated during recover or by Manifest.
+    max_file_id: FileId,
 }
 
 impl TableVersionInner {
@@ -558,6 +564,7 @@ impl TableVersion {
                 memtable_view: MemTableView::new(),
                 levels_controller: LevelsController::new(purge_queue),
                 flushed_sequence: 0,
+                max_file_id: 0,
             }),
         }
     }
@@ -672,6 +679,8 @@ impl TableVersion {
         // TODO(yingwen): else, log warning
         inner.flushed_sequence = cmp::max(inner.flushed_sequence, edit.flushed_sequence);
 
+        inner.max_file_id = cmp::max(inner.max_file_id, edit.max_file_id);
+
         // Add sst files to level first.
         for add_file in edit.files_to_add {
             inner
@@ -697,6 +706,8 @@ impl TableVersion {
         let mut inner = self.inner.write().unwrap();
 
         inner.flushed_sequence = cmp::max(inner.flushed_sequence, meta.flushed_sequence);
+
+        inner.max_file_id = cmp::max(inner.max_file_id, meta.max_file_id);
 
         for add_file in meta.files.into_values() {
             inner
@@ -782,6 +793,7 @@ impl TableVersion {
         TableVersionSnapshot {
             flushed_sequence: inner.flushed_sequence,
             files,
+            max_file_id: inner.max_file_id,
         }
     }
 }
@@ -789,6 +801,7 @@ impl TableVersion {
 pub struct TableVersionSnapshot {
     pub flushed_sequence: SequenceNumber,
     pub files: HashMap<FileId, AddFile>,
+    pub max_file_id: FileId,
 }
 
 /// During recovery, we apply all version edit to [TableVersionMeta] first, then
@@ -805,9 +818,9 @@ impl TableVersionMeta {
     pub fn apply_edit(&mut self, edit: VersionEdit) {
         self.flushed_sequence = cmp::max(self.flushed_sequence, edit.flushed_sequence);
 
-        for add_file in edit.files_to_add {
-            self.max_file_id = cmp::max(self.max_file_id, add_file.file.id);
+        self.max_file_id = cmp::max(self.max_file_id, edit.max_file_id);
 
+        for add_file in edit.files_to_add {
             self.files.insert(add_file.file.id, add_file);
         }
 
@@ -1103,6 +1116,7 @@ mod tests {
             mems_to_remove: vec![memtable_id1, memtable_id2],
             files_to_add: vec![add_file],
             files_to_delete: vec![],
+            max_file_id: 0,
         };
         version.apply_edit(edit);
 
