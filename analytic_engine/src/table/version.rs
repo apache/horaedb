@@ -819,15 +819,16 @@ impl TableVersionMeta {
         self.flushed_sequence = cmp::max(self.flushed_sequence, edit.flushed_sequence);
 
         for add_file in edit.files_to_add {
-            // aligned max file id.
-            let aligned_max_file_id =
-                ((add_file.file.id - 1) / DEFAULT_ALLOC_STEP + 1) * DEFAULT_ALLOC_STEP;
-            self.max_file_id = cmp::max(self.max_file_id, aligned_max_file_id);
+            self.max_file_id = cmp::max(self.max_file_id, add_file.file.id);
 
             self.files.insert(add_file.file.id, add_file);
         }
 
         self.max_file_id = cmp::max(self.max_file_id, edit.max_file_id);
+
+        // aligned max file id.
+        self.max_file_id =
+            (self.max_file_id + DEFAULT_ALLOC_STEP - 1) / DEFAULT_ALLOC_STEP * DEFAULT_ALLOC_STEP;
 
         for delete_file in edit.files_to_delete {
             self.files.remove(&delete_file.file_id);

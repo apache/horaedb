@@ -492,7 +492,7 @@ impl TableData {
 
     /// Use allocator to alloc a file id for a new file.
     pub async fn alloc_file_id(&self, manifest: &ManifestRef) -> Result<FileId> {
-        //Persist next max file id to manifest.
+        // Persist next max file id to manifest.
         let persist_max_file_id = move |next_max_file_id| async move {
             self.persist_max_file_id(manifest, next_max_file_id).await
         };

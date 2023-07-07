@@ -15,6 +15,7 @@ struct Inner {
 impl Inner {
     /// New a allocator.
     pub fn new(last_id: u64, max_id: u64, alloc_step: u64) -> Self {
+        assert!(alloc_step > 0);
         Self {
             last_id,
             max_id,
