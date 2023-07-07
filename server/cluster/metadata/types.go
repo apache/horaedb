@@ -47,16 +47,18 @@ type ShardNodeWithVersion struct {
 }
 
 type CreateClusterOpts struct {
-	NodeCount         uint32
-	ReplicationFactor uint32
-	ShardTotal        uint32
-	EnableSchedule    bool
-	TopologyType      storage.TopologyType
+	NodeCount                   uint32
+	ReplicationFactor           uint32
+	ShardTotal                  uint32
+	EnableSchedule              bool
+	TopologyType                storage.TopologyType
+	ProcedureExecutingBatchSize uint32
 }
 
 type UpdateClusterOpts struct {
-	EnableSchedule bool
-	TopologyType   storage.TopologyType
+	EnableSchedule              bool
+	TopologyType                storage.TopologyType
+	ProcedureExecutingBatchSize uint32
 }
 
 type CreateTableMetadataRequest struct {

@@ -22,4 +22,6 @@ var (
 	ErrQueueFull               = coderr.NewCodeError(coderr.Internal, "queue is full, unable to offer more data")
 	ErrPushDuplicatedProcedure = coderr.NewCodeError(coderr.Internal, "try to push duplicated procedure")
 	ErrShardNumberNotEnough    = coderr.NewCodeError(coderr.Internal, "shard number not enough")
+	ErrEmptyBatchProcedure     = coderr.NewCodeError(coderr.Internal, "procedure batch is empty")
+	ErrMergeBatchProcedure     = coderr.NewCodeError(coderr.Internal, "failed to merge procedures batch")
 )

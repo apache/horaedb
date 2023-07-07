@@ -81,6 +81,11 @@ type CreatePartitionTableRequest struct {
 	OnFailed    func(error) error
 }
 
+type BatchRequest struct {
+	Batch     []procedure.Procedure
+	BatchType procedure.Typ
+}
+
 func NewFactory(allocator id.Allocator, dispatch eventdispatch.Dispatch, storage procedure.Storage) *Factory {
 	return &Factory{
 		idAllocator: allocator,
@@ -251,6 +256,15 @@ func (f *Factory) CreateSplitProcedure(ctx context.Context, request SplitRequest
 			TargetNodeName:  request.TargetNodeName,
 		},
 	)
+}
+
+func (f *Factory) CreateBatchTransferLeaderProcedure(ctx context.Context, request BatchRequest) (procedure.Procedure, error) {
+	id, err := f.allocProcedureID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return transferleader.NewBatchTransferLeaderProcedure(id, request.Batch)
 }
 
 func (f *Factory) allocProcedureID(ctx context.Context) (uint64, error) {

@@ -297,7 +297,7 @@ func (s *Service) RouteTables(ctx context.Context, req *metaservicepb.RouteTable
 		return &metaservicepb.RouteTablesResponse{Header: responseHeader(err, "grpc routeTables")}, nil
 	}
 
-	log.Info("[RouteTable]", zap.String("schemaName", req.SchemaName), zap.String("clusterName", req.GetHeader().ClusterName), zap.String("tableNames", strings.Join(req.TableNames, ",")))
+	log.Debug("[RouteTable]", zap.String("schemaName", req.SchemaName), zap.String("clusterName", req.GetHeader().ClusterName), zap.String("tableNames", strings.Join(req.TableNames, ",")))
 
 	// Forward request to the leader.
 	if ceresmetaClient != nil {

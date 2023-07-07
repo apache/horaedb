@@ -5,6 +5,7 @@ package config
 import (
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"time"
@@ -52,7 +53,8 @@ const (
 	defaultClusterShardTotal        = 8
 	enableSchedule                  = true
 	// topologyType is used to determine the scheduling cluster strategy of CeresMeta. It should be determined according to the storage method of CeresDB. The default is static to support local storage.
-	defaultTopologyType = "static"
+	defaultTopologyType                = "static"
+	defaultProcedureExecutingBatchSize = math.MaxUint32
 
 	defaultHTTPPort = 8080
 
@@ -127,6 +129,8 @@ type Config struct {
 	EnableSchedule bool `toml:"enable-schedule" env:"ENABLE_SCHEDULE"`
 	// TopologyType indicates the schedule type used by the CeresDB cluster, it will determine the strategy of CeresMeta scheduling cluster.
 	TopologyType string `toml:"topology-type" env:"TOPOLOGY_TYPE"`
+	// ProcedureExecutingBatchSize determines the maximum number of shards in a single batch when opening shards concurrently.
+	ProcedureExecutingBatchSize uint32 `toml:"procedure-executing-batch-size" env:"PROCEDURE_EXECUTING_BATCH_SIZE"`
 
 	ClientUrls          string `toml:"client-urls" env:"CLIENT_URLS"`
 	PeerUrls            string `toml:"peer-urls" env:"PEER_URLS"`
@@ -296,6 +300,7 @@ func MakeConfigParser() (*Parser, error) {
 		DefaultClusterShardTotal:        defaultClusterShardTotal,
 		EnableSchedule:                  enableSchedule,
 		TopologyType:                    defaultTopologyType,
+		ProcedureExecutingBatchSize:     defaultProcedureExecutingBatchSize,
 
 		HTTPPort: defaultHTTPPort,
 	}

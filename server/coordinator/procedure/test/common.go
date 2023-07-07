@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"math"
 	"math/big"
 	"testing"
 	"time"
@@ -21,16 +22,17 @@ import (
 )
 
 const (
-	TestTableName0           = "table0"
-	TestTableName1           = "table1"
-	TestSchemaName           = "TestSchemaName"
-	TestRootPath             = "/rootPath"
-	DefaultIDAllocatorStep   = 20
-	ClusterName              = "ceresdbCluster1"
-	DefaultNodeCount         = 2
-	DefaultShardTotal        = 4
-	DefaultSchedulerOperator = true
-	DefaultTopologyType      = "static"
+	TestTableName0                     = "table0"
+	TestTableName1                     = "table1"
+	TestSchemaName                     = "TestSchemaName"
+	TestRootPath                       = "/rootPath"
+	DefaultIDAllocatorStep             = 20
+	ClusterName                        = "ceresdbCluster1"
+	DefaultNodeCount                   = 2
+	DefaultShardTotal                  = 4
+	DefaultSchedulerOperator           = true
+	DefaultTopologyType                = "static"
+	DefaultProcedureExecutingBatchSize = math.MaxUint32
 )
 
 type MockDispatch struct{}
@@ -99,13 +101,14 @@ func InitEmptyCluster(ctx context.Context, t *testing.T) *cluster.Cluster {
 	logger := zap.NewNop()
 
 	clusterMetadata := metadata.NewClusterMetadata(logger, storage.Cluster{
-		ID:             0,
-		Name:           ClusterName,
-		MinNodeCount:   DefaultNodeCount,
-		ShardTotal:     DefaultShardTotal,
-		EnableSchedule: DefaultSchedulerOperator,
-		TopologyType:   DefaultTopologyType,
-		CreatedAt:      0,
+		ID:                          0,
+		Name:                        ClusterName,
+		MinNodeCount:                DefaultNodeCount,
+		ShardTotal:                  DefaultShardTotal,
+		EnableSchedule:              DefaultSchedulerOperator,
+		TopologyType:                DefaultTopologyType,
+		ProcedureExecutingBatchSize: DefaultProcedureExecutingBatchSize,
+		CreatedAt:                   0,
 	}, clusterStorage, client, TestRootPath, DefaultIDAllocatorStep)
 
 	err := clusterMetadata.Init(ctx)

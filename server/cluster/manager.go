@@ -112,14 +112,15 @@ func (m *managerImpl) CreateCluster(ctx context.Context, clusterName string, opt
 
 	createTime := time.Now().UnixMilli()
 	clusterMetadataStorage := storage.Cluster{
-		ID:             clusterID,
-		Name:           clusterName,
-		MinNodeCount:   opts.NodeCount,
-		ShardTotal:     opts.ShardTotal,
-		EnableSchedule: opts.EnableSchedule,
-		TopologyType:   opts.TopologyType,
-		CreatedAt:      uint64(createTime),
-		ModifiedAt:     uint64(createTime),
+		ID:                          clusterID,
+		Name:                        clusterName,
+		MinNodeCount:                opts.NodeCount,
+		ShardTotal:                  opts.ShardTotal,
+		EnableSchedule:              opts.EnableSchedule,
+		TopologyType:                opts.TopologyType,
+		ProcedureExecutingBatchSize: opts.ProcedureExecutingBatchSize,
+		CreatedAt:                   uint64(createTime),
+		ModifiedAt:                  uint64(createTime),
 	}
 	err = m.storage.CreateCluster(ctx, storage.CreateClusterRequest{
 		Cluster: clusterMetadataStorage,
@@ -164,14 +165,15 @@ func (m *managerImpl) UpdateCluster(ctx context.Context, clusterName string, opt
 	}
 
 	err = m.storage.UpdateCluster(ctx, storage.UpdateClusterRequest{Cluster: storage.Cluster{
-		ID:             c.GetMetadata().GetClusterID(),
-		Name:           c.GetMetadata().Name(),
-		MinNodeCount:   c.GetMetadata().GetClusterMinNodeCount(),
-		ShardTotal:     c.GetMetadata().GetTotalShardNum(),
-		EnableSchedule: opt.EnableSchedule,
-		TopologyType:   opt.TopologyType,
-		CreatedAt:      c.GetMetadata().GetCreateTime(),
-		ModifiedAt:     uint64(time.Now().UnixMilli()),
+		ID:                          c.GetMetadata().GetClusterID(),
+		Name:                        c.GetMetadata().Name(),
+		MinNodeCount:                c.GetMetadata().GetClusterMinNodeCount(),
+		ShardTotal:                  c.GetMetadata().GetTotalShardNum(),
+		EnableSchedule:              opt.EnableSchedule,
+		TopologyType:                opt.TopologyType,
+		ProcedureExecutingBatchSize: opt.ProcedureExecutingBatchSize,
+		CreatedAt:                   c.GetMetadata().GetCreateTime(),
+		ModifiedAt:                  uint64(time.Now().UnixMilli()),
 	}})
 	if err != nil {
 		log.Error("update cluster", zap.Error(err))
@@ -333,14 +335,15 @@ func (m *managerImpl) Start(ctx context.Context) error {
 		if clusterMetadata.GetStorageMetadata().TopologyType == storage.TopologyTypeUnknown {
 			req := storage.UpdateClusterRequest{
 				Cluster: storage.Cluster{
-					ID:             metadataStorage.ID,
-					Name:           metadataStorage.Name,
-					MinNodeCount:   metadataStorage.MinNodeCount,
-					ShardTotal:     metadataStorage.ShardTotal,
-					EnableSchedule: metadataStorage.EnableSchedule,
-					TopologyType:   m.topologyType,
-					CreatedAt:      metadataStorage.CreatedAt,
-					ModifiedAt:     uint64(time.Now().UnixMilli()),
+					ID:                          metadataStorage.ID,
+					Name:                        metadataStorage.Name,
+					MinNodeCount:                metadataStorage.MinNodeCount,
+					ShardTotal:                  metadataStorage.ShardTotal,
+					EnableSchedule:              metadataStorage.EnableSchedule,
+					TopologyType:                m.topologyType,
+					ProcedureExecutingBatchSize: metadataStorage.ProcedureExecutingBatchSize,
+					CreatedAt:                   metadataStorage.CreatedAt,
+					ModifiedAt:                  uint64(time.Now().UnixMilli()),
 				},
 			}
 			if err := m.storage.UpdateCluster(ctx, req); err != nil {

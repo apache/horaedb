@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/AlekSi/gocov-xml v1.0.0
-	github.com/CeresDB/ceresdbproto/golang v0.0.0-20230531074927-f60b148b3a5c
+	github.com/CeresDB/ceresdbproto/golang v0.0.0-20230707021308-fba75ce6409c
 	github.com/axw/gocov v1.1.0
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/julienschmidt/httprouter v1.3.0
@@ -18,6 +18,8 @@ require (
 	go.etcd.io/etcd/client/v3 v3.5.4
 	go.etcd.io/etcd/server/v3 v3.5.4
 	go.uber.org/zap v1.21.0
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
+	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba
 	golang.org/x/tools v0.1.10
 	google.golang.org/grpc v1.47.0
 	google.golang.org/protobuf v1.28.0
@@ -89,11 +91,9 @@ require (
 	golang.org/x/crypto v0.0.0-20220131195533-30dcbda58838 // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220106191415-9b9b3d81d5e3 // indirect
 	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2 // indirect
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	golang.org/x/sys v0.0.0-20211019181941-9d821ace8654 // indirect
 	golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1 // indirect
 	golang.org/x/text v0.3.7 // indirect
-	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/genproto v0.0.0-20210602131652-f16073e35f0c // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect

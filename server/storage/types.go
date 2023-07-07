@@ -152,12 +152,13 @@ type Cluster struct {
 	Name         string
 	MinNodeCount uint32
 	// Deprecated: ReplicationFactor is deprecated after CeresMeta v1.2.0
-	ReplicationFactor uint32
-	ShardTotal        uint32
-	EnableSchedule    bool
-	TopologyType      TopologyType
-	CreatedAt         uint64
-	ModifiedAt        uint64
+	ReplicationFactor           uint32
+	ShardTotal                  uint32
+	EnableSchedule              bool
+	TopologyType                TopologyType
+	ProcedureExecutingBatchSize uint32
+	CreatedAt                   uint64
+	ModifiedAt                  uint64
 }
 
 type ShardNode struct {
@@ -258,27 +259,29 @@ func convertNodeToPB(node Node) clusterpb.Node {
 
 func convertClusterPB(cluster *clusterpb.Cluster) Cluster {
 	return Cluster{
-		ID:             ClusterID(cluster.Id),
-		Name:           cluster.Name,
-		MinNodeCount:   cluster.MinNodeCount,
-		ShardTotal:     cluster.ShardTotal,
-		EnableSchedule: cluster.EnableSchedule,
-		TopologyType:   convertTopologyTypePB(cluster.TopologyType),
-		CreatedAt:      cluster.CreatedAt,
-		ModifiedAt:     cluster.ModifiedAt,
+		ID:                          ClusterID(cluster.Id),
+		Name:                        cluster.Name,
+		MinNodeCount:                cluster.MinNodeCount,
+		ShardTotal:                  cluster.ShardTotal,
+		EnableSchedule:              cluster.EnableSchedule,
+		TopologyType:                convertTopologyTypePB(cluster.TopologyType),
+		ProcedureExecutingBatchSize: cluster.ProcedureExecutingBatchSize,
+		CreatedAt:                   cluster.CreatedAt,
+		ModifiedAt:                  cluster.ModifiedAt,
 	}
 }
 
 func convertClusterToPB(cluster Cluster) clusterpb.Cluster {
 	return clusterpb.Cluster{
-		Id:             uint32(cluster.ID),
-		Name:           cluster.Name,
-		MinNodeCount:   cluster.MinNodeCount,
-		ShardTotal:     cluster.ShardTotal,
-		EnableSchedule: cluster.EnableSchedule,
-		TopologyType:   convertTopologyTypeToPB(cluster.TopologyType),
-		CreatedAt:      cluster.CreatedAt,
-		ModifiedAt:     cluster.ModifiedAt,
+		Id:                          uint32(cluster.ID),
+		Name:                        cluster.Name,
+		MinNodeCount:                cluster.MinNodeCount,
+		ShardTotal:                  cluster.ShardTotal,
+		EnableSchedule:              cluster.EnableSchedule,
+		TopologyType:                convertTopologyTypeToPB(cluster.TopologyType),
+		ProcedureExecutingBatchSize: cluster.ProcedureExecutingBatchSize,
+		CreatedAt:                   cluster.CreatedAt,
+		ModifiedAt:                  cluster.ModifiedAt,
 	}
 }
 

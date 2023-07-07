@@ -5,23 +5,27 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"go.uber.org/zap"
 )
 
 type RebalancedShardScheduler struct {
-	logger     *zap.Logger
-	factory    *coordinator.Factory
-	nodePicker coordinator.NodePicker
+	logger                      *zap.Logger
+	factory                     *coordinator.Factory
+	nodePicker                  coordinator.NodePicker
+	procedureExecutingBatchSize uint32
 }
 
-func NewRebalancedShardScheduler(logger *zap.Logger, factory *coordinator.Factory, nodePicker coordinator.NodePicker) Scheduler {
+func NewRebalancedShardScheduler(logger *zap.Logger, factory *coordinator.Factory, nodePicker coordinator.NodePicker, procedureExecutingBatchSize uint32) Scheduler {
 	return &RebalancedShardScheduler{
-		logger:     logger,
-		factory:    factory,
-		nodePicker: nodePicker,
+		logger:                      logger,
+		factory:                     factory,
+		nodePicker:                  nodePicker,
+		procedureExecutingBatchSize: procedureExecutingBatchSize,
 	}
 }
 
@@ -31,6 +35,8 @@ func (r RebalancedShardScheduler) Schedule(ctx context.Context, clusterSnapshot 
 		return ScheduleResult{}, nil
 	}
 
+	var procedures []procedure.Procedure
+	var reasons strings.Builder
 	// TODO: Improve scheduling efficiency and verify whether the topology changes.
 	for _, shardNode := range clusterSnapshot.Topology.ClusterView.ShardNodes {
 		node, err := r.nodePicker.PickNode(ctx, shardNode.ID, clusterSnapshot.RegisteredNodes)
@@ -48,12 +54,25 @@ func (r RebalancedShardScheduler) Schedule(ctx context.Context, clusterSnapshot 
 			if err != nil {
 				return ScheduleResult{}, err
 			}
-			return ScheduleResult{
-				Procedure: p,
-				Reason:    fmt.Sprintf("the shard:%d on the node:%s does not meet the balance requirements,it should be assigned to node:%s", shardNode.ID, shardNode.NodeName, node.Node.Name),
-			}, nil
+			procedures = append(procedures, p)
+			reasons.WriteString(fmt.Sprintf("the shard does not meet the balance requirements,it should be assigned to node, shardID:%d, oldNode:%s, newNode:%s.", shardNode.ID, shardNode.NodeName, node.Node.Name))
+			if len(procedures) >= int(r.procedureExecutingBatchSize) {
+				break
+			}
 		}
 	}
 
-	return ScheduleResult{}, nil
+	if len(procedures) == 0 {
+		return ScheduleResult{}, nil
+	}
+
+	batchProcedure, err := r.factory.CreateBatchTransferLeaderProcedure(ctx, coordinator.BatchRequest{
+		Batch:     procedures,
+		BatchType: procedure.TransferLeader,
+	})
+	if err != nil {
+		return ScheduleResult{}, err
+	}
+
+	return ScheduleResult{batchProcedure, reasons.String()}, nil
 }

@@ -75,6 +75,7 @@ func (m *ManagerImpl) Stop(ctx context.Context) error {
 	return nil
 }
 
+// TODO: Filter duplicate submitted Procedure.
 func (m *ManagerImpl) Submit(_ context.Context, procedure Procedure) error {
 	if err := m.waitingProcedures.Push(procedure, 0); err != nil {
 		return err

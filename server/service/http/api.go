@@ -542,10 +542,11 @@ func (a *API) createCluster(writer http.ResponseWriter, req *http.Request) {
 }
 
 type UpdateClusterRequest struct {
-	NodeCount      uint32 `json:"NodeCount"`
-	ShardTotal     uint32 `json:"ShardTotal"`
-	EnableSchedule bool   `json:"enableSchedule"`
-	TopologyType   string `json:"topologyType"`
+	NodeCount                   uint32 `json:"nodeCount"`
+	ShardTotal                  uint32 `json:"shardTotal"`
+	EnableSchedule              bool   `json:"enableSchedule"`
+	TopologyType                string `json:"topologyType"`
+	ProcedureExecutingBatchSize uint32 `json:"procedureExecutingBatchSize"`
 }
 
 func (a *API) updateCluster(writer http.ResponseWriter, req *http.Request) {
@@ -590,8 +591,9 @@ func (a *API) updateCluster(writer http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := a.clusterManager.UpdateCluster(req.Context(), clusterName, metadata.UpdateClusterOpts{
-		EnableSchedule: updateClusterRequest.EnableSchedule,
-		TopologyType:   topologyType,
+		EnableSchedule:              updateClusterRequest.EnableSchedule,
+		TopologyType:                topologyType,
+		ProcedureExecutingBatchSize: updateClusterRequest.ProcedureExecutingBatchSize,
 	}); err != nil {
 		log.Error("update cluster failed", zap.Error(err))
 		a.respondError(writer, metadata.ErrUpdateCluster, fmt.Sprintf("err: %s", err.Error()))

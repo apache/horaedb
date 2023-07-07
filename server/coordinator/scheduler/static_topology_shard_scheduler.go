@@ -5,24 +5,30 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
 )
 
 type StaticTopologyShardScheduler struct {
-	factory    *coordinator.Factory
-	nodePicker coordinator.NodePicker
+	factory                     *coordinator.Factory
+	nodePicker                  coordinator.NodePicker
+	procedureExecutingBatchSize uint32
 }
 
-func NewStaticTopologyShardScheduler(factory *coordinator.Factory, nodePicker coordinator.NodePicker) Scheduler {
-	return &StaticTopologyShardScheduler{factory: factory, nodePicker: nodePicker}
+func NewStaticTopologyShardScheduler(factory *coordinator.Factory, nodePicker coordinator.NodePicker, procedureExecutingBatchSize uint32) Scheduler {
+	return &StaticTopologyShardScheduler{factory: factory, nodePicker: nodePicker, procedureExecutingBatchSize: procedureExecutingBatchSize}
 }
 
 func (s *StaticTopologyShardScheduler) Schedule(ctx context.Context, clusterSnapshot metadata.Snapshot) (ScheduleResult, error) {
+	var procedures []procedure.Procedure
+	var reasons strings.Builder
+
 	switch clusterSnapshot.Topology.ClusterView.State {
 	case storage.ClusterStateEmpty:
 		return ScheduleResult{}, nil
@@ -47,10 +53,11 @@ func (s *StaticTopologyShardScheduler) Schedule(ctx context.Context, clusterSnap
 			if err != nil {
 				return ScheduleResult{}, err
 			}
-			return ScheduleResult{
-				Procedure: p,
-				Reason:    fmt.Sprintf("Cluster initialization, shard:%d is assigned to node:%s", shardView.ShardID, newLeaderNode.Node.Name),
-			}, nil
+			procedures = append(procedures, p)
+			reasons.WriteString(fmt.Sprintf("Cluster initialization, assign shard to node, shardID:%d, nodeName:%s. ", shardView.ShardID, newLeaderNode.Node.Name))
+			if len(procedures) >= int(s.procedureExecutingBatchSize) {
+				break
+			}
 		}
 	case storage.ClusterStateStable:
 		for i := 0; i < len(clusterSnapshot.Topology.ClusterView.ShardNodes); i++ {
@@ -70,15 +77,28 @@ func (s *StaticTopologyShardScheduler) Schedule(ctx context.Context, clusterSnap
 				if err != nil {
 					return ScheduleResult{}, err
 				}
-				return ScheduleResult{
-					Procedure: p,
-					Reason:    fmt.Sprintf("Cluster state is stable, shard:%d is reopened in node:%s", shardNode.ID, node.Node.Name),
-				}, nil
+				procedures = append(procedures, p)
+				reasons.WriteString(fmt.Sprintf("Cluster initialization, assign shard to node, shardID:%d, nodeName:%s. ", shardNode.ID, node.Node.Name))
+				if len(procedures) >= int(s.procedureExecutingBatchSize) {
+					break
+				}
 			}
 		}
 	}
 
-	return ScheduleResult{}, nil
+	if len(procedures) == 0 {
+		return ScheduleResult{}, nil
+	}
+
+	batchProcedure, err := s.factory.CreateBatchTransferLeaderProcedure(ctx, coordinator.BatchRequest{
+		Batch:     procedures,
+		BatchType: procedure.TransferLeader,
+	})
+	if err != nil {
+		return ScheduleResult{}, err
+	}
+
+	return ScheduleResult{batchProcedure, reasons.String()}, nil
 }
 
 func findOnlineNodeByName(nodeName string, nodes []metadata.RegisteredNode) (metadata.RegisteredNode, error) {
