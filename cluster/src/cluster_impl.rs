@@ -297,6 +297,10 @@ impl Inner {
         Ok(shard)
     }
 
+    fn get_shard(&self, shard_id: ShardId) -> Option<ShardRef> {
+        self.shard_set.get(shard_id)
+    }
+
     fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef> {
         self.shard_set
             .remove(shard_id)
@@ -341,6 +345,10 @@ impl Cluster for ClusterImpl {
 
     async fn open_shard(&self, shard_info: &ShardInfo) -> Result<ShardRef> {
         self.inner.open_shard(shard_info).await
+    }
+
+    fn get_shard(&self, shard_id: ShardId) -> Option<ShardRef> {
+        self.inner.get_shard(shard_id)
     }
 
     async fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef> {

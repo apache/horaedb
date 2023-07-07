@@ -134,14 +134,21 @@ pub struct ClusterNodesResp {
 pub trait Cluster {
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
+
+    /// Fetch related information and open shard.
     async fn open_shard(&self, shard_info: &ShardInfo) -> Result<ShardRef>;
-    /// Close the shard.
+
+    /// Get shard.
+    ///
+    /// If target shard has opened in cluster, return it. Otherwise, return
+    /// None.
+    fn get_shard(&self, shard_id: ShardId) -> Option<ShardRef>;
+
+    /// Close shard.
     ///
     /// Return error if the shard is not found.
-    async fn close_shard(&self, req: ShardId) -> Result<ShardRef>;
-    /// Freeze the shard to reject create/drop table on the shard.
-    ///
-    /// Return error if the shard is not found.
+    async fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef>;
+
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;
     async fn fetch_nodes(&self) -> Result<ClusterNodesResp>;
     fn shard_lock_manager(&self) -> ShardLockManagerRef;
