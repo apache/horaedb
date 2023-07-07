@@ -32,9 +32,10 @@ use std::{
 
 use ::http::StatusCode;
 use analytic_engine::table_options::{parse_duration, ENABLE_TTL, TTL};
-use catalog::schema::{
+use catalog::{schema::{
     CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, SchemaRef,
-};
+}, CatalogRef};
+use catalog::Catalog;
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
     PrometheusRemoteQueryResponse, Route, RouteRequest,
@@ -176,12 +177,10 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         table_name: &str,
     ) -> bool {
         if let Plan::Query(query) = &plan {
-            // TODO(tanruixiang): beauty this code
-            let tableref = self
-                .get_table(catalog_name, schema_name, table_name)
-                .unwrap()
-                .unwrap();
-
+            let tableref = match self.get_table(catalog_name, schema_name, table_name) {
+                Ok(Some(tableref)) => tableref,
+                _ => return true,
+            };
             if let Some(value) = tableref.options().get(ENABLE_TTL) {
                 if value == "false" {
                     return true;
@@ -226,13 +225,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         true
     }
 
-    fn get_table(
-        &self,
-        catalog_name: &str,
-        schema_name: &str,
-        table_name: &str,
-    ) -> Result<Option<TableRef>> {
-        // TODO(tanruixiang): split this function and safer this funtion
+    fn get_catalog(&self, catalog_name: &str) -> Result<CatalogRef> {
         let catalog = self
             .instance
             .catalog_manager
@@ -246,7 +239,10 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!("Catalog not found, catalog_name:{catalog_name}"),
             })?;
+        Ok(catalog)
+    }
 
+    fn get_schema(&self,catalog: &CatalogRef, schema_name: &str) ->Result<SchemaRef>{
         // TODO: support create schema if not exist
         let schema = catalog
             .schema_by_name(schema_name)
@@ -259,6 +255,18 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!("Schema not found, schema_name:{schema_name}"),
             })?;
+        Ok(schema)
+    }
+
+    fn get_table(
+        &self,
+        catalog_name: &str,
+        schema_name: &str,
+        table_name: &str,
+    ) -> Result<Option<TableRef>> {
+        let catalog = self.get_catalog(catalog_name)?;
+
+        let schema = self.get_schema(&catalog, schema_name)?;
 
         let table = schema
             .table_by_name(table_name)
