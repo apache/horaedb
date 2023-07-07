@@ -188,7 +188,7 @@ struct SchemaImpl {
     /// Schema name
     schema_name: String,
     schema_id: SchemaId,
-    shard_tables_cache: ShardSet,
+    shard_set: ShardSet,
     /// Tables of schema
     tables: RwLock<HashMap<String, TableRef>>,
     /// Guard for creating/dropping table
@@ -206,7 +206,7 @@ impl SchemaImpl {
             catalog_name,
             schema_name,
             schema_id,
-            shard_tables_cache,
+            shard_set: shard_tables_cache,
             tables: Default::default(),
             create_table_mutex: Mutex::new(()),
         }
@@ -303,17 +303,24 @@ impl Schema for SchemaImpl {
         // Do real create table.
         // Partition table is not stored in ShardTableManager.
         if request.partition_info.is_none() {
-            let _ = self
-                .shard_tables_cache
-                .find_table_by_name(
-                    &request.catalog_name,
-                    &request.schema_name,
-                    &request.table_name,
-                )
+            let shard =
+                self.shard_set
+                    .get(request.shard_id)
+                    .with_context(|| schema::CreateTable {
+                        request: request.clone(),
+                        msg: format!("shard not found"),
+                    })?;
+
+            let shard = shard.read().await;
+            let _ = shard
+                .tables
+                .iter()
+                .find(|table| {
+                    table.schema_name == request.schema_name && table.name == request.table_name
+                })
                 .with_context(|| schema::CreateTable {
                     request: request.clone(),
-                    msg: format!("table with shards is not found in the ShardTableManager, catalog_name:{}, schema_name:{}, table_name:{}",
-                                 request.catalog_name, request.schema_name, request.table_name),
+                    msg: format!("table not found in shard"),
                 })?;
         }
         let request = request.into_engine_create_request(None, self.schema_id);
