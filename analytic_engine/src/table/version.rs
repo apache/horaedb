@@ -818,11 +818,13 @@ impl TableVersionMeta {
     pub fn apply_edit(&mut self, edit: VersionEdit) {
         self.flushed_sequence = cmp::max(self.flushed_sequence, edit.flushed_sequence);
 
-        self.max_file_id = cmp::max(self.max_file_id, edit.max_file_id);
-
         for add_file in edit.files_to_add {
+            self.max_file_id = cmp::max(self.max_file_id, add_file.file.id);
+
             self.files.insert(add_file.file.id, add_file);
         }
+
+        self.max_file_id = cmp::max(self.max_file_id, edit.max_file_id);
 
         for delete_file in edit.files_to_delete {
             self.files.remove(&delete_file.file_id);

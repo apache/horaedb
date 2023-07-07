@@ -524,6 +524,7 @@ impl TableData {
                 meta_edit: MetaEdit::Update(meta_update),
             }
         };
+        // table version's max file id will be update when apply this meta update.
         manifest.apply_edit(edit_req).await?;
         Ok(())
     }

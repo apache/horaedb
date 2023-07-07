@@ -13,7 +13,7 @@ struct Inner {
 }
 
 impl Inner {
-    /// New a allocator
+    /// New a allocator.
     pub fn new(last_id: u64, max_id: u64, alloc_step: u64) -> Self {
         Self {
             last_id,
@@ -22,7 +22,7 @@ impl Inner {
         }
     }
 
-    /// Alloc id
+    /// Alloc id.
     pub async fn alloc_id<F, T>(&mut self, persist_next_max_id: F) -> GenericResult<u64>
     where
         F: FnOnce(u64) -> T,
@@ -52,14 +52,14 @@ pub struct IdAllocator {
 }
 
 impl IdAllocator {
-    /// New a id allocator
+    /// New a id allocator.
     pub fn new(last_id: u64, max_id: u64, alloc_step: u64) -> Self {
         Self {
             inner: RwLock::new(Inner::new(last_id, max_id, alloc_step)),
         }
     }
 
-    /// Alloc id
+    /// Alloc id.
     pub async fn alloc_id<F, T>(&self, persist_next_max_id: F) -> GenericResult<u64>
     where
         F: FnOnce(u64) -> T,
