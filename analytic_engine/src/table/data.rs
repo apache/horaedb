@@ -23,7 +23,11 @@ use common_types::{
     time::{TimeRange, Timestamp},
     SequenceNumber,
 };
-use common_util::define_result;
+use common_util::{
+    define_result,
+    error::{GenericError, GenericResult},
+    id_allocator::IdAllocator,
+};
 use log::{debug, info};
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -31,7 +35,10 @@ use table_engine::table::TableId;
 
 use crate::{
     instance::serial_executor::TableOpSerialExecutor,
-    manifest::meta_edit::AddTableMeta,
+    manifest::{
+        meta_edit::{AddTableMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta},
+        ManifestRef,
+    },
     memtable::{
         factory::{FactoryRef as MemTableFactoryRef, Options as MemTableOptions},
         skiplist::factory::SkiplistMemTableFactory,
@@ -69,11 +76,16 @@ pub enum Error {
     FindMemTable {
         source: crate::table::version::Error,
     },
+
+    #[snafu(display("Failed to alloc file id, err:{}", source))]
+    AllocFileId { source: GenericError },
 }
 
 define_result!(Error);
 
 pub type MemTableId = u64;
+
+pub const DEFAULT_ALLOC_STEP: u64 = 100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TableShardInfo {
@@ -128,10 +140,8 @@ pub struct TableData {
     /// Allocating memtable id should be guarded by write lock
     last_memtable_id: AtomicU64,
 
-    /// Last id of the sst file
-    ///
-    /// Write to last_file_id require external synchronization
-    last_file_id: AtomicU64,
+    /// Allocating file id
+    allocator: IdAllocator,
 
     /// Last flush time
     ///
@@ -163,7 +173,6 @@ impl fmt::Debug for TableData {
             .field("opts", &self.opts)
             .field("last_sequence", &self.last_sequence)
             .field("last_memtable_id", &self.last_memtable_id)
-            .field("last_file_id", &self.last_file_id)
             .field("dropped", &self.dropped.load(Ordering::Relaxed))
             .field("shard_info", &self.shard_info)
             .finish()
@@ -230,7 +239,7 @@ impl TableData {
             current_version,
             last_sequence: AtomicU64::new(0),
             last_memtable_id: AtomicU64::new(0),
-            last_file_id: AtomicU64::new(0),
+            allocator: IdAllocator::new(0, 0, DEFAULT_ALLOC_STEP),
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
@@ -248,6 +257,7 @@ impl TableData {
         shard_id: ShardId,
         preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
+        allocator: IdAllocator,
     ) -> Result<Self> {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
@@ -271,7 +281,7 @@ impl TableData {
             current_version,
             last_sequence: AtomicU64::new(0),
             last_memtable_id: AtomicU64::new(0),
-            last_file_id: AtomicU64::new(0),
+            allocator,
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
@@ -480,22 +490,43 @@ impl TableData {
         should_flush
     }
 
-    /// Set `last_file_id`, mainly used in recover
-    ///
-    /// This operation require external synchronization
-    pub fn set_last_file_id(&self, last_file_id: FileId) {
-        self.last_file_id.store(last_file_id, Ordering::Relaxed);
+    /// Use allocator to alloc a file id for a new file.
+    pub async fn alloc_file_id(&self, manifest: &ManifestRef) -> Result<FileId> {
+        // Persist next max file id to manifest.
+        let persist_max_file_id = move |next_max_file_id| async move {
+            self.persist_max_file_id(manifest, next_max_file_id).await
+        };
+
+        self.allocator
+            .alloc_id(persist_max_file_id)
+            .await
+            .context(AllocFileId)
     }
 
-    /// Returns the last file id
-    pub fn last_file_id(&self) -> FileId {
-        self.last_file_id.load(Ordering::Relaxed)
-    }
-
-    /// Alloc a file id for a new file
-    pub fn alloc_file_id(&self) -> FileId {
-        let last = self.last_file_id.fetch_add(1, Ordering::Relaxed);
-        last + 1
+    async fn persist_max_file_id(
+        &self,
+        manifest: &ManifestRef,
+        next_max_file_id: FileId,
+    ) -> GenericResult<()> {
+        let manifest_update = VersionEditMeta {
+            space_id: self.space_id,
+            table_id: self.id,
+            flushed_sequence: 0,
+            files_to_add: vec![],
+            files_to_delete: vec![],
+            mems_to_remove: vec![],
+            max_file_id: next_max_file_id,
+        };
+        let edit_req = {
+            let meta_update = MetaUpdate::VersionEdit(manifest_update);
+            MetaEditRequest {
+                shard_info: self.shard_info,
+                meta_edit: MetaEdit::Update(meta_update),
+            }
+        };
+        // table version's max file id will be update when apply this meta update.
+        manifest.apply_edit(edit_req).await?;
+        Ok(())
     }
 
     /// Set the sst file path into the object storage path.
@@ -746,7 +777,6 @@ pub mod tests {
         assert_eq!(TableShardInfo::new(shard_id), table_data.shard_info);
         assert_eq!(0, table_data.last_sequence());
         assert!(!table_data.is_dropped());
-        assert_eq!(0, table_data.last_file_id());
         assert_eq!(0, table_data.last_memtable_id());
         assert!(table_data.dedup());
     }

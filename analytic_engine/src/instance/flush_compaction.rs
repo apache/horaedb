@@ -49,7 +49,7 @@ use crate::{
         writer::{MetaData, RecordBatchStream},
     },
     table::{
-        data::{TableData, TableDataRef},
+        data::{self, TableData, TableDataRef},
         version::{FlushableMemTables, MemTableState, SamplingMemTable},
         version_edit::{AddFile, DeleteFile},
     },
@@ -142,6 +142,9 @@ pub enum Error {
         msg: Option<String>,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Failed to alloc file id, err:{}", source))]
+    AllocFileId { source: data::Error },
 }
 
 define_result!(Error);
@@ -408,6 +411,7 @@ impl FlushTask {
                 files_to_add: files_to_level0.clone(),
                 files_to_delete: vec![],
                 mems_to_remove: mems_to_flush.ids(),
+                max_file_id: 0,
             };
             let meta_update = MetaUpdate::VersionEdit(edit_meta);
             MetaEditRequest {
@@ -476,7 +480,12 @@ impl FlushTask {
         for time_range in &time_ranges {
             let (batch_record_sender, batch_record_receiver) =
                 channel::<Result<RecordBatchWithKey>>(DEFAULT_CHANNEL_SIZE);
-            let file_id = self.table_data.alloc_file_id();
+            let file_id = self
+                .table_data
+                .alloc_file_id(&self.space_store.manifest)
+                .await
+                .context(AllocFileId)?;
+
             let sst_file_path = self.table_data.set_sst_file_path(file_id);
 
             // TODO: `min_key` & `max_key` should be figured out when writing sst.
@@ -596,7 +605,12 @@ impl FlushTask {
         };
 
         // Alloc file id for next sst file
-        let file_id = self.table_data.alloc_file_id();
+        let file_id = self
+            .table_data
+            .alloc_file_id(&self.space_store.manifest)
+            .await
+            .context(AllocFileId)?;
+
         let sst_file_path = self.table_data.set_sst_file_path(file_id);
 
         let storage_format_hint = self.table_data.table_options().storage_format_hint;
@@ -669,6 +683,7 @@ impl SpaceStore {
             files_to_add: Vec::with_capacity(inputs.len()),
             files_to_delete: vec![],
             mems_to_remove: vec![],
+            max_file_id: 0,
         };
 
         if task.is_empty() {
@@ -832,7 +847,11 @@ impl SpaceStore {
         };
 
         // Alloc file id for the merged sst.
-        let file_id = table_data.alloc_file_id();
+        let file_id = table_data
+            .alloc_file_id(&self.manifest)
+            .await
+            .context(AllocFileId)?;
+
         let sst_file_path = table_data.set_sst_file_path(file_id);
 
         let mut sst_writer = self

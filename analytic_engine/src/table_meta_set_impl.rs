@@ -4,7 +4,7 @@
 
 use std::{fmt, sync::Arc};
 
-use common_util::error::BoxError;
+use common_util::{error::BoxError, id_allocator::IdAllocator};
 use log::debug;
 use snafu::{OptionExt, ResultExt};
 use table_engine::table::TableId;
@@ -24,7 +24,7 @@ use crate::{
     space::{Space, SpaceId, SpacesRef},
     sst::file::FilePurgerRef,
     table::{
-        data::{TableData, TableShardInfo},
+        data::{TableData, TableShardInfo, DEFAULT_ALLOC_STEP},
         version::{TableVersionMeta, TableVersionSnapshot},
         version_edit::VersionEdit,
     },
@@ -131,6 +131,7 @@ impl TableMetaSetImpl {
                 files_to_add,
                 files_to_delete,
                 mems_to_remove,
+                max_file_id,
             }) => {
                 let version_edit = move |space: Arc<Space>| {
                     let table_data = space.find_table_by_id(table_id).with_context(|| {
@@ -145,6 +146,7 @@ impl TableMetaSetImpl {
                         mems_to_remove,
                         files_to_add,
                         files_to_delete,
+                        max_file_id,
                     };
                     table_data.current_version().apply_edit(edit);
 
@@ -215,6 +217,15 @@ impl TableMetaSetImpl {
                 msg: format!("space not found, space_id:{space_id}"),
             })?;
 
+        // Apply max file id to the allocator
+        let allocator = match version_meta.clone() {
+            Some(version_meta) => {
+                let max_file_id = version_meta.max_file_id_to_add();
+                IdAllocator::new(max_file_id, max_file_id, DEFAULT_ALLOC_STEP)
+            }
+            None => IdAllocator::new(0, 0, DEFAULT_ALLOC_STEP),
+        };
+
         let table_name = table_meta.table_name.clone();
         let table_data = Arc::new(
             TableData::recover_from_add(
@@ -223,6 +234,7 @@ impl TableMetaSetImpl {
                 shard_info.shard_id,
                 self.preflush_write_buffer_size_ratio,
                 space.mem_usage_collector.clone(),
+                allocator,
             )
             .box_err()
             .with_context(|| ApplySnapshotToTableWithCause {
@@ -240,12 +252,7 @@ impl TableMetaSetImpl {
                 version_meta
             );
 
-            let max_file_id = version_meta.max_file_id_to_add();
             table_data.current_version().apply_meta(version_meta);
-            // In recovery case, we need to maintain last file id of the table manually.
-            if table_data.last_file_id() < max_file_id {
-                table_data.set_last_file_id(max_file_id);
-            }
         }
 
         debug!(
@@ -265,16 +272,18 @@ impl TableMetaSet for TableMetaSetImpl {
         space_id: SpaceId,
         table_id: TableId,
     ) -> crate::manifest::details::Result<Option<MetaSnapshot>> {
-        let spaces = self.spaces.read().unwrap();
-        let table_data = spaces
-            .get_by_id(space_id)
-            .context(BuildSnapshotNoCause {
-                msg: format!("space not exist, space_id:{space_id}, table_id:{table_id}",),
-            })?
-            .find_table_by_id(table_id)
-            .context(BuildSnapshotNoCause {
-                msg: format!("table data not exist, space_id:{space_id}, table_id:{table_id}",),
-            })?;
+        let table_data = {
+            let spaces = self.spaces.read().unwrap();
+            spaces
+                .get_by_id(space_id)
+                .context(BuildSnapshotNoCause {
+                    msg: format!("space not exist, space_id:{space_id}, table_id:{table_id}",),
+                })?
+                .find_table_by_id(table_id)
+                .context(BuildSnapshotNoCause {
+                    msg: format!("table data not exist, space_id:{space_id}, table_id:{table_id}",),
+                })?
+        };
 
         // When table has been dropped, we should return None.
         let table_manifest_data_opt = if !table_data.is_dropped() {
@@ -290,11 +299,12 @@ impl TableMetaSet for TableMetaSetImpl {
             let TableVersionSnapshot {
                 flushed_sequence,
                 files,
+                max_file_id,
             } = version_snapshot;
             let version_meta = TableVersionMeta {
                 flushed_sequence,
                 files,
-                max_file_id: table_data.last_file_id(),
+                max_file_id,
             };
 
             Some(MetaSnapshot {
