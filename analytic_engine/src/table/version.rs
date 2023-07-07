@@ -32,7 +32,7 @@ use crate::{
         manager::{FileId, LevelsController},
     },
     table::{
-        data::MemTableId,
+        data::{MemTableId, DEFAULT_ALLOC_STEP},
         version_edit::{AddFile, VersionEdit},
     },
 };
@@ -819,7 +819,10 @@ impl TableVersionMeta {
         self.flushed_sequence = cmp::max(self.flushed_sequence, edit.flushed_sequence);
 
         for add_file in edit.files_to_add {
-            self.max_file_id = cmp::max(self.max_file_id, add_file.file.id);
+            // aligned max file id.
+            let aligned_max_file_id =
+                ((add_file.file.id - 1) / DEFAULT_ALLOC_STEP + 1) * DEFAULT_ALLOC_STEP;
+            self.max_file_id = cmp::max(self.max_file_id, aligned_max_file_id);
 
             self.files.insert(add_file.file.id, add_file);
         }
