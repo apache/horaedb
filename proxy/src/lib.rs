@@ -32,7 +32,6 @@ use std::{
 
 use ::http::StatusCode;
 use analytic_engine::table_options::{parse_duration, ENABLE_TTL, TTL};
-
 use catalog::{
     schema::{
         CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, SchemaRef,

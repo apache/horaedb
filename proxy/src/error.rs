@@ -28,7 +28,7 @@ pub enum Error {
         source: GenericError,
     },
 
-    #[snafu(display("{}", msg))]
+    #[snafu(display("sql query error, message:{}", msg))]
     SqlQueryOverTTL { code: StatusCode, msg: String },
 }
 
