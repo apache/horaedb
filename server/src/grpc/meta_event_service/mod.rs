@@ -462,7 +462,7 @@ async fn handle_create_table_on_shard(
     // Lock for serializing the write operation.
     let _guard = shard.serializing_lock.lock().await;
 
-    // FIXME: should insert table from cluster after having created table.
+    // FIXME: maybe should insert table from cluster after having created table.
     shard
         .data
         .try_insert_table(updated_table_info)
@@ -569,7 +569,7 @@ async fn handle_drop_table_on_shard(
     // Lock for serializing the write operation.
     let _guard = shard.serializing_lock.lock().await;
 
-    // FIXME: should insert table from cluster after having dropped table.
+    // FIXME: maybe should insert table from cluster after having dropped table.
     shard
         .data
         .try_remove_table(updated_table_info)
@@ -630,7 +630,7 @@ async fn handle_open_table_on_shard(
     // Lock for serializing the write operation.
     let _guard = shard.serializing_lock.lock().await;
 
-    // FIXME: should insert table from cluster after having opened table.
+    // FIXME: maybe should insert table from cluster after having opened table.
     shard
         .data
         .try_insert_table(updated_table_info)
@@ -704,7 +704,7 @@ async fn handle_close_table_on_shard(
     // Lock for serializing the write operation.
     let _guard = shard.serializing_lock.lock().await;
 
-    // FIXME: should remove table from cluster after having closed table.
+    // FIXME: maybe should remove table from cluster after having closed table.
     shard
         .data
         .try_remove_table(updated_table_info)

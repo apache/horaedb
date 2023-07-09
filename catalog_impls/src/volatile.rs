@@ -32,15 +32,15 @@ use tokio::sync::Mutex;
 /// ManagerImpl manages multiple volatile catalogs.
 pub struct ManagerImpl {
     catalogs: HashMap<String, Arc<CatalogImpl>>,
-    shard_tables_cache: ShardSet,
+    shard_set: ShardSet,
     meta_client: MetaClientRef,
 }
 
 impl ManagerImpl {
-    pub fn new(shard_tables_cache: ShardSet, meta_client: MetaClientRef) -> Self {
+    pub fn new(shard_set: ShardSet, meta_client: MetaClientRef) -> Self {
         let mut manager = ManagerImpl {
             catalogs: HashMap::new(),
-            shard_tables_cache,
+            shard_set,
             meta_client,
         };
 
@@ -87,7 +87,7 @@ impl ManagerImpl {
         let catalog = Arc::new(CatalogImpl {
             name: catalog_name.clone(),
             schemas: RwLock::new(HashMap::new()),
-            shard_tables_cache: self.shard_tables_cache.clone(),
+            shard_set: self.shard_set.clone(),
             meta_client: self.meta_client.clone(),
         });
 
@@ -107,7 +107,7 @@ struct CatalogImpl {
     name: String,
     /// All the schemas belonging to the catalog.
     schemas: RwLock<HashMap<SchemaName, SchemaRef>>,
-    shard_tables_cache: ShardSet,
+    shard_set: ShardSet,
     meta_client: MetaClientRef,
 }
 
@@ -156,7 +156,7 @@ impl Catalog for CatalogImpl {
             self.name.to_string(),
             name.to_string(),
             SchemaId::from_u32(schema_id),
-            self.shard_tables_cache.clone(),
+            self.shard_set.clone(),
         ));
 
         schemas.insert(name.to_string(), schema);
@@ -200,13 +200,13 @@ impl SchemaImpl {
         catalog_name: String,
         schema_name: String,
         schema_id: SchemaId,
-        shard_tables_cache: ShardSet,
+        shard_set: ShardSet,
     ) -> Self {
         Self {
             catalog_name,
             schema_name,
             schema_id,
-            shard_set: shard_tables_cache,
+            shard_set,
             tables: Default::default(),
             create_table_mutex: Mutex::new(()),
         }

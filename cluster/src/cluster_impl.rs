@@ -53,7 +53,7 @@ pub struct ClusterImpl {
 impl ClusterImpl {
     pub async fn try_new(
         node_name: String,
-        shard_tables_cache: ShardSet,
+        shard_set: ShardSet,
         meta_client: MetaClientRef,
         config: ClusterConfig,
         runtime: Arc<Runtime>,
@@ -62,7 +62,7 @@ impl ClusterImpl {
             return InvalidArguments { msg: e }.fail();
         }
 
-        let inner = Arc::new(Inner::new(shard_tables_cache, meta_client)?);
+        let inner = Arc::new(Inner::new(shard_set, meta_client)?);
         let connect_options = ConnectOptions::from(&config.etcd_client);
         let etcd_client =
             etcd_client::Client::connect(&config.etcd_client.server_addrs, Some(connect_options))
@@ -168,9 +168,9 @@ struct Inner {
 }
 
 impl Inner {
-    fn new(shard_tables_cache: ShardSet, meta_client: MetaClientRef) -> Result<Self> {
+    fn new(shard_set: ShardSet, meta_client: MetaClientRef) -> Result<Self> {
         Ok(Self {
-            shard_set: shard_tables_cache,
+            shard_set,
             meta_client,
             topology: Default::default(),
         })
