@@ -14,20 +14,16 @@ use catalog::{
     table_operator::TableOperator,
 };
 use ceresdbproto::meta_event::{
-    meta_event_service_server::MetaEventService, ChangeShardRoleRequest,
-    ChangeShardRoleResponse, CloseShardRequest, CloseShardResponse, CloseTableOnShardRequest,
-    CloseTableOnShardResponse, CreateTableOnShardRequest, CreateTableOnShardResponse,
-    DropTableOnShardRequest, DropTableOnShardResponse, MergeShardsRequest, MergeShardsResponse,
-    OpenShardRequest, OpenShardResponse, OpenTableOnShardRequest, OpenTableOnShardResponse,
-    SplitShardRequest, SplitShardResponse,
+    meta_event_service_server::MetaEventService, ChangeShardRoleRequest, ChangeShardRoleResponse,
+    CloseShardRequest, CloseShardResponse, CloseTableOnShardRequest, CloseTableOnShardResponse,
+    CreateTableOnShardRequest, CreateTableOnShardResponse, DropTableOnShardRequest,
+    DropTableOnShardResponse, MergeShardsRequest, MergeShardsResponse, OpenShardRequest,
+    OpenShardResponse, OpenTableOnShardRequest, OpenTableOnShardResponse, SplitShardRequest,
+    SplitShardResponse,
 };
 use cluster::{shard_set::UpdatedTableInfo, ClusterRef};
 use common_types::{schema::SchemaEncoder, table::ShardId};
-use common_util::{
-    error::{BoxError},
-    runtime::Runtime,
-    time::InstantExt,
-};
+use common_util::{error::BoxError, runtime::Runtime, time::InstantExt};
 use log::{error, info, warn};
 use meta_client::types::{ShardInfo, TableInfo};
 use paste::paste;
@@ -301,18 +297,18 @@ async fn do_open_shard(ctx: HandlerContext, shard_info: ShardInfo) -> Result<()>
         })?;
 
     // Lock the shard in local, and then recover it.
-    let shard = shard.write().await;
+    let _guard = shard.serializing_lock.lock().await;
 
     let catalog_name = &ctx.default_catalog;
-    let shard_info = shard.shard_info.clone();
-    let table_defs = shard
-        .tables
-        .iter()
+    let shard_info = shard.data.shard_info();
+    let tables = shard.data.all_tables();
+    let table_defs = tables
+        .into_iter()
         .map(|info| TableDef {
             catalog_name: catalog_name.clone(),
-            schema_name: info.schema_name.clone(),
+            schema_name: info.schema_name,
             id: TableId::from(info.id),
-            name: info.name.clone(),
+            name: info.name,
         })
         .collect();
 
@@ -368,22 +364,22 @@ async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
             msg: format!("shard not found when closing shard, shard_id:{shard_id}",),
         })?;
 
-    let mut shard = shard.write().await;
+    // Lock for serializing the write operation.
+    let _guard = shard.serializing_lock.lock().await;
 
-    shard.freeze();
-
+    shard.data.freeze();
     info!("Shard is frozen before closed, shard_id:{shard_id}");
 
     let catalog_name = &ctx.default_catalog.clone();
-    let shard_info = shard.shard_info.clone();
-    let table_defs = shard
-        .tables
-        .iter()
+    let shard_info = shard.data.shard_info();
+    let tables = shard.data.all_tables();
+    let table_defs = tables
+        .into_iter()
         .map(|info| TableDef {
             catalog_name: catalog_name.clone(),
-            schema_name: info.schema_name.clone(),
+            schema_name: info.schema_name,
             id: TableId::from(info.id),
-            name: info.name.clone(),
+            name: info.name,
         })
         .collect();
     let close_shard_request = catalog::schema::CloseShardRequest {
@@ -463,10 +459,12 @@ async fn handle_create_table_on_shard(
             ),
         })?;
 
-    let mut shard = shard.write().await;
+    // Lock for serializing the write operation.
+    let _guard = shard.serializing_lock.lock().await;
 
     // FIXME: should insert table from cluster after having created table.
     shard
+        .data
         .try_insert_table(updated_table_info)
         .box_err()
         .with_context(|| ErrWithCause {
@@ -568,10 +566,12 @@ async fn handle_drop_table_on_shard(
             ),
         })?;
 
-    let mut shard = shard.write().await;
+    // Lock for serializing the write operation.
+    let _guard = shard.serializing_lock.lock().await;
 
     // FIXME: should insert table from cluster after having dropped table.
     shard
+        .data
         .try_remove_table(updated_table_info)
         .box_err()
         .with_context(|| ErrWithCause {
@@ -627,10 +627,12 @@ async fn handle_open_table_on_shard(
             ),
         })?;
 
-    let mut shard = shard.write().await;
+    // Lock for serializing the write operation.
+    let _guard = shard.serializing_lock.lock().await;
 
     // FIXME: should insert table from cluster after having opened table.
     shard
+        .data
         .try_insert_table(updated_table_info)
         .box_err()
         .with_context(|| ErrWithCause {
@@ -699,10 +701,12 @@ async fn handle_close_table_on_shard(
             ),
         })?;
 
-    let mut shard = shard.write().await;
+    // Lock for serializing the write operation.
+    let _guard = shard.serializing_lock.lock().await;
 
     // FIXME: should remove table from cluster after having closed table.
     shard
+        .data
         .try_remove_table(updated_table_info)
         .box_err()
         .with_context(|| ErrWithCause {

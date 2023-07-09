@@ -311,13 +311,9 @@ impl Schema for SchemaImpl {
                         msg: "shard not found".to_string(),
                     })?;
 
-            let shard = shard.read().await;
             let _ = shard
-                .tables
-                .iter()
-                .find(|table| {
-                    table.schema_name == request.schema_name && table.name == request.table_name
-                })
+                .data
+                .find_table(&request.schema_name, &request.table_name)
                 .with_context(|| schema::CreateTable {
                     request: request.clone(),
                     msg: "table not found in shard".to_string(),

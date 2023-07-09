@@ -13,7 +13,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-
 use common_types::schema::SchemaName;
 use common_util::{define_result, error::GenericError};
 use meta_client::types::{

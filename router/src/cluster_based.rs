@@ -162,9 +162,7 @@ impl Router for ClusterBasedRouter {
 mod tests {
     use std::{collections::HashMap, sync::Arc, thread::sleep, time::Duration};
 
-    use ceresdbproto::{
-        storage::RequestContext,
-    };
+    use ceresdbproto::storage::RequestContext;
     use cluster::{
         shard_lock_manager::ShardLockManagerRef, shard_set::ShardRef, Cluster, ClusterNodesResp,
     };

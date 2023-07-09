@@ -6,7 +6,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-
 use common_types::table::ShardId;
 use common_util::{
     error::BoxError,
@@ -30,10 +29,10 @@ use tokio::{
 use crate::{
     config::ClusterConfig,
     shard_lock_manager::{ShardLockManager, ShardLockManagerRef},
-    shard_set::{ShardRef, ShardSet},
+    shard_set::{Shard, ShardRef, ShardSet},
     topology::ClusterTopology,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause,
-    InvalidArguments, MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause, InvalidArguments,
+    MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -108,8 +107,8 @@ impl ClusterImpl {
                 // TODO: required to acquire the read lock of each shard now, can we optimize
                 // this?
                 for shard in shards {
-                    let shard = shard.read().await;
-                    shard_infos.push(shard.shard_info.clone());
+                    let shard_info = shard.data.shard_info();
+                    shard_infos.push(shard_info);
                 }
                 info!("Node heartbeat to meta, shard infos:{:?}", shard_infos);
 
@@ -237,8 +236,9 @@ impl Inner {
 
     async fn open_shard(&self, shard_info: &ShardInfo) -> Result<ShardRef> {
         if let Some(shard) = self.shard_set.get(shard_info.id) {
-            let inner = shard.read().await;
-            if inner.shard_info.version == shard_info.version {
+            let shard_data = &shard.data;
+            let cur_shard_info = shard_data.shard_info();
+            if cur_shard_info.version == shard_info.version {
                 info!(
                     "No need to open the exactly same shard again, shard_info:{:?}",
                     shard_info
@@ -246,10 +246,10 @@ impl Inner {
                 return Ok(shard.clone());
             }
             ensure!(
-                inner.shard_info.version < shard_info.version,
+                cur_shard_info.version < shard_info.version,
                 OpenShard {
                     shard_id: shard_info.id,
-                    msg: format!("open a shard with a smaller version, curr_shard_info:{:?}, new_shard_info:{:?}", inner.shard_info, shard_info),
+                    msg: format!("open a shard with a smaller version, curr_shard_info:{cur_shard_info:?}, new_shard_info:{shard_info:?}"),
                 }
             );
         }
@@ -284,7 +284,7 @@ impl Inner {
             })?;
 
         let shard_id = tables_of_shard.shard_info.id;
-        let shard = Arc::new(tokio::sync::RwLock::new(tables_of_shard.into()));
+        let shard = Arc::new(Shard::new(tables_of_shard));
         self.shard_set.insert(shard_id, shard.clone());
 
         Ok(shard)
