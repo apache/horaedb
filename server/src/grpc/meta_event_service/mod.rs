@@ -325,13 +325,10 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
 }
 
 async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
-    let shard = ctx
-        .cluster
-        .get_shard(shard_id)
-        .with_context(|| ErrNoCause {
-            code: StatusCode::Internal,
-            msg: format!("shard not found when closing shard, shard_id:{shard_id}",),
-        })?;
+    let shard = ctx.cluster.shard(shard_id).with_context(|| ErrNoCause {
+        code: StatusCode::Internal,
+        msg: format!("shard not found when closing shard, shard_id:{shard_id}",),
+    })?;
 
     let close_ctx = CloseContext {
         catalog: ctx.default_catalog.clone(),
@@ -396,7 +393,7 @@ async fn handle_create_table_on_shard(
 
     let shard = ctx
         .cluster
-        .get_shard(updated_table_info.shard_info.id)
+        .shard(updated_table_info.shard_info.id)
         .with_context(|| ErrNoCause {
             code: StatusCode::Internal,
             msg: format!(
@@ -447,7 +444,7 @@ async fn handle_drop_table_on_shard(
 
     let shard = ctx
         .cluster
-        .get_shard(updated_table_info.shard_info.id)
+        .shard(updated_table_info.shard_info.id)
         .with_context(|| ErrNoCause {
             code: StatusCode::Internal,
             msg: format!(
@@ -482,7 +479,7 @@ async fn handle_open_table_on_shard(
 
     let shard = ctx
         .cluster
-        .get_shard(updated_table_info.shard_info.id)
+        .shard(updated_table_info.shard_info.id)
         .with_context(|| ErrNoCause {
             code: StatusCode::Internal,
             msg: format!("shard not found when opening table on shard, request:{request:?}",),
@@ -513,16 +510,13 @@ async fn handle_close_table_on_shard(
     let updated_table_info = extract_updated_table_info!(request);
     let shard_id = updated_table_info.shard_info.id;
 
-    let shard = ctx
-        .cluster
-        .get_shard(shard_id)
-        .with_context(|| ErrNoCause {
-            code: StatusCode::Internal,
-            msg: format!(
-                "shard not found when closing table on shard, req:{:?}",
-                request.clone()
-            ),
-        })?;
+    let shard = ctx.cluster.shard(shard_id).with_context(|| ErrNoCause {
+        code: StatusCode::Internal,
+        msg: format!(
+            "shard not found when closing table on shard, req:{:?}",
+            request.clone()
+        ),
+    })?;
 
     let close_table_ctx = CloseTableContext {
         catalog: ctx.default_catalog.clone(),

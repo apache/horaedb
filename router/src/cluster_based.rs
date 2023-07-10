@@ -190,7 +190,7 @@ mod tests {
             unimplemented!();
         }
 
-        fn get_shard(&self, _: ShardId) -> Option<ShardRef> {
+        fn shard(&self, _: ShardId) -> Option<ShardRef> {
             unimplemented!();
         }
 

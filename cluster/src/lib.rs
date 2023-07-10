@@ -163,7 +163,7 @@ pub trait Cluster {
     ///
     /// If target shard has opened in cluster, return it. Otherwise, return
     /// None.
-    fn get_shard(&self, shard_id: ShardId) -> Option<ShardRef>;
+    fn shard(&self, shard_id: ShardId) -> Option<ShardRef>;
 
     /// Close shard.
     ///
