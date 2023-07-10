@@ -47,29 +47,13 @@ mod test {
         collector.visit(&mut formatter);
         let actual = formatter.into_string();
 
-        // The expected output is as follows, but its ordering is not stable, so
-        // use contains to do check.
-        // let expect_output = r#"test:
-        //     counter=11
-        //     boolean=true
-        //     boolean=false
-        //     elapsed=1s
-        //     elapsed=2s
-        // "#;
-
-        // counter is added together
-        assert!(actual.contains("counter=11"));
-        assert!(actual.contains(
-            r#"
+        let expected = r#"test:
     boolean=true
     boolean=false
-"#
-        ));
-        assert!(actual.contains(
-            r#"
+    counter=11
     elapsed=1s
     elapsed=2s
-"#
-        ));
+"#;
+        assert_eq!(expected, actual);
     }
 }

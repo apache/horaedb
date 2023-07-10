@@ -1,7 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     sync::{Arc, Mutex},
 };
 
@@ -50,7 +50,7 @@ impl MetricsCollector {
     pub fn for_each_metric(&self, f: &mut impl FnMut(&Metric)) {
         let metrics = self.metrics.lock().unwrap();
 
-        let mut metrics_by_name = HashMap::with_capacity(metrics.len());
+        let mut metrics_by_name = BTreeMap::new();
         for metric in metrics.iter() {
             metrics_by_name
                 .entry(metric.name())
