@@ -104,8 +104,6 @@ impl ClusterImpl {
             loop {
                 let shards = inner.shard_set.all_shards();
                 let mut shard_infos = Vec::with_capacity(shards.len());
-                // TODO: required to acquire the read lock of each shard now, can we optimize
-                // this?
                 for shard in shards {
                     let shard_info = shard.data.shard_info();
                     shard_infos.push(shard_info);
