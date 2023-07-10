@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
+catalog = { workspace = true }
 ceresdbproto = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
@@ -24,3 +25,4 @@ serde_json = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
 tokio = { workspace = true }
+wal = { workspace = true }

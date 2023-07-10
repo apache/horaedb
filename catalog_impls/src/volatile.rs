@@ -311,8 +311,8 @@ impl Schema for SchemaImpl {
                         msg: "shard not found".to_string(),
                     })?;
 
+            // TODO: seems unnecessary?
             let _ = shard
-                .data
                 .find_table(&request.schema_name, &request.table_name)
                 .with_context(|| schema::CreateTable {
                     request: request.clone(),

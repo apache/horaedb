@@ -105,7 +105,7 @@ impl ClusterImpl {
                 let shards = inner.shard_set.all_shards();
                 let mut shard_infos = Vec::with_capacity(shards.len());
                 for shard in shards {
-                    let shard_info = shard.data.shard_info();
+                    let shard_info = shard.shard_info();
                     shard_infos.push(shard_info);
                 }
                 info!("Node heartbeat to meta, shard infos:{:?}", shard_infos);
@@ -234,14 +234,13 @@ impl Inner {
 
     async fn open_shard(&self, shard_info: &ShardInfo) -> Result<ShardRef> {
         if let Some(shard) = self.shard_set.get(shard_info.id) {
-            let shard_data = &shard.data;
-            let cur_shard_info = shard_data.shard_info();
+            let cur_shard_info = shard.shard_info();
             if cur_shard_info.version == shard_info.version {
                 info!(
                     "No need to open the exactly same shard again, shard_info:{:?}",
                     shard_info
                 );
-                return Ok(shard.clone());
+                return Ok(shard);
             }
             ensure!(
                 cur_shard_info.version < shard_info.version,
@@ -261,8 +260,8 @@ impl Inner {
             .get_tables_of_shards(req)
             .await
             .box_err()
-            .context(OpenShardWithCause {
-                shard_id: shard_info.id,
+            .with_context(|| OpenShardWithCause {
+                msg: format!("shard_info:{shard_info:?}"),
             })?;
 
         ensure!(

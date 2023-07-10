@@ -26,6 +26,8 @@ use crate::shard_set::ShardRef;
 pub mod cluster_impl;
 pub mod config;
 pub mod shard_lock_manager;
+pub mod shard_operation;
+pub mod shard_operator;
 pub mod shard_set;
 #[allow(dead_code)]
 pub mod topology;
@@ -64,17 +66,41 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Fail to open shard, shard_id:{shard_id}, source:{source}."))]
-    OpenShardWithCause {
-        shard_id: ShardId,
-        source: GenericError,
-    },
+    #[snafu(display("Fail to open shard, msg:{msg}, source:{source}."))]
+    OpenShardWithCause { msg: String, source: GenericError },
 
-    #[snafu(display("Fail to close shard, shard_id:{shard_id}, source:{source}."))]
-    CloseShardWithCause {
-        shard_id: ShardId,
-        source: GenericError,
-    },
+    #[snafu(display("Fail to open shard, msg:{msg}.\nBacktrace:\n{backtrace}"))]
+    OpenShardNoCause { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Fail to close shard, msg:{msg}, source:{source}."))]
+    CloseShardWithCause { msg: String, source: GenericError },
+
+    #[snafu(display("Fail to close shard, msg:{msg}.\nBacktrace:\n{backtrace}"))]
+    CloseShardNoCause { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Fail to create table on shard, msg:{msg}, source:{source}."))]
+    CreateTableWithCause { msg: String, source: GenericError },
+
+    #[snafu(display("Fail to create table on shard, msg:{msg}.\nBacktrace:\n{backtrace}"))]
+    CreateTableNoCause { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Fail to drop table on shard, msg:{msg}, source:{source}."))]
+    DropTableWithCause { msg: String, source: GenericError },
+
+    #[snafu(display("Fail to drop table on shard, msg:{msg}.\nBacktrace:\n{backtrace}"))]
+    DropTableNoCause { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Fail to open table on shard, msg:{msg}, source:{source}."))]
+    OpenTableWithCause { msg: String, source: GenericError },
+
+    #[snafu(display("Fail to open table on shard, msg:{msg}.\nBacktrace:\n{backtrace}"))]
+    OpenTableNoCause { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Fail to close table on shard, msg:{msg}, source:{source}."))]
+    CloseTableWithCause { msg: String, source: GenericError },
+
+    #[snafu(display("Fail to close table on shard, msg:{msg}.\nBacktrace:\n{backtrace}"))]
+    CloseTableNoCause { msg: String, backtrace: Backtrace },
 
     #[snafu(display("Shard not found, msg:{msg}.\nBacktrace:\n{backtrace}"))]
     ShardNotFound { msg: String, backtrace: Backtrace },
