@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::metric::Metric;
+use crate::metric::{Metric, MetricOp};
 
 /// A collector for metrics of a single read request.
 ///
@@ -49,12 +49,12 @@ impl MetricsCollector {
     /// Calls a closure on each top-level metrics of this collector.
     pub fn for_each_metric(&self, f: &mut impl FnMut(&Metric)) {
         let metrics = self.metrics.lock().unwrap();
-        let mut metrics_by_name = HashMap::with_capacity(metrics.len());
 
+        let mut metrics_by_name = HashMap::with_capacity(metrics.len());
         for metric in metrics.iter() {
             metrics_by_name
                 .entry(metric.name().to_string())
-                .or_insert_with(|| vec![])
+                .or_insert_with(Vec::new)
                 .push(metric);
         }
 
@@ -66,7 +66,7 @@ impl MetricsCollector {
 
             if let Some(op) = metrics[0].op() {
                 match op {
-                    crate::metric::MetricOp::Add => {
+                    MetricOp::Add => {
                         let mut first = metrics[0].clone();
                         for m in &metrics[1..] {
                             first.add(m);
