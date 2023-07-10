@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Common Encoding for Wal logs
 
@@ -115,17 +115,14 @@ pub enum Namespace {
 }
 
 /// Log key in old wal design, map the `TableId` to `RegionId`
-#[allow(unused)]
 pub type LogKey = (u64, SequenceNumber);
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct LogKeyEncoder {
     pub version: u8,
     pub namespace: Namespace,
 }
 
-#[allow(unused)]
 impl LogKeyEncoder {
     /// Create newest version encoder.
     pub fn newest() -> Self {
@@ -202,13 +199,11 @@ impl Decoder<LogKey> for LogKeyEncoder {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct LogValueEncoder {
     pub version: u8,
 }
 
-#[allow(unused)]
 impl LogValueEncoder {
     /// Create newest version encoder.
     pub fn newest() -> Self {
@@ -240,12 +235,10 @@ impl<T: Payload> Encoder<T> for LogValueEncoder {
     }
 }
 
-#[allow(unused)]
 pub struct LogValueDecoder {
     pub version: u8,
 }
 
-#[allow(unused)]
 impl LogValueDecoder {
     pub fn decode<'a>(&self, mut buf: &'a [u8]) -> Result<&'a [u8]> {
         let version = buf.try_get_u8().context(DecodeLogValueHeader)?;
@@ -475,7 +468,6 @@ impl MaxSeqMetaEncoding {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct LogEncoding {
     key_enc: LogKeyEncoder,
@@ -484,7 +476,6 @@ pub struct LogEncoding {
     value_enc_version: u8,
 }
 
-#[allow(unused)]
 impl LogEncoding {
     pub fn newest() -> Self {
         Self {
@@ -589,7 +580,6 @@ impl LogBatchEncoder {
 }
 
 /// Common log key used in multiple wal implementation
-#[allow(unused)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct CommonLogKey {
     /// Id of region which the table belongs to,
@@ -599,7 +589,6 @@ pub struct CommonLogKey {
     pub sequence_num: SequenceNumber,
 }
 
-#[allow(unused)]
 impl CommonLogKey {
     pub fn new(region_id: u64, table_id: TableId, sequence_num: SequenceNumber) -> Self {
         Self {
@@ -610,14 +599,12 @@ impl CommonLogKey {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct CommonLogKeyEncoder {
     pub version: u8,
     pub namespace: Namespace,
 }
 
-#[allow(unused)]
 impl CommonLogKeyEncoder {
     /// Create newest version encoder.
     pub fn newest() -> Self {
@@ -697,7 +684,6 @@ impl Decoder<CommonLogKey> for CommonLogKeyEncoder {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct CommonLogEncoding {
     key_enc: CommonLogKeyEncoder,
@@ -706,7 +692,6 @@ pub struct CommonLogEncoding {
     value_enc_version: u8,
 }
 
-#[allow(unused)]
 impl CommonLogEncoding {
     pub fn newest() -> Self {
         Self {

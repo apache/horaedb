@@ -133,8 +133,7 @@ async fn test_consume_empty_topic<T: MessageQueue>(message_queue: &T) {
         .await
         .is_ok());
 
-    // Call produce to push messages at first, then call consume to pull back and
-    // compare.
+    // FIXME: consume a empty topic may be hanged forever...
     let mut iter = message_queue
         .consume(&topic_name, StartOffset::Earliest)
         .await
