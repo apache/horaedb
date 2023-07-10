@@ -31,7 +31,8 @@ use std::{
 };
 
 use ::http::StatusCode;
-use analytic_engine::table_options::{parse_duration, ENABLE_TTL, TTL};
+use analytic_engine::table_options::{ENABLE_TTL, TTL};
+use common_util::time::{parse_duration, current_time_millis};
 use catalog::{
     schema::{
         CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, SchemaRef,
@@ -72,6 +73,9 @@ use crate::{
     instance::InstanceRef,
     schema_config_provider::SchemaConfigProviderRef,
 };
+
+// Because the clock may have errors, choose 1 hour as the error buffer
+const BUFFER_DURATION : Duration = Duration::new(60 * 60, 0);
 
 pub struct Proxy<Q> {
     router: Arc<dyn Router + Send + Sync>,
@@ -177,37 +181,29 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         catalog_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> bool {
+    ) -> (bool, i64) {
         if let Plan::Query(query) = &plan {
             let tableref = match self.get_table(catalog_name, schema_name, table_name) {
                 Ok(Some(tableref)) => tableref,
-                _ => return true,
+                _ => return (true, 0),
             };
             if let Some(value) = tableref.options().get(ENABLE_TTL) {
                 if value == "false" {
-                    return true;
+                    return (true,0);
                 }
             }
 
             let ttl_duration = match tableref.options().get(TTL) {
                 Some(value) => parse_duration(value),
-                None => return false,
+                None => return (false, 0),
             };
             assert!(ttl_duration.is_ok(), "ttl_duration muse be vaild");
             let ttl_duration = ttl_duration.unwrap();
 
             // TODO(tanruixiang): use sql's timestamp as nowtime(need sql support)
-            let nowtime = match SystemTime::now().duration_since(UNIX_EPOCH) {
-                Ok(duration) => duration.as_secs() as i64,
-                Err(_) => {
-                    return false;
-                }
-            };
+            let nowtime = current_time_millis() as i64;
 
-            // Because the clock may have errors, choose 1 hour as the error buffer
-            let buffer_duration = Duration::new(60 * 60, 0);
-
-            let ddl = nowtime - ttl_duration.as_secs() as i64 - buffer_duration.as_secs() as i64;
+            let ddl = nowtime - ttl_duration.as_secs() as i64 - BUFFER_DURATION.as_secs() as i64;
 
             let timestamp_name = &tableref
                 .schema()
@@ -220,14 +216,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 std::ops::Bound::Included(x) | std::ops::Bound::Excluded(x) => {
                     if let Expr::Literal(datafusion::scalar::ScalarValue::Int64(Some(x))) = x {
                         if x <= ddl {
-                            return false;
+                            return (false, ddl);
                         }
                     }
                 }
                 std::ops::Bound::Unbounded => (),
             }
         }
-        true
+        (true, 0)
     }
 
     fn get_catalog(&self, catalog_name: &str) -> Result<CatalogRef> {

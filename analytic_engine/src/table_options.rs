@@ -9,7 +9,7 @@ use common_types::time::Timestamp;
 use common_util::{
     config::{ReadableDuration, ReadableSize, TimeUnit},
     define_result,
-    time::DurationExt,
+    time::{parse_duration, DurationExt},
 };
 use datafusion::parquet::basic::Compression as ParquetCompression;
 use serde::{Deserialize, Serialize};
@@ -64,8 +64,11 @@ const MAX_NUM_ROWS_PER_ROW_GROUP: usize = 10_000_000;
 #[derive(Debug, Snafu)]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
-    #[snafu(display("Failed to parse duration, err:{}.\nBacktrace:\n{}", err, backtrace))]
-    ParseDuration { err: String, backtrace: Backtrace },
+    #[snafu(display("Failed to parse duration, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    ParseDuration {
+        source: common_util::time::Error,
+        backtrace: Backtrace,
+    },
 
     #[snafu(display("Failed to parse size, err:{}.\nBacktrace:\n{}", err, backtrace))]
     ParseSize { err: String, backtrace: Backtrace },
@@ -707,7 +710,7 @@ fn merge_table_options(
     let mut table_opts = table_old_opts.clone();
     if is_create {
         if let Some(v) = options.get(SEGMENT_DURATION) {
-            table_opts.segment_duration = Some(parse_duration(v)?);
+            table_opts.segment_duration = Some(parse_duration(v).context(ParseDuration)?);
         }
         if let Some(v) = options.get(UPDATE_MODE) {
             table_opts.update_mode = UpdateMode::parse_from(v)?;
@@ -715,7 +718,7 @@ fn merge_table_options(
     }
 
     if let Some(v) = options.get(TTL) {
-        table_opts.ttl = parse_duration(v)?;
+        table_opts.ttl = parse_duration(v).context(ParseDuration)?;
     }
     if let Some(v) = options.get(OPTION_KEY_ENABLE_TTL) {
         table_opts.enable_ttl = v.parse::<bool>().context(ParseBool)?;
@@ -742,14 +745,6 @@ fn merge_table_options(
         table_opts.storage_format_hint = v.as_str().try_into()?;
     }
     Ok(table_opts)
-}
-
-pub fn parse_duration(v: &str) -> Result<ReadableDuration> {
-    v.parse::<ReadableDuration>()
-        .map_err(|err| Error::ParseDuration {
-            err,
-            backtrace: Backtrace::generate(),
-        })
 }
 
 fn parse_size(v: &str) -> Result<ReadableSize> {
