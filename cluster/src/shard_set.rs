@@ -13,8 +13,9 @@ use crate::{
     Result, ShardVersionMismatch, TableAlreadyExists, TableNotFound, UpdateFrozenShard,
 };
 
-/// [ShardTablesCache] caches the information about tables and shards, and the
-/// relationship between them is: one shard -> multiple tables.
+/// Shard set
+///
+/// Manage all shards opened on current node
 #[derive(Debug, Default, Clone)]
 pub struct ShardSet {
     inner: Arc<std::sync::RwLock<HashMap<ShardId, ShardRef>>>,
@@ -46,6 +47,9 @@ impl ShardSet {
     }
 }
 
+/// Shard
+///
+/// NOTICE: all write operations on a shard will be performed sequentially.
 pub struct Shard {
     pub data: ShardDataRef,
     pub operator: tokio::sync::Mutex<ShardOperator>,
@@ -114,18 +118,13 @@ impl Shard {
 pub type ShardRef = Arc<Shard>;
 
 #[derive(Debug, Clone)]
-pub struct TableWithShards {
-    pub table_info: TableInfo,
-    pub shard_infos: Vec<ShardInfo>,
-}
-
-#[derive(Debug, Clone)]
 pub struct UpdatedTableInfo {
     pub prev_version: u64,
     pub shard_info: ShardInfo,
     pub table_info: TableInfo,
 }
 
+/// Shard data
 #[derive(Debug)]
 pub struct ShardData {
     /// Shard info

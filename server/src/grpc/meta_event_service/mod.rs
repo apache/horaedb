@@ -297,7 +297,7 @@ async fn do_open_shard(ctx: HandlerContext, shard_info: ShardInfo) -> Result<()>
 
     shard.open(open_ctx).await.box_err().context(ErrWithCause {
         code: StatusCode::Internal,
-        msg: "fail to open shard in cluster",
+        msg: "fail to open shard",
     })
 }
 
@@ -346,7 +346,7 @@ async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
-            msg: "fail to close shard in cluster",
+            msg: "fail to close shard",
         })?;
 
     // Remove the shard from the cluster topology after the shard is closed indeed.
@@ -434,7 +434,7 @@ async fn handle_create_table_on_shard(
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
-            msg: "fail to create table on shard in cluster",
+            msg: "fail to create table on shard",
         })
 }
 
@@ -470,7 +470,7 @@ async fn handle_drop_table_on_shard(
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
-            msg: "fail to drop table on shard in cluster",
+            msg: "fail to drop table on shard",
         })
 }
 
@@ -503,7 +503,7 @@ async fn handle_open_table_on_shard(
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
-            msg: "fail to open table on shard in cluster",
+            msg: "fail to open table on shard",
         })
 }
 
@@ -537,7 +537,7 @@ async fn handle_close_table_on_shard(
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
-            msg: "fail to close table on shard in cluster",
+            msg: "fail to close table on shard",
         })
 }
 

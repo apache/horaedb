@@ -15,7 +15,6 @@ use snafu::ResultExt;
 use table_engine::{
     engine::{TableEngineRef, TableState},
     table::TableId,
-    ANALYTIC_ENGINE_TYPE,
 };
 
 use crate::{
