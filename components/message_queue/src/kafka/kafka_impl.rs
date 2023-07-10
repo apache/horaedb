@@ -284,6 +284,7 @@ impl MessageQueue for KafkaImpl {
             })
     }
 
+    // FIXME: consume a empty topic may be hanged forever...
     async fn consume(
         &self,
         topic_name: &str,
