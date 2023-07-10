@@ -133,20 +133,21 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             })?;
 
         if let Some(table_name) = &table_name {
-            match  self.valid_ttl_range(&plan, catalog, schema, table_name){
-                (true, _) => {
-                    ()
-                },
-                (false, 0) => {
-                    return Err(Error::SqlQueryOverTTL {
+            match self.valid_ttl_range(&plan, catalog, schema, table_name) {
+                Ok((valid, ddl)) => {
+                    if !valid {
+                        return Err(Error::SqlQueryOverTTL {
+                            code: StatusCode::OK,
+                            msg: format!(
+                                "Time range of sql is over TTL, deadline:{ddl}, sql:{sql}"
+                            ),
+                        });
+                    }
+                }
+                Err(_) => {
+                    return Err(Error::ErrNoCause {
                         code: StatusCode::OK,
-                        msg: format!("Parse duration error"),
-                    });
-                },
-                (false, ddl) => {
-                    return Err(Error::SqlQueryOverTTL {
-                        code: StatusCode::OK,
-                        msg: format!("Time range of sql is over TTL, deadline:{ddl}, sql:{sql}"),
+                        msg: "Parse duration error".to_string(),
                     });
                 }
             }

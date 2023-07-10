@@ -27,12 +27,11 @@ pub const FORWARDED_FROM: &str = "forwarded-from";
 
 use std::{
     sync::Arc,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 
 use ::http::StatusCode;
 use analytic_engine::table_options::{ENABLE_TTL, TTL};
-use common_util::time::{parse_duration, current_time_millis};
 use catalog::{
     schema::{
         CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, SchemaRef,
@@ -44,7 +43,11 @@ use ceresdbproto::storage::{
     PrometheusRemoteQueryResponse, Route, RouteRequest,
 };
 use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID};
-use common_util::{error::BoxError, runtime::Runtime};
+use common_util::{
+    error::BoxError,
+    runtime::Runtime,
+    time::{current_time_millis, parse_duration},
+};
 use datafusion::prelude::{Column, Expr};
 use futures::FutureExt;
 use influxql_query::logical_optimizer::range_predicate::find_time_range;
@@ -75,7 +78,7 @@ use crate::{
 };
 
 // Because the clock may have errors, choose 1 hour as the error buffer
-const BUFFER_DURATION : Duration = Duration::new(60 * 60, 0);
+const BUFFER_DURATION: Duration = Duration::new(60 * 60, 0);
 
 pub struct Proxy<Q> {
     router: Arc<dyn Router + Send + Sync>,
@@ -181,23 +184,32 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         catalog_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> (bool, i64) {
+    ) -> Result<(bool, i64)> {
         if let Plan::Query(query) = &plan {
-            let tableref = match self.get_table(catalog_name, schema_name, table_name) {
+            let catalog = self.get_catalog(catalog_name)?;
+
+            let schema = self.get_schema(&catalog, schema_name)?;
+
+            let tableref = match self.get_table(&schema, table_name) {
                 Ok(Some(tableref)) => tableref,
-                _ => return (true, 0),
+                _ => return Ok((true, 0)),
             };
             if let Some(value) = tableref.options().get(ENABLE_TTL) {
                 if value == "false" {
-                    return (true,0);
+                    return Ok((true, 0));
                 }
             }
 
             let ttl_duration = match tableref.options().get(TTL) {
                 Some(value) => parse_duration(value),
-                None => return (false, 0),
+                None => return Ok((false, 0)),
             };
-            assert!(ttl_duration.is_ok(), "ttl_duration muse be vaild");
+            if ttl_duration.is_err() {
+                return Err(Error::ErrNoCause {
+                    code: StatusCode::OK,
+                    msg: "error parse".to_string(),
+                });
+            }
             let ttl_duration = ttl_duration.unwrap();
 
             // TODO(tanruixiang): use sql's timestamp as nowtime(need sql support)
@@ -216,14 +228,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 std::ops::Bound::Included(x) | std::ops::Bound::Excluded(x) => {
                     if let Expr::Literal(datafusion::scalar::ScalarValue::Int64(Some(x))) = x {
                         if x <= ddl {
-                            return (false, ddl);
+                            return Ok((false, ddl));
                         }
                     }
                 }
                 std::ops::Bound::Unbounded => (),
             }
         }
-        (true, 0)
+        Ok((true, 0))
     }
 
     fn get_catalog(&self, catalog_name: &str) -> Result<CatalogRef> {
@@ -259,16 +271,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         Ok(schema)
     }
 
-    fn get_table(
-        &self,
-        catalog_name: &str,
-        schema_name: &str,
-        table_name: &str,
-    ) -> Result<Option<TableRef>> {
-        let catalog = self.get_catalog(catalog_name)?;
-
-        let schema = self.get_schema(&catalog, schema_name)?;
-
+    fn get_table(&self, schema: &SchemaRef, table_name: &str) -> Result<Option<TableRef>> {
         let table = schema
             .table_by_name(table_name)
             .box_err()
@@ -285,40 +288,11 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         schema_name: &str,
         table_name: &str,
     ) -> Result<()> {
-        let catalog = self
-            .instance
-            .catalog_manager
-            .catalog_by_name(catalog_name)
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to find catalog, catalog_name:{catalog_name}"),
-            })?
-            .with_context(|| ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: format!("Catalog not found, catalog_name:{catalog_name}"),
-            })?;
+        let catalog = self.get_catalog(catalog_name)?;
 
-        // TODO: support create schema if not exist
-        let schema = catalog
-            .schema_by_name(schema_name)
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to find schema, schema_name:{schema_name}"),
-            })?
-            .context(ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: format!("Schema not found, schema_name:{schema_name}"),
-            })?;
+        let schema = self.get_schema(&catalog, schema_name)?;
 
-        let table = schema
-            .table_by_name(table_name)
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to find table, table_name:{table_name}"),
-            })?;
+        let table = self.get_table(&schema, table_name)?;
 
         let table_info_in_meta = self
             .router
