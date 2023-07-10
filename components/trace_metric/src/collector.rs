@@ -53,14 +53,13 @@ impl MetricsCollector {
         let mut metrics_by_name = HashMap::with_capacity(metrics.len());
         for metric in metrics.iter() {
             metrics_by_name
-                .entry(metric.name().to_string())
+                .entry(metric.name())
                 .or_insert_with(Vec::new)
                 .push(metric);
         }
 
         for metrics in metrics_by_name.values() {
-            if metrics.len() == 1 {
-                f(metrics[0]);
+            if metrics.is_empty() {
                 continue;
             }
 
