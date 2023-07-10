@@ -177,6 +177,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         })
     }
 
+    // TODO(tanruixiang): Add integration testing when supported by the testing
+    // framework
     fn valid_ttl_range(
         &self,
         plan: &Plan,
