@@ -32,6 +32,13 @@ mod test {
                 counter: 1,
                 elapsed: Duration::from_secs(1),
                 boolean: true,
+                foo: "foor".to_owned(),
+                collector: collector.clone(),
+            };
+            let _ = ExampleMetrics {
+                counter: 10,
+                elapsed: Duration::from_secs(2),
+                boolean: false,
                 foo: "bar".to_owned(),
                 collector: collector.clone(),
             };
@@ -39,9 +46,11 @@ mod test {
         let mut formatter = FormatCollectorVisitor::default();
         collector.visit(&mut formatter);
         let expect_output = r#"test:
-    counter=1
-    elapsed=1s
+    counter=11
     boolean=true
+    boolean=false
+    elapsed=1s
+    elapsed=2s
 "#;
 
         assert_eq!(expect_output, &formatter.into_string());

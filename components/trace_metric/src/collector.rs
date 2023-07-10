@@ -1,6 +1,9 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use crate::metric::Metric;
 
@@ -46,8 +49,37 @@ impl MetricsCollector {
     /// Calls a closure on each top-level metrics of this collector.
     pub fn for_each_metric(&self, f: &mut impl FnMut(&Metric)) {
         let metrics = self.metrics.lock().unwrap();
+        let mut metrics_by_name = HashMap::with_capacity(metrics.len());
+
         for metric in metrics.iter() {
-            f(metric);
+            metrics_by_name
+                .entry(metric.name().to_string())
+                .or_insert_with(|| vec![])
+                .push(metric);
+        }
+
+        for metrics in metrics_by_name.values() {
+            if metrics.len() == 1 {
+                f(metrics[0]);
+                continue;
+            }
+
+            if let Some(op) = metrics[0].op() {
+                match op {
+                    crate::metric::MetricOp::Add => {
+                        let mut first = metrics[0].clone();
+                        for m in &metrics[1..] {
+                            first.add(m);
+                        }
+                        // only apply fn to first metric.
+                        f(&first);
+                    }
+                }
+            } else {
+                for metric in metrics {
+                    f(metric);
+                }
+            }
         }
     }
 
@@ -111,23 +143,25 @@ mod tests {
     #[test]
     fn test_metrics_collector() {
         let collector = MetricsCollector::new("root".to_string());
-        collector.collect(Metric::number("counter".to_string(), 1));
+        collector.collect(Metric::number("counter".to_string(), 1, None));
         collector.collect(Metric::duration(
             "elapsed".to_string(),
             Duration::from_millis(100),
+            None,
         ));
         let child_1_0 = collector.span("child_1_0".to_string());
-        child_1_0.collect(Metric::boolean("boolean".to_string(), false));
+        child_1_0.collect(Metric::boolean("boolean".to_string(), false, None));
 
         let child_2_0 = child_1_0.span("child_2_0".to_string());
-        child_2_0.collect(Metric::number("counter".to_string(), 1));
+        child_2_0.collect(Metric::number("counter".to_string(), 1, None));
         child_2_0.collect(Metric::duration(
             "elapsed".to_string(),
             Duration::from_millis(100),
+            None,
         ));
 
         let child_1_1 = collector.span("child_1_1".to_string());
-        child_1_1.collect(Metric::boolean("boolean".to_string(), false));
+        child_1_1.collect(Metric::boolean("boolean".to_string(), false, None));
         let _child_1_2 = collector.span("child_1_2".to_string());
 
         let mut visitor = FormatCollectorVisitor::default();
