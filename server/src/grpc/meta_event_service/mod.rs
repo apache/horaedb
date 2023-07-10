@@ -291,6 +291,7 @@ async fn do_open_shard(ctx: HandlerContext, shard_info: ShardInfo) -> Result<()>
         catalog: ctx.default_catalog.clone(),
         table_engine: ctx.table_engine.clone(),
         table_operator: ctx.table_operator.clone(),
+        // FIXME: the engine type should not use the default one.
         engine: ANALYTIC_ENGINE_TYPE.to_string(),
     };
 
@@ -335,6 +336,7 @@ async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
         table_engine: ctx.table_engine.clone(),
         table_operator: ctx.table_operator.clone(),
         wal_region_closer: ctx.wal_region_closer.clone(),
+        // FIXME: the engine type should not use the default one.
         engine: ANALYTIC_ENGINE_TYPE.to_string(),
     };
 
@@ -458,6 +460,7 @@ async fn handle_drop_table_on_shard(
         table_engine: ctx.table_engine.clone(),
         table_operator: ctx.table_operator.clone(),
         updated_table_info,
+        // FIXME: the engine type should not use the default one.
         engine: ANALYTIC_ENGINE_TYPE.to_string(),
     };
 
@@ -490,6 +493,7 @@ async fn handle_open_table_on_shard(
         table_engine: ctx.table_engine.clone(),
         table_operator: ctx.table_operator.clone(),
         updated_table_info,
+        // FIXME: the engine type should not use the default one.
         engine: ANALYTIC_ENGINE_TYPE.to_string(),
     };
 
@@ -523,6 +527,7 @@ async fn handle_close_table_on_shard(
         table_engine: ctx.table_engine.clone(),
         table_operator: ctx.table_operator.clone(),
         updated_table_info,
+        // FIXME: the engine type should not use the default one.
         engine: ANALYTIC_ENGINE_TYPE.to_string(),
     };
 

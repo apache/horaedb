@@ -293,8 +293,7 @@ impl ShardOperator {
             catalog_name: ctx.catalog,
             schema_name: table_info.schema_name.clone(),
             table_name: table_info.name.clone(),
-            // FIXME: the engine type should not use the default one.
-            engine: ANALYTIC_ENGINE_TYPE.to_string(),
+            engine: ctx.engine,
         };
         let drop_opts = DropOptions {
             table_engine: ctx.table_engine,
