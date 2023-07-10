@@ -13,7 +13,7 @@ use common_util::{
     define_result,
     error::{BoxError, GenericError},
 };
-use log::{debug, info, warn};
+use log::{debug, warn};
 use message_queue::{MessageQueue, Offset};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use tokio::sync::{Mutex, RwLock};

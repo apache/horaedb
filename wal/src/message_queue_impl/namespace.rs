@@ -31,10 +31,7 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Failed to get sequence, namespace:{}, location:{:?}, err:{}",
-        namespace,
-        location,
-        source
+        "Failed to get sequence, namespace:{namespace}, location:{location:?}, err:{source}",
     ))]
     GetSequence {
         namespace: String,
@@ -43,10 +40,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to read table logs, namespace:{}, request:{:?}, err:{}",
-        namespace,
-        request,
-        source
+        "Failed to read table logs, namespace:{namespace}, request:{request:?}, err:{source}",
     ))]
     ReadWithCause {
         namespace: String,
@@ -56,10 +50,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to read table logs, namespace:{}, request:{:?}, \nBacktrace:\n{}",
-        namespace,
-        request,
-        backtrace,
+        "Failed to read table logs, namespace:{namespace}, request:{request:?}, \nBacktrace:\n{backtrace}",
     ))]
     ReadNoCause {
         namespace: String,
@@ -69,10 +60,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to scan region logs, namespace:{}, request:{:?}, err:{}",
-        namespace,
-        request,
-        source
+        "Failed to scan region logs, namespace:{namespace}, request:{request:?}, err:{source}",
     ))]
     ScanWithCause {
         namespace: String,
@@ -82,10 +70,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to scan region logs, namespace:{}, request:{:?}, \nBacktrace:\n{}",
-        namespace,
-        request,
-        backtrace,
+        "Failed to scan region logs, namespace:{namespace}, request:{request:?}, \nBacktrace:\n{backtrace}",
     ))]
     ScanNoCause {
         namespace: String,
@@ -95,11 +80,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to write logs, namespace:{}, location:{:?}, batch_size:{}, err:{}",
-        namespace,
-        location,
-        batch_size,
-        source
+        "Failed to write logs, namespace:{namespace}, location:{location:?}, batch_size:{batch_size}, err:{source}",
     ))]
     Write {
         namespace: String,
@@ -109,11 +90,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to mark logs deleted, namespace:{}, location:{:?}, sequence_num:{}, err:{}",
-        namespace,
-        location,
-        sequence_num,
-        source
+        "Failed to mark logs deleted, namespace:{namespace}, location:{location:?}, sequence_num:{sequence_num}, err:{source}",
     ))]
     MarkDeleteTo {
         namespace: String,
@@ -122,13 +99,13 @@ pub enum Error {
         source: region::Error,
     },
 
-    #[snafu(display("Failed to clean logs, namespace:{}, err:{}", namespace, source))]
+    #[snafu(display("Failed to clean logs, namespace:{namespace}, err:{source}"))]
     CleanLogs {
         namespace: String,
         source: region::Error,
     },
 
-    #[snafu(display("Failed to close namespace, namespace:{}, err:{}", namespace, source))]
+    #[snafu(display("Failed to close namespace, namespace:{namespace}, err:{source}"))]
     Close {
         namespace: String,
         source: common_util::runtime::Error,
