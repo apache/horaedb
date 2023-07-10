@@ -45,14 +45,31 @@ mod test {
         }
         let mut formatter = FormatCollectorVisitor::default();
         collector.visit(&mut formatter);
-        let expect_output = r#"test:
-    counter=11
+        let actual = formatter.into_string();
+
+        // The expected output is as follows, but its ordering is not stable, so
+        // use contains to do check.
+        // let expect_output = r#"test:
+        //     counter=11
+        //     boolean=true
+        //     boolean=false
+        //     elapsed=1s
+        //     elapsed=2s
+        // "#;
+
+        // counter is added together
+        assert!(actual.contains("counter=11"));
+        assert!(actual.contains(
+            r#"
     boolean=true
     boolean=false
+"#
+        ));
+        assert!(actual.contains(
+            r#"
     elapsed=1s
     elapsed=2s
-"#;
-
-        assert_eq!(expect_output, &formatter.into_string());
+"#
+        ));
     }
 }

@@ -17,7 +17,7 @@ enum MetricOp {
 
 impl ToTokens for MetricOp {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        tokens.append_all(&[Ident::new(format!("{self:?}").as_str(), Span::call_site())]);
+        tokens.append(Ident::new(&format!("{self:?}"), Span::call_site()));
     }
 }
 
@@ -30,10 +30,10 @@ enum MetricType {
 
 impl ToTokens for MetricType {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        tokens.append_all(&[Ident::new(
-            format!("{self:?}").to_lowercase().as_str(),
+        tokens.append(Ident::new(
+            &format!("{self:?}").to_lowercase(),
             Span::call_site(),
-        )]);
+        ));
     }
 }
 
