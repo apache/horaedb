@@ -93,6 +93,7 @@ pub struct TableWithShards {
     pub shard_infos: Vec<ShardInfo>,
 }
 
+#[derive(Debug, Clone)]
 pub struct UpdatedTableInfo {
     pub prev_version: u64,
     pub shard_info: ShardInfo,
