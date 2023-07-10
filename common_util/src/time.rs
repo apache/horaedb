@@ -68,6 +68,11 @@ pub fn current_time_millis() -> u64 {
 }
 
 #[inline]
+pub fn current_time_secs() -> u64 {
+    current_time_millis() / 1_000_u64
+}
+
+#[inline]
 pub fn current_as_rfc3339() -> String {
     Utc::now().to_rfc3339()
 }

@@ -45,7 +45,7 @@ use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID, ENABLE_TTL, T
 use common_util::{
     error::BoxError,
     runtime::Runtime,
-    time::{current_time_millis, parse_duration},
+    time::{current_time_secs, parse_duration},
 };
 use datafusion::prelude::{Column, Expr};
 use futures::FutureExt;
@@ -212,7 +212,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             let ttl_duration = ttl_duration.unwrap();
 
             // TODO(tanruixiang): use sql's timestamp as nowtime(need sql support)
-            let nowtime = current_time_millis() as i64;
+            let nowtime = current_time_secs() as i64;
 
             let ddl = nowtime - ttl_duration.as_secs() as i64 - BUFFER_DURATION.as_secs() as i64;
 
