@@ -37,6 +37,7 @@ impl Metric {
         Metric::Boolean(MetricValue { name, val, op })
     }
 
+    #[inline]
     pub fn name(&self) -> &str {
         match self {
             Self::Boolean(v) => &v.name,
@@ -45,6 +46,7 @@ impl Metric {
         }
     }
 
+    #[inline]
     pub fn op(&self) -> &Option<MetricOp> {
         match self {
             Self::Boolean(v) => &v.op,
@@ -53,13 +55,14 @@ impl Metric {
         }
     }
 
-    // Add performs value add when metrics are same type
+    // Add performs value add when metrics are same type,
     // If their types are different, do nothing.
+    #[inline]
     pub fn add(&mut self, rhs: &Self) {
         match (self, rhs) {
-            (Self::Boolean(v), Self::Boolean(v2)) => v.val |= v2.val,
-            (Self::Number(v), Self::Number(v2)) => v.val += v2.val,
-            (Self::Duration(v), Self::Duration(v2)) => v.val += v2.val,
+            (Self::Boolean(lhs), Self::Boolean(rhs)) => lhs.val |= rhs.val,
+            (Self::Number(lhs), Self::Number(rhs)) => lhs.val += rhs.val,
+            (Self::Duration(lhs), Self::Duration(rhs)) => lhs.val += rhs.val,
             _ => {}
         }
     }
