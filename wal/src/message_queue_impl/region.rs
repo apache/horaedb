@@ -340,8 +340,7 @@ impl<M: MessageQueue> Region<M> {
         builder: &mut RegionContextBuilder,
     ) -> Result<()> {
         info!(
-            "Recover region meta from log, namespace:{}, region_id:{}, region_safe_delete_offset:{:?}",
-            namespace, region_id, region_safe_delete_offset
+            "Recover region meta from log, namespace:{namespace}, region_id:{region_id}, region_safe_delete_offset:{region_safe_delete_offset:?}",
         );
 
         let start_offset = match region_safe_delete_offset {
