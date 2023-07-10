@@ -375,8 +375,7 @@ impl<'a> Reader<'a> {
                 file_path: self.path.to_string(),
             })?;
 
-        //TODO: unstore origin value
-        MetaData::try_new(&parquet_meta_data, true)
+        MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
             .box_err()
             .context(DecodeSstMeta)
     }
