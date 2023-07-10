@@ -5,7 +5,11 @@
 use std::{collections::HashMap, string::ToString, time::Duration};
 
 use ceresdbproto::manifest as manifest_pb;
-use common_types::time::Timestamp;
+use common_types::{
+    time::Timestamp, ARENA_BLOCK_SIZE, COMPACTION_STRATEGY, COMPRESSION, ENABLE_TTL,
+    NUM_ROWS_PER_ROW_GROUP, OPTION_KEY_ENABLE_TTL, SEGMENT_DURATION, STORAGE_FORMAT, TTL,
+    UPDATE_MODE, WRITE_BUFFER_SIZE,
+};
 use common_util::{
     config::{ReadableDuration, ReadableSize, TimeUnit},
     define_result,
@@ -14,22 +18,10 @@ use common_util::{
 use datafusion::parquet::basic::Compression as ParquetCompression;
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, GenerateBacktrace, OptionExt, ResultExt, Snafu};
-use table_engine::OPTION_KEY_ENABLE_TTL;
 
 use crate::compaction::{
     self, CompactionStrategy, SizeTieredCompactionOptions, TimeWindowCompactionOptions,
 };
-
-pub const SEGMENT_DURATION: &str = "segment_duration";
-pub const ENABLE_TTL: &str = OPTION_KEY_ENABLE_TTL;
-pub const TTL: &str = "ttl";
-pub const ARENA_BLOCK_SIZE: &str = "arena_block_size";
-pub const WRITE_BUFFER_SIZE: &str = "write_buffer_size";
-pub const COMPACTION_STRATEGY: &str = "compaction_strategy";
-pub const NUM_ROWS_PER_ROW_GROUP: &str = "num_rows_per_row_group";
-pub const UPDATE_MODE: &str = "update_mode";
-pub const COMPRESSION: &str = "compression";
-pub const STORAGE_FORMAT: &str = "storage_format";
 
 const UPDATE_MODE_OVERWRITE: &str = "OVERWRITE";
 const UPDATE_MODE_APPEND: &str = "APPEND";

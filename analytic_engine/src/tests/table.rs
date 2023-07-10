@@ -277,7 +277,7 @@ impl Builder {
 
     pub fn enable_ttl(mut self, enable_ttl: bool) -> Self {
         self.create_request.options.insert(
-            table_engine::OPTION_KEY_ENABLE_TTL.to_string(),
+            common_types::OPTION_KEY_ENABLE_TTL.to_string(),
             enable_ttl.to_string(),
         );
         self
@@ -286,7 +286,7 @@ impl Builder {
     pub fn ttl(mut self, duration: ReadableDuration) -> Self {
         self.create_request
             .options
-            .insert(table_options::TTL.to_string(), duration.to_string());
+            .insert(common_types::TTL.to_string(), duration.to_string());
         self
     }
 

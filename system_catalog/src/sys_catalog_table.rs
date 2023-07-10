@@ -296,7 +296,7 @@ impl SysCatalogTable {
 
         let mut options = HashMap::new();
         options.insert(
-            table_engine::OPTION_KEY_ENABLE_TTL.to_string(),
+            common_types::OPTION_KEY_ENABLE_TTL.to_string(),
             DEFAULT_ENABLE_TTL.to_string(),
         );
         let create_request = CreateTableRequest {

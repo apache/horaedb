@@ -31,7 +31,6 @@ use std::{
 };
 
 use ::http::StatusCode;
-use analytic_engine::table_options::{ENABLE_TTL, TTL};
 use catalog::{
     schema::{
         CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, SchemaRef,
@@ -42,7 +41,7 @@ use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
     PrometheusRemoteQueryResponse, Route, RouteRequest,
 };
-use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID};
+use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID, ENABLE_TTL, TTL};
 use common_util::{
     error::BoxError,
     runtime::Runtime,

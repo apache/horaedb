@@ -4706,7 +4706,6 @@ checksum = "9653c3ed92974e34c5a6e0a510864dab979760481714c172e0a34e437cb98804"
 name = "proxy"
 version = "1.2.2"
 dependencies = [
- "analytic_engine",
  "arrow",
  "arrow_ext",
  "async-trait",
