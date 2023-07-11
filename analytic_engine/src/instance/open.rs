@@ -357,6 +357,15 @@ impl ShardOpener {
             }
         }
 
+        if replay_table_datas.is_empty() {
+            info!(
+                "ShardOpener recover empty table datas finish, shard_id:{}",
+                self.shard_id
+            );
+
+            return Ok(());
+        }
+
         let replay_mode = match self.recover_mode {
             RecoverMode::TableBased => ReplayMode::TableBased,
             RecoverMode::ShardBased => ReplayMode::RegionBased,
