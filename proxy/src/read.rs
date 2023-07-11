@@ -135,13 +135,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let mut maybe_invalid_ttl = false;
         if let Some(table_name) = &table_name {
             maybe_invalid_ttl = match self.valid_ttl_range(&plan, catalog, schema, table_name) {
-                Ok(valid) => {
-                    if !valid {
-                        true
-                    } else {
-                        false
-                    }
-                }
+                Ok(valid) => !valid,
                 Err(_) => {
                     return Err(Error::ErrNoCause {
                         code: StatusCode::OK,
@@ -167,17 +161,17 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         info!("Handle sql query success, catalog:{catalog}, schema:{schema}, request_id:{request_id}, cost:{cost:?}, sql:{sql:?}");
 
         match &output {
-            Output::AffectedRows(_) => return Ok(output),
+            Output::AffectedRows(_) => Ok(output),
             Output::Records(v) => {
-                let row_nums = v.iter().fold(0 as usize, |acc, record_batch| {
-                    acc + record_batch.num_rows()
-                });
+                let row_nums = v
+                    .iter()
+                    .fold(0_usize, |acc, record_batch| acc + record_batch.num_rows());
                 if maybe_invalid_ttl && row_nums == 0 {
                     return Err(Error::SqlQueryOverTTL {
                         msg: format!("Time range of sql maybe over TTL sql:{sql}"),
                     });
                 }
-                return Ok(output);
+                Ok(output)
             }
         }
     }

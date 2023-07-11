@@ -407,7 +407,7 @@ dependencies = [
 [[package]]
 name = "arrow_util"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?rev=935e037a5ad6eb142a93f3e9eb321ee72e28cbad#935e037a5ad6eb142a93f3e9eb321ee72e28cbad"
+source = "git+https://github.com/CeresDB/influxql?rev=b65a125b9cdfa3121a3c8843bc48441b91049e31#b65a125b9cdfa3121a3c8843bc48441b91049e31"
 dependencies = [
  "ahash 0.8.3",
  "arrow",
@@ -1937,7 +1937,7 @@ dependencies = [
 [[package]]
 name = "datafusion_util"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?rev=935e037a5ad6eb142a93f3e9eb321ee72e28cbad#935e037a5ad6eb142a93f3e9eb321ee72e28cbad"
+source = "git+https://github.com/CeresDB/influxql?rev=b65a125b9cdfa3121a3c8843bc48441b91049e31#b65a125b9cdfa3121a3c8843bc48441b91049e31"
 dependencies = [
  "async-trait",
  "datafusion",
@@ -2461,7 +2461,7 @@ checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
 [[package]]
 name = "generated_types"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?rev=935e037a5ad6eb142a93f3e9eb321ee72e28cbad#935e037a5ad6eb142a93f3e9eb321ee72e28cbad"
+source = "git+https://github.com/CeresDB/influxql?rev=b65a125b9cdfa3121a3c8843bc48441b91049e31#b65a125b9cdfa3121a3c8843bc48441b91049e31"
 dependencies = [
  "pbjson",
  "pbjson-build",
@@ -2854,7 +2854,7 @@ dependencies = [
 [[package]]
 name = "influxdb_influxql_parser"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?rev=935e037a5ad6eb142a93f3e9eb321ee72e28cbad#935e037a5ad6eb142a93f3e9eb321ee72e28cbad"
+source = "git+https://github.com/CeresDB/influxql?rev=b65a125b9cdfa3121a3c8843bc48441b91049e31#b65a125b9cdfa3121a3c8843bc48441b91049e31"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -2916,7 +2916,7 @@ dependencies = [
 [[package]]
 name = "iox_query"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?rev=935e037a5ad6eb142a93f3e9eb321ee72e28cbad#935e037a5ad6eb142a93f3e9eb321ee72e28cbad"
+source = "git+https://github.com/CeresDB/influxql?rev=b65a125b9cdfa3121a3c8843bc48441b91049e31#b65a125b9cdfa3121a3c8843bc48441b91049e31"
 dependencies = [
  "arrow",
  "arrow_util",
@@ -2940,7 +2940,7 @@ dependencies = [
 [[package]]
 name = "iox_query_influxql"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?rev=935e037a5ad6eb142a93f3e9eb321ee72e28cbad#935e037a5ad6eb142a93f3e9eb321ee72e28cbad"
+source = "git+https://github.com/CeresDB/influxql?rev=b65a125b9cdfa3121a3c8843bc48441b91049e31#b65a125b9cdfa3121a3c8843bc48441b91049e31"
 dependencies = [
  "arrow",
  "chrono",
@@ -3977,7 +3977,7 @@ dependencies = [
 [[package]]
 name = "observability_deps"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?rev=935e037a5ad6eb142a93f3e9eb321ee72e28cbad#935e037a5ad6eb142a93f3e9eb321ee72e28cbad"
+source = "git+https://github.com/CeresDB/influxql?rev=b65a125b9cdfa3121a3c8843bc48441b91049e31#b65a125b9cdfa3121a3c8843bc48441b91049e31"
 dependencies = [
  "tracing",
 ]
@@ -4853,7 +4853,7 @@ dependencies = [
 [[package]]
 name = "query_functions"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?rev=935e037a5ad6eb142a93f3e9eb321ee72e28cbad#935e037a5ad6eb142a93f3e9eb321ee72e28cbad"
+source = "git+https://github.com/CeresDB/influxql?rev=b65a125b9cdfa3121a3c8843bc48441b91049e31#b65a125b9cdfa3121a3c8843bc48441b91049e31"
 dependencies = [
  "arrow",
  "chrono",
@@ -5460,7 +5460,7 @@ dependencies = [
 [[package]]
 name = "schema"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?rev=935e037a5ad6eb142a93f3e9eb321ee72e28cbad#935e037a5ad6eb142a93f3e9eb321ee72e28cbad"
+source = "git+https://github.com/CeresDB/influxql?rev=b65a125b9cdfa3121a3c8843bc48441b91049e31#b65a125b9cdfa3121a3c8843bc48441b91049e31"
 dependencies = [
  "arrow",
  "hashbrown 0.13.2",
@@ -6257,7 +6257,7 @@ dependencies = [
 [[package]]
 name = "test_helpers"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql?rev=935e037a5ad6eb142a93f3e9eb321ee72e28cbad#935e037a5ad6eb142a93f3e9eb321ee72e28cbad"
+source = "git+https://github.com/CeresDB/influxql?rev=b65a125b9cdfa3121a3c8843bc48441b91049e31#b65a125b9cdfa3121a3c8843bc48441b91049e31"
 dependencies = [
  "dotenvy",
  "observability_deps",

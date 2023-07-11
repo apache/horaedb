@@ -87,10 +87,10 @@ lazy_static = "1.4.0"
 log = "0.4"
 logger = { path = "components/logger" }
 lru = "0.7.6"
-influxql-logical-planner = { git = "https://github.com/CeresDB/influxql", rev = "935e037a5ad6eb142a93f3e9eb321ee72e28cbad", package = "iox_query_influxql" }
-influxql-parser = { git = "https://github.com/CeresDB/influxql", rev = "935e037a5ad6eb142a93f3e9eb321ee72e28cbad", package = "influxdb_influxql_parser" }
-influxql-query = { git = "https://github.com/CeresDB/influxql", rev = "935e037a5ad6eb142a93f3e9eb321ee72e28cbad", package = "iox_query" }
-influxql-schema = { git = "https://github.com/CeresDB/influxql", rev = "935e037a5ad6eb142a93f3e9eb321ee72e28cbad", package = "schema" }
+influxql-logical-planner = { git = "https://github.com/CeresDB/influxql", rev = "b65a125b9cdfa3121a3c8843bc48441b91049e31", package = "iox_query_influxql" }
+influxql-parser = { git = "https://github.com/CeresDB/influxql", rev = "b65a125b9cdfa3121a3c8843bc48441b91049e31", package = "influxdb_influxql_parser" }
+influxql-query = { git = "https://github.com/CeresDB/influxql", rev = "b65a125b9cdfa3121a3c8843bc48441b91049e31", package = "iox_query" }
+influxql-schema = { git = "https://github.com/CeresDB/influxql", rev = "b65a125b9cdfa3121a3c8843bc48441b91049e31", package = "schema" }
 interpreters = { path = "interpreters" }
 itertools = "0.10.5"
 meta_client = { path = "meta_client" }
