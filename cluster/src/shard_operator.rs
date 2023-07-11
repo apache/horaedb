@@ -118,7 +118,6 @@ impl ShardOperator {
             (shard_info, tables)
         };
 
-        // Lock the shard in local, and then recover it.
         info!("ShardOperator open sequentially begin, shard_id:{shard_info:?}");
 
         let table_defs = tables
@@ -227,8 +226,6 @@ impl ShardOperator {
         }
 
         // Create the table by operator afterwards.
-        let catalog_name = ctx.catalog;
-
         let (table_engine, partition_info) = match table_info.partition_info.clone() {
             Some(v) => (ctx.partition_table_engine.clone(), Some(v)),
             None => (ctx.table_engine.clone(), None),
@@ -236,7 +233,7 @@ impl ShardOperator {
 
         // Build create table request and options.
         let create_table_request = CreateTableRequest {
-            catalog_name: catalog_name.clone(),
+            catalog_name: ctx.catalog,
             schema_name: table_info.schema_name.clone(),
             table_name: table_info.name.clone(),
             table_id: Some(TableId::new(table_info.id)),

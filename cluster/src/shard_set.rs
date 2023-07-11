@@ -51,8 +51,8 @@ impl ShardSet {
 ///
 /// NOTICE: all write operations on a shard will be performed sequentially.
 pub struct Shard {
-    pub data: ShardDataRef,
-    pub operator: tokio::sync::Mutex<ShardOperator>,
+    data: ShardDataRef,
+    operator: tokio::sync::Mutex<ShardOperator>,
 }
 
 impl std::fmt::Debug for Shard {
