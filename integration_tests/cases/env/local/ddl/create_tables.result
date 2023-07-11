@@ -40,10 +40,6 @@ Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to cr
 
 CREATE TABLE `05_create_tables_t`(c1 int, t timestamp, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: CREATE TABLE `05_create_tables_t`(c1 int, t timestamp, TIMESTAMP KEY(t)) ENGINE = Analytic;. Caused by: Failed to create plan, err:Failed to build schema, err:Key column cannot be nullable, name:t." })
-
-CREATE TABLE `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
-
 affected_rows: 0
 
 CREATE TABLE IF NOT EXISTS `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
