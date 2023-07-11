@@ -26,6 +26,7 @@ mod write;
 pub const FORWARDED_FROM: &str = "forwarded-from";
 
 use std::{
+    ops::Bound,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -47,7 +48,10 @@ use common_util::{
     runtime::Runtime,
     time::{current_time_millis, parse_duration},
 };
-use datafusion::prelude::{Column, Expr};
+use datafusion::{
+    prelude::{Column, Expr},
+    scalar::ScalarValue,
+};
 use futures::FutureExt;
 use influxql_query::logical_optimizer::range_predicate::find_time_range;
 use interpreters::{
@@ -77,7 +81,7 @@ use crate::{
 };
 
 // Because the clock may have errors, choose 1 hour as the error buffer
-const BUFFER_DURATION: Duration = Duration::from_secs(60 * 60);
+const QUERY_EXPIRED_BUFFER: Duration = Duration::from_secs(60 * 60);
 
 pub struct Proxy<Q> {
     router: Arc<dyn Router + Send + Sync>,
@@ -177,9 +181,11 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         })
     }
 
+    /// Returns true when query range maybe exceeding ttl,
+    /// Note: False positive is possible
     // TODO(tanruixiang): Add integration testing when supported by the testing
     // framework
-    fn valid_ttl_range(
+    fn is_plan_expired(
         &self,
         plan: &Plan,
         catalog_name: &str,
@@ -188,56 +194,55 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     ) -> Result<bool> {
         if let Plan::Query(query) = &plan {
             let catalog = self.get_catalog(catalog_name)?;
-
             let schema = self.get_schema(&catalog, schema_name)?;
-
-            let tableref = match self.get_table(&schema, table_name) {
-                Ok(Some(tableref)) => tableref,
-                _ => return Ok(true),
+            let table_ref = match self.get_table(&schema, table_name) {
+                Ok(Some(v)) => v,
+                _ => return Ok(false),
             };
-            if let Some(value) = tableref.options().get(ENABLE_TTL) {
+            if let Some(value) = table_ref.options().get(ENABLE_TTL) {
                 if value == "false" {
-                    return Ok(true);
+                    return Ok(false);
                 }
             }
-
-            let ttl_duration = match tableref.options().get(TTL) {
-                Some(value) => parse_duration(value),
-                None => return Ok(false),
+            let ttl_duration = if let Some(ttl) = table_ref.options().get(TTL) {
+                if let Ok(ttl) = parse_duration(ttl) {
+                    ttl
+                } else {
+                    return Ok(false);
+                }
+            } else {
+                return Ok(false);
             };
-            if ttl_duration.is_err() {
-                return Err(Error::ErrNoCause {
-                    code: StatusCode::OK,
-                    msg: "error parse".to_string(),
-                });
-            }
-            let ttl_duration = ttl_duration.unwrap();
 
-            // TODO(tanruixiang): use sql's timestamp as nowtime(need sql support)
-            let nowtime = current_time_millis() as i64;
-
-            let ddl =
-                nowtime - ttl_duration.as_millis() as i64 - BUFFER_DURATION.as_millis() as i64;
-
-            let timestamp_name = &tableref
+            let timestamp_name = &table_ref
                 .schema()
-                .column(tableref.schema().timestamp_index())
+                .column(table_ref.schema().timestamp_index())
                 .name
                 .clone();
             let ts_col = Column::from_name(timestamp_name);
-            let range = find_time_range(&query.df_plan, &ts_col).unwrap();
+            let range = find_time_range(&query.df_plan, &ts_col)
+                .box_err()
+                .context(Internal {
+                    msg: "Failed to find time range",
+                })?;
             match range.end {
-                std::ops::Bound::Included(x) | std::ops::Bound::Excluded(x) => {
-                    if let Expr::Literal(datafusion::scalar::ScalarValue::Int64(Some(x))) = x {
-                        if x * 1_000 <= ddl {
-                            return Ok(false);
+                Bound::Included(x) | Bound::Excluded(x) => {
+                    if let Expr::Literal(ScalarValue::Int64(Some(x))) = x {
+                        let now = current_time_millis() as i64;
+                        let deadline = now
+                            - ttl_duration.as_millis() as i64
+                            - QUERY_EXPIRED_BUFFER.as_millis() as i64;
+
+                        if x * 1_000 <= deadline {
+                            return Ok(true);
                         }
                     }
                 }
-                std::ops::Bound::Unbounded => (),
+                Bound::Unbounded => (),
             }
         }
-        Ok(true)
+
+        Ok(false)
     }
 
     fn get_catalog(&self, catalog_name: &str) -> Result<CatalogRef> {

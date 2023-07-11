@@ -132,15 +132,12 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 msg: format!("Failed to create plan, query:{sql}"),
             })?;
 
-        let mut maybe_invalid_ttl = false;
+        let mut plan_maybe_expired = false;
         if let Some(table_name) = &table_name {
-            maybe_invalid_ttl = match self.valid_ttl_range(&plan, catalog, schema, table_name) {
-                Ok(valid) => !valid,
-                Err(_) => {
-                    return Err(Error::ErrNoCause {
-                        code: StatusCode::OK,
-                        msg: "Parse duration error".to_string(),
-                    });
+            match self.is_plan_expired(&plan, catalog, schema, table_name) {
+                Ok(v) => plan_maybe_expired = v,
+                Err(err) => {
+                    warn!("Plan expire check failed, err:{err}");
                 }
             }
         }
@@ -163,13 +160,20 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         match &output {
             Output::AffectedRows(_) => Ok(output),
             Output::Records(v) => {
-                let row_nums = v
-                    .iter()
-                    .fold(0_usize, |acc, record_batch| acc + record_batch.num_rows());
-                if maybe_invalid_ttl && row_nums == 0 {
-                    return Err(Error::SqlQueryOverTTL {
-                        msg: format!("Time range of sql maybe over TTL sql:{sql}"),
-                    });
+                if plan_maybe_expired {
+                    let row_nums = v
+                        .iter()
+                        .fold(0_usize, |acc, record_batch| acc + record_batch.num_rows());
+                    if row_nums == 0 {
+                        warn!("Query time range maybe exceed TTL, sql:{sql}");
+
+                        // TODO: Cannot return this error directly, empty query
+                        // should return 200, not 4xx/5xx
+                        // All protocols should recognize this error.
+                        // return Err(Error::QueryMaybeExceedTTL {
+                        //     msg: format!("Query time range maybe exceed TTL,
+                        // sql:{sql}"), });
+                    }
                 }
                 Ok(output)
             }

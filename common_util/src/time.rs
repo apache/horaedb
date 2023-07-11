@@ -21,6 +21,7 @@ pub enum Error {
     #[snafu(display("Failed to parse duration, err:{}.\nBacktrace:\n{}", err, backtrace))]
     ParseDuration { err: String, backtrace: Backtrace },
 }
+
 define_result!(Error);
 
 pub trait DurationExt {
