@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::metric::{Metric, MetricOp};
+use crate::metric::{Metric, MetricAggregator};
 
 /// A collector for metrics of a single read request.
 ///
@@ -63,12 +63,12 @@ impl MetricsCollector {
                 continue;
             }
 
-            if let Some(op) = metrics[0].op() {
+            if let Some(op) = metrics[0].aggregator() {
                 match op {
-                    MetricOp::Add => {
+                    MetricAggregator::Sum => {
                         let mut first = metrics[0].clone();
                         for m in &metrics[1..] {
-                            first.add(m);
+                            first.sum(m);
                         }
                         // only apply fn to first metric.
                         f(&first);

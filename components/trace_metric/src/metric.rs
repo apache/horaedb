@@ -11,7 +11,7 @@ pub enum MetricAggregator {
 pub struct MetricValue<T: Clone + fmt::Debug> {
     pub name: String,
     pub val: T,
-    pub op: Option<MetricOp>,
+    pub aggregator: Option<MetricAggregator>,
 }
 
 #[derive(Clone)]
@@ -23,18 +23,30 @@ pub enum Metric {
 
 impl Metric {
     #[inline]
-    pub fn number(name: String, val: usize, op: Option<MetricOp>) -> Self {
-        Metric::Number(MetricValue { name, val, op })
+    pub fn number(name: String, val: usize, aggregator: Option<MetricAggregator>) -> Self {
+        Metric::Number(MetricValue {
+            name,
+            val,
+            aggregator,
+        })
     }
 
     #[inline]
-    pub fn duration(name: String, val: Duration, op: Option<MetricOp>) -> Self {
-        Metric::Duration(MetricValue { name, val, op })
+    pub fn duration(name: String, val: Duration, aggregator: Option<MetricAggregator>) -> Self {
+        Metric::Duration(MetricValue {
+            name,
+            val,
+            aggregator,
+        })
     }
 
     #[inline]
-    pub fn boolean(name: String, val: bool, op: Option<MetricOp>) -> Self {
-        Metric::Boolean(MetricValue { name, val, op })
+    pub fn boolean(name: String, val: bool, aggregator: Option<MetricAggregator>) -> Self {
+        Metric::Boolean(MetricValue {
+            name,
+            val,
+            aggregator,
+        })
     }
 
     #[inline]
@@ -47,23 +59,25 @@ impl Metric {
     }
 
     #[inline]
-    pub fn op(&self) -> &Option<MetricOp> {
+    pub fn aggregator(&self) -> &Option<MetricAggregator> {
         match self {
-            Self::Boolean(v) => &v.op,
-            Self::Number(v) => &v.op,
-            Self::Duration(v) => &v.op,
+            Self::Boolean(v) => &v.aggregator,
+            Self::Number(v) => &v.aggregator,
+            Self::Duration(v) => &v.aggregator,
         }
     }
 
-    // Add performs value add when metrics are same type,
-    // If their types are different, do nothing.
+    // Sum metric values together when metrics are same type,
+    // Panic if their types are different.
     #[inline]
-    pub fn add(&mut self, rhs: &Self) {
+    pub fn sum(&mut self, rhs: &Self) {
         match (self, rhs) {
             (Self::Boolean(lhs), Self::Boolean(rhs)) => lhs.val |= rhs.val,
             (Self::Number(lhs), Self::Number(rhs)) => lhs.val += rhs.val,
             (Self::Duration(lhs), Self::Duration(rhs)) => lhs.val += rhs.val,
-            _ => {}
+            (lhs, rhs) => {
+                panic!("Only same type metric could be applied, lhs:{lhs:?}, rhs:{rhs:?}")
+            }
         }
     }
 }

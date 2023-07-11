@@ -6,7 +6,7 @@ use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 #[derive(Debug, Clone, TraceMetricWhenDrop)]
 pub struct ExampleMetrics {
-    #[metric(number, add)]
+    #[metric(number, sum)]
     pub counter: usize,
     #[metric(duration)]
     pub elapsed: Duration,

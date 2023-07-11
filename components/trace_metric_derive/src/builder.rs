@@ -15,7 +15,7 @@ enum MetricAggregator {
     Sum,
 }
 
-impl ToTokens for MetricOp {
+impl ToTokens for MetricAggregator {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         tokens.append(Ident::new(&format!("{self:?}"), Span::call_site()));
     }
@@ -39,13 +39,13 @@ impl ToTokens for MetricType {
 
 struct MetricMetadata {
     typ: MetricType,
-    op: Option<MetricOp>,
+    aggregator: Option<MetricAggregator>,
 }
 
 impl MetricMetadata {
-    fn parse_op(s: &str) -> Option<MetricOp> {
+    fn parse_aggregator(s: &str) -> Option<MetricAggregator> {
         match s.to_lowercase().as_str() {
-            "add" => Some(MetricOp::Add),
+            "sum" => Some(MetricAggregator::Sum),
             _ => None,
         }
     }
@@ -69,14 +69,19 @@ impl MetricMetadata {
                 match trees.len() {
                     // #[metric(number)]
                     1 => {
-                        return Self::parse_type(&trees[0].to_string())
-                            .map(|typ| Self { typ, op: None })
+                        return Self::parse_type(&trees[0].to_string()).map(|typ| Self {
+                            typ,
+                            aggregator: None,
+                        })
                     }
                     // #[metric(number, add)]
                     3 => {
                         let typ = Self::parse_type(&trees[0].to_string())?;
-                        let op = Self::parse_op(&trees[2].to_string())?;
-                        return Some(Self { typ, op: Some(op) });
+                        let aggregator = Self::parse_aggregator(&trees[2].to_string())?;
+                        return Some(Self {
+                            typ,
+                            aggregator: Some(aggregator),
+                        });
                     }
                     _ => return None,
                 }
@@ -182,12 +187,12 @@ impl Builder {
         for metric_field in self.metric_fields.iter() {
             let field_name = &metric_field.field_name;
             let metadata = &metric_field.metric_metadata;
-            let metric_op = &metadata.op;
+            let aggregator = &metadata.aggregator;
             let metric_type = &metadata.typ;
-            let metric = if let Some(op) = metric_op {
+            let metric = if let Some(aggregator) = aggregator {
                 quote! { ::trace_metric::Metric::#metric_type(stringify!(#field_name).to_string(),
                                                         self.#field_name,
-                                                        Some(::trace_metric::metric::MetricOp::#op))
+                                                        Some(::trace_metric::metric::MetricAggregator::#aggregator))
                 }
             } else {
                 quote! { ::trace_metric::Metric::#metric_type(stringify!(#field_name).to_string(),

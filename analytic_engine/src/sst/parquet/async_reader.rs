@@ -450,11 +450,11 @@ impl<'a> ChunkReader for ChunkReaderAdapter<'a> {
 
 #[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
 pub(crate) struct ProjectorMetrics {
-    #[metric(number, add)]
+    #[metric(number, sum)]
     pub row_num: usize,
-    #[metric(number, add)]
+    #[metric(number, sum)]
     pub row_mem: usize,
-    #[metric(duration, add)]
+    #[metric(duration, sum)]
     pub project_record_batch: Duration,
     #[metric(collector)]
     pub metrics_collector: Option<MetricsCollector>,
