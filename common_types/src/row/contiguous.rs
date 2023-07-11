@@ -351,12 +351,8 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
 
                 // Encode length of string as a varint.
                 ensure!(v.len() <= MAX_STRING_LEN, StringTooLong { len: v.len() });
-                let mut dst = [0; 4];
-                let value_buf = {
-                    let mut buf = &mut dst[..];
-                    encode_varint(v.len() as u64, &mut buf);
-                    &dst[..encoded_len_varint(v.len() as u64)]
-                };
+                let mut buf = [0; 4];
+                let value_buf = Self::encode_varint(v.len() as u64, &mut buf);
                 Self::write_slice_to_offset(inner, next_string_offset, value_buf);
                 Self::write_slice_to_offset(inner, next_string_offset, v);
             }
@@ -374,12 +370,8 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
 
                 // Encode length of string as a varint.
                 ensure!(v.len() <= MAX_STRING_LEN, StringTooLong { len: v.len() });
-                let mut dst = [0; 4];
-                let value_buf = {
-                    let mut buf = &mut dst[..];
-                    encode_varint(v.len() as u64, &mut buf);
-                    &dst[..encoded_len_varint(v.len() as u64)]
-                };
+                let mut buf = [0; 4];
+                let value_buf = Self::encode_varint(v.len() as u64, &mut buf);
                 Self::write_slice_to_offset(inner, next_string_offset, value_buf);
                 Self::write_slice_to_offset(inner, next_string_offset, v.as_bytes());
             }
@@ -581,6 +573,12 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
         let dst = &mut inner[*offset..*offset + value_buf.len()];
         dst.copy_from_slice(value_buf);
         *offset += value_buf.len();
+    }
+
+    fn encode_varint(value: u64, buf: &mut [u8; 4]) -> &[u8] {
+        let mut temp = &mut buf[..];
+        encode_varint(value, &mut temp);
+        &buf[..encoded_len_varint(value)]
     }
 }
 
