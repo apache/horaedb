@@ -6,13 +6,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto::{
-    meta_event::{
-        CloseTableOnShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest,
-        OpenTableOnShardRequest, UpdateShardInfo,
-    },
-    meta_service::TableInfo as TableInfoPb,
-};
 use common_types::table::ShardId;
 use common_util::{
     error::BoxError,
@@ -23,7 +16,7 @@ use log::{error, info, warn};
 use meta_client::{
     types::{
         GetNodesRequest, GetTablesOfShardsRequest, RouteTablesRequest, RouteTablesResponse,
-        ShardInfo, TableInfo, TablesOfShard,
+        ShardInfo,
     },
     MetaClientRef,
 };
@@ -36,11 +29,10 @@ use tokio::{
 use crate::{
     config::ClusterConfig,
     shard_lock_manager::{ShardLockManager, ShardLockManagerRef},
-    shard_tables_cache::ShardTablesCache,
+    shard_set::{Shard, ShardRef, ShardSet},
     topology::ClusterTopology,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause, Internal,
-    InvalidArguments, MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound,
-    TableNotFound,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause, InvalidArguments,
+    MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -61,7 +53,7 @@ pub struct ClusterImpl {
 impl ClusterImpl {
     pub async fn try_new(
         node_name: String,
-        shard_tables_cache: ShardTablesCache,
+        shard_set: ShardSet,
         meta_client: MetaClientRef,
         config: ClusterConfig,
         runtime: Arc<Runtime>,
@@ -70,7 +62,7 @@ impl ClusterImpl {
             return InvalidArguments { msg: e }.fail();
         }
 
-        let inner = Arc::new(Inner::new(shard_tables_cache, meta_client)?);
+        let inner = Arc::new(Inner::new(shard_set, meta_client)?);
         let connect_options = ConnectOptions::from(&config.etcd_client);
         let etcd_client =
             etcd_client::Client::connect(&config.etcd_client.server_addrs, Some(connect_options))
@@ -110,7 +102,12 @@ impl ClusterImpl {
 
         let handle = self.runtime.spawn(async move {
             loop {
-                let shard_infos = inner.shard_tables_cache.all_shard_infos();
+                let shards = inner.shard_set.all_shards();
+                let mut shard_infos = Vec::with_capacity(shards.len());
+                for shard in shards {
+                    let shard_info = shard.shard_info();
+                    shard_infos.push(shard_info);
+                }
                 info!("Node heartbeat to meta, shard infos:{:?}", shard_infos);
 
                 let resp = inner.meta_client.send_heartbeat(shard_infos).await;
@@ -163,15 +160,15 @@ impl ClusterImpl {
 }
 
 struct Inner {
-    shard_tables_cache: ShardTablesCache,
+    shard_set: ShardSet,
     meta_client: MetaClientRef,
     topology: RwLock<ClusterTopology>,
 }
 
 impl Inner {
-    fn new(shard_tables_cache: ShardTablesCache, meta_client: MetaClientRef) -> Result<Self> {
+    fn new(shard_set: ShardSet, meta_client: MetaClientRef) -> Result<Self> {
         Ok(Self {
-            shard_tables_cache,
+            shard_set,
             meta_client,
             topology: Default::default(),
         })
@@ -235,20 +232,21 @@ impl Inner {
         Ok(resp)
     }
 
-    async fn open_shard(&self, shard_info: &ShardInfo) -> Result<TablesOfShard> {
-        if let Some(tables_of_shard) = self.shard_tables_cache.get(shard_info.id) {
-            if tables_of_shard.shard_info.version == shard_info.version {
+    async fn open_shard(&self, shard_info: &ShardInfo) -> Result<ShardRef> {
+        if let Some(shard) = self.shard_set.get(shard_info.id) {
+            let cur_shard_info = shard.shard_info();
+            if cur_shard_info.version == shard_info.version {
                 info!(
                     "No need to open the exactly same shard again, shard_info:{:?}",
                     shard_info
                 );
-                return Ok(tables_of_shard);
+                return Ok(shard);
             }
             ensure!(
-                tables_of_shard.shard_info.version < shard_info.version,
+                cur_shard_info.version < shard_info.version,
                 OpenShard {
                     shard_id: shard_info.id,
-                    msg: format!("open a shard with a smaller version, curr_shard_info:{:?}, new_shard_info:{:?}", tables_of_shard.shard_info, shard_info),
+                    msg: format!("open a shard with a smaller version, curr_shard_info:{cur_shard_info:?}, new_shard_info:{shard_info:?}"),
                 }
             );
         }
@@ -262,8 +260,8 @@ impl Inner {
             .get_tables_of_shards(req)
             .await
             .box_err()
-            .context(OpenShardWithCause {
-                shard_id: shard_info.id,
+            .with_context(|| OpenShardWithCause {
+                msg: format!("shard_info:{shard_info:?}"),
             })?;
 
         ensure!(
@@ -282,94 +280,23 @@ impl Inner {
                 msg: "shard tables are missing from the response",
             })?;
 
-        self.shard_tables_cache.insert(tables_of_shard.clone());
+        let shard_id = tables_of_shard.shard_info.id;
+        let shard = Arc::new(Shard::new(tables_of_shard));
+        self.shard_set.insert(shard_id, shard.clone());
 
-        Ok(tables_of_shard)
+        Ok(shard)
     }
 
-    fn close_shard(&self, shard_id: ShardId) -> Result<TablesOfShard> {
-        self.shard_tables_cache
+    fn shard(&self, shard_id: ShardId) -> Option<ShardRef> {
+        self.shard_set.get(shard_id)
+    }
+
+    fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef> {
+        self.shard_set
             .remove(shard_id)
             .with_context(|| ShardNotFound {
                 msg: format!("close non-existent shard, shard_id:{shard_id}"),
             })
-    }
-
-    #[inline]
-    fn freeze_shard(&self, shard_id: ShardId) -> Result<TablesOfShard> {
-        self.shard_tables_cache
-            .freeze(shard_id)
-            .with_context(|| ShardNotFound {
-                msg: format!("try to freeze a non-existent shard, shard_id:{shard_id}"),
-            })
-    }
-
-    fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()> {
-        self.insert_table_to_shard(req.update_shard_info.clone(), req.table_info.clone())
-    }
-
-    fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()> {
-        self.remove_table_from_shard(req.update_shard_info.clone(), req.table_info.clone())
-    }
-
-    fn open_table_on_shard(&self, req: &OpenTableOnShardRequest) -> Result<()> {
-        self.insert_table_to_shard(req.update_shard_info.clone(), req.table_info.clone())
-    }
-
-    fn close_table_on_shard(&self, req: &CloseTableOnShardRequest) -> Result<()> {
-        self.remove_table_from_shard(req.update_shard_info.clone(), req.table_info.clone())
-    }
-
-    fn insert_table_to_shard(
-        &self,
-        update_shard_info: Option<UpdateShardInfo>,
-        table_info: Option<TableInfoPb>,
-    ) -> Result<()> {
-        let update_shard_info = update_shard_info.context(ShardNotFound {
-            msg: "update shard info is missing",
-        })?;
-        let curr_shard_info = update_shard_info.curr_shard_info.context(ShardNotFound {
-            msg: "current shard info is missing",
-        })?;
-        let table_info = table_info.context(TableNotFound {
-            msg: "table info is missing",
-        })?;
-
-        self.shard_tables_cache.try_insert_table_to_shard(
-            update_shard_info.prev_version,
-            ShardInfo::from(&curr_shard_info),
-            TableInfo::try_from(table_info)
-                .box_err()
-                .context(Internal {
-                    msg: "Failed to parse tableInfo",
-                })?,
-        )
-    }
-
-    fn remove_table_from_shard(
-        &self,
-        update_shard_info: Option<UpdateShardInfo>,
-        table_info: Option<TableInfoPb>,
-    ) -> Result<()> {
-        let update_shard_info = update_shard_info.context(ShardNotFound {
-            msg: "update shard info is missing",
-        })?;
-        let curr_shard_info = update_shard_info.curr_shard_info.context(ShardNotFound {
-            msg: "current shard info is missing",
-        })?;
-        let table_info = table_info.context(TableNotFound {
-            msg: "table info is missing",
-        })?;
-
-        self.shard_tables_cache.try_remove_table_from_shard(
-            update_shard_info.prev_version,
-            ShardInfo::from(&curr_shard_info),
-            TableInfo::try_from(table_info)
-                .box_err()
-                .context(Internal {
-                    msg: "Failed to parse tableInfo",
-                })?,
-        )
     }
 }
 
@@ -406,32 +333,16 @@ impl Cluster for ClusterImpl {
         Ok(())
     }
 
-    async fn open_shard(&self, shard_info: &ShardInfo) -> Result<TablesOfShard> {
+    async fn open_shard(&self, shard_info: &ShardInfo) -> Result<ShardRef> {
         self.inner.open_shard(shard_info).await
     }
 
-    async fn close_shard(&self, shard_id: ShardId) -> Result<TablesOfShard> {
+    fn shard(&self, shard_id: ShardId) -> Option<ShardRef> {
+        self.inner.shard(shard_id)
+    }
+
+    async fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef> {
         self.inner.close_shard(shard_id)
-    }
-
-    async fn freeze_shard(&self, shard_id: ShardId) -> Result<TablesOfShard> {
-        self.inner.freeze_shard(shard_id)
-    }
-
-    async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()> {
-        self.inner.create_table_on_shard(req)
-    }
-
-    async fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()> {
-        self.inner.drop_table_on_shard(req)
-    }
-
-    async fn open_table_on_shard(&self, req: &OpenTableOnShardRequest) -> Result<()> {
-        self.inner.open_table_on_shard(req)
-    }
-
-    async fn close_table_on_shard(&self, req: &CloseTableOnShardRequest) -> Result<()> {
-        self.inner.close_table_on_shard(req)
     }
 
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse> {

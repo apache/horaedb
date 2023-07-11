@@ -11,9 +11,7 @@ use analytic_engine::{
 };
 use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
-use cluster::{
-    cluster_impl::ClusterImpl, config::ClusterConfig, shard_tables_cache::ShardTablesCache,
-};
+use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
 use common_util::runtime;
 use df_operator::registry::FunctionRegistryImpl;
 use interpreters::table_manipulator::{catalog_based, meta_based};
@@ -211,11 +209,11 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
             .await
             .expect("fail to build meta client");
 
-    let shard_tables_cache = ShardTablesCache::default();
+    let shard_set = ShardSet::default();
     let cluster = {
         let cluster_impl = ClusterImpl::try_new(
             endpoint,
-            shard_tables_cache.clone(),
+            shard_set.clone(),
             meta_client.clone(),
             cluster_config.clone(),
             runtimes.meta_runtime.clone(),
@@ -240,10 +238,8 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
     };
     let engine_proxy = build_table_engine_proxy(engine_builder).await;
 
-    let meta_based_manager_ref = Arc::new(volatile::ManagerImpl::new(
-        shard_tables_cache,
-        meta_client.clone(),
-    ));
+    let meta_based_manager_ref =
+        Arc::new(volatile::ManagerImpl::new(shard_set, meta_client.clone()));
 
     // Build catalog manager.
     let catalog_manager = Arc::new(CatalogManagerImpl::new(meta_based_manager_ref));

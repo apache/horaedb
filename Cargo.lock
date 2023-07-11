@@ -1239,6 +1239,7 @@ name = "cluster"
 version = "1.2.2"
 dependencies = [
  "async-trait",
+ "catalog",
  "ceresdbproto",
  "common_types",
  "common_util",
@@ -1251,6 +1252,7 @@ dependencies = [
  "snafu 0.6.10",
  "table_engine",
  "tokio",
+ "wal",
 ]
 
 [[package]]
