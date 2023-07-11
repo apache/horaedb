@@ -132,16 +132,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 msg: format!("Failed to create plan, query:{sql}"),
             })?;
 
+        let mut maybe_invalid_ttl = false;
         if let Some(table_name) = &table_name {
-            match self.valid_ttl_range(&plan, catalog, schema, table_name) {
-                Ok((valid, ddl)) => {
+            maybe_invalid_ttl = match self.valid_ttl_range(&plan, catalog, schema, table_name) {
+                Ok(valid) => {
                     if !valid {
-                        return Err(Error::SqlQueryOverTTL {
-                            code: StatusCode::OK,
-                            msg: format!(
-                                "Time range of sql is over TTL, deadline:{ddl}, sql:{sql}"
-                            ),
-                        });
+                        true
+                    } else {
+                        false
                     }
                 }
                 Err(_) => {
@@ -168,7 +166,20 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let cost = begin_instant.saturating_elapsed();
         info!("Handle sql query success, catalog:{catalog}, schema:{schema}, request_id:{request_id}, cost:{cost:?}, sql:{sql:?}");
 
-        Ok(output)
+        match &output {
+            Output::AffectedRows(_) => return Ok(output),
+            Output::Records(v) => {
+                let row_nums = v.iter().fold(0 as usize, |acc, record_batch| {
+                    acc + record_batch.num_rows()
+                });
+                if maybe_invalid_ttl && row_nums == 0 {
+                    return Err(Error::SqlQueryOverTTL {
+                        msg: format!("Time range of sql maybe over TTL sql:{sql}"),
+                    });
+                }
+                return Ok(output);
+            }
+        }
     }
 
     async fn maybe_forward_sql_query(

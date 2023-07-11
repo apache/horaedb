@@ -45,7 +45,7 @@ use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID, ENABLE_TTL, T
 use common_util::{
     error::BoxError,
     runtime::Runtime,
-    time::{current_time_secs, parse_duration},
+    time::{current_time_millis, parse_duration},
 };
 use datafusion::prelude::{Column, Expr};
 use futures::FutureExt;
@@ -77,7 +77,7 @@ use crate::{
 };
 
 // Because the clock may have errors, choose 1 hour as the error buffer
-const BUFFER_DURATION: Duration = Duration::new(60 * 60, 0);
+const BUFFER_DURATION: Duration = Duration::from_secs(60 * 60);
 
 pub struct Proxy<Q> {
     router: Arc<dyn Router + Send + Sync>,
@@ -185,7 +185,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         catalog_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<(bool, i64)> {
+    ) -> Result<bool> {
         if let Plan::Query(query) = &plan {
             let catalog = self.get_catalog(catalog_name)?;
 
@@ -193,17 +193,17 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
             let tableref = match self.get_table(&schema, table_name) {
                 Ok(Some(tableref)) => tableref,
-                _ => return Ok((true, 0)),
+                _ => return Ok(true),
             };
             if let Some(value) = tableref.options().get(ENABLE_TTL) {
                 if value == "false" {
-                    return Ok((true, 0));
+                    return Ok(true);
                 }
             }
 
             let ttl_duration = match tableref.options().get(TTL) {
                 Some(value) => parse_duration(value),
-                None => return Ok((false, 0)),
+                None => return Ok(false),
             };
             if ttl_duration.is_err() {
                 return Err(Error::ErrNoCause {
@@ -214,9 +214,10 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             let ttl_duration = ttl_duration.unwrap();
 
             // TODO(tanruixiang): use sql's timestamp as nowtime(need sql support)
-            let nowtime = current_time_secs() as i64;
+            let nowtime = current_time_millis() as i64;
 
-            let ddl = nowtime - ttl_duration.as_secs() as i64 - BUFFER_DURATION.as_secs() as i64;
+            let ddl =
+                nowtime - ttl_duration.as_millis() as i64 - BUFFER_DURATION.as_millis() as i64;
 
             let timestamp_name = &tableref
                 .schema()
@@ -228,15 +229,15 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             match range.end {
                 std::ops::Bound::Included(x) | std::ops::Bound::Excluded(x) => {
                     if let Expr::Literal(datafusion::scalar::ScalarValue::Int64(Some(x))) = x {
-                        if x <= ddl {
-                            return Ok((false, ddl));
+                        if x * 1_000 <= ddl {
+                            return Ok(false);
                         }
                     }
                 }
                 std::ops::Bound::Unbounded => (),
             }
         }
-        Ok((true, 0))
+        Ok(true)
     }
 
     fn get_catalog(&self, catalog_name: &str) -> Result<CatalogRef> {
