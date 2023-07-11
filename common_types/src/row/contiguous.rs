@@ -9,7 +9,6 @@ use std::{
     str,
 };
 
-use arrow::datatypes::ToByteSlice;
 use prost::encoding::{decode_varint, encode_varint, encoded_len_varint};
 use snafu::{ensure, Backtrace, Snafu};
 
@@ -352,9 +351,13 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
 
                 // Encode length of string as a varint.
                 ensure!(v.len() <= MAX_STRING_LEN, StringTooLong { len: v.len() });
-                let mut buf = Vec::new();
-                encode_varint(v.len() as u64, &mut buf);
-                Self::write_slice_to_offset(inner, next_string_offset, buf.to_byte_slice());
+                let mut dst = [0; 4];
+                let value_buf = {
+                    let mut buf = &mut dst[..];
+                    encode_varint(v.len() as u64, &mut buf);
+                    &dst[..encoded_len_varint(v.len() as u64)]
+                };
+                Self::write_slice_to_offset(inner, next_string_offset, value_buf);
                 Self::write_slice_to_offset(inner, next_string_offset, v);
             }
             Datum::String(v) => {
@@ -371,9 +374,13 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
 
                 // Encode length of string as a varint.
                 ensure!(v.len() <= MAX_STRING_LEN, StringTooLong { len: v.len() });
-                let mut buf = Vec::new();
-                encode_varint(v.len() as u64, &mut buf);
-                Self::write_slice_to_offset(inner, next_string_offset, buf.to_byte_slice());
+                let mut dst = [0; 4];
+                let value_buf = {
+                    let mut buf = &mut dst[..];
+                    encode_varint(v.len() as u64, &mut buf);
+                    &dst[..encoded_len_varint(v.len() as u64)]
+                };
+                Self::write_slice_to_offset(inner, next_string_offset, value_buf);
                 Self::write_slice_to_offset(inner, next_string_offset, v.as_bytes());
             }
             Datum::UInt64(v) => {
@@ -699,7 +706,7 @@ fn must_read_bytes<'a>(datum_buf: &'a [u8], string_buf: &'a [u8]) -> &'a [u8] {
     // Read len of the string.
     let string_len = match decode_varint(&mut string_buf) {
         Ok(len) => len as usize,
-        Err(_) => panic!("failed to decode varint"),
+        Err(e) => panic!("failed to decode string length, string buffer:{string_buf:?}, err:{e}"),
     };
 
     // Read string.
