@@ -115,8 +115,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         // Open partition table if needed.
         let table_name = frontend::parse_table_name(&stmts);
-        if let Some(table_name) = table_name {
-            self.maybe_open_partition_table_if_not_exist(catalog, schema, &table_name)
+        if let Some(table_name) = &table_name {
+            self.maybe_open_partition_table_if_not_exist(catalog, schema, table_name)
                 .await?;
         }
 
@@ -131,6 +131,16 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: format!("Failed to create plan, query:{sql}"),
             })?;
+
+        let mut plan_maybe_expired = false;
+        if let Some(table_name) = &table_name {
+            match self.is_plan_expired(&plan, catalog, schema, table_name) {
+                Ok(v) => plan_maybe_expired = v,
+                Err(err) => {
+                    warn!("Plan expire check failed, err:{err}");
+                }
+            }
+        }
 
         let output = if ctx.enable_partition_table_access {
             self.execute_plan_involving_partition_table(request_id, catalog, schema, plan, deadline)
@@ -147,7 +157,27 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let cost = begin_instant.saturating_elapsed();
         info!("Handle sql query success, catalog:{catalog}, schema:{schema}, request_id:{request_id}, cost:{cost:?}, sql:{sql:?}");
 
-        Ok(output)
+        match &output {
+            Output::AffectedRows(_) => Ok(output),
+            Output::Records(v) => {
+                if plan_maybe_expired {
+                    let row_nums = v
+                        .iter()
+                        .fold(0_usize, |acc, record_batch| acc + record_batch.num_rows());
+                    if row_nums == 0 {
+                        warn!("Query time range maybe exceed TTL, sql:{sql}");
+
+                        // TODO: Cannot return this error directly, empty query
+                        // should return 200, not 4xx/5xx
+                        // All protocols should recognize this error.
+                        // return Err(Error::QueryMaybeExceedTTL {
+                        //     msg: format!("Query time range maybe exceed TTL,
+                        // sql:{sql}"), });
+                    }
+                }
+                Ok(output)
+            }
+        }
     }
 
     async fn maybe_forward_sql_query(

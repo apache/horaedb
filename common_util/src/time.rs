@@ -11,6 +11,18 @@ use std::{
 
 use chrono::{DateTime, Utc};
 use common_types::time::Timestamp;
+use snafu::{Backtrace, GenerateBacktrace, Snafu};
+
+use crate::config::ReadableDuration;
+
+#[derive(Debug, Snafu)]
+#[allow(clippy::enum_variant_names)]
+pub enum Error {
+    #[snafu(display("Failed to parse duration, err:{}.\nBacktrace:\n{}", err, backtrace))]
+    ParseDuration { err: String, backtrace: Backtrace },
+}
+
+define_result!(Error);
 
 pub trait DurationExt {
     /// Convert into u64.
@@ -76,6 +88,14 @@ pub fn try_to_millis(ts: i64) -> Option<Timestamp> {
         return Some(Timestamp::new(ts));
     }
     None
+}
+
+pub fn parse_duration(v: &str) -> Result<ReadableDuration> {
+    v.parse::<ReadableDuration>()
+        .map_err(|err| Error::ParseDuration {
+            err,
+            backtrace: Backtrace::generate(),
+        })
 }
 
 #[cfg(test)]

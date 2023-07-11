@@ -6,7 +6,7 @@
 #![feature(trait_alias)]
 
 pub mod context;
-mod error;
+pub mod error;
 mod error_util;
 pub mod forward;
 mod grpc;
@@ -27,21 +27,34 @@ mod write;
 pub const FORWARDED_FROM: &str = "forwarded-from";
 
 use std::{
+    ops::Bound,
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use ::http::StatusCode;
-use catalog::schema::{
-    CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, SchemaRef,
+use catalog::{
+    schema::{
+        CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, SchemaRef,
+    },
+    CatalogRef,
 };
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
     PrometheusRemoteQueryResponse, Route, RouteRequest,
 };
-use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID};
-use common_util::{error::BoxError, runtime::Runtime};
+use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID, ENABLE_TTL, TTL};
+use common_util::{
+    error::BoxError,
+    runtime::Runtime,
+    time::{current_time_millis, parse_duration},
+};
+use datafusion::{
+    prelude::{Column, Expr},
+    scalar::ScalarValue,
+};
 use futures::FutureExt;
+use influxql_query::logical_optimizer::range_predicate::find_time_range;
 use interpreters::{
     context::Context as InterpreterContext,
     factory::Factory,
@@ -55,7 +68,7 @@ use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{EngineRuntimes, TableState},
     remote::model::{GetTableInfoRequest, TableIdentifier},
-    table::TableId,
+    table::{TableId, TableRef},
     PARTITION_TABLE_ENGINE_TYPE,
 };
 use tonic::{transport::Channel, IntoRequest};
@@ -67,6 +80,9 @@ use crate::{
     instance::InstanceRef,
     schema_config_provider::SchemaConfigProviderRef,
 };
+
+// Because the clock may have errors, choose 1 hour as the error buffer
+const QUERY_EXPIRED_BUFFER: Duration = Duration::from_secs(60 * 60);
 
 pub struct Proxy<Q> {
     router: Arc<dyn Router + Send + Sync>,
@@ -166,12 +182,71 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         })
     }
 
-    async fn maybe_open_partition_table_if_not_exist(
+    /// Returns true when query range maybe exceeding ttl,
+    /// Note: False positive is possible
+    // TODO(tanruixiang): Add integration testing when supported by the testing
+    // framework
+    fn is_plan_expired(
         &self,
+        plan: &Plan,
         catalog_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<()> {
+    ) -> Result<bool> {
+        if let Plan::Query(query) = &plan {
+            let catalog = self.get_catalog(catalog_name)?;
+            let schema = self.get_schema(&catalog, schema_name)?;
+            let table_ref = match self.get_table(&schema, table_name) {
+                Ok(Some(v)) => v,
+                _ => return Ok(false),
+            };
+            if let Some(value) = table_ref.options().get(ENABLE_TTL) {
+                if value == "false" {
+                    return Ok(false);
+                }
+            }
+            let ttl_duration = if let Some(ttl) = table_ref.options().get(TTL) {
+                if let Ok(ttl) = parse_duration(ttl) {
+                    ttl
+                } else {
+                    return Ok(false);
+                }
+            } else {
+                return Ok(false);
+            };
+
+            let timestamp_name = &table_ref
+                .schema()
+                .column(table_ref.schema().timestamp_index())
+                .name
+                .clone();
+            let ts_col = Column::from_name(timestamp_name);
+            let range = find_time_range(&query.df_plan, &ts_col)
+                .box_err()
+                .context(Internal {
+                    msg: "Failed to find time range",
+                })?;
+            match range.end {
+                Bound::Included(x) | Bound::Excluded(x) => {
+                    if let Expr::Literal(ScalarValue::Int64(Some(x))) = x {
+                        let now = current_time_millis() as i64;
+                        let deadline = now
+                            - ttl_duration.as_millis() as i64
+                            - QUERY_EXPIRED_BUFFER.as_millis() as i64;
+
+                        if x * 1_000 <= deadline {
+                            return Ok(true);
+                        }
+                    }
+                }
+                Bound::Unbounded => (),
+            }
+        }
+
+        Ok(false)
+    }
+
+    fn get_catalog(&self, catalog_name: &str) -> Result<CatalogRef> {
         let catalog = self
             .instance
             .catalog_manager
@@ -185,7 +260,10 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!("Catalog not found, catalog_name:{catalog_name}"),
             })?;
+        Ok(catalog)
+    }
 
+    fn get_schema(&self, catalog: &CatalogRef, schema_name: &str) -> Result<SchemaRef> {
         // TODO: support create schema if not exist
         let schema = catalog
             .schema_by_name(schema_name)
@@ -198,7 +276,10 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!("Schema not found, schema_name:{schema_name}"),
             })?;
+        Ok(schema)
+    }
 
+    fn get_table(&self, schema: &SchemaRef, table_name: &str) -> Result<Option<TableRef>> {
         let table = schema
             .table_by_name(table_name)
             .box_err()
@@ -206,6 +287,20 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: format!("Failed to find table, table_name:{table_name}"),
             })?;
+        Ok(table)
+    }
+
+    async fn maybe_open_partition_table_if_not_exist(
+        &self,
+        catalog_name: &str,
+        schema_name: &str,
+        table_name: &str,
+    ) -> Result<()> {
+        let catalog = self.get_catalog(catalog_name)?;
+
+        let schema = self.get_schema(&catalog, schema_name)?;
+
+        let table = self.get_table(&schema, table_name)?;
 
         let table_info_in_meta = self
             .router

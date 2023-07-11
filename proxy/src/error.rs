@@ -27,6 +27,9 @@ pub enum Error {
         msg: String,
         source: GenericError,
     },
+
+    #[snafu(display("Query warning, msg:{msg}"))]
+    QueryMaybeExceedTTL { msg: String },
 }
 
 impl Error {
@@ -34,6 +37,7 @@ impl Error {
         match *self {
             Error::ErrNoCause { code, .. } => code,
             Error::ErrWithCause { code, .. } => code,
+            Error::QueryMaybeExceedTTL { .. } => StatusCode::OK,
             Error::Internal { .. } | Error::InternalNoCause { .. } => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
@@ -50,6 +54,7 @@ impl Error {
                 let first_line = error_util::remove_backtrace_from_err(&err_string);
                 format!("{msg}. Caused by: {first_line}")
             }
+            Error::QueryMaybeExceedTTL { msg } => msg.clone(),
         }
     }
 }
