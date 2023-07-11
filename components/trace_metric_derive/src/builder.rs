@@ -1,36 +1,99 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use proc_macro::TokenStream;
-use quote::{quote, ToTokens};
+use proc_macro2::Span;
+use quote::{quote, ToTokens, TokenStreamExt};
 use syn::{DeriveInput, Field, Generics, Ident};
 
 const COLLECTOR_FIELD_TOKENS: &str = "(collector)";
-const NUMBER_FIELD_TOKENS: &str = "(number)";
-const DURATION_FIELD_TOKENS: &str = "(duration)";
-const BOOLEAN_FIELD_TOKENS: &str = "(boolean)";
+const NUMBER_FIELD_TOKENS: &str = "number";
+const DURATION_FIELD_TOKENS: &str = "duration";
+const BOOLEAN_FIELD_TOKENS: &str = "boolean";
 
+#[derive(Debug, Clone)]
+enum MetricAggregator {
+    Sum,
+}
+
+impl ToTokens for MetricAggregator {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        tokens.append(Ident::new(&format!("{self:?}"), Span::call_site()));
+    }
+}
+
+#[derive(Debug)]
 enum MetricType {
     Number,
     Duration,
     Boolean,
 }
 
-impl MetricType {
-    fn try_from_tokens(s: &str) -> Option<Self> {
+impl ToTokens for MetricType {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        tokens.append(Ident::new(
+            &format!("{self:?}").to_lowercase(),
+            Span::call_site(),
+        ));
+    }
+}
+
+struct MetricMetadata {
+    typ: MetricType,
+    aggregator: Option<MetricAggregator>,
+}
+
+impl MetricMetadata {
+    fn parse_aggregator(s: &str) -> Option<MetricAggregator> {
+        match s.to_lowercase().as_str() {
+            "sum" => Some(MetricAggregator::Sum),
+            _ => None,
+        }
+    }
+
+    fn parse_type(s: &str) -> Option<MetricType> {
         if s == NUMBER_FIELD_TOKENS {
-            Some(Self::Number)
+            Some(MetricType::Number)
         } else if s == DURATION_FIELD_TOKENS {
-            Some(Self::Duration)
+            Some(MetricType::Duration)
         } else if s == BOOLEAN_FIELD_TOKENS {
-            Some(Self::Boolean)
+            Some(MetricType::Boolean)
         } else {
             None
         }
     }
+
+    fn try_from_tokens(tokens: &proc_macro2::TokenStream) -> Option<Self> {
+        for tree in tokens.clone().into_iter() {
+            if let proc_macro2::TokenTree::Group(group) = tree {
+                let trees = group.stream().into_iter().collect::<Vec<_>>();
+                match trees.len() {
+                    // #[metric(number)]
+                    1 => {
+                        return Self::parse_type(&trees[0].to_string()).map(|typ| Self {
+                            typ,
+                            aggregator: None,
+                        })
+                    }
+                    // #[metric(number, add)]
+                    3 => {
+                        let typ = Self::parse_type(&trees[0].to_string())?;
+                        let aggregator = Self::parse_aggregator(&trees[2].to_string())?;
+                        return Some(Self {
+                            typ,
+                            aggregator: Some(aggregator),
+                        });
+                    }
+                    _ => return None,
+                }
+            }
+        }
+
+        None
+    }
 }
 
 struct MetricField {
-    metric_type: MetricType,
+    metric_metadata: MetricMetadata,
     field_name: Ident,
 }
 
@@ -42,11 +105,10 @@ impl MetricField {
             }
 
             let field_name = field.ident.expect("Metric field must have a name");
-            let metric_type_tokens = attr.tokens.to_string();
-            let metric_type =
-                MetricType::try_from_tokens(&metric_type_tokens).expect("Unknown metric type");
+            let metric_metadata =
+                MetricMetadata::try_from_tokens(&attr.tokens).expect("Unknown metric type");
             return Some(Self {
-                metric_type,
+                metric_metadata,
                 field_name,
             });
         }
@@ -124,17 +186,21 @@ impl Builder {
         let mut collect_statements = Vec::with_capacity(self.metric_fields.len());
         for metric_field in self.metric_fields.iter() {
             let field_name = &metric_field.field_name;
-            let metric = match metric_field.metric_type {
-                MetricType::Number => {
-                    quote! { ::trace_metric::Metric::number(stringify!(#field_name).to_string(), self.#field_name) }
+            let metadata = &metric_field.metric_metadata;
+            let aggregator = &metadata.aggregator;
+            let metric_type = &metadata.typ;
+            let metric = if let Some(aggregator) = aggregator {
+                quote! { ::trace_metric::Metric::#metric_type(stringify!(#field_name).to_string(),
+                                                        self.#field_name,
+                                                        Some(::trace_metric::metric::MetricAggregator::#aggregator))
                 }
-                MetricType::Duration => {
-                    quote! { ::trace_metric::Metric::duration(stringify!(#field_name).to_string(), self.#field_name) }
-                }
-                MetricType::Boolean => {
-                    quote! { ::trace_metric::Metric::boolean(stringify!(#field_name).to_string(), self.#field_name) }
+            } else {
+                quote! { ::trace_metric::Metric::#metric_type(stringify!(#field_name).to_string(),
+                                                        self.#field_name,
+                                                        None)
                 }
             };
+
             let statement = quote! {
                 collector.collect(#metric);
             };

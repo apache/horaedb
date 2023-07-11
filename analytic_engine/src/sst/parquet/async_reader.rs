@@ -153,10 +153,10 @@ impl<'a> Reader<'a> {
             .into_iter()
             .map(|stream| {
                 Box::new(RecordBatchProjector::new(
-                    self.path.to_string(),
                     stream,
                     row_projector.clone(),
                     sst_meta_data.clone(),
+                    self.metrics.metrics_collector.clone(),
                 )) as _
             })
             .collect();
@@ -448,42 +448,46 @@ impl<'a> ChunkReader for ChunkReaderAdapter<'a> {
     }
 }
 
+#[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
+pub(crate) struct ProjectorMetrics {
+    #[metric(number, sum)]
+    pub row_num: usize,
+    #[metric(number, sum)]
+    pub row_mem: usize,
+    #[metric(duration, sum)]
+    pub project_record_batch: Duration,
+    #[metric(collector)]
+    pub metrics_collector: Option<MetricsCollector>,
+}
+
 struct RecordBatchProjector {
-    path: String,
     stream: SendableRecordBatchStream,
     row_projector: ArrowRecordBatchProjector,
 
-    row_num: usize,
+    metrics: ProjectorMetrics,
     start_time: Instant,
     sst_meta: ParquetMetaDataRef,
 }
 
 impl RecordBatchProjector {
     fn new(
-        path: String,
         stream: SendableRecordBatchStream,
         row_projector: ArrowRecordBatchProjector,
         sst_meta: ParquetMetaDataRef,
+        metrics_collector: Option<MetricsCollector>,
     ) -> Self {
+        let metrics = ProjectorMetrics {
+            metrics_collector,
+            ..Default::default()
+        };
+
         Self {
-            path,
             stream,
             row_projector,
-            row_num: 0,
+            metrics,
             start_time: Instant::now(),
             sst_meta,
         }
-    }
-}
-
-impl Drop for RecordBatchProjector {
-    fn drop(&mut self) {
-        debug!(
-            "RecordBatchProjector dropped, path:{} rows:{}, cost:{}ms.",
-            self.path,
-            self.row_num,
-            self.start_time.saturating_elapsed().as_millis(),
-        );
     }
 }
 
@@ -505,7 +509,10 @@ impl Stream for RecordBatchProjector {
                             .box_err()
                             .context(DecodeRecordBatch)?;
 
-                        projector.row_num += record_batch.num_rows();
+                        for col in record_batch.columns() {
+                            projector.metrics.row_mem += col.get_array_memory_size();
+                        }
+                        projector.metrics.row_num += record_batch.num_rows();
 
                         let projected_batch = projector
                             .row_projector
@@ -518,7 +525,10 @@ impl Stream for RecordBatchProjector {
                 }
             }
             Poll::Pending => Poll::Pending,
-            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Ready(None) => {
+                projector.metrics.project_record_batch += projector.start_time.saturating_elapsed();
+                Poll::Ready(None)
+            }
         }
     }
 
