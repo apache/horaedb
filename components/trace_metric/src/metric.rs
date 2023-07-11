@@ -3,8 +3,8 @@
 use std::{fmt, time::Duration};
 
 #[derive(Clone)]
-pub enum MetricOp {
-    Add,
+pub enum MetricAggregator {
+    Sum,
 }
 
 #[derive(Clone)]
