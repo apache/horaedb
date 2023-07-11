@@ -9,6 +9,7 @@ use std::{
     str,
 };
 
+use prost::encoding::{decode_varint, encode_varint, encoded_len_varint};
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{
@@ -96,10 +97,6 @@ impl Encoding {
     }
 
     const fn size_of_num_bits() -> usize {
-        mem::size_of::<u32>()
-    }
-
-    const fn size_of_var_len() -> usize {
         mem::size_of::<u32>()
     }
 }
@@ -352,10 +349,11 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                 let value_buf = (*next_string_offset as u32).to_ne_bytes();
                 Self::write_slice_to_offset(inner, offset, &value_buf);
 
-                // Encode length of string as a u32.
+                // Encode length of string as a varint.
                 ensure!(v.len() <= MAX_STRING_LEN, StringTooLong { len: v.len() });
-                let string_len = v.len() as u32;
-                Self::write_slice_to_offset(inner, next_string_offset, &string_len.to_ne_bytes());
+                let mut buf = [0; 4];
+                let value_buf = Self::encode_varint(v.len() as u32, &mut buf);
+                Self::write_slice_to_offset(inner, next_string_offset, value_buf);
                 Self::write_slice_to_offset(inner, next_string_offset, v);
             }
             Datum::String(v) => {
@@ -369,9 +367,12 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                 // Encode the string offset as a u32.
                 let value_buf = (*next_string_offset as u32).to_ne_bytes();
                 Self::write_slice_to_offset(inner, offset, &value_buf);
+
+                // Encode length of string as a varint.
                 ensure!(v.len() <= MAX_STRING_LEN, StringTooLong { len: v.len() });
-                let bytes_len = v.len() as u32;
-                Self::write_slice_to_offset(inner, next_string_offset, &bytes_len.to_ne_bytes());
+                let mut buf = [0; 4];
+                let value_buf = Self::encode_varint(v.len() as u32, &mut buf);
+                Self::write_slice_to_offset(inner, next_string_offset, value_buf);
                 Self::write_slice_to_offset(inner, next_string_offset, v.as_bytes());
             }
             Datum::UInt64(v) => {
@@ -467,7 +468,8 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
 
                 if !datum.is_fixed_sized() {
                     // For the datum content and the length of it
-                    let size = datum.size() + Encoding::size_of_offset();
+                    let len = datum.size();
+                    let size = len + encoded_len_varint(len as u64);
                     num_bytes_of_variable_col += size;
                     encoded_len += size;
                 }
@@ -526,7 +528,8 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                 let datum = &row[writer_index];
                 if !datum.is_fixed_sized() {
                     // For the datum content and the length of it
-                    encoded_len += Encoding::size_of_var_len() + datum.size();
+                    let len = datum.size();
+                    encoded_len += encoded_len_varint(len as u64) + len;
                 }
             }
         }
@@ -570,6 +573,13 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
         let dst = &mut inner[*offset..*offset + value_buf.len()];
         dst.copy_from_slice(value_buf);
         *offset += value_buf.len();
+    }
+
+    fn encode_varint(value: u32, buf: &mut [u8; 4]) -> &[u8] {
+        let value = value as u64;
+        let mut temp = &mut buf[..];
+        encode_varint(value, &mut temp);
+        &buf[..encoded_len_varint(value)]
     }
 }
 
@@ -690,12 +700,13 @@ fn must_read_bytes<'a>(datum_buf: &'a [u8], string_buf: &'a [u8]) -> &'a [u8] {
     // Read offset of string in string buf.
     let value_buf = datum_buf[..mem::size_of::<Offset>()].try_into().unwrap();
     let offset = Offset::from_ne_bytes(value_buf) as usize;
-    let string_buf = &string_buf[offset..];
+    let mut string_buf = &string_buf[offset..];
 
     // Read len of the string.
-    let len_buf = string_buf[..mem::size_of::<u32>()].try_into().unwrap();
-    let string_len = u32::from_ne_bytes(len_buf) as usize;
-    let string_buf = &string_buf[mem::size_of::<u32>()..];
+    let string_len = match decode_varint(&mut string_buf) {
+        Ok(len) => len as usize,
+        Err(e) => panic!("failed to decode string length, string buffer:{string_buf:?}, err:{e}"),
+    };
 
     // Read string.
     &string_buf[..string_len]
