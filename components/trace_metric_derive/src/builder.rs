@@ -11,8 +11,8 @@ const DURATION_FIELD_TOKENS: &str = "duration";
 const BOOLEAN_FIELD_TOKENS: &str = "boolean";
 
 #[derive(Debug, Clone)]
-enum MetricOp {
-    Add,
+enum MetricAggregator {
+    Sum,
 }
 
 impl ToTokens for MetricOp {
