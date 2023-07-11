@@ -4136,9 +4136,7 @@ dependencies = [
  "bytes",
  "common_util",
  "datafusion",
- "futures 0.3.28",
  "log",
- "object_store 1.2.2",
  "parquet",
  "tokio",
 ]
