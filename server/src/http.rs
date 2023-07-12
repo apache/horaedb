@@ -16,7 +16,6 @@ use common_util::{
 };
 use log::{error, info};
 use logger::RuntimeLevel;
-use meta_client::types::ShardRole;
 use profile::Profiler;
 use prom_remote_api::web;
 use proxy::{
@@ -512,25 +511,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     None => return Err(reject::custom(Error::NoCluster {})),
                 };
                 let shard_infos = cluster.list_shards();
-
-                let mut shards = Vec::new();
-                for shard_info in shard_infos {
-                    let mut shard = HashMap::new();
-                    shard.insert("shard id", shard_info.id.to_string());
-                    shard.insert(
-                        "shard role",
-                        match shard_info.role {
-                            ShardRole::Leader => "Leader",
-                            ShardRole::Follower => "Follower",
-                            ShardRole::PendingFollower => "PendingFollower",
-                            ShardRole::PendingLeader => "PendingLeader",
-                        }
-                        .to_string(),
-                    );
-                    shard.insert("shard version", shard_info.version.to_string());
-                    shards.push(shard);
-                }
-                Ok(reply::json(&shards))
+                Ok(reply::json(&shard_infos))
             })
     }
 
