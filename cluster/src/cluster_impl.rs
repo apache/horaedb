@@ -298,6 +298,16 @@ impl Inner {
                 msg: format!("close non-existent shard, shard_id:{shard_id}"),
             })
     }
+
+    fn list_shards(&self) -> Vec<ShardInfo> {
+        let shards = self.shard_set.all_shards();
+        let mut shard_infos = Vec::with_capacity(shards.len());
+        for shard in shards {
+            let shard_info = shard.shard_info();
+            shard_infos.push(shard_info);
+        }
+        shard_infos
+    }
 }
 
 #[async_trait]
@@ -343,6 +353,10 @@ impl Cluster for ClusterImpl {
 
     async fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef> {
         self.inner.close_shard(shard_id)
+    }
+
+    fn list_shards(&self) -> Vec<ShardInfo> {
+        self.inner.list_shards()
     }
 
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse> {

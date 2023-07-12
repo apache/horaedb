@@ -371,6 +371,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .engine_runtimes(engine_runtimes.clone())
             .log_runtime(log_runtime)
             .config_content(config_content)
+            .cluster(self.cluster.clone())
             .proxy(proxy.clone())
             .opened_wals(opened_wals.clone())
             .build()

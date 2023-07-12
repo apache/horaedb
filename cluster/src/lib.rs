@@ -170,6 +170,9 @@ pub trait Cluster {
     /// Return error if the shard is not found.
     async fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef>;
 
+    /// list shards
+    fn list_shards(&self) -> Vec<ShardInfo>;
+
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;
     async fn fetch_nodes(&self) -> Result<ClusterNodesResp>;
     fn shard_lock_manager(&self) -> ShardLockManagerRef;
