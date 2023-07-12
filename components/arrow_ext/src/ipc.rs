@@ -117,7 +117,8 @@ impl RecordBatchesEncoder {
         self.num_rows
     }
 
-    fn conver_schema(schema: &SchemaRef) -> Cow<SchemaRef> {
+    // Workaround for https://github.com/apache/arrow-datafusion/issues/6784
+    fn convert_schema(schema: &SchemaRef) -> Cow<SchemaRef> {
         let dict_field_num: usize = schema
             .fields()
             .iter()
@@ -173,14 +174,14 @@ impl RecordBatchesEncoder {
                 .sum();
             let buffer: Vec<u8> = Vec::with_capacity(mem_size);
             let stream_writer =
-                StreamWriter::try_new(buffer, &Self::conver_schema(&batch.schema()))
+                StreamWriter::try_new(buffer, &Self::convert_schema(&batch.schema()))
                     .context(ArrowError)?;
             self.stream_writer = Some(stream_writer);
             self.stream_writer.as_mut().unwrap()
         };
 
         let schema = batch.schema();
-        let schema = Self::conver_schema(&schema);
+        let schema = Self::convert_schema(&schema);
         let batch = RecordBatch::try_new(schema.into_owned(), batch.columns().to_vec()).unwrap();
         stream_writer.write(&batch).context(ArrowError)?;
         self.num_rows += batch.num_rows();
