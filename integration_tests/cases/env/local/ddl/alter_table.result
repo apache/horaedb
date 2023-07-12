@@ -45,6 +45,32 @@ UInt64(0),Timestamp(1),Int32(1),String("d1"),String(""),
 UInt64(0),Timestamp(2),Int32(2),String("d2"),String("2"),
 
 
+ALTER TABLE `05_alter_table_t0` add COLUMN (add_dic string dictionary);
+
+affected_rows: 0
+
+DESCRIBE TABLE `05_alter_table_t0`;
+
+name,type,is_primary,is_nullable,is_tag,is_dictionary,
+String("tsid"),String("uint64"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
+String("t"),String("timestamp"),Boolean(true),Boolean(false),Boolean(false),Boolean(false),
+String("a"),String("int"),Boolean(false),Boolean(true),Boolean(false),Boolean(false),
+String("dic"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean(true),
+String("b"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean(false),
+String("add_dic"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean(true),
+
+
+INSERT INTO TABLE `05_alter_table_t0`(a, b, t, dic, add_dic) values (2, '2', 2, "d2", "d3");
+
+affected_rows: 1
+
+SELECT * FROM `05_alter_table_t0`;
+
+tsid,t,a,dic,b,add_dic,
+UInt64(0),Timestamp(1),Int32(1),String("d1"),String(""),String(""),
+UInt64(0),Timestamp(2),Int32(2),String("d2"),String("2"),String("d3"),
+
+
 ALTER TABLE `05_alter_table_t0` DROP COLUMN b;
 
 Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: ALTER TABLE `05_alter_table_t0` DROP COLUMN b;. Caused by: Failed to create plan, err:Unsupported SQL statement" })
@@ -57,13 +83,14 @@ String("t"),String("timestamp"),Boolean(true),Boolean(false),Boolean(false),Bool
 String("a"),String("int"),Boolean(false),Boolean(true),Boolean(false),Boolean(false),
 String("dic"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean(true),
 String("b"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean(false),
+String("add_dic"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean(true),
 
 
 SELECT * FROM `05_alter_table_t0`;
 
-tsid,t,a,dic,b,
-UInt64(0),Timestamp(1),Int32(1),String("d1"),String(""),
-UInt64(0),Timestamp(2),Int32(2),String("d2"),String("2"),
+tsid,t,a,dic,b,add_dic,
+UInt64(0),Timestamp(1),Int32(1),String("d1"),String(""),String(""),
+UInt64(0),Timestamp(2),Int32(2),String("d2"),String("2"),String("d3"),
 
 
 DROP TABLE `05_alter_table_t0`;

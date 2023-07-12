@@ -2,9 +2,10 @@
 
 //! Utilities for `RecordBatch` serialization using Arrow IPC
 
-use std::io::Cursor;
+use std::{borrow::Cow, io::Cursor, sync::Arc};
 
 use arrow::{
+    datatypes::{DataType, Field, Schema, SchemaRef},
     ipc::{reader::StreamReader, writer::StreamWriter},
     record_batch::RecordBatch,
 };
@@ -116,20 +117,72 @@ impl RecordBatchesEncoder {
         self.num_rows
     }
 
+    fn conver_schema(schema: &SchemaRef) -> Cow<SchemaRef> {
+        let dict_field_num: usize = schema
+            .fields()
+            .iter()
+            .map(|f| {
+                if let DataType::Dictionary(_, _) = f.data_type() {
+                    1
+                } else {
+                    0
+                }
+            })
+            .sum();
+        if dict_field_num <= 1 {
+            return Cow::Borrowed(schema);
+        }
+
+        let new_fields = schema
+            .fields()
+            .iter()
+            .enumerate()
+            .map(|(i, f)| {
+                if let DataType::Dictionary(_, _) = f.data_type() {
+                    let dict_id = i as i64;
+                    Arc::new(Field::new_dict(
+                        f.name(),
+                        f.data_type().clone(),
+                        f.is_nullable(),
+                        dict_id,
+                        f.dict_is_ordered().unwrap_or(false),
+                    ))
+                } else {
+                    f.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let schema_ref = Arc::new(Schema::new_with_metadata(
+            new_fields,
+            schema.metadata.clone(),
+        ));
+
+        Cow::Owned(schema_ref)
+    }
+
     /// Append one batch into the encoder for encoding.
     pub fn write(&mut self, batch: &RecordBatch) -> Result<()> {
         let stream_writer = if let Some(v) = &mut self.stream_writer {
             v
         } else {
-            // TODO: pre-allocate the buffer.
-            let buffer: Vec<u8> = Vec::new();
+            let mem_size = batch
+                .columns()
+                .iter()
+                .map(|col| col.get_buffer_memory_size())
+                .sum();
+            let buffer: Vec<u8> = Vec::with_capacity(mem_size);
             let stream_writer =
-                StreamWriter::try_new(buffer, &batch.schema()).context(ArrowError)?;
+                StreamWriter::try_new(buffer, &Self::conver_schema(&batch.schema()))
+                    .context(ArrowError)?;
             self.stream_writer = Some(stream_writer);
             self.stream_writer.as_mut().unwrap()
         };
 
-        stream_writer.write(batch).context(ArrowError)?;
+        let schema = batch.schema();
+        let schema = Self::conver_schema(&schema);
+        let batch = RecordBatch::try_new(schema.into_owned(), batch.columns().to_vec()).unwrap();
+        stream_writer.write(&batch).context(ArrowError)?;
         self.num_rows += batch.num_rows();
         Ok(())
     }
