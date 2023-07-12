@@ -1,11 +1,11 @@
 [package]
 name = "ceresdb"
-version = "1.2.2"
+version = "1.2.4"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
 
 [workspace.package]
-version = "1.2.2"
+version = "1.2.4"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
 
