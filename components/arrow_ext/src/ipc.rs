@@ -276,12 +276,25 @@ mod tests {
         let schema = Schema::new(vec![
             Field::new("a", DataType::Int32, false),
             Field::new("b", DataType::Utf8, false),
+            Field::new(
+                "c",
+                DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+                false,
+            ),
         ]);
 
         let a = Int32Array::from_iter_values(0..rows as i32);
         let b = StringArray::from_iter_values((0..rows).map(|i| i.to_string()));
-
-        RecordBatch::try_new(Arc::new(schema), vec![Arc::new(a), Arc::new(b)]).unwrap()
+        let mut cb = StringDictionaryBuilder::<Int32Type>::new();
+        for i in 0..rows {
+            cb.append_value((i % 10).to_string());
+        }
+        let c = cb.finish();
+        RecordBatch::try_new(
+            Arc::new(schema),
+            vec![Arc::new(a), Arc::new(b), Arc::new(c)],
+        )
+        .unwrap()
     }
 
     fn ensure_encoding_and_decoding(
