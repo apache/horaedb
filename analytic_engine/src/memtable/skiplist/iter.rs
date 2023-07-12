@@ -153,8 +153,15 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
                 trace!("Column iterator fetch next row, row:{:?}", projected_row);
 
+                let datum_kinds = self
+                    .memtable_schema
+                    .columns()
+                    .iter()
+                    .map(|column| column.data_type)
+                    .collect::<Vec<_>>();
+
                 builder
-                    .append_projected_contiguous_row(&projected_row)
+                    .append_projected_contiguous_row(&projected_row, datum_kinds)
                     .context(AppendRow)?;
                 num_rows += 1;
             } else {
