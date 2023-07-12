@@ -49,6 +49,7 @@ const ZSTD_LEVEL: i32 = 3;
 pub struct RecordBatchesEncoder {
     stream_writer: Option<StreamWriter<Vec<u8>>>,
     num_rows: usize,
+    has_dict: bool,
     compress_opts: CompressOptions,
 }
 
@@ -108,6 +109,7 @@ impl RecordBatchesEncoder {
         Self {
             stream_writer: None,
             num_rows: 0,
+            has_dict: false,
             compress_opts,
         }
     }
@@ -117,7 +119,9 @@ impl RecordBatchesEncoder {
         self.num_rows
     }
 
-    // Workaround for https://github.com/apache/arrow-datafusion/issues/6784
+    /// When schema contains dict fields, it will return an owned version,
+    /// otherwise it just return the origin schema.
+    /// Workaround for https://github.com/apache/arrow-datafusion/issues/6784
     fn convert_schema(schema: &SchemaRef) -> Cow<SchemaRef> {
         let dict_field_num: usize = schema
             .fields()
@@ -173,17 +177,23 @@ impl RecordBatchesEncoder {
                 .map(|col| col.get_buffer_memory_size())
                 .sum();
             let buffer: Vec<u8> = Vec::with_capacity(mem_size);
-            let stream_writer =
-                StreamWriter::try_new(buffer, &Self::convert_schema(&batch.schema()))
-                    .context(ArrowError)?;
+            let schema = batch.schema();
+            let schema = Self::convert_schema(&schema);
+            let stream_writer = StreamWriter::try_new(buffer, &schema).context(ArrowError)?;
+            self.has_dict = schema.is_owned();
             self.stream_writer = Some(stream_writer);
             self.stream_writer.as_mut().unwrap()
         };
 
-        let schema = batch.schema();
-        let schema = Self::convert_schema(&schema);
-        let batch = RecordBatch::try_new(schema.into_owned(), batch.columns().to_vec()).unwrap();
-        stream_writer.write(&batch).context(ArrowError)?;
+        if self.has_dict {
+            let schema = batch.schema();
+            let schema = Self::convert_schema(&schema);
+            let batch = RecordBatch::try_new(schema.into_owned(), batch.columns().to_vec())
+                .context(ArrowError)?;
+            stream_writer.write(&batch).context(ArrowError)?;
+        } else {
+            stream_writer.write(&batch).context(ArrowError)?;
+        }
         self.num_rows += batch.num_rows();
         Ok(())
     }
@@ -272,7 +282,7 @@ mod tests {
         RecordBatch::try_new(Arc::new(schema), vec![Arc::new(dic1), Arc::new(dic2)]).unwrap()
     }
 
-    fn create_batch(rows: usize) -> RecordBatch {
+    fn create_batch(seed: usize, rows: usize) -> RecordBatch {
         let schema = Schema::new(vec![
             Field::new("a", DataType::Int32, false),
             Field::new("b", DataType::Utf8, false),
@@ -284,10 +294,10 @@ mod tests {
         ]);
 
         let a = Int32Array::from_iter_values(0..rows as i32);
-        let b = StringArray::from_iter_values((0..rows).map(|i| i.to_string()));
+        let b = StringArray::from_iter_values((0..rows).map(|i| (i + seed).to_string()));
         let mut cb = StringDictionaryBuilder::<Int32Type>::new();
         for i in 0..rows {
-            cb.append_value((i % 10).to_string());
+            cb.append_value((i + seed % 10).to_string());
         }
         let c = cb.finish();
         RecordBatch::try_new(
@@ -311,7 +321,7 @@ mod tests {
 
     #[test]
     fn test_ipc_encode_decode() {
-        let batch = create_batch(1024);
+        let batch = create_batch(0, 1024);
         for compression in [CompressionMethod::None, CompressionMethod::Zstd] {
             let compress_opts = CompressOptions {
                 compress_min_length: 0,
@@ -337,8 +347,8 @@ mod tests {
     fn test_encode_multiple_record_batches() {
         let num_batches = 1000;
         let mut batches = Vec::with_capacity(num_batches);
-        for _ in 0..num_batches {
-            batches.push(create_batch(1024));
+        for i in 0..num_batches {
+            batches.push(create_batch(i, 1024));
         }
 
         let compress_opts = CompressOptions {
@@ -358,7 +368,7 @@ mod tests {
 
     #[test]
     fn test_compression_decision() {
-        let batch = create_batch(1024);
+        let batch = create_batch(0, 1024);
 
         {
             // Encode the record batch with a large `compress_min_length`, so the output
