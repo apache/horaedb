@@ -71,7 +71,7 @@ mod tests {
                 *state = State::Cancelled;
             });
 
-            // It may be cancelled at this await point.
+            // It will be cancelled at this await point.
             let _lock_guard = cloned_lock.lock().await;
             cancel_guard.uncancel();
             let mut state = cloned_state.lock().unwrap();
