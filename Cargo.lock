@@ -1296,6 +1296,7 @@ dependencies = [
  "bytes_ext",
  "ceresdbproto",
  "chrono",
+ "common_util",
  "datafusion",
  "murmur3",
  "paste 1.0.12",

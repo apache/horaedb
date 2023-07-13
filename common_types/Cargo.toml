@@ -32,3 +32,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 sqlparser = { workspace = true }
+
+[dev-dependencies]
+common_util = { workspace = true }

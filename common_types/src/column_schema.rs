@@ -121,7 +121,7 @@ pub enum ReadOp {
 }
 
 /// Meta data of the arrow field.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 struct ArrowFieldMeta {
     id: u32,
     is_tag: bool,
@@ -145,6 +145,12 @@ impl ArrowFieldMetaKey {
             ArrowFieldMetaKey::IsDictionary => "field::is_dictionary",
             ArrowFieldMetaKey::Comment => "field::comment",
         }
+    }
+
+    // Only id,is_tag,comment are required fields, other fields should be optional
+    // to keep backward compatible
+    fn is_required(&self) -> bool {
+        matches!(self, Self::Id | Self::IsTag | Self::Comment)
     }
 }
 
@@ -352,7 +358,7 @@ impl From<&ColumnSchema> for Field {
     }
 }
 
-fn parse_arrow_field_meta_value<T>(
+fn parse_arrow_field_meta_value<T: Default>(
     meta: &HashMap<String, String>,
     key: ArrowFieldMetaKey,
 ) -> Result<T>
@@ -360,9 +366,17 @@ where
     T: FromStr,
     T::Err: std::error::Error + Send + Sync + 'static,
 {
-    let raw_value = meta
-        .get(key.as_str())
-        .context(ArrowFieldMetaKeyNotFound { key })?;
+    let raw_value = match meta.get(key.as_str()) {
+        None => {
+            if key.is_required() {
+                return ArrowFieldMetaKeyNotFound { key }.fail();
+            } else {
+                return Ok(T::default());
+            }
+        }
+        Some(v) => v,
+    };
+
     T::from_str(raw_value.as_str())
         .map_err(|e| Box::new(e) as _)
         .context(InvalidArrowFieldMetaValue { key, raw_value })
@@ -375,8 +389,8 @@ fn decode_arrow_field_meta_data(meta: &HashMap<String, String>) -> Result<ArrowF
         Ok(ArrowFieldMeta {
             id: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::Id)?,
             is_tag: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::IsTag)?,
-            is_dictionary: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::IsDictionary)?,
             comment: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::Comment)?,
+            is_dictionary: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::IsDictionary)?,
         })
     }
 }
@@ -524,6 +538,7 @@ impl From<ColumnSchema> for schema_pb::ColumnSchema {
 
 #[cfg(test)]
 mod tests {
+    use common_util::hash_map;
     use sqlparser::ast::Value;
 
     use super::*;
@@ -595,5 +610,47 @@ mod tests {
                 valid_dictionary_types.contains(v)
             );
         }
+    }
+
+    #[test]
+    fn test_decode_arrow_field_meta_data() {
+        let testcases = [
+            (
+                hash_map! {
+                    "field::id".to_string() => "1".to_string(),
+                    "field::is_tag".to_string() => "true".to_string(),
+                    "field::comment".to_string() => "".to_string()
+                },
+                ArrowFieldMeta {
+                    id: 1,
+                    is_tag: true,
+                    is_dictionary: false,
+                    comment: "".to_string(),
+                },
+            ),
+            (
+                hash_map! {
+                    "field::id".to_string() => "1".to_string(),
+                    "field::is_tag".to_string() => "false".to_string(),
+                    "field::comment".to_string() => "abc".to_string(),
+                    "field::is_dictionary".to_string() => "true".to_string()
+                },
+                ArrowFieldMeta {
+                    id: 1,
+                    is_tag: false,
+                    is_dictionary: true,
+                    comment: "abc".to_string(),
+                },
+            ),
+        ];
+
+        for (meta, expected) in &testcases {
+            assert_eq!(expected, &decode_arrow_field_meta_data(meta).unwrap())
+        }
+
+        let meta = hash_map! {
+            "field::id".to_string() => "1".to_string()
+        };
+        assert!(decode_arrow_field_meta_data(&meta).is_err());
     }
 }
