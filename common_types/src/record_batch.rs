@@ -546,13 +546,11 @@ impl RecordBatchWithKeyBuilder {
     pub fn append_projected_contiguous_row<T: ContiguousRow>(
         &mut self,
         row: &ProjectedContiguousRow<T>,
-        datum_kinds: Vec<DatumKind>,
     ) -> Result<()> {
         assert_eq!(row.num_datum_views(), self.builders.len());
 
-        for (index, (builder, datum_kind)) in self.builders.iter_mut().zip(datum_kinds).enumerate()
-        {
-            let datum_view = row.datum_view_at(index, datum_kind);
+        for (index, builder) in self.builders.iter_mut().enumerate() {
+            let datum_view = row.datum_view_at(index);
             builder.append_view(datum_view).context(AppendDatum)?;
         }
 

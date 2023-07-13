@@ -145,6 +145,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             self.batch_size,
         );
         let mut num_rows = 0;
+
         while self.iter.valid() && num_rows < self.batch_size {
             if let Some(row) = self.fetch_next_row()? {
                 let row_reader = ContiguousRowReader::try_new(&row, &self.memtable_schema)
@@ -153,15 +154,8 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
                 trace!("Column iterator fetch next row, row:{:?}", projected_row);
 
-                let datum_kinds = self
-                    .memtable_schema
-                    .columns()
-                    .iter()
-                    .map(|column| column.data_type)
-                    .collect::<Vec<_>>();
-
                 builder
-                    .append_projected_contiguous_row(&projected_row, datum_kinds)
+                    .append_projected_contiguous_row(&projected_row)
                     .context(AppendRow)?;
                 num_rows += 1;
             } else {

@@ -59,8 +59,7 @@ pub trait ContiguousRow {
     /// Returns the number of datums.
     fn num_datum_views(&self) -> usize;
 
-    /// Returns [DatumView] of column in given index, and returns null if the
-    /// datum kind is unknown.
+    /// Returns [DatumView] of column in given index.
     ///
     /// Panic if index or buffer is out of bound.
     fn datum_view_at(&self, index: usize, datum_kind: DatumKind) -> DatumView;
@@ -86,9 +85,8 @@ pub trait ContiguousRow {
 /// | payload/offset |
 /// +----------------+
 /// ```
-/// If the type has a fixed size, the data payload will follow the data type.
-/// Otherwise, a offset in the var-len payload block pointing the real payload
-/// follows the type.
+/// If the type has a fixed size, here will be the data payload.
+/// Otherwise, a offset in the var-len payload block pointing the real payload.
 struct Encoding;
 
 impl Encoding {
@@ -246,15 +244,14 @@ impl<'a, T: ContiguousRow> ProjectedContiguousRow<'a, T> {
             projector,
         }
     }
-}
 
-impl<'a, T: ContiguousRow> ContiguousRow for ProjectedContiguousRow<'a, T> {
-    fn num_datum_views(&self) -> usize {
+    pub fn num_datum_views(&self) -> usize {
         self.projector.source_projection().len()
     }
 
-    fn datum_view_at(&self, index: usize, datum_kind: DatumKind) -> DatumView {
+    pub fn datum_view_at(&self, index: usize) -> DatumView {
         let p = self.projector.source_projection()[index];
+        let datum_kind = self.projector.datum_kind(index);
 
         match p {
             Some(index_in_source) => self.source_row.datum_view_at(index_in_source, datum_kind),
@@ -266,10 +263,10 @@ impl<'a, T: ContiguousRow> ContiguousRow for ProjectedContiguousRow<'a, T> {
 impl<'a, T: ContiguousRow> fmt::Debug for ProjectedContiguousRow<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut list = f.debug_list();
-        // for i in 0..self.num_datum_views() {
-        //     let view = self.datum_view_at(i);
-        //     list.entry(&view);
-        // }
+        for i in 0..self.num_datum_views() {
+            let view = self.datum_view_at(i);
+            list.entry(&view);
+        }
         list.finish()
     }
 }
@@ -703,20 +700,6 @@ mod tests {
         tests::{build_rows, build_schema},
     };
 
-    fn check_contiguous_row(row: &Row, reader: impl ContiguousRow, projection: Option<Vec<usize>>) {
-        let range = if let Some(projection) = projection {
-            projection
-        } else {
-            (0..reader.num_datum_views()).collect()
-        };
-        for i in range {
-            let datum = &row[i];
-            let view = reader.datum_view_at(i, datum.kind());
-
-            assert_eq!(datum.as_view(), view);
-        }
-    }
-
     #[test]
     fn test_contiguous_read_write() {
         let schema = build_schema();
@@ -730,7 +713,14 @@ mod tests {
             writer.write_row(&row).unwrap();
 
             let reader = ContiguousRowReader::try_new(&buf, &schema).unwrap();
-            check_contiguous_row(&row, reader, None);
+
+            let range: Vec<_> = (0..reader.num_datum_views()).collect();
+            for i in range {
+                let datum = &row[i];
+                let view = reader.datum_view_at(i, datum.kind());
+
+                assert_eq!(datum.as_view(), view);
+            }
         }
     }
 
@@ -753,7 +743,14 @@ mod tests {
 
             let source_row = ContiguousRowReader::try_new(&buf, &schema).unwrap();
             let projected_row = ProjectedContiguousRow::new(source_row, &row_projected_schema);
-            check_contiguous_row(&row, projected_row, Some(projection.clone()));
+
+            let range = projection.clone();
+            for i in range {
+                let datum = &row[i];
+                let view = projected_row.datum_view_at(i);
+
+                assert_eq!(datum.as_view(), view);
+            }
         }
     }
 }
