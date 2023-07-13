@@ -49,8 +49,8 @@ const ZSTD_LEVEL: i32 = 3;
 pub struct RecordBatchesEncoder {
     stream_writer: Option<StreamWriter<Vec<u8>>>,
     num_rows: usize,
-    /// Whether the writer has dict fields.
-    has_dict: bool,
+    /// Whether the writer has more than one dict fields.
+    more_than_one_dict: bool,
     compress_opts: CompressOptions,
 }
 
@@ -110,7 +110,7 @@ impl RecordBatchesEncoder {
         Self {
             stream_writer: None,
             num_rows: 0,
-            has_dict: false,
+            more_than_one_dict: false,
             compress_opts,
         }
     }
@@ -120,8 +120,9 @@ impl RecordBatchesEncoder {
         self.num_rows
     }
 
-    /// When schema contains dict fields, it will return an owned version,
-    /// otherwise it just return the origin schema.
+    /// When schema more than one dict fields, it will return a new owned
+    /// schema, otherwise it just return the origin schema.
+    ///
     /// Workaround for https://github.com/apache/arrow-datafusion/issues/6784
     fn convert_schema(schema: &SchemaRef) -> Cow<SchemaRef> {
         let dict_field_num: usize = schema
@@ -181,12 +182,12 @@ impl RecordBatchesEncoder {
             let schema = batch.schema();
             let schema = Self::convert_schema(&schema);
             let stream_writer = StreamWriter::try_new(buffer, &schema).context(ArrowError)?;
-            self.has_dict = schema.is_owned();
+            self.more_than_one_dict = schema.is_owned();
             self.stream_writer = Some(stream_writer);
             self.stream_writer.as_mut().unwrap()
         };
 
-        if self.has_dict {
+        if self.more_than_one_dict {
             let schema = batch.schema();
             let schema = Self::convert_schema(&schema);
             let batch = RecordBatch::try_new(schema.into_owned(), batch.columns().to_vec())
