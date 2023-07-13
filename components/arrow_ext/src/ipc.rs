@@ -49,6 +49,7 @@ const ZSTD_LEVEL: i32 = 3;
 pub struct RecordBatchesEncoder {
     stream_writer: Option<StreamWriter<Vec<u8>>>,
     num_rows: usize,
+    /// Whether the writer has dict fields.
     has_dict: bool,
     compress_opts: CompressOptions,
 }
@@ -192,7 +193,7 @@ impl RecordBatchesEncoder {
                 .context(ArrowError)?;
             stream_writer.write(&batch).context(ArrowError)?;
         } else {
-            stream_writer.write(&batch).context(ArrowError)?;
+            stream_writer.write(batch).context(ArrowError)?;
         }
         self.num_rows += batch.num_rows();
         Ok(())
