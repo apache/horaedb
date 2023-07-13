@@ -147,8 +147,8 @@ impl ArrowFieldMetaKey {
         }
     }
 
-    // Only id,is_tag,comment are required fields, other fields should be optional
-    // to keep backward compatible
+    // Only id,is_tag,comment are required meta keys, other keys should be optional
+    // to keep backward compatible.
     fn is_required(&self) -> bool {
         matches!(self, Self::Id | Self::IsTag | Self::Comment)
     }
