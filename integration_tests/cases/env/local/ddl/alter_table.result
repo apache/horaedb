@@ -60,15 +60,18 @@ String("b"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean
 String("add_dic"),String("string"),Boolean(false),Boolean(true),Boolean(false),Boolean(true),
 
 
-INSERT INTO TABLE `05_alter_table_t0`(a, b, t, dic, add_dic) values (2, '2', 2, "d2", "d3");
+INSERT INTO TABLE `05_alter_table_t0` (a, b, t, dic, add_dic)
+    VALUES (2, '2', 2, "d11", "d22"),
+    (3, '3', 3, "d22", "d33");
 
-affected_rows: 1
+affected_rows: 2
 
 SELECT * FROM `05_alter_table_t0`;
 
 tsid,t,a,dic,b,add_dic,
 UInt64(0),Timestamp(1),Int32(1),String("d1"),String(""),String(""),
-UInt64(0),Timestamp(2),Int32(2),String("d2"),String("2"),String("d3"),
+UInt64(0),Timestamp(2),Int32(2),String("d11"),String("2"),String("d22"),
+UInt64(0),Timestamp(3),Int32(3),String("d22"),String("3"),String("d33"),
 
 
 ALTER TABLE `05_alter_table_t0` DROP COLUMN b;
@@ -90,7 +93,8 @@ SELECT * FROM `05_alter_table_t0`;
 
 tsid,t,a,dic,b,add_dic,
 UInt64(0),Timestamp(1),Int32(1),String("d1"),String(""),String(""),
-UInt64(0),Timestamp(2),Int32(2),String("d2"),String("2"),String("d3"),
+UInt64(0),Timestamp(2),Int32(2),String("d11"),String("2"),String("d22"),
+UInt64(0),Timestamp(3),Int32(3),String("d22"),String("3"),String("d33"),
 
 
 DROP TABLE `05_alter_table_t0`;

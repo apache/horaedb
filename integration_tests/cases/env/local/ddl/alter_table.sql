@@ -12,12 +12,14 @@ DESCRIBE TABLE `05_alter_table_t0`;
 INSERT INTO TABLE `05_alter_table_t0`(a, b, t, dic) values (2, '2', 2, "d2");
 SELECT * FROM `05_alter_table_t0`;
 
--- waiting for datafusion's bug fix
 ALTER TABLE `05_alter_table_t0` add COLUMN (add_dic string dictionary);
 DESCRIBE TABLE `05_alter_table_t0`;
-INSERT INTO TABLE `05_alter_table_t0`(a, b, t, dic, add_dic) values (2, '2', 2, "d2", "d3");
-SELECT * FROM `05_alter_table_t0`;
+INSERT INTO TABLE `05_alter_table_t0` (a, b, t, dic, add_dic)
+    VALUES (2, '2', 2, "d11", "d22"),
+    (3, '3', 3, "d22", "d33");
 
+
+SELECT * FROM `05_alter_table_t0`;
 
 -- doesn't support drop column
 ALTER TABLE `05_alter_table_t0` DROP COLUMN b;
