@@ -133,6 +133,7 @@ impl reject::Reject for Error {}
 /// Endpoints beginning with /debug are for internal use, and may subject to
 /// breaking changes.
 pub struct Service<Q> {
+    // In cluster mode, cluster is valid, while in stand-alone mode, cluster is None
     cluster: Option<ClusterRef>,
     proxy: Arc<Proxy<Q>>,
     engine_runtimes: Arc<EngineRuntimes>,
