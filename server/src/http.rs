@@ -120,8 +120,8 @@ pub enum Error {
     #[snafu(display("{msg}"))]
     QueryMaybeExceedTTL { msg: String },
 
-    #[snafu(display("query shards only supported in cluster mode"))]
-    NoCluster {},
+    #[snafu(display("Querying shards is only supported in cluster mode"))]
+    QueryShards {},
 }
 
 define_result!(Error);
@@ -508,7 +508,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and_then(|cluster: Option<ClusterRef>| async move {
                 let cluster = match cluster {
                     Some(cluster) => cluster,
-                    None => return Err(reject::custom(Error::NoCluster {})),
+                    None => return Err(reject::custom(Error::QueryShards {})),
                 };
                 let shard_infos = cluster.list_shards();
                 Ok(reply::json(&shard_infos))
@@ -771,8 +771,8 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::AlreadyStarted { .. }
         | Error::MissingRouter { .. }
         | Error::MissingWal { .. }
-        | Error::NoCluster { .. }
-        | Error::HandleUpdateLogLevel { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        | Error::QueryShards { .. } => StatusCode::BAD_REQUEST,
+        Error::HandleUpdateLogLevel { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         Error::QueryMaybeExceedTTL { .. } => StatusCode::OK,
     }
 }

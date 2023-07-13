@@ -301,12 +301,8 @@ impl Inner {
 
     fn list_shards(&self) -> Vec<ShardInfo> {
         let shards = self.shard_set.all_shards();
-        let mut shard_infos = Vec::with_capacity(shards.len());
-        for shard in shards {
-            let shard_info = shard.shard_info();
-            shard_infos.push(shard_info);
-        }
-        shard_infos
+
+        shards.iter().map(|shard| shard.shard_info()).collect()
     }
 }
 
