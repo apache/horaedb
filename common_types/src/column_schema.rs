@@ -125,8 +125,8 @@ pub enum ReadOp {
 struct ArrowFieldMeta {
     id: u32,
     is_tag: bool,
-    is_dictionary: bool,
     comment: String,
+    is_dictionary: bool,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -142,8 +142,8 @@ impl ArrowFieldMetaKey {
         match self {
             ArrowFieldMetaKey::Id => "field::id",
             ArrowFieldMetaKey::IsTag => "field::is_tag",
-            ArrowFieldMetaKey::IsDictionary => "field::is_dictionary",
             ArrowFieldMetaKey::Comment => "field::comment",
+            ArrowFieldMetaKey::IsDictionary => "field::is_dictionary",
         }
     }
 
@@ -624,8 +624,8 @@ mod tests {
                 ArrowFieldMeta {
                     id: 1,
                     is_tag: true,
-                    is_dictionary: false,
                     comment: "".to_string(),
+                    is_dictionary: false,
                 },
             ),
             (
@@ -638,8 +638,8 @@ mod tests {
                 ArrowFieldMeta {
                     id: 1,
                     is_tag: false,
-                    is_dictionary: true,
                     comment: "abc".to_string(),
+                    is_dictionary: true,
                 },
             ),
         ];
