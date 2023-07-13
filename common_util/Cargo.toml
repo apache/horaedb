@@ -22,6 +22,7 @@ chrono = { workspace = true }
 common_types = { workspace = true, features = ["test"] }
 crossbeam-utils = "0.8.7"
 env_logger = { workspace = true, optional = true }
+futures = { workspace = true }
 hex = "0.4.3"
 lazy_static = { workspace = true }
 libc = "0.2"
