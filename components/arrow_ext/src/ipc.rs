@@ -49,8 +49,9 @@ const ZSTD_LEVEL: i32 = 3;
 pub struct RecordBatchesEncoder {
     stream_writer: Option<StreamWriter<Vec<u8>>>,
     num_rows: usize,
-    /// Whether the writer has more than one dict fields.
-    more_than_one_dict: bool,
+    /// Whether the writer has more than one dict fields, we need to do schema
+    /// convert.
+    cached_converted_schema: Option<SchemaRef>,
     compress_opts: CompressOptions,
 }
 
@@ -110,7 +111,7 @@ impl RecordBatchesEncoder {
         Self {
             stream_writer: None,
             num_rows: 0,
-            more_than_one_dict: false,
+            cached_converted_schema: None,
             compress_opts,
         }
     }
@@ -182,15 +183,15 @@ impl RecordBatchesEncoder {
             let schema = batch.schema();
             let schema = Self::convert_schema(&schema);
             let stream_writer = StreamWriter::try_new(buffer, &schema).context(ArrowError)?;
-            self.more_than_one_dict = schema.is_owned();
+            if schema.is_owned() {
+                self.cached_converted_schema = Some(schema.into_owned());
+            }
             self.stream_writer = Some(stream_writer);
             self.stream_writer.as_mut().unwrap()
         };
 
-        if self.more_than_one_dict {
-            let schema = batch.schema();
-            let schema = Self::convert_schema(&schema);
-            let batch = RecordBatch::try_new(schema.into_owned(), batch.columns().to_vec())
+        if let Some(schema) = &self.cached_converted_schema {
+            let batch = RecordBatch::try_new(schema.clone(), batch.columns().to_vec())
                 .context(ArrowError)?;
             stream_writer.write(&batch).context(ArrowError)?;
         } else {
@@ -293,18 +294,32 @@ mod tests {
                 DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
                 false,
             ),
+            Field::new(
+                "d",
+                DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+                false,
+            ),
         ]);
 
         let a = Int32Array::from_iter_values(0..rows as i32);
         let b = StringArray::from_iter_values((0..rows).map(|i| (i + seed).to_string()));
-        let mut cb = StringDictionaryBuilder::<Int32Type>::new();
-        for i in 0..rows {
-            cb.append_value((i + seed % 10).to_string());
-        }
-        let c = cb.finish();
+        let c = {
+            let mut b = StringDictionaryBuilder::<Int32Type>::new();
+            for i in 0..rows {
+                b.append_value(((i + seed) % 10).to_string());
+            }
+            b.finish()
+        };
+        let d = {
+            let mut b = StringDictionaryBuilder::<Int32Type>::new();
+            for i in 0..rows {
+                b.append_value(((i + seed) % 20).to_string());
+            }
+            b.finish()
+        };
         RecordBatch::try_new(
             Arc::new(schema),
-            vec![Arc::new(a), Arc::new(b), Arc::new(c)],
+            vec![Arc::new(a), Arc::new(b), Arc::new(c), Arc::new(d)],
         )
         .unwrap()
     }
