@@ -8,6 +8,7 @@ use std::{
 };
 
 use analytic_engine::setup::OpenedWals;
+use cluster::ClusterRef;
 use common_types::bytes::Bytes;
 use common_util::{
     error::{BoxError, GenericError},
@@ -118,6 +119,9 @@ pub enum Error {
 
     #[snafu(display("{msg}"))]
     QueryMaybeExceedTTL { msg: String },
+
+    #[snafu(display("Querying shards is only supported in cluster mode"))]
+    QueryShards {},
 }
 
 define_result!(Error);
@@ -129,6 +133,8 @@ impl reject::Reject for Error {}
 /// Endpoints beginning with /debug are for internal use, and may subject to
 /// breaking changes.
 pub struct Service<Q> {
+    // In cluster mode, cluster is valid, while in stand-alone mode, cluster is None
+    cluster: Option<ClusterRef>,
     proxy: Arc<Proxy<Q>>,
     engine_runtimes: Arc<EngineRuntimes>,
     log_runtime: Arc<RuntimeLevel>,
@@ -198,6 +204,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .or(self.profile_cpu())
             .or(self.profile_heap())
             .or(self.server_config())
+            .or(self.shards())
             .or(self.stats())
             .with(warp::log("http_requests"))
             .with(warp::log::custom(|info| {
@@ -492,6 +499,23 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .map(move || server_config_content.clone())
     }
 
+    // GET /debug/shards
+    fn shards(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("debug" / "shards")
+            .and(warp::get())
+            .and(self.with_cluster())
+            .and_then(|cluster: Option<ClusterRef>| async move {
+                let cluster = match cluster {
+                    Some(cluster) => cluster,
+                    None => return Err(reject::custom(Error::QueryShards {})),
+                };
+                let shard_infos = cluster.list_shards();
+                Ok(reply::json(&shard_infos))
+            })
+    }
+
     // GET /debug/stats
     fn stats(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         let opened_wals = self.opened_wals.clone();
@@ -605,6 +629,13 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::any().map(move || proxy.clone())
     }
 
+    fn with_cluster(
+        &self,
+    ) -> impl Filter<Extract = (Option<ClusterRef>,), Error = Infallible> + Clone {
+        let cluster = self.cluster.clone();
+        warp::any().map(move || cluster.clone())
+    }
+
     fn with_runtime(&self) -> impl Filter<Extract = (Arc<Runtime>,), Error = Infallible> + Clone {
         let runtime = self.engine_runtimes.default_runtime.clone();
         warp::any().map(move || runtime.clone())
@@ -631,6 +662,7 @@ pub struct Builder<Q> {
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
     config_content: Option<String>,
+    cluster: Option<ClusterRef>,
     proxy: Option<Arc<Proxy<Q>>>,
     opened_wals: Option<OpenedWals>,
 }
@@ -642,6 +674,7 @@ impl<Q> Builder<Q> {
             engine_runtimes: None,
             log_runtime: None,
             config_content: None,
+            cluster: None,
             proxy: None,
             opened_wals: None,
         }
@@ -659,6 +692,11 @@ impl<Q> Builder<Q> {
 
     pub fn config_content(mut self, content: String) -> Self {
         self.config_content = Some(content);
+        self
+    }
+
+    pub fn cluster(mut self, cluster: Option<ClusterRef>) -> Self {
+        self.cluster = cluster;
         self
     }
 
@@ -680,11 +718,13 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let config_content = self.config_content.context(MissingInstance)?;
         let proxy = self.proxy.context(MissingProxy)?;
+        let cluster = self.cluster;
         let opened_wals = self.opened_wals.context(MissingWal)?;
 
         let (tx, rx) = oneshot::channel();
 
         let service = Service {
+            cluster,
             proxy,
             engine_runtimes,
             log_runtime,
@@ -732,7 +772,8 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::AlreadyStarted { .. }
         | Error::MissingRouter { .. }
         | Error::MissingWal { .. }
-        | Error::HandleUpdateLogLevel { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        | Error::QueryShards { .. } => StatusCode::BAD_REQUEST,
+        Error::HandleUpdateLogLevel { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         Error::QueryMaybeExceedTTL { .. } => StatusCode::OK,
     }
 }

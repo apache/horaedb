@@ -9,7 +9,7 @@ use common_types::{
     table::{TableId, TableName},
 };
 use common_util::{config::ReadableDuration, error::BoxError};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};
 use table_engine::partition::PartitionInfo;
 
@@ -161,7 +161,7 @@ pub struct NodeInfo {
     pub shard_infos: Vec<ShardInfo>,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
 pub struct ShardInfo {
     pub id: ShardId,
     pub role: ShardRole,
@@ -175,7 +175,7 @@ impl ShardInfo {
     }
 }
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Serialize)]
 pub enum ShardRole {
     #[default]
     Leader,

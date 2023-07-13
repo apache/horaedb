@@ -198,6 +198,10 @@ mod tests {
             unimplemented!();
         }
 
+        fn list_shards(&self) -> Vec<ShardInfo> {
+            unimplemented!();
+        }
+
         async fn route_tables(
             &self,
             req: &RouteTablesRequest,
