@@ -218,7 +218,7 @@ impl<T: TableKv> MetaManager<T> {
     pub async fn save(&self, meta: ObkvObjectMeta) -> Result<()> {
         let mut batch = T::WriteBatch::default();
         let encode_bytes = meta.encode()?;
-        batch.insert(meta.location.as_bytes(), &encode_bytes);
+        batch.insert_or_update(meta.location.as_bytes(), &encode_bytes);
         self.client
             .as_ref()
             .write(WriteContext::default(), OBJECT_STORE_META, batch)
