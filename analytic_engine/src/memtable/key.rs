@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Memtable key
 //!
@@ -13,24 +13,20 @@
 use std::mem;
 
 use bytes::BufMut;
+use codec::{memcomparable::MemComparable, Decoder, Encoder};
 use common_types::{
     bytes::{BytesMut, SafeBuf, SafeBufMut},
     row::Row,
     schema::Schema,
     SequenceNumber,
 };
-use common_util::{
-    codec::{memcomparable::MemComparable, Decoder, Encoder},
-    define_result,
-};
+use macros::define_result;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to encode key datum, err:{}", source))]
-    EncodeKeyDatum {
-        source: common_util::codec::memcomparable::Error,
-    },
+    EncodeKeyDatum { source: codec::memcomparable::Error },
 
     #[snafu(display("Failed to encode sequence, err:{}", source))]
     EncodeSequence { source: common_types::bytes::Error },

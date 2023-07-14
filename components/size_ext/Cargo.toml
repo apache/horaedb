@@ -1,0 +1,17 @@
+[package]
+name = "size_ext"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+
+[dev-dependencies]
+toml = { workspace = true }

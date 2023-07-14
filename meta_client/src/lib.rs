@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_util::{define_result, error::GenericError};
+use generic_error::GenericError;
+use macros::define_result;
 use snafu::{Backtrace, Snafu};
 use types::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, CreateTableRequest, CreateTableResponse,

@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -16,7 +16,7 @@ use common_types::{
     datum::DatumKind,
     schema::{ArrowSchemaRef, DataType, Field, Schema},
 };
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use snafu::{Backtrace, ResultExt, Snafu};
 
 use crate::sst::writer::{EncodeRecordBatch, Result};

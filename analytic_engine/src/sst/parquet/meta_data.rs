@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 // MetaData for SST based on parquet.
 
@@ -12,7 +12,7 @@ use common_types::{
     time::TimeRange,
     SequenceNumber,
 };
-use common_util::define_result;
+use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use xorfilter::xor8::{Xor8, Xor8Builder};
 
@@ -369,11 +369,9 @@ impl From<ParquetMetaData> for MetaData {
 
 impl fmt::Debug for ParquetMetaData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use common_util::byte::encode;
-
         f.debug_struct("ParquetMetaData")
-            .field("min_key", &encode(&self.min_key))
-            .field("max_key", &encode(&self.max_key))
+            .field("min_key", &hex::encode(&self.min_key))
+            .field("max_key", &hex::encode(&self.max_key))
             .field("time_range", &self.time_range)
             .field("max_sequence", &self.max_sequence)
             .field("schema", &self.schema)

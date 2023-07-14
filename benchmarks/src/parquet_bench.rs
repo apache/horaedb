@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Parquet bench.
 
@@ -6,13 +6,13 @@ use std::{io::Cursor, sync::Arc, time::Instant};
 
 use analytic_engine::sst::meta_data::cache::MetaCacheRef;
 use common_types::schema::Schema;
-use common_util::runtime::Runtime;
 use futures::StreamExt;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
 use parquet::arrow::{
     arrow_reader::ParquetRecordBatchReaderBuilder, ParquetRecordBatchStreamBuilder,
 };
+use runtime::Runtime;
 use table_engine::predicate::PredicateRef;
 
 use crate::{config::SstBenchConfig, util};

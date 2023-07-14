@@ -12,14 +12,15 @@ use std::{collections::BTreeMap, fmt::Display, ops::Range, sync::Arc};
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
 use common_types::hash::SeaHasherBuilder;
-use common_util::{partitioned_lock::PartitionedMutexAsync, time::current_as_rfc3339};
 use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
 use log::{debug, error, info};
 use lru::LruCache;
+use partitioned_lock::PartitionedMutexAsync;
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use time_ext;
 use tokio::{
     fs::{File, OpenOptions},
     io::{AsyncReadExt, AsyncWrite, AsyncWriteExt},
@@ -332,7 +333,7 @@ impl DiskCacheStore {
         if metadata.len() == 0 {
             let manifest = Manifest {
                 page_size,
-                create_at: current_as_rfc3339(),
+                create_at: time_ext::current_as_rfc3339(),
                 version: CURRENT_VERSION,
             };
 

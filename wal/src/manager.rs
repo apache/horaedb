@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! WalManager abstraction
 
@@ -10,14 +10,16 @@ use common_types::{
     table::{TableId, DEFAULT_SHARD_ID},
     MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER,
 };
-use common_util::{error::BoxError, runtime::Runtime};
 pub use error::*;
+use generic_error::BoxError;
+use runtime::Runtime;
 use snafu::ResultExt;
 
 use crate::log_batch::{LogEntry, LogWriteBatch, PayloadDecoder};
 
 pub mod error {
-    use common_util::{define_result, error::GenericError};
+    use generic_error::GenericError;
+    use macros::define_result;
     use snafu::{Backtrace, Snafu};
 
     use crate::manager::{RegionId, WalLocation};
@@ -126,7 +128,7 @@ pub mod error {
         },
 
         #[snafu(display("Failed to execute in runtime, err:{}", source))]
-        RuntimeExec { source: common_util::runtime::Error },
+        RuntimeExec { source: runtime::Error },
 
         #[snafu(display("Encountered unknown error, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
         Unknown { msg: String, backtrace: Backtrace },
@@ -461,7 +463,7 @@ mod tests {
     use std::{collections::VecDeque, sync::Arc};
 
     use async_trait::async_trait;
-    use common_util::runtime::{self, Runtime};
+    use runtime::{self, Runtime};
 
     use super::*;
     use crate::{log_batch::LogEntry, tests::util::TestPayloadDecoder};

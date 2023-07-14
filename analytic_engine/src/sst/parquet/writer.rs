@@ -1,12 +1,12 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Sst writer implementation based on parquet.
 
 use async_trait::async_trait;
 use common_types::{record_batch::RecordBatchWithKey, request_id::RequestId};
-use common_util::error::BoxError;
 use datafusion::parquet::basic::Compression;
 use futures::StreamExt;
+use generic_error::BoxError;
 use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use snafu::ResultExt;
@@ -336,14 +336,12 @@ mod tests {
         tests::{build_row, build_row_for_dictionary, build_schema, build_schema_with_dictionary},
         time::{TimeRange, Timestamp},
     };
-    use common_util::{
-        runtime::{self, Runtime},
-        tests::init_log_for_test,
-    };
     use futures::stream;
     use object_store::LocalFileSystem;
+    use runtime::{self, Runtime};
     use table_engine::predicate::Predicate;
     use tempfile::tempdir;
+    use test_util::tests::init_log_for_test;
 
     use super::*;
     use crate::{

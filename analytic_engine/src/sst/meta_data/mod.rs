@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 pub mod cache;
 
@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use ceresdbproto::sst as sst_pb;
 use common_types::{schema::Schema, time::TimeRange, SequenceNumber};
-use common_util::define_result;
+use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 

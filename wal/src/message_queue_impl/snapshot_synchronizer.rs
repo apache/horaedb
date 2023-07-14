@@ -1,15 +1,13 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Snapshot synchronizer
 
 use std::sync::Arc;
 
 use common_types::bytes::BytesMut;
-use common_util::{
-    define_result,
-    error::{BoxError, GenericError},
-};
+use generic_error::{BoxError, GenericError};
 use log::debug;
+use macros::define_result;
 use message_queue::MessageQueue;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 

@@ -1,16 +1,17 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Aggregate functions.
 
 use std::{fmt, ops::Deref};
 
 use arrow::array::ArrayRef as DfArrayRef;
-use common_util::{define_result, error::GenericError};
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     physical_plan::Accumulator as DfAccumulator,
     scalar::ScalarValue as DfScalarValue,
 };
+use generic_error::GenericError;
+use macros::define_result;
 use snafu::Snafu;
 
 use crate::functions::{ScalarValue, ScalarValueRef};

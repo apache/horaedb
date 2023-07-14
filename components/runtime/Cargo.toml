@@ -1,0 +1,22 @@
+[package]
+name = "runtime"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies]
+lazy_static = { workspace = true }
+macros = { workspace = true }
+pin-project-lite = { workspace = true }
+prometheus = { workspace = true }
+snafu = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4.2"

@@ -5,10 +5,10 @@
 use std::{cell::OnceCell, sync::Arc};
 
 use arrow::datatypes::SchemaRef as ArrowSchemaRef;
-use common_util::error::BoxError;
 use datafusion::{
     error::DataFusionError, logical_expr::TableSource, sql::planner::ContextProvider,
 };
+use generic_error::BoxError;
 use influxql_logical_planner::plan::{
     ceresdb_schema_to_influxdb, InfluxQLToLogicalPlan, SchemaProvider,
 };

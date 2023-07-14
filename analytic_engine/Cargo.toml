@@ -23,14 +23,20 @@ async-trait = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
 ceresdbproto = { workspace = true }
+codec = { workspace = true }
 common_types = { workspace = true }
-common_util = { workspace = true }
 datafusion = { workspace = true }
+future_cancel = { workspace = true }
 futures = { workspace = true }
+generic_error = { workspace = true }
+hex = { workspace = true }
+id_allocator = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 lru = { workspace = true }
+macros = { workspace = true }
 message_queue = { workspace = true }
+metric_ext = { workspace = true }
 object_store = { workspace = true }
 parquet = { workspace = true }
 parquet_ext = { workspace = true }
@@ -38,13 +44,16 @@ prometheus = { workspace = true }
 prost = { workspace = true }
 remote_engine_client = { workspace = true }
 router = { workspace = true }
+runtime = { workspace = true }
 serde = { workspace = true }
+size_ext = { workspace = true }
 skiplist = { path = "../components/skiplist" }
 smallvec = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
 table_kv = { workspace = true }
 tempfile = { workspace = true, optional = true }
+time_ext = { workspace = true }
 tokio = { workspace = true }
 trace_metric = { workspace = true }
 wal = { workspace = true }
@@ -52,9 +61,9 @@ xorfilter-rs = { workspace = true }
 
 [dev-dependencies]
 common_types = { workspace = true, features = ["test"] }
-common_util = { workspace = true, features = ["test"] }
 env_logger = { workspace = true }
 pin-project-lite = { workspace = true }
 rand = { workspace = true }
 tempfile = { workspace = true }
+test_util = { workspace = true }
 wal = { workspace = true, features = ["test"] }

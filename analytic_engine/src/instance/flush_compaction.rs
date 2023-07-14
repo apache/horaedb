@@ -12,20 +12,17 @@ use common_types::{
     time::TimeRange,
     SequenceNumber,
 };
-use common_util::{
-    config::ReadableDuration,
-    define_result,
-    error::{BoxError, GenericError},
-    runtime::{Runtime, RuntimeRef},
-    time,
-};
 use futures::{
     channel::{mpsc, mpsc::channel},
     stream, SinkExt, TryStreamExt,
 };
+use generic_error::{BoxError, GenericError};
 use log::{debug, error, info};
+use macros::define_result;
+use runtime::{Runtime, RuntimeRef};
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::predicate::Predicate;
+use time_ext::{self, ReadableDuration};
 use tokio::{sync::oneshot, time::Instant};
 use wal::manager::WalLocation;
 
@@ -126,7 +123,7 @@ pub enum Error {
     ChannelSend { source: mpsc::SendError },
 
     #[snafu(display("Runtime join error, source:{}", source))]
-    RuntimeJoin { source: common_util::runtime::Error },
+    RuntimeJoin { source: runtime::Error },
 
     #[snafu(display("Other failure, msg:{}.\nBacktrace:\n{:?}", msg, backtrace))]
     Other { msg: String, backtrace: Backtrace },
@@ -278,7 +275,7 @@ impl FlushTask {
             })?;
 
         self.table_data
-            .set_last_flush_time(time::current_time_millis());
+            .set_last_flush_time(time_ext::current_time_millis());
 
         info!(
             "Instance flush memtables done, table:{}, table_id:{}, request_id:{}, cost:{}ms",

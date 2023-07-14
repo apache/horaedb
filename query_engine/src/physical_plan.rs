@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Physical execution plan
 
@@ -17,6 +17,7 @@ use datafusion::{
     },
     prelude::SessionContext,
 };
+use macros::define_result;
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::stream::{FromDfStream, SendableRecordBatchStream};
 

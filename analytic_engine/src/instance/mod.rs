@@ -21,13 +21,11 @@ pub(crate) mod write;
 use std::sync::Arc;
 
 use common_types::table::TableId;
-use common_util::{
-    define_result,
-    error::{BoxError, GenericError},
-    runtime::Runtime,
-};
+use generic_error::{BoxError, GenericError};
 use log::{error, info};
+use macros::define_result;
 use mem_collector::MemUsageCollector;
+use runtime::Runtime;
 use snafu::{ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
 use tokio::sync::oneshot::{self, error::RecvError};

@@ -10,7 +10,7 @@ use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::table::ShardId;
-use common_util::error::GenericResult;
+use generic_error::GenericResult;
 use table_engine::table::TableId;
 
 use crate::{manifest::meta_edit::MetaEditRequest, space::SpaceId};

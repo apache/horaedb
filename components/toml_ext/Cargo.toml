@@ -1,0 +1,20 @@
+[package]
+name = "toml_ext"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies]
+macros = { workspace = true }
+serde = { workspace = true }
+snafu = { workspace = true }
+toml = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

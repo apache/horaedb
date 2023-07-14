@@ -6,7 +6,7 @@ use std::{fmt, str, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::SequenceNumber;
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use log::info;
 use snafu::ResultExt;
 use table_kv::TableKv;

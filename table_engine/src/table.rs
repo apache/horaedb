@@ -22,7 +22,8 @@ use common_types::{
     row::{Row, RowGroup},
     schema::{RecordSchemaWithKey, Schema, Version},
 };
-use common_util::error::{BoxError, GenericError};
+use generic_error::{BoxError, GenericError};
+use macros::define_result;
 use serde::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use trace_metric::MetricsCollector;

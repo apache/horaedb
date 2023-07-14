@@ -6,7 +6,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::{column_schema::ColumnSchema, table::ShardId};
-use common_util::error::GenericError;
+use generic_error::GenericError;
+use macros::define_result;
 use snafu::{Backtrace, Snafu};
 use table_engine::{
     engine::{self, TableEngineRef, TableState},

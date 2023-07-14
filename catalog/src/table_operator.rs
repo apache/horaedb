@@ -2,10 +2,11 @@
 
 use std::time::Instant;
 
-use common_util::{error::BoxError, time::InstantExt};
+use generic_error::BoxError;
 use log::{error, info, warn};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{engine, table::TableRef};
+use time_ext::InstantExt;
 
 use crate::{
     manager::ManagerRef,

@@ -7,10 +7,11 @@ use ceresdbproto::{
     common::ResponseHeader,
     meta_service::{self, ceresmeta_rpc_service_client::CeresmetaRpcServiceClient},
 };
-use common_util::{config::ReadableDuration, error::BoxError};
+use generic_error::BoxError;
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};
+use time_ext::ReadableDuration;
 
 use crate::{
     types::{

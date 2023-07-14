@@ -2,16 +2,14 @@
 
 //! Common Encoding for Wal logs
 
+use codec::{Decoder, Encoder};
 use common_types::{
     bytes::{self, Buf, BufMut, BytesMut, SafeBuf, SafeBufMut},
     table::TableId,
     SequenceNumber,
 };
-use common_util::{
-    codec::{Decoder, Encoder},
-    define_result,
-    error::{BoxError, GenericError},
-};
+use generic_error::{BoxError, GenericError};
+use macros::define_result;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{

@@ -3,7 +3,8 @@
 //! Error definitions for meta event service.
 
 use ceresdbproto::common::ResponseHeader;
-use common_util::{define_result, error::GenericError};
+use generic_error::GenericError;
+use macros::define_result;
 use snafu::Snafu;
 
 use crate::error_util;

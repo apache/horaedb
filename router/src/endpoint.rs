@@ -1,11 +1,11 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Endpoint definition
 
 use std::str::FromStr;
 
 use ceresdbproto::storage;
-use common_util::error::GenericError;
+use generic_error::GenericError;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash, Serialize)]

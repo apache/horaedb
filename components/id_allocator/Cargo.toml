@@ -1,0 +1,16 @@
+[package]
+name = "id_allocator"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies]
+# In alphabetical order
+generic_error = { workspace = true }
+tokio = { workspace = true }

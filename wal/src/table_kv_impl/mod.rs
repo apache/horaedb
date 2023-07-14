@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use common_util::runtime::Runtime;
+use runtime::Runtime;
 
 pub mod encoding;
 pub mod model;

@@ -2,9 +2,6 @@
 
 //! Common traits and types about catalog (schema)
 
-#[macro_use]
-extern crate common_util;
-
 pub mod consts;
 pub mod manager;
 pub mod schema;
@@ -13,7 +10,8 @@ pub mod table_operator;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_util::error::GenericError;
+use generic_error::GenericError;
+use macros::define_result;
 use snafu::{Backtrace, Snafu};
 
 use crate::schema::{NameRef, SchemaRef};

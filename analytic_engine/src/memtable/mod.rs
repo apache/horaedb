@@ -16,7 +16,8 @@ use common_types::{
     schema::{IndexInWriterSchema, Schema},
     SequenceNumber,
 };
-use common_util::{define_result, error::GenericError};
+use generic_error::GenericError;
+use macros::define_result;
 use snafu::{Backtrace, Snafu};
 use trace_metric::MetricsCollector;
 
@@ -34,9 +35,7 @@ pub enum Error {
     DecodeInternalKey { source: crate::memtable::key::Error },
 
     #[snafu(display("Failed to decode row, err:{}", source))]
-    DecodeRow {
-        source: common_util::codec::row::Error,
-    },
+    DecodeRow { source: codec::row::Error },
 
     #[snafu(display("Failed to append row to batch builder, err:{}", source))]
     AppendRow {

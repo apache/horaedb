@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! time_bucket UDF.
 
@@ -10,7 +10,8 @@ use common_types::{
     datum::{Datum, DatumKind},
     time::Timestamp,
 };
-use common_util::{define_result, error::BoxError};
+use generic_error::BoxError;
+use macros::define_result;
 use snafu::{ensure, OptionExt, ResultExt, Snafu};
 
 use crate::{

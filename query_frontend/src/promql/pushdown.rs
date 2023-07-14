@@ -3,6 +3,7 @@
 use std::convert::TryFrom;
 
 use common_types::time::{TimeRange, Timestamp};
+use macros::define_result;
 use snafu::Snafu;
 
 #[derive(Debug, Snafu)]

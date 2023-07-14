@@ -75,6 +75,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloc_tracker"
+version = "1.2.5-alpha"
+
+[[package]]
 name = "analytic_engine"
 version = "1.2.5-alpha"
 dependencies = [
@@ -86,15 +90,21 @@ dependencies = [
  "base64 0.13.1",
  "bytes",
  "ceresdbproto",
+ "codec",
  "common_types",
- "common_util",
  "datafusion",
  "env_logger",
+ "future_cancel",
  "futures 0.3.28",
+ "generic_error",
+ "hex",
+ "id_allocator",
  "lazy_static",
  "log",
  "lru",
+ "macros",
  "message_queue",
+ "metric_ext",
  "object_store 1.2.5-alpha",
  "parquet",
  "parquet_ext",
@@ -104,13 +114,17 @@ dependencies = [
  "rand 0.7.3",
  "remote_engine_client",
  "router",
+ "runtime",
  "serde",
+ "size_ext",
  "skiplist",
  "smallvec",
  "snafu 0.6.10",
  "table_engine",
  "table_kv",
  "tempfile",
+ "test_util",
+ "time_ext",
  "tokio",
  "trace_metric",
  "wal",
@@ -609,21 +623,25 @@ dependencies = [
  "base64 0.13.1",
  "clap 3.2.23",
  "common_types",
- "common_util",
  "criterion",
  "env_logger",
  "futures 0.3.28",
  "log",
+ "macros",
  "object_store 1.2.5-alpha",
  "parquet",
  "parquet_ext",
  "pprof 0.10.1",
  "rand 0.7.3",
+ "runtime",
  "serde",
+ "size_ext",
  "snafu 0.6.10",
  "table_engine",
  "table_kv",
+ "time_ext",
  "tokio",
+ "toml_ext",
  "trace_metric",
  "wal",
  "zstd 0.12.3+zstd.1.5.2",
@@ -988,10 +1006,12 @@ version = "1.2.5-alpha"
 dependencies = [
  "async-trait",
  "common_types",
- "common_util",
+ "generic_error",
  "log",
+ "macros",
  "snafu 0.6.10",
  "table_engine",
+ "time_ext",
 ]
 
 [[package]]
@@ -1003,8 +1023,9 @@ dependencies = [
  "catalog",
  "cluster",
  "common_types",
- "common_util",
+ "generic_error",
  "log",
+ "macros",
  "meta_client",
  "snafu 0.6.10",
  "system_catalog",
@@ -1030,7 +1051,6 @@ dependencies = [
  "catalog_impls",
  "clap 3.2.23",
  "cluster",
- "common_util",
  "df_operator",
  "etcd-client",
  "interpreters",
@@ -1038,14 +1058,17 @@ dependencies = [
  "logger",
  "meta_client",
  "moka",
+ "panic_ext",
  "proxy",
  "query_engine",
  "router",
+ "runtime",
  "serde",
  "server",
  "signal-hook",
  "table_engine",
  "toml 0.7.3",
+ "toml_ext",
  "tracing_util",
  "vergen",
 ]
@@ -1242,15 +1265,18 @@ dependencies = [
  "catalog",
  "ceresdbproto",
  "common_types",
- "common_util",
  "etcd-client",
+ "generic_error",
  "log",
+ "macros",
  "meta_client",
  "prost",
+ "runtime",
  "serde",
  "serde_json",
  "snafu 0.6.10",
  "table_engine",
+ "time_ext",
  "tokio",
  "wal",
 ]
@@ -1262,6 +1288,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a31c789563b815f77f4250caee12365734369f942439b7defd71e18a48197130"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "codec"
+version = "1.2.5-alpha"
+dependencies = [
+ "common_types",
+ "macros",
+ "snafu 0.6.10",
 ]
 
 [[package]]
@@ -1296,8 +1331,8 @@ dependencies = [
  "bytes_ext",
  "ceresdbproto",
  "chrono",
- "common_util",
  "datafusion",
+ "macros",
  "murmur3",
  "paste 1.0.12",
  "prost",
@@ -1306,39 +1341,6 @@ dependencies = [
  "serde_json",
  "snafu 0.6.10",
  "sqlparser",
-]
-
-[[package]]
-name = "common_util"
-version = "1.2.5-alpha"
-dependencies = [
- "arrow",
- "backtrace",
- "ceresdbproto",
- "chrono",
- "common_types",
- "crossbeam-utils 0.8.15",
- "env_logger",
- "futures 0.3.28",
- "gag",
- "hex",
- "lazy_static",
- "libc",
- "log",
- "logger",
- "nix 0.22.3",
- "pin-project-lite",
- "prometheus 0.12.0",
- "serde",
- "serde_json",
- "slog",
- "slog-global",
- "snafu 0.6.10",
- "tempfile",
- "time 0.3.20",
- "tokio",
- "tokio-test",
- "toml 0.7.3",
 ]
 
 [[package]]
@@ -2001,9 +2003,10 @@ dependencies = [
  "bincode",
  "chrono",
  "common_types",
- "common_util",
  "datafusion",
+ "generic_error",
  "hyperloglog",
+ "macros",
  "smallvec",
  "snafu 0.6.10",
 ]
@@ -2327,6 +2330,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6d5a32815ae3f33302d95fdcb2ce17862f8c65363dcfd29360480ba1001fc9c"
 
 [[package]]
+name = "future_cancel"
+version = "1.2.5-alpha"
+dependencies = [
+ "futures 0.3.28",
+ "runtime",
+ "tokio",
+]
+
+[[package]]
 name = "futures"
 version = "0.1.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2494,6 +2506,10 @@ dependencies = [
  "typenum",
  "version_check",
 ]
+
+[[package]]
+name = "generic_error"
+version = "1.2.5-alpha"
 
 [[package]]
 name = "getrandom"
@@ -2799,6 +2815,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "id_allocator"
+version = "1.2.5-alpha"
+dependencies = [
+ "generic_error",
+ "tokio",
+]
+
+[[package]]
 name = "ident_case"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2891,18 +2915,21 @@ dependencies = [
  "async-trait",
  "catalog",
  "catalog_impls",
+ "codec",
  "common_types",
- "common_util",
  "datafusion",
  "datafusion-proto",
  "df_operator",
+ "generic_error",
  "log",
+ "macros",
  "meta_client",
  "query_engine",
  "query_frontend",
  "regex",
  "snafu 0.6.10",
  "table_engine",
+ "test_util",
  "tokio",
 ]
 
@@ -3336,6 +3363,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "macros"
+version = "1.2.5-alpha"
+
+[[package]]
 name = "matchers"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3413,12 +3444,13 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
- "common_util",
  "futures 0.3.28",
  "log",
+ "macros",
  "rskafka",
  "serde",
  "snafu 0.6.10",
+ "time_ext",
  "tokio",
  "uuid 1.3.3",
 ]
@@ -3430,18 +3462,30 @@ dependencies = [
  "async-trait",
  "ceresdbproto",
  "common_types",
- "common_util",
  "futures 0.3.28",
+ "generic_error",
  "log",
+ "macros",
  "prost",
  "reqwest",
  "serde",
  "serde_json",
  "snafu 0.6.10",
  "table_engine",
+ "time_ext",
  "tokio",
  "tonic 0.8.3",
  "url",
+]
+
+[[package]]
+name = "metric_ext"
+version = "1.2.5-alpha"
+dependencies = [
+ "crossbeam-utils 0.8.15",
+ "serde",
+ "serde_json",
+ "time_ext",
 ]
 
 [[package]]
@@ -3921,22 +3965,27 @@ dependencies = [
  "chrono",
  "clru",
  "common_types",
- "common_util",
  "crc",
  "futures 0.3.28",
+ "generic_error",
  "lazy_static",
  "log",
  "lru",
+ "macros",
  "object_store 0.5.6",
+ "partitioned_lock",
  "prometheus 0.12.0",
  "prometheus-static-metric",
  "prost",
  "rand 0.7.3",
+ "runtime",
  "serde",
  "serde_json",
+ "size_ext",
  "snafu 0.6.10",
  "table_kv",
  "tempfile",
+ "time_ext",
  "tokio",
  "twox-hash",
  "uuid 1.3.3",
@@ -4043,6 +4092,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
+name = "panic_ext"
+version = "1.2.5-alpha"
+dependencies = [
+ "backtrace",
+ "gag",
+ "libc",
+ "log",
+ "logger",
+ "nix 0.22.3",
+ "slog",
+ "slog-global",
+]
+
+[[package]]
 name = "parking"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4138,9 +4201,9 @@ dependencies = [
  "arrow_ext",
  "async-trait",
  "bytes",
- "common_util",
  "datafusion",
  "futures 0.3.28",
+ "generic_error",
  "log",
  "object_store 1.2.5-alpha",
  "parquet",
@@ -4162,12 +4225,21 @@ version = "1.2.5-alpha"
 dependencies = [
  "async-trait",
  "common_types",
- "common_util",
  "futures 0.3.28",
+ "generic_error",
  "lazy_static",
+ "macros",
  "prometheus 0.12.0",
  "snafu 0.6.10",
  "table_engine",
+]
+
+[[package]]
+name = "partitioned_lock"
+version = "1.2.5-alpha"
+dependencies = [
+ "common_types",
+ "tokio",
 ]
 
 [[package]]
@@ -4719,10 +4791,10 @@ dependencies = [
  "clru",
  "cluster",
  "common_types",
- "common_util",
  "datafusion",
  "df_operator",
  "futures 0.3.28",
+ "generic_error",
  "http",
  "influxdb-line-protocol",
  "interpreters",
@@ -4731,7 +4803,7 @@ dependencies = [
  "json_pretty",
  "lazy_static",
  "log",
- "logger",
+ "macros",
  "meta_client",
  "paste 1.0.12",
  "prom-remote-api",
@@ -4741,6 +4813,7 @@ dependencies = [
  "query_engine",
  "query_frontend",
  "router",
+ "runtime",
  "serde",
  "serde_json",
  "snafu 0.6.10",
@@ -4748,6 +4821,8 @@ dependencies = [
  "sqlparser",
  "system_catalog",
  "table_engine",
+ "time_ext",
+ "timed_task",
  "tokio",
  "tokio-stream",
  "tonic 0.8.3",
@@ -4810,16 +4885,18 @@ dependencies = [
  "async-trait",
  "chrono",
  "common_types",
- "common_util",
  "datafusion",
  "df_operator",
  "futures 0.3.28",
+ "generic_error",
  "iox_query",
  "log",
+ "macros",
  "query_frontend",
  "serde",
  "snafu 0.6.10",
  "table_engine",
+ "time_ext",
  "tokio",
 ]
 
@@ -4832,17 +4909,19 @@ dependencies = [
  "catalog",
  "ceresdbproto",
  "cluster",
+ "codec",
  "common_types",
- "common_util",
  "datafusion",
  "datafusion-proto",
  "df_operator",
+ "generic_error",
  "hashbrown 0.12.3",
  "influxdb_influxql_parser",
  "iox_query_influxql",
  "itertools",
  "lazy_static",
  "log",
+ "macros",
  "paste 1.0.12",
  "prom-remote-api",
  "regex",
@@ -5140,13 +5219,16 @@ dependencies = [
  "async-trait",
  "ceresdbproto",
  "common_types",
- "common_util",
  "futures 0.3.28",
+ "generic_error",
  "log",
+ "macros",
  "router",
+ "runtime",
  "serde",
  "snafu 0.6.10",
  "table_engine",
+ "time_ext",
  "tokio",
  "tonic 0.8.3",
 ]
@@ -5267,13 +5349,15 @@ dependencies = [
  "ceresdbproto",
  "cluster",
  "common_types",
- "common_util",
+ "generic_error",
  "log",
+ "macros",
  "meta_client",
  "moka",
  "serde",
  "snafu 0.6.10",
  "table_engine",
+ "time_ext",
  "tokio",
  "twox-hash",
 ]
@@ -5298,6 +5382,19 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "runtime"
+version = "1.2.5-alpha"
+dependencies = [
+ "lazy_static",
+ "macros",
+ "pin-project-lite",
+ "prometheus 0.12.0",
+ "snafu 0.6.10",
+ "tokio",
+ "tokio-test",
 ]
 
 [[package]]
@@ -5623,16 +5720,17 @@ dependencies = [
  "clru",
  "cluster",
  "common_types",
- "common_util",
  "datafusion",
  "df_operator",
  "futures 0.3.28",
+ "generic_error",
  "http",
  "influxdb-line-protocol",
  "interpreters",
  "lazy_static",
  "log",
  "logger",
+ "macros",
  "meta_client",
  "opensrv-mysql",
  "partition_table_engine",
@@ -5647,12 +5745,15 @@ dependencies = [
  "query_frontend",
  "remote_engine_client",
  "router",
+ "runtime",
  "serde",
  "serde_json",
+ "size_ext",
  "snafu 0.6.10",
  "spin 0.9.8",
  "sqlparser",
  "table_engine",
+ "time_ext",
  "tokio",
  "tokio-stream",
  "tonic 0.8.3",
@@ -5774,6 +5875,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7bd3e3206899af3f8b12af284fafc038cc1dc2b41d1b89dd17297221c5d225de"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "size_ext"
+version = "1.2.5-alpha"
+dependencies = [
+ "serde",
+ "toml 0.7.3",
 ]
 
 [[package]]
@@ -6159,10 +6268,12 @@ dependencies = [
  "async-trait",
  "catalog",
  "ceresdbproto",
+ "codec",
  "common_types",
- "common_util",
  "futures 0.3.28",
+ "generic_error",
  "log",
+ "macros",
  "prost",
  "snafu 0.6.10",
  "table_engine",
@@ -6179,15 +6290,16 @@ dependencies = [
  "async-trait",
  "ceresdbproto",
  "common_types",
- "common_util",
  "datafusion",
  "datafusion-proto",
  "df_operator",
- "env_logger",
  "futures 0.3.28",
+ "generic_error",
  "itertools",
  "log",
+ "macros",
  "prost",
+ "runtime",
  "serde",
  "smallvec",
  "snafu 0.6.10",
@@ -6199,12 +6311,13 @@ dependencies = [
 name = "table_kv"
 version = "1.2.5-alpha"
 dependencies = [
- "common_util",
  "log",
+ "macros",
  "obkv-table-client-rs",
  "rand 0.7.3",
  "serde",
  "snafu 0.6.10",
+ "time_ext",
 ]
 
 [[package]]
@@ -6269,6 +6382,28 @@ dependencies = [
  "tempfile",
  "tracing-log",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "test_util"
+version = "1.2.5-alpha"
+dependencies = [
+ "arrow",
+ "backtrace",
+ "ceresdbproto",
+ "chrono",
+ "common_types",
+ "env_logger",
+ "futures 0.3.28",
+ "lazy_static",
+ "libc",
+ "log",
+ "pin-project-lite",
+ "serde",
+ "serde_json",
+ "snafu 0.6.10",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -6364,6 +6499,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd80a657e71da814b8e5d60d3374fc6d35045062245d80224748ae522dd76f36"
 dependencies = [
  "time-core",
+]
+
+[[package]]
+name = "time_ext"
+version = "1.2.5-alpha"
+dependencies = [
+ "ceresdbproto",
+ "chrono",
+ "common_types",
+ "macros",
+ "serde",
+ "serde_json",
+ "snafu 0.6.10",
+ "toml 0.7.3",
+]
+
+[[package]]
+name = "timed_task"
+version = "1.2.5-alpha"
+dependencies = [
+ "log",
+ "runtime",
+ "tokio",
 ]
 
 [[package]]
@@ -6546,6 +6704,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "toml_ext"
+version = "1.2.5-alpha"
+dependencies = [
+ "macros",
+ "serde",
+ "snafu 0.6.10",
+ "tempfile",
+ "toml 0.7.3",
+]
+
+[[package]]
 name = "tonic"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6626,14 +6795,14 @@ dependencies = [
  "anyhow",
  "clap 3.2.23",
  "common_types",
- "common_util",
- "env_logger",
  "futures 0.3.28",
  "num_cpus",
  "object_store 1.2.5-alpha",
  "parquet",
  "parquet_ext",
+ "runtime",
  "table_engine",
+ "time_ext",
  "tokio",
 ]
 
@@ -6993,21 +7162,26 @@ dependencies = [
  "async-trait",
  "ceresdbproto",
  "chrono",
+ "codec",
  "common_types",
- "common_util",
- "env_logger",
  "futures 0.3.28",
+ "generic_error",
  "log",
+ "macros",
  "message_queue",
  "prost",
  "rand 0.8.5",
  "rocksdb",
+ "runtime",
  "serde",
  "serde_json",
+ "size_ext",
  "smallvec",
  "snafu 0.6.10",
  "table_kv",
  "tempfile",
+ "time_ext",
+ "timed_task",
  "tokio",
  "uuid 1.3.3",
 ]

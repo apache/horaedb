@@ -15,12 +15,15 @@ arrow_ext = { workspace = true }
 async-trait = { workspace = true }
 ceresdbproto = { workspace = true }
 common_types = { workspace = true }
-common_util = { workspace = true }
 futures = { workspace = true }
+generic_error = { workspace = true }
 log = { workspace = true }
+macros = { workspace = true }
 router = { workspace = true }
+runtime = { workspace = true }
 serde = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
+time_ext = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }

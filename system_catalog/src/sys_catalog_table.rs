@@ -7,6 +7,7 @@ use std::{collections::HashMap, mem};
 use async_trait::async_trait;
 use catalog::consts;
 use ceresdbproto::sys_catalog::{CatalogEntry, SchemaEntry, TableEntry};
+use codec::{memcomparable::MemComparable, Encoder};
 use common_types::{
     bytes::{BufMut, Bytes, BytesMut, SafeBuf, SafeBufMut},
     column_schema,
@@ -19,12 +20,9 @@ use common_types::{
     table::DEFAULT_SHARD_ID,
     time::Timestamp,
 };
-use common_util::{
-    codec::{memcomparable::MemComparable, Encoder},
-    define_result,
-};
 use futures::TryStreamExt;
 use log::{debug, info, warn};
+use macros::define_result;
 use prost::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{
@@ -112,9 +110,7 @@ pub enum Error {
     EncodeKeyHeader { source: common_types::bytes::Error },
 
     #[snafu(display("Failed to encode entry body, err:{}", source))]
-    EncodeKeyBody {
-        source: common_util::codec::memcomparable::Error,
-    },
+    EncodeKeyBody { source: codec::memcomparable::Error },
 
     #[snafu(display("Failed to encode table key type, err:{}", source))]
     EncodeTableKeyType { source: common_types::bytes::Error },

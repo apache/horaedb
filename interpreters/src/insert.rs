@@ -10,6 +10,7 @@ use std::{
 
 use arrow::{array::ArrayRef, error::ArrowError, record_batch::RecordBatch};
 use async_trait::async_trait;
+use codec::{compact::MemCompactEncoder, Encoder};
 use common_types::{
     column::{ColumnBlock, ColumnBlockBuilder},
     column_schema::ColumnId,
@@ -17,7 +18,6 @@ use common_types::{
     hash::hash64,
     row::RowGroup,
 };
-use common_util::codec::{compact::MemCompactEncoder, Encoder};
 use datafusion::{
     common::ToDFSchema,
     error::DataFusionError,
@@ -28,6 +28,7 @@ use datafusion::{
     },
 };
 use df_operator::visitor::find_columns_by_expr;
+use macros::define_result;
 use query_frontend::plan::InsertPlan;
 use snafu::{OptionExt, ResultExt, Snafu};
 use table_engine::table::{TableRef, WriteRequest};
@@ -64,9 +65,7 @@ pub enum Error {
     WriteTable { source: table_engine::table::Error },
 
     #[snafu(display("Failed to encode tsid, err:{}", source))]
-    EncodeTsid {
-        source: common_util::codec::compact::Error,
-    },
+    EncodeTsid { source: codec::compact::Error },
 
     #[snafu(display("Failed to convert arrow array to column block, err:{}", source))]
     ConvertColumnBlock { source: common_types::column::Error },

@@ -5,14 +5,12 @@
 use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 
 use common_types::SequenceNumber;
-use common_util::{
-    define_result,
-    runtime::Runtime,
-    timed_task::{TaskHandle, TimedTask},
-};
 use log::{debug, error, info};
+use macros::define_result;
 use message_queue::{ConsumeIterator, MessageQueue};
+use runtime::Runtime;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
+use timed_task::{TaskHandle, TimedTask};
 use tokio::sync::RwLock;
 
 use crate::{
@@ -108,7 +106,7 @@ pub enum Error {
     #[snafu(display("Failed to close namespace, namespace:{namespace}, err:{source}"))]
     Close {
         namespace: String,
-        source: common_util::runtime::Error,
+        source: runtime::Error,
     },
 }
 

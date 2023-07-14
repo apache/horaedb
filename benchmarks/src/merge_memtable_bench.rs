@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Merge memtable bench.
 
@@ -31,9 +31,9 @@ use arena::NoopCollector;
 use common_types::{
     projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema, time::TimeRange,
 };
-use common_util::runtime::Runtime;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef};
+use runtime::Runtime;
 use table_engine::{predicate::Predicate, table::TableId};
 
 use crate::{config::MergeMemTableBenchConfig, util};

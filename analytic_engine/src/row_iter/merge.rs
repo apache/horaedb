@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
     cmp,
@@ -18,9 +18,10 @@ use common_types::{
     schema::RecordSchemaWithKey,
     SequenceNumber,
 };
-use common_util::{define_result, error::GenericError};
 use futures::{stream::FuturesUnordered, StreamExt};
+use generic_error::GenericError;
 use log::{debug, trace};
+use macros::define_result;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};

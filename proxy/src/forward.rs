@@ -11,11 +11,12 @@ use async_trait::async_trait;
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, RouteRequest,
 };
-use common_util::{config::ReadableDuration, define_result};
 use log::{debug, error, warn};
+use macros::define_result;
 use router::{endpoint::Endpoint, RouterRef};
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, ResultExt, Snafu};
+use time_ext::ReadableDuration;
 use tonic::{
     metadata::errors::InvalidMetadataValue,
     transport::{self, Channel},

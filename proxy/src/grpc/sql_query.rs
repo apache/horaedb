@@ -13,8 +13,8 @@ use ceresdbproto::{
     },
 };
 use common_types::record_batch::RecordBatch;
-use common_util::error::BoxError;
 use futures::{stream, stream::BoxStream, FutureExt, StreamExt};
+use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{error, warn};

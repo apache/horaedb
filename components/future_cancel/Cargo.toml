@@ -1,0 +1,18 @@
+[package]
+name = "future_cancel"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies]
+futures = { workspace = true }
+runtime = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

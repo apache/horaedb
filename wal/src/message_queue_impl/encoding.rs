@@ -6,12 +6,10 @@ use ceresdbproto::wal_on_mq::{
     table_meta_data::SafeDeleteOffset, RegionMetaSnapshot as RegionMetaSnapshotPb,
     TableMetaData as TableMetaDataPb,
 };
+use codec::{Decoder, Encoder};
 use common_types::bytes::{self, Buf, BufMut, BytesMut, SafeBuf, SafeBufMut};
-use common_util::{
-    codec::{Decoder, Encoder},
-    define_result,
-    error::{BoxError, GenericError},
-};
+use generic_error::{BoxError, GenericError};
+use macros::define_result;
 use prost::Message;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 

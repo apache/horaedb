@@ -4,7 +4,7 @@ use std::{ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use common_util::error::GenericResult;
+use generic_error::GenericResult;
 use parquet::{
     arrow::{arrow_reader::ArrowReaderOptions, ParquetRecordBatchStreamBuilder},
     errors::{ParquetError, Result},

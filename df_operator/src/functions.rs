@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Functions.
 
@@ -9,7 +9,6 @@ use std::{
 
 use arrow::datatypes::DataType;
 use common_types::{column::ColumnBlock, datum::DatumKind};
-use common_util::{define_result, error::GenericError};
 use datafusion::{
     error::DataFusionError,
     logical_expr::{
@@ -19,6 +18,8 @@ use datafusion::{
     physical_plan::ColumnarValue as DfColumnarValue,
     scalar::ScalarValue as DfScalarValue,
 };
+use generic_error::GenericError;
+use macros::define_result;
 use smallvec::SmallVec;
 use snafu::{ResultExt, Snafu};
 

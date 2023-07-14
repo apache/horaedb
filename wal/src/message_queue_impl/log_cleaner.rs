@@ -4,11 +4,9 @@
 
 use std::sync::Arc;
 
-use common_util::{
-    define_result,
-    error::{BoxError, GenericError},
-};
+use generic_error::{BoxError, GenericError};
 use log::info;
+use macros::define_result;
 use message_queue::{MessageQueue, Offset};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 

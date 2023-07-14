@@ -21,16 +21,17 @@ ceresdbproto = { workspace = true }
 clru = { workspace = true }
 cluster = { workspace = true }
 common_types = { workspace = true }
-common_util = { workspace = true }
 datafusion = { workspace = true }
 df_operator = { workspace = true }
 futures = { workspace = true }
+generic_error = { workspace = true }
 http = "0.2"
 influxdb-line-protocol = "1.0"
 interpreters = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 logger = { workspace = true }
+macros = { workspace = true }
 meta_client = { workspace = true }
 opensrv-mysql = "0.1.0"
 partition_table_engine = { workspace = true }
@@ -45,12 +46,15 @@ query_engine = { workspace = true }
 query_frontend = { workspace = true }
 remote_engine_client = { workspace = true }
 router = { workspace = true }
+runtime = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+size_ext = { workspace = true }
 snafu = { workspace = true }
 spin = { workspace = true }
 sqlparser = { workspace = true }
 table_engine = { workspace = true }
+time_ext = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { workspace = true }

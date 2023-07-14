@@ -13,7 +13,9 @@ workspace = true
 [dependencies]
 async-trait = { workspace = true }
 common_types = { workspace = true }
-common_util = { workspace = true }
+generic_error = { workspace = true }
 log = { workspace = true }
+macros = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
+time_ext = { workspace = true }

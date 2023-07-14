@@ -1,0 +1,16 @@
+[package]
+name = "timed_task"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies]
+log = { workspace = true }
+runtime = { workspace = true }
+tokio = { workspace = true }

@@ -16,14 +16,16 @@ arrow = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
 common_types = { workspace = true }
-common_util = { workspace = true }
 datafusion = { workspace = true }
 df_operator = { workspace = true }
 futures = { workspace = true }
+generic_error = { workspace = true }
 influxql-query = { workspace = true }
 log = { workspace = true }
+macros = { workspace = true }
 query_frontend = { workspace = true }
 serde = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
+time_ext = { workspace = true }
 tokio = { workspace = true }

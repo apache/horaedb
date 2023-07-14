@@ -3,11 +3,11 @@
 use std::time::Duration;
 
 use common_types::schema::TIMESTAMP_COLUMN;
-use common_util::config::ReadableDuration;
 use etcd_client::ConnectOptions;
 use meta_client::meta_impl::MetaClientConfig;
 use serde::{Deserialize, Serialize};
 use table_engine::ANALYTIC_ENGINE_TYPE;
+use time_ext::ReadableDuration;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]

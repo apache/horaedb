@@ -5,6 +5,7 @@
 use std::{cmp::Ordering, iter::Rev, ops::Bound, time::Instant};
 
 use arena::{Arena, BasicStats};
+use codec::row;
 use common_types::{
     bytes::{Bytes, BytesMut},
     projected_schema::{ProjectedSchema, RowProjector},
@@ -13,10 +14,11 @@ use common_types::{
     schema::Schema,
     SequenceNumber,
 };
-use common_util::{codec::row, error::BoxError, time::InstantExt};
+use generic_error::BoxError;
 use log::trace;
 use skiplist::{ArenaSlice, IterRef, Skiplist};
 use snafu::ResultExt;
+use time_ext::InstantExt;
 
 use crate::memtable::{
     key::{self, KeySequence},

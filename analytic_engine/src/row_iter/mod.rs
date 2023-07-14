@@ -1,11 +1,11 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Iterators for row.
 
 use async_stream::try_stream;
 use async_trait::async_trait;
 use common_types::{record_batch::RecordBatchWithKey, schema::RecordSchemaWithKey};
-use common_util::error::BoxError;
+use generic_error::BoxError;
 
 use crate::sst::writer::RecordBatchStream;
 

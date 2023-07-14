@@ -18,8 +18,8 @@ use common_types::{
     row::{Row, RowGroup},
     schema::{RecordSchema, Schema},
 };
-use common_util::error::BoxError;
 use futures::stream::Stream;
+use generic_error::BoxError;
 use snafu::{OptionExt, ResultExt};
 
 use crate::{

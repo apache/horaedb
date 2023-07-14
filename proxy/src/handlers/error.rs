@@ -2,7 +2,7 @@
 
 //! Error of handlers
 
-use common_util::define_result;
+use macros::define_result;
 use snafu::{Backtrace, Snafu};
 use warp::reject::Reject;
 

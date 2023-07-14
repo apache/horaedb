@@ -4,6 +4,7 @@
 
 use async_trait::async_trait;
 use log::debug;
+use macros::define_result;
 use query_engine::executor::{Executor, Query};
 use query_frontend::plan::QueryPlan;
 use snafu::{ResultExt, Snafu};

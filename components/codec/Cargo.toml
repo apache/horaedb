@@ -1,0 +1,17 @@
+[package]
+name = "codec"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies]
+# In alphabetical order
+common_types = { workspace = true, features = ["test"] }
+macros = { workspace = true }
+snafu = { workspace = true }

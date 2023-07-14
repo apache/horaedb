@@ -9,7 +9,8 @@ use futures::Stream;
 use crate::sst::meta_data::SstMetaData;
 
 pub mod error {
-    use common_util::{define_result, error::GenericError};
+    use generic_error::GenericError;
+    use macros::define_result;
     use snafu::{Backtrace, Snafu};
 
     #[derive(Debug, Snafu)]

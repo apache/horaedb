@@ -2,8 +2,8 @@
 
 use std::{collections::HashSet, sync::RwLock};
 
-use common_util::define_result;
 use datafusion::logical_expr::logical_plan::LogicalPlan;
+use macros::define_result;
 use query_frontend::plan::Plan;
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, Snafu};

@@ -5,9 +5,10 @@
 use std::{collections::HashMap, fmt, str::FromStr, sync::Arc};
 
 use common_types::COMPACTION_STRATEGY;
-use common_util::config::{ReadableSize, TimeUnit};
 use serde::{Deserialize, Serialize};
+use size_ext::ReadableSize;
 use snafu::{ensure, Backtrace, GenerateBacktrace, ResultExt, Snafu};
+use time_ext::TimeUnit;
 use tokio::sync::oneshot;
 
 use crate::{

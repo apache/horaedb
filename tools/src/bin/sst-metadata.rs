@@ -7,13 +7,11 @@ use std::{collections::HashMap, fmt, str::FromStr, sync::Arc};
 use analytic_engine::sst::{meta_data::cache::MetaData, parquet::async_reader::ChunkReaderAdapter};
 use anyhow::{Context, Result};
 use clap::Parser;
-use common_util::{
-    runtime::{self, Runtime},
-    time::format_as_ymdhms,
-};
 use futures::StreamExt;
 use object_store::{LocalFileSystem, ObjectMeta, ObjectStoreRef, Path};
 use parquet_ext::{meta_data::fetch_parquet_metadata, reader::ObjectStoreReader};
+use runtime::Runtime;
+use time_ext::format_as_ymdhms;
 use tokio::{runtime::Handle, task::JoinSet};
 
 #[derive(Parser, Debug)]

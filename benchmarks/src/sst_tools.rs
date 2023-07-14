@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Tools to generate SST.
 
@@ -26,10 +26,10 @@ use analytic_engine::{
     table_options::{Compression, StorageFormatHint},
 };
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId};
-use common_util::runtime::Runtime;
 use futures::TryStreamExt;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
+use runtime::Runtime;
 use serde::Deserialize;
 use table_engine::{predicate::Predicate, table::TableId};
 use tokio::sync::mpsc;

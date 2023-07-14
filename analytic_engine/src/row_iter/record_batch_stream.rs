@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
     ops::{Bound, Not},
@@ -13,10 +13,6 @@ use arrow::{
 use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatchWithKey, SequenceNumber,
 };
-use common_util::{
-    define_result,
-    error::{BoxError, GenericError},
-};
 use datafusion::{
     common::ToDFSchema,
     error::DataFusionError,
@@ -25,6 +21,8 @@ use datafusion::{
     physical_plan::PhysicalExpr,
 };
 use futures::stream::{self, Stream, StreamExt};
+use generic_error::{BoxError, GenericError};
+use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::TableId};
 use trace_metric::MetricsCollector;

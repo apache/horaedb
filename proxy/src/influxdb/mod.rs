@@ -12,7 +12,7 @@ use ceresdbproto::storage::{
     RequestContext as GrpcRequestContext, WriteRequest as GrpcWriteRequest,
 };
 use common_types::request_id::RequestId;
-use common_util::{error::BoxError, time::InstantExt};
+use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, info};
@@ -22,6 +22,7 @@ use query_frontend::{
     provider::CatalogMetaProvider,
 };
 use snafu::{ensure, ResultExt};
+use time_ext::InstantExt;
 
 use crate::{
     context::RequestContext,

@@ -14,16 +14,14 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::request_id::RequestId;
-use common_util::{
-    config::{ReadableDuration, ReadableSize},
-    define_result,
-    runtime::{JoinHandle, Runtime},
-    time::DurationExt,
-};
 use log::{debug, error, info, warn};
+use macros::define_result;
+use runtime::{JoinHandle, Runtime};
 use serde::{Deserialize, Serialize};
+use size_ext::ReadableSize;
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
+use time_ext::{DurationExt, ReadableDuration};
 use tokio::{
     sync::{
         mpsc::{self, error::TrySendError, Receiver, Sender},
@@ -49,7 +47,7 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to join compaction schedule worker, err:{}", source))]
-    JoinWorker { source: common_util::runtime::Error },
+    JoinWorker { source: runtime::Error },
 }
 
 define_result!(Error);
@@ -647,7 +645,7 @@ impl ScheduleWorker {
         for table_data in &tables_buf {
             let last_flush_time = table_data.last_flush_time();
             let flush_deadline_ms = last_flush_time + self.max_unflushed_duration.as_millis_u64();
-            let now_ms = common_util::time::current_time_millis();
+            let now_ms = time_ext::current_time_millis();
             if now_ms > flush_deadline_ms {
                 info!(
                     "Scheduled flush is triggered, table:{}, last_flush_time:{last_flush_time}ms, max_unflushed_duration:{:?}",

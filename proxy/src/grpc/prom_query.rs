@@ -17,7 +17,7 @@ use common_types::{
     request_id::RequestId,
     schema::{RecordSchema, TSID_COLUMN},
 };
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::info;

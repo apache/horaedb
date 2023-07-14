@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Utilities.
 
@@ -26,13 +26,11 @@ use common_types::{
     projected_schema::ProjectedSchema,
     schema::{IndexInWriterSchema, Schema},
 };
-use common_util::{
-    define_result,
-    runtime::{self, Runtime},
-};
 use futures::stream::StreamExt;
+use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::file::footer;
+use runtime::Runtime;
 use snafu::{ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::TableId};
 use wal::log_batch::Payload;

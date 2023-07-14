@@ -19,8 +19,9 @@ use catalog::{
     },
     Catalog, CatalogRef,
 };
-use common_util::{define_result, error::BoxError};
+use generic_error::BoxError;
 use log::{debug, info};
+use macros::define_result;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use system_catalog::sys_catalog_table::{
     self, CreateCatalogRequest, CreateSchemaRequest, SysCatalogTable, VisitOptions,

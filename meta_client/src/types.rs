@@ -8,10 +8,11 @@ use common_types::{
     schema::{SchemaId, SchemaName},
     table::{TableId, TableName},
 };
-use common_util::{config::ReadableDuration, error::BoxError};
+use generic_error::BoxError;
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};
 use table_engine::partition::PartitionInfo;
+use time_ext::ReadableDuration;
 
 use crate::{Convert, Error, MissingShardInfo, MissingTableInfo, Result};
 pub type ClusterNodesRef = Arc<Vec<NodeShard>>;

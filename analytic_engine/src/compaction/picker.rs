@@ -9,9 +9,10 @@ use std::{
 };
 
 use common_types::time::Timestamp;
-use common_util::{config::TimeUnit, define_result};
 use log::{debug, info};
+use macros::define_result;
 use snafu::Snafu;
+use time_ext::TimeUnit;
 
 use crate::{
     compaction::{
@@ -688,7 +689,7 @@ mod tests {
         tests::build_schema,
         time::{TimeRange, Timestamp},
     };
-    use common_util::hash_map;
+    use macros::hash_map;
     use tokio::sync::mpsc;
 
     use super::*;

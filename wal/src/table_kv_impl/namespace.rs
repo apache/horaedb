@@ -10,18 +10,16 @@ use std::{
 };
 
 use common_types::{table::TableId, time::Timestamp};
-use common_util::{
-    config::ReadableDuration,
-    define_result,
-    error::{BoxError, GenericError},
-    runtime::Runtime,
-    timed_task::{TaskHandle, TimedTask},
-};
+use generic_error::{BoxError, GenericError};
 use log::{debug, error, info, trace, warn};
+use macros::define_result;
+use runtime::Runtime;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_kv::{
     ScanContext as KvScanContext, ScanIter, TableError, TableKv, WriteBatch, WriteContext,
 };
+use time_ext::ReadableDuration;
+use timed_task::{TaskHandle, TimedTask};
 
 use crate::{
     kv_encoder::CommonLogKey,
@@ -187,7 +185,7 @@ pub enum Error {
     #[snafu(display("Failed to stop task, namespace:{}, err:{}", namespace, source))]
     StopTask {
         namespace: String,
-        source: common_util::runtime::Error,
+        source: runtime::Error,
     },
 
     #[snafu(display(
@@ -1470,7 +1468,7 @@ mod tests {
     use std::sync::Arc;
 
     use common_types::{bytes::BytesMut, table::DEFAULT_SHARD_ID};
-    use common_util::runtime::{Builder, Runtime};
+    use runtime::{Builder, Runtime};
     use table_kv::{memory::MemoryImpl, KeyBoundary, ScanContext, ScanRequest};
 
     use super::*;

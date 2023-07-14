@@ -2,6 +2,7 @@
 
 use ceresdbproto::prometheus::sub_expr::OperatorType;
 use datafusion::error::DataFusionError;
+use macros::define_result;
 use snafu::{Backtrace, Snafu};
 
 #[allow(clippy::large_enum_variant)]

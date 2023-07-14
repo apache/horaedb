@@ -5,11 +5,9 @@
 use std::{cmp, sync::Arc};
 
 use common_types::{table::TableId, SequenceNumber};
-use common_util::{
-    define_result,
-    error::{BoxError, GenericError},
-};
+use generic_error::{BoxError, GenericError};
 use log::{debug, info};
+use macros::define_result;
 use message_queue::{ConsumeIterator, MessageQueue, Offset, OffsetType, StartOffset};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use tokio::sync::{Mutex, RwLock};

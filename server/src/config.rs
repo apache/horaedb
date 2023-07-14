@@ -6,7 +6,6 @@ use std::collections::HashMap;
 
 use cluster::config::SchemaConfig;
 use common_types::schema::TIMESTAMP_COLUMN;
-use common_util::config::{ReadableDuration, ReadableSize};
 use meta_client::types::ShardId;
 use proxy::{forward, hotspot};
 use router::{
@@ -14,7 +13,9 @@ use router::{
     rule_based::{ClusterView, RuleList},
 };
 use serde::{Deserialize, Serialize};
+use size_ext::ReadableSize;
 use table_engine::ANALYTIC_ENGINE_TYPE;
+use time_ext::ReadableDuration;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]

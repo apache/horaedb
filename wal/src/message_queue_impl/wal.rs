@@ -6,8 +6,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_types::SequenceNumber;
-use common_util::{error::BoxError, runtime::Runtime};
+use generic_error::BoxError;
 use message_queue::{ConsumeIterator, MessageQueue};
+use runtime::Runtime;
 use snafu::ResultExt;
 
 use crate::{

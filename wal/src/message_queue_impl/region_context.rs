@@ -9,11 +9,9 @@ use std::{
 };
 
 use common_types::{bytes::BytesMut, table::TableId, SequenceNumber};
-use common_util::{
-    define_result,
-    error::{BoxError, GenericError},
-};
+use generic_error::{BoxError, GenericError};
 use log::{debug, warn};
+use macros::define_result;
 use message_queue::{MessageQueue, Offset};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use tokio::sync::{Mutex, RwLock};

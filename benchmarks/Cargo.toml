@@ -17,20 +17,24 @@ arrow = { workspace = true }
 base64 = { workspace = true }
 clap = { workspace = true }
 common_types = { workspace = true }
-common_util = { workspace = true }
 env_logger = { workspace = true }
 futures = { workspace = true }
 log = { workspace = true }
+macros = { workspace = true }
 object_store = { workspace = true }
 parquet = { workspace = true }
 parquet_ext = { workspace = true }
 pprof = { version = "0.10", features = ["flamegraph", "criterion"] }
 rand = { workspace = true }
+runtime = { workspace = true }
 serde = { workspace = true }
+size_ext = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
 table_kv = { workspace = true }
+time_ext = { workspace = true }
 tokio = { workspace = true }
+toml_ext = { workspace = true }
 trace_metric = { workspace = true }
 wal = { workspace = true }
 zstd = { workspace = true }

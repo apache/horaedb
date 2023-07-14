@@ -3,13 +3,14 @@
 //! Write logic of instance
 
 use ceresdbproto::{schema as schema_pb, table_requests};
+use codec::row;
 use common_types::{
     bytes::ByteVec,
     row::{RowGroup, RowGroupSlicer},
     schema::{IndexInWriterSchema, Schema},
 };
-use common_util::{codec::row, define_result};
 use log::{debug, error, info, trace, warn};
+use macros::define_result;
 use smallvec::SmallVec;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::table::WriteRequest;
@@ -96,9 +97,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to encode row group, err:{}", source))]
-    EncodeRowGroup {
-        source: common_util::codec::row::Error,
-    },
+    EncodeRowGroup { source: codec::row::Error },
 
     #[snafu(display("Failed to update sequence of memtable, err:{}", source))]
     UpdateMemTableSequence { source: crate::memtable::Error },

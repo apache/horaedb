@@ -8,8 +8,8 @@ use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, SqlQueryRequest, SqlQueryResponse,
 };
 use common_types::request_id::RequestId;
-use common_util::{error::BoxError, time::InstantExt};
 use futures::FutureExt;
+use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{error, info, warn};
@@ -21,6 +21,7 @@ use query_frontend::{
 };
 use router::endpoint::Endpoint;
 use snafu::{ensure, ResultExt};
+use time_ext::InstantExt;
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{

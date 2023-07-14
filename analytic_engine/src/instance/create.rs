@@ -2,7 +2,7 @@
 
 //! Create table logic of instance
 
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use log::info;
 use snafu::{OptionExt, ResultExt};
 use table_engine::engine::CreateTableRequest;

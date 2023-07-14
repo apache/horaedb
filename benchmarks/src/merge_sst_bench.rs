@@ -24,9 +24,9 @@ use analytic_engine::{
     table::sst_util,
 };
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
-use common_util::runtime::Runtime;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef};
+use runtime::Runtime;
 use table_engine::{predicate::Predicate, table::TableId};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 

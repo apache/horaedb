@@ -11,12 +11,12 @@ workspace = true
 workspace = true
 
 [dependencies]
-common_util = { workspace = true }
 log = { workspace = true }
+macros = { workspace = true }
 obkv-table-client-rs = { git = "https://github.com/oceanbase/obkv-table-client-rs.git", rev = "f7c7a2c866fc83af4862b02447538f2abc5e8839" }
 serde = { workspace = true }
-
 snafu = { workspace = true }
+time_ext = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }

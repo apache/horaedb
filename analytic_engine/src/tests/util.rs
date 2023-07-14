@@ -11,13 +11,10 @@ use common_types::{
     table::{ShardId, DEFAULT_SHARD_ID},
     time::Timestamp,
 };
-use common_util::{
-    config::{ReadableDuration, ReadableSize},
-    runtime,
-};
 use futures::stream::StreamExt;
 use log::info;
 use object_store::config::{LocalOptions, ObjectStoreOptions, StorageOptions};
+use size_ext::ReadableSize;
 use table_engine::{
     engine::{
         CreateTableRequest, DropTableRequest, EngineRuntimes, OpenShardRequest, OpenTableRequest,
@@ -29,6 +26,7 @@ use table_engine::{
     },
 };
 use tempfile::TempDir;
+use time_ext::ReadableDuration;
 
 use crate::{
     setup::{EngineBuilder, MemWalsOpener, OpenedWals, RocksDBWalsOpener, WalsOpener},

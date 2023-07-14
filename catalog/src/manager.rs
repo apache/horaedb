@@ -1,9 +1,10 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Catalog manager
 
 use std::sync::Arc;
 
+use macros::define_result;
 use snafu::Snafu;
 
 use crate::{schema::NameRef, CatalogRef};

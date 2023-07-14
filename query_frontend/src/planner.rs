@@ -26,7 +26,6 @@ use common_types::{
     row::{RowGroup, RowGroupBuilder},
     schema::{self, Builder as SchemaBuilder, Schema, TSID_COLUMN},
 };
-use common_util::error::GenericError;
 use datafusion::{
     common::{DFField, DFSchema},
     error::DataFusionError,
@@ -37,8 +36,10 @@ use datafusion::{
         ResolvedTableReference,
     },
 };
+use generic_error::GenericError;
 use influxql_parser::statement::Statement as InfluxqlStatement;
 use log::{debug, trace};
+use macros::define_result;
 use prom_remote_api::types::Query as PromRemoteQuery;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{

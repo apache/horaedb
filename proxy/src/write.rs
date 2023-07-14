@@ -22,8 +22,8 @@ use common_types::{
     schema::Schema,
     time::Timestamp,
 };
-use common_util::error::BoxError;
 use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
+use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, error, info};
@@ -45,8 +45,7 @@ use crate::{
     Context, Proxy,
 };
 
-type WriteResponseFutures<'a> =
-    Vec<BoxFuture<'a, common_util::runtime::Result<Result<WriteResponse>>>>;
+type WriteResponseFutures<'a> = Vec<BoxFuture<'a, runtime::Result<Result<WriteResponse>>>>;
 
 #[derive(Debug)]
 pub struct WriteContext {
@@ -391,7 +390,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
     async fn collect_write_response(
         &self,
-        futures: Vec<BoxFuture<'_, common_util::runtime::Result<Result<WriteResponse>>>>,
+        futures: Vec<BoxFuture<'_, runtime::Result<Result<WriteResponse>>>>,
     ) -> Result<WriteResponse> {
         let mut futures: FuturesUnordered<_> = futures.into_iter().collect();
         let mut success = 0;

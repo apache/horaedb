@@ -10,12 +10,10 @@ use std::{
 use analytic_engine::setup::OpenedWals;
 use cluster::ClusterRef;
 use common_types::bytes::Bytes;
-use common_util::{
-    error::{BoxError, GenericError},
-    runtime::Runtime,
-};
+use generic_error::{BoxError, GenericError};
 use log::{error, info};
 use logger::RuntimeLevel;
+use macros::define_result;
 use profile::Profiler;
 use prom_remote_api::web;
 use proxy::{
@@ -29,6 +27,7 @@ use proxy::{
 };
 use query_engine::executor::Executor as QueryExecutor;
 use router::endpoint::Endpoint;
+use runtime::Runtime;
 use serde::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
@@ -89,7 +88,7 @@ pub enum Error {
     },
 
     #[snafu(display("Fail to join async task, err:{}.", source))]
-    JoinAsyncTask { source: common_util::runtime::Error },
+    JoinAsyncTask { source: runtime::Error },
 
     #[snafu(display(
         "Failed to parse ip addr, ip:{}, err:{}.\nBacktrace:\n{}",

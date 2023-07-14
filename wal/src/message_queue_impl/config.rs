@@ -1,9 +1,9 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Config for wal on message queue
 
-use common_util::config::ReadableDuration;
 use serde::{Deserialize, Serialize};
+use time_ext::ReadableDuration;
 
 // TODO: add more needed config items.
 #[derive(Debug, Clone, Serialize, Deserialize)]

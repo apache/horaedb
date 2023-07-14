@@ -2,9 +2,6 @@
 
 //! Table engine facade, provides read/write interfaces of table
 
-#[macro_use]
-extern crate common_util;
-
 pub mod engine;
 pub mod memory;
 pub mod partition;
