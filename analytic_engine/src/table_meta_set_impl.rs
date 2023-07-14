@@ -7,7 +7,7 @@ use std::{fmt, sync::Arc};
 use common_util::{error::BoxError, id_allocator::IdAllocator};
 use log::debug;
 use snafu::{OptionExt, ResultExt};
-use table_engine::table::TableId;
+use table_engine::table::{TableId, TableRef};
 
 use crate::{
     manifest::{
@@ -21,10 +21,10 @@ use crate::{
         },
         meta_snapshot::MetaSnapshot,
     },
-    space::{Space, SpaceId, SpacesRef},
+    space::{Space, SpaceId, SpaceRef, SpacesRef},
     sst::file::FilePurgerRef,
     table::{
-        data::{TableData, TableShardInfo, DEFAULT_ALLOC_STEP},
+        data::{TableData, TableDataRef, TableShardInfo, DEFAULT_ALLOC_STEP},
         version::{TableVersionMeta, TableVersionSnapshot},
         version_edit::VersionEdit,
     },
@@ -44,14 +44,20 @@ impl fmt::Debug for TableMetaSetImpl {
     }
 }
 
+enum TableKey<'a> {
+    Name(&'a str),
+    Id(TableId),
+}
+
 impl TableMetaSetImpl {
-    fn find_space_and_apply_edit<F>(
+    fn find_table_and_apply_edit<F>(
         &self,
         space_id: SpaceId,
+        table_key: TableKey<'_>,
         apply_edit: F,
     ) -> crate::manifest::details::Result<()>
     where
-        F: FnOnce(Arc<Space>) -> crate::manifest::details::Result<()>,
+        F: FnOnce(SpaceRef, TableDataRef) -> crate::manifest::details::Result<()>,
     {
         let spaces = self.spaces.read().unwrap();
         let space = spaces
@@ -59,7 +65,25 @@ impl TableMetaSetImpl {
             .with_context(|| ApplyUpdateToTableNoCause {
                 msg: format!("space not found, space_id:{space_id}"),
             })?;
-        apply_edit(space.clone())
+
+        let table_data = match table_key {
+            TableKey::Name(name) => {
+                space
+                    .find_table(name)
+                    .with_context(|| ApplyUpdateToTableNoCause {
+                        msg: format!("table not found, space_id:{space_id}, table_name:{name}"),
+                    })?
+            }
+            TableKey::Id(id) => {
+                space
+                    .find_table_by_id(id)
+                    .with_context(|| ApplyUpdateToTableNoCause {
+                        msg: format!("table not found, space_id:{space_id}, table_id:{id}"),
+                    })?
+            }
+        };
+
+        apply_edit(space.clone(), table_data)
     }
 
     fn apply_update(
@@ -75,42 +99,44 @@ impl TableMetaSetImpl {
                 schema,
                 opts,
             }) => {
-                let add_table = move |space: Arc<Space>| {
-                    let table_data = TableData::new(
-                        space.id,
-                        table_id,
-                        table_name,
-                        schema,
-                        shard_info.shard_id,
-                        opts,
-                        &self.file_purger,
-                        self.preflush_write_buffer_size_ratio,
-                        space.mem_usage_collector.clone(),
-                    )
-                    .box_err()
-                    .with_context(|| ApplyUpdateToTableWithCause {
-                        msg: format!(
-                            "failed to new table data, space_id:{}, table_id:{}",
-                            space.id, table_id
-                        ),
-                    })?;
-                    space.insert_table(Arc::new(table_data));
-                    Ok(())
-                };
+                let spaces = self.spaces.read().unwrap();
+                let space =
+                    spaces
+                        .get_by_id(space_id)
+                        .with_context(|| ApplyUpdateToTableNoCause {
+                            msg: format!("space not found, space_id:{space_id}"),
+                        })?;
 
-                self.find_space_and_apply_edit(space_id, add_table)
+                let table_data = TableData::new(
+                    space.id,
+                    table_id,
+                    table_name,
+                    schema,
+                    shard_info.shard_id,
+                    opts,
+                    &self.file_purger,
+                    self.preflush_write_buffer_size_ratio,
+                    space.mem_usage_collector.clone(),
+                )
+                .box_err()
+                .with_context(|| ApplyUpdateToTableWithCause {
+                    msg: format!(
+                        "failed to new table data, space_id:{}, table_id:{}",
+                        space.id, table_id
+                    ),
+                })?;
+
+                space.insert_table(Arc::new(table_data));
+
+                Ok(())
             }
             MetaUpdate::DropTable(DropTableMeta {
                 space_id,
                 table_name,
                 ..
             }) => {
-                let drop_table = move |space: Arc<Space>| {
-                    let table_data = match space.find_table(table_name.as_str()) {
-                        Some(v) => v,
-                        None => return Ok(()),
-                    };
-
+                let table_name = &table_name;
+                let drop_table = move |space: SpaceRef, table_data: TableDataRef| {
                     // Set the table dropped after finishing flushing and storing drop table meta
                     // information.
                     table_data.set_dropped();
@@ -122,7 +148,7 @@ impl TableMetaSetImpl {
                     Ok(())
                 };
 
-                self.find_space_and_apply_edit(space_id, drop_table)
+                self.find_table_and_apply_edit(space_id, TableKey::Name(table_name), drop_table)
             }
             MetaUpdate::VersionEdit(VersionEditMeta {
                 space_id,
@@ -133,14 +159,7 @@ impl TableMetaSetImpl {
                 mems_to_remove,
                 max_file_id,
             }) => {
-                let version_edit = move |space: Arc<Space>| {
-                    let table_data = space.find_table_by_id(table_id).with_context(|| {
-                        ApplyUpdateToTableNoCause {
-                            msg: format!(
-                                "table not found, space_id:{space_id}, table_id:{table_id}"
-                            ),
-                        }
-                    })?;
+                let version_edit = move |_space: SpaceRef, table_data: TableDataRef| {
                     let edit = VersionEdit {
                         flushed_sequence,
                         mems_to_remove,
@@ -153,7 +172,7 @@ impl TableMetaSetImpl {
                     Ok(())
                 };
 
-                self.find_space_and_apply_edit(space_id, version_edit)
+                self.find_table_and_apply_edit(space_id, TableKey::Id(table_id), version_edit)
             }
             MetaUpdate::AlterSchema(AlterSchemaMeta {
                 space_id,
@@ -161,38 +180,26 @@ impl TableMetaSetImpl {
                 schema,
                 ..
             }) => {
-                let alter_schema = move |space: Arc<Space>| {
-                    let table_data = space.find_table_by_id(table_id).with_context(|| {
-                        ApplyUpdateToTableNoCause {
-                            msg: format!(
-                                "table not found, space_id:{space_id}, table_id:{table_id}"
-                            ),
-                        }
-                    })?;
+                let alter_schema = move |_space: SpaceRef, table_data: TableDataRef| {
                     table_data.set_schema(schema);
 
                     Ok(())
                 };
-                self.find_space_and_apply_edit(space_id, alter_schema)
+
+                self.find_table_and_apply_edit(space_id, TableKey::Id(table_id), alter_schema)
             }
             MetaUpdate::AlterOptions(AlterOptionsMeta {
                 space_id,
                 table_id,
                 options,
             }) => {
-                let alter_option = move |space: Arc<Space>| {
-                    let table_data = space.find_table_by_id(table_id).with_context(|| {
-                        ApplyUpdateToTableNoCause {
-                            msg: format!(
-                                "table not found, space_id:{space_id}, table_id:{table_id}"
-                            ),
-                        }
-                    })?;
+                let alter_option = move |_space: SpaceRef, table_data: TableDataRef| {
                     table_data.set_table_options(options);
 
                     Ok(())
                 };
-                self.find_space_and_apply_edit(space_id, alter_option)
+
+                self.find_table_and_apply_edit(space_id, TableKey::Id(table_id), alter_option)
             }
         }
     }
