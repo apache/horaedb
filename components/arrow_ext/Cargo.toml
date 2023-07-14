@@ -12,6 +12,6 @@ workspace = true
 
 [dependencies]
 arrow = { workspace = true }
-serde = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 snafu = { workspace = true }
 zstd = { workspace = true }
