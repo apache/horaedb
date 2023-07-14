@@ -262,7 +262,7 @@ impl Instance {
     }
 
     #[inline]
-    fn read_runtime(&self) -> &Arc<Runtime> {
+    pub fn read_runtime(&self) -> &Arc<Runtime> {
         &self.runtimes.read_runtime
     }
 
