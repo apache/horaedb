@@ -177,8 +177,13 @@ impl ObkvObjectMeta {
         let batch_size = self.part_size;
         let start_index = range.start / batch_size;
         let start_offset = range.start % batch_size;
-        let end_index = range.end / batch_size;
-        let end_offset = range.end % batch_size;
+        let mut end_index = range.end / batch_size;
+        let mut end_offset = range.end % batch_size;
+
+        if end_offset == 0 {
+            end_index -= 1;
+            end_offset = batch_size;
+        }
 
         Ok(ConveredParts {
             part_keys: &self.parts[start_index..=end_index],
@@ -322,6 +327,15 @@ mod test {
 
         let range1 = Range {
             start: 0,
+            end: 1024,
+        };
+        let expect = meta.compute_covered_parts(range1).unwrap();
+        assert!(expect.part_keys.len() == 1);
+        assert!(expect.start_offset == 0);
+        assert!(expect.end_offset == 1024);
+
+        let range1 = Range {
+            start: 0,
             end: 8190,
         };
         let expect = meta.compute_covered_parts(range1).unwrap();
@@ -353,6 +367,16 @@ mod test {
         };
         let expect = meta.compute_covered_parts(range1);
         assert!(expect.is_err());
+
+        let meta = build_test_meta1();
+        let range1 = Range {
+            start: 0,
+            end: 1024,
+        };
+        let expect = meta.compute_covered_parts(range1).unwrap();
+        assert!(expect.part_keys.len() == 1);
+        assert!(expect.start_offset == 0);
+        assert!(expect.end_offset == 1024);
     }
 
     fn build_test_meta() -> ObkvObjectMeta {
@@ -372,6 +396,18 @@ mod test {
                 String::from("/test/xx/4"),
                 String::from("/test/xx/5"),
             ],
+            version: String::from("123456fsdalfkassa;l;kjfaklasadffsd"),
+        }
+    }
+
+    fn build_test_meta1() -> ObkvObjectMeta {
+        ObkvObjectMeta {
+            location: String::from("/test/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxfdsfjlajflk"),
+            last_modified: 123456789,
+            size: 1024,
+            unique_id: Some(String::from("1245689u438uferjalfjkda")),
+            part_size: 1024,
+            parts: vec![String::from("/test/xx/0")],
             version: String::from("123456fsdalfkassa;l;kjfaklasadffsd"),
         }
     }
