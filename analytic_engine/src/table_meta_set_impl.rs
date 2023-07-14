@@ -83,7 +83,12 @@ impl TableMetaSetImpl {
             }
         };
 
-        apply_edit(space.clone(), table_data)
+        apply_edit(space.clone(), table_data.clone())?;
+
+        // Increase manifest updates after apply edit successfully.
+        table_data.increase_manifest_updates(1);
+
+        Ok(())
     }
 
     fn apply_update(

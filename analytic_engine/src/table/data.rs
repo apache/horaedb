@@ -8,7 +8,7 @@ use std::{
     fmt,
     fmt::Formatter,
     sync::{
-        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::Duration,
@@ -153,6 +153,9 @@ pub struct TableData {
     /// No write/alter is allowed if the table is dropped.
     dropped: AtomicBool,
 
+    /// Manifest updates after last snapshot
+    manifest_updates: AtomicUsize,
+
     /// Metrics of this table
     pub metrics: Metrics,
 
@@ -245,6 +248,7 @@ impl TableData {
             metrics,
             shard_info: TableShardInfo::new(shard_id),
             serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(table_id)),
+            manifest_updates: AtomicUsize::new(0),
         })
     }
 
@@ -287,6 +291,7 @@ impl TableData {
             metrics,
             shard_info: TableShardInfo::new(shard_id),
             serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(add_meta.table_id)),
+            manifest_updates: AtomicUsize::new(0),
         })
     }
 
@@ -558,6 +563,16 @@ impl TableData {
             id: self.id.as_u64(),
             shard_info: self.shard_info,
         }
+    }
+
+    pub fn increase_manifest_updates(&self, updates_num: usize) {
+        self.manifest_updates
+            .fetch_add(updates_num, Ordering::Relaxed);
+    }
+
+    pub fn should_do_manifest_snapshot(&self, snapshot_every_n_updates: usize) -> bool {
+        let updates = self.manifest_updates.load(Ordering::Relaxed);
+        updates > 0 && updates % snapshot_every_n_updates == 0
     }
 }
 
