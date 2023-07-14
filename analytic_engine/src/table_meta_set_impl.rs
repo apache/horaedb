@@ -7,7 +7,7 @@ use std::{fmt, sync::Arc};
 use common_util::{error::BoxError, id_allocator::IdAllocator};
 use log::debug;
 use snafu::{OptionExt, ResultExt};
-use table_engine::table::{TableId, TableRef};
+use table_engine::table::TableId;
 
 use crate::{
     manifest::{
@@ -21,7 +21,7 @@ use crate::{
         },
         meta_snapshot::MetaSnapshot,
     },
-    space::{Space, SpaceId, SpaceRef, SpacesRef},
+    space::{SpaceId, SpaceRef, SpacesRef},
     sst::file::FilePurgerRef,
     table::{
         data::{TableData, TableDataRef, TableShardInfo, DEFAULT_ALLOC_STEP},
@@ -55,7 +55,7 @@ impl TableMetaSetImpl {
         space_id: SpaceId,
         table_key: TableKey<'_>,
         apply_edit: F,
-    ) -> crate::manifest::details::Result<()>
+    ) -> crate::manifest::details::Result<TableDataRef>
     where
         F: FnOnce(SpaceRef, TableDataRef) -> crate::manifest::details::Result<()>,
     {
@@ -88,14 +88,14 @@ impl TableMetaSetImpl {
         // Increase manifest updates after apply edit successfully.
         table_data.increase_manifest_updates(1);
 
-        Ok(())
+        Ok(table_data)
     }
 
     fn apply_update(
         &self,
         meta_update: MetaUpdate,
         shard_info: TableShardInfo,
-    ) -> crate::manifest::details::Result<()> {
+    ) -> crate::manifest::details::Result<TableDataRef> {
         match meta_update {
             MetaUpdate::AddTable(AddTableMeta {
                 space_id,
@@ -112,28 +112,30 @@ impl TableMetaSetImpl {
                             msg: format!("space not found, space_id:{space_id}"),
                         })?;
 
-                let table_data = TableData::new(
-                    space.id,
-                    table_id,
-                    table_name,
-                    schema,
-                    shard_info.shard_id,
-                    opts,
-                    &self.file_purger,
-                    self.preflush_write_buffer_size_ratio,
-                    space.mem_usage_collector.clone(),
-                )
-                .box_err()
-                .with_context(|| ApplyUpdateToTableWithCause {
-                    msg: format!(
-                        "failed to new table data, space_id:{}, table_id:{}",
-                        space.id, table_id
-                    ),
-                })?;
+                let table_data = Arc::new(
+                    TableData::new(
+                        space.id,
+                        table_id,
+                        table_name,
+                        schema,
+                        shard_info.shard_id,
+                        opts,
+                        &self.file_purger,
+                        self.preflush_write_buffer_size_ratio,
+                        space.mem_usage_collector.clone(),
+                    )
+                    .box_err()
+                    .with_context(|| ApplyUpdateToTableWithCause {
+                        msg: format!(
+                            "failed to new table data, space_id:{}, table_id:{}",
+                            space.id, table_id
+                        ),
+                    })?,
+                );
 
-                space.insert_table(Arc::new(table_data));
+                space.insert_table(table_data.clone());
 
-                Ok(())
+                Ok(table_data)
             }
             MetaUpdate::DropTable(DropTableMeta {
                 space_id,
@@ -213,7 +215,7 @@ impl TableMetaSetImpl {
         &self,
         meta_snapshot: MetaSnapshot,
         shard_info: TableShardInfo,
-    ) -> crate::manifest::details::Result<()> {
+    ) -> crate::manifest::details::Result<TableDataRef> {
         debug!("TableMetaSet apply snapshot, snapshot :{:?}", meta_snapshot);
 
         let MetaSnapshot {
@@ -272,9 +274,9 @@ impl TableMetaSetImpl {
             table_data.id, table_data.name
         );
 
-        space.insert_table(table_data);
+        space.insert_table(table_data.clone());
 
-        Ok(())
+        Ok(table_data)
     }
 }
 
@@ -333,7 +335,7 @@ impl TableMetaSet for TableMetaSetImpl {
     fn apply_edit_to_table(
         &self,
         request: crate::manifest::meta_edit::MetaEditRequest,
-    ) -> crate::manifest::details::Result<()> {
+    ) -> crate::manifest::details::Result<TableDataRef> {
         let MetaEditRequest {
             shard_info,
             meta_edit,

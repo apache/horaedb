@@ -681,7 +681,7 @@ pub mod tests {
 
     const DEFAULT_SPACE_ID: SpaceId = 1;
 
-    fn default_schema() -> Schema {
+    pub fn default_schema() -> Schema {
         table::create_schema_builder(
             &[("key", DatumKind::Timestamp)],
             &[("value", DatumKind::Double)],
