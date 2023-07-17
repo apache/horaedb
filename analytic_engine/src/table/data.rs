@@ -894,6 +894,22 @@ pub mod tests {
 
     #[test]
     fn test_manifest_snapshot_trigger() {
-        let table_data = TableDataMocker::default().build();
+        let table_data = TableDataMocker::default()
+            .manifest_snapshot_every_n_updates(5)
+            .build();
+        // When no updates yet, result should be false.
+        assert!(!table_data.should_do_manifest_snapshot());
+
+        // Normal case.
+        table_data.increase_manifest_updates(5);
+        assert!(table_data.should_do_manifest_snapshot());
+
+        // When snapshot_every_n_updates is set to zero, result should be always false.
+        let table_data = TableDataMocker::default()
+            .manifest_snapshot_every_n_updates(0)
+            .build();
+        assert!(!table_data.should_do_manifest_snapshot());
+        table_data.increase_manifest_updates(5);
+        assert!(!table_data.should_do_manifest_snapshot());
     }
 }
