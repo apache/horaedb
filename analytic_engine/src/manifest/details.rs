@@ -480,6 +480,8 @@ impl Manifest for ManifestImpl {
         // Update memory.
         let table_data = self.table_meta_set.apply_edit_to_table(request).box_err()?;
 
+        // Update manifest updates count.
+        table_data.increase_manifest_updates(1);
         // Judge if snapshot is needed.
         if table_data.should_do_manifest_snapshot() {
             self.do_snapshot_internal(space_id, table_id, location)
