@@ -36,6 +36,7 @@ pub(crate) struct TableMetaSetImpl {
     pub(crate) file_purger: FilePurgerRef,
     // TODO: maybe not suitable to place this parameter here?
     pub(crate) preflush_write_buffer_size_ratio: f32,
+    pub(crate) manifest_snapshot_every_n_updates: usize,
 }
 
 impl fmt::Debug for TableMetaSetImpl {
@@ -123,6 +124,7 @@ impl TableMetaSetImpl {
                         &self.file_purger,
                         self.preflush_write_buffer_size_ratio,
                         space.mem_usage_collector.clone(),
+                        self.manifest_snapshot_every_n_updates,
                     )
                     .box_err()
                     .with_context(|| ApplyUpdateToTableWithCause {
@@ -249,6 +251,7 @@ impl TableMetaSetImpl {
                 self.preflush_write_buffer_size_ratio,
                 space.mem_usage_collector.clone(),
                 allocator,
+                self.manifest_snapshot_every_n_updates,
             )
             .box_err()
             .with_context(|| ApplySnapshotToTableWithCause {

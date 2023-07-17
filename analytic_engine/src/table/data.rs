@@ -28,7 +28,7 @@ use common_util::{
     error::{GenericError, GenericResult},
     id_allocator::IdAllocator,
 };
-use log::{debug, info};
+use log::{debug, info, warn};
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
@@ -156,6 +156,9 @@ pub struct TableData {
     /// Manifest updates after last snapshot
     manifest_updates: AtomicUsize,
 
+    /// Every n manifest updates to trigger a snapshot
+    manifest_snapshot_every_n_updates: usize,
+
     /// Metrics of this table
     pub metrics: Metrics,
 
@@ -216,6 +219,7 @@ impl TableData {
         purger: &FilePurger,
         preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
+        manifest_snapshot_every_n_updates: usize,
     ) -> Result<Self> {
         // FIXME(yingwen): Validate TableOptions, such as bucket_duration >=
         // segment_duration and bucket_duration is aligned to segment_duration
@@ -249,6 +253,7 @@ impl TableData {
             shard_info: TableShardInfo::new(shard_id),
             serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(table_id)),
             manifest_updates: AtomicUsize::new(0),
+            manifest_snapshot_every_n_updates,
         })
     }
 
@@ -262,6 +267,7 @@ impl TableData {
         preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
         allocator: IdAllocator,
+        manifest_snapshot_every_n_updates: usize,
     ) -> Result<Self> {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
@@ -292,6 +298,7 @@ impl TableData {
             shard_info: TableShardInfo::new(shard_id),
             serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(add_meta.table_id)),
             manifest_updates: AtomicUsize::new(0),
+            manifest_snapshot_every_n_updates,
         })
     }
 
@@ -570,9 +577,18 @@ impl TableData {
             .fetch_add(updates_num, Ordering::Relaxed);
     }
 
-    pub fn should_do_manifest_snapshot(&self, snapshot_every_n_updates: usize) -> bool {
+    pub fn should_do_manifest_snapshot(&self) -> bool {
+        if self.manifest_snapshot_every_n_updates == 0 {
+            warn!("TableData found snapshot_every_n_updates is 0, manifest snapshot will never be triggered");
+            return false;
+        }
+
         let updates = self.manifest_updates.load(Ordering::Relaxed);
-        updates > 0 && updates % snapshot_every_n_updates == 0
+        updates >= self.manifest_snapshot_every_n_updates
+    }
+
+    pub fn reset_manifest_updates(&self) {
+        self.manifest_updates.store(0, Ordering::Relaxed);
     }
 }
 
@@ -712,6 +728,7 @@ pub mod tests {
         table_id: TableId,
         table_name: String,
         shard_id: ShardId,
+        manifest_snapshot_every_n_updates: usize,
     }
 
     impl TableDataMocker {
@@ -727,6 +744,14 @@ pub mod tests {
 
         pub fn shard_id(mut self, shard_id: ShardId) -> Self {
             self.shard_id = shard_id;
+            self
+        }
+
+        pub fn manifest_snapshot_every_n_updates(
+            mut self,
+            manifest_snapshot_every_n_updates: usize,
+        ) -> Self {
+            self.manifest_snapshot_every_n_updates = manifest_snapshot_every_n_updates;
             self
         }
 
@@ -761,6 +786,7 @@ pub mod tests {
                 &purger,
                 0.75,
                 collector,
+                self.manifest_snapshot_every_n_updates,
             )
             .unwrap()
         }
@@ -772,6 +798,7 @@ pub mod tests {
                 table_id: table::new_table_id(2, 1),
                 table_name: "mocked_table".to_string(),
                 shard_id: DEFAULT_SHARD_ID,
+                manifest_snapshot_every_n_updates: usize::MAX,
             }
         }
     }
@@ -863,5 +890,10 @@ pub mod tests {
     fn test_compute_mutable_limit_panic() {
         compute_mutable_limit(80, 1.1);
         compute_mutable_limit(80, -0.1);
+    }
+
+    #[test]
+    fn test_manifest_snapshot_trigger() {
+        let table_data = TableDataMocker::default().build();
     }
 }

@@ -328,6 +328,7 @@ where
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Options {
     /// Steps to do snapshot
+    // TODO: move this field to suitable place.
     pub snapshot_every_n_updates: usize,
 
     /// Timeout to read manifest entries
@@ -480,9 +481,10 @@ impl Manifest for ManifestImpl {
         let table_data = self.table_meta_set.apply_edit_to_table(request).box_err()?;
 
         // Judge if snapshot is needed.
-        if table_data.should_do_manifest_snapshot(self.opts.snapshot_every_n_updates) {
+        if table_data.should_do_manifest_snapshot() {
             self.do_snapshot_internal(space_id, table_id, location)
                 .await?;
+            table_data.reset_manifest_updates();
         }
 
         Ok(())
@@ -814,6 +816,7 @@ mod tests {
                 &purger,
                 0.75,
                 collector,
+                usize::MAX,
             )
             .unwrap();
 
