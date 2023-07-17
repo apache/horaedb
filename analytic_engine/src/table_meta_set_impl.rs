@@ -2,7 +2,7 @@
 
 //! Table data set impl based on spaces
 
-use std::{fmt, sync::Arc};
+use std::{fmt, num::NonZeroUsize, sync::Arc};
 
 use common_util::{error::BoxError, id_allocator::IdAllocator};
 use log::debug;
@@ -36,7 +36,7 @@ pub(crate) struct TableMetaSetImpl {
     pub(crate) file_purger: FilePurgerRef,
     // TODO: maybe not suitable to place this parameter here?
     pub(crate) preflush_write_buffer_size_ratio: f32,
-    pub(crate) manifest_snapshot_every_n_updates: usize,
+    pub(crate) manifest_snapshot_every_n_updates: NonZeroUsize,
 }
 
 impl fmt::Debug for TableMetaSetImpl {

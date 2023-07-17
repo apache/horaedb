@@ -710,7 +710,7 @@ impl MetaUpdateLogStore for WalBasedLogStore {
 
 #[cfg(test)]
 mod tests {
-    use std::{path::PathBuf, sync::Arc, vec};
+    use std::{num::NonZeroUsize, path::PathBuf, sync::Arc, vec};
 
     use arena::NoopCollector;
     use common_types::{
@@ -818,7 +818,7 @@ mod tests {
                 &purger,
                 0.75,
                 collector,
-                usize::MAX,
+                NonZeroUsize::new(usize::MAX).unwrap(),
             )
             .unwrap();
 

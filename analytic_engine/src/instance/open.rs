@@ -4,6 +4,7 @@
 
 use std::{
     collections::HashMap,
+    num::NonZeroUsize,
     sync::{Arc, RwLock},
 };
 
@@ -60,11 +61,14 @@ impl Instance {
             store_picker.default_store().clone(),
         ));
 
+        let manifest_snapshot_every_n_updates =
+            NonZeroUsize::new(ctx.config.manifest.snapshot_every_n_updates)
+                .expect("manifest_snapshot_every_n_updates must be greater than 0");
         let table_meta_set_impl = Arc::new(TableMetaSetImpl {
             spaces: spaces.clone(),
             file_purger: file_purger.clone(),
             preflush_write_buffer_size_ratio: ctx.config.preflush_write_buffer_size_ratio,
-            manifest_snapshot_every_n_updates: ctx.config.manifest.snapshot_every_n_updates,
+            manifest_snapshot_every_n_updates,
         });
         let manifest = ManifestImpl::open(
             ctx.config.manifest.clone(),

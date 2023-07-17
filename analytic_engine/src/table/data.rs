@@ -7,6 +7,7 @@ use std::{
     convert::TryInto,
     fmt,
     fmt::Formatter,
+    num::NonZeroUsize,
     sync::{
         atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
         Arc, Mutex,
@@ -28,7 +29,7 @@ use common_util::{
     error::{GenericError, GenericResult},
     id_allocator::IdAllocator,
 };
-use log::{debug, info, warn};
+use log::{debug, info};
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
@@ -157,7 +158,7 @@ pub struct TableData {
     manifest_updates: AtomicUsize,
 
     /// Every n manifest updates to trigger a snapshot
-    manifest_snapshot_every_n_updates: usize,
+    manifest_snapshot_every_n_updates: NonZeroUsize,
 
     /// Metrics of this table
     pub metrics: Metrics,
@@ -219,7 +220,7 @@ impl TableData {
         purger: &FilePurger,
         preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
-        manifest_snapshot_every_n_updates: usize,
+        manifest_snapshot_every_n_updates: NonZeroUsize,
     ) -> Result<Self> {
         // FIXME(yingwen): Validate TableOptions, such as bucket_duration >=
         // segment_duration and bucket_duration is aligned to segment_duration
@@ -267,7 +268,7 @@ impl TableData {
         preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
         allocator: IdAllocator,
-        manifest_snapshot_every_n_updates: usize,
+        manifest_snapshot_every_n_updates: NonZeroUsize,
     ) -> Result<Self> {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
@@ -578,13 +579,8 @@ impl TableData {
     }
 
     pub fn should_do_manifest_snapshot(&self) -> bool {
-        if self.manifest_snapshot_every_n_updates == 0 {
-            warn!("TableData found snapshot_every_n_updates is 0, manifest snapshot will never be triggered");
-            return false;
-        }
-
         let updates = self.manifest_updates.load(Ordering::Relaxed);
-        updates >= self.manifest_snapshot_every_n_updates
+        updates >= self.manifest_snapshot_every_n_updates.get()
     }
 
     pub fn reset_manifest_updates(&self) {
@@ -728,7 +724,7 @@ pub mod tests {
         table_id: TableId,
         table_name: String,
         shard_id: ShardId,
-        manifest_snapshot_every_n_updates: usize,
+        manifest_snapshot_every_n_updates: NonZeroUsize,
     }
 
     impl TableDataMocker {
@@ -749,7 +745,7 @@ pub mod tests {
 
         pub fn manifest_snapshot_every_n_updates(
             mut self,
-            manifest_snapshot_every_n_updates: usize,
+            manifest_snapshot_every_n_updates: NonZeroUsize,
         ) -> Self {
             self.manifest_snapshot_every_n_updates = manifest_snapshot_every_n_updates;
             self
@@ -798,7 +794,7 @@ pub mod tests {
                 table_id: table::new_table_id(2, 1),
                 table_name: "mocked_table".to_string(),
                 shard_id: DEFAULT_SHARD_ID,
-                manifest_snapshot_every_n_updates: usize::MAX,
+                manifest_snapshot_every_n_updates: NonZeroUsize::new(usize::MAX).unwrap(),
             }
         }
     }
@@ -896,23 +892,13 @@ pub mod tests {
     fn test_manifest_snapshot_trigger() {
         // When snapshot_every_n_updates is not zero.
         let table_data = TableDataMocker::default()
-            .manifest_snapshot_every_n_updates(5)
+            .manifest_snapshot_every_n_updates(NonZeroUsize::new(5).unwrap())
             .build();
 
         check_manifest_snapshot_trigger(&table_data);
         // Reset and check again.
         table_data.reset_manifest_updates();
         check_manifest_snapshot_trigger(&table_data);
-
-        // When snapshot_every_n_updates is set to zero.
-        let table_data = TableDataMocker::default()
-            .manifest_snapshot_every_n_updates(0)
-            .build();
-        assert!(!table_data.should_do_manifest_snapshot());
-        table_data.increase_manifest_updates(5);
-        assert!(!table_data.should_do_manifest_snapshot());
-        table_data.increase_manifest_updates(5);
-        assert!(!table_data.should_do_manifest_snapshot());
     }
 
     fn check_manifest_snapshot_trigger(table_data: &TableData) {
