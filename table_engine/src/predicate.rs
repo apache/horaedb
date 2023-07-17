@@ -545,6 +545,14 @@ mod tests {
                 .and(col("key2").gt(set_timestamp(5))),
                 TimeRange::new(Timestamp::new(6), Timestamp::MAX).unwrap(),
             ),
+            (
+                // (key2 > 1 or key2 > 100) and key2 > 5
+                (col("key2")
+                    .lt(set_timestamp(10))
+                    .or(col("key2").gt(set_timestamp(100))))
+                .and(col("key2").gt(set_timestamp(5))),
+                TimeRange::new(Timestamp::new(6), Timestamp::MAX).unwrap(),
+            ),
         ];
         for (expr, expcted) in cases {
             let predict = PredicateBuilder::default()
