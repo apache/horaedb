@@ -57,35 +57,6 @@ pub struct Column {
     pub(crate) to_insert: usize,
 }
 
-// impl Iterator for Column {
-//     type Item = value::Value;
-//
-//     fn next(&mut self) -> Option<Self::Item> {
-//         // match &mut self.data {
-//         //     ColumnData::F64(col_data) =>
-//         //         Some(value::Value::Float64Value(col_data.next()?)),
-//         //     ColumnData::I64(col_data) =>
-//         //         Some(value::Value::Int64Value(col_data.next()?)),
-//         //     ColumnData::U64(col_data) =>
-//         //         Some(value::Value::Uint64Value(col_data.next()?)),
-//         //     ColumnData::String(col_data) =>
-//         //         Some(value::Value::StringValue(col_data.next()?)),
-//         //     ColumnData::Varbinary(col_data) =>
-//         //         Some(value::Value::VarbinaryValue(col_data.next()?)),
-//         //     ColumnData::Bool(col_data) => todo!(),
-//         // }
-//         match self.data {
-//             Self::F64(col_data) => ColumnDataIter::F64(col_data.into_iter()),
-//             Self::I64(col_data) => ColumnDataIter::I64(col_data.into_iter()),
-//             Self::U64(col_data) => ColumnDataIter::U64(col_data.into_iter()),
-//             Self::String(col_data) =>
-// ColumnDataIter::String(col_data.into_iter()),
-// Self::Varbinary(col_data) => ColumnDataIter::Varbinary(col_data.into_iter()),
-//             Self::Bool(col_data) => todo!(),
-//         }
-//     }
-// }
-
 impl IntoIterator for Column {
     type IntoIter = ColumnDataIter;
     type Item = value::Value;
@@ -224,56 +195,8 @@ impl Column {
         }
     }
 
-    pub fn append(&mut self, value: value::Value) -> Result<()> {
-        match (&mut self.data, value) {
-            (ColumnData::F64(data), value::Value::Float64Value(v)) => data[self.to_insert] = v,
-            (
-                ColumnData::I64(data),
-                value::Value::Int64Value(v) | value::Value::TimestampValue(v),
-            ) => data[self.to_insert] = v,
-            (ColumnData::U64(data), value::Value::Uint64Value(v)) => data[self.to_insert] = v,
-            (ColumnData::String(data), value::Value::StringValue(v)) => data[self.to_insert] = v,
-            (ColumnData::StringBytes(data), value::Value::StringValue(v)) => {
-                data[self.to_insert] = StringBytes::from(v)
-            }
-            (ColumnData::Varbinary(data), value::Value::VarbinaryValue(v)) => {
-                data[self.to_insert] = v;
-            }
-            (ColumnData::Bool(data), value::Value::BoolValue(v)) => {
-                if v {
-                    data.set(self.to_insert);
-                }
-            }
-
-            (c, v) => println!("c: {:?}, v: {:?}", c, v),
-        }
-        self.valid.set(self.to_insert);
-        self.to_insert += 1;
-        Ok(())
-    }
-
-    pub fn append_datum(&mut self, value: Datum) -> Result<()> {
-        match (&mut self.data, value) {
-            (ColumnData::F64(data), Datum::Double(v)) => data[self.to_insert] = v,
-            (ColumnData::I64(data), Datum::Int64(v)) => data[self.to_insert] = v,
-            (ColumnData::I64(data), Datum::Timestamp(v)) => data[self.to_insert] = v.as_i64(),
-            (ColumnData::U64(data), Datum::UInt64(v)) => data[self.to_insert] = v,
-            (ColumnData::String(data), Datum::String(v)) => data[self.to_insert] = v.to_string(),
-            (ColumnData::StringBytes(data), Datum::String(v)) => data[self.to_insert] = v,
-            (ColumnData::Varbinary(data), Datum::Varbinary(v)) => {
-                data[self.to_insert] = v.to_vec();
-            }
-            (ColumnData::Bool(data), Datum::Boolean(v)) => {
-                if v {
-                    data.set(self.to_insert);
-                }
-            }
-
-            (c, v) => println!("c: {:?}, v: {:?}", c, v),
-        }
-        self.valid.set(self.to_insert);
-        self.to_insert += 1;
-        Ok(())
+    pub fn append_nulls(&mut self, count: usize) {
+        self.valid.append_unset(count);
     }
 
     pub fn append_datum_ref(&mut self, value: &Datum) -> Result<()> {

@@ -6,8 +6,13 @@ use std::{
 };
 
 use bytes::Bytes;
-use common_types::{column::Column, row::Row, schema::Schema, SequenceNumber};
-use log::trace;
+use common_types::{
+    column::Column,
+    row::{Row, RowGroupSlicer, RowGroupSplitter},
+    schema::Schema,
+    SequenceNumber,
+};
+use log::{debug, trace};
 use snafu::ensure;
 
 use crate::memtable::{
@@ -47,14 +52,30 @@ impl MemTable for ColumnarMemTable {
         &self,
         ctx: &mut PutContext,
         sequence: KeySequence,
-        columns: HashMap<String, Column>,
+        row_group: &RowGroupSplitter,
         schema: &Schema,
     ) -> Result<()> {
-        // trace!(
-        //     "skiplist put row, sequence:{:?}, columns:{:?}",
-        //     sequence,
-        //     columns
-        // );
+        let row_count = row_group.split_idx.len();
+        let mut columns = HashMap::with_capacity(schema.num_columns());
+        for i in 0..row_count {
+            let row = row_group.get(i).unwrap();
+            for (i, column_schema) in schema.columns().iter().enumerate() {
+                let column = if let Some(column) = columns.get_mut(&column_schema.name) {
+                    column
+                } else {
+                    let mut column = Column::new(row_count, column_schema.data_type);
+                    columns.insert(column_schema.name.to_string(), column);
+                    columns.get_mut(&column_schema.name).unwrap()
+                };
+
+                if let Some(writer_index) = ctx.index_in_writer.column_index_in_writer(i) {
+                    column.append_datum_ref(&row[writer_index]).unwrap();
+                } else {
+                    column.append_nulls(1);
+                }
+            }
+        }
+
         let mut memtable = self.memtable.write().unwrap();
         for (k, v) in columns {
             if let Some(column) = memtable.get_mut(&k) {
@@ -67,48 +88,12 @@ impl MemTable for ColumnarMemTable {
         Ok(())
     }
 
-    // fn put(
-    //     &self,
-    //     ctx: &mut PutContext,
-    //     sequence: KeySequence,
-    //     row: &Row,
-    //     schema: &Schema,
-    // ) -> Result<()> {
-    //     let mut memtable = self.memtable.write().unwrap();
-    //     for (index_in_table,column_schema) in schema.columns().iter().enumerate()
-    // {         if let Some(writer_index) =
-    // ctx.index_in_writer.column_index_in_writer(index_in_table)         {
-    //             let datum = &row[writer_index];
-    //             let column = if let Some(column) =
-    //                 memtable.get_mut(&column_schema.name)
-    //             {
-    //                 column
-    //             } else {
-    //                 let mut column = Column::new(row_count,
-    // column_schema.data_type);                 memtable.insert(
-    //                     column_schema.name.to_string(),
-    //                     column,
-    //                 );
-    //                 memtable
-    //                     .get_mut(&column_schema.name)
-    //                     .unwrap()
-    //             };
-    //
-    //             // Write datum bytes to the buffer.
-    //             column.append_datum_ref(datum).unwrap();
-    //         }
-    //         // Column not in row is already filled by null.
-    //     }
-    //
-    //     Ok(())
-    // }
-
     fn scan(&self, ctx: ScanContext, request: ScanRequest) -> Result<ColumnarIterPtr> {
-        // debug!(
-        //     "Scan skiplist memtable, ctx:{:?}, request:{:?}",
-        //     ctx, request
-        // );
-        //
+        debug!(
+            "Scan columnar memtable, ctx:{:?}, request:{:?}",
+            ctx, request
+        );
+
         let timestamp_column = self.schema.column(self.schema.timestamp_index());
         let num_rows = self
             .memtable
@@ -123,13 +108,12 @@ impl MemTable for ColumnarMemTable {
     }
 
     fn approximate_memory_usage(&self) -> usize {
-        // // Mem size of skiplist is u32, need to cast to usize
-        // match self.skiplist.mem_size().try_into() {
-        //     Ok(v) => v,
-        //     // The skiplist already use bytes larger than usize
-        //     Err(_) => usize::MAX,
-        // }
-        0
+        self.memtable
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(_, column)| column.size())
+            .sum()
     }
 
     fn set_last_sequence(&self, sequence: SequenceNumber) -> Result<()> {

@@ -13,7 +13,7 @@ edition = "2021"
 # In alphabetical order
 members = [
     "analytic_engine",
-    "benchmarks",
+#    "benchmarks",
     "catalog",
     "catalog_impls",
     "cluster",

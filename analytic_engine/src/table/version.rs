@@ -13,7 +13,7 @@ use std::{
 
 use common_types::{
     column::Column,
-    row::Row,
+    row::{Row, RowGroupSlicer, RowGroupSplitter},
     schema::{self, Schema},
     time::{TimeRange, Timestamp},
     SequenceNumber,
@@ -162,14 +162,14 @@ impl MemTableForWrite {
         &self,
         ctx: &mut PutContext,
         sequence: KeySequence,
-        columns: HashMap<String, Column>,
+        row_group: &RowGroupSplitter,
         schema: &Schema,
         timestamp: Timestamp,
     ) -> Result<()> {
         match self {
             MemTableForWrite::Sampling(v) => {
                 v.mem
-                    .put(ctx, sequence, columns, schema)
+                    .put(ctx, sequence, row_group, schema)
                     .context(PutMemTable)?;
 
                 // Collect the timestamp of this row.
@@ -179,7 +179,7 @@ impl MemTableForWrite {
             }
             MemTableForWrite::Normal(v) => v
                 .mem
-                .put(ctx, sequence, columns, schema)
+                .put(ctx, sequence, row_group, schema)
                 .context(PutMemTable),
         }
     }

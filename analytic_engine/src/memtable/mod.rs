@@ -14,7 +14,7 @@ use common_types::{
     column::Column,
     projected_schema::ProjectedSchema,
     record_batch::RecordBatchWithKey,
-    row::Row,
+    row::{Row, RowGroupSlicer, RowGroupSplitter},
     schema::{IndexInWriterSchema, Schema},
     SequenceNumber,
 };
@@ -171,7 +171,7 @@ pub trait MemTable {
         &self,
         ctx: &mut PutContext,
         sequence: KeySequence,
-        row: HashMap<String, Column>,
+        row_group: &RowGroupSplitter,
         schema: &Schema,
     ) -> Result<()>;
 
