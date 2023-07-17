@@ -262,8 +262,13 @@ impl Instance {
     }
 
     #[inline]
-    pub fn read_runtime(&self) -> &Arc<Runtime> {
+    fn read_runtime(&self) -> &Arc<Runtime> {
         &self.runtimes.read_runtime
+    }
+
+    #[inline]
+    pub fn write_runtime(&self) -> &Arc<Runtime> {
+        &self.runtimes.write_runtime
     }
 
     #[inline]
