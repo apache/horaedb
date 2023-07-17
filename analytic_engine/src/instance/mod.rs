@@ -267,6 +267,11 @@ impl Instance {
     }
 
     #[inline]
+    pub fn write_runtime(&self) -> &Arc<Runtime> {
+        &self.runtimes.write_runtime
+    }
+
+    #[inline]
     fn make_flusher(&self) -> Flusher {
         Flusher {
             space_store: self.space_store.clone(),
