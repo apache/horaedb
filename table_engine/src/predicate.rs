@@ -426,3 +426,105 @@ impl<'a> TimeRangeExtractor<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use common_types::{
+        tests::build_schema_with_dictionary,
+        time::{TimeRange, Timestamp},
+    };
+    use datafusion::{
+        prelude::{col, Expr},
+        scalar::ScalarValue,
+    };
+
+    use crate::predicate::PredicateBuilder;
+
+    fn set_timestamp(ts: i64) -> Expr {
+        Expr::Literal(ScalarValue::TimestampMillisecond(Some(ts), None))
+    }
+    #[test]
+    fn test_extract_range() {
+        // The actual range needs to be a subset of the predicate range
+        let schema = build_schema_with_dictionary();
+        let cases = vec![
+            (
+                col("key2").gt(set_timestamp(10000)),
+                TimeRange::new(Timestamp::new(10001), Timestamp::MAX).unwrap(),
+            ),
+            (
+                col("key2")
+                    .gt(set_timestamp(10000))
+                    .and(col("key2").gt(set_timestamp(500))),
+                TimeRange::new(Timestamp::new(10001), Timestamp::MAX).unwrap(),
+            ),
+            (
+                col("key2")
+                    .gt(set_timestamp(10000))
+                    .or(col("key2").gt(set_timestamp(500))),
+                TimeRange::new(Timestamp::new(501), Timestamp::MAX).unwrap(),
+            ),
+            (
+                col("key2").gt(set_timestamp(10000)).or(col("key2")
+                    .gt(set_timestamp(500))
+                    .and(col("key2").gt(set_timestamp(300)))),
+                TimeRange::new(Timestamp::new(501), Timestamp::MAX).unwrap(),
+            ),
+            (
+                col("key2").gt(set_timestamp(10000)).or(col("key2")
+                    .gt(set_timestamp(500))
+                    .and(col("key2").lt(set_timestamp(600)))),
+                TimeRange::new(Timestamp::new(501), Timestamp::MAX).unwrap(),
+            ),
+            (
+                col("key2")
+                    .gt(set_timestamp(500))
+                    .and(col("key2").lt(set_timestamp(600))),
+                TimeRange::new(Timestamp::new(501), Timestamp::new(600)).unwrap(),
+            ),
+            (
+                col("key2").gt(set_timestamp(10000)).and(
+                    col("key2")
+                        .gt(set_timestamp(500))
+                        .and(col("key2").lt(set_timestamp(600))),
+                ),
+                TimeRange::new(Timestamp::new(0), Timestamp::new(0)).unwrap(),
+            ),
+            (
+                col("key2").gt(set_timestamp(10000)).and(
+                    col("key2")
+                        .gt(set_timestamp(500))
+                        .and(col("key2").gt(set_timestamp(600))),
+                ),
+                TimeRange::new(Timestamp::new(10001), Timestamp::MAX).unwrap(),
+            ),
+            (
+                col("key2").gt(set_timestamp(10)).and(
+                    col("key2")
+                        .lt(set_timestamp(500))
+                        .and(col("key2").gt(set_timestamp(1))),
+                ),
+                TimeRange::new(Timestamp::new(11), Timestamp::new(500)).unwrap(),
+            ),
+            (
+                col("key2")
+                    .lt(set_timestamp(10))
+                    .and(col("key2").gt(set_timestamp(11))),
+                TimeRange::new(Timestamp::new(0), Timestamp::new(0)).unwrap(),
+            ),
+            (
+                col("key2")
+                    .lt(set_timestamp(10))
+                    .or(col("key2").gt(set_timestamp(11))),
+                TimeRange::new(Timestamp::MIN, Timestamp::MAX).unwrap(),
+            ),
+        ];
+        for (expr, expcted) in cases {
+            let predict = PredicateBuilder::default()
+                .add_pushdown_exprs(&vec![expr.clone()])
+                .extract_time_range(&schema, &vec![expr])
+                .build();
+            assert_eq!(predict.time_range(), expcted);
+        }
+    }
+}
