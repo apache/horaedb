@@ -344,7 +344,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            snapshot_every_n_updates: 10_000,
+            snapshot_every_n_updates: 100,
             scan_timeout: ReadableDuration::secs(5),
             scan_batch_size: 100,
             store_timeout: ReadableDuration::secs(5),
