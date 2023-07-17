@@ -62,7 +62,7 @@ pub trait ContiguousRow {
     /// Returns [DatumView] of column in given index.
     ///
     /// Panic if index or buffer is out of bound.
-    fn datum_view_at(&self, index: usize, datum_kind: DatumKind) -> DatumView;
+    fn datum_view_at(&self, index: usize, datum_kind: &DatumKind) -> DatumView;
 }
 
 /// Here is the layout of the encoded continuous row:
@@ -146,7 +146,7 @@ impl<'a, T: Deref<Target = [u8]>> ContiguousRow for ContiguousRowReader<'a, T> {
         }
     }
 
-    fn datum_view_at(&self, index: usize, datum_kind: DatumKind) -> DatumView {
+    fn datum_view_at(&self, index: usize, datum_kind: &DatumKind) -> DatumView {
         match self {
             Self::NoNulls(v) => v.datum_view_at(index, datum_kind),
             Self::WithNulls(v) => v.datum_view_at(index, datum_kind),
@@ -196,7 +196,7 @@ impl<'a, T: Deref<Target = [u8]>> ContiguousRow for ContiguousRowReaderWithNulls
         self.byte_offsets.len()
     }
 
-    fn datum_view_at(&self, index: usize, datum_kind: DatumKind) -> DatumView<'a> {
+    fn datum_view_at(&self, index: usize, datum_kind: &DatumKind) -> DatumView<'a> {
         let offset = self.byte_offsets[index];
         if offset < 0 {
             DatumView::Null
@@ -213,7 +213,7 @@ impl<'a, T: Deref<Target = [u8]>> ContiguousRow for ContiguousRowReaderNoNulls<'
         self.byte_offsets.len()
     }
 
-    fn datum_view_at(&self, index: usize, datum_kind: DatumKind) -> DatumView<'a> {
+    fn datum_view_at(&self, index: usize, datum_kind: &DatumKind) -> DatumView<'a> {
         let offset = self.byte_offsets[index];
         let datum_buf = &self.inner[self.datum_offset + offset..];
         datum_view_at(datum_buf, self.inner, datum_kind)
@@ -223,7 +223,7 @@ impl<'a, T: Deref<Target = [u8]>> ContiguousRow for ContiguousRowReaderNoNulls<'
 fn datum_view_at<'a>(
     datum_buf: &'a [u8],
     string_buf: &'a [u8],
-    datum_kind: DatumKind,
+    datum_kind: &DatumKind,
 ) -> DatumView<'a> {
     must_read_view(datum_kind, datum_buf, string_buf)
 }
@@ -590,7 +590,7 @@ pub(crate) fn byte_size_of_datum(kind: &DatumKind) -> usize {
 /// ## Safety
 /// The string in buffer must be valid utf8.
 fn must_read_view<'a>(
-    datum_kind: DatumKind,
+    datum_kind: &DatumKind,
     datum_buf: &'a [u8],
     string_buf: &'a [u8],
 ) -> DatumView<'a> {
@@ -710,7 +710,7 @@ mod tests {
         let datum_kinds = schema
             .columns()
             .iter()
-            .map(|column| column.data_type)
+            .map(|column| &column.data_type)
             .collect::<Vec<_>>();
 
         let mut buf = Vec::new();

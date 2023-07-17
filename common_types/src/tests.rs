@@ -341,7 +341,6 @@ pub fn build_record_batch_with_key_by_rows(rows: Vec<Row>) -> RecordBatchWithKey
 
         let source_row = ContiguousRowReader::try_new(&buf, &schema).unwrap();
         let projected_row = ProjectedContiguousRow::new(source_row, &row_projected_schema);
-
         builder
             .append_projected_contiguous_row(&projected_row)
             .unwrap();
