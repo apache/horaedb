@@ -10,7 +10,8 @@ use crate::{
         CloseContext, CloseTableContext, CreateTableContext, DropTableContext, OpenContext,
         OpenTableContext, ShardOperator,
     },
-    Result, ShardVersionMismatch, TableAlreadyExists, TableNotFound, UpdateFrozenShard,
+    OpenShardNoCause, Result, ShardVersionMismatch, TableAlreadyExists, TableNotFound,
+    UpdateFrozenShard,
 };
 
 /// Shard set
@@ -66,7 +67,7 @@ impl Shard {
         let data = Arc::new(std::sync::RwLock::new(ShardData {
             shard_info: tables_of_shard.shard_info,
             tables: tables_of_shard.tables,
-            frozen: false,
+            status: ShardStatus::default(),
         }));
 
         let operator = tokio::sync::Mutex::new(ShardOperator { data: data.clone() });
@@ -86,7 +87,35 @@ impl Shard {
 
     pub async fn open(&self, ctx: OpenContext) -> Result<()> {
         let operator = self.operator.lock().await;
-        operator.open(ctx).await
+        {
+            let mut data = self.data.write().unwrap();
+            if !data.need_open() {
+                return OpenShardNoCause {
+                    msg: format!("Shard is already in opening, id:{}", data.shard_info.id),
+                }
+                .fail();
+            }
+
+            data.begin_open();
+        }
+
+        let ret = operator.open(ctx).await;
+
+        {
+            let mut data = self.data.write().unwrap();
+            if ret.is_ok() {
+                data.finish_open();
+            } else {
+                data.status = ShardStatus::NewlyCreated;
+            }
+        }
+
+        ret
+    }
+
+    pub fn is_opened(&self) -> bool {
+        let data = self.data.read().unwrap();
+        data.is_opened()
     }
 
     pub async fn close(&self, ctx: CloseContext) -> Result<()> {
@@ -124,6 +153,19 @@ pub struct UpdatedTableInfo {
     pub table_info: TableInfo,
 }
 
+#[derive(Debug, Default, PartialEq)]
+pub enum ShardStatus {
+    /// Not allowed report to ceresmeta
+    #[default]
+    NewlyCreated,
+    /// Not allowed report to ceresmeta
+    Opening,
+    /// Healthy
+    Opened,
+    /// Further updates are prohibited
+    Frozen,
+}
+
 /// Shard data
 #[derive(Debug)]
 pub struct ShardData {
@@ -133,8 +175,9 @@ pub struct ShardData {
     /// Tables in shard
     pub tables: Vec<TableInfo>,
 
-    /// Flag indicating that further updates are prohibited
-    pub frozen: bool,
+    /// Current status
+    /// The flow of shard status is: opening -> opened -> frozen
+    pub status: ShardStatus,
 }
 
 impl ShardData {
@@ -145,8 +188,33 @@ impl ShardData {
             .cloned()
     }
 
+    #[inline]
     pub fn freeze(&mut self) {
-        self.frozen = true;
+        self.status = ShardStatus::Frozen;
+    }
+
+    #[inline]
+    pub fn begin_open(&mut self) {
+        assert_eq!(self.status, ShardStatus::NewlyCreated);
+
+        self.status = ShardStatus::Opening;
+    }
+
+    #[inline]
+    pub fn finish_open(&mut self) {
+        assert_eq!(self.status, ShardStatus::Opening);
+
+        self.status = ShardStatus::Opened;
+    }
+
+    #[inline]
+    pub fn need_open(&self) -> bool {
+        matches!(self.status, ShardStatus::NewlyCreated)
+    }
+
+    #[inline]
+    pub fn is_opened(&self) -> bool {
+        matches!(self.status, ShardStatus::Opened | ShardStatus::Frozen)
     }
 
     pub fn try_insert_table(&mut self, updated_info: UpdatedTableInfo) -> Result<()> {
@@ -157,7 +225,7 @@ impl ShardData {
         } = updated_info;
 
         ensure!(
-            !self.frozen,
+            !matches!(self.status, ShardStatus::Frozen),
             UpdateFrozenShard {
                 shard_id: curr_shard.id,
             }
@@ -194,7 +262,7 @@ impl ShardData {
         } = updated_info;
 
         ensure!(
-            !self.frozen,
+            !matches!(self.status, ShardStatus::Frozen),
             UpdateFrozenShard {
                 shard_id: curr_shard.id,
             }
