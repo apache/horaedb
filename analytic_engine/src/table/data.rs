@@ -894,22 +894,37 @@ pub mod tests {
 
     #[test]
     fn test_manifest_snapshot_trigger() {
+        // When snapshot_every_n_updates is not zero.
         let table_data = TableDataMocker::default()
             .manifest_snapshot_every_n_updates(5)
             .build();
-        // When no updates yet, result should be false.
-        assert!(!table_data.should_do_manifest_snapshot());
 
-        // Normal case.
-        table_data.increase_manifest_updates(5);
-        assert!(table_data.should_do_manifest_snapshot());
+        check_manifest_snapshot_trigger(&table_data);
+        // Reset and check again.
+        table_data.reset_manifest_updates();
+        check_manifest_snapshot_trigger(&table_data);
 
-        // When snapshot_every_n_updates is set to zero, result should be always false.
+        // When snapshot_every_n_updates is set to zero.
         let table_data = TableDataMocker::default()
             .manifest_snapshot_every_n_updates(0)
             .build();
         assert!(!table_data.should_do_manifest_snapshot());
         table_data.increase_manifest_updates(5);
         assert!(!table_data.should_do_manifest_snapshot());
+        table_data.increase_manifest_updates(5);
+        assert!(!table_data.should_do_manifest_snapshot());
+    }
+
+    fn check_manifest_snapshot_trigger(table_data: &TableData) {
+        // When no updates yet, result should be false.
+        assert!(!table_data.should_do_manifest_snapshot());
+
+        // Eq case.
+        table_data.increase_manifest_updates(5);
+        assert!(table_data.should_do_manifest_snapshot());
+
+        // Greater case.
+        table_data.increase_manifest_updates(5);
+        assert!(table_data.should_do_manifest_snapshot());
     }
 }
