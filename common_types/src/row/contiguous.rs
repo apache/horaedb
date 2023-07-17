@@ -251,10 +251,12 @@ impl<'a, T: ContiguousRow> ProjectedContiguousRow<'a, T> {
 
     pub fn datum_view_at(&self, index: usize) -> DatumView {
         let p = self.projector.source_projection()[index];
-        let datum_kind = self.projector.datum_kind(index);
 
         match p {
-            Some(index_in_source) => self.source_row.datum_view_at(index_in_source, datum_kind),
+            Some(index_in_source) => {
+                let datum_kind = self.projector.datum_kind(index_in_source);
+                self.source_row.datum_view_at(index_in_source, datum_kind)
+            }
             None => DatumView::Null,
         }
     }
@@ -705,6 +707,11 @@ mod tests {
         let schema = build_schema();
         let rows = build_rows();
         let index_in_writer = IndexInWriterSchema::for_same_schema(schema.num_columns());
+        let datum_kinds = schema
+            .columns()
+            .iter()
+            .map(|column| column.data_type)
+            .collect::<Vec<_>>();
 
         let mut buf = Vec::new();
         for row in rows {
@@ -717,7 +724,7 @@ mod tests {
             let range: Vec<_> = (0..reader.num_datum_views()).collect();
             for i in range {
                 let datum = &row[i];
-                let view = reader.datum_view_at(i, datum.kind());
+                let view = reader.datum_view_at(i, datum_kinds[i]);
 
                 assert_eq!(datum.as_view(), view);
             }
