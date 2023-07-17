@@ -449,40 +449,47 @@ mod tests {
         let schema = build_schema_with_dictionary();
         let cases = vec![
             (
+                // key2 > 10000
                 col("key2").gt(set_timestamp(10000)),
                 TimeRange::new(Timestamp::new(10001), Timestamp::MAX).unwrap(),
             ),
             (
+                // key2 > 10000 and key2 > 500
                 col("key2")
                     .gt(set_timestamp(10000))
                     .and(col("key2").gt(set_timestamp(500))),
                 TimeRange::new(Timestamp::new(10001), Timestamp::MAX).unwrap(),
             ),
             (
+                // key2 > 10000 or key2 > 500
                 col("key2")
                     .gt(set_timestamp(10000))
                     .or(col("key2").gt(set_timestamp(500))),
                 TimeRange::new(Timestamp::new(501), Timestamp::MAX).unwrap(),
             ),
             (
+                // key2 > 10000 or (key2 > 500 and key2 > 300)
                 col("key2").gt(set_timestamp(10000)).or(col("key2")
                     .gt(set_timestamp(500))
                     .and(col("key2").gt(set_timestamp(300)))),
                 TimeRange::new(Timestamp::new(501), Timestamp::MAX).unwrap(),
             ),
             (
+                // key2 > 10000 or (key2 > 500 and key2 < 600)
                 col("key2").gt(set_timestamp(10000)).or(col("key2")
                     .gt(set_timestamp(500))
                     .and(col("key2").lt(set_timestamp(600)))),
                 TimeRange::new(Timestamp::new(501), Timestamp::MAX).unwrap(),
             ),
             (
+                // key2 > 500 and key2 < 600
                 col("key2")
                     .gt(set_timestamp(500))
                     .and(col("key2").lt(set_timestamp(600))),
                 TimeRange::new(Timestamp::new(501), Timestamp::new(600)).unwrap(),
             ),
             (
+                // key2 > 10000 and (key2 > 500 and key2 < 600)
                 col("key2").gt(set_timestamp(10000)).and(
                     col("key2")
                         .gt(set_timestamp(500))
@@ -491,6 +498,7 @@ mod tests {
                 TimeRange::new(Timestamp::new(0), Timestamp::new(0)).unwrap(),
             ),
             (
+                // key2 > 10000 and (key2 > 500 and key2 > 600)
                 col("key2").gt(set_timestamp(10000)).and(
                     col("key2")
                         .gt(set_timestamp(500))
@@ -499,6 +507,7 @@ mod tests {
                 TimeRange::new(Timestamp::new(10001), Timestamp::MAX).unwrap(),
             ),
             (
+                // key2 > 10 and (key2 < 500 and key2 > 1)
                 col("key2").gt(set_timestamp(10)).and(
                     col("key2")
                         .lt(set_timestamp(500))
@@ -507,12 +516,14 @@ mod tests {
                 TimeRange::new(Timestamp::new(11), Timestamp::new(500)).unwrap(),
             ),
             (
+                // key2 < 10 and key2 > 11
                 col("key2")
                     .lt(set_timestamp(10))
                     .and(col("key2").gt(set_timestamp(11))),
                 TimeRange::new(Timestamp::new(0), Timestamp::new(0)).unwrap(),
             ),
             (
+                // key2 < 10 or key2 > 11
                 col("key2")
                     .lt(set_timestamp(10))
                     .or(col("key2").gt(set_timestamp(11))),
