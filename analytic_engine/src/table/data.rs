@@ -33,8 +33,8 @@ use crate::{
     instance::serial_executor::TableOpSerialExecutor,
     manifest::meta_edit::AddTableMeta,
     memtable::{
+        columnar::factory::ColumnarMemTableFactory,
         factory::{FactoryRef as MemTableFactoryRef, Options as MemTableOptions},
-        skiplist::factory::SkiplistMemTableFactory,
     },
     space::SpaceId,
     sst::{file::FilePurger, manager::FileId},
@@ -208,7 +208,7 @@ impl TableData {
         // FIXME(yingwen): Validate TableOptions, such as bucket_duration >=
         // segment_duration and bucket_duration is aligned to segment_duration
 
-        let memtable_factory = Arc::new(SkiplistMemTableFactory);
+        let memtable_factory = Arc::new(ColumnarMemTableFactory);
         let purge_queue = purger.create_purge_queue(space_id, table_id);
         let current_version = TableVersion::new(purge_queue);
         let metrics = Metrics::default();
@@ -249,7 +249,7 @@ impl TableData {
         preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
     ) -> Result<Self> {
-        let memtable_factory = Arc::new(SkiplistMemTableFactory);
+        let memtable_factory = Arc::new(ColumnarMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
         let current_version = TableVersion::new(purge_queue);
         let metrics = Metrics::default();

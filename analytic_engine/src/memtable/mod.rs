@@ -1,15 +1,17 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! MemTable
 
+pub mod columnar;
 pub mod factory;
 pub mod key;
-pub mod skiplist;
+// pub mod skiplist;
 
-use std::{ops::Bound, sync::Arc, time::Instant};
+use std::{collections::HashMap, ops::Bound, sync::Arc, time::Instant};
 
 use common_types::{
     bytes::{ByteVec, Bytes},
+    column::Column,
     projected_schema::ProjectedSchema,
     record_batch::RecordBatchWithKey,
     row::Row,
@@ -169,7 +171,7 @@ pub trait MemTable {
         &self,
         ctx: &mut PutContext,
         sequence: KeySequence,
-        row: &Row,
+        row: HashMap<String, Column>,
         schema: &Schema,
     ) -> Result<()>;
 
