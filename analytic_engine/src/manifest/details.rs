@@ -5,6 +5,7 @@
 use std::{
     collections::VecDeque,
     fmt, mem,
+    num::NonZeroUsize,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -44,7 +45,7 @@ use crate::{
         LoadRequest, Manifest, SnapshotRequest,
     },
     space::SpaceId,
-    table::data::TableShardInfo,
+    table::data::{TableDataRef, TableShardInfo},
 };
 
 #[derive(Debug, Snafu)]
@@ -183,13 +184,15 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
 ///
 /// Get snapshot of or modify table's metadata through it.
 pub(crate) trait TableMetaSet: fmt::Debug + Send + Sync {
+    // Get snapshot of `TableData`.
     fn get_table_snapshot(
         &self,
         space_id: SpaceId,
         table_id: TableId,
     ) -> Result<Option<MetaSnapshot>>;
 
-    fn apply_edit_to_table(&self, update: MetaEditRequest) -> Result<()>;
+    // Apply update to `TableData` and return it.
+    fn apply_edit_to_table(&self, update: MetaEditRequest) -> Result<TableDataRef>;
 }
 
 /// Snapshot recoverer
@@ -324,14 +327,17 @@ where
 
 /// Options for manifest
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct Options {
     /// Steps to do snapshot
-    pub snapshot_every_n_updates: usize,
+    // TODO: move this field to suitable place.
+    pub snapshot_every_n_updates: NonZeroUsize,
 
     /// Timeout to read manifest entries
     pub scan_timeout: ReadableDuration,
 
     /// Batch size to read manifest entries
+    // TODO: use NonZeroUsize
     pub scan_batch_size: usize,
 
     /// Timeout to store manifest entries
@@ -341,7 +347,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            snapshot_every_n_updates: 10_000,
+            snapshot_every_n_updates: NonZeroUsize::new(100).unwrap(),
             scan_timeout: ReadableDuration::secs(5),
             scan_batch_size: 100,
             store_timeout: ReadableDuration::secs(5),
@@ -407,20 +413,12 @@ impl ManifestImpl {
     /// Do snapshot if no other snapshot is triggered.
     ///
     /// Returns the latest snapshot if snapshot is done.
-    async fn maybe_do_snapshot(
+    async fn do_snapshot_internal(
         &self,
         space_id: SpaceId,
         table_id: TableId,
         location: WalLocation,
-        force: bool,
     ) -> Result<Option<Snapshot>> {
-        if !force {
-            let num_updates = self.num_updates_since_snapshot.load(Ordering::Relaxed);
-            if num_updates < self.opts.snapshot_every_n_updates {
-                return Ok(None);
-            }
-        }
-
         if let Ok(_guard) = self.snapshot_write_guard.try_lock() {
             let log_store = WalBasedLogStore {
                 opts: self.opts.clone(),
@@ -439,26 +437,11 @@ impl ManifestImpl {
                 table_id,
             };
 
-            let snapshot = snapshotter.snapshot().await?.map(|v| {
-                self.decrease_num_updates();
-                v
-            });
+            let snapshot = snapshotter.snapshot().await?;
             Ok(snapshot)
         } else {
             debug!("Avoid concurrent snapshot");
             Ok(None)
-        }
-    }
-
-    // with snapshot guard held
-    fn decrease_num_updates(&self) {
-        if self.opts.snapshot_every_n_updates
-            > self.num_updates_since_snapshot.load(Ordering::Relaxed)
-        {
-            self.num_updates_since_snapshot.store(0, Ordering::Relaxed);
-        } else {
-            self.num_updates_since_snapshot
-                .fetch_sub(self.opts.snapshot_every_n_updates, Ordering::Relaxed);
         }
     }
 }
@@ -480,13 +463,21 @@ impl Manifest for ManifestImpl {
         let location = WalLocation::new(shard_id as u64, table_id.as_u64());
         let space_id = meta_update.space_id();
 
-        self.maybe_do_snapshot(space_id, table_id, location, false)
-            .await?;
-
         self.store_update_to_wal(meta_update, location).await?;
 
         // Update memory.
-        self.table_meta_set.apply_edit_to_table(request).box_err()
+        let table_data = self.table_meta_set.apply_edit_to_table(request).box_err()?;
+
+        // Update manifest updates count.
+        table_data.increase_manifest_updates(1);
+        // Judge if snapshot is needed.
+        if table_data.should_do_manifest_snapshot() {
+            self.do_snapshot_internal(space_id, table_id, location)
+                .await?;
+            table_data.reset_manifest_updates();
+        }
+
+        Ok(())
     }
 
     async fn recover(&self, load_req: &LoadRequest) -> GenericResult<()> {
@@ -536,7 +527,7 @@ impl Manifest for ManifestImpl {
         let space_id = request.space_id;
         let table_id = request.table_id;
 
-        self.maybe_do_snapshot(space_id, table_id, location, true)
+        self.do_snapshot_internal(space_id, table_id, location)
             .await
             .box_err()?;
 
@@ -707,8 +698,9 @@ impl MetaUpdateLogStore for WalBasedLogStore {
 
 #[cfg(test)]
 mod tests {
-    use std::{path::PathBuf, sync::Arc, vec};
+    use std::{num::NonZeroUsize, path::PathBuf, sync::Arc, vec};
 
+    use arena::NoopCollector;
     use common_types::{
         column_schema, datum::DatumKind, schema, schema::Schema, table::DEFAULT_SHARD_ID,
     };
@@ -728,7 +720,8 @@ mod tests {
             },
             LoadRequest, Manifest,
         },
-        table::data::TableShardInfo,
+        sst::file::tests::FilePurgerMocker,
+        table::data::{tests::default_schema, TableData, TableShardInfo},
         TableOptions,
     };
 
@@ -780,7 +773,7 @@ mod tests {
             Ok(builder.clone().build())
         }
 
-        fn apply_edit_to_table(&self, request: MetaEditRequest) -> Result<()> {
+        fn apply_edit_to_table(&self, request: MetaEditRequest) -> Result<TableDataRef> {
             let mut builder = self.builder.lock().unwrap();
             let MetaEditRequest {
                 shard_info: _,
@@ -800,7 +793,24 @@ mod tests {
                 }
             }
 
-            Ok(())
+            let table_opts = TableOptions::default();
+            let purger = FilePurgerMocker::mock();
+            let collector = Arc::new(NoopCollector);
+            let test_data = TableData::new(
+                0,
+                TableId::new(0),
+                "test_table".to_string(),
+                default_schema(),
+                0,
+                table_opts,
+                &purger,
+                0.75,
+                collector,
+                NonZeroUsize::new(usize::MAX).unwrap(),
+            )
+            .unwrap();
+
+            Ok(Arc::new(test_data))
         }
     }
 
@@ -820,7 +830,7 @@ mod tests {
             let runtime = build_runtime(2);
 
             let options = Options {
-                snapshot_every_n_updates: 100,
+                snapshot_every_n_updates: NonZeroUsize::new(100).unwrap(),
                 ..Default::default()
             };
             Self {
@@ -1183,7 +1193,7 @@ mod tests {
                 .await;
 
             manifest
-                .maybe_do_snapshot(ctx.schema_id.as_u32(), table_id, location, true)
+                .do_snapshot_internal(ctx.schema_id.as_u32(), table_id, location)
                 .await
                 .unwrap();
 
@@ -1242,7 +1252,7 @@ mod tests {
 
             let location = WalLocation::new(DEFAULT_SHARD_ID as u64, table_id.as_u64());
             manifest
-                .maybe_do_snapshot(ctx.schema_id.as_u32(), table_id, location, true)
+                .do_snapshot_internal(ctx.schema_id.as_u32(), table_id, location)
                 .await
                 .unwrap();
             for i in 500..550 {

@@ -7,8 +7,9 @@ use std::{
     convert::TryInto,
     fmt,
     fmt::Formatter,
+    num::NonZeroUsize,
     sync::{
-        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::Duration,
@@ -153,6 +154,12 @@ pub struct TableData {
     /// No write/alter is allowed if the table is dropped.
     dropped: AtomicBool,
 
+    /// Manifest updates after last snapshot
+    manifest_updates: AtomicUsize,
+
+    /// Every n manifest updates to trigger a snapshot
+    manifest_snapshot_every_n_updates: NonZeroUsize,
+
     /// Metrics of this table
     pub metrics: Metrics,
 
@@ -213,6 +220,7 @@ impl TableData {
         purger: &FilePurger,
         preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
+        manifest_snapshot_every_n_updates: NonZeroUsize,
     ) -> Result<Self> {
         // FIXME(yingwen): Validate TableOptions, such as bucket_duration >=
         // segment_duration and bucket_duration is aligned to segment_duration
@@ -245,6 +253,8 @@ impl TableData {
             metrics,
             shard_info: TableShardInfo::new(shard_id),
             serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(table_id)),
+            manifest_updates: AtomicUsize::new(0),
+            manifest_snapshot_every_n_updates,
         })
     }
 
@@ -258,6 +268,7 @@ impl TableData {
         preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
         allocator: IdAllocator,
+        manifest_snapshot_every_n_updates: NonZeroUsize,
     ) -> Result<Self> {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
@@ -287,6 +298,8 @@ impl TableData {
             metrics,
             shard_info: TableShardInfo::new(shard_id),
             serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(add_meta.table_id)),
+            manifest_updates: AtomicUsize::new(0),
+            manifest_snapshot_every_n_updates,
         })
     }
 
@@ -559,6 +572,20 @@ impl TableData {
             shard_info: self.shard_info,
         }
     }
+
+    pub fn increase_manifest_updates(&self, updates_num: usize) {
+        self.manifest_updates
+            .fetch_add(updates_num, Ordering::Relaxed);
+    }
+
+    pub fn should_do_manifest_snapshot(&self) -> bool {
+        let updates = self.manifest_updates.load(Ordering::Relaxed);
+        updates >= self.manifest_snapshot_every_n_updates.get()
+    }
+
+    pub fn reset_manifest_updates(&self) {
+        self.manifest_updates.store(0, Ordering::Relaxed);
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -666,7 +693,7 @@ pub mod tests {
 
     const DEFAULT_SPACE_ID: SpaceId = 1;
 
-    fn default_schema() -> Schema {
+    pub fn default_schema() -> Schema {
         table::create_schema_builder(
             &[("key", DatumKind::Timestamp)],
             &[("value", DatumKind::Double)],
@@ -697,6 +724,7 @@ pub mod tests {
         table_id: TableId,
         table_name: String,
         shard_id: ShardId,
+        manifest_snapshot_every_n_updates: NonZeroUsize,
     }
 
     impl TableDataMocker {
@@ -712,6 +740,14 @@ pub mod tests {
 
         pub fn shard_id(mut self, shard_id: ShardId) -> Self {
             self.shard_id = shard_id;
+            self
+        }
+
+        pub fn manifest_snapshot_every_n_updates(
+            mut self,
+            manifest_snapshot_every_n_updates: NonZeroUsize,
+        ) -> Self {
+            self.manifest_snapshot_every_n_updates = manifest_snapshot_every_n_updates;
             self
         }
 
@@ -746,6 +782,7 @@ pub mod tests {
                 &purger,
                 0.75,
                 collector,
+                self.manifest_snapshot_every_n_updates,
             )
             .unwrap()
         }
@@ -757,6 +794,7 @@ pub mod tests {
                 table_id: table::new_table_id(2, 1),
                 table_name: "mocked_table".to_string(),
                 shard_id: DEFAULT_SHARD_ID,
+                manifest_snapshot_every_n_updates: NonZeroUsize::new(usize::MAX).unwrap(),
             }
         }
     }
@@ -848,5 +886,31 @@ pub mod tests {
     fn test_compute_mutable_limit_panic() {
         compute_mutable_limit(80, 1.1);
         compute_mutable_limit(80, -0.1);
+    }
+
+    #[test]
+    fn test_manifest_snapshot_trigger() {
+        // When snapshot_every_n_updates is not zero.
+        let table_data = TableDataMocker::default()
+            .manifest_snapshot_every_n_updates(NonZeroUsize::new(5).unwrap())
+            .build();
+
+        check_manifest_snapshot_trigger(&table_data);
+        // Reset and check again.
+        table_data.reset_manifest_updates();
+        check_manifest_snapshot_trigger(&table_data);
+    }
+
+    fn check_manifest_snapshot_trigger(table_data: &TableData) {
+        // When no updates yet, result should be false.
+        assert!(!table_data.should_do_manifest_snapshot());
+
+        // Eq case.
+        table_data.increase_manifest_updates(5);
+        assert!(table_data.should_do_manifest_snapshot());
+
+        // Greater case.
+        table_data.increase_manifest_updates(5);
+        assert!(table_data.should_do_manifest_snapshot());
     }
 }
