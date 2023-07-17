@@ -5,6 +5,7 @@
 use std::{
     collections::VecDeque,
     fmt, mem,
+    num::NonZeroUsize,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -326,15 +327,17 @@ where
 
 /// Options for manifest
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct Options {
     /// Steps to do snapshot
     // TODO: move this field to suitable place.
-    pub snapshot_every_n_updates: usize,
+    pub snapshot_every_n_updates: NonZeroUsize,
 
     /// Timeout to read manifest entries
     pub scan_timeout: ReadableDuration,
 
     /// Batch size to read manifest entries
+    // TODO: use NonZeroUsize
     pub scan_batch_size: usize,
 
     /// Timeout to store manifest entries
@@ -344,7 +347,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            snapshot_every_n_updates: 100,
+            snapshot_every_n_updates: NonZeroUsize::new(100).unwrap(),
             scan_timeout: ReadableDuration::secs(5),
             scan_batch_size: 100,
             store_timeout: ReadableDuration::secs(5),
@@ -434,26 +437,11 @@ impl ManifestImpl {
                 table_id,
             };
 
-            let snapshot = snapshotter.snapshot().await?.map(|v| {
-                self.decrease_num_updates();
-                v
-            });
+            let snapshot = snapshotter.snapshot().await?;
             Ok(snapshot)
         } else {
             debug!("Avoid concurrent snapshot");
             Ok(None)
-        }
-    }
-
-    // with snapshot guard held
-    fn decrease_num_updates(&self) {
-        if self.opts.snapshot_every_n_updates
-            > self.num_updates_since_snapshot.load(Ordering::Relaxed)
-        {
-            self.num_updates_since_snapshot.store(0, Ordering::Relaxed);
-        } else {
-            self.num_updates_since_snapshot
-                .fetch_sub(self.opts.snapshot_every_n_updates, Ordering::Relaxed);
         }
     }
 }
@@ -842,7 +830,7 @@ mod tests {
             let runtime = build_runtime(2);
 
             let options = Options {
-                snapshot_every_n_updates: 100,
+                snapshot_every_n_updates: NonZeroUsize::new(100).unwrap(),
                 ..Default::default()
             };
             Self {
