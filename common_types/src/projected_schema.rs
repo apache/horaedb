@@ -8,7 +8,7 @@ use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
     column_schema::{ColumnSchema, ReadOp},
-    datum::Datum,
+    datum::{Datum, DatumKind},
     row::Row,
     schema::{ArrowSchemaRef, RecordSchema, RecordSchemaWithKey, Schema},
 };
@@ -96,6 +96,14 @@ impl RowProjector {
         }
 
         Row::from_datums(datums_buffer)
+    }
+
+    /// Returns a datum kind selected
+    /// using an index into the source schema columns.
+    pub fn datum_kind(&self, index: usize) -> &DatumKind {
+        assert!(index < self.source_schema.num_columns());
+
+        &self.source_schema.column(index).data_type
     }
 }
 
