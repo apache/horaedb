@@ -299,7 +299,7 @@ async fn do_open_shard(ctx: HandlerContext, shard_info: ShardInfo) -> Result<()>
 
     shard.open(open_ctx).await.box_err().context(ErrWithCause {
         code: StatusCode::Internal,
-        msg: "fail to open shard",
+        msg: format!("fail to open shard, id:{}", shard_info.id),
     })
 }
 

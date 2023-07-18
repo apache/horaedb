@@ -162,11 +162,34 @@ pub struct NodeInfo {
     pub shard_infos: Vec<ShardInfo>,
 }
 
+/// The status changes of a shard as following:
+///
+///```plaintext
+///   ┌────┐
+///   │Init│
+///   └──┬─┘
+///   ___▽___
+///  ╱       ╲     ┌─────┐
+/// ╱ Opening ╲____│Ready│
+/// ╲         ╱yes └──┬──┘
+///  ╲_______╱    ┌───▽──┐
+///               │Frozen│
+///               └──────┘
+/// ```
+/// When an open request comes in, shard can only be opened when it's in
+/// - `Init`, which means it has not been opened before.
+/// - `Opening`, which means it has been opened before, but failed.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
 pub enum ShardStatus {
+    /// Not allowed report to ceresmeta
     #[default]
-    Ready = 0,
-    PartialOpen,
+    Init,
+    /// Not allowed report to ceresmeta
+    Opening,
+    /// Healthy
+    Ready,
+    /// Further updates are prohibited
+    Frozen,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
@@ -176,15 +199,20 @@ pub struct ShardInfo {
     pub version: ShardVersion,
     // This status is only used for request ceresdb send to ceresmeta via heartbeat
     // When ceresdb receive this via open shard request, this field is meanless.
-    // TODO: a better way to fix this to separate request and response between ceresdb and
+    // TODO: Use different request and response body between ceresdb and
     // ceresmeta.
-    pub status: Option<ShardStatus>,
+    pub status: ShardStatus,
 }
 
 impl ShardInfo {
     #[inline]
     pub fn is_leader(&self) -> bool {
         self.role == ShardRole::Leader
+    }
+
+    #[inline]
+    pub fn is_opened(&self) -> bool {
+        matches!(self.status, ShardStatus::Ready | ShardStatus::Frozen)
     }
 }
 
@@ -247,7 +275,11 @@ impl From<ShardInfo> for meta_service_pb::ShardInfo {
             id: shard_info.id,
             role: role as i32,
             version: shard_info.version,
-            status: shard_info.status.map(|v| v as i32),
+            status: Some(if shard_info.is_opened() {
+                meta_service_pb::shard_info::Status::Ready
+            } else {
+                meta_service_pb::shard_info::Status::PartialOpen
+            } as i32),
         }
     }
 }
@@ -258,29 +290,7 @@ impl From<&meta_service_pb::ShardInfo> for ShardInfo {
             id: pb_shard_info.id,
             role: pb_shard_info.role().into(),
             version: pb_shard_info.version,
-            status: pb_shard_info.status.map(|v| {
-                meta_service_pb::shard_info::Status::from_i32(v)
-                    .unwrap_or_default()
-                    .into()
-            }),
-        }
-    }
-}
-
-impl From<ShardStatus> for meta_service_pb::shard_info::Status {
-    fn from(v: ShardStatus) -> Self {
-        match v {
-            ShardStatus::Ready => meta_service_pb::shard_info::Status::Ready,
-            ShardStatus::PartialOpen => meta_service_pb::shard_info::Status::PartialOpen,
-        }
-    }
-}
-
-impl From<meta_service_pb::shard_info::Status> for ShardStatus {
-    fn from(v: meta_service_pb::shard_info::Status) -> Self {
-        match v {
-            meta_service_pb::shard_info::Status::Ready => ShardStatus::Ready,
-            meta_service_pb::shard_info::Status::PartialOpen => ShardStatus::PartialOpen,
+            status: Default::default(),
         }
     }
 }

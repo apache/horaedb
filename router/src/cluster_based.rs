@@ -224,7 +224,7 @@ mod tests {
                                 id: 0,
                                 role: Leader,
                                 version: 100,
-                                status: None,
+                                status: Default::default(),
                             },
                         }],
                     },
