@@ -20,8 +20,8 @@ use datafusion::{
     physical_expr::{self, execution_props::ExecutionProps},
     physical_plan::PhysicalExpr,
 };
-use futures::stream::{self, Stream, StreamExt};
-use generic_error::{BoxError, GenericError};
+use futures::stream::{self, StreamExt};
+use generic_error::{BoxError, GenericResult};
 use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::TableId};
@@ -29,6 +29,7 @@ use trace_metric::MetricsCollector;
 
 use crate::{
     memtable::{MemTableRef, ScanContext, ScanRequest},
+    prefetchable_stream::{NoopPrefetcher, PrefetchableStream, PrefetchableStreamExt},
     space::SpaceId,
     sst::{
         factory::{
@@ -127,8 +128,9 @@ impl SequencedRecordBatch {
     }
 }
 
-pub type SequencedRecordBatchStream =
-    Box<dyn Stream<Item = std::result::Result<SequencedRecordBatch, GenericError>> + Send + Unpin>;
+pub type SequencedRecordBatchRes = GenericResult<SequencedRecordBatch>;
+pub type BoxedPrefetchableRecordBatchStream =
+    Box<dyn PrefetchableStream<Item = SequencedRecordBatchRes>>;
 
 /// Filter the `sequenced_record_batch` according to the `predicate`.
 fn filter_record_batch(
@@ -162,10 +164,10 @@ fn filter_record_batch(
 
 /// Filter the sequenced record batch stream by applying the `predicate`.
 pub fn filter_stream(
-    origin_stream: SequencedRecordBatchStream,
+    origin_stream: BoxedPrefetchableRecordBatchStream,
     input_schema: ArrowSchemaRef,
     predicate: &Predicate,
-) -> Result<SequencedRecordBatchStream> {
+) -> Result<BoxedPrefetchableRecordBatchStream> {
     let filter = match conjunction(predicate.exprs().to_owned()) {
         Some(filter) => filter,
         None => return Ok(origin_stream),
@@ -184,16 +186,13 @@ pub fn filter_stream(
     )
     .context(DatafusionExpr)?;
 
-    let stream = origin_stream.filter_map(move |sequence_record_batch| {
-        let v = match sequence_record_batch {
+    let stream =
+        origin_stream.filter_map(move |sequence_record_batch| match sequence_record_batch {
             Ok(v) => filter_record_batch(v, predicate.clone())
                 .box_err()
                 .transpose(),
             Err(e) => Some(Err(e)),
-        };
-
-        futures::future::ready(v)
-    });
+        });
 
     Ok(Box::new(stream))
 }
@@ -208,7 +207,7 @@ pub fn filtered_stream_from_memtable(
     predicate: &Predicate,
     deadline: Option<Instant>,
     metrics_collector: Option<MetricsCollector>,
-) -> Result<SequencedRecordBatchStream> {
+) -> Result<BoxedPrefetchableRecordBatchStream> {
     stream_from_memtable(
         projected_schema.clone(),
         need_dedup,
@@ -236,7 +235,7 @@ pub fn stream_from_memtable(
     reverse: bool,
     deadline: Option<Instant>,
     metrics_collector: Option<MetricsCollector>,
-) -> Result<SequencedRecordBatchStream> {
+) -> Result<BoxedPrefetchableRecordBatchStream> {
     let scan_ctx = ScanContext {
         deadline,
         ..Default::default()
@@ -263,7 +262,7 @@ pub fn stream_from_memtable(
         .box_err()
     });
 
-    Ok(Box::new(stream))
+    Ok(Box::new(NoopPrefetcher(Box::new(stream))))
 }
 
 /// Build the filtered by `sst_read_options.predicate`
@@ -276,7 +275,7 @@ pub async fn filtered_stream_from_sst_file(
     sst_read_options: &SstReadOptions,
     store_picker: &ObjectStorePickerRef,
     metrics_collector: Option<MetricsCollector>,
-) -> Result<SequencedRecordBatchStream> {
+) -> Result<BoxedPrefetchableRecordBatchStream> {
     stream_from_sst_file(
         space_id,
         table_id,
@@ -308,7 +307,7 @@ pub async fn stream_from_sst_file(
     sst_read_options: &SstReadOptions,
     store_picker: &ObjectStorePickerRef,
     metrics_collector: Option<MetricsCollector>,
-) -> Result<SequencedRecordBatchStream> {
+) -> Result<BoxedPrefetchableRecordBatchStream> {
     sst_file.read_meter().mark();
     let path = sst_util::new_sst_file_path(space_id, table_id, sst_file.id());
 
@@ -330,17 +329,16 @@ pub async fn stream_from_sst_file(
         .context(CreateSstReader)?;
     let meta = sst_reader.meta_data().await.context(ReadSstMeta)?;
     let max_seq = meta.max_sequence();
-    let sst_stream = sst_reader.read().await.context(ReadSstData)?;
-
-    let stream = Box::new(sst_stream.map(move |v| {
+    let stream = sst_reader.read().await.context(ReadSstData)?;
+    let stream = stream.map(move |v| {
         v.map(|record_batch| SequencedRecordBatch {
             record_batch,
             sequence: max_seq,
         })
         .box_err()
-    }));
+    });
 
-    Ok(stream)
+    Ok(Box::new(stream))
 }
 
 #[cfg(test)]
@@ -354,7 +352,7 @@ pub mod tests {
     pub fn build_sequenced_record_batch_stream(
         schema: &Schema,
         batches: Vec<(SequenceNumber, Vec<Row>)>,
-    ) -> Vec<SequencedRecordBatchStream> {
+    ) -> Vec<BoxedPrefetchableRecordBatchStream> {
         batches
             .into_iter()
             .map(|(seq, rows)| {
@@ -365,7 +363,8 @@ pub mod tests {
                     ),
                     sequence: seq,
                 };
-                Box::new(stream::iter(vec![Ok(batch)])) as SequencedRecordBatchStream
+                let stream = Box::new(stream::iter(vec![Ok(batch)]));
+                Box::new(NoopPrefetcher(stream as _)) as BoxedPrefetchableRecordBatchStream
             })
             .collect()
     }

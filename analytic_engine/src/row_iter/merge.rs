@@ -29,7 +29,7 @@ use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 use crate::{
     row_iter::{
         record_batch_stream,
-        record_batch_stream::{SequencedRecordBatch, SequencedRecordBatchStream},
+        record_batch_stream::{BoxedPrefetchableRecordBatchStream, SequencedRecordBatch},
         IterOptions, RecordBatchWithKeyIterator,
     },
     space::SpaceId,
@@ -344,7 +344,7 @@ impl BufferedStreamState {
 
 struct BufferedStream {
     schema: RecordSchemaWithKey,
-    stream: SequencedRecordBatchStream,
+    stream: BoxedPrefetchableRecordBatchStream,
     /// `None` state means the stream is exhausted.
     state: Option<BufferedStreamState>,
 }
@@ -352,7 +352,7 @@ struct BufferedStream {
 impl BufferedStream {
     async fn build(
         schema: RecordSchemaWithKey,
-        mut stream: SequencedRecordBatchStream,
+        mut stream: BoxedPrefetchableRecordBatchStream,
     ) -> Result<Self> {
         let buffered_record_batch = Self::pull_next_non_empty_batch(&mut stream).await?;
         let state = buffered_record_batch.map(|v| BufferedStreamState {
@@ -404,10 +404,15 @@ impl BufferedStream {
     ///
     /// The returned record batch is ensured `num_rows() > 0`.
     async fn pull_next_non_empty_batch(
-        stream: &mut SequencedRecordBatchStream,
+        stream: &mut BoxedPrefetchableRecordBatchStream,
     ) -> Result<Option<SequencedRecordBatch>> {
         loop {
-            match stream.next().await.transpose().context(PullRecordBatch)? {
+            match stream
+                .fetch_next()
+                .await
+                .transpose()
+                .context(PullRecordBatch)?
+            {
                 Some(record_batch) => {
                     trace!(
                         "MergeIterator one record batch is fetched:{:?}",
@@ -616,7 +621,7 @@ pub struct MergeIterator {
     inited: bool,
     schema: RecordSchemaWithKey,
     record_batch_builder: RecordBatchWithKeyBuilder,
-    origin_streams: Vec<SequencedRecordBatchStream>,
+    origin_streams: Vec<BoxedPrefetchableRecordBatchStream>,
     /// ssts are kept here to avoid them from being purged.
     #[allow(dead_code)]
     ssts: Vec<Vec<FileHandle>>,
@@ -635,7 +640,7 @@ impl MergeIterator {
         table_id: TableId,
         request_id: RequestId,
         schema: RecordSchemaWithKey,
-        streams: Vec<SequencedRecordBatchStream>,
+        streams: Vec<BoxedPrefetchableRecordBatchStream>,
         ssts: Vec<Vec<FileHandle>>,
         iter_options: IterOptions,
         reverse: bool,

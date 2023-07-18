@@ -4,9 +4,8 @@
 
 use async_trait::async_trait;
 use common_types::record_batch::RecordBatchWithKey;
-use futures::Stream;
 
-use crate::sst::meta_data::SstMetaData;
+use crate::{prefetchable_stream::PrefetchableStream, sst::meta_data::SstMetaData};
 
 pub mod error {
     use generic_error::GenericError;
@@ -94,22 +93,22 @@ pub trait SstReader {
 
     async fn read(
         &mut self,
-    ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>>;
+    ) -> Result<Box<dyn PrefetchableStream<Item = Result<RecordBatchWithKey>>>>;
 }
 
 #[cfg(test)]
 pub mod tests {
     use common_types::row::Row;
-    use futures::StreamExt;
 
     use super::*;
+    use crate::prefetchable_stream::PrefetchableStream;
 
     pub async fn check_stream<S>(stream: &mut S, expected_rows: Vec<Row>)
     where
-        S: Stream<Item = Result<RecordBatchWithKey>> + Unpin,
+        S: PrefetchableStream<Item = Result<RecordBatchWithKey>> + Unpin,
     {
         let mut visited_rows = 0;
-        while let Some(batch) = stream.next().await {
+        while let Some(batch) = stream.fetch_next().await {
             let batch = batch.unwrap();
             for row_idx in 0..batch.num_rows() {
                 assert_eq!(batch.clone_row_at(row_idx), expected_rows[visited_rows]);

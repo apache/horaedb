@@ -626,6 +626,7 @@ dependencies = [
  "criterion",
  "env_logger",
  "futures 0.3.28",
+ "generic_error",
  "log",
  "macros",
  "object_store 1.2.5-alpha",
@@ -6389,6 +6390,8 @@ name = "test_util"
 version = "1.2.5-alpha"
 dependencies = [
  "arrow",
+ "async-stream",
+ "async-trait",
  "backtrace",
  "ceresdbproto",
  "chrono",
@@ -6796,6 +6799,7 @@ dependencies = [
  "clap 3.2.23",
  "common_types",
  "futures 0.3.28",
+ "generic_error",
  "num_cpus",
  "object_store 1.2.5-alpha",
  "parquet",

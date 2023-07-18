@@ -19,6 +19,7 @@ clap = { workspace = true }
 common_types = { workspace = true }
 env_logger = { workspace = true }
 futures = { workspace = true }
+generic_error = { workspace = true }
 log = { workspace = true }
 macros = { workspace = true }
 object_store = { workspace = true }

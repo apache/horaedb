@@ -64,6 +64,7 @@ impl MergeSstBench {
         let scan_options = ScanOptions {
             background_read_parallelism: 1,
             max_record_batches_in_flight: 1024,
+            num_streams_to_prefetch: 0,
         };
         let sst_read_options = SstReadOptions {
             reverse: false,
@@ -192,6 +193,7 @@ impl MergeSstBench {
             sst_factory: &sst_factory,
             sst_read_options: self.sst_read_options.clone(),
             store_picker: &store_picker,
+            num_streams_to_prefetch: 0,
         })
         .ssts(vec![self.file_handles.clone()]);
 

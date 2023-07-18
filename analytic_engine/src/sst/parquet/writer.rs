@@ -455,7 +455,11 @@ mod tests {
                 .await
                 .unwrap();
             let sst_info = writer
-                .write(RequestId::next_id(), &sst_meta, record_batch_stream)
+                .write(
+                    RequestId::next_id(),
+                    &sst_meta,
+                    Box::new(record_batch_stream),
+                )
                 .await
                 .unwrap();
 

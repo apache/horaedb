@@ -26,7 +26,6 @@ use common_types::{
     projected_schema::ProjectedSchema,
     schema::{IndexInWriterSchema, Schema},
 };
-use futures::stream::StreamExt;
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::file::footer;
@@ -102,6 +101,7 @@ pub async fn load_sst_to_memtable(
     let scan_options = ScanOptions {
         background_read_parallelism: 1,
         max_record_batches_in_flight: 1024,
+        num_streams_to_prefetch: 0,
     };
     let sst_read_options = SstReadOptions {
         reverse: false,
@@ -132,7 +132,7 @@ pub async fn load_sst_to_memtable(
 
     let mut sequence = crate::INIT_SEQUENCE;
 
-    while let Some(batch) = sst_stream.next().await {
+    while let Some(batch) = sst_stream.fetch_next().await {
         let batch = batch.unwrap();
 
         for i in 0..batch.num_rows() {

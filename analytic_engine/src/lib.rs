@@ -10,6 +10,7 @@ mod instance;
 mod manifest;
 pub mod memtable;
 mod payload;
+pub mod prefetchable_stream;
 pub mod row_iter;
 mod sampler;
 pub mod setup;
@@ -81,6 +82,8 @@ pub struct Config {
     pub scan_max_record_batches_in_flight: usize,
     /// Sst background reading parallelism
     pub sst_background_read_parallelism: usize,
+    /// Number of streams to prefetch
+    pub num_streams_to_prefetch: usize,
     /// Max buffer size for writing sst
     pub write_sst_max_buffer_size: ReadableSize,
     /// Max retry limit After flush failed
@@ -134,6 +137,7 @@ impl Default for Config {
             preflush_write_buffer_size_ratio: 0.75,
             scan_batch_size: None,
             sst_background_read_parallelism: 8,
+            num_streams_to_prefetch: 2,
             scan_max_record_batches_in_flight: 1024,
             write_sst_max_buffer_size: ReadableSize::mb(10),
             max_retry_flush_limit: 0,
