@@ -102,7 +102,7 @@ impl ClusterImpl {
             loop {
                 let shard_infos = inner
                     .shard_set
-                    .all_opened_shards()
+                    .all_shards()
                     .iter()
                     .map(|shard| shard.shard_info())
                     .collect();

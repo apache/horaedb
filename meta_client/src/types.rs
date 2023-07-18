@@ -163,10 +163,22 @@ pub struct NodeInfo {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
+pub enum ShardStatus {
+    #[default]
+    Ready = 0,
+    PartialOpen,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
 pub struct ShardInfo {
     pub id: ShardId,
     pub role: ShardRole,
     pub version: ShardVersion,
+    // This status is only used for request ceresdb send to ceresmeta via heartbeat
+    // When ceresdb receive this via open shard request, this field is meanless.
+    // TODO: a better way to fix this to separate request and response between ceresdb and
+    // ceresmeta.
+    pub status: Option<ShardStatus>,
 }
 
 impl ShardInfo {
@@ -235,6 +247,7 @@ impl From<ShardInfo> for meta_service_pb::ShardInfo {
             id: shard_info.id,
             role: role as i32,
             version: shard_info.version,
+            status: shard_info.status.map(|v| v as i32),
         }
     }
 }
@@ -245,6 +258,29 @@ impl From<&meta_service_pb::ShardInfo> for ShardInfo {
             id: pb_shard_info.id,
             role: pb_shard_info.role().into(),
             version: pb_shard_info.version,
+            status: pb_shard_info.status.map(|v| {
+                meta_service_pb::shard_info::Status::from_i32(v)
+                    .unwrap_or_default()
+                    .into()
+            }),
+        }
+    }
+}
+
+impl From<ShardStatus> for meta_service_pb::shard_info::Status {
+    fn from(v: ShardStatus) -> Self {
+        match v {
+            ShardStatus::Ready => meta_service_pb::shard_info::Status::Ready,
+            ShardStatus::PartialOpen => meta_service_pb::shard_info::Status::PartialOpen,
+        }
+    }
+}
+
+impl From<meta_service_pb::shard_info::Status> for ShardStatus {
+    fn from(v: meta_service_pb::shard_info::Status) -> Self {
+        match v {
+            meta_service_pb::shard_info::Status::Ready => ShardStatus::Ready,
+            meta_service_pb::shard_info::Status::PartialOpen => ShardStatus::PartialOpen,
         }
     }
 }

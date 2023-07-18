@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use meta_client::types::{ShardId, ShardInfo, TableInfo, TablesOfShard};
+use meta_client::types::{self, ShardId, ShardInfo, TableInfo, TablesOfShard};
 use snafu::{ensure, OptionExt};
 
 use crate::{
@@ -27,16 +27,6 @@ impl ShardSet {
     pub fn all_shards(&self) -> Vec<ShardRef> {
         let inner = self.inner.read().unwrap();
         inner.values().cloned().collect()
-    }
-
-    // Fetch all opened shards.
-    pub fn all_opened_shards(&self) -> Vec<ShardRef> {
-        let inner = self.inner.read().unwrap();
-        inner
-            .values()
-            .filter(|shard| shard.is_opened())
-            .cloned()
-            .collect()
     }
 
     // Get the shard by its id.
@@ -87,7 +77,10 @@ impl Shard {
 
     pub fn shard_info(&self) -> ShardInfo {
         let data = self.data.read().unwrap();
-        data.shard_info.clone()
+        ShardInfo {
+            status: Some(data.status.into()),
+            ..data.shard_info
+        }
     }
 
     pub fn find_table(&self, schema_name: &str, table_name: &str) -> Option<TableInfo> {
@@ -178,7 +171,7 @@ pub struct UpdatedTableInfo {
 /// When a open request comes in, shard can only be opened when it's in
 /// - `Init`, which means it has not been opened before.
 /// - `Opening`, which means it has been opened before, but failed.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum ShardStatus {
     /// Not allowed report to ceresmeta
     #[default]
@@ -191,6 +184,15 @@ pub enum ShardStatus {
     Frozen,
 }
 
+impl From<ShardStatus> for types::ShardStatus {
+    fn from(value: ShardStatus) -> Self {
+        match value {
+            ShardStatus::Init | ShardStatus::Opening => types::ShardStatus::PartialOpen,
+            ShardStatus::Ready | ShardStatus::Frozen => types::ShardStatus::Ready,
+        }
+    }
+}
+
 /// Shard data
 #[derive(Debug)]
 pub struct ShardData {
@@ -201,7 +203,6 @@ pub struct ShardData {
     pub tables: Vec<TableInfo>,
 
     /// Current status
-    /// The flow of shard status is: opening -> opened -> frozen
     pub status: ShardStatus,
 }
 
