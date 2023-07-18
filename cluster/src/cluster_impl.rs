@@ -102,10 +102,8 @@ impl ClusterImpl {
             loop {
                 let shard_infos = inner
                     .shard_set
-                    .all_shards()
+                    .all_opened_shards()
                     .iter()
-                    // Only report opened shards to meta, other shards may need retry.
-                    .filter(|shard| shard.is_opened())
                     .map(|shard| shard.shard_info())
                     .collect();
                 info!("Node heartbeat to meta, shard infos:{:?}", shard_infos);

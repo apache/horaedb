@@ -23,10 +23,20 @@ pub struct ShardSet {
 }
 
 impl ShardSet {
-    // Fetch all the shard infos.
+    // Fetch all the shards, including not opened.
     pub fn all_shards(&self) -> Vec<ShardRef> {
         let inner = self.inner.read().unwrap();
         inner.values().cloned().collect()
+    }
+
+    // Fetch all opened shards.
+    pub fn all_opened_shards(&self) -> Vec<ShardRef> {
+        let inner = self.inner.read().unwrap();
+        inner
+            .values()
+            .filter(|shard| shard.is_opened())
+            .cloned()
+            .collect()
     }
 
     // Get the shard by its id.
@@ -101,14 +111,12 @@ impl Shard {
 
         let ret = operator.open(ctx).await;
 
-        {
+        if ret.is_ok() {
             let mut data = self.data.write().unwrap();
-            if ret.is_ok() {
-                data.finish_open();
-            } else {
-                data.status = ShardStatus::NewlyCreated;
-            }
+            data.finish_open();
         }
+        // If open failed, shard status is unchanged(`Opening`), so it can be reschduled
+        // to open again.
 
         ret
     }
@@ -153,15 +161,32 @@ pub struct UpdatedTableInfo {
     pub table_info: TableInfo,
 }
 
+/// The status changes of a shard as following:
+///
+///```plaintext
+///   ┌────┐
+///   │Init│
+///   └──┬─┘
+///   ___▽___
+///  ╱       ╲     ┌─────┐
+/// ╱ Opening ╲____│Ready│
+/// ╲         ╱yes └──┬──┘
+///  ╲_______╱    ┌───▽──┐
+///               │Frozen│
+///               └──────┘
+/// ```
+/// When a open request comes in, shard can only be opened when it's in
+/// - `Init`, which means it has not been opened before.
+/// - `Opening`, which means it has been opened before, but failed.
 #[derive(Debug, Default, PartialEq)]
 pub enum ShardStatus {
     /// Not allowed report to ceresmeta
     #[default]
-    NewlyCreated,
+    Init,
     /// Not allowed report to ceresmeta
     Opening,
     /// Healthy
-    Opened,
+    Ready,
     /// Further updates are prohibited
     Frozen,
 }
@@ -195,8 +220,6 @@ impl ShardData {
 
     #[inline]
     pub fn begin_open(&mut self) {
-        assert_eq!(self.status, ShardStatus::NewlyCreated);
-
         self.status = ShardStatus::Opening;
     }
 
@@ -204,17 +227,22 @@ impl ShardData {
     pub fn finish_open(&mut self) {
         assert_eq!(self.status, ShardStatus::Opening);
 
-        self.status = ShardStatus::Opened;
+        self.status = ShardStatus::Ready;
     }
 
     #[inline]
     pub fn need_open(&self) -> bool {
-        matches!(self.status, ShardStatus::NewlyCreated)
+        !self.is_opened()
     }
 
     #[inline]
     pub fn is_opened(&self) -> bool {
-        matches!(self.status, ShardStatus::Opened | ShardStatus::Frozen)
+        matches!(self.status, ShardStatus::Ready | ShardStatus::Frozen)
+    }
+
+    #[inline]
+    fn is_frozen(&self) -> bool {
+        matches!(self.status, ShardStatus::Frozen)
     }
 
     pub fn try_insert_table(&mut self, updated_info: UpdatedTableInfo) -> Result<()> {
@@ -225,7 +253,7 @@ impl ShardData {
         } = updated_info;
 
         ensure!(
-            !matches!(self.status, ShardStatus::Frozen),
+            !self.is_frozen(),
             UpdateFrozenShard {
                 shard_id: curr_shard.id,
             }
