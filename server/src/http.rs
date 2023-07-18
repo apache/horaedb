@@ -27,7 +27,7 @@ use proxy::{
 };
 use query_engine::executor::Executor as QueryExecutor;
 use router::endpoint::Endpoint;
-use runtime::Runtime;
+use runtime::{Runtime, RuntimeRef};
 use serde::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
@@ -265,24 +265,33 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(extract_request)
             .and(self.with_context())
             .and(self.with_proxy())
-            .and_then(|req, ctx, proxy: Arc<Proxy<Q>>| async move {
-                let result = proxy
-                    .handle_http_sql_query(&ctx, req)
-                    .await
-                    .map(convert_output);
-
-                match result {
-                    Ok(res) => Ok(reply::json(&res)),
-                    Err(e) => {
-                        if let proxy::error::Error::QueryMaybeExceedTTL { msg } = e {
-                            return Err(reject::custom(Error::QueryMaybeExceedTTL { msg }));
+            .and(self.with_read_runtime())
+            .and_then(
+                |req, ctx, proxy: Arc<Proxy<Q>>, runtime: RuntimeRef| async move {
+                    let result = runtime
+                        .spawn(async move {
+                            proxy
+                                .handle_http_sql_query(&ctx, req)
+                                .await
+                                .map(convert_output)
+                        })
+                        .await
+                        .box_err()
+                        .context(HandleRequest);
+                    match result {
+                        Ok(Ok(res)) => Ok(reply::json(&res)),
+                        Ok(Err(e)) => {
+                            if let proxy::error::Error::QueryMaybeExceedTTL { msg } = e {
+                                return Err(reject::custom(Error::QueryMaybeExceedTTL { msg }));
+                            }
+                            Err(reject::custom(Error::Internal {
+                                source: Box::new(e),
+                            }))
                         }
-                        Err(reject::custom(Error::Internal {
-                            source: Box::new(e),
-                        }))
+                        Err(e) => Err(reject::custom(e)),
                     }
-                }
-            })
+                },
+            )
     }
 
     // GET /route
@@ -665,6 +674,13 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     fn with_opened_wals(&self) -> impl Filter<Extract = (OpenedWals,), Error = Infallible> + Clone {
         let wals = self.opened_wals.clone();
         warp::any().map(move || wals.clone())
+    }
+
+    fn with_read_runtime(
+        &self,
+    ) -> impl Filter<Extract = (Arc<Runtime>,), Error = Infallible> + Clone {
+        let runtime = self.engine_runtimes.read_runtime.clone();
+        warp::any().map(move || runtime.clone())
     }
 }
 
