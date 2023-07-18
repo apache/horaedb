@@ -4,17 +4,10 @@
 
 use std::collections::HashMap;
 
-use bytes::Bytes;
-use ceresdbproto::{
-    schema as schema_pb,
-    storage::{value, Value},
-    table_requests,
-};
+use ceresdbproto::{schema as schema_pb, table_requests};
 use common_types::{
     bytes::ByteVec,
-    column::Column,
-    datum::{Datum, DatumKind},
-    row::{Row, RowGroup, RowGroupSlicer, RowGroupSplitter},
+    row::{RowGroup, RowGroupSlicer, RowGroupSplitter},
     schema::{IndexInWriterSchema, Schema},
     time::{TimeRange, Timestamp},
 };
@@ -321,7 +314,7 @@ impl<'a> MemTableWriter<'a> {
                     continue;
                 }
                 let time_range = TimeRange::bucket_of(timestamp, segment_duration.0).unwrap();
-                let mut idx = segment_idxs.entry(time_range.exclusive_end()).or_default();
+                let idx = segment_idxs.entry(time_range.exclusive_end()).or_default();
                 idx.push(row_idx);
             }
 
@@ -351,13 +344,34 @@ impl<'a> MemTableWriter<'a> {
                 last_mutable_mem
                     .as_ref()
                     .unwrap()
-                    .put(&mut ctx, key_seq, &row_group_splitter, schema, timestamp)
+                    .put(&mut ctx, key_seq, &row_group_splitter, schema)
                     .context(WriteMemTable {
                         table: &self.table_data.name,
                     })?;
             }
         } else {
-            todo!()
+            let mutable_mem = self
+                .table_data
+                .find_or_create_mutable(Timestamp::from(0), schema)
+                .context(FindMutableMemTable {
+                    table: &self.table_data.name,
+                })?;
+            wrote_memtables.push(mutable_mem.clone());
+            last_mutable_mem = Some(mutable_mem);
+
+            // We have check the row num is less than `MAX_ROWS_TO_WRITE`, it is safe to
+            // cast it to u32 here
+            let key_seq = KeySequence::new(sequence, 0u32);
+            let row_group_splitter =
+                RowGroupSplitter::new((0..row_group.num_rows()).collect(), &row_group);
+            // TODO(yingwen): Batch sample timestamp in sampling phase.
+            last_mutable_mem
+                .as_ref()
+                .unwrap()
+                .put(&mut ctx, key_seq, &row_group_splitter, schema)
+                .context(WriteMemTable {
+                    table: &self.table_data.name,
+                })?;
         }
 
         // Update last sequence of memtable.
@@ -394,39 +408,31 @@ impl<'a> Writer<'a> {
         } = encode_ctx;
 
         let table_data = self.table_data.clone();
-        self.write_table_row_group(
-            &table_data,
-            RowGroupSlicer::from(&row_group),
-            index_in_writer.clone(),
-            encoded_rows,
-        )
-        .await?;
-
-        // let split_res = self.maybe_split_write_request(encoded_rows, &row_group);
-        // match split_res {
-        //     SplitResult::Integrate {
-        //         encoded_rows,
-        //         row_group,
-        //     } => {
-        //         self.write_table_row_group(&table_data, row_group, index_in_writer,
-        // encoded_rows)             .await?;
-        //     }
-        //     SplitResult::Splitted {
-        //         encoded_batches,
-        //         row_group_batches,
-        //     } => {
-        //         for (encoded_rows, row_group) in
-        // encoded_batches.into_iter().zip(row_group_batches)         {
-        //             self.write_table_row_group(
-        //                 &table_data,
-        //                 row_group,
-        //                 index_in_writer.clone(),
-        //                 encoded_rows,
-        //             )
-        //             .await?;
-        //         }
-        //     }
-        // }
+        let split_res = self.maybe_split_write_request(encoded_rows, &row_group);
+        match split_res {
+            SplitResult::Integrate {
+                encoded_rows,
+                row_group,
+            } => {
+                self.write_table_row_group(&table_data, row_group, index_in_writer, encoded_rows)
+                    .await?;
+            }
+            SplitResult::Splitted {
+                encoded_batches,
+                row_group_batches,
+            } => {
+                for (encoded_rows, row_group) in encoded_batches.into_iter().zip(row_group_batches)
+                {
+                    self.write_table_row_group(
+                        &table_data,
+                        row_group,
+                        index_in_writer.clone(),
+                        encoded_rows,
+                    )
+                    .await?;
+                }
+            }
+        }
 
         Ok(row_group.num_rows())
     }

@@ -208,7 +208,7 @@ impl<'a> RowGroupSplitter<'a> {
     }
 
     pub fn get(&self, idx: usize) -> Result<&Row> {
-        let i = self.row_group.range.start + idx;
+        let i = self.row_group.range.start + self.split_idx[idx];
         if i > self.row_group.range.end {
             todo!("return err")
         }

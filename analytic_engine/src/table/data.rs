@@ -643,7 +643,7 @@ pub mod tests {
                 collector: Arc::new(NoopCollector),
             };
 
-            let factory = SkiplistMemTableFactory;
+            let factory = ColumnarMemTableFactory;
             factory.create_memtable(memtable_opts).unwrap()
         }
     }

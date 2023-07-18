@@ -7,14 +7,13 @@ pub mod factory;
 pub mod key;
 // pub mod skiplist;
 
-use std::{collections::HashMap, ops::Bound, sync::Arc, time::Instant};
+use std::{ops::Bound, sync::Arc, time::Instant};
 
 use common_types::{
     bytes::{ByteVec, Bytes},
-    column::Column,
     projected_schema::ProjectedSchema,
     record_batch::RecordBatchWithKey,
-    row::{Row, RowGroupSlicer, RowGroupSplitter},
+    row::RowGroupSplitter,
     schema::{IndexInWriterSchema, Schema},
     SequenceNumber,
 };

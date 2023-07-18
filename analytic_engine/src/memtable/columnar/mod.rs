@@ -6,19 +6,13 @@ use std::{
 };
 
 use bytes::Bytes;
-use common_types::{
-    column::Column,
-    row::{Row, RowGroupSlicer, RowGroupSplitter},
-    schema::Schema,
-    SequenceNumber,
-};
-use log::{debug, trace};
+use common_types::{column::Column, row::RowGroupSplitter, schema::Schema, SequenceNumber};
+use log::debug;
 use snafu::ensure;
 
 use crate::memtable::{
-    columnar::iter::ColumnarIterImpl,
-    key::{ComparableInternalKey, KeySequence},
-    ColumnarIterPtr, InvalidPutSequence, MemTable, PutContext, Result, ScanContext, ScanRequest,
+    columnar::iter::ColumnarIterImpl, key::KeySequence, ColumnarIterPtr, InvalidPutSequence,
+    MemTable, PutContext, Result, ScanContext, ScanRequest,
 };
 
 pub mod factory;
@@ -63,7 +57,7 @@ impl MemTable for ColumnarMemTable {
                 let column = if let Some(column) = columns.get_mut(&column_schema.name) {
                     column
                 } else {
-                    let mut column = Column::new(row_count, column_schema.data_type);
+                    let column = Column::new(row_count, column_schema.data_type);
                     columns.insert(column_schema.name.to_string(), column);
                     columns.get_mut(&column_schema.name).unwrap()
                 };

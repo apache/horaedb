@@ -164,7 +164,6 @@ impl MemTableForWrite {
         sequence: KeySequence,
         row_group: &RowGroupSplitter,
         schema: &Schema,
-        timestamp: Timestamp,
     ) -> Result<()> {
         match self {
             MemTableForWrite::Sampling(v) => {
@@ -172,8 +171,12 @@ impl MemTableForWrite {
                     .put(ctx, sequence, row_group, schema)
                     .context(PutMemTable)?;
 
-                // Collect the timestamp of this row.
-                v.sampler.collect(timestamp).context(CollectTimestamp)?;
+                for i in &row_group.split_idx {
+                    let row = row_group.get(*i).unwrap();
+                    v.sampler
+                        .collect(row.timestamp(schema).unwrap())
+                        .context(CollectTimestamp)?;
+                }
 
                 Ok(())
             }

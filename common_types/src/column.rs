@@ -4,12 +4,12 @@
 
 //! A [`Column`] stores the rows for a given column name
 
-use std::{fmt::Formatter, mem, slice::Iter, sync::Arc};
+use std::{fmt::Formatter, mem, sync::Arc};
 
 use arrow::{
     array::{
-        ArrayDataBuilder, ArrayRef, BinaryArray, BooleanArray, Float64Array, Int64Array,
-        StringArray, TimestampNanosecondArray, UInt64Array,
+        ArrayDataBuilder, ArrayRef, BinaryArray, BooleanArray, Float64Array, Int32Array,
+        Int64Array, StringArray, TimestampNanosecondArray, UInt64Array,
     },
     buffer::NullBuffer,
     datatypes::DataType,
@@ -19,12 +19,12 @@ use bytes_ext::{BufMut, Bytes, BytesMut};
 use ceresdbproto::storage::value;
 use datafusion::parquet::data_type::AsBytes;
 use snafu::{ResultExt, Snafu};
-use sqlparser::ast::Value;
 
 use crate::{
     bitset::BitSet,
     datum::{Datum, DatumKind},
     string::StringBytes,
+    time::Timestamp,
 };
 
 #[derive(Debug, Snafu)]
@@ -72,6 +72,7 @@ impl IntoIterator for Column {
 pub enum ColumnData {
     F64(Vec<f64>),
     I64(Vec<i64>),
+    I32(Vec<i32>),
     U64(Vec<u64>),
     String(Vec<String>),
     StringBytes(Vec<StringBytes>),
@@ -96,6 +97,7 @@ impl std::fmt::Display for ColumnData {
 pub enum ColumnDataIter {
     F64(std::vec::IntoIter<f64>),
     I64(std::vec::IntoIter<i64>),
+    I32(std::vec::IntoIter<i32>),
     U64(std::vec::IntoIter<u64>),
     String(std::vec::IntoIter<String>),
     StringBytes(std::vec::IntoIter<StringBytes>),
@@ -110,6 +112,7 @@ impl<'a> Iterator for ColumnDataIter {
         match self {
             Self::F64(col_data) => col_data.next().map(|x| value::Value::Float64Value(x)),
             Self::I64(col_data) => col_data.next().map(|x| value::Value::Int64Value(x)),
+            Self::I32(col_data) => col_data.next().map(|x| value::Value::Int32Value(x)),
             Self::U64(col_data) => col_data.next().map(|x| value::Value::Uint64Value(x)),
             Self::String(col_data) => col_data.next().map(|x| value::Value::StringValue(x)),
             Self::StringBytes(col_data) => col_data
@@ -129,11 +132,12 @@ impl IntoIterator for ColumnData {
         match self {
             Self::F64(col_data) => ColumnDataIter::F64(col_data.into_iter()),
             Self::I64(col_data) => ColumnDataIter::I64(col_data.into_iter()),
+            Self::I32(col_data) => ColumnDataIter::I32(col_data.into_iter()),
             Self::U64(col_data) => ColumnDataIter::U64(col_data.into_iter()),
             Self::String(col_data) => ColumnDataIter::String(col_data.into_iter()),
             Self::StringBytes(col_data) => ColumnDataIter::StringBytes(col_data.into_iter()),
             Self::Varbinary(col_data) => ColumnDataIter::Varbinary(col_data.into_iter()),
-            Self::Bool(col_data) => todo!(),
+            Self::Bool(_col_data) => todo!(),
         }
     }
 }
@@ -153,10 +157,13 @@ impl Column {
             DatumKind::UInt64 => ColumnData::U64(vec![0; row_count]),
             DatumKind::Double => ColumnData::F64(vec![0.0; row_count]),
             DatumKind::Int64 | DatumKind::Timestamp => ColumnData::I64(vec![0; row_count]),
+            DatumKind::Int32 => ColumnData::I32(vec![0; row_count]),
             // DatumKind::String => ColumnData::String(vec!["".to_string(); row_count]),
             DatumKind::String => ColumnData::StringBytes(vec![StringBytes::new(); row_count]),
             DatumKind::Varbinary => ColumnData::Varbinary(vec![vec![]; row_count]),
-            _ => todo!(),
+            kind => {
+                todo!()
+            }
         };
 
         Self {
@@ -178,6 +185,9 @@ impl Column {
             (ColumnData::I64(data), ColumnData::I64(ref mut column_data)) => {
                 data.append(column_data)
             }
+            (ColumnData::I32(data), ColumnData::I32(ref mut column_data)) => {
+                data.append(column_data)
+            }
             (ColumnData::U64(data), ColumnData::U64(ref mut column_data)) => {
                 data.append(column_data)
             }
@@ -190,7 +200,7 @@ impl Column {
             (ColumnData::Varbinary(data), ColumnData::Varbinary(ref mut column_data)) => {
                 data.append(column_data)
             }
-            (ColumnData::Bool(data), ColumnData::Bool(ref mut column_data)) => todo!(),
+            (ColumnData::Bool(_data), ColumnData::Bool(ref mut _column_data)) => todo!(),
             _ => todo!(),
         }
     }
@@ -204,6 +214,7 @@ impl Column {
             (ColumnData::F64(data), Datum::Double(v)) => data[self.to_insert] = *v,
             (ColumnData::I64(data), Datum::Int64(v)) => data[self.to_insert] = *v,
             (ColumnData::I64(data), Datum::Timestamp(v)) => data[self.to_insert] = v.as_i64(),
+            (ColumnData::I32(data), Datum::Int32(v)) => data[self.to_insert] = *v,
             (ColumnData::U64(data), Datum::UInt64(v)) => data[self.to_insert] = *v,
             (ColumnData::String(data), Datum::String(v)) => data[self.to_insert] = v.to_string(),
             (ColumnData::StringBytes(data), Datum::String(v)) => {
@@ -222,13 +233,20 @@ impl Column {
         }
         self.valid.set(self.to_insert);
         self.to_insert += 1;
+        // println!("append_datum_ref, valid_len:{},
+        // to_insert:{}",self.valid.len(),self.to_insert);
         Ok(())
     }
 
     pub fn get_datum(&self, idx: usize) -> Datum {
         match self.data {
             ColumnData::F64(ref data) => Datum::Double(data[idx]),
-            ColumnData::I64(ref data) => Datum::Int64(data[idx]),
+            ColumnData::I64(ref data) => match self.datum_kind {
+                DatumKind::Timestamp => Datum::Timestamp(Timestamp::from(data[idx])),
+                DatumKind::Int64 => Datum::Int64(data[idx]),
+                _ => unreachable!(),
+            },
+            ColumnData::I32(ref data) => Datum::Int32(data[idx]),
             ColumnData::U64(ref data) => Datum::UInt64(data[idx]),
             ColumnData::String(ref data) => Datum::String(data[idx].clone().into()),
             ColumnData::StringBytes(ref data) => Datum::String(data[idx].clone()),
@@ -241,6 +259,7 @@ impl Column {
         match self.data {
             ColumnData::F64(ref data) => value::Value::Float64Value(data[idx]),
             ColumnData::I64(ref data) => value::Value::Int64Value(data[idx]),
+            ColumnData::I32(ref data) => value::Value::Int32Value(data[idx]),
             ColumnData::U64(ref data) => value::Value::Uint64Value(data[idx]),
             ColumnData::String(ref data) => value::Value::StringValue(data[idx].clone().into()),
             ColumnData::StringBytes(ref data) => value::Value::StringValue(data[idx].to_string()),
@@ -253,11 +272,12 @@ impl Column {
         match self.data {
             ColumnData::F64(ref data) => buf.put_slice(data[idx].to_le_bytes().as_slice()),
             ColumnData::I64(ref data) => buf.put_slice(data[idx].to_le_bytes().as_slice()),
+            ColumnData::I32(ref data) => buf.put_slice(data[idx].to_le_bytes().as_slice()),
             ColumnData::U64(ref data) => buf.put_slice(data[idx].to_le_bytes().as_slice()),
             ColumnData::String(ref data) => buf.put_slice(data[idx].as_bytes()),
             ColumnData::StringBytes(ref data) => buf.put_slice(data[idx].as_bytes()),
             ColumnData::Varbinary(ref data) => buf.put_slice(data[idx].as_slice()),
-            ColumnData::Bool(ref data) => todo!(),
+            ColumnData::Bool(ref _data) => todo!(),
         }
     }
 
@@ -294,6 +314,9 @@ impl Column {
             ColumnData::I64(data) => {
                 data.resize(len, 0);
             }
+            ColumnData::I32(data) => {
+                data.resize(len, 0);
+            }
             ColumnData::U64(data) => {
                 data.resize(len, 0);
             }
@@ -327,16 +350,20 @@ impl Column {
         let data_size = match &self.data {
             ColumnData::F64(v) => mem::size_of::<f64>() * v.capacity(),
             ColumnData::I64(v) => mem::size_of::<i64>() * v.capacity(),
+            ColumnData::I32(v) => mem::size_of::<i32>() * v.capacity(),
             ColumnData::U64(v) => mem::size_of::<u64>() * v.capacity(),
             ColumnData::Bool(v) => v.byte_len(),
             ColumnData::String(v) => {
                 v.iter().map(|s| s.len()).sum::<usize>()
                     + (v.capacity() - v.len()) * mem::size_of::<String>()
             }
+            ColumnData::StringBytes(v) => {
+                v.iter().map(|s| s.len()).sum::<usize>()
+                    + (v.capacity() - v.len()) * mem::size_of::<StringBytes>()
+            }
             ColumnData::Varbinary(v) => {
                 v.iter().map(|s| s.len()).sum::<usize>() + (v.capacity() - v.len())
             }
-            _ => todo!(),
         };
         mem::size_of::<Self>() + data_size + self.valid.byte_len()
     }
@@ -348,9 +375,11 @@ impl Column {
         match &self.data {
             ColumnData::F64(_) => mem::size_of::<f64>() * self.len(),
             ColumnData::I64(_) => mem::size_of::<i64>() * self.len(),
+            ColumnData::I32(_) => mem::size_of::<i32>() * self.len(),
             ColumnData::U64(_) => mem::size_of::<u64>() * self.len(),
             ColumnData::Bool(_) => mem::size_of::<bool>() * self.len(),
             ColumnData::String(v) => v.iter().map(|s| s.len()).sum(),
+            ColumnData::StringBytes(v) => v.iter().map(|s| s.len()).sum(),
             ColumnData::Varbinary(v) => v.iter().map(|s| s.len()).sum(),
             _ => todo!(),
         }
@@ -392,6 +421,15 @@ impl Column {
                 }
                 _ => unreachable!(),
             },
+            ColumnData::I32(data) => {
+                let data = ArrayDataBuilder::new(DataType::Int32)
+                    .len(data.len())
+                    .add_buffer(data.iter().cloned().collect())
+                    .nulls(nulls)
+                    .build()
+                    .context(CreatingArrowArray)?;
+                Arc::new(Int32Array::from(data))
+            }
             ColumnData::U64(data) => {
                 let data = ArrayDataBuilder::new(DataType::UInt64)
                     .len(data.len())
