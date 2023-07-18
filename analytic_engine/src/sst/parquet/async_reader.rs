@@ -17,11 +17,6 @@ use common_types::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
 };
-use common_util::{
-    error::{BoxError, GenericResult},
-    runtime::{AbortOnDropMany, JoinHandle, Runtime},
-    time::InstantExt,
-};
 use datafusion::{
     common::ToDFSchema,
     physical_expr::{create_physical_expr, execution_props::ExecutionProps},
@@ -31,6 +26,7 @@ use datafusion::{
     },
 };
 use futures::{Stream, StreamExt};
+use generic_error::{BoxError, GenericResult};
 use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
@@ -38,8 +34,10 @@ use parquet::{
     file::metadata::RowGroupMetaData,
 };
 use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader};
+use runtime::{AbortOnDropMany, JoinHandle, Runtime};
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
+use time_ext::InstantExt;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 

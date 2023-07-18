@@ -1,0 +1,11 @@
+[package]
+name = "alloc_tracker"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true

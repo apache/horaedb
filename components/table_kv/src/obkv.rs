@@ -1,11 +1,11 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Obkv implementation.
 
 use std::{collections::HashMap, error::Error as StdError, fmt};
 
-use common_util::define_result;
 use log::{error, info};
+use macros::define_result;
 use obkv::{
     payloads::ObTableBatchOperation, Builder, ObTableClient, QueryResultSet, RunningMode, Table,
     TableOpResult, TableQuery, Value,

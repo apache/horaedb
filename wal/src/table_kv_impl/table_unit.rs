@@ -14,12 +14,10 @@ use std::{
 };
 
 use common_types::{bytes::BytesMut, table::TableId};
-use common_util::{
-    define_result,
-    error::{BoxError, GenericError},
-    runtime::Runtime,
-};
+use generic_error::{BoxError, GenericError};
 use log::debug;
+use macros::define_result;
+use runtime::{self, Runtime};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use table_kv::{
     KeyBoundary, ScanContext, ScanIter, ScanRequest, TableError, TableKv, WriteBatch, WriteContext,
@@ -105,7 +103,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to execute in runtime, err:{}", source))]
-    RuntimeExec { source: common_util::runtime::Error },
+    RuntimeExec { source: runtime::Error },
 
     #[snafu(display("Failed to delete table, region_id:{}, err:{}", region_id, source))]
     Delete {

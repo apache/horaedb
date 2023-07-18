@@ -8,6 +8,7 @@ pub mod tests;
 pub mod type_conversion;
 
 use datafusion::{error::DataFusionError, prelude::SessionContext};
+use macros::define_result;
 use query_frontend::plan::QueryPlan;
 use snafu::{Backtrace, ResultExt, Snafu};
 

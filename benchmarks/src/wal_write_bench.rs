@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use common_util::runtime::Runtime;
 use rand::prelude::*;
+use runtime::Runtime;
 use table_kv::memory::MemoryImpl;
 use wal::{
     kv_encoder::LogBatchEncoder,

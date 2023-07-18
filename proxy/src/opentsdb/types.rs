@@ -9,11 +9,12 @@ use bytes::Bytes;
 use ceresdbproto::storage::{
     value, Field, FieldGroup, Tag, Value as ProtoValue, WriteSeriesEntry, WriteTableRequest,
 };
-use common_util::{error::BoxError, time::try_to_millis};
+use generic_error::BoxError;
 use http::StatusCode;
 use serde::Deserialize;
 use serde_json::from_slice;
 use snafu::{OptionExt, ResultExt};
+use time_ext::try_to_millis;
 
 use crate::error::{ErrNoCause, ErrWithCause, Result};
 

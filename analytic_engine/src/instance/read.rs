@@ -15,9 +15,10 @@ use common_types::{
     schema::RecordSchema,
     time::TimeRange,
 };
-use common_util::{define_result, error::BoxError};
 use futures::stream::Stream;
+use generic_error::BoxError;
 use log::debug;
+use macros::define_result;
 use snafu::{ResultExt, Snafu};
 use table_engine::{
     stream::{

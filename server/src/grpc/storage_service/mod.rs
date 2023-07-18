@@ -18,12 +18,12 @@ use ceresdbproto::{
         SqlQueryRequest, SqlQueryResponse, WriteRequest, WriteResponse,
     },
 };
-use common_util::time::InstantExt;
 use futures::{stream, stream::BoxStream, StreamExt};
 use http::StatusCode;
 use proxy::{Context, Proxy, FORWARDED_FROM};
 use query_engine::executor::Executor as QueryExecutor;
 use table_engine::engine::EngineRuntimes;
+use time_ext::InstantExt;
 
 use crate::grpc::metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC;
 

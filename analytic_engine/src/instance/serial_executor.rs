@@ -8,10 +8,11 @@ use std::{
     time::Instant,
 };
 
-use common_util::{runtime::Runtime, time::InstantExt};
 use futures::Future;
 use log::{error, warn};
+use runtime::Runtime;
 use table_engine::table::TableId;
+use time_ext::InstantExt;
 use tokio::sync::{
     oneshot,
     watch::{self, Receiver, Sender},

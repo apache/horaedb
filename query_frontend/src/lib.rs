@@ -5,9 +5,6 @@
 //!
 //! Parse sql into logical plan that can be handled by interpreters
 
-#[macro_use]
-extern crate common_util;
-
 pub mod ast;
 pub mod container;
 pub mod frontend;

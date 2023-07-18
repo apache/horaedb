@@ -15,13 +15,13 @@ use common_types::{
     table::DEFAULT_SHARD_ID,
     time::Timestamp,
 };
-use common_util::config::ReadableDuration;
 use table_engine::{
     self,
     engine::{CreateTableRequest, TableState},
     predicate::Predicate,
     table::{GetRequest, ReadOptions, ReadOrder, ReadRequest, SchemaId, TableId, TableSeq},
 };
+use time_ext::ReadableDuration;
 use trace_metric::MetricsCollector;
 
 use crate::{table_options, tests::row_util};

@@ -10,9 +10,10 @@ use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatchWithKey, request_id::RequestId,
     schema::RecordSchemaWithKey,
 };
-use common_util::{define_result, error::GenericError};
 use futures::StreamExt;
+use generic_error::GenericError;
 use log::debug;
+use macros::define_result;
 use snafu::{ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};

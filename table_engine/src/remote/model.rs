@@ -18,7 +18,8 @@ use common_types::{
     row::{RowGroup, RowGroupBuilder},
     schema::Schema,
 };
-use common_util::error::{BoxError, GenericError, GenericResult};
+use generic_error::{BoxError, GenericError, GenericResult};
+use macros::define_result;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{

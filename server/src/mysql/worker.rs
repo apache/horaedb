@@ -2,7 +2,7 @@
 
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use interpreters::interpreter::Output;
 use log::{error, info};
 use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaWriter};

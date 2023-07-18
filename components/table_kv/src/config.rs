@@ -1,9 +1,9 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Config of table kv.
 
-use common_util::config::ReadableDuration;
 use serde::{Deserialize, Serialize};
+use time_ext::ReadableDuration;
 
 // TODO: use test conf to control which environments to test.
 const TEST_FULL_USER_NAME: &str = "user_name";

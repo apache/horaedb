@@ -14,9 +14,10 @@ use common_types::{
     schema::Schema,
     time::TimeRange,
 };
-use common_util::{error::BoxError, future_cancel::CancellationSafeFuture};
 use datafusion::{common::Column, logical_expr::Expr};
+use future_cancel::CancellationSafeFuture;
 use futures::TryStreamExt;
+use generic_error::BoxError;
 use log::{error, warn};
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{

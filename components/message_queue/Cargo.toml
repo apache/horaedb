@@ -8,11 +8,12 @@ workspace = true
 [dependencies]
 async-trait = { workspace = true }
 chrono = { workspace = true }
-common_util = { workspace = true }
 futures = { workspace = true }
 log = { workspace = true }
+macros = { workspace = true }
 serde = { workspace = true }
 snafu = { workspace = true }
+time_ext = { workspace = true }
 tokio = { workspace = true }
 
 [dependencies.rskafka]

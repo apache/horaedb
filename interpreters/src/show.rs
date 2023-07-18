@@ -9,6 +9,7 @@ use arrow::{
 };
 use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::Schema, Catalog};
+use macros::define_result;
 use query_frontend::{
     ast::ShowCreateObject,
     plan::{QueryType, ShowCreatePlan, ShowPlan, ShowTablesPlan},

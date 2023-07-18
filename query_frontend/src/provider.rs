@@ -16,6 +16,7 @@ use datafusion::{
     sql::planner::ContextProvider,
 };
 use df_operator::{registry::FunctionRegistry, scalar::ScalarUdf, udaf::AggregateUdf};
+use macros::define_result;
 use snafu::{OptionExt, ResultExt, Snafu};
 use table_engine::{provider::TableProviderAdapter, table::TableRef};
 

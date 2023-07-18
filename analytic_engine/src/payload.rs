@@ -1,17 +1,15 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Payloads to write to wal
 
 use ceresdbproto::{manifest as manifest_pb, table_requests};
+use codec::{row::WalRowDecoder, Decoder};
 use common_types::{
     bytes::{Buf, BufMut, SafeBuf, SafeBufMut},
     row::{RowGroup, RowGroupBuilder},
     schema::Schema,
 };
-use common_util::{
-    codec::{row::WalRowDecoder, Decoder},
-    define_result,
-};
+use macros::define_result;
 use prost::Message;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use wal::log_batch::{Payload, PayloadDecoder};
@@ -49,9 +47,7 @@ pub enum Error {
     DecodeSchema { source: common_types::schema::Error },
 
     #[snafu(display("Failed to decode row, err:{}", source))]
-    DecodeRow {
-        source: common_util::codec::row::Error,
-    },
+    DecodeRow { source: codec::row::Error },
 
     #[snafu(display(
         "Table schema is not found in the write request.\nBacktrace:\n{}",

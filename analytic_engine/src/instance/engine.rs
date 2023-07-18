@@ -5,7 +5,8 @@
 use std::sync::Arc;
 
 use common_types::schema::Version;
-use common_util::{define_result, error::GenericError};
+use generic_error::GenericError;
+use macros::define_result;
 use snafu::{Backtrace, OptionExt, Snafu};
 use table_engine::{
     engine::{CloseTableRequest, CreateTableRequest, DropTableRequest, OpenShardRequest},

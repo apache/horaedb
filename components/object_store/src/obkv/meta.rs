@@ -2,10 +2,8 @@
 
 use std::{ops::Range, str, sync::Arc, time};
 
-use common_util::{
-    define_result,
-    error::{BoxError, GenericError},
-};
+use generic_error::{BoxError, GenericError};
+use macros::define_result;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};

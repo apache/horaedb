@@ -1,6 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use common_util::{define_result, error::GenericError};
+use generic_error::GenericError;
+use macros::define_result;
 use snafu::Snafu;
 define_result!(Error);
 

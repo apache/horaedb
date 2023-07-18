@@ -10,7 +10,7 @@ use common_types::{
     },
     schema::{IndexInWriterSchema, RecordSchemaWithKey, Schema},
 };
-use common_util::define_result;
+use macros::define_result;
 use snafu::Snafu;
 
 use crate::row_iter::RecordBatchWithKeyIterator;

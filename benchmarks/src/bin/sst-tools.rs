@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::sync::Arc;
 
@@ -7,7 +7,6 @@ use benchmarks::{
     util,
 };
 use clap::{App, Arg};
-use common_util::toml;
 use log::info;
 use serde::Deserialize;
 
@@ -31,7 +30,7 @@ impl Default for Config {
 
 fn config_from_path(path: &str) -> Config {
     let mut toml_buf = String::new();
-    toml::parse_toml_from_path(path, &mut toml_buf).expect("Failed to parse config.")
+    toml_ext::parse_toml_from_path(path, &mut toml_buf).expect("Failed to parse config.")
 }
 
 fn main() {

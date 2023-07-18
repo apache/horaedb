@@ -1,8 +1,9 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Interpreter trait
 
 use async_trait::async_trait;
+use macros::define_result;
 use query_engine::executor::RecordBatchVec;
 use snafu::Snafu;
 

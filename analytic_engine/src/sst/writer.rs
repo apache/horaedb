@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Sst writer trait definition
 
@@ -10,13 +10,14 @@ use common_types::{
     record_batch::RecordBatchWithKey, request_id::RequestId, schema::Schema, time::TimeRange,
     SequenceNumber,
 };
-use common_util::error::GenericError;
 use futures::Stream;
+use generic_error::GenericError;
 
 use crate::table_options::StorageFormat;
 
 pub mod error {
-    use common_util::{define_result, error::GenericError};
+    use generic_error::GenericError;
+    use macros::define_result;
     use snafu::{Backtrace, Snafu};
 
     #[derive(Debug, Snafu)]

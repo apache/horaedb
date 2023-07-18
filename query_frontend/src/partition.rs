@@ -2,9 +2,9 @@
 
 //! Parse partition statement to partition info
 
-use common_util::error::BoxError;
 use datafusion::{logical_expr::Expr, prelude::Column};
 use datafusion_proto::bytes::Serializeable;
+use generic_error::BoxError;
 use snafu::ResultExt;
 use sqlparser::ast::Expr as SqlExpr;
 use table_engine::partition::{

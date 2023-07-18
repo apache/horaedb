@@ -9,9 +9,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use common_util::define_result;
 use futures::StreamExt;
 use log::info;
+use macros::define_result;
 use rskafka::{
     client::{
         consumer::{StartOffset as KafkaStartOffset, StreamConsumer, StreamConsumerBuilder},

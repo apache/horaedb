@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Constants for table options.
 
@@ -10,14 +10,12 @@ use common_types::{
     NUM_ROWS_PER_ROW_GROUP, OPTION_KEY_ENABLE_TTL, SEGMENT_DURATION, STORAGE_FORMAT, TTL,
     UPDATE_MODE, WRITE_BUFFER_SIZE,
 };
-use common_util::{
-    config::{ReadableDuration, ReadableSize, TimeUnit},
-    define_result,
-    time::{parse_duration, DurationExt},
-};
 use datafusion::parquet::basic::Compression as ParquetCompression;
+use macros::define_result;
 use serde::{Deserialize, Serialize};
+use size_ext::ReadableSize;
 use snafu::{Backtrace, GenerateBacktrace, OptionExt, ResultExt, Snafu};
+use time_ext::{parse_duration, DurationExt, ReadableDuration, TimeUnit};
 
 use crate::compaction::{
     self, CompactionStrategy, SizeTieredCompactionOptions, TimeWindowCompactionOptions,
@@ -58,7 +56,7 @@ const MAX_NUM_ROWS_PER_ROW_GROUP: usize = 10_000_000;
 pub enum Error {
     #[snafu(display("Failed to parse duration, err:{}.\nBacktrace:\n{}", source, backtrace))]
     ParseDuration {
-        source: common_util::time::Error,
+        source: time_ext::Error,
         backtrace: Backtrace,
     },
 

@@ -2,8 +2,8 @@
 
 //! RocksDB Config
 
-use common_util::config::ReadableSize;
 use serde::{Deserialize, Serialize};
+use size_ext::ReadableSize;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]

@@ -6,13 +6,14 @@ use std::{sync::Arc, time::Instant};
 
 use async_trait::async_trait;
 use common_types::record_batch::RecordBatch;
-use common_util::time::InstantExt;
 use datafusion::prelude::SessionContext;
 use futures::TryStreamExt;
 use log::{debug, info};
+use macros::define_result;
 use query_frontend::{plan::QueryPlan, provider::CatalogProviderAdapter};
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::stream::SendableRecordBatchStream;
+use time_ext::InstantExt;
 
 use crate::{
     config::Config,

@@ -9,11 +9,12 @@ use std::{sync::Arc, time::Duration};
 use async_trait::async_trait;
 use ceresdbproto::storage::{Route, RouteRequest};
 pub use cluster_based::ClusterBasedRouter;
-use common_util::{config::ReadableDuration, define_result};
+use macros::define_result;
 use meta_client::types::TableInfo;
 pub use rule_based::{RuleBasedRouter, RuleList};
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, Snafu};
+use time_ext::ReadableDuration;
 
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub))]

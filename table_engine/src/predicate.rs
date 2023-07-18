@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Predict for query table.
 //! Reference to: https://github.com/influxdata/influxdb_iox/blob/29b10413051f8c4a2193e8633aa133e45b0e505a/query/src/predicate.rs
@@ -9,13 +9,14 @@ use common_types::{
     schema::Schema,
     time::{TimeRange, Timestamp},
 };
-use common_util::error::{BoxError, GenericError};
 use datafusion::{
     logical_expr::{Expr, Operator},
     scalar::ScalarValue,
 };
 use datafusion_proto::bytes::Serializeable;
+use generic_error::{BoxError, GenericError};
 use log::debug;
+use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]

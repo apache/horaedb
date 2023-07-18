@@ -9,8 +9,8 @@ use common_types::{
     row::{Row, RowGroupBuilder},
     schema::Schema,
 };
-use common_util::error::BoxError;
 use futures::{stream::FuturesUnordered, StreamExt};
+use generic_error::BoxError;
 use snafu::ResultExt;
 use table_engine::{
     partition::{

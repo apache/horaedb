@@ -1,10 +1,11 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::time::Duration;
 
-use common_util::config::{ReadableDuration, ReadableSize};
 use serde::{Deserialize, Serialize};
+use size_ext::ReadableSize;
 use table_kv::config::ObkvConfig;
+use time_ext::ReadableDuration;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]

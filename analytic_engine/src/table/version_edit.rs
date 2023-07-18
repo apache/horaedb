@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Version edits
 
@@ -6,7 +6,7 @@ use std::convert::TryFrom;
 
 use ceresdbproto::manifest as manifest_pb;
 use common_types::{time::TimeRange, SequenceNumber};
-use common_util::define_result;
+use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{

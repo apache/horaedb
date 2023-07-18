@@ -12,13 +12,14 @@ use std::{
 };
 
 use arena::{Arena, BasicStats};
+use codec::Encoder;
 use common_types::{
     bytes::Bytes,
     row::{contiguous::ContiguousRowWriter, Row},
     schema::Schema,
     SequenceNumber,
 };
-use common_util::{codec::Encoder, error::BoxError};
+use generic_error::BoxError;
 use log::{debug, trace};
 use skiplist::{KeyComparator, Skiplist};
 use snafu::{ensure, ResultExt};
@@ -204,6 +205,7 @@ mod tests {
     use std::{ops::Bound, sync::Arc};
 
     use arena::NoopCollector;
+    use codec::memcomparable::MemComparable;
     use common_types::{
         bytes::ByteVec,
         datum::Datum,
@@ -213,7 +215,6 @@ mod tests {
         tests::{build_row, build_schema},
         time::Timestamp,
     };
-    use common_util::codec::memcomparable::MemComparable;
 
     use super::*;
     use crate::memtable::{

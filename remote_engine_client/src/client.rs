@@ -20,10 +20,11 @@ use ceresdbproto::{
 use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatch, schema::RecordSchema,
 };
-use common_util::{error::BoxError, runtime::Runtime};
 use futures::{Stream, StreamExt};
+use generic_error::BoxError;
 use log::info;
 use router::RouterRef;
+use runtime::Runtime;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
     remote::model::{

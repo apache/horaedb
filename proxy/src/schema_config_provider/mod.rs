@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use cluster::config::SchemaConfig;
-use common_util::define_result;
+use macros::define_result;
 use snafu::Snafu;
 
 pub mod cluster_based;

@@ -3,6 +3,7 @@
 //! Interpreter for drop statements
 
 use async_trait::async_trait;
+use macros::define_result;
 use query_frontend::plan::DropTablePlan;
 use snafu::{ResultExt, Snafu};
 use table_engine::engine::TableEngineRef;

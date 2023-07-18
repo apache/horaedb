@@ -10,10 +10,10 @@ use std::{
 };
 
 use common_types::{column_schema::ColumnSchema, row::RowGroup, schema::Schema};
-use common_util::define_result;
 use datafusion::logical_expr::{
     expr::Expr as DfLogicalExpr, logical_plan::LogicalPlan as DataFusionLogicalPlan,
 };
+use macros::define_result;
 use snafu::Snafu;
 use table_engine::{partition::PartitionInfo, table::TableRef};
 

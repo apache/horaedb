@@ -9,7 +9,7 @@ mod partition;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{

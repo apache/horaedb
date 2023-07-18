@@ -1,9 +1,9 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 // The header parser for one sst.
 
 use bytes::Bytes;
-use common_util::define_result;
+use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
 use snafu::{Backtrace, ResultExt, Snafu};

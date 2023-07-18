@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_types::table::ShardId;
-use common_util::error::{BoxError, GenericResult};
+use generic_error::{BoxError, GenericResult};
 use wal::manager::WalManagerRef;
 
 #[async_trait]

@@ -1,0 +1,27 @@
+[package]
+name = "panic_ext"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies.slog-global]
+version = "0.1"
+git = "https://github.com/tikv/slog-global.git"
+rev = "d592f88e4dbba5eb439998463054f1a44fbf17b9"
+
+[dependencies]
+backtrace = "0.3.9"
+libc = "0.2"
+log = { workspace = true }
+logger = { workspace = true }
+
+[dev-dependencies]
+gag = "1.0"
+nix = "0.22"
+slog = { workspace = true }

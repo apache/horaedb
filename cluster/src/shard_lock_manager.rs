@@ -9,15 +9,13 @@ use std::{
 
 use ceresdbproto::meta_event::ShardLockValue;
 use common_types::{bytes::Bytes, table::ShardId};
-use common_util::{
-    define_result,
-    runtime::{JoinHandle, RuntimeRef},
-};
 use etcd_client::{
     Client, Compare, CompareOp, LeaseKeepAliveStream, LeaseKeeper, PutOptions, Txn, TxnOp,
 };
 use log::{debug, error, info, warn};
+use macros::define_result;
 use prost::Message;
+use runtime::{JoinHandle, RuntimeRef};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use tokio::sync::{oneshot, RwLock as AsyncRwLock};
 

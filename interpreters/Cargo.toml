@@ -15,12 +15,14 @@ arrow = { workspace = true }
 # In alphabetical order
 async-trait = { workspace = true }
 catalog = { workspace = true }
+codec = { workspace = true }
 common_types = { workspace = true }
-common_util = { workspace = true }
 datafusion = { workspace = true }
 datafusion-proto = { workspace = true }
 df_operator = { workspace = true }
+generic_error = { workspace = true }
 log = { workspace = true }
+macros = { workspace = true }
 meta_client = { workspace = true }
 query_engine = { workspace = true }
 query_frontend = { workspace = true }
@@ -32,4 +34,5 @@ table_engine = { workspace = true }
 analytic_engine = { workspace = true, features = ["test"] }
 catalog_impls = { workspace = true }
 query_frontend = { workspace = true, features = ["test"] }
+test_util = { workspace = true }
 tokio = { workspace = true }

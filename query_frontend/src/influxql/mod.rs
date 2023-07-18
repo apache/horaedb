@@ -5,7 +5,8 @@
 pub mod planner;
 
 pub mod error {
-    use common_util::error::GenericError;
+    use generic_error::GenericError;
+    use macros::define_result;
     use snafu::{Backtrace, Snafu};
 
     #[derive(Debug, Snafu)]
@@ -35,5 +36,6 @@ pub mod error {
         #[snafu(display("Unimplemented influxql statement, msg:{}", msg))]
         Unimplemented { msg: String },
     }
+
     define_result!(Error);
 }

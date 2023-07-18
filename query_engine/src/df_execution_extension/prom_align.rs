@@ -31,6 +31,7 @@ use datafusion::{
 };
 use futures::{Stream, StreamExt};
 use log::debug;
+use macros::define_result;
 use query_frontend::promql::{AlignParameter, ColumnNames, Func as PromFunc};
 use snafu::{OptionExt, ResultExt, Snafu};
 
@@ -943,7 +944,7 @@ impl AlignFunc for IrateFunc {
     }
 }
 
-/// This function is not in Promtheus' functions list.
+/// This function is not in Prometheus' functions list.
 ///
 /// It simulates the behavior of `Instant Selector` by finding the newest point
 /// from the input. Thus `Instant Selector` can be represented by [PromAlignOp]

@@ -7,11 +7,8 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::table::ShardId;
-use common_util::{
-    error::BoxError,
-    runtime::{JoinHandle, Runtime},
-};
 use etcd_client::ConnectOptions;
+use generic_error::BoxError;
 use log::{error, info, warn};
 use meta_client::{
     types::{
@@ -20,6 +17,7 @@ use meta_client::{
     },
     MetaClientRef,
 };
+use runtime::{JoinHandle, Runtime};
 use snafu::{ensure, OptionExt, ResultExt};
 use tokio::{
     sync::mpsc::{self, Sender},

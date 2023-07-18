@@ -15,11 +15,11 @@ use std::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
-use common_util::error::{BoxError, GenericError};
 use futures::{
     stream::{BoxStream, FuturesOrdered},
     StreamExt,
 };
+use generic_error::{BoxError, GenericError};
 use log::debug;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
@@ -795,9 +795,9 @@ mod test {
     use std::sync::Arc;
 
     use bytes::Bytes;
-    use common_util::runtime::{Builder, Runtime};
     use futures::StreamExt;
     use rand::{thread_rng, Rng};
+    use runtime::{Builder, Runtime};
     use table_kv::memory::MemoryImpl;
     use tokio::io::AsyncWriteExt;
     use upstream::{path::Path, ObjectStore};

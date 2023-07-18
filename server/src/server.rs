@@ -11,6 +11,7 @@ use df_operator::registry::FunctionRegistryRef;
 use interpreters::table_manipulator::TableManipulatorRef;
 use log::{info, warn};
 use logger::RuntimeLevel;
+use macros::define_result;
 use partition_table_engine::PartitionTableEngine;
 use proxy::{
     instance::{Instance, InstanceRef},

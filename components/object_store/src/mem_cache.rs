@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! An implementation of ObjectStore, which support
 //! 1. Cache based on memory, and support evict based on memory usage
@@ -15,8 +15,9 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use clru::{CLruCache, CLruCacheConfig, WeightScale};
 use common_types::hash::{ahash::RandomState, build_fixed_seed_ahasher_builder};
-use common_util::{define_result, partitioned_lock::PartitionedMutex};
 use futures::stream::BoxStream;
+use macros::define_result;
+use partitioned_lock::PartitionedMutex;
 use snafu::{OptionExt, Snafu};
 use tokio::io::AsyncWrite;
 use upstream::{

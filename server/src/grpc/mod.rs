@@ -17,13 +17,10 @@ use ceresdbproto::{
 };
 use cluster::ClusterRef;
 use common_types::column_schema;
-use common_util::{
-    define_result,
-    error::GenericError,
-    runtime::{JoinHandle, Runtime},
-};
 use futures::FutureExt;
+use generic_error::GenericError;
 use log::{info, warn};
+use macros::define_result;
 use proxy::{
     forward,
     instance::InstanceRef,
@@ -31,6 +28,7 @@ use proxy::{
     Proxy,
 };
 use query_engine::executor::Executor as QueryExecutor;
+use runtime::{JoinHandle, Runtime};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Sender};

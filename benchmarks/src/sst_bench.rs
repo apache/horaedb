@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! SST bench.
 
@@ -12,10 +12,10 @@ use analytic_engine::sst::{
     meta_data::cache::{MetaCache, MetaCacheRef},
 };
 use common_types::{projected_schema::ProjectedSchema, schema::Schema};
-use common_util::runtime::Runtime;
 use futures::stream::StreamExt;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
+use runtime::Runtime;
 
 use crate::{config::SstBenchConfig, util};
 

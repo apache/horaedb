@@ -1,8 +1,9 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use ceresdbproto::common::ResponseHeader;
-use common_util::{define_result, error::GenericError};
+use generic_error::GenericError;
 use http::StatusCode;
+use macros::define_result;
 use snafu::{Backtrace, Snafu};
 
 use crate::error_util;

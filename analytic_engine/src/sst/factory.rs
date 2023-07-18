@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Factory for different kinds sst writer and reader.
 
@@ -6,8 +6,9 @@ use std::{fmt::Debug, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::projected_schema::ProjectedSchema;
-use common_util::{define_result, runtime::Runtime};
+use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
+use runtime::Runtime;
 use snafu::{ResultExt, Snafu};
 use table_engine::predicate::PredicateRef;
 use trace_metric::MetricsCollector;

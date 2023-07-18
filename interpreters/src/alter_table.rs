@@ -7,7 +7,7 @@ use common_types::{
     column_schema::{self, ColumnSchema},
     schema::{self, Schema},
 };
-use common_util::define_result;
+use macros::define_result;
 use query_frontend::plan::{AlterTableOperation, AlterTablePlan};
 use snafu::{ensure, ResultExt, Snafu};
 use table_engine::table::AlterSchemaRequest;

@@ -1,13 +1,10 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Interpreters of query/insert/update/delete commands
 //!
 //! Inspired by fuse-query: <https://github.com/datafuselabs/fuse-query> and ClickHouse
 
 #![feature(string_remove_matches)]
-
-#[macro_use]
-extern crate common_util;
 
 pub mod alter_table;
 pub mod context;

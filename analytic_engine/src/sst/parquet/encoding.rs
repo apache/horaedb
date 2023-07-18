@@ -16,11 +16,9 @@ use common_types::{
     datum::DatumKind,
     schema::{ArrowSchema, ArrowSchemaRef, DataType, Field, Schema},
 };
-use common_util::{
-    define_result,
-    error::{BoxError, GenericError},
-};
+use generic_error::{BoxError, GenericError};
 use log::trace;
+use macros::define_result;
 use parquet::{
     arrow::AsyncArrowWriter,
     basic::Compression,

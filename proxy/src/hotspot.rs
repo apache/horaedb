@@ -6,10 +6,11 @@ use std::{fmt::Write, sync::Arc, time::Duration};
 use ceresdbproto::storage::{
     PrometheusQueryRequest, RequestContext, SqlQueryRequest, WriteRequest,
 };
-use common_util::{runtime::Runtime, timed_task::TimedTask};
 use log::{info, warn};
+use runtime::Runtime;
 use serde::{Deserialize, Serialize};
 use spin::Mutex as SpinMutex;
+use timed_task::TimedTask;
 use tokio::sync::mpsc::{self, Sender};
 
 use crate::{hotspot_lru::HotspotLru, util};
@@ -308,7 +309,7 @@ mod test {
             WriteTableRequest,
         },
     };
-    use common_util::runtime::Builder;
+    use runtime::Builder;
 
     fn new_runtime() -> Arc<Runtime> {
         let runtime = Builder::default()

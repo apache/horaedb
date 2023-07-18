@@ -17,12 +17,13 @@ use async_trait::async_trait;
 use common_types::{
     bytes::BytesMut, table::TableId, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER,
 };
-use common_util::{error::BoxError, runtime::Runtime};
+use generic_error::BoxError;
 use log::{debug, info, warn};
 use rocksdb::{
     rocksdb_options::ColumnFamilyDescriptor, ColumnFamilyOptions, DBCompactionStyle, DBIterator,
     DBOptions, FifoCompactionOptions, ReadOptions, SeekKey, Statistics, Writable, WriteBatch, DB,
 };
+use runtime::Runtime;
 use snafu::ResultExt;
 use tokio::sync::Mutex;
 

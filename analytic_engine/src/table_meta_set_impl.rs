@@ -4,7 +4,8 @@
 
 use std::{fmt, num::NonZeroUsize, sync::Arc};
 
-use common_util::{error::BoxError, id_allocator::IdAllocator};
+use generic_error::BoxError;
+use id_allocator::IdAllocator;
 use log::debug;
 use snafu::{OptionExt, ResultExt};
 use table_engine::table::TableId;

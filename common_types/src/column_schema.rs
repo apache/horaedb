@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Schema of column
 
@@ -538,7 +538,7 @@ impl From<ColumnSchema> for schema_pb::ColumnSchema {
 
 #[cfg(test)]
 mod tests {
-    use common_util::hash_map;
+    use macros::hash_map;
     use sqlparser::ast::Value;
 
     use super::*;

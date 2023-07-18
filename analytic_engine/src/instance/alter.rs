@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use log::info;
 use snafu::{ensure, ResultExt};
 use table_engine::table::AlterSchemaRequest;

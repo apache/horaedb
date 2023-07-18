@@ -1,12 +1,13 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Constants and utils for encoding.
 
 use chrono::{TimeZone, Utc};
 use common_types::{table::TableId, time::Timestamp};
-use common_util::{config::ReadableDuration, define_result};
+use macros::define_result;
 use snafu::Snafu;
 use table_kv::{KeyBoundary, ScanRequest};
+use time_ext::ReadableDuration;
 
 #[derive(Debug, Snafu)]
 pub enum Error {

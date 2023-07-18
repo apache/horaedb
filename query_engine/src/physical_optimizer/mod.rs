@@ -9,6 +9,7 @@ use datafusion::{
     error::DataFusionError, physical_optimizer::optimizer::PhysicalOptimizerRule,
     prelude::SessionContext,
 };
+use macros::define_result;
 use query_frontend::plan::QueryPlan;
 use snafu::{Backtrace, ResultExt, Snafu};
 

@@ -9,7 +9,7 @@ use catalog::{
     },
     table_operator::TableOperator,
 };
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use log::info;
 use snafu::ResultExt;
 use table_engine::{

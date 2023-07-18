@@ -44,16 +44,12 @@ use ceresdbproto::storage::{
     PrometheusRemoteQueryResponse, Route, RouteRequest,
 };
 use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID, ENABLE_TTL, TTL};
-use common_util::{
-    error::BoxError,
-    runtime::Runtime,
-    time::{current_time_millis, parse_duration},
-};
 use datafusion::{
     prelude::{Column, Expr},
     scalar::ScalarValue,
 };
 use futures::FutureExt;
+use generic_error::BoxError;
 use influxql_query::logical_optimizer::range_predicate::find_time_range;
 use interpreters::{
     context::Context as InterpreterContext,
@@ -64,6 +60,7 @@ use log::{error, info};
 use query_engine::executor::Executor as QueryExecutor;
 use query_frontend::plan::Plan;
 use router::{endpoint::Endpoint, Router};
+use runtime::Runtime;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{EngineRuntimes, TableState},
@@ -71,6 +68,7 @@ use table_engine::{
     table::{TableId, TableRef},
     PARTITION_TABLE_ENGINE_TYPE,
 };
+use time_ext::{current_time_millis, parse_duration};
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{

@@ -10,10 +10,9 @@ use common_types::{
     schema::Schema,
     table::{ShardId, DEFAULT_SHARD_ID},
 };
-use common_util::{
-    error::{GenericError, GenericResult},
-    runtime::RuntimeRef,
-};
+use generic_error::{GenericError, GenericResult};
+use macros::define_result;
+use runtime::RuntimeRef;
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{

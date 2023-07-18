@@ -15,8 +15,9 @@ async-trait = { workspace = true }
 catalog = { workspace = true }
 cluster = { workspace = true }
 common_types = { workspace = true }
-common_util = { workspace = true }
+generic_error = { workspace = true }
 log = { workspace = true }
+macros = { workspace = true }
 meta_client = { workspace = true }
 snafu = { workspace = true }
 system_catalog = { workspace = true }

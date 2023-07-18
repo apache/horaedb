@@ -10,7 +10,7 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::{schema::IndexInWriterSchema, table::ShardId};
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace};
 use prometheus::{exponential_buckets, register_histogram, Histogram};

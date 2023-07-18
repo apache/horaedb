@@ -1,14 +1,15 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Data models for TableKv based wal.
 
 use std::{str, time::Duration};
 
 use common_types::{table::TableId, time::Timestamp};
-use common_util::{config::ReadableDuration, define_result};
+use macros::define_result;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_kv::ScanContext;
+use time_ext::ReadableDuration;
 
 use crate::{
     manager::SequenceNumber,

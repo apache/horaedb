@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use log::trace;
 use meta_client::types::RouteTablesRequest;
 use moka::future::Cache;
@@ -167,10 +167,10 @@ mod tests {
         shard_lock_manager::ShardLockManagerRef, shard_set::ShardRef, Cluster, ClusterNodesResp,
     };
     use common_types::table::ShardId;
-    use common_util::config::ReadableDuration;
     use meta_client::types::{
         NodeShard, RouteEntry, RouteTablesResponse, ShardInfo, ShardRole::Leader, TableInfo,
     };
+    use time_ext::ReadableDuration;
 
     use super::*;
 

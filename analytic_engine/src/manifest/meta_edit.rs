@@ -10,7 +10,7 @@ use common_types::{
     schema::{Schema, Version},
     SequenceNumber,
 };
-use common_util::define_result;
+use macros::define_result;
 use prost::Message;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;

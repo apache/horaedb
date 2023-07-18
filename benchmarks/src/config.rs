@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Benchmark configs.
 
@@ -6,15 +6,13 @@ use std::env;
 
 use analytic_engine::{space::SpaceId, sst::manager::FileId};
 use common_types::time::{TimeRange, Timestamp};
-use common_util::{
-    config::{ReadableDuration, ReadableSize},
-    toml,
-};
 use serde::Deserialize;
+use size_ext::ReadableSize;
 use table_engine::{
     predicate::{PredicateBuilder, PredicateRef},
     table::TableId,
 };
+use time_ext::ReadableDuration;
 
 const BENCH_CONFIG_PATH_KEY: &str = "ANALYTIC_BENCH_CONFIG_PATH";
 
@@ -35,7 +33,7 @@ pub fn bench_config_from_env() -> BenchConfig {
     };
 
     let mut toml_buf = String::new();
-    toml::parse_toml_from_path(&path, &mut toml_buf).expect("Failed to parse config.")
+    toml_ext::parse_toml_from_path(&path, &mut toml_buf).expect("Failed to parse config.")
 }
 
 #[derive(Deserialize)]

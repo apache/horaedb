@@ -14,18 +14,16 @@ use std::{
 
 use async_trait::async_trait;
 use ceresdbproto::manifest as manifest_pb;
-use common_util::{
-    config::ReadableDuration,
-    define_result,
-    error::{BoxError, GenericError, GenericResult},
-};
+use generic_error::{BoxError, GenericError, GenericResult};
 use log::{debug, info, warn};
+use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::table::TableId;
+use time_ext::ReadableDuration;
 use tokio::sync::Mutex;
 use wal::{
     kv_encoder::LogBatchEncoder,
@@ -704,10 +702,11 @@ mod tests {
     use common_types::{
         column_schema, datum::DatumKind, schema, schema::Schema, table::DEFAULT_SHARD_ID,
     };
-    use common_util::{runtime, runtime::Runtime, tests::init_log_for_test};
     use futures::future::BoxFuture;
     use object_store::LocalFileSystem;
+    use runtime::Runtime;
     use table_engine::table::{SchemaId, TableId, TableSeqGenerator};
+    use test_util::tests::init_log_for_test;
     use wal::rocks_impl::manager::Builder as WalBuilder;
 
     use super::*;

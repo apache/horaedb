@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_util::error::GenericError;
+use generic_error::GenericError;
+use macros::define_result;
 use query_frontend::plan::{CreateTablePlan, DropTablePlan};
 use snafu::{Backtrace, Snafu};
 use table_engine::engine::TableEngineRef;

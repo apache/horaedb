@@ -11,7 +11,7 @@ use common_types::{
     datum::{Datum, DatumKind},
     record_batch::RecordBatch,
 };
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use interpreters::interpreter::Output;
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
 use serde::{

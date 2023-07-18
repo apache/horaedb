@@ -8,6 +8,7 @@ use arrow::{
     record_batch::RecordBatch,
 };
 use async_trait::async_trait;
+use macros::define_result;
 use query_engine::executor::RecordBatchVec;
 use query_frontend::plan::DescribeTablePlan;
 use snafu::{ResultExt, Snafu};

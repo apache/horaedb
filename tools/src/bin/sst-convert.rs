@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! A cli to convert ssts between different options
 
@@ -17,9 +17,9 @@ use analytic_engine::{
 use anyhow::{Context, Result};
 use clap::Parser;
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId};
-use common_util::runtime::{self, Runtime};
 use futures::stream::StreamExt;
 use object_store::{LocalFileSystem, Path};
+use runtime::Runtime;
 use table_engine::predicate::Predicate;
 use tools::sst_util;
 

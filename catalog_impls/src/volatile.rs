@@ -22,7 +22,7 @@ use catalog::{
 };
 use cluster::shard_set::ShardSet;
 use common_types::schema::SchemaName;
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use log::{debug, info};
 use meta_client::{types::AllocSchemaIdRequest, MetaClientRef};
 use snafu::{ensure, OptionExt, ResultExt};

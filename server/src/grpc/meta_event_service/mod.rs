@@ -25,14 +25,16 @@ use cluster::{
     ClusterRef,
 };
 use common_types::{schema::SchemaEncoder, table::ShardId};
-use common_util::{error::BoxError, runtime::Runtime, time::InstantExt};
+use generic_error::BoxError;
 use log::{error, info, warn};
 use meta_client::types::{ShardInfo, TableInfo};
 use paste::paste;
 use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
+use runtime::Runtime;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{engine::TableEngineRef, ANALYTIC_ENGINE_TYPE};
+use time_ext::InstantExt;
 use tonic::Response;
 
 use crate::grpc::{

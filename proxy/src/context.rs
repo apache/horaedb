@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use common_util::define_result;
+use macros::define_result;
 use snafu::{ensure, Backtrace, Snafu};
 
 #[allow(clippy::enum_variant_names)]

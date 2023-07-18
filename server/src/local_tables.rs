@@ -7,10 +7,8 @@ use catalog::{
     table_operator::TableOperator,
 };
 use common_types::table::DEFAULT_SHARD_ID;
-use common_util::{
-    define_result,
-    error::{BoxError, GenericError},
-};
+use generic_error::{BoxError, GenericError};
+use macros::define_result;
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::table::TableInfo;
 

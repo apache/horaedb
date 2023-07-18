@@ -2,8 +2,8 @@
 
 //! Meta data of manifest.
 
-use common_util::define_result;
 use log::debug;
+use macros::define_result;
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{

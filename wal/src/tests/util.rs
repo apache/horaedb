@@ -15,14 +15,12 @@ use common_types::{
     table::TableId,
     SequenceNumber,
 };
-use common_util::{
-    config::ReadableDuration,
-    runtime::{self, Runtime},
-};
 use message_queue::kafka::{config::Config as KafkaConfig, kafka_impl::KafkaImpl};
+use runtime::{self, Runtime};
 use snafu::Snafu;
 use table_kv::memory::MemoryImpl;
 use tempfile::TempDir;
+use time_ext::ReadableDuration;
 
 use crate::{
     kv_encoder::LogBatchEncoder,

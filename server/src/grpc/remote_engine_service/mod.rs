@@ -16,8 +16,8 @@ use ceresdbproto::{
     storage::{arrow_payload, ArrowPayload},
 };
 use common_types::record_batch::RecordBatch;
-use common_util::{error::BoxError, time::InstantExt};
 use futures::stream::{self, BoxStream, StreamExt};
+use generic_error::BoxError;
 use log::{error, info};
 use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
@@ -26,6 +26,7 @@ use table_engine::{
     engine::EngineRuntimes, remote::model::TableIdentifier, stream::PartitionedStreams,
     table::TableRef,
 };
+use time_ext::InstantExt;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};

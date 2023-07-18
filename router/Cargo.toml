@@ -15,12 +15,14 @@ async-trait = { workspace = true }
 ceresdbproto = { workspace = true }
 cluster = { workspace = true }
 common_types = { workspace = true }
-common_util = { workspace = true }
+generic_error = { workspace = true }
 log = { workspace = true }
+macros = { workspace = true }
 meta_client = { workspace = true }
 moka = { version = "0.10", features = ["future"] }
 serde = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
+time_ext = { workspace = true }
 tokio = { workspace = true }
 twox-hash = "1.6"

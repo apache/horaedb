@@ -9,8 +9,8 @@ use arrow::{
     array::{ArrayRef, BooleanArray, StringArray, UInt64Array},
     datatypes::DataType,
 };
+use codec::{compact::MemCompactEncoder, Encoder};
 use common_types::hash::hash64;
-use common_util::codec::{compact::MemCompactEncoder, Encoder};
 use datafusion::{
     error::{DataFusionError, Result as DataFusionResult},
     logical_expr::{create_udf, Expr, Volatility},

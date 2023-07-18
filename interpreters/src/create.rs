@@ -3,6 +3,7 @@
 //! Interpreter for create statements
 
 use async_trait::async_trait;
+use macros::define_result;
 use query_frontend::plan::CreateTablePlan;
 use snafu::{ResultExt, Snafu};
 use table_engine::engine::TableEngineRef;

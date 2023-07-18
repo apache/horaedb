@@ -88,7 +88,7 @@ pub enum Error {
     },
 }
 
-// Do not depend on common_util crates
+// Do not depend on test_util crates
 pub type Result<T> = std::result::Result<T, Error>;
 
 // TODO(yingwen):

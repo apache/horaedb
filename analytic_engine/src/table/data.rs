@@ -24,12 +24,10 @@ use common_types::{
     time::{TimeRange, Timestamp},
     SequenceNumber,
 };
-use common_util::{
-    define_result,
-    error::{GenericError, GenericResult},
-    id_allocator::IdAllocator,
-};
+use generic_error::{GenericError, GenericResult};
+use id_allocator::IdAllocator;
 use log::{debug, info};
+use macros::define_result;
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
@@ -677,11 +675,11 @@ pub mod tests {
 
     use arena::NoopCollector;
     use common_types::{datum::DatumKind, table::DEFAULT_SHARD_ID};
-    use common_util::config::ReadableDuration;
     use table_engine::{
         engine::{CreateTableRequest, TableState},
         table::SchemaId,
     };
+    use time_ext::ReadableDuration;
 
     use super::*;
     use crate::{

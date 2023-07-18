@@ -2,8 +2,8 @@
 
 //! Kafka implementation's config
 
-use common_util::config::ReadableDuration;
 use serde::{Deserialize, Serialize};
+use time_ext::ReadableDuration;
 
 /// Generic client config that is used for consumers, producers as well as admin
 /// operations (like "create topic").

@@ -1,12 +1,12 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Config for [Client]
 
 use std::str::FromStr;
 
 use arrow_ext::ipc::CompressOptions;
-use common_util::config::ReadableDuration;
 use serde::{Deserialize, Serialize};
+use time_ext::ReadableDuration;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]

@@ -1,0 +1,18 @@
+[package]
+name = "metric_ext"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies]
+crossbeam-utils = "0.8.7"
+# In alphabetical order
+serde = { workspace = true }
+serde_json = { workspace = true }
+time_ext = { workspace = true }

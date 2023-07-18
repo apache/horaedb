@@ -5,8 +5,8 @@
 use std::{num::NonZeroUsize, path::Path, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
-use common_util::define_result;
 use futures::Future;
+use macros::define_result;
 use message_queue::kafka::kafka_impl::KafkaImpl;
 use object_store::{
     aliyun,
@@ -68,7 +68,7 @@ pub enum Error {
     OpenObkv { source: table_kv::obkv::Error },
 
     #[snafu(display("Failed to execute in runtime, err:{}", source))]
-    RuntimeExec { source: common_util::runtime::Error },
+    RuntimeExec { source: runtime::Error },
 
     #[snafu(display("Failed to open object store, err:{}", source))]
     OpenObjectStore {

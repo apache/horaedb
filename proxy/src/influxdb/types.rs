@@ -12,7 +12,7 @@ use common_types::{
     column_schema::ColumnSchema, datum::Datum, record_batch::RecordBatch, schema::RecordSchema,
     time::Timestamp,
 };
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use http::Method;
 use influxdb_line_protocol::FieldValue;
 use interpreters::interpreter::Output;
