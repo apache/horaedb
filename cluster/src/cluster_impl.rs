@@ -100,12 +100,12 @@ impl ClusterImpl {
 
         let handle = self.runtime.spawn(async move {
             loop {
-                let shards = inner.shard_set.all_shards();
-                let mut shard_infos = Vec::with_capacity(shards.len());
-                for shard in shards {
-                    let shard_info = shard.shard_info();
-                    shard_infos.push(shard_info);
-                }
+                let shard_infos = inner
+                    .shard_set
+                    .all_opened_shards()
+                    .iter()
+                    .map(|shard| shard.shard_info())
+                    .collect();
                 info!("Node heartbeat to meta, shard infos:{:?}", shard_infos);
 
                 let resp = inner.meta_client.send_heartbeat(shard_infos).await;
