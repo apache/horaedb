@@ -181,10 +181,10 @@ pub struct NodeInfo {
 /// - `Opening`, which means it has been opened before, but failed.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
 pub enum ShardStatus {
-    /// Not allowed report to ceresmeta
+    /// Created, but not opened
     #[default]
     Init,
-    /// Not allowed report to ceresmeta
+    /// In opening
     Opening,
     /// Healthy
     Ready,
