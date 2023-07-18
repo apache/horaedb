@@ -199,6 +199,7 @@ fn mock_sst_read_options(
     let scan_options = ScanOptions {
         background_read_parallelism: 1,
         max_record_batches_in_flight: 1024,
+        num_streams_to_prefetch: 0,
     };
     SstReadOptions {
         reverse: false,

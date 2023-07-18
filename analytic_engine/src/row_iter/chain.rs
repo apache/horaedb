@@ -10,7 +10,6 @@ use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatchWithKey, request_id::RequestId,
     schema::RecordSchemaWithKey,
 };
-use futures::StreamExt;
 use generic_error::GenericError;
 use log::debug;
 use macros::define_result;
@@ -20,7 +19,7 @@ use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 use crate::{
     row_iter::{
-        record_batch_stream, record_batch_stream::SequencedRecordBatchStream,
+        record_batch_stream, record_batch_stream::BoxedPrefetchableRecordBatchStream,
         RecordBatchWithKeyIterator,
     },
     space::SpaceId,
@@ -61,6 +60,7 @@ pub struct ChainConfig<'a> {
     pub projected_schema: ProjectedSchema,
     /// Predicate of the query.
     pub predicate: PredicateRef,
+    pub num_streams_to_prefetch: usize,
 
     pub sst_read_options: SstReadOptions,
     /// Sst factory
@@ -172,8 +172,10 @@ impl<'a> Builder<'a> {
             request_id: self.config.request_id,
             schema: self.config.projected_schema.to_record_schema_with_key(),
             streams,
+            num_streams_to_prefetch: self.config.num_streams_to_prefetch,
             ssts: self.ssts,
             next_stream_idx: 0,
+            next_prefetch_stream_idx: 0,
             inited_at: None,
             created_at: Instant::now(),
             metrics: Metrics::new(
@@ -248,17 +250,19 @@ pub struct ChainIterator {
     table_id: TableId,
     request_id: RequestId,
     schema: RecordSchemaWithKey,
-    streams: Vec<SequencedRecordBatchStream>,
+    streams: Vec<BoxedPrefetchableRecordBatchStream>,
+    num_streams_to_prefetch: usize,
     /// ssts are kept here to avoid them from being purged.
     #[allow(dead_code)]
     ssts: Vec<Vec<FileHandle>>,
     /// The range of the index is [0, streams.len()] and the iterator is
     /// exhausted if it reaches `streams.len()`.
     next_stream_idx: usize,
+    next_prefetch_stream_idx: usize,
 
     inited_at: Option<Instant>,
     created_at: Instant,
-    // metrics for the iterator.
+    /// metrics for the iterator.
     metrics: Metrics,
 }
 
@@ -272,6 +276,18 @@ impl ChainIterator {
         debug!("Init ChainIterator, space_id:{}, table_id:{:?}, request_id:{}, total_streams:{}, schema:{:?}",
             self.space_id, self.table_id, self.request_id, self.streams.len(), self.schema
         );
+    }
+
+    /// Maybe prefetch the necessary stream for future reading.
+    async fn maybe_prefetch(&mut self) {
+        while self.next_prefetch_stream_idx < self.next_stream_idx + self.num_streams_to_prefetch
+            && self.next_prefetch_stream_idx < self.streams.len()
+        {
+            self.streams[self.next_prefetch_stream_idx]
+                .start_prefetch()
+                .await;
+            self.next_prefetch_stream_idx += 1;
+        }
     }
 }
 
@@ -294,11 +310,12 @@ impl RecordBatchWithKeyIterator for ChainIterator {
 
     async fn next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
         self.init_if_necessary();
+        self.maybe_prefetch().await;
 
         while self.next_stream_idx < self.streams.len() {
             let read_stream = &mut self.streams[self.next_stream_idx];
             let sequenced_record_batch = read_stream
-                .next()
+                .fetch_next()
                 .await
                 .transpose()
                 .context(PollNextRecordBatch)?;
@@ -313,7 +330,10 @@ impl RecordBatchWithKeyIterator for ChainIterator {
                     }
                 }
                 // Fetch next stream only if the current sequence_record_batch is None.
-                None => self.next_stream_idx += 1,
+                None => {
+                    self.next_stream_idx += 1;
+                    self.maybe_prefetch().await;
+                }
             }
         }
 
@@ -357,8 +377,10 @@ mod tests {
             request_id: RequestId::next_id(),
             schema: schema.to_record_schema_with_key(),
             streams,
+            num_streams_to_prefetch: 2,
             ssts: Vec::new(),
             next_stream_idx: 0,
+            next_prefetch_stream_idx: 0,
             inited_at: None,
             created_at: Instant::now(),
             metrics: Metrics::new(0, 0, None),

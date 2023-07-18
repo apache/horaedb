@@ -88,6 +88,7 @@ impl Instance {
         let scan_options_for_compaction = ScanOptions {
             background_read_parallelism: 1,
             max_record_batches_in_flight: MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ,
+            num_streams_to_prefetch: ctx.config.num_streams_to_prefetch,
         };
         let compaction_runtime = ctx.runtimes.compact_runtime.clone();
         let compaction_scheduler = Arc::new(SchedulerImpl::new(
@@ -101,6 +102,7 @@ impl Instance {
         let scan_options = ScanOptions {
             background_read_parallelism: ctx.config.sst_background_read_parallelism,
             max_record_batches_in_flight: ctx.config.scan_max_record_batches_in_flight,
+            num_streams_to_prefetch: ctx.config.num_streams_to_prefetch,
         };
 
         let iter_options = ctx

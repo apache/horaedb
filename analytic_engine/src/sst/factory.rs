@@ -103,6 +103,8 @@ pub struct ScanOptions {
     pub background_read_parallelism: usize,
     /// The max record batches in flight
     pub max_record_batches_in_flight: usize,
+    /// The number of streams to prefetch when scan
+    pub num_streams_to_prefetch: usize,
 }
 
 impl Default for ScanOptions {
@@ -110,6 +112,7 @@ impl Default for ScanOptions {
         Self {
             background_read_parallelism: 1,
             max_record_batches_in_flight: 64,
+            num_streams_to_prefetch: 2,
         }
     }
 }

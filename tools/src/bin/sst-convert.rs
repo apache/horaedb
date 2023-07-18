@@ -2,9 +2,10 @@
 
 //! A cli to convert ssts between different options
 
-use std::{error::Error, sync::Arc};
+use std::sync::Arc;
 
 use analytic_engine::{
+    prefetchable_stream::PrefetchableStreamExt,
     sst::{
         factory::{
             Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, ScanOptions, SstReadHint,
@@ -17,7 +18,7 @@ use analytic_engine::{
 use anyhow::{Context, Result};
 use clap::Parser;
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId};
-use futures::stream::StreamExt;
+use generic_error::BoxError;
 use object_store::{LocalFileSystem, Path};
 use runtime::Runtime;
 use table_engine::predicate::Predicate;
@@ -114,12 +115,8 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         .create_writer(&builder_opts, &output, &store_picker, Level::MAX)
         .await
         .expect("no sst writer found");
-    let sst_stream = reader
-        .read()
-        .await
-        .unwrap()
-        .map(|batch| batch.map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>));
-    let sst_stream = Box::new(sst_stream) as _;
+    let sst_stream = reader.read().await.unwrap().map(BoxError::box_err);
+    let sst_stream = sst_stream.into_boxed_stream();
     let sst_info = writer
         .write(RequestId::next_id(), &sst_meta, sst_stream)
         .await?;

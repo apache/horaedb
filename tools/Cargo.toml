@@ -16,6 +16,7 @@ anyhow = { version = "1.0", features = ["backtrace"] }
 clap = { workspace = true, features = ["derive"] }
 common_types = { workspace = true }
 futures = { workspace = true }
+generic_error = { workspace = true }
 num_cpus = "1.15.0"
 object_store = { workspace = true }
 parquet = { workspace = true }

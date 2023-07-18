@@ -38,25 +38,32 @@ use runtime::{AbortOnDropMany, JoinHandle, Runtime};
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use time_ext::InstantExt;
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::{
+    mpsc::{self, Receiver, Sender},
+    watch,
+};
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
-use crate::sst::{
-    factory::{ObjectStorePickerRef, ReadFrequency, SstReadOptions},
-    meta_data::{
-        cache::{MetaCacheRef, MetaData},
-        SstMetaData,
+use crate::{
+    prefetchable_stream::{NoopPrefetcher, PrefetchableStream},
+    sst::{
+        factory::{ObjectStorePickerRef, ReadFrequency, SstReadOptions},
+        meta_data::{
+            cache::{MetaCacheRef, MetaData},
+            SstMetaData,
+        },
+        parquet::{
+            encoding::ParquetDecoder,
+            meta_data::{ParquetFilter, ParquetMetaDataRef},
+            row_group_pruner::RowGroupPruner,
+        },
+        reader::{error::*, Result, SstReader},
     },
-    parquet::{
-        encoding::ParquetDecoder,
-        meta_data::{ParquetFilter, ParquetMetaDataRef},
-        row_group_pruner::RowGroupPruner,
-    },
-    reader::{error::*, Result, SstReader},
 };
 
 const PRUNE_ROW_GROUPS_METRICS_COLLECTOR_NAME: &str = "prune_row_groups";
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
+type RecordBatchWithKeyStream = Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>;
 
 pub struct Reader<'a> {
     /// The path where the data is persisted.
@@ -126,7 +133,7 @@ impl<'a> Reader<'a> {
     async fn maybe_read_parallelly(
         &mut self,
         read_parallelism: usize,
-    ) -> Result<Vec<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>>> {
+    ) -> Result<Vec<RecordBatchWithKeyStream>> {
         assert!(read_parallelism > 0);
 
         self.init_if_necessary().await?;
@@ -547,20 +554,39 @@ impl<'a> SstReader for Reader<'a> {
 
     async fn read(
         &mut self,
-    ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>> {
+    ) -> Result<Box<dyn PrefetchableStream<Item = Result<RecordBatchWithKey>>>> {
         let mut streams = self.maybe_read_parallelly(1).await?;
         assert_eq!(streams.len(), 1);
         let stream = streams.pop().expect("impossible to fetch no stream");
 
-        Ok(stream)
+        Ok(Box::new(NoopPrefetcher(stream)))
     }
 }
 
 struct RecordBatchReceiver {
+    bg_prefetch_tx: Option<watch::Sender<()>>,
     rx_group: Vec<Receiver<Result<RecordBatchWithKey>>>,
     cur_rx_idx: usize,
     #[allow(dead_code)]
     drop_helper: AbortOnDropMany<()>,
+}
+
+#[async_trait]
+impl PrefetchableStream for RecordBatchReceiver {
+    type Item = Result<RecordBatchWithKey>;
+
+    async fn start_prefetch(&mut self) {
+        // Start the prefetch work in background when first poll is called.
+        if let Some(tx) = self.bg_prefetch_tx.take() {
+            if tx.send(()).is_err() {
+                error!("The receiver for start prefetching has been closed");
+            }
+        }
+    }
+
+    async fn fetch_next(&mut self) -> Option<Self::Item> {
+        self.next().await
+    }
 }
 
 impl Stream for RecordBatchReceiver {
@@ -569,6 +595,13 @@ impl Stream for RecordBatchReceiver {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if self.rx_group.is_empty() {
             return Poll::Ready(None);
+        }
+
+        // Start the prefetch work in background when first poll is called.
+        if let Some(tx) = self.bg_prefetch_tx.take() {
+            if tx.send(()).is_err() {
+                error!("The receiver for start prefetching has been closed");
+            }
         }
 
         let cur_rx_idx = self.cur_rx_idx;
@@ -639,8 +672,15 @@ impl<'a> ThreadedReader<'a> {
         &mut self,
         mut reader: Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>,
         tx: Sender<Result<RecordBatchWithKey>>,
+        mut rx: watch::Receiver<()>,
     ) -> JoinHandle<()> {
         self.runtime.spawn(async move {
+            // Wait for the notification to start the bg prefetch work.
+            if rx.changed().await.is_err() {
+                error!("The prefetch notifier has been closed, exit the prefetch work");
+                return;
+            }
+
             while let Some(batch) = reader.next().await {
                 if let Err(e) = tx.send(batch).await {
                     error!("fail to send the fetched record batch result, err:{}", e);
@@ -658,7 +698,7 @@ impl<'a> SstReader for ThreadedReader<'a> {
 
     async fn read(
         &mut self,
-    ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>> {
+    ) -> Result<Box<dyn PrefetchableStream<Item = Result<RecordBatchWithKey>>>> {
         // Get underlying sst readers and channels.
         let sub_readers = self
             .inner
@@ -666,6 +706,7 @@ impl<'a> SstReader for ThreadedReader<'a> {
             .await?;
         if sub_readers.is_empty() {
             return Ok(Box::new(RecordBatchReceiver {
+                bg_prefetch_tx: None,
                 rx_group: Vec::new(),
                 cur_rx_idx: 0,
                 drop_helper: AbortOnDropMany(Vec::new()),
@@ -683,13 +724,17 @@ impl<'a> SstReader for ThreadedReader<'a> {
             .map(|_| mpsc::channel::<Result<RecordBatchWithKey>>(channel_cap_per_sub_reader))
             .unzip();
 
+        let (bg_prefetch_tx, bg_prefetch_rx) = watch::channel(());
         // Start the background readings.
         let mut handles = Vec::with_capacity(sub_readers.len());
         for (sub_reader, tx) in sub_readers.into_iter().zip(tx_group.into_iter()) {
-            handles.push(self.read_record_batches_from_sub_reader(sub_reader, tx));
+            let bg_prefetch_handle =
+                self.read_record_batches_from_sub_reader(sub_reader, tx, bg_prefetch_rx.clone());
+            handles.push(bg_prefetch_handle);
         }
 
         Ok(Box::new(RecordBatchReceiver {
+            bg_prefetch_tx: Some(bg_prefetch_tx),
             rx_group,
             cur_rx_idx: 0,
             drop_helper: AbortOnDropMany(handles),

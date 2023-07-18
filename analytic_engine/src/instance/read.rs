@@ -259,6 +259,7 @@ impl Instance {
                 request_id: request.request_id,
                 metrics_collector: Some(metrics_collector),
                 deadline: request.opts.deadline,
+                num_streams_to_prefetch: self.scan_options.num_streams_to_prefetch,
                 space_id: table_data.space_id,
                 table_id: table_data.id,
                 projected_schema: projected_schema.clone(),

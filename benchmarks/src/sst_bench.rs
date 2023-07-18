@@ -12,7 +12,6 @@ use analytic_engine::sst::{
     meta_data::cache::{MetaCache, MetaCacheRef},
 };
 use common_types::{projected_schema::ProjectedSchema, schema::Schema};
-use futures::stream::StreamExt;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
 use runtime::Runtime;
@@ -43,6 +42,7 @@ impl SstBench {
         let scan_options = ScanOptions {
             background_read_parallelism: 1,
             max_record_batches_in_flight: 1024,
+            num_streams_to_prefetch: 0,
         };
         let sst_read_options = SstReadOptions {
             reverse: config.reverse,
@@ -100,7 +100,7 @@ impl SstBench {
 
             let mut total_rows = 0;
             let mut batch_num = 0;
-            while let Some(batch) = sst_stream.next().await {
+            while let Some(batch) = sst_stream.fetch_next().await {
                 let num_rows = batch.unwrap().num_rows();
                 total_rows += num_rows;
                 batch_num += 1;

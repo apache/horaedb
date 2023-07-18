@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use analytic_engine::{
+    prefetchable_stream::PrefetchableStreamExt,
     row_iter::{
         self,
         dedup::DedupIterator,
@@ -26,7 +27,7 @@ use analytic_engine::{
     table_options::{Compression, StorageFormatHint},
 };
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId};
-use futures::TryStreamExt;
+use generic_error::BoxError;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
 use runtime::Runtime;
@@ -103,6 +104,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
     let scan_options = ScanOptions {
         background_read_parallelism: 1,
         max_record_batches_in_flight: 1024,
+        num_streams_to_prefetch: 2,
     };
     let sst_read_options = SstReadOptions {
         reverse: false,
@@ -149,9 +151,12 @@ async fn sst_to_record_batch_stream(
         .await
         .unwrap();
 
-    let sst_stream = sst_reader.read().await.unwrap();
-
-    Box::new(sst_stream.map_err(|e| Box::new(e) as _))
+    sst_reader
+        .read()
+        .await
+        .unwrap()
+        .map(|res| res.box_err())
+        .into_boxed_stream()
 }
 
 #[derive(Debug, Deserialize)]
@@ -207,6 +212,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     let scan_options = ScanOptions {
         background_read_parallelism: 1,
         max_record_batches_in_flight: 1024,
+        num_streams_to_prefetch: 0,
     };
 
     let request_id = RequestId::next_id();
