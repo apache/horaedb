@@ -2,17 +2,26 @@
 
 use std::{
     collections::HashMap,
-    sync::{atomic, atomic::AtomicU64, Arc, RwLock},
+    sync::{
+        atomic,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+        Arc, RwLock,
+    },
 };
 
+use arena::{Arena, BasicStats, MonoIncArena};
 use bytes::Bytes;
 use common_types::{column::Column, row::RowGroupSplitter, schema::Schema, SequenceNumber};
+use common_util::codec::Encoder;
 use log::debug;
-use snafu::ensure;
+use skiplist::Skiplist;
+use snafu::{ensure, ResultExt};
 
 use crate::memtable::{
-    columnar::iter::ColumnarIterImpl, key::KeySequence, ColumnarIterPtr, InvalidPutSequence,
-    MemTable, PutContext, Result, ScanContext, ScanRequest,
+    columnar::{factory::BytewiseComparator, iter::ColumnarIterImpl},
+    factory::Options,
+    key::{ComparableInternalKey, KeySequence},
+    ColumnarIterPtr, InvalidPutSequence, MemTable, PutContext, Result, ScanContext, ScanRequest,
 };
 
 pub mod factory;
@@ -25,6 +34,8 @@ pub struct ColumnarMemTable {
     /// The last sequence of the rows in this memtable. Update to this field
     /// require external synchronization.
     last_sequence: AtomicU64,
+    row_num: AtomicUsize,
+    opts: Options,
 }
 
 impl MemTable for ColumnarMemTable {
@@ -51,8 +62,22 @@ impl MemTable for ColumnarMemTable {
     ) -> Result<()> {
         let row_count = row_group.split_idx.len();
         let mut columns = HashMap::with_capacity(schema.num_columns());
+        let row_num = self.row_num.load(Ordering::Relaxed);
         for i in 0..row_count {
             let row = row_group.get(i).unwrap();
+
+            // let key_encoder = ComparableInternalKey::new(sequence, schema);
+            //
+            // let internal_key = &mut ctx.key_buf;
+            // // Reset key buffer
+            // internal_key.clear();
+            // // Reserve capacity for key
+            // internal_key.reserve(key_encoder.estimate_encoded_size(row));
+            // // Encode key
+            // key_encoder.encode(internal_key, row).unwrap();
+            // self.key_index
+            //     .put(internal_key, (row_num + i).to_le_bytes().as_slice());
+
             for (i, column_schema) in schema.columns().iter().enumerate() {
                 let column = if let Some(column) = columns.get_mut(&column_schema.name) {
                     column
@@ -78,7 +103,7 @@ impl MemTable for ColumnarMemTable {
                 memtable.insert(k, v);
             };
         }
-
+        self.row_num.fetch_add(row_count, Ordering::Acquire);
         Ok(())
     }
 
@@ -97,7 +122,13 @@ impl MemTable for ColumnarMemTable {
             .unwrap()
             .len();
         let (reverse, batch_size) = (request.reverse, ctx.batch_size);
-        let iter = ColumnarIterImpl::new(self.memtable.clone(), self.schema.clone(), ctx, request)?;
+        let iter: ColumnarIterImpl<MonoIncArena> = ColumnarIterImpl::new(
+            self.memtable.clone(),
+            self.schema.clone(),
+            self.opts.clone(),
+            ctx,
+            request,
+        )?;
         Ok(Box::new(iter))
     }
 
