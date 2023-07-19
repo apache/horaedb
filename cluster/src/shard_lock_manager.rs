@@ -7,8 +7,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+use bytes_ext::Bytes;
 use ceresdbproto::meta_event::ShardLockValue;
-use common_types::{bytes::Bytes, table::ShardId};
+use common_types::table::ShardId;
 use etcd_client::{
     Client, Compare, CompareOp, LeaseKeepAliveStream, LeaseKeeper, PutOptions, Txn, TxnOp,
 };

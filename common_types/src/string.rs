@@ -1,12 +1,11 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Bytes that can safely cast to str/string.
 
 use std::{convert::TryFrom, fmt, ops, str};
 
+use bytes_ext::Bytes;
 use snafu::{Backtrace, ResultExt, Snafu};
-
-use crate::bytes::Bytes;
 
 #[derive(Debug, Snafu)]
 pub enum Error {

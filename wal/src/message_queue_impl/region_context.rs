@@ -8,7 +8,8 @@ use std::{
     sync::Arc,
 };
 
-use common_types::{bytes::BytesMut, table::TableId, SequenceNumber};
+use bytes_ext::BytesMut;
+use common_types::{table::TableId, SequenceNumber};
 use generic_error::{BoxError, GenericError};
 use log::{debug, warn};
 use macros::define_result;

@@ -21,7 +21,7 @@ arrow = { workspace = true }
 async-stream = { workspace = true }
 async-trait = { workspace = true }
 base64 = { workspace = true }
-bytes = { workspace = true }
+bytes_ext = { workspace = true }
 ceresdbproto = { workspace = true }
 codec = { workspace = true }
 common_types = { workspace = true }

@@ -1,7 +1,7 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Varint for codec whose test is covered by compact/number.rs
-use common_types::bytes::{Buf, SafeBuf, SafeBufMut};
+use bytes_ext::{Buf, SafeBuf, SafeBufMut};
 use macros::define_result;
 use snafu::{Backtrace, ResultExt, Snafu};
 
@@ -9,13 +9,13 @@ use snafu::{Backtrace, ResultExt, Snafu};
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display("Failed to encode varint, err:{}", source))]
-    EncodeVarint { source: common_types::bytes::Error },
+    EncodeVarint { source: bytes_ext::Error },
 
     #[snafu(display("Insufficient bytes to decode value.\nBacktrace:\n{}", backtrace))]
     DecodeEmptyValue { backtrace: Backtrace },
 
     #[snafu(display("Insufficient bytes to decode value, err:{}", source))]
-    DecodeValue { source: common_types::bytes::Error },
+    DecodeValue { source: bytes_ext::Error },
 
     #[snafu(display("Value larger than 64 bits (overflow).\nBacktrace:\n{}", backtrace))]
     UvarintOverflow { backtrace: Backtrace },
@@ -143,7 +143,7 @@ pub fn decode_uvarint<B: Buf>(buf: &mut B) -> Result<u64> {
 
 #[cfg(test)]
 mod tests {
-    use common_types::bytes::BytesMut;
+    use bytes_ext::BytesMut;
 
     use super::*;
 

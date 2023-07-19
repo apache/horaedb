@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use common_types::bytes::BytesMut;
+use bytes_ext::BytesMut;
 use generic_error::{BoxError, GenericError};
 use log::debug;
 use macros::define_result;

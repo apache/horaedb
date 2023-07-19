@@ -15,6 +15,7 @@ workspace = true
 arrow = { workspace = true }
 arrow_ext = { workspace = true }
 async-trait = { workspace = true }
+bytes_ext = { workspace = true }
 ceresdbproto = { workspace = true }
 common_types = { workspace = true }
 datafusion = { workspace = true }

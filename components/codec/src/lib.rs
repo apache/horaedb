@@ -11,7 +11,7 @@ pub mod memcomparable;
 pub mod row;
 mod varint;
 
-use common_types::bytes::{Buf, BufMut};
+use bytes_ext::{Buf, BufMut};
 
 // encoder/decoder
 /// Data encode abstraction

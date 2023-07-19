@@ -15,6 +15,7 @@ analytic_engine = { workspace = true }
 arena = { workspace = true }
 arrow = { workspace = true }
 base64 = { workspace = true }
+bytes_ext = { workspace = true }
 clap = { workspace = true }
 common_types = { workspace = true }
 env_logger = { workspace = true }

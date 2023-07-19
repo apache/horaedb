@@ -3,7 +3,6 @@
 //! Contains common types
 
 pub mod bitset;
-pub mod bytes;
 pub mod column;
 pub mod column_schema;
 pub mod datum;

@@ -12,7 +12,7 @@ use std::{
 
 use arrow::{datatypes::SchemaRef, record_batch::RecordBatch as ArrowRecordBatch};
 use async_trait::async_trait;
-use bytes::Bytes;
+use bytes_ext::Bytes;
 use common_types::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},

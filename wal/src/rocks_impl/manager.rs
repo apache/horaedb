@@ -14,9 +14,8 @@ use std::{
 };
 
 use async_trait::async_trait;
-use common_types::{
-    bytes::BytesMut, table::TableId, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER,
-};
+use bytes_ext::BytesMut;
+use common_types::{table::TableId, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
 use generic_error::BoxError;
 use log::{debug, info, warn};
 use rocksdb::{

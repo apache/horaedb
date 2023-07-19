@@ -5,9 +5,9 @@
 use std::{cmp::Ordering, iter::Rev, ops::Bound, time::Instant};
 
 use arena::{Arena, BasicStats};
+use bytes_ext::{Bytes, BytesMut};
 use codec::row;
 use common_types::{
-    bytes::{Bytes, BytesMut},
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{RecordBatchWithKey, RecordBatchWithKeyBuilder},
     row::contiguous::{ContiguousRowReader, ProjectedContiguousRow},

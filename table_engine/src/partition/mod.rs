@@ -4,8 +4,8 @@
 
 pub mod rule;
 
+use bytes_ext::Bytes;
 use ceresdbproto::cluster::partition_info::Info;
-use common_types::bytes::Bytes;
 use macros::define_result;
 use snafu::{Backtrace, Snafu};
 

@@ -2,10 +2,10 @@
 
 //! Write logic of instance
 
+use bytes_ext::ByteVec;
 use ceresdbproto::{schema as schema_pb, table_requests};
 use codec::row;
 use common_types::{
-    bytes::ByteVec,
     row::{RowGroup, RowGroupSlicer},
     schema::{IndexInWriterSchema, Schema},
 };

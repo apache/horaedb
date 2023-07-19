@@ -2,7 +2,7 @@
 
 //! Number format
 
-use common_types::bytes::{SafeBuf, SafeBufMut};
+use bytes_ext::{SafeBuf, SafeBufMut};
 use snafu::ResultExt;
 
 use crate::{

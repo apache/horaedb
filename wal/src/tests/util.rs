@@ -10,11 +10,8 @@ use std::{
 };
 
 use async_trait::async_trait;
-use common_types::{
-    bytes::{BufMut, SafeBuf, SafeBufMut},
-    table::TableId,
-    SequenceNumber,
-};
+use bytes_ext::{BufMut, SafeBuf, SafeBufMut};
+use common_types::{table::TableId, SequenceNumber};
 use message_queue::kafka::{config::Config as KafkaConfig, kafka_impl::KafkaImpl};
 use runtime::{self, Runtime};
 use snafu::Snafu;

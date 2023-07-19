@@ -19,6 +19,7 @@ features = ["portable"]
 
 [dependencies]
 async-trait = { workspace = true }
+bytes_ext = { workspace = true }
 ceresdbproto = { workspace = true }
 chrono = { workspace = true }
 codec = { workspace = true }

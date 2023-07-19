@@ -15,7 +15,7 @@ analytic_engine = { workspace = true }
 arrow = { workspace = true }
 arrow_ext = { workspace = true }
 async-trait = { workspace = true }
-bytes = { workspace = true }
+bytes_ext = { workspace = true }
 catalog = { workspace = true }
 ceresdbproto = { workspace = true }
 clru = { workspace = true }

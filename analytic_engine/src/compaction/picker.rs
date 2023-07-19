@@ -684,8 +684,8 @@ impl LevelPicker for TimeWindowPicker {
 mod tests {
     use std::time::Duration;
 
+    use bytes_ext::Bytes;
     use common_types::{
-        bytes::Bytes,
         tests::build_schema,
         time::{TimeRange, Timestamp},
     };

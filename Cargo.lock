@@ -88,7 +88,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "base64 0.13.1",
- "bytes",
+ "bytes_ext",
  "ceresdbproto",
  "codec",
  "common_types",
@@ -621,6 +621,7 @@ dependencies = [
  "arena",
  "arrow",
  "base64 0.13.1",
+ "bytes_ext",
  "clap 3.2.23",
  "common_types",
  "criterion",
@@ -1263,6 +1264,7 @@ name = "cluster"
 version = "1.2.5-alpha"
 dependencies = [
  "async-trait",
+ "bytes_ext",
  "catalog",
  "ceresdbproto",
  "common_types",
@@ -1295,6 +1297,7 @@ dependencies = [
 name = "codec"
 version = "1.2.5-alpha"
 dependencies = [
+ "bytes_ext",
  "common_types",
  "macros",
  "snafu 0.6.10",
@@ -5715,7 +5718,7 @@ dependencies = [
  "arrow",
  "arrow_ext",
  "async-trait",
- "bytes",
+ "bytes_ext",
  "catalog",
  "ceresdbproto",
  "clru",
@@ -6267,6 +6270,7 @@ version = "1.2.5-alpha"
 dependencies = [
  "arrow",
  "async-trait",
+ "bytes_ext",
  "catalog",
  "ceresdbproto",
  "codec",
@@ -6289,6 +6293,7 @@ dependencies = [
  "arrow",
  "arrow_ext",
  "async-trait",
+ "bytes_ext",
  "ceresdbproto",
  "common_types",
  "datafusion",
@@ -7150,6 +7155,7 @@ name = "wal"
 version = "1.2.5-alpha"
 dependencies = [
  "async-trait",
+ "bytes_ext",
  "ceresdbproto",
  "chrono",
  "codec",

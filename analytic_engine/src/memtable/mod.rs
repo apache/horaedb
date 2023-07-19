@@ -8,8 +8,8 @@ pub mod skiplist;
 
 use std::{ops::Bound, sync::Arc, time::Instant};
 
+use bytes_ext::{ByteVec, Bytes};
 use common_types::{
-    bytes::{ByteVec, Bytes},
     projected_schema::ProjectedSchema,
     record_batch::RecordBatchWithKey,
     row::Row,

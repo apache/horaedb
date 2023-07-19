@@ -2,10 +2,10 @@
 
 //! Payloads to write to wal
 
+use bytes_ext::{Buf, BufMut, SafeBuf, SafeBufMut};
 use ceresdbproto::{manifest as manifest_pb, table_requests};
 use codec::{row::WalRowDecoder, Decoder};
 use common_types::{
-    bytes::{Buf, BufMut, SafeBuf, SafeBufMut},
     row::{RowGroup, RowGroupBuilder},
     schema::Schema,
 };
@@ -19,7 +19,7 @@ use crate::{table_options, TableOptions};
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to encode header, err:{}", source))]
-    EncodeHeader { source: common_types::bytes::Error },
+    EncodeHeader { source: bytes_ext::Error },
 
     #[snafu(display("Failed to encode body, err:{}.\nBacktrace:\n{}", source, backtrace))]
     EncodeBody {
@@ -28,7 +28,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to decode header, err:{}", source))]
-    DecodeHeader { source: common_types::bytes::Error },
+    DecodeHeader { source: bytes_ext::Error },
 
     #[snafu(display(
         "Invalid wal entry header, value:{}.\nBacktrace:\n{}",

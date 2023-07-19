@@ -21,8 +21,8 @@ use analytic_engine::{
     table::sst_util,
     table_options::StorageFormat,
 };
+use bytes_ext::{BufMut, SafeBufMut};
 use common_types::{
-    bytes::{BufMut, SafeBufMut},
     projected_schema::ProjectedSchema,
     schema::{IndexInWriterSchema, Schema},
 };
@@ -37,10 +37,10 @@ use wal::log_batch::Payload;
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to writer header, err:{}.", source))]
-    WriteHeader { source: common_types::bytes::Error },
+    WriteHeader { source: bytes_ext::Error },
 
     #[snafu(display("Failed to writer body, err:{}.", source))]
-    WriteBody { source: common_types::bytes::Error },
+    WriteBody { source: bytes_ext::Error },
 }
 
 define_result!(Error);

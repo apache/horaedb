@@ -2,12 +2,12 @@
 
 //! Meta encoding of wal's message queue implementation
 
+use bytes_ext::{Buf, BufMut, BytesMut, SafeBuf, SafeBufMut};
 use ceresdbproto::wal_on_mq::{
     table_meta_data::SafeDeleteOffset, RegionMetaSnapshot as RegionMetaSnapshotPb,
     TableMetaData as TableMetaDataPb,
 };
 use codec::{Decoder, Encoder};
-use common_types::bytes::{self, Buf, BufMut, BytesMut, SafeBuf, SafeBufMut};
 use generic_error::{BoxError, GenericError};
 use macros::define_result;
 use prost::Message;
@@ -28,7 +28,7 @@ pub enum Error {
         "Failed to encode meta key of message queue implementation, source:{}",
         source
     ))]
-    EncodeMetaKey { source: bytes::Error },
+    EncodeMetaKey { source: bytes_ext::Error },
 
     #[snafu(display(
         "Failed to encode meta value of message queue implementation, err:{}",
@@ -40,7 +40,7 @@ pub enum Error {
         "Failed to decode meta key of message queue implementation, err:{}",
         source
     ))]
-    DecodeMetaKey { source: bytes::Error },
+    DecodeMetaKey { source: bytes_ext::Error },
 
     #[snafu(display(
         "Failed to decode meta value of message queue implementation, err:{}",
@@ -355,7 +355,7 @@ impl From<TableMetaDataPb> for TableMetaData {
 
 #[cfg(test)]
 mod tests {
-    use common_types::bytes::BytesMut;
+    use bytes_ext::BytesMut;
 
     use super::*;
     use crate::message_queue_impl::region_context::{RegionMetaSnapshot, TableMetaData};

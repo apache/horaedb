@@ -1467,7 +1467,8 @@ fn purge_buckets<T: TableKv>(
 mod tests {
     use std::sync::Arc;
 
-    use common_types::{bytes::BytesMut, table::DEFAULT_SHARD_ID};
+    use bytes_ext::BytesMut;
+    use common_types::table::DEFAULT_SHARD_ID;
     use runtime::{Builder, Runtime};
     use table_kv::{memory::MemoryImpl, KeyBoundary, ScanContext, ScanRequest};
 

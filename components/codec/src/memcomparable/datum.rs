@@ -4,8 +4,8 @@
 
 use std::i64;
 
+use bytes_ext::{Buf, BufMut, BytesMut, SafeBufMut};
 use common_types::{
-    bytes::{Buf, BufMut, BytesMut, SafeBufMut},
     datum::{Datum, DatumKind},
     string::StringBytes,
     time::Timestamp,
@@ -219,7 +219,7 @@ impl DecodeTo<Datum> for MemComparable {
 mod tests {
     use core::cmp::Ordering;
 
-    use common_types::bytes::Bytes;
+    use bytes_ext::Bytes;
 
     use super::*;
 

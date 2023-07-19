@@ -8,6 +8,7 @@ use arrow::{
     datatypes::{DataType, TimeUnit},
     temporal_conversions::{EPOCH_DAYS_FROM_CE, NANOSECONDS},
 };
+use bytes_ext::Bytes;
 use ceresdbproto::schema::DataType as DataTypePb;
 use chrono::{Datelike, Local, NaiveDate, NaiveTime, TimeZone, Timelike};
 use datafusion::scalar::ScalarValue;
@@ -15,7 +16,7 @@ use serde::ser::{Serialize, Serializer};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{DataType as SqlDataType, Value};
 
-use crate::{bytes::Bytes, hash::hash64, hex, string::StringBytes, time::Timestamp};
+use crate::{hash::hash64, hex, string::StringBytes, time::Timestamp};
 
 const DATE_FORMAT: &str = "%Y-%m-%d";
 const TIME_FORMAT: &str = "%H:%M:%S%.3f";

@@ -330,8 +330,8 @@ mod tests {
 
     use std::{sync::Arc, task::Poll};
 
+    use bytes_ext::Bytes;
     use common_types::{
-        bytes::Bytes,
         projected_schema::ProjectedSchema,
         tests::{build_row, build_row_for_dictionary, build_schema, build_schema_with_dictionary},
         time::{TimeRange, Timestamp},
