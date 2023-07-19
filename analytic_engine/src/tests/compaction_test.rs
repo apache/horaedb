@@ -85,7 +85,7 @@ fn test_table_compact_current_segment<T: EngineBuildContext>(engine_context: T) 
         )
         .await;
 
-        test_util::tests::init_log_for_test();
+        test_util::init_log_for_test();
 
         // Trigger a compaction.
         test_ctx.compact_table(compact_test_table1).await;

@@ -139,7 +139,7 @@ system_catalog = { path = "system_catalog" }
 table_engine = { path = "table_engine" }
 table_kv = { path = "components/table_kv" }
 tempfile = "3.1.0"
-test_util = { path = "components/test_util", features = ["test"] }
+test_util = { path = "components/test_util" }
 time_ext = { path = "components/time_ext" }
 toml = "0.7"
 toml_ext = { path = "components/toml_ext" }

@@ -6390,23 +6390,9 @@ name = "test_util"
 version = "1.2.5-alpha"
 dependencies = [
  "arrow",
- "async-stream",
- "async-trait",
- "backtrace",
- "ceresdbproto",
  "chrono",
  "common_types",
  "env_logger",
- "futures 0.3.28",
- "lazy_static",
- "libc",
- "log",
- "pin-project-lite",
- "serde",
- "serde_json",
- "snafu 0.6.10",
- "tempfile",
- "tokio",
 ]
 
 [[package]]

@@ -10,29 +10,9 @@ workspace = true
 [package.edition]
 workspace = true
 
-[features]
-test = ["env_logger"]
-
 [dependencies]
 # In alphabetical order
 arrow = { workspace = true }
-async-stream = { workspace = true }
-async-trait = { workspace = true }
-backtrace = "0.3.9"
-ceresdbproto = { workspace = true }
 chrono = { workspace = true }
 common_types = { workspace = true, features = ["test"] }
-env_logger = { workspace = true, optional = true }
-futures = { workspace = true }
-lazy_static = { workspace = true }
-libc = "0.2"
-log = { workspace = true }
-pin-project-lite = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-snafu = { workspace = true }
-tokio = { workspace = true }
-
-[dev-dependencies]
 env_logger = { workspace = true }
-tempfile = { workspace = true }

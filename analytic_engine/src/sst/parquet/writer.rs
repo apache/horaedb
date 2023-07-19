@@ -341,7 +341,6 @@ mod tests {
     use runtime::{self, Runtime};
     use table_engine::predicate::Predicate;
     use tempfile::tempdir;
-    use test_util::tests::init_log_for_test;
 
     use super::*;
     use crate::{
@@ -360,7 +359,7 @@ mod tests {
 
     #[test]
     fn test_parquet_build_and_read() {
-        init_log_for_test();
+        test_util::init_log_for_test();
 
         let runtime = Arc::new(runtime::Builder::default().build().unwrap());
         parquet_write_and_then_read_back(runtime.clone(), 2, vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
@@ -587,7 +586,7 @@ mod tests {
         input_num_rows: Vec<usize>,
         expected_num_rows: Vec<usize>,
     ) {
-        init_log_for_test();
+        test_util::init_log_for_test();
         let schema = build_schema();
         let mut poll_cnt = 0;
         let schema_clone = schema.clone();
