@@ -7,8 +7,8 @@
 
 use std::convert::TryFrom;
 
+use bytes_ext::{Buf, BufMut, ByteVec, BytesMut};
 use common_types::{
-    bytes::{Buf, BufMut, ByteVec, BytesMut},
     datum::Datum,
     row::{Row, RowGroup},
     schema::{IndexInWriterSchema, Schema},

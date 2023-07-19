@@ -10,9 +10,9 @@ use arrow::{
     util::bit_util,
 };
 use async_trait::async_trait;
+use bytes_ext::{BytesMut, SafeBufMut};
 use ceresdbproto::sst as sst_pb;
 use common_types::{
-    bytes::{BytesMut, SafeBufMut},
     datum::DatumKind,
     schema::{ArrowSchema, ArrowSchemaRef, DataType, Field, Schema},
 };
@@ -776,8 +776,8 @@ mod tests {
     use std::{pin::Pin, sync::Mutex, task::Poll};
 
     use arrow::array::{Int32Array, StringArray, TimestampMillisecondArray, UInt64Array};
+    use bytes_ext::Bytes;
     use common_types::{
-        bytes::Bytes,
         column_schema,
         schema::{Builder, Schema, TSID_COLUMN},
         time::{TimeRange, Timestamp},

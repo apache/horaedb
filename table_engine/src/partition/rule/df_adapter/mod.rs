@@ -62,8 +62,8 @@ impl DfPartitionRuleAdapter {
 
 #[cfg(test)]
 mod tests {
+    use bytes_ext::BytesMut;
     use common_types::{
-        bytes::BytesMut,
         column_schema,
         datum::{Datum, DatumKind},
         row::RowGroupBuilder,

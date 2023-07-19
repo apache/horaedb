@@ -8,8 +8,8 @@ use std::{
 };
 
 use analytic_engine::setup::OpenedWals;
+use bytes_ext::Bytes;
 use cluster::ClusterRef;
-use common_types::bytes::Bytes;
 use generic_error::{BoxError, GenericError};
 use log::{error, info};
 use logger::RuntimeLevel;

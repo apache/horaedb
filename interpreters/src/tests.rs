@@ -143,7 +143,7 @@ where
             "| 7461676b32 | 2021-12-02T07:00:34 | 100.0  | hello3 | 2022-10-11 | 11:10:10.234 |",
             "+------------+---------------------+--------+--------+------------+--------------+",
         ];
-        test_util::tests::assert_record_batches_eq(&expected, records);
+        test_util::assert_record_batches_eq(&expected, records);
 
         let sql = "select count(*) from test_table";
         let output = self.sql_to_output(sql).await?;
@@ -155,7 +155,7 @@ where
             "| 2               |",
             "+-----------------+",
         ];
-        test_util::tests::assert_record_batches_eq(&expected, records);
+        test_util::assert_record_batches_eq(&expected, records);
 
         Ok(())
     }
@@ -182,7 +182,7 @@ where
             "| field4 | time      | false      | true        | false  | false         |",
             "+--------+-----------+------------+-------------+--------+---------------+",
         ];
-        test_util::tests::assert_record_batches_eq(&expected, records);
+        test_util::assert_record_batches_eq(&expected, records);
     }
 
     async fn test_exists_table(&self) {
@@ -196,7 +196,7 @@ where
             "| 1      |",
             "+--------+",
         ];
-        test_util::tests::assert_record_batches_eq(&expected, records);
+        test_util::assert_record_batches_eq(&expected, records);
     }
 
     async fn test_insert_table(&self) {
@@ -262,7 +262,7 @@ where
             "| 7461676b32 | 2021-12-02T07:00:34 | 10     | 20     | 3      | 10     | 12     |",
             "+------------+---------------------+--------+--------+--------+--------+--------+",
         ];
-        test_util::tests::assert_record_batches_eq(&expected, records);
+        test_util::assert_record_batches_eq(&expected, records);
     }
 
     async fn test_select_table(&self) {
@@ -282,7 +282,7 @@ where
             "| test_table | CREATE TABLE `test_table` (`key1` varbinary NOT NULL, `key2` timestamp NOT NULL, `field1` double, `field2` string, `field3` date, `field4` time, PRIMARY KEY(key1,key2), TIMESTAMP KEY(key2)) ENGINE=Analytic |",
             "+------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+"
         ];
-        test_util::tests::assert_record_batches_eq(&expected, records);
+        test_util::assert_record_batches_eq(&expected, records);
     }
 
     async fn test_alter_table(&self) {
@@ -338,7 +338,7 @@ where
 
 #[tokio::test]
 async fn test_interpreters_rocks() {
-    test_util::tests::init_log_for_test();
+    test_util::init_log_for_test();
     let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_interpreters(rocksdb_ctx).await;
 }

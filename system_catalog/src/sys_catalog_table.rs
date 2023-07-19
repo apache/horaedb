@@ -5,11 +5,11 @@
 use std::{collections::HashMap, mem};
 
 use async_trait::async_trait;
+use bytes_ext::{BufMut, Bytes, BytesMut, SafeBuf, SafeBufMut};
 use catalog::consts;
 use ceresdbproto::sys_catalog::{CatalogEntry, SchemaEntry, TableEntry};
 use codec::{memcomparable::MemComparable, Encoder};
 use common_types::{
-    bytes::{BufMut, Bytes, BytesMut, SafeBuf, SafeBufMut},
     column_schema,
     datum::{Datum, DatumKind},
     projected_schema::ProjectedSchema,
@@ -107,19 +107,19 @@ pub enum Error {
     VisitorOpenTable { source: table_engine::engine::Error },
 
     #[snafu(display("Failed to encode entry key header, err:{}", source))]
-    EncodeKeyHeader { source: common_types::bytes::Error },
+    EncodeKeyHeader { source: bytes_ext::Error },
 
     #[snafu(display("Failed to encode entry body, err:{}", source))]
     EncodeKeyBody { source: codec::memcomparable::Error },
 
     #[snafu(display("Failed to encode table key type, err:{}", source))]
-    EncodeTableKeyType { source: common_types::bytes::Error },
+    EncodeTableKeyType { source: bytes_ext::Error },
 
     #[snafu(display("Failed to read entry key header, err:{}", source))]
-    ReadKeyHeader { source: common_types::bytes::Error },
+    ReadKeyHeader { source: bytes_ext::Error },
 
     #[snafu(display("Failed to read table key header, err:{}", source))]
-    ReadTableKeyHeader { source: common_types::bytes::Error },
+    ReadTableKeyHeader { source: bytes_ext::Error },
 
     #[snafu(display(
         "Invalid entry key header, value:{}.\nBacktrace:\n{}",

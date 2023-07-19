@@ -88,7 +88,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "base64 0.13.1",
- "bytes",
+ "bytes_ext",
  "ceresdbproto",
  "codec",
  "common_types",
@@ -621,6 +621,7 @@ dependencies = [
  "arena",
  "arrow",
  "base64 0.13.1",
+ "bytes_ext",
  "clap 3.2.23",
  "common_types",
  "criterion",
@@ -1263,6 +1264,7 @@ name = "cluster"
 version = "1.2.5-alpha"
 dependencies = [
  "async-trait",
+ "bytes_ext",
  "catalog",
  "ceresdbproto",
  "common_types",
@@ -1295,6 +1297,7 @@ dependencies = [
 name = "codec"
 version = "1.2.5-alpha"
 dependencies = [
+ "bytes_ext",
  "common_types",
  "macros",
  "snafu 0.6.10",
@@ -1325,19 +1328,16 @@ dependencies = [
 name = "common_types"
 version = "1.2.5-alpha"
 dependencies = [
- "ahash 0.8.3",
  "arrow",
  "arrow_ext",
- "byteorder",
  "bytes_ext",
  "ceresdbproto",
  "chrono",
  "datafusion",
+ "hash_ext",
  "macros",
- "murmur3",
  "paste 1.0.12",
  "prost",
- "seahash",
  "serde",
  "serde_json",
  "snafu 0.6.10",
@@ -2582,6 +2582,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "hash_ext"
+version = "1.2.5-alpha"
+dependencies = [
+ "ahash 0.8.3",
+ "byteorder",
+ "murmur3",
+ "seahash",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2922,6 +2932,7 @@ dependencies = [
  "datafusion-proto",
  "df_operator",
  "generic_error",
+ "hash_ext",
  "log",
  "macros",
  "meta_client",
@@ -3965,10 +3976,10 @@ dependencies = [
  "ceresdbproto",
  "chrono",
  "clru",
- "common_types",
  "crc",
  "futures 0.3.28",
  "generic_error",
+ "hash_ext",
  "lazy_static",
  "log",
  "lru",
@@ -4239,7 +4250,7 @@ dependencies = [
 name = "partitioned_lock"
 version = "1.2.5-alpha"
 dependencies = [
- "common_types",
+ "hash_ext",
  "tokio",
 ]
 
@@ -4916,7 +4927,7 @@ dependencies = [
  "datafusion-proto",
  "df_operator",
  "generic_error",
- "hashbrown 0.12.3",
+ "hash_ext",
  "influxdb_influxql_parser",
  "iox_query_influxql",
  "itertools",
@@ -5715,7 +5726,7 @@ dependencies = [
  "arrow",
  "arrow_ext",
  "async-trait",
- "bytes",
+ "bytes_ext",
  "catalog",
  "ceresdbproto",
  "clru",
@@ -6267,6 +6278,7 @@ version = "1.2.5-alpha"
 dependencies = [
  "arrow",
  "async-trait",
+ "bytes_ext",
  "catalog",
  "ceresdbproto",
  "codec",
@@ -6289,6 +6301,7 @@ dependencies = [
  "arrow",
  "arrow_ext",
  "async-trait",
+ "bytes_ext",
  "ceresdbproto",
  "common_types",
  "datafusion",
@@ -6296,6 +6309,7 @@ dependencies = [
  "df_operator",
  "futures 0.3.28",
  "generic_error",
+ "hash_ext",
  "itertools",
  "log",
  "macros",
@@ -6390,23 +6404,9 @@ name = "test_util"
 version = "1.2.5-alpha"
 dependencies = [
  "arrow",
- "async-stream",
- "async-trait",
- "backtrace",
- "ceresdbproto",
  "chrono",
  "common_types",
  "env_logger",
- "futures 0.3.28",
- "lazy_static",
- "libc",
- "log",
- "pin-project-lite",
- "serde",
- "serde_json",
- "snafu 0.6.10",
- "tempfile",
- "tokio",
 ]
 
 [[package]]
@@ -7007,8 +7007,8 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 0.1.10",
- "rand 0.3.23",
+ "cfg-if 1.0.0",
+ "rand 0.8.5",
  "static_assertions 1.1.0",
 ]
 
@@ -7164,6 +7164,7 @@ name = "wal"
 version = "1.2.5-alpha"
 dependencies = [
  "async-trait",
+ "bytes_ext",
  "ceresdbproto",
  "chrono",
  "codec",

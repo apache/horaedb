@@ -11,24 +11,20 @@ workspace = true
 workspace = true
 
 [features]
-default = ["arrow", "datafusion"]
 test = []
 
 [dependencies]
 # In alphabetical order
-ahash = { version = "0.8.2", default-features = false, features = ["runtime-rng"] }
-arrow = { workspace = true, optional = true }
+arrow = { workspace = true }
 arrow_ext = { workspace = true }
-byteorder = "1.2"
 bytes_ext = { workspace = true }
 ceresdbproto = { workspace = true }
 chrono = { workspace = true }
-datafusion = { workspace = true, optional = true }
+datafusion = { workspace = true }
+hash_ext = { workspace = true }
 macros = { workspace = true }
-murmur3 = "0.4.1"
 paste = { workspace = true }
 prost = { workspace = true }
-seahash = "4.1.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }

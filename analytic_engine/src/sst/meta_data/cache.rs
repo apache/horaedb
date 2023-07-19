@@ -135,7 +135,7 @@ mod tests {
         datatypes::{DataType, Field, Schema},
         record_batch::RecordBatch,
     };
-    use bytes::Bytes;
+    use bytes_ext::Bytes;
     use common_types::{
         column_schema::Builder as ColumnSchemaBuilder,
         schema::Builder as CustomSchemaBuilder,

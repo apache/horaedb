@@ -16,10 +16,10 @@ bytes = { workspace = true }
 ceresdbproto = { workspace = true }
 chrono = { workspace = true }
 clru = { workspace = true }
-common_types = { workspace = true }
 crc = "3.0.0"
 futures = { workspace = true }
 generic_error = { workspace = true }
+hash_ext = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 lru = { workspace = true }

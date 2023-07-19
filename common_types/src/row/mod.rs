@@ -17,6 +17,7 @@ use crate::{
     time::Timestamp,
 };
 
+pub(crate) mod bitset;
 pub mod contiguous;
 
 #[derive(Debug, Snafu)]

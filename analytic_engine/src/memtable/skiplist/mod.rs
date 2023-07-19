@@ -12,9 +12,9 @@ use std::{
 };
 
 use arena::{Arena, BasicStats};
+use bytes_ext::Bytes;
 use codec::Encoder;
 use common_types::{
-    bytes::Bytes,
     row::{contiguous::ContiguousRowWriter, Row},
     schema::Schema,
     SequenceNumber,
@@ -205,9 +205,9 @@ mod tests {
     use std::{ops::Bound, sync::Arc};
 
     use arena::NoopCollector;
+    use bytes_ext::ByteVec;
     use codec::memcomparable::MemComparable;
     use common_types::{
-        bytes::ByteVec,
         datum::Datum,
         projected_schema::ProjectedSchema,
         record_batch::RecordBatchWithKey,

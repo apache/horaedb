@@ -4,7 +4,7 @@
 
 use std::convert::TryFrom;
 
-use common_types::bytes::{Buf, BufMut, Bytes, BytesMut, SafeBuf, SafeBufMut};
+use bytes_ext::{Buf, BufMut, Bytes, BytesMut, SafeBuf, SafeBufMut};
 use snafu::{ensure, ResultExt};
 
 use crate::{

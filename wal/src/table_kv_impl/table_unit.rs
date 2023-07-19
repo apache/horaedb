@@ -13,7 +13,8 @@ use std::{
     time::Duration,
 };
 
-use common_types::{bytes::BytesMut, table::TableId};
+use bytes_ext::BytesMut;
+use common_types::table::TableId;
 use generic_error::{BoxError, GenericError};
 use log::debug;
 use macros::define_result;

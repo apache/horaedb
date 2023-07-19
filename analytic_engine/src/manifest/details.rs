@@ -706,7 +706,6 @@ mod tests {
     use object_store::LocalFileSystem;
     use runtime::Runtime;
     use table_engine::table::{SchemaId, TableId, TableSeqGenerator};
-    use test_util::tests::init_log_for_test;
     use wal::rocks_impl::manager::Builder as WalBuilder;
 
     use super::*;
@@ -824,7 +823,7 @@ mod tests {
 
     impl TestContext {
         fn new(prefix: &str, schema_id: SchemaId) -> Self {
-            init_log_for_test();
+            test_util::init_log_for_test();
             let dir = tempfile::Builder::new().prefix(prefix).tempdir().unwrap();
             let runtime = build_runtime(2);
 

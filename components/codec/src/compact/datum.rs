@@ -2,12 +2,8 @@
 
 //! Datum compact codec
 
-use common_types::{
-    bytes::{Buf, BufMut, BytesMut, SafeBufMut},
-    datum::Datum,
-    string::StringBytes,
-    time::Timestamp,
-};
+use bytes_ext::{Buf, BufMut, BytesMut, SafeBufMut};
+use common_types::{datum::Datum, string::StringBytes, time::Timestamp};
 use snafu::ResultExt;
 
 use crate::{
@@ -220,7 +216,7 @@ impl DecodeTo<Datum> for MemCompactDecoder {
 
 #[cfg(test)]
 mod tests {
-    use common_types::bytes::Bytes;
+    use bytes_ext::Bytes;
 
     use super::*;
 

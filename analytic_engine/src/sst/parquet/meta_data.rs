@@ -4,7 +4,7 @@
 
 use std::{fmt, ops::Index, sync::Arc};
 
-use bytes::Bytes;
+use bytes_ext::Bytes;
 use ceresdbproto::{schema as schema_pb, sst as sst_pb};
 use common_types::{
     datum::DatumKind,

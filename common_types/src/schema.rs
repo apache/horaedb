@@ -1292,9 +1292,10 @@ impl SchemaEncoder {
 
 #[cfg(test)]
 mod tests {
+    use bytes_ext::Bytes;
+
     use super::*;
     use crate::{
-        bytes::Bytes,
         datum::Datum,
         row::{Row, RowWithMeta},
         time::Timestamp,

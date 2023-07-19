@@ -1,14 +1,11 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Log entries definition.
 
 use std::fmt::Debug;
 
-use common_types::{
-    bytes::{Buf, BufMut},
-    table::TableId,
-    SequenceNumber,
-};
+use bytes_ext::{Buf, BufMut};
+use common_types::{table::TableId, SequenceNumber};
 
 use crate::manager::WalLocation;
 

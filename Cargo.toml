@@ -24,6 +24,7 @@ members = [
     "components/bytes_ext",
     "components/codec",
     "components/future_cancel",
+    "components/hash_ext",
     "components/id_allocator",
     "components/logger",
     "components/macros",
@@ -69,6 +70,7 @@ name = "ceresdb-server"
 path = "src/bin/ceresdb-server.rs"
 
 [workspace.dependencies]
+alloc_tracker = { path = "components/alloc_tracker" }
 arrow = { version = "38.0.0", features = ["prettyprint"] }
 arrow_ipc = { version = "38.0.0" }
 arrow_ext = { path = "components/arrow_ext" }
@@ -82,6 +84,7 @@ bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
 ceresdbproto = "1.0"
+codec = { path = "components/codec" }
 chrono = "0.4"
 clap = "3.0"
 clru = "0.6.1"
@@ -91,14 +94,18 @@ common_types = { path = "common_types" }
 datafusion = { git = "https://github.com/ceresdb/arrow-datafusion.git", rev = "acb5d97a8a8de5296989740f97db3773fe3aa45a" }
 datafusion-proto = { git = "https://github.com/ceresdb/arrow-datafusion.git", rev = "acb5d97a8a8de5296989740f97db3773fe3aa45a" }
 df_operator = { path = "df_operator" }
+future_cancel = { path = "components/future_cancel" }
 etcd-client = "0.10.3"
 env_logger = "0.6"
 futures = "0.3"
-xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
+generic_error = { path = "components/generic_error" }
+hash_ext = { path = "components/hash_ext" }
+hex = "0.4.3"
 lazy_static = "1.4.0"
 log = "0.4"
 logger = { path = "components/logger" }
 lru = "0.7.6"
+id_allocator = { path = "components/id_allocator" }
 influxql-logical-planner = { git = "https://github.com/CeresDB/influxql", rev = "b65a125b9cdfa3121a3c8843bc48441b91049e31", package = "iox_query_influxql" }
 influxql-parser = { git = "https://github.com/CeresDB/influxql", rev = "b65a125b9cdfa3121a3c8843bc48441b91049e31", package = "influxdb_influxql_parser" }
 influxql-query = { git = "https://github.com/CeresDB/influxql", rev = "b65a125b9cdfa3121a3c8843bc48441b91049e31", package = "iox_query" }
@@ -106,8 +113,12 @@ influxql-schema = { git = "https://github.com/CeresDB/influxql", rev = "b65a125b
 interpreters = { path = "interpreters" }
 itertools = "0.10.5"
 macros = { path = "components/macros" }
+message_queue = { path = "components/message_queue" }
 meta_client = { path = "meta_client" }
+metric_ext = { path = "components/metric_ext" }
 object_store = { path = "components/object_store" }
+panic_ext = { path = "components/panic_ext" }
+partitioned_lock = { path = "components/partitioned_lock" }
 partition_table_engine = { path = "partition_table_engine" }
 parquet_ext = { path = "components/parquet_ext" }
 parquet = { version = "38.0.0" }
@@ -139,12 +150,11 @@ system_catalog = { path = "system_catalog" }
 table_engine = { path = "table_engine" }
 table_kv = { path = "components/table_kv" }
 tempfile = "3.1.0"
-test_util = { path = "components/test_util", features = ["test"] }
+test_util = { path = "components/test_util" }
 time_ext = { path = "components/time_ext" }
 toml = "0.7"
 toml_ext = { path = "components/toml_ext" }
-generic_error = { path = "components/generic_error" }
-partitioned_lock = { path = "components/partitioned_lock" }
+timed_task = { path = "components/timed_task" }
 tracing_util = { path = "components/tracing_util" }
 trace_metric = { path = "components/trace_metric" }
 trace_metric_derive = { path = "components/trace_metric_derive" }
@@ -152,16 +162,8 @@ trace_metric_derive_tests = { path = "components/trace_metric_derive_tests" }
 tonic = "0.8.1"
 tokio = { version = "1.25", features = ["full"] }
 wal = { path = "wal" }
-message_queue = { path = "components/message_queue" }
+xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
 zstd = { version = "0.12", default-features = false }
-id_allocator = { path = "components/id_allocator" }
-panic_ext = { path = "components/panic_ext" }
-timed_task = { path = "components/timed_task" }
-future_cancel = { path = "components/future_cancel" }
-alloc_tracker = { path = "components/alloc_tracker" }
-metric_ext = { path = "components/metric_ext" }
-codec = { path = "components/codec" }
-hex = "0.4.3"
 
 [dependencies]
 analytic_engine = { workspace = true }

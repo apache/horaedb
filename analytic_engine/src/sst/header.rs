@@ -2,7 +2,7 @@
 
 // The header parser for one sst.
 
-use bytes::Bytes;
+use bytes_ext::Bytes;
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;

@@ -1,15 +1,15 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Key partition rule
 
 use std::collections::{HashMap, HashSet};
 
+use bytes_ext::{BufMut, BytesMut};
 use common_types::{
-    bytes::{BufMut, BytesMut},
     datum::Datum,
-    hash::hash64,
     row::{Row, RowGroup},
 };
+use hash_ext::hash64;
 use itertools::Itertools;
 use log::{debug, error};
 use snafu::OptionExt;

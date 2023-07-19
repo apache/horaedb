@@ -13,10 +13,12 @@ use prost::encoding::{decode_varint, encode_varint, encoded_len_varint};
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{
-    bitset::{BitSet, RoBitSet},
     datum::{Datum, DatumKind, DatumView},
     projected_schema::RowProjector,
-    row::Row,
+    row::{
+        bitset::{BitSet, RoBitSet},
+        Row,
+    },
     schema::{IndexInWriterSchema, Schema},
     time::Timestamp,
 };

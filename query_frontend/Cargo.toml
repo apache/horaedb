@@ -26,7 +26,7 @@ datafusion = { workspace = true }
 datafusion-proto = { workspace = true }
 df_operator = { workspace = true }
 generic_error = { workspace = true }
-hashbrown = { version = "0.12", features = ["raw"] }
+hash_ext = { workspace = true }
 influxql-logical-planner = { workspace = true }
 influxql-parser = { workspace = true }
 influxql-schema = { workspace = true }

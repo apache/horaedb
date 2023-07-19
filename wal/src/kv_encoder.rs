@@ -2,12 +2,9 @@
 
 //! Common Encoding for Wal logs
 
+use bytes_ext::{self, Buf, BufMut, BytesMut, SafeBuf, SafeBufMut};
 use codec::{Decoder, Encoder};
-use common_types::{
-    bytes::{self, Buf, BufMut, BytesMut, SafeBuf, SafeBufMut},
-    table::TableId,
-    SequenceNumber,
-};
+use common_types::{table::TableId, SequenceNumber};
 use generic_error::{BoxError, GenericError};
 use macros::define_result;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
@@ -33,39 +30,39 @@ pub const NEWEST_META_VALUE_ENCODING_VERSION: u8 = META_VALUE_ENCODING_V0;
 pub enum Error {
     #[snafu(display("Failed to encode log key, err:{}", source))]
     EncodeLogKey {
-        source: bytes::Error,
+        source: bytes_ext::Error,
         backtrace: Backtrace,
     },
 
     #[snafu(display("Failed to encode log value header, err:{}", source))]
-    EncodeLogValueHeader { source: bytes::Error },
+    EncodeLogValueHeader { source: bytes_ext::Error },
 
     #[snafu(display("Failed to encode log value payload, err:{}", source))]
     EncodeLogValuePayload { source: GenericError },
 
     #[snafu(display("Failed to decode log key, err:{}", source))]
-    DecodeLogKey { source: bytes::Error },
+    DecodeLogKey { source: bytes_ext::Error },
 
     #[snafu(display("Failed to decode log value header, err:{}", source))]
-    DecodeLogValueHeader { source: bytes::Error },
+    DecodeLogValueHeader { source: bytes_ext::Error },
 
     #[snafu(display("Failed to decode log value payload, err:{}", source))]
     DecodeLogValuePayload { source: GenericError },
 
     #[snafu(display("Failed to encode meta key, err:{}", source))]
     EncodeMetaKey {
-        source: bytes::Error,
+        source: bytes_ext::Error,
         backtrace: Backtrace,
     },
 
     #[snafu(display("Failed to encode meta value, err:{}", source))]
-    EncodeMetaValue { source: bytes::Error },
+    EncodeMetaValue { source: bytes_ext::Error },
 
     #[snafu(display("Failed to decode meta key, err:{}", source))]
-    DecodeMetaKey { source: bytes::Error },
+    DecodeMetaKey { source: bytes_ext::Error },
 
     #[snafu(display("Failed to decode meta value, err:{}", source))]
-    DecodeMetaValue { source: bytes::Error },
+    DecodeMetaValue { source: bytes_ext::Error },
 
     #[snafu(display(
         "Found invalid meta key type, expect:{:?}, given:{}.\nBacktrace:\n{}",
@@ -736,7 +733,7 @@ impl CommonLogEncoding {
 
 #[cfg(test)]
 mod tests {
-    use common_types::bytes::BytesMut;
+    use bytes_ext::BytesMut;
 
     use super::*;
     use crate::{

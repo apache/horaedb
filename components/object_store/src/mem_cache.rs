@@ -14,8 +14,8 @@ use std::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use clru::{CLruCache, CLruCacheConfig, WeightScale};
-use common_types::hash::{ahash::RandomState, build_fixed_seed_ahasher_builder};
 use futures::stream::BoxStream;
+use hash_ext::{ahash::RandomState, build_fixed_seed_ahasher_builder};
 use macros::define_result;
 use partitioned_lock::PartitionedMutex;
 use snafu::{OptionExt, Snafu};

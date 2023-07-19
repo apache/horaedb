@@ -9,23 +9,21 @@ mod bytes;
 mod datum;
 mod number;
 
-use common_types::{
-    bytes::{BytesMut, SafeBuf},
-    datum::DatumKind,
-};
+use bytes_ext::{BytesMut, SafeBuf};
+use common_types::datum::DatumKind;
 use macros::define_result;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to encode flag, err:{}", source))]
-    EncodeKey { source: common_types::bytes::Error },
+    EncodeKey { source: bytes_ext::Error },
 
     #[snafu(display("Failed to encode value, err:{}", source))]
-    EncodeValue { source: common_types::bytes::Error },
+    EncodeValue { source: bytes_ext::Error },
 
     #[snafu(display("Failed to decode key, err:{}", source))]
-    DecodeKey { source: common_types::bytes::Error },
+    DecodeKey { source: bytes_ext::Error },
 
     #[snafu(display(
         "Invalid flag, expect:{}, actual:{}.\nBacktrace:\n{}",
@@ -50,7 +48,7 @@ pub enum Error {
     },
 
     #[snafu(display("Insufficient bytes to decode value, err:{}", source))]
-    DecodeValue { source: common_types::bytes::Error },
+    DecodeValue { source: bytes_ext::Error },
 
     #[snafu(display("Insufficient bytes to decode value group.\nBacktrace:\n{}", backtrace))]
     DecodeValueGroup { backtrace: Backtrace },
@@ -76,7 +74,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to skip padding bytes, err:{}.", source))]
-    SkipPadding { source: common_types::bytes::Error },
+    SkipPadding { source: bytes_ext::Error },
 
     #[snafu(display("Failed to decode string, err:{}", source))]
     DecodeString { source: common_types::string::Error },
