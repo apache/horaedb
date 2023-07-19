@@ -1,12 +1,6 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{
-    num::NonZeroUsize,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-};
+use std::{num::NonZeroUsize, sync::Arc};
 
 use arrow::{
     array::{Array, ArrayRef},
@@ -17,7 +11,10 @@ use clru::{CLruCache, CLruCacheConfig, WeightScale};
 use common_types::hash::{ahash::RandomState, build_fixed_seed_ahasher_builder};
 use partitioned_lock::PartitionedMutex;
 
-use crate::sst::manager::FileId;
+use crate::sst::{
+    manager::FileId,
+    metrics::{ROW_GROUP_CACHE_HIT_COUNT, ROW_GROUP_CACHE_MISS_COUNT},
+};
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 struct CacheKey {
@@ -90,18 +87,12 @@ pub type RowGroupCacheRef = Arc<RowGroupCache>;
 #[derive(Debug)]
 pub struct RowGroupCache {
     column_cache: ColumnCache,
-    hit_count: AtomicUsize,
-    miss_count: AtomicUsize,
 }
 
 impl RowGroupCache {
     pub fn new(mem_cap: usize, partition_bits: usize) -> Self {
         let column_cache = ColumnCache::new(mem_cap, partition_bits);
-        Self {
-            column_cache,
-            hit_count: AtomicUsize::new(0),
-            miss_count: AtomicUsize::new(0),
-        }
+        Self { column_cache }
     }
 
     pub fn put(
@@ -141,7 +132,7 @@ impl RowGroupCache {
             match self.column_cache.get(&cache_key) {
                 Some(v) => columns.push(v),
                 None => {
-                    self.miss_count.fetch_add(1, Ordering::Relaxed);
+                    ROW_GROUP_CACHE_MISS_COUNT.inc();
                     return None;
                 }
             }
@@ -158,20 +149,23 @@ impl RowGroupCache {
             Arc::new(Schema::new_with_metadata(fields, schema.metadata().clone()))
         };
 
-        self.hit_count.fetch_add(1, Ordering::Relaxed);
+        ROW_GROUP_CACHE_HIT_COUNT.inc();
         Some(RecordBatch::try_new(projected_schema, columns).unwrap())
     }
 
     /// Compute the consumed memory by the cache.
+    #[inline]
     pub fn compute_mem_usage(&self) -> usize {
         self.column_cache.compute_mem_usage()
     }
 
+    #[inline]
     pub fn hit_count(&self) -> usize {
-        self.hit_count.load(Ordering::Relaxed)
+        ROW_GROUP_CACHE_HIT_COUNT.get() as usize
     }
 
+    #[inline]
     pub fn miss_count(&self) -> usize {
-        self.miss_count.load(Ordering::Relaxed)
+        ROW_GROUP_CACHE_MISS_COUNT.get() as usize
     }
 }

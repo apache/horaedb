@@ -107,18 +107,22 @@ struct RowGroupStreamWithCacheBuilder<'a> {
     object_store_reader: ObjectStoreReader,
 }
 
+struct RowGroupCacheEntry {
+    row_group_idx: usize,
+    cache: Option<ArrowRecordBatch>,
+}
 struct RowGroupStreamWithCache<S> {
     sst_id: FileId,
     projection: Vec<usize>,
-    cached_row_groups: Vec<Option<ArrowRecordBatch>>,
+    cache_entries: Vec<RowGroupCacheEntry>,
     stream: S, 
-    next_row_group_idx: usize,
+    next_entry_idx: usize,
     cache: RowGroupCacheRef,
 }
 
 impl<'a> RowGroupStreamWithCacheBuilder<'a> {
     async fn build(self) -> Result<RowGroupStreamWithCache<ParquetRecordBatchStream<ObjectStoreReader>>> {
-        let mut cached_row_groups = Vec::with_capacity(self.row_group_indexes.len());
+        let mut cache_entries = Vec::with_capacity(self.row_group_indexes.len());
         let mut num_cache_missed_row_groups = 0;
         for row_group_idx in self.row_group_indexes.iter().copied() {
             let row_group =
@@ -127,7 +131,11 @@ impl<'a> RowGroupStreamWithCacheBuilder<'a> {
             if row_group.is_none() {
                 num_cache_missed_row_groups += 1;
             }
-            cached_row_groups.push(row_group);
+            let entry = RowGroupCacheEntry {
+                row_group_idx,
+                cache: row_group,
+            };
+            cache_entries.push(entry);
         }
 
         let cache_missed_row_group_indexes =
@@ -135,13 +143,14 @@ impl<'a> RowGroupStreamWithCacheBuilder<'a> {
                 self.row_group_indexes
             } else {
                 let mut indexes = Vec::with_capacity(num_cache_missed_row_groups);
-                for (cache_idx, row_group_idx) in self.row_group_indexes.iter().cloned().enumerate() {
-                    if cached_row_groups[cache_idx].is_none() {
-                        indexes.push(row_group_idx)
+                for entry in &cache_entries {
+                    if entry.cache.is_none() {
+                        indexes.push(entry.row_group_idx)
                     }
                 }
                 indexes
             };
+
         let builder = ParquetRecordBatchStreamBuilder::new(self.object_store_reader)
             .await
             .with_context(|| ParquetError)?;
@@ -160,9 +169,9 @@ impl<'a> RowGroupStreamWithCacheBuilder<'a> {
 
         Ok(RowGroupStreamWithCache {
             sst_id: self.file_id,
-            cached_row_groups,
+            cache_entries,
             stream,
-            next_row_group_idx: 0,
+            next_entry_idx: 0,
             projection: self.projection.to_vec(),
             cache: self.cache,
         })
@@ -173,26 +182,31 @@ impl<S> Stream for RowGroupStreamWithCache<S> where S: Stream<Item=ParquetResult
     type Item = ParquetResult<ArrowRecordBatch>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let row_group_idx = self.next_row_group_idx;
-        if row_group_idx >= self.cached_row_groups.len() {
-            Poll::Ready(None)
-        } else if let Some(v) = self.cached_row_groups[row_group_idx].take() {
-            self.next_row_group_idx += 1;
-            Poll::Ready(Some(Ok(v)))
-        } else {
-            // The row group is missed in the row group cache, and it will be fetched from the underlying stream.
-            match self.stream.poll_next_unpin(cx) {
-                Poll::Ready(Some(v)) => {
-                    if let Ok(record_batch) = &v {
-                        self.cache.put(self.sst_id, row_group_idx, record_batch.clone(), &self.projection);
-                    }
-                    self.next_row_group_idx += 1;
-                    Poll::Ready(Some(v))
-                }
-                Poll::Pending => Poll::Pending,
-                Poll::Ready(None) => Poll::Ready(None)
-            }
+        let cache_entry_idx = self.next_entry_idx;
+        if cache_entry_idx >= self.cache_entries.len() {
+            return Poll::Ready(None)
+        };
 
+        let row_group_idx = {
+            let cache_entry = &mut self.cache_entries[cache_entry_idx];
+            if let Some(record_batch) = cache_entry.cache.take() {
+                self.next_entry_idx += 1;
+                return Poll::Ready(Some(Ok(record_batch)));
+            }
+            cache_entry.row_group_idx
+        };
+
+        // The row group is missed in the row group cache, and it will be fetched from the underlying stream.
+        match self.stream.poll_next_unpin(cx) {
+            Poll::Ready(Some(res)) => {
+                if let Ok(record_batch) = &res {
+                    self.cache.put(self.sst_id, row_group_idx, record_batch.clone(), &self.projection);
+                }
+                self.next_entry_idx += 1;
+                Poll::Ready(Some(res))
+            }
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(None) => Poll::Ready(None)
         }
     }
 

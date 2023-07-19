@@ -11,6 +11,7 @@ use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::sst::{
     meta_data::{DecodeCustomMetaData, KvMetaDataNotFound, ParquetMetaDataRef, Result},
+    metrics::{SST_META_CACHE_HIT_COUNT, SST_META_CACHE_MISS_COUNT},
     parquet::encoding,
 };
 
@@ -118,7 +119,14 @@ impl MetaCache {
     }
 
     pub fn get(&self, key: &str) -> Option<MetaData> {
-        self.cache.write().unwrap().get(key).cloned()
+        let v = self.cache.write().unwrap().get(key).cloned();
+        if v.is_some() {
+            SST_META_CACHE_HIT_COUNT.inc()
+        } else {
+            SST_META_CACHE_MISS_COUNT.inc()
+        }
+
+        v
     }
 
     pub fn put(&self, key: String, value: MetaData) {
