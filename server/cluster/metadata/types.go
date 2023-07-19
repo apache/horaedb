@@ -39,6 +39,8 @@ type ShardInfo struct {
 	Role storage.ShardRole
 	// ShardViewVersion
 	Version uint64
+	// The open state of the shard, which is used to determine whether the shard needs to be opened again.
+	Status storage.ShardStatus
 }
 
 type ShardNodeWithVersion struct {
@@ -152,10 +154,12 @@ func (n RegisteredNode) IsExpired(now time.Time) bool {
 }
 
 func ConvertShardsInfoToPB(shard ShardInfo) *metaservicepb.ShardInfo {
+	status := storage.ConvertShardStatusToPB(shard.Status)
 	return &metaservicepb.ShardInfo{
 		Id:      uint32(shard.ID),
 		Role:    storage.ConvertShardRoleToPB(shard.Role),
 		Version: shard.Version,
+		Status:  &status,
 	}
 }
 
@@ -164,6 +168,7 @@ func ConvertShardsInfoPB(shard *metaservicepb.ShardInfo) ShardInfo {
 		ID:      storage.ShardID(shard.Id),
 		Role:    storage.ConvertShardRolePB(shard.Role),
 		Version: shard.Version,
+		Status:  storage.ConvertShardStatusPB(shard.Status),
 	}
 }
 

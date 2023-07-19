@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
+	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
 )
 
 type (
@@ -15,6 +16,7 @@ type (
 	TableID      uint64
 	ClusterState int
 	ShardRole    int
+	ShardStatus  int
 	NodeState    int
 	TopologyType string
 )
@@ -32,6 +34,9 @@ const (
 const (
 	ShardRoleLeader ShardRole = iota + 1
 	ShardRoleFollower
+
+	ShardStatusPartitionOpen ShardStatus = iota + 1
+	ShardStatusReady
 )
 
 const (
@@ -341,6 +346,29 @@ func ConvertShardRoleToPB(role ShardRole) clusterpb.ShardRole {
 		return clusterpb.ShardRole_FOLLOWER
 	}
 	return clusterpb.ShardRole_FOLLOWER
+}
+
+func ConvertShardStatusPB(status *metaservicepb.ShardInfo_Status) ShardStatus {
+	if status == nil {
+		return ShardStatusReady
+	}
+	switch *status {
+	case metaservicepb.ShardInfo_PartialOpen:
+		return ShardStatusPartitionOpen
+	case metaservicepb.ShardInfo_Ready:
+		return ShardStatusReady
+	}
+	return ShardStatusReady
+}
+
+func ConvertShardStatusToPB(status ShardStatus) metaservicepb.ShardInfo_Status {
+	switch status {
+	case ShardStatusPartitionOpen:
+		return metaservicepb.ShardInfo_PartialOpen
+	case ShardStatusReady:
+		return metaservicepb.ShardInfo_Ready
+	}
+	return metaservicepb.ShardInfo_Ready
 }
 
 func convertShardNodeToPB(shardNode ShardNode) clusterpb.ShardNode {

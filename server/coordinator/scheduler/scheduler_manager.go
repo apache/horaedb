@@ -192,13 +192,15 @@ func (m *ManagerImpl) initRegister() {
 
 func (m *ManagerImpl) createStaticTopologySchedulers() []Scheduler {
 	staticTopologyShardScheduler := NewStaticTopologyShardScheduler(m.factory, m.nodePicker, m.procedureExecutingBatchSize)
-	return []Scheduler{staticTopologyShardScheduler}
+	reopenShardScheduler := NewReopenShardScheduler(m.factory, m.procedureExecutingBatchSize)
+	return []Scheduler{staticTopologyShardScheduler, reopenShardScheduler}
 }
 
 func (m *ManagerImpl) createDynamicTopologySchedulers() []Scheduler {
 	assignShardScheduler := NewAssignShardScheduler(m.factory, m.nodePicker, m.procedureExecutingBatchSize)
 	rebalancedShardScheduler := NewRebalancedShardScheduler(m.logger, m.factory, m.nodePicker, m.procedureExecutingBatchSize)
-	return []Scheduler{assignShardScheduler, rebalancedShardScheduler}
+	reopenShardScheduler := NewReopenShardScheduler(m.factory, m.procedureExecutingBatchSize)
+	return []Scheduler{assignShardScheduler, rebalancedShardScheduler, reopenShardScheduler}
 }
 
 func (m *ManagerImpl) registerScheduler(scheduler Scheduler) {
