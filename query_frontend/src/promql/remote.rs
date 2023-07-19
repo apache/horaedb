@@ -8,7 +8,7 @@ use common_types::{schema::Schema, time::TimeRange};
 use datafusion::{
     logical_expr::LogicalPlanBuilder,
     optimizer::utils::conjunction,
-    prelude::{col, lit, regexp_match, Expr},
+    prelude::{ident, lit, regexp_match, Expr},
     sql::{planner::ContextProvider, TableReference},
 };
 use prom_remote_api::types::{label_matcher, LabelMatcher, Query};
@@ -95,7 +95,7 @@ fn normalize_matchers(matchers: Vec<LabelMatcher>) -> Result<(String, String, Ve
             NAME_LABEL => metric = Some(m.value),
             FIELD_LABEL => field = Some(m.value),
             _ => {
-                let col_name = col(format!("`{}`", m.name));
+                let col_name = ident(&m.name);
                 let expr = match m.r#type() {
                     label_matcher::Type::Eq => col_name.eq(lit(m.value)),
                     label_matcher::Type::Neq => col_name.not_eq(lit(m.value)),
@@ -216,7 +216,7 @@ Query(QueryPlan { df_plan: Sort: cpu.tsid ASC NULLS FIRST, cpu.time ASC NULLS FI
                 ("a", "1", Type::Eq),
                 ("b", "2", Type::Neq),
                 ("c", "3", Type::Re),
-                ("d", "4", Type::Nre),
+                ("D", "4", Type::Nre),
                 (NAME_LABEL, "cpu", Type::Eq),
             ]);
 
@@ -227,7 +227,7 @@ Query(QueryPlan { df_plan: Sort: cpu.tsid ASC NULLS FIRST, cpu.time ASC NULLS FI
                 r#"a = Utf8("1")
 b != Utf8("2")
 regexpmatch(c, Utf8("^(?:3)$")) IS NOT NULL
-regexpmatch(d, Utf8("^(?:4)$")) IS NULL"#,
+regexpmatch(D, Utf8("^(?:4)$")) IS NULL"#,
                 filters
                     .iter()
                     .map(|f| f.to_string())
