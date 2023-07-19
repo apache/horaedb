@@ -1,0 +1,17 @@
+[package]
+name = "hash_ext"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies]
+ahash = { version = "0.8.2", default-features = false, features = ["runtime-rng"] }
+byteorder = "1.2"
+murmur3 = "0.4.1"
+seahash = "4.1.0"

@@ -14,4 +14,4 @@ workspace = true
 tokio = { workspace = true }
 
 [dev-dependencies]
-common_types = { workspace = true }
+hash_ext = { workspace = true }

@@ -11,9 +11,9 @@ use std::{collections::BTreeMap, fmt::Display, ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
-use common_types::hash::SeaHasherBuilder;
 use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
+use hash_ext::SeaHasherBuilder;
 use log::{debug, error, info};
 use lru::LruCache;
 use partitioned_lock::PartitionedMutexAsync;

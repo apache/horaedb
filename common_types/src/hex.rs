@@ -1,8 +1,5 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-// TODO: move this module to test_util package after remove the common_types
-// from the dependencies of the test_util.
-
 /// Try to decode bytes from hex literal string.
 ///
 /// None will be returned if the input literal is hex-invalid.

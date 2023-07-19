@@ -23,6 +23,7 @@ datafusion-proto = { workspace = true }
 df_operator = { workspace = true }
 futures = { workspace = true }
 generic_error = { workspace = true }
+hash_ext = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
 macros = { workspace = true }

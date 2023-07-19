@@ -10,12 +10,12 @@ use arrow::{
     datatypes::DataType,
 };
 use codec::{compact::MemCompactEncoder, Encoder};
-use common_types::hash::hash64;
 use datafusion::{
     error::{DataFusionError, Result as DataFusionResult},
     logical_expr::{create_udf, Expr, Volatility},
     physical_plan::{functions::make_scalar_function, udf::ScalarUDF},
 };
+use hash_ext::hash64;
 
 /// The name of the regex_match UDF given to DataFusion.
 pub const REGEX_MATCH_UDF_NAME: &str = "RegexMatch";

@@ -15,7 +15,6 @@ use common_types::{
     column::{ColumnBlock, ColumnBlockBuilder},
     column_schema::ColumnId,
     datum::Datum,
-    hash::hash64,
     row::RowGroup,
 };
 use datafusion::{
@@ -28,6 +27,7 @@ use datafusion::{
     },
 };
 use df_operator::visitor::find_columns_by_expr;
+use hash_ext::hash64;
 use macros::define_result;
 use query_frontend::plan::InsertPlan;
 use snafu::{OptionExt, ResultExt, Snafu};

@@ -6,7 +6,6 @@ pub mod bitset;
 pub mod column;
 pub mod column_schema;
 pub mod datum;
-pub mod hash;
 pub mod hex;
 pub mod projected_schema;
 pub mod record_batch;

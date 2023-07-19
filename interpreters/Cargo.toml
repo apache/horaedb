@@ -21,6 +21,7 @@ datafusion = { workspace = true }
 datafusion-proto = { workspace = true }
 df_operator = { workspace = true }
 generic_error = { workspace = true }
+hash_ext = { workspace = true }
 log = { workspace = true }
 macros = { workspace = true }
 meta_client = { workspace = true }

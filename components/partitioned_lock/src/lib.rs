@@ -170,7 +170,7 @@ mod tests {
     use std::collections::HashMap;
 
     // TODO: remove this importing.
-    use common_types::hash::{build_fixed_seed_ahasher_builder, SeaHasherBuilder};
+    use hash_ext::{build_fixed_seed_ahasher_builder, SeaHasherBuilder};
 
     use super::*;
 
