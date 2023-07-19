@@ -93,6 +93,7 @@ pub fn projected_schema_by_number(
 
 pub async fn load_sst_to_memtable(
     store: &ObjectStoreRef,
+    sst_id: FileId,
     sst_path: &Path,
     schema: &Schema,
     memtable: &MemTableRef,
@@ -113,10 +114,11 @@ pub async fn load_sst_to_memtable(
         scan_options,
         runtime,
     };
-    let sst_factory = FactoryImpl;
+    let sst_factory = FactoryImpl::default();
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());
     let mut sst_reader = sst_factory
         .create_reader(
+            sst_id,
             sst_path,
             &sst_read_options,
             SstReadHint::default(),

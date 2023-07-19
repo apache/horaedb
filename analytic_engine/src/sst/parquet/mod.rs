@@ -6,6 +6,7 @@ pub mod async_reader;
 pub mod encoding;
 mod hybrid;
 pub mod meta_data;
+pub(crate) mod row_group_cache;
 mod row_group_pruner;
 pub mod writer;
 

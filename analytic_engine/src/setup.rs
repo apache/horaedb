@@ -18,6 +18,7 @@ use object_store::{
     prefix::StoreWithPrefix,
     s3, LocalFileSystem, ObjectStoreRef,
 };
+use size_ext::ReadableSize;
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
@@ -33,8 +34,11 @@ use crate::{
     engine::TableEngineImpl,
     instance::{open::ManifestStorages, Instance, InstanceRef},
     sst::{
-        factory::{FactoryImpl, ObjectStorePicker, ObjectStorePickerRef, ReadFrequency},
+        factory::{
+            FactoryImpl, FactoryRef, ObjectStorePicker, ObjectStorePickerRef, ReadFrequency,
+        },
         meta_data::cache::{MetaCache, MetaCacheRef},
+        parquet::row_group_cache::RowGroupCache,
     },
     Config, ObkvWalConfig, WalStorageConfig,
 };
@@ -395,6 +399,24 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
     })
 }
 
+/// Build the row group cache.
+fn build_sst_factory(
+    row_group_cache_mem_cap: ReadableSize,
+    row_group_cache_partition_bits: usize,
+) -> FactoryRef {
+    let factory = if row_group_cache_mem_cap.as_byte() < row_group_cache_partition_bits as u64 {
+        FactoryImpl::default()
+    } else {
+        let row_group_cache = RowGroupCache::new(
+            row_group_cache_mem_cap.as_byte() as usize,
+            row_group_cache_partition_bits,
+        );
+        FactoryImpl::with_row_group_cache(Arc::new(row_group_cache))
+    };
+
+    Arc::new(factory)
+}
+
 async fn open_instance(
     config: Config,
     engine_runtimes: Arc<EngineRuntimes>,
@@ -405,6 +427,9 @@ async fn open_instance(
     let meta_cache: Option<MetaCacheRef> = config
         .sst_meta_cache_cap
         .map(|cap| Arc::new(MetaCache::new(cap)));
+
+    let sst_factory =
+        build_sst_factory(config.row_group_cache_cap, config.row_group_partition_bits);
 
     let open_ctx = OpenContext {
         config,
@@ -417,7 +442,7 @@ async fn open_instance(
         manifest_storages,
         wal_manager,
         store_picker,
-        Arc::new(FactoryImpl::default()),
+        sst_factory,
     )
     .await
     .context(OpenInstance)?;

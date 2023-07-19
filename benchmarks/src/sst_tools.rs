@@ -47,7 +47,7 @@ struct SstConfig {
 }
 
 async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBatchStream) {
-    let sst_factory = FactoryImpl;
+    let sst_factory = FactoryImpl::default();
     let sst_write_options = SstWriteOptions {
         storage_format_hint: StorageFormatHint::Auto,
         num_rows_per_row_group: config.num_rows_per_row_group,
@@ -138,10 +138,11 @@ async fn sst_to_record_batch_stream(
     input_path: &Path,
     store: &ObjectStoreRef,
 ) -> RecordBatchStream {
-    let sst_factory = FactoryImpl;
+    let sst_factory = FactoryImpl::default();
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());
     let mut sst_reader = sst_factory
         .create_reader(
+            0,
             input_path,
             sst_read_options,
             SstReadHint::default(),

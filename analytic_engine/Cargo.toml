@@ -23,6 +23,7 @@ async-trait = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
 ceresdbproto = { workspace = true }
+clru = { workspace = true }
 codec = { workspace = true }
 common_types = { workspace = true }
 datafusion = { workspace = true }
@@ -40,6 +41,7 @@ metric_ext = { workspace = true }
 object_store = { workspace = true }
 parquet = { workspace = true }
 parquet_ext = { workspace = true }
+partitioned_lock = { workspace = true }
 prometheus = { workspace = true }
 prost = { workspace = true }
 remote_engine_client = { workspace = true }

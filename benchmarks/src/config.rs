@@ -39,6 +39,7 @@ pub fn bench_config_from_env() -> BenchConfig {
 #[derive(Deserialize)]
 pub struct SstBenchConfig {
     pub store_path: String,
+    pub sst_id: FileId,
     pub sst_file_name: String,
     pub runtime_thread_num: usize,
     pub is_async: bool,
@@ -75,6 +76,7 @@ pub struct MergeSstBenchConfig {
 #[derive(Deserialize)]
 pub struct ScanMemTableBenchConfig {
     pub store_path: String,
+    pub sst_file_id: FileId,
     pub sst_file_name: String,
     pub runtime_thread_num: usize,
 

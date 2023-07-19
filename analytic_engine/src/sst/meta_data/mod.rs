@@ -149,7 +149,14 @@ impl SstMetaReader {
             };
             let mut reader = self
                 .factory
-                .create_reader(&path, &self.read_opts, read_hint, &self.store_picker, None)
+                .create_reader(
+                    f.id(),
+                    &path,
+                    &self.read_opts,
+                    read_hint,
+                    &self.store_picker,
+                    None,
+                )
                 .await
                 .context(CreateSstReader)?;
             let meta_data = reader.meta_data().await.context(ReadMetaData)?;

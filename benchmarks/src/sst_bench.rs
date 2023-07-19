@@ -9,6 +9,7 @@ use analytic_engine::sst::{
         Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, ScanOptions, SstReadHint,
         SstReadOptions,
     },
+    manager::FileId,
     meta_data::cache::{MetaCache, MetaCacheRef},
 };
 use common_types::{projected_schema::ProjectedSchema, schema::Schema};
@@ -20,6 +21,7 @@ use crate::{config::SstBenchConfig, util};
 
 pub struct SstBench {
     store: ObjectStoreRef,
+    pub sst_file_id: FileId,
     pub sst_file_name: String,
     max_projections: usize,
     schema: Schema,
@@ -58,6 +60,7 @@ impl SstBench {
 
         SstBench {
             store,
+            sst_file_id: config.sst_id,
             sst_file_name: config.sst_file_name,
             max_projections,
             schema,
@@ -81,12 +84,14 @@ impl SstBench {
     pub fn run_bench(&self) {
         let sst_path = Path::from(self.sst_file_name.clone());
 
-        let sst_factory = FactoryImpl;
+        let sst_factory = FactoryImpl::default();
         let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
+        let file_id = self.sst_file_id;
 
         self.runtime.block_on(async {
             let mut sst_reader = sst_factory
                 .create_reader(
+                    file_id,
                     &sst_path,
                     &self.sst_read_options,
                     SstReadHint::default(),

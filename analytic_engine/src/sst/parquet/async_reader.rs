@@ -17,21 +17,14 @@ use common_types::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
 };
-use datafusion::{
-    common::ToDFSchema,
-    physical_expr::{create_physical_expr, execution_props::ExecutionProps},
-    physical_plan::{
-        file_format::{parquet::page_filter::PagePruningPredicate, ParquetFileMetrics},
-        metrics::ExecutionPlanMetricsSet,
-    },
-};
+use datafusion::physical_plan::metrics::ExecutionPlanMetricsSet;
 use futures::{Stream, StreamExt};
 use generic_error::{BoxError, GenericResult};
 use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
-    arrow::{arrow_reader::RowSelection, ParquetRecordBatchStreamBuilder, ProjectionMask},
-    file::metadata::RowGroupMetaData,
+    arrow::{ParquetRecordBatchStreamBuilder, ProjectionMask, async_reader::ParquetRecordBatchStream},
+    file::metadata::RowGroupMetaData, schema::types::SchemaDescriptor, errors::Result as ParquetResult,
 };
 use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader};
 use runtime::{AbortOnDropMany, JoinHandle, Runtime};
@@ -47,6 +40,7 @@ use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 use crate::{
     prefetchable_stream::{NoopPrefetcher, PrefetchableStream},
     sst::{
+        manager::FileId,
         factory::{ObjectStorePickerRef, ReadFrequency, SstReadOptions},
         meta_data::{
             cache::{MetaCacheRef, MetaData},
@@ -56,6 +50,7 @@ use crate::{
             encoding::ParquetDecoder,
             meta_data::{ParquetFilter, ParquetMetaDataRef},
             row_group_pruner::RowGroupPruner,
+            row_group_cache::RowGroupCacheRef,
         },
         reader::{error::*, Result, SstReader},
     },
@@ -66,6 +61,7 @@ type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBat
 type RecordBatchWithKeyStream = Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>;
 
 pub struct Reader<'a> {
+    file_id: FileId,
     /// The path where the data is persisted.
     path: &'a Path,
     /// The storage where the data is persist.
@@ -81,6 +77,7 @@ pub struct Reader<'a> {
     /// Init those fields in `init_if_necessary`
     meta_data: Option<MetaData>,
     row_projector: Option<RowProjector>,
+    row_group_cache: Option<RowGroupCacheRef>,
 
     /// Options for `read_parallelly`
     metrics: Metrics,
@@ -99,12 +96,116 @@ pub(crate) struct Metrics {
     pub metrics_collector: Option<MetricsCollector>,
 }
 
+struct RowGroupStreamWithCacheBuilder<'a> {
+    file_id: FileId,
+    schema: SchemaRef,
+    schema_desc: &'a SchemaDescriptor,
+    row_group_indexes: Vec<usize>,
+    num_rows_per_row_group: usize,
+    projection: &'a [usize],
+    cache: RowGroupCacheRef,
+    object_store_reader: ObjectStoreReader,
+}
+
+struct RowGroupStreamWithCache<S> {
+    sst_id: FileId,
+    projection: Vec<usize>,
+    cached_row_groups: Vec<Option<ArrowRecordBatch>>,
+    stream: S, 
+    next_row_group_idx: usize,
+    cache: RowGroupCacheRef,
+}
+
+impl<'a> RowGroupStreamWithCacheBuilder<'a> {
+    async fn build(self) -> Result<RowGroupStreamWithCache<ParquetRecordBatchStream<ObjectStoreReader>>> {
+        let mut cached_row_groups = Vec::with_capacity(self.row_group_indexes.len());
+        let mut num_cache_missed_row_groups = 0;
+        for row_group_idx in self.row_group_indexes.iter().copied() {
+            let row_group =
+                self.cache
+                    .get(self.file_id, row_group_idx, &self.schema, self.projection);
+            if row_group.is_none() {
+                num_cache_missed_row_groups += 1;
+            }
+            cached_row_groups.push(row_group);
+        }
+
+        let cache_missed_row_group_indexes =
+            if num_cache_missed_row_groups == self.row_group_indexes.len() {
+                self.row_group_indexes
+            } else {
+                let mut indexes = Vec::with_capacity(num_cache_missed_row_groups);
+                for row_group_idx in self.row_group_indexes {
+                    if cached_row_groups[row_group_idx].is_none() {
+                        indexes.push(row_group_idx)
+                    }
+                }
+                indexes
+            };
+        let builder = ParquetRecordBatchStreamBuilder::new(self.object_store_reader)
+            .await
+            .with_context(|| ParquetError)?;
+
+        let proj_mask = ProjectionMask::leaves(
+            self.schema_desc,
+            self.projection.iter().copied(),
+        );
+
+        let stream = builder
+            .with_batch_size(self.num_rows_per_row_group)
+            .with_row_groups(cache_missed_row_group_indexes)
+            .with_projection(proj_mask)
+            .build()
+            .with_context(|| ParquetError)?;
+
+        Ok(RowGroupStreamWithCache {
+            sst_id: self.file_id,
+            cached_row_groups,
+            stream,
+            next_row_group_idx: 0,
+            projection: self.projection.to_vec(),
+            cache: self.cache,
+        })
+    }
+}
+
+impl<S> Stream for RowGroupStreamWithCache<S> where S: Stream<Item=ParquetResult<ArrowRecordBatch>> + Unpin {
+    type Item = ParquetResult<ArrowRecordBatch>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let row_group_idx = self.next_row_group_idx;
+        if row_group_idx >= self.cached_row_groups.len() {
+            Poll::Ready(None)
+        } else if let Some(v) = self.cached_row_groups[row_group_idx].take() {
+            self.next_row_group_idx += 1;
+            Poll::Ready(Some(Ok(v)))
+        } else {
+            // The row group is missed in the row group cache, and it will be fetched from the underlying stream.
+            match self.stream.poll_next_unpin(cx) {
+                Poll::Ready(Some(v)) => {
+                    if let Ok(record_batch) = &v {
+                        self.cache.put(self.sst_id, row_group_idx, record_batch.clone(), &self.projection);
+                    }
+                    self.next_row_group_idx += 1;
+                    Poll::Ready(Some(v))
+                }
+                Poll::Pending => Poll::Pending,
+                Poll::Ready(None) => Poll::Ready(None)
+            }
+
+        }
+    }
+
+}
+
 impl<'a> Reader<'a> {
     pub fn new(
+        file_id: FileId,
         path: &'a Path,
         options: &SstReadOptions,
         file_size_hint: Option<usize>,
         store_picker: &'a ObjectStorePickerRef,
+        row_group_cache: Option<RowGroupCacheRef>,
         metrics_collector: Option<MetricsCollector>,
     ) -> Self {
         let store = store_picker.pick_by_freq(options.frequency);
@@ -115,6 +216,7 @@ impl<'a> Reader<'a> {
         };
 
         Self {
+            file_id,
             path,
             store,
             file_size_hint,
@@ -123,6 +225,7 @@ impl<'a> Reader<'a> {
             meta_cache: options.meta_cache.clone(),
             predicate: options.predicate.clone(),
             frequency: options.frequency,
+            row_group_cache,
             meta_data: None,
             row_projector: None,
             metrics,
@@ -197,36 +300,6 @@ impl<'a> Reader<'a> {
         suggested.min(num_row_groups).max(1)
     }
 
-    fn build_row_selection(
-        &self,
-        arrow_schema: SchemaRef,
-        row_groups: &[usize],
-        file_metadata: &parquet_ext::ParquetMetaData,
-    ) -> Result<Option<RowSelection>> {
-        // TODO: remove fixed partition
-        let partition = 0;
-        let exprs = datafusion::optimizer::utils::conjunction(self.predicate.exprs().to_vec());
-        let exprs = match exprs {
-            Some(exprs) => exprs,
-            None => return Ok(None),
-        };
-
-        let df_schema = arrow_schema
-            .clone()
-            .to_dfschema()
-            .context(DataFusionError)?;
-        let physical_expr =
-            create_physical_expr(&exprs, &df_schema, &arrow_schema, &ExecutionProps::new())
-                .context(DataFusionError)?;
-        let page_predicate = PagePruningPredicate::try_new(&physical_expr, arrow_schema.clone())
-            .context(DataFusionError)?;
-
-        let metrics = ParquetFileMetrics::new(partition, self.path.as_ref(), &self.df_plan_metrics);
-        page_predicate
-            .prune(row_groups, file_metadata, &metrics)
-            .context(DataFusionError)
-    }
-
     async fn fetch_record_batch_streams(
         &mut self,
         suggested_parallelism: usize,
@@ -234,7 +307,7 @@ impl<'a> Reader<'a> {
         assert!(self.meta_data.is_some());
 
         let meta_data = self.meta_data.as_ref().unwrap();
-        let row_projector = self.row_projector.as_ref().unwrap();
+        let projection = self.row_projector.as_ref().unwrap().existed_source_projection();
         let arrow_schema = meta_data.custom().schema.to_arrow_schema_ref();
         // Get target row groups.
         let target_row_groups = self.prune_row_groups(
@@ -272,47 +345,55 @@ impl<'a> Reader<'a> {
         }
 
         let parquet_metadata = meta_data.parquet();
-        let proj_mask = ProjectionMask::leaves(
-            meta_data.parquet().file_metadata().schema_descr(),
-            row_projector.existed_source_projection().iter().copied(),
-        );
         debug!(
             "Reader fetch record batches, parallelism suggest:{}, real:{}, chunk_size:{}, project:{:?}",
-            suggested_parallelism, parallelism, chunk_size, proj_mask
+            suggested_parallelism, parallelism, chunk_size, projection, 
         );
 
         let mut streams = Vec::with_capacity(target_row_group_chunks.len());
+        let object_store_reader = ObjectStoreReader::new(
+            self.store.clone(),
+            self.path.clone(),
+            parquet_metadata.clone(),
+        );
         for chunk in target_row_group_chunks {
-            let object_store_reader = ObjectStoreReader::new(
-                self.store.clone(),
-                self.path.clone(),
-                parquet_metadata.clone(),
-            );
-            let mut builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
-                .await
-                .with_context(|| ParquetError)?;
+            let schema_desc = meta_data.parquet().file_metadata().schema_descr();
+            let stream = if let Some(row_group_cache) = &self.row_group_cache {
+                let stream_builder = RowGroupStreamWithCacheBuilder {
+                    file_id: self.file_id,
+                    schema: arrow_schema.clone(),
+                    schema_desc,
+                    row_group_indexes: chunk,
+                    num_rows_per_row_group: self.num_rows_per_row_group,
+                    projection: &projection,
+                    cache: row_group_cache.clone(),
+                    object_store_reader: object_store_reader.clone(),
+                };
 
-            let row_selection =
-                self.build_row_selection(arrow_schema.clone(), &chunk, parquet_metadata)?;
+                let stream = stream_builder.build().await?.map(|record_batch| record_batch.context(ParquetError));
+                Box::pin(stream) as _
+            } else {
+                let proj_mask = ProjectionMask::leaves(
+                    schema_desc,
+                    projection.iter().copied(),
+                );
 
-            debug!(
-                "Build row selection for file path:{}, result:{row_selection:?}, page indexes:{}",
-                self.path,
-                parquet_metadata.page_indexes().is_some()
-            );
-            if let Some(selection) = row_selection {
-                builder = builder.with_row_selection(selection);
+                let builder = ParquetRecordBatchStreamBuilder::new(object_store_reader.clone())
+                    .await
+                    .with_context(|| ParquetError)?;
+
+                let stream = builder
+                    .with_batch_size(self.num_rows_per_row_group)
+                    .with_row_groups(chunk)
+                    .with_projection(proj_mask.clone())
+                    .build()
+                    .with_context(|| ParquetError)?
+                    .map(|record_batch| record_batch.context(ParquetError));
+
+                Box::pin(stream) as _
             };
 
-            let stream = builder
-                .with_batch_size(self.num_rows_per_row_group)
-                .with_row_groups(chunk)
-                .with_projection(proj_mask.clone())
-                .build()
-                .with_context(|| ParquetError)?
-                .map(|batch| batch.with_context(|| ParquetError));
-
-            streams.push(Box::pin(stream) as _);
+            streams.push(stream);
         }
 
         Ok(streams)

@@ -13,6 +13,7 @@ use snafu::{ResultExt, Snafu};
 use table_engine::predicate::PredicateRef;
 use trace_metric::MetricsCollector;
 
+use super::{manager::FileId, parquet::row_group_cache::RowGroupCacheRef};
 use crate::{
     sst::{
         file::Level,
@@ -64,6 +65,7 @@ pub type FactoryRef = Arc<dyn Factory>;
 pub trait Factory: Send + Sync + Debug {
     async fn create_reader<'a>(
         &self,
+        file_id: FileId,
         path: &'a Path,
         options: &SstReadOptions,
         hint: SstReadHint,
@@ -138,13 +140,24 @@ pub struct SstWriteOptions {
     pub max_buffer_size: usize,
 }
 
-#[derive(Debug, Default)]
-pub struct FactoryImpl;
+#[derive(Clone, Debug, Default)]
+pub struct FactoryImpl {
+    row_group_cache: Option<RowGroupCacheRef>,
+}
+
+impl FactoryImpl {
+    pub fn with_row_group_cache(row_group_cache: RowGroupCacheRef) -> Self {
+        Self {
+            row_group_cache: Some(row_group_cache),
+        }
+    }
+}
 
 #[async_trait]
 impl Factory for FactoryImpl {
     async fn create_reader<'a>(
         &self,
+        file_id: FileId,
         path: &'a Path,
         options: &SstReadOptions,
         hint: SstReadHint,
@@ -162,10 +175,12 @@ impl Factory for FactoryImpl {
         match storage_format {
             StorageFormat::Columnar | StorageFormat::Hybrid => {
                 let reader = AsyncParquetReader::new(
+                    file_id,
                     path,
                     options,
                     hint.file_size,
                     store_picker,
+                    self.row_group_cache.clone(),
                     metrics_collector,
                 );
                 let reader = ThreadedReader::new(

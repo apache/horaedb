@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Scan memtable bench.
 
@@ -47,6 +47,7 @@ impl ScanMemTableBench {
 
         runtime.block_on(util::load_sst_to_memtable(
             &store,
+            config.sst_file_id,
             &sst_path,
             &schema,
             &memtable,

@@ -83,6 +83,7 @@ impl MergeMemTableBench {
 
             runtime.block_on(util::load_sst_to_memtable(
                 &store,
+                *id,
                 &sst_path,
                 &schema,
                 &memtable,

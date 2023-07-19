@@ -319,6 +319,7 @@ pub async fn stream_from_sst_file(
     let metrics_collector = metrics_collector.map(|v| v.span(scan_sst_desc));
     let mut sst_reader = sst_factory
         .create_reader(
+            sst_file.id(),
             &path,
             sst_read_options,
             read_hint,

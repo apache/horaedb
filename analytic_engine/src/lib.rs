@@ -54,10 +54,14 @@ pub struct Config {
 
     pub compaction: SchedulerConfig,
 
-    /// sst meta cache capacity
+    /// The sst meta cache capacity
     pub sst_meta_cache_cap: Option<usize>,
-    /// sst data cache capacity
+    /// The sst data cache capacity
     pub sst_data_cache_cap: Option<usize>,
+    /// The memory capacity of row group cache
+    pub row_group_cache_cap: ReadableSize,
+    /// The partition bits of the row group cache
+    pub row_group_partition_bits: usize,
 
     /// Manifest options
     pub manifest: ManifestOptions,
@@ -126,6 +130,8 @@ impl Default for Config {
             compaction: SchedulerConfig::default(),
             sst_meta_cache_cap: Some(1000),
             sst_data_cache_cap: Some(1000),
+            row_group_cache_cap: ReadableSize(0),
+            row_group_partition_bits: 8,
             manifest: ManifestOptions::default(),
             max_rows_in_write_queue: 0,
             /// Zero means disabling this param, give a positive value to enable

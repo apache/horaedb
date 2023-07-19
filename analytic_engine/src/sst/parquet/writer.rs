@@ -350,7 +350,11 @@ mod tests {
             factory::{
                 Factory, FactoryImpl, ReadFrequency, ScanOptions, SstReadOptions, SstWriteOptions,
             },
-            parquet::AsyncParquetReader,
+            manager::FileId,
+            parquet::{
+                row_group_cache::{RowGroupCache, RowGroupCacheRef},
+                AsyncParquetReader,
+            },
             reader::{tests::check_stream, SstReader},
         },
         table_options::{self, StorageFormatHint},
@@ -363,19 +367,61 @@ mod tests {
         init_log_for_test();
 
         let runtime = Arc::new(runtime::Builder::default().build().unwrap());
-        parquet_write_and_then_read_back(runtime.clone(), 2, vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
-        parquet_write_and_then_read_back(runtime.clone(), 3, vec![3, 3, 3, 3, 3, 3, 2]);
-        parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 4, 4, 4, 4]);
-        parquet_write_and_then_read_back(runtime, 5, vec![5, 5, 5, 5]);
+        parquet_write_and_then_read_back(
+            runtime.clone(),
+            2,
+            vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+            0,
+            None,
+        );
+        parquet_write_and_then_read_back(runtime.clone(), 3, vec![3, 3, 3, 3, 3, 3, 2], 1, None);
+        parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 4, 4, 4, 4], 2, None);
+        parquet_write_and_then_read_back(runtime, 5, vec![5, 5, 5, 5], 3, None);
+    }
+
+    #[test]
+    fn test_parquet_build_and_read_with_cache() {
+        init_log_for_test();
+
+        let runtime = Arc::new(runtime::Builder::default().build().unwrap());
+        let cache = Arc::new(RowGroupCache::new(1024 * 1024 * 10, 4));
+        assert_eq!(cache.compute_mem_usage(), 0);
+        // Write/Read to fill the cache.
+        parquet_write_and_then_read_back(
+            runtime.clone(),
+            2,
+            vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+            0,
+            Some(cache.clone()),
+        );
+        assert!(cache.compute_mem_usage() > 0);
+        assert_eq!(cache.hit_count(), 0);
+        assert!(cache.miss_count() > 0);
+
+        // Write/Read again, to check whether it is correct.
+        parquet_write_and_then_read_back(
+            runtime,
+            2,
+            vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+            0,
+            Some(cache.clone()),
+        );
+        assert!(cache.hit_count() > 0);
     }
 
     fn parquet_write_and_then_read_back(
         runtime: Arc<Runtime>,
         num_rows_per_row_group: usize,
         expected_num_rows: Vec<i64>,
+        file_id: FileId,
+        row_group_cache: Option<RowGroupCacheRef>,
     ) {
         runtime.block_on(async {
-            let sst_factory = FactoryImpl;
+            let sst_factory = if let Some(cache) = &row_group_cache {
+                FactoryImpl::with_row_group_cache(cache.clone())
+            } else {
+                FactoryImpl::default()
+            };
             let sst_write_options = SstWriteOptions {
                 storage_format_hint: StorageFormatHint::Auto,
                 num_rows_per_row_group,
@@ -480,10 +526,12 @@ mod tests {
 
             let mut reader: Box<dyn SstReader + Send> = {
                 let mut reader = AsyncParquetReader::new(
+                    file_id,
                     &sst_file_path,
                     &sst_read_options,
                     None,
                     &store_picker,
+                    row_group_cache,
                     None,
                 );
                 let mut sst_meta_readback = reader
