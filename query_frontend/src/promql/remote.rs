@@ -95,16 +95,17 @@ fn normalize_matchers(matchers: Vec<LabelMatcher>) -> Result<(String, String, Ve
             NAME_LABEL => metric = Some(m.value),
             FIELD_LABEL => field = Some(m.value),
             _ => {
+                let col_name = col(format!("`{}`", m.name));
                 let expr = match m.r#type() {
-                    label_matcher::Type::Eq => col(m.name).eq(lit(m.value)),
-                    label_matcher::Type::Neq => col(m.name).not_eq(lit(m.value)),
+                    label_matcher::Type::Eq => col_name.eq(lit(m.value)),
+                    label_matcher::Type::Neq => col_name.not_eq(lit(m.value)),
                     // https://github.com/prometheus/prometheus/blob/2ce94ac19673a3f7faf164e9e078a79d4d52b767/model/labels/regexp.go#L29
                     label_matcher::Type::Re => {
-                        regexp_match(vec![col(m.name), lit(format!("^(?:{})$", m.value))])
+                        regexp_match(vec![col_name, lit(format!("^(?:{})$", m.value))])
                             .is_not_null()
                     }
                     label_matcher::Type::Nre => {
-                        regexp_match(vec![col(m.name), lit(format!("^(?:{})$", m.value))]).is_null()
+                        regexp_match(vec![col_name, lit(format!("^(?:{})$", m.value))]).is_null()
                     }
                 };
 
