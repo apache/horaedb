@@ -5,10 +5,7 @@ use std::time::Instant;
 use generic_error::BoxError;
 use log::{error, info, warn};
 use snafu::{OptionExt, ResultExt};
-use table_engine::{
-    engine,
-    table::{FlushRequest, TableRef},
-};
+use table_engine::{engine, table::TableRef};
 use time_ext::InstantExt;
 
 use crate::{
@@ -77,12 +74,6 @@ impl TableOperator {
 
             match table_result {
                 Ok(Some(table)) => {
-                    // When table open successfully, try flush to reduce WAL size, so when reopen
-                    // this shard the WAL required to fetch is reduced.
-                    if let Err(e) = table.flush(FlushRequest { sync: false }).await {
-                        warn!("Try flush after open table failed, err:{e}");
-                    }
-
                     schema.register_table(table);
                     success_count += 1;
                 }
