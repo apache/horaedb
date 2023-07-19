@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
     any::Any,
@@ -17,7 +17,8 @@ use datafusion::{
         logical_plan::{LogicalPlan, TableScan, UserDefinedLogicalNode},
         Expr,
     },
-    physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner},
+    physical_plan::ExecutionPlan,
+    physical_planner::{ExtensionPlanner, PhysicalPlanner},
 };
 use table_engine::{provider::TableProviderAdapter, table::ReadOrder};
 

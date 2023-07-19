@@ -2,6 +2,8 @@
 
 //! Sst implementation based on parquet.
 
+// TODO: remove it and use the suggested api.
+#[allow(deprecated)]
 pub mod async_reader;
 pub mod encoding;
 mod hybrid;

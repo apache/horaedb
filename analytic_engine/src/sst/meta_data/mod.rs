@@ -1,5 +1,7 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+// TODO: remove it and use the suggested api.
+#[allow(deprecated)]
 pub mod cache;
 
 use std::sync::Arc;

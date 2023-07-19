@@ -14,14 +14,14 @@ use async_trait::async_trait;
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
 use datafusion::{
     config::{ConfigEntry, ConfigExtension, ExtensionOptions},
-    datasource::datasource::{TableProvider, TableProviderFilterPushDown},
+    datasource::TableProvider,
     error::{DataFusionError, Result},
     execution::context::{SessionState, TaskContext},
-    logical_expr::{Expr, TableSource, TableType},
+    logical_expr::{Expr, TableProviderFilterPushDown, TableSource, TableType},
     physical_expr::PhysicalSortExpr,
     physical_plan::{
         metrics::{Count, MetricValue, MetricsSet},
-        DisplayFormatType, ExecutionPlan, Metric, Partitioning,
+        DisplayAs, DisplayFormatType, ExecutionPlan, Metric, Partitioning,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
@@ -384,16 +384,6 @@ impl ExecutionPlan for ScanTable {
         Ok(Box::pin(ToDfStream(stream)))
     }
 
-    fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "ScanTable: table={}, parallelism={}, order={:?}, ",
-            self.table.name(),
-            self.read_parallelism,
-            self.read_order,
-        )
-    }
-
     fn metrics(&self) -> Option<MetricsSet> {
         let mut format_visitor = FormatCollectorVisitor::default();
         self.metrics_collector.visit(&mut format_visitor);
@@ -413,6 +403,18 @@ impl ExecutionPlan for ScanTable {
     fn statistics(&self) -> Statistics {
         // TODO(yingwen): Implement this
         Statistics::default()
+    }
+}
+
+impl DisplayAs for ScanTable {
+    fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "ScanTable: table={}, parallelism={}, order={:?}, ",
+            self.table.name(),
+            self.read_parallelism,
+            self.read_order,
+        )
     }
 }
 

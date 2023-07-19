@@ -1,11 +1,11 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Partition filter extractor
 
 use std::collections::HashSet;
 
 use common_types::datum::Datum;
-use datafusion::logical_expr::{Expr, Operator};
+use datafusion::logical_expr::{expr::InList, Expr, Operator};
 use df_operator::visitor::find_columns_by_expr;
 
 use crate::partition::rule::filter::{PartitionCondition, PartitionFilter};
@@ -71,11 +71,11 @@ impl FilterExtractor for KeyExtractor {
                         _ => None,
                     }
                 }
-                Expr::InList {
+                Expr::InList(InList {
                     expr,
                     list,
                     negated,
-                } => {
+                }) => {
                     if let (Expr::Column(col), list, false) = (*expr, list, negated) {
                         let mut datums = Vec::with_capacity(list.len());
                         for entry in list {

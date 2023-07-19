@@ -1,9 +1,9 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use arrow::datatypes::SchemaRef;
 use datafusion::{
     common::Column,
-    logical_expr::{Expr, Operator},
+    logical_expr::{expr::InList, Expr, Operator},
     scalar::ScalarValue,
 };
 
@@ -173,11 +173,11 @@ fn normalize_predicate_expression(expr: &Expr) -> NormalizedExpr {
             Operator::NotEq => normalize_equal_expr(left, right, false),
             _ => unhandled,
         },
-        Expr::InList {
+        Expr::InList(InList {
             expr,
             list,
             negated,
-        } if list.len() < MAX_ELEMS_IN_LIST_FOR_FILTER => {
+        }) if list.len() < MAX_ELEMS_IN_LIST_FOR_FILTER => {
             if list.is_empty() {
                 if *negated {
                     // "not in empty list" is always true
@@ -344,7 +344,7 @@ mod tests {
                     Expr::not_eq(make_literal_expr(0), make_column_expr("c1")),
                     Expr::eq(make_literal_expr(1), make_column_expr("c2")),
                 ),
-                Expr::not(make_column_expr("c3")),
+                !make_column_expr("c3"),
             ),
         );
 
@@ -373,7 +373,7 @@ mod tests {
     fn test_normalize_unhandled() {
         let lt_expr = Expr::gt(make_column_expr("c0"), make_literal_expr(0));
         let empty_list_expr = Expr::in_list(make_column_expr("c0"), vec![], true);
-        let not_expr = Expr::not(make_column_expr("c0"));
+        let not_expr = !make_column_expr("c0");
 
         let unhandled_exprs = vec![lt_expr, empty_list_expr, not_expr];
         let expect_expr = NormalizedExpr::True;
@@ -415,7 +415,7 @@ mod tests {
                     Expr::not_eq(make_literal_expr(0), make_column_expr("c1")),
                     Expr::eq(make_literal_expr(1), make_column_expr("c2")),
                 ),
-                Expr::not(make_column_expr("c3")),
+                !make_column_expr("c3"),
             ),
         );
         assert!(EqPruner::new(&true_expr).prune(&f));

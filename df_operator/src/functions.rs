@@ -12,7 +12,7 @@ use common_types::{column::ColumnBlock, datum::DatumKind};
 use datafusion::{
     error::DataFusionError,
     logical_expr::{
-        AccumulatorFunctionImplementation, ReturnTypeFunction, ScalarFunctionImplementation,
+        AccumulatorFactoryFunction, ReturnTypeFunction, ScalarFunctionImplementation,
         Signature as DfSignature, StateTypeFunction, TypeSignature as DfTypeSignature, Volatility,
     },
     physical_plan::ColumnarValue as DfColumnarValue,
@@ -253,7 +253,7 @@ impl ScalarFunction {
 pub struct AggregateFunction {
     type_signature: TypeSignature,
     return_type: ReturnType,
-    df_accumulator: AccumulatorFunctionImplementation,
+    df_accumulator: AccumulatorFactoryFunction,
     state_type: Vec<DatumKind>,
 }
 
@@ -301,7 +301,7 @@ impl AggregateFunction {
     }
 
     #[inline]
-    pub(crate) fn to_datafusion_accumulator(&self) -> AccumulatorFunctionImplementation {
+    pub(crate) fn to_datafusion_accumulator(&self) -> AccumulatorFactoryFunction {
         self.df_accumulator.clone()
     }
 

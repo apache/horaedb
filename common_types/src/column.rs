@@ -18,11 +18,7 @@ use arrow::{
     datatypes::{DataType, Int32Type, TimeUnit},
     error::ArrowError,
 };
-use bytes_ext::Bytes;
-use datafusion::physical_plan::{
-    expressions::{cast_column, DEFAULT_DATAFUSION_CAST_OPTIONS},
-    ColumnarValue,
-};
+use datafusion::physical_plan::{expressions::cast_column, ColumnarValue};
 use paste::paste;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
@@ -858,7 +854,8 @@ pub fn cast_nanosecond_to_mills(array: &ArrayRef) -> Result<Arc<dyn Array>> {
     let mills_column = cast_column(
         &column,
         &DataType::Timestamp(TimeUnit::Millisecond, None),
-        &DEFAULT_DATAFUSION_CAST_OPTIONS,
+        // It will use the default option internally when found None.
+        None,
     )
     .with_context(|| CastTimestamp {
         data_type: DataType::Timestamp(TimeUnit::Millisecond, None),

@@ -7,7 +7,7 @@ use std::{any::Any, borrow::Cow, cell::RefCell, collections::HashMap, sync::Arc}
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
 use datafusion::{
-    catalog::{catalog::CatalogProvider, schema::SchemaProvider},
+    catalog::{schema::SchemaProvider, CatalogProvider},
     common::DataFusionError,
     config::ConfigOptions,
     datasource::{DefaultTableSource, TableProvider},
@@ -345,6 +345,10 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
 
     fn options(&self) -> &ConfigOptions {
         &self.config
+    }
+
+    fn get_window_meta(&self, _name: &str) -> Option<Arc<datafusion::logical_expr::WindowUDF>> {
+        None
     }
 }
 

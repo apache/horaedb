@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{collections::VecDeque, sync::Arc};
 
@@ -169,7 +169,7 @@ mod tests {
     const TEST_BATCH_SIZE: usize = 1000;
 
     fn check_reversed_row_iter(original: RowIter, reversed: ReversedFileReader) {
-        let mut original_reversed_rows: Vec<_> = original.into_iter().collect();
+        let mut original_reversed_rows: Vec<_> = original.into_iter().map(|v| v.unwrap()).collect();
         original_reversed_rows.reverse();
 
         let reversed_record_batches: Vec<_> = reversed

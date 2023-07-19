@@ -7,7 +7,8 @@ use datafusion::{
     error::DataFusionError,
     execution::context::SessionState,
     logical_expr::logical_plan::{LogicalPlan, UserDefinedLogicalNode},
-    physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner},
+    physical_plan::ExecutionPlan,
+    physical_planner::{ExtensionPlanner, PhysicalPlanner},
 };
 use query_frontend::promql::PromAlignNode;
 use snafu::Snafu;
