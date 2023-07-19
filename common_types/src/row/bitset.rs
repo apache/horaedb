@@ -2,6 +2,8 @@
 
 //! Simple BitSet implementation.
 
+#![allow(dead_code)]
+
 const BIT_MASK: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
 const UNSET_BIT_MASK: [u8; 8] = [
     255 - 1,
