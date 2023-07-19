@@ -1234,7 +1234,6 @@ impl Datum {
         }
     }
 
-<<<<<<< HEAD
     pub fn from_scalar_value(val: &ScalarValue) -> Option<Self> {
         match val {
             ScalarValue::Boolean(v) => v.map(Datum::Boolean),
@@ -1258,54 +1257,6 @@ impl Datum {
                 .map(|v| Datum::Varbinary(Bytes::copy_from_slice(v.as_slice()))),
             ScalarValue::TimestampMillisecond(v, _) => {
                 v.map(|v| Datum::Timestamp(Timestamp::new(v)))
-=======
-        pub fn from_scalar_value(val: &ScalarValue) -> Option<Self> {
-            match val {
-                ScalarValue::Boolean(v) => v.map(Datum::Boolean),
-                ScalarValue::Float32(v) => v.map(Datum::Float),
-                ScalarValue::Float64(v) => v.map(Datum::Double),
-                ScalarValue::Int8(v) => v.map(Datum::Int8),
-                ScalarValue::Int16(v) => v.map(Datum::Int16),
-                ScalarValue::Int32(v) => v.map(Datum::Int32),
-                ScalarValue::Int64(v) => v.map(Datum::Int64),
-                ScalarValue::UInt8(v) => v.map(Datum::UInt8),
-                ScalarValue::UInt16(v) => v.map(Datum::UInt16),
-                ScalarValue::UInt32(v) => v.map(Datum::UInt32),
-                ScalarValue::UInt64(v) => v.map(Datum::UInt64),
-                ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => v
-                    .as_ref()
-                    .map(|v| Datum::String(StringBytes::copy_from_str(v.as_str()))),
-                ScalarValue::Binary(v)
-                | ScalarValue::FixedSizeBinary(_, v)
-                | ScalarValue::LargeBinary(v) => v
-                    .as_ref()
-                    .map(|v| Datum::Varbinary(Bytes::copy_from_slice(v.as_slice()))),
-                ScalarValue::TimestampMillisecond(v, _) => {
-                    v.map(|v| Datum::Timestamp(Timestamp::new(v)))
-                }
-                ScalarValue::Date32(v) => v.map(Datum::Date),
-                ScalarValue::Time64Nanosecond(v) => v.map(Datum::Time),
-                ScalarValue::Dictionary(_, literal) => Datum::from_scalar_value(literal),
-                ScalarValue::List(_, _)
-                | ScalarValue::Date64(_)
-                | ScalarValue::Time32Second(_)
-                | ScalarValue::Time32Millisecond(_)
-                | ScalarValue::Time64Microsecond(_)
-                | ScalarValue::TimestampSecond(_, _)
-                | ScalarValue::TimestampMicrosecond(_, _)
-                | ScalarValue::TimestampNanosecond(_, _)
-                | ScalarValue::IntervalYearMonth(_)
-                | ScalarValue::IntervalDayTime(_)
-                | ScalarValue::Struct(_, _)
-                | ScalarValue::Decimal128(_, _, _)
-                | ScalarValue::Null
-                | ScalarValue::IntervalMonthDayNano(_)
-                | ScalarValue::Fixedsizelist(_, _, _)
-                | ScalarValue::DurationSecond(_)
-                | ScalarValue::DurationMillisecond(_)
-                | ScalarValue::DurationMicrosecond(_)
-                | ScalarValue::DurationNanosecond(_) => None,
->>>>>>> d578bbe1 (bump datafusion version.)
             }
             ScalarValue::Date32(v) => v.map(Datum::Date),
             ScalarValue::Time64Nanosecond(v) => v.map(Datum::Time),
@@ -1323,58 +1274,40 @@ impl Datum {
             | ScalarValue::Struct(_, _)
             | ScalarValue::Decimal128(_, _, _)
             | ScalarValue::Null
-            | ScalarValue::IntervalMonthDayNano(_) => None,
+            | ScalarValue::IntervalMonthDayNano(_)
+            | ScalarValue::Fixedsizelist(_, _, _)
+            | ScalarValue::DurationSecond(_)
+            | ScalarValue::DurationMillisecond(_)
+            | ScalarValue::DurationMicrosecond(_)
+            | ScalarValue::DurationNanosecond(_) => None,
         }
     }
 }
 
-    impl<'a> DatumView<'a> {
-        pub fn from_scalar_value(val: &'a ScalarValue) -> Option<Self> {
-            match val {
-                ScalarValue::Boolean(v) => v.map(DatumView::Boolean),
-                ScalarValue::Float32(v) => v.map(DatumView::Float),
-                ScalarValue::Float64(v) => v.map(DatumView::Double),
-                ScalarValue::Int8(v) => v.map(DatumView::Int8),
-                ScalarValue::Int16(v) => v.map(DatumView::Int16),
-                ScalarValue::Int32(v) => v.map(DatumView::Int32),
-                ScalarValue::Int64(v) => v.map(DatumView::Int64),
-                ScalarValue::UInt8(v) => v.map(DatumView::UInt8),
-                ScalarValue::UInt16(v) => v.map(DatumView::UInt16),
-                ScalarValue::UInt32(v) => v.map(DatumView::UInt32),
-                ScalarValue::UInt64(v) => v.map(DatumView::UInt64),
-                ScalarValue::Date32(v) => v.map(DatumView::Date),
-                ScalarValue::Time64Nanosecond(v) => v.map(DatumView::Time),
-                ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => {
-                    v.as_ref().map(|v| DatumView::String(v.as_str()))
-                }
-                ScalarValue::Binary(v)
-                | ScalarValue::FixedSizeBinary(_, v)
-                | ScalarValue::LargeBinary(v) => {
-                    v.as_ref().map(|v| DatumView::Varbinary(v.as_slice()))
-                }
-                ScalarValue::TimestampMillisecond(v, _) => {
-                    v.map(|v| DatumView::Timestamp(Timestamp::new(v)))
-                }
-                ScalarValue::Dictionary(_, literal) => DatumView::from_scalar_value(literal),
-                ScalarValue::List(_, _)
-                | ScalarValue::Date64(_)
-                | ScalarValue::Time32Second(_)
-                | ScalarValue::Time32Millisecond(_)
-                | ScalarValue::Time64Microsecond(_)
-                | ScalarValue::TimestampSecond(_, _)
-                | ScalarValue::TimestampMicrosecond(_, _)
-                | ScalarValue::TimestampNanosecond(_, _)
-                | ScalarValue::IntervalYearMonth(_)
-                | ScalarValue::IntervalDayTime(_)
-                | ScalarValue::Struct(_, _)
-                | ScalarValue::Decimal128(_, _, _)
-                | ScalarValue::Null
-                | ScalarValue::IntervalMonthDayNano(_)
-                | ScalarValue::Fixedsizelist(_, _, _)
-                | ScalarValue::DurationSecond(_)
-                | ScalarValue::DurationMillisecond(_)
-                | ScalarValue::DurationMicrosecond(_)
-                | ScalarValue::DurationNanosecond(_) => None,
+impl<'a> DatumView<'a> {
+    pub fn from_scalar_value(val: &'a ScalarValue) -> Option<Self> {
+        match val {
+            ScalarValue::Boolean(v) => v.map(DatumView::Boolean),
+            ScalarValue::Float32(v) => v.map(DatumView::Float),
+            ScalarValue::Float64(v) => v.map(DatumView::Double),
+            ScalarValue::Int8(v) => v.map(DatumView::Int8),
+            ScalarValue::Int16(v) => v.map(DatumView::Int16),
+            ScalarValue::Int32(v) => v.map(DatumView::Int32),
+            ScalarValue::Int64(v) => v.map(DatumView::Int64),
+            ScalarValue::UInt8(v) => v.map(DatumView::UInt8),
+            ScalarValue::UInt16(v) => v.map(DatumView::UInt16),
+            ScalarValue::UInt32(v) => v.map(DatumView::UInt32),
+            ScalarValue::UInt64(v) => v.map(DatumView::UInt64),
+            ScalarValue::Date32(v) => v.map(DatumView::Date),
+            ScalarValue::Time64Nanosecond(v) => v.map(DatumView::Time),
+            ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => {
+                v.as_ref().map(|v| DatumView::String(v.as_str()))
+            }
+            ScalarValue::Binary(v)
+            | ScalarValue::FixedSizeBinary(_, v)
+            | ScalarValue::LargeBinary(v) => v.as_ref().map(|v| DatumView::Varbinary(v.as_slice())),
+            ScalarValue::TimestampMillisecond(v, _) => {
+                v.map(|v| DatumView::Timestamp(Timestamp::new(v)))
             }
             ScalarValue::Dictionary(_, literal) => DatumView::from_scalar_value(literal),
             ScalarValue::List(_, _)
@@ -1390,7 +1323,12 @@ impl Datum {
             | ScalarValue::Struct(_, _)
             | ScalarValue::Decimal128(_, _, _)
             | ScalarValue::Null
-            | ScalarValue::IntervalMonthDayNano(_) => None,
+            | ScalarValue::IntervalMonthDayNano(_)
+            | ScalarValue::Fixedsizelist(_, _, _)
+            | ScalarValue::DurationSecond(_)
+            | ScalarValue::DurationMillisecond(_)
+            | ScalarValue::DurationMicrosecond(_)
+            | ScalarValue::DurationNanosecond(_) => None,
         }
     }
 }

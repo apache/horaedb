@@ -2,12 +2,11 @@ SELECT 1;
 
 SELECT x;
 
--- FIXME
 SELECT 'a';
 
 SELECT NOT(1=1);
 
--- FIXME
+-- Revert to return error in https://github.com/apache/arrow-datafusion/pull/6599
 SELECT NOT(1);
 
 SELECT TRUE;

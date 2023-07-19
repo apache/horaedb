@@ -18,6 +18,7 @@ use arrow::{
     datatypes::{DataType, Int32Type, TimeUnit},
     error::ArrowError,
 };
+use bytes_ext::Bytes;
 use datafusion::physical_plan::{expressions::cast_column, ColumnarValue};
 use paste::paste;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
