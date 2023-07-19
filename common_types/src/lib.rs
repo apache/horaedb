@@ -4,21 +4,15 @@
 
 pub mod bitset;
 pub mod bytes;
-#[cfg(feature = "arrow")]
 pub mod column;
-#[cfg(feature = "arrow")]
 pub mod column_schema;
 pub mod datum;
 pub mod hash;
 pub mod hex;
-#[cfg(feature = "arrow")]
 pub mod projected_schema;
-#[cfg(feature = "arrow")]
 pub mod record_batch;
 pub mod request_id;
-#[cfg(feature = "arrow")]
 pub mod row;
-#[cfg(feature = "arrow")]
 pub mod schema;
 pub mod string;
 pub mod table;
