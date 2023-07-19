@@ -135,8 +135,8 @@ impl<'a> RowGroupStreamWithCacheBuilder<'a> {
                 self.row_group_indexes
             } else {
                 let mut indexes = Vec::with_capacity(num_cache_missed_row_groups);
-                for row_group_idx in self.row_group_indexes {
-                    if cached_row_groups[row_group_idx].is_none() {
+                for (cache_idx, row_group_idx) in self.row_group_indexes.iter().cloned().enumerate() {
+                    if cached_row_groups[cache_idx].is_none() {
                         indexes.push(row_group_idx)
                     }
                 }
