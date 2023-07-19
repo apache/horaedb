@@ -120,12 +120,15 @@ impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
         if values.is_empty() {
             return Ok(());
         };
+
+        let mut row = Vec::with_capacity(values.len());
         (0..values[0].len()).try_for_each(|index| {
-            let v = values
-                .iter()
-                .map(|array| DfScalarValue::try_from_array(array, index))
-                .collect::<DfResult<Vec<DfScalarValue>>>()?;
-            let input = Input(&v);
+            row.clear();
+
+            for col in values {
+                row.push(DfScalarValue::try_from_array(col, index)?);
+            }
+            let input = Input(&row);
 
             self.accumulator.update(input).map_err(|e| {
                 DataFusionError::Execution(format!("Accumulator failed to update, err:{e}"))
