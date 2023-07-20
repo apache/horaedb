@@ -17,6 +17,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/config"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/limiter"
 	"github.com/CeresDB/ceresmeta/server/member"
 	"github.com/CeresDB/ceresmeta/server/status"
@@ -62,6 +63,7 @@ func (a *API) NewAPIRouter() *Router {
 	router.Post("/getNodeShards", a.getNodeShards)
 	router.Get("/flowLimiter", a.getFlowLimiter)
 	router.Put("/flowLimiter", a.updateFlowLimiter)
+	router.Get("/procedures/:name", a.listProcedures)
 	router.Get("/healthCheck", a.healthCheck)
 
 	// Register cluster API.
@@ -660,6 +662,43 @@ func (a *API) updateFlowLimiter(writer http.ResponseWriter, req *http.Request) {
 	}
 
 	a.respond(writer, nil)
+}
+
+func (a *API) listProcedures(writer http.ResponseWriter, req *http.Request) {
+	resp, isLeader, err := a.forwardClient.forwardToLeader(req)
+	if err != nil {
+		log.Error("forward to leader failed", zap.Error(err))
+		a.respondError(writer, ErrForwardToLeader, fmt.Sprintf("err: %s", err.Error()))
+		return
+	}
+
+	if !isLeader {
+		a.respondForward(writer, resp)
+		return
+	}
+
+	ctx := req.Context()
+	clusterName := Param(ctx, "name")
+	if len(clusterName) == 0 {
+		a.respondError(writer, ErrParseRequest, "clusterName cloud not be empty")
+		return
+	}
+
+	c, err := a.clusterManager.GetCluster(ctx, clusterName)
+	if err != nil {
+		log.Error("get cluster failed", zap.Error(err))
+		a.respondError(writer, ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", clusterName, err.Error()))
+		return
+	}
+
+	infos, err := c.GetProcedureManager().ListRunningProcedure(ctx)
+	if err != nil {
+		log.Error("list running procedure failed", zap.Error(err))
+		a.respondError(writer, procedure.ErrListRunningProcedure, fmt.Sprintf("clusterName: %s", clusterName))
+		return
+	}
+
+	a.respond(writer, infos)
 }
 
 func (a *API) healthCheck(writer http.ResponseWriter, _ *http.Request) {
