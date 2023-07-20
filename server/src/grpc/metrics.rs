@@ -40,6 +40,7 @@ make_auto_flush_static_metric! {
         write_failed,
         query_succeeded,
         query_failed,
+        stream_query_nums,
         stream_query_succeeded,
         stream_query_failed,
         write_succeeded_row,
