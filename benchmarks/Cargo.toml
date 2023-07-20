@@ -26,7 +26,7 @@ macros = { workspace = true }
 object_store = { workspace = true }
 parquet = { workspace = true }
 parquet_ext = { workspace = true }
-pprof = { git = "https://github.com/tanruixiang/pprof-rs.git", rev = "6248431493975a2f96cd9c2363b152517391ed04", features = ["flamegraph", "criterion"] }
+pprof = { workspace = true, features = ["flamegraph", "criterion"] }
 rand = { workspace = true }
 runtime = { workspace = true }
 serde = { workspace = true }

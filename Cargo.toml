@@ -124,6 +124,7 @@ parquet_ext = { path = "components/parquet_ext" }
 parquet = { version = "38.0.0" }
 paste = "1.0"
 pin-project-lite = "0.2.8"
+pprof = { git = "https://github.com/tanruixiang/pprof-rs.git", rev = "6248431493975a2f96cd9c2363b152517391ed04" }
 profile = { path = "components/profile" }
 prom-remote-api = { version = "0.2.2" }
 prometheus = "0.12"
