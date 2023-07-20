@@ -91,8 +91,8 @@ clru = "0.6.1"
 cluster = { path = "cluster" }
 criterion = "0.3"
 common_types = { path = "common_types" }
-datafusion = { git = "https://github.com/apache/arrow-datafusion.git", rev = "44e3876758bd234547ed07afd6e48c7fc62ea525" }
-datafusion-proto = { git = "https://github.com/apache/arrow-datafusion.git", rev = "44e3876758bd234547ed07afd6e48c7fc62ea525" }
+datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "a6dcd943051a083693c352c6b4279156548490a0" }
+datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "a6dcd943051a083693c352c6b4279156548490a0" }
 df_operator = { path = "df_operator" }
 future_cancel = { path = "components/future_cancel" }
 etcd-client = "0.10.3"
@@ -106,10 +106,10 @@ log = "0.4"
 logger = { path = "components/logger" }
 lru = "0.7.6"
 id_allocator = { path = "components/id_allocator" }
-influxql-logical-planner = { git = "https://github.com/Rachelint/influxql.git", rev = "674263d1fcb8304fe0907bf4594873aa3002344c", package = "iox_query_influxql" }
-influxql-parser = { git = "https://github.com/Rachelint/influxql.git", rev = "674263d1fcb8304fe0907bf4594873aa3002344c", package = "influxdb_influxql_parser" }
-influxql-query = { git = "https://github.com/Rachelint/influxql.git", rev = "674263d1fcb8304fe0907bf4594873aa3002344c", package = "iox_query" }
-influxql-schema = { git = "https://github.com/Rachelint/influxql.git", rev = "674263d1fcb8304fe0907bf4594873aa3002344c", package = "schema" }
+influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "b4520c6d5dfb6d68e4c7671555050391292dbffe", package = "iox_query_influxql" }
+influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "b4520c6d5dfb6d68e4c7671555050391292dbffe", package = "influxdb_influxql_parser" }
+influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "b4520c6d5dfb6d68e4c7671555050391292dbffe", package = "iox_query" }
+influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "b4520c6d5dfb6d68e4c7671555050391292dbffe", package = "schema" }
 interpreters = { path = "interpreters" }
 itertools = "0.10.5"
 macros = { path = "components/macros" }

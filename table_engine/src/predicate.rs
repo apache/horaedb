@@ -398,7 +398,6 @@ impl<'a> TimeRangeExtractor<'a> {
             | Expr::Literal(_)
             | Expr::Not(_)
             | Expr::Like { .. }
-            | Expr::ILike { .. }
             | Expr::SimilarTo { .. }
             | Expr::IsNotNull(_)
             | Expr::IsNull(_)
