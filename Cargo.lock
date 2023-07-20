@@ -631,7 +631,7 @@ dependencies = [
  "object_store 1.2.5-alpha",
  "parquet",
  "parquet_ext",
- "pprof 0.10.1",
+ "pprof",
  "rand 0.7.3",
  "runtime",
  "serde",
@@ -1432,15 +1432,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cpp_demangle"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b446fd40bcc17eddd6a4a78f24315eb90afdb3334999ddfd4909985c47722442"
-dependencies = [
- "cfg-if 1.0.0",
-]
-
-[[package]]
 name = "cpufeatures"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2196,8 +2187,7 @@ dependencies = [
 [[package]]
 name = "findshlibs"
 version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40b9e59cd0f7e0806cca4be089683ecb6434e602038df21fe6bf6711b2f07f64"
+source = "git+https://github.com/tanruixiang/findshlibs.git?rev=a39ed17988e7ba7d85b620d22d79bfd1e485dcd6#a39ed17988e7ba7d85b620d22d79bfd1e485dcd6"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3755,18 +3745,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nix"
-version = "0.26.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfdda3d196821d6af13126e40375cdf7da646a96114af134d5f417a9a1dc8e1a"
-dependencies = [
- "bitflags",
- "cfg-if 1.0.0",
- "libc",
- "static_assertions 1.1.0",
-]
-
-[[package]]
 name = "nodrop"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4449,8 +4427,7 @@ dependencies = [
 [[package]]
 name = "pprof"
 version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6472bfed9475542ac46c518734a8d06d71b0f6cb2c17f904aa301711a57786f"
+source = "git+https://github.com/tanruixiang/pprof-rs.git?rev=6248431493975a2f96cd9c2363b152517391ed04#6248431493975a2f96cd9c2363b152517391ed04"
 dependencies = [
  "backtrace",
  "cfg-if 1.0.0",
@@ -4463,28 +4440,7 @@ dependencies = [
  "once_cell",
  "parking_lot 0.12.1",
  "smallvec",
- "symbolic-demangle 9.2.1",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
-name = "pprof"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "196ded5d4be535690899a4631cc9f18cdc41b7ebf24a79400f46f48e49a11059"
-dependencies = [
- "backtrace",
- "cfg-if 1.0.0",
- "findshlibs",
- "inferno",
- "libc",
- "log",
- "nix 0.26.2",
- "once_cell",
- "parking_lot 0.12.1",
- "smallvec",
- "symbolic-demangle 10.2.1",
+ "symbolic-demangle",
  "tempfile",
  "thiserror",
 ]
@@ -4586,7 +4542,7 @@ dependencies = [
  "jemalloc-sys",
  "jemallocator",
  "log",
- "pprof 0.11.1",
+ "pprof",
 ]
 
 [[package]]
@@ -6199,37 +6155,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "symbolic-common"
-version = "10.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b55cdc318ede251d0957f07afe5fed912119b8c1bc5a7804151826db999e737"
-dependencies = [
- "debugid",
- "memmap2",
- "stable_deref_trait",
- "uuid 1.3.3",
-]
-
-[[package]]
 name = "symbolic-demangle"
 version = "9.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b940a1fdbc72bb3369e38714efe6cd332dbbe46d093cf03d668b9ac390d1ad0"
 dependencies = [
- "cpp_demangle 0.3.5",
+ "cpp_demangle",
  "rustc-demangle",
- "symbolic-common 9.2.1",
-]
-
-[[package]]
-name = "symbolic-demangle"
-version = "10.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79be897be8a483a81fff6a3a4e195b4ac838ef73ca42d348b3f722da9902e489"
-dependencies = [
- "cpp_demangle 0.4.0",
- "rustc-demangle",
- "symbolic-common 10.2.1",
+ "symbolic-common",
 ]
 
 [[package]]
