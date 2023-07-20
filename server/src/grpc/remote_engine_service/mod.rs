@@ -235,6 +235,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
         &self,
         request: Request<ReadRequest>,
     ) -> std::result::Result<Response<Self::ReadStream>, Status> {
+        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC.stream_query.inc();
         match self.stream_read_internal(request).await {
             Ok(stream) => {
                 let new_stream: Self::ReadStream = Box::pin(stream.map(|res| match res {
