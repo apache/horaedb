@@ -227,7 +227,7 @@ Query(QueryPlan { df_plan: Sort: cpu.tsid ASC NULLS FIRST, cpu.time ASC NULLS FI
                 r#"a = Utf8("1")
 b != Utf8("2")
 regexp_match(c, Utf8("^(?:3)$")) IS NOT NULL
-regexp_match(d, Utf8("^(?:4)$")) IS NULL"#,
+regexp_match(D, Utf8("^(?:4)$")) IS NULL"#,
                 filters
                     .iter()
                     .map(|f| f.to_string())

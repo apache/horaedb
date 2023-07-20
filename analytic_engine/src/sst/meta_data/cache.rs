@@ -31,6 +31,8 @@ impl MetaData {
     ///
     /// After the building, a new parquet meta data will be generated which
     /// contains no extended custom information.
+    // TODO: remove it and use the suggested api.
+    #[allow(deprecated)]
     pub fn try_new(
         parquet_meta_data: &parquet_ext::ParquetMetaData,
         ignore_sst_filter: bool,
@@ -147,6 +149,8 @@ mod tests {
     use super::MetaData;
     use crate::sst::parquet::{encoding, meta_data::ParquetMetaData as CustomParquetMetaData};
 
+    // TODO: remove it and use the suggested api.
+    #[allow(deprecated)]
     fn check_parquet_meta_data(original: &ParquetMetaData, processed: &ParquetMetaData) {
         assert_eq!(original.page_indexes(), processed.page_indexes());
         assert_eq!(original.offset_indexes(), processed.offset_indexes());

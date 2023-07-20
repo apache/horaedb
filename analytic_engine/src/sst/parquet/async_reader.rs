@@ -20,10 +20,6 @@ use common_types::{
 use datafusion::{
     common::ToDFSchema,
     datasource::physical_plan::{parquet::page_filter::PagePruningPredicate, ParquetFileMetrics},
-    // physical_plan::{
-    //     file_format::{parquet::page_filter::PagePruningPredicate, ParquetFileMetrics},
-    //     metrics::ExecutionPlanMetricsSet,
-    // },
     physical_expr::{create_physical_expr, execution_props::ExecutionProps},
     physical_plan::metrics::ExecutionPlanMetricsSet,
 };
@@ -229,6 +225,8 @@ impl<'a> Reader<'a> {
             .context(DataFusionError)
     }
 
+    // TODO: remove it and use the suggested api.
+    #[allow(deprecated)]
     async fn fetch_record_batch_streams(
         &mut self,
         suggested_parallelism: usize,
