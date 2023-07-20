@@ -12,7 +12,9 @@ use common_types::{
 };
 use datafusion::{
     logical_expr::{
-        avg, count, lit,
+        avg, count,
+        expr::{Alias, ScalarUDF},
+        lit,
         logical_plan::{Extension, LogicalPlan, LogicalPlanBuilder},
         max, min, sum, Expr as DataFusionExpr,
     },
@@ -297,13 +299,13 @@ impl Expr {
                     let unique_id_expr =
                         // TSID is lost after aggregate, but PromAlignNode need a unique id, so
                         // mock UUID as tsid based on groupby keys
-                        DataFusionExpr::Alias(
-                            Box::new(DataFusionExpr::ScalarUDF {
+                        DataFusionExpr::Alias(Alias {
+                            expr: Box::new(DataFusionExpr::ScalarUDF(ScalarUDF {
                                 fun: Arc::new(create_unique_id(tag_exprs.len())),
                                 args: tag_exprs.clone(),
-                            }),
-                            TSID_COLUMN.to_string(),
-                        );
+                            })),
+                            name: TSID_COLUMN.to_string(),
+                        });
                     let mut projection = tag_exprs.clone();
                     projection.extend(vec![
                         ident(&column_name.timestamp),
@@ -350,7 +352,10 @@ impl Expr {
             }
         };
 
-        Ok(DataFusionExpr::Alias(Box::new(expr), alias))
+        Ok(DataFusionExpr::Alias(Alias {
+            expr: Box::new(expr),
+            name: alias,
+        }))
     }
 }
 

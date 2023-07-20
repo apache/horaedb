@@ -1274,7 +1274,12 @@ impl Datum {
             | ScalarValue::Struct(_, _)
             | ScalarValue::Decimal128(_, _, _)
             | ScalarValue::Null
-            | ScalarValue::IntervalMonthDayNano(_) => None,
+            | ScalarValue::IntervalMonthDayNano(_)
+            | ScalarValue::Fixedsizelist(_, _, _)
+            | ScalarValue::DurationSecond(_)
+            | ScalarValue::DurationMillisecond(_)
+            | ScalarValue::DurationMicrosecond(_)
+            | ScalarValue::DurationNanosecond(_) => None,
         }
     }
 }
@@ -1318,7 +1323,12 @@ impl<'a> DatumView<'a> {
             | ScalarValue::Struct(_, _)
             | ScalarValue::Decimal128(_, _, _)
             | ScalarValue::Null
-            | ScalarValue::IntervalMonthDayNano(_) => None,
+            | ScalarValue::IntervalMonthDayNano(_)
+            | ScalarValue::Fixedsizelist(_, _, _)
+            | ScalarValue::DurationSecond(_)
+            | ScalarValue::DurationMillisecond(_)
+            | ScalarValue::DurationMicrosecond(_)
+            | ScalarValue::DurationNanosecond(_) => None,
         }
     }
 }

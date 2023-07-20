@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{mem, sync::Arc};
 
@@ -13,7 +13,7 @@ use datafusion::{
     config::ConfigOptions,
     error::{DataFusionError, Result},
     logical_expr::{
-        expr::Expr,
+        expr::{Expr, InList},
         logical_plan::{Filter, LogicalPlan, TableScan},
         utils, Between, BinaryExpr, ExprSchemable, Operator,
     },
@@ -239,21 +239,21 @@ impl<'a> TreeNodeRewriter for TypeRewriter<'a> {
                     high: Box::new(high),
                 })
             }
-            Expr::InList {
+            Expr::InList(InList {
                 expr,
                 list,
                 negated,
-            } => {
+            }) => {
                 let mut list_expr = Vec::with_capacity(list.len());
                 for e in list {
                     let (_, expr_conversion) = self.convert_type(&expr, &e)?;
                     list_expr.push(expr_conversion);
                 }
-                Expr::InList {
+                Expr::InList(InList {
                     expr,
                     list: list_expr,
                     negated,
-                }
+                })
             }
             Expr::Literal(value) => match value {
                 ScalarValue::TimestampSecond(Some(i), _) => {

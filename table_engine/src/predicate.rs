@@ -10,7 +10,10 @@ use common_types::{
     time::{TimeRange, Timestamp},
 };
 use datafusion::{
-    logical_expr::{Expr, Operator},
+    logical_expr::{
+        expr::{Alias, InList},
+        Expr, Operator,
+    },
     scalar::ScalarValue,
 };
 use datafusion_proto::bytes::Serializeable;
@@ -375,11 +378,11 @@ impl<'a> TimeRangeExtractor<'a> {
 
                 TimeRange::min_to_max()
             }
-            Expr::InList {
+            Expr::InList(InList {
                 expr,
                 list,
                 negated,
-            } => {
+            }) => {
                 if let Expr::Column(column) = expr.as_ref() {
                     if column.name == self.timestamp_column_name {
                         return Self::time_range_from_list_expr(list, *negated);
@@ -389,13 +392,12 @@ impl<'a> TimeRangeExtractor<'a> {
                 TimeRange::min_to_max()
             }
 
-            Expr::Alias(_, _)
+            Expr::Alias(Alias { .. })
             | Expr::ScalarVariable(_, _)
             | Expr::Column(_)
             | Expr::Literal(_)
             | Expr::Not(_)
             | Expr::Like { .. }
-            | Expr::ILike { .. }
             | Expr::SimilarTo { .. }
             | Expr::IsNotNull(_)
             | Expr::IsNull(_)

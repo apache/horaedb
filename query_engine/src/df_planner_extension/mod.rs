@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! The query planner adapter provides some planner extensions of datafusion.
 
@@ -7,10 +7,8 @@ use std::sync::Arc;
 use datafusion::{
     execution::context::{QueryPlanner, SessionState},
     logical_expr::logical_plan::LogicalPlan,
-    physical_plan::{
-        planner::{DefaultPhysicalPlanner, ExtensionPlanner},
-        ExecutionPlan, PhysicalPlanner,
-    },
+    physical_plan::ExecutionPlan,
+    physical_planner::{DefaultPhysicalPlanner, ExtensionPlanner, PhysicalPlanner},
 };
 
 pub mod prom_align;

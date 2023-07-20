@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Query context
 
@@ -8,10 +8,17 @@ use common_types::request_id::RequestId;
 use datafusion::{
     execution::{context::SessionState, runtime_env::RuntimeEnv},
     optimizer::{
-        analyzer::AnalyzerRule, common_subexpr_eliminate::CommonSubexprEliminate,
-        eliminate_limit::EliminateLimit, optimizer::OptimizerRule,
-        push_down_filter::PushDownFilter, push_down_limit::PushDownLimit,
-        push_down_projection::PushDownProjection, simplify_expressions::SimplifyExpressions,
+        analyzer::{
+            count_wildcard_rule::CountWildcardRule, inline_table_scan::InlineTableScan,
+            AnalyzerRule,
+        },
+        common_subexpr_eliminate::CommonSubexprEliminate,
+        eliminate_limit::EliminateLimit,
+        optimizer::OptimizerRule,
+        push_down_filter::PushDownFilter,
+        push_down_limit::PushDownLimit,
+        push_down_projection::PushDownProjection,
+        simplify_expressions::SimplifyExpressions,
         single_distinct_to_groupby::SingleDistinctToGroupBy,
     },
     physical_optimizer::optimizer::PhysicalOptimizerRule,
@@ -108,8 +115,10 @@ impl Context {
 
     fn analyzer_rules() -> Vec<Arc<dyn AnalyzerRule + Send + Sync>> {
         vec![
+            Arc::new(InlineTableScan::new()),
             Arc::new(TypeConversion),
             Arc::new(datafusion::optimizer::analyzer::type_coercion::TypeCoercion::new()),
+            Arc::new(CountWildcardRule::new()),
         ]
     }
 }

@@ -93,8 +93,10 @@ impl PhysicalPlan for DataFusionPhysicalPlan {
     }
 
     fn metrics_to_string(&self) -> String {
+        // TODO: set to verbose mode for more details now, maybe we can add a flag to
+        // control it.
         DisplayableExecutionPlan::with_metrics(&*self.plan)
-            .indent()
+            .indent(true)
             .to_string()
     }
 }

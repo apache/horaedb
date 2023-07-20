@@ -71,8 +71,8 @@ path = "src/bin/ceresdb-server.rs"
 
 [workspace.dependencies]
 alloc_tracker = { path = "components/alloc_tracker" }
-arrow = { version = "38.0.0", features = ["prettyprint"] }
-arrow_ipc = { version = "38.0.0" }
+arrow = { version = "43.0.0", features = ["prettyprint"] }
+arrow_ipc = { version = "43.0.0" }
 arrow_ext = { path = "components/arrow_ext" }
 analytic_engine = { path = "analytic_engine" }
 arena = { path = "components/arena" }
@@ -91,8 +91,8 @@ clru = "0.6.1"
 cluster = { path = "cluster" }
 criterion = "0.3"
 common_types = { path = "common_types" }
-datafusion = { git = "https://github.com/ceresdb/arrow-datafusion.git", rev = "acb5d97a8a8de5296989740f97db3773fe3aa45a" }
-datafusion-proto = { git = "https://github.com/ceresdb/arrow-datafusion.git", rev = "acb5d97a8a8de5296989740f97db3773fe3aa45a" }
+datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "a6dcd943051a083693c352c6b4279156548490a0" }
+datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "a6dcd943051a083693c352c6b4279156548490a0" }
 df_operator = { path = "df_operator" }
 future_cancel = { path = "components/future_cancel" }
 etcd-client = "0.10.3"
@@ -106,10 +106,10 @@ log = "0.4"
 logger = { path = "components/logger" }
 lru = "0.7.6"
 id_allocator = { path = "components/id_allocator" }
-influxql-logical-planner = { git = "https://github.com/CeresDB/influxql", rev = "b65a125b9cdfa3121a3c8843bc48441b91049e31", package = "iox_query_influxql" }
-influxql-parser = { git = "https://github.com/CeresDB/influxql", rev = "b65a125b9cdfa3121a3c8843bc48441b91049e31", package = "influxdb_influxql_parser" }
-influxql-query = { git = "https://github.com/CeresDB/influxql", rev = "b65a125b9cdfa3121a3c8843bc48441b91049e31", package = "iox_query" }
-influxql-schema = { git = "https://github.com/CeresDB/influxql", rev = "b65a125b9cdfa3121a3c8843bc48441b91049e31", package = "schema" }
+influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "b4520c6d5dfb6d68e4c7671555050391292dbffe", package = "iox_query_influxql" }
+influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "b4520c6d5dfb6d68e4c7671555050391292dbffe", package = "influxdb_influxql_parser" }
+influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "b4520c6d5dfb6d68e4c7671555050391292dbffe", package = "iox_query" }
+influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "b4520c6d5dfb6d68e4c7671555050391292dbffe", package = "schema" }
 interpreters = { path = "interpreters" }
 itertools = "0.10.5"
 macros = { path = "components/macros" }
@@ -121,7 +121,7 @@ panic_ext = { path = "components/panic_ext" }
 partitioned_lock = { path = "components/partitioned_lock" }
 partition_table_engine = { path = "partition_table_engine" }
 parquet_ext = { path = "components/parquet_ext" }
-parquet = { version = "38.0.0" }
+parquet = { version = "43.0.0" }
 paste = "1.0"
 pin-project-lite = "0.2.8"
 profile = { path = "components/profile" }
@@ -145,7 +145,7 @@ size_ext = { path = "components/size_ext" }
 smallvec = "1.6"
 slog = "2.7"
 spin = "0.9.6"
-sqlparser = { version = "0.33", features = ["serde"] }
+sqlparser = { version = "0.35", features = ["serde"] }
 system_catalog = { path = "system_catalog" }
 table_engine = { path = "table_engine" }
 table_kv = { path = "components/table_kv" }
@@ -160,7 +160,7 @@ trace_metric = { path = "components/trace_metric" }
 trace_metric_derive = { path = "components/trace_metric_derive" }
 trace_metric_derive_tests = { path = "components/trace_metric_derive_tests" }
 tonic = "0.8.1"
-tokio = { version = "1.25", features = ["full"] }
+tokio = { version = "1.29", features = ["full"] }
 wal = { path = "wal" }
 xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
 zstd = { version = "0.12", default-features = false }

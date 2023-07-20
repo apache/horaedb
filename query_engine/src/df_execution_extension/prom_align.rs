@@ -3,7 +3,9 @@
 use std::{
     any::Any,
     collections::{hash_map, BTreeMap, HashMap, VecDeque},
-    fmt, mem,
+    fmt,
+    hash::Hash,
+    mem,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -24,7 +26,7 @@ use datafusion::{
     execution::context::TaskContext,
     physical_expr::PhysicalSortExpr,
     physical_plan::{
-        repartition::RepartitionExec, ColumnarValue, DisplayFormatType, ExecutionPlan,
+        repartition::RepartitionExec, ColumnarValue, DisplayAs, DisplayFormatType, ExecutionPlan,
         Partitioning, PhysicalExpr, RecordBatchStream,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
@@ -62,7 +64,7 @@ define_result!(Error);
 /// Refer to https://github.com/prometheus/prometheus/pull/1295
 const PROMETHEUS_EXTRAPOLATION_THRESHOLD_COEFFICIENT: f64 = 1.1;
 
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 struct ExtractTsidExpr {}
 
 impl fmt::Display for ExtractTsidExpr {
@@ -122,6 +124,11 @@ impl PhysicalExpr for ExtractTsidExpr {
         _children: Vec<Arc<dyn PhysicalExpr>>,
     ) -> ArrowResult<Arc<dyn PhysicalExpr>> {
         Ok(self)
+    }
+
+    fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
+        let mut s = state;
+        self.hash(&mut s);
     }
 }
 
@@ -234,6 +241,13 @@ impl ExecutionPlan for PromAlignExec {
         }))
     }
 
+    fn statistics(&self) -> Statistics {
+        // TODO(chenxiang)
+        Statistics::default()
+    }
+}
+
+impl DisplayAs for PromAlignExec {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -242,11 +256,6 @@ impl ExecutionPlan for PromAlignExec {
             self.align_func,
             self.output_partitioning().partition_count(),
         )
-    }
-
-    fn statistics(&self) -> Statistics {
-        // TODO(chenxiang)
-        Statistics::default()
     }
 }
 
