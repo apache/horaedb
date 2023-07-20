@@ -107,11 +107,13 @@ impl Instance {
         ));
 
         if need_merge_sort {
+            println!("need_merge_sort");
             let merge_iters = self
                 .build_merge_iters(table_data, &request, &table_options)
                 .await?;
             self.build_partitioned_streams(&request, merge_iters)
         } else {
+            println!("no need_merge_sort");
             let chain_iters = self
                 .build_chain_iters(table_data, &request, &table_options)
                 .await?;

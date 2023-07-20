@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
     cmp,
@@ -176,6 +176,7 @@ impl<'a> MergeBuilder<'a> {
         );
 
         if let Some(v) = &self.sampling_mem {
+            println!("build merge iterator from sampling memtable");
             let stream = record_batch_stream::filtered_stream_from_memtable(
                 self.config.projected_schema.clone(),
                 self.config.need_dedup,
@@ -190,6 +191,7 @@ impl<'a> MergeBuilder<'a> {
         }
 
         for memtable in &self.memtables {
+            println!("build merge iterator from memtable");
             let stream = record_batch_stream::filtered_stream_from_memtable(
                 self.config.projected_schema.clone(),
                 self.config.need_dedup,

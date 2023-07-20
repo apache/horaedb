@@ -7,6 +7,7 @@ use std::{
     sync::{Arc, RwLock},
     time::Instant,
 };
+use std::iter::Rev;
 
 use arena::{Arena, BasicStats, MonoIncArena};
 use ceresdbproto::storage::value;
@@ -29,15 +30,9 @@ use log::{error, trace};
 use parquet::data_type::AsBytes;
 use skiplist::{ArenaSlice, IterRef, Skiplist};
 use snafu::ResultExt;
+use common_util::error::BoxError;
 
-use crate::memtable::{
-    columnar::factory::BytewiseComparator,
-    factory::Options,
-    key,
-    key::{ComparableInternalKey, Error::EncodeKeyDatum, KeySequence},
-    AppendRow, BuildRecordBatch, DecodeInternalKey, IterTimeout, ProjectSchema, Result,
-    ScanContext, ScanRequest,
-};
+use crate::memtable::{columnar::factory::BytewiseComparator, factory::Options, key, key::{ComparableInternalKey, Error::EncodeKeyDatum, KeySequence, SequenceCodec}, AppendRow, BuildRecordBatch, DecodeInternalKey, IterTimeout, ProjectSchema, Result, ScanContext, ScanRequest, IterReverse};
 
 /// Iterator state
 #[derive(Debug, PartialEq)]
@@ -66,6 +61,7 @@ pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
 
     start_user_key: Bound<Bytes>,
     end_user_key: Bound<Bytes>,
+    last_sequence: SequenceNumber,
     /// Max visible sequence
     sequence: SequenceNumber,
     /// State of iterator
@@ -88,6 +84,7 @@ impl ColumnarIterImpl<MonoIncArena> {
         opts: Options,
         ctx: ScanContext,
         request: ScanRequest,
+        last_sequence: SequenceNumber,
     ) -> Result<Self> {
         let arena =
             MonoIncArena::with_collector(opts.arena_block_size as usize, opts.collector.clone());
@@ -107,6 +104,7 @@ impl ColumnarIterImpl<MonoIncArena> {
             iter: skiplist.iter(),
             skiplist,
             last_internal_key: None,
+            last_sequence,
         };
 
         columnar_iter.init()?;
@@ -141,12 +139,18 @@ impl ColumnarIterImpl<MonoIncArena> {
                     encoder.encode(&mut key_vec[i], &datum).unwrap();
                 }
             }
-            for (i, key) in key_vec.into_iter().enumerate() {
+
+            for (i, mut key) in key_vec.into_iter().enumerate() {
+                // SequenceCodec.encode(buf, &self.sequence).unwrap();
+                SequenceCodec
+                    .encode(&mut key, &KeySequence::new(self.last_sequence, i as u32))
+                    .unwrap();
+                println!("key: {:?}", key);
                 self.skiplist.put(&key, (i as u32).to_le_bytes().as_slice());
             }
             self.iter.seek_to_first();
         }
-
+        println!("init");
         Ok(())
     }
 
@@ -154,7 +158,7 @@ impl ColumnarIterImpl<MonoIncArena> {
     fn fetch_next_record_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
         debug_assert_eq!(State::Initialized, self.state);
         assert!(self.batch_size > 0);
-
+        println!("fetch_next_record_batch");
         if !self.need_dedup {
             return self.fetch_next_record_batch2();
         }
@@ -168,8 +172,9 @@ impl ColumnarIterImpl<MonoIncArena> {
         while self.iter.valid() && num_rows < self.batch_size {
             if let Some(row) = self.fetch_next_row()? {
                 let u32_vec = [row[0], row[1], row[2], row[3]];
-
-                row_idxs.push(u32::from_le_bytes(u32_vec));
+                let idx = u32::from_le_bytes(u32_vec);
+                println!("idx: {}", idx);
+                row_idxs.push(idx);
                 num_rows += 1;
             } else {
                 // There is no more row to fetch
@@ -177,6 +182,7 @@ impl ColumnarIterImpl<MonoIncArena> {
                 break;
             }
         }
+
         let rows = {
             let memtable = self.memtable.read().unwrap();
             let record_schema = self.projected_schema.to_record_schema();
@@ -215,11 +221,12 @@ impl ColumnarIterImpl<MonoIncArena> {
 
             let batch = builder.build().context(BuildRecordBatch)?;
             trace!("column iterator send one batch:{:?}", batch);
-
+            println!("column iterator send one batch:{:?}", batch);
             Ok(Some(batch))
         } else {
             // If iter is invalid after seek (nothing matched), then it may not be marked as
             // finished yet
+            println!("column iterator send none");
             self.finish();
             Ok(None)
         }
@@ -235,6 +242,7 @@ impl ColumnarIterImpl<MonoIncArena> {
         // TODO(yingwen): Some operation like delete needs to be considered during
         // iterating: we need to ignore this key if found a delete mark
         while self.iter.valid() {
+            println!("iter valid");
             // Fetch current entry
             let key = self.iter.key();
             let (user_key, sequence) =
@@ -242,12 +250,14 @@ impl ColumnarIterImpl<MonoIncArena> {
 
             // Check user key is still in range
             if self.is_after_end_bound(user_key) {
+                println!("user_key:{:?} is after end bound", user_key);
                 // Out of bound
                 self.finish();
                 return Ok(None);
             }
 
             if self.need_dedup {
+                println!("need dedup");
                 // Whether this user key is already returned
                 let same_key = match &self.last_internal_key {
                     Some(last_internal_key) => {
@@ -263,6 +273,7 @@ impl ColumnarIterImpl<MonoIncArena> {
                 };
 
                 if same_key {
+                    println!("skip duplicate key: {:?}", user_key);
                     // We meet duplicate key, move forward and continue to find next user key
                     self.iter.next();
                     continue;
@@ -270,12 +281,13 @@ impl ColumnarIterImpl<MonoIncArena> {
                 // Now this is a new user key
             }
 
-            // Check whether this key is visible
-            if !self.is_visible(sequence) {
-                // The sequence of this key is not visible, move forward
-                self.iter.next();
-                continue;
-            }
+            // // Check whether this key is visible
+            // if !self.is_visible(sequence) {
+            //     println!("skip invisible key: {:?}", user_key);
+            //     // The sequence of this key is not visible, move forward
+            //     self.iter.next();
+            //     continue;
+            // }
 
             // This is the row we want
             let row = self.iter.value_with_arena();
@@ -386,9 +398,71 @@ impl Iterator for ColumnarIterImpl<MonoIncArena> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.state != State::Initialized {
+            println!("state is not initialized");
             return None;
         }
 
         self.fetch_next_record_batch().transpose()
+    }
+}
+
+/// Reversed columnar iterator.
+// TODO(xikai): Now the implementation is not perfect: read all the entries
+//  into a buffer and reverse read it. The memtable should support scan in
+// reverse  order naturally.
+pub struct ReversedColumnarIterator<I> {
+    iter: I,
+    reversed_iter: Option<Rev<std::vec::IntoIter<Result<RecordBatchWithKey>>>>,
+    num_record_batch: usize,
+}
+
+impl<I> ReversedColumnarIterator<I>
+    where
+        I: Iterator<Item = Result<RecordBatchWithKey>>,
+{
+    pub fn new(iter: I, num_rows: usize, batch_size: usize) -> Self {
+        Self {
+            iter,
+            reversed_iter: None,
+            num_record_batch: num_rows / batch_size,
+        }
+    }
+
+    fn init_if_necessary(&mut self) {
+        if self.reversed_iter.is_some() {
+            return;
+        }
+
+        let mut buf = Vec::with_capacity(self.num_record_batch);
+        for item in &mut self.iter {
+            buf.push(item);
+        }
+        self.reversed_iter = Some(buf.into_iter().rev());
+    }
+}
+
+impl<I> Iterator for ReversedColumnarIterator<I>
+    where
+        I: Iterator<Item = Result<RecordBatchWithKey>>,
+{
+    type Item = Result<RecordBatchWithKey>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.init_if_necessary();
+        self.reversed_iter
+            .as_mut()
+            .unwrap()
+            .next()
+            .map(|v| match v {
+                Ok(mut batch_with_key) => {
+                    batch_with_key
+                        .reverse_data()
+                        .box_err()
+                        .context(IterReverse)?;
+
+                    Ok(batch_with_key)
+                }
+                Err(e) => Err(e),
+            })
     }
 }

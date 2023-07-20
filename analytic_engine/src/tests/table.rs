@@ -207,7 +207,7 @@ pub fn assert_batch_eq_to_row_group(record_batches: &[RecordBatch], row_group: &
     }
 
     let mut cursor = RecordBatchesCursor::new(record_batches);
-
+    println!("row_group:{:?}", row_group);
     for row in row_group.iter() {
         for (column_idx, datum) in row.iter().enumerate() {
             assert_eq!(
@@ -236,18 +236,37 @@ impl<'a> RecordBatchesCursor<'a> {
     }
 
     fn step(&mut self) {
+        println!(
+            "step batch_idx:{}, row_idx_in_batch:{}",
+            self.batch_idx, self.row_idx_in_batch
+        );
         if self.batch_idx >= self.record_batches.len() {
             return;
         }
+        println!(
+            "step2 batch_idx:{}, row_idx_in_batch:{}, record_batches:{}",
+            self.batch_idx,
+            self.row_idx_in_batch,
+            self.record_batches.len()
+        );
 
         self.row_idx_in_batch += 1;
         if self.row_idx_in_batch >= self.record_batches[self.batch_idx].num_rows() {
+            println!(
+                "step3 num_rows:{}, row_idx_in_batch:{}",
+                self.record_batches[self.batch_idx].num_rows(),
+                self.row_idx_in_batch
+            );
             self.batch_idx += 1;
             self.row_idx_in_batch = 0;
         }
     }
 
     fn datum(&self, column_idx: usize) -> Datum {
+        println!(
+            "datum batch_idx:{}, row_idx_in_batch:{}",
+            self.batch_idx, self.row_idx_in_batch
+        );
         let record_batch = &self.record_batches[self.batch_idx];
         let column_in_batch = record_batch.column(column_idx);
         column_in_batch.datum(self.row_idx_in_batch)

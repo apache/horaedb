@@ -592,6 +592,17 @@ impl TableDataSet {
             .cloned()
     }
 
+    pub fn total_memory_usage(&self) -> usize {
+        if self.table_datas.is_empty() {
+            return 0;
+        }
+        // TODO: Possible performance issue here when there are too many tables.
+        self.table_datas
+            .values()
+            .map(|t| t.memtable_memory_usage())
+            .sum()
+    }
+
     /// List all tables to `tables`
     pub fn list_all_tables(&self, tables: &mut Vec<TableDataRef>) {
         for table_data in self.table_datas.values().cloned() {

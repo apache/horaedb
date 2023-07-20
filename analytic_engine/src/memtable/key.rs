@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Memtable key
 //!
@@ -141,7 +141,7 @@ impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
     }
 }
 
-struct SequenceCodec;
+pub struct SequenceCodec;
 
 impl Encoder<KeySequence> for SequenceCodec {
     type Error = Error;

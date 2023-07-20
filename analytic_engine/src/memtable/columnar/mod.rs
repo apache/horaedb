@@ -23,6 +23,7 @@ use crate::memtable::{
     key::{ComparableInternalKey, KeySequence},
     ColumnarIterPtr, InvalidPutSequence, MemTable, PutContext, Result, ScanContext, ScanRequest,
 };
+use crate::memtable::columnar::iter::ReversedColumnarIterator;
 
 pub mod factory;
 pub mod iter;
@@ -60,6 +61,7 @@ impl MemTable for ColumnarMemTable {
         row_group: &RowGroupSplitter,
         schema: &Schema,
     ) -> Result<()> {
+        println!("ColumnarMemTable::put, row_group: {:?}", row_group);
         let row_count = row_group.split_idx.len();
         let mut columns = HashMap::with_capacity(schema.num_columns());
         let row_num = self.row_num.load(Ordering::Relaxed);
@@ -128,8 +130,16 @@ impl MemTable for ColumnarMemTable {
             self.opts.clone(),
             ctx,
             request,
+            self.last_sequence.load(Ordering::Acquire),
         )?;
-        Ok(Box::new(iter))
+        if reverse {
+            Ok(Box::new(ReversedColumnarIterator::new(
+                iter, num_rows, batch_size,
+            )))
+        } else {
+            Ok(Box::new(iter))
+        }
+        // Ok(Box::new(iter))
     }
 
     fn approximate_memory_usage(&self) -> usize {
