@@ -37,7 +37,7 @@ const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_sql_query(&self, ctx: Context, req: SqlQueryRequest) -> SqlQueryResponse {
-        GRPC_HANDLER_COUNTER_VEC.query_nums.inc();
+        GRPC_HANDLER_COUNTER_VEC.query.inc();
         self.hotspot_recorder.inc_sql_query_reqs(&req).await;
         match self.handle_sql_query_internal(ctx, req).await {
             Err(e) => {
@@ -81,7 +81,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: SqlQueryRequest,
     ) -> BoxStream<'static, SqlQueryResponse> {
-        GRPC_HANDLER_COUNTER_VEC.stream_query_nums.inc();
+        GRPC_HANDLER_COUNTER_VEC.stream_query.inc();
         self.hotspot_recorder.inc_sql_query_reqs(&req).await;
         match self.clone().handle_stream_query_internal(ctx, req).await {
             Err(e) => stream::once(async {
