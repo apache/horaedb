@@ -178,8 +178,8 @@ impl ObkvObjectMeta {
         let start_index = range.start / batch_size;
         let start_offset = range.start % batch_size;
 
-        // if `range.end` is zero, it means the range is empty
-        let inclusive_end = if range.end == 0 {
+        // if the range is empty, return empty parts
+        let inclusive_end = if range.is_empty() {
             return Ok(ConveredParts {
                 part_keys: &self.parts[0..0],
                 start_offset: 0,
