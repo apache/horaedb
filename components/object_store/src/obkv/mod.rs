@@ -468,6 +468,10 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 source,
             })?;
 
+        if covered_parts.part_keys.is_empty() {
+            return Ok(Bytes::new());
+        }
+
         let keys: Vec<&[u8]> = covered_parts
             .part_keys
             .iter()
@@ -496,7 +500,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         for (index, (key, value)) in covered_parts.part_keys.iter().zip(values).enumerate() {
             if let Some(bytes) = value {
                 let mut begin = 0;
-                let mut end = bytes.len();
+                let mut end = bytes.len() - 1;
                 if index == 0 {
                     begin = covered_parts.start_offset;
                 }
@@ -504,7 +508,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 if index == covered_parts.part_keys.len() - 1 {
                     end = covered_parts.end_offset;
                 }
-                range_buffer.extend_from_slice(&bytes[begin..end]);
+                range_buffer.extend_from_slice(&bytes[begin..=end]);
             } else {
                 DataPartNotFound { part_key: key }
                     .fail()
