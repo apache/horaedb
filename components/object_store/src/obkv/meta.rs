@@ -166,7 +166,7 @@ impl ObkvObjectMeta {
     }
 
     /// Compute the convered parts based on given range parameter
-    pub fn compute_covered_parts(&self, range: Range<usize>) -> Result<ConveredParts> {
+    pub fn compute_covered_parts(&self, range: Range<usize>) -> Result<Option<ConveredParts>> {
         ensure!(
             range.end <= self.size,
             OutOfRange {
@@ -174,29 +174,26 @@ impl ObkvObjectMeta {
                 object_size: self.size,
             }
         );
+
+        // if the range is empty, return empty parts
+        if range.is_empty() {
+            return Ok(None);
+        }
+
         let batch_size = self.part_size;
         let start_index = range.start / batch_size;
         let start_offset = range.start % batch_size;
 
-        // if the range is empty, return empty parts
-        let inclusive_end = if range.is_empty() {
-            return Ok(ConveredParts {
-                part_keys: &self.parts[0..0],
-                start_offset: 0,
-                end_offset: 0,
-            });
-        } else {
-            range.end - 1
-        };
+        let inclusive_end = range.end - 1;
 
         let end_index = inclusive_end / batch_size;
         let end_offset = inclusive_end % batch_size;
 
-        Ok(ConveredParts {
+        Ok(Some(ConveredParts {
             part_keys: &self.parts[start_index..=end_index],
             start_offset,
             end_offset,
-        })
+        }))
     }
 }
 
@@ -327,7 +324,7 @@ mod test {
         let meta = build_test_meta0();
 
         let range1 = Range { start: 0, end: 1 };
-        let expect = meta.compute_covered_parts(range1).unwrap();
+        let expect = meta.compute_covered_parts(range1).unwrap().unwrap();
         assert!(expect.part_keys.len() == 1);
         assert!(expect.start_offset == 0);
         assert!(expect.end_offset == 0);
@@ -336,7 +333,7 @@ mod test {
             start: 0,
             end: 1024,
         };
-        let expect = meta.compute_covered_parts(range1).unwrap();
+        let expect = meta.compute_covered_parts(range1).unwrap().unwrap();
         assert!(expect.part_keys.len() == 1);
         assert!(expect.start_offset == 0);
         assert!(expect.end_offset == 1023);
@@ -345,7 +342,7 @@ mod test {
             start: 0,
             end: 8190,
         };
-        let expect = meta.compute_covered_parts(range1).unwrap();
+        let expect = meta.compute_covered_parts(range1).unwrap().unwrap();
         assert!(expect.part_keys.len() == 8);
         assert!(expect.start_offset == 0);
         assert!(expect.end_offset == 1021);
@@ -354,7 +351,7 @@ mod test {
             start: 1023,
             end: 1025,
         };
-        let expect = meta.compute_covered_parts(range1).unwrap();
+        let expect = meta.compute_covered_parts(range1).unwrap().unwrap();
         assert!(expect.part_keys.len() == 2);
         assert!(expect.start_offset == 1023);
         assert!(expect.end_offset == 0);
@@ -363,7 +360,7 @@ mod test {
             start: 8189,
             end: 8190,
         };
-        let expect = meta.compute_covered_parts(range1).unwrap();
+        let expect = meta.compute_covered_parts(range1).unwrap().unwrap();
         assert!(expect.part_keys.len() == 1);
         assert!(expect.start_offset == 1021);
         assert!(expect.end_offset == 1021);
@@ -380,16 +377,14 @@ mod test {
             start: 0,
             end: 1024,
         };
-        let expect = meta.compute_covered_parts(range1).unwrap();
+        let expect = meta.compute_covered_parts(range1).unwrap().unwrap();
         assert!(expect.part_keys.len() == 1);
         assert!(expect.start_offset == 0);
         assert!(expect.end_offset == 1023);
 
         let range1 = Range { start: 0, end: 0 };
         let expect = meta.compute_covered_parts(range1).unwrap();
-        assert!(expect.part_keys.is_empty());
-        assert!(expect.start_offset == 0);
-        assert!(expect.end_offset == 0);
+        assert!(expect.is_none());
     }
 
     fn build_test_meta0() -> ObkvObjectMeta {
