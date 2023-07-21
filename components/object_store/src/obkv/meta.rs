@@ -387,7 +387,7 @@ mod test {
 
         let range1 = Range { start: 0, end: 0 };
         let expect = meta.compute_covered_parts(range1).unwrap();
-        assert!(expect.part_keys.len() == 0);
+        assert!(expect.part_keys.is_empty());
         assert!(expect.start_offset == 0);
         assert!(expect.end_offset == 0);
     }
