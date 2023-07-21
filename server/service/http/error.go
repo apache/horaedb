@@ -18,4 +18,8 @@ var (
 	ErrHealthCheck       = coderr.NewCodeError(coderr.Internal, "server health check")
 	ErrParseTopology     = coderr.NewCodeError(coderr.Internal, "parse topology type")
 	ErrUpdateFlowLimiter = coderr.NewCodeError(coderr.Internal, "update flow limiter")
+	ErrAddLearner        = coderr.NewCodeError(coderr.Internal, "add member as learner")
+	ErrListMembers       = coderr.NewCodeError(coderr.Internal, "get member list")
+	ErrRemoveMembers     = coderr.NewCodeError(coderr.Internal, "remove member")
+	ErrGetMember         = coderr.NewCodeError(coderr.Internal, "get member")
 )

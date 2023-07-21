@@ -159,12 +159,13 @@ func (m *Member) CampaignAndKeepLeader(ctx context.Context, leaseTTLSec int64, c
 	closeLeaseOnce := sync.Once{}
 	closeLeaseWg := sync.WaitGroup{}
 	closeLease := func() {
-		closeLeaseWg.Wait()
+		log.Debug("try to close lease")
 		ctx1, cancel := context.WithTimeout(context.Background(), m.rpcTimeout)
 		defer cancel()
 		if err := newLease.Close(ctx1); err != nil {
 			m.logger.Error("close lease failed", zap.Error(err))
 		}
+		log.Debug("try to close lease finish")
 	}
 	defer closeLeaseOnce.Do(closeLease)
 
@@ -227,7 +228,7 @@ func (m *Member) CampaignAndKeepLeader(ctx context.Context, leaseTTLSec int64, c
 			}
 			etcdLeader := m.etcdLeaderGetter.EtcdLeaderID()
 			if etcdLeader != m.ID {
-				m.logger.Info("etcd leader changed and should re-assign the leadership", zap.String("old-leader", m.Name))
+				m.logger.Info("etcd leader changed and should re-assign the leadership", zap.String("old-leader", m.Name), zap.Uint64("new-leader", etcdLeader))
 				return nil
 			}
 		case <-ctx.Done():

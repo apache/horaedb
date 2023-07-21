@@ -173,7 +173,7 @@ func (srv *Server) startServer(_ context.Context) error {
 	srv.clusterManager = manager
 	srv.flowLimiter = limiter.NewFlowLimiter(srv.cfg.FlowLimiter)
 
-	api := http.NewAPI(manager, srv.status, http.NewForwardClient(srv.member, srv.cfg.HTTPPort), srv.flowLimiter)
+	api := http.NewAPI(manager, srv.status, http.NewForwardClient(srv.member, srv.cfg.HTTPPort), srv.flowLimiter, srv.etcdCli)
 	httpService := http.NewHTTPService(srv.cfg.HTTPPort, time.Second*10, time.Second*10, api.NewAPIRouter())
 	go func() {
 		err := httpService.Start()
