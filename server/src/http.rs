@@ -3,8 +3,8 @@
 //! Http service
 
 use std::{
-    collections::HashMap, convert::Infallible, error::Error as StdError, net::IpAddr, sync::Arc,
-    time::Duration,
+    collections::HashMap, convert::Infallible, error::Error as StdError, fmt::format, net::IpAddr,
+    sync::Arc, time::Duration,
 };
 
 use analytic_engine::setup::OpenedWals;
@@ -523,23 +523,25 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(warp::get())
             .and(self.with_opened_wals())
             .and_then(|wals: OpenedWals| async move {
-                let stats = [
-                    "[Data wal stats]:",
-                    &wals
-                        .data_wal
-                        .get_statistics()
-                        .await
-                        .unwrap_or_else(|| "Unknown".to_string()),
-                    "[Manifest wal stats]:",
-                    &wals
-                        .manifest_wal
-                        .get_statistics()
-                        .await
-                        .unwrap_or_else(|| "Unknown".to_string()),
-                ]
-                .join("\n");
+                let wal_stats = wals
+                    .data_wal
+                    .get_statistics()
+                    .await
+                    .unwrap_or_else(|| "Unknown".to_string());
 
-                std::result::Result::<_, Rejection>::Ok(reply::json(&stats))
+                let manifest_wal_stats = wals
+                    .manifest_wal
+                    .get_statistics()
+                    .await
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                let stats = format!(
+                    "[Data wal stats]:\n{wal_stats}
+                \n\n------------------------------------------------------\n\n
+                [Manifest wal stats]:\n{manifest_wal_stats}"
+                );
+
+                std::result::Result::<_, Rejection>::Ok(stats.into_response())
             })
     }
 

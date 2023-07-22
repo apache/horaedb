@@ -97,7 +97,8 @@ impl<M: MessageQueue> WalManager for MessageQueueImpl<M> {
     }
 
     async fn get_statistics(&self) -> Option<String> {
-        let stats = self.0.get_statistics().await;
+        let wal_stats = self.0.get_statistics().await;
+        let stats = format!("#MessageQueueWal stats:\n{wal_stats}\n");
 
         Some(stats)
     }
