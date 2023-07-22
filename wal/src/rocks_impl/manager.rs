@@ -53,6 +53,15 @@ struct TableUnit {
     delete_lock: Mutex<()>,
 }
 
+impl std::fmt::Debug for TableUnit {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TableUnit")
+            .field("id", &self.id)
+            .field("next_sequence_num", &self.next_sequence_num)
+            .finish()
+    }
+}
+
 impl TableUnit {
     /// Allocate a continuous range of [SequenceNumber] and returns
     /// the start [SequenceNumber] of the range [start, start+`number`).
@@ -895,12 +904,28 @@ impl WalManager for RocksImpl {
         ))
     }
 
-    fn get_statistics(&self) -> Option<String> {
-        if let Some(stats) = &self.stats {
+    async fn get_statistics(&self) -> Option<String> {
+        // RocksDB stats.
+        let rocksdb_stats = if let Some(stats) = &self.stats {
             stats.to_string()
         } else {
             None
+        };
+
+        // Wal stats.
+        let table_units = self.table_units.read().unwrap();
+        let mut wal_stats = Vec::with_capacity(table_units.len());
+        for table_unit in table_units.values() {
+            wal_stats.push(format!("{:?}", table_unit.as_ref()));
         }
+        let wal_stats = wal_stats.join("\n");
+
+        let stats = format!(
+            "#RocksDB stats:\n{rocksdb_stats:?}\n\n
+                                    #Wal stats:\n{wal_stats:?}\n"
+        );
+
+        Some(stats)
     }
 }
 
