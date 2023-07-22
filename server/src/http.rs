@@ -3,8 +3,8 @@
 //! Http service
 
 use std::{
-    collections::HashMap, convert::Infallible, error::Error as StdError, fmt::format, net::IpAddr,
-    sync::Arc, time::Duration,
+    collections::HashMap, convert::Infallible, error::Error as StdError, net::IpAddr, sync::Arc,
+    time::Duration,
 };
 
 use analytic_engine::setup::OpenedWals;
