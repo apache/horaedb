@@ -1407,10 +1407,6 @@ impl From<DatumKind> for DataType {
 
 #[cfg(test)]
 mod tests {
-    
-
-    
-    
 
     use super::*;
 
