@@ -11,7 +11,7 @@ use std::{
     },
 };
 
-use skiplist::{KeyComparator, Skiplist};
+use skiplist::KeyComparator;
 
 use crate::memtable::{
     columnar::ColumnarMemTable,

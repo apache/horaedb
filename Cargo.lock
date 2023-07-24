@@ -635,6 +635,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4a4ddaa51a5bc52a6948f74c06d20aaaddb71924eab79b8c97a8c556e942d6a"
 
 [[package]]
+name = "benchmarks"
+version = "1.2.2"
+dependencies = [
+ "analytic_engine",
+ "arena",
+ "arrow 38.0.0",
+ "base64 0.13.1",
+ "clap 3.2.23",
+ "common_types",
+ "common_util",
+ "criterion",
+ "env_logger",
+ "futures 0.3.28",
+ "log",
+ "object_store 1.2.2",
+ "parquet",
+ "parquet_ext",
+ "pprof 0.10.1",
+ "rand 0.7.3",
+ "serde",
+ "snafu 0.6.10",
+ "table_engine",
+ "table_kv",
+ "tokio",
+ "trace_metric",
+ "wal",
+ "zstd 0.12.3+zstd.1.5.2",
+]
+
+[[package]]
 name = "bigdecimal"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1421,6 +1451,15 @@ name = "core-foundation-sys"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
+
+[[package]]
+name = "cpp_demangle"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eeaa953eaad386a53111e47172c2fedba671e5684c8dd601a5f474f4f118710f"
+dependencies = [
+ "cfg-if 1.0.0",
+]
 
 [[package]]
 name = "cpp_demangle"
@@ -3725,6 +3764,17 @@ dependencies = [
 
 [[package]]
 name = "nix"
+version = "0.24.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa52e972a9a719cecb6864fb88568781eb706bac2cd1d4f04a648542dbf78069"
+dependencies = [
+ "bitflags",
+ "cfg-if 1.0.0",
+ "libc",
+]
+
+[[package]]
+name = "nix"
 version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfdda3d196821d6af13126e40375cdf7da646a96114af134d5f417a9a1dc8e1a"
@@ -4389,6 +4439,28 @@ dependencies = [
 
 [[package]]
 name = "pprof"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6472bfed9475542ac46c518734a8d06d71b0f6cb2c17f904aa301711a57786f"
+dependencies = [
+ "backtrace",
+ "cfg-if 1.0.0",
+ "criterion",
+ "findshlibs",
+ "inferno",
+ "libc",
+ "log",
+ "nix 0.24.3",
+ "once_cell",
+ "parking_lot 0.12.1",
+ "smallvec",
+ "symbolic-demangle 9.2.1",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "pprof"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "196ded5d4be535690899a4631cc9f18cdc41b7ebf24a79400f46f48e49a11059"
@@ -4403,7 +4475,7 @@ dependencies = [
  "once_cell",
  "parking_lot 0.12.1",
  "smallvec",
- "symbolic-demangle",
+ "symbolic-demangle 10.2.1",
  "tempfile",
  "thiserror",
 ]
@@ -4505,7 +4577,7 @@ dependencies = [
  "jemalloc-sys",
  "jemallocator",
  "log",
- "pprof",
+ "pprof 0.11.1",
 ]
 
 [[package]]
@@ -6068,6 +6140,18 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "symbolic-common"
+version = "9.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "800963ba330b09a2ae4a4f7c6392b81fbc2784099a98c1eac68c3437aa9382b2"
+dependencies = [
+ "debugid",
+ "memmap2",
+ "stable_deref_trait",
+ "uuid 1.3.3",
+]
+
+[[package]]
+name = "symbolic-common"
 version = "10.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b55cdc318ede251d0957f07afe5fed912119b8c1bc5a7804151826db999e737"
@@ -6080,13 +6164,24 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
+version = "9.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b940a1fdbc72bb3369e38714efe6cd332dbbe46d093cf03d668b9ac390d1ad0"
+dependencies = [
+ "cpp_demangle 0.3.5",
+ "rustc-demangle",
+ "symbolic-common 9.2.1",
+]
+
+[[package]]
+name = "symbolic-demangle"
 version = "10.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79be897be8a483a81fff6a3a4e195b4ac838ef73ca42d348b3f722da9902e489"
 dependencies = [
- "cpp_demangle",
+ "cpp_demangle 0.4.0",
  "rustc-demangle",
- "symbolic-common",
+ "symbolic-common 10.2.1",
 ]
 
 [[package]]

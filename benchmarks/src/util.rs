@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Utilities.
 
@@ -24,6 +24,7 @@ use analytic_engine::{
 use common_types::{
     bytes::{BufMut, SafeBufMut},
     projected_schema::ProjectedSchema,
+    row::{RowGroupBuilder, RowGroupSlicer, RowGroupSplitter},
     schema::{IndexInWriterSchema, Schema},
 };
 use common_util::{
@@ -139,10 +140,16 @@ pub async fn load_sst_to_memtable(
 
         for i in 0..batch.num_rows() {
             let row = batch.clone_row_at(i);
-
+            let row_group = RowGroupBuilder::with_rows(schema.clone(), vec![row])
+                .unwrap()
+                .build();
+            let row_group_slicer = RowGroupSlicer::from(&row_group);
+            let row_group_splitter = RowGroupSplitter::new(vec![0], &row_group_slicer);
             let key_seq = KeySequence::new(sequence, i as u32);
 
-            memtable.put(&mut ctx, key_seq, &row, schema).unwrap();
+            memtable
+                .put(&mut ctx, key_seq, &row_group_splitter, schema)
+                .unwrap();
 
             sequence += 1;
         }

@@ -5,7 +5,7 @@
 pub mod columnar;
 pub mod factory;
 pub mod key;
-// pub mod skiplist;
+pub mod skiplist;
 
 use std::{ops::Bound, sync::Arc, time::Instant};
 
