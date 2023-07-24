@@ -1567,6 +1567,7 @@ dependencies = [
  "prost",
  "serde",
  "serde_json",
+ "siphasher",
  "snafu 0.6.10",
  "sqlparser",
 ]

@@ -5,6 +5,7 @@
 use std::{fmt, ops::Deref};
 
 use arrow::array::ArrayRef as DfArrayRef;
+use common_types::{column::ColumnBlock, datum::DatumView};
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     physical_plan::Accumulator as DfAccumulator,
@@ -14,7 +15,7 @@ use generic_error::GenericError;
 use macros::define_result;
 use snafu::Snafu;
 
-use crate::functions::{ScalarValue, ScalarValueRef};
+use crate::functions::ScalarValue;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
@@ -43,11 +44,11 @@ impl From<ScalarValue> for State {
     }
 }
 
-pub struct Input<'a>(&'a [DfScalarValue]);
+pub struct Input<'a>(&'a [DatumView<'a>]);
 
 impl<'a> Input<'a> {
-    pub fn iter(&self) -> impl Iterator<Item = ScalarValueRef> {
-        self.0.iter().map(ScalarValueRef::from)
+    pub fn iter(&self) -> impl Iterator<Item = &DatumView<'a>> {
+        self.0.iter()
     }
 
     pub fn len(&self) -> usize {
@@ -58,8 +59,8 @@ impl<'a> Input<'a> {
         self.0.is_empty()
     }
 
-    pub fn value(&self, index: usize) -> ScalarValueRef {
-        ScalarValueRef::from(&self.0[index])
+    pub fn value(&self, index: usize) -> &DatumView<'a> {
+        self.0.get(index).unwrap()
     }
 }
 
@@ -121,12 +122,25 @@ impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
             return Ok(());
         };
 
-        let mut row = Vec::with_capacity(values.len());
-        (0..values[0].len()).try_for_each(|index| {
+        let column_blocks = values
+            .iter()
+            .map(|array| {
+                ColumnBlock::try_cast_arrow_array_ref(array).map_err(|e| {
+                    DataFusionError::Execution(format!(
+                        "Accumulator failed to cast arrow array to column block, column, err:{e}"
+                    ))
+                })
+            })
+            .collect::<DfResult<Vec<_>>>()?;
+
+        let mut row = Vec::with_capacity(column_blocks.len());
+        let num_rows = column_blocks[0].num_rows();
+        (0..num_rows).try_for_each(|index| {
             row.clear();
 
-            for col in values {
-                row.push(DfScalarValue::try_from_array(col, index)?);
+            for column_block in &column_blocks {
+                let datum_view = column_block.datum_view(index);
+                row.push(datum_view);
             }
             let input = Input(&row);
 
@@ -140,12 +154,28 @@ impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
         if states.is_empty() {
             return Ok(());
         };
-        (0..states[0].len()).try_for_each(|index| {
-            let v = states
-                .iter()
-                .map(|array| DfScalarValue::try_from_array(array, index))
-                .collect::<DfResult<Vec<DfScalarValue>>>()?;
-            let state_ref = StateRef(Input(&v));
+
+        let column_blocks = states
+            .iter()
+            .map(|array| {
+                ColumnBlock::try_cast_arrow_array_ref(array).map_err(|e| {
+                    DataFusionError::Execution(format!(
+                        "Accumulator failed to cast arrow array to column block, column, err:{e}"
+                    ))
+                })
+            })
+            .collect::<DfResult<Vec<_>>>()?;
+
+        let mut row = Vec::with_capacity(column_blocks.len());
+        let num_rows = column_blocks[0].num_rows();
+        (0..num_rows).try_for_each(|index| {
+            row.clear();
+
+            for column_block in &column_blocks {
+                let datum_view = column_block.datum_view(index);
+                row.push(datum_view);
+            }
+            let state_ref = StateRef(Input(&row));
 
             self.accumulator.merge(state_ref).map_err(|e| {
                 DataFusionError::Execution(format!("Accumulator failed to merge, err:{e}"))

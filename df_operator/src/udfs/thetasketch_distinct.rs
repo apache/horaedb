@@ -103,13 +103,14 @@ struct HllDistinct {
     hll: HyperLogLog,
 }
 
-// TODO(yingwen): Avoid base64 encode/decode if datafusion supports converting
 // binary datatype to scalarvalue.
+// TODO: Can we avoid clone?
 impl HllDistinct {
     fn merge_impl(&mut self, states: StateRef) -> Result<()> {
         // The states are serialize from hll.
         ensure!(states.len() == 1, InvalidStateLen);
         let value_ref = states.value(0);
+        // Try to deserialize the hll.
         let hll_string = value_ref.as_str().context(StateNotString)?;
         let hll_bytes = base64::decode(hll_string).context(DecodeBase64)?;
         // Try to deserialize the hll.
@@ -145,7 +146,7 @@ impl Accumulator for HllDistinct {
     fn update(&mut self, values: Input) -> aggregate::Result<()> {
         for value_ref in values.iter() {
             // Insert value into hll.
-            self.hll.insert(&value_ref);
+            self.hll.insert(value_ref);
         }
 
         Ok(())

@@ -90,6 +90,23 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+// Float wrapper over f32/f64. Just because we cannot build std::hash::Hash for
+// floats directly we have to do it through type wrapper Fork from datafusion
+struct Fl<T>(T);
+
+macro_rules! hash_float_value {
+    ($(($t:ty, $i:ty)),+) => {
+        $(impl std::hash::Hash for Fl<$t> {
+            #[inline]
+            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                state.write(&<$i>::from_ne_bytes(self.0.to_ne_bytes()).to_ne_bytes())
+            }
+        })+
+    };
+}
+
+hash_float_value!((f64, u64), (f32, u32));
+
 // FIXME(yingwen): How to handle timezone?
 
 /// Data type of datum
@@ -1138,6 +1155,37 @@ impl<'a> DatumView<'a> {
             }
         }
     }
+
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            DatumView::String(v) => Some(v),
+            _ => None,
+        }
+    }
+}
+
+impl<'a> std::hash::Hash for DatumView<'a> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            DatumView::Null => 1.hash(state),
+            DatumView::Timestamp(v) => v.hash(state),
+            DatumView::Double(v) => Fl(*v).hash(state),
+            DatumView::Float(v) => Fl(*v).hash(state),
+            DatumView::Varbinary(v) => v.hash(state),
+            DatumView::String(v) => v.hash(state),
+            DatumView::UInt64(v) => v.hash(state),
+            DatumView::UInt32(v) => v.hash(state),
+            DatumView::UInt16(v) => v.hash(state),
+            DatumView::UInt8(v) => v.hash(state),
+            DatumView::Int64(v) => v.hash(state),
+            DatumView::Int32(v) => v.hash(state),
+            DatumView::Int16(v) => v.hash(state),
+            DatumView::Int8(v) => v.hash(state),
+            DatumView::Boolean(v) => v.hash(state),
+            DatumView::Date(v) => v.hash(state),
+            DatumView::Time(v) => v.hash(state),
+        }
+    }
 }
 
 impl DatumKind {
@@ -1359,6 +1407,11 @@ impl From<DatumKind> for DataType {
 
 #[cfg(test)]
 mod tests {
+    
+
+    
+    
+
     use super::*;
 
     #[test]
@@ -1581,4 +1634,20 @@ mod tests {
             }
         }
     }
+
+    // #[test]
+    // fn test_hash() {
+    //     let a = DatumView::Int32(142);
+    //     let b = ScalarValue::Int32(Some(142));
+    //     println!("dv:{}, sc:{}, Some:{}", get_hash(&a, 0), get_hash(&b, 0),
+    // get_hash(&Some(142), 0)); }
+
+    // fn get_hash<V: Hash>(value: &V, seed: u128) -> u64 {
+    //     let key0 = (seed >> 64) as u64;
+    //     let key1 = seed as u64;
+    //     let mut sip = SipHasher13::new_with_keys(key0, key1);
+    //     value.hash(&mut sip);
+    //     let x = sip.finish();
+    //     x
+    // }
 }
