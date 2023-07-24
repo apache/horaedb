@@ -516,6 +516,8 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                     let len = datum.size();
                     encoded_len += encoded_len_varint(len as u64) + len;
                 }
+            } else {
+                unreachable!("The column is ensured to be non-null");
             }
         }
 
@@ -537,8 +539,7 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                     &mut next_string_offset,
                 )?;
             } else {
-                datum_offset +=
-                    byte_size_of_datum(&self.table_schema.column(index_in_table).data_type);
+                unreachable!("The column is ensured to be non-null");
             }
         }
 
@@ -747,7 +748,7 @@ mod tests {
             index_schema.reserve_columns(schema.num_columns());
             // Make the final column is None.
             for i in 0..schema.num_columns() {
-                let col_idx = (i != schema.num_columns() - 1).then(|| i);
+                let col_idx = (i != schema.num_columns() - 1).then_some(i);
                 index_schema.push_column(col_idx);
             }
             index_schema
