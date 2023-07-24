@@ -12,8 +12,7 @@ use std::{
 };
 
 use common_types::{
-    column::Column,
-    row::{Row, RowGroupSlicer, RowGroupSplitter},
+    row::RowGroupSplitter,
     schema::{self, Schema},
     time::{TimeRange, Timestamp},
     SequenceNumber,

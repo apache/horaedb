@@ -74,6 +74,12 @@ pub enum Error {
 
     #[snafu(display("Timeout when iter memtable.\nBacktrace:\n{}", backtrace))]
     IterTimeout { backtrace: Backtrace },
+
+    #[snafu(display("msg:{msg}, err:{source}"))]
+    Internal { msg: String, source: GenericError },
+
+    #[snafu(display("msg:{msg}x"))]
+    InternalNoCause { msg: String },
 }
 
 define_result!(Error);

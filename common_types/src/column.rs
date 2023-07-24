@@ -8,18 +8,18 @@ use std::{fmt::Formatter, mem, sync::Arc};
 
 use arrow::{
     array::{
-        ArrayDataBuilder, ArrayRef, BinaryArray, BooleanArray, Float64Array, Int32Array,
-        Int64Array, StringArray, TimestampNanosecondArray, UInt64Array,
+        ArrayDataBuilder, ArrayRef, BinaryArray, BooleanArray, Float32Array, Float64Array,
+        Int16Array, Int32Array, Int64Array, Int8Array, StringArray, TimestampNanosecondArray,
+        UInt16Array, UInt32Array, UInt64Array, UInt8Array,
     },
     buffer::NullBuffer,
     datatypes::DataType,
     error::ArrowError,
 };
-use arrow::array::{Float32Array, Int16Array, Int8Array, UInt16Array, UInt32Array, UInt8Array};
-use bytes_ext::{BufMut, Bytes, BytesMut};
+use bytes_ext::Bytes;
 use ceresdbproto::storage::value;
 use datafusion::parquet::data_type::AsBytes;
-use snafu::{ResultExt, Snafu};
+use snafu::{Backtrace, ResultExt, Snafu};
 
 use crate::{
     bitset::BitSet,
@@ -43,6 +43,23 @@ pub enum Error {
 
     #[snafu(display("Internal MUB error constructing Arrow Array: {}", source))]
     CreatingArrowArray { source: ArrowError },
+
+    #[snafu(display(
+        "Data type conflict, expect:{:?}, given:{:?}.\nBacktrace:\n{}",
+        expect,
+        given,
+        backtrace
+    ))]
+    ConflictType {
+        expect: ColumnDataKind,
+        given: DatumKind,
+        backtrace: Backtrace,
+    },
+    #[snafu(display("Data type unsupported, kind:{:?}.\nBacktrace:\n{}", kind, backtrace))]
+    UnsupportedType {
+        kind: DatumKind,
+        backtrace: Backtrace,
+    },
 }
 
 /// A specialized `Error` for [`Column`] errors
@@ -67,6 +84,24 @@ impl IntoIterator for Column {
     }
 }
 
+#[derive(Debug)]
+pub enum ColumnDataKind {
+    F64,
+    F32,
+    I64,
+    I32,
+    I16,
+    I8,
+    U64,
+    U32,
+    U16,
+    U8,
+    String,
+    StringBytes,
+    Varbinary,
+    Bool,
+}
+
 /// The data for a column
 #[derive(Debug, Clone)]
 #[allow(missing_docs)]
@@ -85,6 +120,27 @@ pub enum ColumnData {
     StringBytes(Vec<StringBytes>),
     Varbinary(Vec<Vec<u8>>),
     Bool(BitSet),
+}
+
+impl ColumnData {
+    pub fn kind(&self) -> ColumnDataKind {
+        match self {
+            Self::F64(_) => ColumnDataKind::F64,
+            Self::F32(_) => ColumnDataKind::F32,
+            Self::I64(_) => ColumnDataKind::I64,
+            Self::I32(_) => ColumnDataKind::I32,
+            Self::I16(_) => ColumnDataKind::I16,
+            Self::I8(_) => ColumnDataKind::I8,
+            Self::U64(_) => ColumnDataKind::U64,
+            Self::U32(_) => ColumnDataKind::U32,
+            Self::U16(_) => ColumnDataKind::U16,
+            Self::U8(_) => ColumnDataKind::U8,
+            Self::String(_) => ColumnDataKind::String,
+            Self::StringBytes(_) => ColumnDataKind::StringBytes,
+            Self::Varbinary(_) => ColumnDataKind::Varbinary,
+            Self::Bool(_) => ColumnDataKind::Bool,
+        }
+    }
 }
 
 impl std::fmt::Display for ColumnData {
@@ -175,8 +231,7 @@ impl IntoIterator for ColumnData {
 }
 
 impl Column {
-    #[allow(dead_code)]
-    pub fn new(row_count: usize, datum_kind: DatumKind) -> Self {
+    pub fn new(row_count: usize, datum_kind: DatumKind) -> Result<Self> {
         let mut valid = BitSet::new();
         valid.append_unset(row_count);
 
@@ -200,16 +255,16 @@ impl Column {
             DatumKind::String => ColumnData::StringBytes(vec![StringBytes::new(); row_count]),
             DatumKind::Varbinary => ColumnData::Varbinary(vec![vec![]; row_count]),
             kind => {
-                todo!()
+                return UnsupportedType { kind }.fail();
             }
         };
 
-        Self {
+        Ok(Self {
             datum_kind,
             valid,
             data,
             to_insert: 0,
-        }
+        })
     }
 
     pub fn append_column(&mut self, mut column: Column) {
@@ -232,9 +287,7 @@ impl Column {
             (ColumnData::I16(data), ColumnData::I16(ref mut column_data)) => {
                 data.append(column_data)
             }
-            (ColumnData::I8(data), ColumnData::I8(ref mut column_data)) => {
-                data.append(column_data)
-            }
+            (ColumnData::I8(data), ColumnData::I8(ref mut column_data)) => data.append(column_data),
             (ColumnData::U64(data), ColumnData::U64(ref mut column_data)) => {
                 data.append(column_data)
             }
@@ -244,9 +297,7 @@ impl Column {
             (ColumnData::U16(data), ColumnData::U16(ref mut column_data)) => {
                 data.append(column_data)
             }
-            (ColumnData::U8(data), ColumnData::U8(ref mut column_data)) => {
-                data.append(column_data)
-            }
+            (ColumnData::U8(data), ColumnData::U8(ref mut column_data)) => data.append(column_data),
             (ColumnData::String(data), ColumnData::String(ref mut column_data)) => {
                 data.append(column_data)
             }
@@ -262,7 +313,6 @@ impl Column {
     }
 
     pub fn append_nulls(&mut self, count: usize) {
-        println!("valid: {:?}", self.valid.get(self.to_insert));
         self.to_insert += count;
     }
 
@@ -292,17 +342,21 @@ impl Column {
                 }
             }
 
-            (c, v) => println!("c: {:?}, v: {:?}", c, v),
+            (column_data, datum) => {
+                return ConflictType {
+                    expect: column_data.kind(),
+                    given: datum.kind(),
+                }
+                .fail()
+            }
         }
         self.valid.set(self.to_insert);
         self.to_insert += 1;
-        // println!("append_datum_ref, valid_len:{},
-        // to_insert:{}",self.valid.len(),self.to_insert);
         Ok(())
     }
 
     pub fn get_datum(&self, idx: usize) -> Datum {
-        if !self.valid.get(idx){
+        if !self.valid.get(idx) {
             return Datum::Null;
         }
         match self.data {
@@ -324,44 +378,6 @@ impl Column {
             ColumnData::StringBytes(ref data) => Datum::String(data[idx].clone()),
             ColumnData::Varbinary(ref data) => Datum::Varbinary(Bytes::from(data[idx].clone())),
             ColumnData::Bool(ref data) => Datum::Boolean(data.get(idx)),
-        }
-    }
-
-    pub fn get_value(&self, idx: usize) -> value::Value {
-        match self.data {
-            ColumnData::F64(ref data) => value::Value::Float64Value(data[idx]),
-            ColumnData::F32(ref data) => value::Value::Float32Value(data[idx]),
-            ColumnData::I64(ref data) => value::Value::Int64Value(data[idx]),
-            ColumnData::I32(ref data) => value::Value::Int32Value(data[idx]),
-            ColumnData::I16(ref data) => value::Value::Int16Value(data[idx] as i32),
-            ColumnData::I8(ref data) => value::Value::Int8Value(data[idx] as i32),
-            ColumnData::U64(ref data) => value::Value::Uint64Value(data[idx]),
-            ColumnData::U32(ref data) => value::Value::Uint32Value(data[idx]),
-            ColumnData::U16(ref data) => value::Value::Uint16Value(data[idx] as u32),
-            ColumnData::U8(ref data) => value::Value::Uint8Value(data[idx] as u32),
-            ColumnData::String(ref data) => value::Value::StringValue(data[idx].clone().into()),
-            ColumnData::StringBytes(ref data) => value::Value::StringValue(data[idx].to_string()),
-            ColumnData::Varbinary(ref data) => value::Value::VarbinaryValue(data[idx].clone()),
-            ColumnData::Bool(ref data) => value::Value::BoolValue(data.get(idx)),
-        }
-    }
-
-    pub fn get_bytes(&self, idx: usize, buf: &mut BytesMut) {
-        match self.data {
-            ColumnData::F64(ref data) => buf.put_slice(data[idx].to_le_bytes().as_slice()),
-            ColumnData::F32(ref data) => buf.put_slice(data[idx].to_le_bytes().as_slice()),
-            ColumnData::I64(ref data) => buf.put_slice(data[idx].to_le_bytes().as_slice()),
-            ColumnData::I32(ref data) => buf.put_slice(data[idx].to_le_bytes().as_slice()),
-            ColumnData::I16(ref data) => buf.put_slice(data[idx].to_le_bytes().as_slice()),
-            ColumnData::I8(ref data) => buf.put_slice(data[idx].to_le_bytes().as_slice()),
-            ColumnData::U64(ref data) => buf.put_slice(data[idx].to_le_bytes().as_slice()),
-            ColumnData::U32(ref data) => buf.put_slice(data[idx].to_le_bytes().as_slice()),
-            ColumnData::U16(ref data) => buf.put_slice(data[idx].to_le_bytes().as_slice()),
-            ColumnData::U8(ref data) => buf.put_slice(data[idx].to_le_bytes().as_slice()),
-            ColumnData::String(ref data) => buf.put_slice(data[idx].as_bytes()),
-            ColumnData::StringBytes(ref data) => buf.put_slice(data[idx].as_bytes()),
-            ColumnData::Varbinary(ref data) => buf.put_slice(data[idx].as_slice()),
-            ColumnData::Bool(ref _data) => todo!(),
         }
     }
 
@@ -431,7 +447,9 @@ impl Column {
             ColumnData::Bool(data) => {
                 data.append_unset(delta);
             }
-            _ => todo!(),
+            ColumnData::StringBytes(data) => {
+                data.resize(len, StringBytes::new());
+            }
         }
     }
 
@@ -495,7 +513,6 @@ impl Column {
             ColumnData::String(v) => v.iter().map(|s| s.len()).sum(),
             ColumnData::StringBytes(v) => v.iter().map(|s| s.len()).sum(),
             ColumnData::Varbinary(v) => v.iter().map(|s| s.len()).sum(),
-            _ => todo!(),
         }
     }
 

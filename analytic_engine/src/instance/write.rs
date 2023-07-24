@@ -314,7 +314,9 @@ impl<'a> MemTableWriter<'a> {
                     continue;
                 }
                 let time_range = TimeRange::bucket_of(timestamp, segment_duration.0).unwrap();
-                let idx = segment_idxs.entry(time_range.inclusive_start()).or_default();
+                let idx = segment_idxs
+                    .entry(time_range.inclusive_start())
+                    .or_default();
                 idx.push(row_idx);
             }
 

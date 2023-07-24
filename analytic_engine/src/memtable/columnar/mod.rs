@@ -9,22 +9,26 @@ use std::{
     },
 };
 
-use arena::{Arena, BasicStats, MonoIncArena};
+use arena::MonoIncArena;
 use bytes::Bytes;
-use common_types::{column::Column, row::RowGroupSplitter, schema::Schema, SequenceNumber};
-use common_util::codec::Encoder;
+use common_types::{
+    column::Column, datum::Datum, row::RowGroupSplitter, schema::Schema, SequenceNumber,
+};
+use common_util::error::BoxError;
 use log::debug;
 use skiplist::Skiplist;
-use snafu::{ensure, ResultExt};
-use common_types::datum::Datum;
+use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::memtable::{
-    columnar::{factory::BytewiseComparator, iter::ColumnarIterImpl},
+    columnar::{
+        factory::BytewiseComparator,
+        iter::{ColumnarIterImpl, ReversedColumnarIterator},
+    },
     factory::Options,
-    key::{ComparableInternalKey, KeySequence},
-    ColumnarIterPtr, InvalidPutSequence, MemTable, PutContext, Result, ScanContext, ScanRequest,
+    key::KeySequence,
+    ColumnarIterPtr, Internal, InternalNoCause, InvalidPutSequence, MemTable, PutContext, Result,
+    ScanContext, ScanRequest,
 };
-use crate::memtable::columnar::iter::ReversedColumnarIterator;
 
 pub mod factory;
 pub mod iter;
@@ -58,45 +62,45 @@ impl MemTable for ColumnarMemTable {
     fn put(
         &self,
         ctx: &mut PutContext,
-        sequence: KeySequence,
+        _sequence: KeySequence,
         row_group: &RowGroupSplitter,
         schema: &Schema,
     ) -> Result<()> {
-        println!("ColumnarMemTable::put, row_group: {:?}", row_group);
         let row_count = row_group.split_idx.len();
         let mut columns = HashMap::with_capacity(schema.num_columns());
-        let row_num = self.row_num.load(Ordering::Relaxed);
         for i in 0..row_count {
-            let row = row_group.get(i).unwrap();
-            println!("ColumnarMemTable::put, row: {:?}", row);
-
-            // let key_encoder = ComparableInternalKey::new(sequence, schema);
-            //
-            // let internal_key = &mut ctx.key_buf;
-            // // Reset key buffer
-            // internal_key.clear();
-            // // Reserve capacity for key
-            // internal_key.reserve(key_encoder.estimate_encoded_size(row));
-            // // Encode key
-            // key_encoder.encode(internal_key, row).unwrap();
-            // self.key_index
-            //     .put(internal_key, (row_num + i).to_le_bytes().as_slice());
+            let row = row_group.get(i).box_err().context(Internal {
+                msg: "get row failed",
+            })?;
 
             for (i, column_schema) in schema.columns().iter().enumerate() {
                 let column = if let Some(column) = columns.get_mut(&column_schema.name) {
                     column
                 } else {
-                    let column = Column::new(row_count, column_schema.data_type);
+                    let column = Column::new(row_count, column_schema.data_type)
+                        .box_err()
+                        .context(Internal {
+                            msg: "new column failed",
+                        })?;
                     columns.insert(column_schema.name.to_string(), column);
-                    columns.get_mut(&column_schema.name).unwrap()
+                    columns
+                        .get_mut(&column_schema.name)
+                        .context(InternalNoCause {
+                            msg: "get column failed",
+                        })?
                 };
 
                 if let Some(writer_index) = ctx.index_in_writer.column_index_in_writer(i) {
-                    let datum=&row[writer_index];
-                    if datum==&Datum::Null {
+                    let datum = &row[writer_index];
+                    if datum == &Datum::Null {
                         column.append_nulls(1);
-                    }else{
-                        column.append_datum_ref(&row[writer_index]).unwrap();
+                    } else {
+                        column
+                            .append_datum_ref(&row[writer_index])
+                            .box_err()
+                            .context(Internal {
+                                msg: "append datum failed",
+                            })?
                     }
                 } else {
                     column.append_nulls(1);
@@ -113,7 +117,6 @@ impl MemTable for ColumnarMemTable {
             };
         }
         self.row_num.fetch_add(row_count, Ordering::Acquire);
-        println!("ColumnarMemTable::put, memtable: {:?}", memtable);
         Ok(())
     }
 
@@ -123,22 +126,28 @@ impl MemTable for ColumnarMemTable {
             ctx, request
         );
 
-        let timestamp_column = self.schema.column(self.schema.timestamp_index());
         let num_rows = self
             .memtable
             .read()
             .unwrap()
             .get(self.schema.timestamp_name())
-            .unwrap()
+            .context(InternalNoCause {
+                msg: "get timestamp column failed",
+            })?
             .len();
         let (reverse, batch_size) = (request.reverse, ctx.batch_size);
-        let iter: ColumnarIterImpl<MonoIncArena> = ColumnarIterImpl::new(
+        let arena = MonoIncArena::with_collector(
+            self.opts.arena_block_size as usize,
+            self.opts.collector.clone(),
+        );
+        let skiplist = Skiplist::with_arena(BytewiseComparator, arena);
+        let iter = ColumnarIterImpl::new(
             self.memtable.clone(),
             self.schema.clone(),
-            self.opts.clone(),
             ctx,
             request,
             self.last_sequence.load(Ordering::Acquire),
+            skiplist,
         )?;
         if reverse {
             Ok(Box::new(ReversedColumnarIterator::new(
@@ -147,7 +156,6 @@ impl MemTable for ColumnarMemTable {
         } else {
             Ok(Box::new(iter))
         }
-        // Ok(Box::new(iter))
     }
 
     fn approximate_memory_usage(&self) -> usize {

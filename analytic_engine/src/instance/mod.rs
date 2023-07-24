@@ -264,7 +264,8 @@ impl Instance {
     #[inline]
     fn should_flush_instance(&self) -> bool {
         // self.db_write_buffer_size > 0
-        //     && self.mem_usage_collector.total_memory_allocated() >= self.db_write_buffer_size
+        //     && self.mem_usage_collector.total_memory_allocated() >=
+        // self.db_write_buffer_size
         self.db_write_buffer_size > 0
             && self.space_store.total_memory_usage_space() >= self.db_write_buffer_size
     }

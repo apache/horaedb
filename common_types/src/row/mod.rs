@@ -208,11 +208,15 @@ impl<'a> RowGroupSplitter<'a> {
     }
 
     pub fn get(&self, idx: usize) -> Result<&Row> {
-        let i = self.row_group.range.start + self.split_idx[idx];
-        if i > self.row_group.range.end {
-            todo!("return err")
+        let row_idx = self.row_group.range.start + self.split_idx[idx];
+        if row_idx > self.row_group.range.end {
+            return ColumnOutOfBound {
+                len: self.row_group.range.end,
+                given: row_idx,
+            }
+            .fail();
         }
-        Ok(self.row_group.row_group.get_row(i).unwrap())
+        Ok(self.row_group.row_group.get_row(row_idx).unwrap())
     }
 }
 

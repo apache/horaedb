@@ -11,7 +11,6 @@ use std::{
     },
 };
 
-use arena::MonoIncArena;
 use skiplist::{KeyComparator, Skiplist};
 
 use crate::memtable::{
