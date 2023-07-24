@@ -400,7 +400,7 @@ func (m *managerImpl) RouteTables(ctx context.Context, clusterName, schemaName s
 
 	ret, err := cluster.metadata.RouteTables(ctx, schemaName, tableNames)
 	if err != nil {
-		log.Error("get cluster", zap.Error(err), zap.String("clusterName", clusterName))
+		log.Debug("get cluster", zap.Error(err), zap.String("clusterName", clusterName))
 		return metadata.RouteTablesResult{}, errors.WithMessage(err, "cluster route tables")
 	}
 
