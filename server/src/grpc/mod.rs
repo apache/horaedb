@@ -31,11 +31,15 @@ use query_engine::executor::Executor as QueryExecutor;
 use runtime::{JoinHandle, Runtime};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
-use tokio::sync::oneshot::{self, Sender};
+use tokio::sync::{
+    oneshot::{self, Sender},
+    RwLock,
+};
 use tonic::transport::Server;
 
 use crate::grpc::{
-    meta_event_service::MetaServiceImpl, remote_engine_service::RemoteEngineServiceImpl,
+    meta_event_service::MetaServiceImpl,
+    remote_engine_service::{dedup_request::DedupMap, RemoteEngineServiceImpl},
     storage_service::StorageServiceImpl,
 };
 
@@ -269,6 +273,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             let service = RemoteEngineServiceImpl {
                 instance,
                 runtimes: runtimes.clone(),
+                dedup_map: Arc::new(RwLock::new(DedupMap::default())),
             };
             RemoteEngineServiceServer::new(service)
         };

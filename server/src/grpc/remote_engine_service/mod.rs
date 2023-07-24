@@ -27,7 +27,7 @@ use table_engine::{
     table::TableRef,
 };
 use time_ext::InstantExt;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
@@ -35,9 +35,13 @@ use crate::grpc::{
     metrics::{
         REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC, REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
     },
-    remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+    remote_engine_service::{
+        dedup_request::{DedupMap, Notifiers, RequestKey},
+        error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+    },
 };
 
+pub mod dedup_request;
 mod error;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
@@ -47,6 +51,7 @@ const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
 pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {
     pub instance: InstanceRef<Q>,
     pub runtimes: Arc<EngineRuntimes>,
+    pub dedup_map: Arc<RwLock<DedupMap>>,
 }
 
 impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
@@ -57,15 +62,59 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
         let instant = Instant::now();
         let ctx = self.handler_ctx();
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
-        let handle = self.runtimes.read_runtime.spawn(async move {
-            let read_request = request.into_inner();
-            handle_stream_read(ctx, read_request).await
-        });
+
+        let request = request.into_inner();
+        let table_engine::remote::model::ReadRequest {
+            table,
+            read_request,
+        } = request.clone().try_into().box_err().context(ErrWithCause {
+            code: StatusCode::BadRequest,
+            msg: "fail to convert read request",
+        })?;
+
+        let request_key = RequestKey::new(
+            table.table,
+            read_request.predicate.clone(),
+            read_request.projected_schema.projection(),
+            read_request.order,
+        );
+
+        {
+            let mut dedup_map = self.dedup_map.write().await;
+            match dedup_map.get_notifiers(request_key.clone()) {
+                Some(notifiers) => {
+                    let txs = notifiers.get_txs();
+                    let mut notifiers = Notifiers::new(txs.clone());
+                    notifiers.add_tx(tx);
+                    dedup_map.add_notifiers(request_key.clone(), notifiers);
+
+                    REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+                        .stream_read
+                        .observe(instant.saturating_elapsed().as_secs_f64());
+                    return Ok(ReceiverStream::new(rx));
+                }
+                None => {
+                    let mut notifiers = Notifiers::default();
+                    notifiers.add_tx(tx);
+                    dedup_map.add_notifiers(request_key.clone(), notifiers);
+                }
+            }
+        }
+
+        let handle = self
+            .runtimes
+            .read_runtime
+            .spawn(async move { handle_stream_read(ctx, request).await });
         let streams = handle.await.box_err().context(ErrWithCause {
             code: StatusCode::Internal,
             msg: "fail to join task",
         })??;
 
+        let mut dedup_map = self.dedup_map.write().await;
+        let txs = dedup_map
+            .get_notifiers(request_key.clone())
+            .unwrap()
+            .get_txs();
         for stream in streams.streams {
             let mut stream = stream.map(|result| {
                 result.box_err().context(ErrWithCause {
@@ -73,16 +122,37 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
                     msg: "record batch failed",
                 })
             });
-            let tx = tx.clone();
+
+            let txs = txs.clone();
             self.runtimes.read_runtime.spawn(async move {
                 let mut num_rows = 0;
                 while let Some(batch) = stream.next().await {
-                    if let Ok(record_batch) = &batch {
-                        num_rows += record_batch.num_rows();
-                    }
-                    if let Err(e) = tx.send(batch).await {
-                        error!("Failed to send handler result, err:{}.", e);
-                        break;
+                    for tx in &txs {
+                        match &batch {
+                            Ok(record_batch) => {
+                                num_rows += record_batch.num_rows();
+                                if let Err(e) = tx.send(Ok(record_batch.clone())).await {
+                                    error!("Failed to send handler result, err:{}.", e);
+                                    break;
+                                }
+                            }
+                            // TODO(shuangxiao): error clone
+                            Err(_) => {
+                                if let Err(e) = tx
+                                    .send(
+                                        ErrNoCause {
+                                            code: StatusCode::Internal,
+                                            msg: "failed to handler request".to_string(),
+                                        }
+                                        .fail(),
+                                    )
+                                    .await
+                                {
+                                    error!("Failed to send handler result, err:{}.", e);
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
                 REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
@@ -90,6 +160,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
                     .inc_by(num_rows as u64);
             });
         }
+        dedup_map.delete_notifiers(&request_key);
 
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .stream_read
