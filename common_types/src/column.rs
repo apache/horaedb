@@ -262,7 +262,8 @@ impl Column {
     }
 
     pub fn append_nulls(&mut self, count: usize) {
-        self.valid.append_unset(count);
+        println!("valid: {:?}", self.valid.get(self.to_insert));
+        self.to_insert += count;
     }
 
     pub fn append_datum_ref(&mut self, value: &Datum) -> Result<()> {
@@ -301,6 +302,9 @@ impl Column {
     }
 
     pub fn get_datum(&self, idx: usize) -> Datum {
+        if !self.valid.get(idx){
+            return Datum::Null;
+        }
         match self.data {
             ColumnData::F64(ref data) => Datum::Double(data[idx]),
             ColumnData::F32(ref data) => Datum::Float(data[idx]),

@@ -54,6 +54,7 @@ pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
     memtable_schema: Schema,
     /// Projection of schema to read
     projected_schema: ProjectedSchema,
+    projector: RowProjector,
 
     // Options related:
     batch_size: usize,
@@ -86,6 +87,10 @@ impl ColumnarIterImpl<MonoIncArena> {
         request: ScanRequest,
         last_sequence: SequenceNumber,
     ) -> Result<Self> {
+        let projector = request
+            .projected_schema
+            .try_project_with_key(&schema)
+            .context(ProjectSchema)?;
         let arena =
             MonoIncArena::with_collector(opts.arena_block_size as usize, opts.collector.clone());
         let skiplist = Skiplist::with_arena(BytewiseComparator, arena);
@@ -94,6 +99,7 @@ impl ColumnarIterImpl<MonoIncArena> {
             current_idx: 0,
             memtable_schema: schema,
             projected_schema: request.projected_schema,
+            projector,
             batch_size: ctx.batch_size,
             deadline: ctx.deadline,
             start_user_key: request.start_user_key,
@@ -158,7 +164,6 @@ impl ColumnarIterImpl<MonoIncArena> {
     fn fetch_next_record_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
         debug_assert_eq!(State::Initialized, self.state);
         assert!(self.batch_size > 0);
-        println!("fetch_next_record_batch");
         if !self.need_dedup {
             return self.fetch_next_record_batch2();
         }
@@ -173,7 +178,6 @@ impl ColumnarIterImpl<MonoIncArena> {
             if let Some(row) = self.fetch_next_row()? {
                 let u32_vec = [row[0], row[1], row[2], row[3]];
                 let idx = u32::from_le_bytes(u32_vec);
-                println!("idx: {}", idx);
                 row_idxs.push(idx);
                 num_rows += 1;
             } else {
@@ -185,18 +189,26 @@ impl ColumnarIterImpl<MonoIncArena> {
 
         let rows = {
             let memtable = self.memtable.read().unwrap();
-            let record_schema = self.projected_schema.to_record_schema();
             let mut rows = vec![
-                Row::from_datums(vec![Datum::Null; record_schema.num_columns()]);
+                Row::from_datums(vec![Datum::Null; self.memtable_schema.num_columns()]);
                 self.batch_size
             ];
-            for (col_idx, column_schema) in record_schema.columns().iter().enumerate() {
-                if let Some(column) = memtable.get(&column_schema.name) {
-                    for (i, row_idx) in row_idxs.iter().enumerate() {
-                        let datum = column.get_datum(*row_idx as usize);
-                        rows[i].cols[col_idx] = datum;
+            for (col_idx, column_schema_idx) in self.projector.source_projection().iter().enumerate() {
+                if let Some(column_schema_idx)= column_schema_idx {
+                    let column_schema = self.memtable_schema.column(*column_schema_idx);
+                    if let Some(column) = memtable.get(&column_schema.name) {
+                        for (i, row_idx) in row_idxs.iter().enumerate() {
+                            let datum = column.get_datum(*row_idx as usize);
+                            rows[i].cols[col_idx] = datum;
+                        }
                     }
                 }
+                // if let Some(column) = memtable.get(&column_schema.name) {
+                //     for (i, row_idx) in row_idxs.iter().enumerate() {
+                //         let datum = column.get_datum(*row_idx as usize);
+                //         rows[i].cols[col_idx] = datum;
+                //     }
+                // }
             }
             rows
         };

@@ -16,6 +16,7 @@ use common_util::codec::Encoder;
 use log::debug;
 use skiplist::Skiplist;
 use snafu::{ensure, ResultExt};
+use common_types::datum::Datum;
 
 use crate::memtable::{
     columnar::{factory::BytewiseComparator, iter::ColumnarIterImpl},
@@ -67,6 +68,7 @@ impl MemTable for ColumnarMemTable {
         let row_num = self.row_num.load(Ordering::Relaxed);
         for i in 0..row_count {
             let row = row_group.get(i).unwrap();
+            println!("ColumnarMemTable::put, row: {:?}", row);
 
             // let key_encoder = ComparableInternalKey::new(sequence, schema);
             //
@@ -90,7 +92,12 @@ impl MemTable for ColumnarMemTable {
                 };
 
                 if let Some(writer_index) = ctx.index_in_writer.column_index_in_writer(i) {
-                    column.append_datum_ref(&row[writer_index]).unwrap();
+                    let datum=&row[writer_index];
+                    if datum==&Datum::Null {
+                        column.append_nulls(1);
+                    }else{
+                        column.append_datum_ref(&row[writer_index]).unwrap();
+                    }
                 } else {
                     column.append_nulls(1);
                 }
@@ -106,6 +113,7 @@ impl MemTable for ColumnarMemTable {
             };
         }
         self.row_num.fetch_add(row_count, Ordering::Acquire);
+        println!("ColumnarMemTable::put, memtable: {:?}", memtable);
         Ok(())
     }
 
