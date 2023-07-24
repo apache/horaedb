@@ -682,8 +682,7 @@ impl<M: MessageQueue> Region<M> {
     }
 
     /// Return snapshot, just used for test.
-    #[allow(dead_code)]
-    async fn make_meta_snapshot(&self) -> RegionMetaSnapshot {
+    pub async fn make_meta_snapshot(&self) -> RegionMetaSnapshot {
         let inner = self.inner.write().await;
         inner.make_meta_snapshot().await
     }

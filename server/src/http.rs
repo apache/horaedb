@@ -37,7 +37,7 @@ use warp::{
     http::StatusCode,
     reject,
     reply::{self, Reply},
-    Filter,
+    Filter, Rejection,
 };
 
 use crate::{
@@ -204,7 +204,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .or(self.profile_heap())
             .or(self.server_config())
             .or(self.shards())
-            .or(self.stats())
+            .or(self.wal_stats())
             .with(warp::log("http_requests"))
             .with(warp::log::custom(|info| {
                 let path = info.path();
@@ -516,24 +516,32 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     }
 
     // GET /debug/stats
-    fn stats(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        let opened_wals = self.opened_wals.clone();
-        warp::path!("debug" / "stats")
+    fn wal_stats(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("debug" / "wal_stats")
             .and(warp::get())
-            .map(move || {
-                [
-                    "Data wal stats:",
-                    &opened_wals
-                        .data_wal
-                        .get_statistics()
-                        .unwrap_or_else(|| "Unknown".to_string()),
-                    "Manifest wal stats:",
-                    &opened_wals
-                        .manifest_wal
-                        .get_statistics()
-                        .unwrap_or_else(|| "Unknown".to_string()),
-                ]
-                .join("\n")
+            .and(self.with_opened_wals())
+            .and_then(|wals: OpenedWals| async move {
+                let wal_stats = wals
+                    .data_wal
+                    .get_statistics()
+                    .await
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                let manifest_wal_stats = wals
+                    .manifest_wal
+                    .get_statistics()
+                    .await
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                let stats = format!(
+                    "[Data wal stats]:\n{wal_stats}
+                \n\n------------------------------------------------------\n\n
+                [Manifest wal stats]:\n{manifest_wal_stats}"
+                );
+
+                std::result::Result::<_, Rejection>::Ok(stats.into_response())
             })
     }
 
@@ -652,6 +660,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     ) -> impl Filter<Extract = (Arc<RuntimeLevel>,), Error = Infallible> + Clone {
         let log_runtime = self.log_runtime.clone();
         warp::any().map(move || log_runtime.clone())
+    }
+
+    fn with_opened_wals(&self) -> impl Filter<Extract = (OpenedWals,), Error = Infallible> + Clone {
+        let wals = self.opened_wals.clone();
+        warp::any().map(move || wals.clone())
     }
 }
 

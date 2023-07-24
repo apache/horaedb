@@ -190,6 +190,17 @@ pub struct TableUnit {
     writer: Mutex<TableUnitWriter>,
 }
 
+impl std::fmt::Debug for TableUnit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TableUnit")
+            .field("region_id", &self.state.region_id)
+            .field("table_id", &self.state.table_id)
+            .field("start_sequence", &self.state.start_sequence)
+            .field("last_sequence", &self.state.last_sequence)
+            .finish()
+    }
+}
+
 // Async or non-blocking operations.
 impl TableUnit {
     /// Open table unit of given `region_id` and `table_id`, the caller should

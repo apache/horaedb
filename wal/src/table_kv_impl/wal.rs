@@ -182,4 +182,10 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
             ctx.batch_size,
         ))
     }
+
+    async fn get_statistics(&self) -> Option<String> {
+        let stats = self.namespace.get_statistics();
+
+        Some(stats)
+    }
 }
