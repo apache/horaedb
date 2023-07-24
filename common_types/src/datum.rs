@@ -1407,6 +1407,10 @@ impl From<DatumKind> for DataType {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        collections::hash_map::DefaultHasher,
+        hash::{Hash, Hasher},
+    };
 
     use super::*;
 
@@ -1631,19 +1635,50 @@ mod tests {
         }
     }
 
-    // #[test]
-    // fn test_hash() {
-    //     let a = DatumView::Int32(142);
-    //     let b = ScalarValue::Int32(Some(142));
-    //     println!("dv:{}, sc:{}, Some:{}", get_hash(&a, 0), get_hash(&b, 0),
-    // get_hash(&Some(142), 0)); }
+    fn get_hash<V: Hash>(v: &V) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        v.hash(&mut hasher);
+        hasher.finish()
+    }
 
-    // fn get_hash<V: Hash>(value: &V, seed: u128) -> u64 {
-    //     let key0 = (seed >> 64) as u64;
-    //     let key1 = seed as u64;
-    //     let mut sip = SipHasher13::new_with_keys(key0, key1);
-    //     value.hash(&mut sip);
-    //     let x = sip.finish();
-    //     x
-    // }
+    macro_rules! assert_datum_view_hash {
+        ($v:expr, $Kind: ident) => {
+            let expected = get_hash(&DatumView::$Kind($v));
+            let actual = get_hash(&$v);
+            assert_eq!(expected, actual);
+        };
+    }
+
+    #[test]
+    fn test_hash() {
+        assert_datum_view_hash!(Timestamp::new(42), Timestamp);
+        assert_datum_view_hash!(42_i32, Date);
+        assert_datum_view_hash!(424_i64, Time);
+        assert_datum_view_hash!(b"abcde", Varbinary);
+        assert_datum_view_hash!("12345", String);
+        assert_datum_view_hash!(42424242_u64, UInt64);
+        assert_datum_view_hash!(424242_u32, UInt32);
+        assert_datum_view_hash!(4242_u16, UInt16);
+        assert_datum_view_hash!(42_u8, UInt8);
+        assert_datum_view_hash!(-42424242_i64, Int64);
+        assert_datum_view_hash!(-42424242_i32, Int32);
+        assert_datum_view_hash!(-4242_i16, Int16);
+        assert_datum_view_hash!(-42_i8, Int8);
+        assert_datum_view_hash!(true, Boolean);
+
+        // Null case.
+        let null_expected = get_hash(&1);
+        let null_actual = get_hash(&DatumView::Null);
+        assert_eq!(null_expected, null_actual);
+
+        // Float case.
+        let float_expected = get_hash(&Fl(42.0_f32));
+        let float_actual = get_hash(&DatumView::Float(42.0));
+        assert_eq!(float_expected, float_actual);
+
+        // Double case.
+        let double_expected = get_hash(&Fl(-42.0_f64));
+        let double_actual = get_hash(&DatumView::Double(-42.0));
+        assert_eq!(double_expected, double_actual);
+    }
 }
