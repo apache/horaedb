@@ -14,6 +14,7 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::request_id::RequestId;
+use futures::{stream::FuturesUnordered, StreamExt};
 use log::{debug, error, info, warn};
 use macros::define_result;
 use runtime::{JoinHandle, Runtime};
@@ -441,11 +442,13 @@ impl ScheduleWorker {
             ScheduleTask::Schedule => {
                 if self.max_ongoing_tasks > ongoing {
                     let pending = self.limit.drain_requests(self.max_ongoing_tasks - ongoing);
-                    let len = pending.len();
-                    for compact_req in pending {
-                        self.handle_table_compaction_request(compact_req).await;
-                    }
-                    debug!("Scheduled {len} pending compaction tasks.");
+                    let mut futures: FuturesUnordered<_> = pending
+                        .into_iter()
+                        .map(|req| self.handle_table_compaction_request(req))
+                        .collect();
+
+                    debug!("Scheduled {} pending compaction tasks.", futures.len());
+                    while (futures.next().await).is_some() {}
                 } else {
                     warn!(
                         "Too many compaction ongoing tasks:{ongoing}, max:{}, buf_len:{}",
@@ -465,7 +468,7 @@ impl ScheduleWorker {
         waiter_notifier: WaiterNotifier,
         token: MemoryUsageToken,
     ) {
-        let keep_scheduling_compaction = !compaction_task.is_input_empty();
+        let keep_scheduling_compaction = !compaction_task.contains_min_level();
 
         let runtime = self.runtime.clone();
         let space_store = self.space_store.clone();
@@ -491,6 +494,14 @@ impl ScheduleWorker {
             // Release the token after compaction finished.
             let _token = token;
 
+            // We will reschedule table with many l0 sst as fast as we can.
+            if keep_scheduling_compaction {
+                schedule_table_compaction(
+                    sender,
+                    TableCompactionRequest::no_waiter(table_data.clone()),
+                )
+                .await;
+            }
             let res = space_store
                 .compact_table(
                     request_id,
@@ -502,13 +513,6 @@ impl ScheduleWorker {
                 )
                 .await;
 
-            if let Err(e) = &res {
-                error!(
-                    "Failed to compact table, table_name:{}, table_id:{}, request_id:{}, err:{}",
-                    table_data.name, table_data.id, request_id, e
-                );
-            }
-
             task.limit.finish_task();
             task.schedule_worker_if_need().await;
 
@@ -516,16 +520,9 @@ impl ScheduleWorker {
             match res {
                 Ok(()) => {
                     waiter_notifier.notify_wait_result(Ok(()));
-
-                    if keep_scheduling_compaction {
-                        schedule_table_compaction(
-                            sender,
-                            TableCompactionRequest::no_waiter(table_data.clone()),
-                        )
-                        .await;
-                    }
                 }
                 Err(e) => {
+                    error!("Failed to compact table, table_name:{}, table_id:{}, request_id:{request_id}, err:{e}", table_data.name, table_data.id);
                     let e = Arc::new(e);
 
                     let wait_err = WaitError::Compaction { source: e };
