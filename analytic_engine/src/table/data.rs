@@ -35,6 +35,8 @@ use crate::{
     memtable::{
         columnar::factory::ColumnarMemTableFactory,
         factory::{FactoryRef as MemTableFactoryRef, Options as MemTableOptions},
+        skiplist::factory::SkiplistMemTableFactory,
+        MemtableType,
     },
     space::SpaceId,
     sst::{file::FilePurger, manager::FileId},
@@ -208,7 +210,11 @@ impl TableData {
         // FIXME(yingwen): Validate TableOptions, such as bucket_duration >=
         // segment_duration and bucket_duration is aligned to segment_duration
 
-        let memtable_factory = Arc::new(ColumnarMemTableFactory);
+        let memtable_factory: MemTableFactoryRef = match table_opts.memtable_type {
+            MemtableType::SkipList => Arc::new(SkiplistMemTableFactory),
+            MemtableType::Columnar => Arc::new(ColumnarMemTableFactory),
+        };
+
         let purge_queue = purger.create_purge_queue(space_id, table_id);
         let current_version = TableVersion::new(purge_queue);
         let metrics = Metrics::default();

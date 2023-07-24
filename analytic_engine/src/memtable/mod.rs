@@ -18,12 +18,40 @@ use common_types::{
     SequenceNumber,
 };
 use common_util::{define_result, error::GenericError};
+use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, Snafu};
 use trace_metric::MetricsCollector;
 
 use crate::memtable::key::KeySequence;
 
 const DEFAULT_SCAN_BATCH_SIZE: usize = 500;
+const MEMTABLE_TYPE_SKIPLIST: &str = "skiplist";
+const MEMTABLE_TYPE_COLUMNAR: &str = "columnar";
+
+#[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
+pub enum MemtableType {
+    SkipList,
+    Columnar,
+}
+
+impl MemtableType {
+    pub fn parse_from(s: &str) -> Self {
+        if s.eq_ignore_ascii_case(MEMTABLE_TYPE_SKIPLIST) {
+            MemtableType::SkipList
+        } else {
+            MemtableType::Columnar
+        }
+    }
+}
+
+impl ToString for MemtableType {
+    fn to_string(&self) -> String {
+        match self {
+            MemtableType::SkipList => MEMTABLE_TYPE_SKIPLIST.to_string(),
+            MemtableType::Columnar => MEMTABLE_TYPE_COLUMNAR.to_string(),
+        }
+    }
+}
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
