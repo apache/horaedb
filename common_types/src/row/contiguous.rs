@@ -453,6 +453,8 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                     num_bytes_of_variable_col += size;
                     encoded_len += size;
                 }
+            } else {
+                // No need to store null column.
             }
         }
 
@@ -479,8 +481,11 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                 )?;
 
                 if datum.is_null() {
-                    nulls_bit_set.unset(writer_index);
+                    nulls_bit_set.unset(index_in_table);
                 }
+            } else {
+                // This column should be treated as null.
+                nulls_bit_set.unset(index_in_table);
             }
         }
 
@@ -729,6 +734,49 @@ mod tests {
                 let view = reader.datum_view_at(i, datum_kinds[i]);
 
                 assert_eq!(datum.as_view(), view);
+            }
+        }
+    }
+
+    #[test]
+    fn test_contiguous_read_write_with_different_write_schema() {
+        let schema = build_schema();
+        let rows = build_rows();
+        let index_in_writer = {
+            let mut index_schema = IndexInWriterSchema::default();
+            index_schema.reserve_columns(schema.num_columns());
+            // Make the final column is None.
+            for i in 0..schema.num_columns() {
+                let col_idx = (i != schema.num_columns() - 1).then(|| i);
+                index_schema.push_column(col_idx);
+            }
+            index_schema
+        };
+
+        let datum_kinds = schema
+            .columns()
+            .iter()
+            .map(|column| &column.data_type)
+            .collect::<Vec<_>>();
+
+        let mut buf = Vec::new();
+        for row in rows {
+            let mut writer = ContiguousRowWriter::new(&mut buf, &schema, &index_in_writer);
+
+            writer.write_row(&row).unwrap();
+
+            let reader = ContiguousRowReader::try_new(&buf, &schema).unwrap();
+
+            let final_col_idx = reader.num_datum_views() - 1;
+            let range: Vec<_> = (0..=final_col_idx).collect();
+            for i in range {
+                let datum = &row[i];
+                let view = reader.datum_view_at(i, datum_kinds[i]);
+                if i == final_col_idx {
+                    assert!(matches!(view, DatumView::Null));
+                } else {
+                    assert_eq!(datum.as_view(), view);
+                }
             }
         }
     }
