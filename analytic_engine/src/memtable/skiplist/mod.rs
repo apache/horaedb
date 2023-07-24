@@ -6,7 +6,6 @@ pub mod factory;
 pub mod iter;
 
 use std::{
-    cmp::Ordering,
     convert::TryInto,
     sync::atomic::{self, AtomicU64},
 };
@@ -20,12 +19,13 @@ use common_types::{
 };
 use common_util::{codec::Encoder, error::BoxError};
 use log::{debug, trace};
-use skiplist::{KeyComparator, Skiplist};
+use skiplist::Skiplist;
 use snafu::{ensure, ResultExt};
 
 use crate::memtable::{
-    key::{ComparableInternalKey, KeySequence},
-    skiplist::iter::{ColumnarIterImpl, ReversedColumnarIterator},
+    iter::ReversedColumnarIterator,
+    key::{BytewiseComparator, ComparableInternalKey, KeySequence},
+    skiplist::iter::ColumnarIterImpl,
     ColumnarIterPtr, EncodeInternalKey, Internal, InvalidPutSequence, InvalidRow, MemTable,
     PutContext, Result, ScanContext, ScanRequest,
 };
@@ -156,21 +156,6 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct BytewiseComparator;
-
-impl KeyComparator for BytewiseComparator {
-    #[inline]
-    fn compare_key(&self, lhs: &[u8], rhs: &[u8]) -> Ordering {
-        lhs.cmp(rhs)
-    }
-
-    #[inline]
-    fn same_key(&self, lhs: &[u8], rhs: &[u8]) -> bool {
-        lhs == rhs
-    }
-}
-
 #[cfg(test)]
 mod tests {
 
@@ -182,7 +167,7 @@ mod tests {
         datum::Datum,
         projected_schema::ProjectedSchema,
         record_batch::RecordBatchWithKey,
-        row::{Row, RowGroup, RowGroupBuilder, RowGroupSlicer},
+        row::{Row, RowGroupBuilder, RowGroupSlicer},
         schema::IndexInWriterSchema,
         tests::{build_row, build_schema},
         time::Timestamp,

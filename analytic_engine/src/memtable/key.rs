@@ -10,7 +10,7 @@
 //!         - sequence number
 //!         - index
 
-use std::mem;
+use std::{cmp::Ordering, mem};
 
 use bytes::BufMut;
 use common_types::{
@@ -23,6 +23,7 @@ use common_util::{
     codec::{memcomparable::MemComparable, Decoder, Encoder},
     define_result,
 };
+use skiplist::KeyComparator;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
@@ -240,6 +241,21 @@ pub fn user_key_from_internal_key(internal_key: &[u8]) -> Result<(&[u8], KeySequ
     let sequence = SequenceCodec.decode(&mut right)?;
 
     Ok((left, sequence))
+}
+
+#[derive(Debug, Clone)]
+pub struct BytewiseComparator;
+
+impl KeyComparator for BytewiseComparator {
+    #[inline]
+    fn compare_key(&self, lhs: &[u8], rhs: &[u8]) -> Ordering {
+        lhs.cmp(rhs)
+    }
+
+    #[inline]
+    fn same_key(&self, lhs: &[u8], rhs: &[u8]) -> bool {
+        lhs == rhs
+    }
 }
 
 #[cfg(test)]

@@ -301,7 +301,7 @@ impl<'a> MemTableWriter<'a> {
         let mut wrote_memtables: SmallVec<[_; 4]> = SmallVec::new();
         let mut last_mutable_mem: Option<MemTableForWrite> = None;
 
-        let mut ctx = PutContext::new(index_in_writer.clone());
+        let mut ctx = PutContext::new(index_in_writer);
 
         if let Some(segment_duration) = self.table_data.table_options().segment_duration {
             let mut segment_idxs: HashMap<Timestamp, Vec<usize>> = HashMap::new();
@@ -339,10 +339,9 @@ impl<'a> MemTableWriter<'a> {
                 }
 
                 // We have check the row num is less than `MAX_ROWS_TO_WRITE`, it is safe to
-                // cast it to u32 here
+                // cast it to u32 here.
                 let key_seq = KeySequence::new(sequence, 0u32);
-                let row_group_splitter = RowGroupSplitter::new(idx, &row_group);
-                // TODO(yingwen): Batch sample timestamp in sampling phase.
+                let row_group_splitter = RowGroupSplitter::new(idx, row_group);
                 last_mutable_mem
                     .as_ref()
                     .unwrap()
@@ -362,10 +361,10 @@ impl<'a> MemTableWriter<'a> {
             last_mutable_mem = Some(mutable_mem);
 
             // We have check the row num is less than `MAX_ROWS_TO_WRITE`, it is safe to
-            // cast it to u32 here
+            // cast it to u32 here.
             let key_seq = KeySequence::new(sequence, 0u32);
             let row_group_splitter =
-                RowGroupSplitter::new((0..row_group.num_rows()).collect(), &row_group);
+                RowGroupSplitter::new((0..row_group.num_rows()).collect(), row_group);
             // TODO(yingwen): Batch sample timestamp in sampling phase.
             last_mutable_mem
                 .as_ref()

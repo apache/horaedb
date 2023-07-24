@@ -141,7 +141,6 @@ impl Space {
 
     #[inline]
     pub fn memtable_memory_usage(&self) -> usize {
-        // self.mem_usage_collector.total_memory_allocated()
         self.table_datas.read().unwrap().total_memory_usage()
     }
 

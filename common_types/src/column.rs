@@ -17,7 +17,6 @@ use arrow::{
     error::ArrowError,
 };
 use bytes_ext::Bytes;
-use ceresdbproto::storage::value;
 use datafusion::parquet::data_type::AsBytes;
 use snafu::{Backtrace, ResultExt, Snafu};
 
@@ -55,6 +54,19 @@ pub enum Error {
         given: DatumKind,
         backtrace: Backtrace,
     },
+
+    #[snafu(display(
+        "Column type conflict, expect:{:?}, given:{:?}.\nBacktrace:\n{}",
+        expect,
+        given,
+        backtrace
+    ))]
+    ConflictColumnType {
+        expect: ColumnDataKind,
+        given: ColumnDataKind,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display("Data type unsupported, kind:{:?}.\nBacktrace:\n{}", kind, backtrace))]
     UnsupportedType {
         kind: DatumKind,
@@ -73,15 +85,6 @@ pub struct Column {
     pub(crate) valid: BitSet,
     pub(crate) data: ColumnData,
     pub(crate) to_insert: usize,
-}
-
-impl IntoIterator for Column {
-    type IntoIter = ColumnDataIter;
-    type Item = value::Value;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.data.into_iter()
-    }
 }
 
 #[derive(Debug)]
@@ -157,75 +160,9 @@ impl std::fmt::Display for ColumnData {
             Self::U16(col_data) => write!(f, "U16({})", col_data.len()),
             Self::U8(col_data) => write!(f, "U8({})", col_data.len()),
             Self::String(col_data) => write!(f, "String({})", col_data.len()),
+            Self::StringBytes(col_data) => write!(f, "StringBytes({})", col_data.len()),
             Self::Varbinary(col_data) => write!(f, "Varbinary({})", col_data.len()),
             Self::Bool(col_data) => write!(f, "Bool({})", col_data.len()),
-            _ => todo!(),
-        }
-    }
-}
-
-pub enum ColumnDataIter {
-    F64(std::vec::IntoIter<f64>),
-    F32(std::vec::IntoIter<f32>),
-    I64(std::vec::IntoIter<i64>),
-    I32(std::vec::IntoIter<i32>),
-    I16(std::vec::IntoIter<i16>),
-    I8(std::vec::IntoIter<i8>),
-    U64(std::vec::IntoIter<u64>),
-    U32(std::vec::IntoIter<u32>),
-    U16(std::vec::IntoIter<u16>),
-    U8(std::vec::IntoIter<u8>),
-    String(std::vec::IntoIter<String>),
-    StringBytes(std::vec::IntoIter<StringBytes>),
-    Varbinary(std::vec::IntoIter<Vec<u8>>),
-    Bool(std::vec::IntoIter<bool>),
-}
-
-impl<'a> Iterator for ColumnDataIter {
-    type Item = value::Value;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            Self::F64(col_data) => col_data.next().map(|x| value::Value::Float64Value(x)),
-            Self::F32(col_data) => col_data.next().map(|x| value::Value::Float32Value(x)),
-            Self::I64(col_data) => col_data.next().map(|x| value::Value::Int64Value(x)),
-            Self::I32(col_data) => col_data.next().map(|x| value::Value::Int32Value(x)),
-            Self::I16(col_data) => col_data.next().map(|x| value::Value::Int16Value(x as i32)),
-            Self::I8(col_data) => col_data.next().map(|x| value::Value::Int8Value(x as i32)),
-            Self::U64(col_data) => col_data.next().map(|x| value::Value::Uint64Value(x)),
-            Self::U32(col_data) => col_data.next().map(|x| value::Value::Uint32Value(x)),
-            Self::U16(col_data) => col_data.next().map(|x| value::Value::Uint16Value(x as u32)),
-            Self::U8(col_data) => col_data.next().map(|x| value::Value::Uint8Value(x as u32)),
-            Self::String(col_data) => col_data.next().map(|x| value::Value::StringValue(x)),
-            Self::StringBytes(col_data) => col_data
-                .next()
-                .map(|x| value::Value::StringValue(x.to_string())),
-            Self::Varbinary(col_data) => col_data.next().map(|x| value::Value::VarbinaryValue(x)),
-            Self::Bool(col_data) => col_data.next().map(|x| value::Value::BoolValue(x)),
-        }
-    }
-}
-
-impl IntoIterator for ColumnData {
-    type IntoIter = ColumnDataIter;
-    type Item = value::Value;
-
-    fn into_iter(self) -> Self::IntoIter {
-        match self {
-            Self::F64(col_data) => ColumnDataIter::F64(col_data.into_iter()),
-            Self::F32(col_data) => ColumnDataIter::F32(col_data.into_iter()),
-            Self::I64(col_data) => ColumnDataIter::I64(col_data.into_iter()),
-            Self::I32(col_data) => ColumnDataIter::I32(col_data.into_iter()),
-            Self::I16(col_data) => ColumnDataIter::I16(col_data.into_iter()),
-            Self::I8(col_data) => ColumnDataIter::I8(col_data.into_iter()),
-            Self::U64(col_data) => ColumnDataIter::U64(col_data.into_iter()),
-            Self::U32(col_data) => ColumnDataIter::U32(col_data.into_iter()),
-            Self::U16(col_data) => ColumnDataIter::U16(col_data.into_iter()),
-            Self::U8(col_data) => ColumnDataIter::U8(col_data.into_iter()),
-            Self::String(col_data) => ColumnDataIter::String(col_data.into_iter()),
-            Self::StringBytes(col_data) => ColumnDataIter::StringBytes(col_data.into_iter()),
-            Self::Varbinary(col_data) => ColumnDataIter::Varbinary(col_data.into_iter()),
-            Self::Bool(_col_data) => todo!(),
         }
     }
 }
@@ -251,7 +188,6 @@ impl Column {
             DatumKind::Int32 => ColumnData::I32(vec![0; row_count]),
             DatumKind::Int16 => ColumnData::I16(vec![0; row_count]),
             DatumKind::Int8 => ColumnData::I8(vec![0; row_count]),
-            // DatumKind::String => ColumnData::String(vec!["".to_string(); row_count]),
             DatumKind::String => ColumnData::StringBytes(vec![StringBytes::new(); row_count]),
             DatumKind::Varbinary => ColumnData::Varbinary(vec![vec![]; row_count]),
             kind => {
@@ -267,7 +203,7 @@ impl Column {
         })
     }
 
-    pub fn append_column(&mut self, mut column: Column) {
+    pub fn append_column(&mut self, mut column: Column) -> Result<()> {
         assert_eq!(self.datum_kind, column.datum_kind);
         self.valid.append_set(column.len());
         self.to_insert += column.len();
@@ -307,9 +243,19 @@ impl Column {
             (ColumnData::Varbinary(data), ColumnData::Varbinary(ref mut column_data)) => {
                 data.append(column_data)
             }
-            (ColumnData::Bool(_data), ColumnData::Bool(ref mut _column_data)) => todo!(),
-            _ => todo!(),
+            (ColumnData::Bool(data), ColumnData::Bool(column_data)) => {
+                data.extend_from(column_data)
+            }
+            (expect, given) => {
+                return ConflictColumnType {
+                    expect: expect.kind(),
+                    given: given.kind(),
+                }
+                .fail()
+            }
         }
+
+        Ok(())
     }
 
     pub fn append_nulls(&mut self, count: usize) {
@@ -629,6 +575,11 @@ impl Column {
                     StringArray::from(data.iter().map(|s| Some(s.as_str())).collect::<Vec<_>>());
                 Arc::new(data)
             }
+            ColumnData::StringBytes(data) => {
+                let data =
+                    StringArray::from(data.iter().map(|s| Some(s.as_str())).collect::<Vec<_>>());
+                Arc::new(data)
+            }
             ColumnData::Varbinary(data) => {
                 let data =
                     BinaryArray::from(data.iter().map(|s| Some(s.as_bytes())).collect::<Vec<_>>());
@@ -643,7 +594,6 @@ impl Column {
                     .context(CreatingArrowArray)?;
                 Arc::new(BooleanArray::from(data))
             }
-            _ => todo!(),
         };
 
         assert_eq!(data.len(), self.len());

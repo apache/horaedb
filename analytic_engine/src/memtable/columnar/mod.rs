@@ -20,12 +20,10 @@ use skiplist::Skiplist;
 use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::memtable::{
-    columnar::{
-        factory::BytewiseComparator,
-        iter::{ColumnarIterImpl, ReversedColumnarIterator},
-    },
+    columnar::iter::ColumnarIterImpl,
     factory::Options,
-    key::KeySequence,
+    iter::ReversedColumnarIterator,
+    key::{BytewiseComparator, KeySequence},
     ColumnarIterPtr, Internal, InternalNoCause, InvalidPutSequence, MemTable, PutContext, Result,
     ScanContext, ScanRequest,
 };
@@ -36,12 +34,24 @@ pub mod iter;
 pub struct ColumnarMemTable {
     /// Schema of this memtable, is immutable.
     schema: Schema,
-    pub memtable: Arc<RwLock<HashMap<String, Column>>>,
+    memtable: Arc<RwLock<HashMap<String, Column>>>,
     /// The last sequence of the rows in this memtable. Update to this field
     /// require external synchronization.
     last_sequence: AtomicU64,
     row_num: AtomicUsize,
     opts: Options,
+    memtable_size: AtomicUsize,
+}
+
+impl ColumnarMemTable {
+    fn memtable_size(&self) -> usize {
+        self.memtable
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(_, column)| column.size())
+            .sum()
+    }
 }
 
 impl MemTable for ColumnarMemTable {
@@ -50,10 +60,12 @@ impl MemTable for ColumnarMemTable {
     }
 
     fn min_key(&self) -> Option<Bytes> {
+        // TODO: columnar memtable should support min_key and max_key
         Some(Bytes::from("0"))
     }
 
     fn max_key(&self) -> Option<Bytes> {
+        // TODO: columnar memtable should support min_key and max_key
         Some(Bytes::from("9"))
     }
 
@@ -107,16 +119,24 @@ impl MemTable for ColumnarMemTable {
                 }
             }
         }
-
-        let mut memtable = self.memtable.write().unwrap();
-        for (k, v) in columns {
-            if let Some(column) = memtable.get_mut(&k) {
-                column.append_column(v);
-            } else {
-                memtable.insert(k, v);
-            };
+        {
+            let mut memtable = self.memtable.write().unwrap();
+            for (k, v) in columns {
+                if let Some(column) = memtable.get_mut(&k) {
+                    column.append_column(v).box_err().context(Internal {
+                        msg: "append column",
+                    })?;
+                } else {
+                    memtable.insert(k, v);
+                };
+            }
         }
+
         self.row_num.fetch_add(row_count, Ordering::Acquire);
+
+        // May have performance issue.
+        self.memtable_size
+            .store(self.memtable_size(), Ordering::Relaxed);
         Ok(())
     }
 
@@ -143,6 +163,7 @@ impl MemTable for ColumnarMemTable {
         let skiplist = Skiplist::with_arena(BytewiseComparator, arena);
         let iter = ColumnarIterImpl::new(
             self.memtable.clone(),
+            self.row_num.load(Ordering::Relaxed),
             self.schema.clone(),
             ctx,
             request,
@@ -159,12 +180,7 @@ impl MemTable for ColumnarMemTable {
     }
 
     fn approximate_memory_usage(&self) -> usize {
-        self.memtable
-            .read()
-            .unwrap()
-            .iter()
-            .map(|(_, column)| column.size())
-            .sum()
+        self.memtable_size.load(Ordering::Relaxed)
     }
 
     fn set_last_sequence(&self, sequence: SequenceNumber) -> Result<()> {

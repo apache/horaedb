@@ -124,6 +124,7 @@ impl SpaceStore {
         spaces.into_iter().max_by_key(|t| t.memtable_memory_usage())
     }
 
+    /// The memory space used by all tables in the space.
     #[inline]
     fn total_memory_usage_space(&self) -> usize {
         let spaces = self.spaces.read().unwrap().list_all_spaces();
@@ -263,9 +264,6 @@ impl Instance {
     /// db_write_buffer_size limit.
     #[inline]
     fn should_flush_instance(&self) -> bool {
-        // self.db_write_buffer_size > 0
-        //     && self.mem_usage_collector.total_memory_allocated() >=
-        // self.db_write_buffer_size
         self.db_write_buffer_size > 0
             && self.space_store.total_memory_usage_space() >= self.db_write_buffer_size
     }

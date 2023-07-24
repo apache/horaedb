@@ -101,7 +101,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// The internal representation of row is not specific
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row {
-    pub cols: Vec<Datum>,
+    cols: Vec<Datum>,
 }
 
 impl Row {

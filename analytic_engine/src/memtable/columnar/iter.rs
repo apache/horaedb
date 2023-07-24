@@ -1,9 +1,8 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
     cmp::Ordering,
     collections::HashMap,
-    iter::Rev,
     ops::Bound,
     sync::{Arc, RwLock},
     time::Instant,
@@ -31,11 +30,10 @@ use skiplist::{ArenaSlice, IterRef, Skiplist};
 use snafu::{OptionExt, ResultExt};
 
 use crate::memtable::{
-    columnar::factory::BytewiseComparator,
     key,
-    key::{KeySequence, SequenceCodec},
-    AppendRow, BuildRecordBatch, DecodeInternalKey, Internal, InternalNoCause, IterReverse,
-    IterTimeout, ProjectSchema, Result, ScanContext, ScanRequest,
+    key::{BytewiseComparator, KeySequence, SequenceCodec},
+    AppendRow, BuildRecordBatch, DecodeInternalKey, Internal, InternalNoCause, IterTimeout,
+    ProjectSchema, Result, ScanContext, ScanRequest,
 };
 
 /// Iterator state
@@ -52,6 +50,7 @@ enum State {
 /// Columnar iterator for [ColumnarMemTable]
 pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> {
     memtable: Arc<RwLock<HashMap<String, Column>>>,
+    row_num: usize,
     current_idx: usize,
     // Schema related:
     /// Schema of this memtable, used to decode row
@@ -66,7 +65,9 @@ pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
 
     start_user_key: Bound<Bytes>,
     end_user_key: Bound<Bytes>,
+    /// The last sequence of the memtable.
     last_sequence: SequenceNumber,
+
     /// State of iterator
     state: State,
 
@@ -80,9 +81,10 @@ pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
 }
 
 impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
-    /// Create a new [ColumnarIterImpl]
+    /// Create a new [ColumnarIterImpl].
     pub fn new(
         memtable: Arc<RwLock<HashMap<String, Column>>>,
+        row_num: usize,
         schema: Schema,
         ctx: ScanContext,
         request: ScanRequest,
@@ -95,6 +97,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             .context(ProjectSchema)?;
         let mut columnar_iter = Self {
             memtable,
+            row_num,
             current_idx: 0,
             memtable_schema: schema,
             projected_schema: request.projected_schema,
@@ -118,23 +121,17 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
     /// Init the iterator, will seek to the proper position for first next()
     /// call, so the first entry next() returned is after the
-    /// `start_user_key`, but we still need to check `end_user_key`
+    /// `start_user_key`, but we still need to check `end_user_key`.
     fn init(&mut self) -> Result<()> {
         self.current_idx = 0;
         self.state = State::Initialized;
-
+        // If need_dedup is true, we need to build the skiplist to dedup.
         if self.need_dedup {
+            // TODO: remove the lock or else it will block write.
             let memtable = self.memtable.read().unwrap();
-            let mut row_num = 0;
-            for (_, column) in &*memtable {
-                row_num = column.len();
-                break;
-            }
-            let mut key_vec = vec![ByteVec::new(); row_num];
+            let mut key_vec = vec![ByteVec::new(); self.row_num];
             let encoder = MemComparable;
 
-            // Reserve capacity for key
-            // internal_key.reserve(key_encoder.estimate_encoded_size(row));
             for idx in self.memtable_schema.primary_key_indexes() {
                 let column_schema = self.memtable_schema.column(*idx);
                 let column =
@@ -143,7 +140,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                         .with_context(|| InternalNoCause {
                             msg: format!("column not found, column:{}", column_schema.name),
                         })?;
-                for i in 0..row_num {
+                for i in 0..self.row_num {
                     let datum = column.get_datum(i);
                     encoder
                         .encode(&mut key_vec[i], &datum)
@@ -152,6 +149,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                 }
             }
 
+            // TODO: Persist the skiplist.
             for (i, mut key) in key_vec.into_iter().enumerate() {
                 SequenceCodec
                     .encode(&mut key, &KeySequence::new(self.last_sequence, i as u32))
@@ -200,49 +198,13 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
     fn fetch_next_record_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
         debug_assert_eq!(State::Initialized, self.state);
         assert!(self.batch_size > 0);
-        if !self.need_dedup {
-            return self.fetch_next_record_batch_no_dedup();
-        }
-
-        let mut num_rows = 0;
-        let mut row_idxs = Vec::with_capacity(self.batch_size);
-        while self.iter.valid() && num_rows < self.batch_size {
-            if let Some(row) = self.fetch_next_row()? {
-                let u32_vec = [row[0], row[1], row[2], row[3]];
-                let idx = u32::from_le_bytes(u32_vec);
-                row_idxs.push(idx);
-                num_rows += 1;
-            } else {
-                // There is no more row to fetch
-                self.finish();
-                break;
-            }
-        }
-
-        let rows = {
-            let memtable = self.memtable.read().unwrap();
-            let mut rows =
-                vec![
-                    Row::from_datums(vec![Datum::Null; self.memtable_schema.num_columns()]);
-                    self.batch_size
-                ];
-            for (col_idx, column_schema_idx) in
-                self.projector.source_projection().iter().enumerate()
-            {
-                if let Some(column_schema_idx) = column_schema_idx {
-                    let column_schema = self.memtable_schema.column(*column_schema_idx);
-                    if let Some(column) = memtable.get(&column_schema.name) {
-                        for (i, row_idx) in row_idxs.iter().enumerate() {
-                            let datum = column.get_datum(*row_idx as usize);
-                            rows[i].cols[col_idx] = datum;
-                        }
-                    }
-                }
-            }
-            rows
+        let rows = if !self.need_dedup {
+            self.fetch_next_record_batch_rows_no_dedup()?
+        } else {
+            self.fetch_next_record_batch_rows()?
         };
 
-        if num_rows > 0 {
+        if !rows.is_empty() {
             if let Some(deadline) = self.deadline {
                 if deadline.check_deadline() {
                     return IterTimeout {}.fail();
@@ -253,10 +215,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                 self.projected_schema.to_record_schema_with_key(),
                 self.batch_size,
             );
-            for (i, row) in rows.into_iter().enumerate() {
-                if i >= num_rows {
-                    break;
-                }
+            for row in rows.into_iter() {
                 builder.append_row(row).context(AppendRow)?;
             }
 
@@ -265,7 +224,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             Ok(Some(batch))
         } else {
             // If iter is invalid after seek (nothing matched), then it may not be marked as
-            // finished yet
+            // finished yet.
             self.finish();
             Ok(None)
         }
@@ -331,70 +290,73 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         Ok(None)
     }
 
-    /// Fetch next record batch
-    fn fetch_next_record_batch_no_dedup(&mut self) -> Result<Option<RecordBatchWithKey>> {
-        debug_assert_eq!(State::Initialized, self.state);
-        assert!(self.batch_size > 0);
+    fn fetch_next_record_batch_rows(&mut self) -> Result<Vec<Row>> {
+        let mut num_rows = 0;
+        let mut row_idxs = Vec::with_capacity(self.batch_size);
+        while self.iter.valid() && num_rows < self.batch_size {
+            if let Some(row) = self.fetch_next_row()? {
+                let mut buf = [0u8; 4];
+                buf.copy_from_slice(&row);
+                let idx = u32::from_le_bytes(buf);
+                row_idxs.push(idx);
+                num_rows += 1;
+            } else {
+                // There is no more row to fetch.
+                self.finish();
+                break;
+            }
+        }
 
-        let mut row_counter = 0;
-        let rows = {
-            let memtable = self.memtable.read().unwrap();
-
-            let record_schema = self.projected_schema.to_record_schema();
-            let mut rows = vec![
-                Row::from_datums(vec![Datum::Null; record_schema.num_columns()]);
-                self.batch_size
-            ];
-
-            for (col_idx, column_schema_idx) in
-                self.projector.source_projection().iter().enumerate()
-            {
-                if let Some(column_schema_idx) = column_schema_idx {
-                    let column_schema = self.memtable_schema.column(*column_schema_idx);
-                    if let Some(column) = memtable.get(&column_schema.name) {
-                        for i in 0..self.batch_size {
-                            let row_idx = self.current_idx + i;
-                            if row_idx >= column.len() {
-                                break;
-                            }
-                            if col_idx == 0 {
-                                row_counter += 1;
-                            }
-                            let datum = column.get_datum(row_idx);
-                            rows[i].cols[col_idx] = datum;
-                        }
+        let memtable = self.memtable.read().unwrap();
+        let mut rows = vec![
+            Row::from_datums(vec![Datum::Null; self.memtable_schema.num_columns()]);
+            self.batch_size
+        ];
+        for (col_idx, column_schema_idx) in self.projector.source_projection().iter().enumerate() {
+            if let Some(column_schema_idx) = column_schema_idx {
+                let column_schema = self.memtable_schema.column(*column_schema_idx);
+                if let Some(column) = memtable.get(&column_schema.name) {
+                    for (i, row_idx) in row_idxs.iter().enumerate() {
+                        let datum = column.get_datum(*row_idx as usize);
+                        rows[i][col_idx] = datum;
                     }
                 }
             }
-            self.current_idx += row_counter;
-            rows
-        };
-
-        if row_counter > 0 {
-            if let Some(deadline) = self.deadline {
-                if deadline.check_deadline() {
-                    return IterTimeout {}.fail();
-                }
-            }
-            let mut builder = RecordBatchWithKeyBuilder::with_capacity(
-                self.projected_schema.to_record_schema_with_key(),
-                self.batch_size,
-            );
-            for (i, row) in rows.into_iter().enumerate() {
-                if i >= row_counter {
-                    break;
-                }
-                builder.append_row(row).context(AppendRow)?;
-            }
-
-            let batch = builder.build().context(BuildRecordBatch)?;
-            trace!("column iterator send one batch:{:?}", batch);
-
-            Ok(Some(batch))
-        } else {
-            self.finish();
-            Ok(None)
         }
+        rows.resize(num_rows, Row::from_datums(vec![]));
+        Ok(rows)
+    }
+
+    /// Fetch next record batch
+    fn fetch_next_record_batch_rows_no_dedup(&mut self) -> Result<Vec<Row>> {
+        let mut num_rows = 0;
+        let memtable = self.memtable.read().unwrap();
+
+        let record_schema = self.projected_schema.to_record_schema();
+        let mut rows =
+            vec![Row::from_datums(vec![Datum::Null; record_schema.num_columns()]); self.batch_size];
+
+        for (col_idx, column_schema_idx) in self.projector.source_projection().iter().enumerate() {
+            if let Some(column_schema_idx) = column_schema_idx {
+                let column_schema = self.memtable_schema.column(*column_schema_idx);
+                if let Some(column) = memtable.get(&column_schema.name) {
+                    for i in 0..self.batch_size {
+                        let row_idx = self.current_idx + i;
+                        if row_idx >= column.len() {
+                            break;
+                        }
+                        if col_idx == 0 {
+                            num_rows += 1;
+                        }
+                        let datum = column.get_datum(row_idx);
+                        rows[i][col_idx] = datum;
+                    }
+                }
+            }
+        }
+        rows.resize(num_rows, Row::from_datums(vec![]));
+        self.current_idx += num_rows;
+        Ok(rows)
     }
 
     /// Return true if the key is after the `end_user_key` bound
@@ -428,66 +390,5 @@ impl Iterator for ColumnarIterImpl<MonoIncArena> {
         }
 
         self.fetch_next_record_batch().transpose()
-    }
-}
-
-/// Reversed columnar iterator.
-// TODO(xikai): Now the implementation is not perfect: read all the entries
-//  into a buffer and reverse read it. The memtable should support scan in
-// reverse  order naturally.
-pub struct ReversedColumnarIterator<I> {
-    iter: I,
-    reversed_iter: Option<Rev<std::vec::IntoIter<Result<RecordBatchWithKey>>>>,
-    num_record_batch: usize,
-}
-
-impl<I> ReversedColumnarIterator<I>
-where
-    I: Iterator<Item = Result<RecordBatchWithKey>>,
-{
-    pub fn new(iter: I, num_rows: usize, batch_size: usize) -> Self {
-        Self {
-            iter,
-            reversed_iter: None,
-            num_record_batch: num_rows / batch_size,
-        }
-    }
-
-    fn init_if_necessary(&mut self) {
-        if self.reversed_iter.is_some() {
-            return;
-        }
-
-        let mut buf = Vec::with_capacity(self.num_record_batch);
-        for item in &mut self.iter {
-            buf.push(item);
-        }
-        self.reversed_iter = Some(buf.into_iter().rev());
-    }
-}
-
-impl<I> Iterator for ReversedColumnarIterator<I>
-where
-    I: Iterator<Item = Result<RecordBatchWithKey>>,
-{
-    type Item = Result<RecordBatchWithKey>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.init_if_necessary();
-        self.reversed_iter
-            .as_mut()
-            .unwrap()
-            .next()
-            .map(|v| match v {
-                Ok(mut batch_with_key) => {
-                    batch_with_key
-                        .reverse_data()
-                        .box_err()
-                        .context(IterReverse)?;
-
-                    Ok(batch_with_key)
-                }
-                Err(e) => Err(e),
-            })
     }
 }

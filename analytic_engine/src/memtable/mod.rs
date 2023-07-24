@@ -4,6 +4,7 @@
 
 pub mod columnar;
 pub mod factory;
+mod iter;
 pub mod key;
 pub mod skiplist;
 
@@ -37,9 +38,9 @@ pub enum MemtableType {
 impl MemtableType {
     pub fn parse_from(s: &str) -> Self {
         if s.eq_ignore_ascii_case(MEMTABLE_TYPE_SKIPLIST) {
-            MemtableType::SkipList
-        } else {
             MemtableType::Columnar
+        } else {
+            MemtableType::SkipList
         }
     }
 }
@@ -106,7 +107,7 @@ pub enum Error {
     #[snafu(display("msg:{msg}, err:{source}"))]
     Internal { msg: String, source: GenericError },
 
-    #[snafu(display("msg:{msg}x"))]
+    #[snafu(display("msg:{msg}"))]
     InternalNoCause { msg: String },
 }
 

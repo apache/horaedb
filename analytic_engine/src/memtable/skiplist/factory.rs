@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Skiplist memtable factory
 
@@ -9,7 +9,8 @@ use skiplist::Skiplist;
 
 use crate::memtable::{
     factory::{Factory, Options, Result},
-    skiplist::{BytewiseComparator, SkiplistMemTable},
+    key::BytewiseComparator,
+    skiplist::SkiplistMemTable,
     MemTableRef,
 };
 

@@ -1,17 +1,14 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Skiplist memtable factory
+//! Columnar memtable factory
 
 use std::{
-    cmp::Ordering,
     collections::HashMap,
     sync::{
         atomic::{AtomicU64, AtomicUsize},
         Arc, RwLock,
     },
 };
-
-use skiplist::KeyComparator;
 
 use crate::memtable::{
     columnar::ColumnarMemTable,
@@ -33,23 +30,9 @@ impl Factory for ColumnarMemTableFactory {
             last_sequence: AtomicU64::new(opts.creation_sequence),
             row_num: AtomicUsize::new(0),
             opts,
+            memtable_size: AtomicUsize::new(0),
         });
 
         Ok(memtable)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct BytewiseComparator;
-
-impl KeyComparator for BytewiseComparator {
-    #[inline]
-    fn compare_key(&self, lhs: &[u8], rhs: &[u8]) -> Ordering {
-        lhs.cmp(rhs)
-    }
-
-    #[inline]
-    fn same_key(&self, lhs: &[u8], rhs: &[u8]) -> bool {
-        lhs == rhs
     }
 }

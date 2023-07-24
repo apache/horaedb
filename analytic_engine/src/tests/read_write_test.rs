@@ -507,14 +507,14 @@ fn test_table_write_get_override_case<T: EngineBuildContext>(
         // Reopen db.
         test_ctx.reopen_with_tables(&[test_table1]).await;
 
-        // util::check_get(
-        //     &test_ctx,
-        //     &fixed_schema_table,
-        //     "Try to get row after reopen",
-        //     test_table1,
-        //     &expect_rows,
-        // )
-        // .await;
+        util::check_get(
+            &test_ctx,
+            &fixed_schema_table,
+            "Try to get row after reopen",
+            test_table1,
+            &expect_rows,
+        )
+        .await;
     });
 }
 
