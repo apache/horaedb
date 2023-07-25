@@ -15,7 +15,7 @@ use common_types::{
     time::TimeRange,
 };
 use datafusion::{common::Column, logical_expr::Expr};
-use future_cancel::CancellationSafeFuture;
+use future_ext::CancellationSafeFuture;
 use futures::TryStreamExt;
 use generic_error::BoxError;
 use log::{error, warn};

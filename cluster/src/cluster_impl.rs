@@ -8,7 +8,6 @@ use std::{
 use async_trait::async_trait;
 use common_types::table::ShardId;
 use etcd_client::ConnectOptions;
-use generic_error::BoxError;
 use log::{error, info, warn};
 use meta_client::{
     types::{
@@ -30,7 +29,7 @@ use crate::{
     shard_set::{Shard, ShardRef, ShardSet},
     topology::ClusterTopology,
     Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause, InvalidArguments,
-    MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound,
+    MetaClientFailure, OpenShard, Result, ShardNotFound,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -249,18 +248,33 @@ impl Inner {
             );
         }
 
-        let req = GetTablesOfShardsRequest {
-            shard_ids: vec![shard_info.id],
-        };
+        let resp = future_ext::retry_async(
+            || {
+                let req = GetTablesOfShardsRequest {
+                    shard_ids: vec![shard_info.id],
+                };
 
-        let mut resp = self
-            .meta_client
-            .get_tables_of_shards(req)
-            .await
-            .box_err()
-            .with_context(|| OpenShardWithCause {
-                msg: format!("shard_info:{shard_info:?}"),
-            })?;
+                async {
+                    self.meta_client
+                        .get_tables_of_shards(req)
+                        .await
+                        .map_err(|e| {
+                            error!("Get tables of shard failed, err:{e}");
+                            e
+                        })
+                }
+            },
+            // TODO: configure retry
+            &future_ext::RetryConfig {
+                max_retries: 10,
+                interval: Duration::from_secs(5),
+            },
+        )
+        .await;
+        let mut resp = match resp {
+            Ok(v) => v,
+            Err(_e) => panic!("Release shard lock failed and we have to panic otherwise this shard wont be assigned again."),
+        };
 
         ensure!(
             resp.tables_by_shard.len() == 1,

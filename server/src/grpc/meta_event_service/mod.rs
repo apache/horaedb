@@ -2,7 +2,10 @@
 
 // Meta event rpc service implementation.
 
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use analytic_engine::setup::OpenedWals;
 use async_trait::async_trait;
@@ -362,10 +365,24 @@ async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
             msg: "fail to close shards in cluster",
         })?;
 
-    ctx.release_shard_lock(shard_id).await.map_err(|e| {
-        error!("Failed to release shard lock, shard_id:{shard_id}, err:{e}");
-        e
-    })?;
+    if future_ext::retry_async(
+        || async {
+            ctx.release_shard_lock(shard_id).await.map_err(|e| {
+                error!("Failed to release shard lock, shard_id:{shard_id}, err:{e}");
+                e
+            })
+        },
+        // TODO: configure retry
+        &future_ext::RetryConfig {
+            max_retries: 10,
+            interval: Duration::from_secs(5),
+        },
+    )
+    .await
+    .is_err()
+    {
+        panic!("Release shard lock failed and we have to panic otherwise this shard wont be assigned again.")
+    }
 
     info!("Shard close sequentially finish, shard_id:{shard_id}");
 

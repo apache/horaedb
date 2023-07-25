@@ -100,7 +100,7 @@ dependencies = [
  "common_types",
  "datafusion",
  "env_logger",
- "future_cancel",
+ "future_ext",
  "futures 0.3.28",
  "generic_error",
  "hex",
@@ -1485,6 +1485,7 @@ dependencies = [
  "ceresdbproto",
  "common_types",
  "etcd-client",
+ "future_ext",
  "generic_error",
  "log",
  "macros",
@@ -2559,7 +2560,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6d5a32815ae3f33302d95fdcb2ce17862f8c65363dcfd29360480ba1001fc9c"
 
 [[package]]
-name = "future_cancel"
+name = "future_ext"
 version = "1.2.5-alpha"
 dependencies = [
  "futures 0.3.28",
@@ -5978,6 +5979,7 @@ dependencies = [
  "common_types",
  "datafusion",
  "df_operator",
+ "future_ext",
  "futures 0.3.28",
  "generic_error",
  "http",
