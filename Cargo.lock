@@ -3030,8 +3030,8 @@ dependencies = [
 
 [[package]]
 name = "hyperloglog"
-version = "1.0.1"
-source = "git+https://github.com/jedisct1/rust-hyperloglog.git?rev=ed1b9b915072ba90c6b93fbfbba30c03215ba682#ed1b9b915072ba90c6b93fbfbba30c03215ba682"
+version = "1.0.2"
+source = "git+https://github.com/jedisct1/rust-hyperloglog.git?rev=425487ce910f26636fbde8c4d640b538431aad50#425487ce910f26636fbde8c4d640b538431aad50"
 dependencies = [
  "bytecount",
  "rand 0.8.5",

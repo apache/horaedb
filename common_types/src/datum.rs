@@ -21,6 +21,7 @@ use crate::{hex, string::StringBytes, time::Timestamp};
 
 const DATE_FORMAT: &str = "%Y-%m-%d";
 const TIME_FORMAT: &str = "%H:%M:%S%.3f";
+const NULL_VALUE_FOR_HASH: u128 = u128::MAX;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -89,6 +90,25 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+// Float wrapper over f32/f64. Just because we cannot build std::hash::Hash for
+// floats directly we have to do it through type wrapper
+// Fork from datafusion:
+//  https://github.com/apache/arrow-datafusion/blob/1a0542acbc01e5243471ae0fc3586c2f1f40013b/datafusion/common/src/scalar.rs#L1493
+struct Fl<T>(T);
+
+macro_rules! hash_float_value {
+    ($(($t:ty, $i:ty)),+) => {
+        $(impl std::hash::Hash for Fl<$t> {
+            #[inline]
+            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                state.write(&<$i>::from_ne_bytes(self.0.to_ne_bytes()).to_ne_bytes())
+            }
+        })+
+    };
+}
+
+hash_float_value!((f64, u64), (f32, u32));
 
 // FIXME(yingwen): How to handle timezone?
 
@@ -1138,6 +1158,37 @@ impl<'a> DatumView<'a> {
             }
         }
     }
+
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            DatumView::String(v) => Some(v),
+            _ => None,
+        }
+    }
+}
+
+impl<'a> std::hash::Hash for DatumView<'a> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            DatumView::Null => NULL_VALUE_FOR_HASH.hash(state),
+            DatumView::Timestamp(v) => v.hash(state),
+            DatumView::Double(v) => Fl(*v).hash(state),
+            DatumView::Float(v) => Fl(*v).hash(state),
+            DatumView::Varbinary(v) => v.hash(state),
+            DatumView::String(v) => v.hash(state),
+            DatumView::UInt64(v) => v.hash(state),
+            DatumView::UInt32(v) => v.hash(state),
+            DatumView::UInt16(v) => v.hash(state),
+            DatumView::UInt8(v) => v.hash(state),
+            DatumView::Int64(v) => v.hash(state),
+            DatumView::Int32(v) => v.hash(state),
+            DatumView::Int16(v) => v.hash(state),
+            DatumView::Int8(v) => v.hash(state),
+            DatumView::Boolean(v) => v.hash(state),
+            DatumView::Date(v) => v.hash(state),
+            DatumView::Time(v) => v.hash(state),
+        }
+    }
 }
 
 impl DatumKind {
@@ -1359,6 +1410,11 @@ impl From<DatumKind> for DataType {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        collections::hash_map::DefaultHasher,
+        hash::{Hash, Hasher},
+    };
+
     use super::*;
 
     #[test]
@@ -1580,5 +1636,52 @@ mod tests {
                 assert!(res.is_err());
             }
         }
+    }
+
+    fn get_hash<V: Hash>(v: &V) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        v.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    macro_rules! assert_datum_view_hash {
+        ($v:expr, $Kind: ident) => {
+            let expected = get_hash(&DatumView::$Kind($v));
+            let actual = get_hash(&$v);
+            assert_eq!(expected, actual);
+        };
+    }
+
+    #[test]
+    fn test_hash() {
+        assert_datum_view_hash!(Timestamp::new(42), Timestamp);
+        assert_datum_view_hash!(42_i32, Date);
+        assert_datum_view_hash!(424_i64, Time);
+        assert_datum_view_hash!(b"abcde", Varbinary);
+        assert_datum_view_hash!("12345", String);
+        assert_datum_view_hash!(42424242_u64, UInt64);
+        assert_datum_view_hash!(424242_u32, UInt32);
+        assert_datum_view_hash!(4242_u16, UInt16);
+        assert_datum_view_hash!(42_u8, UInt8);
+        assert_datum_view_hash!(-42424242_i64, Int64);
+        assert_datum_view_hash!(-42424242_i32, Int32);
+        assert_datum_view_hash!(-4242_i16, Int16);
+        assert_datum_view_hash!(-42_i8, Int8);
+        assert_datum_view_hash!(true, Boolean);
+
+        // Null case.
+        let null_expected = get_hash(&NULL_VALUE_FOR_HASH);
+        let null_actual = get_hash(&DatumView::Null);
+        assert_eq!(null_expected, null_actual);
+
+        // Float case.
+        let float_expected = get_hash(&Fl(42.0_f32));
+        let float_actual = get_hash(&DatumView::Float(42.0));
+        assert_eq!(float_expected, float_actual);
+
+        // Double case.
+        let double_expected = get_hash(&Fl(-42.0_f64));
+        let double_actual = get_hash(&DatumView::Double(-42.0));
+        assert_eq!(double_expected, double_actual);
     }
 }
