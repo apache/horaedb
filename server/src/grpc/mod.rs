@@ -5,7 +5,7 @@
 use std::{
     net::{AddrParseError, SocketAddr},
     stringify,
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::Duration,
 };
 
@@ -36,7 +36,7 @@ use tonic::transport::Server;
 
 use crate::grpc::{
     meta_event_service::MetaServiceImpl,
-    remote_engine_service::{dedup_request::DedupMap, RemoteEngineServiceImpl},
+    remote_engine_service::{dedup_requests::RequestNotifiers, RemoteEngineServiceImpl},
     storage_service::StorageServiceImpl,
 };
 
@@ -197,6 +197,7 @@ pub struct Builder<Q> {
     cluster: Option<ClusterRef>,
     opened_wals: Option<OpenedWals>,
     proxy: Option<Arc<Proxy<Q>>>,
+    request_notifiers: Option<Arc<RequestNotifiers>>,
 }
 
 impl<Q> Builder<Q> {
@@ -209,6 +210,7 @@ impl<Q> Builder<Q> {
             cluster: None,
             opened_wals: None,
             proxy: None,
+            request_notifiers: None,
         }
     }
 
@@ -247,6 +249,13 @@ impl<Q> Builder<Q> {
         self.proxy = Some(proxy);
         self
     }
+
+    pub fn dedup_requests(mut self, dedup_requests: bool) -> Self {
+        if dedup_requests {
+            self.request_notifiers = Some(Arc::new(RequestNotifiers::default()));
+        }
+        self
+    }
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -270,7 +279,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             let service = RemoteEngineServiceImpl {
                 instance,
                 runtimes: runtimes.clone(),
-                dedup_map: Arc::new(RwLock::new(DedupMap::default())),
+                request_notifiers: self.request_notifiers,
             };
             RemoteEngineServiceServer::new(service)
         };

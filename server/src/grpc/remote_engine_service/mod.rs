@@ -2,10 +2,7 @@
 
 // Remote engine rpc service implementation.
 
-use std::{
-    sync::{Arc, RwLock},
-    time::Instant,
-};
+use std::{sync::Arc, time::Instant};
 
 use arrow_ext::ipc::{self, CompressOptions, CompressOutput, CompressionMethod};
 use async_trait::async_trait;
@@ -39,12 +36,12 @@ use crate::grpc::{
         REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC, REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
     },
     remote_engine_service::{
-        dedup_request::{DedupMap, Notifiers, RequestKey},
+        dedup_requests::{RequestKey, RequestNotifiers, RequestResult},
         error::{ErrNoCause, ErrWithCause, Result, StatusCode},
     },
 };
 
-pub mod dedup_request;
+pub mod dedup_requests;
 mod error;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
@@ -54,7 +51,7 @@ const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
 pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {
     pub instance: InstanceRef<Q>,
     pub runtimes: Arc<EngineRuntimes>,
-    pub dedup_map: Arc<RwLock<DedupMap>>,
+    pub request_notifiers: Option<Arc<RequestNotifiers>>,
 }
 
 impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
@@ -82,31 +79,16 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             read_request.order,
         );
 
-        {
-            let dedup_map = self.dedup_map.read().unwrap();
-            if dedup_map.contains_key(&request_key) {
-                let notifiers = dedup_map.get_notifiers(&request_key).unwrap();
-                notifiers.add_notifier(tx);
-
-                REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
-                    .stream_read
-                    .observe(instant.saturating_elapsed().as_secs_f64());
-                return Ok(ReceiverStream::new(rx));
-            } else {
-                drop(dedup_map);
-
-                let mut dedup_map = self.dedup_map.write().unwrap();
-                if dedup_map.contains_key(&request_key) {
-                    let notifiers = dedup_map.get_notifiers(&request_key).unwrap();
-                    notifiers.add_notifier(tx);
-
+        if let Some(request_notifiers) = self.request_notifiers.clone() {
+            match request_notifiers.insert_notifier(request_key.clone(), tx.clone()) {
+                // The first request, need to handle it, and then notify the other requests.
+                RequestResult::First => {}
+                // The request is waiting for the result of first request.
+                RequestResult::Wait => {
                     REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
                         .stream_read
                         .observe(instant.saturating_elapsed().as_secs_f64());
                     return Ok(ReceiverStream::new(rx));
-                } else {
-                    let notifiers = Notifiers::new(tx);
-                    dedup_map.add_notifiers(request_key.clone(), notifiers);
                 }
             }
         }
@@ -149,10 +131,9 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             batches.extend(batch);
         }
 
-        let notifiers = {
-            let mut dedup_map = self.dedup_map.write().unwrap();
-            let notifiers = dedup_map.delete_notifiers(request_key).unwrap();
-            notifiers.into_notifiers()
+        let notifiers = match self.request_notifiers.clone() {
+            Some(request_notifiers) => request_notifiers.take_notifiers(request_key).unwrap(),
+            None => vec![tx],
         };
 
         let mut num_rows = 0;
@@ -160,24 +141,20 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             match batch {
                 Ok(batch) => {
                     num_rows += batch.num_rows() * notifiers.len();
-                    for tx in &notifiers {
-                        if let Err(e) = tx.send(Ok(batch.clone())).await {
+                    for notifier in &notifiers {
+                        if let Err(e) = notifier.send(Ok(batch.clone())).await {
                             error!("Failed to send handler result, err:{}.", e);
                         }
                     }
                 }
                 Err(_) => {
-                    for tx in &notifiers {
-                        if let Err(e) = tx
-                            .send(
-                                ErrNoCause {
-                                    code: StatusCode::Internal,
-                                    msg: "failed to handler request".to_string(),
-                                }
-                                .fail(),
-                            )
-                            .await
-                        {
+                    for notifier in &notifiers {
+                        let err = ErrNoCause {
+                            code: StatusCode::Internal,
+                            msg: "failed to handler request".to_string(),
+                        }
+                        .fail();
+                        if let Err(e) = notifier.send(err).await {
                             error!("Failed to send handler result, err:{}.", e);
                         }
                     }

@@ -400,6 +400,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .opened_wals(opened_wals)
             .timeout(self.server_config.timeout.map(|v| v.0))
             .proxy(proxy)
+            .dedup_requests(self.server_config.dedup_requests)
             .build()
             .context(BuildGrpcService)?;
 
