@@ -340,8 +340,21 @@ impl IndexInWriterSchema {
     /// this column should be filled by null.
     ///
     /// Panic if the index_in_table is out of bound
+    #[inline]
     pub fn column_index_in_writer(&self, index_in_table: usize) -> Option<usize> {
         self.0[index_in_table]
+    }
+
+    /// Reserve the capacity for the additional columns.
+    #[inline]
+    pub fn reserve_columns(&mut self, additional: usize) {
+        self.0.reserve(additional);
+    }
+
+    /// Push a new column index.
+    #[inline]
+    pub fn push_column(&mut self, column_index: Option<usize>) {
+        self.0.push(column_index)
     }
 }
 
@@ -791,7 +804,7 @@ impl Schema {
         writer_schema: &Schema,
         index_in_writer: &mut IndexInWriterSchema,
     ) -> std::result::Result<(), CompatError> {
-        index_in_writer.0.reserve(self.num_columns());
+        index_in_writer.reserve_columns(self.num_columns());
 
         let mut num_col_in_writer = 0;
         for column in self.columns() {
@@ -809,7 +822,7 @@ impl Schema {
                         .context(IncompatWriteColumn)?;
 
                     // Column is compatible, push index mapping
-                    index_in_writer.0.push(Some(writer_index));
+                    index_in_writer.push_column(Some(writer_index));
                 }
                 None => {
                     // Column is not found in writer, then the column should be nullable.
@@ -819,7 +832,7 @@ impl Schema {
                     );
 
                     // Column is nullable, push index mapping
-                    index_in_writer.0.push(None);
+                    index_in_writer.push_column(None);
                 }
             }
         }
