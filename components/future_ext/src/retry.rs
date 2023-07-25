@@ -20,18 +20,26 @@ impl Default for RetryConfig {
     }
 }
 
+// Copy from https://github.com/jimmycuadra/retry/blob/2.0.0/src/delay/random.rs#L73
+pub fn jitter(duration: Duration) -> Duration {
+    let jitter = rand::random::<f64>();
+    let secs = ((duration.as_secs() as f64) * jitter).ceil() as u64;
+    let nanos = ((f64::from(duration.subsec_nanos())) * jitter).ceil() as u32;
+    Duration::new(secs, nanos)
+}
+
 pub async fn retry_async<F, Fut, T, E>(f: F, config: &RetryConfig) -> Fut::Output
 where
     F: Fn() -> Fut,
     Fut: Future<Output = Result<T, E>>,
 {
-    for _ in 0..config.max_retries - 1 {
+    for _ in 0..config.max_retries {
         let result = f().await;
 
         if result.is_ok() {
             return result;
         }
-        tokio::time::sleep(config.interval).await;
+        tokio::time::sleep(jitter(config.interval)).await;
     }
 
     f().await
@@ -60,7 +68,7 @@ mod tests {
 
             let ret = retry_async(f, &config).await;
             assert!(ret.is_err());
-            assert_eq!(3, runs.load(Ordering::Relaxed));
+            assert_eq!(4, runs.load(Ordering::Relaxed));
         }
 
         // succeed directly

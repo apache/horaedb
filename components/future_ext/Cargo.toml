@@ -13,4 +13,5 @@ workspace = true
 [dependencies]
 futures = { workspace = true }
 runtime = { workspace = true }
+rand = { workspace = true }
 tokio = { workspace = true, features = ["time"] }

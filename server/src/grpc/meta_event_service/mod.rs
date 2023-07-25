@@ -28,6 +28,7 @@ use cluster::{
     ClusterRef,
 };
 use common_types::{schema::SchemaEncoder, table::ShardId};
+use future_ext::RetryConfig;
 use generic_error::BoxError;
 use log::{error, info, warn};
 use meta_client::types::{ShardInfo, TableInfo};
@@ -81,6 +82,12 @@ macro_rules! extract_updated_table_info {
         }
     }};
 }
+
+// TODO: configure retry
+const RETRY: RetryConfig = RetryConfig {
+    max_retries: 10,
+    interval: Duration::from_secs(5),
+};
 
 /// Builder for [MetaServiceImpl].
 pub struct Builder<Q> {
@@ -282,15 +289,22 @@ async fn do_open_shard(ctx: HandlerContext, shard_info: ShardInfo) -> Result<()>
     // Try to lock the shard in node level.
     ctx.acquire_shard_lock(shard_info.id).await?;
 
-    let shard = ctx
-        .cluster
-        .open_shard(&shard_info)
-        .await
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::Internal,
-            msg: "fail to open shards in cluster",
-        })?;
+    let shard = future_ext::retry_async(
+        || async {
+            ctx.cluster.open_shard(&shard_info).await.map_err(|e| {
+                error!("Open shard failed, id:{}, err:{e}", shard_info.id);
+                e
+            })
+        },
+        &RETRY,
+    )
+    .await;
+    let shard = match shard {
+        Ok(v) => v,
+        Err(_) => panic!(
+            "Open shard failed and we have to panic otherwise this shard wont be assigned again."
+        ),
+    };
 
     let open_ctx = OpenContext {
         catalog: ctx.default_catalog.clone(),
@@ -372,11 +386,7 @@ async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
                 e
             })
         },
-        // TODO: configure retry
-        &future_ext::RetryConfig {
-            max_retries: 10,
-            interval: Duration::from_secs(5),
-        },
+        &RETRY,
     )
     .await
     .is_err()
