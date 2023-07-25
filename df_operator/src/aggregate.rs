@@ -5,7 +5,7 @@
 use std::{fmt, ops::Deref};
 
 use arrow::array::ArrayRef as DfArrayRef;
-use common_types::{column::ColumnBlock, datum::DatumView};
+use common_types::column::ColumnBlock;
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     physical_plan::Accumulator as DfAccumulator,
@@ -45,23 +45,23 @@ impl From<ScalarValue> for State {
     }
 }
 
-pub struct Input<'a>(&'a [DatumView<'a>]);
+pub struct Input<'a>(&'a [ColumnBlock]);
 
 impl<'a> Input<'a> {
-    pub fn iter(&self) -> impl Iterator<Item = &DatumView<'a>> {
-        self.0.iter()
+    // pub fn column_iter(&self) -> impl Iterator<Item = &ColumnBlock> {
+    //     self.0.iter()
+    // }
+
+    pub fn num_columns(&self) -> usize {
+        self.0.len()
     }
 
-    pub fn len(&self) -> usize {
-        self.0.len()
+    pub fn column(&self, col_idx: usize) -> Option<&ColumnBlock> {
+        self.0.get(col_idx)
     }
 
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
-    }
-
-    pub fn value(&self, index: usize) -> &DatumView<'a> {
-        self.0.get(index).unwrap()
     }
 }
 
@@ -136,20 +136,9 @@ impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
             })
             .collect::<DfResult<Vec<_>>>()?;
 
-        let mut row = Vec::with_capacity(column_blocks.len());
-        let num_rows = column_blocks[0].num_rows();
-        (0..num_rows).try_for_each(|index| {
-            row.clear();
-
-            for column_block in &column_blocks {
-                let datum_view = column_block.datum_view(index);
-                row.push(datum_view);
-            }
-            let input = Input(&row);
-
-            self.accumulator.update(input).map_err(|e| {
-                DataFusionError::Execution(format!("Accumulator failed to update, err:{e}"))
-            })
+        let input = Input(&column_blocks);
+        self.accumulator.update(input).map_err(|e| {
+            DataFusionError::Execution(format!("Accumulator failed to update, err:{e}"))
         })
     }
 
@@ -169,20 +158,9 @@ impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
             })
             .collect::<DfResult<Vec<_>>>()?;
 
-        let mut row = Vec::with_capacity(column_blocks.len());
-        let num_rows = column_blocks[0].num_rows();
-        (0..num_rows).try_for_each(|index| {
-            row.clear();
-
-            for column_block in &column_blocks {
-                let datum_view = column_block.datum_view(index);
-                row.push(datum_view);
-            }
-            let state_ref = StateRef(Input(&row));
-
-            self.accumulator.merge(state_ref).map_err(|e| {
-                DataFusionError::Execution(format!("Accumulator failed to merge, err:{e}"))
-            })
+        let state_ref = StateRef(Input(&column_blocks));
+        self.accumulator.merge(state_ref).map_err(|e| {
+            DataFusionError::Execution(format!("Accumulator failed to merge, err:{e}"))
         })
     }
 
