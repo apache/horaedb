@@ -48,10 +48,6 @@ impl From<ScalarValue> for State {
 pub struct Input<'a>(&'a [ColumnBlock]);
 
 impl<'a> Input<'a> {
-    // pub fn column_iter(&self) -> impl Iterator<Item = &ColumnBlock> {
-    //     self.0.iter()
-    // }
-
     pub fn num_columns(&self) -> usize {
         self.0.len()
     }
@@ -80,7 +76,7 @@ impl<'a> Deref for StateRef<'a> {
 ///
 /// An accumulator knows how to:
 /// * update its state from inputs via `update`
-/// * convert its internal state to a vector of scalar values
+/// * convert its internal state to column blocks
 /// * update its state from multiple accumulators' states via `merge`
 /// * compute the final value from its internal state via `evaluate`
 pub trait Accumulator: Send + Sync + fmt::Debug {
@@ -90,10 +86,10 @@ pub trait Accumulator: Send + Sync + fmt::Debug {
     // TODO: Use `Datum` rather than `ScalarValue`.
     fn state(&self) -> Result<State>;
 
-    /// updates the accumulator's state from a vector of scalars.
+    /// updates the accumulator's state from column blocks.
     fn update(&mut self, values: Input) -> Result<()>;
 
-    /// updates the accumulator's state from a vector of scalars.
+    /// updates the accumulator's state from column blocks.
     fn merge(&mut self, states: StateRef) -> Result<()>;
 
     /// returns its value based on its current state.

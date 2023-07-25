@@ -92,7 +92,9 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 // Float wrapper over f32/f64. Just because we cannot build std::hash::Hash for
-// floats directly we have to do it through type wrapper Fork from datafusion
+// floats directly we have to do it through type wrapper
+// Fork from datafusion:
+//  https://github.com/apache/arrow-datafusion/blob/1a0542acbc01e5243471ae0fc3586c2f1f40013b/datafusion/common/src/scalar.rs#L1493
 struct Fl<T>(T);
 
 macro_rules! hash_float_value {
