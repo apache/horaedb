@@ -5,7 +5,7 @@
 use std::{
     net::{AddrParseError, SocketAddr},
     stringify,
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::Duration,
 };
 
@@ -31,10 +31,7 @@ use query_engine::executor::Executor as QueryExecutor;
 use runtime::{JoinHandle, Runtime};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
-use tokio::sync::{
-    oneshot::{self, Sender},
-    RwLock,
-};
+use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
 use crate::grpc::{

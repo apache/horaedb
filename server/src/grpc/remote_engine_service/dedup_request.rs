@@ -1,6 +1,6 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::RwLock};
 
 use common_types::record_batch::RecordBatch;
 use table_engine::{predicate::PredicateRef, table::ReadOrder};
@@ -32,40 +32,49 @@ impl RequestKey {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+type Notifier = Sender<Result<RecordBatch>>;
+
+#[derive(Debug, Default)]
 pub struct Notifiers {
-    txs: Vec<Sender<Result<RecordBatch>>>,
+    notifiers: RwLock<Vec<Notifier>>,
 }
 
 impl Notifiers {
-    pub fn new(txs: Vec<Sender<Result<RecordBatch>>>) -> Self {
-        Self { txs }
+    pub fn new(notifier: Notifier) -> Self {
+        let notifiers = vec![notifier];
+        Self {
+            notifiers: RwLock::new(notifiers),
+        }
     }
 
-    pub fn get_txs(&self) -> &Vec<Sender<Result<RecordBatch>>> {
-        &self.txs
+    pub fn add_notifier(&self, notifier: Notifier) {
+        self.notifiers.write().unwrap().push(notifier);
     }
 
-    pub fn add_tx(&mut self, tx: Sender<Result<RecordBatch>>) {
-        self.txs.push(tx);
+    pub fn into_notifiers(self) -> Vec<Notifier> {
+        self.notifiers.into_inner().unwrap()
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct DedupMap {
     inner: HashMap<RequestKey, Notifiers>,
 }
 
 impl DedupMap {
-    pub fn get_notifiers(&self, key: RequestKey) -> Option<&Notifiers> {
-        self.inner.get(&key)
+    pub fn get_notifiers(&self, key: &RequestKey) -> Option<&Notifiers> {
+        self.inner.get(key)
     }
 
     pub fn add_notifiers(&mut self, key: RequestKey, value: Notifiers) {
         self.inner.insert(key, value);
     }
 
-    pub fn delete_notifiers(&mut self, key: &RequestKey) {
-        self.inner.remove(key);
+    pub fn delete_notifiers(&mut self, key: RequestKey) -> Option<Notifiers> {
+        self.inner.remove(&key)
+    }
+
+    pub fn contains_key(&self, key: &RequestKey) -> bool {
+        self.inner.contains_key(key)
     }
 }
