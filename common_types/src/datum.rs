@@ -21,6 +21,7 @@ use crate::{hex, string::StringBytes, time::Timestamp};
 
 const DATE_FORMAT: &str = "%Y-%m-%d";
 const TIME_FORMAT: &str = "%H:%M:%S%.3f";
+const NULL_VALUE_FOR_HASH: u128 = u128::MAX;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -1167,7 +1168,7 @@ impl<'a> DatumView<'a> {
 impl<'a> std::hash::Hash for DatumView<'a> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
-            DatumView::Null => 1.hash(state),
+            DatumView::Null => NULL_VALUE_FOR_HASH.hash(state),
             DatumView::Timestamp(v) => v.hash(state),
             DatumView::Double(v) => Fl(*v).hash(state),
             DatumView::Float(v) => Fl(*v).hash(state),
@@ -1667,7 +1668,7 @@ mod tests {
         assert_datum_view_hash!(true, Boolean);
 
         // Null case.
-        let null_expected = get_hash(&1);
+        let null_expected = get_hash(&NULL_VALUE_FOR_HASH);
         let null_actual = get_hash(&DatumView::Null);
         assert_eq!(null_expected, null_actual);
 
