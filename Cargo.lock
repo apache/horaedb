@@ -2564,7 +2564,6 @@ name = "future_ext"
 version = "1.2.5-alpha"
 dependencies = [
  "futures 0.3.28",
- "rand 0.7.3",
  "runtime",
  "tokio",
 ]

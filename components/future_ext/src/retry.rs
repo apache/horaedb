@@ -6,6 +6,8 @@ use std::time::Duration;
 
 use futures::Future;
 
+// TODO: add backoff
+// https://github.com/apache/arrow-rs/blob/dfb642809e93c2c1b8343692f4e4b3080000f988/object_store/src/client/backoff.rs#L26
 pub struct RetryConfig {
     pub max_retries: usize,
     pub interval: Duration,
@@ -20,14 +22,6 @@ impl Default for RetryConfig {
     }
 }
 
-// Copy from https://github.com/jimmycuadra/retry/blob/2.0.0/src/delay/random.rs#L73
-pub fn jitter(duration: Duration) -> Duration {
-    let jitter = rand::random::<f64>();
-    let secs = ((duration.as_secs() as f64) * jitter).ceil() as u64;
-    let nanos = ((f64::from(duration.subsec_nanos())) * jitter).ceil() as u32;
-    Duration::new(secs, nanos)
-}
-
 pub async fn retry_async<F, Fut, T, E>(f: F, config: &RetryConfig) -> Fut::Output
 where
     F: Fn() -> Fut,
@@ -39,7 +33,7 @@ where
         if result.is_ok() {
             return result;
         }
-        tokio::time::sleep(jitter(config.interval)).await;
+        tokio::time::sleep(config.interval).await;
     }
 
     f().await
