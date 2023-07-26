@@ -1,5 +1,5 @@
 [package]
-name = "future_cancel"
+name = "future_ext"
 
 [package.version]
 workspace = true
@@ -13,6 +13,4 @@ workspace = true
 [dependencies]
 futures = { workspace = true }
 runtime = { workspace = true }
-
-[dev-dependencies]
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
