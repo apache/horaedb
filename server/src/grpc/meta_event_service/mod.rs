@@ -289,6 +289,8 @@ async fn do_open_shard(ctx: HandlerContext, shard_info: ShardInfo) -> Result<()>
     // Try to lock the shard in node level.
     ctx.acquire_shard_lock(shard_info.id).await?;
 
+    // We need to ensure `open_shard` succeeds, otherwise it won't heartbeat to
+    // meta.
     let shard = future_ext::retry_async(
         || async {
             ctx.cluster.open_shard(&shard_info).await.map_err(|e| {
@@ -314,6 +316,8 @@ async fn do_open_shard(ctx: HandlerContext, shard_info: ShardInfo) -> Result<()>
         engine: ANALYTIC_ENGINE_TYPE.to_string(),
     };
 
+    // This `open` may only open part of tables in this shard, and this is
+    // allowed via shard status(PartialOpen) mechanism.
     shard.open(open_ctx).await.box_err().context(ErrWithCause {
         code: StatusCode::Internal,
         msg: format!("fail to open shard, id:{}", shard_info.id),
@@ -379,20 +383,10 @@ async fn do_close_shard(ctx: &HandlerContext, shard_id: ShardId) -> Result<()> {
             msg: "fail to close shards in cluster",
         })?;
 
-    if future_ext::retry_async(
-        || async {
-            ctx.release_shard_lock(shard_id).await.map_err(|e| {
-                error!("Failed to release shard lock, shard_id:{shard_id}, err:{e}");
-                e
-            })
-        },
-        &RETRY,
-    )
-    .await
-    .is_err()
-    {
-        panic!("Release shard lock failed and we have to panic otherwise this shard wont be assigned again.")
-    }
+    ctx.release_shard_lock(shard_id).await.map_err(|e| {
+        error!("Failed to release shard lock, shard_id:{shard_id}, err:{e}");
+        e
+    })?;
 
     info!("Shard close sequentially finish, shard_id:{shard_id}");
 
