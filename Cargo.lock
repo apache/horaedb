@@ -852,7 +852,7 @@ dependencies = [
  "bytes_ext",
  "clap 3.2.23",
  "common_types",
- "criterion 0.4.0",
+ "criterion",
  "env_logger",
  "futures 0.3.28",
  "generic_error",
@@ -1763,32 +1763,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b540bd8bc810d3885c6ea91e2018302f68baba2129ab3e88f32389ee9370880d"
 dependencies = [
  "cfg-if 1.0.0",
-]
-
-[[package]]
-name = "criterion"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7c76e09c1aae2bc52b3d2f29e13c6572553b30c4aa1b8a49fd70de6412654cb"
-dependencies = [
- "anes",
- "atty",
- "cast",
- "ciborium",
- "clap 3.2.23",
- "criterion-plot",
- "itertools 0.10.5",
- "lazy_static",
- "num-traits",
- "oorandom",
- "plotters",
- "rayon",
- "regex",
- "serde",
- "serde_derive",
- "serde_json",
- "tinytemplate",
- "walkdir",
 ]
 
 [[package]]
@@ -4824,7 +4798,7 @@ checksum = "978385d59daf9269189d052ca8a84c1acfd0715c0599a5d5188d4acc078ca46a"
 dependencies = [
  "backtrace",
  "cfg-if 1.0.0",
- "criterion 0.5.1",
+ "criterion",
  "findshlibs",
  "inferno",
  "libc",
@@ -6245,7 +6219,7 @@ version = "1.2.5-alpha"
 dependencies = [
  "arena",
  "bytes",
- "criterion 0.4.0",
+ "criterion",
  "rand 0.7.3",
  "yatp",
 ]

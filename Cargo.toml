@@ -89,7 +89,7 @@ chrono = "0.4"
 clap = "3.0"
 clru = "0.6.1"
 cluster = { path = "cluster" }
-criterion = "0.4"
+criterion = "0.5"
 common_types = { path = "common_types" }
 datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "a6dcd943051a083693c352c6b4279156548490a0" }
 datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "a6dcd943051a083693c352c6b4279156548490a0" }
