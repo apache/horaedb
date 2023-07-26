@@ -54,6 +54,32 @@ pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {
     pub request_notifiers: Option<Arc<RequestNotifiers>>,
 }
 
+struct RequestNotifierGuard<F: FnOnce()>(Option<F>);
+
+impl<F: FnOnce()> Default for RequestNotifierGuard<F> {
+    fn default() -> Self {
+        Self(None)
+    }
+}
+
+impl<F: FnOnce()> RequestNotifierGuard<F> {
+    fn set_none(&mut self) {
+        self.0 = None;
+    }
+
+    fn set_some(&mut self, f: F) {
+        self.0 = Some(f);
+    }
+}
+
+impl<F: FnOnce()> Drop for RequestNotifierGuard<F> {
+    fn drop(&mut self) {
+        if let Some(f) = (self.0).take() {
+            f()
+        }
+    }
+}
+
 impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
     async fn stream_read_internal(
         &self,
@@ -126,6 +152,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             read_request.order,
         );
 
+        let mut _guard = RequestNotifierGuard::default();
         match self
             .request_notifiers
             .as_ref()
@@ -133,7 +160,15 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             .insert_notifier(request_key.clone(), tx)
         {
             // The first request, need to handle it, and then notify the other requests.
-            RequestResult::First => {}
+            RequestResult::First => {
+                // The _guard is used to remove key when future is cancelled.
+                _guard.set_some(|| {
+                    self.request_notifiers
+                        .as_ref()
+                        .unwrap()
+                        .take_notifiers(&request_key);
+                });
+            }
             // The request is waiting for the result of first request.
             RequestResult::Wait => {
                 REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
@@ -181,11 +216,13 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             batches.extend(batch);
         }
 
+        // We should set None to _guard, otherwise the key will be removed twice.
+        _guard.set_none();
         let notifiers = self
             .request_notifiers
             .as_ref()
             .unwrap()
-            .take_notifiers(request_key)
+            .take_notifiers(&request_key)
             .unwrap();
 
         let mut num_rows = 0;
@@ -210,6 +247,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
                             error!("Failed to send handler result, err:{}.", e);
                         }
                     }
+                    break;
                 }
             }
         }

@@ -83,11 +83,11 @@ impl RequestNotifiers {
     }
 
     /// Take the notifiers for the given key, and remove the key from the map.
-    pub fn take_notifiers(&self, key: RequestKey) -> Option<Vec<Notifier>> {
+    pub fn take_notifiers(&self, key: &RequestKey) -> Option<Vec<Notifier>> {
         self.inner
             .write()
             .unwrap()
-            .remove(&key)
+            .remove(key)
             .map(|notifiers| notifiers.notifiers.into_inner().unwrap())
     }
 }
