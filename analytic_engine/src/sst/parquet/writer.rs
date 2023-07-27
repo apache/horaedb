@@ -220,6 +220,7 @@ impl RecordBatchGroupWriter {
             parquet_meta_data.parquet_filter = parquet_filter;
             parquet_meta_data
         };
+        // 这里需要把metadata 分离出来 而不是塞到parquet中
         parquet_encoder
             .set_meta_data(parquet_meta_data)
             .box_err()
@@ -311,6 +312,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             }
         };
 
+        // 在这里进行实际存储成parquet，需要修改成再存一份metadata文件
         let file_head = self.store.head(self.path).await.context(Storage)?;
         let storage_format = if self.hybrid_encoding {
             StorageFormat::Hybrid

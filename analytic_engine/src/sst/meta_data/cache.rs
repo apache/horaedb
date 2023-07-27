@@ -54,7 +54,7 @@ impl MetaData {
                 other_kv_metas.push(kv_meta.clone());
             }
         }
-
+        // 这里需要从我们新存的文件中获取metadata
         let custom = {
             let custom_kv_meta = custom_kv_meta.context(KvMetaDataNotFound)?;
             let mut sst_meta =
