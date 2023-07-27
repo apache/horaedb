@@ -16,7 +16,7 @@ use ceresdbproto::{
     storage::storage_service_server::StorageServiceServer,
 };
 use cluster::ClusterRef;
-use common_types::column_schema;
+use common_types::{column_schema, record_batch::RecordBatch};
 use futures::FutureExt;
 use generic_error::GenericError;
 use log::{info, warn};
@@ -36,7 +36,9 @@ use tonic::transport::Server;
 
 use crate::grpc::{
     meta_event_service::MetaServiceImpl,
-    remote_engine_service::{dedup_requests::RequestNotifiers, RemoteEngineServiceImpl},
+    remote_engine_service::{
+        dedup_requests::RequestNotifiers, error, RemoteEngineServiceImpl, RequestKey,
+    },
     storage_service::StorageServiceImpl,
 };
 
@@ -197,7 +199,7 @@ pub struct Builder<Q> {
     cluster: Option<ClusterRef>,
     opened_wals: Option<OpenedWals>,
     proxy: Option<Arc<Proxy<Q>>>,
-    request_notifiers: Option<Arc<RequestNotifiers>>,
+    request_notifiers: Option<Arc<RequestNotifiers<RequestKey, RecordBatch, error::Error>>>,
 }
 
 impl<Q> Builder<Q> {

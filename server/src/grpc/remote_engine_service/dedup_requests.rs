@@ -1,65 +1,54 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{collections::HashMap, sync::RwLock};
+use std::{collections::HashMap, hash::Hash, sync::RwLock};
 
-use common_types::record_batch::RecordBatch;
-use table_engine::{predicate::PredicateRef, table::ReadOrder};
 use tokio::sync::mpsc::Sender;
 
-use crate::grpc::remote_engine_service::Result;
+type Notifier<T, E> = Sender<Result<T, E>>;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct RequestKey {
-    table: String,
-    predicate: PredicateRef,
-    projection: Option<Vec<usize>>,
-    order: ReadOrder,
+#[derive(Debug)]
+struct Notifiers<T, E> {
+    notifiers: RwLock<Vec<Notifier<T, E>>>,
 }
 
-impl RequestKey {
-    pub fn new(
-        table: String,
-        predicate: PredicateRef,
-        projection: Option<Vec<usize>>,
-        order: ReadOrder,
-    ) -> Self {
-        Self {
-            table,
-            predicate,
-            projection,
-            order,
-        }
-    }
-}
-
-type Notifier = Sender<Result<RecordBatch>>;
-
-#[derive(Debug, Default)]
-struct Notifiers {
-    notifiers: RwLock<Vec<Notifier>>,
-}
-
-impl Notifiers {
-    pub fn new(notifier: Notifier) -> Self {
+impl<T, E> Notifiers<T, E> {
+    pub fn new(notifier: Notifier<T, E>) -> Self {
         let notifiers = vec![notifier];
         Self {
             notifiers: RwLock::new(notifiers),
         }
     }
 
-    pub fn add_notifier(&self, notifier: Notifier) {
+    pub fn add_notifier(&self, notifier: Notifier<T, E>) {
         self.notifiers.write().unwrap().push(notifier);
     }
 }
 
-#[derive(Debug, Default)]
-pub struct RequestNotifiers {
-    inner: RwLock<HashMap<RequestKey, Notifiers>>,
+#[derive(Debug)]
+pub struct RequestNotifiers<K, T, E>
+where
+    K: PartialEq + Eq + Hash,
+{
+    inner: RwLock<HashMap<K, Notifiers<T, E>>>,
 }
 
-impl RequestNotifiers {
+impl<K, T, E> Default for RequestNotifiers<K, T, E>
+where
+    K: PartialEq + Eq + Hash,
+{
+    fn default() -> Self {
+        Self {
+            inner: RwLock::new(HashMap::new()),
+        }
+    }
+}
+
+impl<K, T, E> RequestNotifiers<K, T, E>
+where
+    K: PartialEq + Eq + Hash,
+{
     /// Insert a notifier for the given key.
-    pub fn insert_notifier(&self, key: RequestKey, notifier: Notifier) -> RequestResult {
+    pub fn insert_notifier(&self, key: K, notifier: Notifier<T, E>) -> RequestResult {
         // First try to read the notifiers, if the key exists, add the notifier to the
         // notifiers.
         let notifiers = self.inner.read().unwrap();
@@ -83,7 +72,7 @@ impl RequestNotifiers {
     }
 
     /// Take the notifiers for the given key, and remove the key from the map.
-    pub fn take_notifiers(&self, key: &RequestKey) -> Option<Vec<Notifier>> {
+    pub fn take_notifiers(&self, key: &K) -> Option<Vec<Notifier<T, E>>> {
         self.inner
             .write()
             .unwrap()

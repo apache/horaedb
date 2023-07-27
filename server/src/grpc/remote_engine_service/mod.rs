@@ -2,7 +2,7 @@
 
 // Remote engine rpc service implementation.
 
-use std::{sync::Arc, time::Instant};
+use std::{hash::Hash, sync::Arc, time::Instant};
 
 use arrow_ext::ipc::{self, CompressOptions, CompressOutput, CompressionMethod};
 use async_trait::async_trait;
@@ -23,8 +23,11 @@ use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
-    engine::EngineRuntimes, remote::model::TableIdentifier, stream::PartitionedStreams,
-    table::TableRef,
+    engine::EngineRuntimes,
+    predicate::PredicateRef,
+    remote::model::TableIdentifier,
+    stream::PartitionedStreams,
+    table::{ReadOrder, TableRef},
 };
 use time_ext::InstantExt;
 use tokio::sync::mpsc;
@@ -36,22 +39,39 @@ use crate::grpc::{
         REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC, REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
     },
     remote_engine_service::{
-        dedup_requests::{RequestKey, RequestNotifiers, RequestResult},
-        error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+        dedup_requests::{RequestNotifiers, RequestResult},
+        error::{ErrNoCause, ErrWithCause, Error, Result, StatusCode},
     },
 };
 
 pub mod dedup_requests;
-mod error;
+pub mod error;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
 
-#[derive(Clone)]
-pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {
-    pub instance: InstanceRef<Q>,
-    pub runtimes: Arc<EngineRuntimes>,
-    pub request_notifiers: Option<Arc<RequestNotifiers>>,
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct RequestKey {
+    table: String,
+    predicate: PredicateRef,
+    projection: Option<Vec<usize>>,
+    order: ReadOrder,
+}
+
+impl RequestKey {
+    pub fn new(
+        table: String,
+        predicate: PredicateRef,
+        projection: Option<Vec<usize>>,
+        order: ReadOrder,
+    ) -> Self {
+        Self {
+            table,
+            predicate,
+            projection,
+            order,
+        }
+    }
 }
 
 struct RequestNotifierGuard<F: FnOnce()>(Option<F>);
@@ -78,6 +98,13 @@ impl<F: FnOnce()> Drop for RequestNotifierGuard<F> {
             f()
         }
     }
+}
+
+#[derive(Clone)]
+pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {
+    pub instance: InstanceRef<Q>,
+    pub runtimes: Arc<EngineRuntimes>,
+    pub request_notifiers: Option<Arc<RequestNotifiers<RequestKey, RecordBatch, Error>>>,
 }
 
 impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
