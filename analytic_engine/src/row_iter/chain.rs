@@ -294,32 +294,12 @@ impl ChainIterator {
             self.next_prefetch_stream_idx += 1;
         }
     }
-}
 
-impl Drop for ChainIterator {
-    fn drop(&mut self) {
-        debug!(
-            "Chain iterator dropped, space_id:{}, table_id:{:?}, request_id:{}, inited_at:{:?}, metrics:{:?}",
-            self.space_id, self.table_id, self.request_id, self.inited_at, self.metrics,
-        );
-    }
-}
-
-#[async_trait]
-impl RecordBatchWithKeyIterator for ChainIterator {
-    type Error = Error;
-
-    fn schema(&self) -> &RecordSchemaWithKey {
-        &self.schema
-    }
-
-    async fn next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
+    async fn next_batch_internal(&mut self) -> Result<Option<RecordBatchWithKey>> {
         self.init_if_necessary();
         self.maybe_prefetch().await;
 
         while self.next_stream_idx < self.streams.len() {
-            let timer = Instant::now();
-
             let read_stream = &mut self.streams[self.next_stream_idx];
             let sequenced_record_batch = read_stream
                 .fetch_next()
@@ -342,8 +322,6 @@ impl RecordBatchWithKeyIterator for ChainIterator {
                     self.maybe_prefetch().await;
                 }
             }
-
-            self.metrics.scan_duration += timer.elapsed();
         }
 
         self.metrics.since_create = self.created_at.elapsed();
@@ -354,6 +332,32 @@ impl RecordBatchWithKeyIterator for ChainIterator {
             .unwrap_or_default();
 
         Ok(None)
+    }
+}
+
+impl Drop for ChainIterator {
+    fn drop(&mut self) {
+        debug!(
+            "Chain iterator dropped, space_id:{}, table_id:{:?}, request_id:{}, inited_at:{:?}, metrics:{:?}",
+            self.space_id, self.table_id, self.request_id, self.inited_at, self.metrics,
+        );
+    }
+}
+
+#[async_trait]
+impl RecordBatchWithKeyIterator for ChainIterator {
+    type Error = Error;
+
+    fn schema(&self) -> &RecordSchemaWithKey {
+        &self.schema
+    }
+
+    async fn next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
+        let timer = Instant::now();
+        let res = self.next_batch_internal().await;
+        self.metrics.scan_duration += timer.elapsed();
+
+        res
     }
 }
 
