@@ -44,6 +44,7 @@ make_auto_flush_static_metric! {
         write_succeeded_row,
         write_failed_row,
         query_succeeded_row,
+        dedupped_stream_query,
     }
 
     pub struct RemoteEngineGrpcHandlerCounterVec: LocalIntCounter {

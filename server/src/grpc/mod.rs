@@ -38,7 +38,7 @@ use crate::{
     dedup_requests::RequestNotifiers,
     grpc::{
         meta_event_service::MetaServiceImpl,
-        remote_engine_service::{error, RemoteEngineServiceImpl, RequestKey},
+        remote_engine_service::{error, RemoteEngineServiceImpl, StreamReadReqKey},
         storage_service::StorageServiceImpl,
     },
 };
@@ -200,7 +200,7 @@ pub struct Builder<Q> {
     cluster: Option<ClusterRef>,
     opened_wals: Option<OpenedWals>,
     proxy: Option<Arc<Proxy<Q>>>,
-    request_notifiers: Option<Arc<RequestNotifiers<RequestKey, error::Result<RecordBatch>>>>,
+    request_notifiers: Option<Arc<RequestNotifiers<StreamReadReqKey, error::Result<RecordBatch>>>>,
 }
 
 impl<Q> Builder<Q> {

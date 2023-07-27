@@ -51,14 +51,14 @@ const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct RequestKey {
+pub struct StreamReadReqKey {
     table: String,
     predicate: PredicateRef,
     projection: Option<Vec<usize>>,
     order: ReadOrder,
 }
 
-impl RequestKey {
+impl StreamReadReqKey {
     pub fn new(
         table: String,
         predicate: PredicateRef,
@@ -104,7 +104,7 @@ impl<F: FnMut()> Drop for ExecutionGuard<F> {
 pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {
     pub instance: InstanceRef<Q>,
     pub runtimes: Arc<EngineRuntimes>,
-    pub request_notifiers: Option<Arc<RequestNotifiers<RequestKey, Result<RecordBatch>>>>,
+    pub request_notifiers: Option<Arc<RequestNotifiers<StreamReadReqKey, Result<RecordBatch>>>>,
 }
 
 impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
@@ -157,6 +157,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
 
     async fn deduped_stream_read_internal(
         &self,
+        request_notifiers: Arc<RequestNotifiers<StreamReadReqKey, Result<RecordBatch>>>,
         request: Request<ReadRequest>,
     ) -> Result<ReceiverStream<Result<RecordBatch>>> {
         let instant = Instant::now();
@@ -172,27 +173,19 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             msg: "fail to convert read request",
         })?;
 
-        let request_key = RequestKey::new(
+        let request_key = StreamReadReqKey::new(
             table.table,
             read_request.predicate.clone(),
             read_request.projected_schema.projection(),
             read_request.order,
         );
 
-        let mut guard = match self
-            .request_notifiers
-            .as_ref()
-            .unwrap()
-            .insert_notifier(request_key.clone(), tx)
-        {
+        let mut guard = match request_notifiers.insert_notifier(request_key.clone(), tx) {
             // The first request, need to handle it, and then notify the other requests.
             RequestResult::First => {
                 // This is used to remove key when future is cancelled.
                 ExecutionGuard::new(|| {
-                    self.request_notifiers
-                        .as_ref()
-                        .unwrap()
-                        .take_notifiers(&request_key);
+                    request_notifiers.take_notifiers(&request_key);
                 })
             }
             // The request is waiting for the result of first request.
@@ -244,18 +237,14 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
 
         // We should set cancel to guard, otherwise the key will be removed twice.
         guard.cancel();
-        let notifiers = self
-            .request_notifiers
-            .as_ref()
-            .unwrap()
-            .take_notifiers(&request_key)
-            .unwrap();
+        let notifiers = request_notifiers.take_notifiers(&request_key).unwrap();
 
+        let num_notifiers = notifiers.len();
         let mut num_rows = 0;
         for batch in batches {
             match batch {
                 Ok(batch) => {
-                    num_rows += batch.num_rows() * notifiers.len();
+                    num_rows += batch.num_rows() * num_notifiers;
                     for notifier in &notifiers {
                         if let Err(e) = notifier.send(Ok(batch.clone())).await {
                             error!("Failed to send handler result, err:{}.", e);
@@ -281,10 +270,13 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
         REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
             .query_succeeded_row
             .inc_by(num_rows as u64);
-
+        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+            .dedupped_stream_query
+            .inc_by((num_notifiers - 1) as u64);
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .stream_read
             .observe(instant.saturating_elapsed().as_secs_f64());
+
         Ok(ReceiverStream::new(rx))
     }
 
@@ -427,10 +419,12 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
         request: Request<ReadRequest>,
     ) -> std::result::Result<Response<Self::ReadStream>, Status> {
         REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC.stream_query.inc();
-        let result = if self.request_notifiers.is_some() {
-            self.deduped_stream_read_internal(request).await
-        } else {
-            self.stream_read_internal(request).await
+        let result = match self.request_notifiers.clone() {
+            Some(request_notifiers) => {
+                self.deduped_stream_read_internal(request_notifiers, request)
+                    .await
+            }
+            None => self.stream_read_internal(request).await,
         };
 
         match result {
