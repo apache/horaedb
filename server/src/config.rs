@@ -123,7 +123,7 @@ pub struct ServerConfig {
     pub remote_client: remote_engine_client::Config,
 
     /// Whether to deduplicate requests
-    pub dedup_requests: bool,
+    pub enable_query_dedup: bool,
 }
 
 impl Default for ServerConfig {
@@ -143,7 +143,7 @@ impl Default for ServerConfig {
             route_cache: router::RouteCacheConfig::default(),
             hotspot: hotspot::Config::default(),
             remote_client: remote_engine_client::Config::default(),
-            dedup_requests: true,
+            enable_query_dedup: true,
         }
     }
 }

@@ -7,6 +7,7 @@
 
 pub mod config;
 mod consts;
+mod dedup_requests;
 mod error_util;
 mod grpc;
 mod http;

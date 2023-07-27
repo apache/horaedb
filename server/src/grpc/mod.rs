@@ -34,12 +34,13 @@ use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
-use crate::grpc::{
-    meta_event_service::MetaServiceImpl,
-    remote_engine_service::{
-        dedup_requests::RequestNotifiers, error, RemoteEngineServiceImpl, RequestKey,
+use crate::{
+    dedup_requests::RequestNotifiers,
+    grpc::{
+        meta_event_service::MetaServiceImpl,
+        remote_engine_service::{error, RemoteEngineServiceImpl, RequestKey},
+        storage_service::StorageServiceImpl,
     },
-    storage_service::StorageServiceImpl,
 };
 
 mod meta_event_service;
@@ -199,7 +200,7 @@ pub struct Builder<Q> {
     cluster: Option<ClusterRef>,
     opened_wals: Option<OpenedWals>,
     proxy: Option<Arc<Proxy<Q>>>,
-    request_notifiers: Option<Arc<RequestNotifiers<RequestKey, RecordBatch, error::Error>>>,
+    request_notifiers: Option<Arc<RequestNotifiers<RequestKey, error::Result<RecordBatch>>>>,
 }
 
 impl<Q> Builder<Q> {
@@ -252,8 +253,8 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn dedup_requests(mut self, dedup_requests: bool) -> Self {
-        if dedup_requests {
+    pub fn request_notifiers(mut self, enable_query_dedup: bool) -> Self {
+        if enable_query_dedup {
             self.request_notifiers = Some(Arc::new(RequestNotifiers::default()));
         }
         self

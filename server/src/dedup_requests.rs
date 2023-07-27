@@ -4,35 +4,35 @@ use std::{collections::HashMap, hash::Hash, sync::RwLock};
 
 use tokio::sync::mpsc::Sender;
 
-type Notifier<T, E> = Sender<Result<T, E>>;
+type Notifier<T> = Sender<T>;
 
 #[derive(Debug)]
-struct Notifiers<T, E> {
-    notifiers: RwLock<Vec<Notifier<T, E>>>,
+struct Notifiers<T> {
+    notifiers: RwLock<Vec<Notifier<T>>>,
 }
 
-impl<T, E> Notifiers<T, E> {
-    pub fn new(notifier: Notifier<T, E>) -> Self {
+impl<T> Notifiers<T> {
+    pub fn new(notifier: Notifier<T>) -> Self {
         let notifiers = vec![notifier];
         Self {
             notifiers: RwLock::new(notifiers),
         }
     }
 
-    pub fn add_notifier(&self, notifier: Notifier<T, E>) {
+    pub fn add_notifier(&self, notifier: Notifier<T>) {
         self.notifiers.write().unwrap().push(notifier);
     }
 }
 
 #[derive(Debug)]
-pub struct RequestNotifiers<K, T, E>
+pub struct RequestNotifiers<K, T>
 where
     K: PartialEq + Eq + Hash,
 {
-    inner: RwLock<HashMap<K, Notifiers<T, E>>>,
+    inner: RwLock<HashMap<K, Notifiers<T>>>,
 }
 
-impl<K, T, E> Default for RequestNotifiers<K, T, E>
+impl<K, T> Default for RequestNotifiers<K, T>
 where
     K: PartialEq + Eq + Hash,
 {
@@ -43,12 +43,12 @@ where
     }
 }
 
-impl<K, T, E> RequestNotifiers<K, T, E>
+impl<K, T> RequestNotifiers<K, T>
 where
     K: PartialEq + Eq + Hash,
 {
     /// Insert a notifier for the given key.
-    pub fn insert_notifier(&self, key: K, notifier: Notifier<T, E>) -> RequestResult {
+    pub fn insert_notifier(&self, key: K, notifier: Notifier<T>) -> RequestResult {
         // First try to read the notifiers, if the key exists, add the notifier to the
         // notifiers.
         let notifiers = self.inner.read().unwrap();
@@ -72,7 +72,7 @@ where
     }
 
     /// Take the notifiers for the given key, and remove the key from the map.
-    pub fn take_notifiers(&self, key: &K) -> Option<Vec<Notifier<T, E>>> {
+    pub fn take_notifiers(&self, key: &K) -> Option<Vec<Notifier<T>>> {
         self.inner
             .write()
             .unwrap()

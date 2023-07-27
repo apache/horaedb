@@ -34,17 +34,17 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
-use crate::grpc::{
-    metrics::{
-        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC, REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
-    },
-    remote_engine_service::{
-        dedup_requests::{RequestNotifiers, RequestResult},
-        error::{ErrNoCause, ErrWithCause, Error, Result, StatusCode},
+use crate::{
+    dedup_requests::{RequestNotifiers, RequestResult},
+    grpc::{
+        metrics::{
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC,
+            REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+        },
+        remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
     },
 };
 
-pub mod dedup_requests;
 pub mod error;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
@@ -104,7 +104,7 @@ impl<F: FnOnce()> Drop for RequestNotifierGuard<F> {
 pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {
     pub instance: InstanceRef<Q>,
     pub runtimes: Arc<EngineRuntimes>,
-    pub request_notifiers: Option<Arc<RequestNotifiers<RequestKey, RecordBatch, Error>>>,
+    pub request_notifiers: Option<Arc<RequestNotifiers<RequestKey, Result<RecordBatch>>>>,
 }
 
 impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
