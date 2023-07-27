@@ -89,7 +89,7 @@ chrono = "0.4"
 clap = "3.0"
 clru = "0.6.1"
 cluster = { path = "cluster" }
-criterion = "0.3"
+criterion = "0.5"
 common_types = { path = "common_types" }
 datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "a6dcd943051a083693c352c6b4279156548490a0" }
 datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "a6dcd943051a083693c352c6b4279156548490a0" }
@@ -124,7 +124,7 @@ parquet_ext = { path = "components/parquet_ext" }
 parquet = { version = "43.0.0" }
 paste = "1.0"
 pin-project-lite = "0.2.8"
-pprof = { git = "https://github.com/tanruixiang/pprof-rs.git", rev = "6248431493975a2f96cd9c2363b152517391ed04" }
+pprof = "0.12.1"
 profile = { path = "components/profile" }
 prom-remote-api = { version = "0.2.2" }
 prometheus = "0.12"
