@@ -206,6 +206,9 @@ struct Metrics {
     /// Inited time of the iterator.
     #[metric(duration)]
     since_init: Duration,
+    /// Actual scan duration.
+    #[metric(duration)]
+    scan_duration: Duration,
     #[metric(collector)]
     metrics_collector: Option<MetricsCollector>,
 }
@@ -223,6 +226,7 @@ impl Metrics {
             total_rows_fetched: 0,
             since_create: Duration::default(),
             since_init: Duration::default(),
+            scan_duration: Duration::default(),
             metrics_collector,
         }
     }
@@ -237,6 +241,7 @@ impl fmt::Debug for Metrics {
             .field("total_rows_fetched", &self.total_rows_fetched)
             .field("duration_since_create", &self.since_create)
             .field("duration_since_init", &self.since_init)
+            .field("scan_duration", &self.scan_duration)
             .finish()
     }
 }
@@ -289,26 +294,8 @@ impl ChainIterator {
             self.next_prefetch_stream_idx += 1;
         }
     }
-}
 
-impl Drop for ChainIterator {
-    fn drop(&mut self) {
-        debug!(
-            "Chain iterator dropped, space_id:{}, table_id:{:?}, request_id:{}, inited_at:{:?}, metrics:{:?}",
-            self.space_id, self.table_id, self.request_id, self.inited_at, self.metrics,
-        );
-    }
-}
-
-#[async_trait]
-impl RecordBatchWithKeyIterator for ChainIterator {
-    type Error = Error;
-
-    fn schema(&self) -> &RecordSchemaWithKey {
-        &self.schema
-    }
-
-    async fn next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
+    async fn next_batch_internal(&mut self) -> Result<Option<RecordBatchWithKey>> {
         self.init_if_necessary();
         self.maybe_prefetch().await;
 
@@ -345,6 +332,32 @@ impl RecordBatchWithKeyIterator for ChainIterator {
             .unwrap_or_default();
 
         Ok(None)
+    }
+}
+
+impl Drop for ChainIterator {
+    fn drop(&mut self) {
+        debug!(
+            "Chain iterator dropped, space_id:{}, table_id:{:?}, request_id:{}, inited_at:{:?}, metrics:{:?}",
+            self.space_id, self.table_id, self.request_id, self.inited_at, self.metrics,
+        );
+    }
+}
+
+#[async_trait]
+impl RecordBatchWithKeyIterator for ChainIterator {
+    type Error = Error;
+
+    fn schema(&self) -> &RecordSchemaWithKey {
+        &self.schema
+    }
+
+    async fn next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
+        let timer = Instant::now();
+        let res = self.next_batch_internal().await;
+        self.metrics.scan_duration += timer.elapsed();
+
+        res
     }
 }
 
