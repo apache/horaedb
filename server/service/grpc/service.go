@@ -409,10 +409,10 @@ func responseHeader(err error, msg string) *commonpb.ResponseHeader {
 
 	code, ok := coderr.GetCauseCode(err)
 	if ok {
-		return &commonpb.ResponseHeader{Code: uint32(code), Error: msg + err.Error()}
+		return &commonpb.ResponseHeader{Code: uint32(code), Error: msg}
 	}
 
-	return &commonpb.ResponseHeader{Code: coderr.Internal, Error: msg + err.Error()}
+	return &commonpb.ResponseHeader{Code: coderr.Internal, Error: msg}
 }
 
 func (s *Service) allow() (bool, error) {
