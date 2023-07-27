@@ -33,28 +33,32 @@ func (s *StaticTopologyShardScheduler) Schedule(ctx context.Context, clusterSnap
 	case storage.ClusterStateEmpty:
 		return ScheduleResult{}, nil
 	case storage.ClusterStatePrepare:
+		unassignedShardIds := make([]storage.ShardID, 0, len(clusterSnapshot.Topology.ShardViewsMapping))
 		for _, shardView := range clusterSnapshot.Topology.ShardViewsMapping {
 			_, exists := findNodeByShard(shardView.ShardID, clusterSnapshot.Topology.ClusterView.ShardNodes)
 			if exists {
 				continue
 			}
-			// Assign shards
-			newLeaderNode, err := s.nodePicker.PickNode(ctx, shardView.ShardID, clusterSnapshot.RegisteredNodes)
-			if err != nil {
-				return ScheduleResult{}, err
-			}
+			unassignedShardIds = append(unassignedShardIds, shardView.ShardID)
+		}
+		// Assign shards
+		shardNodeMapping, err := s.nodePicker.PickNode(ctx, unassignedShardIds, uint32(len(clusterSnapshot.Topology.ShardViewsMapping)), clusterSnapshot.RegisteredNodes)
+		if err != nil {
+			return ScheduleResult{}, err
+		}
+		for shardID, node := range shardNodeMapping {
 			// Shard exists and ShardNode not exists.
 			p, err := s.factory.CreateTransferLeaderProcedure(ctx, coordinator.TransferLeaderRequest{
 				Snapshot:          clusterSnapshot,
-				ShardID:           shardView.ShardID,
+				ShardID:           shardID,
 				OldLeaderNodeName: "",
-				NewLeaderNodeName: newLeaderNode.Node.Name,
+				NewLeaderNodeName: node.Node.Name,
 			})
 			if err != nil {
 				return ScheduleResult{}, err
 			}
 			procedures = append(procedures, p)
-			reasons.WriteString(fmt.Sprintf("Cluster initialization, assign shard to node, shardID:%d, nodeName:%s. ", shardView.ShardID, newLeaderNode.Node.Name))
+			reasons.WriteString(fmt.Sprintf("Cluster initialization, assign shard to node, shardID:%d, nodeName:%s. ", shardID, node.Node.Name))
 			if len(procedures) >= int(s.procedureExecutingBatchSize) {
 				break
 			}

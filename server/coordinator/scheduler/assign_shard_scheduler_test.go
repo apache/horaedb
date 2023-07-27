@@ -19,7 +19,7 @@ func TestAssignSchedule(t *testing.T) {
 
 	procedureFactory := coordinator.NewFactory(test.MockIDAllocator{}, test.MockDispatch{}, test.NewTestStorage(t))
 
-	s := scheduler.NewAssignShardScheduler(procedureFactory, coordinator.NewConsistentHashNodePicker(zap.NewNop(), 50), 1)
+	s := scheduler.NewAssignShardScheduler(procedureFactory, coordinator.NewUniformityConsistentHashNodePicker(zap.NewNop()), 1)
 
 	// EmptyCluster would be scheduled an empty procedure.
 	emptyCluster := test.InitEmptyCluster(ctx, t)
