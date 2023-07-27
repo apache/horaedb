@@ -74,28 +74,28 @@ impl RequestKey {
     }
 }
 
-struct RequestNotifierGuard<F: FnOnce()>(Option<F>);
+struct ExecutionGuard<F: FnMut()> {
+    f: F,
+    cancelled: bool,
+}
 
-impl<F: FnOnce()> Default for RequestNotifierGuard<F> {
-    fn default() -> Self {
-        Self(None)
+impl<F: FnMut()> ExecutionGuard<F> {
+    fn new(f: F) -> Self {
+        Self {
+            f,
+            cancelled: false,
+        }
+    }
+
+    fn cancel(&mut self) {
+        self.cancelled = true;
     }
 }
 
-impl<F: FnOnce()> RequestNotifierGuard<F> {
-    fn set_none(&mut self) {
-        self.0 = None;
-    }
-
-    fn set_some(&mut self, f: F) {
-        self.0 = Some(f);
-    }
-}
-
-impl<F: FnOnce()> Drop for RequestNotifierGuard<F> {
+impl<F: FnMut()> Drop for ExecutionGuard<F> {
     fn drop(&mut self) {
-        if let Some(f) = (self.0).take() {
-            f()
+        if !self.cancelled {
+            (self.f)()
         }
     }
 }
@@ -179,8 +179,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             read_request.order,
         );
 
-        let mut _guard = RequestNotifierGuard::default();
-        match self
+        let mut guard = match self
             .request_notifiers
             .as_ref()
             .unwrap()
@@ -188,13 +187,13 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
         {
             // The first request, need to handle it, and then notify the other requests.
             RequestResult::First => {
-                // The _guard is used to remove key when future is cancelled.
-                _guard.set_some(|| {
+                // This is used to remove key when future is cancelled.
+                ExecutionGuard::new(|| {
                     self.request_notifiers
                         .as_ref()
                         .unwrap()
                         .take_notifiers(&request_key);
-                });
+                })
             }
             // The request is waiting for the result of first request.
             RequestResult::Wait => {
@@ -203,7 +202,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
                     .observe(instant.saturating_elapsed().as_secs_f64());
                 return Ok(ReceiverStream::new(rx));
             }
-        }
+        };
 
         let handle = self
             .runtimes
@@ -243,8 +242,8 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             batches.extend(batch);
         }
 
-        // We should set None to _guard, otherwise the key will be removed twice.
-        _guard.set_none();
+        // We should set cancel to guard, otherwise the key will be removed twice.
+        guard.cancel();
         let notifiers = self
             .request_notifiers
             .as_ref()
