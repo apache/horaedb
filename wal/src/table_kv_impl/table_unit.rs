@@ -462,8 +462,14 @@ impl TableUnit {
                 region_id,
                 table_id,
             )? {
-                // FIXME: In some cases(such as `Manifest::do_snapshot`), `actual_next_sequence`
-                // maybe less than `start_sequence`.
+                #[rustfmt::skip]
+                // FIXME: In some cases, the `flushed sequence`
+                // may be greater than the `actual last sequence of written logs`.
+                //
+                // Such as following case:
+                //  + Write wal logs failed(last sequence stored in memory will increase when write failed). 
+                //  + Get last sequence from memory(greater then actual last sequence now). 
+                //  + Mark the got last sequence as flushed sequence.
                 let actual_next_sequence = sequence + 1;
                 if actual_next_sequence < start_sequence {
                     warn!("TableKv WAL found start_sequence greater than actual_next_sequence, 

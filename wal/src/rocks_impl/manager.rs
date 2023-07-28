@@ -462,11 +462,17 @@ impl RocksImpl {
 
             let meta_key = self.max_seq_meta_encoding.decode_key(iter.key())?;
             let meta_value = self.max_seq_meta_encoding.decode_value(iter.value())?;
+            #[rustfmt::skip]
+            // FIXME: In some cases, the `flushed sequence` 
+            // may be greater than the `actual last sequence of written logs`.
+            // 
+            // Such as following case:
+            //  + Write wal logs failed(last sequence stored in memory will increase when write failed).
+            //  + Get last sequence from memory(greater then actual last sequence now).
+            //  + Mark the got last sequence as flushed sequence.
             table_max_seqs
                 .entry(meta_key.table_id)
                 .and_modify(|v| {
-                    // FIXME: In some cases(such as `Manifest::do_snapshot`), `actual_last_sequence`
-                    // maybe less than `meta_value.max_seq`.
                     if meta_value.max_seq > *v {
                         warn!(
                             "RocksDB WAL found flushed_seq greater than actual_last_sequence, 
