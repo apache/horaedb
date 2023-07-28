@@ -466,8 +466,8 @@ impl TableUnit {
                 // maybe less than `start_sequence`.
                 let actual_next_sequence = sequence + 1;
                 if actual_next_sequence < start_sequence {
-                    warn!("TableKv WAL found flushed_seq greater than actual_next_sequence, 
-                    flushed_seq:{start_sequence}, actual_next_sequence:{actual_next_sequence}, table_id:{table_id}, region_id:{region_id}");
+                    warn!("TableKv WAL found start_sequence greater than actual_next_sequence, 
+                    start_sequence:{start_sequence}, actual_next_sequence:{actual_next_sequence}, table_id:{table_id}, region_id:{region_id}");
 
                     break;
                 }

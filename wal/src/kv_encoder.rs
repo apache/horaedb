@@ -326,7 +326,7 @@ impl Decoder<MetaKey> for MetaKeyEncoder {
             }
         );
 
-        let region_id = buf.try_get_u64().context(DecodeMetaKey)?;
+        let table_id = buf.try_get_u64().context(DecodeMetaKey)?;
 
         // check version
         let version = buf.try_get_u8().context(DecodeMetaKey)?;
@@ -338,9 +338,7 @@ impl Decoder<MetaKey> for MetaKeyEncoder {
             }
         );
 
-        Ok(MetaKey {
-            table_id: region_id,
-        })
+        Ok(MetaKey { table_id })
     }
 }
 

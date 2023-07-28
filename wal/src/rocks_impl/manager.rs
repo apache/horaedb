@@ -468,7 +468,7 @@ impl RocksImpl {
                     if meta_value.max_seq > *v {
                         warn!(
                             "RocksDB WAL found flushed_seq greater than actual_last_sequence, 
-                        flushed_seq:{}, actual_last_sequence:{}, table_id:{}",
+                        flushed_sequence:{}, actual_last_sequence:{}, table_id:{}",
                             meta_value.max_seq, *v, meta_key.table_id
                         );
                     }
