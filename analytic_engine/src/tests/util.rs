@@ -45,7 +45,7 @@ impl From<Null> for Datum {
     }
 }
 
-pub async fn check_read_with_order<T: WalsOpener>(
+pub async fn check_read<T: WalsOpener>(
     test_ctx: &TestContext<T>,
     fixed_schema_table: &FixedSchemaTable,
     msg: &str,
@@ -64,16 +64,6 @@ pub async fn check_read_with_order<T: WalsOpener>(
 
         fixed_schema_table.assert_batch_eq_to_rows(&record_batches, rows);
     }
-}
-
-pub async fn check_read<T: WalsOpener>(
-    test_ctx: &TestContext<T>,
-    fixed_schema_table: &FixedSchemaTable,
-    msg: &str,
-    table_name: &str,
-    rows: &[RowTuple<'_>],
-) {
-    check_read_with_order(test_ctx, fixed_schema_table, msg, table_name, rows).await
 }
 
 pub async fn check_get<T: WalsOpener>(
