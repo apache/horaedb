@@ -45,7 +45,6 @@ impl SstBench {
             num_streams_to_prefetch: 0,
         };
         let sst_read_options = SstReadOptions {
-            reverse: config.reverse,
             frequency: ReadFrequency::Frequent,
             num_rows_per_row_group: config.num_rows_per_row_group,
             projected_schema,

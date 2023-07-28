@@ -356,44 +356,6 @@ pub struct GetRequest {
     pub primary_key: Vec<Datum>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum ReadOrder {
-    /// No order requirements from the read request.
-    None = 0,
-    Asc,
-    Desc,
-}
-
-impl ReadOrder {
-    pub fn from_is_asc(is_asc: Option<bool>) -> Self {
-        match is_asc {
-            Some(true) => ReadOrder::Asc,
-            Some(false) => ReadOrder::Desc,
-            None => ReadOrder::None,
-        }
-    }
-
-    #[inline]
-    pub fn is_out_of_order(&self) -> bool {
-        matches!(self, ReadOrder::None)
-    }
-
-    #[inline]
-    pub fn is_in_order(&self) -> bool {
-        !self.is_out_of_order()
-    }
-
-    #[inline]
-    pub fn is_in_desc_order(&self) -> bool {
-        matches!(self, ReadOrder::Desc)
-    }
-
-    #[inline]
-    pub fn into_i32(self) -> i32 {
-        self as i32
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct ReadRequest {
     /// Read request id.
@@ -405,8 +367,6 @@ pub struct ReadRequest {
     pub projected_schema: ProjectedSchema,
     /// Predicate of the query.
     pub predicate: PredicateRef,
-    /// Read the rows in reverse order.
-    pub order: ReadOrder,
     /// Collector for metrics of this read request.
     pub metrics_collector: MetricsCollector,
 }
@@ -433,7 +393,7 @@ impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
             opts: Some(request.opts.into()),
             projected_schema: Some(request.projected_schema.into()),
             predicate: Some(predicate_pb),
-            order: request.order.into_i32(),
+            order: 0,
         })
     }
 }
@@ -456,19 +416,11 @@ impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
                 .box_err()
                 .context(ConvertPredicate)?,
         );
-        let order = if pb.order == ceresdbproto::remote_engine::ReadOrder::Asc as i32 {
-            ReadOrder::Asc
-        } else if pb.order == ceresdbproto::remote_engine::ReadOrder::Desc as i32 {
-            ReadOrder::Desc
-        } else {
-            ReadOrder::None
-        };
         Ok(Self {
             request_id: RequestId::next_id(),
             opts,
             projected_schema,
             predicate,
-            order,
             metrics_collector: MetricsCollector::default(),
         })
     }

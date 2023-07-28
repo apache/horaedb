@@ -73,12 +73,6 @@ const ITER_NUM_METRIC_NAME: &str = "iter_num";
 const MERGE_ITER_METRICS_COLLECTOR_NAME_PREFIX: &str = "merge_iter";
 const CHAIN_ITER_METRICS_COLLECTOR_NAME_PREFIX: &str = "chain_iter";
 
-/// Check whether it needs to apply merge sorting when reading the table with
-/// the `table_options` by the `read_request`.
-fn need_merge_sort_streams(table_options: &TableOptions, read_request: &ReadRequest) -> bool {
-    table_options.need_dedup() || read_request.order.is_in_order()
-}
-
 impl Instance {
     /// Read data in multiple time range from table, and return
     /// `read_parallelism` output streams.
@@ -95,7 +89,7 @@ impl Instance {
         let table_options = table_data.table_options();
         // Collect metrics.
         table_data.metrics.on_read_request_begin();
-        let need_merge_sort = need_merge_sort_streams(&table_options, &request);
+        let need_merge_sort = table_options.need_dedup();
         request.metrics_collector.collect(Metric::boolean(
             MERGE_SORT_METRIC_NAME.to_string(),
             need_merge_sort,
@@ -118,14 +112,9 @@ impl Instance {
     fn build_partitioned_streams(
         &self,
         request: &ReadRequest,
-        mut partitioned_iters: Vec<impl RecordBatchWithKeyIterator + 'static>,
+        partitioned_iters: Vec<impl RecordBatchWithKeyIterator + 'static>,
     ) -> Result<PartitionedStreams> {
         let read_parallelism = request.opts.read_parallelism;
-
-        if read_parallelism == 1 && request.order.is_in_desc_order() {
-            // TODO(xikai): it seems this can be avoided.
-            partitioned_iters.reverse();
-        };
 
         // Split iterators into `read_parallelism` groups.
         let mut splitted_iters: Vec<_> = std::iter::repeat_with(Vec::new)
@@ -157,7 +146,6 @@ impl Instance {
         let sequence = table_data.last_sequence();
         let projected_schema = request.projected_schema.clone();
         let sst_read_options = SstReadOptions {
-            reverse: request.order.is_in_desc_order(),
             frequency: ReadFrequency::Frequent,
             projected_schema: projected_schema.clone(),
             predicate: request.predicate.clone(),
@@ -191,7 +179,7 @@ impl Instance {
                 store_picker: self.space_store.store_picker(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: table_options.need_dedup(),
-                reverse: request.order.is_in_desc_order(),
+                reverse: false,
             };
 
             let merge_iter = MergeBuilder::new(merge_config)
@@ -226,11 +214,7 @@ impl Instance {
     ) -> Result<Vec<ChainIterator>> {
         let projected_schema = request.projected_schema.clone();
 
-        assert!(request.order.is_out_of_order());
-
         let sst_read_options = SstReadOptions {
-            // no need to read in order so just read in asc order by default.
-            reverse: false,
             frequency: ReadFrequency::Frequent,
             projected_schema: projected_schema.clone(),
             predicate: request.predicate.clone(),

@@ -3,7 +3,6 @@
 pub mod meta_data;
 pub mod prune;
 pub mod reader;
-pub mod reverse_reader;
 #[cfg(test)]
 pub mod tests;
 

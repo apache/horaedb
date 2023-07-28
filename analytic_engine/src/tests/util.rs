@@ -21,8 +21,8 @@ use table_engine::{
         Result as EngineResult, TableDef, TableEngineRef,
     },
     table::{
-        AlterSchemaRequest, FlushRequest, GetRequest, ReadOrder, ReadRequest, Result, SchemaId,
-        TableId, TableRef, WriteRequest,
+        AlterSchemaRequest, FlushRequest, GetRequest, ReadRequest, Result, SchemaId, TableId,
+        TableRef, WriteRequest,
     },
 };
 use tempfile::TempDir;
@@ -51,7 +51,6 @@ pub async fn check_read_with_order<T: WalsOpener>(
     msg: &str,
     table_name: &str,
     rows: &[RowTuple<'_>],
-    read_order: ReadOrder,
 ) {
     for read_opts in table::read_opts_list() {
         info!("{}, opts:{:?}", msg, read_opts);
@@ -59,7 +58,7 @@ pub async fn check_read_with_order<T: WalsOpener>(
         let record_batches = test_ctx
             .read_table(
                 table_name,
-                fixed_schema_table.new_read_all_request(read_opts, read_order),
+                fixed_schema_table.new_read_all_request(read_opts),
             )
             .await;
 
@@ -74,15 +73,7 @@ pub async fn check_read<T: WalsOpener>(
     table_name: &str,
     rows: &[RowTuple<'_>],
 ) {
-    check_read_with_order(
-        test_ctx,
-        fixed_schema_table,
-        msg,
-        table_name,
-        rows,
-        ReadOrder::None,
-    )
-    .await
+    check_read_with_order(test_ctx, fixed_schema_table, msg, table_name, rows).await
 }
 
 pub async fn check_get<T: WalsOpener>(

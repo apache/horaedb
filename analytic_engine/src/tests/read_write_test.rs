@@ -6,7 +6,6 @@ use std::{thread, time};
 
 use common_types::time::Timestamp;
 use log::info;
-use table_engine::table::ReadOrder;
 
 use crate::{
     setup::WalsOpener,
@@ -765,7 +764,6 @@ fn test_table_write_read_reverse<T: EngineBuildContext>(engine_context: T) {
             "Test read write table",
             test_table,
             &expect_reversed_rows,
-            ReadOrder::Desc,
         )
         .await;
     });
@@ -864,7 +862,6 @@ fn test_table_write_read_reverse_after_flush<T: EngineBuildContext>(engine_conte
             "Test read write table",
             test_table,
             &expect_reversed_rows,
-            ReadOrder::Desc,
         )
         .await;
     });

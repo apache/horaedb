@@ -467,7 +467,6 @@ mod tests {
             let scan_options = ScanOptions::default();
             // read sst back to test
             let sst_read_options = SstReadOptions {
-                reverse: false,
                 frequency: ReadFrequency::Frequent,
                 num_rows_per_row_group: 5,
                 projected_schema: reader_projected_schema,
