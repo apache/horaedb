@@ -19,6 +19,8 @@ use crate::{
     table::data::{TableDataRef, TableDataSet},
 };
 
+pub type SpaceId = u32;
+
 /// Holds references to the table data and its space
 ///
 /// REQUIRE: The table must belongs to the space
@@ -68,10 +70,6 @@ impl fmt::Debug for SpaceAndTable {
             .finish()
     }
 }
-
-/// Space id
-// TODO(yingwen): Or just use something like uuid as space id?
-pub type SpaceId = u32;
 
 #[derive(Debug)]
 pub struct SpaceContext {

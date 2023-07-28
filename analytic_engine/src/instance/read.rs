@@ -37,7 +37,6 @@ use crate::{
         merge::{MergeBuilder, MergeConfig, MergeIterator},
         IterOptions, RecordBatchWithKeyIterator,
     },
-    space::SpaceAndTable,
     sst::factory::{ReadFrequency, SstReadOptions},
     table::{
         data::TableData,
@@ -85,20 +84,15 @@ impl Instance {
     /// `read_parallelism` output streams.
     pub async fn partitioned_read_from_table(
         &self,
-        space_table: &SpaceAndTable,
+        table_data: &TableData,
         request: ReadRequest,
     ) -> Result<PartitionedStreams> {
         debug!(
             "Instance read from table, space_id:{}, table:{}, table_id:{:?}, request:{:?}",
-            space_table.space().id,
-            space_table.table_data().name,
-            space_table.table_data().id,
-            request
+            table_data.space_id, table_data.name, table_data.id, request
         );
 
-        let table_data = space_table.table_data();
         let table_options = table_data.table_options();
-
         // Collect metrics.
         table_data.metrics.on_read_request_begin();
         let need_merge_sort = need_merge_sort_streams(&table_options, &request);
