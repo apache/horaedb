@@ -465,6 +465,8 @@ impl RocksImpl {
             table_max_seqs
                 .entry(meta_key.table_id)
                 .and_modify(|v| {
+                    // FIXME: In some cases(such as `Manifest::do_snapshot`), `actual_last_sequence`
+                    // maybe less than `meta_value.max_seq`.
                     if meta_value.max_seq > *v {
                         warn!(
                             "RocksDB WAL found flushed_seq greater than actual_last_sequence, 
