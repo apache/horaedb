@@ -16,7 +16,7 @@ use std::{
 use bytes_ext::BytesMut;
 use common_types::table::TableId;
 use generic_error::{BoxError, GenericError};
-use log::debug;
+use log::{debug, warn};
 use macros::define_result;
 use runtime::{self, Runtime};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -462,16 +462,16 @@ impl TableUnit {
                 region_id,
                 table_id,
             )? {
-                ensure!(
-                    sequence + 1 >= start_sequence,
-                    LoadLastSequence {
-                        table_id,
-                        msg: format!(
-                            "found last sequence, but last sequence + 1 < start sequence,
-                            last sequence:{sequence}, start sequence:{start_sequence}",
-                        )
-                    }
-                );
+                // FIXME: In some cases(such as `Manifest::do_snapshot`), `actual_next_sequence`
+                // maybe less than `start_sequence`.
+                let actual_next_sequence = sequence + 1;
+                if actual_next_sequence < start_sequence {
+                    warn!("TableKv WAL found flushed_seq greater than actual_next_sequence, 
+                    flushed_seq:{start_sequence}, actual_next_sequence:{actual_next_sequence}, table_id:{table_id}, region_id:{region_id}");
+
+                    break;
+                }
+
                 return Ok(sequence);
             }
         }
