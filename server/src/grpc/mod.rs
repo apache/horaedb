@@ -16,7 +16,7 @@ use ceresdbproto::{
     storage::storage_service_server::StorageServiceServer,
 };
 use cluster::ClusterRef;
-use common_types::column_schema;
+use common_types::{column_schema, record_batch::RecordBatch};
 use futures::FutureExt;
 use generic_error::GenericError;
 use log::{info, warn};
@@ -34,9 +34,13 @@ use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
-use crate::grpc::{
-    meta_event_service::MetaServiceImpl, remote_engine_service::RemoteEngineServiceImpl,
-    storage_service::StorageServiceImpl,
+use crate::{
+    dedup_requests::RequestNotifiers,
+    grpc::{
+        meta_event_service::MetaServiceImpl,
+        remote_engine_service::{error, RemoteEngineServiceImpl, StreamReadReqKey},
+        storage_service::StorageServiceImpl,
+    },
 };
 
 mod meta_event_service;
@@ -196,6 +200,7 @@ pub struct Builder<Q> {
     cluster: Option<ClusterRef>,
     opened_wals: Option<OpenedWals>,
     proxy: Option<Arc<Proxy<Q>>>,
+    request_notifiers: Option<Arc<RequestNotifiers<StreamReadReqKey, error::Result<RecordBatch>>>>,
 }
 
 impl<Q> Builder<Q> {
@@ -208,6 +213,7 @@ impl<Q> Builder<Q> {
             cluster: None,
             opened_wals: None,
             proxy: None,
+            request_notifiers: None,
         }
     }
 
@@ -246,6 +252,13 @@ impl<Q> Builder<Q> {
         self.proxy = Some(proxy);
         self
     }
+
+    pub fn request_notifiers(mut self, enable_query_dedup: bool) -> Self {
+        if enable_query_dedup {
+            self.request_notifiers = Some(Arc::new(RequestNotifiers::default()));
+        }
+        self
+    }
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -269,6 +282,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             let service = RemoteEngineServiceImpl {
                 instance,
                 runtimes: runtimes.clone(),
+                request_notifiers: self.request_notifiers,
             };
             RemoteEngineServiceServer::new(service)
         };

@@ -356,7 +356,7 @@ pub struct GetRequest {
     pub primary_key: Vec<Datum>,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ReadOrder {
     /// No order requirements from the read request.
     None = 0,

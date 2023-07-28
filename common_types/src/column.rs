@@ -87,7 +87,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NullColumn(NullArray);
 
 impl NullColumn {
@@ -109,7 +109,7 @@ impl NullColumn {
 macro_rules! define_numeric_column {
     ($($Kind: ident), *) => {
         $(paste! {
-            #[derive(Debug)]
+            #[derive(Debug, Clone)]
             pub struct [<$Kind Column>]([<$Kind Array>]);
 
             #[inline]
@@ -131,24 +131,24 @@ define_numeric_column!(
     Float, Double, UInt64, UInt32, UInt16, UInt8, Int64, Int32, Int16, Int8, Boolean
 );
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TimestampColumn(TimestampMillisecondArray);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VarbinaryColumn(BinaryArray);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StringColumn(StringArray);
 
 /// dictionary encode type is difference from other types, need implement
 /// without macro
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StringDictionaryColumn(DictionaryArray<Int32Type>);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DateColumn(DateArray);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TimeColumn(TimeArray);
 
 #[inline]
@@ -749,7 +749,7 @@ impl_column_block!(
 macro_rules! define_column_block {
     ($($Kind: ident), *) => {
         paste! {
-            #[derive(Debug)]
+            #[derive(Debug, Clone)]
             pub enum ColumnBlock {
                 Null(NullColumn),
                 StringDictionary(StringDictionaryColumn),
