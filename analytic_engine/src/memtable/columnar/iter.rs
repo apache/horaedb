@@ -140,10 +140,10 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                         .with_context(|| InternalNoCause {
                             msg: format!("column not found, column:{}", column_schema.name),
                         })?;
-                for i in 0..self.row_num {
+                for (i, key) in key_vec.iter_mut().enumerate().take(self.row_num) {
                     let datum = column.get_datum(i);
                     encoder
-                        .encode(&mut key_vec[i], &datum)
+                        .encode(key, &datum)
                         .box_err()
                         .context(Internal { msg: "encode key" })?;
                 }
@@ -340,7 +340,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             if let Some(column_schema_idx) = column_schema_idx {
                 let column_schema = self.memtable_schema.column(*column_schema_idx);
                 if let Some(column) = memtable.get(&column_schema.name) {
-                    for i in 0..self.batch_size {
+                    for (i, row) in rows.iter_mut().enumerate().take(self.batch_size) {
                         let row_idx = self.current_idx + i;
                         if row_idx >= column.len() {
                             break;
@@ -349,7 +349,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                             num_rows += 1;
                         }
                         let datum = column.get_datum(row_idx);
-                        rows[i][col_idx] = datum;
+                        row[col_idx] = datum;
                     }
                 }
             }
