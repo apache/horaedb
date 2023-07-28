@@ -468,7 +468,7 @@ impl ScheduleWorker {
         waiter_notifier: WaiterNotifier,
         token: MemoryUsageToken,
     ) {
-        let keep_scheduling_compaction = !compaction_task.contains_min_level();
+        let keep_scheduling_compaction = compaction_task.contains_min_level();
 
         let runtime = self.runtime.clone();
         let space_store = self.space_store.clone();
