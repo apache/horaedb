@@ -143,7 +143,7 @@ impl Default for ServerConfig {
             route_cache: router::RouteCacheConfig::default(),
             hotspot: hotspot::Config::default(),
             remote_client: remote_engine_client::Config::default(),
-            enable_query_dedup: true,
+            enable_query_dedup: false,
         }
     }
 }

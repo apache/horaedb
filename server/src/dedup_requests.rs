@@ -29,7 +29,7 @@ pub struct RequestNotifiers<K, T>
 where
     K: PartialEq + Eq + Hash,
 {
-    inner: RwLock<HashMap<K, Notifiers<T>>>,
+    notifiers_by_key: RwLock<HashMap<K, Notifiers<T>>>,
 }
 
 impl<K, T> Default for RequestNotifiers<K, T>
@@ -38,7 +38,7 @@ where
 {
     fn default() -> Self {
         Self {
-            inner: RwLock::new(HashMap::new()),
+            notifiers_by_key: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -51,29 +51,29 @@ where
     pub fn insert_notifier(&self, key: K, notifier: Notifier<T>) -> RequestResult {
         // First try to read the notifiers, if the key exists, add the notifier to the
         // notifiers.
-        let notifiers = self.inner.read().unwrap();
-        if notifiers.contains_key(&key) {
-            notifiers.get(&key).unwrap().add_notifier(notifier);
+        let notifiers_by_key = self.notifiers_by_key.read().unwrap();
+        if let Some(notifiers) = notifiers_by_key.get(&key) {
+            notifiers.add_notifier(notifier);
             return RequestResult::Wait;
         }
-        drop(notifiers);
+        drop(notifiers_by_key);
 
         // If the key does not exist, try to write the notifiers.
-        let mut notifiers = self.inner.write().unwrap();
+        let mut notifiers_by_key = self.notifiers_by_key.write().unwrap();
         // double check, if the key exists, add the notifier to the notifiers.
-        if notifiers.contains_key(&key) {
-            notifiers.get(&key).unwrap().add_notifier(notifier);
+        if let Some(notifiers) = notifiers_by_key.get(&key) {
+            notifiers.add_notifier(notifier);
             return RequestResult::Wait;
         }
 
         //the key is not existed, insert the key and the notifier.
-        notifiers.insert(key, Notifiers::new(notifier));
+        notifiers_by_key.insert(key, Notifiers::new(notifier));
         RequestResult::First
     }
 
     /// Take the notifiers for the given key, and remove the key from the map.
     pub fn take_notifiers(&self, key: &K) -> Option<Vec<Notifier<T>>> {
-        self.inner
+        self.notifiers_by_key
             .write()
             .unwrap()
             .remove(key)

@@ -149,6 +149,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             });
         }
 
+        // TODO(shuangxiao): this metric is invalid, refactor it.
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .stream_read
             .observe(instant.saturating_elapsed().as_secs_f64());
@@ -190,6 +191,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             }
             // The request is waiting for the result of first request.
             RequestResult::Wait => {
+                // TODO(shuangxiao): this metric is invalid, refactor it.
                 REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
                     .stream_read
                     .observe(instant.saturating_elapsed().as_secs_f64());
@@ -273,6 +275,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
         REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
             .dedupped_stream_query
             .inc_by((num_notifiers - 1) as u64);
+        // TODO(shuangxiao): this metric is invalid, refactor it.
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .stream_read
             .observe(instant.saturating_elapsed().as_secs_f64());
