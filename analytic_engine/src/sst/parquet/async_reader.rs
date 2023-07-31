@@ -19,7 +19,7 @@ use common_types::{
 };
 use datafusion::{
     common::ToDFSchema,
-    datasource::physical_plan::{parquet::page_filter::PagePruningPredicate, ParquetFileMetrics},
+    datasource::physical_plan::{parquet::page_filter::PagePruningPredicate,ParquetFileMetrics},
     physical_expr::{create_physical_expr, execution_props::ExecutionProps},
     physical_plan::metrics::ExecutionPlanMetricsSet,
 };
@@ -31,7 +31,7 @@ use parquet::{
     arrow::{arrow_reader::RowSelection, ParquetRecordBatchStreamBuilder, ProjectionMask},
     file::metadata::RowGroupMetaData,
 };
-use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader};
+use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader };
 use runtime::{AbortOnDropMany, JoinHandle, Runtime};
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
@@ -40,6 +40,7 @@ use tokio::sync::{
     mpsc::{self, Receiver, Sender},
     watch,
 };
+use prost::Message;
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 use crate::{
@@ -341,10 +342,11 @@ impl<'a> Reader<'a> {
     }
 
     async fn load_file_size(&self) -> Result<usize> {
+        let meta_path = Path::from(self.path.to_string() + ".metadata");
         let file_size = match self.file_size_hint {
             Some(v) => v,
             None => {
-                let object_meta = self.store.head(self.path).await.context(ObjectStoreError)?;
+                let object_meta = self.store.head(&meta_path).await.context(ObjectStoreError)?;
                 object_meta.size
             }
         };
@@ -354,7 +356,15 @@ impl<'a> Reader<'a> {
 
     async fn load_meta_data_from_storage(&self, ignore_sst_filter: bool) -> Result<MetaData> {
         let file_size = self.load_file_size().await?;
-        let chunk_reader_adapter = ChunkReaderAdapter::new(self.path, self.store);
+        let meta_path = Path::from(self.path.to_string() + ".metadata");
+        let chunk_reader_adapter = ChunkReaderAdapter::new(&meta_path, self.store);
+
+        let metadata = chunk_reader_adapter.get_bytes(0..file_size).await.unwrap();
+        let value = base64::decode(metadata).unwrap();
+        let meta_data_pb: ceresdbproto::sst::ParquetMetaData =
+        Message::decode(&value[1..]).unwrap();
+
+        let parquet_meta_data = crate::sst::parquet::meta_data::ParquetMetaData::try_from(meta_data_pb).unwrap();
 
         let (parquet_meta_data, _) =
             parquet_ext::meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter)
@@ -369,12 +379,12 @@ impl<'a> Reader<'a> {
             Arc::new(parquet_meta_data),
         );
 
-        let parquet_meta_data = parquet_ext::meta_data::meta_with_page_indexes(object_store_reader)
-            .await
-            .with_context(|| DecodePageIndexes {
-                file_path: self.path.to_string(),
-            })?;
-
+        // let parquet_meta_data = parquet_ext::meta_data::meta_with_page_indexes(object_store_reader)
+        //     .await
+        //     .with_context(|| DecodePageIndexes {
+        //         file_path: self.path.to_string(),
+        //     })?;
+        
         MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
             .box_err()
             .context(DecodeSstMeta)

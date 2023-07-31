@@ -26,7 +26,7 @@ use parquet::{
 };
 use prost::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
-use tokio::io::AsyncWrite;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::sst::parquet::{
     hybrid::{self, IndexedType},
@@ -232,11 +232,14 @@ struct ColumnarRecordEncoder<W> {
     // wrap in Option so ownership can be taken out behind `&mut self`
     arrow_writer: Option<AsyncArrowWriter<W>>,
     arrow_schema: ArrowSchemaRef,
+    metadata: Option<ParquetMetaData>,
+    metasink: W,
 }
 
 impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
     fn try_new(
         sink: W,
+        metasink: W,
         schema: &Schema,
         num_rows_per_row_group: usize,
         max_buffer_size: usize,
@@ -248,7 +251,6 @@ impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
             .set_max_row_group_size(num_rows_per_row_group)
             .set_compression(compression)
             .build();
-
         let arrow_writer = AsyncArrowWriter::try_new(
             sink,
             arrow_schema.clone(),
@@ -261,6 +263,8 @@ impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
         Ok(Self {
             arrow_writer: Some(arrow_writer),
             arrow_schema,
+            metadata: None,
+            metasink
         })
     }
 }
@@ -286,17 +290,23 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
     }
 
     fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
-        let key_value = encode_sst_meta_data(meta_data)?;
-        self.arrow_writer
-            .as_mut()
-            .unwrap()
-            .append_key_value_metadata(key_value);
+        // let key_value = encode_sst_meta_data(meta_data)?;
+        // self.arrow_writer
+        //     .as_mut()
+        //     .unwrap()
+        //     .append_key_value_metadata(key_value);
+        self.metadata = Some(meta_data);
 
         Ok(())
     }
 
     async fn close(&mut self) -> Result<()> {
         assert!(self.arrow_writer.is_some());
+        if let Some(metadata) = &self.metadata {
+            let key_value = encode_sst_meta_data(metadata.clone())?;
+            let v = key_value.value.unwrap();
+            self.metasink.write(v.as_bytes());
+        }
 
         let arrow_writer = self.arrow_writer.take().unwrap();
         arrow_writer
@@ -449,6 +459,7 @@ pub struct ParquetEncoder {
 impl ParquetEncoder {
     pub fn try_new<W: AsyncWrite + Unpin + Send + 'static>(
         sink: W,
+        metasink: W,
         schema: &Schema,
         hybrid_encoding: bool,
         num_rows_per_row_group: usize,
@@ -466,6 +477,7 @@ impl ParquetEncoder {
         } else {
             Box::new(ColumnarRecordEncoder::try_new(
                 sink,
+                metasink,
                 schema,
                 num_rows_per_row_group,
                 max_buffer_size,

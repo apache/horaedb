@@ -168,13 +168,14 @@ impl RecordBatchGroupWriter {
         !self.hybrid_encoding && !self.level.is_min()
     }
 
-    async fn write_all<W: AsyncWrite + Send + Unpin + 'static>(mut self, sink: W) -> Result<usize> {
+    async fn write_all<W: AsyncWrite + Send + Unpin + 'static>(mut self, sink: W, metasink: W) -> Result<(usize, ParquetMetaData)> {
         let mut prev_record_batch: Option<RecordBatchWithKey> = None;
         let mut arrow_row_group = Vec::new();
         let mut total_num_rows = 0;
 
         let mut parquet_encoder = ParquetEncoder::try_new(
             sink,
+            metasink,
             &self.meta_data.schema,
             self.hybrid_encoding,
             self.num_rows_per_row_group,
@@ -222,7 +223,7 @@ impl RecordBatchGroupWriter {
         };
         // 这里需要把metadata 分离出来 而不是塞到parquet中
         parquet_encoder
-            .set_meta_data(parquet_meta_data)
+            .set_meta_data(parquet_meta_data.clone())
             .box_err()
             .context(EncodeRecordBatch)?;
 
@@ -232,7 +233,7 @@ impl RecordBatchGroupWriter {
             .box_err()
             .context(EncodeRecordBatch)?;
 
-        Ok(total_num_rows)
+        Ok((total_num_rows, parquet_meta_data))
     }
 }
 
@@ -297,7 +298,12 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
 
         let (aborter, sink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, self.path).await?;
-        let total_num_rows = match group_writer.write_all(sink).await {
+        let meta_path = Path::from(self.path.to_string() + ".metadata");
+
+        let (_, metasink) =
+            ObjectStoreMultiUploadAborter::initialize_upload(self.store, &meta_path).await?;
+
+        let (total_num_rows, parquet_metadata) = match group_writer.write_all(sink, metasink).await {
             Ok(v) => v,
             Err(e) => {
                 if let Err(e) = aborter.abort().await {
