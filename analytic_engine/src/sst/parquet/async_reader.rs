@@ -342,7 +342,7 @@ impl<'a> Reader<'a> {
     }
 
     async fn load_file_size(&self) -> Result<usize> {
-        let meta_path = Path::from(self.path.to_string() + ".metadata");
+        let meta_path = Path::from(self.path.to_string());
         let file_size = match self.file_size_hint {
             Some(v) => v,
             None => {
@@ -355,16 +355,24 @@ impl<'a> Reader<'a> {
     }
 
     async fn load_meta_data_from_storage(&self, ignore_sst_filter: bool) -> Result<MetaData> {
-        let file_size = self.load_file_size().await?;
-        let meta_path = Path::from(self.path.to_string() + ".metadata");
-        let chunk_reader_adapter = ChunkReaderAdapter::new(&meta_path, self.store);
-
-        let metadata = chunk_reader_adapter.get_bytes(0..file_size).await.unwrap();
+        let meta_path = Path::from(self.path.to_string() + "meta");
+        let meta_size = match self.file_size_hint {
+            Some(v) => v,
+            None => {
+                let object_meta = self.store.head(&meta_path).await.context(ObjectStoreError)?;
+                object_meta.size
+            }
+        };
+        let meta_chunk_reader_adapter = ChunkReaderAdapter::new(&meta_path, self.store);
+        let metadata = meta_chunk_reader_adapter.get_bytes(0..meta_size).await.unwrap();
         let value = base64::decode(metadata).unwrap();
-        let meta_data_pb: ceresdbproto::sst::ParquetMetaData =
-        Message::decode(&value[1..]).unwrap();
+        let meta_data_pb: ceresdbproto::sst::ParquetMetaData = Message::decode(&value[1..]).unwrap();
+        let tmp = crate::sst::parquet::meta_data::ParquetMetaData::try_from(meta_data_pb).unwrap();
+        println!("pb metadata: {:?}", tmp);
 
-        let parquet_meta_data = crate::sst::parquet::meta_data::ParquetMetaData::try_from(meta_data_pb).unwrap();
+
+        let file_size = self.load_file_size().await?;
+        let chunk_reader_adapter = ChunkReaderAdapter::new(self.path, self.store);
 
         let (parquet_meta_data, _) =
             parquet_ext::meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter)
@@ -373,22 +381,49 @@ impl<'a> Reader<'a> {
                     file_path: self.path.to_string(),
                 })?;
 
-        let object_store_reader = parquet_ext::reader::ObjectStoreReader::new(
-            self.store.clone(),
-            self.path.clone(),
-            Arc::new(parquet_meta_data),
-        );
+        // TODO: Support page index until https://github.com/CeresDB/ceresdb/issues/1040 is fixed.
 
-        // let parquet_meta_data = parquet_ext::meta_data::meta_with_page_indexes(object_store_reader)
-        //     .await
-        //     .with_context(|| DecodePageIndexes {
-        //         file_path: self.path.to_string(),
-        //     })?;
-        
         MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
             .box_err()
             .context(DecodeSstMeta)
     }
+
+    // async fn load_meta_data_from_storage(&self, ignore_sst_filter: bool) -> Result<MetaData> {
+    //     let file_size = self.load_file_size().await?;
+    //     let meta_path = Path::from(self.path.to_string() + "meta");
+    //     let chunk_reader_adapter = ChunkReaderAdapter::new(&meta_path, self.store);
+
+    //     let metadata = chunk_reader_adapter.get_bytes(0..file_size).await.unwrap();
+    //     let value = base64::decode(metadata).unwrap();
+    //     let meta_data_pb: ceresdbproto::sst::ParquetMetaData =
+    //     Message::decode(&value[1..]).unwrap();
+
+    //     let tmp = crate::sst::parquet::meta_data::ParquetMetaData::try_from(meta_data_pb).unwrap();
+    //     println!("pb metadata: {:?}", tmp);
+
+    //     let (parquet_meta_data, _) =
+    //         parquet_ext::meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter)
+    //             .await
+    //             .with_context(|| FetchAndDecodeSstMeta {
+    //                 file_path: self.path.to_string(),
+    //             })?;
+
+    //     let object_store_reader = parquet_ext::reader::ObjectStoreReader::new(
+    //         self.store.clone(),
+    //         self.path.clone(),
+    //         Arc::new(parquet_meta_data),
+    //     );
+
+    //     let parquet_meta_data = parquet_ext::meta_data::meta_with_page_indexes(object_store_reader)
+    //         .await
+    //         .with_context(|| DecodePageIndexes {
+    //             file_path: self.path.to_string(),
+    //         })?;
+        
+    //     MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
+    //         .box_err()
+    //         .context(DecodeSstMeta)
+    // }
 
     fn need_update_cache(&self) -> bool {
         match self.frequency {

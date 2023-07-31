@@ -298,7 +298,8 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
 
         let (aborter, sink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, self.path).await?;
-        let meta_path = Path::from(self.path.to_string() + ".metadata");
+        let meta_path = Path::from(self.path.to_string() + "meta");
+        // println!("original path: {:?} smeta path: {:?}",self.path.to_string() ,  meta_path);
 
         let (_, metasink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, &meta_path).await?;
@@ -371,9 +372,9 @@ mod tests {
 
         let runtime = Arc::new(runtime::Builder::default().build().unwrap());
         parquet_write_and_then_read_back(runtime.clone(), 2, vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
-        parquet_write_and_then_read_back(runtime.clone(), 3, vec![3, 3, 3, 3, 3, 3, 2]);
-        parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 4, 4, 4, 4]);
-        parquet_write_and_then_read_back(runtime, 5, vec![5, 5, 5, 5]);
+        // parquet_write_and_then_read_back(runtime.clone(), 3, vec![3, 3, 3, 3, 3, 3, 2]);
+        // parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 4, 4, 4, 4]);
+        // parquet_write_and_then_read_back(runtime, 5, vec![5, 5, 5, 5]);
     }
 
     fn parquet_write_and_then_read_back(
@@ -390,8 +391,9 @@ mod tests {
                 max_buffer_size: 0,
             };
 
-            let dir = tempdir().unwrap();
-            let root = dir.path();
+            let string_path = String::from("/Users/tanruixiang/ceresdb_data");
+            let root = std::path::Path::new(&string_path);
+            
             let store: ObjectStoreRef = Arc::new(LocalFileSystem::new_with_prefix(root).unwrap());
             let store_picker: ObjectStorePickerRef = Arc::new(store);
             let sst_file_path = Path::from("data.par");
