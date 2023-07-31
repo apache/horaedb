@@ -263,7 +263,7 @@ pub struct MetaKeyEncoder {
 
 #[derive(Clone, Debug)]
 pub struct MetaKey {
-    pub region_id: u64,
+    pub table_id: u64,
 }
 
 impl MetaKeyEncoder {
@@ -291,7 +291,7 @@ impl Encoder<MetaKey> for MetaKeyEncoder {
         buf.try_put_u8(self.namespace as u8)
             .context(EncodeMetaKey)?;
         buf.try_put_u8(self.key_type as u8).context(EncodeMetaKey)?;
-        buf.try_put_u64(meta_key.region_id).context(EncodeMetaKey)?;
+        buf.try_put_u64(meta_key.table_id).context(EncodeMetaKey)?;
         buf.try_put_u8(self.version).context(EncodeMetaKey)?;
 
         Ok(())
@@ -326,7 +326,7 @@ impl Decoder<MetaKey> for MetaKeyEncoder {
             }
         );
 
-        let region_id = buf.try_get_u64().context(DecodeMetaKey)?;
+        let table_id = buf.try_get_u64().context(DecodeMetaKey)?;
 
         // check version
         let version = buf.try_get_u8().context(DecodeMetaKey)?;
@@ -338,7 +338,7 @@ impl Decoder<MetaKey> for MetaKeyEncoder {
             }
         );
 
-        Ok(MetaKey { region_id })
+        Ok(MetaKey { table_id })
     }
 }
 

@@ -16,7 +16,7 @@ use std::{
 use bytes_ext::BytesMut;
 use common_types::table::TableId;
 use generic_error::{BoxError, GenericError};
-use log::debug;
+use log::{debug, warn};
 use macros::define_result;
 use runtime::{self, Runtime};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -462,16 +462,22 @@ impl TableUnit {
                 region_id,
                 table_id,
             )? {
-                ensure!(
-                    sequence + 1 >= start_sequence,
-                    LoadLastSequence {
-                        table_id,
-                        msg: format!(
-                            "found last sequence, but last sequence + 1 < start sequence,
-                            last sequence:{sequence}, start sequence:{start_sequence}",
-                        )
-                    }
-                );
+                #[rustfmt::skip]
+                // FIXME: In some cases, the `flushed sequence`
+                // may be greater than the `actual last sequence of written logs`.
+                //
+                // Such as following case:
+                //  + Write wal logs failed(last sequence stored in memory will increase when write failed). 
+                //  + Get last sequence from memory(greater then actual last sequence now). 
+                //  + Mark the got last sequence as flushed sequence.
+                let actual_next_sequence = sequence + 1;
+                if actual_next_sequence < start_sequence {
+                    warn!("TableKv WAL found start_sequence greater than actual_next_sequence, 
+                    start_sequence:{start_sequence}, actual_next_sequence:{actual_next_sequence}, table_id:{table_id}, region_id:{region_id}");
+
+                    break;
+                }
+
                 return Ok(sequence);
             }
         }

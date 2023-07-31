@@ -134,7 +134,7 @@ impl TableUnit {
                 .context(Delete)?;
 
             // Update the max sequence number.
-            let meta_key = MetaKey { region_id: self.id };
+            let meta_key = MetaKey { table_id: self.id };
             let meta_value = MaxSeqMetaValue { max_seq };
             let (mut meta_key_buf, mut meta_value_buf) = (BytesMut::new(), BytesMut::new());
             self.max_seq_meta_encoding
@@ -440,7 +440,7 @@ impl RocksImpl {
         &self,
         table_max_seqs: &mut HashMap<TableId, SequenceNumber>,
     ) -> Result<()> {
-        let meta_key = MetaKey { region_id: 0 };
+        let meta_key = MetaKey { table_id: 0 };
         let mut start_boundary_key_buf = BytesMut::new();
         self.max_seq_meta_encoding
             .encode_key(&mut start_boundary_key_buf, &meta_key)?;
@@ -462,9 +462,24 @@ impl RocksImpl {
 
             let meta_key = self.max_seq_meta_encoding.decode_key(iter.key())?;
             let meta_value = self.max_seq_meta_encoding.decode_value(iter.value())?;
+            #[rustfmt::skip]
+            // FIXME: In some cases, the `flushed sequence` 
+            // may be greater than the `actual last sequence of written logs`.
+            // 
+            // Such as following case:
+            //  + Write wal logs failed(last sequence stored in memory will increase when write failed).
+            //  + Get last sequence from memory(greater then actual last sequence now).
+            //  + Mark the got last sequence as flushed sequence.
             table_max_seqs
-                .entry(meta_key.region_id)
+                .entry(meta_key.table_id)
                 .and_modify(|v| {
+                    if meta_value.max_seq > *v {
+                        warn!(
+                            "RocksDB WAL found flushed_seq greater than actual_last_sequence, 
+                        flushed_sequence:{}, actual_last_sequence:{}, table_id:{}",
+                            meta_value.max_seq, *v, meta_key.table_id
+                        );
+                    }
                     *v = meta_value.max_seq.max(*v);
                 })
                 .or_insert(meta_value.max_seq);
