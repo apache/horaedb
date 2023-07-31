@@ -597,6 +597,7 @@ impl From<TableOptions> for manifest_pb::TableOptions {
             storage_format_hint: Some(manifest_pb::StorageFormatHint::from(
                 opts.storage_format_hint,
             )),
+            // TODO: persist `memtable_type` in PB.
         }
     }
 }
@@ -668,7 +669,7 @@ impl TryFrom<manifest_pb::TableOptions> for TableOptions {
             write_buffer_size: opts.write_buffer_size,
             compression: Compression::from(compression),
             storage_format_hint: StorageFormatHint::try_from(storage_format_hint)?,
-            memtable_type: MemtableType::Columnar,
+            memtable_type: MemtableType::SkipList,
         };
 
         Ok(table_opts)
@@ -688,7 +689,7 @@ impl Default for TableOptions {
             write_buffer_size: DEFAULT_WRITE_BUFFER_SIZE,
             compression: Compression::Zstd,
             storage_format_hint: StorageFormatHint::default(),
-            memtable_type: MemtableType::Columnar,
+            memtable_type: MemtableType::SkipList,
         }
     }
 }

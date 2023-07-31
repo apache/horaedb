@@ -13,7 +13,7 @@ use std::{
 use arena::{Arena, BasicStats};
 use common_types::{
     bytes::Bytes,
-    row::{contiguous::ContiguousRowWriter, RowGroupSplitter},
+    row::{contiguous::ContiguousRowWriter, Row},
     schema::Schema,
     SequenceNumber,
 };
@@ -26,8 +26,8 @@ use crate::memtable::{
     iter::ReversedColumnarIterator,
     key::{BytewiseComparator, ComparableInternalKey, KeySequence},
     skiplist::iter::ColumnarIterImpl,
-    ColumnarIterPtr, EncodeInternalKey, Internal, InvalidPutSequence, InvalidRow, MemTable,
-    PutContext, Result, ScanContext, ScanRequest,
+    ColumnarIterPtr, EncodeInternalKey, InvalidPutSequence, InvalidRow, MemTable, PutContext,
+    Result, ScanContext, ScanRequest,
 };
 
 /// MemTable implementation based on skiplist
@@ -74,36 +74,29 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
         &self,
         ctx: &mut PutContext,
         sequence: KeySequence,
-        row_group: &RowGroupSplitter,
+        row: &Row,
         schema: &Schema,
     ) -> Result<()> {
-        let row_count = row_group.split_idx.len();
-        for i in 0..row_count {
-            let row = row_group.get(i).box_err().context(Internal {
-                msg: "get row failed",
-            })?;
+        trace!("skiplist put row, sequence:{:?}, row:{:?}", sequence, row);
 
-            trace!("skiplist put row, sequence:{:?}, row:{:?}", sequence, row);
+        let key_encoder = ComparableInternalKey::new(sequence, schema);
 
-            let key_encoder = ComparableInternalKey::new(sequence, schema);
+        let internal_key = &mut ctx.key_buf;
+        // Reset key buffer
+        internal_key.clear();
+        // Reserve capacity for key
+        internal_key.reserve(key_encoder.estimate_encoded_size(row));
+        // Encode key
+        key_encoder
+            .encode(internal_key, row)
+            .context(EncodeInternalKey)?;
 
-            let internal_key = &mut ctx.key_buf;
-            // Reset key buffer
-            internal_key.clear();
-            // Reserve capacity for key
-            internal_key.reserve(key_encoder.estimate_encoded_size(row));
-            // Encode key
-            key_encoder
-                .encode(internal_key, row)
-                .context(EncodeInternalKey)?;
+        // Encode row value. The ContiguousRowWriter will clear the buf.
+        let row_value = &mut ctx.value_buf;
+        let mut row_writer = ContiguousRowWriter::new(row_value, schema, &ctx.index_in_writer);
+        row_writer.write_row(row).box_err().context(InvalidRow)?;
 
-            // Encode row value. The ContiguousRowWriter will clear the buf.
-            let row_value = &mut ctx.value_buf;
-            let mut row_writer = ContiguousRowWriter::new(row_value, schema, &ctx.index_in_writer);
-            row_writer.write_row(row).box_err().context(InvalidRow)?;
-
-            self.skiplist.put(internal_key, row_value);
-        }
+        self.skiplist.put(internal_key, row_value);
 
         Ok(())
     }
@@ -167,7 +160,7 @@ mod tests {
         datum::Datum,
         projected_schema::ProjectedSchema,
         record_batch::RecordBatchWithKey,
-        row::{Row, RowGroupBuilder, RowGroupSlicer},
+        row::Row,
         schema::IndexInWriterSchema,
         tests::{build_row, build_schema},
         time::Timestamp,
@@ -342,14 +335,7 @@ mod tests {
         ];
 
         for (seq, row) in input {
-            let row_group = RowGroupBuilder::with_rows(schema.clone(), vec![row])
-                .unwrap()
-                .build();
-            let row_group_slicer = RowGroupSlicer::from(&row_group);
-            let row_group_splitter = RowGroupSplitter::new(vec![0], &row_group_slicer);
-            memtable
-                .put(&mut ctx, seq, &row_group_splitter, &schema)
-                .unwrap();
+            memtable.put(&mut ctx, seq, &row, &schema).unwrap();
         }
 
         test_memtable_scan_for_scan_request(schema.clone(), memtable.clone());

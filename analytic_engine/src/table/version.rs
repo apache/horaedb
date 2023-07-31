@@ -12,7 +12,7 @@ use std::{
 };
 
 use common_types::{
-    row::RowGroupSplitter,
+    row::Row,
     schema::{self, Schema},
     time::{TimeRange, Timestamp},
     SequenceNumber,
@@ -161,28 +161,22 @@ impl MemTableForWrite {
         &self,
         ctx: &mut PutContext,
         sequence: KeySequence,
-        row_group: &RowGroupSplitter,
+        row: &Row,
         schema: &Schema,
+        timestamp: Timestamp,
     ) -> Result<()> {
         match self {
             MemTableForWrite::Sampling(v) => {
-                v.mem
-                    .put(ctx, sequence, row_group, schema)
-                    .context(PutMemTable)?;
+                v.mem.put(ctx, sequence, row, schema).context(PutMemTable)?;
 
-                for i in &row_group.split_idx {
-                    let row = row_group.get(*i).unwrap();
-                    v.sampler
-                        .collect(row.timestamp(schema).unwrap())
-                        .context(CollectTimestamp)?;
-                }
+                // Collect the timestamp of this row.
+                v.sampler.collect(timestamp).context(CollectTimestamp)?;
 
                 Ok(())
             }
-            MemTableForWrite::Normal(v) => v
-                .mem
-                .put(ctx, sequence, row_group, schema)
-                .context(PutMemTable),
+            MemTableForWrite::Normal(v) => {
+                v.mem.put(ctx, sequence, row, schema).context(PutMemTable)
+            }
         }
     }
 

@@ -14,7 +14,7 @@ use common_types::{
     bytes::{ByteVec, Bytes},
     projected_schema::ProjectedSchema,
     record_batch::RecordBatchWithKey,
-    row::RowGroupSplitter,
+    row::Row,
     schema::{IndexInWriterSchema, Schema},
     SequenceNumber,
 };
@@ -37,7 +37,7 @@ pub enum MemtableType {
 
 impl MemtableType {
     pub fn parse_from(s: &str) -> Self {
-        if s.eq_ignore_ascii_case(MEMTABLE_TYPE_SKIPLIST) {
+        if s.eq_ignore_ascii_case(MEMTABLE_TYPE_COLUMNAR) {
             MemtableType::Columnar
         } else {
             MemtableType::SkipList
@@ -205,7 +205,7 @@ pub trait MemTable {
         &self,
         ctx: &mut PutContext,
         sequence: KeySequence,
-        row_group: &RowGroupSplitter,
+        row_group: &Row,
         schema: &Schema,
     ) -> Result<()>;
 

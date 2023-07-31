@@ -194,33 +194,6 @@ pub fn check_row_schema(row: &Row, schema: &Schema) -> Result<()> {
 }
 
 #[derive(Debug)]
-pub struct RowGroupSplitter<'a> {
-    pub split_idx: Vec<usize>,
-    pub row_group: &'a RowGroupSlicer<'a>,
-}
-
-impl<'a> RowGroupSplitter<'a> {
-    pub fn new(split_idx: Vec<usize>, row_group: &'a RowGroupSlicer<'a>) -> Self {
-        Self {
-            split_idx,
-            row_group,
-        }
-    }
-
-    pub fn get(&self, idx: usize) -> Result<&Row> {
-        let row_idx = self.row_group.range.start + self.split_idx[idx];
-        if row_idx > self.row_group.range.end {
-            return ColumnOutOfBound {
-                len: self.row_group.range.end,
-                given: row_idx,
-            }
-            .fail();
-        }
-        Ok(self.row_group.row_group.get_row(row_idx).unwrap())
-    }
-}
-
-#[derive(Debug)]
 pub struct RowGroupSlicer<'a> {
     range: Range<usize>,
     row_group: &'a RowGroup,

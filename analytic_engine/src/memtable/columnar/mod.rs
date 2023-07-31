@@ -11,9 +11,7 @@ use std::{
 
 use arena::MonoIncArena;
 use bytes::Bytes;
-use common_types::{
-    column::Column, datum::Datum, row::RowGroupSplitter, schema::Schema, SequenceNumber,
-};
+use common_types::{column::Column, datum::Datum, row::Row, schema::Schema, SequenceNumber};
 use common_util::error::BoxError;
 use log::debug;
 use skiplist::Skiplist;
@@ -44,6 +42,7 @@ pub struct ColumnarMemTable {
 }
 
 impl ColumnarMemTable {
+    // TODO: Optimize memtable size calculation.
     fn memtable_size(&self) -> usize {
         self.memtable
             .read()
@@ -75,48 +74,43 @@ impl MemTable for ColumnarMemTable {
         &self,
         ctx: &mut PutContext,
         _sequence: KeySequence,
-        row_group: &RowGroupSplitter,
+        row: &Row,
         schema: &Schema,
     ) -> Result<()> {
-        let row_count = row_group.split_idx.len();
         let mut columns = HashMap::with_capacity(schema.num_columns());
-        for i in 0..row_count {
-            let row = row_group.get(i).box_err().context(Internal {
-                msg: "get row failed",
-            })?;
 
-            for (i, column_schema) in schema.columns().iter().enumerate() {
-                let column = if let Some(column) = columns.get_mut(&column_schema.name) {
-                    column
-                } else {
-                    let column = Column::new(row_count, column_schema.data_type)
+        for (i, column_schema) in schema.columns().iter().enumerate() {
+            let column = if let Some(column) = columns.get_mut(&column_schema.name) {
+                column
+            } else {
+                let column =
+                    Column::new(1, column_schema.data_type)
                         .box_err()
                         .context(Internal {
                             msg: "new column failed",
                         })?;
-                    columns.insert(column_schema.name.to_string(), column);
-                    columns
-                        .get_mut(&column_schema.name)
-                        .context(InternalNoCause {
-                            msg: "get column failed",
-                        })?
-                };
+                columns.insert(column_schema.name.to_string(), column);
+                columns
+                    .get_mut(&column_schema.name)
+                    .context(InternalNoCause {
+                        msg: "get column failed",
+                    })?
+            };
 
-                if let Some(writer_index) = ctx.index_in_writer.column_index_in_writer(i) {
-                    let datum = &row[writer_index];
-                    if datum == &Datum::Null {
-                        column.append_nulls(1);
-                    } else {
-                        column
-                            .append_datum_ref(&row[writer_index])
-                            .box_err()
-                            .context(Internal {
-                                msg: "append datum failed",
-                            })?
-                    }
-                } else {
+            if let Some(writer_index) = ctx.index_in_writer.column_index_in_writer(i) {
+                let datum = &row[writer_index];
+                if datum == &Datum::Null {
                     column.append_nulls(1);
+                } else {
+                    column
+                        .append_datum_ref(&row[writer_index])
+                        .box_err()
+                        .context(Internal {
+                            msg: "append datum failed",
+                        })?
                 }
+            } else {
+                column.append_nulls(1);
             }
         }
         {
@@ -132,7 +126,7 @@ impl MemTable for ColumnarMemTable {
             }
         }
 
-        self.row_num.fetch_add(row_count, Ordering::Acquire);
+        self.row_num.fetch_add(1, Ordering::Acquire);
 
         // May have performance issue.
         self.memtable_size

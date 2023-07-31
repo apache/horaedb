@@ -2,14 +2,11 @@
 
 //! Write logic of instance
 
-use std::collections::HashMap;
-
 use ceresdbproto::{schema as schema_pb, table_requests};
 use common_types::{
     bytes::ByteVec,
-    row::{RowGroup, RowGroupSlicer, RowGroupSplitter},
+    row::{RowGroup, RowGroupSlicer},
     schema::{IndexInWriterSchema, Schema},
-    time::{TimeRange, Timestamp},
 };
 use common_util::{codec::row, define_result};
 use log::{debug, error, info, trace, warn};
@@ -302,74 +299,40 @@ impl<'a> MemTableWriter<'a> {
         let mut last_mutable_mem: Option<MemTableForWrite> = None;
 
         let mut ctx = PutContext::new(index_in_writer);
-
-        if let Some(segment_duration) = self.table_data.table_options().segment_duration {
-            let mut segment_idxs: HashMap<Timestamp, Vec<usize>> = HashMap::new();
-
-            for (row_idx, row) in row_group.iter().enumerate() {
-                let timestamp = row.timestamp(schema).unwrap();
-                // skip expired row
-                if self.table_data.is_expired(timestamp) {
-                    trace!("Skip expired row when write to memtable, row:{:?}", row);
-                    continue;
-                }
-                let time_range = TimeRange::bucket_of(timestamp, segment_duration.0).unwrap();
-                let idx = segment_idxs
-                    .entry(time_range.inclusive_start())
-                    .or_default();
-                idx.push(row_idx);
+        for (row_idx, row) in row_group.iter().enumerate() {
+            // TODO(yingwen): Add RowWithSchema and take RowWithSchema as input, then remove
+            // this unwrap()
+            let timestamp = row.timestamp(schema).unwrap();
+            // skip expired row
+            if self.table_data.is_expired(timestamp) {
+                trace!("Skip expired row when write to memtable, row:{:?}", row);
+                continue;
             }
-
-            for (timestamp, idx) in segment_idxs {
-                if last_mutable_mem.is_none()
-                    || !last_mutable_mem
-                        .as_ref()
-                        .unwrap()
-                        .accept_timestamp(timestamp)
-                {
-                    // The time range is not processed by current memtable, find next one.
-                    let mutable_mem = self
-                        .table_data
-                        .find_or_create_mutable(timestamp, schema)
-                        .context(FindMutableMemTable {
-                            table: &self.table_data.name,
-                        })?;
-                    wrote_memtables.push(mutable_mem.clone());
-                    last_mutable_mem = Some(mutable_mem);
-                }
-
-                // We have check the row num is less than `MAX_ROWS_TO_WRITE`, it is safe to
-                // cast it to u32 here.
-                let key_seq = KeySequence::new(sequence, 0u32);
-                let row_group_splitter = RowGroupSplitter::new(idx, row_group);
-                last_mutable_mem
+            if last_mutable_mem.is_none()
+                || !last_mutable_mem
                     .as_ref()
                     .unwrap()
-                    .put(&mut ctx, key_seq, &row_group_splitter, schema)
-                    .context(WriteMemTable {
+                    .accept_timestamp(timestamp)
+            {
+                // The time range is not processed by current memtable, find next one.
+                let mutable_mem = self
+                    .table_data
+                    .find_or_create_mutable(timestamp, schema)
+                    .context(FindMutableMemTable {
                         table: &self.table_data.name,
                     })?;
+                wrote_memtables.push(mutable_mem.clone());
+                last_mutable_mem = Some(mutable_mem);
             }
-        } else {
-            let mutable_mem = self
-                .table_data
-                .find_or_create_mutable(Timestamp::from(0), schema)
-                .context(FindMutableMemTable {
-                    table: &self.table_data.name,
-                })?;
-            wrote_memtables.push(mutable_mem.clone());
-            last_mutable_mem = Some(mutable_mem);
 
             // We have check the row num is less than `MAX_ROWS_TO_WRITE`, it is safe to
-            // cast it to u32 here.
-            let key_seq = KeySequence::new(sequence, 0u32);
-            let row_group_splitter =
-                RowGroupSplitter::new((0..row_group.num_rows()).collect(), row_group);
+            // cast it to u32 here
+            let key_seq = KeySequence::new(sequence, row_idx as u32);
             // TODO(yingwen): Batch sample timestamp in sampling phase.
             last_mutable_mem
                 .as_ref()
                 .unwrap()
-                .put(&mut ctx, key_seq, &row_group_splitter, schema)
+                .put(&mut ctx, key_seq, row, schema, timestamp)
                 .context(WriteMemTable {
                     table: &self.table_data.name,
                 })?;
