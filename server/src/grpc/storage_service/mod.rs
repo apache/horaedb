@@ -137,7 +137,7 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
         let ctx = Context {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
-            enable_partition_table_access: false,
+            enable_partition_table_access: true,
             forwarded_from: req
                 .metadata()
                 .get(FORWARDED_FROM)
@@ -241,7 +241,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let ctx = Context {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
-            enable_partition_table_access: false,
+            enable_partition_table_access: true,
             forwarded_from: req
                 .metadata()
                 .get(FORWARDED_FROM)

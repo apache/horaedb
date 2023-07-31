@@ -4,7 +4,7 @@ affected_rows: 0
 
 DROP TABLE IF EXISTS `__partition_table_t_0`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql: DROP TABLE IF EXISTS `__partition_table_t_0`;. Caused by: Internal error, msg:Failed to create interpreter, err:Failed to check permission, msg:only can process sub tables in table partition directly when enable partition table access" })
+affected_rows: 0
 
 CREATE TABLE `partition_table_t`(
                                     `name`string TAG,
@@ -24,7 +24,9 @@ String("partition_table_t"),String("CREATE TABLE `partition_table_t` (`tsid` uin
 
 SHOW CREATE TABLE __partition_table_t_0;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql: SHOW CREATE TABLE __partition_table_t_0;. Caused by: Internal error, msg:Failed to create interpreter, err:Failed to check permission, msg:only can process sub tables in table partition directly when enable partition table access" })
+Table,Create Table,
+String("__partition_table_t_0"),String("CREATE TABLE `__partition_table_t_0` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `name` string TAG, `id` int TAG, `value` double NOT NULL, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='false', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
 
 INSERT INTO partition_table_t (t, name, value)
 VALUES (1651737067000, "ceresdb0", 100),
@@ -43,7 +45,7 @@ affected_rows: 11
 
 SELECT * from __partition_table_t_0 where name = "ceresdb0";
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql: SELECT * from __partition_table_t_0 where name = \"ceresdb0\";. Caused by: Internal error, msg:Failed to create interpreter, err:Failed to check permission, msg:only can process sub tables in table partition directly when enable partition table access" })
+affected_rows: 0
 
 SELECT * from partition_table_t where name = "ceresdb0";
 
