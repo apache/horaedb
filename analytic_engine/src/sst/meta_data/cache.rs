@@ -11,7 +11,7 @@ use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::sst::{
     meta_data::{DecodeCustomMetaData, KvMetaDataNotFound, ParquetMetaDataRef, Result},
-    parquet::encoding,
+    parquet::{encoding, meta_data::ParquetMetaData},
 };
 
 pub type MetaCacheRef = Arc<MetaCache>;
@@ -36,6 +36,7 @@ impl MetaData {
     pub fn try_new(
         parquet_meta_data: &parquet_ext::ParquetMetaData,
         ignore_sst_filter: bool,
+        custom_metadata: Option<crate::sst::parquet::meta_data::ParquetMetaData>,
     ) -> Result<Self> {
         let file_meta_data = parquet_meta_data.file_metadata();
         let kv_metas = file_meta_data
@@ -55,16 +56,17 @@ impl MetaData {
             }
         }
         // TODO 这里需要从我们新存的文件中获取metadata
-        let custom = {
-            let custom_kv_meta = custom_kv_meta.context(KvMetaDataNotFound)?;
-            let mut sst_meta =
-                encoding::decode_sst_meta_data(custom_kv_meta).context(DecodeCustomMetaData)?;
-            if ignore_sst_filter {
-                sst_meta.parquet_filter = None;
-            }
+        // let custom = {
+        //     let custom_kv_meta = custom_kv_meta.context(KvMetaDataNotFound)?;
+        //     let mut sst_meta =
+        //         encoding::decode_sst_meta_data(custom_kv_meta).
+        // context(DecodeCustomMetaData)?;     if ignore_sst_filter {
+        //         sst_meta.parquet_filter = None;
+        //     }
 
-            Arc::new(sst_meta)
-        };
+        //     Arc::new(sst_meta)
+        // };
+        let custom = Arc::new(custom_metadata.unwrap());
 
         println!("custom: {:?}", custom);
 
@@ -275,7 +277,7 @@ mod tests {
         let parquet_file = File::open(parquet_file_path.as_path()).unwrap();
         let parquet_meta_data = footer::parse_metadata(&parquet_file).unwrap();
 
-        let meta_data = MetaData::try_new(&parquet_meta_data, false).unwrap();
+        let meta_data = MetaData::try_new(&parquet_meta_data, false, None).unwrap();
 
         assert_eq!(**meta_data.custom(), custom_meta_data);
         check_parquet_meta_data(&parquet_meta_data, meta_data.parquet());

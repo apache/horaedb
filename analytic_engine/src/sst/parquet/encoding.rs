@@ -291,11 +291,11 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
     }
 
     fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
-        let key_value = encode_sst_meta_data(meta_data.clone())?;
-        self.arrow_writer
-            .as_mut()
-            .unwrap()
-            .append_key_value_metadata(key_value);
+        // let key_value = encode_sst_meta_data(meta_data.clone())?;
+        // self.arrow_writer
+        //     .as_mut()
+        //     .unwrap()
+        //     .append_key_value_metadata(key_value);
         self.metadata = Some(meta_data);
 
         Ok(())
