@@ -25,7 +25,7 @@ use datafusion::{
 };
 use futures::{Stream, StreamExt};
 use generic_error::{BoxError, GenericResult};
-use log::{debug, error};
+use log::{debug, error, info};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{arrow_reader::RowSelection, ParquetRecordBatchStreamBuilder, ProjectionMask},
@@ -358,13 +358,16 @@ impl<'a> Reader<'a> {
 
     async fn load_meta_data_from_storage(&self, ignore_sst_filter: bool) -> Result<MetaData> {
         let meta_path = Path::from(self.path.to_string() + "meta");
-        let meta_size = match self.file_size_hint {
-            Some(v) => v,
-            None => {
-                let object_meta = self.store.head(&meta_path).await.context(ObjectStoreError)?;
-                object_meta.size
-            }
-        };
+        info!("file_size_hint is {:?}",self.file_size_hint);
+        let meta_size = self.store.head(&meta_path).await.context(ObjectStoreError)?.size;
+        // TODO: What is file_size hint
+        // let meta_size = match self.file_size_hint {
+        //     Some(v) => v,
+        //     None => {
+        //         let object_meta = self.store.head(&meta_path).await.context(ObjectStoreError)?;
+        //         object_meta.size
+        //     }
+        // };
         let meta_chunk_reader_adapter = ChunkReaderAdapter::new(&meta_path, self.store);
         let metadata = meta_chunk_reader_adapter.get_bytes(0..meta_size).await.unwrap();
         let tmpstr = std::str::from_utf8(&metadata.as_ref()).unwrap(); 
