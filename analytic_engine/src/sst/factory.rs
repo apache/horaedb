@@ -119,7 +119,6 @@ impl Default for ScanOptions {
 
 #[derive(Debug, Clone)]
 pub struct SstReadOptions {
-    pub reverse: bool,
     pub frequency: ReadFrequency,
     pub num_rows_per_row_group: usize,
     pub projected_schema: ProjectedSchema,

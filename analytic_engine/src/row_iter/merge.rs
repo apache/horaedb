@@ -105,6 +105,8 @@ pub struct MergeConfig<'a> {
     pub merge_iter_options: IterOptions,
 
     pub need_dedup: bool,
+    // TODO: Currently, the read the sst in a reverse order is not supported yet, that is to say,
+    // the output won't be expected if it is set.
     pub reverse: bool,
 }
 

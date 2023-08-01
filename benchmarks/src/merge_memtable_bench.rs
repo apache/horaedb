@@ -202,7 +202,6 @@ fn mock_sst_read_options(
         num_streams_to_prefetch: 0,
     };
     SstReadOptions {
-        reverse: false,
         frequency: ReadFrequency::Frequent,
         num_rows_per_row_group: 500,
         projected_schema,

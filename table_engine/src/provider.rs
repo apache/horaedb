@@ -32,7 +32,7 @@ use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector};
 use crate::{
     predicate::{PredicateBuilder, PredicateRef},
     stream::{SendableRecordBatchStream, ToDfStream},
-    table::{self, ReadOptions, ReadOrder, ReadRequest, TableRef},
+    table::{self, ReadOptions, ReadRequest, TableRef},
 };
 
 const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_table";
@@ -130,7 +130,6 @@ impl TableProviderAdapter {
         projection: Option<&Vec<usize>>,
         filters: &[Expr],
         limit: Option<usize>,
-        read_order: ReadOrder,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         let ceresdb_options = state.config_options().extensions.get::<CeresdbOptions>();
         assert!(ceresdb_options.is_some());
@@ -139,24 +138,17 @@ impl TableProviderAdapter {
         let deadline = ceresdb_options
             .request_timeout
             .map(|n| Instant::now() + Duration::from_millis(n));
+        let read_parallelism = state.config().target_partitions();
         debug!(
-            "scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, read_order:{:?}, deadline:{:?}",
+            "scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, deadline:{:?}, parallelism:{}",
             self.table.name(),
             request_id,
             projection,
             filters,
             limit,
-            read_order,
             deadline,
+            read_parallelism,
         );
-
-        // Forbid the parallel reading if the data order is required.
-        let read_parallelism = if read_order.is_in_order() && self.table.partition_info().is_none()
-        {
-            1
-        } else {
-            state.config().target_partitions()
-        };
 
         let predicate = self.check_and_build_predicate_from_filters(filters);
         let mut scan_table = ScanTable {
@@ -168,7 +160,6 @@ impl TableProviderAdapter {
             })?,
             table: self.table.clone(),
             request_id,
-            read_order,
             read_parallelism,
             predicate,
             deadline,
@@ -231,8 +222,7 @@ impl TableProvider for TableProviderAdapter {
         filters: &[Expr],
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        self.scan_table(state, projection, filters, limit, ReadOrder::None)
-            .await
+        self.scan_table(state, projection, filters, limit).await
     }
 
     fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {
@@ -296,7 +286,6 @@ struct ScanTable {
     projected_schema: ProjectedSchema,
     table: TableRef,
     request_id: RequestId,
-    read_order: ReadOrder,
     read_parallelism: usize,
     predicate: PredicateRef,
     deadline: Option<Instant>,
@@ -316,7 +305,6 @@ impl ScanTable {
             },
             projected_schema: self.projected_schema.clone(),
             predicate: self.predicate.clone(),
-            order: self.read_order,
             metrics_collector: self.metrics_collector.clone(),
         };
 
@@ -410,10 +398,9 @@ impl DisplayAs for ScanTable {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "ScanTable: table={}, parallelism={}, order={:?}, ",
+            "ScanTable: table={}, parallelism={}",
             self.table.name(),
             self.read_parallelism,
-            self.read_order,
         )
     }
 }
@@ -423,7 +410,6 @@ impl fmt::Debug for ScanTable {
         f.debug_struct("ScanTable")
             .field("projected_schema", &self.projected_schema)
             .field("table", &self.table.name())
-            .field("read_order", &self.read_order)
             .field("read_parallelism", &self.read_parallelism)
             .field("predicate", &self.predicate)
             .finish()

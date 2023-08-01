@@ -12,7 +12,6 @@ use datafusion::{
 };
 
 pub mod prom_align;
-pub mod table_scan_by_primary_key;
 use async_trait::async_trait;
 
 /// The adapter for extending the default datafusion planner.
@@ -26,7 +25,6 @@ impl QueryPlanner for QueryPlannerAdapter {
         session_state: &SessionState,
     ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         let extension_planners: Vec<Arc<dyn ExtensionPlanner + Send + Sync>> = vec![
-            Arc::new(table_scan_by_primary_key::Planner),
             Arc::new(prom_align::PromAlignPlanner),
             Arc::new(influxql_query::exec::context::IOxExtensionPlanner {}),
         ];

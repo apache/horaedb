@@ -2,7 +2,6 @@
 
 //! Logical optimizer
 
-pub mod order_by_primary_key;
 #[cfg(test)]
 pub mod tests;
 pub mod type_conversion;

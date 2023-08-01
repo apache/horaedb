@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! test utils for logical optimizer
 
@@ -12,13 +12,10 @@ use datafusion::{
     datasource::TableProvider,
     execution::context::SessionState,
     logical_expr::{
-        Expr, Extension, Filter, Limit, LogicalPlan, Projection, Sort, TableScan, TableSource,
-        TableType,
+        Expr, Filter, Limit, LogicalPlan, Projection, Sort, TableScan, TableSource, TableType,
     },
     physical_plan::ExecutionPlan,
 };
-
-use crate::df_planner_extension::table_scan_by_primary_key::TableScanByPrimaryKey;
 
 #[derive(Clone, Debug)]
 #[must_use]
@@ -144,17 +141,6 @@ impl LogicalPlanNodeBuilder {
             fetch: None,
         });
 
-        self.plan = Some(Arc::new(plan));
-
-        self
-    }
-
-    pub fn table_scan_in_primary_key_order(mut self, asc: bool) -> Self {
-        let sub_plan = self.take_plan();
-        let node = TableScanByPrimaryKey::new_from_scan_plan(asc, sub_plan);
-        let plan = LogicalPlan::Extension(Extension {
-            node: Arc::new(node),
-        });
         self.plan = Some(Arc::new(plan));
 
         self

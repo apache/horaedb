@@ -104,7 +104,6 @@ pub async fn load_sst_to_memtable(
         num_streams_to_prefetch: 0,
     };
     let sst_read_options = SstReadOptions {
-        reverse: false,
         frequency: ReadFrequency::Frequent,
         num_rows_per_row_group: 8192,
         projected_schema: ProjectedSchema::no_projection(schema.clone()),

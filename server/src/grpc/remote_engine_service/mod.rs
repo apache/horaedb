@@ -23,11 +23,8 @@ use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
-    engine::EngineRuntimes,
-    predicate::PredicateRef,
-    remote::model::TableIdentifier,
-    stream::PartitionedStreams,
-    table::{ReadOrder, TableRef},
+    engine::EngineRuntimes, predicate::PredicateRef, remote::model::TableIdentifier,
+    stream::PartitionedStreams, table::TableRef,
 };
 use time_ext::InstantExt;
 use tokio::sync::mpsc;
@@ -55,21 +52,14 @@ pub struct StreamReadReqKey {
     table: String,
     predicate: PredicateRef,
     projection: Option<Vec<usize>>,
-    order: ReadOrder,
 }
 
 impl StreamReadReqKey {
-    pub fn new(
-        table: String,
-        predicate: PredicateRef,
-        projection: Option<Vec<usize>>,
-        order: ReadOrder,
-    ) -> Self {
+    pub fn new(table: String, predicate: PredicateRef, projection: Option<Vec<usize>>) -> Self {
         Self {
             table,
             predicate,
             projection,
-            order,
         }
     }
 }
@@ -178,7 +168,6 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             table.table,
             read_request.predicate.clone(),
             read_request.projected_schema.projection(),
-            read_request.order,
         );
 
         let mut guard = match request_notifiers.insert_notifier(request_key.clone(), tx) {
@@ -526,9 +515,8 @@ async fn handle_stream_read(
 
     let request_id = read_request.request_id;
     info!(
-        "Handle stream read, request_id:{request_id}, table:{table_ident:?}, read_options:{:?}, read_order:{:?}, predicate:{:?} ",
+        "Handle stream read, request_id:{request_id}, table:{table_ident:?}, read_options:{:?}, predicate:{:?} ",
         read_request.opts,
-        read_request.order,
         read_request.predicate,
     );
 

@@ -26,9 +26,9 @@ use table_engine::{
     stream::{PartitionedStreams, SendableRecordBatchStream},
     table::{
         AlterOptions, AlterSchema, AlterSchemaRequest, Compact, Flush, FlushRequest, Get,
-        GetInvalidPrimaryKey, GetNullPrimaryKey, GetRequest, MergeWrite, ReadOptions, ReadOrder,
-        ReadRequest, Result, Scan, Table, TableId, TableStats, TooManyPendingWrites,
-        WaitForPendingWrites, Write, WriteRequest,
+        GetInvalidPrimaryKey, GetNullPrimaryKey, GetRequest, MergeWrite, ReadOptions, ReadRequest,
+        Result, Scan, Table, TableId, TableStats, TooManyPendingWrites, WaitForPendingWrites,
+        Write, WriteRequest,
     },
     ANALYTIC_ENGINE_TYPE,
 };
@@ -491,7 +491,6 @@ impl Table for TableImpl {
             opts: ReadOptions::default(),
             projected_schema: request.projected_schema,
             predicate,
-            order: ReadOrder::None,
             metrics_collector: MetricsCollector::new(GET_METRICS_COLLECTOR_NAME.to_string()),
         };
         let mut batch_stream = self
