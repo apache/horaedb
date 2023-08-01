@@ -272,7 +272,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             let builder = meta_event_service::Builder {
                 cluster: v,
                 instance: instance.clone(),
-                runtime: runtimes.default_runtime.clone(),
+                runtime: runtimes.meta_runtime.clone(),
                 opened_wals,
             };
             MetaEventServiceServer::new(builder.build())
