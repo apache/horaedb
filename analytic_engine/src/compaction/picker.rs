@@ -410,7 +410,7 @@ impl SizeTieredPicker {
             return None;
         }
 
-        // Find the hotest bucket
+        // Find the hottest bucket
         if let Some((bucket, hotness)) =
             pruned_bucket_and_hotness
                 .into_iter()
@@ -419,12 +419,12 @@ impl SizeTieredPicker {
                     if !c.is_eq() {
                         return c;
                     }
-                    //TODO(boyan), compacting smallest sstables first?
+                    // TODO(boyan), compacting smallest sstables first?
                     b1.avg_size.cmp(&b2.avg_size)
                 })
         {
             debug!(
-                "Find the hotest bucket, hotness: {}, bucket: {:?}",
+                "Find the hottest bucket, hotness: {}, bucket: {:?}",
                 hotness, bucket
             );
             Some(bucket.files)

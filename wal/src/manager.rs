@@ -318,9 +318,7 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     async fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter>;
 
     /// Get statistics
-    fn get_statistics(&self) -> Option<String> {
-        None
-    }
+    async fn get_statistics(&self) -> Option<String>;
 }
 
 #[derive(Debug)]

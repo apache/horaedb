@@ -388,7 +388,7 @@ impl<'a> Reader<'a> {
         // println!("original meta: {:?}", parquet_meta_data.file_metadata().key_value_metadata());
         // TODO: Support page index until https://github.com/CeresDB/ceresdb/issues/1040 is fixed.
 
-        MetaData::try_new(&parquet_meta_data, ignore_sst_filter,Some(decode_metadata))
+        MetaData::try_new(&parquet_meta_data, ignore_sst_filter, Some(decode_metadata))
             .box_err()
             .context(DecodeSstMeta)
     }

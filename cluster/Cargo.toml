@@ -17,6 +17,7 @@ catalog = { workspace = true }
 ceresdbproto = { workspace = true }
 common_types = { workspace = true }
 etcd-client = { workspace = true }
+future_ext = { workspace = true }
 generic_error = { workspace = true }
 log = { workspace = true }
 macros = { workspace = true }

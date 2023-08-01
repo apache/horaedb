@@ -23,6 +23,7 @@ cluster = { workspace = true }
 common_types = { workspace = true }
 datafusion = { workspace = true }
 df_operator = { workspace = true }
+future_ext = { workspace = true }
 futures = { workspace = true }
 generic_error = { workspace = true }
 http = "0.2"

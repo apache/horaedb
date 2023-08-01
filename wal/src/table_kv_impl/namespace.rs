@@ -256,6 +256,19 @@ impl<T> NamespaceInner<T> {
         let mut table_units = self.table_units.write().unwrap();
         table_units.clear();
     }
+
+    fn get_statistics(&self) -> String {
+        let table_units = self.table_units.read().unwrap();
+        let mut wal_stats = Vec::with_capacity(table_units.len());
+        for table_unit in table_units.values() {
+            wal_stats.push(format!("{:?}", table_unit.as_ref()));
+        }
+        let stats = wal_stats.join("\n");
+
+        let stats = format!("#TableKvWal stats:\n{stats}\n");
+
+        stats
+    }
 }
 
 // Blocking operations.
@@ -1103,6 +1116,10 @@ impl<T: TableKv> Namespace<T> {
             namespace_entry,
             config,
         )
+    }
+
+    pub fn get_statistics(&self) -> String {
+        self.inner.get_statistics()
     }
 }
 

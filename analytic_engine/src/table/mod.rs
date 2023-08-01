@@ -15,7 +15,7 @@ use common_types::{
     time::TimeRange,
 };
 use datafusion::{common::Column, logical_expr::Expr};
-use future_cancel::CancellationSafeFuture;
+use future_ext::CancellationSafeFuture;
 use futures::TryStreamExt;
 use generic_error::BoxError;
 use log::{error, warn};
@@ -26,9 +26,9 @@ use table_engine::{
     stream::{PartitionedStreams, SendableRecordBatchStream},
     table::{
         AlterOptions, AlterSchema, AlterSchemaRequest, Compact, Flush, FlushRequest, Get,
-        GetInvalidPrimaryKey, GetNullPrimaryKey, GetRequest, MergeWrite, ReadOptions, ReadOrder,
-        ReadRequest, Result, Scan, Table, TableId, TableStats, TooManyPendingWrites,
-        WaitForPendingWrites, Write, WriteRequest,
+        GetInvalidPrimaryKey, GetNullPrimaryKey, GetRequest, MergeWrite, ReadOptions, ReadRequest,
+        Result, Scan, Table, TableId, TableStats, TooManyPendingWrites, WaitForPendingWrites,
+        Write, WriteRequest,
     },
     ANALYTIC_ENGINE_TYPE,
 };
@@ -38,7 +38,7 @@ use trace_metric::MetricsCollector;
 use self::data::TableDataRef;
 use crate::{
     instance::{alter::Alterer, write::Writer, InstanceRef},
-    space::{SpaceAndTable, SpaceId},
+    space::{SpaceAndTable, SpaceRef},
 };
 
 pub mod data;
@@ -53,21 +53,21 @@ const GET_METRICS_COLLECTOR_NAME: &str = "get";
 const ADDITIONAL_PENDING_WRITE_CAP_RATIO: usize = 10;
 
 struct WriteRequests {
-    pub space_table: SpaceAndTable,
-    pub instance: InstanceRef,
+    pub space: SpaceRef,
     pub table_data: TableDataRef,
+    pub instance: InstanceRef,
     pub pending_writes: Arc<Mutex<PendingWriteQueue>>,
 }
 
 impl WriteRequests {
     pub fn new(
-        space_table: SpaceAndTable,
         instance: InstanceRef,
+        space: SpaceRef,
         table_data: TableDataRef,
         pending_writes: Arc<Mutex<PendingWriteQueue>>,
     ) -> Self {
         Self {
-            space_table,
+            space,
             instance,
             table_data,
             pending_writes,
@@ -77,14 +77,11 @@ impl WriteRequests {
 
 /// Table trait implementation
 pub struct TableImpl {
-    space_table: SpaceAndTable,
+    space: SpaceRef,
     /// Instance
     instance: InstanceRef,
     /// Engine type
     engine_type: String,
-
-    space_id: SpaceId,
-    table_id: TableId,
 
     /// Holds a strong reference to prevent the underlying table from being
     /// dropped when this handle exist.
@@ -98,13 +95,11 @@ impl TableImpl {
     pub fn new(instance: InstanceRef, space_table: SpaceAndTable) -> Self {
         let pending_writes = Mutex::new(PendingWriteQueue::new(instance.max_rows_in_write_queue));
         let table_data = space_table.table_data().clone();
-        let space_id = space_table.space().space_id();
+        let space = space_table.space().clone();
         Self {
-            space_table,
+            space,
             instance,
             engine_type: ANALYTIC_ENGINE_TYPE.to_string(),
-            space_id,
-            table_id: table_data.id,
             table_data,
             pending_writes: Arc::new(pending_writes),
         }
@@ -114,8 +109,8 @@ impl TableImpl {
 impl fmt::Debug for TableImpl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TableImpl")
-            .field("space_id", &self.space_id)
-            .field("table_id", &self.table_id)
+            .field("space_id", &self.space.id)
+            .field("table_id", &self.table_data.id)
             .finish()
     }
 }
@@ -285,8 +280,8 @@ impl TableImpl {
                 // take responsibilities for merging and writing the
                 // requests in the queue.
                 let write_requests = WriteRequests::new(
-                    self.space_table.clone(),
                     self.instance.clone(),
+                    self.space.clone(),
                     self.table_data.clone(),
                     self.pending_writes.clone(),
                 );
@@ -341,7 +336,8 @@ impl TableImpl {
 
         let mut writer = Writer::new(
             write_requests.instance,
-            write_requests.space_table,
+            write_requests.space,
+            write_requests.table_data.clone(),
             &mut serial_exec,
         );
         let write_res = writer
@@ -424,11 +420,7 @@ impl Table for TableImpl {
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {
-        let _timer = self
-            .space_table
-            .table_data()
-            .metrics
-            .start_table_total_timer();
+        let _timer = self.table_data.metrics.start_table_total_timer();
 
         if self.should_queue_write_request(&request) {
             return self.write_with_pending_queue(request).await;
@@ -437,7 +429,8 @@ impl Table for TableImpl {
         let mut serial_exec = self.table_data.serial_exec.lock().await;
         let mut writer = Writer::new(
             self.instance.clone(),
-            self.space_table.clone(),
+            self.space.clone(),
+            self.table_data.clone(),
             &mut serial_exec,
         );
         writer
@@ -451,7 +444,7 @@ impl Table for TableImpl {
         request.opts.read_parallelism = 1;
         let mut streams = self
             .instance
-            .partitioned_read_from_table(&self.space_table, request)
+            .partitioned_read_from_table(&self.table_data, request)
             .await
             .box_err()
             .context(Scan { table: self.name() })?;
@@ -498,7 +491,6 @@ impl Table for TableImpl {
             opts: ReadOptions::default(),
             projected_schema: request.projected_schema,
             predicate,
-            order: ReadOrder::None,
             metrics_collector: MetricsCollector::new(GET_METRICS_COLLECTOR_NAME.to_string()),
         };
         let mut batch_stream = self
@@ -542,7 +534,7 @@ impl Table for TableImpl {
     async fn partitioned_read(&self, request: ReadRequest) -> Result<PartitionedStreams> {
         let streams = self
             .instance
-            .partitioned_read_from_table(&self.space_table, request)
+            .partitioned_read_from_table(&self.table_data, request)
             .await
             .box_err()
             .context(Scan { table: self.name() })?;

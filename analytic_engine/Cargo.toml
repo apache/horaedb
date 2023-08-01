@@ -26,7 +26,7 @@ ceresdbproto = { workspace = true }
 codec = { workspace = true }
 common_types = { workspace = true }
 datafusion = { workspace = true }
-future_cancel = { workspace = true }
+future_ext = { workspace = true }
 futures = { workspace = true }
 generic_error = { workspace = true }
 hex = { workspace = true }

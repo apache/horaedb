@@ -19,7 +19,7 @@ use table_engine::{
     self,
     engine::{CreateTableRequest, TableState},
     predicate::Predicate,
-    table::{GetRequest, ReadOptions, ReadOrder, ReadRequest, SchemaId, TableId, TableSeq},
+    table::{GetRequest, ReadOptions, ReadRequest, SchemaId, TableId, TableSeq},
 };
 use time_ext::ReadableDuration;
 use trace_metric::MetricsCollector;
@@ -119,8 +119,8 @@ impl FixedSchemaTable {
         row_util::new_row_6(data)
     }
 
-    pub fn new_read_all_request(&self, opts: ReadOptions, read_order: ReadOrder) -> ReadRequest {
-        new_read_all_request_with_order(self.create_request.table_schema.clone(), opts, read_order)
+    pub fn new_read_all_request(&self, opts: ReadOptions) -> ReadRequest {
+        new_read_all_request_with_order(self.create_request.table_schema.clone(), opts)
     }
 
     pub fn new_get_request(&self, key: KeyTuple) -> GetRequest {
@@ -175,23 +175,18 @@ pub fn read_opts_list() -> Vec<ReadOptions> {
     ]
 }
 
-pub fn new_read_all_request_with_order(
-    schema: Schema,
-    opts: ReadOptions,
-    order: ReadOrder,
-) -> ReadRequest {
+pub fn new_read_all_request_with_order(schema: Schema, opts: ReadOptions) -> ReadRequest {
     ReadRequest {
         request_id: RequestId::next_id(),
         opts,
         projected_schema: ProjectedSchema::no_projection(schema),
         predicate: Arc::new(Predicate::empty()),
-        order,
         metrics_collector: MetricsCollector::default(),
     }
 }
 
 pub fn new_read_all_request(schema: Schema, opts: ReadOptions) -> ReadRequest {
-    new_read_all_request_with_order(schema, opts, ReadOrder::None)
+    new_read_all_request_with_order(schema, opts)
 }
 
 pub fn assert_batch_eq_to_row_group(record_batches: &[RecordBatch], row_group: &RowGroup) {

@@ -2,7 +2,7 @@
 
 // Remote engine rpc service implementation.
 
-use std::{sync::Arc, time::Instant};
+use std::{hash::Hash, sync::Arc, time::Instant};
 
 use arrow_ext::ipc::{self, CompressOptions, CompressOutput, CompressionMethod};
 use async_trait::async_trait;
@@ -16,37 +16,85 @@ use ceresdbproto::{
     storage::{arrow_payload, ArrowPayload},
 };
 use common_types::record_batch::RecordBatch;
-use futures::stream::{self, BoxStream, StreamExt};
+use futures::stream::{self, BoxStream, FuturesUnordered, StreamExt};
 use generic_error::BoxError;
 use log::{error, info};
 use proxy::instance::InstanceRef;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
-    engine::EngineRuntimes, remote::model::TableIdentifier, stream::PartitionedStreams,
-    table::TableRef,
+    engine::EngineRuntimes, predicate::PredicateRef, remote::model::TableIdentifier,
+    stream::PartitionedStreams, table::TableRef,
 };
 use time_ext::InstantExt;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
-use crate::grpc::{
-    metrics::{
-        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC, REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+use crate::{
+    dedup_requests::{RequestNotifiers, RequestResult},
+    grpc::{
+        metrics::{
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC,
+            REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+        },
+        remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
     },
-    remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
 };
 
-mod error;
+pub mod error;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct StreamReadReqKey {
+    table: String,
+    predicate: PredicateRef,
+    projection: Option<Vec<usize>>,
+}
+
+impl StreamReadReqKey {
+    pub fn new(table: String, predicate: PredicateRef, projection: Option<Vec<usize>>) -> Self {
+        Self {
+            table,
+            predicate,
+            projection,
+        }
+    }
+}
+
+struct ExecutionGuard<F: FnMut()> {
+    f: F,
+    cancelled: bool,
+}
+
+impl<F: FnMut()> ExecutionGuard<F> {
+    fn new(f: F) -> Self {
+        Self {
+            f,
+            cancelled: false,
+        }
+    }
+
+    fn cancel(&mut self) {
+        self.cancelled = true;
+    }
+}
+
+impl<F: FnMut()> Drop for ExecutionGuard<F> {
+    fn drop(&mut self) {
+        if !self.cancelled {
+            (self.f)()
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {
     pub instance: InstanceRef<Q>,
     pub runtimes: Arc<EngineRuntimes>,
+    pub request_notifiers: Option<Arc<RequestNotifiers<StreamReadReqKey, Result<RecordBatch>>>>,
 }
 
 impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
@@ -91,9 +139,136 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             });
         }
 
+        // TODO(shuangxiao): this metric is invalid, refactor it.
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .stream_read
             .observe(instant.saturating_elapsed().as_secs_f64());
+        Ok(ReceiverStream::new(rx))
+    }
+
+    async fn deduped_stream_read_internal(
+        &self,
+        request_notifiers: Arc<RequestNotifiers<StreamReadReqKey, Result<RecordBatch>>>,
+        request: Request<ReadRequest>,
+    ) -> Result<ReceiverStream<Result<RecordBatch>>> {
+        let instant = Instant::now();
+        let ctx = self.handler_ctx();
+        let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
+
+        let request = request.into_inner();
+        let table_engine::remote::model::ReadRequest {
+            table,
+            read_request,
+        } = request.clone().try_into().box_err().context(ErrWithCause {
+            code: StatusCode::BadRequest,
+            msg: "fail to convert read request",
+        })?;
+
+        let request_key = StreamReadReqKey::new(
+            table.table,
+            read_request.predicate.clone(),
+            read_request.projected_schema.projection(),
+        );
+
+        let mut guard = match request_notifiers.insert_notifier(request_key.clone(), tx) {
+            // The first request, need to handle it, and then notify the other requests.
+            RequestResult::First => {
+                // This is used to remove key when future is cancelled.
+                ExecutionGuard::new(|| {
+                    request_notifiers.take_notifiers(&request_key);
+                })
+            }
+            // The request is waiting for the result of first request.
+            RequestResult::Wait => {
+                // TODO(shuangxiao): this metric is invalid, refactor it.
+                REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+                    .stream_read
+                    .observe(instant.saturating_elapsed().as_secs_f64());
+                return Ok(ReceiverStream::new(rx));
+            }
+        };
+
+        let handle = self
+            .runtimes
+            .read_runtime
+            .spawn(async move { handle_stream_read(ctx, request).await });
+        let streams = handle.await.box_err().context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: "fail to join task",
+        })??;
+
+        let mut stream_read = FuturesUnordered::new();
+        for stream in streams.streams {
+            let mut stream = stream.map(|result| {
+                result.box_err().context(ErrWithCause {
+                    code: StatusCode::Internal,
+                    msg: "record batch failed",
+                })
+            });
+
+            let handle = self.runtimes.read_runtime.spawn(async move {
+                let mut batches = Vec::new();
+                while let Some(batch) = stream.next().await {
+                    batches.push(batch)
+                }
+
+                batches
+            });
+            stream_read.push(handle);
+        }
+
+        let mut batches = Vec::new();
+        while let Some(result) = stream_read.next().await {
+            let batch = result.box_err().context(ErrWithCause {
+                code: StatusCode::Internal,
+                msg: "failed to join task",
+            })?;
+            batches.extend(batch);
+        }
+
+        // We should set cancel to guard, otherwise the key will be removed twice.
+        guard.cancel();
+        let notifiers = request_notifiers.take_notifiers(&request_key).unwrap();
+
+        let num_notifiers = notifiers.len();
+        let mut num_rows = 0;
+        for batch in batches {
+            match batch {
+                Ok(batch) => {
+                    num_rows += batch.num_rows() * num_notifiers;
+                    for notifier in &notifiers {
+                        if let Err(e) = notifier.send(Ok(batch.clone())).await {
+                            error!("Failed to send handler result, err:{}.", e);
+                        }
+                    }
+                }
+                Err(_) => {
+                    for notifier in &notifiers {
+                        let err = ErrNoCause {
+                            code: StatusCode::Internal,
+                            msg: "failed to handler request".to_string(),
+                        }
+                        .fail();
+                        if let Err(e) = notifier.send(err).await {
+                            error!("Failed to send handler result, err:{}.", e);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+            .query_succeeded_row
+            .inc_by(num_rows as u64);
+        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
+            .dedupped_stream_query
+            .inc_by((num_notifiers - 1) as u64);
+        // TODO(shuangxiao): this metric is invalid, refactor it.
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .stream_read
+            .observe(instant.saturating_elapsed().as_secs_f64());
+
         Ok(ReceiverStream::new(rx))
     }
 
@@ -236,7 +411,15 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
         request: Request<ReadRequest>,
     ) -> std::result::Result<Response<Self::ReadStream>, Status> {
         REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC.stream_query.inc();
-        match self.stream_read_internal(request).await {
+        let result = match self.request_notifiers.clone() {
+            Some(request_notifiers) => {
+                self.deduped_stream_read_internal(request_notifiers, request)
+                    .await
+            }
+            None => self.stream_read_internal(request).await,
+        };
+
+        match result {
             Ok(stream) => {
                 let new_stream: Self::ReadStream = Box::pin(stream.map(|res| match res {
                     Ok(record_batch) => {
@@ -332,9 +515,8 @@ async fn handle_stream_read(
 
     let request_id = read_request.request_id;
     info!(
-        "Handle stream read, request_id:{request_id}, table:{table_ident:?}, read_options:{:?}, read_order:{:?}, predicate:{:?} ",
+        "Handle stream read, request_id:{request_id}, table:{table_ident:?}, read_options:{:?}, predicate:{:?} ",
         read_request.opts,
-        read_request.order,
         read_request.predicate,
     );
 

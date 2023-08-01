@@ -95,6 +95,13 @@ impl<M: MessageQueue> WalManager for MessageQueueImpl<M> {
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
         self.0.write(ctx, batch).await.box_err().context(Write)
     }
+
+    async fn get_statistics(&self) -> Option<String> {
+        let wal_stats = self.0.get_statistics().await;
+        let stats = format!("#MessageQueueWal stats:\n{wal_stats}\n");
+
+        Some(stats)
+    }
 }
 
 #[async_trait]

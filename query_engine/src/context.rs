@@ -27,12 +27,8 @@ use datafusion::{
 use table_engine::provider::CeresdbOptions;
 
 use crate::{
-    config::Config,
-    df_planner_extension::QueryPlannerAdapter,
-    logical_optimizer::{
-        order_by_primary_key::OrderByPrimaryKeyRule, type_conversion::TypeConversion,
-    },
-    physical_optimizer,
+    config::Config, df_planner_extension::QueryPlannerAdapter,
+    logical_optimizer::type_conversion::TypeConversion, physical_optimizer,
 };
 
 pub type ContextRef = Arc<Context>;
@@ -94,7 +90,7 @@ impl Context {
     }
 
     fn logical_optimize_rules() -> Vec<Arc<dyn OptimizerRule + Send + Sync>> {
-        let mut optimizers: Vec<Arc<dyn OptimizerRule + Send + Sync>> = vec![
+        vec![
             // These rules are the default settings of the datafusion.
             Arc::new(SimplifyExpressions::new()),
             Arc::new(CommonSubexprEliminate::new()),
@@ -103,14 +99,7 @@ impl Context {
             Arc::new(PushDownFilter::new()),
             Arc::new(PushDownLimit::new()),
             Arc::new(SingleDistinctToGroupBy::new()),
-        ];
-
-        // FIXME(xikai): use config to control the optimize rule.
-        if std::env::var("ENABLE_CUSTOM_OPTIMIZE").is_ok() {
-            optimizers.push(Arc::new(OrderByPrimaryKeyRule));
-        }
-
-        optimizers
+        ]
     }
 
     fn analyzer_rules() -> Vec<Arc<dyn AnalyzerRule + Send + Sync>> {

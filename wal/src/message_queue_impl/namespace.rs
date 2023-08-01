@@ -206,6 +206,18 @@ impl<M: MessageQueue> Namespace<M> {
     ) -> Result<()> {
         self.inner.mark_delete_to(location, sequence_num).await
     }
+
+    pub async fn get_statistics(&self) -> String {
+        let regions = self.inner.regions.read().await;
+        let mut region_stats = Vec::with_capacity(regions.len());
+        for (region_id, region) in regions.iter() {
+            let snapshot = region.make_meta_snapshot().await;
+            let region_stat = format!("region_id:{region_id}, snapshot:{snapshot:?}",);
+            region_stats.push(region_stat);
+        }
+
+        region_stats.join("\n")
+    }
 }
 
 // TODO: more information should be included.

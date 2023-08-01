@@ -103,21 +103,27 @@ struct HllDistinct {
     hll: HyperLogLog,
 }
 
-// TODO(yingwen): Avoid base64 encode/decode if datafusion supports converting
 // binary datatype to scalarvalue.
+// TODO: maybe we can remove base64 encoding?
 impl HllDistinct {
     fn merge_impl(&mut self, states: StateRef) -> Result<()> {
         // The states are serialize from hll.
-        ensure!(states.len() == 1, InvalidStateLen);
-        let value_ref = states.value(0);
-        let hll_string = value_ref.as_str().context(StateNotString)?;
-        let hll_bytes = base64::decode(hll_string).context(DecodeBase64)?;
-        // Try to deserialize the hll.
-        let hll = bincode::deserialize(&hll_bytes).context(DecodeHll)?;
+        ensure!(states.num_columns() == 1, InvalidStateLen);
+        let merged_col = states.column(0).unwrap();
 
-        // Merge the hll, note that the two hlls must created or serialized from the
-        // same template hll.
-        self.hll.merge(&hll);
+        let num_rows = merged_col.num_rows();
+        for row_idx in 0..num_rows {
+            let datum = merged_col.datum_view(row_idx);
+            // Try to deserialize the hll.
+            let hll_string = datum.as_str().context(StateNotString)?;
+            let hll_bytes = base64::decode(hll_string).context(DecodeBase64)?;
+            // Try to deserialize the hll.
+            let hll = bincode::deserialize(&hll_bytes).context(DecodeHll)?;
+
+            // Merge the hll, note that the two hlls must created or serialized from the
+            // same template hll.
+            self.hll.merge(&hll);
+        }
 
         Ok(())
     }
@@ -132,6 +138,7 @@ impl fmt::Debug for HllDistinct {
 }
 
 impl Accumulator for HllDistinct {
+    // TODO: maybe we can remove base64 encoding?
     fn state(&self) -> aggregate::Result<State> {
         // Serialize `self.hll` to bytes.
         let buf = bincode::serialize(&self.hll).box_err().context(GetState)?;
@@ -142,10 +149,27 @@ impl Accumulator for HllDistinct {
         Ok(State::from(ScalarValue::from(hll_string)))
     }
 
-    fn update(&mut self, values: Input) -> aggregate::Result<()> {
-        for value_ref in values.iter() {
-            // Insert value into hll.
-            self.hll.insert(&value_ref);
+    fn update(&mut self, input: Input) -> aggregate::Result<()> {
+        if input.is_empty() {
+            return Ok(());
+        }
+
+        // Has found it not empty, so we can unwrap here.
+        let first_col = input.column(0).unwrap();
+        let num_rows = first_col.num_rows();
+        if num_rows == 0 {
+            return Ok(());
+        }
+
+        // Loop over the datums in the column blocks, insert them into hll.
+        let num_cols = input.num_columns();
+        for col_idx in 0..num_cols {
+            let col = input.column(col_idx).unwrap();
+            for row_idx in 0..num_rows {
+                let datum = col.datum_view(row_idx);
+                // Insert datum into hll.
+                self.hll.insert(&datum);
+            }
         }
 
         Ok(())

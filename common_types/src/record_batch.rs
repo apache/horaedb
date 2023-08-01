@@ -102,7 +102,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RecordBatchData {
     arrow_record_batch: ArrowRecordBatch,
     column_blocks: Vec<ColumnBlock>,
@@ -192,7 +192,7 @@ impl TryFrom<ArrowRecordBatch> for RecordBatchData {
 
 // TODO(yingwen): The schema in RecordBatch should be much simple because it may
 // lack some information.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RecordBatch {
     schema: RecordSchema,
     data: RecordBatchData,

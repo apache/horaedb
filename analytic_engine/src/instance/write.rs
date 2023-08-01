@@ -26,7 +26,7 @@ use crate::{
     },
     memtable::{key::KeySequence, PutContext},
     payload::WritePayload,
-    space::{SpaceAndTable, SpaceRef},
+    space::SpaceRef,
     table::{data::TableDataRef, version::MemTableForWrite},
 };
 
@@ -249,15 +249,17 @@ pub struct Writer<'a> {
 impl<'a> Writer<'a> {
     pub fn new(
         instance: InstanceRef,
-        space_table: SpaceAndTable,
+        space: SpaceRef,
+        table_data: TableDataRef,
         serial_exec: &'a mut TableOpSerialExecutor,
     ) -> Writer<'a> {
-        assert_eq!(space_table.table_data().id, serial_exec.table_id());
+        // Ensure the writer has permission to handle the write of the table.
+        assert_eq!(table_data.id, serial_exec.table_id());
 
         Self {
             instance,
-            space: space_table.space().clone(),
-            table_data: space_table.table_data().clone(),
+            space,
+            table_data,
             serial_exec,
         }
     }

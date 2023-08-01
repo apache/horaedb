@@ -386,6 +386,17 @@ impl CompactionTask {
     pub fn inputs(&self) -> &[CompactionInputFiles] {
         &self.inputs
     }
+
+    #[inline]
+    pub fn contains_min_level(&self) -> bool {
+        for input in &self.inputs {
+            if input.level.is_min() {
+                return true;
+            }
+        }
+
+        false
+    }
 }
 
 pub struct CompactionTaskBuilder {

@@ -5,6 +5,7 @@
 use std::{fmt, ops::Deref};
 
 use arrow::array::ArrayRef as DfArrayRef;
+use common_types::column::ColumnBlock;
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     physical_plan::Accumulator as DfAccumulator,
@@ -14,7 +15,7 @@ use generic_error::GenericError;
 use macros::define_result;
 use snafu::Snafu;
 
-use crate::functions::{ScalarValue, ScalarValueRef};
+use crate::functions::ScalarValue;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
@@ -28,6 +29,7 @@ pub enum Error {
 
 define_result!(Error);
 
+// TODO: Use `Datum` rather than `ScalarValue`.
 pub struct State(Vec<DfScalarValue>);
 
 impl State {
@@ -43,23 +45,19 @@ impl From<ScalarValue> for State {
     }
 }
 
-pub struct Input<'a>(&'a [DfScalarValue]);
+pub struct Input<'a>(&'a [ColumnBlock]);
 
 impl<'a> Input<'a> {
-    pub fn iter(&self) -> impl Iterator<Item = ScalarValueRef> {
-        self.0.iter().map(ScalarValueRef::from)
+    pub fn num_columns(&self) -> usize {
+        self.0.len()
     }
 
-    pub fn len(&self) -> usize {
-        self.0.len()
+    pub fn column(&self, col_idx: usize) -> Option<&ColumnBlock> {
+        self.0.get(col_idx)
     }
 
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
-    }
-
-    pub fn value(&self, index: usize) -> ScalarValueRef {
-        ScalarValueRef::from(&self.0[index])
     }
 }
 
@@ -78,22 +76,24 @@ impl<'a> Deref for StateRef<'a> {
 ///
 /// An accumulator knows how to:
 /// * update its state from inputs via `update`
-/// * convert its internal state to a vector of scalar values
+/// * convert its internal state to column blocks
 /// * update its state from multiple accumulators' states via `merge`
 /// * compute the final value from its internal state via `evaluate`
 pub trait Accumulator: Send + Sync + fmt::Debug {
     /// Returns the state of the accumulator at the end of the accumulation.
     // in the case of an average on which we track `sum` and `n`, this function
     // should return a vector of two values, sum and n.
+    // TODO: Use `Datum` rather than `ScalarValue`.
     fn state(&self) -> Result<State>;
 
-    /// updates the accumulator's state from a vector of scalars.
+    /// updates the accumulator's state from column blocks.
     fn update(&mut self, values: Input) -> Result<()>;
 
-    /// updates the accumulator's state from a vector of scalars.
+    /// updates the accumulator's state from column blocks.
     fn merge(&mut self, states: StateRef) -> Result<()>;
 
     /// returns its value based on its current state.
+    // TODO: Use `Datum` rather than `ScalarValue`.
     fn evaluate(&self) -> Result<ScalarValue>;
 }
 
@@ -120,16 +120,21 @@ impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
         if values.is_empty() {
             return Ok(());
         };
-        (0..values[0].len()).try_for_each(|index| {
-            let v = values
-                .iter()
-                .map(|array| DfScalarValue::try_from_array(array, index))
-                .collect::<DfResult<Vec<DfScalarValue>>>()?;
-            let input = Input(&v);
 
-            self.accumulator.update(input).map_err(|e| {
-                DataFusionError::Execution(format!("Accumulator failed to update, err:{e}"))
+        let column_blocks = values
+            .iter()
+            .map(|array| {
+                ColumnBlock::try_cast_arrow_array_ref(array).map_err(|e| {
+                    DataFusionError::Execution(format!(
+                        "Accumulator failed to cast arrow array to column block, column, err:{e}"
+                    ))
+                })
             })
+            .collect::<DfResult<Vec<_>>>()?;
+
+        let input = Input(&column_blocks);
+        self.accumulator.update(input).map_err(|e| {
+            DataFusionError::Execution(format!("Accumulator failed to update, err:{e}"))
         })
     }
 
@@ -137,16 +142,21 @@ impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
         if states.is_empty() {
             return Ok(());
         };
-        (0..states[0].len()).try_for_each(|index| {
-            let v = states
-                .iter()
-                .map(|array| DfScalarValue::try_from_array(array, index))
-                .collect::<DfResult<Vec<DfScalarValue>>>()?;
-            let state_ref = StateRef(Input(&v));
 
-            self.accumulator.merge(state_ref).map_err(|e| {
-                DataFusionError::Execution(format!("Accumulator failed to merge, err:{e}"))
+        let column_blocks = states
+            .iter()
+            .map(|array| {
+                ColumnBlock::try_cast_arrow_array_ref(array).map_err(|e| {
+                    DataFusionError::Execution(format!(
+                        "Accumulator failed to cast arrow array to column block, column, err:{e}"
+                    ))
+                })
             })
+            .collect::<DfResult<Vec<_>>>()?;
+
+        let state_ref = StateRef(Input(&column_blocks));
+        self.accumulator.merge(state_ref).map_err(|e| {
+            DataFusionError::Execution(format!("Accumulator failed to merge, err:{e}"))
         })
     }
 

@@ -24,7 +24,7 @@ pub struct Options {
     pub arena_block_size: u32,
     /// Log sequence at the memtable creation.
     pub creation_sequence: SequenceNumber,
-    /// Memory usage colllector
+    /// Memory usage collector
     pub collector: CollectorRef,
 }
 

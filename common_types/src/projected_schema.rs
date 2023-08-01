@@ -134,6 +134,10 @@ impl ProjectedSchema {
         self.0.is_all_projection()
     }
 
+    pub fn projection(&self) -> Option<Vec<usize>> {
+        self.0.projection()
+    }
+
     /// Returns the [RowProjector] to project the rows with source schema to
     /// rows with [RecordSchemaWithKey].
     ///
@@ -258,6 +262,10 @@ impl ProjectedSchemaInner {
     /// Selecting all the columns is the all projection.
     fn is_all_projection(&self) -> bool {
         self.projection.is_none()
+    }
+
+    fn projection(&self) -> Option<Vec<usize>> {
+        self.projection.clone()
     }
 
     // TODO(yingwen): We can fill missing not null column with default value instead
