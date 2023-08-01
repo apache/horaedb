@@ -6628,9 +6628,11 @@ dependencies = [
 name = "table_kv"
 version = "1.2.5-alpha"
 dependencies = [
+ "lazy_static",
  "log",
  "macros",
  "obkv-table-client-rs",
+ "prometheus 0.12.0",
  "rand 0.7.3",
  "serde",
  "snafu 0.6.10",
