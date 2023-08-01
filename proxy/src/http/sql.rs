@@ -12,6 +12,7 @@ use common_types::{
     record_batch::RecordBatch,
 };
 use generic_error::BoxError;
+use http::StatusCode;
 use interpreters::interpreter::Output;
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
 use serde::{
@@ -22,7 +23,7 @@ use snafu::{OptionExt, ResultExt};
 
 use crate::{
     context::RequestContext,
-    error::{Internal, InternalNoCause, Result},
+    error::{ErrNoCause, Internal, InternalNoCause, Result},
     read::SqlResponse,
     Context, Proxy,
 };
@@ -162,6 +163,19 @@ fn convert_records(records: RecordBatchVec) -> Response {
 }
 
 fn convert_sql_response_to_output(sql_query_response: SqlQueryResponse) -> Result<Output> {
+    if let Some(header) = sql_query_response.header {
+        if header.code as u16 != StatusCode::OK.as_u16() {
+            return ErrNoCause {
+                code: StatusCode::from_u16(header.code as u16)
+                    .box_err()
+                    .context(Internal {
+                        msg: format!("Invalid code, code:{}", header.code),
+                    })?,
+                msg: format!("Query failed, err:{}", header.error),
+            }
+            .fail();
+        }
+    }
     let output_pb = sql_query_response.output.context(InternalNoCause {
         msg: "Output is empty in sql query response".to_string(),
     })?;
