@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use arrow::{datatypes::SchemaRef, record_batch::RecordBatch as ArrowRecordBatch};
+use arrow::{datatypes::SchemaRef, record_batch::RecordBatch as ArrowRecordBatch, ipc::KeyValue};
 use async_trait::async_trait;
 use bytes_ext::Bytes;
 use common_types::{
@@ -29,7 +29,7 @@ use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{arrow_reader::RowSelection, ParquetRecordBatchStreamBuilder, ProjectionMask},
-    file::metadata::RowGroupMetaData,
+    file::{metadata::RowGroupMetaData, footer::decode_metadata},
 };
 use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader };
 use runtime::{AbortOnDropMany, JoinHandle, Runtime};
@@ -52,13 +52,15 @@ use crate::{
             SstMetaData,
         },
         parquet::{
-            encoding::ParquetDecoder,
+            encoding::{ParquetDecoder, META_KEY},
             meta_data::{ParquetFilter, ParquetMetaDataRef},
             row_group_pruner::RowGroupPruner,
         },
         reader::{error::*, Result, SstReader},
     },
 };
+
+use super::encoding::decode_sst_meta_data;
 
 const PRUNE_ROW_GROUPS_METRICS_COLLECTOR_NAME: &str = "prune_row_groups";
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
@@ -365,10 +367,13 @@ impl<'a> Reader<'a> {
         };
         let meta_chunk_reader_adapter = ChunkReaderAdapter::new(&meta_path, self.store);
         let metadata = meta_chunk_reader_adapter.get_bytes(0..meta_size).await.unwrap();
-        let value = base64::decode(metadata).unwrap();
-        let meta_data_pb: ceresdbproto::sst::ParquetMetaData = Message::decode(&value[1..]).unwrap();
-        let tmp = crate::sst::parquet::meta_data::ParquetMetaData::try_from(meta_data_pb).unwrap();
-        println!("pb metadata: {:?}", tmp);
+        let tmpstr = std::str::from_utf8(&metadata.as_ref()).unwrap(); 
+        let kv = parquet::file::metadata::KeyValue::new(META_KEY.to_string(),  String::from(tmpstr));
+        let decode_metadata = decode_sst_meta_data(&kv).unwrap();
+        println!("decode metadata : {:?}", decode_metadata);
+        // let meta_data_pb: ceresdbproto::sst::ParquetMetaData = Message::decode(&value[1..]).unwrap();
+        // let tmp = crate::sst::parquet::meta_data::ParquetMetaData::try_from(meta_data_pb).unwrap();
+        // println!("read pb: {:?}", tmp);
 
 
         let file_size = self.load_file_size().await?;
@@ -380,7 +385,7 @@ impl<'a> Reader<'a> {
                 .with_context(|| FetchAndDecodeSstMeta {
                     file_path: self.path.to_string(),
                 })?;
-
+        // println!("original meta: {:?}", parquet_meta_data.file_metadata().key_value_metadata());
         // TODO: Support page index until https://github.com/CeresDB/ceresdb/issues/1040 is fixed.
 
         MetaData::try_new(&parquet_meta_data, ignore_sst_filter)

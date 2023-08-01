@@ -167,6 +167,7 @@ pub const META_VALUE_HEADER: u8 = 0;
 
 /// Encode the sst meta data into binary key value pair.
 pub fn encode_sst_meta_data(meta_data: ParquetMetaData) -> Result<KeyValue> {
+    println!("encode metadata: {:?}", meta_data);
     let meta_data_pb = sst_pb::ParquetMetaData::from(meta_data);
 
     let mut buf = BytesMut::with_capacity(meta_data_pb.encoded_len() + 1);
