@@ -26,7 +26,9 @@ VALUES (1651737067000, "ceresdb0", 100),
        (1651737067000, "ceresdb9", 109),
        (1651737067000, "ceresdb10", 110);
 
-SELECT * from __partition_table_t_0 where name = "ceresdb0";
+EXPLAIN SELECT * from partition_table_t where name = "ceresdb0";
+
+EXPLAIN SELECT * from __partition_table_t_0 where name = "ceresdb0";
 
 SELECT * from partition_table_t where name = "ceresdb0";
 
@@ -43,3 +45,5 @@ SELECT * from partition_table_t where name in ("ceresdb5", "ceresdb6", "ceresdb7
 DROP TABLE IF EXISTS `partition_table_t`;
 
 SHOW CREATE TABLE partition_table_t;
+
+SHOW CREATE TABLE __partition_table_t_0;

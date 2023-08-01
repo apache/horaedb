@@ -43,9 +43,19 @@ VALUES (1651737067000, "ceresdb0", 100),
 
 affected_rows: 11
 
-SELECT * from __partition_table_t_0 where name = "ceresdb0";
+EXPLAIN SELECT * from partition_table_t where name = "ceresdb0";
 
-affected_rows: 0
+plan_type,plan,
+String("logical_plan"),String("Projection: partition_table_t.tsid, partition_table_t.t, partition_table_t.name, partition_table_t.id, partition_table_t.value\n  Filter: partition_table_t.name = Utf8(\"ceresdb0\")\n    TableScan: partition_table_t projection=[tsid, t, name, id, value], partial_filters=[partition_table_t.name = Utf8(\"ceresdb0\")]"),
+String("physical_plan"),String("ProjectionExec: expr=[tsid@0 as tsid, t@1 as t, name@2 as name, id@3 as id, value@4 as value]\n  CoalesceBatchesExec: target_batch_size=8192\n    FilterExec: name@2 = ceresdb0\n      ScanTable: table=partition_table_t, parallelism=1, order=None, \n"),
+
+
+EXPLAIN SELECT * from __partition_table_t_0 where name = "ceresdb0";
+
+plan_type,plan,
+String("logical_plan"),String("Projection: __partition_table_t_0.tsid, __partition_table_t_0.t, __partition_table_t_0.name, __partition_table_t_0.id, __partition_table_t_0.value\n  Filter: __partition_table_t_0.name = Utf8(\"ceresdb0\")\n    TableScan: __partition_table_t_0 projection=[tsid, t, name, id, value], partial_filters=[__partition_table_t_0.name = Utf8(\"ceresdb0\")]"),
+String("physical_plan"),String("ProjectionExec: expr=[tsid@0 as tsid, t@1 as t, name@2 as name, id@3 as id, value@4 as value]\n  CoalesceBatchesExec: target_batch_size=8192\n    FilterExec: name@2 = ceresdb0\n      ScanTable: table=__partition_table_t_0, parallelism=8, order=None, \n"),
+
 
 SELECT * from partition_table_t where name = "ceresdb0";
 
@@ -99,4 +109,8 @@ affected_rows: 0
 SHOW CREATE TABLE partition_table_t;
 
 Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SHOW CREATE TABLE partition_table_t;. Caused by: Failed to create plan, err:Table not found, table:partition_table_t" })
+
+SHOW CREATE TABLE __partition_table_t_0;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SHOW CREATE TABLE __partition_table_t_0;. Caused by: Failed to create plan, err:Table not found, table:__partition_table_t_0" })
 
