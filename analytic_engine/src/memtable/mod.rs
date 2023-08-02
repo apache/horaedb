@@ -75,8 +75,17 @@ pub enum Error {
     #[snafu(display("Fail to iter in reverse order, err:{}", source))]
     IterReverse { source: GenericError },
 
-    #[snafu(display("Timeout when iter memtable.\nBacktrace:\n{}", backtrace))]
-    IterTimeout { backtrace: Backtrace },
+    #[snafu(display(
+        "Timeout when iter memtable, now:{:?}, deadline:{:?}.\nBacktrace:\n{}",
+        now,
+        deadline,
+        backtrace
+    ))]
+    IterTimeout {
+        now: Instant,
+        deadline: Instant,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);

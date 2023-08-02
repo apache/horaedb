@@ -68,7 +68,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
-        info!("Handle sql query, request_id:{request_id}, schema:{schema}, sql:{sql}");
+        info!("Handle sql query, request_id:{request_id}, deadline:{deadline:?}, schema:{schema}, sql:{sql}");
 
         let instance = &self.instance;
         // TODO(yingwen): Privilege check, cannot access data of other tenant

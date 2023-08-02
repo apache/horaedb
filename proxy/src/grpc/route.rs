@@ -3,7 +3,7 @@
 use ceresdbproto::storage::{RouteRequest, RouteResponse};
 use query_engine::executor::Executor as QueryExecutor;
 
-use crate::{error, Context, Proxy};
+use crate::{error, metrics::GRPC_HANDLER_COUNTER_VEC, Context, Proxy};
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_route(&self, _ctx: Context, req: RouteRequest) -> RouteResponse {
@@ -12,10 +12,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let mut resp = RouteResponse::default();
         match routes {
             Err(e) => {
+                GRPC_HANDLER_COUNTER_VEC.route_failed.inc();
+
                 error!("Failed to handle route, err:{e}");
                 resp.header = Some(error::build_err_header(e));
             }
             Ok(v) => {
+                GRPC_HANDLER_COUNTER_VEC.route_succeeded.inc();
+
                 resp.header = Some(error::build_ok_header());
                 resp.routes = v;
             }

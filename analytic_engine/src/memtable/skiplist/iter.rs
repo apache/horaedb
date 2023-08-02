@@ -18,7 +18,6 @@ use generic_error::BoxError;
 use log::trace;
 use skiplist::{ArenaSlice, IterRef, Skiplist};
 use snafu::ResultExt;
-use time_ext::InstantExt;
 
 use crate::memtable::{
     key::{self, KeySequence},
@@ -168,8 +167,9 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
         if num_rows > 0 {
             if let Some(deadline) = self.deadline {
-                if deadline.check_deadline() {
-                    return IterTimeout {}.fail();
+                let now = Instant::now();
+                if now.duration_since(deadline).is_zero() {
+                    return IterTimeout { now, deadline }.fail();
                 }
             }
 
