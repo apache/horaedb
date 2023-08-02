@@ -11,9 +11,11 @@ workspace = true
 workspace = true
 
 [dependencies]
+lazy_static = { workspace = true }
 log = { workspace = true }
 macros = { workspace = true }
 obkv-table-client-rs = { git = "https://github.com/oceanbase/obkv-table-client-rs.git", rev = "f7c7a2c866fc83af4862b02447538f2abc5e8839" }
+prometheus = { workspace = true }
 serde = { workspace = true }
 snafu = { workspace = true }
 time_ext = { workspace = true }

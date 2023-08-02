@@ -6,6 +6,7 @@ use std::{fmt, time::Duration};
 
 pub mod config;
 pub mod memory;
+mod metrics;
 pub mod obkv;
 #[cfg(test)]
 mod tests;
