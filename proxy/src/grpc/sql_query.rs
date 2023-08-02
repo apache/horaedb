@@ -37,11 +37,16 @@ const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_sql_query(&self, ctx: Context, req: SqlQueryRequest) -> SqlQueryResponse {
+        // Incoming query maybe larger than query_failed + query_succeeded for some
+        // corner case, like lots of time-consuming queries come in at the same time and
+        // cause server OOM.
+        GRPC_HANDLER_COUNTER_VEC.incoming_query.inc();
+
         self.hotspot_recorder.inc_sql_query_reqs(&req).await;
         match self.handle_sql_query_internal(ctx, req).await {
             Err(e) => {
-                error!("Failed to handle sql query, err:{e}");
                 GRPC_HANDLER_COUNTER_VEC.query_failed.inc();
+                error!("Failed to handle sql query, err:{e}");
                 SqlQueryResponse {
                     header: Some(error::build_err_header(e)),
                     ..Default::default()

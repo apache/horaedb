@@ -211,6 +211,8 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for Proxy<Q> {
         ctx: &Self::Context,
         query: Query,
     ) -> StdResult<QueryResult, Self::Err> {
+        HTTP_HANDLER_COUNTER_VEC.incoming_prom_query.inc();
+
         let do_query = || async {
             let metric = find_metric(&query.matchers)?;
             let remote_req = PrometheusRemoteQueryRequest {
