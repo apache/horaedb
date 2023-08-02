@@ -372,9 +372,9 @@ mod tests {
 
         let runtime = Arc::new(runtime::Builder::default().build().unwrap());
         parquet_write_and_then_read_back(runtime.clone(), 2, vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
-        // parquet_write_and_then_read_back(runtime.clone(), 3, vec![3, 3, 3, 3, 3, 3, 2]);
-        // parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 4, 4, 4, 4]);
-        // parquet_write_and_then_read_back(runtime, 5, vec![5, 5, 5, 5]);
+        parquet_write_and_then_read_back(runtime.clone(), 3, vec![3, 3, 3, 3, 3, 3, 2]);
+        parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 4, 4, 4, 4]);
+        parquet_write_and_then_read_back(runtime, 5, vec![5, 5, 5, 5]);
     }
 
     fn parquet_write_and_then_read_back(
@@ -391,9 +391,8 @@ mod tests {
                 max_buffer_size: 0,
             };
 
-            let string_path = String::from("/Users/tanruixiang/ceresdb_data");
-            let root = std::path::Path::new(&string_path);
-            
+            let dir = tempdir().unwrap();
+            let root = dir.path();
             let store: ObjectStoreRef = Arc::new(LocalFileSystem::new_with_prefix(root).unwrap());
             let store_picker: ObjectStorePickerRef = Arc::new(store);
             let sst_file_path = Path::from("data.par");
