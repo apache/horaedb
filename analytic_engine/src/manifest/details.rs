@@ -20,9 +20,7 @@ use log::{debug, info, warn};
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
-use prometheus::{
-    exponential_buckets, register_histogram, register_int_counter, Histogram, IntCounter,
-};
+use prometheus::{exponential_buckets, register_histogram, Histogram};
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, ResultExt, Snafu};
