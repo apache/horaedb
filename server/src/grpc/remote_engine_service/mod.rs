@@ -39,6 +39,7 @@ use generic_error::BoxError;
 use log::{error, info};
 use notifier::notifier::{ExecutionGuard, RequestNotifiers, RequestResult};
 use proxy::{
+    dedup_requests::{RequestNotifiers, RequestResult},
     hotspot::{HotspotRecorder, Message},
     instance::InstanceRef,
 };
@@ -259,7 +260,7 @@ impl RemoteEngineServiceImpl {
         }
 
         // We should set cancel to guard, otherwise the key will be removed twice.
-        guard.cancel();
+        guard.uncancelled();
         let notifiers = request_notifiers.take_notifiers(&request_key).unwrap();
 
         // Do send in background to avoid blocking the rpc procedure.

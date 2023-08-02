@@ -18,6 +18,7 @@
 #![feature(trait_alias)]
 
 pub mod context;
+pub mod dedup_requests;
 pub mod error;
 mod error_util;
 pub mod forward;
@@ -84,10 +85,12 @@ use time_ext::{current_time_millis, parse_duration};
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
+    dedup_requests::RequestNotifiers,
     error::{ErrNoCause, ErrWithCause, Error, Internal, Result},
     forward::{ForwardRequest, ForwardResult, Forwarder, ForwarderRef},
     hotspot::HotspotRecorder,
     instance::InstanceRef,
+    read::SqlResponse,
     schema_config_provider::SchemaConfigProviderRef,
 };
 
@@ -121,6 +124,7 @@ pub struct Proxy {
     engine_runtimes: Arc<EngineRuntimes>,
     cluster_with_meta: bool,
     sub_table_access_perm: SubTableAccessPerm,
+    request_notifiers: Option<Arc<RequestNotifiers<String, Result<SqlResponse>>>>,
 }
 
 impl Proxy {
@@ -137,6 +141,7 @@ impl Proxy {
         engine_runtimes: Arc<EngineRuntimes>,
         cluster_with_meta: bool,
         sub_table_access_perm: SubTableAccessPerm,
+        request_notifiers: Option<Arc<RequestNotifiers<String, Result<SqlResponse>>>>,
     ) -> Self {
         let forwarder = Arc::new(Forwarder::new(
             forward_config,
@@ -155,6 +160,7 @@ impl Proxy {
             engine_runtimes,
             cluster_with_meta,
             sub_table_access_perm,
+            request_notifiers,
         }
     }
 

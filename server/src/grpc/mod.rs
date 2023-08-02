@@ -35,6 +35,7 @@ use log::{info, warn};
 use macros::define_result;
 use notifier::notifier::RequestNotifiers;
 use proxy::{
+    dedup_requests::RequestNotifiers,
     forward,
     hotspot::HotspotRecorder,
     instance::InstanceRef,
