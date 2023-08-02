@@ -15,10 +15,14 @@ use std::{
 use async_trait::async_trait;
 use ceresdbproto::manifest as manifest_pb;
 use generic_error::{BoxError, GenericError, GenericResult};
+use lazy_static::lazy_static;
 use log::{debug, info, warn};
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
+use prometheus::{
+    exponential_buckets, register_histogram, register_int_counter, Histogram, IntCounter,
+};
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, ResultExt, Snafu};
@@ -138,6 +142,21 @@ pub enum Error {
 
 define_result!(Error);
 
+lazy_static! {
+    static ref RECOVER_TABLE_META_FROM_SNAPSHOT_DURATION: Histogram = register_histogram!(
+        "recover_table_meta_from_snapshot_duration",
+        "Histogram for recover table meta from snapshot in seconds",
+        exponential_buckets(0.01, 2.0, 13).unwrap()
+    )
+    .unwrap();
+    static ref RECOVER_TABLE_META_FROM_LOG_DURATION: Histogram = register_histogram!(
+        "recover_table_meta_from_log_duration",
+        "Histogram for recover table meta from log in seconds",
+        exponential_buckets(0.01, 2.0, 13).unwrap()
+    )
+    .unwrap();
+}
+
 #[async_trait]
 trait MetaUpdateLogEntryIterator {
     async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdate)>>;
@@ -213,7 +232,12 @@ where
 {
     async fn recover(&self) -> Result<Option<Snapshot>> {
         // Load the current snapshot first.
-        match self.snapshot_store.load().await? {
+        let snapshot_opt = {
+            let _timer = RECOVER_TABLE_META_FROM_SNAPSHOT_DURATION.start_timer();
+            self.snapshot_store.load().await?
+        };
+
+        match snapshot_opt {
             Some(v) => Ok(Some(self.create_latest_snapshot_with_prev(v).await?)),
             None => self.create_latest_snapshot_without_prev().await,
         }
@@ -235,6 +259,8 @@ where
             MetaSnapshotBuilder::default()
         };
         while let Some((seq, update)) = reader.next_update().await? {
+            let _timer = RECOVER_TABLE_META_FROM_LOG_DURATION.start_timer();
+
             latest_seq = seq;
             manifest_data_builder
                 .apply_update(update)
@@ -258,6 +284,8 @@ where
         let mut manifest_data_builder = MetaSnapshotBuilder::default();
         let mut has_logs = false;
         while let Some((seq, update)) = reader.next_update().await? {
+            let _timer = RECOVER_TABLE_META_FROM_LOG_DURATION.start_timer();
+
             latest_seq = seq;
             manifest_data_builder
                 .apply_update(update)
