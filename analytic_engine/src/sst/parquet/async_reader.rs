@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use arrow::{datatypes::SchemaRef, record_batch::RecordBatch as ArrowRecordBatch, ipc::KeyValue};
+use arrow::{datatypes::SchemaRef, ipc::KeyValue, record_batch::RecordBatch as ArrowRecordBatch};
 use async_trait::async_trait;
 use bytes_ext::Bytes;
 use common_types::{
@@ -19,7 +19,7 @@ use common_types::{
 };
 use datafusion::{
     common::ToDFSchema,
-    datasource::physical_plan::{parquet::page_filter::PagePruningPredicate,ParquetFileMetrics},
+    datasource::physical_plan::{parquet::page_filter::PagePruningPredicate, ParquetFileMetrics},
     physical_expr::{create_physical_expr, execution_props::ExecutionProps},
     physical_plan::metrics::ExecutionPlanMetricsSet,
 };
@@ -29,20 +29,21 @@ use log::{debug, error, info};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{arrow_reader::RowSelection, ParquetRecordBatchStreamBuilder, ProjectionMask},
-    file::{metadata::RowGroupMetaData, footer::decode_metadata},
+    file::{footer::decode_metadata, metadata::RowGroupMetaData},
 };
-use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader };
+use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader};
+use prost::Message;
 use runtime::{AbortOnDropMany, JoinHandle, Runtime};
-use snafu::ResultExt;
+use snafu::{ResultExt, OptionExt};
 use table_engine::predicate::PredicateRef;
 use time_ext::InstantExt;
 use tokio::sync::{
     mpsc::{self, Receiver, Sender},
     watch,
 };
-use prost::Message;
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
+use super::encoding::decode_sst_meta_data;
 use crate::{
     prefetchable_stream::{NoopPrefetcher, PrefetchableStream},
     sst::{
@@ -52,16 +53,13 @@ use crate::{
             SstMetaData,
         },
         parquet::{
-            encoding::{ParquetDecoder, META_KEY},
+            encoding::{ParquetDecoder, META_KEY, self},
             meta_data::{ParquetFilter, ParquetMetaDataRef},
             row_group_pruner::RowGroupPruner,
         },
         reader::{error::*, Result, SstReader},
     },
 };
-
-use super::encoding::decode_sst_meta_data;
-
 const PRUNE_ROW_GROUPS_METRICS_COLLECTOR_NAME: &str = "prune_row_groups";
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
 type RecordBatchWithKeyStream = Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>;
@@ -348,7 +346,11 @@ impl<'a> Reader<'a> {
         let file_size = match self.file_size_hint {
             Some(v) => v,
             None => {
-                let object_meta = self.store.head(&meta_path).await.context(ObjectStoreError)?;
+                let object_meta = self
+                    .store
+                    .head(&meta_path)
+                    .await
+                    .context(ObjectStoreError)?;
                 object_meta.size
             }
         };
@@ -357,28 +359,6 @@ impl<'a> Reader<'a> {
     }
 
     async fn load_meta_data_from_storage(&self, ignore_sst_filter: bool) -> Result<MetaData> {
-        let meta_path = Path::from(self.path.to_string() + "meta");
-        info!("file_size_hint is {:?}",self.file_size_hint);
-        let meta_size = self.store.head(&meta_path).await.context(ObjectStoreError)?.size;
-        // TODO: What is file_size hint
-        // let meta_size = match self.file_size_hint {
-        //     Some(v) => v,
-        //     None => {
-        //         let object_meta = self.store.head(&meta_path).await.context(ObjectStoreError)?;
-        //         object_meta.size
-        //     }
-        // };
-        let meta_chunk_reader_adapter = ChunkReaderAdapter::new(&meta_path, self.store);
-        let metadata = meta_chunk_reader_adapter.get_bytes(0..meta_size).await.unwrap();
-        let tmpstr = std::str::from_utf8(&metadata.as_ref()).unwrap(); 
-        let kv = parquet::file::metadata::KeyValue::new(META_KEY.to_string(),  String::from(tmpstr));
-        let decode_metadata = decode_sst_meta_data(&kv).unwrap();
-        println!("decode metadata : {:?}", decode_metadata);
-        // let meta_data_pb: ceresdbproto::sst::ParquetMetaData = Message::decode(&value[1..]).unwrap();
-        // let tmp = crate::sst::parquet::meta_data::ParquetMetaData::try_from(meta_data_pb).unwrap();
-        // println!("read pb: {:?}", tmp);
-
-
         let file_size = self.load_file_size().await?;
         let chunk_reader_adapter = ChunkReaderAdapter::new(self.path, self.store);
 
@@ -388,10 +368,55 @@ impl<'a> Reader<'a> {
                 .with_context(|| FetchAndDecodeSstMeta {
                     file_path: self.path.to_string(),
                 })?;
-        // println!("original meta: {:?}", parquet_meta_data.file_metadata().key_value_metadata());
-        // TODO: Support page index until https://github.com/CeresDB/ceresdb/issues/1040 is fixed.
+        // parquet_meta_data.file_metadata().key_value_metadata()); TODO: Support page index until https://github.com/CeresDB/ceresdb/issues/1040 is fixed.
 
-        MetaData::try_new(&parquet_meta_data, ignore_sst_filter, Some(decode_metadata))
+        let file_meta_data = parquet_meta_data.file_metadata();
+        // let kv_metas = file_meta_data
+        //     .key_value_metadata()
+        //     .context(KvMetaDataNotFound)?;
+        let kv_metas = file_meta_data
+            .key_value_metadata().unwrap();
+
+        // ensure!(!kv_metas.is_empty(), KvMetaDataNotFound);
+        let mut meta_path = None;
+        for kv_meta in kv_metas {
+            // Remove our extended custom meta data from the parquet metadata for small
+            // memory consumption in the cache.
+            if kv_meta.key == encoding::META_PATH_KEY {
+                meta_path = Some(Path::from(kv_meta.value.clone().unwrap()));
+            } 
+        }
+        let decode_metadata = match meta_path {
+            Some(meta_path) => {
+                let meta_size = self
+                .store
+                .head(&meta_path)
+                .await
+                .context(ObjectStoreError)?
+                .size;
+                let meta_chunk_reader_adapter = ChunkReaderAdapter::new(&meta_path, self.store);
+                let metadata = meta_chunk_reader_adapter
+                    .get_bytes(0..meta_size)
+                    .await
+                    .unwrap();
+                let tmpstr = std::str::from_utf8(&metadata.as_ref()).unwrap();
+                let kv = parquet::file::metadata::KeyValue::new(META_KEY.to_string(), String::from(tmpstr));
+                Some(decode_sst_meta_data(&kv).unwrap())
+            },
+            None => {
+                None
+            },
+        };
+        // TODO: What is file_size hint
+        // let meta_size = match self.file_size_hint {
+        //     Some(v) => v,
+        //     None => {
+        //         let object_meta =
+        // self.store.head(&meta_path).await.context(ObjectStoreError)?;
+        //         object_meta.size
+        //     }
+        // };
+        MetaData::try_new(&parquet_meta_data, ignore_sst_filter, decode_metadata)
             .box_err()
             .context(DecodeSstMeta)
     }

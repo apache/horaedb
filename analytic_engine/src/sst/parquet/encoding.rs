@@ -19,6 +19,7 @@ use common_types::{
 use generic_error::{BoxError, GenericError};
 use log::trace;
 use macros::define_result;
+use object_store::Path;
 use parquet::{
     arrow::AsyncArrowWriter,
     basic::Compression,
@@ -163,6 +164,7 @@ pub enum Error {
 define_result!(Error);
 
 pub const META_KEY: &str = "meta";
+pub const META_PATH_KEY: &str = "meta_path";
 pub const META_VALUE_HEADER: u8 = 0;
 
 /// Encode the sst meta data into binary key value pair.
@@ -223,6 +225,8 @@ trait RecordEncoder {
 
     fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()>;
 
+    fn set_meta_data_path(&mut self, metadata_path: Option<String>) -> Result<()>;
+
     /// Return encoded bytes
     /// Note: trait method cannot receive `self`, so take a &mut self here to
     /// indicate this encoder is already consumed
@@ -265,7 +269,7 @@ impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
             arrow_writer: Some(arrow_writer),
             arrow_schema,
             metadata: None,
-            metasink
+            metasink,
         })
     }
 }
@@ -291,13 +295,21 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
     }
 
     fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
-        // let key_value = encode_sst_meta_data(meta_data.clone())?;
-        // self.arrow_writer
-        //     .as_mut()
-        //     .unwrap()
-        //     .append_key_value_metadata(key_value);
         self.metadata = Some(meta_data);
 
+        Ok(())
+    }
+
+    fn set_meta_data_path(&mut self, metadata_path: Option<String>) -> Result<()> {
+        let key_value = KeyValue {
+            key: META_PATH_KEY.to_string(),
+            value: metadata_path,
+        };
+        self.arrow_writer
+            .as_mut()
+            .unwrap()
+            .append_key_value_metadata(key_value);
+        
         Ok(())
     }
 
@@ -441,6 +453,10 @@ impl<W: AsyncWrite + Unpin + Send> RecordEncoder for HybridRecordEncoder<W> {
         Ok(())
     }
 
+    fn set_meta_data_path(&mut self, metadata_path: Option<String>) -> Result<()>{
+        Ok(())
+    }
+
     async fn close(&mut self) -> Result<()> {
         assert!(self.arrow_writer.is_some());
 
@@ -506,6 +522,10 @@ impl ParquetEncoder {
 
     pub fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
         self.record_encoder.set_meta_data(meta_data)
+    }
+
+    pub fn set_meta_data_path(&mut self, meta_data_path: Option<String>) -> Result<()> {
+        self.record_encoder.set_meta_data_path(meta_data_path)
     }
 
     pub async fn close(mut self) -> Result<()> {

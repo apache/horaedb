@@ -45,12 +45,11 @@ impl MetaData {
 
         ensure!(!kv_metas.is_empty(), KvMetaDataNotFound);
         let mut other_kv_metas = Vec::with_capacity(kv_metas.len() - 1);
-        let mut custom_kv_meta = None;
         for kv_meta in kv_metas {
             // Remove our extended custom meta data from the parquet metadata for small
             // memory consumption in the cache.
             if kv_meta.key == encoding::META_KEY {
-                custom_kv_meta = Some(kv_meta);
+                continue;
             } else {
                 other_kv_metas.push(kv_meta.clone());
             }
@@ -67,8 +66,6 @@ impl MetaData {
         //     Arc::new(sst_meta)
         // };
         let custom = Arc::new(custom_metadata.unwrap());
-
-        println!("custom: {:?}", custom);
 
         // let's build a new parquet metadata without the extended key value
         // metadata.

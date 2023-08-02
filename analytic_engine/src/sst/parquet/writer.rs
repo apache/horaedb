@@ -26,6 +26,7 @@ use crate::{
             RecordBatchStream, Result, SstInfo, SstWriter, Storage,
         },
     },
+    table::sst_util,
     table_options::StorageFormat,
 };
 
@@ -168,7 +169,12 @@ impl RecordBatchGroupWriter {
         !self.hybrid_encoding && !self.level.is_min()
     }
 
-    async fn write_all<W: AsyncWrite + Send + Unpin + 'static>(mut self, sink: W, metasink: W) -> Result<(usize, ParquetMetaData)> {
+    async fn write_all<W: AsyncWrite + Send + Unpin + 'static>(
+        mut self,
+        sink: W,
+        metasink: W,
+        metapath: Path,
+    ) -> Result<usize> {
         let mut prev_record_batch: Option<RecordBatchWithKey> = None;
         let mut arrow_row_group = Vec::new();
         let mut total_num_rows = 0;
@@ -221,11 +227,14 @@ impl RecordBatchGroupWriter {
             parquet_meta_data.parquet_filter = parquet_filter;
             parquet_meta_data
         };
-        // 这里需要把metadata 分离出来 而不是塞到parquet中
+    
         parquet_encoder
             .set_meta_data(parquet_meta_data.clone())
             .box_err()
             .context(EncodeRecordBatch)?;
+
+        parquet_encoder.set_meta_data_path(Some(metapath.to_string())).box_err()
+        .context(EncodeRecordBatch)?;
 
         parquet_encoder
             .close()
@@ -233,7 +242,7 @@ impl RecordBatchGroupWriter {
             .box_err()
             .context(EncodeRecordBatch)?;
 
-        Ok((total_num_rows, parquet_meta_data))
+        Ok(total_num_rows)
     }
 }
 
@@ -298,15 +307,30 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
 
         let (aborter, sink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, self.path).await?;
-        let meta_path = Path::from(self.path.to_string() + "meta");
-        // println!("original path: {:?} smeta path: {:?}",self.path.to_string() ,  meta_path);
 
-        let (_, metasink) =
+        let meta_path = sst_util::new_custom_metadata_path(self.path);
+
+        /*
+            TODO: If you want to store multiple metadata in a single file, you
+            need to implement append's abort, object_store may not support this
+            behavior.
+        */
+        let (meta_aborter, metasink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, &meta_path).await?;
 
-        let (total_num_rows, parquet_metadata) = match group_writer.write_all(sink, metasink).await {
+        let total_num_rows = match group_writer.write_all(sink, metasink, meta_path.clone()).await
+        {
             Ok(v) => v,
             Err(e) => {
+                if let Err(e) = meta_aborter.abort().await {
+                    // The uploading file will be leaked if failed to abort. A repair command will
+                    // be provided to clean up the leaked files.
+                    error!(
+                        "Failed to abort multi-upload for sst_meta:{}, err:{}",
+                        meta_path, e
+                    );
+                }
+
                 if let Err(e) = aborter.abort().await {
                     // The uploading file will be leaked if failed to abort. A repair command will
                     // be provided to clean up the leaked files.
@@ -319,7 +343,6 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             }
         };
 
-        // 在这里进行实际存储成parquet，需要修改成再存一份metadata文件
         let file_head = self.store.head(self.path).await.context(Storage)?;
         let storage_format = if self.hybrid_encoding {
             StorageFormat::Hybrid
