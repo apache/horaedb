@@ -12,7 +12,8 @@ make_auto_flush_static_metric! {
         write_failed,
         query_succeeded,
         query_failed,
-        query,
+        route_succeeded,
+        route_failed,
         stream_query_succeeded,
         stream_query_failed,
         stream_query,
@@ -29,6 +30,8 @@ make_auto_flush_static_metric! {
     pub label_enum HttpTypeKind {
         write_failed,
         write_failed_row,
+        prom_query_succeeded,
+        prom_query_failed,
     }
 
     pub struct HttpHandlerCounterVec: LocalIntCounter {
