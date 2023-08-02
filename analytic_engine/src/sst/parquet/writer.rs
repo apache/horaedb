@@ -227,14 +227,16 @@ impl RecordBatchGroupWriter {
             parquet_meta_data.parquet_filter = parquet_filter;
             parquet_meta_data
         };
-    
+
         parquet_encoder
             .set_meta_data(parquet_meta_data.clone())
             .box_err()
             .context(EncodeRecordBatch)?;
 
-        parquet_encoder.set_meta_data_path(Some(metapath.to_string())).box_err()
-        .context(EncodeRecordBatch)?;
+        parquet_encoder
+            .set_meta_data_path(Some(metapath.to_string()))
+            .box_err()
+            .context(EncodeRecordBatch)?;
 
         parquet_encoder
             .close()
@@ -318,7 +320,9 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
         let (meta_aborter, metasink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, &meta_path).await?;
 
-        let total_num_rows = match group_writer.write_all(sink, metasink, meta_path.clone()).await
+        let total_num_rows = match group_writer
+            .write_all(sink, metasink, meta_path.clone())
+            .await
         {
             Ok(v) => v,
             Err(e) => {

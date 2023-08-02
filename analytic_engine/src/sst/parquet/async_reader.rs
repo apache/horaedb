@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use arrow::{datatypes::SchemaRef, ipc::KeyValue, record_batch::RecordBatch as ArrowRecordBatch};
+use arrow::{datatypes::SchemaRef, record_batch::RecordBatch as ArrowRecordBatch};
 use async_trait::async_trait;
 use bytes_ext::Bytes;
 use common_types::{
@@ -25,16 +25,15 @@ use datafusion::{
 };
 use futures::{Stream, StreamExt};
 use generic_error::{BoxError, GenericResult};
-use log::{debug, error, info};
+use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{arrow_reader::RowSelection, ParquetRecordBatchStreamBuilder, ProjectionMask},
-    file::{footer::decode_metadata, metadata::RowGroupMetaData},
+    file::metadata::RowGroupMetaData,
 };
 use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader};
-use prost::Message;
 use runtime::{AbortOnDropMany, JoinHandle, Runtime};
-use snafu::{ResultExt, OptionExt};
+use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use time_ext::InstantExt;
 use tokio::sync::{
@@ -53,7 +52,7 @@ use crate::{
             SstMetaData,
         },
         parquet::{
-            encoding::{ParquetDecoder, META_KEY, self},
+            encoding::{self, ParquetDecoder, META_KEY},
             meta_data::{ParquetFilter, ParquetMetaDataRef},
             row_group_pruner::RowGroupPruner,
         },
@@ -374,8 +373,7 @@ impl<'a> Reader<'a> {
         // let kv_metas = file_meta_data
         //     .key_value_metadata()
         //     .context(KvMetaDataNotFound)?;
-        let kv_metas = file_meta_data
-            .key_value_metadata().unwrap();
+        let kv_metas = file_meta_data.key_value_metadata().unwrap();
 
         // ensure!(!kv_metas.is_empty(), KvMetaDataNotFound);
         let mut meta_path = None;
@@ -384,28 +382,29 @@ impl<'a> Reader<'a> {
             // memory consumption in the cache.
             if kv_meta.key == encoding::META_PATH_KEY {
                 meta_path = Some(Path::from(kv_meta.value.clone().unwrap()));
-            } 
+            }
         }
         let decode_metadata = match meta_path {
             Some(meta_path) => {
                 let meta_size = self
-                .store
-                .head(&meta_path)
-                .await
-                .context(ObjectStoreError)?
-                .size;
+                    .store
+                    .head(&meta_path)
+                    .await
+                    .context(ObjectStoreError)?
+                    .size;
                 let meta_chunk_reader_adapter = ChunkReaderAdapter::new(&meta_path, self.store);
                 let metadata = meta_chunk_reader_adapter
                     .get_bytes(0..meta_size)
                     .await
                     .unwrap();
-                let tmpstr = std::str::from_utf8(&metadata.as_ref()).unwrap();
-                let kv = parquet::file::metadata::KeyValue::new(META_KEY.to_string(), String::from(tmpstr));
+                let tmpstr = std::str::from_utf8(metadata.as_ref()).unwrap();
+                let kv = parquet::file::metadata::KeyValue::new(
+                    META_KEY.to_string(),
+                    String::from(tmpstr),
+                );
                 Some(decode_sst_meta_data(&kv).unwrap())
-            },
-            None => {
-                None
-            },
+            }
+            None => None,
         };
         // TODO: What is file_size hint
         // let meta_size = match self.file_size_hint {

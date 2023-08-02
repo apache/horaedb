@@ -7,11 +7,11 @@ use std::{
 
 use lru::LruCache;
 use parquet::file::metadata::FileMetaData;
-use snafu::{ensure, OptionExt, ResultExt};
+use snafu::{ensure, OptionExt};
 
 use crate::sst::{
-    meta_data::{DecodeCustomMetaData, KvMetaDataNotFound, ParquetMetaDataRef, Result},
-    parquet::{encoding, meta_data::ParquetMetaData},
+    meta_data::{KvMetaDataNotFound, ParquetMetaDataRef, Result},
+    parquet::encoding,
 };
 
 pub type MetaCacheRef = Arc<MetaCache>;
@@ -35,7 +35,7 @@ impl MetaData {
     #[allow(deprecated)]
     pub fn try_new(
         parquet_meta_data: &parquet_ext::ParquetMetaData,
-        ignore_sst_filter: bool,
+        _ignore_sst_filter: bool,
         custom_metadata: Option<crate::sst::parquet::meta_data::ParquetMetaData>,
     ) -> Result<Self> {
         let file_meta_data = parquet_meta_data.file_metadata();

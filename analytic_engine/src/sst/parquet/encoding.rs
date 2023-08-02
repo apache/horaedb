@@ -19,7 +19,6 @@ use common_types::{
 use generic_error::{BoxError, GenericError};
 use log::trace;
 use macros::define_result;
-use object_store::Path;
 use parquet::{
     arrow::AsyncArrowWriter,
     basic::Compression,
@@ -169,7 +168,7 @@ pub const META_VALUE_HEADER: u8 = 0;
 
 /// Encode the sst meta data into binary key value pair.
 pub fn encode_sst_meta_data(meta_data: ParquetMetaData) -> Result<KeyValue> {
-    println!("encode metadata: {:?}", meta_data);
+    println!("encode metadata: {meta_data:?}");
     let meta_data_pb = sst_pb::ParquetMetaData::from(meta_data);
 
     let mut buf = BytesMut::with_capacity(meta_data_pb.encoded_len() + 1);
@@ -309,7 +308,7 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
             .as_mut()
             .unwrap()
             .append_key_value_metadata(key_value);
-        
+
         Ok(())
     }
 
@@ -318,7 +317,7 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
         if let Some(metadata) = &self.metadata {
             let key_value = encode_sst_meta_data(metadata.clone())?;
             let v = key_value.value.unwrap();
-            self.metasink.write(v.as_bytes()).await.unwrap();
+            self.metasink.write_all(v.as_bytes()).await.unwrap();
             self.metasink.flush().await.unwrap();
             self.metasink.shutdown().await.unwrap();
         }
@@ -453,7 +452,7 @@ impl<W: AsyncWrite + Unpin + Send> RecordEncoder for HybridRecordEncoder<W> {
         Ok(())
     }
 
-    fn set_meta_data_path(&mut self, metadata_path: Option<String>) -> Result<()>{
+    fn set_meta_data_path(&mut self, _metadata_path: Option<String>) -> Result<()> {
         Ok(())
     }
 
