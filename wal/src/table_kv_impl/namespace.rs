@@ -10,7 +10,7 @@ use std::{
         Arc, Mutex, RwLock,
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use common_types::{table::TableId, time::Timestamp};
@@ -392,6 +392,13 @@ impl<T: TableKv> NamespaceInner<T> {
     /// Open bucket, ensure all tables are created, and insert the bucket into
     /// the bucket set in memory.
     fn open_bucket(&self, bucket: Bucket) -> Result<BucketRef> {
+        info!(
+            "TableKvWal begin to open bucket, bucket:{:?}, namespace:{}",
+            bucket.entry,
+            self.name()
+        );
+
+        let timer = Instant::now();
         {
             // Create all wal shards of this bucket.
             let mut operator = self.operator.lock().unwrap();
@@ -405,6 +412,13 @@ impl<T: TableKv> NamespaceInner<T> {
         let bucket = Arc::new(bucket);
         let mut bucket_set = self.bucket_set.write().unwrap();
         bucket_set.insert_bucket(bucket.clone());
+
+        info!(
+            "TableKvWal success to open bucket, cost:{:?}, bucket:{:?}, namespace:{}",
+            timer.elapsed()
+            bucket.entry,
+            self.name(),
+        );
 
         Ok(bucket)
     }
@@ -1253,7 +1267,9 @@ impl TableOperator {
             }
 
             match rx.recv_timeout(MONITOR_TABLE_CREATING_PERIOD) {
-                Ok(Ok(_)) => {}
+                Ok(Ok(_)) => {
+                    cur_running_tasks -= 1;
+                }
                 Ok(Err(e)) => {
                     stop.store(true, Ordering::Relaxed);
                     return Err(e).context(LoadBuckets { namespace });
@@ -1273,8 +1289,6 @@ impl TableOperator {
                     continue;
                 }
             };
-
-            cur_running_tasks -= 1;
         }
 
         Ok(())
