@@ -392,9 +392,10 @@ impl<T: TableKv> NamespaceInner<T> {
     /// Open bucket, ensure all tables are created, and insert the bucket into
     /// the bucket set in memory.
     fn open_bucket(&self, bucket: Bucket) -> Result<BucketRef> {
+        let bucket_info = bucket.entry;
         info!(
-            "TableKvWal begin to open bucket, bucket:{:?}, namespace:{}",
-            bucket.entry,
+            "TableKvWal begin to open bucket, bucket_info:{:?}, namespace:{}",
+            bucket_info,
             self.name()
         );
 
@@ -414,9 +415,9 @@ impl<T: TableKv> NamespaceInner<T> {
         bucket_set.insert_bucket(bucket.clone());
 
         info!(
-            "TableKvWal success to open bucket, cost:{:?}, bucket:{:?}, namespace:{}",
-            timer.elapsed()
-            bucket.entry,
+            "TableKvWal success to open bucket, cost:{:?}, bucket_info:{:?}, namespace:{}",
+            timer.elapsed(),
+            bucket_info,
             self.name(),
         );
 
@@ -1286,7 +1287,6 @@ impl TableOperator {
                     info!(
                         "TableOperator monitor tables creating periodically, namespace:{namespace}"
                     );
-                    continue;
                 }
             };
         }
