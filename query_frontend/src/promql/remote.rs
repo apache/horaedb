@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use common_types::{schema::Schema, time::TimeRange};
 use datafusion::{
-    logical_expr::LogicalPlanBuilder,
+    logical_expr::{LogicalPlanBuilder, Operator},
     optimizer::utils::conjunction,
     prelude::{ident, lit, regexp_match, Expr},
     sql::{planner::ContextProvider, TableReference},
@@ -17,7 +17,7 @@ use snafu::{OptionExt, ResultExt};
 use crate::{
     plan::{Plan, QueryPlan},
     promql::{
-        convert::Selector,
+        convert::{Selector},
         datafusion_util::{default_sort_exprs, timerange_to_expr},
         error::*,
     },
@@ -101,14 +101,19 @@ fn normalize_matchers(matchers: Vec<LabelMatcher>) -> Result<(String, String, Ve
                     label_matcher::Type::Neq => col_name.not_eq(lit(m.value)),
                     // https://github.com/prometheus/prometheus/blob/2ce94ac19673a3f7faf164e9e078a79d4d52b767/model/labels/regexp.go#L29
                     label_matcher::Type::Re => {
-                        regexp_match(vec![col_name, lit(format!("^(?:{})$", m.value))])
-                            .is_not_null()
+                        let tmp = datafusion::logical_expr::BinaryExpr::new(
+                            Box::new(col_name),
+                            Operator::RegexMatch,
+                            Box::new(lit(format!("^(?:{})$", m.value))),
+                        );
+                        Expr::BinaryExpr(tmp)
+                        // regexp_match(vec![col_name, lit(format!("^(?:{})$",
+                        // m.value))]) .is_not_null()
                     }
                     label_matcher::Type::Nre => {
                         regexp_match(vec![col_name, lit(format!("^(?:{})$", m.value))]).is_null()
                     }
                 };
-
                 filters.push(expr);
             }
         }
@@ -226,7 +231,7 @@ Query(QueryPlan { df_plan: Sort: cpu.tsid ASC NULLS FIRST, cpu.time ASC NULLS FI
             assert_eq!(
                 r#"a = Utf8("1")
 b != Utf8("2")
-regexp_match(c, Utf8("^(?:3)$")) IS NOT NULL
+c ~ Utf8("^(?:3)$")
 regexp_match(D, Utf8("^(?:4)$")) IS NULL"#,
                 filters
                     .iter()
