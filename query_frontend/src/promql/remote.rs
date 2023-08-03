@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use common_types::{schema::Schema, time::TimeRange};
 use datafusion::{
-    logical_expr::LogicalPlanBuilder,
+    logical_expr::{LogicalPlanBuilder, Operator},
     optimizer::utils::conjunction,
-    prelude::{ident, lit, regexp_match, Expr},
+    prelude::{ident, lit, Expr},
     sql::{planner::ContextProvider, TableReference},
 };
 use prom_remote_api::types::{label_matcher, LabelMatcher, Query};
@@ -101,14 +101,20 @@ fn normalize_matchers(matchers: Vec<LabelMatcher>) -> Result<(String, String, Ve
                     label_matcher::Type::Neq => col_name.not_eq(lit(m.value)),
                     // https://github.com/prometheus/prometheus/blob/2ce94ac19673a3f7faf164e9e078a79d4d52b767/model/labels/regexp.go#L29
                     label_matcher::Type::Re => {
-                        regexp_match(vec![col_name, lit(format!("^(?:{})$", m.value))])
-                            .is_not_null()
+                        Expr::BinaryExpr(datafusion::logical_expr::BinaryExpr::new(
+                            Box::new(col_name),
+                            Operator::RegexMatch,
+                            Box::new(lit(format!("^(?:{})$", m.value))),
+                        ))
                     }
                     label_matcher::Type::Nre => {
-                        regexp_match(vec![col_name, lit(format!("^(?:{})$", m.value))]).is_null()
+                        Expr::BinaryExpr(datafusion::logical_expr::BinaryExpr::new(
+                            Box::new(col_name),
+                            Operator::RegexNotMatch,
+                            Box::new(lit(format!("^(?:{})$", m.value))),
+                        ))
                     }
                 };
-
                 filters.push(expr);
             }
         }
@@ -213,10 +219,12 @@ Query(QueryPlan { df_plan: Sort: cpu.tsid ASC NULLS FIRST, cpu.time ASC NULLS FI
 
         {
             let matchers = make_matchers(vec![
-                ("a", "1", Type::Eq),
-                ("b", "2", Type::Neq),
-                ("c", "3", Type::Re),
-                ("D", "4", Type::Nre),
+                ("a", "a", Type::Eq),
+                ("b", "b", Type::Neq),
+                ("c", "c", Type::Re),
+                ("c", "C", Type::Re),
+                ("D", "d", Type::Nre),
+                ("D", "D", Type::Nre),
                 (NAME_LABEL, "cpu", Type::Eq),
             ]);
 
@@ -224,10 +232,12 @@ Query(QueryPlan { df_plan: Sort: cpu.tsid ASC NULLS FIRST, cpu.time ASC NULLS FI
             assert_eq!("cpu", metric);
             assert_eq!("value", field);
             assert_eq!(
-                r#"a = Utf8("1")
-b != Utf8("2")
-regexp_match(c, Utf8("^(?:3)$")) IS NOT NULL
-regexp_match(D, Utf8("^(?:4)$")) IS NULL"#,
+                r#"a = Utf8("a")
+b != Utf8("b")
+c ~ Utf8("^(?:c)$")
+c ~ Utf8("^(?:C)$")
+D !~ Utf8("^(?:d)$")
+D !~ Utf8("^(?:D)$")"#,
                 filters
                     .iter()
                     .map(|f| f.to_string())
