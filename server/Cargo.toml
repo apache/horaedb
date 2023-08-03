@@ -37,6 +37,7 @@ meta_client = { workspace = true }
 opensrv-mysql = "0.1.0"
 partition_table_engine = { workspace = true }
 paste = { workspace = true }
+pgwire = "0.15.0"
 profile = { workspace = true }
 prom-remote-api = { workspace = true, features = ["warp"] }
 prometheus = { workspace = true }
