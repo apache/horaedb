@@ -28,7 +28,7 @@ use futures::stream::BoxStream;
 use hash_ext::SeaHasherBuilder;
 use log::{debug, error, info};
 use lru::LruCache;
-use partitioned_lock::PartitionedMutexAsync;
+use partitioned_lock::PartitionedMutex;
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
@@ -127,12 +127,14 @@ struct Manifest {
     version: usize,
 }
 
-// TODO: support partition to reduce lock contention.
+/// The mapping is filename -> file_size.
+/// TODO: Store the crc as the value of the cache for integration check.
+type FileMetaCache = LruCache<String, usize>;
+
 #[derive(Debug)]
 struct DiskCache {
     root_dir: String,
-    // Cache key is used as filename on disk.
-    cache: PartitionedMutexAsync<LruCache<String, ()>, SeaHasherBuilder>,
+    meta_cache: PartitionedMutex<FileMetaCache, SeaHasherBuilder>,
 }
 
 impl DiskCache {
@@ -145,76 +147,107 @@ impl DiskCache {
 
         Ok(Self {
             root_dir,
-            cache: PartitionedMutexAsync::try_new(init_lru, partition_bits, SeaHasherBuilder {})?,
+            meta_cache: PartitionedMutex::try_new(init_lru, partition_bits, SeaHasherBuilder {})?,
         })
     }
 
-    /// Update the cache.
-    ///
-    /// The returned value denotes whether succeed.
-    // TODO: We now hold lock when doing IO, possible to release it?
-    async fn update_cache(&self, key: String, value: Option<Bytes>) -> bool {
-        let mut cache = self.cache.lock(&key).await;
+    fn update_meta_cache(&self, filename: String, size: usize) -> Option<String> {
+        let mut cache = self.meta_cache.lock(&filename);
         debug!(
-            "Disk cache update, key:{}, len:{}, cap_per_part:{}.",
-            &key,
+            "Update the meta cache, file:{filename}, len:{}, cap_per_part:{}",
             cache.cap(),
-            cache.len(),
+            cache.len()
         );
 
-        // TODO: remove a batch of files to avoid IO during the following update cache.
-        if cache.len() >= cache.cap() {
-            let (filename, _) = cache.pop_lru().unwrap();
-            let file_path = std::path::Path::new(&self.root_dir)
-                .join(filename)
+        cache.push(filename, size).map(|(filename, _)| filename)
+    }
+
+    async fn insert_data(&self, filename: String, value: Bytes) {
+        let evicted_file = self.update_meta_cache(filename.clone(), value.len());
+
+        let do_persist = || async {
+            if let Err(e) = self.persist_bytes(&filename, value).await {
+                error!("Failed to persist cache, file:{filename}, err:{e}");
+            }
+        };
+
+        if let Some(evicted_file) = evicted_file {
+            if evicted_file == filename {
+                // No need to do persist and removal.
+                return;
+            }
+
+            // Persist the new bytes.
+            do_persist().await;
+
+            // Remove the evicted file.
+            let evicted_file_path = std::path::Path::new(&self.root_dir)
+                .join(evicted_file)
                 .into_os_string()
                 .into_string()
                 .unwrap();
 
-            debug!("Remove disk cache, filename:{}.", &file_path);
-            if let Err(e) = tokio::fs::remove_file(&file_path).await {
-                error!("Remove disk cache failed, file:{}, err:{}.", file_path, e);
-            }
-        }
-
-        // Persist the value if needed
-        if let Some(value) = value {
-            if let Err(e) = self.persist_bytes(&key, value).await {
-                error!("Failed to persist cache, key:{}, err:{}.", key, e);
-                return false;
-            }
-        }
-
-        // Update the key
-        cache.push(key, ());
-
-        true
-    }
-
-    async fn insert(&self, key: String, value: Bytes) -> bool {
-        self.update_cache(key, Some(value)).await
-    }
-
-    async fn recover(&self, filename: String) -> bool {
-        self.update_cache(filename, None).await
-    }
-
-    async fn get(&self, key: &str) -> Option<Bytes> {
-        let mut cache = self.cache.lock(&key).await;
-        if cache.get(key).is_some() {
-            // TODO: release lock when doing IO
-            match self.read_bytes(key).await {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    error!(
-                        "Read disk cache failed but ignored, key:{}, err:{}.",
-                        key, e
-                    );
-                    None
-                }
+            debug!("Evicted file:{evicted_file_path} is to be removed");
+            if let Err(e) = tokio::fs::remove_file(&evicted_file_path).await {
+                error!("Failed to remove evicted file:{evicted_file_path}, err:{e}");
             }
         } else {
-            None
+            do_persist().await;
+        }
+    }
+
+    async fn insert_meta(&self, filename: String, size: usize) {
+        self.update_meta_cache(filename, size);
+    }
+
+    /// Get the bytes from the disk cache.
+    ///
+    /// If the bytes is invalid (its size is different from the recorded one),
+    /// remove it and return None.
+    async fn get_data(&self, filename: &str) -> Option<Bytes> {
+        let file_size = {
+            let mut cache = self.meta_cache.lock(&filename);
+            match cache.get(filename) {
+                Some(file_size) => *file_size,
+                None => return None,
+            }
+        };
+
+        match self.read_bytes(filename).await {
+            Ok(v) if v.len() == file_size => Some(v),
+            Ok(v) => {
+                error!(
+                    "File:{filename} is corrupted, expect:{file_size}, got:{}, and it will be removed",
+                    v.len()
+                );
+
+                {
+                    let mut cache = self.meta_cache.lock(&filename);
+                    cache.pop(filename);
+                }
+
+                self.remove_file_by_name(filename).await;
+
+                None
+            }
+            Err(e) => {
+                error!("Failed to read file:{filename} from the disk cache, err:{e}");
+                None
+            }
+        }
+    }
+
+    async fn remove_file_by_name(&self, filename: &str) {
+        debug!("Try to remove file:{filename}");
+
+        let file_path = std::path::Path::new(&self.root_dir)
+            .join(filename)
+            .into_os_string()
+            .into_string()
+            .unwrap();
+
+        if let Err(e) = tokio::fs::remove_file(&file_path).await {
+            error!("Failed to remove evicted file:{file_path}, err:{e}");
         }
     }
 
@@ -272,7 +305,7 @@ impl Display for DiskCache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DiskCache")
             .field("path", &self.root_dir)
-            .field("cache", &self.cache)
+            .field("cache", &self.meta_cache)
             .finish()
     }
 }
@@ -308,10 +341,11 @@ impl DiskCacheStore {
         underlying_store: Arc<dyn ObjectStore>,
         partition_bits: usize,
     ) -> Result<Self> {
-        let page_num_per_part = cap / page_size;
-        ensure!(page_num_per_part != 0, InvalidCapacity);
+        let page_num = cap / page_size;
+        ensure!(page_num != 0, InvalidCapacity);
+
         let _ = Self::create_manifest_if_not_exists(&cache_dir, page_size).await?;
-        let cache = DiskCache::try_new(cache_dir.clone(), page_num_per_part, partition_bits)?;
+        let cache = DiskCache::try_new(cache_dir.clone(), page_num, partition_bits)?;
         Self::recover_cache(&cache_dir, &cache).await?;
 
         let size_cache = Arc::new(Mutex::new(LruCache::new(cap / page_size)));
@@ -385,12 +419,22 @@ impl DiskCacheStore {
         while let Some(entry) = cache_dir.next_entry().await.with_context(|| Io {
             file: "entry when iter cache_dir".to_string(),
         })? {
-            let filename = entry.file_name().into_string().unwrap();
-            info!("Disk cache recover_cache, filename:{}.", &filename);
-
-            if filename != MANIFEST_FILE {
-                cache.recover(filename).await;
+            let file_name = entry.file_name().into_string().unwrap();
+            if file_name == MANIFEST_FILE {
+                // Skip the manifest file.
+                continue;
             }
+
+            let file_size = match entry.metadata().await {
+                Ok(metadata) => metadata.len() as usize,
+                Err(e) => {
+                    error!("Failed to get the size of file:{file_name}, and it will be skipped for recover, err:{e}");
+                    // TODO: Shall we remove such file.
+                    continue;
+                }
+            };
+            info!("Disk cache recover_cache, filename:{file_name}, size:{file_size}");
+            cache.insert_meta(file_name, file_size).await;
         }
 
         Ok(())
@@ -406,7 +450,7 @@ impl DiskCacheStore {
             .collect::<Vec<_>>()
     }
 
-    fn cache_key(location: &Path, range: &Range<usize>) -> String {
+    fn cached_filename(location: &Path, range: &Range<usize>) -> String {
         format!(
             "{}-{}-{}",
             location.as_ref().replace('/', "-"),
@@ -476,21 +520,30 @@ impl ObjectStore for DiskCacheStore {
         let mut ranged_bytes = BTreeMap::new();
         let mut missing_ranges = Vec::new();
         for range in aligned_ranges {
-            let cache_key = Self::cache_key(location, &range);
-            if let Some(bytes) = self.cache.get(&cache_key).await {
+            let filename = Self::cached_filename(location, &range);
+            if let Some(bytes) = self.cache.get_data(&filename).await {
                 ranged_bytes.insert(range.start, bytes);
             } else {
                 missing_ranges.push(range);
             }
         }
 
-        for range in missing_ranges {
-            let range_start = range.start;
-            let cache_key = Self::cache_key(location, &range);
-            // TODO: we should use get_ranges here.
-            let bytes = self.underlying_store.get_range(location, range).await?;
-            self.cache.insert(cache_key, bytes.clone()).await;
-            ranged_bytes.insert(range_start, bytes);
+        if !missing_ranges.is_empty() {
+            let missing_ranged_bytes = self
+                .underlying_store
+                .get_ranges(location, &missing_ranges)
+                .await?;
+            assert_eq!(missing_ranged_bytes.len(), missing_ranges.len());
+
+            for (range, bytes) in missing_ranges
+                .into_iter()
+                .zip(missing_ranged_bytes.into_iter())
+            {
+                let range_start = range.start;
+                let filename = Self::cached_filename(location, &range);
+                ranged_bytes.insert(range_start, bytes.clone());
+                self.cache.insert_data(filename, bytes).await;
+            }
         }
 
         // we get all bytes for each aligned_range, organize real bytes
@@ -622,7 +675,7 @@ mod test {
     fn test_file_exists(cache_dir: &TempDir, location: &Path, range: &Range<usize>) -> bool {
         cache_dir
             .path()
-            .join(DiskCacheStore::cache_key(location, range))
+            .join(DiskCacheStore::cached_filename(location, range))
             .exists()
     }
 
@@ -664,10 +717,10 @@ mod test {
                 let data_cache = store
                     .inner
                     .cache
-                    .cache
-                    .lock(&DiskCacheStore::cache_key(&location, &range).as_str())
-                    .await;
-                assert!(data_cache.contains(DiskCacheStore::cache_key(&location, &range).as_str()));
+                    .meta_cache
+                    .lock(&DiskCacheStore::cached_filename(&location, &range).as_str());
+                assert!(data_cache
+                    .contains(DiskCacheStore::cached_filename(&location, &range).as_str()));
                 assert!(test_file_exists(&store.cache_dir, &location, &range));
             }
 
@@ -675,11 +728,10 @@ mod test {
                 let mut data_cache = store
                     .inner
                     .cache
-                    .cache
-                    .lock(&DiskCacheStore::cache_key(&location, &range).as_str())
-                    .await;
+                    .meta_cache
+                    .lock(&DiskCacheStore::cached_filename(&location, &range).as_str());
                 assert!(data_cache
-                    .pop(&DiskCacheStore::cache_key(&location, &range))
+                    .pop(&DiskCacheStore::cached_filename(&location, &range))
                     .is_some());
             }
         }
@@ -869,12 +921,15 @@ mod test {
             for _ in 0..1024 {
                 buf.extend_from_slice(data);
             }
-            store.put(&location, buf.freeze()).await.unwrap();
-            assert!(!store
-                .get_range(&location, 16..100)
+            let buf = buf.freeze();
+            store.put(&location, buf.clone()).await.unwrap();
+            let read_range = 16..100;
+            let bytes = store
+                .get_range(&location, read_range.clone())
                 .await
-                .unwrap()
-                .is_empty());
+                .unwrap();
+            assert_eq!(bytes.len(), read_range.len());
+            assert_eq!(bytes[..], buf[read_range])
         };
 
         // recover
@@ -888,12 +943,9 @@ mod test {
                     .unwrap()
             };
             for range in vec![16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
-                let cache = store
-                    .cache
-                    .cache
-                    .lock(&DiskCacheStore::cache_key(&location, &range).as_str())
-                    .await;
-                assert!(cache.contains(&DiskCacheStore::cache_key(&location, &range)));
+                let filename = DiskCacheStore::cached_filename(&location, &range);
+                let cache = store.cache.meta_cache.lock(&filename);
+                assert!(cache.contains(&filename));
                 assert!(test_file_exists(&cache_dir, &location, &range));
             }
         };
