@@ -265,6 +265,7 @@ pub struct NamespaceConfig {
     pub init_scan_batch_size: i32,
     pub clean_scan_timeout: ReadableDuration,
     pub clean_scan_batch_size: usize,
+    pub bucket_create_parallelism: usize,
 }
 
 impl NamespaceConfig {
@@ -325,6 +326,7 @@ impl Default for NamespaceConfig {
             init_scan_batch_size: 100,
             clean_scan_timeout: default_clean_ctx.scan_timeout.into(),
             clean_scan_batch_size: default_clean_ctx.batch_size,
+            bucket_create_parallelism: 32,
         }
     }
 }
