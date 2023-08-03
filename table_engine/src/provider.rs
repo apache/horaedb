@@ -238,7 +238,7 @@ impl TableProvider for TableProviderAdapter {
     }
 
     fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {
-        Ok(TableProviderFilterPushDown::Exact)
+        Ok(TableProviderFilterPushDown::Inexact)
     }
 
     /// Get the type of this table for metadata/catalog purposes.
