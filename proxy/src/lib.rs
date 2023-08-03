@@ -104,7 +104,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         resp_compress_min_length: usize,
         auto_create_table: bool,
         schema_config_provider: SchemaConfigProviderRef,
-        hotspot_config: hotspot::Config,
+        hotspot_recorder: Arc<HotspotRecorder>,
         engine_runtimes: Arc<EngineRuntimes>,
         cluster_with_meta: bool,
     ) -> Self {
@@ -112,10 +112,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             forward_config,
             router.clone(),
             local_endpoint,
-        ));
-        let hotspot_recorder = Arc::new(HotspotRecorder::new(
-            hotspot_config,
-            engine_runtimes.default_runtime.clone(),
         ));
 
         Self {

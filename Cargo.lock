@@ -5562,6 +5562,7 @@ dependencies = [
  "generic_error",
  "log",
  "macros",
+ "proxy",
  "router",
  "runtime",
  "serde",

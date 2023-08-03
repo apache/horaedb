@@ -45,7 +45,7 @@ impl Default for Config {
     }
 }
 
-enum Message {
+pub enum Message {
     Query(QueryKey),
     Write {
         key: WriteKey,
@@ -117,6 +117,7 @@ pub struct Dump {
     pub write_field_hots: Vec<String>,
 }
 
+// TODO: move HotspotRecorder to components dir for reuse.
 impl HotspotRecorder {
     pub fn new(config: Config, runtime: Arc<Runtime>) -> Self {
         let hotspot_query = Self::init_lru(config.query_cap);
@@ -287,7 +288,7 @@ impl HotspotRecorder {
         }
     }
 
-    async fn send_msg_or_log(&self, method: &str, msg: Message) {
+    pub async fn send_msg_or_log(&self, method: &str, msg: Message) {
         if let Err(e) = self.tx.send(msg).await {
             warn!(
                 "HotspotRecoder::{} fail to send \
