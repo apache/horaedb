@@ -1237,7 +1237,7 @@ impl TableOperator {
         let wal_shard_num_per_group = wal_shard_num / wal_shard_group_num;
         let wal_shard_groups = wal_shards
             .chunks(wal_shard_num_per_group)
-            .map(|a| a.to_owned())
+            .map(|group| group.to_owned())
             .collect::<Vec<_>>();
         let (tx, rx) = std::sync::mpsc::channel();
         let stop = Arc::new(AtomicBool::new(false));
