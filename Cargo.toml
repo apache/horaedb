@@ -91,8 +91,8 @@ clru = "0.6.1"
 cluster = { path = "cluster" }
 criterion = "0.5"
 common_types = { path = "common_types" }
-datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "a6dcd943051a083693c352c6b4279156548490a0" }
-datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "a6dcd943051a083693c352c6b4279156548490a0" }
+datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
+datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
 df_operator = { path = "df_operator" }
 future_ext = { path = "components/future_ext" }
 etcd-client = "0.10.3"
