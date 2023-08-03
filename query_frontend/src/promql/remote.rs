@@ -221,7 +221,9 @@ Query(QueryPlan { df_plan: Sort: cpu.tsid ASC NULLS FIRST, cpu.time ASC NULLS FI
             let matchers = make_matchers(vec![
                 ("a", "a", Type::Eq),
                 ("b", "b", Type::Neq),
+                ("c", "c", Type::Re),
                 ("c", "C", Type::Re),
+                ("D", "d", Type::Nre),
                 ("D", "D", Type::Nre),
                 (NAME_LABEL, "cpu", Type::Eq),
             ]);
@@ -232,7 +234,9 @@ Query(QueryPlan { df_plan: Sort: cpu.tsid ASC NULLS FIRST, cpu.time ASC NULLS FI
             assert_eq!(
                 r#"a = Utf8("a")
 b != Utf8("b")
+c ~ Utf8("^(?:c)$")
 c ~ Utf8("^(?:C)$")
+D !~ Utf8("^(?:d)$")
 D !~ Utf8("^(?:D)$")"#,
                 filters
                     .iter()
