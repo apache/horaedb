@@ -26,4 +26,5 @@ mod http;
 pub mod local_tables;
 mod metrics;
 mod mysql;
+mod postgresql;
 pub mod server;
