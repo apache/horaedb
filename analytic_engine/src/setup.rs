@@ -519,12 +519,18 @@ fn open_storage(
             }
         };
 
+        store = Arc::new(StoreWithMetrics::new(
+            store,
+            engine_runtimes.io_runtime.clone(),
+        ));
+
         if opts.disk_cache_capacity.as_byte() > 0 {
             let path = Path::new(&opts.disk_cache_dir).join(DISK_CACHE_DIR_NAME);
             tokio::fs::create_dir_all(&path).await.context(CreateDir {
                 path: path.to_string_lossy().into_owned(),
             })?;
 
+            // TODO: Consider the readonly cache.
             store = Arc::new(
                 DiskCacheStore::try_new(
                     path.to_string_lossy().into_owned(),
@@ -537,11 +543,6 @@ fn open_storage(
                 .context(OpenObjectStore)?,
             ) as _;
         }
-
-        store = Arc::new(StoreWithMetrics::new(
-            store,
-            engine_runtimes.io_runtime.clone(),
-        ));
 
         if opts.mem_cache_capacity.as_byte() > 0 {
             let mem_cache = Arc::new(
