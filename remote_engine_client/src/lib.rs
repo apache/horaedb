@@ -183,7 +183,7 @@ impl RemoteEngine for RemoteEngineImpl {
         requests: Vec<WriteRequest>,
     ) -> remote::Result<Vec<WriteBatchResult>> {
         for req in &requests {
-            self.record_write(&req).await;
+            self.record_write(req).await;
         }
 
         self.client
