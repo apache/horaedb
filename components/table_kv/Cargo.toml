@@ -14,7 +14,7 @@ workspace = true
 lazy_static = { workspace = true }
 log = { workspace = true }
 macros = { workspace = true }
-obkv-table-client-rs = { git = "https://github.com/oceanbase/obkv-table-client-rs.git", rev = "f7c7a2c866fc83af4862b02447538f2abc5e8839" }
+obkv-table-client-rs = { git = "https://github.com/oceanbase/obkv-table-client-rs.git", rev = "0b6f9c5b1c7cb827c8ac0fe4f7ad3455fd0e3ecd" }
 prometheus = { workspace = true }
 serde = { workspace = true }
 snafu = { workspace = true }
