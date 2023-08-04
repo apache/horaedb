@@ -19,7 +19,7 @@
 //! Page is used for reasons below:
 //! - reduce file size in case of there are too many request with small range.
 
-use std::{collections::BTreeMap, fmt::Display, ops::Range, sync::Arc};
+use std::{fmt::Display, ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
@@ -29,14 +29,12 @@ use hash_ext::SeaHasherBuilder;
 use log::{debug, error, info};
 use lru::LruCache;
 use partitioned_lock::PartitionedMutex;
-use prost::Message;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use time_ext;
 use tokio::{
     fs::{File, OpenOptions},
-    io::{AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    sync::Mutex,
+    io::{AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt},
 };
 use upstream::{
     path::Path, Error as ObjectStoreError, GetResult, ListResult, MultipartId, ObjectMeta,
@@ -120,11 +118,40 @@ impl From<Error> for ObjectStoreError {
     }
 }
 
+#[derive(Debug)]
+enum ReadBytesResult {
+    Integrate(Vec<u8>),
+    Corrupted { file_size: usize },
+    OutOfRange,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct Manifest {
     create_at: String,
     page_size: usize,
     version: usize,
+}
+
+struct CacheFileEncoding;
+
+impl CacheFileEncoding {
+    const MAGIC_FOOTER: [u8; 8] = [0, 0, 0, 0, b'c', b'e', b'r', b'e'];
+
+    async fn encode_and_persist<W>(&self, writer: &mut W, payload: Bytes) -> std::io::Result<()>
+    where
+        W: AsyncWrite + std::marker::Unpin,
+    {
+        let _ = writer.write(&payload[..]).await?;
+        let _ = writer.write(&Self::MAGIC_FOOTER).await?;
+        writer.flush().await?;
+
+        Ok(())
+    }
+
+    #[inline]
+    fn encoded_size(&self, payload_len: usize) -> usize {
+        payload_len + Self::MAGIC_FOOTER.len()
+    }
 }
 
 /// The mapping is filename -> file_size.
@@ -151,7 +178,7 @@ impl DiskCache {
         })
     }
 
-    fn update_meta_cache(&self, filename: String, size: usize) -> Option<String> {
+    fn insert_meta(&self, filename: String, size: usize) -> Option<String> {
         let mut cache = self.meta_cache.lock(&filename);
         debug!(
             "Update the meta cache, file:{filename}, len:{}, cap_per_part:{}",
@@ -163,7 +190,8 @@ impl DiskCache {
     }
 
     async fn insert_data(&self, filename: String, value: Bytes) {
-        let evicted_file = self.update_meta_cache(filename.clone(), value.len());
+        let file_size = CacheFileEncoding.encoded_size(value.len());
+        let evicted_file = self.insert_meta(filename.clone(), file_size);
 
         let do_persist = || async {
             if let Err(e) = self.persist_bytes(&filename, value).await {
@@ -196,15 +224,11 @@ impl DiskCache {
         }
     }
 
-    async fn insert_meta(&self, filename: String, size: usize) {
-        self.update_meta_cache(filename, size);
-    }
-
     /// Get the bytes from the disk cache.
     ///
     /// If the bytes is invalid (its size is different from the recorded one),
     /// remove it and return None.
-    async fn get_data(&self, filename: &str) -> Option<Bytes> {
+    async fn get_data(&self, filename: &str, range: &Range<usize>) -> Option<Bytes> {
         let file_size = {
             let mut cache = self.meta_cache.lock(&filename);
             match cache.get(filename) {
@@ -213,12 +237,27 @@ impl DiskCache {
             }
         };
 
-        match self.read_bytes(filename).await {
-            Ok(v) if v.len() == file_size => Some(v),
-            Ok(v) => {
+        match self.read_bytes(filename, range, file_size).await {
+            Ok(ReadBytesResult::Integrate(v)) => Some(v.into()),
+            Ok(ReadBytesResult::Corrupted {
+                file_size: real_file_size,
+            }) => {
                 error!(
-                    "File:{filename} is corrupted, expect:{file_size}, got:{}, and it will be removed",
-                    v.len()
+                    "File:{filename} is corrupted, expect:{file_size}, got:{real_file_size}, and it will be removed",
+                );
+
+                {
+                    let mut cache = self.meta_cache.lock(&filename);
+                    cache.pop(filename);
+                }
+
+                self.remove_file_by_name(filename).await;
+
+                None
+            }
+            Ok(ReadBytesResult::OutOfRange) => {
+                error!(
+                    "File:{filename} is not enough to read, range:{range:?}, file_size:{file_size}, and it will be removed",
                 );
 
                 {
@@ -251,53 +290,60 @@ impl DiskCache {
         }
     }
 
-    async fn persist_bytes(&self, filename: &str, value: Bytes) -> Result<()> {
+    async fn persist_bytes(&self, filename: &str, payload: Bytes) -> Result<()> {
         let file_path = std::path::Path::new(&self.root_dir)
             .join(filename)
             .into_os_string()
             .into_string()
             .unwrap();
 
-        let mut file = File::create(&file_path).await.with_context(|| Io {
-            file: file_path.clone(),
-        })?;
-
-        let bytes = value.to_vec();
-        let pb_bytes = ceresdbproto::oss_cache::Bytes {
-            crc: CASTAGNOLI.checksum(&bytes),
-            value: bytes,
-        };
-
-        file.write_all(&pb_bytes.encode_to_vec())
+        let mut file = File::create(&file_path)
             .await
-            .with_context(|| PersistCache {
-                file: file_path.clone(),
-            })?;
+            .context(Io { file: &file_path })?;
+
+        let encoding = CacheFileEncoding;
+        encoding
+            .encode_and_persist(&mut file, payload)
+            .await
+            .context(Io { file: &file_path })?;
 
         Ok(())
     }
 
-    async fn read_bytes(&self, filename: &str) -> Result<Bytes> {
+    /// Read the bytes from the cached file.
+    ///
+    /// If the file size is different from the `expect_file_size`, it'll be
+    /// thought as corrupted file.
+    async fn read_bytes(
+        &self,
+        filename: &str,
+        range: &Range<usize>,
+        expect_file_size: usize,
+    ) -> std::io::Result<ReadBytesResult> {
+        if CacheFileEncoding.encoded_size(range.len()) > expect_file_size {
+            return Ok(ReadBytesResult::OutOfRange);
+        }
+
         let file_path = std::path::Path::new(&self.root_dir)
             .join(filename)
             .into_os_string()
             .into_string()
             .unwrap();
 
-        let mut f = File::open(&file_path).await.with_context(|| Io {
-            file: file_path.clone(),
-        })?;
-        let mut buf = Vec::new();
-        f.read_to_end(&mut buf).await.with_context(|| Io {
-            file: file_path.clone(),
-        })?;
+        let mut f = File::open(&file_path).await?;
+        let file_size = f.metadata().await?.len() as usize;
+        if expect_file_size != file_size {
+            return Ok(ReadBytesResult::Corrupted { file_size });
+        }
 
-        let bytes = ceresdbproto::oss_cache::Bytes::decode(&*buf).with_context(|| DecodeCache {
-            file: file_path.clone(),
-        })?;
-        // TODO: CRC checking
+        f.seek(std::io::SeekFrom::Start(range.start as u64)).await?;
+        let mut buf = vec![0; range.len()];
+        let n = f.read_exact(&mut buf).await?;
+        if n != range.len() {
+            return Ok(ReadBytesResult::OutOfRange);
+        }
 
-        Ok(bytes.value.into())
+        Ok(ReadBytesResult::Integrate(buf))
     }
 }
 
@@ -307,6 +353,30 @@ impl Display for DiskCache {
             .field("path", &self.root_dir)
             .field("cache", &self.meta_cache)
             .finish()
+    }
+}
+
+struct PagedRanger {
+    page_size: usize,
+}
+
+struct PagedRangeResult {
+    aligned_start: usize,
+    num_pages: usize,
+}
+
+impl PagedRanger {
+    fn paged_range(&self, range: &Range<usize>) -> PagedRangeResult {
+        // inclusive start
+        let aligned_start = range.start / self.page_size * self.page_size;
+        // exclusive end
+        let aligned_end = (range.end + self.page_size - 1) / self.page_size * self.page_size;
+        let num_pages = (aligned_end - aligned_start) / self.page_size;
+
+        PagedRangeResult {
+            aligned_start,
+            num_pages,
+        }
     }
 }
 
@@ -328,8 +398,6 @@ pub struct DiskCacheStore {
     cap: usize,
     // Size of each cached bytes
     page_size: usize,
-    // location path size cache
-    size_cache: Arc<Mutex<LruCache<String, usize>>>,
     underlying_store: Arc<dyn ObjectStore>,
 }
 
@@ -348,11 +416,8 @@ impl DiskCacheStore {
         let cache = DiskCache::try_new(cache_dir.clone(), page_num, partition_bits)?;
         Self::recover_cache(&cache_dir, &cache).await?;
 
-        let size_cache = Arc::new(Mutex::new(LruCache::new(cap / page_size)));
-
         Ok(Self {
             cache,
-            size_cache,
             cap,
             page_size,
             underlying_store,
@@ -434,20 +499,10 @@ impl DiskCacheStore {
                 }
             };
             info!("Disk cache recover_cache, filename:{file_name}, size:{file_size}");
-            cache.insert_meta(file_name, file_size).await;
+            cache.insert_meta(file_name, file_size);
         }
 
         Ok(())
-    }
-
-    fn normalize_range(&self, max_size: usize, range: &Range<usize>) -> Vec<Range<usize>> {
-        let start = range.start / self.page_size * self.page_size;
-        let end = (range.end + self.page_size - 1) / self.page_size * self.page_size;
-
-        (start..end.min(max_size))
-            .step_by(self.page_size)
-            .map(|start| start..(start + self.page_size).min(max_size))
-            .collect::<Vec<_>>()
     }
 
     fn cached_filename(location: &Path, range: &Range<usize>) -> String {
@@ -457,6 +512,21 @@ impl DiskCacheStore {
             range.start,
             range.end
         )
+    }
+
+    async fn fetch_and_cache(
+        &self,
+        location: &Path,
+        aligned_range: &Range<usize>,
+    ) -> Result<Bytes> {
+        let bytes = self
+            .underlying_store
+            .get_range(location, aligned_range.clone())
+            .await?;
+
+        let filename = Self::cached_filename(location, aligned_range);
+        self.cache.insert_data(filename, bytes.clone()).await;
+        Ok(bytes)
     }
 }
 
@@ -496,80 +566,108 @@ impl ObjectStore for DiskCacheStore {
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
-        // TODO: aligned_range will larger than real file size, need to truncate
-        let file_size = {
-            let mut size_cache = self.size_cache.lock().await;
-            if let Some(size) = size_cache.get(location.as_ref()) {
-                *size
-            } else {
-                // release lock before doing IO
-                drop(size_cache);
-
-                // TODO: multiple threads may go here, how to fix?
-                let object_meta = self.head(location).await?;
-                {
-                    let mut size_cache = self.size_cache.lock().await;
-                    size_cache.put(location.to_string(), object_meta.size);
-                }
-                object_meta.size
-            }
+        let PagedRangeResult {
+            aligned_start,
+            num_pages,
+        } = {
+            let paged_ranger = PagedRanger {
+                page_size: self.page_size,
+            };
+            paged_ranger.paged_range(&range)
         };
+        assert!(num_pages > 0);
 
-        let aligned_ranges = self.normalize_range(file_size, &range);
+        let file_size = self.head(location).await?.size;
+        // Fast path for only one page involved.
+        if num_pages == 1 {
+            let aligned_end = (aligned_start + self.page_size).min(file_size);
+            let aligned_range = aligned_start..aligned_end;
+            let filename = Self::cached_filename(location, &aligned_range);
+            let range_in_file = (range.start - aligned_start)..(range.end - aligned_start);
+            if let Some(bytes) = self.cache.get_data(&filename, &range_in_file).await {
+                return Ok(bytes);
+            }
+            // This page is missing from the disk cache, let's fetch it from the
+            // underlying store and insert it to the disk cache.
+            let aligned_bytes = self.fetch_and_cache(location, &aligned_range).await?;
 
-        let mut ranged_bytes = BTreeMap::new();
-        let mut missing_ranges = Vec::new();
-        for range in aligned_ranges {
-            let filename = Self::cached_filename(location, &range);
-            if let Some(bytes) = self.cache.get_data(&filename).await {
-                ranged_bytes.insert(range.start, bytes);
-            } else {
-                missing_ranges.push(range);
+            // Allocate a new buffer instead of the `aligned_bytes` to avoid memory
+            // overhead.
+            let mut bytes_buf = BytesMut::with_capacity(range.len());
+            bytes_buf.extend_from_slice(
+                &aligned_bytes[(range.start - aligned_start)..(range.end - aligned_start)],
+            );
+            return Ok(bytes_buf.freeze());
+        }
+
+        // The queried range involves multiple ranges.
+        let mut ranged_bytes: Vec<Option<Bytes>> = vec![None; num_pages];
+        let mut num_missing_pages = 0;
+        {
+            let mut page_start = aligned_start;
+            let mut page_idx = 0;
+            while page_idx < num_pages {
+                let page_end = (page_start + self.page_size).min(file_size);
+                let range_in_file = {
+                    let real_start = page_start.max(range.start);
+                    let real_end = page_end.min(range.end);
+                    (real_start - page_start)..(real_end - page_start)
+                };
+                let filename = Self::cached_filename(location, &(page_start..page_end));
+                if let Some(bytes) = self.cache.get_data(&filename, &range_in_file).await {
+                    ranged_bytes[page_idx] = Some(bytes);
+                } else {
+                    num_missing_pages += 1;
+                }
+
+                page_start += self.page_size;
+                page_idx += 1;
             }
         }
 
-        if !missing_ranges.is_empty() {
+        // Fetch all the missing pages from the underlying store.
+        if num_missing_pages > 0 {
+            let mut missing_ranges = Vec::with_capacity(num_missing_pages);
+            let mut missing_range_idx = Vec::with_capacity(num_missing_pages);
+            for (idx, cache_miss) in ranged_bytes.iter().map(|v| v.is_none()).enumerate() {
+                if cache_miss {
+                    let missing_range_start = aligned_start + idx * self.page_size;
+                    let missing_range_end = (missing_range_start + self.page_size).min(file_size);
+                    missing_ranges.push(missing_range_start..missing_range_end);
+                    missing_range_idx.push(idx);
+                }
+            }
+
             let missing_ranged_bytes = self
                 .underlying_store
                 .get_ranges(location, &missing_ranges)
                 .await?;
             assert_eq!(missing_ranged_bytes.len(), missing_ranges.len());
 
-            for (range, bytes) in missing_ranges
+            for ((missing_range, missing_range_idx), bytes) in missing_ranges
                 .into_iter()
+                .zip(missing_range_idx.into_iter())
                 .zip(missing_ranged_bytes.into_iter())
             {
-                let range_start = range.start;
-                let filename = Self::cached_filename(location, &range);
-                ranged_bytes.insert(range_start, bytes.clone());
-                self.cache.insert_data(filename, bytes).await;
+                let filename = Self::cached_filename(location, &missing_range);
+                self.cache.insert_data(filename, bytes.clone()).await;
+
+                let offset = missing_range.start;
+                let truncated_range = (missing_range.start.max(range.start) - offset)
+                    ..(missing_range.end.min(range.end) - offset);
+
+                ranged_bytes[missing_range_idx] = Some(bytes.slice(truncated_range));
             }
         }
 
-        // we get all bytes for each aligned_range, organize real bytes
-        // fast path
-        if ranged_bytes.len() == 1 {
-            let (range_start, bytes) = ranged_bytes.pop_first().unwrap();
-            let result = bytes.slice((range.start - range_start)..(range.end - range_start));
-            return Ok(result);
-        }
-
-        // there are multiple aligned ranges for one request, such as
-        // range = [3, 33), page_size = 16, then aligned ranges will be
-        // [0, 16), [16, 32), [32, 48)
-        // we need to combine those ranged bytes to get final result bytes
-
-        let mut byte_buf = BytesMut::with_capacity(range.end - range.start);
-        let (range_start, bytes) = ranged_bytes.pop_first().unwrap();
-        byte_buf.extend(bytes.slice((range.start - range_start)..));
-        let (range_start, bytes) = ranged_bytes.pop_last().unwrap();
-        let last_part = bytes.slice(..(range.end - range_start));
-
-        for bytes in ranged_bytes.into_values() {
+        // There are multiple aligned ranges for one request, such as range = [3, 33),
+        // page_size = 16, then aligned ranges will be [0, 16), [16, 32), [32,
+        // 48), and we need to combine those ranged bytes to get final result
+        // bytes
+        let mut byte_buf = BytesMut::with_capacity(range.len());
+        for bytes in ranged_bytes {
             byte_buf.extend(bytes);
         }
-        byte_buf.extend(last_part);
-
         Ok(byte_buf.freeze())
     }
 
@@ -632,43 +730,6 @@ mod test {
         StoreWithCacheDir {
             inner: store,
             cache_dir,
-        }
-    }
-
-    #[tokio::test]
-    async fn test_normalize_range_less_than_file_size() {
-        let page_size = 16;
-        let testcases = vec![
-            (0..1, vec![0..16]),
-            (0..16, vec![0..16]),
-            (0..17, vec![0..16, 16..32]),
-            (16..32, vec![16..32]),
-            (
-                16..100,
-                vec![16..32, 32..48, 48..64, 64..80, 80..96, 96..112],
-            ),
-        ];
-
-        let store = prepare_store(page_size, 1024, 0).await;
-        for (input, expected) in testcases {
-            assert_eq!(store.inner.normalize_range(1024, &input), expected);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_normalize_range_great_than_file_size() {
-        let page_size = 16;
-        let testcases = vec![
-            (0..1, vec![0..16]),
-            (0..16, vec![0..16]),
-            (0..17, vec![0..16, 16..20]),
-            (16..32, vec![16..20]),
-            (32..100, vec![]),
-        ];
-
-        let store = prepare_store(page_size, 1024, 0).await;
-        for (input, expected) in testcases {
-            assert_eq!(store.inner.normalize_range(20, &input), expected);
         }
     }
 
@@ -962,11 +1023,17 @@ mod test {
     }
 
     #[tokio::test]
-    async fn corrupted_disk_cache() {
+    async fn test_corrupt_disk_cache() {
+        for page_size in [1, 2, 4, 8, 16, 32, 64, 128] {
+            corrupt_disk_cache(page_size).await;
+        }
+    }
+
+    async fn corrupt_disk_cache(page_size: usize) {
         let StoreWithCacheDir {
             inner: store,
             cache_dir,
-        } = prepare_store(16, 1024, 0).await;
+        } = prepare_store(page_size, 1024, 0).await;
         let test_file_name = "corrupted_disk_cache_file";
         let test_file_path = Path::from(test_file_name);
         let test_file_bytes = Bytes::from("corrupted_disk_cache_file_data");
@@ -992,10 +1059,13 @@ mod test {
             if path.contains(test_file_name) {
                 let mut file = tokio::fs::OpenOptions::new()
                     .write(true)
+                    .truncate(true)
                     .open(path)
                     .await
                     .unwrap();
-                file.write_all(b"corrupted").await.unwrap();
+                // TODO: currently the data integrity is checked based on the file size, so here
+                // we give a bytes with designed length to make the check failed.
+                file.write_all(b"corrupt").await.unwrap();
             }
         }
 
