@@ -14,6 +14,7 @@ use logger::RuntimeLevel;
 use macros::define_result;
 use partition_table_engine::PartitionTableEngine;
 use proxy::{
+    hotspot::HotspotRecorder,
     instance::{Instance, InstanceRef},
     limiter::Limiter,
     schema_config_provider::SchemaConfigProviderRef,
@@ -316,10 +317,15 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let config_content = self.config_content.expect("Missing config content");
 
+        let hotspot_recorder = Arc::new(HotspotRecorder::new(
+            self.server_config.hotspot,
+            engine_runtimes.default_runtime.clone(),
+        ));
         let remote_engine_ref = Arc::new(RemoteEngineImpl::new(
             self.remote_engine_client_config.clone(),
             router.clone(),
             engine_runtimes.io_runtime.clone(),
+            hotspot_recorder.clone(),
         ));
 
         let partition_table_engine = Arc::new(PartitionTableEngine::new(remote_engine_ref.clone()));
@@ -363,7 +369,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             self.server_config.resp_compress_min_length.as_byte() as usize,
             self.server_config.auto_create_table,
             provider.clone(),
-            self.server_config.hotspot,
+            hotspot_recorder,
             engine_runtimes.clone(),
             self.cluster.is_some(),
         ));
