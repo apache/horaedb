@@ -11,7 +11,6 @@ use datafusion::{
     physical_planner::{ExtensionPlanner, PhysicalPlanner},
 };
 use query_frontend::promql::PromAlignNode;
-use snafu::Snafu;
 
 use crate::datafusion_impl::physical_plan_extension::prom_align::PromAlignExec;
 

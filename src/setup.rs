@@ -118,7 +118,7 @@ async fn run_server_with_runtimes<T>(
     let function_registry = Arc::new(function_registry);
 
     // Create query executor
-    let query_executor = ExecutorImpl::new(config.query_engine.clone());
+    let query_executor = ExecutorImpl;
     let physical_planner = PhysicalPlannerImpl::new(config.query_engine.clone());
 
     // Config limiter

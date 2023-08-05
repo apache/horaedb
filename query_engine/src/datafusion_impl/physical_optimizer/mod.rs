@@ -4,14 +4,7 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use datafusion::{
-    error::DataFusionError, physical_optimizer::optimizer::PhysicalOptimizerRule,
-    prelude::SessionContext,
-};
-use macros::define_result;
-use query_frontend::plan::QueryPlan;
-use snafu::{Backtrace, ResultExt, Snafu};
+use datafusion::physical_optimizer::optimizer::PhysicalOptimizerRule;
 
 use crate::datafusion_impl::physical_optimizer::{
     coalesce_batches::CoalesceBatchesAdapter, repartition::RepartitionAdapter,

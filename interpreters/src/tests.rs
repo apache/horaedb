@@ -65,7 +65,7 @@ where
 {
     async fn build_factory(&self) -> Factory<ExecutorImpl, PhysicalPlannerImpl> {
         Factory::new(
-            ExecutorImpl::new(query_engine::Config::default()),
+            ExecutorImpl,
             PhysicalPlannerImpl::new(query_engine::Config::default()),
             self.catalog_manager.clone(),
             self.engine(),
@@ -217,7 +217,7 @@ where
         let table_operator = TableOperator::new(catalog_manager.clone());
         let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
         let insert_factory = Factory::new(
-            ExecutorImpl::new(QueryConfig::default()),
+            ExecutorImpl,
             PhysicalPlannerImpl::new(QueryConfig::default()),
             catalog_manager.clone(),
             self.engine(),
@@ -237,7 +237,7 @@ where
         let select_sql =
             "SELECT key1, key2, field1, field2, field3, field4, field5 from test_missing_columns_table";
         let select_factory = Factory::new(
-            ExecutorImpl::new(QueryConfig::default()),
+            ExecutorImpl,
             PhysicalPlannerImpl::new(QueryConfig::default()),
             catalog_manager,
             self.engine(),

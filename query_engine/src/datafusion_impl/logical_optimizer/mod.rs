@@ -6,9 +6,8 @@
 pub mod tests;
 pub mod type_conversion;
 
-use datafusion::{error::DataFusionError, prelude::SessionContext};
+use datafusion::prelude::SessionContext;
 use generic_error::BoxError;
-use macros::define_result;
 use query_frontend::plan::QueryPlan;
 use snafu::ResultExt;
 

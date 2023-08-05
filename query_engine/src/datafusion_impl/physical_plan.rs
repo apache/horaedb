@@ -9,7 +9,6 @@ use std::{
 
 use async_trait::async_trait;
 use datafusion::{
-    error::DataFusionError,
     execution::context::TaskContext,
     physical_plan::{
         coalesce_partitions::CoalescePartitionsExec, display::DisplayableExecutionPlan,
@@ -18,8 +17,7 @@ use datafusion::{
     prelude::SessionContext,
 };
 use generic_error::BoxError;
-use macros::define_result;
-use snafu::{Backtrace, ResultExt, Snafu};
+use snafu::ResultExt;
 use table_engine::stream::{FromDfStream, SendableRecordBatchStream};
 
 use crate::{error::*, physical_planner::PhysicalPlan};

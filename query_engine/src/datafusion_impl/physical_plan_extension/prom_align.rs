@@ -34,34 +34,10 @@ use datafusion::{
 use futures::{Stream, StreamExt};
 use generic_error::BoxError;
 use log::debug;
-use macros::define_result;
 use query_frontend::promql::{AlignParameter, ColumnNames, Func as PromFunc};
 use snafu::{OptionExt, ResultExt};
 
 use crate::error::*;
-
-// #[derive(Debug, Snafu)]
-// pub enum Error {
-//     #[snafu(display("Internal err, source:{:?}", source))]
-//     Internal { source: DataFusionError },
-
-//     #[snafu(display("Invalid schema, source:{:?}", source))]
-//     InvalidSchema { source: common_types::schema::Error },
-
-//     #[snafu(display("Tsid column is required"))]
-//     TsidRequired,
-
-//     #[snafu(display("Invalid column type, required:{:?}", required_type))]
-//     InvalidColumnType { required_type: String },
-
-//     #[snafu(display("{} column type cannot be null", name))]
-//     NullColumn { name: String },
-
-//     #[snafu(display("timestamp out of range"))]
-//     TimestampOutOfRange {},
-// }
-
-// define_result!(Error);
 
 /// Limits Extrapolation range.
 /// Refer to https://github.com/prometheus/prometheus/pull/1295

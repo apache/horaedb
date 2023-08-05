@@ -2,39 +2,21 @@
 
 //! Query executor
 
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 
 use async_trait::async_trait;
 use common_types::record_batch::RecordBatch;
-use datafusion::prelude::SessionContext;
 use futures::TryStreamExt;
 use generic_error::BoxError;
 use log::{debug, info};
-use macros::define_result;
-use query_frontend::{plan::QueryPlan, provider::CatalogProviderAdapter};
-use snafu::{Backtrace, ResultExt, Snafu};
+use snafu::ResultExt;
 use table_engine::stream::SendableRecordBatchStream;
 use time_ext::InstantExt;
 
-use crate::{config::Config, context::Context, error::*, physical_planner::PhysicalPlanPtr};
+use crate::{context::Context, error::*, physical_planner::PhysicalPlanPtr};
 
 // Use a type alias so that we are able to replace the implementation
 pub type RecordBatchVec = Vec<RecordBatch>;
-
-/// Query to execute
-///
-/// Contains the query plan and other infos
-#[derive(Debug)]
-pub struct Query {
-    /// The query plan
-    plan: QueryPlan,
-}
-
-impl Query {
-    pub fn new(plan: QueryPlan) -> Self {
-        Self { plan }
-    }
-}
 
 /// Query executor
 ///
@@ -56,15 +38,7 @@ pub trait Executor: Clone + Send + Sync {
 }
 
 #[derive(Clone, Default)]
-pub struct ExecutorImpl {
-    config: Config,
-}
-
-impl ExecutorImpl {
-    pub fn new(config: Config) -> Self {
-        Self { config }
-    }
-}
+pub struct ExecutorImpl;
 
 #[async_trait]
 impl Executor for ExecutorImpl {

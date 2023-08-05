@@ -3,7 +3,6 @@
 use std::{sync::Arc, time::Instant};
 
 use async_trait::async_trait;
-use common_types::request_id::RequestId;
 use datafusion::{
     execution::{context::SessionState, runtime_env::RuntimeEnv},
     optimizer::{

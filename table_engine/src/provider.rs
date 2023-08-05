@@ -342,9 +342,9 @@ impl ExecutionPlan for ScanTable {
         let mut stream_state = self.stream_state.lock().unwrap();
 
         if !stream_state.is_inited() {
-            return Err(DataFusionError::Internal(format!(
-                "Scan stream can't be executed before inited",
-            )));
+            return Err(DataFusionError::Internal(
+                "Scan stream can't be executed before inited".to_string(),
+            ));
         }
 
         let stream = stream_state.take_stream(partition)?;

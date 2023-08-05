@@ -3,12 +3,9 @@
 //! Interpreter factory
 
 use catalog::manager::ManagerRef;
-use query_engine::{
-    datafusion_impl::physical_planner::PhysicalPlannerImpl, executor::Executor,
-    physical_planner::PhysicalPlanner, Config,
-};
+use query_engine::{executor::Executor, physical_planner::PhysicalPlanner};
 use query_frontend::plan::Plan;
-use table_engine::{engine::TableEngineRef, partition::rule::df_adapter::DfPartitionRuleAdapter};
+use table_engine::engine::TableEngineRef;
 
 use crate::{
     alter_table::AlterTableInterpreter,
