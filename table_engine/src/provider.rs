@@ -31,8 +31,8 @@ use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector};
 
 use crate::{
     predicate::{PredicateBuilder, PredicateRef},
-    stream::{SendableRecordBatchStream, ToDfStream},
-    table::{self, ReadOptions, ReadRequest, TableRef},
+    stream::{ScanStreamState, ToDfStream},
+    table::{ReadOptions, ReadRequest, TableRef},
 };
 
 const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_table";
@@ -257,30 +257,6 @@ impl TableSource for TableProviderAdapter {
     }
 }
 
-#[derive(Default)]
-struct ScanStreamState {
-    inited: bool,
-    err: Option<table::Error>,
-    streams: Vec<Option<SendableRecordBatchStream>>,
-}
-
-impl ScanStreamState {
-    fn take_stream(&mut self, index: usize) -> Result<SendableRecordBatchStream> {
-        if let Some(e) = &self.err {
-            return Err(DataFusionError::Execution(format!(
-                "Failed to read table, partition:{index}, err:{e}"
-            )));
-        }
-
-        // TODO(yingwen): Return an empty stream if index is out of bound.
-        self.streams[index].take().ok_or_else(|| {
-            DataFusionError::Execution(format!(
-                "Read partition multiple times is not supported, partition:{index}"
-            ))
-        })
-    }
-}
-
 /// Physical plan of scanning table.
 struct ScanTable {
     projected_schema: ProjectedSchema,
@@ -311,20 +287,17 @@ impl ScanTable {
         let read_res = self.table.partitioned_read(req).await;
 
         let mut stream_state = self.stream_state.lock().unwrap();
-        if stream_state.inited {
+
+        if stream_state.is_inited() {
             return Ok(());
         }
 
-        match read_res {
-            Ok(partitioned_streams) => {
-                self.read_parallelism = partitioned_streams.streams.len();
-                stream_state.streams = partitioned_streams.streams.into_iter().map(Some).collect();
-            }
-            Err(e) => {
-                stream_state.err = Some(e);
-            }
+        // FIXME: in new version distributed query, we should remove this.
+        if let Ok(partitioned_streams) = &read_res {
+            self.read_parallelism = partitioned_streams.streams.len();
         }
-        stream_state.inited = true;
+
+        stream_state.init(read_res);
 
         Ok(())
     }
@@ -367,6 +340,13 @@ impl ExecutionPlan for ScanTable {
         _context: Arc<TaskContext>,
     ) -> Result<DfSendableRecordBatchStream> {
         let mut stream_state = self.stream_state.lock().unwrap();
+
+        if !stream_state.is_inited() {
+            return Err(DataFusionError::Internal(format!(
+                "Scan stream can't be executed before inited",
+            )));
+        }
+
         let stream = stream_state.take_stream(partition)?;
 
         Ok(Box::pin(ToDfStream(stream)))
