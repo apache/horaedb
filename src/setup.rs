@@ -23,7 +23,7 @@ use proxy::{
         cluster_based::ClusterBasedProvider, config_based::ConfigBasedProvider,
     },
 };
-use query_engine::executor::{Executor, ExecutorImpl};
+use query_engine::{executor::{Executor, ExecutorImpl}, datafusion_impl::physical_planner::PhysicalPlannerImpl, physical_planner::PhysicalPlanner};
 use router::{rule_based::ClusterView, ClusterBasedRouter, RuleBasedRouter};
 use server::{
     config::{StaticRouteConfig, StaticTopologyConfig},
@@ -115,6 +115,7 @@ async fn run_server_with_runtimes<T>(
 
     // Create query executor
     let query_executor = ExecutorImpl::new(config.query_engine.clone());
+    let physical_planner = PhysicalPlannerImpl::new(config.query_engine.clone());
 
     // Config limiter
     let limiter = Limiter::new(config.limiter.clone());
@@ -126,6 +127,7 @@ async fn run_server_with_runtimes<T>(
         .engine_runtimes(engine_runtimes.clone())
         .log_runtime(log_runtime.clone())
         .query_executor(query_executor)
+        .physical_planner(physical_planner)
         .function_registry(function_registry)
         .limiter(limiter);
 
@@ -184,13 +186,13 @@ async fn build_table_engine_proxy(engine_builder: EngineBuilder<'_>) -> Arc<Tabl
     })
 }
 
-async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
+async fn build_with_meta<Q: Executor + 'static, P: PhysicalPlanner, T: WalsOpener>(
     config: &Config,
     cluster_config: &ClusterConfig,
-    builder: Builder<Q>,
+    builder: Builder<Q, P>,
     runtimes: Arc<EngineRuntimes>,
     wal_opener: T,
-) -> Builder<Q> {
+) -> Builder<Q, P> {
     // Build meta related modules.
     let node_meta_info = NodeMetaInfo {
         addr: config.node.addr.clone(),
@@ -256,13 +258,13 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
         .schema_config_provider(schema_config_provider)
 }
 
-async fn build_without_meta<Q: Executor + 'static, T: WalsOpener>(
+async fn build_without_meta<Q: Executor + 'static, P: PhysicalPlanner, T: WalsOpener>(
     config: &Config,
     static_route_config: &StaticRouteConfig,
-    builder: Builder<Q>,
+    builder: Builder<Q, P>,
     runtimes: Arc<EngineRuntimes>,
     wal_builder: T,
-) -> Builder<Q> {
+) -> Builder<Q, P> {
     let opened_wals = wal_builder
         .open_wals(&config.analytic.wal, runtimes.clone())
         .await

@@ -3,9 +3,12 @@
 //! Interpreter factory
 
 use catalog::manager::ManagerRef;
-use query_engine::executor::Executor;
+use datafusion::physical_planner::PhysicalPlanner;
+use query_engine::{
+    datafusion_impl::physical_planner::PhysicalPlannerImpl, executor::Executor, Config,
+};
 use query_frontend::plan::Plan;
-use table_engine::engine::TableEngineRef;
+use table_engine::{engine::TableEngineRef, partition::rule::df_adapter::DfPartitionRuleAdapter};
 
 use crate::{
     alter_table::AlterTableInterpreter,
@@ -53,7 +56,11 @@ impl<Q: Executor + 'static> Factory<Q> {
         validator.validate(&plan)?;
 
         let interpreter = match plan {
-            Plan::Query(p) => SelectInterpreter::create(ctx, p, self.query_executor),
+            Plan::Query(p) => {
+                // TODO: We should pass a builder to build physical planner.
+                let physical_planner = PhysicalPlannerImpl::new(Config::default());
+                SelectInterpreter::create(ctx, p, self.query_executor, physical_planner)
+            }
             Plan::Insert(p) => InsertInterpreter::create(ctx, p),
             Plan::Create(p) => {
                 CreateInterpreter::create(ctx, p, self.table_engine, self.table_manipulator)

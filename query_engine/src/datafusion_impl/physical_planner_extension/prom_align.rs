@@ -13,13 +13,7 @@ use datafusion::{
 use query_frontend::promql::PromAlignNode;
 use snafu::Snafu;
 
-use crate::df_execution_extension::prom_align::{Error as ExecError, PromAlignExec};
-
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display("Build execution failed. err:{:?}", source))]
-    ExecutionError { source: ExecError },
-}
+use crate::datafusion_impl::physical_plan_extension::prom_align::PromAlignExec;
 
 pub struct PromAlignPlanner;
 

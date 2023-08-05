@@ -9,11 +9,8 @@
 
 pub mod config;
 pub mod context;
-pub mod df_execution_extension;
-pub mod df_planner_extension;
+pub mod datafusion_impl;
+pub mod error;
 pub mod executor;
-pub mod logical_optimizer;
-pub mod physical_optimizer;
-pub mod physical_plan;
-
+pub mod physical_planner;
 pub use config::Config;

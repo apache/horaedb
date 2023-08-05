@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::sync::Arc;
 
@@ -8,7 +8,7 @@ use datafusion::{
     physical_plan::{limit::GlobalLimitExec, ExecutionPlan},
 };
 
-use crate::physical_optimizer::{Adapter, OptimizeRuleRef};
+use crate::datafusion_impl::physical_optimizer::{Adapter, OptimizeRuleRef};
 
 pub struct CoalesceBatchesAdapter {
     original_rule: OptimizeRuleRef,

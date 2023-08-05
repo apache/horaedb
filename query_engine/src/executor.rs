@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use common_types::record_batch::RecordBatch;
 use datafusion::prelude::SessionContext;
 use futures::TryStreamExt;
+use generic_error::BoxError;
 use log::{debug, info};
 use macros::define_result;
 use query_frontend::{plan::QueryPlan, provider::CatalogProviderAdapter};
@@ -15,40 +16,7 @@ use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::stream::SendableRecordBatchStream;
 use time_ext::InstantExt;
 
-use crate::{
-    config::Config,
-    context::{Context, ContextRef},
-    logical_optimizer::{LogicalOptimizer, LogicalOptimizerImpl},
-    physical_optimizer::{PhysicalOptimizer, PhysicalOptimizerImpl},
-    physical_plan::PhysicalPlanPtr,
-};
-
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display("Failed to do logical optimization, err:{}", source))]
-    LogicalOptimize {
-        source: crate::logical_optimizer::Error,
-    },
-
-    #[snafu(display("Failed to do physical optimization, err:{}", source))]
-    PhysicalOptimize {
-        source: crate::physical_optimizer::Error,
-    },
-
-    #[snafu(display("Failed to execute physical plan, err:{}", source))]
-    ExecutePhysical { source: crate::physical_plan::Error },
-
-    #[snafu(display("Failed to collect record batch stream, err:{}", source,))]
-    Collect { source: table_engine::stream::Error },
-
-    #[snafu(display("Timeout when execute, err:{}.\nBacktrace:\n{}", source, backtrace))]
-    Timeout {
-        source: tokio::time::error::Elapsed,
-        backtrace: Backtrace,
-    },
-}
-
-define_result!(Error);
+use crate::{config::Config, context::Context, error::*, physical_planner::PhysicalPlanPtr};
 
 // Use a type alias so that we are able to replace the implementation
 pub type RecordBatchVec = Vec<RecordBatch>;
@@ -78,7 +46,13 @@ pub trait Executor: Clone + Send + Sync {
     ///
     /// REQUIRE: The meta data of tables in query should be found from
     /// ContextRef
-    async fn execute_logical_plan(&self, ctx: ContextRef, query: Query) -> Result<RecordBatchVec>;
+    // TODO: I am not sure that whether we should should pass the `Context` as
+    // parameter rather than place it into `Executor`.
+    async fn execute(
+        &self,
+        ctx: &Context,
+        physical_plan: PhysicalPlanPtr,
+    ) -> Result<RecordBatchVec>;
 }
 
 #[derive(Clone, Default)]
@@ -94,25 +68,24 @@ impl ExecutorImpl {
 
 #[async_trait]
 impl Executor for ExecutorImpl {
-    async fn execute_logical_plan(&self, ctx: ContextRef, query: Query) -> Result<RecordBatchVec> {
-        let plan = query.plan;
-
-        // Register catalogs to datafusion execution context.
-        let catalogs = CatalogProviderAdapter::new_adapters(plan.tables.clone());
-        let df_ctx = ctx.build_df_session_ctx(&self.config, ctx.request_id, ctx.deadline);
-        for (name, catalog) in catalogs {
-            df_ctx.register_catalog(&name, Arc::new(catalog));
-        }
+    async fn execute(
+        &self,
+        ctx: &Context,
+        physical_plan: PhysicalPlanPtr,
+    ) -> Result<RecordBatchVec> {
         let begin_instant = Instant::now();
-
-        let physical_plan = optimize_plan(&ctx, df_ctx, plan).await?;
 
         debug!(
             "Executor physical optimization finished, request_id:{}, physical_plan: {:?}",
             ctx.request_id, physical_plan
         );
 
-        let stream = physical_plan.execute().context(ExecutePhysical)?;
+        let stream = physical_plan
+            .execute()
+            .box_err()
+            .with_context(|| ExecutorWithCause {
+                msg: Some("failed to execute physical plan".to_string()),
+            })?;
 
         // Collect all records in the pool, as the stream may perform some costly
         // calculation
@@ -129,26 +102,12 @@ impl Executor for ExecutorImpl {
     }
 }
 
-async fn optimize_plan(
-    ctx: &Context,
-    df_ctx: SessionContext,
-    plan: QueryPlan,
-) -> Result<PhysicalPlanPtr> {
-    let mut logical_optimizer = LogicalOptimizerImpl::with_context(df_ctx.clone());
-    let plan = logical_optimizer.optimize(plan).context(LogicalOptimize)?;
-
-    debug!(
-        "Executor logical optimization finished, request_id:{}, plan: {:#?}",
-        ctx.request_id, plan
-    );
-
-    let mut physical_optimizer = PhysicalOptimizerImpl::with_context(df_ctx);
-    physical_optimizer
-        .optimize(plan)
-        .await
-        .context(PhysicalOptimize)
-}
-
 async fn collect(stream: SendableRecordBatchStream) -> Result<RecordBatchVec> {
-    stream.try_collect().await.context(Collect)
+    stream
+        .try_collect()
+        .await
+        .box_err()
+        .with_context(|| ExecutorWithCause {
+            msg: Some("failed to collect query results".to_string()),
+        })
 }

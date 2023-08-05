@@ -7,25 +7,12 @@ pub mod tests;
 pub mod type_conversion;
 
 use datafusion::{error::DataFusionError, prelude::SessionContext};
+use generic_error::BoxError;
 use macros::define_result;
 use query_frontend::plan::QueryPlan;
-use snafu::{Backtrace, ResultExt, Snafu};
+use snafu::ResultExt;
 
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display(
-        "DataFusion Failed to optimize logical plan, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
-    ))]
-    // TODO(yingwen): Should we carry plan in this context?
-    DataFusionOptimize {
-        source: DataFusionError,
-        backtrace: Backtrace,
-    },
-}
-
-define_result!(Error);
+use crate::error::*;
 
 /// LogicalOptimizer transform the QueryPlan into a potentially more efficient
 /// plan
@@ -55,7 +42,8 @@ impl LogicalOptimizer for LogicalOptimizerImpl {
             .ctx
             .state()
             .optimize(&df_plan)
-            .context(DataFusionOptimize)?;
+            .box_err()
+            .context(LogicalOptimizerWithCause { msg: None })?;
 
         Ok(QueryPlan { df_plan, tables })
     }

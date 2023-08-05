@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Adapter for the original datafusion repartiton optimization rule.
 
@@ -11,7 +11,7 @@ use datafusion::{
 };
 use log::debug;
 
-use crate::physical_optimizer::{Adapter, OptimizeRuleRef};
+use crate::datafusion_impl::physical_optimizer::{Adapter, OptimizeRuleRef};
 
 pub struct RepartitionAdapter {
     original_rule: OptimizeRuleRef,

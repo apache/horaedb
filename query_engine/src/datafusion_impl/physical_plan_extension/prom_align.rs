@@ -32,33 +32,36 @@ use datafusion::{
     },
 };
 use futures::{Stream, StreamExt};
+use generic_error::BoxError;
 use log::debug;
 use macros::define_result;
 use query_frontend::promql::{AlignParameter, ColumnNames, Func as PromFunc};
-use snafu::{OptionExt, ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt};
 
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display("Internal err, source:{:?}", source))]
-    Internal { source: DataFusionError },
+use crate::error::*;
 
-    #[snafu(display("Invalid schema, source:{:?}", source))]
-    InvalidSchema { source: common_types::schema::Error },
+// #[derive(Debug, Snafu)]
+// pub enum Error {
+//     #[snafu(display("Internal err, source:{:?}", source))]
+//     Internal { source: DataFusionError },
 
-    #[snafu(display("Tsid column is required"))]
-    TsidRequired,
+//     #[snafu(display("Invalid schema, source:{:?}", source))]
+//     InvalidSchema { source: common_types::schema::Error },
 
-    #[snafu(display("Invalid column type, required:{:?}", required_type))]
-    InvalidColumnType { required_type: String },
+//     #[snafu(display("Tsid column is required"))]
+//     TsidRequired,
 
-    #[snafu(display("{} column type cannot be null", name))]
-    NullColumn { name: String },
+//     #[snafu(display("Invalid column type, required:{:?}", required_type))]
+//     InvalidColumnType { required_type: String },
 
-    #[snafu(display("timestamp out of range"))]
-    TimestampOutOfRange {},
-}
+//     #[snafu(display("{} column type cannot be null", name))]
+//     NullColumn { name: String },
 
-define_result!(Error);
+//     #[snafu(display("timestamp out of range"))]
+//     TimestampOutOfRange {},
+// }
+
+// define_result!(Error);
 
 /// Limits Extrapolation range.
 /// Refer to https://github.com/prometheus/prometheus/pull/1295
@@ -166,7 +169,8 @@ impl PromAlignExec {
                 input,
                 Partitioning::Hash(vec![extract_tsid], read_parallelism),
             )
-            .context(Internal)?,
+            .box_err()
+            .context(PhysicalPlanWithCause { msg: None })?,
         ) as Arc<dyn ExecutionPlan>;
         let align_func: Arc<dyn AlignFunc + Send + Sync> = match func {
             PromFunc::Instant => Arc::new(InstantFunc {}),
@@ -283,9 +287,11 @@ impl PromAlignReader {
             .into_iter()
             .map(|Sample { timestamp, value }| {
                 Ok(Sample {
-                    timestamp: timestamp
-                        .checked_add(offset)
-                        .context(TimestampOutOfRange {})?,
+                    timestamp: timestamp.checked_add(offset).with_context(|| {
+                        PhysicalOptimizerNoCause {
+                            msg: Some("timestamp out of range".to_string()),
+                        }
+                    })?,
                     value,
                 })
             })
@@ -300,7 +306,9 @@ impl PromAlignReader {
                     .unwrap()
                     .timestamp
                     .checked_add_i64(1)
-                    .context(TimestampOutOfRange {})?,
+                    .with_context(|| PhysicalOptimizerNoCause {
+                        msg: Some("timestamp out of range".to_string()),
+                    })?,
             )
         };
         stepper.step(
@@ -398,8 +406,8 @@ impl PromAlignReader {
                     .column(schema.index_of(key).expect("checked in build plan"))
                     .as_any()
                     .downcast_ref::<StringArray>()
-                    .context(InvalidColumnType {
-                        required_type: "StringArray",
+                    .with_context(|| PhysicalPlanNoCause {
+                        msg: Some("required StringArray".to_string()),
                     })?
                     .value(0);
                 Ok((key.to_owned(), v.to_string()))
@@ -417,23 +425,27 @@ impl PromAlignReader {
             .column(field_idx)
             .as_any()
             .downcast_ref::<Float64Array>()
-            .context(InvalidColumnType {
-                required_type: "Float64Array",
+            .with_context(|| PhysicalPlanNoCause {
+                msg: Some("required Float64Array".to_string()),
             })?;
         let timestamp_array = record_batch
             .column(timestamp_idx)
             .as_any()
             .downcast_ref::<TimestampMillisecondArray>()
-            .context(InvalidColumnType {
-                required_type: "TimestampMillisecondArray",
+            .with_context(|| PhysicalPlanNoCause {
+                msg: Some("required TimestampMillisecondArray".to_string()),
             })?;
         field_array
             .into_iter()
             .zip(timestamp_array.into_iter())
             .map(|(field, timestamp)| {
                 Ok(Sample {
-                    value: field.context(NullColumn { name: "field" })?,
-                    timestamp: Timestamp::new(timestamp.context(NullColumn { name: "timestamp" })?),
+                    value: field.with_context(|| PhysicalPlanNoCause {
+                        msg: Some("null field column".to_string()),
+                    })?,
+                    timestamp: Timestamp::new(timestamp.with_context(|| PhysicalPlanNoCause {
+                        msg: Some("null timestamp column".to_string()),
+                    })?),
                 })
             })
             .collect::<Result<Vec<_>>>()
@@ -616,10 +628,11 @@ impl Stepper for FixedStepper {
 
         // self.timestamp = self.timestamp.max(start);
         while self.timestamp < curr_range.inclusive_start() {
-            self.timestamp = self
-                .timestamp
-                .checked_add(param.step)
-                .context(TimestampOutOfRange {})?;
+            self.timestamp = self.timestamp.checked_add(param.step).with_context(|| {
+                PhysicalOptimizerNoCause {
+                    msg: Some("timestamp out of range".to_string()),
+                }
+            })?;
         }
 
         while curr_range.contains(self.timestamp) {
@@ -632,7 +645,9 @@ impl Stepper for FixedStepper {
             let mint = self
                 .timestamp
                 .checked_sub(param.lookback_delta)
-                .context(TimestampOutOfRange {})?;
+                .with_context(|| PhysicalOptimizerNoCause {
+                    msg: Some("timestamp out of range".to_string()),
+                })?;
             // drop some unneeded entries from begining of `entries`
             while let Some(entry) = self.entries.front() {
                 if entry.timestamp < mint {
@@ -653,10 +668,11 @@ impl Stepper for FixedStepper {
                 }
             };
             if skip {
-                self.timestamp = self
-                    .timestamp
-                    .checked_add(param.step)
-                    .context(TimestampOutOfRange {})?;
+                self.timestamp = self.timestamp.checked_add(param.step).with_context(|| {
+                    PhysicalOptimizerNoCause {
+                        msg: Some("timestamp out of range".to_string()),
+                    }
+                })?;
                 continue;
             }
 
@@ -667,10 +683,11 @@ impl Stepper for FixedStepper {
                 result.push(value);
             }
 
-            self.timestamp = self
-                .timestamp
-                .checked_add(param.step)
-                .context(TimestampOutOfRange {})?;
+            self.timestamp = self.timestamp.checked_add(param.step).with_context(|| {
+                PhysicalOptimizerNoCause {
+                    msg: Some("timestamp out of range".to_string()),
+                }
+            })?;
         }
 
         if !result.is_empty() {
@@ -766,22 +783,33 @@ fn extrapolate_fn_helper(
     let last_timestamp = data[tail_index].timestamp;
     let data_duration = (last_timestamp
         .checked_sub(first_timestamp)
-        .context(TimestampOutOfRange {})?)
+        .with_context(|| PhysicalOptimizerNoCause {
+            msg: Some("timestamp out of range".to_string()),
+        })?)
     .as_i64() as f64;
     let average_duration_between_data = data_duration / tail_index as f64;
 
-    let range_start = timestamp
-        .checked_sub(lookback_delta)
-        .context(TimestampOutOfRange {})?;
+    let range_start =
+        timestamp
+            .checked_sub(lookback_delta)
+            .with_context(|| PhysicalOptimizerNoCause {
+                msg: Some("timestamp out of range".to_string()),
+            })?;
     let range_end = timestamp;
-    let mut range_to_start = (first_timestamp
-        .checked_sub(range_start)
-        .context(TimestampOutOfRange)?)
-    .as_i64() as f64;
-    let mut range_to_end = (range_end
-        .checked_sub(last_timestamp)
-        .context(TimestampOutOfRange {})?)
-    .as_i64() as f64;
+    let mut range_to_start =
+        (first_timestamp
+            .checked_sub(range_start)
+            .with_context(|| PhysicalOptimizerNoCause {
+                msg: Some("timestamp out of range".to_string()),
+            })?)
+        .as_i64() as f64;
+    let mut range_to_end =
+        (range_end
+            .checked_sub(last_timestamp)
+            .with_context(|| PhysicalOptimizerNoCause {
+                msg: Some("timestamp out of range".to_string()),
+            })?)
+        .as_i64() as f64;
 
     // Prometheus shorten forward-extrapolation to zero point.
     if is_counter && difference > 0.0 && first_data >= 0.0 {
@@ -909,7 +937,9 @@ fn instant_value(
     let interval = last_entry
         .timestamp
         .checked_sub(previous_entry.timestamp)
-        .context(TimestampOutOfRange {})?;
+        .with_context(|| PhysicalOptimizerNoCause {
+            msg: Some("timestamp out of range".to_string()),
+        })?;
     assert!(interval.as_i64() > 0);
 
     if is_rate {

@@ -1,9 +1,8 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
-
-//! Query context
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{sync::Arc, time::Instant};
 
+use async_trait::async_trait;
 use common_types::request_id::RequestId;
 use datafusion::{
     execution::{context::SessionState, runtime_env::RuntimeEnv},
@@ -14,53 +13,57 @@ use datafusion::{
         },
         common_subexpr_eliminate::CommonSubexprEliminate,
         eliminate_limit::EliminateLimit,
-        optimizer::OptimizerRule,
         push_down_filter::PushDownFilter,
         push_down_limit::PushDownLimit,
         push_down_projection::PushDownProjection,
         simplify_expressions::SimplifyExpressions,
         single_distinct_to_groupby::SingleDistinctToGroupBy,
+        OptimizerRule,
     },
-    physical_optimizer::optimizer::PhysicalOptimizerRule,
+    physical_optimizer::PhysicalOptimizerRule,
     prelude::{SessionConfig, SessionContext},
 };
+use generic_error::BoxError;
+use query_frontend::{plan::QueryPlan, provider::CatalogProviderAdapter};
+use snafu::ResultExt;
 use table_engine::provider::CeresdbOptions;
 
 use crate::{
-    config::Config,
+    context::Context,
     datafusion_impl::{
         logical_optimizer::type_conversion::TypeConversion, physical_optimizer,
+        physical_plan::DataFusionPhysicalPlanAdapter,
         physical_planner_extension::QueryPlannerAdapter,
     },
+    error::*,
+    physical_planner::{PhysicalPlanPtr, PhysicalPlanner},
+    Config,
 };
 
-pub type ContextRef = Arc<Context>;
-
-/// Query context
-pub struct Context {
-    pub request_id: RequestId,
-    pub deadline: Option<Instant>,
-    pub default_catalog: String,
-    pub default_schema: String,
+/// Physical query optimizer that converts a logical plan to a
+/// physical plan suitable for execution
+#[derive(Clone)]
+pub struct PhysicalPlannerImpl {
+    config: Config,
 }
 
-impl Context {
-    pub fn build_df_session_ctx(
-        &self,
-        config: &Config,
-        request_id: RequestId,
-        deadline: Option<Instant>,
-    ) -> SessionContext {
-        let timeout =
-            deadline.map(|deadline| deadline.duration_since(Instant::now()).as_millis() as u64);
+impl PhysicalPlannerImpl {
+    pub fn new(config: Config) -> Self {
+        Self { config }
+    }
+
+    pub fn build_df_session_ctx(&self, config: &Config, ctx: &Context) -> SessionContext {
+        let timeout = ctx
+            .deadline
+            .map(|deadline| deadline.duration_since(Instant::now()).as_millis() as u64);
         let ceresdb_options = CeresdbOptions {
-            request_id: request_id.as_u64(),
+            request_id: ctx.request_id.as_u64(),
             request_timeout: timeout,
         };
         let mut df_session_config = SessionConfig::new()
             .with_default_catalog_and_schema(
-                self.default_catalog.clone(),
-                self.default_schema.clone(),
+                ctx.default_catalog.clone(),
+                ctx.default_schema.clone(),
             )
             .with_target_partitions(config.read_parallelism);
 
@@ -112,5 +115,28 @@ impl Context {
             Arc::new(datafusion::optimizer::analyzer::type_coercion::TypeCoercion::new()),
             Arc::new(CountWildcardRule::new()),
         ]
+    }
+}
+
+#[async_trait]
+impl PhysicalPlanner for PhysicalPlannerImpl {
+    async fn plan(&self, logical_plan: QueryPlan, ctx: &Context) -> Result<PhysicalPlanPtr> {
+        // Register catalogs to datafusion execution context.
+        let catalogs = CatalogProviderAdapter::new_adapters(logical_plan.tables.clone());
+        let df_ctx = self.build_df_session_ctx(&self.config, ctx);
+        for (name, catalog) in catalogs {
+            df_ctx.register_catalog(&name, Arc::new(catalog));
+        }
+
+        // Generate physical plan.
+        let exec_plan = df_ctx
+            .state()
+            .create_physical_plan(&logical_plan.df_plan)
+            .await
+            .box_err()
+            .context(PhysicalPlannerWithCause { msg: None })?;
+        let physical_plan = DataFusionPhysicalPlanAdapter::with_plan(df_ctx.clone(), exec_plan);
+
+        Ok(Box::new(physical_plan))
     }
 }
