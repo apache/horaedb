@@ -4,9 +4,6 @@
 //!
 //! Optimizes and executes logical plan
 
-// TODO(yingwen): Maybe renamed to query_executor or query_backend?
-// TODO(yingwen): Use datafusion or fuse-query as query backend
-
 pub mod config;
 pub mod context;
 pub mod datafusion_impl;

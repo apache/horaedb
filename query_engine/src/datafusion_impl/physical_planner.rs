@@ -1,5 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+//! Datafusion physical planner
+
 use std::{sync::Arc, time::Instant};
 
 use async_trait::async_trait;
@@ -31,22 +33,20 @@ use crate::{
     context::Context,
     datafusion_impl::{
         logical_optimizer::type_conversion::TypeConversion, physical_optimizer,
-        physical_plan::DataFusionPhysicalPlanAdapter,
-        physical_planner_extension::QueryPlannerAdapter,
+        physical_plan::DataFusionPhysicalPlanImpl, physical_planner_extension::QueryPlannerAdapter,
     },
     error::*,
     physical_planner::{PhysicalPlanPtr, PhysicalPlanner},
     Config,
 };
 
-/// Physical query optimizer that converts a logical plan to a
-/// physical plan suitable for execution
+/// Physical planner based on datafusion
 #[derive(Clone)]
-pub struct PhysicalPlannerImpl {
+pub struct DatafusionPhysicalPlannerImpl {
     config: Config,
 }
 
-impl PhysicalPlannerImpl {
+impl DatafusionPhysicalPlannerImpl {
     pub fn new(config: Config) -> Self {
         Self { config }
     }
@@ -118,7 +118,7 @@ impl PhysicalPlannerImpl {
 }
 
 #[async_trait]
-impl PhysicalPlanner for PhysicalPlannerImpl {
+impl PhysicalPlanner for DatafusionPhysicalPlannerImpl {
     async fn plan(&self, logical_plan: QueryPlan, ctx: &Context) -> Result<PhysicalPlanPtr> {
         // Register catalogs to datafusion execution context.
         let catalogs = CatalogProviderAdapter::new_adapters(logical_plan.tables.clone());
@@ -134,7 +134,7 @@ impl PhysicalPlanner for PhysicalPlannerImpl {
             .await
             .box_err()
             .context(PhysicalPlannerWithCause { msg: None })?;
-        let physical_plan = DataFusionPhysicalPlanAdapter::with_plan(df_ctx.clone(), exec_plan);
+        let physical_plan = DataFusionPhysicalPlanImpl::with_plan(df_ctx.clone(), exec_plan);
 
         Ok(Box::new(physical_plan))
     }

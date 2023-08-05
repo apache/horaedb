@@ -24,7 +24,7 @@ use proxy::{
     },
 };
 use query_engine::{
-    datafusion_impl::physical_planner::PhysicalPlannerImpl,
+    datafusion_impl::physical_planner::DatafusionPhysicalPlannerImpl,
     executor::{Executor, ExecutorImpl},
     physical_planner::PhysicalPlanner,
 };
@@ -119,7 +119,7 @@ async fn run_server_with_runtimes<T>(
 
     // Create query executor
     let query_executor = ExecutorImpl;
-    let physical_planner = PhysicalPlannerImpl::new(config.query_engine.clone());
+    let physical_planner = DatafusionPhysicalPlannerImpl::new(config.query_engine.clone());
 
     // Config limiter
     let limiter = Limiter::new(config.limiter.clone());

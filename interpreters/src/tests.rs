@@ -11,7 +11,7 @@ use catalog::{
 use catalog_impls::table_based::TableBasedManager;
 use common_types::request_id::RequestId;
 use query_engine::{
-    datafusion_impl::physical_planner::PhysicalPlannerImpl, executor::ExecutorImpl,
+    datafusion_impl::physical_planner::DatafusionPhysicalPlannerImpl, executor::ExecutorImpl,
     Config as QueryConfig,
 };
 use query_frontend::{
@@ -63,10 +63,10 @@ impl<M> Env<M>
 where
     M: MetaProvider,
 {
-    async fn build_factory(&self) -> Factory<ExecutorImpl, PhysicalPlannerImpl> {
+    async fn build_factory(&self) -> Factory<ExecutorImpl, DatafusionPhysicalPlannerImpl> {
         Factory::new(
             ExecutorImpl,
-            PhysicalPlannerImpl::new(query_engine::Config::default()),
+            DatafusionPhysicalPlannerImpl::new(query_engine::Config::default()),
             self.catalog_manager.clone(),
             self.engine(),
             self.table_manipulator.clone(),
@@ -218,7 +218,7 @@ where
         let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
         let insert_factory = Factory::new(
             ExecutorImpl,
-            PhysicalPlannerImpl::new(QueryConfig::default()),
+            DatafusionPhysicalPlannerImpl::new(QueryConfig::default()),
             catalog_manager.clone(),
             self.engine(),
             table_manipulator.clone(),
@@ -238,7 +238,7 @@ where
             "SELECT key1, key2, field1, field2, field3, field4, field5 from test_missing_columns_table";
         let select_factory = Factory::new(
             ExecutorImpl,
-            PhysicalPlannerImpl::new(QueryConfig::default()),
+            DatafusionPhysicalPlannerImpl::new(QueryConfig::default()),
             catalog_manager,
             self.engine(),
             table_manipulator,

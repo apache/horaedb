@@ -28,8 +28,6 @@ pub trait Executor: Clone + Send + Sync {
     ///
     /// REQUIRE: The meta data of tables in query should be found from
     /// ContextRef
-    // TODO: I am not sure that whether we should should pass the `Context` as
-    // parameter rather than place it into `Executor`.
     async fn execute(
         &self,
         ctx: &Context,

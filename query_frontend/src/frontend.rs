@@ -69,6 +69,7 @@ pub struct Context {
     /// Id of the query request.
     pub request_id: RequestId,
     /// Parallelism to read table.
+    // TODO: seems useless, remove it?
     pub read_parallelism: usize,
     /// Deadline of this request
     pub deadline: Option<Instant>,

@@ -22,12 +22,15 @@ use table_engine::stream::{FromDfStream, SendableRecordBatchStream};
 
 use crate::{error::*, physical_planner::PhysicalPlan};
 
-pub struct DataFusionPhysicalPlanAdapter {
+/// Datafusion physical plan adapter
+///
+/// Because we need to
+pub struct DataFusionPhysicalPlanImpl {
     ctx: SessionContext,
     plan: Arc<dyn ExecutionPlan>,
 }
 
-impl DataFusionPhysicalPlanAdapter {
+impl DataFusionPhysicalPlanImpl {
     pub fn with_plan(ctx: SessionContext, plan: Arc<dyn ExecutionPlan>) -> Self {
         Self { ctx, plan }
     }
@@ -37,7 +40,7 @@ impl DataFusionPhysicalPlanAdapter {
     }
 }
 
-impl Debug for DataFusionPhysicalPlanAdapter {
+impl Debug for DataFusionPhysicalPlanImpl {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DataFusionPhysicalPlan")
             .field("plan", &self.plan)
@@ -46,7 +49,7 @@ impl Debug for DataFusionPhysicalPlanAdapter {
 }
 
 #[async_trait]
-impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
+impl PhysicalPlan for DataFusionPhysicalPlanImpl {
     fn execute(&self) -> Result<SendableRecordBatchStream> {
         let task_context = Arc::new(TaskContext::from(&self.ctx));
         let partition_count = self.plan.output_partitioning().partition_count();
@@ -77,8 +80,6 @@ impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
     }
 
     fn metrics_to_string(&self) -> String {
-        // TODO: set to verbose mode for more details now, maybe we can add a flag to
-        // control it.
         DisplayableExecutionPlan::with_metrics(&*self.plan)
             .indent(true)
             .to_string()
