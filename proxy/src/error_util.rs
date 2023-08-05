@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 // Our backtrace is defined like this
 // #[snafu(display("Time range is not found.\nBacktrace\n:{}", backtrace))]
 //
