@@ -21,7 +21,10 @@ use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::info;
-use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
+use query_engine::{
+    executor::{Executor as QueryExecutor, RecordBatchVec},
+    physical_planner::PhysicalPlanner,
+};
 use query_frontend::{
     frontend::{Context as SqlContext, Error as FrontendError, Frontend},
     promql::ColumnNames,
@@ -35,7 +38,7 @@ use crate::{
     Context, Proxy,
 };
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     /// Implement prometheus query in grpc service.
     /// Note: not used in prod now.
     pub async fn handle_prom_query(

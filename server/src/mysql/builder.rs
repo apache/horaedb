@@ -3,7 +3,7 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use proxy::Proxy;
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use snafu::{OptionExt, ResultExt};
 use table_engine::engine::EngineRuntimes;
 
@@ -12,10 +12,10 @@ use crate::mysql::{
     service::MysqlService,
 };
 
-pub struct Builder<Q> {
+pub struct Builder<Q, P> {
     config: Config,
     runtimes: Option<Arc<EngineRuntimes>>,
-    proxy: Option<Arc<Proxy<Q>>>,
+    proxy: Option<Arc<Proxy<Q, P>>>,
 }
 
 #[derive(Debug)]
@@ -25,7 +25,7 @@ pub struct Config {
     pub timeout: Option<Duration>,
 }
 
-impl<Q> Builder<Q> {
+impl<Q, P> Builder<Q, P> {
     pub fn new(config: Config) -> Self {
         Self {
             config,
@@ -39,14 +39,14 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn proxy(mut self, proxy: Arc<Proxy<Q>>) -> Self {
+    pub fn proxy(mut self, proxy: Arc<Proxy<Q, P>>) -> Self {
         self.proxy = Some(proxy);
         self
     }
 }
 
-impl<Q: QueryExecutor + 'static> Builder<Q> {
-    pub fn build(self) -> Result<MysqlService<Q>> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
+    pub fn build(self) -> Result<MysqlService<Q, P>> {
         let runtimes = self.runtimes.context(MissingRuntimes)?;
         let proxy = self.proxy.context(MissingInstance)?;
 

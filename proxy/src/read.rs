@@ -13,7 +13,7 @@ use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{error, info, warn};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use query_frontend::{
     frontend,
     frontend::{Context as SqlContext, Frontend},
@@ -35,7 +35,7 @@ pub enum SqlResponse {
     Local(Output),
 }
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     pub(crate) async fn handle_sql(
         &self,
         ctx: Context,

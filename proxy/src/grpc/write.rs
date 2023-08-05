@@ -1,11 +1,11 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use ceresdbproto::storage::{WriteRequest, WriteResponse};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 
 use crate::{error, error::build_ok_header, metrics::GRPC_HANDLER_COUNTER_VEC, Context, Proxy};
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     pub async fn handle_write(&self, ctx: Context, req: WriteRequest) -> WriteResponse {
         self.hotspot_recorder.inc_write_reqs(&req).await;
 

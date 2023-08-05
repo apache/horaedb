@@ -14,9 +14,12 @@ use crate::limiter::Limiter;
 /// A cluster instance. Usually there is only one instance per cluster
 ///
 /// Q: query_engine::executor::Executor
-pub struct Instance<Q> {
+/// P: query_engine::physical_planner::PhysicalPlanner
+pub struct Instance<Q, P> {
     pub catalog_manager: ManagerRef,
     pub query_executor: Q,
+    pub physical_planner: P,
+
     pub table_engine: TableEngineRef,
     pub partition_table_engine: TableEngineRef,
     // User defined functions registry.
@@ -27,4 +30,4 @@ pub struct Instance<Q> {
 }
 
 /// A reference counted instance pointer
-pub type InstanceRef<Q> = Arc<Instance<Q>>;
+pub type InstanceRef<Q, P> = Arc<Instance<Q, P>>;

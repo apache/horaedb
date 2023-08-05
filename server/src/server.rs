@@ -54,6 +54,9 @@ pub enum Error {
     #[snafu(display("Missing query executor.\nBacktrace:\n{}", backtrace))]
     MissingQueryExecutor { backtrace: Backtrace },
 
+    #[snafu(display("Missing physical planner.\nBacktrace:\n{}", backtrace))]
+    MissingPhysicalPlanner { backtrace: Backtrace },
+
     #[snafu(display("Missing table engine.\nBacktrace:\n{}", backtrace))]
     MissingTableEngine { backtrace: Backtrace },
 
@@ -101,16 +104,16 @@ define_result!(Error);
 
 // TODO(yingwen): Consider a config manager
 /// Server
-pub struct Server<Q: QueryExecutor + 'static> {
-    http_service: Service<Q>,
-    rpc_services: RpcServices<Q>,
-    mysql_service: mysql::MysqlService<Q>,
-    instance: InstanceRef<Q>,
+pub struct Server<Q: QueryExecutor + 'static, P: PhysicalPlanner> {
+    http_service: Service<Q, P>,
+    rpc_services: RpcServices<Q, P>,
+    mysql_service: mysql::MysqlService<Q, P>,
+    instance: InstanceRef<Q, P>,
     cluster: Option<ClusterRef>,
     local_tables_recoverer: Option<LocalTablesRecoverer>,
 }
 
-impl<Q: QueryExecutor + 'static> Server<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Server<Q, P> {
     pub async fn stop(mut self) {
         self.rpc_services.shutdown().await;
         self.http_service.stop();
@@ -190,7 +193,7 @@ pub struct Builder<Q, P> {
     // TODO: maybe place these two components in a `QueryEngine`.
     query_executor: Option<Q>,
     physical_planner: Option<P>,
-    
+
     table_engine: Option<TableEngineRef>,
     table_manipulator: Option<TableManipulatorRef>,
     function_registry: Option<FunctionRegistryRef>,
@@ -310,10 +313,11 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
     }
 
     /// Build and run the server
-    pub fn build(self) -> Result<Server<Q>> {
+    pub fn build(self) -> Result<Server<Q, P>> {
         // Build instance
         let catalog_manager = self.catalog_manager.context(MissingCatalogManager)?;
         let query_executor = self.query_executor.context(MissingQueryExecutor)?;
+        let physical_planner = self.physical_planner.context(MissingPhysicalPlanner)?;
         let table_engine = self.table_engine.context(MissingTableEngine)?;
         let table_manipulator = self.table_manipulator.context(MissingTableManipulator)?;
         let function_registry = self.function_registry.context(MissingFunctionRegistry)?;
@@ -338,6 +342,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
             let instance = Instance {
                 catalog_manager,
                 query_executor,
+                physical_planner,
                 table_engine,
                 partition_table_engine,
                 function_registry,

@@ -16,7 +16,7 @@ use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, info};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use query_frontend::{
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,
@@ -35,7 +35,7 @@ use crate::{
     Context, Proxy,
 };
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     pub async fn handle_influxdb_query(
         &self,
         ctx: RequestContext,

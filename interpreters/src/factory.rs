@@ -3,9 +3,9 @@
 //! Interpreter factory
 
 use catalog::manager::ManagerRef;
-use datafusion::physical_planner::PhysicalPlanner;
 use query_engine::{
-    datafusion_impl::physical_planner::PhysicalPlannerImpl, executor::Executor, Config,
+    datafusion_impl::physical_planner::PhysicalPlannerImpl, executor::Executor,
+    physical_planner::PhysicalPlanner, Config,
 };
 use query_frontend::plan::Plan;
 use table_engine::{engine::TableEngineRef, partition::rule::df_adapter::DfPartitionRuleAdapter};
@@ -26,22 +26,25 @@ use crate::{
 };
 
 /// A factory to create interpreters
-pub struct Factory<Q> {
+pub struct Factory<Q, P> {
     query_executor: Q,
+    physical_planner: P,
     catalog_manager: ManagerRef,
     table_engine: TableEngineRef,
     table_manipulator: TableManipulatorRef,
 }
 
-impl<Q: Executor + 'static> Factory<Q> {
+impl<Q: Executor + 'static, P: PhysicalPlanner> Factory<Q, P> {
     pub fn new(
         query_executor: Q,
+        physical_planner: P,
         catalog_manager: ManagerRef,
         table_engine: TableEngineRef,
         table_manipulator: TableManipulatorRef,
     ) -> Self {
         Self {
             query_executor,
+            physical_planner,
             catalog_manager,
             table_engine,
             table_manipulator,
@@ -57,9 +60,7 @@ impl<Q: Executor + 'static> Factory<Q> {
 
         let interpreter = match plan {
             Plan::Query(p) => {
-                // TODO: We should pass a builder to build physical planner.
-                let physical_planner = PhysicalPlannerImpl::new(Config::default());
-                SelectInterpreter::create(ctx, p, self.query_executor, physical_planner)
+                SelectInterpreter::create(ctx, p, self.query_executor, self.physical_planner)
             }
             Plan::Insert(p) => InsertInterpreter::create(ctx, p),
             Plan::Create(p) => {

@@ -1,11 +1,11 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use ceresdbproto::storage::{RouteRequest, RouteResponse};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 
 use crate::{error, metrics::GRPC_HANDLER_COUNTER_VEC, Context, Proxy};
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     pub async fn handle_route(&self, _ctx: Context, req: RouteRequest) -> RouteResponse {
         let routes = self.route(req).await;
 

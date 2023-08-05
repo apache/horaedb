@@ -8,7 +8,7 @@ use ceresdbproto::storage::{
 };
 use http::StatusCode;
 use log::debug;
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 
 use crate::{
     context::RequestContext,
@@ -20,7 +20,7 @@ use crate::{
 
 pub mod types;
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     pub async fn handle_opentsdb_put(
         &self,
         ctx: RequestContext,

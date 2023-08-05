@@ -20,7 +20,7 @@ use futures::stream::{self, BoxStream, FuturesUnordered, StreamExt};
 use generic_error::BoxError;
 use log::{error, info};
 use proxy::instance::InstanceRef;
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::EngineRuntimes, predicate::PredicateRef, remote::model::TableIdentifier,
@@ -91,13 +91,13 @@ impl<F: FnMut()> Drop for ExecutionGuard<F> {
 }
 
 #[derive(Clone)]
-pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {
-    pub instance: InstanceRef<Q>,
+pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static, P: PhysicalPlanner> {
+    pub instance: InstanceRef<Q, P>,
     pub runtimes: Arc<EngineRuntimes>,
     pub request_notifiers: Option<Arc<RequestNotifiers<StreamReadReqKey, Result<RecordBatch>>>>,
 }
 
-impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteEngineServiceImpl<Q, P> {
     async fn stream_read_internal(
         &self,
         request: Request<ReadRequest>,
@@ -403,7 +403,9 @@ struct HandlerContext {
 }
 
 #[async_trait]
-impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteEngineService
+    for RemoteEngineServiceImpl<Q, P>
+{
     type ReadStream = BoxStream<'static, std::result::Result<ReadResponse, Status>>;
 
     async fn read(

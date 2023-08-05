@@ -14,7 +14,10 @@ use common_types::{
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
-use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
+use query_engine::{
+    executor::{Executor as QueryExecutor, RecordBatchVec},
+    physical_planner::PhysicalPlanner,
+};
 use serde::{
     ser::{SerializeMap, SerializeSeq},
     Deserialize, Serialize,
@@ -28,7 +31,7 @@ use crate::{
     Context, Proxy,
 };
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     pub async fn handle_http_sql_query(
         &self,
         ctx: &RequestContext,
