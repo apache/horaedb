@@ -265,7 +265,7 @@ impl TableSource for TableProviderAdapter {
     /// Tests whether the table provider can make use of a filter expression
     /// to optimize data retrieval.
     fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {
-        Ok(TableProviderFilterPushDown::Exact)
+        Ok(TableProviderFilterPushDown::Inexact)
     }
 }
 
