@@ -275,6 +275,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v3
         with:
-          name: recovery-test-${{ github.head_ref }}.${{ github.sha }}
+          name: recovery-test-${{ github.sha }}
           path: |
             /tmp/ceresdb-stdout.log
