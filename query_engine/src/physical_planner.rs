@@ -15,7 +15,7 @@ use crate::{context::Context, error::*};
 #[async_trait]
 pub trait PhysicalPlanner: Clone + Send + Sync + 'static {
     /// Create a physical plan from a logical plan
-    async fn plan(&self, logical_plan: QueryPlan, ctx: &Context) -> Result<PhysicalPlanPtr>;
+    async fn plan(&self, ctx: &Context, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr>;
 }
 
 pub trait PhysicalPlan: std::fmt::Debug {

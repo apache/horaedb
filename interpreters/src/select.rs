@@ -67,7 +67,7 @@ impl<T: Executor, P: PhysicalPlanner> Interpreter for SelectInterpreter<T, P> {
         // Create physical plan.
         let physical_plan = self
             .physical_planner
-            .plan(self.plan, &query_ctx)
+            .plan(&query_ctx, self.plan)
             .await
             .context(ExecutePlan)
             .context(Select)?;

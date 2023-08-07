@@ -119,7 +119,7 @@ impl DatafusionPhysicalPlannerImpl {
 
 #[async_trait]
 impl PhysicalPlanner for DatafusionPhysicalPlannerImpl {
-    async fn plan(&self, logical_plan: QueryPlan, ctx: &Context) -> Result<PhysicalPlanPtr> {
+    async fn plan(&self, ctx: &Context, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr> {
         // Register catalogs to datafusion execution context.
         let catalogs = CatalogProviderAdapter::new_adapters(logical_plan.tables.clone());
         let df_ctx = self.build_df_session_ctx(&self.config, ctx);
