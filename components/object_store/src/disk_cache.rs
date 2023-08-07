@@ -42,8 +42,6 @@ use upstream::{
     ObjectStore, Result,
 };
 
-const MANIFEST_FILE: &str = "manifest.json";
-const CURRENT_VERSION: usize = 2;
 const FILE_SIZE_CACHE_CAP: usize = 1 << 18;
 const FILE_SIZE_CACHE_PARTITION_BITS: usize = 8;
 pub const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
@@ -133,6 +131,9 @@ struct Manifest {
 }
 
 impl Manifest {
+    const CURRENT_VERSION: usize = 2;
+    const FILE_NAME: &str = "manifest.json";
+
     #[inline]
     fn is_valid(&self, version: usize, page_size: usize) -> bool {
         self.page_size == page_size && self.version == version
@@ -455,7 +456,7 @@ impl DiskCacheStore {
         ensure!(page_num != 0, InvalidCapacity);
 
         let manifest = Self::create_manifest_if_not_exists(&cache_dir, page_size).await?;
-        if !manifest.is_valid(CURRENT_VERSION, page_size) {
+        if !manifest.is_valid(Manifest::CURRENT_VERSION, page_size) {
             Self::reset_cache(&cache_dir, page_size).await?;
         }
 
@@ -506,14 +507,14 @@ impl DiskCacheStore {
             .create(true)
             .read(true)
             .truncate(false)
-            .open(std::path::Path::new(cache_dir_path).join(MANIFEST_FILE))
+            .open(std::path::Path::new(cache_dir_path).join(Manifest::FILE_NAME))
             .await
             .context(Io {
-                file: MANIFEST_FILE,
+                file: Manifest::FILE_NAME,
             })?;
 
         let metadata = file.metadata().await.context(Io {
-            file: MANIFEST_FILE,
+            file: Manifest::FILE_NAME,
         })?;
 
         // Initialize the manifest if it doesn't exist.
@@ -521,12 +522,12 @@ impl DiskCacheStore {
             let manifest = Manifest {
                 page_size,
                 create_at: time_ext::current_as_rfc3339(),
-                version: CURRENT_VERSION,
+                version: Manifest::CURRENT_VERSION,
             };
 
             let buf = serde_json::to_vec_pretty(&manifest).context(SerializeManifest)?;
             file.write_all(&buf).await.context(Io {
-                file: MANIFEST_FILE,
+                file: Manifest::FILE_NAME,
             })?;
 
             return Ok(manifest);
@@ -534,7 +535,7 @@ impl DiskCacheStore {
 
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).await.context(Io {
-            file: MANIFEST_FILE,
+            file: Manifest::FILE_NAME,
         })?;
 
         // TODO: Maybe we should clear all the cache when the manifest is corrupted.
@@ -559,7 +560,7 @@ impl DiskCacheStore {
             file: format!("a file in the cache_dir:{cache_dir_path}"),
         })? {
             let file_name = entry.file_name().into_string().unwrap();
-            if file_name == MANIFEST_FILE {
+            if file_name == Manifest::FILE_NAME {
                 // Skip the manifest file.
                 continue;
             }
@@ -1021,7 +1022,7 @@ mod test {
                     .unwrap();
 
             assert_eq!(manifest.page_size, 8);
-            assert_eq!(manifest.version, 1);
+            assert_eq!(manifest.version, Manifest::CURRENT_VERSION);
             manifest.create_at
         };
 
@@ -1042,7 +1043,7 @@ mod test {
                     .unwrap();
             assert_eq!(manifest.create_at, first_create_time);
             assert_eq!(manifest.page_size, 8);
-            assert_eq!(manifest.version, 1);
+            assert_eq!(manifest.version, Manifest::CURRENT_VERSION);
         }
 
         // open again, but with different page_size
