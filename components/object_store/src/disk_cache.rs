@@ -45,7 +45,7 @@ use upstream::{
 const MANIFEST_FILE: &str = "manifest.json";
 const CURRENT_VERSION: usize = 2;
 const FILE_SIZE_CACHE_CAP: usize = 1 << 18;
-const FILE_SIZE_CACHE_PARTITION_BITS: usize = 1 << 8;
+const FILE_SIZE_CACHE_PARTITION_BITS: usize = 8;
 pub const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
 #[derive(Debug, Snafu)]
