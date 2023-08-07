@@ -60,9 +60,6 @@ fmt:
 check-cargo-toml:
 	cd $(DIR); cargo sort --workspace --check
 
-check-license:
-	cd $(DIR); sh scripts/check-license.sh
-
 udeps:
 	cd $(DIR); cargo udeps --all-targets --all-features --workspace
 

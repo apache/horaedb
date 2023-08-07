@@ -12,10 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ignore:
-  - "benchmarks"
-  - "integration_test"
-  - "meta_client"
-  - "remote_engine_client"
-  - "wal/src/message_queue_impl"
-  - "wal/src/table_kv_impl"
+headerPath = "Apache-2.0.txt"
+
+includes = [
+    "*.rs",
+    "*.toml",
+    "*.yml"
+]
+
+[properties]
+inceptionYear = 2023
+copyrightOwner = "The CeresDB Authors"
