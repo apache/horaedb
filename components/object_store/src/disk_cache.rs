@@ -154,29 +154,15 @@ impl PageFileEncoder {
     where
         W: AsyncWrite + std::marker::Unpin,
     {
-        let n = writer
-            .write(&self.payload[..])
+        writer
+            .write_all(&self.payload[..])
             .await
             .context(Io { file: name })?;
-        ensure!(
-            self.payload.len() == n,
-            PartialWrite {
-                expect: self.payload.len(),
-                written: n,
-            }
-        );
 
-        let n = writer
-            .write(&Self::MAGIC_FOOTER)
+        writer
+            .write_all(&Self::MAGIC_FOOTER)
             .await
             .context(Io { file: name })?;
-        ensure!(
-            Self::MAGIC_FOOTER.len() == n,
-            PartialWrite {
-                expect: Self::MAGIC_FOOTER.len(),
-                written: n,
-            }
-        );
 
         writer.flush().await.context(Io { file: name })?;
 
