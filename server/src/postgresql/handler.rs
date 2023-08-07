@@ -46,13 +46,9 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> SimpleQueryHandler
     where
         C: ClientInfo + Unpin + Send + Sync,
     {
-        let ctx = self.create_ctx().map_err(|e| {
-            PgWireError::UserError(Box::new(pgwire::error::ErrorInfo::new(
-                "ERROR".to_owned(),
-                "08000".to_owned(),
-                e.to_string(),
-            )))
-        })?;
+        let ctx = self
+            .create_ctx()
+            .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
 
         let req = Request {
             query: sql.to_string(),
@@ -63,11 +59,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> SimpleQueryHandler
             .await
             .map_err(|e| {
                 error!("PostgreSQL service Failed to handle sql, err: {}", e);
-                PgWireError::UserError(Box::new(pgwire::error::ErrorInfo::new(
-                    "ERROR".to_owned(),
-                    "08000".to_owned(),
-                    e.to_string(),
-                )))
+                PgWireError::ApiError(Box::new(e))
             })?;
 
         Ok(vec![into_pg_reponse(results)?])

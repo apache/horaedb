@@ -49,9 +49,3 @@ pub enum Error {
     #[snafu(display("Unexpected error, err:{}", source))]
     Unexpected { source: std::io::Error },
 }
-
-impl From<std::io::Error> for Error {
-    fn from(e: std::io::Error) -> Self {
-        Self::Unexpected { source: e }
-    }
-}
