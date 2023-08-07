@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Remote table engine implementation
 
@@ -21,13 +33,17 @@ use common_types::{record_batch::RecordBatch, schema::RecordSchema};
 pub use config::Config;
 use futures::{Stream, StreamExt};
 use generic_error::BoxError;
+use proxy::hotspot::{HotspotRecorder, Message};
 use router::RouterRef;
 use runtime::Runtime;
 use snafu::ResultExt;
 use table_engine::{
     remote::{
         self,
-        model::{GetTableInfoRequest, ReadRequest, TableInfo, WriteBatchResult, WriteRequest},
+        model::{
+            GetTableInfoRequest, ReadRequest, TableIdentifier, TableInfo, WriteBatchResult,
+            WriteRequest,
+        },
         RemoteEngine,
     },
     stream::{self, ErrWithSource, RecordBatchStream, SendableRecordBatchStream},
@@ -104,32 +120,85 @@ pub mod error {
     define_result!(Error);
 }
 
-pub struct RemoteEngineImpl(Client);
+pub struct RemoteEngineImpl {
+    client: Client,
+    hotspot_recorder: Arc<HotspotRecorder>,
+}
 
 impl RemoteEngineImpl {
-    pub fn new(config: Config, router: RouterRef, worker_runtime: Arc<Runtime>) -> Self {
+    pub fn new(
+        config: Config,
+        router: RouterRef,
+        worker_runtime: Arc<Runtime>,
+        hotspot_recorder: Arc<HotspotRecorder>,
+    ) -> Self {
         let client = Client::new(config, router, worker_runtime);
 
-        Self(client)
+        Self {
+            client,
+            hotspot_recorder,
+        }
+    }
+
+    fn format_hot_key(table: &TableIdentifier) -> String {
+        format!("{}/{}", table.schema, table.table)
+    }
+
+    async fn record_write(&self, request: &WriteRequest) {
+        let hot_key = Self::format_hot_key(&request.table);
+        let row_count = request.write_request.row_group.num_rows();
+        let field_count = row_count * request.write_request.row_group.schema().num_columns();
+        self.hotspot_recorder
+            .send_msg_or_log(
+                "inc_write_reqs",
+                Message::Write {
+                    key: hot_key,
+                    row_count,
+                    field_count,
+                },
+            )
+            .await;
     }
 }
 
 #[async_trait]
 impl RemoteEngine for RemoteEngineImpl {
     async fn read(&self, request: ReadRequest) -> remote::Result<SendableRecordBatchStream> {
-        let client_read_stream = self.0.read(request).await.box_err().context(remote::Read)?;
+        self.hotspot_recorder
+            .send_msg_or_log(
+                "inc_query_reqs",
+                Message::Query(Self::format_hot_key(&request.table)),
+            )
+            .await;
+
+        let client_read_stream = self
+            .client
+            .read(request)
+            .await
+            .box_err()
+            .context(remote::Read)?;
         Ok(Box::pin(RemoteReadRecordBatchStream(client_read_stream)))
     }
 
     async fn write(&self, request: WriteRequest) -> remote::Result<usize> {
-        self.0.write(request).await.box_err().context(remote::Write)
+        self.record_write(&request).await;
+
+        self.client
+            .write(request)
+            .await
+            .box_err()
+            .context(remote::Write)
     }
 
     async fn write_batch(
         &self,
         requests: Vec<WriteRequest>,
     ) -> remote::Result<Vec<WriteBatchResult>> {
-        self.0
+        for req in &requests {
+            self.record_write(req).await;
+        }
+
+        self.client
             .write_batch(requests)
             .await
             .box_err()
@@ -137,7 +206,7 @@ impl RemoteEngine for RemoteEngineImpl {
     }
 
     async fn get_table_info(&self, request: GetTableInfoRequest) -> remote::Result<TableInfo> {
-        self.0
+        self.client
             .get_table_info(request)
             .await
             .box_err()

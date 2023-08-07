@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! The proxy module provides features such as forwarding and authentication,
 //! adapts to different protocols.
@@ -104,7 +116,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         resp_compress_min_length: usize,
         auto_create_table: bool,
         schema_config_provider: SchemaConfigProviderRef,
-        hotspot_config: hotspot::Config,
+        hotspot_recorder: Arc<HotspotRecorder>,
         engine_runtimes: Arc<EngineRuntimes>,
         cluster_with_meta: bool,
     ) -> Self {
@@ -112,10 +124,6 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             forward_config,
             router.clone(),
             local_endpoint,
-        ));
-        let hotspot_recorder = Arc::new(HotspotRecorder::new(
-            hotspot_config,
-            engine_runtimes.default_runtime.clone(),
         ));
 
         Self {

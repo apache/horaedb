@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Server
 
@@ -14,6 +26,7 @@ use logger::RuntimeLevel;
 use macros::define_result;
 use partition_table_engine::PartitionTableEngine;
 use proxy::{
+    hotspot::HotspotRecorder,
     instance::{Instance, InstanceRef},
     limiter::Limiter,
     schema_config_provider::SchemaConfigProviderRef,
@@ -330,10 +343,15 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let config_content = self.config_content.expect("Missing config content");
 
+        let hotspot_recorder = Arc::new(HotspotRecorder::new(
+            self.server_config.hotspot,
+            engine_runtimes.default_runtime.clone(),
+        ));
         let remote_engine_ref = Arc::new(RemoteEngineImpl::new(
             self.remote_engine_client_config.clone(),
             router.clone(),
             engine_runtimes.io_runtime.clone(),
+            hotspot_recorder.clone(),
         ));
 
         let partition_table_engine = Arc::new(PartitionTableEngine::new(remote_engine_ref.clone()));
@@ -378,7 +396,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
             self.server_config.resp_compress_min_length.as_byte() as usize,
             self.server_config.auto_create_table,
             provider.clone(),
-            self.server_config.hotspot,
+            hotspot_recorder,
             engine_runtimes.clone(),
             self.cluster.is_some(),
         ));
