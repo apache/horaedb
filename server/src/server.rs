@@ -32,7 +32,7 @@ use proxy::{
     schema_config_provider::SchemaConfigProviderRef,
     Proxy,
 };
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use remote_engine_client::RemoteEngineImpl;
 use router::{endpoint::Endpoint, RouterRef};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -66,6 +66,9 @@ pub enum Error {
 
     #[snafu(display("Missing query executor.\nBacktrace:\n{}", backtrace))]
     MissingQueryExecutor { backtrace: Backtrace },
+
+    #[snafu(display("Missing physical planner.\nBacktrace:\n{}", backtrace))]
+    MissingPhysicalPlanner { backtrace: Backtrace },
 
     #[snafu(display("Missing table engine.\nBacktrace:\n{}", backtrace))]
     MissingTableEngine { backtrace: Backtrace },
@@ -114,16 +117,16 @@ define_result!(Error);
 
 // TODO(yingwen): Consider a config manager
 /// Server
-pub struct Server<Q: QueryExecutor + 'static> {
-    http_service: Service<Q>,
-    rpc_services: RpcServices<Q>,
-    mysql_service: mysql::MysqlService<Q>,
-    instance: InstanceRef<Q>,
+pub struct Server<Q: QueryExecutor + 'static, P: PhysicalPlanner> {
+    http_service: Service<Q, P>,
+    rpc_services: RpcServices<Q, P>,
+    mysql_service: mysql::MysqlService<Q, P>,
+    instance: InstanceRef<Q, P>,
     cluster: Option<ClusterRef>,
     local_tables_recoverer: Option<LocalTablesRecoverer>,
 }
 
-impl<Q: QueryExecutor + 'static> Server<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Server<Q, P> {
     pub async fn stop(mut self) {
         self.rpc_services.shutdown().await;
         self.http_service.stop();
@@ -191,7 +194,7 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
 }
 
 #[must_use]
-pub struct Builder<Q> {
+pub struct Builder<Q, P> {
     server_config: ServerConfig,
     remote_engine_client_config: remote_engine_client::config::Config,
     node_addr: String,
@@ -199,7 +202,11 @@ pub struct Builder<Q> {
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
     catalog_manager: Option<ManagerRef>,
+
+    // TODO: maybe place these two components in a `QueryEngine`.
     query_executor: Option<Q>,
+    physical_planner: Option<P>,
+
     table_engine: Option<TableEngineRef>,
     table_manipulator: Option<TableManipulatorRef>,
     function_registry: Option<FunctionRegistryRef>,
@@ -211,7 +218,7 @@ pub struct Builder<Q> {
     opened_wals: Option<OpenedWals>,
 }
 
-impl<Q: QueryExecutor + 'static> Builder<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
     pub fn new(config: ServerConfig) -> Self {
         Self {
             server_config: config,
@@ -222,6 +229,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             log_runtime: None,
             catalog_manager: None,
             query_executor: None,
+            physical_planner: None,
             table_engine: None,
             table_manipulator: None,
             function_registry: None,
@@ -261,6 +269,11 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
     pub fn query_executor(mut self, val: Q) -> Self {
         self.query_executor = Some(val);
+        self
+    }
+
+    pub fn physical_planner(mut self, val: P) -> Self {
+        self.physical_planner = Some(val);
         self
     }
 
@@ -313,10 +326,11 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
     }
 
     /// Build and run the server
-    pub fn build(self) -> Result<Server<Q>> {
+    pub fn build(self) -> Result<Server<Q, P>> {
         // Build instance
         let catalog_manager = self.catalog_manager.context(MissingCatalogManager)?;
         let query_executor = self.query_executor.context(MissingQueryExecutor)?;
+        let physical_planner = self.physical_planner.context(MissingPhysicalPlanner)?;
         let table_engine = self.table_engine.context(MissingTableEngine)?;
         let table_manipulator = self.table_manipulator.context(MissingTableManipulator)?;
         let function_registry = self.function_registry.context(MissingFunctionRegistry)?;
@@ -346,6 +360,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             let instance = Instance {
                 catalog_manager,
                 query_executor,
+                physical_planner,
                 table_engine,
                 partition_table_engine,
                 function_registry,

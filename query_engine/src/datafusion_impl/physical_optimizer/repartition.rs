@@ -23,7 +23,7 @@ use datafusion::{
 };
 use log::debug;
 
-use crate::physical_optimizer::{Adapter, OptimizeRuleRef};
+use crate::datafusion_impl::physical_optimizer::{Adapter, OptimizeRuleRef};
 
 pub struct RepartitionAdapter {
     original_rule: OptimizeRuleRef,

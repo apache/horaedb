@@ -39,7 +39,7 @@ use proxy::{
     schema_config_provider::{self},
     Proxy,
 };
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use runtime::{JoinHandle, Runtime};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
@@ -149,17 +149,17 @@ pub enum Error {
 define_result!(Error);
 
 /// Rpc services manages all grpc services of the server.
-pub struct RpcServices<Q: QueryExecutor + 'static> {
+pub struct RpcServices<Q: QueryExecutor + 'static, P: PhysicalPlanner> {
     serve_addr: SocketAddr,
-    rpc_server: StorageServiceServer<StorageServiceImpl<Q>>,
-    meta_rpc_server: Option<MetaEventServiceServer<MetaServiceImpl<Q>>>,
-    remote_engine_server: RemoteEngineServiceServer<RemoteEngineServiceImpl<Q>>,
+    rpc_server: StorageServiceServer<StorageServiceImpl<Q, P>>,
+    meta_rpc_server: Option<MetaEventServiceServer<MetaServiceImpl<Q, P>>>,
+    remote_engine_server: RemoteEngineServiceServer<RemoteEngineServiceImpl<Q, P>>,
     runtime: Arc<Runtime>,
     stop_tx: Option<Sender<()>>,
     join_handle: Option<JoinHandle<()>>,
 }
 
-impl<Q: QueryExecutor + 'static> RpcServices<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RpcServices<Q, P> {
     pub async fn start(&mut self) -> Result<()> {
         let rpc_server = self.rpc_server.clone();
         let meta_rpc_server = self.meta_rpc_server.clone();
@@ -204,18 +204,18 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
     }
 }
 
-pub struct Builder<Q> {
+pub struct Builder<Q, P> {
     endpoint: String,
     timeout: Option<Duration>,
     runtimes: Option<Arc<EngineRuntimes>>,
-    instance: Option<InstanceRef<Q>>,
+    instance: Option<InstanceRef<Q, P>>,
     cluster: Option<ClusterRef>,
     opened_wals: Option<OpenedWals>,
-    proxy: Option<Arc<Proxy<Q>>>,
+    proxy: Option<Arc<Proxy<Q, P>>>,
     request_notifiers: Option<Arc<RequestNotifiers<StreamReadReqKey, error::Result<RecordBatch>>>>,
 }
 
-impl<Q> Builder<Q> {
+impl<Q, P> Builder<Q, P> {
     pub fn new() -> Self {
         Self {
             endpoint: "0.0.0.0:8381".to_string(),
@@ -239,7 +239,7 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn instance(mut self, instance: InstanceRef<Q>) -> Self {
+    pub fn instance(mut self, instance: InstanceRef<Q, P>) -> Self {
         self.instance = Some(instance);
         self
     }
@@ -260,7 +260,7 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn proxy(mut self, proxy: Arc<Proxy<Q>>) -> Self {
+    pub fn proxy(mut self, proxy: Arc<Proxy<Q, P>>) -> Self {
         self.proxy = Some(proxy);
         self
     }
@@ -273,8 +273,8 @@ impl<Q> Builder<Q> {
     }
 }
 
-impl<Q: QueryExecutor + 'static> Builder<Q> {
-    pub fn build(self) -> Result<RpcServices<Q>> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
+    pub fn build(self) -> Result<RpcServices<Q, P>> {
         let runtimes = self.runtimes.context(MissingRuntimes)?;
         let instance = self.instance.context(MissingInstance)?;
         let opened_wals = self.opened_wals.context(MissingWals)?;

@@ -20,7 +20,7 @@ use datafusion::{
     physical_plan::{limit::GlobalLimitExec, ExecutionPlan},
 };
 
-use crate::physical_optimizer::{Adapter, OptimizeRuleRef};
+use crate::datafusion_impl::physical_optimizer::{Adapter, OptimizeRuleRef};
 
 pub struct CoalesceBatchesAdapter {
     original_rule: OptimizeRuleRef,

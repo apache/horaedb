@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use ceresdbproto::storage::RouteRequest;
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use router::endpoint::Endpoint;
 use serde::Serialize;
 
@@ -30,7 +30,7 @@ pub struct RouteItem {
     pub endpoint: Option<Endpoint>,
 }
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     pub async fn handle_http_route(
         &self,
         ctx: &RequestContext,

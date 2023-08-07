@@ -372,7 +372,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::logical_optimizer::type_conversion;
+    use crate::datafusion_impl::logical_optimizer::type_conversion;
 
     fn expr_test_schema() -> DFSchemaRef {
         Arc::new(

@@ -217,6 +217,9 @@ pub struct ContextProviderAdapter<'a, P> {
 
 impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     /// Create a adapter from meta provider
+    // TODO: `read_parallelism` here seems useless, `ContextProviderAdapter` is only
+    // used during creating `LogicalPlan`, and `read_parallelism` is used when
+    // creating `PhysicalPlan`.
     pub fn new(meta_provider: &'a P, read_parallelism: usize) -> Self {
         let default_catalog = meta_provider.default_catalog_name().to_string();
         let default_schema = meta_provider.default_schema_name().to_string();

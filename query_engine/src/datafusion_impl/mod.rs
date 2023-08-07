@@ -12,18 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Query context
-
-use std::{sync::Arc, time::Instant};
-
-use common_types::request_id::RequestId;
-
-pub type ContextRef = Arc<Context>;
-
-/// Query context
-pub struct Context {
-    pub request_id: RequestId,
-    pub deadline: Option<Instant>,
-    pub default_catalog: String,
-    pub default_schema: String,
-}
+pub mod logical_optimizer;
+pub mod physical_optimizer;
+pub mod physical_plan;
+pub mod physical_plan_extension;
+pub mod physical_planner;
+pub mod physical_planner_extension;

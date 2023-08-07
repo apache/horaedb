@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Physical execution plan
+//! Datafusion physical execution plan
 
 use std::{
     fmt::{Debug, Formatter},
@@ -21,7 +21,6 @@ use std::{
 
 use async_trait::async_trait;
 use datafusion::{
-    error::DataFusionError,
     execution::context::TaskContext,
     physical_plan::{
         coalesce_partitions::CoalescePartitionsExec, display::DisplayableExecutionPlan,
@@ -29,51 +28,31 @@ use datafusion::{
     },
     prelude::SessionContext,
 };
-use macros::define_result;
-use snafu::{Backtrace, ResultExt, Snafu};
+use generic_error::BoxError;
+use snafu::ResultExt;
 use table_engine::stream::{FromDfStream, SendableRecordBatchStream};
 
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display(
-        "DataFusion Failed to execute plan, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
-    ))]
-    DataFusionExec {
-        partition_count: usize,
-        source: DataFusionError,
-        backtrace: Backtrace,
-    },
+use crate::{error::*, physical_planner::PhysicalPlan};
 
-    #[snafu(display("Failed to convert datafusion stream, err:{}", source))]
-    ConvertStream { source: table_engine::stream::Error },
-}
-
-define_result!(Error);
-
-pub trait PhysicalPlan: std::fmt::Debug {
-    /// execute this plan and returns the result
-    fn execute(&self) -> Result<SendableRecordBatchStream>;
-
-    /// Convert internal metrics to string.
-    fn metrics_to_string(&self) -> String;
-}
-
-pub type PhysicalPlanPtr = Box<dyn PhysicalPlan + Send + Sync>;
-
-pub struct DataFusionPhysicalPlan {
+/// Datafusion physical plan adapter
+///
+/// Because we need to
+pub struct DataFusionPhysicalPlanImpl {
     ctx: SessionContext,
     plan: Arc<dyn ExecutionPlan>,
 }
 
-impl DataFusionPhysicalPlan {
+impl DataFusionPhysicalPlanImpl {
     pub fn with_plan(ctx: SessionContext, plan: Arc<dyn ExecutionPlan>) -> Self {
         Self { ctx, plan }
     }
+
+    pub fn as_df_physical_plan(&self) -> Arc<dyn ExecutionPlan> {
+        self.plan.clone()
+    }
 }
 
-impl Debug for DataFusionPhysicalPlan {
+impl Debug for DataFusionPhysicalPlanImpl {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DataFusionPhysicalPlan")
             .field("plan", &self.plan)
@@ -82,31 +61,37 @@ impl Debug for DataFusionPhysicalPlan {
 }
 
 #[async_trait]
-impl PhysicalPlan for DataFusionPhysicalPlan {
+impl PhysicalPlan for DataFusionPhysicalPlanImpl {
     fn execute(&self) -> Result<SendableRecordBatchStream> {
         let task_context = Arc::new(TaskContext::from(&self.ctx));
         let partition_count = self.plan.output_partitioning().partition_count();
         let df_stream = if partition_count <= 1 {
             self.plan
                 .execute(0, task_context)
-                .context(DataFusionExec { partition_count })?
+                .box_err()
+                .context(PhysicalPlanWithCause {
+                    msg: Some(format!("partition_count:{partition_count}")),
+                })?
         } else {
             // merge into a single partition
             let plan = CoalescePartitionsExec::new(self.plan.clone());
             // MergeExec must produce a single partition
             assert_eq!(1, plan.output_partitioning().partition_count());
             plan.execute(0, task_context)
-                .context(DataFusionExec { partition_count })?
+                .box_err()
+                .context(PhysicalPlanWithCause {
+                    msg: Some(format!("partition_count:{partition_count}")),
+                })?
         };
 
-        let stream = FromDfStream::new(df_stream).context(ConvertStream)?;
+        let stream = FromDfStream::new(df_stream)
+            .box_err()
+            .context(PhysicalPlanWithCause { msg: None })?;
 
         Ok(Box::pin(stream))
     }
 
     fn metrics_to_string(&self) -> String {
-        // TODO: set to verbose mode for more details now, maybe we can add a flag to
-        // control it.
         DisplayableExecutionPlan::with_metrics(&*self.plan)
             .indent(true)
             .to_string()

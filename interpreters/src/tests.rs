@@ -22,7 +22,10 @@ use catalog::{
 };
 use catalog_impls::table_based::TableBasedManager;
 use common_types::request_id::RequestId;
-use query_engine::{executor::ExecutorImpl, Config as QueryConfig};
+use query_engine::{
+    datafusion_impl::physical_planner::DatafusionPhysicalPlannerImpl, executor::ExecutorImpl,
+    Config as QueryConfig,
+};
 use query_frontend::{
     parser::Parser, plan::Plan, planner::Planner, provider::MetaProvider, tests::MockMetaProvider,
 };
@@ -72,9 +75,10 @@ impl<M> Env<M>
 where
     M: MetaProvider,
 {
-    async fn build_factory(&self) -> Factory<ExecutorImpl> {
+    async fn build_factory(&self) -> Factory<ExecutorImpl, DatafusionPhysicalPlannerImpl> {
         Factory::new(
-            ExecutorImpl::new(query_engine::Config::default()),
+            ExecutorImpl,
+            DatafusionPhysicalPlannerImpl::new(query_engine::Config::default()),
             self.catalog_manager.clone(),
             self.engine(),
             self.table_manipulator.clone(),
@@ -225,7 +229,8 @@ where
         let table_operator = TableOperator::new(catalog_manager.clone());
         let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
         let insert_factory = Factory::new(
-            ExecutorImpl::new(QueryConfig::default()),
+            ExecutorImpl,
+            DatafusionPhysicalPlannerImpl::new(QueryConfig::default()),
             catalog_manager.clone(),
             self.engine(),
             table_manipulator.clone(),
@@ -244,7 +249,8 @@ where
         let select_sql =
             "SELECT key1, key2, field1, field2, field3, field4, field5 from test_missing_columns_table";
         let select_factory = Factory::new(
-            ExecutorImpl::new(QueryConfig::default()),
+            ExecutorImpl,
+            DatafusionPhysicalPlannerImpl::new(QueryConfig::default()),
             catalog_manager,
             self.engine(),
             table_manipulator,

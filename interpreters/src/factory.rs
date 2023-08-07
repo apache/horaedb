@@ -15,7 +15,7 @@
 //! Interpreter factory
 
 use catalog::manager::ManagerRef;
-use query_engine::executor::Executor;
+use query_engine::{executor::Executor, physical_planner::PhysicalPlanner};
 use query_frontend::plan::Plan;
 use table_engine::engine::TableEngineRef;
 
@@ -35,22 +35,25 @@ use crate::{
 };
 
 /// A factory to create interpreters
-pub struct Factory<Q> {
+pub struct Factory<Q, P> {
     query_executor: Q,
+    physical_planner: P,
     catalog_manager: ManagerRef,
     table_engine: TableEngineRef,
     table_manipulator: TableManipulatorRef,
 }
 
-impl<Q: Executor + 'static> Factory<Q> {
+impl<Q: Executor + 'static, P: PhysicalPlanner> Factory<Q, P> {
     pub fn new(
         query_executor: Q,
+        physical_planner: P,
         catalog_manager: ManagerRef,
         table_engine: TableEngineRef,
         table_manipulator: TableManipulatorRef,
     ) -> Self {
         Self {
             query_executor,
+            physical_planner,
             catalog_manager,
             table_engine,
             table_manipulator,
@@ -65,7 +68,9 @@ impl<Q: Executor + 'static> Factory<Q> {
         validator.validate(&plan)?;
 
         let interpreter = match plan {
-            Plan::Query(p) => SelectInterpreter::create(ctx, p, self.query_executor),
+            Plan::Query(p) => {
+                SelectInterpreter::create(ctx, p, self.query_executor, self.physical_planner)
+            }
             Plan::Insert(p) => InsertInterpreter::create(ctx, p),
             Plan::Create(p) => {
                 CreateInterpreter::create(ctx, p, self.table_engine, self.table_manipulator)
