@@ -54,7 +54,7 @@ use tokio::sync::{
 };
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
-use super::encoding::decode_sst_meta_data;
+
 use crate::{
     prefetchable_stream::{NoopPrefetcher, PrefetchableStream},
     sst::{
@@ -64,7 +64,7 @@ use crate::{
             SstMetaData,
         },
         parquet::{
-            encoding::{self, ParquetDecoder, META_KEY},
+            encoding::ParquetDecoder,
             meta_data::{ParquetFilter, ParquetMetaDataRef},
             row_group_pruner::RowGroupPruner,
         },
@@ -353,15 +353,10 @@ impl<'a> Reader<'a> {
     }
 
     async fn load_file_size(&self) -> Result<usize> {
-        let meta_path = Path::from(self.path.to_string());
         let file_size = match self.file_size_hint {
             Some(v) => v,
             None => {
-                let object_meta = self
-                    .store
-                    .head(&meta_path)
-                    .await
-                    .context(ObjectStoreError)?;
+                let object_meta = self.store.head(self.path).await.context(ObjectStoreError)?;
                 object_meta.size
             }
         };
@@ -379,55 +374,11 @@ impl<'a> Reader<'a> {
                 .with_context(|| FetchAndDecodeSstMeta {
                     file_path: self.path.to_string(),
                 })?;
-        // parquet_meta_data.file_metadata().key_value_metadata()); TODO: Support page index until https://github.com/CeresDB/ceresdb/issues/1040 is fixed.
 
-        let file_meta_data = parquet_meta_data.file_metadata();
-        // let kv_metas = file_meta_data
-        //     .key_value_metadata()
-        //     .context(KvMetaDataNotFound)?;
-        let kv_metas = file_meta_data.key_value_metadata().unwrap();
+        // TODO: Support page index until https://github.com/CeresDB/ceresdb/issues/1040 is fixed.
 
-        // ensure!(!kv_metas.is_empty(), KvMetaDataNotFound);
-        let mut meta_path = None;
-        for kv_meta in kv_metas {
-            // Remove our extended custom meta data from the parquet metadata for small
-            // memory consumption in the cache.
-            if kv_meta.key == encoding::META_PATH_KEY {
-                meta_path = Some(Path::from(kv_meta.value.clone().unwrap()));
-            }
-        }
-        let decode_metadata = match meta_path {
-            Some(meta_path) => {
-                let meta_size = self
-                    .store
-                    .head(&meta_path)
-                    .await
-                    .context(ObjectStoreError)?
-                    .size;
-                let meta_chunk_reader_adapter = ChunkReaderAdapter::new(&meta_path, self.store);
-                let metadata = meta_chunk_reader_adapter
-                    .get_bytes(0..meta_size)
-                    .await
-                    .unwrap();
-                let tmpstr = std::str::from_utf8(metadata.as_ref()).unwrap();
-                let kv = parquet::file::metadata::KeyValue::new(
-                    META_KEY.to_string(),
-                    String::from(tmpstr),
-                );
-                Some(decode_sst_meta_data(&kv).unwrap())
-            }
-            None => None,
-        };
-        // TODO: What is file_size hint
-        // let meta_size = match self.file_size_hint {
-        //     Some(v) => v,
-        //     None => {
-        //         let object_meta =
-        // self.store.head(&meta_path).await.context(ObjectStoreError)?;
-        //         object_meta.size
-        //     }
-        // };
-        MetaData::try_new(&parquet_meta_data, ignore_sst_filter, decode_metadata)
+        MetaData::try_new(&parquet_meta_data, ignore_sst_filter, self.store.clone())
+            .await
             .box_err()
             .context(DecodeSstMeta)
     }

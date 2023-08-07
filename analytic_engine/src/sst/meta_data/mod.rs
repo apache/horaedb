@@ -64,6 +64,12 @@ pub enum Error {
 
     #[snafu(display("Failed to convert parquet meta data, err:{}", source))]
     ConvertParquetMetaData { source: parquet::meta_data::Error },
+
+    #[snafu(display("Meet a object store error, err:{source}\nBacktrace:\n{backtrace}"))]
+    ObjectStoreError {
+        source: object_store::ObjectStoreError,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);

@@ -18,12 +18,21 @@ use std::{
 };
 
 use lru::LruCache;
-use parquet::file::metadata::FileMetaData;
-use snafu::{ensure, OptionExt};
+use object_store::{ObjectStoreRef, Path};
+use parquet::{file::metadata::FileMetaData, format::KeyValue};
+use parquet_ext::meta_data::ChunkReader;
+use snafu::{ensure, OptionExt, ResultExt};
 
-use crate::sst::{
-    meta_data::{KvMetaDataNotFound, ParquetMetaDataRef, Result},
-    parquet::encoding,
+use crate::{
+    sst::{
+        meta_data::{
+            DecodeCustomMetaData, KvMetaDataNotFound, ObjectStoreError, ParquetMetaDataRef, Result,
+        },
+        parquet::{
+            async_reader::ChunkReaderAdapter,
+            encoding::{self, decode_sst_meta_data, META_KEY},
+        },
+    },
 };
 
 pub type MetaCacheRef = Arc<MetaCache>;
@@ -45,10 +54,10 @@ impl MetaData {
     /// contains no extended custom information.
     // TODO: remove it and use the suggested api.
     #[allow(deprecated)]
-    pub fn try_new(
+    pub async fn try_new(
         parquet_meta_data: &parquet_ext::ParquetMetaData,
-        _ignore_sst_filter: bool,
-        custom_metadata: Option<crate::sst::parquet::meta_data::ParquetMetaData>,
+        ignore_sst_filter: bool,
+        meta_store: ObjectStoreRef,
     ) -> Result<Self> {
         let file_meta_data = parquet_meta_data.file_metadata();
         let kv_metas = file_meta_data
@@ -56,28 +65,61 @@ impl MetaData {
             .context(KvMetaDataNotFound)?;
 
         ensure!(!kv_metas.is_empty(), KvMetaDataNotFound);
-        let mut other_kv_metas = Vec::with_capacity(kv_metas.len() - 1);
+
+        let mut meta_path = None;
+
+        let mut other_kv_metas: Vec<KeyValue> = Vec::with_capacity(kv_metas.len() - 1);
+        let mut custom_kv_meta = None;
         for kv_meta in kv_metas {
             // Remove our extended custom meta data from the parquet metadata for small
             // memory consumption in the cache.
             if kv_meta.key == encoding::META_KEY {
-                continue;
+                custom_kv_meta = Some(kv_meta);
+            } else if kv_meta.key == encoding::META_PATH_KEY {
+                meta_path = Some(Path::from(kv_meta.value.clone().unwrap()));
             } else {
                 other_kv_metas.push(kv_meta.clone());
             }
         }
-        // TODO 这里需要从我们新存的文件中获取metadata
-        // let custom = {
-        //     let custom_kv_meta = custom_kv_meta.context(KvMetaDataNotFound)?;
-        //     let mut sst_meta =
-        //         encoding::decode_sst_meta_data(custom_kv_meta).
-        // context(DecodeCustomMetaData)?;     if ignore_sst_filter {
-        //         sst_meta.parquet_filter = None;
-        //     }
 
-        //     Arc::new(sst_meta)
-        // };
-        let custom = Arc::new(custom_metadata.unwrap());
+        // Must ensure custom medata only store in one place
+        ensure!(
+            custom_kv_meta.is_none() || meta_path.is_none(),
+            KvMetaDataNotFound
+        );
+        let custom = if custom_kv_meta.is_some() {
+            let custom_kv_meta = custom_kv_meta.context(KvMetaDataNotFound)?;
+            let mut sst_meta =
+                encoding::decode_sst_meta_data(custom_kv_meta).context(DecodeCustomMetaData)?;
+            if ignore_sst_filter {
+                sst_meta.parquet_filter = None;
+            }
+            Arc::new(sst_meta)
+        } else {
+            let decode_custom_metadata = match meta_path {
+                Some(meta_path) => {
+                    let meta_size = meta_store
+                        .head(&meta_path)
+                        .await
+                        .context(ObjectStoreError)?
+                        .size;
+                    let meta_chunk_reader_adapter =
+                        ChunkReaderAdapter::new(&meta_path, &meta_store);
+                    let metadata = meta_chunk_reader_adapter
+                        .get_bytes(0..meta_size)
+                        .await
+                        .unwrap();
+                    let tmpstr = std::str::from_utf8(metadata.as_ref()).unwrap();
+                    let kv = parquet::file::metadata::KeyValue::new(
+                        META_KEY.to_string(),
+                        String::from(tmpstr),
+                    );
+                    Some(decode_sst_meta_data(&kv).unwrap())
+                }
+                None => None,
+            };
+            Arc::new(decode_custom_metadata.unwrap())
+        };
 
         // let's build a new parquet metadata without the extended key value
         // metadata.
@@ -156,6 +198,7 @@ mod tests {
         schema::Builder as CustomSchemaBuilder,
         time::{TimeRange, Timestamp},
     };
+    use object_store::LocalFileSystem;
     use parquet::{arrow::ArrowWriter, file::footer};
     use parquet_ext::ParquetMetaData;
 
@@ -246,8 +289,8 @@ mod tests {
         writer.close().unwrap();
     }
 
-    #[test]
-    fn test_arrow_meta_data() {
+    #[tokio::test]
+    async fn test_arrow_meta_data() {
         let temp_dir = tempfile::tempdir().unwrap();
         let parquet_file_path = temp_dir.path().join("test_arrow_meta_data.par");
         let schema = {
@@ -286,7 +329,12 @@ mod tests {
         let parquet_file = File::open(parquet_file_path.as_path()).unwrap();
         let parquet_meta_data = footer::parse_metadata(&parquet_file).unwrap();
 
-        let meta_data = MetaData::try_new(&parquet_meta_data, false, None).unwrap();
+        let store =
+            Arc::new(LocalFileSystem::new_with_prefix(parquet_file_path.as_path()).unwrap());
+
+        let meta_data = MetaData::try_new(&parquet_meta_data, false, store)
+            .await
+            .unwrap();
 
         assert_eq!(**meta_data.custom(), custom_meta_data);
         check_parquet_meta_data(&parquet_meta_data, meta_data.parquet());

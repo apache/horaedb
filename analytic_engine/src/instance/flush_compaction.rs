@@ -647,7 +647,7 @@ impl FlushTask {
 
         let record_batch_stream: RecordBatchStream =
             Box::new(stream::iter(iter).map_err(|e| Box::new(e) as _));
-        // 写入parquet
+
         let sst_info = writer
             .write(request_id, &sst_meta, record_batch_stream)
             .await
