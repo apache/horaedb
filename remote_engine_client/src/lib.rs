@@ -33,17 +33,13 @@ use common_types::{record_batch::RecordBatch, schema::RecordSchema};
 pub use config::Config;
 use futures::{Stream, StreamExt};
 use generic_error::BoxError;
-use proxy::hotspot::{HotspotRecorder, Message};
 use router::RouterRef;
 use runtime::Runtime;
 use snafu::ResultExt;
 use table_engine::{
     remote::{
         self,
-        model::{
-            GetTableInfoRequest, ReadRequest, TableIdentifier, TableInfo, WriteBatchResult,
-            WriteRequest,
-        },
+        model::{GetTableInfoRequest, ReadRequest, TableInfo, WriteBatchResult, WriteRequest},
         RemoteEngine,
     },
     stream::{self, ErrWithSource, RecordBatchStream, SendableRecordBatchStream},
@@ -122,55 +118,19 @@ pub mod error {
 
 pub struct RemoteEngineImpl {
     client: Client,
-    hotspot_recorder: Arc<HotspotRecorder>,
 }
 
 impl RemoteEngineImpl {
-    pub fn new(
-        config: Config,
-        router: RouterRef,
-        worker_runtime: Arc<Runtime>,
-        hotspot_recorder: Arc<HotspotRecorder>,
-    ) -> Self {
+    pub fn new(config: Config, router: RouterRef, worker_runtime: Arc<Runtime>) -> Self {
         let client = Client::new(config, router, worker_runtime);
 
-        Self {
-            client,
-            hotspot_recorder,
-        }
-    }
-
-    fn format_hot_key(table: &TableIdentifier) -> String {
-        format!("{}/{}", table.schema, table.table)
-    }
-
-    async fn record_write(&self, request: &WriteRequest) {
-        let hot_key = Self::format_hot_key(&request.table);
-        let row_count = request.write_request.row_group.num_rows();
-        let field_count = row_count * request.write_request.row_group.schema().num_columns();
-        self.hotspot_recorder
-            .send_msg_or_log(
-                "inc_write_reqs",
-                Message::Write {
-                    key: hot_key,
-                    row_count,
-                    field_count,
-                },
-            )
-            .await;
+        Self { client }
     }
 }
 
 #[async_trait]
 impl RemoteEngine for RemoteEngineImpl {
     async fn read(&self, request: ReadRequest) -> remote::Result<SendableRecordBatchStream> {
-        self.hotspot_recorder
-            .send_msg_or_log(
-                "inc_query_reqs",
-                Message::Query(Self::format_hot_key(&request.table)),
-            )
-            .await;
-
         let client_read_stream = self
             .client
             .read(request)
@@ -181,8 +141,6 @@ impl RemoteEngine for RemoteEngineImpl {
     }
 
     async fn write(&self, request: WriteRequest) -> remote::Result<usize> {
-        self.record_write(&request).await;
-
         self.client
             .write(request)
             .await
@@ -194,10 +152,6 @@ impl RemoteEngine for RemoteEngineImpl {
         &self,
         requests: Vec<WriteRequest>,
     ) -> remote::Result<Vec<WriteBatchResult>> {
-        for req in &requests {
-            self.record_write(req).await;
-        }
-
         self.client
             .write_batch(requests)
             .await

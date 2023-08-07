@@ -31,7 +31,10 @@ use common_types::record_batch::RecordBatch;
 use futures::stream::{self, BoxStream, FuturesUnordered, StreamExt};
 use generic_error::BoxError;
 use log::{error, info};
-use proxy::instance::InstanceRef;
+use proxy::{
+    hotspot::{HotspotRecorder, Message},
+    instance::InstanceRef,
+};
 use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
@@ -107,6 +110,7 @@ pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static, P: PhysicalPlanne
     pub instance: InstanceRef<Q, P>,
     pub runtimes: Arc<EngineRuntimes>,
     pub request_notifiers: Option<Arc<RequestNotifiers<StreamReadReqKey, Result<RecordBatch>>>>,
+    pub hotspot_recorder: Arc<HotspotRecorder>,
 }
 
 impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteEngineServiceImpl<Q, P> {
@@ -177,7 +181,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteEngineServiceImpl<Q, 
         })?;
 
         let request_key = StreamReadReqKey::new(
-            table.table,
+            table.table.clone(),
             read_request.predicate.clone(),
             read_request.projected_schema.projection(),
         );
@@ -196,6 +200,9 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteEngineServiceImpl<Q, 
                 REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
                     .stream_read
                     .observe(instant.saturating_elapsed().as_secs_f64());
+
+                record_read(&ctx.hotspot_recorder, &table).await;
+
                 return Ok(ReceiverStream::new(rx));
             }
         };
@@ -404,6 +411,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteEngineServiceImpl<Q, 
     fn handler_ctx(&self) -> HandlerContext {
         HandlerContext {
             catalog_manager: self.instance.catalog_manager.clone(),
+            hotspot_recorder: self.hotspot_recorder.clone(),
         }
     }
 }
@@ -412,6 +420,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteEngineServiceImpl<Q, 
 #[derive(Clone)]
 struct HandlerContext {
     catalog_manager: ManagerRef,
+    hotspot_recorder: Arc<HotspotRecorder>,
 }
 
 #[async_trait]
@@ -515,6 +524,12 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteEngineService
     }
 }
 
+async fn record_read(hotspot_recorder: &Arc<HotspotRecorder>, table: &TableIdentifier) {
+    hotspot_recorder
+        .send_msg_or_log("inc_query_reqs", Message::Query(format_hot_key(table)))
+        .await
+}
+
 async fn handle_stream_read(
     ctx: HandlerContext,
     request: ReadRequest,
@@ -526,6 +541,8 @@ async fn handle_stream_read(
         code: StatusCode::BadRequest,
         msg: "fail to convert read request",
     })?;
+
+    record_read(&ctx.hotspot_recorder, &table_ident).await;
 
     let request_id = read_request.request_id;
     info!(
@@ -564,12 +581,37 @@ async fn handle_stream_read(
     }
 }
 
+fn format_hot_key(table: &TableIdentifier) -> String {
+    format!("{}/{}", table.schema, table.table)
+}
+
+async fn record_write(
+    hotspot_recorder: &Arc<HotspotRecorder>,
+    request: &table_engine::remote::model::WriteRequest,
+) {
+    let hot_key = format_hot_key(&request.table);
+    let row_count = request.write_request.row_group.num_rows();
+    let field_count = row_count * request.write_request.row_group.schema().num_columns();
+    hotspot_recorder
+        .send_msg_or_log(
+            "inc_write_reqs",
+            Message::Write {
+                key: hot_key,
+                row_count,
+                field_count,
+            },
+        )
+        .await;
+}
+
 async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<WriteResponse> {
     let write_request: table_engine::remote::model::WriteRequest =
         request.try_into().box_err().context(ErrWithCause {
             code: StatusCode::BadRequest,
             msg: "fail to convert write request",
         })?;
+
+    record_write(&ctx.hotspot_recorder, &write_request).await;
 
     let num_rows = write_request.write_request.row_group.num_rows();
     let table = find_table_by_identifier(&ctx, &write_request.table)?;

@@ -33,7 +33,6 @@ futures = { workspace = true }
 generic_error = { workspace = true }
 log = { workspace = true }
 macros = { workspace = true }
-proxy = { workspace = true }
 router = { workspace = true }
 runtime = { workspace = true }
 serde = { workspace = true }

@@ -351,7 +351,6 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
             self.remote_engine_client_config.clone(),
             router.clone(),
             engine_runtimes.io_runtime.clone(),
-            hotspot_recorder.clone(),
         ));
 
         let partition_table_engine = Arc::new(PartitionTableEngine::new(remote_engine_ref.clone()));
@@ -396,7 +395,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
             self.server_config.resp_compress_min_length.as_byte() as usize,
             self.server_config.auto_create_table,
             provider.clone(),
-            hotspot_recorder,
+            hotspot_recorder.clone(),
             engine_runtimes.clone(),
             self.cluster.is_some(),
         ));
@@ -433,6 +432,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
             .opened_wals(opened_wals)
             .timeout(self.server_config.timeout.map(|v| v.0))
             .proxy(proxy)
+            .hotspot_recorder(hotspot_recorder)
             .request_notifiers(self.server_config.enable_query_dedup)
             .build()
             .context(BuildGrpcService)?;
