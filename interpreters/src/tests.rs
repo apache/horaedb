@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use std::sync::Arc;
 
@@ -10,7 +22,10 @@ use catalog::{
 };
 use catalog_impls::table_based::TableBasedManager;
 use common_types::request_id::RequestId;
-use query_engine::{executor::ExecutorImpl, Config as QueryConfig};
+use query_engine::{
+    datafusion_impl::physical_planner::DatafusionPhysicalPlannerImpl, executor::ExecutorImpl,
+    Config as QueryConfig,
+};
 use query_frontend::{
     parser::Parser, plan::Plan, planner::Planner, provider::MetaProvider, tests::MockMetaProvider,
 };
@@ -60,9 +75,10 @@ impl<M> Env<M>
 where
     M: MetaProvider,
 {
-    async fn build_factory(&self) -> Factory<ExecutorImpl> {
+    async fn build_factory(&self) -> Factory<ExecutorImpl, DatafusionPhysicalPlannerImpl> {
         Factory::new(
-            ExecutorImpl::new(query_engine::Config::default()),
+            ExecutorImpl,
+            DatafusionPhysicalPlannerImpl::new(query_engine::Config::default()),
             self.catalog_manager.clone(),
             self.engine(),
             self.table_manipulator.clone(),
@@ -213,7 +229,8 @@ where
         let table_operator = TableOperator::new(catalog_manager.clone());
         let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
         let insert_factory = Factory::new(
-            ExecutorImpl::new(QueryConfig::default()),
+            ExecutorImpl,
+            DatafusionPhysicalPlannerImpl::new(QueryConfig::default()),
             catalog_manager.clone(),
             self.engine(),
             table_manipulator.clone(),
@@ -232,7 +249,8 @@ where
         let select_sql =
             "SELECT key1, key2, field1, field2, field3, field4, field5 from test_missing_columns_table";
         let select_factory = Factory::new(
-            ExecutorImpl::new(QueryConfig::default()),
+            ExecutorImpl,
+            DatafusionPhysicalPlannerImpl::new(QueryConfig::default()),
             catalog_manager,
             self.engine(),
             table_manipulator,

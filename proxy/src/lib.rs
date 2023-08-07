@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! The proxy module provides features such as forwarding and authentication,
 //! adapts to different protocols.
@@ -57,7 +69,7 @@ use interpreters::{
     interpreter::{InterpreterPtr, Output},
 };
 use log::{error, info};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use query_frontend::plan::Plan;
 use router::{endpoint::Endpoint, Router};
 use runtime::Runtime;
@@ -82,10 +94,10 @@ use crate::{
 // Because the clock may have errors, choose 1 hour as the error buffer
 const QUERY_EXPIRED_BUFFER: Duration = Duration::from_secs(60 * 60);
 
-pub struct Proxy<Q> {
+pub struct Proxy<Q, P> {
     router: Arc<dyn Router + Send + Sync>,
     forwarder: ForwarderRef,
-    instance: InstanceRef<Q>,
+    instance: InstanceRef<Q, P>,
     resp_compress_min_length: usize,
     auto_create_table: bool,
     schema_config_provider: SchemaConfigProviderRef,
@@ -94,17 +106,17 @@ pub struct Proxy<Q> {
     cluster_with_meta: bool,
 }
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         router: Arc<dyn Router + Send + Sync>,
-        instance: InstanceRef<Q>,
+        instance: InstanceRef<Q, P>,
         forward_config: forward::Config,
         local_endpoint: Endpoint,
         resp_compress_min_length: usize,
         auto_create_table: bool,
         schema_config_provider: SchemaConfigProviderRef,
-        hotspot_config: hotspot::Config,
+        hotspot_recorder: Arc<HotspotRecorder>,
         engine_runtimes: Arc<EngineRuntimes>,
         cluster_with_meta: bool,
     ) -> Self {
@@ -112,10 +124,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             forward_config,
             router.clone(),
             local_endpoint,
-        ));
-        let hotspot_recorder = Arc::new(HotspotRecorder::new(
-            hotspot_config,
-            engine_runtimes.default_runtime.clone(),
         ));
 
         Self {
@@ -131,7 +139,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         }
     }
 
-    pub fn instance(&self) -> InstanceRef<Q> {
+    pub fn instance(&self) -> InstanceRef<Q, P> {
         self.instance.clone()
     }
 
@@ -506,6 +514,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .build();
         let interpreter_factory = Factory::new(
             self.instance.query_executor.clone(),
+            self.instance.physical_planner.clone(),
             self.instance.catalog_manager.clone(),
             self.instance.table_engine.clone(),
             self.instance.table_manipulator.clone(),

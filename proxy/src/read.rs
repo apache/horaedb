@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Contains common methods used by the read process.
 
@@ -13,7 +25,7 @@ use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{error, info, warn};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use query_frontend::{
     frontend,
     frontend::{Context as SqlContext, Frontend},
@@ -35,7 +47,7 @@ pub enum SqlResponse {
     Local(Output),
 }
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     pub(crate) async fn handle_sql(
         &self,
         ctx: Context,
@@ -68,7 +80,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
-        info!("Handle sql query, request_id:{request_id}, schema:{schema}, sql:{sql}");
+        info!("Handle sql query, request_id:{request_id}, deadline:{deadline:?}, schema:{schema}, sql:{sql}");
 
         let instance = &self.instance;
         // TODO(yingwen): Privilege check, cannot access data of other tenant

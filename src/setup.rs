@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Setup server
 
@@ -23,7 +35,11 @@ use proxy::{
         cluster_based::ClusterBasedProvider, config_based::ConfigBasedProvider,
     },
 };
-use query_engine::executor::{Executor, ExecutorImpl};
+use query_engine::{
+    datafusion_impl::physical_planner::DatafusionPhysicalPlannerImpl,
+    executor::{Executor, ExecutorImpl},
+    physical_planner::PhysicalPlanner,
+};
 use router::{rule_based::ClusterView, ClusterBasedRouter, RuleBasedRouter};
 use server::{
     config::{StaticRouteConfig, StaticTopologyConfig},
@@ -114,7 +130,8 @@ async fn run_server_with_runtimes<T>(
     let function_registry = Arc::new(function_registry);
 
     // Create query executor
-    let query_executor = ExecutorImpl::new(config.query_engine.clone());
+    let query_executor = ExecutorImpl;
+    let physical_planner = DatafusionPhysicalPlannerImpl::new(config.query_engine.clone());
 
     // Config limiter
     let limiter = Limiter::new(config.limiter.clone());
@@ -126,6 +143,7 @@ async fn run_server_with_runtimes<T>(
         .engine_runtimes(engine_runtimes.clone())
         .log_runtime(log_runtime.clone())
         .query_executor(query_executor)
+        .physical_planner(physical_planner)
         .function_registry(function_registry)
         .limiter(limiter);
 
@@ -184,13 +202,13 @@ async fn build_table_engine_proxy(engine_builder: EngineBuilder<'_>) -> Arc<Tabl
     })
 }
 
-async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
+async fn build_with_meta<Q: Executor + 'static, P: PhysicalPlanner, T: WalsOpener>(
     config: &Config,
     cluster_config: &ClusterConfig,
-    builder: Builder<Q>,
+    builder: Builder<Q, P>,
     runtimes: Arc<EngineRuntimes>,
     wal_opener: T,
-) -> Builder<Q> {
+) -> Builder<Q, P> {
     // Build meta related modules.
     let node_meta_info = NodeMetaInfo {
         addr: config.node.addr.clone(),
@@ -256,13 +274,13 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
         .schema_config_provider(schema_config_provider)
 }
 
-async fn build_without_meta<Q: Executor + 'static, T: WalsOpener>(
+async fn build_without_meta<Q: Executor + 'static, P: PhysicalPlanner, T: WalsOpener>(
     config: &Config,
     static_route_config: &StaticRouteConfig,
-    builder: Builder<Q>,
+    builder: Builder<Q, P>,
     runtimes: Arc<EngineRuntimes>,
     wal_builder: T,
-) -> Builder<Q> {
+) -> Builder<Q, P> {
     let opened_wals = wal_builder
         .open_wals(&config.analytic.wal, runtimes.clone())
         .await

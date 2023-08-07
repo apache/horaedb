@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Obkv implementation.
 
@@ -13,8 +25,8 @@ use obkv::{
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
-    config::ObkvConfig, KeyBoundary, ScanContext, ScanIter, ScanRequest, SeekKey, TableError,
-    TableKv, WriteBatch, WriteContext,
+    config::ObkvConfig, metrics::OBKV_OP_DURATION_HISTOGRAM, KeyBoundary, ScanContext, ScanIter,
+    ScanRequest, SeekKey, TableError, TableKv, WriteBatch, WriteContext,
 };
 
 #[cfg(test)]
@@ -484,6 +496,10 @@ impl TableKv for ObkvImpl {
         table_name: &str,
         write_batch: ObkvWriteBatch,
     ) -> Result<()> {
+        let _timer = OBKV_OP_DURATION_HISTOGRAM
+            .with_label_values(&["write"])
+            .start_timer();
+
         let results = self
             .client
             .execute_batch(table_name, write_batch.batch_op)
@@ -506,6 +522,10 @@ impl TableKv for ObkvImpl {
     }
 
     fn get(&self, table_name: &str, key: &[u8]) -> Result<Option<Vec<u8>>> {
+        let _timer = OBKV_OP_DURATION_HISTOGRAM
+            .with_label_values(&["get"])
+            .start_timer();
+
         let mut values = self
             .client
             .get(
@@ -519,6 +539,10 @@ impl TableKv for ObkvImpl {
     }
 
     fn get_batch(&self, table_name: &str, keys: Vec<&[u8]>) -> Result<Vec<Option<Vec<u8>>>> {
+        let _timer = OBKV_OP_DURATION_HISTOGRAM
+            .with_label_values(&["get_batch"])
+            .start_timer();
+
         let mut batch_ops = ObTableBatchOperation::with_ops_num_raw(keys.len());
         let mut batch_res = Vec::with_capacity(keys.len());
 
@@ -543,6 +567,10 @@ impl TableKv for ObkvImpl {
     }
 
     fn delete(&self, table_name: &str, key: &[u8]) -> std::result::Result<(), Self::Error> {
+        let _timer = OBKV_OP_DURATION_HISTOGRAM
+            .with_label_values(&["delete"])
+            .start_timer();
+
         self.client
             .delete(table_name, bytes_to_values(key))
             .context(DeleteData { table_name })?;
@@ -555,6 +583,10 @@ impl TableKv for ObkvImpl {
         table_name: &str,
         keys: Vec<Vec<u8>>,
     ) -> std::result::Result<(), Self::Error> {
+        let _timer = OBKV_OP_DURATION_HISTOGRAM
+            .with_label_values(&["delete_batch"])
+            .start_timer();
+
         let mut batch_ops = ObTableBatchOperation::with_ops_num_raw(keys.len());
         for key in keys {
             batch_ops.delete(bytes_to_values(&key));
@@ -741,6 +773,10 @@ impl ScanIter for ObkvScanIter {
 
     fn next(&mut self) -> Result<bool> {
         assert!(self.valid());
+
+        let _timer = OBKV_OP_DURATION_HISTOGRAM
+            .with_label_values(&["scan_next"])
+            .start_timer();
 
         // Try to fetch next key-value from current result set.
         if self.step_result_set()? {

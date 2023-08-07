@@ -1,3 +1,17 @@
+# Copyright 2023 The CeresDB Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 [package]
 name = "ceresdb"
 version = "1.2.5-alpha"
@@ -77,7 +91,7 @@ arrow_ext = { path = "components/arrow_ext" }
 analytic_engine = { path = "analytic_engine" }
 arena = { path = "components/arena" }
 async-stream = "0.3.4"
-async-trait = "0.1.53"
+async-trait = "0.1.72"
 base64 = "0.13"
 bytes = "1.1.0"
 bytes_ext = { path = "components/bytes_ext" }
@@ -91,8 +105,8 @@ clru = "0.6.1"
 cluster = { path = "cluster" }
 criterion = "0.5"
 common_types = { path = "common_types" }
-datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "a6dcd943051a083693c352c6b4279156548490a0" }
-datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "a6dcd943051a083693c352c6b4279156548490a0" }
+datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
+datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
 df_operator = { path = "df_operator" }
 future_ext = { path = "components/future_ext" }
 etcd-client = "0.10.3"
@@ -106,10 +120,10 @@ log = "0.4"
 logger = { path = "components/logger" }
 lru = "0.7.6"
 id_allocator = { path = "components/id_allocator" }
-influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "b4520c6d5dfb6d68e4c7671555050391292dbffe", package = "iox_query_influxql" }
-influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "b4520c6d5dfb6d68e4c7671555050391292dbffe", package = "influxdb_influxql_parser" }
-influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "b4520c6d5dfb6d68e4c7671555050391292dbffe", package = "iox_query" }
-influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "b4520c6d5dfb6d68e4c7671555050391292dbffe", package = "schema" }
+influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "iox_query_influxql" }
+influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "influxdb_influxql_parser" }
+influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "iox_query" }
+influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "schema" }
 interpreters = { path = "interpreters" }
 itertools = "0.10.5"
 macros = { path = "components/macros" }

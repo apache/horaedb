@@ -1,19 +1,31 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use log::{error, info};
 use opensrv_mysql::AsyncMysqlIntermediary;
 use proxy::Proxy;
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use runtime::JoinHandle;
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Receiver, Sender};
 
 use crate::mysql::{error::Result, worker::MysqlWorker};
 
-pub struct MysqlService<Q> {
-    proxy: Arc<Proxy<Q>>,
+pub struct MysqlService<Q, P> {
+    proxy: Arc<Proxy<Q, P>>,
     runtimes: Arc<EngineRuntimes>,
     socket_addr: SocketAddr,
     join_handler: Option<JoinHandle<()>>,
@@ -21,13 +33,13 @@ pub struct MysqlService<Q> {
     timeout: Option<Duration>,
 }
 
-impl<Q> MysqlService<Q> {
+impl<Q, P> MysqlService<Q, P> {
     pub fn new(
-        proxy: Arc<Proxy<Q>>,
+        proxy: Arc<Proxy<Q, P>>,
         runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
         timeout: Option<Duration>,
-    ) -> MysqlService<Q> {
+    ) -> MysqlService<Q, P> {
         Self {
             proxy,
             runtimes,
@@ -39,7 +51,7 @@ impl<Q> MysqlService<Q> {
     }
 }
 
-impl<Q: QueryExecutor + 'static> MysqlService<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> MysqlService<Q, P> {
     pub async fn start(&mut self) -> Result<()> {
         let (tx, rx) = oneshot::channel();
 
@@ -65,7 +77,7 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
     }
 
     async fn loop_accept(
-        proxy: Arc<Proxy<Q>>,
+        proxy: Arc<Proxy<Q, P>>,
         runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
         timeout: Option<Duration>,

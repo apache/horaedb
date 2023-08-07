@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Http service
 
@@ -25,7 +37,7 @@ use proxy::{
     opentsdb::types::{PutParams, PutRequest},
     Proxy,
 };
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use router::endpoint::Endpoint;
 use runtime::{Runtime, RuntimeRef};
 use serde::Serialize;
@@ -131,10 +143,10 @@ impl reject::Reject for Error {}
 ///
 /// Endpoints beginning with /debug are for internal use, and may subject to
 /// breaking changes.
-pub struct Service<Q> {
+pub struct Service<Q, P> {
     // In cluster mode, cluster is valid, while in stand-alone mode, cluster is None
     cluster: Option<ClusterRef>,
-    proxy: Arc<Proxy<Q>>,
+    proxy: Arc<Proxy<Q, P>>,
     engine_runtimes: Arc<EngineRuntimes>,
     log_runtime: Arc<RuntimeLevel>,
     profiler: Arc<Profiler>,
@@ -145,7 +157,7 @@ pub struct Service<Q> {
     opened_wals: OpenedWals,
 }
 
-impl<Q: QueryExecutor + 'static> Service<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
     pub async fn start(&mut self) -> Result<()> {
         let ip_addr: IpAddr = self
             .config
@@ -183,7 +195,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     }
 }
 
-impl<Q: QueryExecutor + 'static> Service<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
     fn routes(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
@@ -267,7 +279,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(self.with_proxy())
             .and(self.with_read_runtime())
             .and_then(
-                |req, ctx, proxy: Arc<Proxy<Q>>, runtime: RuntimeRef| async move {
+                |req, ctx, proxy: Arc<Proxy<Q, P>>, runtime: RuntimeRef| async move {
                     let result = runtime
                         .spawn(async move {
                             proxy
@@ -300,7 +312,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(warp::get())
             .and(self.with_context())
             .and(self.with_proxy())
-            .and_then(|table: String, ctx, proxy: Arc<Proxy<Q>>| async move {
+            .and_then(|table: String, ctx, proxy: Arc<Proxy<Q, P>>| async move {
                 let result = proxy
                     .handle_http_route(&ctx, table)
                     .await
@@ -333,7 +345,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(warp::query::<WriteParams>())
             .and(warp::body::bytes())
             .and(self.with_proxy())
-            .and_then(|ctx, params, lines, proxy: Arc<Proxy<Q>>| async move {
+            .and_then(|ctx, params, lines, proxy: Arc<Proxy<Q, P>>| async move {
                 let request = WriteRequest::new(lines, params);
                 let result = proxy.handle_influxdb_write(ctx, request).await;
                 match result {
@@ -352,7 +364,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(warp::body::form::<HashMap<String, String>>())
             .and(self.with_proxy())
             .and_then(
-                |method, ctx, params, body, proxy: Arc<Proxy<Q>>| async move {
+                |method, ctx, params, body, proxy: Arc<Proxy<Q, P>>| async move {
                     let request =
                         InfluxqlRequest::try_new(method, body, params).map_err(reject::custom)?;
                     let result = proxy
@@ -383,7 +395,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(warp::query::<PutParams>())
             .and(warp::body::bytes())
             .and(self.with_proxy())
-            .and_then(|ctx, params, points, proxy: Arc<Proxy<Q>>| async move {
+            .and_then(|ctx, params, points, proxy: Arc<Proxy<Q, P>>| async move {
                 let request = PutRequest::new(points, params);
                 let result = proxy.handle_opentsdb_put(ctx, request).await;
                 match result {
@@ -402,7 +414,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::path!("debug" / "flush_memtable")
             .and(warp::post())
             .and(self.with_instance())
-            .and_then(|instance: InstanceRef<Q>| async move {
+            .and_then(|instance: InstanceRef<Q, P>| async move {
                 let get_all_tables = || {
                     let mut tables = Vec::new();
                     for catalog in instance
@@ -640,7 +652,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::any().map(move || profiler.clone())
     }
 
-    fn with_proxy(&self) -> impl Filter<Extract = (Arc<Proxy<Q>>,), Error = Infallible> + Clone {
+    fn with_proxy(&self) -> impl Filter<Extract = (Arc<Proxy<Q, P>>,), Error = Infallible> + Clone {
         let proxy = self.proxy.clone();
         warp::any().map(move || proxy.clone())
     }
@@ -659,7 +671,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
     fn with_instance(
         &self,
-    ) -> impl Filter<Extract = (InstanceRef<Q>,), Error = Infallible> + Clone {
+    ) -> impl Filter<Extract = (InstanceRef<Q, P>,), Error = Infallible> + Clone {
         let instance = self.proxy.instance();
         warp::any().map(move || instance.clone())
     }
@@ -685,17 +697,17 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 }
 
 /// Service builder
-pub struct Builder<Q> {
+pub struct Builder<Q, P> {
     config: HttpConfig,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
     config_content: Option<String>,
     cluster: Option<ClusterRef>,
-    proxy: Option<Arc<Proxy<Q>>>,
+    proxy: Option<Arc<Proxy<Q, P>>>,
     opened_wals: Option<OpenedWals>,
 }
 
-impl<Q> Builder<Q> {
+impl<Q, P> Builder<Q, P> {
     pub fn new(config: HttpConfig) -> Self {
         Self {
             config,
@@ -728,7 +740,7 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn proxy(mut self, proxy: Arc<Proxy<Q>>) -> Self {
+    pub fn proxy(mut self, proxy: Arc<Proxy<Q, P>>) -> Self {
         self.proxy = Some(proxy);
         self
     }
@@ -739,9 +751,9 @@ impl<Q> Builder<Q> {
     }
 }
 
-impl<Q: QueryExecutor + 'static> Builder<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
     /// Build and start the service
-    pub fn build(self) -> Result<Service<Q>> {
+    pub fn build(self) -> Result<Service<Q, P>> {
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let config_content = self.config_content.context(MissingInstance)?;

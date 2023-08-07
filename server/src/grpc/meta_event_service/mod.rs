@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Meta event rpc service implementation.
 
@@ -34,7 +46,7 @@ use log::{error, info, warn};
 use meta_client::types::{ShardInfo, TableInfo};
 use paste::paste;
 use proxy::instance::InstanceRef;
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use runtime::Runtime;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{engine::TableEngineRef, ANALYTIC_ENGINE_TYPE};
@@ -90,15 +102,15 @@ const RETRY: RetryConfig = RetryConfig {
 };
 
 /// Builder for [MetaServiceImpl].
-pub struct Builder<Q> {
+pub struct Builder<Q, P> {
     pub cluster: ClusterRef,
-    pub instance: InstanceRef<Q>,
+    pub instance: InstanceRef<Q, P>,
     pub runtime: Arc<Runtime>,
     pub opened_wals: OpenedWals,
 }
 
-impl<Q: QueryExecutor + 'static> Builder<Q> {
-    pub fn build(self) -> MetaServiceImpl<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
+    pub fn build(self) -> MetaServiceImpl<Q, P> {
         let Self {
             cluster,
             instance,
@@ -119,9 +131,9 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 }
 
 #[derive(Clone)]
-pub struct MetaServiceImpl<Q: QueryExecutor + 'static> {
+pub struct MetaServiceImpl<Q: QueryExecutor + 'static, P: PhysicalPlanner> {
     cluster: ClusterRef,
-    instance: InstanceRef<Q>,
+    instance: InstanceRef<Q, P>,
     runtime: Arc<Runtime>,
     wal_region_closer: WalRegionCloserRef,
 }
@@ -175,7 +187,7 @@ macro_rules! handle_request {
     };
 }
 
-impl<Q: QueryExecutor + 'static> MetaServiceImpl<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> MetaServiceImpl<Q, P> {
     handle_request!(open_shard, OpenShardRequest, OpenShardResponse);
 
     handle_request!(close_shard, CloseShardRequest, CloseShardResponse);
@@ -565,7 +577,7 @@ async fn handle_close_table_on_shard(
 }
 
 #[async_trait]
-impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> MetaEventService for MetaServiceImpl<Q, P> {
     async fn open_shard(
         &self,
         request: tonic::Request<OpenShardRequest>,

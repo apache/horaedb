@@ -1,16 +1,32 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Wal namespace.
 
 use std::{
     collections::{BTreeMap, HashMap},
     fmt, str,
-    sync::{Arc, Mutex, RwLock},
-    time::Duration,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, RwLock,
+    },
+    thread,
+    time::{Duration, Instant},
 };
 
 use common_types::{table::TableId, time::Timestamp};
-use generic_error::{BoxError, GenericError};
+use generic_error::{BoxError, GenericError, GenericResult};
 use log::{debug, error, info, trace, warn};
 use macros::define_result;
 use runtime::Runtime;
@@ -55,6 +71,15 @@ pub enum Error {
     LoadBuckets {
         namespace: String,
         source: GenericError,
+    },
+
+    #[snafu(display(
+        "Failed to load buckets, namespace:{namespace}, msg:{msg}.\nBacktrace:\n{backtrace}"
+    ))]
+    LoadBucketsNoCause {
+        namespace: String,
+        msg: String,
+        backtrace: Backtrace,
     },
 
     #[snafu(display("Failed to open bucket, namespace:{}, err:{}", namespace, source,))]
@@ -211,6 +236,8 @@ pub const BUCKET_DURATION_MS: i64 = 1000 * 3600 * 24;
 const BUCKET_MONITOR_PERIOD: Duration = Duration::from_millis(BUCKET_DURATION_MS as u64 / 8);
 /// Clean deleted logs period.
 const LOG_CLEANER_PERIOD: Duration = Duration::from_millis(BUCKET_DURATION_MS as u64 / 4);
+/// Monitor table creating period.
+const MONITOR_TABLE_CREATING_PERIOD: Duration = Duration::from_secs(30);
 
 struct NamespaceInner<T> {
     runtimes: WalRuntimes,
@@ -377,17 +404,34 @@ impl<T: TableKv> NamespaceInner<T> {
     /// Open bucket, ensure all tables are created, and insert the bucket into
     /// the bucket set in memory.
     fn open_bucket(&self, bucket: Bucket) -> Result<BucketRef> {
+        let bucket_info = bucket.entry;
+        info!(
+            "TableKvWal begin to open bucket, bucket_info:{:?}, namespace:{}",
+            bucket_info,
+            self.name()
+        );
+
+        let timer = Instant::now();
         {
             // Create all wal shards of this bucket.
             let mut operator = self.operator.lock().unwrap();
-            for wal_shard in &bucket.wal_shard_names {
-                operator.create_table_if_needed(&self.table_kv, self.name(), wal_shard)?;
-            }
+            operator.create_table_if_needed(
+                &self.table_kv,
+                self.name(),
+                bucket.wal_shard_names.clone(),
+            )?;
         }
 
         let bucket = Arc::new(bucket);
         let mut bucket_set = self.bucket_set.write().unwrap();
         bucket_set.insert_bucket(bucket.clone());
+
+        info!(
+            "TableKvWal success to open bucket, cost:{:?}, bucket_info:{:?}, namespace:{}",
+            timer.elapsed(),
+            bucket_info,
+            self.name(),
+        );
 
         Ok(bucket)
     }
@@ -1027,7 +1071,9 @@ impl<T: TableKv> Namespace<T> {
             table_units: RwLock::new(HashMap::new()),
             meta_table_name: meta_table_name.to_string(),
             table_unit_meta_tables,
-            operator: Mutex::new(TableOperator),
+            operator: Mutex::new(TableOperator {
+                bucket_create_parallelism: config.bucket_create_parallelism,
+            }),
             bucket_creator: Mutex::new(BucketCreator),
             config,
         });
@@ -1202,27 +1248,130 @@ impl<T: TableKv> Namespace<T> {
 pub type NamespaceRef<T> = Arc<Namespace<T>>;
 
 /// Table operator wraps create/drop table operations.
-struct TableOperator;
+struct TableOperator {
+    bucket_create_parallelism: usize,
+}
 
 impl TableOperator {
     fn create_table_if_needed<T: TableKv>(
         &mut self,
         table_kv: &T,
         namespace: &str,
-        table_name: &str,
+        wal_shards: Vec<String>,
     ) -> Result<()> {
-        let table_exists = table_kv
-            .table_exists(table_name)
-            .box_err()
-            .context(BucketMeta { namespace })?;
-        if !table_exists {
-            table_kv
-                .create_table(table_name)
-                .box_err()
-                .context(BucketMeta { namespace })?;
+        let wal_shard_num = wal_shards.len();
+        let wal_shard_group_num = std::cmp::min(self.bucket_create_parallelism, wal_shard_num);
+        let wal_shard_num_per_group = wal_shard_num / wal_shard_group_num;
+        let wal_shard_groups = wal_shards
+            .chunks(wal_shard_num_per_group)
+            .map(|group| group.to_owned())
+            .collect::<Vec<_>>();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let stop = Arc::new(AtomicBool::new(false));
+
+        // Create tables in parallel.
+        Self::do_create_table_in_parallel(namespace, table_kv, wal_shard_groups, tx, stop.clone());
+
+        // Wait for all tables created.
+        let mut cur_running_tasks = wal_shard_group_num;
+        loop {
+            if cur_running_tasks == 0 {
+                break;
+            }
+
+            match rx.recv_timeout(MONITOR_TABLE_CREATING_PERIOD) {
+                Ok(Ok(_)) => {
+                    cur_running_tasks -= 1;
+                }
+                Ok(Err(e)) => {
+                    stop.store(true, Ordering::Relaxed);
+                    return Err(e).context(LoadBuckets { namespace });
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    stop.store(true, Ordering::Relaxed);
+                    return LoadBucketsNoCause {
+                        namespace,
+                        msg: "result notifier in create table task is closed",
+                    }
+                    .fail();
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    info!(
+                        "TableOperator monitor tables creating periodically, namespace:{namespace}"
+                    );
+                }
+            };
         }
 
         Ok(())
+    }
+
+    fn do_create_table_in_parallel<T: TableKv>(
+        namespace: &str,
+        table_kv: &T,
+        wal_shard_groups: Vec<Vec<String>>,
+        tx: std::sync::mpsc::Sender<GenericResult<()>>,
+        stop: Arc<AtomicBool>,
+    ) {
+        for group in wal_shard_groups {
+            let namespace = namespace.to_owned();
+            let table_kv = table_kv.clone();
+            let tx = tx.clone();
+            let stop = stop.clone();
+            thread::spawn(move || {
+                for table in group {
+                    if stop.load(Ordering::Relaxed) {
+                        error!("TableOperator create table task stopped, namespace:{namespace}");
+                        return;
+                    }
+
+                    // Judge if table exists.
+                    let table_exists_result = table_kv
+                        .table_exists(&table)
+                        .box_err()
+                        .map_err(|e| {
+                            error!("TableOperator failed to judge if table exists, table:{table}, namespace:{namespace}");
+                            e
+                        });
+
+                    let table_exists = match table_exists_result {
+                        Ok(exists) => exists,
+                        Err(e) => {
+                            let _ = tx.send(Err(e)).map_err(|e| {
+                                error!("TableOperator failed to send table result, table:{table}, namespace:{namespace}, err:{e}");
+                            });
+                            return;
+                        }
+                    };
+
+                    if table_exists {
+                        continue;
+                    }
+
+                    // Not exist, create table.
+                    let create_table_result = table_kv
+                            .create_table(&table)
+                            .box_err()
+                            .map_err(|e| {
+                                error!("TableOperator failed to create table, table:{table}, namespace:{namespace}");
+                                e
+                            });
+
+                    if let Err(e) = create_table_result {
+                        let _ = tx.send(Err(e)).map_err(|e| {
+                            error!("TableOperator failed to send table result, table:{table}, namespace:{namespace}, err:{e}");
+                        });
+                        return;
+                    }
+                }
+
+                let _ = tx.send(Ok(())).map_err(|e| {
+                    error!(
+                        "TableOperator failed to send final result, namespace:{namespace}, err:{e}"
+                    );
+                });
+            });
+        }
     }
 }
 

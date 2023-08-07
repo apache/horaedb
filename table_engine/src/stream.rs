@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Table record stream
 
@@ -11,7 +23,7 @@ use std::{
 use arrow::{datatypes::SchemaRef, record_batch::RecordBatch as ArrowRecordBatch};
 use common_types::{record_batch::RecordBatch, schema::RecordSchema};
 use datafusion::{
-    error::{DataFusionError, Result as DataFusionResult},
+    error::{DataFusionError, Result as DataFusionResult, Result as DfResult},
     physical_plan::{
         RecordBatchStream as DfRecordBatchStream,
         SendableRecordBatchStream as DfSendableRecordBatchStream,
@@ -21,6 +33,8 @@ use futures::stream::Stream;
 use generic_error::{BoxError, GenericError};
 use macros::define_result;
 use snafu::{Backtrace, ResultExt, Snafu};
+
+use crate::table;
 
 // TODO(yingwen): Classify the error.
 #[derive(Debug, Snafu)]
@@ -119,5 +133,43 @@ impl Stream for FromDfStream {
 impl RecordBatchStream for FromDfStream {
     fn schema(&self) -> &RecordSchema {
         &self.schema
+    }
+}
+
+#[derive(Default)]
+pub struct ScanStreamState {
+    inited: bool,
+    err: Option<table::Error>,
+    streams: Vec<Option<SendableRecordBatchStream>>,
+}
+
+impl ScanStreamState {
+    pub fn init(&mut self, streams_result: table::Result<PartitionedStreams>) {
+        self.inited = true;
+        match streams_result {
+            Ok(partitioned_streams) => {
+                self.streams = partitioned_streams.streams.into_iter().map(Some).collect()
+            }
+            Err(e) => self.err = Some(e),
+        }
+    }
+
+    pub fn is_inited(&self) -> bool {
+        self.inited
+    }
+
+    pub fn take_stream(&mut self, index: usize) -> DfResult<SendableRecordBatchStream> {
+        if let Some(e) = &self.err {
+            return Err(DataFusionError::Execution(format!(
+                "Failed to read table, partition:{index}, err:{e}"
+            )));
+        }
+
+        // TODO(yingwen): Return an empty stream if index is out of bound.
+        self.streams[index].take().ok_or_else(|| {
+            DataFusionError::Execution(format!(
+                "Read partition multiple times is not supported, partition:{index}"
+            ))
+        })
     }
 }

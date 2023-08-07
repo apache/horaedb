@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! This module implements prometheus remote storage API.
 //! It converts write request to gRPC write request, and
@@ -25,12 +37,15 @@ use common_types::{
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
-use log::debug;
+use log::{debug, error};
 use prom_remote_api::types::{
     Label, LabelMatcher, Query, QueryResult, RemoteStorage, Sample, TimeSeries, WriteRequest,
 };
 use prost::Message;
-use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
+use query_engine::{
+    executor::{Executor as QueryExecutor, RecordBatchVec},
+    physical_planner::PhysicalPlanner,
+};
 use query_frontend::{
     frontend::{Context, Frontend},
     promql::{RemoteQueryPlan, DEFAULT_FIELD_COLUMN, NAME_LABEL},
@@ -50,11 +65,10 @@ use crate::{
 
 impl reject::Reject for Error {}
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     /// Handle write samples to remote storage with remote storage protocol.
-    async fn handle_prom_write(&self, ctx: RequestContext, req: WriteRequest) -> Result<()> {
+    async fn handle_prom_remote_write(&self, ctx: RequestContext, req: WriteRequest) -> Result<()> {
         let write_table_requests = convert_write_request(req)?;
-
         let num_rows: usize = write_table_requests
             .iter()
             .map(|req| {
@@ -85,6 +99,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     HTTP_HANDLER_COUNTER_VEC
                         .write_failed_row
                         .inc_by(result.failed as u64);
+
                     ErrNoCause {
                         code: StatusCode::INTERNAL_SERVER_ERROR,
                         msg: format!("fail to write storage, failed rows:{:?}", result.failed),
@@ -99,13 +114,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 HTTP_HANDLER_COUNTER_VEC
                     .write_failed_row
                     .inc_by(num_rows as u64);
+
                 Err(e)
             }
         }
     }
 
     /// Handle one query with remote storage protocol.
-    async fn handle_prom_process_query(
+    async fn handle_prom_remote_query(
         &self,
         ctx: &RequestContext,
         metric: String,
@@ -187,7 +203,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             msg: "build request context failed",
         })?;
 
-        self.handle_prom_process_query(&ctx, metric, query)
+        self.handle_prom_remote_query(&ctx, metric, query)
             .await
             .map(|v| PrometheusRemoteQueryResponse {
                 header: Some(build_ok_header()),
@@ -197,12 +213,12 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 }
 
 #[async_trait]
-impl<Q: QueryExecutor + 'static> RemoteStorage for Proxy<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteStorage for Proxy<Q, P> {
     type Context = RequestContext;
     type Err = Error;
 
     async fn write(&self, ctx: Self::Context, req: WriteRequest) -> StdResult<(), Self::Err> {
-        self.handle_prom_write(ctx, req).await
+        self.handle_prom_remote_write(ctx, req).await
     }
 
     async fn process_query(
@@ -210,36 +226,54 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for Proxy<Q> {
         ctx: &Self::Context,
         query: Query,
     ) -> StdResult<QueryResult, Self::Err> {
-        let metric = find_metric(&query.matchers)?;
-        let remote_req = PrometheusRemoteQueryRequest {
-            context: Some(ceresdbproto::storage::RequestContext {
-                database: ctx.schema.to_string(),
-            }),
-            query: query.encode_to_vec(),
-        };
-        if let Some(resp) = self
-            .maybe_forward_prom_remote_query(metric.clone(), remote_req)
-            .await
-            .map_err(|e| {
-                log::info!("remote_req forward error {:?}", e);
-                e
-            })?
-        {
-            match resp {
-                ForwardResult::Forwarded(resp) => {
-                    return resp.and_then(|v| {
-                        QueryResult::decode(v.response.as_ref())
-                            .box_err()
-                            .context(Internal {
-                                msg: "decode QueryResult failed",
-                            })
-                    });
+        HTTP_HANDLER_COUNTER_VEC.incoming_prom_query.inc();
+
+        let do_query = || async {
+            let metric = find_metric(&query.matchers)?;
+            let remote_req = PrometheusRemoteQueryRequest {
+                context: Some(ceresdbproto::storage::RequestContext {
+                    database: ctx.schema.to_string(),
+                }),
+                query: query.encode_to_vec(),
+            };
+            if let Some(resp) = self
+                .maybe_forward_prom_remote_query(metric.clone(), remote_req)
+                .await
+                .map_err(|e| {
+                    error!("Forward prom remote query failed, err:{e}");
+                    e
+                })?
+            {
+                match resp {
+                    ForwardResult::Forwarded(resp) => {
+                        return resp.and_then(|v| {
+                            QueryResult::decode(v.response.as_ref())
+                                .box_err()
+                                .context(Internal {
+                                    msg: "decode QueryResult failed",
+                                })
+                        });
+                    }
+                    ForwardResult::Local => {}
                 }
-                ForwardResult::Local => {}
+            }
+
+            self.handle_prom_remote_query(ctx, metric, query).await
+        };
+
+        match do_query().await {
+            Ok(v) => {
+                HTTP_HANDLER_COUNTER_VEC.prom_query_succeeded.inc();
+
+                Ok(v)
+            }
+            Err(e) => {
+                HTTP_HANDLER_COUNTER_VEC.prom_query_failed.inc();
+
+                error!("Prom remote query failed, err:{e}");
+                Err(e)
             }
         }
-
-        self.handle_prom_process_query(ctx, metric, query).await
     }
 }
 

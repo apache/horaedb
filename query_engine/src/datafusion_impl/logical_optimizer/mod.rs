@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Logical optimizer
 
@@ -6,26 +18,12 @@
 pub mod tests;
 pub mod type_conversion;
 
-use datafusion::{error::DataFusionError, prelude::SessionContext};
-use macros::define_result;
+use datafusion::prelude::SessionContext;
+use generic_error::BoxError;
 use query_frontend::plan::QueryPlan;
-use snafu::{Backtrace, ResultExt, Snafu};
+use snafu::ResultExt;
 
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display(
-        "DataFusion Failed to optimize logical plan, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
-    ))]
-    // TODO(yingwen): Should we carry plan in this context?
-    DataFusionOptimize {
-        source: DataFusionError,
-        backtrace: Backtrace,
-    },
-}
-
-define_result!(Error);
+use crate::error::*;
 
 /// LogicalOptimizer transform the QueryPlan into a potentially more efficient
 /// plan
@@ -55,7 +53,8 @@ impl LogicalOptimizer for LogicalOptimizerImpl {
             .ctx
             .state()
             .optimize(&df_plan)
-            .context(DataFusionOptimize)?;
+            .box_err()
+            .context(LogicalOptimizerWithCause { msg: None })?;
 
         Ok(QueryPlan { df_plan, tables })
     }
