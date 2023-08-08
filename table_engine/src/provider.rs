@@ -23,7 +23,7 @@ use std::{
 
 use arrow::datatypes::SchemaRef;
 use async_trait::async_trait;
-use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
+use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema, UPDATE_MODE};
 use datafusion::{
     config::{ConfigEntry, ConfigExtension, ExtensionOptions},
     datasource::TableProvider,
@@ -186,10 +186,16 @@ impl TableProviderAdapter {
     fn check_and_build_predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
         let unique_keys = self.read_schema.unique_keys();
 
+        let options = &self.table.options();
+        let is_append = match options.get(UPDATE_MODE) {
+            Some(mode)if mode == "APPEND" => true,
+            _ => false
+        };
+
         let push_down_filters = filters
             .iter()
             .filter_map(|filter| {
-                if Self::only_filter_unique_key_columns(filter, &unique_keys) {
+                if Self::only_filter_unique_key_columns(filter, &unique_keys) && is_append {
                     Some(filter.clone())
                 } else {
                     None
@@ -238,7 +244,7 @@ impl TableProvider for TableProviderAdapter {
     }
 
     fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {
-        Ok(TableProviderFilterPushDown::Inexact)
+        Ok(TableProviderFilterPushDown::Exact)
     }
 
     /// Get the type of this table for metadata/catalog purposes.
@@ -265,7 +271,7 @@ impl TableSource for TableProviderAdapter {
     /// Tests whether the table provider can make use of a filter expression
     /// to optimize data retrieval.
     fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {
-        Ok(TableProviderFilterPushDown::Inexact)
+        Ok(TableProviderFilterPushDown::Exact)
     }
 }
 
