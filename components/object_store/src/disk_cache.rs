@@ -27,7 +27,7 @@ use chrono::{DateTime, Utc};
 use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
 use hash_ext::SeaHasherBuilder;
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use lru::LruCache;
 use partitioned_lock::PartitionedMutex;
 use serde::{Deserialize, Serialize};
@@ -242,7 +242,7 @@ impl DiskCache {
 
         let do_persist = || async {
             if let Err(e) = self.persist_bytes(&filename, value).await {
-                error!("Failed to persist cache, file:{filename}, err:{e}");
+                warn!("Failed to persist cache, file:{filename}, err:{e}");
             }
         };
 
@@ -256,16 +256,8 @@ impl DiskCache {
             do_persist().await;
 
             // Remove the evicted file.
-            let evicted_file_path = std::path::Path::new(&self.root_dir)
-                .join(evicted_file)
-                .into_os_string()
-                .into_string()
-                .unwrap();
-
-            debug!("Evicted file:{evicted_file_path} is to be removed");
-            if let Err(e) = tokio::fs::remove_file(&evicted_file_path).await {
-                error!("Failed to remove evicted file:{evicted_file_path}, err:{e}");
-            }
+            debug!("Evicted file:{evicted_file} is to be removed");
+            self.remove_file_by_name(&evicted_file).await;
         } else {
             do_persist().await;
         }
@@ -289,7 +281,7 @@ impl DiskCache {
             Ok(ReadBytesResult::Corrupted {
                 file_size: real_file_size,
             }) => {
-                error!(
+                warn!(
                     "File:{filename} is corrupted, expect:{file_size}, got:{real_file_size}, and it will be removed",
                 );
 
@@ -303,7 +295,7 @@ impl DiskCache {
                 None
             }
             Ok(ReadBytesResult::OutOfRange) => {
-                error!(
+                warn!(
                     "File:{filename} is not enough to read, range:{range:?}, file_size:{file_size}, and it will be removed",
                 );
 
@@ -317,7 +309,7 @@ impl DiskCache {
                 None
             }
             Err(e) => {
-                error!("Failed to read file:{filename} from the disk cache, err:{e}");
+                warn!("Failed to read file:{filename} from the disk cache, err:{e}");
                 None
             }
         }
@@ -333,7 +325,7 @@ impl DiskCache {
             .unwrap();
 
         if let Err(e) = tokio::fs::remove_file(&file_path).await {
-            error!("Failed to remove evicted file:{file_path}, err:{e}");
+            warn!("Failed to remove file:{file_path}, err:{e}");
         }
     }
 
@@ -468,7 +460,7 @@ impl DiskCacheStore {
             assert!(cap_per_part > 0);
             Ok(LruCache::new(cap_per_part))
         };
-        let size_cache = PartitionedMutex::try_new(
+        let meta_cache = PartitionedMutex::try_new(
             init_size_lru,
             FILE_SIZE_CACHE_PARTITION_BITS,
             SeaHasherBuilder,
@@ -478,7 +470,7 @@ impl DiskCacheStore {
             cache,
             cap,
             page_size,
-            meta_cache: size_cache,
+            meta_cache,
             underlying_store,
         })
     }
@@ -568,7 +560,7 @@ impl DiskCacheStore {
             let file_size = match entry.metadata().await {
                 Ok(metadata) => metadata.len() as usize,
                 Err(e) => {
-                    error!("Failed to get the size of file:{file_name}, and it will be skipped for recover, err:{e}");
+                    warn!("Failed to get the size of file:{file_name}, and it will be skipped for recover, err:{e}");
                     // TODO: Maybe we should remove this file.
                     continue;
                 }
@@ -582,7 +574,7 @@ impl DiskCacheStore {
     }
 
     /// Generate the filename of a page file.
-    fn page_filename(location: &Path, range: &Range<usize>) -> String {
+    fn page_cache_name(location: &Path, range: &Range<usize>) -> String {
         format!(
             "{}-{}-{}",
             location.as_ref().replace('/', "-"),
@@ -602,7 +594,7 @@ impl DiskCacheStore {
             .get_range(location, aligned_range.clone())
             .await?;
 
-        let filename = Self::page_filename(location, aligned_range);
+        let filename = Self::page_cache_name(location, aligned_range);
         self.cache.insert_data(filename, bytes.clone()).await;
         Ok(bytes)
     }
@@ -681,7 +673,7 @@ impl ObjectStore for DiskCacheStore {
         if num_pages == 1 {
             let aligned_end = (aligned_start + self.page_size).min(file_size);
             let aligned_range = aligned_start..aligned_end;
-            let filename = Self::page_filename(location, &aligned_range);
+            let filename = Self::page_cache_name(location, &aligned_range);
             let range_in_file = (range.start - aligned_start)..(range.end - aligned_start);
             if let Some(bytes) = self.cache.get_data(&filename, &range_in_file).await {
                 return Ok(bytes);
@@ -700,6 +692,9 @@ impl ObjectStore for DiskCacheStore {
         }
 
         // The queried range involves multiple ranges.
+        // Here is an example to explain the paged bytes, saying range = [3, 33),
+        // page_size = 16, then aligned ranges will be [0, 16), [16, 32), [32,
+        // 48), and we need to combine those ranged bytes to get final result bytes.
         let mut paged_bytes: Vec<Option<Bytes>> = vec![None; num_pages];
         let mut num_missing_pages = 0;
         {
@@ -712,7 +707,7 @@ impl ObjectStore for DiskCacheStore {
                     let real_end = page_end.min(range.end);
                     (real_start - page_start)..(real_end - page_start)
                 };
-                let filename = Self::page_filename(location, &(page_start..page_end));
+                let filename = Self::page_cache_name(location, &(page_start..page_end));
                 if let Some(bytes) = self.cache.get_data(&filename, &range_in_file).await {
                     paged_bytes[page_idx] = Some(bytes);
                 } else {
@@ -748,7 +743,7 @@ impl ObjectStore for DiskCacheStore {
                 .zip(missing_range_idx.into_iter())
                 .zip(missing_ranged_bytes.into_iter())
             {
-                let filename = Self::page_filename(location, &missing_range);
+                let filename = Self::page_cache_name(location, &missing_range);
                 self.cache.insert_data(filename, bytes.clone()).await;
 
                 let offset = missing_range.start;
@@ -837,7 +832,7 @@ mod test {
     fn test_file_exists(cache_dir: &TempDir, location: &Path, range: &Range<usize>) -> bool {
         cache_dir
             .path()
-            .join(DiskCacheStore::page_filename(location, range))
+            .join(DiskCacheStore::page_cache_name(location, range))
             .exists()
     }
 
@@ -880,10 +875,9 @@ mod test {
                     .inner
                     .cache
                     .meta_cache
-                    .lock(&DiskCacheStore::page_filename(&location, &range).as_str());
-                assert!(
-                    data_cache.contains(DiskCacheStore::page_filename(&location, &range).as_str())
-                );
+                    .lock(&DiskCacheStore::page_cache_name(&location, &range).as_str());
+                assert!(data_cache
+                    .contains(DiskCacheStore::page_cache_name(&location, &range).as_str()));
                 assert!(test_file_exists(&store.cache_dir, &location, &range));
             }
 
@@ -892,9 +886,9 @@ mod test {
                     .inner
                     .cache
                     .meta_cache
-                    .lock(&DiskCacheStore::page_filename(&location, &range).as_str());
+                    .lock(&DiskCacheStore::page_cache_name(&location, &range).as_str());
                 assert!(data_cache
-                    .pop(&DiskCacheStore::page_filename(&location, &range))
+                    .pop(&DiskCacheStore::page_cache_name(&location, &range))
                     .is_some());
             }
         }
@@ -1106,7 +1100,7 @@ mod test {
                     .unwrap()
             };
             for range in vec![16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
-                let filename = DiskCacheStore::page_filename(&location, &range);
+                let filename = DiskCacheStore::page_cache_name(&location, &range);
                 let cache = store.cache.meta_cache.lock(&filename);
                 assert!(cache.contains(&filename));
                 assert!(test_file_exists(&cache_dir, &location, &range));
