@@ -201,8 +201,6 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteEngineServiceImpl<Q, 
                     .stream_read
                     .observe(instant.saturating_elapsed().as_secs_f64());
 
-                record_read(&ctx.hotspot_recorder, &table).await;
-
                 return Ok(ReceiverStream::new(rx));
             }
         };
@@ -433,6 +431,15 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteEngineService
         &self,
         request: Request<ReadRequest>,
     ) -> std::result::Result<Response<Self::ReadStream>, Status> {
+        if let Some(table) = &request.get_ref().table {
+            self.hotspot_recorder
+                .send_msg_or_log(
+                    "inc_query_reqs",
+                    Message::Query(format!("{}/{}", table.schema, table.table)),
+                )
+                .await
+        }
+
         REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC.stream_query.inc();
         let result = match self.request_notifiers.clone() {
             Some(request_notifiers) => {
@@ -524,12 +531,6 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteEngineService
     }
 }
 
-async fn record_read(hotspot_recorder: &Arc<HotspotRecorder>, table: &TableIdentifier) {
-    hotspot_recorder
-        .send_msg_or_log("inc_query_reqs", Message::Query(format_hot_key(table)))
-        .await
-}
-
 async fn handle_stream_read(
     ctx: HandlerContext,
     request: ReadRequest,
@@ -541,8 +542,6 @@ async fn handle_stream_read(
         code: StatusCode::BadRequest,
         msg: "fail to convert read request",
     })?;
-
-    record_read(&ctx.hotspot_recorder, &table_ident).await;
 
     let request_id = read_request.request_id;
     info!(
@@ -611,6 +610,9 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
             msg: "fail to convert write request",
         })?;
 
+    // In theory we should record write request we at the beginning of server's
+    // handle, but the payload is encoded, so we cannot record until decode payload
+    // here.
     record_write(&ctx.hotspot_recorder, &write_request).await;
 
     let num_rows = write_request.write_request.row_group.num_rows();
