@@ -45,6 +45,8 @@ use crate::{
     local_tables::{self, LocalTablesRecoverer},
     mysql,
     mysql::error::Error as MysqlError,
+    postgresql,
+    postgresql::error::Error as PostgresqlError,
 };
 
 #[derive(Debug, Snafu)]
@@ -94,8 +96,14 @@ pub enum Error {
     #[snafu(display("Failed to build mysql service, err:{}", source))]
     BuildMysqlService { source: MysqlError },
 
+    #[snafu(display("Failed to build postgresql service, err:{}", source))]
+    BuildPostgresqlService { source: PostgresqlError },
+
     #[snafu(display("Failed to start mysql service, err:{}", source))]
     StartMysqlService { source: MysqlError },
+
+    #[snafu(display("Failed to start postgresql service, err:{}", source))]
+    StartPostgresqlService { source: PostgresqlError },
 
     #[snafu(display("Failed to register system catalog, err:{}", source))]
     RegisterSystemCatalog { source: catalog::manager::Error },
@@ -121,6 +129,7 @@ pub struct Server<Q: QueryExecutor + 'static, P: PhysicalPlanner> {
     http_service: Service<Q, P>,
     rpc_services: RpcServices<Q, P>,
     mysql_service: mysql::MysqlService<Q, P>,
+    postgresql_service: postgresql::PostgresqlService<Q, P>,
     instance: InstanceRef<Q, P>,
     cluster: Option<ClusterRef>,
     local_tables_recoverer: Option<LocalTablesRecoverer>,
@@ -131,6 +140,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Server<Q, P> {
         self.rpc_services.shutdown().await;
         self.http_service.stop();
         self.mysql_service.shutdown();
+        self.postgresql_service.shutdown();
 
         if let Some(cluster) = &self.cluster {
             cluster.stop().await.expect("fail to stop cluster");
@@ -158,13 +168,21 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Server<Q, P> {
         self.create_default_schema_if_not_exists().await;
 
         info!("Server start, start services");
+
         self.http_service.start().await.context(HttpService {
             msg: "start failed",
         })?;
+
         self.mysql_service
             .start()
             .await
             .context(StartMysqlService)?;
+
+        self.postgresql_service
+            .start()
+            .await
+            .context(StartPostgresqlService)?;
+
         self.rpc_services.start().await.context(StartGrpcService)?;
 
         info!("Server start finished");
@@ -425,6 +443,14 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
             .build()
             .context(BuildMysqlService)?;
 
+        let postgresql_service = postgresql::Builder::new()
+            .ip(self.server_config.bind_addr.clone())
+            .port(self.server_config.postgresql_port)
+            .proxy(proxy.clone())
+            .runtimes(engine_runtimes.clone())
+            .build()
+            .context(BuildPostgresqlService)?;
+
         let rpc_services = grpc::Builder::new()
             .endpoint(grpc_endpoint.to_string())
             .runtimes(engine_runtimes)
@@ -441,6 +467,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
             http_service,
             rpc_services,
             mysql_service,
+            postgresql_service,
             instance,
             cluster: self.cluster,
             local_tables_recoverer: self.local_tables_recoverer,
