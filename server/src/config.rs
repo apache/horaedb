@@ -107,6 +107,7 @@ pub struct ServerConfig {
     /// The address to listen.
     pub bind_addr: String,
     pub mysql_port: u16,
+    pub postgresql_port: u16,
     pub http_port: u16,
     pub grpc_port: u16,
 
@@ -144,6 +145,7 @@ impl Default for ServerConfig {
             bind_addr: String::from("127.0.0.1"),
             http_port: 5440,
             mysql_port: 3307,
+            postgresql_port: 5433,
             grpc_port: 8831,
             timeout: None,
             http_max_body_size: ReadableSize::mb(64),

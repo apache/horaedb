@@ -20,6 +20,7 @@ bind_addr = "0.0.0.0"
 http_port = 15440
 grpc_port = 18831
 mysql_port = 13307
+postgresql_port = 15433
 deploy_mode = "Cluster"
 
 [tracing]

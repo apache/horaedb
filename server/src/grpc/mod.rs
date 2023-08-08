@@ -35,6 +35,7 @@ use log::{info, warn};
 use macros::define_result;
 use proxy::{
     forward,
+    hotspot::HotspotRecorder,
     instance::InstanceRef,
     schema_config_provider::{self},
     Proxy,
@@ -105,6 +106,9 @@ pub enum Error {
 
     #[snafu(display("Missing proxy.\nBacktrace:\n{}", backtrace))]
     MissingProxy { backtrace: Backtrace },
+
+    #[snafu(display("Missing HotspotRecorder.\nBacktrace:\n{}", backtrace))]
+    MissingHotspotRecorder { backtrace: Backtrace },
 
     #[snafu(display("Catalog name is not utf8.\nBacktrace:\n{}", backtrace))]
     ParseCatalogName {
@@ -213,6 +217,7 @@ pub struct Builder<Q, P> {
     opened_wals: Option<OpenedWals>,
     proxy: Option<Arc<Proxy<Q, P>>>,
     request_notifiers: Option<Arc<RequestNotifiers<StreamReadReqKey, error::Result<RecordBatch>>>>,
+    hotspot_recorder: Option<Arc<HotspotRecorder>>,
 }
 
 impl<Q, P> Builder<Q, P> {
@@ -226,6 +231,7 @@ impl<Q, P> Builder<Q, P> {
             opened_wals: None,
             proxy: None,
             request_notifiers: None,
+            hotspot_recorder: None,
         }
     }
 
@@ -265,6 +271,11 @@ impl<Q, P> Builder<Q, P> {
         self
     }
 
+    pub fn hotspot_recorder(mut self, hotspot_recorder: Arc<HotspotRecorder>) -> Self {
+        self.hotspot_recorder = Some(hotspot_recorder);
+        self
+    }
+
     pub fn request_notifiers(mut self, enable_query_dedup: bool) -> Self {
         if enable_query_dedup {
             self.request_notifiers = Some(Arc::new(RequestNotifiers::default()));
@@ -279,6 +290,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
         let instance = self.instance.context(MissingInstance)?;
         let opened_wals = self.opened_wals.context(MissingWals)?;
         let proxy = self.proxy.context(MissingProxy)?;
+        let hotspot_recorder = self.hotspot_recorder.context(MissingHotspotRecorder)?;
 
         let meta_rpc_server = self.cluster.map(|v| {
             let builder = meta_event_service::Builder {
@@ -295,6 +307,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
                 instance,
                 runtimes: runtimes.clone(),
                 request_notifiers: self.request_notifiers,
+                hotspot_recorder,
             };
             RemoteEngineServiceServer::new(service)
         };
