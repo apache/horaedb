@@ -76,7 +76,7 @@ dependencies = [
 
 [[package]]
 name = "alloc_tracker"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 
 [[package]]
 name = "allocator-api2"
@@ -86,7 +86,7 @@ checksum = "0942ffc6dcaadf03badf6e6a2d0228460359d5e34b57ccdc720b7382dfbd5ec5"
 
 [[package]]
 name = "analytic_engine"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "arc-swap 1.6.0",
  "arena",
@@ -111,7 +111,7 @@ dependencies = [
  "macros",
  "message_queue",
  "metric_ext",
- "object_store 1.2.5-alpha",
+ "object_store 1.2.6-alpha",
  "parquet",
  "parquet_ext",
  "pin-project-lite",
@@ -196,7 +196,7 @@ checksum = "bddcadddf5e9015d310179a59bb28c4d4b9920ad0f11e8e14dbadf654890c9a6"
 
 [[package]]
 name = "arena"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "parking_lot 0.11.2",
 ]
@@ -635,7 +635,7 @@ dependencies = [
 
 [[package]]
 name = "arrow_ext"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "arrow 43.0.0",
  "serde",
@@ -847,7 +847,7 @@ dependencies = [
 
 [[package]]
 name = "benchmarks"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "analytic_engine",
  "arena",
@@ -862,7 +862,7 @@ dependencies = [
  "generic_error",
  "log",
  "macros",
- "object_store 1.2.5-alpha",
+ "object_store 1.2.6-alpha",
  "parquet",
  "parquet_ext",
  "pprof",
@@ -1131,7 +1131,7 @@ checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
 
 [[package]]
 name = "bytes_ext"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "bytes",
  "snafu 0.6.10",
@@ -1197,7 +1197,7 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "catalog"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
  "common_types",
@@ -1211,7 +1211,7 @@ dependencies = [
 
 [[package]]
 name = "catalog_impls"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "analytic_engine",
  "async-trait",
@@ -1239,7 +1239,7 @@ dependencies = [
 
 [[package]]
 name = "ceresdb"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "analytic_engine",
  "catalog",
@@ -1506,7 +1506,7 @@ checksum = "b8191fa7302e03607ff0e237d4246cc043ff5b3cb9409d995172ba3bea16b807"
 
 [[package]]
 name = "cluster"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
  "bytes_ext",
@@ -1541,7 +1541,7 @@ dependencies = [
 
 [[package]]
 name = "codec"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "bytes_ext",
  "common_types",
@@ -1583,7 +1583,7 @@ dependencies = [
 
 [[package]]
 name = "common_types"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "arrow 43.0.0",
  "arrow_ext",
@@ -2323,7 +2323,7 @@ dependencies = [
 
 [[package]]
 name = "df_operator"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "arrow 43.0.0",
  "base64 0.13.1",
@@ -2655,7 +2655,7 @@ checksum = "e6d5a32815ae3f33302d95fdcb2ce17862f8c65363dcfd29360480ba1001fc9c"
 
 [[package]]
 name = "future_ext"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "futures 0.3.28",
  "runtime",
@@ -2824,7 +2824,7 @@ dependencies = [
 
 [[package]]
 name = "generic_error"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 
 [[package]]
 name = "getrandom"
@@ -2909,7 +2909,7 @@ dependencies = [
 
 [[package]]
 name = "hash_ext"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "ahash 0.8.3",
  "byteorder",
@@ -3172,7 +3172,7 @@ dependencies = [
 
 [[package]]
 name = "id_allocator"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "generic_error",
  "tokio",
@@ -3274,7 +3274,7 @@ checksum = "8bb03732005da905c88227371639bf1ad885cc712789c011c31c5fb3ab3ccf02"
 
 [[package]]
 name = "interpreters"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "analytic_engine",
  "arrow 43.0.0",
@@ -3664,7 +3664,7 @@ dependencies = [
 
 [[package]]
 name = "logger"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "chrono",
  "log",
@@ -3735,7 +3735,7 @@ dependencies = [
 
 [[package]]
 name = "macros"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 
 [[package]]
 name = "matchers"
@@ -3834,7 +3834,7 @@ dependencies = [
 
 [[package]]
 name = "meta_client"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
  "ceresdbproto",
@@ -3857,7 +3857,7 @@ dependencies = [
 
 [[package]]
 name = "metric_ext"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "crossbeam-utils 0.8.15",
  "serde",
@@ -4361,7 +4361,7 @@ dependencies = [
 
 [[package]]
 name = "object_store"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
  "bytes",
@@ -4491,7 +4491,7 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
 name = "panic_ext"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "backtrace",
  "gag",
@@ -4593,7 +4593,7 @@ dependencies = [
 
 [[package]]
 name = "parquet_ext"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "arrow 43.0.0",
  "arrow_ext",
@@ -4603,7 +4603,7 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "log",
- "object_store 1.2.5-alpha",
+ "object_store 1.2.6-alpha",
  "parquet",
  "tokio",
 ]
@@ -4619,7 +4619,7 @@ dependencies = [
 
 [[package]]
 name = "partition_table_engine"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
  "common_types",
@@ -4634,7 +4634,7 @@ dependencies = [
 
 [[package]]
 name = "partitioned_lock"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "hash_ext",
  "tokio",
@@ -5035,7 +5035,7 @@ dependencies = [
 
 [[package]]
 name = "profile"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "jemalloc-ctl",
  "jemalloc-sys",
@@ -5235,7 +5235,7 @@ checksum = "9653c3ed92974e34c5a6e0a510864dab979760481714c172e0a34e437cb98804"
 
 [[package]]
 name = "proxy"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "arrow 43.0.0",
  "arrow_ext",
@@ -5334,7 +5334,7 @@ dependencies = [
 
 [[package]]
 name = "query_engine"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "arrow 43.0.0",
  "async-trait",
@@ -5357,7 +5357,7 @@ dependencies = [
 
 [[package]]
 name = "query_frontend"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "arrow 43.0.0",
  "async-trait",
@@ -5668,7 +5668,7 @@ checksum = "a5996294f19bd3aae0453a862ad728f60e6600695733dd5df01da90c54363a3c"
 
 [[package]]
 name = "remote_engine_client"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "arrow_ext",
  "async-trait",
@@ -5798,7 +5798,7 @@ dependencies = [
 
 [[package]]
 name = "router"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
  "ceresdbproto",
@@ -5841,7 +5841,7 @@ dependencies = [
 
 [[package]]
 name = "runtime"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "lazy_static",
  "macros",
@@ -6161,7 +6161,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "analytic_engine",
  "arrow 43.0.0",
@@ -6313,7 +6313,7 @@ dependencies = [
 
 [[package]]
 name = "size_ext"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "serde",
  "toml 0.7.3",
@@ -6336,7 +6336,7 @@ dependencies = [
 
 [[package]]
 name = "skiplist"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "arena",
  "bytes",
@@ -6719,7 +6719,7 @@ checksum = "2047c6ded9c721764247e62cd3b03c09ffc529b2ba5b10ec482ae507a4a70160"
 
 [[package]]
 name = "system_catalog"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "arrow 43.0.0",
  "async-trait",
@@ -6741,7 +6741,7 @@ dependencies = [
 
 [[package]]
 name = "table_engine"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "arrow 43.0.0",
  "arrow_ext",
@@ -6769,7 +6769,7 @@ dependencies = [
 
 [[package]]
 name = "table_kv"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "lazy_static",
  "log",
@@ -6848,7 +6848,7 @@ dependencies = [
 
 [[package]]
 name = "test_util"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "arrow 43.0.0",
  "chrono",
@@ -6953,7 +6953,7 @@ dependencies = [
 
 [[package]]
 name = "time_ext"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "ceresdbproto",
  "chrono",
@@ -6967,7 +6967,7 @@ dependencies = [
 
 [[package]]
 name = "timed_task"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "log",
  "runtime",
@@ -7166,7 +7166,7 @@ dependencies = [
 
 [[package]]
 name = "toml_ext"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "macros",
  "serde",
@@ -7250,7 +7250,7 @@ dependencies = [
 
 [[package]]
 name = "tools"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "analytic_engine",
  "anyhow",
@@ -7259,7 +7259,7 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "num_cpus",
- "object_store 1.2.5-alpha",
+ "object_store 1.2.6-alpha",
  "parquet",
  "parquet_ext",
  "runtime",
@@ -7302,14 +7302,14 @@ checksum = "b6bc1c9ce2b5135ac7f93c72918fc37feb872bdc6a5533a8b85eb4b86bfdae52"
 
 [[package]]
 name = "trace_metric"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "trace_metric_derive",
 ]
 
 [[package]]
 name = "trace_metric_derive"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7318,7 +7318,7 @@ dependencies = [
 
 [[package]]
 name = "trace_metric_derive_tests"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "trace_metric",
 ]
@@ -7409,7 +7409,7 @@ dependencies = [
 
 [[package]]
 name = "tracing_util"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "console-subscriber",
  "lazy_static",
@@ -7607,7 +7607,7 @@ checksum = "9d5b2c62b4012a3e1eca5a7e077d13b3bf498c4073e33ccd58626607748ceeca"
 
 [[package]]
 name = "wal"
-version = "1.2.5-alpha"
+version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
  "bytes_ext",

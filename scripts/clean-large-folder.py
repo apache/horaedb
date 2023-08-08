@@ -14,9 +14,11 @@ def clean_if_necessary(folder, threshold_size):
         shutil.rmtree(folder)
 
 
+GB = 1024 * 1024 * 1024
+
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python3 clean_large_folder.py check_folder threshold_size")
+        print("Usage: python3 clean_large_folder.py check_folder threshold_size(GB)")
     check_folder = sys.argv[1]
-    threshold_size = int(sys.argv[2])
+    threshold_size = int(sys.argv[2]) * GB
     clean_if_necessary(check_folder, threshold_size)
