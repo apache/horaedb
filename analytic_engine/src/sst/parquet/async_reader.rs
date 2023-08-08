@@ -54,7 +54,6 @@ use tokio::sync::{
 };
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
-
 use crate::{
     prefetchable_stream::{NoopPrefetcher, PrefetchableStream},
     sst::{

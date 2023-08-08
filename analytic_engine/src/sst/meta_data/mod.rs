@@ -14,10 +14,11 @@
 
 pub mod cache;
 
-use std::sync::Arc;
+use std::{str::Utf8Error, sync::Arc};
 
 use ceresdbproto::sst as sst_pb;
 use common_types::{schema::Schema, time::TimeRange, SequenceNumber};
+use generic_error::GenericError;
 use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
@@ -68,6 +69,20 @@ pub enum Error {
     #[snafu(display("Meet a object store error, err:{source}\nBacktrace:\n{backtrace}"))]
     ObjectStoreError {
         source: object_store::ObjectStoreError,
+        backtrace: Backtrace,
+    },
+    #[snafu(display(
+        "Failed to decode sst meta data, file_path:{file_path}, err:{source}.\nBacktrace:\n{backtrace:?}",
+    ))]
+    FetchAndDecodeSstMeta {
+        file_path: String,
+        source: GenericError,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Meet a object store error, err:{source}\nBacktrace:\n{backtrace}"))]
+    Utf8ErrorWrapper {
+        source: Utf8Error,
         backtrace: Backtrace,
     },
 }

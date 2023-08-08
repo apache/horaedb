@@ -23,15 +23,14 @@ use parquet::{file::metadata::FileMetaData, format::KeyValue};
 use parquet_ext::meta_data::ChunkReader;
 use snafu::{ensure, OptionExt, ResultExt};
 
-use crate::{
-    sst::{
-        meta_data::{
-            DecodeCustomMetaData, KvMetaDataNotFound, ObjectStoreError, ParquetMetaDataRef, Result,
-        },
-        parquet::{
-            async_reader::ChunkReaderAdapter,
-            encoding::{self, decode_sst_meta_data, META_KEY},
-        },
+use crate::sst::{
+    meta_data::{
+        DecodeCustomMetaData, FetchAndDecodeSstMeta, KvMetaDataNotFound, ObjectStoreError,
+        ParquetMetaDataRef, Result, Utf8ErrorWrapper,
+    },
+    parquet::{
+        async_reader::ChunkReaderAdapter,
+        encoding::{self, decode_sst_meta_data, META_KEY},
     },
 };
 
@@ -108,13 +107,16 @@ impl MetaData {
                     let metadata = meta_chunk_reader_adapter
                         .get_bytes(0..meta_size)
                         .await
-                        .unwrap();
-                    let tmpstr = std::str::from_utf8(metadata.as_ref()).unwrap();
+                        .with_context(|| FetchAndDecodeSstMeta {
+                            file_path: meta_path.to_string(),
+                        })?;
+                    let tmpstr =
+                        std::str::from_utf8(metadata.as_ref()).context(Utf8ErrorWrapper)?;
                     let kv = parquet::file::metadata::KeyValue::new(
                         META_KEY.to_string(),
                         String::from(tmpstr),
                     );
-                    Some(decode_sst_meta_data(&kv).unwrap())
+                    Some(decode_sst_meta_data(&kv).context(DecodeCustomMetaData)?)
                 }
                 None => None,
             };
