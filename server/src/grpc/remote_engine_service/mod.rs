@@ -435,7 +435,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteEngineService
             self.hotspot_recorder
                 .send_msg_or_log(
                     "inc_query_reqs",
-                    Message::Query(format!("{}/{}", table.schema, table.table)),
+                    Message::Query(format_hot_key(&table.schema, &table.table)),
                 )
                 .await
         }
@@ -580,15 +580,15 @@ async fn handle_stream_read(
     }
 }
 
-fn format_hot_key(table: &TableIdentifier) -> String {
-    format!("{}/{}", table.schema, table.table)
+fn format_hot_key(schema: &str, table: &str) -> String {
+    format!("{schema}/{table}")
 }
 
 async fn record_write(
     hotspot_recorder: &Arc<HotspotRecorder>,
     request: &table_engine::remote::model::WriteRequest,
 ) {
-    let hot_key = format_hot_key(&request.table);
+    let hot_key = format_hot_key(&request.table.schema, &request.table.table);
     let row_count = request.write_request.row_group.num_rows();
     let field_count = row_count * request.write_request.row_group.schema().num_columns();
     hotspot_recorder
