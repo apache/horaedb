@@ -75,7 +75,10 @@ impl MetaData {
             if kv_meta.key == encoding::META_KEY {
                 custom_kv_meta = Some(kv_meta);
             } else if kv_meta.key == encoding::META_PATH_KEY {
-                meta_path = Some(Path::from(kv_meta.value.clone().unwrap()));
+                meta_path = match &kv_meta.value {
+                    Some(path) => Some(Path::from(path.as_str())),
+                    None => None,
+                }
             } else {
                 other_kv_metas.push(kv_meta.clone());
             }
@@ -102,19 +105,22 @@ impl MetaData {
                         .await
                         .context(ObjectStoreError)?
                         .size;
+
                     let meta_chunk_reader_adapter =
                         ChunkReaderAdapter::new(&meta_path, &meta_store);
+
                     let metadata = meta_chunk_reader_adapter
                         .get_bytes(0..meta_size)
                         .await
                         .with_context(|| FetchAndDecodeSstMeta {
                             file_path: meta_path.to_string(),
                         })?;
-                    let tmpstr =
-                        std::str::from_utf8(metadata.as_ref()).context(Utf8ErrorWrapper)?;
+
                     let kv = parquet::file::metadata::KeyValue::new(
                         META_KEY.to_string(),
-                        String::from(tmpstr),
+                        String::from(
+                            std::str::from_utf8(metadata.as_ref()).context(Utf8ErrorWrapper)?,
+                        ),
                     );
                     Some(decode_sst_meta_data(&kv).context(DecodeCustomMetaData)?)
                 }
