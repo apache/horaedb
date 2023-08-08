@@ -719,47 +719,53 @@ impl ObjectStore for DiskCacheStore {
             }
         }
 
+        let concat_paged_bytes = |paged_bytes: Vec<Option<Bytes>>| {
+            // Concat the paged bytes.
+            let mut byte_buf = BytesMut::with_capacity(range.len());
+            for bytes in paged_bytes {
+                byte_buf.extend(bytes);
+            }
+            Ok(byte_buf.freeze())
+        };
+
+        if num_missing_pages == 0 {
+            return concat_paged_bytes(paged_bytes);
+        }
+
         // Fetch all the missing pages from the underlying store.
-        if num_missing_pages > 0 {
-            let mut missing_ranges = Vec::with_capacity(num_missing_pages);
-            let mut missing_range_idx = Vec::with_capacity(num_missing_pages);
-            for (idx, cache_miss) in paged_bytes.iter().map(|v| v.is_none()).enumerate() {
-                if cache_miss {
-                    let missing_range_start = aligned_start + idx * self.page_size;
-                    let missing_range_end = (missing_range_start + self.page_size).min(file_size);
-                    missing_ranges.push(missing_range_start..missing_range_end);
-                    missing_range_idx.push(idx);
-                }
-            }
-
-            let missing_ranged_bytes = self
-                .underlying_store
-                .get_ranges(location, &missing_ranges)
-                .await?;
-            assert_eq!(missing_ranged_bytes.len(), missing_ranges.len());
-
-            for ((missing_range, missing_range_idx), bytes) in missing_ranges
-                .into_iter()
-                .zip(missing_range_idx.into_iter())
-                .zip(missing_ranged_bytes.into_iter())
-            {
-                let filename = Self::page_cache_name(location, &missing_range);
-                self.cache.insert_data(filename, bytes.clone()).await;
-
-                let offset = missing_range.start;
-                let truncated_range = (missing_range.start.max(range.start) - offset)
-                    ..(missing_range.end.min(range.end) - offset);
-
-                paged_bytes[missing_range_idx] = Some(bytes.slice(truncated_range));
+        let mut missing_ranges = Vec::with_capacity(num_missing_pages);
+        let mut missing_range_idx = Vec::with_capacity(num_missing_pages);
+        for (idx, cache_miss) in paged_bytes.iter().map(|v| v.is_none()).enumerate() {
+            if cache_miss {
+                let missing_range_start = aligned_start + idx * self.page_size;
+                let missing_range_end = (missing_range_start + self.page_size).min(file_size);
+                missing_ranges.push(missing_range_start..missing_range_end);
+                missing_range_idx.push(idx);
             }
         }
 
-        // Concat the paged bytes.
-        let mut byte_buf = BytesMut::with_capacity(range.len());
-        for bytes in paged_bytes {
-            byte_buf.extend(bytes);
+        let missing_ranged_bytes = self
+            .underlying_store
+            .get_ranges(location, &missing_ranges)
+            .await?;
+        assert_eq!(missing_ranged_bytes.len(), missing_ranges.len());
+
+        for ((missing_range, missing_range_idx), bytes) in missing_ranges
+            .into_iter()
+            .zip(missing_range_idx.into_iter())
+            .zip(missing_ranged_bytes.into_iter())
+        {
+            let filename = Self::page_cache_name(location, &missing_range);
+            self.cache.insert_data(filename, bytes.clone()).await;
+
+            let offset = missing_range.start;
+            let truncated_range = (missing_range.start.max(range.start) - offset)
+                ..(missing_range.end.min(range.end) - offset);
+
+            paged_bytes[missing_range_idx] = Some(bytes.slice(truncated_range));
         }
-        Ok(byte_buf.freeze())
+
+        return concat_paged_bytes(paged_bytes);
     }
 
     async fn head(&self, location: &Path) -> Result<ObjectMeta> {
