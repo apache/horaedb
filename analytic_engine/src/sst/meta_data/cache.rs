@@ -75,10 +75,7 @@ impl MetaData {
             if kv_meta.key == encoding::META_KEY {
                 custom_kv_meta = Some(kv_meta);
             } else if kv_meta.key == encoding::META_PATH_KEY {
-                meta_path = match &kv_meta.value {
-                    Some(path) => Some(Path::from(path.as_str())),
-                    None => None,
-                }
+                meta_path = kv_meta.value.as_ref().map(|path| Path::from(path.as_str()))
             } else {
                 other_kv_metas.push(kv_meta.clone());
             }
