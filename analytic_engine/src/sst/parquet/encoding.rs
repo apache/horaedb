@@ -301,7 +301,6 @@ struct ColumnarRecordEncoder<W> {
     // wrap in Option so ownership can be taken out behind `&mut self`
     arrow_writer: Option<AsyncArrowWriter<W>>,
     arrow_schema: ArrowSchemaRef,
-    metadata: Option<ParquetMetaData>,
 }
 
 impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
@@ -330,7 +329,6 @@ impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
         Ok(Self {
             arrow_writer: Some(arrow_writer),
             arrow_schema,
-            metadata: None,
         })
     }
 }
