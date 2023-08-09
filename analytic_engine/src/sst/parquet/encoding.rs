@@ -34,12 +34,11 @@ use macros::define_result;
 use parquet::{
     arrow::AsyncArrowWriter,
     basic::Compression,
-    data_type::AsBytes,
     file::{metadata::KeyValue, properties::WriterProperties},
 };
 use prost::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
-use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::io::AsyncWrite;
 
 use crate::sst::parquet::{
     hybrid::{self, IndexedType},
@@ -356,7 +355,7 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
         Ok(record_batch.num_rows())
     }
 
-    fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
+    fn set_meta_data(&mut self, _meta_data: ParquetMetaData) -> Result<()> {
         Ok(())
     }
 

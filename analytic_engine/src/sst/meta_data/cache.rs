@@ -56,7 +56,7 @@ impl MetaData {
     pub async fn try_new(
         parquet_meta_data: &parquet_ext::ParquetMetaData,
         ignore_sst_filter: bool,
-        meta_store: ObjectStoreRef,
+        store: ObjectStoreRef,
     ) -> Result<Self> {
         let file_meta_data = parquet_meta_data.file_metadata();
         let kv_metas = file_meta_data
@@ -101,14 +101,9 @@ impl MetaData {
         } else if meta_path_version == META_PATH_VERSION_V2 {
             let decode_custom_metadata = match meta_path {
                 Some(meta_path) => {
-                    let meta_size = meta_store
-                        .head(&meta_path)
-                        .await
-                        .context(ObjectStoreError)?
-                        .size;
+                    let meta_size = store.head(&meta_path).await.context(ObjectStoreError)?.size;
 
-                    let meta_chunk_reader_adapter =
-                        ChunkReaderAdapter::new(&meta_path, &meta_store);
+                    let meta_chunk_reader_adapter = ChunkReaderAdapter::new(&meta_path, &store);
 
                     let metadata = meta_chunk_reader_adapter
                         .get_bytes(0..meta_size)
