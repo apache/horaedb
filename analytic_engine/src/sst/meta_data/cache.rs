@@ -17,7 +17,6 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-
 use lru::LruCache;
 use object_store::{ObjectStoreRef, Path};
 use parquet::{data_type::AsBytes, file::metadata::FileMetaData, format::KeyValue};
@@ -31,10 +30,7 @@ use crate::sst::{
     },
     parquet::{
         async_reader::ChunkReaderAdapter,
-        encoding::{
-            self, decode_sst_custom_meta_data,
-            META_PATH_VERSION_V1, META_PATH_VERSION_V2,
-        },
+        encoding::{self, decode_sst_custom_meta_data, META_PATH_VERSION_V1, META_PATH_VERSION_V2},
     },
 };
 
@@ -89,7 +85,7 @@ impl MetaData {
             }
         }
 
-        // Must ensure custom medata only store in one place
+        // Must ensure custom metadata only store in one place (V2)
         ensure!(
             custom_kv_meta.is_none() || meta_path.is_none(),
             KvMetaDataNotFound
