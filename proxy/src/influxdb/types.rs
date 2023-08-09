@@ -811,11 +811,12 @@ mod tests {
     }
 
     fn build_test_column_blocks() -> Vec<ColumnBlock> {
-        let mut measurement_builder = ColumnBlockBuilder::with_capacity(&DatumKind::String, 3);
-        let mut tag_builder = ColumnBlockBuilder::with_capacity(&DatumKind::String, 3);
-        let mut time_builder = ColumnBlockBuilder::with_capacity(&DatumKind::Timestamp, 3);
-        let mut field_builder1 = ColumnBlockBuilder::with_capacity(&DatumKind::String, 3);
-        let mut field_builder2 = ColumnBlockBuilder::with_capacity(&DatumKind::UInt64, 3);
+        let mut measurement_builder =
+            ColumnBlockBuilder::with_capacity(&DatumKind::String, 3, false);
+        let mut tag_builder = ColumnBlockBuilder::with_capacity(&DatumKind::String, 3, false);
+        let mut time_builder = ColumnBlockBuilder::with_capacity(&DatumKind::Timestamp, 3, false);
+        let mut field_builder1 = ColumnBlockBuilder::with_capacity(&DatumKind::String, 3, false);
+        let mut field_builder2 = ColumnBlockBuilder::with_capacity(&DatumKind::UInt64, 3, false);
 
         // Data in measurement1
         let measurement1 = Datum::String(StringBytes::copy_from_str("m1"));

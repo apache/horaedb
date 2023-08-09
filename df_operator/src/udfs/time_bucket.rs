@@ -151,11 +151,25 @@ impl TimeBucket {
     }
 
     fn call(&self) -> Result<ColumnBlock> {
-        let truncate = self.period.truncate(&self.column)?;
-        match truncate {
-            DfColumnarValue::Array(array) => {
-                let mills_array = cast_nanosecond_to_mills(&array).context(BuildColumn)?;
-                ColumnBlock::try_cast_arrow_array_ref(&mills_array).context(BuildColumn)
+        // TODO(tanruixiang) : mising is_dictionary params
+        let mut out_column_builder =
+            ColumnBlockBuilder::with_capacity(&DatumKind::Timestamp, self.column.num_rows(), false);
+        for ts_opt in self.column.iter() {
+            match ts_opt {
+                Some(ts) => {
+                    let truncated = self.period.truncate(ts).context(TruncateTimestamp {
+                        timestamp: ts,
+                        period: self.period,
+                    })?;
+                    out_column_builder
+                        .append(Datum::Timestamp(truncated))
+                        .context(BuildColumn)?;
+                }
+                None => {
+                    out_column_builder
+                        .append(Datum::Null)
+                        .context(BuildColumn)?;
+                }
             }
             _ => UnsupportedScalar.fail(),
         }

@@ -29,6 +29,12 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display("Invalid dictionary type:{}.\nBacktrace:\n{}", data_type, backtrace))]
+    InvalidDictionaryType {
+        data_type: DataType,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display(
         "Arrow field meta data is missing, field name:{}.\nBacktrace:\n{}",
         field_name,
@@ -119,6 +125,7 @@ pub enum ReadOp {
 struct ArrowFieldMeta {
     id: u32,
     is_tag: bool,
+    is_dictionary: bool,
     comment: String,
 }
 
@@ -126,6 +133,7 @@ struct ArrowFieldMeta {
 pub enum ArrowFieldMetaKey {
     Id,
     IsTag,
+    IsDictionary,
     Comment,
 }
 
@@ -134,6 +142,7 @@ impl ArrowFieldMetaKey {
         match self {
             ArrowFieldMetaKey::Id => "field::id",
             ArrowFieldMetaKey::IsTag => "field::is_tag",
+            ArrowFieldMetaKey::IsDictionary => "field::is_dictionary",
             ArrowFieldMetaKey::Comment => "field::comment",
         }
     }
@@ -159,6 +168,8 @@ pub struct ColumnSchema {
     /// Is tag, tag is just a hint for a column, there is no restriction that a
     /// tag column must be a part of primary key
     pub is_tag: bool,
+    // Whether to use dictionary types for encoding column
+    pub is_dictionary: bool,
     /// Comment of the column
     pub comment: String,
     /// Column name in response
@@ -189,6 +200,11 @@ impl ColumnSchema {
             DatumKind::Date => true,
             DatumKind::Time => true,
         }
+    }
+
+    /// Check whether a type is valid dictionary type.
+    pub fn is_valid_dictionary_type(typ: DatumKind) -> bool {
+        matches!(typ, DatumKind::String)
     }
 
     /// Convert `self` to [`arrow::datatypes::Field`]
@@ -273,6 +289,7 @@ impl TryFrom<schema_pb::ColumnSchema> for ColumnSchema {
             data_type: DatumKind::from(data_type),
             is_nullable: column_schema.is_nullable,
             is_tag: column_schema.is_tag,
+            is_dictionary: column_schema.is_dictionary,
             comment: column_schema.comment,
             escaped_name,
             default_value,
@@ -287,6 +304,7 @@ impl TryFrom<&Arc<Field>> for ColumnSchema {
         let ArrowFieldMeta {
             id,
             is_tag,
+            is_dictionary,
             comment,
         } = decode_arrow_field_meta_data(field.metadata())?;
         Ok(Self {
@@ -299,6 +317,7 @@ impl TryFrom<&Arc<Field>> for ColumnSchema {
             )?,
             is_nullable: field.is_nullable(),
             is_tag,
+            is_dictionary,
             comment,
             escaped_name: field.name().escape_debug().to_string(),
             default_value: None,
@@ -309,11 +328,24 @@ impl TryFrom<&Arc<Field>> for ColumnSchema {
 impl From<&ColumnSchema> for Field {
     fn from(col_schema: &ColumnSchema) -> Self {
         let metadata = encode_arrow_field_meta_data(col_schema);
-        let mut field = Field::new(
-            &col_schema.name,
-            col_schema.data_type.into(),
-            col_schema.is_nullable,
-        );
+        // If the column sholud use dictionary, create correspond dictionary type.
+        let mut field = if col_schema.is_dictionary {
+            Field::new_dict(
+                &col_schema.name,
+                DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+                col_schema.is_nullable,
+                col_schema.id.into(),
+                // TODO(tanruixiang): how to use dict_is_ordered
+                false,
+            )
+        } else {
+            Field::new(
+                &col_schema.name,
+                col_schema.data_type.into(),
+                col_schema.is_nullable,
+            )
+        };
+
         field.set_metadata(metadata);
 
         field
@@ -343,6 +375,7 @@ fn decode_arrow_field_meta_data(meta: &HashMap<String, String>) -> Result<ArrowF
         Ok(ArrowFieldMeta {
             id: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::Id)?,
             is_tag: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::IsTag)?,
+            is_dictionary: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::IsDictionary)?,
             comment: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::Comment)?,
         })
     }
@@ -355,6 +388,10 @@ fn encode_arrow_field_meta_data(col_schema: &ColumnSchema) -> HashMap<String, St
     meta.insert(
         ArrowFieldMetaKey::IsTag.to_string(),
         col_schema.is_tag.to_string(),
+    );
+    meta.insert(
+        ArrowFieldMetaKey::IsDictionary.to_string(),
+        col_schema.is_dictionary.to_string(),
     );
     meta.insert(
         ArrowFieldMetaKey::Comment.to_string(),
@@ -372,6 +409,7 @@ pub struct Builder {
     data_type: DatumKind,
     is_nullable: bool,
     is_tag: bool,
+    is_dictionary: bool,
     comment: String,
     default_value: Option<Expr>,
 }
@@ -385,6 +423,7 @@ impl Builder {
             data_type,
             is_nullable: false,
             is_tag: false,
+            is_dictionary: false,
             comment: String::new(),
             default_value: None,
         }
@@ -404,6 +443,12 @@ impl Builder {
     /// Set this column is tag, default is false (not a tag).
     pub fn is_tag(mut self, is_tag: bool) -> Self {
         self.is_tag = is_tag;
+        self
+    }
+
+    /// Set this column is dictionary, default is false (not a dictionary).
+    pub fn is_dictionary(mut self, is_dictionary: bool) -> Self {
+        self.is_dictionary = is_dictionary;
         self
     }
 
@@ -427,6 +472,15 @@ impl Builder {
             );
         }
 
+        if self.is_dictionary {
+            ensure!(
+                ColumnSchema::is_valid_dictionary_type(self.data_type),
+                InvalidDictionaryType {
+                    data_type: self.data_type
+                }
+            );
+        }
+
         Ok(())
     }
 
@@ -439,6 +493,7 @@ impl Builder {
             data_type: self.data_type,
             is_nullable: self.is_nullable,
             is_tag: self.is_tag,
+            is_dictionary: self.is_dictionary,
             comment: self.comment,
             escaped_name,
             default_value: self.default_value,
@@ -460,6 +515,7 @@ impl From<ColumnSchema> for schema_pb::ColumnSchema {
             is_nullable: src.is_nullable,
             id: src.id,
             is_tag: src.is_tag,
+            is_dictionary: src.is_dictionary,
             comment: src.comment,
             default_value,
         }
@@ -475,10 +531,11 @@ mod tests {
     /// Create a column schema for test, each field is filled with non-default
     /// value
     fn new_test_column_schema() -> ColumnSchema {
-        Builder::new("test_column_schema".to_string(), DatumKind::Boolean)
+        Builder::new("test_column_schema".to_string(), DatumKind::String)
             .id(18)
             .is_nullable(true)
             .is_tag(true)
+            .is_dictionary(true)
             .comment("Comment of this column".to_string())
             .default_value(Some(Expr::Value(Value::Boolean(true))))
             .build()
@@ -491,9 +548,10 @@ mod tests {
         let rhs = ColumnSchema {
             id: 18,
             name: "test_column_schema".to_string(),
-            data_type: DatumKind::Boolean,
+            data_type: DatumKind::String,
             is_nullable: true,
             is_tag: true,
+            is_dictionary: true,
             comment: "Comment of this column".to_string(),
             escaped_name: "test_column_schema".escape_debug().to_string(),
             default_value: Some(Expr::Value(Value::Boolean(true))),
@@ -508,6 +566,8 @@ mod tests {
         let pb_schema = schema_pb::ColumnSchema::from(column_schema.clone());
         // Check pb specific fields
         assert!(pb_schema.is_tag);
+        assert!(pb_schema.is_dictionary);
+        assert!(pb_schema.is_nullable);
 
         let schema_from_pb = ColumnSchema::try_from(pb_schema).unwrap();
         assert_eq!(&schema_from_pb, &column_schema);
@@ -521,6 +581,18 @@ mod tests {
             assert_eq!(
                 ColumnSchema::is_valid_tag_type(*v),
                 !invalid_tag_types.contains(v)
+            );
+        }
+    }
+
+    #[test]
+    fn test_valid_dictionary_type() {
+        let valid_dictionary_types = vec![DatumKind::String];
+
+        for v in &DatumKind::VALUES {
+            assert_eq!(
+                ColumnSchema::is_valid_dictionary_type(*v),
+                valid_dictionary_types.contains(v)
             );
         }
     }
