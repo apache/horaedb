@@ -303,13 +303,11 @@ struct ColumnarRecordEncoder<W> {
     arrow_writer: Option<AsyncArrowWriter<W>>,
     arrow_schema: ArrowSchemaRef,
     metadata: Option<ParquetMetaData>,
-    metasink: W,
 }
 
 impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
     fn try_new(
         sink: W,
-        metasink: W,
         schema: &Schema,
         num_rows_per_row_group: usize,
         max_buffer_size: usize,
@@ -334,7 +332,6 @@ impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
             arrow_writer: Some(arrow_writer),
             arrow_schema,
             metadata: None,
-            metasink,
         })
     }
 }
@@ -360,8 +357,6 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
     }
 
     fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
-        self.metadata = Some(meta_data);
-
         Ok(())
     }
 
@@ -383,15 +378,6 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
 
     async fn close(&mut self) -> Result<()> {
         assert!(self.arrow_writer.is_some());
-        if let Some(metadata) = &self.metadata {
-            let buf = encode_sst_custom_meta_data(metadata.clone())?;
-            // let key_value = encode_sst_meta_data(metadata.clone())?;
-            // let v = key_value.value.unwrap();
-            self.metasink.write_all(buf.as_bytes()).await.unwrap();
-            self.metasink.flush().await.unwrap();
-            self.metasink.shutdown().await.unwrap();
-        }
-
         let arrow_writer = self.arrow_writer.take().unwrap();
         arrow_writer
             .close()
@@ -547,7 +533,6 @@ pub struct ParquetEncoder {
 impl ParquetEncoder {
     pub fn try_new<W: AsyncWrite + Unpin + Send + 'static>(
         sink: W,
-        metasink: W,
         schema: &Schema,
         hybrid_encoding: bool,
         num_rows_per_row_group: usize,
@@ -565,7 +550,6 @@ impl ParquetEncoder {
         } else {
             Box::new(ColumnarRecordEncoder::try_new(
                 sink,
-                metasink,
                 schema,
                 num_rows_per_row_group,
                 max_buffer_size,

@@ -21,8 +21,9 @@ use futures::StreamExt;
 use generic_error::BoxError;
 use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
+use parquet::data_type::AsBytes;
 use snafu::ResultExt;
-use tokio::io::AsyncWrite;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::meta_data::RowGroupFilter;
 use crate::{
@@ -30,12 +31,12 @@ use crate::{
         factory::{ObjectStorePickerRef, SstWriteOptions},
         file::Level,
         parquet::{
-            encoding::ParquetEncoder,
+            encoding::{encode_sst_custom_meta_data, ParquetEncoder},
             meta_data::{ParquetFilter, ParquetMetaData, RowGroupFilterBuilder},
         },
         writer::{
-            self, BuildParquetFilter, EncodeRecordBatch, MetaData, PollRecordBatch,
-            RecordBatchStream, Result, SstInfo, SstWriter, Storage,
+            self, BuildParquetFilter, EncodePbData, EncodeRecordBatch, Io, MetaData,
+            PollRecordBatch, RecordBatchStream, Result, SstInfo, SstWriter, Storage,
         },
     },
     table::sst_util,
@@ -184,16 +185,14 @@ impl RecordBatchGroupWriter {
     async fn write_all<W: AsyncWrite + Send + Unpin + 'static>(
         mut self,
         sink: W,
-        metasink: W,
         metapath: Path,
-    ) -> Result<usize> {
+    ) -> Result<(usize, ParquetMetaData)> {
         let mut prev_record_batch: Option<RecordBatchWithKey> = None;
         let mut arrow_row_group = Vec::new();
         let mut total_num_rows = 0;
 
         let mut parquet_encoder = ParquetEncoder::try_new(
             sink,
-            metasink,
             &self.meta_data.schema,
             self.hybrid_encoding,
             self.num_rows_per_row_group,
@@ -241,11 +240,6 @@ impl RecordBatchGroupWriter {
         };
 
         parquet_encoder
-            .set_meta_data(parquet_meta_data.clone())
-            .box_err()
-            .context(EncodeRecordBatch)?;
-
-        parquet_encoder
             .set_meta_data_path(Some(metapath.to_string()))
             .box_err()
             .context(EncodeRecordBatch)?;
@@ -256,7 +250,7 @@ impl RecordBatchGroupWriter {
             .box_err()
             .context(EncodeRecordBatch)?;
 
-        Ok(total_num_rows)
+        Ok((total_num_rows, parquet_meta_data))
     }
 }
 
@@ -294,6 +288,25 @@ impl<'a> ObjectStoreMultiUploadAborter<'a> {
     }
 }
 
+async fn write_metadata<W>(
+    mut meta_sink: W,
+    parquet_metadata: ParquetMetaData,
+    meta_path: object_store::Path,
+) -> writer::Result<()>
+where
+    W: AsyncWrite + Send + Unpin,
+{
+    let buf = encode_sst_custom_meta_data(parquet_metadata).context(EncodePbData)?;
+    meta_sink.write_all(buf.as_bytes()).await.context(Io {
+        file: meta_path.clone(),
+    })?;
+    meta_sink.flush().await.context(Io {
+        file: meta_path.clone(),
+    })?;
+    meta_sink.shutdown().await.context(Io { file: meta_path })?;
+    Ok(())
+}
+
 #[async_trait]
 impl<'a> SstWriter for ParquetSstWriter<'a> {
     async fn write(
@@ -329,14 +342,35 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             need to implement append's abort, object_store may not support this
             behavior.
         */
-        let (meta_aborter, metasink) =
+        let (meta_aborter, meta_sink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, &meta_path).await?;
 
-        let total_num_rows = match group_writer
-            .write_all(sink, metasink, meta_path.clone())
-            .await
-        {
-            Ok(v) => v,
+        let (total_num_rows, parquet_metadata) =
+            match group_writer.write_all(sink, meta_path.clone()).await {
+                Ok(v) => v,
+                Err(e) => {
+                    if let Err(e) = meta_aborter.abort().await {
+                        // The uploading file will be leaked if failed to abort. A repair command
+                        // will be provided to clean up the leaked files.
+                        error!(
+                            "Failed to abort multi-upload for sst_meta:{}, err:{}",
+                            meta_path, e
+                        );
+                    }
+
+                    if let Err(e) = aborter.abort().await {
+                        // The uploading file will be leaked if failed to abort. A repair command
+                        // will be provided to clean up the leaked files.
+                        error!(
+                            "Failed to abort multi-upload for sst:{}, err:{}",
+                            self.path, e
+                        );
+                    }
+                    return Err(e);
+                }
+            };
+        match write_metadata(meta_sink, parquet_metadata, meta_path.clone()).await {
+            Ok(_) => (),
             Err(e) => {
                 if let Err(e) = meta_aborter.abort().await {
                     // The uploading file will be leaked if failed to abort. A repair command will
@@ -357,7 +391,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
                 }
                 return Err(e);
             }
-        };
+        }
 
         let file_head = self.store.head(self.path).await.context(Storage)?;
         let storage_format = if self.hybrid_encoding {

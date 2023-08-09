@@ -48,6 +48,18 @@ pub mod error {
         #[snafu(display("Failed to encode meta data, err:{}", source))]
         EncodeMetaData { source: GenericError },
 
+        #[snafu(display("Failed to encode pb data, err:{}", source))]
+        EncodePbData {
+            source: crate::sst::parquet::encoding::Error,
+        },
+
+        #[snafu(display("IO failed, file:{file}, source:{source}.\nbacktrace:\n{backtrace}",))]
+        Io {
+            file: String,
+            source: std::io::Error,
+            backtrace: Backtrace,
+        },
+
         #[snafu(display(
             "Failed to encode record batch into sst, err:{}.\nBacktrace:\n{}",
             source,
