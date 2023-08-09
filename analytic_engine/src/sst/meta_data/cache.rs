@@ -139,7 +139,6 @@ impl MetaData {
         } else {
             Some(other_kv_metas)
         };
-        println!("{:?}", other_kv_metas);
         let parquet = {
             let thin_file_meta_data = FileMetaData::new(
                 file_meta_data.version(),
