@@ -79,8 +79,7 @@ impl MetaData {
                 meta_path = kv_meta.value.as_ref().map(|path| Path::from(path.as_str()))
             } else if kv_meta.key == encoding::META_PATH_VERSION_KEY {
                 meta_path_version = kv_meta.value.as_ref().context(KvMetaVersionEmpty)?.clone();
-            }
-            {
+            } else {
                 other_kv_metas.push(kv_meta.clone());
             }
         }
@@ -140,6 +139,7 @@ impl MetaData {
         } else {
             Some(other_kv_metas)
         };
+        println!("{:?}", other_kv_metas);
         let parquet = {
             let thin_file_meta_data = FileMetaData::new(
                 file_meta_data.version(),
