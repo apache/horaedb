@@ -16,19 +16,19 @@
 
 use std::collections::HashMap;
 
-use arrow_ext::{
-    ipc,
-    ipc::{CompressOptions, CompressionMethod},
-};
+use arrow_ext::{ipc, ipc::CompressionMethod};
+use bytes_ext::ByteVec;
 use ceresdbproto::{
-    remote_engine,
-    remote_engine::row_group::Rows::Arrow,
+    remote_engine::{self, row_group::Rows::Contiguous},
     storage::{arrow_payload, ArrowPayload},
 };
 use common_types::{
-    record_batch::{RecordBatch, RecordBatchWithKeyBuilder},
-    row::{RowGroup, RowGroupBuilder},
-    schema::Schema,
+    record_batch::RecordBatch,
+    row::{
+        contiguous::{ContiguousRow, ContiguousRowReader, ContiguousRowWriter},
+        Row, RowGroup, RowGroupBuilder,
+    },
+    schema::{IndexInWriterSchema, Schema},
 };
 use generic_error::{BoxError, GenericError, GenericResult};
 use macros::define_result;
@@ -47,15 +47,11 @@ pub enum Error {
     ReadRequestToPb { source: crate::table::Error },
 
     #[snafu(display(
-        "Failed to convert write request to pb, table_ident:{:?}, msg:{}.\nBacktrace:\n{}",
-        table_ident,
-        msg,
-        backtrace
+        "Failed to convert write request to pb, table_ident:{table_ident:?}, err:{source}",
     ))]
-    WriteRequestToPbNoCause {
+    WriteRequestToPb {
         table_ident: TableIdentifier,
-        msg: String,
-        backtrace: Backtrace,
+        source: common_types::row::contiguous::Error,
     },
 
     #[snafu(display("Empty table identifier.\nBacktrace:\n{}", backtrace))]
@@ -120,9 +116,7 @@ pub struct ReadRequest {
 impl TryFrom<ceresdbproto::remote_engine::ReadRequest> for ReadRequest {
     type Error = Error;
 
-    fn try_from(
-        pb: ceresdbproto::remote_engine::ReadRequest,
-    ) -> std::result::Result<Self, Self::Error> {
+    fn try_from(pb: ceresdbproto::remote_engine::ReadRequest) -> Result<Self> {
         let table_identifier = pb.table.context(EmptyTableIdentifier)?;
         let table_read_request = pb.read_request.context(EmptyTableReadRequest)?;
         Ok(Self {
@@ -138,7 +132,7 @@ impl TryFrom<ceresdbproto::remote_engine::ReadRequest> for ReadRequest {
 impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::ReadRequest {
     type Error = Error;
 
-    fn try_from(request: ReadRequest) -> std::result::Result<Self, Self::Error> {
+    fn try_from(request: ReadRequest) -> Result<Self> {
         let table_pb = request.table.into();
         let request_pb = request.read_request.try_into().context(ReadRequestToPb)?;
 
@@ -154,32 +148,13 @@ pub struct WriteBatchRequest {
     pub batch: Vec<WriteRequest>,
 }
 
-impl TryFrom<ceresdbproto::remote_engine::WriteBatchRequest> for WriteBatchRequest {
-    type Error = Error;
-
-    fn try_from(
-        pb: ceresdbproto::remote_engine::WriteBatchRequest,
-    ) -> std::result::Result<Self, Self::Error> {
-        let batch = pb
-            .batch
-            .into_iter()
-            .map(WriteRequest::try_from)
-            .collect::<std::result::Result<Vec<_>, Self::Error>>()?;
-
-        Ok(WriteBatchRequest { batch })
-    }
-}
-
 impl WriteBatchRequest {
-    pub fn convert_write_batch_to_pb(
-        batch_request: WriteBatchRequest,
-        compress_options: CompressOptions,
-    ) -> std::result::Result<ceresdbproto::remote_engine::WriteBatchRequest, Error> {
-        let batch = batch_request
+    pub fn convert_into_pb(self) -> Result<ceresdbproto::remote_engine::WriteBatchRequest> {
+        let batch = self
             .batch
             .into_iter()
-            .map(|req| WriteRequest::convert_to_pb(req, compress_options))
-            .collect::<std::result::Result<Vec<_>, Error>>()?;
+            .map(|req| req.convert_into_pb())
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(remote_engine::WriteBatchRequest { batch })
     }
@@ -190,89 +165,83 @@ pub struct WriteRequest {
     pub write_request: TableWriteRequest,
 }
 
-impl TryFrom<ceresdbproto::remote_engine::WriteRequest> for WriteRequest {
-    type Error = Error;
+impl WriteRequest {
+    pub fn new(table_ident: TableIdentifier, row_group: RowGroup) -> Self {
+        Self {
+            table: table_ident,
+            write_request: TableWriteRequest { row_group },
+        }
+    }
 
-    fn try_from(
-        pb: ceresdbproto::remote_engine::WriteRequest,
-    ) -> std::result::Result<Self, Self::Error> {
-        let table_identifier = pb.table.context(EmptyTableIdentifier)?;
-        let row_group_pb = pb.row_group.context(EmptyRowGroup)?;
-        let rows = row_group_pb.rows.context(EmptyRowGroup)?;
-        let row_group = match rows {
-            Arrow(v) => {
-                ensure!(!v.record_batches.is_empty(), EmptyRecordBatch);
+    pub fn decode_row_group_from_arrow_payload(payload: ArrowPayload) -> Result<RowGroup> {
+        ensure!(!payload.record_batches.is_empty(), EmptyRecordBatch);
 
-                let compression = match v.compression() {
-                    arrow_payload::Compression::None => CompressionMethod::None,
-                    arrow_payload::Compression::Zstd => CompressionMethod::Zstd,
-                };
-
-                let mut record_batch_vec = vec![];
-                for data in v.record_batches {
-                    let mut arrow_record_batch_vec = ipc::decode_record_batches(data, compression)
-                        .map_err(|e| Box::new(e) as _)
-                        .context(ConvertRowGroup)?;
-                    record_batch_vec.append(&mut arrow_record_batch_vec);
-                }
-
-                build_row_group_from_record_batch(record_batch_vec)?
-            }
+        let compression = match payload.compression() {
+            arrow_payload::Compression::None => CompressionMethod::None,
+            arrow_payload::Compression::Zstd => CompressionMethod::Zstd,
         };
 
-        Ok(Self {
-            table: table_identifier.into(),
-            write_request: TableWriteRequest { row_group },
-        })
-    }
-}
+        let mut record_batch_vec = vec![];
+        for data in payload.record_batches {
+            let mut arrow_record_batch_vec = ipc::decode_record_batches(data, compression)
+                .map_err(|e| Box::new(e) as _)
+                .context(ConvertRowGroup)?;
+            record_batch_vec.append(&mut arrow_record_batch_vec);
+        }
 
-impl WriteRequest {
-    pub fn convert_to_pb(
-        request: WriteRequest,
-        compress_options: CompressOptions,
-    ) -> std::result::Result<ceresdbproto::remote_engine::WriteRequest, Error> {
-        // Row group to pb.
-        let row_group = request.write_request.row_group;
+        build_row_group_from_record_batch(record_batch_vec)
+    }
+
+    pub fn decode_row_group_from_contiguous_payload(
+        payload: ceresdbproto::remote_engine::ContiguousRows,
+        schema: &Schema,
+    ) -> Result<RowGroup> {
+        let mut row_group_builder =
+            RowGroupBuilder::with_capacity(schema.clone(), payload.encoded_rows.len());
+        for encoded_row in payload.encoded_rows {
+            let reader = ContiguousRowReader::try_new(&encoded_row, schema)
+                .box_err()
+                .context(ConvertRowGroup)?;
+
+            let mut datums = Vec::with_capacity(schema.num_columns());
+            for (index, column_schema) in schema.columns().iter().enumerate() {
+                let datum_view = reader.datum_view_at(index, &column_schema.data_type);
+                datums.push(datum_view.to_datum());
+            }
+            row_group_builder.push_checked_row(Row::from_datums(datums));
+        }
+        Ok(row_group_builder.build())
+    }
+
+    pub fn convert_into_pb(self) -> Result<ceresdbproto::remote_engine::WriteRequest> {
+        let row_group = self.write_request.row_group;
         let table_schema = row_group.schema();
         let min_timestamp = row_group.min_timestamp().as_i64();
         let max_timestamp = row_group.max_timestamp().as_i64();
 
-        let mut builder = RecordBatchWithKeyBuilder::new(table_schema.to_record_schema_with_key());
-
-        for row in row_group {
-            builder
-                .append_row(row)
-                .map_err(|e| Box::new(e) as _)
-                .context(ConvertRowGroup)?;
+        let mut encoded_rows = Vec::with_capacity(row_group.num_rows());
+        let index_in_schema = IndexInWriterSchema::for_same_schema(table_schema.num_columns());
+        for row in &row_group {
+            let mut buf = ByteVec::new();
+            let mut writer = ContiguousRowWriter::new(&mut buf, table_schema, &index_in_schema);
+            writer.write_row(row).with_context(|| WriteRequestToPb {
+                table_ident: self.table.clone(),
+            })?;
+            encoded_rows.push(buf);
         }
 
-        let record_batch_with_key = builder
-            .build()
-            .map_err(|e| Box::new(e) as _)
-            .context(ConvertRowGroup)?;
-        let record_batch = record_batch_with_key.into_record_batch();
-        let compress_output =
-            ipc::encode_record_batch(&record_batch.into_arrow_record_batch(), compress_options)
-                .map_err(|e| Box::new(e) as _)
-                .context(ConvertRowGroup)?;
-
-        let compression = match compress_output.method {
-            CompressionMethod::None => arrow_payload::Compression::None,
-            CompressionMethod::Zstd => arrow_payload::Compression::Zstd,
+        let contiguous_rows = ceresdbproto::remote_engine::ContiguousRows {
+            schema_version: table_schema.version(),
+            encoded_rows,
         };
-
         let row_group_pb = ceresdbproto::remote_engine::RowGroup {
             min_timestamp,
             max_timestamp,
-            rows: Some(Arrow(ArrowPayload {
-                record_batches: vec![compress_output.payload],
-                compression: compression as i32,
-            })),
+            rows: Some(Contiguous(contiguous_rows)),
         };
 
         // Table ident to pb.
-        let table_pb = request.table.into();
+        let table_pb = self.table.into();
 
         Ok(ceresdbproto::remote_engine::WriteRequest {
             table: Some(table_pb),
@@ -293,9 +262,7 @@ pub struct GetTableInfoRequest {
 impl TryFrom<ceresdbproto::remote_engine::GetTableInfoRequest> for GetTableInfoRequest {
     type Error = Error;
 
-    fn try_from(
-        value: ceresdbproto::remote_engine::GetTableInfoRequest,
-    ) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: ceresdbproto::remote_engine::GetTableInfoRequest) -> Result<Self> {
         let table = value.table.context(EmptyTableIdentifier)?.into();
         Ok(Self { table })
     }
@@ -304,7 +271,7 @@ impl TryFrom<ceresdbproto::remote_engine::GetTableInfoRequest> for GetTableInfoR
 impl TryFrom<GetTableInfoRequest> for ceresdbproto::remote_engine::GetTableInfoRequest {
     type Error = Error;
 
-    fn try_from(value: GetTableInfoRequest) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: GetTableInfoRequest) -> Result<Self> {
         let table = value.table.into();
         Ok(Self { table: Some(table) })
     }

@@ -1177,6 +1177,28 @@ impl<'a> DatumView<'a> {
             _ => None,
         }
     }
+
+    pub fn to_datum(&self) -> Datum {
+        match self {
+            DatumView::Null => Datum::Null,
+            DatumView::Timestamp(v) => Datum::Timestamp(*v),
+            DatumView::Double(v) => Datum::Double(*v),
+            DatumView::Float(v) => Datum::Float(*v),
+            DatumView::Varbinary(v) => Datum::Varbinary(Bytes::from(v.to_vec())),
+            DatumView::String(v) => Datum::String(StringBytes::copy_from_str(v)),
+            DatumView::UInt64(v) => Datum::UInt64(*v),
+            DatumView::UInt32(v) => Datum::UInt32(*v),
+            DatumView::UInt16(v) => Datum::UInt16(*v),
+            DatumView::UInt8(v) => Datum::UInt8(*v),
+            DatumView::Int64(v) => Datum::Int64(*v),
+            DatumView::Int32(v) => Datum::Int32(*v),
+            DatumView::Int16(v) => Datum::Int16(*v),
+            DatumView::Int8(v) => Datum::Int8(*v),
+            DatumView::Boolean(v) => Datum::Boolean(*v),
+            DatumView::Date(v) => Datum::Date(*v),
+            DatumView::Time(v) => Datum::Time(*v),
+        }
+    }
 }
 
 impl<'a> std::hash::Hash for DatumView<'a> {
