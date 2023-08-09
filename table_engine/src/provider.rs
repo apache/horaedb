@@ -23,7 +23,9 @@ use std::{
 
 use arrow::datatypes::SchemaRef;
 use async_trait::async_trait;
-use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema, UPDATE_MODE};
+use common_types::{
+    projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema, UPDATE_MODE,
+};
 use datafusion::{
     config::{ConfigEntry, ConfigExtension, ExtensionOptions},
     datasource::TableProvider,
@@ -184,18 +186,12 @@ impl TableProviderAdapter {
     }
 
     fn check_and_build_predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
-        let unique_keys = self.read_schema.unique_keys();
-
-        let options = &self.table.options();
-        let is_append = match options.get(UPDATE_MODE) {
-            Some(mode)if mode == "APPEND" => true,
-            _ => false
-        };
-
-        let push_down_filters = filters
+        let pushdown_states = self.pushdown_inner(&filters.iter().collect::<Vec<_>>());
+        let pushdown_filters = filters
             .iter()
-            .filter_map(|filter| {
-                if Self::only_filter_unique_key_columns(filter, &unique_keys) && is_append {
+            .zip(pushdown_states.iter())
+            .filter_map(|(filter, state)| {
+                if matches!(state, &TableProviderFilterPushDown::Exact) {
                     Some(filter.clone())
                 } else {
                     None
@@ -204,8 +200,8 @@ impl TableProviderAdapter {
             .collect::<Vec<_>>();
 
         PredicateBuilder::default()
-            .add_pushdown_exprs(&push_down_filters)
-            .extract_time_range(&self.read_schema, &push_down_filters)
+            .add_pushdown_exprs(&pushdown_filters)
+            .extract_time_range(&self.read_schema, filters)
             .build()
     }
 
@@ -219,6 +215,30 @@ impl TableProviderAdapter {
             }
         }
         true
+    }
+
+    fn pushdown_inner(&self, filters: &[&Expr]) -> Vec<TableProviderFilterPushDown> {
+        let unique_keys = self.read_schema.unique_keys();
+
+        // TODO: add pushdown check in table trait
+        let options = &self.table.options();
+        let is_append = matches!(options.get(UPDATE_MODE), Some(mode) if mode == "APPEND");
+        let is_system_engine = self.table.engine_type() == "system";
+
+        filters
+            .iter()
+            .map(|filter| {
+                if is_system_engine {
+                    return TableProviderFilterPushDown::Inexact;
+                }
+
+                if is_append || Self::only_filter_unique_key_columns(filter, &unique_keys) {
+                    TableProviderFilterPushDown::Exact
+                } else {
+                    TableProviderFilterPushDown::Inexact
+                }
+            })
+            .collect()
     }
 }
 
@@ -243,8 +263,11 @@ impl TableProvider for TableProviderAdapter {
         self.scan_table(state, projection, filters, limit).await
     }
 
-    fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {
-        Ok(TableProviderFilterPushDown::Exact)
+    fn supports_filters_pushdown(
+        &self,
+        filters: &[&Expr],
+    ) -> Result<Vec<TableProviderFilterPushDown>> {
+        Ok(self.pushdown_inner(filters))
     }
 
     /// Get the type of this table for metadata/catalog purposes.
@@ -270,8 +293,11 @@ impl TableSource for TableProviderAdapter {
 
     /// Tests whether the table provider can make use of a filter expression
     /// to optimize data retrieval.
-    fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {
-        Ok(TableProviderFilterPushDown::Exact)
+    fn supports_filters_pushdown(
+        &self,
+        filters: &[&Expr],
+    ) -> Result<Vec<TableProviderFilterPushDown>> {
+        Ok(self.pushdown_inner(filters))
     }
 }
 
