@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# This only ensure query by mysql protocol is OK,
+# This only ensure query by postgresql protocol is OK,
 # Full SQL test in ensured by sqlness tests.
 psql -h 127.0.0.1 -p 5433 -c 'show tables'
 
@@ -13,4 +13,3 @@ psql -h 127.0.0.1 -p 5433 -c 'CREATE TABLE `demo`(`name`string TAG,`id` int TAG,
 psql -h 127.0.0.1 -p 5433 -c 'insert into demo (name,value,t)values("ceresdb",1,1691116127622);'
 
 psql -h 127.0.0.1 -p 5433 -c 'select * from demo;'
-

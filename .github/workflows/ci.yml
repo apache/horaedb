@@ -234,6 +234,10 @@ jobs:
         working-directory: integration_tests
         run: |
           make run-mysql
+      - name: Run PostgreSQL client tests
+        working-directory: integration_tests
+        run: |
+          make run-postgresql
       - name: Run Prometheus query tests
         working-directory: integration_tests
         run: |
