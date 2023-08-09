@@ -17,6 +17,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+
 use lru::LruCache;
 use object_store::{ObjectStoreRef, Path};
 use parquet::{data_type::AsBytes, file::metadata::FileMetaData, format::KeyValue};
@@ -25,12 +26,15 @@ use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::sst::{
     meta_data::{
-        DecodeCustomMetaData, FetchAndDecodeSstMeta, KvMetaDataNotFound, ObjectStoreError,
-        ParquetMetaDataRef, Result, Utf8ErrorWrapper,
+        DecodeCustomMetaData, FetchAndDecodeSstMeta, KvMetaDataNotFound, KvMetaPathEmpty,
+        KvMetaVersionEmpty, MetaPathVersionWrong, ObjectStoreError, ParquetMetaDataRef, Result,
     },
     parquet::{
         async_reader::ChunkReaderAdapter,
-        encoding::{self, decode_sst_custom_meta_data, decode_sst_meta_data, META_KEY},
+        encoding::{
+            self, decode_sst_custom_meta_data,
+            META_PATH_VERSION_V1, META_PATH_VERSION_V2,
+        },
     },
 };
 
@@ -69,6 +73,7 @@ impl MetaData {
 
         let mut other_kv_metas: Vec<KeyValue> = Vec::with_capacity(kv_metas.len() - 1);
         let mut custom_kv_meta = None;
+        let mut meta_path_version = META_PATH_VERSION_V1.to_string();
         for kv_meta in kv_metas {
             // Remove our extended custom meta data from the parquet metadata for small
             // memory consumption in the cache.
@@ -76,7 +81,10 @@ impl MetaData {
                 custom_kv_meta = Some(kv_meta);
             } else if kv_meta.key == encoding::META_PATH_KEY {
                 meta_path = kv_meta.value.as_ref().map(|path| Path::from(path.as_str()))
-            } else {
+            } else if kv_meta.key == encoding::META_PATH_VERSION_KEY {
+                meta_path_version = kv_meta.value.as_ref().context(KvMetaVersionEmpty)?.clone();
+            }
+            {
                 other_kv_metas.push(kv_meta.clone());
             }
         }
@@ -86,7 +94,8 @@ impl MetaData {
             custom_kv_meta.is_none() || meta_path.is_none(),
             KvMetaDataNotFound
         );
-        let custom = if custom_kv_meta.is_some() {
+
+        let custom = if meta_path_version == META_PATH_VERSION_V1 {
             let custom_kv_meta = custom_kv_meta.context(KvMetaDataNotFound)?;
             let mut sst_meta =
                 encoding::decode_sst_meta_data(custom_kv_meta).context(DecodeCustomMetaData)?;
@@ -94,7 +103,7 @@ impl MetaData {
                 sst_meta.parquet_filter = None;
             }
             Arc::new(sst_meta)
-        } else {
+        } else if meta_path_version == META_PATH_VERSION_V2 {
             let decode_custom_metadata = match meta_path {
                 Some(meta_path) => {
                     let meta_size = meta_store
@@ -118,9 +127,14 @@ impl MetaData {
                             .context(DecodeCustomMetaData)?,
                     )
                 }
-                None => None,
+                None => return KvMetaPathEmpty {}.fail(),
             };
             Arc::new(decode_custom_metadata.unwrap())
+        } else {
+            return MetaPathVersionWrong {
+                path_version: meta_path_version,
+            }
+            .fail();
         };
 
         // let's build a new parquet metadata without the extended key value

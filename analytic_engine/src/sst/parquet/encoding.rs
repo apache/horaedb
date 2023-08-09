@@ -199,6 +199,9 @@ define_result!(Error);
 
 pub const META_KEY: &str = "meta";
 pub const META_PATH_KEY: &str = "meta_path";
+pub const META_PATH_VERSION_KEY: &str = "meta_path_version";
+pub const META_PATH_VERSION_V1: &str = "meta_path_version_v1";
+pub const META_PATH_VERSION_V2: &str = "meta_path_version_v2";
 pub const META_VALUE_HEADER: u8 = 0;
 
 /// Encode the sst custom meta data into binary key value pair.
@@ -363,14 +366,17 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
     }
 
     fn set_meta_data_path(&mut self, metadata_path: Option<String>) -> Result<()> {
-        let key_value = KeyValue {
+        let path_kv = KeyValue {
             key: META_PATH_KEY.to_string(),
             value: metadata_path,
         };
-        self.arrow_writer
-            .as_mut()
-            .unwrap()
-            .append_key_value_metadata(key_value);
+        let version_kv = KeyValue {
+            key: META_PATH_VERSION_KEY.to_string(),
+            value: Some(META_PATH_VERSION_V2.to_string()),
+        };
+        let writer = self.arrow_writer.as_mut().unwrap();
+        writer.append_key_value_metadata(path_kv);
+        writer.append_key_value_metadata(version_kv);
 
         Ok(())
     }

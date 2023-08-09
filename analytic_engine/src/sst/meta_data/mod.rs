@@ -48,6 +48,25 @@ pub enum Error {
     ))]
     KvMetaDataNotFound { backtrace: Backtrace },
 
+    #[snafu(display(
+        "Key value meta path version in parquet is empty\nBacktrace\n:{}",
+        backtrace
+    ))]
+    KvMetaVersionEmpty { backtrace: Backtrace },
+
+    #[snafu(display("Key value meta path in parquet is empty\nBacktrace\n:{}", backtrace))]
+    KvMetaPathEmpty { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Mata path version {} is wrong\nBacktrace\n:{}",
+        path_version,
+        backtrace
+    ))]
+    MetaPathVersionWrong {
+        path_version: String,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display("Metadata in proto struct is not found.\nBacktrace\n:{}", backtrace))]
     MetaDataNotFound { backtrace: Backtrace },
 

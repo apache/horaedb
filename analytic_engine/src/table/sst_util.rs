@@ -22,7 +22,7 @@ use table_engine::table::TableId;
 use crate::{space::SpaceId, sst::manager::FileId};
 
 const SST_FILE_SUFFIX: &str = "sst";
-const SST_CUSTOM_METADATA_FILE_SUFFIX: &str = "custommeta";
+const SST_CUSTOM_METADATA_FILE_SUFFIX: &str = "metadata";
 
 #[inline]
 /// Generate the sst file name.
