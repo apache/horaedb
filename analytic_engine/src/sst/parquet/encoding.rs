@@ -4,6 +4,20 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -34,6 +48,7 @@ use macros::define_result;
 use parquet::{
     arrow::AsyncArrowWriter,
     basic::Compression,
+    data_type::AsBytes,
     file::{metadata::KeyValue, properties::WriterProperties},
 };
 use prost::Message;
@@ -68,6 +83,18 @@ pub enum Error {
     ))]
     DecodeFromPb {
         meta_value: String,
+        source: prost::DecodeError,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Failed to decode sst meta data, bytes:{:?}, err:{}.\nBacktrace:\n{}",
+        bytes,
+        source,
+        backtrace,
+    ))]
+    DecodeFromBytes {
+        bytes: Vec<u8>,
         source: prost::DecodeError,
         backtrace: Backtrace,
     },
@@ -127,6 +154,16 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display(
+        "Invalid meta value header, bytes:{:?}.\nBacktrace:\n{}",
+        bytes,
+        backtrace
+    ))]
+    InvalidMetaBytesHeader {
+        bytes: Vec<u8>,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display("Failed to convert sst meta data from protobuf, err:{}", source))]
     ConvertSstMetaData {
         source: crate::sst::parquet::meta_data::Error,
@@ -178,9 +215,37 @@ pub const META_KEY: &str = "meta";
 pub const META_PATH_KEY: &str = "meta_path";
 pub const META_VALUE_HEADER: u8 = 0;
 
+/// Encode the sst custom meta data into binary key value pair.
+pub fn encode_sst_custom_meta_data(meta_data: ParquetMetaData) -> Result<BytesMut> {
+    let meta_data_pb = sst_pb::ParquetMetaData::from(meta_data);
+
+    let mut buf = BytesMut::with_capacity(meta_data_pb.encoded_len() + 1);
+    buf.try_put_u8(META_VALUE_HEADER)
+        .expect("Should write header into the buffer successfully");
+
+    // encode the sst custom meta data into protobuf binary
+    meta_data_pb.encode(&mut buf).context(EncodeIntoPb)?;
+    Ok(buf)
+}
+
+/// Decode the sst custom meta data from the binary key value pair.
+pub fn decode_sst_custom_meta_data(bytes: &[u8]) -> Result<ParquetMetaData> {
+    ensure!(
+        bytes[0] == META_VALUE_HEADER,
+        InvalidMetaBytesHeader {
+            bytes: bytes.to_vec()
+        }
+    );
+    let meta_data_pb: sst_pb::ParquetMetaData =
+        Message::decode(&bytes[1..]).context(DecodeFromBytes {
+            bytes: bytes.to_vec(),
+        })?;
+
+    ParquetMetaData::try_from(meta_data_pb).context(ConvertSstMetaData)
+}
+
 /// Encode the sst meta data into binary key value pair.
 pub fn encode_sst_meta_data(meta_data: ParquetMetaData) -> Result<KeyValue> {
-    println!("encode metadata: {meta_data:?}");
     let meta_data_pb = sst_pb::ParquetMetaData::from(meta_data);
 
     let mut buf = BytesMut::with_capacity(meta_data_pb.encoded_len() + 1);
@@ -327,9 +392,10 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
     async fn close(&mut self) -> Result<()> {
         assert!(self.arrow_writer.is_some());
         if let Some(metadata) = &self.metadata {
-            let key_value = encode_sst_meta_data(metadata.clone())?;
-            let v = key_value.value.unwrap();
-            self.metasink.write_all(v.as_bytes()).await.unwrap();
+            let buf = encode_sst_custom_meta_data(metadata.clone())?;
+            // let key_value = encode_sst_meta_data(metadata.clone())?;
+            // let v = key_value.value.unwrap();
+            self.metasink.write_all(buf.as_bytes()).await.unwrap();
             self.metasink.flush().await.unwrap();
             self.metasink.shutdown().await.unwrap();
         }
