@@ -219,7 +219,6 @@ impl TableProviderAdapter {
 
     fn pushdown_inner(&self, filters: &[&Expr]) -> Vec<TableProviderFilterPushDown> {
         let unique_keys = self.read_schema.unique_keys();
-
         // TODO: add pushdown check in table trait
         let options = &self.table.options();
         let is_append = matches!(options.get(UPDATE_MODE), Some(mode) if mode == "APPEND");
