@@ -22,6 +22,7 @@ use arrow::{
     util::bit_util,
 };
 use async_trait::async_trait;
+use bytes::Bytes;
 use bytes_ext::{BytesMut, SafeBufMut};
 use ceresdbproto::sst as sst_pb;
 use common_types::{
@@ -36,7 +37,7 @@ use parquet::{
     basic::Compression,
     file::{metadata::KeyValue, properties::WriterProperties},
 };
-use prost::Message;
+use prost::{bytes, Message};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use tokio::io::AsyncWrite;
 
@@ -203,7 +204,7 @@ pub const META_PATH_VERSION: &str = "2";
 pub const META_VALUE_HEADER: u8 = 0;
 
 /// Encode the sst custom meta data into binary key value pair.
-pub fn encode_sst_custom_meta_data(meta_data: ParquetMetaData) -> Result<BytesMut> {
+pub fn encode_sst_custom_meta_data(meta_data: ParquetMetaData) -> Result<Bytes> {
     let meta_data_pb = sst_pb::ParquetMetaData::from(meta_data);
 
     let mut buf = BytesMut::with_capacity(meta_data_pb.encoded_len() + 1);
@@ -212,7 +213,7 @@ pub fn encode_sst_custom_meta_data(meta_data: ParquetMetaData) -> Result<BytesMu
 
     // encode the sst custom meta data into protobuf binary
     meta_data_pb.encode(&mut buf).context(EncodeIntoPb)?;
-    Ok(buf)
+    Ok(buf.into())
 }
 
 /// Decode the sst custom meta data from the binary key value pair.

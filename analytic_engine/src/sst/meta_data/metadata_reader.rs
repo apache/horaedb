@@ -20,13 +20,15 @@ use object_store::{ObjectStoreRef, Path};
 use parquet::{data_type::AsBytes, file::metadata::KeyValue};
 use snafu::{OptionExt, ResultExt};
 
-use super::{
-    DecodeCustomMetaData, FetchAndDecodeSstMeta, FetchFromStore, KvMetaDataNotFound,
-    KvMetaPathEmpty, MetaPathVersionWrong,
-};
-use crate::sst::parquet::{
-    encoding::{self, decode_sst_custom_meta_data, META_PATH_VERSION},
-    meta_data::ParquetMetaData,
+use crate::sst::{
+    meta_data::{
+        DecodeCustomMetaData, FetchAndDecodeSstMeta, FetchFromStore, KvMetaDataNotFound,
+        KvMetaPathEmpty, MetaPathVersionWrong,
+    },
+    parquet::{
+        encoding::{self, decode_sst_custom_meta_data, META_PATH_VERSION},
+        meta_data::ParquetMetaData,
+    },
 };
 
 define_result!(super::Error);
