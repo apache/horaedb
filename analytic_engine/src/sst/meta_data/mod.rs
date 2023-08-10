@@ -91,6 +91,7 @@ pub enum Error {
         source: object_store::ObjectStoreError,
         backtrace: Backtrace,
     },
+
     #[snafu(display(
         "Failed to decode sst meta data, file_path:{file_path}, err:{source}.\nBacktrace:\n{backtrace:?}",
     ))]

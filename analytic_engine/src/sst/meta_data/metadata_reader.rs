@@ -32,6 +32,7 @@ use crate::sst::parquet::{
 };
 
 define_result!(super::Error);
+
 #[async_trait]
 pub trait CustomMetadataReader {
     async fn get_metadata(&self) -> Result<Arc<ParquetMetaData>>;
