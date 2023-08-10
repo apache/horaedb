@@ -20,7 +20,7 @@ use std::{
 use lru::LruCache;
 use object_store::{ObjectStoreRef, Path};
 use parquet::{file::metadata::FileMetaData, format::KeyValue};
-use snafu::{ensure, OptionExt, ResultExt};
+use snafu::{ensure, OptionExt};
 
 use crate::sst::{
     meta_data::{
