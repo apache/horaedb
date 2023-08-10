@@ -18,7 +18,6 @@ use async_trait::async_trait;
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::{data_type::AsBytes, file::metadata::KeyValue};
-
 use snafu::{OptionExt, ResultExt};
 
 use super::{
