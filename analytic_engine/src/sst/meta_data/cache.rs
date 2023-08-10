@@ -61,10 +61,10 @@ impl MetaData {
 
         ensure!(!kv_metas.is_empty(), KvMetaDataNotFound);
 
-        // The meta_path in v1 is None.
         let mut meta_path = None;
         let mut other_kv_metas: Vec<KeyValue> = Vec::with_capacity(kv_metas.len() - 1);
         let mut custom_kv_meta = None;
+        // The meta_path_version in v1 is None.
         let mut meta_path_version = None;
 
         for kv_meta in kv_metas {
