@@ -40,6 +40,7 @@ pub struct MetaData {
     /// consumption.
     parquet: parquet_ext::ParquetMetaDataRef,
     custom: ParquetMetaDataRef,
+    meta_path: Option<Path>,
 }
 
 impl MetaData {
@@ -88,11 +89,17 @@ impl MetaData {
             KvMetaDataNotFound
         );
 
+        // let meta_path_str = if meta_path.as_ref().is_some() {
+        //     Some(meta_path.clone().unwrap().to_string())
+        // } else {
+        //     None
+        // };
+
         let custom = CustomMetadataReaderBuilder::build(
             meta_path_version,
             custom_kv_meta,
             ignore_sst_filter,
-            meta_path,
+            meta_path.clone(),
             store,
         )?
         .get_metadata()
@@ -123,8 +130,11 @@ impl MetaData {
 
             Arc::new(thin_parquet_meta_data)
         };
-
-        Ok(Self { parquet, custom })
+        Ok(Self {
+            parquet,
+            custom,
+            meta_path,
+        })
     }
 
     #[inline]
@@ -135,6 +145,11 @@ impl MetaData {
     #[inline]
     pub fn custom(&self) -> &ParquetMetaDataRef {
         &self.custom
+    }
+
+    #[inline]
+    pub fn meta_path(&self) -> Option<Path> {
+        self.meta_path.clone()
     }
 }
 

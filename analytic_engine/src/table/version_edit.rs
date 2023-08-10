@@ -97,6 +97,7 @@ impl TryFrom<manifest_pb::AddFileMeta> for AddFile {
                 time_range,
                 max_seq: src.max_seq,
                 storage_format: StorageFormat::from(storage_format),
+                meta_path: todo!(),
             },
         };
 
@@ -191,6 +192,7 @@ pub mod tests {
                     time_range: self.time_range,
                     max_seq: self.max_seq,
                     storage_format: StorageFormat::default(),
+                    meta_path: todo!(),
                 },
             }
         }

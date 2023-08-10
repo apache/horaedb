@@ -33,7 +33,7 @@ use common_types::{
 use log::{error, info, warn};
 use macros::define_result;
 use metric_ext::Meter;
-use object_store::ObjectStoreRef;
+use object_store::{ObjectStoreRef, Path};
 use runtime::{JoinHandle, Runtime};
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
@@ -303,7 +303,7 @@ impl Drop for FileHandleInner {
         info!("FileHandle is dropped, meta:{:?}", self.meta);
 
         // Push file cannot block or be async because we are in drop().
-        self.purge_queue.push_file(self.meta.id);
+        self.purge_queue.push_file(self.meta.clone());
     }
 }
 
@@ -441,6 +441,8 @@ pub struct FileMeta {
     pub max_seq: u64,
     /// The format of the file.
     pub storage_format: StorageFormat,
+    /// custom meta_path
+    pub meta_path: Option<Path>,
 }
 
 impl FileMeta {
@@ -475,9 +477,9 @@ impl FilePurgeQueue {
         self.inner.closed.store(true, Ordering::SeqCst);
     }
 
-    fn push_file(&self, file_id: FileId) {
+    fn push_file(&self, file_meta: FileMeta) {
         if self.inner.closed.load(Ordering::SeqCst) {
-            warn!("Purger closed, ignore file_id:{file_id}");
+            warn!("Purger closed, ignore file_id:{}", file_meta.id);
             return;
         }
 
@@ -486,7 +488,8 @@ impl FilePurgeQueue {
         let request = FilePurgeRequest {
             space_id: self.inner.space_id,
             table_id: self.inner.table_id,
-            file_id,
+            file_id: file_meta.id,
+            meta_path: file_meta.meta_path,
         };
 
         if let Err(send_res) = self.inner.sender.send(Request::Purge(request)) {
@@ -510,6 +513,7 @@ pub struct FilePurgeRequest {
     space_id: SpaceId,
     table_id: TableId,
     file_id: FileId,
+    meta_path: Option<Path>,
 }
 
 #[derive(Debug)]
@@ -578,6 +582,16 @@ impl FilePurger {
                         purge_request,
                         sst_file_path.to_string()
                     );
+
+                    if let Some(path) = purge_request.meta_path {
+                        if let Err(e) = store.delete(&path).await {
+                            error!(
+                                "File purger failed to delete file, meta_path:{}, err:{}",
+                                path.to_string(),
+                                e
+                            );
+                        }
+                    }
 
                     if let Err(e) = store.delete(&sst_file_path).await {
                         error!(

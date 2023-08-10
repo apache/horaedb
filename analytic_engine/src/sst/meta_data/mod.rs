@@ -20,6 +20,7 @@ use std::{str::Utf8Error, sync::Arc};
 use ceresdbproto::sst as sst_pb;
 use common_types::{schema::Schema, time::TimeRange, SequenceNumber};
 use macros::define_result;
+use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 
@@ -201,8 +202,12 @@ pub struct SstMetaReader {
 
 impl SstMetaReader {
     /// Fetch meta data of the `files` from object store.
-    pub async fn fetch_metas(&self, files: &[FileHandle]) -> Result<Vec<SstMetaData>> {
+    pub async fn fetch_metas(
+        &self,
+        files: &[FileHandle],
+    ) -> Result<(Vec<SstMetaData>, Vec<Option<Path>>)> {
         let mut sst_metas = Vec::with_capacity(files.len());
+        let mut sst_meta_paths = Vec::with_capacity(files.len());
         for f in files {
             let path = sst_util::new_sst_file_path(self.space_id, self.table_id, f.id());
             let read_hint = SstReadHint {
@@ -214,10 +219,11 @@ impl SstMetaReader {
                 .create_reader(&path, &self.read_opts, read_hint, &self.store_picker, None)
                 .await
                 .context(CreateSstReader)?;
+            sst_meta_paths.push(reader.meta_path().await.context(ReadMetaData)?);
             let meta_data = reader.meta_data().await.context(ReadMetaData)?;
             sst_metas.push(meta_data.clone());
         }
 
-        Ok(sst_metas)
+        Ok((sst_metas, sst_meta_paths))
     }
 }

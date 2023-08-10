@@ -555,6 +555,11 @@ impl<'a> SstReader for Reader<'a> {
         ))
     }
 
+    async fn meta_path(&mut self) -> Result<Option<Path>> {
+        self.init_if_necessary().await?;
+        Ok(self.meta_data.as_ref().unwrap().meta_path())
+    }
+
     async fn read(
         &mut self,
     ) -> Result<Box<dyn PrefetchableStream<Item = Result<RecordBatchWithKey>>>> {
@@ -697,6 +702,10 @@ impl<'a> ThreadedReader<'a> {
 impl<'a> SstReader for ThreadedReader<'a> {
     async fn meta_data(&mut self) -> Result<SstMetaData> {
         self.inner.meta_data().await
+    }
+
+    async fn meta_path(&mut self) -> Result<Option<Path>> {
+        Ok(None)
     }
 
     async fn read(
