@@ -220,6 +220,8 @@ impl WriteRequest {
         let max_timestamp = row_group.max_timestamp().as_i64();
 
         let mut encoded_rows = Vec::with_capacity(row_group.num_rows());
+        // TODO: The schema of the written row group may be different from the original
+        // one, so the compatibility for that should be taken consideration.
         let index_in_schema = IndexInWriterSchema::for_same_schema(table_schema.num_columns());
         for row in &row_group {
             let mut buf = ByteVec::new();
