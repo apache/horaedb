@@ -70,11 +70,13 @@ pub struct MetaPathV2Reader {
     meta_path: Option<Path>,
     store: ObjectStoreRef,
 }
+
 impl MetaPathV2Reader {
     fn new(meta_path: Option<Path>, store: ObjectStoreRef) -> Self {
         Self { meta_path, store }
     }
 }
+
 #[async_trait]
 impl CustomMetadataReader for MetaPathV2Reader {
     async fn get_metadata(&self) -> Result<Arc<ParquetMetaData>> {
