@@ -13,6 +13,7 @@
 // limitations under the License.
 
 pub mod cache;
+mod metadata_reader;
 
 use std::{str::Utf8Error, sync::Arc};
 

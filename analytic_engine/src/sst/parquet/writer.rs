@@ -306,6 +306,27 @@ where
     meta_sink.shutdown().await.context(Io { file: meta_path })?;
     Ok(())
 }
+async fn multi_upload_abort(
+    meta_path: &Path,
+    meta_aborter: ObjectStoreMultiUploadAborter<'_>,
+    file_path: &Path,
+    aborter: ObjectStoreMultiUploadAborter<'_>,
+) {
+    // The uploading file will be leaked if failed to abort. A repair command will
+    // be provided to clean up the leaked files.
+    if let Err(e) = meta_aborter.abort().await {
+        error!(
+            "Failed to abort multi-upload for sst_meta:{}, err:{}",
+            meta_path, e
+        );
+    }
+    if let Err(e) = aborter.abort().await {
+        error!(
+            "Failed to abort multi-upload for sst:{}, err:{}",
+            file_path, e
+        );
+    }
+}
 
 #[async_trait]
 impl<'a> SstWriter for ParquetSstWriter<'a> {
@@ -349,46 +370,14 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             match group_writer.write_all(sink, meta_path.clone()).await {
                 Ok(v) => v,
                 Err(e) => {
-                    if let Err(e) = meta_aborter.abort().await {
-                        // The uploading file will be leaked if failed to abort. A repair command
-                        // will be provided to clean up the leaked files.
-                        error!(
-                            "Failed to abort multi-upload for sst_meta:{}, err:{}",
-                            meta_path, e
-                        );
-                    }
-
-                    if let Err(e) = aborter.abort().await {
-                        // The uploading file will be leaked if failed to abort. A repair command
-                        // will be provided to clean up the leaked files.
-                        error!(
-                            "Failed to abort multi-upload for sst:{}, err:{}",
-                            self.path, e
-                        );
-                    }
+                    multi_upload_abort(&meta_path, meta_aborter, self.path, aborter).await;
                     return Err(e);
                 }
             };
         match write_metadata(meta_sink, parquet_metadata, meta_path.clone()).await {
-            Ok(_) => (),
+            Ok(v) => v,
             Err(e) => {
-                if let Err(e) = meta_aborter.abort().await {
-                    // The uploading file will be leaked if failed to abort. A repair command will
-                    // be provided to clean up the leaked files.
-                    error!(
-                        "Failed to abort multi-upload for sst_meta:{}, err:{}",
-                        meta_path, e
-                    );
-                }
-
-                if let Err(e) = aborter.abort().await {
-                    // The uploading file will be leaked if failed to abort. A repair command will
-                    // be provided to clean up the leaked files.
-                    error!(
-                        "Failed to abort multi-upload for sst:{}, err:{}",
-                        self.path, e
-                    );
-                }
+                multi_upload_abort(&meta_path, meta_aborter, self.path, aborter).await;
                 return Err(e);
             }
         }

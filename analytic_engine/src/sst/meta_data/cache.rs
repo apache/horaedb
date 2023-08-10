@@ -19,19 +19,15 @@ use std::{
 
 use lru::LruCache;
 use object_store::{ObjectStoreRef, Path};
-use parquet::{data_type::AsBytes, file::metadata::FileMetaData, format::KeyValue};
-use parquet_ext::meta_data::ChunkReader;
+use parquet::{file::metadata::FileMetaData, format::KeyValue};
 use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::sst::{
     meta_data::{
-        DecodeCustomMetaData, FetchAndDecodeSstMeta, KvMetaDataNotFound, KvMetaPathEmpty,
-        KvMetaVersionEmpty, MetaPathVersionWrong, ObjectStoreError, ParquetMetaDataRef, Result,
+        metadata_reader::CustomMetadataReaderBuilder, KvMetaDataNotFound, KvMetaVersionEmpty,
+        ParquetMetaDataRef, Result,
     },
-    parquet::{
-        async_reader::ChunkReaderAdapter,
-        encoding::{self, decode_sst_custom_meta_data, META_PATH_VERSION_V1, META_PATH_VERSION_V2},
-    },
+    parquet::encoding::{self, META_PATH_VERSION_V1},
 };
 
 pub type MetaCacheRef = Arc<MetaCache>;
@@ -90,42 +86,15 @@ impl MetaData {
             KvMetaDataNotFound
         );
 
-        let custom = if meta_path_version == META_PATH_VERSION_V1 {
-            let custom_kv_meta = custom_kv_meta.context(KvMetaDataNotFound)?;
-            let mut sst_meta =
-                encoding::decode_sst_meta_data(custom_kv_meta).context(DecodeCustomMetaData)?;
-            if ignore_sst_filter {
-                sst_meta.parquet_filter = None;
-            }
-            Arc::new(sst_meta)
-        } else if meta_path_version == META_PATH_VERSION_V2 {
-            let decode_custom_metadata = match meta_path {
-                Some(meta_path) => {
-                    let meta_size = store.head(&meta_path).await.context(ObjectStoreError)?.size;
-
-                    let meta_chunk_reader_adapter = ChunkReaderAdapter::new(&meta_path, &store);
-
-                    let metadata = meta_chunk_reader_adapter
-                        .get_bytes(0..meta_size)
-                        .await
-                        .with_context(|| FetchAndDecodeSstMeta {
-                            file_path: meta_path.to_string(),
-                        })?;
-
-                    Some(
-                        decode_sst_custom_meta_data(metadata.as_bytes())
-                            .context(DecodeCustomMetaData)?,
-                    )
-                }
-                None => return KvMetaPathEmpty {}.fail(),
-            };
-            Arc::new(decode_custom_metadata.unwrap())
-        } else {
-            return MetaPathVersionWrong {
-                path_version: meta_path_version,
-            }
-            .fail();
-        };
+        let custom = CustomMetadataReaderBuilder::build(
+            meta_path_version,
+            custom_kv_meta,
+            ignore_sst_filter,
+            meta_path,
+            store,
+        )?
+        .get_metadata()
+        .await?;
 
         // let's build a new parquet metadata without the extended key value
         // metadata.
