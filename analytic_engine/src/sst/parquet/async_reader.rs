@@ -71,6 +71,7 @@ use crate::{
     },
 };
 const PRUNE_ROW_GROUPS_METRICS_COLLECTOR_NAME: &str = "prune_row_groups";
+
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
 type RecordBatchWithKeyStream = Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>;
 

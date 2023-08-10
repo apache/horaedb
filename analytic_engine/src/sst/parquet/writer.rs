@@ -185,7 +185,7 @@ impl RecordBatchGroupWriter {
     async fn write_all<W: AsyncWrite + Send + Unpin + 'static>(
         mut self,
         sink: W,
-        metapath: Path,
+        meta_path: Path,
     ) -> Result<(usize, ParquetMetaData)> {
         let mut prev_record_batch: Option<RecordBatchWithKey> = None;
         let mut arrow_row_group = Vec::new();
@@ -240,7 +240,7 @@ impl RecordBatchGroupWriter {
         };
 
         parquet_encoder
-            .set_meta_data_path(Some(metapath.to_string()))
+            .set_meta_data_path(Some(meta_path.to_string()))
             .box_err()
             .context(EncodeRecordBatch)?;
 

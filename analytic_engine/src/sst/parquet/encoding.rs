@@ -317,6 +317,7 @@ impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
             .set_max_row_group_size(num_rows_per_row_group)
             .set_compression(compression)
             .build();
+
         let arrow_writer = AsyncArrowWriter::try_new(
             sink,
             arrow_schema.clone(),
@@ -375,6 +376,7 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
 
     async fn close(&mut self) -> Result<()> {
         assert!(self.arrow_writer.is_some());
+
         let arrow_writer = self.arrow_writer.take().unwrap();
         arrow_writer
             .close()
