@@ -300,31 +300,15 @@ where
     meta_sink.write_all(buf.as_bytes()).await.context(Io {
         file: meta_path.clone(),
     })?;
-    meta_sink.flush().await.context(Io {
-        file: meta_path.clone(),
-    })?;
     meta_sink.shutdown().await.context(Io { file: meta_path })?;
     Ok(())
 }
-async fn multi_upload_abort(
-    meta_path: &Path,
-    meta_aborter: ObjectStoreMultiUploadAborter<'_>,
-    file_path: &Path,
-    aborter: ObjectStoreMultiUploadAborter<'_>,
-) {
+
+async fn multi_upload_abort(path: &Path, aborter: ObjectStoreMultiUploadAborter<'_>) {
     // The uploading file will be leaked if failed to abort. A repair command will
     // be provided to clean up the leaked files.
-    if let Err(e) = meta_aborter.abort().await {
-        error!(
-            "Failed to abort multi-upload for sst_meta:{}, err:{}",
-            meta_path, e
-        );
-    }
     if let Err(e) = aborter.abort().await {
-        error!(
-            "Failed to abort multi-upload for sst:{}, err:{}",
-            file_path, e
-        );
+        error!("Failed to abort multi-upload for sst:{}, err:{}", path, e);
     }
 }
 
@@ -358,6 +342,14 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
 
         let meta_path = sst_util::new_custom_metadata_path(self.path);
 
+        let (total_num_rows, parquet_metadata) =
+            match group_writer.write_all(sink, meta_path.clone()).await {
+                Ok(v) => v,
+                Err(e) => {
+                    multi_upload_abort(self.path, aborter).await;
+                    return Err(e);
+                }
+            };
         /*
             TODO: If you want to store multiple metadata in a single file, you
             need to implement append's abort, object_store may not support this
@@ -365,19 +357,11 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
         */
         let (meta_aborter, meta_sink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, &meta_path).await?;
-
-        let (total_num_rows, parquet_metadata) =
-            match group_writer.write_all(sink, meta_path.clone()).await {
-                Ok(v) => v,
-                Err(e) => {
-                    multi_upload_abort(&meta_path, meta_aborter, self.path, aborter).await;
-                    return Err(e);
-                }
-            };
         match write_metadata(meta_sink, parquet_metadata, meta_path.clone()).await {
             Ok(v) => v,
             Err(e) => {
-                multi_upload_abort(&meta_path, meta_aborter, self.path, aborter).await;
+                multi_upload_abort(self.path, aborter).await;
+                multi_upload_abort(&meta_path, meta_aborter).await;
                 return Err(e);
             }
         }

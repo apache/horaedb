@@ -18,16 +18,15 @@ use async_trait::async_trait;
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::{data_type::AsBytes, file::metadata::KeyValue};
-use parquet_ext::meta_data::ChunkReader;
+
 use snafu::{OptionExt, ResultExt};
 
 use super::{
-    DecodeCustomMetaData, FetchAndDecodeSstMeta, KvMetaDataNotFound, KvMetaPathEmpty,
-    MetaPathVersionWrong, ObjectStoreError,
+    DecodeCustomMetaData, FetchAndDecodeSstMeta, FetchFromStore, KvMetaDataNotFound,
+    KvMetaPathEmpty, MetaPathVersionWrong,
 };
 use crate::sst::parquet::{
-    async_reader::ChunkReaderAdapter,
-    encoding::{self, decode_sst_custom_meta_data, META_PATH_VERSION_V1, META_PATH_VERSION_V2},
+    encoding::{self, decode_sst_custom_meta_data, META_PATH_VERSION},
     meta_data::ParquetMetaData,
 };
 
@@ -83,19 +82,16 @@ impl CustomMetadataReader for MetaPathV2Reader {
     async fn get_metadata(&self) -> Result<Arc<ParquetMetaData>> {
         let decode_custom_metadata = match &self.meta_path {
             Some(meta_path) => {
-                let meta_size = self
+                let metadata = self
                     .store
-                    .head(meta_path)
-                    .await
-                    .context(ObjectStoreError)?
-                    .size;
-
-                let meta_chunk_reader_adapter = ChunkReaderAdapter::new(meta_path, &self.store);
-
-                let metadata = meta_chunk_reader_adapter
-                    .get_bytes(0..meta_size)
+                    .get(meta_path)
                     .await
                     .with_context(|| FetchAndDecodeSstMeta {
+                        file_path: meta_path.to_string(),
+                    })?
+                    .bytes()
+                    .await
+                    .with_context(|| FetchFromStore {
                         file_path: meta_path.to_string(),
                     })?;
 
@@ -112,20 +108,22 @@ impl CustomMetadataReader for MetaPathV2Reader {
 
 impl<'a> CustomMetadataReaderBuilder {
     pub fn build(
-        meta_path_version: String,
+        meta_path_version: Option<String>,
         custom_kv_meta: Option<&'a KeyValue>,
         ignore_sst_filter: bool,
         meta_path: Option<Path>,
         store: ObjectStoreRef,
     ) -> Result<Box<dyn CustomMetadataReader + Send + Sync + 'a>> {
-        match meta_path_version.as_str() {
-            META_PATH_VERSION_V1 => Ok(Box::new(MetaPathV1Reader::new(
+        match meta_path_version {
+            None => Ok(Box::new(MetaPathV1Reader::new(
                 custom_kv_meta,
                 ignore_sst_filter,
             ))),
-            META_PATH_VERSION_V2 => Ok(Box::new(MetaPathV2Reader::new(meta_path, store))),
+            Some(v) if v.as_str() == META_PATH_VERSION => {
+                Ok(Box::new(MetaPathV2Reader::new(meta_path, store)))
+            }
             _ => MetaPathVersionWrong {
-                path_version: meta_path_version,
+                path_version: meta_path_version.unwrap(),
             }
             .fail(),
         }

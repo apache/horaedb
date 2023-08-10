@@ -27,7 +27,7 @@ use crate::sst::{
         metadata_reader::CustomMetadataReaderBuilder, KvMetaDataNotFound, KvMetaVersionEmpty,
         ParquetMetaDataRef, Result,
     },
-    parquet::encoding::{self, META_PATH_VERSION_V1},
+    parquet::encoding,
 };
 
 pub type MetaCacheRef = Arc<MetaCache>;
@@ -61,10 +61,12 @@ impl MetaData {
 
         ensure!(!kv_metas.is_empty(), KvMetaDataNotFound);
 
+        // The meta_path in v1 is None.
         let mut meta_path = None;
         let mut other_kv_metas: Vec<KeyValue> = Vec::with_capacity(kv_metas.len() - 1);
         let mut custom_kv_meta = None;
-        let mut meta_path_version = META_PATH_VERSION_V1.to_string();
+        let mut meta_path_version = None;
+
         for kv_meta in kv_metas {
             // Remove our extended custom meta data from the parquet metadata for small
             // memory consumption in the cache.
@@ -73,7 +75,8 @@ impl MetaData {
             } else if kv_meta.key == encoding::META_PATH_KEY {
                 meta_path = kv_meta.value.as_ref().map(|path| Path::from(path.as_str()))
             } else if kv_meta.key == encoding::META_PATH_VERSION_KEY {
-                meta_path_version = kv_meta.value.as_ref().context(KvMetaVersionEmpty)?.clone();
+                meta_path_version =
+                    Some(kv_meta.value.as_ref().context(KvMetaVersionEmpty)?.clone());
             } else {
                 other_kv_metas.push(kv_meta.clone());
             }

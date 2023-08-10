@@ -19,8 +19,9 @@ use std::{str::Utf8Error, sync::Arc};
 
 use ceresdbproto::sst as sst_pb;
 use common_types::{schema::Schema, time::TimeRange, SequenceNumber};
-use generic_error::GenericError;
+
 use macros::define_result;
+
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 
@@ -97,7 +98,16 @@ pub enum Error {
     ))]
     FetchAndDecodeSstMeta {
         file_path: String,
-        source: GenericError,
+        source: object_store::ObjectStoreError,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Failed to decode sst meta data, file_path:{file_path}, err:{source}.\nBacktrace:\n{backtrace:?}",
+    ))]
+    FetchFromStore {
+        file_path: String,
+        source: object_store::ObjectStoreError,
         backtrace: Backtrace,
     },
 
