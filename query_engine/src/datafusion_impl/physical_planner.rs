@@ -17,7 +17,7 @@ use std::{sync::Arc, time::Instant};
 use async_trait::async_trait;
 use datafusion::{
     execution::{context::SessionState, runtime_env::RuntimeEnv},
-    optimizer::analyzer::{Analyzer, AnalyzerRule},
+    optimizer::analyzer::Analyzer,
     physical_optimizer::PhysicalOptimizerRule,
     prelude::{SessionConfig, SessionContext},
 };
@@ -70,16 +70,12 @@ impl DatafusionPhysicalPlannerImpl {
 
         // Using default logcial optimizer, if want to add more custom rule, using
         // `add_optimizer_rule` to add.
-        let mut state =
+        let state =
             SessionState::with_config_rt(df_session_config, Arc::new(RuntimeEnv::default()))
                 .with_query_planner(Arc::new(QueryPlannerAdapter));
 
-        // Our analyzer has high priority, so first add we custom rules, then add the
-        // default ones.
-        state = state.with_analyzer_rules(Self::analyzer_rules());
-        for rule in Analyzer::new().rules {
-            state = state.add_analyzer_rule(rule);
-        }
+        // Register analyzer rules
+        let state = Self::register_analyzer_rules(state);
 
         // Register iox optimizers, used by influxql.
         let state = influxql_query::logical_optimizer::register_iox_logical_optimizers(state);
@@ -101,8 +97,15 @@ impl DatafusionPhysicalPlannerImpl {
         new_rules
     }
 
-    fn analyzer_rules() -> Vec<Arc<dyn AnalyzerRule + Send + Sync>> {
-        vec![Arc::new(TypeConversion)]
+    fn register_analyzer_rules(mut state: SessionState) -> SessionState {
+        // Our analyzer has high priority, so first add we custom rules, then add the
+        // default ones.
+        state = state.with_analyzer_rules(vec![Arc::new(TypeConversion)]);
+        for rule in Analyzer::new().rules {
+            state = state.add_analyzer_rule(rule);
+        }
+
+        state
     }
 }
 
