@@ -56,8 +56,8 @@ WHERE
     `value` = 3;
 
 plan_type,plan,
-String("logical_plan"),String("Projection: issue341_t1.timestamp, issue341_t1.value\n  TableScan: issue341_t1 projection=[timestamp, value], full_filters=[issue341_t1.value = Int32(3)]"),
-String("physical_plan"),String("ProjectionExec: expr=[timestamp@0 as timestamp, value@1 as value]\n  ScanTable: table=issue341_t1, parallelism=8\n"),
+String("logical_plan"),String("TableScan: issue341_t1 projection=[timestamp, value], full_filters=[issue341_t1.value = Int32(3)]"),
+String("physical_plan"),String("ScanTable: table=issue341_t1, parallelism=8\n"),
 
 
 EXPLAIN SELECT
@@ -111,8 +111,8 @@ WHERE
     `value` = 3;
 
 plan_type,plan,
-String("logical_plan"),String("Projection: issue341_t2.timestamp, issue341_t2.value\n  Filter: issue341_t2.value = Float64(3)\n    TableScan: issue341_t2 projection=[timestamp, value], partial_filters=[issue341_t2.value = Float64(3)]"),
-String("physical_plan"),String("ProjectionExec: expr=[timestamp@0 as timestamp, value@1 as value]\n  CoalesceBatchesExec: target_batch_size=8192\n    FilterExec: value@1 = 3\n      ScanTable: table=issue341_t2, parallelism=8\n"),
+String("logical_plan"),String("Filter: issue341_t2.value = Float64(3)\n  TableScan: issue341_t2 projection=[timestamp, value], partial_filters=[issue341_t2.value = Float64(3)]"),
+String("physical_plan"),String("CoalesceBatchesExec: target_batch_size=8192\n  FilterExec: value@1 = 3\n    ScanTable: table=issue341_t2, parallelism=8\n"),
 
 
 EXPLAIN SELECT

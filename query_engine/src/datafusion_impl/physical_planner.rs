@@ -17,20 +17,7 @@ use std::{sync::Arc, time::Instant};
 use async_trait::async_trait;
 use datafusion::{
     execution::{context::SessionState, runtime_env::RuntimeEnv},
-    optimizer::{
-        analyzer::{
-            count_wildcard_rule::CountWildcardRule, inline_table_scan::InlineTableScan,
-            AnalyzerRule,
-        },
-        common_subexpr_eliminate::CommonSubexprEliminate,
-        eliminate_limit::EliminateLimit,
-        push_down_filter::PushDownFilter,
-        push_down_limit::PushDownLimit,
-        push_down_projection::PushDownProjection,
-        simplify_expressions::SimplifyExpressions,
-        single_distinct_to_groupby::SingleDistinctToGroupBy,
-        OptimizerRule,
-    },
+    optimizer::analyzer::Analyzer,
     physical_optimizer::PhysicalOptimizerRule,
     prelude::{SessionConfig, SessionContext},
 };
@@ -81,18 +68,24 @@ impl DatafusionPhysicalPlannerImpl {
             .extensions
             .insert(ceresdb_options);
 
-        let logical_optimize_rules = Self::logical_optimize_rules();
+        // Using default logcial optimizer, if want to add more custom rule, using
+        // `add_optimizer_rule` to add.
         let state =
             SessionState::with_config_rt(df_session_config, Arc::new(RuntimeEnv::default()))
-                .with_query_planner(Arc::new(QueryPlannerAdapter))
-                .with_analyzer_rules(Self::analyzer_rules())
-                .with_optimizer_rules(logical_optimize_rules);
+                .with_query_planner(Arc::new(QueryPlannerAdapter));
+
+        // Register analyzer rules
+        let state = Self::register_analyzer_rules(state);
+
+        // Register iox optimizers, used by influxql.
         let state = influxql_query::logical_optimizer::register_iox_logical_optimizers(state);
-        let physical_optimizer =
-            Self::apply_adapters_for_physical_optimize_rules(state.physical_optimizers());
-        SessionContext::with_state(state.with_physical_optimizer_rules(physical_optimizer))
+
+        SessionContext::with_state(state)
     }
 
+    // TODO: this is not used now, bug of RepartitionAdapter is already fixed in
+    // datafusion itself. Remove this code in future.
+    #[allow(dead_code)]
     fn apply_adapters_for_physical_optimize_rules(
         default_rules: &[Arc<dyn PhysicalOptimizerRule + Send + Sync>],
     ) -> Vec<Arc<dyn PhysicalOptimizerRule + Send + Sync>> {
@@ -104,26 +97,15 @@ impl DatafusionPhysicalPlannerImpl {
         new_rules
     }
 
-    fn logical_optimize_rules() -> Vec<Arc<dyn OptimizerRule + Send + Sync>> {
-        vec![
-            // These rules are the default settings of the datafusion.
-            Arc::new(SimplifyExpressions::new()),
-            Arc::new(CommonSubexprEliminate::new()),
-            Arc::new(EliminateLimit::new()),
-            Arc::new(PushDownProjection::new()),
-            Arc::new(PushDownFilter::new()),
-            Arc::new(PushDownLimit::new()),
-            Arc::new(SingleDistinctToGroupBy::new()),
-        ]
-    }
+    fn register_analyzer_rules(mut state: SessionState) -> SessionState {
+        // Our analyzer has high priority, so first add we custom rules, then add the
+        // default ones.
+        state = state.with_analyzer_rules(vec![Arc::new(TypeConversion)]);
+        for rule in Analyzer::new().rules {
+            state = state.add_analyzer_rule(rule);
+        }
 
-    fn analyzer_rules() -> Vec<Arc<dyn AnalyzerRule + Send + Sync>> {
-        vec![
-            Arc::new(InlineTableScan::new()),
-            Arc::new(TypeConversion),
-            Arc::new(datafusion::optimizer::analyzer::type_coercion::TypeCoercion::new()),
-            Arc::new(CountWildcardRule::new()),
-        ]
+        state
     }
 }
 
