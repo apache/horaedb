@@ -163,22 +163,29 @@ impl TableProviderAdapter {
         );
 
         let predicate = self.check_and_build_predicate_from_filters(filters);
-        let mut scan_table = ScanTable {
-            projected_schema: ProjectedSchema::new(self.read_schema.clone(), projection.cloned())
-                .map_err(|e| {
+        let projected_schema = ProjectedSchema::new(self.read_schema.clone(), projection.cloned())
+            .map_err(|e| {
                 DataFusionError::Internal(format!(
                     "Invalid projection, plan:{self:?}, projection:{projection:?}, err:{e:?}"
                 ))
-            })?,
-            table: self.table.clone(),
-            request_id,
-            read_parallelism,
-            predicate,
+            })?;
+
+        let opts = ReadOptions {
             deadline,
-            stream_state: Mutex::new(ScanStreamState::default()),
+            read_parallelism,
+            batch_size: state.config_options().execution.batch_size,
+        };
+
+        let request = ReadRequest {
+            request_id,
+            opts,
+            projected_schema,
+            predicate,
             metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
         };
-        scan_table.maybe_init_stream(state).await?;
+
+        let scan_table = ScanTable::new(self.table.clone(), request);
+        scan_table.maybe_init_stream().await?;
 
         Ok(Arc::new(scan_table))
     }
@@ -281,45 +288,28 @@ impl TableSource for TableProviderAdapter {
 }
 
 /// Physical plan of scanning table.
-struct ScanTable {
-    projected_schema: ProjectedSchema,
+pub struct ScanTable {
     table: TableRef,
-    request_id: RequestId,
-    read_parallelism: usize,
-    predicate: PredicateRef,
-    deadline: Option<Instant>,
-    metrics_collector: MetricsCollector,
-
+    request: ReadRequest,
     stream_state: Mutex<ScanStreamState>,
 }
 
 impl ScanTable {
-    async fn maybe_init_stream(&mut self, state: &SessionState) -> Result<()> {
-        let req = ReadRequest {
-            request_id: self.request_id,
-            opts: ReadOptions {
-                batch_size: state.config_options().execution.batch_size,
-                read_parallelism: self.read_parallelism,
-                deadline: self.deadline,
-            },
-            projected_schema: self.projected_schema.clone(),
-            predicate: self.predicate.clone(),
-            metrics_collector: self.metrics_collector.clone(),
-        };
+    pub fn new(table: TableRef, request: ReadRequest) -> Self {
+        Self {
+            table,
+            request,
+            stream_state: Mutex::new(ScanStreamState::default()),
+        }
+    }
 
-        let read_res = self.table.partitioned_read(req).await;
+    async fn maybe_init_stream(&self) -> Result<()> {
+        let read_res = self.table.partitioned_read(self.request.clone()).await;
 
         let mut stream_state = self.stream_state.lock().unwrap();
-
         if stream_state.is_inited() {
             return Ok(());
         }
-
-        // FIXME: in new version distributed query, we should remove this.
-        if let Ok(partitioned_streams) = &read_res {
-            self.read_parallelism = partitioned_streams.streams.len();
-        }
-
         stream_state.init(read_res);
 
         Ok(())
@@ -332,11 +322,13 @@ impl ExecutionPlan for ScanTable {
     }
 
     fn schema(&self) -> SchemaRef {
-        self.projected_schema.to_projected_arrow_schema()
+        self.request.projected_schema.to_projected_arrow_schema()
     }
 
     fn output_partitioning(&self) -> Partitioning {
-        Partitioning::RoundRobinBatch(self.read_parallelism)
+        // It represents how current node map the inputs to outputs.
+        // However, we have no inputs here, so `UnknownPartitioning` is suitable.
+        Partitioning::UnknownPartitioning(self.request.opts.read_parallelism)
     }
 
     fn output_ordering(&self) -> Option<&[PhysicalSortExpr]> {
@@ -379,7 +371,7 @@ impl ExecutionPlan for ScanTable {
         let mut metric_set = MetricsSet::new();
 
         let mut format_visitor = FormatCollectorVisitor::default();
-        self.metrics_collector.visit(&mut format_visitor);
+        self.request.metrics_collector.visit(&mut format_visitor);
         let metrics_desc = format_visitor.into_string();
         metric_set.push(Arc::new(Metric::new(
             MetricValue::Count {
@@ -413,7 +405,7 @@ impl DisplayAs for ScanTable {
             f,
             "ScanTable: table={}, parallelism={}",
             self.table.name(),
-            self.read_parallelism,
+            self.request.opts.read_parallelism,
         )
     }
 }
@@ -421,10 +413,10 @@ impl DisplayAs for ScanTable {
 impl fmt::Debug for ScanTable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ScanTable")
-            .field("projected_schema", &self.projected_schema)
+            .field("projected_schema", &self.request.projected_schema)
             .field("table", &self.table.name())
-            .field("read_parallelism", &self.read_parallelism)
-            .field("predicate", &self.predicate)
+            .field("read_parallelism", &self.request.opts.read_parallelism)
+            .field("predicate", &self.request.predicate)
             .finish()
     }
 }
