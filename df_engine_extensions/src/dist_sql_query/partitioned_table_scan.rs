@@ -22,7 +22,7 @@ use datafusion::{
     execution::TaskContext,
     physical_expr::PhysicalSortExpr,
     physical_plan::{
-        displayable, DisplayAs, DisplayFormatType, ExecutionPlan, Partitioning,
+        DisplayAs, DisplayFormatType, ExecutionPlan, Partitioning,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
@@ -32,10 +32,9 @@ use table_engine::{
 };
 
 #[derive(Debug)]
-struct UnresolvedPartitionedScan {
+pub struct UnresolvedPartitionedScan {
     pub sub_tables: Vec<TableIdentifier>,
     pub read_request: ReadRequest,
-    pub remote_engine: RemoteEngineRef,
 }
 
 impl ExecutionPlan for UnresolvedPartitionedScan {
@@ -101,10 +100,9 @@ impl DisplayAs for UnresolvedPartitionedScan {
 ///
 /// It will send the `remote_exec_plan`s to corresponding nodes to execute.
 #[derive(Debug)]
-struct ResolvedPartitionedScan {
+pub struct ResolvedPartitionedScan {
     pub remote_engine: RemoteEngineRef,
-    pub sub_tables: Vec<TableIdentifier>,
-    pub remote_exec_plan: Arc<dyn ExecutionPlan>,
+    pub remote_exec_plans: Vec<(TableIdentifier, Arc<dyn ExecutionPlan>)>,
 }
 
 impl ExecutionPlan for ResolvedPartitionedScan {
@@ -112,12 +110,17 @@ impl ExecutionPlan for ResolvedPartitionedScan {
         self
     }
 
+    // TODO: check if it is right.
     fn schema(&self) -> SchemaRef {
-        self.remote_exec_plan.schema()
+        self.remote_exec_plans
+            .first()
+            .expect("remote_exec_plans should not be empty")
+            .1
+            .schema()
     }
 
     fn output_partitioning(&self) -> Partitioning {
-        Partitioning::UnknownPartitioning(self.sub_tables.len())
+        Partitioning::UnknownPartitioning(self.remote_exec_plans.len())
     }
 
     fn output_ordering(&self) -> Option<&[PhysicalSortExpr]> {
@@ -155,9 +158,8 @@ impl DisplayAs for ResolvedPartitionedScan {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "ResolvedPartitionedScan: sub_tables={:?}, remote_exec_plan:{:?}, partition_count={}",
-            self.sub_tables,
-            self.remote_exec_plan,
+            "ResolvedPartitionedScan: remote_exec_plans:{:?}, partition_count={}",
+            self.remote_exec_plans,
             self.output_partitioning().partition_count(),
         )
     }

@@ -257,7 +257,14 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     }
 
     pub fn table_source(&self, table_ref: TableRef) -> Arc<(dyn TableSource + 'static)> {
-        let table_adapter = Arc::new(TableProviderAdapter::new(table_ref));
+        let table_adapter = if let Some(partition_info) = table_ref.partition_info() {
+            Arc::new(partition_table_engine::provider::TableProviderAdapter::new(
+                table_ref,
+                partition_info,
+            )) as _
+        } else {
+            Arc::new(TableProviderAdapter::new(table_ref)) as _
+        };
 
         Arc::new(DefaultTableSource {
             table_provider: table_adapter,
@@ -397,9 +404,16 @@ impl SchemaProvider for SchemaProviderAdapter {
             table: Cow::from(name),
         };
 
-        self.tables
-            .get(name_ref)
-            .map(|table_ref| Arc::new(TableProviderAdapter::new(table_ref)) as _)
+        self.tables.get(name_ref).map(|table_ref| {
+            if let Some(partition_info) = table_ref.partition_info() {
+                Arc::new(partition_table_engine::provider::TableProviderAdapter::new(
+                    table_ref,
+                    partition_info,
+                )) as _
+            } else {
+                Arc::new(TableProviderAdapter::new(table_ref)) as _
+            }
+        })
     }
 
     fn table_exist(&self, name: &str) -> bool {
