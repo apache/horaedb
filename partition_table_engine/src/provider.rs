@@ -18,7 +18,7 @@
 
 use std::{
     any::Any,
-    sync::{Arc},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -26,28 +26,25 @@ use arrow::datatypes::SchemaRef;
 use async_trait::async_trait;
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
 use datafusion::{
-    config::{ExtensionOptions},
+    config::ExtensionOptions,
     datasource::TableProvider,
     error::{DataFusionError, Result},
-    execution::context::{SessionState},
+    execution::context::SessionState,
     logical_expr::{Expr, TableProviderFilterPushDown, TableSource, TableType},
-    physical_plan::{
-        ExecutionPlan,
-    },
+    physical_plan::ExecutionPlan,
 };
 use df_engine_extensions::dist_sql_query::partitioned_table_scan::UnresolvedPartitionedScan;
-
 use log::debug;
 use table_engine::{
     partition::{
         format_sub_partition_table_name, rule::df_adapter::DfPartitionRuleAdapter, PartitionInfo,
     },
-    predicate::{PredicateBuilder},
+    predicate::PredicateBuilder,
     provider::CeresdbOptions,
     remote::model::TableIdentifier,
     table::{ReadOptions, ReadRequest, TableRef},
 };
-use trace_metric::{MetricsCollector};
+use trace_metric::MetricsCollector;
 
 const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_table";
 

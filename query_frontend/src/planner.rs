@@ -1368,6 +1368,12 @@ mod tests {
     use ceresdbproto::storage::{
         value, Field, FieldGroup, Tag, Value as PbValue, WriteSeriesEntry,
     };
+    use datafusion::{
+        common::tree_node::{TreeNode, TreeNodeVisitor, VisitRecursion},
+        datasource::source_as_provider,
+        logical_expr::LogicalPlan,
+    };
+    use partition_table_engine::provider::TableProviderAdapter as PartitionedTableProviderAdapter;
     use sqlparser::ast::Value;
 
     use super::*;
@@ -1378,13 +1384,17 @@ mod tests {
     };
 
     fn quick_test(sql: &str, expected: &str) -> Result<()> {
+        let plan = sql_to_logical_plan(sql)?;
+        assert_eq!(format!("{plan:#?}"), expected);
+        Ok(())
+    }
+
+    fn sql_to_logical_plan(sql: &str) -> Result<Plan> {
         let mock = MockMetaProvider::default();
         let planner = build_planner(&mock);
         let mut statements = Parser::parse_sql(sql).unwrap();
         assert_eq!(statements.len(), 1);
-        let plan = planner.statement_to_plan(statements.remove(0))?;
-        assert_eq!(format!("{plan:#?}"), expected);
-        Ok(())
+        planner.statement_to_plan(statements.remove(0))
     }
 
     fn build_planner(provider: &MockMetaProvider) -> Planner<MockMetaProvider> {
@@ -1593,20 +1603,58 @@ mod tests {
 
     #[test]
     fn test_query_statement_to_plan() {
-        let sql = "select * from test_tablex;";
+        let sql = "select * from test_partitioned_table;";
         assert!(quick_test(sql, "").is_err());
 
-        let sql = "select * from test_table;";
         quick_test(
             sql,
             "Query(
     QueryPlan {
         df_plan: Projection: test_table.key1, test_table.key2, test_table.field1, test_table.field2, test_table.field3, test_table.field4
-          TableScan: test_table,
+          TableScan: test_partitioned_table,
     },
 )",
         )
         .unwrap();
+    }
+
+    #[test]
+    fn test_partitioned_table_query_statement_to_plan() {
+        let sql = "select * from test_partitioned_table;";
+        let plan = sql_to_logical_plan(sql).unwrap();
+        let df_plan = if let Plan::Query(query_plan) = plan {
+            query_plan.df_plan
+        } else {
+            panic!("It should be query plan");
+        };
+
+        // Check if it is successful to build a partitioned table source.
+        struct CheckVisitor;
+
+        impl TreeNodeVisitor for CheckVisitor {
+            type N = LogicalPlan;
+
+            fn pre_visit(
+                &mut self,
+                plan: &LogicalPlan,
+            ) -> datafusion::error::Result<VisitRecursion> {
+                if let LogicalPlan::TableScan(scan) = plan {
+                    let provider = source_as_provider(&scan.source).unwrap();
+                    if provider
+                        .as_any()
+                        .downcast_ref::<PartitionedTableProviderAdapter>()
+                        .is_none()
+                    {
+                        panic!("It should be partitioned table provider");
+                    }
+                }
+
+                Ok(VisitRecursion::Continue)
+            }
+        }
+
+        let mut visitor = CheckVisitor;
+        df_plan.visit(&mut visitor).unwrap();
     }
 
     #[test]

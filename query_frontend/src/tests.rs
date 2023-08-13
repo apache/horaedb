@@ -18,8 +18,10 @@ use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
 use common_types::tests::{build_default_value_schema, build_schema, build_schema_for_cpu};
 use datafusion::catalog::TableReference;
 use df_operator::{scalar::ScalarUdf, udaf::AggregateUdf};
+use partition_table_engine::test_util::PartitionedMemoryTable;
 use table_engine::{
     memory::MemoryTable,
+    partition::{KeyPartitionInfo, PartitionDefinition, PartitionInfo},
     table::{Table, TableId, TableRef},
     ANALYTIC_ENGINE_TYPE,
 };
@@ -27,11 +29,25 @@ use table_engine::{
 use crate::provider::MetaProvider;
 
 pub struct MockMetaProvider {
-    tables: Vec<Arc<MemoryTable>>,
+    tables: Vec<TableRef>,
 }
 
 impl Default for MockMetaProvider {
     fn default() -> Self {
+        let partition_info = PartitionInfo::Key(KeyPartitionInfo {
+            version: 0,
+            definitions: vec![PartitionDefinition::default(); 4],
+            partition_key: vec!["tag1".to_string()],
+            linear: false,
+        });
+        let test_partitioned_table = PartitionedMemoryTable::new(
+            "test_partitioned_table".to_string(),
+            TableId::from(105),
+            build_schema_for_cpu(),
+            ANALYTIC_ENGINE_TYPE.to_string(),
+            partition_info,
+        );
+
         Self {
             tables: vec![
                 Arc::new(MemoryTable::new(
@@ -65,6 +81,8 @@ impl Default for MockMetaProvider {
                     build_schema_for_cpu(),
                     ANALYTIC_ENGINE_TYPE.to_string(),
                 )),
+                // Used in `test_partitioned_table_query_to_plan`
+                Arc::new(test_partitioned_table),
             ],
         }
     }

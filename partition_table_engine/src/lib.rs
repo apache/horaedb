@@ -18,6 +18,7 @@ mod error;
 mod metrics;
 mod partition;
 pub mod provider;
+pub mod test_util;
 
 use std::sync::Arc;
 

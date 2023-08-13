@@ -26,11 +26,7 @@ use datafusion::{
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
-use table_engine::{
-    provider::ScanTable,
-    remote::model::TableIdentifier,
-    table::{ReadRequest},
-};
+use table_engine::{provider::ScanTable, remote::model::TableIdentifier, table::ReadRequest};
 
 /// Unresolved sub table scan which can't be executed before rewriting
 #[derive(Debug)]
