@@ -2322,6 +2322,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "df_engine_extensions"
+version = "1.2.6-alpha"
+dependencies = [
+ "arrow 43.0.0",
+ "datafusion",
+ "generic_error",
+ "snafu 0.6.10",
+ "table_engine",
+]
+
+[[package]]
 name = "df_operator"
 version = "1.2.6-alpha"
 dependencies = [

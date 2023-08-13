@@ -61,6 +61,7 @@ members = [
     "components/trace_metric_derive",
     "components/trace_metric_derive_tests",
     "components/tracing_util",
+    "df_engine_extensions",
     "df_operator",
     "integration_tests",
     "integration_tests/sdk/rust",
@@ -108,6 +109,7 @@ common_types = { path = "common_types" }
 datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
 datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
 df_operator = { path = "df_operator" }
+df_engine_extensions = { path = "df_engine_extensions" }
 future_ext = { path = "components/future_ext" }
 etcd-client = "0.10.3"
 env_logger = "0.6"

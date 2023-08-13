@@ -1,0 +1,18 @@
+[package]
+name = "df_engine_extensions"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies]
+arrow = { workspace = true }
+datafusion = { workspace = true }
+generic_error = { workspace = true }
+snafu = { workspace = true }
+table_engine = { workspace = true }
