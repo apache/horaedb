@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+use std::sync::Arc;
 
-pub mod dist_sql_query;
-pub mod executor_preprocessor;
+use datafusion::physical_plan::ExecutionPlan;
+
+/// Preprocessor for the datafusion physical plan before being executed.
+pub trait ExecutorPreprocessor {
+    fn process(physical_plan: Arc<dyn ExecutionPlan>) -> Arc<dyn ExecutionPlan>;
+}

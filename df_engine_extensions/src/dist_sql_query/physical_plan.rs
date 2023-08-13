@@ -110,6 +110,31 @@ pub struct ResolvedPartitionedScan {
     pub remote_exec_plans: Vec<(TableIdentifier, Arc<dyn ExecutionPlan>)>,
 }
 
+impl ResolvedPartitionedScan {
+    pub fn extend_remote_exec_plans(
+        &self,
+        extended_node: Arc<dyn ExecutionPlan>,
+    ) -> DfResult<Arc<ResolvedPartitionedScan>> {
+        let origin_plans = self.remote_exec_plans.clone();
+        let new_plans = origin_plans
+            .into_iter()
+            .map(|(table, plan)| {
+                extended_node
+                    .clone()
+                    .with_new_children(vec![plan])
+                    .map(|extended_plan| (table, extended_plan))
+            })
+            .collect::<DfResult<Vec<_>>>()?;
+
+        let plan = ResolvedPartitionedScan {
+            remote_engine: self.remote_engine.clone(),
+            remote_exec_plans: new_plans,
+        };
+
+        Ok(Arc::new(plan))
+    }
+}
+
 impl ExecutionPlan for ResolvedPartitionedScan {
     fn as_any(&self) -> &dyn Any {
         self
