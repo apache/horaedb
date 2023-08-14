@@ -401,6 +401,17 @@ impl TableImpl {
     }
 }
 
+pub fn support_pushdown(schema: &Schema, need_dedup: bool, columns: &[String]) -> bool {
+    if !need_dedup {
+        return true;
+    }
+
+    // When table need dedup, only unique keys columns support pushdown
+    columns
+        .iter()
+        .all(|col| schema.is_unique_column(col.as_str()))
+}
+
 #[async_trait]
 impl Table for TableImpl {
     fn name(&self) -> &str {
@@ -433,14 +444,8 @@ impl Table for TableImpl {
 
     fn support_pushdown(&self, read_schema: &Schema, columns: &[String]) -> bool {
         let need_dedup = self.table_data.table_options().need_dedup();
-        if !need_dedup {
-            return true;
-        }
 
-        // When table need dedup, only unique keys columns support pushdown
-        columns
-            .iter()
-            .all(|col| read_schema.is_unique_column(col.as_str()))
+        support_pushdown(read_schema, need_dedup, columns)
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {

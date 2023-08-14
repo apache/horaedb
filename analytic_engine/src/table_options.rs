@@ -412,6 +412,11 @@ pub struct TableOptions {
 }
 
 impl TableOptions {
+    pub fn from_map(map: &HashMap<String, String>, is_create: bool) -> Result<Self> {
+        let opt = Self::default();
+        merge_table_options(map, &opt, is_create)
+    }
+
     #[inline]
     pub fn segment_duration(&self) -> Option<Duration> {
         self.segment_duration.map(|v| v.0)
