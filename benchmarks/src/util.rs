@@ -76,8 +76,6 @@ pub async fn meta_from_sst(
     let metadata = footer::parse_metadata(&chunk_reader).unwrap();
     let kv_metas = metadata.file_metadata().key_value_metadata().unwrap();
 
-    // let parquet_meta_data =
-    // encoding::decode_sst_meta_data(&kv_metas[0]).unwrap();
     let mut meta_path = None;
     let mut other_kv_metas: Vec<KeyValue> = Vec::with_capacity(kv_metas.len() - 1);
     let mut custom_kv_meta = None;
