@@ -1026,9 +1026,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
     pub(crate) fn find_table(&self, table_name: &str) -> Result<Option<TableRef>> {
         let table_ref = get_table_ref(table_name);
-        self.meta_provider
+        let resolved_table = self
+            .meta_provider
             .table(table_ref)
-            .context(MetaProviderFindTable)
+            .context(MetaProviderFindTable)?;
+        Ok(resolved_table.map(|resolved| resolved.table))
     }
 }
 

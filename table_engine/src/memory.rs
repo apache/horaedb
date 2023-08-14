@@ -59,10 +59,6 @@ type RowGroupVec = Vec<RowGroup>;
 pub struct MemoryTable {
     /// Table name
     name: String,
-    /// Catalog name
-    catalog_name: String,
-    /// Schema name
-    schema_name: String,
     /// Table id
     id: TableId,
     /// Table schema
@@ -77,8 +73,6 @@ impl MemoryTable {
     pub fn new(name: String, id: TableId, schema: Schema, engine_type: String) -> Self {
         Self {
             name,
-            catalog_name: "test_catalog".to_string(),
-            schema_name: "test_schema".to_string(),
             id,
             schema,
             row_groups: Arc::new(RwLock::new(Vec::new())),
@@ -102,14 +96,6 @@ impl fmt::Debug for MemoryTable {
 impl Table for MemoryTable {
     fn name(&self) -> &str {
         &self.name
-    }
-
-    fn catalog_name(&self) -> &str {
-        &self.catalog_name
-    }
-
-    fn schema_name(&self) -> &str {
-        &self.schema_name
     }
 
     fn id(&self) -> TableId {

@@ -26,7 +26,7 @@ use table_engine::{
     ANALYTIC_ENGINE_TYPE,
 };
 
-use crate::provider::MetaProvider;
+use crate::provider::{MetaProvider, ResolvedTable};
 
 pub struct MockMetaProvider {
     tables: Vec<TableRef>,
@@ -97,11 +97,15 @@ impl MetaProvider for MockMetaProvider {
         DEFAULT_SCHEMA
     }
 
-    fn table(&self, name: TableReference) -> crate::provider::Result<Option<TableRef>> {
+    fn table(&self, name: TableReference) -> crate::provider::Result<Option<ResolvedTable>> {
         let resolved = name.resolve(self.default_catalog_name(), self.default_schema_name());
         for table in &self.tables {
             if resolved.table == table.name() {
-                return Ok(Some(table.clone()));
+                return Ok(Some(ResolvedTable {
+                    catalog: resolved.catalog.to_string(),
+                    schema: resolved.schema.to_string(),
+                    table: table.clone(),
+                }));
             }
         }
 

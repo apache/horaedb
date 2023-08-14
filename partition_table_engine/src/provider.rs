@@ -53,21 +53,38 @@ const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_table";
 // (it will cause cyclic dependency now... I think it is due to our messy code organization).
 #[derive(Debug)]
 pub struct TableProviderAdapter {
+    /// Table
     table: TableRef,
+
+    /// Catalog name
+    catalog_name: String,
+
+    /// Schema name
+    schema_name: String,
+
     /// The schema of the table when this adapter is created, used as schema
     /// snapshot for read to avoid the reader sees different schema during
     /// query
     read_schema: Schema,
+
+    /// Partition info used to find corresponding sub tables.
     partition_info: PartitionInfo,
 }
 
 impl TableProviderAdapter {
-    pub fn new(table: TableRef, partition_info: PartitionInfo) -> Self {
+    pub fn new(
+        table: TableRef,
+        catalog_name: String,
+        schema_name: String,
+        partition_info: PartitionInfo,
+    ) -> Self {
         // Take a snapshot of the schema
         let read_schema = table.schema();
 
         Self {
             table,
+            catalog_name,
+            schema_name,
             read_schema,
             partition_info,
         }
@@ -167,8 +184,8 @@ impl TableProviderAdapter {
             .map(|p| {
                 let partition_name = &definitions[p].name;
                 TableIdentifier {
-                    catalog: self.table.catalog_name().to_string(),
-                    schema: self.table.schema_name().to_string(),
+                    catalog: self.catalog_name.clone(),
+                    schema: self.schema_name.clone(),
                     table: format_sub_partition_table_name(self.table.name(), partition_name),
                 }
             })

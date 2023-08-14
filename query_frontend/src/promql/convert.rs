@@ -574,7 +574,7 @@ impl Selector {
             .context(TableNotFound { name: &table })?;
 
         let table_provider = meta_provider
-            .get_table_provider(table_ref.name().into())
+            .get_table_provider(table_ref.table.name().into())
             .context(TableProviderNotFound { name: &table })?;
         let schema = Schema::try_from(table_provider.schema()).context(BuildTableSchema)?;
         let timestamp_column_name = schema.timestamp_name().to_string();

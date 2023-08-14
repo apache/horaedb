@@ -80,6 +80,13 @@ pub enum Error {
 
 define_result!(Error);
 
+#[derive(Debug, Clone)]
+pub struct ResolvedTable {
+    pub catalog: String,
+    pub schema: String,
+    pub table: TableRef,
+}
+
 /// MetaProvider provides meta info needed by Frontend
 pub trait MetaProvider {
     /// Default catalog name
@@ -93,7 +100,7 @@ pub trait MetaProvider {
     /// Note that this function may block current thread. We can't make this
     /// function async as the underlying (aka. datafusion) planner needs a
     /// sync provider.
-    fn table(&self, name: TableReference) -> Result<Option<TableRef>>;
+    fn table(&self, name: TableReference) -> Result<Option<ResolvedTable>>;
 
     /// Get udf by name.
     fn scalar_udf(&self, name: &str) -> Result<Option<ScalarUdf>>;
@@ -131,14 +138,14 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
         self.default_schema
     }
 
-    fn table(&self, name: TableReference) -> Result<Option<TableRef>> {
+    fn table(&self, name: TableReference) -> Result<Option<ResolvedTable>> {
         let resolved = name.resolve(self.default_catalog, self.default_schema);
 
         let catalog = match self
             .manager
             .catalog_by_name(resolved.catalog.as_ref())
-            .context(FindCatalog {
-                name: resolved.catalog,
+            .with_context(|| FindCatalog {
+                name: resolved.catalog.to_string(),
             })? {
             Some(c) => c,
             None => return Ok(None),
@@ -158,12 +165,18 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
             }
         };
 
-        schema
+        let table = schema
             .table_by_name(resolved.table.as_ref())
             .map_err(Box::new)
-            .context(FindTable {
-                name: resolved.table,
-            })
+            .with_context(|| FindTable {
+                name: resolved.table.to_string(),
+            })?;
+
+        Ok(table.map(|t| ResolvedTable {
+            catalog: resolved.catalog.to_string(),
+            schema: resolved.schema.to_string(),
+            table: t,
+        }))
     }
 
     fn scalar_udf(&self, name: &str) -> Result<Option<ScalarUdf>> {
@@ -256,14 +269,16 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
         }
     }
 
-    pub fn table_source(&self, table_ref: TableRef) -> Arc<(dyn TableSource + 'static)> {
-        let table_adapter = if let Some(partition_info) = table_ref.partition_info() {
+    pub fn table_source(&self, resolved_table: ResolvedTable) -> Arc<(dyn TableSource + 'static)> {
+        let table_adapter = if let Some(partition_info) = resolved_table.table.partition_info() {
             Arc::new(partition_table_engine::provider::TableProviderAdapter::new(
-                table_ref,
+                resolved_table.table,
+                resolved_table.catalog,
+                resolved_table.schema,
                 partition_info,
             )) as _
         } else {
-            Arc::new(TableProviderAdapter::new(table_ref)) as _
+            Arc::new(TableProviderAdapter::new(resolved_table.table)) as _
         };
 
         Arc::new(DefaultTableSource {
@@ -281,7 +296,7 @@ impl<'a, P: MetaProvider> MetaProvider for ContextProviderAdapter<'a, P> {
         self.meta_provider.default_schema_name()
     }
 
-    fn table(&self, name: TableReference) -> Result<Option<TableRef>> {
+    fn table(&self, name: TableReference) -> Result<Option<ResolvedTable>> {
         self.meta_provider.table(name)
     }
 
@@ -304,16 +319,16 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
         name: TableReference,
     ) -> std::result::Result<Arc<(dyn TableSource + 'static)>, DataFusionError> {
         // Find in local cache
-        if let Some(table_ref) = self.table_cache.borrow().get(name.clone()) {
-            return Ok(self.table_source(table_ref));
+        if let Some(resolved) = self.table_cache.borrow().get(name.clone()) {
+            return Ok(self.table_source(resolved));
         }
 
         // Find in meta provider
         // TODO: possible to remove this clone?
         match self.meta_provider.table(name.clone()) {
-            Ok(Some(table)) => {
-                self.table_cache.borrow_mut().insert(name, table.clone());
-                Ok(self.table_source(table))
+            Ok(Some(resolved)) => {
+                self.table_cache.borrow_mut().insert(name, resolved.clone());
+                Ok(self.table_source(resolved))
             }
             Ok(None) => Err(DataFusionError::Execution(format!(
                 "Table is not found, {:?}",
@@ -404,14 +419,16 @@ impl SchemaProvider for SchemaProviderAdapter {
             table: Cow::from(name),
         };
 
-        self.tables.get(name_ref).map(|table_ref| {
-            if let Some(partition_info) = table_ref.partition_info() {
+        self.tables.get(name_ref).map(|resolved| {
+            if let Some(partition_info) = resolved.table.partition_info() {
                 Arc::new(partition_table_engine::provider::TableProviderAdapter::new(
-                    table_ref,
+                    resolved.table,
+                    resolved.catalog,
+                    resolved.schema,
                     partition_info,
                 )) as _
             } else {
-                Arc::new(TableProviderAdapter::new(table_ref)) as _
+                Arc::new(TableProviderAdapter::new(resolved.table)) as _
             }
         })
     }

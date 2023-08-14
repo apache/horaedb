@@ -468,12 +468,6 @@ pub trait Table: std::fmt::Debug {
     /// Returns table name.
     fn name(&self) -> &str;
 
-    /// Return catalog name of table
-    fn catalog_name(&self) -> &str;
-
-    /// Return schema name of table
-    fn schema_name(&self) -> &str;
-
     /// Returns the id of this table.
     fn id(&self) -> TableId;
 

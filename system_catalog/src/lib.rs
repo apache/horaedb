@@ -105,14 +105,6 @@ impl Table for SystemTableAdapter {
         self.inner.name()
     }
 
-    fn catalog_name(&self) -> &str {
-        unreachable!("system table has no catalog")
-    }
-
-    fn schema_name(&self) -> &str {
-        unreachable!("system table has no schema")
-    }
-
     fn id(&self) -> TableId {
         self.inner.id()
     }

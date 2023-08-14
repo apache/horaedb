@@ -100,14 +100,6 @@ impl Table for PartitionTableImpl {
         &self.table_data.table_name
     }
 
-    fn catalog_name(&self) -> &str {
-        &self.table_data.catalog_name
-    }
-
-    fn schema_name(&self) -> &str {
-        &self.table_data.schema_name
-    }
-
     fn id(&self) -> TableId {
         self.table_data.table_id
     }

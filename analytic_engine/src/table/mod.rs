@@ -418,14 +418,6 @@ impl Table for TableImpl {
         &self.table_data.name
     }
 
-    fn catalog_name(&self) -> &str {
-        todo!()
-    }
-
-    fn schema_name(&self) -> &str {
-        todo!()
-    }
-
     fn id(&self) -> TableId {
         self.table_data.id
     }

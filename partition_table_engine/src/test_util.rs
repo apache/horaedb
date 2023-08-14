@@ -34,10 +34,6 @@ use table_engine::{
 pub struct PartitionedMemoryTable {
     /// Table name
     name: String,
-    /// Catalog name
-    catalog_name: String,
-    /// Schema name
-    schema_name: String,
     /// Table id
     id: TableId,
     /// Table schema
@@ -58,8 +54,6 @@ impl PartitionedMemoryTable {
     ) -> Self {
         Self {
             name,
-            catalog_name: "test_catalog".to_string(),
-            schema_name: "test_schema".to_string(),
             id,
             schema,
             engine_type,
@@ -82,14 +76,6 @@ impl fmt::Debug for PartitionedMemoryTable {
 impl Table for PartitionedMemoryTable {
     fn name(&self) -> &str {
         &self.name
-    }
-
-    fn catalog_name(&self) -> &str {
-        &self.catalog_name
-    }
-
-    fn schema_name(&self) -> &str {
-        &self.schema_name
     }
 
     fn id(&self) -> TableId {
