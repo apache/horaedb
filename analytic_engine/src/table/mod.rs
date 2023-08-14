@@ -431,6 +431,19 @@ impl Table for TableImpl {
         self.table_data.metrics.table_stats()
     }
 
+    fn support_pushdown(&self, read_schema: &Schema, columns: &[String]) -> bool {
+        let need_dedup = self.table_data.table_options().need_dedup();
+        if !need_dedup {
+            return true;
+        }
+
+        // When table need dedup, only unique keys columns support pushdown
+        let unique_keys = read_schema.unique_keys();
+        columns
+            .iter()
+            .all(|col| unique_keys.contains(&col.as_str()))
+    }
+
     async fn write(&self, request: WriteRequest) -> Result<usize> {
         let _timer = self.table_data.metrics.start_table_total_timer();
 

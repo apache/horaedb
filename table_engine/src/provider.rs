@@ -23,9 +23,7 @@ use std::{
 
 use arrow::datatypes::SchemaRef;
 use async_trait::async_trait;
-use common_types::{
-    projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema, UPDATE_MODE,
-};
+use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
 use datafusion::{
     config::{ConfigEntry, ConfigExtension, ExtensionOptions},
     datasource::TableProvider,
@@ -186,12 +184,13 @@ impl TableProviderAdapter {
     }
 
     fn check_and_build_predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
-        let pushdown_states = self.pushdown_inner(&filters.iter().collect::<Vec<_>>());
         let pushdown_filters = filters
             .iter()
-            .zip(pushdown_states.iter())
-            .filter_map(|(filter, state)| {
-                if matches!(state, &TableProviderFilterPushDown::Exact) {
+            .filter_map(|filter| {
+                let filter_cols = visitor::find_columns_by_expr(filter);
+
+                let support_pushdown = self.table.support_pushdown(&self.read_schema, &filter_cols);
+                if support_pushdown {
                     Some(filter.clone())
                 } else {
                     None
@@ -205,33 +204,14 @@ impl TableProviderAdapter {
             .build()
     }
 
-    fn only_filter_unique_key_columns(filter: &Expr, unique_keys: &[&str]) -> bool {
-        let filter_cols = visitor::find_columns_by_expr(filter);
-        for filter_col in filter_cols {
-            // If a column which is not part of the unique key occurred in `filter`, the
-            // `filter` shouldn't be pushed down.
-            if !unique_keys.contains(&filter_col.as_str()) {
-                return false;
-            }
-        }
-        true
-    }
-
     fn pushdown_inner(&self, filters: &[&Expr]) -> Vec<TableProviderFilterPushDown> {
-        let unique_keys = self.read_schema.unique_keys();
-        // TODO: add pushdown check in table trait
-        let options = &self.table.options();
-        let is_append = matches!(options.get(UPDATE_MODE), Some(mode) if mode == "APPEND");
-        let is_system_engine = self.table.engine_type() == "system";
-
         filters
             .iter()
             .map(|filter| {
-                if is_system_engine {
-                    return TableProviderFilterPushDown::Inexact;
-                }
+                let filter_cols = visitor::find_columns_by_expr(filter);
 
-                if is_append || Self::only_filter_unique_key_columns(filter, &unique_keys) {
+                let support_pushdown = self.table.support_pushdown(&self.read_schema, &filter_cols);
+                if support_pushdown {
                     TableProviderFilterPushDown::Exact
                 } else {
                     TableProviderFilterPushDown::Inexact
