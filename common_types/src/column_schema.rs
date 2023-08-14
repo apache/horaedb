@@ -346,7 +346,7 @@ impl TryFrom<&Arc<Field>> for ColumnSchema {
 impl From<&ColumnSchema> for Field {
     fn from(col_schema: &ColumnSchema) -> Self {
         let metadata = encode_arrow_field_meta_data(col_schema);
-        // If the column sholud use dictionary, create correspond dictionary type.
+        // If the column should use dictionary, create correspond dictionary type.
         let mut field = if col_schema.is_dictionary {
             Field::new_dict(
                 &col_schema.name,
