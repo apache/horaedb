@@ -14,7 +14,7 @@
 
 // Flush and compaction logic of instance
 
-use std::{cmp, collections::Bound, fmt, process::id, sync::Arc};
+use std::{cmp, collections::Bound, fmt, sync::Arc};
 
 use common_types::{
     projected_schema::ProjectedSchema,
@@ -919,10 +919,11 @@ impl SpaceStore {
         // Store updates to edit_meta.
         edit_meta.files_to_delete.reserve(input.files.len());
         // The compacted file can be deleted later.
-        for file in &input.files {
+        for (file, meta_path) in input.files.iter().zip(sst_meta_paths.into_iter()) {
             edit_meta.files_to_delete.push(DeleteFile {
                 level: input.level,
                 file_id: file.id(),
+                meta_path,
             });
         }
 
@@ -963,6 +964,7 @@ impl SpaceStore {
             edit_meta.files_to_delete.push(DeleteFile {
                 level: expired.level,
                 file_id: file.id(),
+                meta_path: file.meta().meta_path,
             });
         }
     }

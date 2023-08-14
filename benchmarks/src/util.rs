@@ -179,6 +179,7 @@ pub async fn file_handles_from_ssts(
             time_range: sst_meta.time_range,
             max_seq: sst_meta.max_sequence,
             storage_format: StorageFormat::Columnar,
+            meta_path: todo!(),
         };
 
         let handle = FileHandle::new(file_meta, purge_queue.clone());

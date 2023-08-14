@@ -19,6 +19,7 @@ use std::convert::TryFrom;
 use ceresdbproto::manifest as manifest_pb;
 use common_types::{time::TimeRange, SequenceNumber};
 use macros::define_result;
+use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -97,7 +98,7 @@ impl TryFrom<manifest_pb::AddFileMeta> for AddFile {
                 time_range,
                 max_seq: src.max_seq,
                 storage_format: StorageFormat::from(storage_format),
-                meta_path: todo!(),
+                meta_path: None,
             },
         };
 
@@ -112,6 +113,7 @@ pub struct DeleteFile {
     pub level: Level,
     /// Id of the file to delete.
     pub file_id: FileId,
+    pub meta_path: Option<Path>,
 }
 
 impl From<DeleteFile> for manifest_pb::DeleteFileMeta {
@@ -132,6 +134,7 @@ impl TryFrom<manifest_pb::DeleteFileMeta> for DeleteFile {
         Ok(Self {
             level,
             file_id: src.file_id,
+            meta_path: None,
         })
     }
 }

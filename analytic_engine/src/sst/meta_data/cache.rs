@@ -89,12 +89,6 @@ impl MetaData {
             KvMetaDataNotFound
         );
 
-        // let meta_path_str = if meta_path.as_ref().is_some() {
-        //     Some(meta_path.clone().unwrap().to_string())
-        // } else {
-        //     None
-        // };
-
         let custom = CustomMetadataReaderBuilder::build(
             meta_path_version,
             custom_kv_meta,
