@@ -87,6 +87,31 @@ pub struct ResolvedTable {
     pub table: TableRef,
 }
 
+// FIXME: the new partitioned table scan logic is incomplete now, we can't
+// enable it when normal running. So we left a button here to enable it just for
+// testing.
+fn enable_dedicated_partitioned_table_provider() -> bool {
+    std::env::var("CERESDB_DEDICATED_PARTITIONED_TABLE_PROVIDER")
+        .unwrap_or_else(|_| "false".to_string())
+        == "true"
+}
+
+impl ResolvedTable {
+    fn to_table_provider(self) -> Arc<dyn TableProvider> {
+        if self.table.partition_info().is_some() && enable_dedicated_partitioned_table_provider() {
+            let partition_info = self.table.partition_info().unwrap();
+            Arc::new(partition_table_engine::provider::TableProviderAdapter::new(
+                self.table,
+                self.catalog,
+                self.schema,
+                partition_info,
+            ))
+        } else {
+            Arc::new(TableProviderAdapter::new(self.table))
+        }
+    }
+}
+
 /// MetaProvider provides meta info needed by Frontend
 pub trait MetaProvider {
     /// Default catalog name
@@ -270,20 +295,9 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     }
 
     pub fn table_source(&self, resolved_table: ResolvedTable) -> Arc<(dyn TableSource + 'static)> {
-        let table_adapter = if let Some(partition_info) = resolved_table.table.partition_info() {
-            Arc::new(partition_table_engine::provider::TableProviderAdapter::new(
-                resolved_table.table,
-                resolved_table.catalog,
-                resolved_table.schema,
-                partition_info,
-            )) as _
-        } else {
-            Arc::new(TableProviderAdapter::new(resolved_table.table)) as _
-        };
+        let table_provider = resolved_table.to_table_provider();
 
-        Arc::new(DefaultTableSource {
-            table_provider: table_adapter,
-        })
+        Arc::new(DefaultTableSource { table_provider })
     }
 }
 
@@ -419,18 +433,9 @@ impl SchemaProvider for SchemaProviderAdapter {
             table: Cow::from(name),
         };
 
-        self.tables.get(name_ref).map(|resolved| {
-            if let Some(partition_info) = resolved.table.partition_info() {
-                Arc::new(partition_table_engine::provider::TableProviderAdapter::new(
-                    resolved.table,
-                    resolved.catalog,
-                    resolved.schema,
-                    partition_info,
-                )) as _
-            } else {
-                Arc::new(TableProviderAdapter::new(resolved.table)) as _
-            }
-        })
+        self.tables
+            .get(name_ref)
+            .map(|resolved| resolved.to_table_provider())
     }
 
     fn table_exist(&self, name: &str) -> bool {

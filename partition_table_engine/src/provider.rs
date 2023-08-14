@@ -26,7 +26,6 @@ use arrow::datatypes::SchemaRef;
 use async_trait::async_trait;
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
 use datafusion::{
-    config::ExtensionOptions,
     datasource::TableProvider,
     error::{DataFusionError, Result},
     execution::context::SessionState,

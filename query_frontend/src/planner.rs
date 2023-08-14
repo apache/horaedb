@@ -1622,6 +1622,9 @@ mod tests {
 
     #[test]
     fn test_partitioned_table_query_statement_to_plan() {
+        // enable dedicated partitioned table provider in this test.
+        std::env::set_var("CERESDB_DEDICATED_PARTITIONED_TABLE_PROVIDER", "true");
+
         let sql = "select * from test_partitioned_table;";
         let plan = sql_to_logical_plan(sql).unwrap();
         let df_plan = if let Plan::Query(query_plan) = plan {
@@ -1657,6 +1660,9 @@ mod tests {
 
         let mut visitor = CheckVisitor;
         df_plan.visit(&mut visitor).unwrap();
+
+        // Rollback
+        std::env::set_var("CERESDB_DEDICATED_PARTITIONED_TABLE_PROVIDER", "false");
     }
 
     #[test]
