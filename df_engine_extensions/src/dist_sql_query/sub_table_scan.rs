@@ -28,7 +28,7 @@ use datafusion::{
 };
 use table_engine::{provider::ScanTable, remote::model::TableIdentifier, table::ReadRequest};
 
-/// Unresolved sub table scan which can't be executed before rewriting
+/// Unresolved sub table scan which can't be executed before resolving
 #[derive(Debug)]
 pub struct UnresolvedSubTableScan {
     pub table: TableIdentifier,

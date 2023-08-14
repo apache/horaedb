@@ -45,7 +45,7 @@ use table_engine::{
 };
 use trace_metric::MetricsCollector;
 
-const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_table";
+const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_partitioned_table";
 
 /// `TableProviderAdapter` for `PartitionedTableImpl`.
 // TODO: use single `TableProviderAdapter` for normal table and partitioned table
@@ -155,12 +155,16 @@ impl TableProviderAdapter {
     ) -> Result<Arc<dyn ExecutionPlan>> {
         // Build partition rule.
         let df_partition_rule =
-            DfPartitionRuleAdapter::new(partition_info.clone(), &self.table.schema()).unwrap();
+            DfPartitionRuleAdapter::new(partition_info.clone(), &self.table.schema()).map_err(
+                |e| DataFusionError::Internal(format!("failed to build partition rule, err:{e}")),
+            )?;
 
         // Evaluate expr and locate partition.
         let partitions = df_partition_rule
             .locate_partitions_for_read(request.predicate.exprs())
-            .unwrap();
+            .map_err(|e| {
+                DataFusionError::Internal(format!("failed to locate partition for read, err:{e}"))
+            })?;
         let sub_tables = self.get_sub_table_idents(partition_info, partitions);
 
         // Build plan.

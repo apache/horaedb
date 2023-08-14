@@ -31,6 +31,7 @@ use table_engine::{
     table::ReadRequest,
 };
 
+/// Unresolved partitioned table scan which can't be executed before resolving
 #[derive(Debug)]
 pub struct UnresolvedPartitionedScan {
     pub sub_tables: Vec<TableIdentifier>,
@@ -110,7 +111,6 @@ impl ExecutionPlan for ResolvedPartitionedScan {
         self
     }
 
-    // TODO: check if it is right.
     fn schema(&self) -> SchemaRef {
         self.remote_exec_plans
             .first()
