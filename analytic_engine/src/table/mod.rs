@@ -438,10 +438,9 @@ impl Table for TableImpl {
         }
 
         // When table need dedup, only unique keys columns support pushdown
-        let unique_keys = read_schema.unique_keys();
         columns
             .iter()
-            .all(|col| unique_keys.contains(&col.as_str()))
+            .all(|col| read_schema.is_unique_column(col.as_str()))
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {
