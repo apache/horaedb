@@ -24,6 +24,7 @@ use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 
+pub use self::metadata_reader::CustomMetadataReaderBuilder;
 use crate::{
     space::SpaceId,
     sst::{

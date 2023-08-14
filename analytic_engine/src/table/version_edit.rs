@@ -195,7 +195,7 @@ pub mod tests {
                     time_range: self.time_range,
                     max_seq: self.max_seq,
                     storage_format: StorageFormat::default(),
-                    meta_path: todo!(),
+                    meta_path: None,
                 },
             }
         }
