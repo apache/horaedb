@@ -884,13 +884,13 @@ impl Schema {
         }
     }
 
-    pub fn is_unique_column(&self, column: &str) -> bool {
+    pub fn is_unique_column(&self, col_name: &str) -> bool {
         // primary key is obvious unique.
         let is_primary_key = self
             .primary_key_indexes()
             .iter()
             .map(|key_idx| self.column(*key_idx).name.as_str())
-            .any(|primary_key| primary_key == column);
+            .any(|primary_key| primary_key == col_name);
 
         if is_primary_key {
             return true;
@@ -903,14 +903,7 @@ impl Schema {
         // When tsid exists, it means tag column is also unique.
         self.columns()
             .iter()
-            .filter_map(|column| {
-                if column.is_tag {
-                    Some(column.name.as_str())
-                } else {
-                    None
-                }
-            })
-            .any(|tag_column| tag_column == column)
+            .any(|column| column.is_tag && column.name == col_name)
     }
 
     /// Panic if projection is invalid.
