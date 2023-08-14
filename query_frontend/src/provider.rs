@@ -97,7 +97,7 @@ fn enable_dedicated_partitioned_table_provider() -> bool {
 }
 
 impl ResolvedTable {
-    fn to_table_provider(self) -> Arc<dyn TableProvider> {
+    fn into_table_provider(self) -> Arc<dyn TableProvider> {
         if self.table.partition_info().is_some() && enable_dedicated_partitioned_table_provider() {
             let partition_info = self.table.partition_info().unwrap();
             Arc::new(partition_table_engine::provider::TableProviderAdapter::new(
@@ -295,7 +295,7 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     }
 
     pub fn table_source(&self, resolved_table: ResolvedTable) -> Arc<(dyn TableSource + 'static)> {
-        let table_provider = resolved_table.to_table_provider();
+        let table_provider = resolved_table.into_table_provider();
 
         Arc::new(DefaultTableSource { table_provider })
     }
@@ -435,7 +435,7 @@ impl SchemaProvider for SchemaProviderAdapter {
 
         self.tables
             .get(name_ref)
-            .map(|resolved| resolved.to_table_provider())
+            .map(|resolved| resolved.into_table_provider())
     }
 
     fn table_exist(&self, name: &str) -> bool {

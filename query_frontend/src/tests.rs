@@ -22,7 +22,7 @@ use partition_table_engine::test_util::PartitionedMemoryTable;
 use table_engine::{
     memory::MemoryTable,
     partition::{KeyPartitionInfo, PartitionDefinition, PartitionInfo},
-    table::{Table, TableId, TableRef},
+    table::{TableId, TableRef},
     ANALYTIC_ENGINE_TYPE,
 };
 
