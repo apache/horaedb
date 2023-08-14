@@ -140,7 +140,7 @@ impl RecordBatchStream for FromDfStream {
 pub struct ScanStreamState {
     inited: bool,
     err: Option<table::Error>,
-    streams: Vec<Option<SendableRecordBatchStream>>,
+    pub streams: Vec<Option<SendableRecordBatchStream>>,
 }
 
 impl ScanStreamState {

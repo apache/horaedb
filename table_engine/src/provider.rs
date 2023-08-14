@@ -17,7 +17,10 @@
 use std::{
     any::Any,
     fmt,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
     time::{Duration, Instant},
 };
 
@@ -292,14 +295,20 @@ pub struct ScanTable {
     table: TableRef,
     request: ReadRequest,
     stream_state: Mutex<ScanStreamState>,
+
+    // FIXME: in origin partitioned table scan need to modify the parallelism when initializing
+    // stream...
+    parallelism: AtomicUsize,
 }
 
 impl ScanTable {
     pub fn new(table: TableRef, request: ReadRequest) -> Self {
+        let parallelism = AtomicUsize::new(request.opts.read_parallelism);
         Self {
             table,
             request,
             stream_state: Mutex::new(ScanStreamState::default()),
+            parallelism,
         }
     }
 
@@ -311,6 +320,8 @@ impl ScanTable {
             return Ok(());
         }
         stream_state.init(read_res);
+        self.parallelism
+            .store(stream_state.streams.len(), Ordering::Relaxed);
 
         Ok(())
     }
@@ -328,7 +339,7 @@ impl ExecutionPlan for ScanTable {
     fn output_partitioning(&self) -> Partitioning {
         // It represents how current node map the inputs to outputs.
         // However, we have no inputs here, so `UnknownPartitioning` is suitable.
-        Partitioning::UnknownPartitioning(self.request.opts.read_parallelism)
+        Partitioning::UnknownPartitioning(self.parallelism.load(Ordering::Relaxed))
     }
 
     fn output_ordering(&self) -> Option<&[PhysicalSortExpr]> {

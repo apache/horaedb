@@ -1605,15 +1605,16 @@ mod tests {
 
     #[test]
     fn test_query_statement_to_plan() {
-        let sql = "select * from test_partitioned_table;";
+        let sql = "select * from test_tablex;";
         assert!(quick_test(sql, "").is_err());
 
+        let sql = "select * from test_table;";
         quick_test(
             sql,
             "Query(
     QueryPlan {
         df_plan: Projection: test_table.key1, test_table.key2, test_table.field1, test_table.field2, test_table.field3, test_table.field4
-          TableScan: test_partitioned_table,
+          TableScan: test_table,
     },
 )",
         )
