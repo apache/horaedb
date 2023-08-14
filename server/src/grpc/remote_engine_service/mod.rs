@@ -49,6 +49,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
+use super::metrics::REMOTE_ENGINE_WRITE_BATCH_NUM_ROWS_HISTOGRAM;
 use crate::{
     dedup_requests::{RequestNotifiers, RequestResult},
     grpc::{
@@ -629,14 +630,13 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
 
     let table = find_table_by_identifier(&ctx, &table_ident)?;
     let write_request = match rows_payload {
-        row_group::Rows::Arrow(payload) => {
-            let row_group = model::WriteRequest::decode_row_group_from_arrow_payload(payload)
-                .box_err()
-                .context(ErrWithCause {
-                    code: StatusCode::BadRequest,
-                    msg: "failed to decode row group payload",
-                })?;
-            model::WriteRequest::new(table_ident, row_group)
+        row_group::Rows::Arrow(_) => {
+            // The payload encoded in arrow format won't be accept any more.
+            return ErrNoCause {
+                code: StatusCode::BadRequest,
+                msg: "payload encoded in arrow format is not supported anymore",
+            }
+            .fail();
         }
         row_group::Rows::Contiguous(payload) => {
             let schema = table.schema();
@@ -657,6 +657,7 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
     record_write(&ctx.hotspot_recorder, &write_request).await;
 
     let num_rows = write_request.write_request.row_group.num_rows();
+    REMOTE_ENGINE_WRITE_BATCH_NUM_ROWS_HISTOGRAM.observe(num_rows as f64);
 
     let res = table
         .write(write_request.write_request)

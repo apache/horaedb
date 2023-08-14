@@ -16,14 +16,9 @@
 
 use std::collections::HashMap;
 
-use arrow_ext::{ipc, ipc::CompressionMethod};
 use bytes_ext::ByteVec;
-use ceresdbproto::{
-    remote_engine::{self, row_group::Rows::Contiguous},
-    storage::{arrow_payload, ArrowPayload},
-};
+use ceresdbproto::remote_engine::{self, row_group::Rows::Contiguous};
 use common_types::{
-    record_batch::RecordBatch,
     row::{
         contiguous::{ContiguousRow, ContiguousRowReader, ContiguousRowWriter},
         Row, RowGroup, RowGroupBuilder,
@@ -32,7 +27,7 @@ use common_types::{
 };
 use generic_error::{BoxError, GenericError, GenericResult};
 use macros::define_result;
-use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
     partition::PartitionInfo,
@@ -173,25 +168,6 @@ impl WriteRequest {
         }
     }
 
-    pub fn decode_row_group_from_arrow_payload(payload: ArrowPayload) -> Result<RowGroup> {
-        ensure!(!payload.record_batches.is_empty(), EmptyRecordBatch);
-
-        let compression = match payload.compression() {
-            arrow_payload::Compression::None => CompressionMethod::None,
-            arrow_payload::Compression::Zstd => CompressionMethod::Zstd,
-        };
-
-        let mut record_batch_vec = vec![];
-        for data in payload.record_batches {
-            let mut arrow_record_batch_vec = ipc::decode_record_batches(data, compression)
-                .map_err(|e| Box::new(e) as _)
-                .context(ConvertRowGroup)?;
-            record_batch_vec.append(&mut arrow_record_batch_vec);
-        }
-
-        build_row_group_from_record_batch(record_batch_vec)
-    }
-
     pub fn decode_row_group_from_contiguous_payload(
         payload: ceresdbproto::remote_engine::ContiguousRows,
         schema: &Schema,
@@ -206,6 +182,8 @@ impl WriteRequest {
             let mut datums = Vec::with_capacity(schema.num_columns());
             for (index, column_schema) in schema.columns().iter().enumerate() {
                 let datum_view = reader.datum_view_at(index, &column_schema.data_type);
+                // TODO: The clone can be avoided if we can encode the final payload directly
+                // from the DatumView.
                 datums.push(datum_view.to_datum());
             }
             row_group_builder.push_checked_row(Row::from_datums(datums));
@@ -221,7 +199,7 @@ impl WriteRequest {
 
         let mut encoded_rows = Vec::with_capacity(row_group.num_rows());
         // TODO: The schema of the written row group may be different from the original
-        // one, so the compatibility for that should be taken consideration.
+        // one, so the compatibility for that should be considered.
         let index_in_schema = IndexInWriterSchema::for_same_schema(table_schema.num_columns());
         for row in &row_group {
             let mut buf = ByteVec::new();
@@ -298,44 +276,4 @@ pub struct TableInfo {
     pub options: HashMap<String, String>,
     /// Partition Info
     pub partition_info: Option<PartitionInfo>,
-}
-
-fn build_row_group_from_record_batch(
-    record_batches: Vec<arrow::record_batch::RecordBatch>,
-) -> Result<RowGroup> {
-    ensure!(!record_batches.is_empty(), EmptyRecordBatch);
-
-    let mut row_group_builder = RowGroupBuilder::new(
-        record_batches[0]
-            .schema()
-            .try_into()
-            .map_err(|e| Box::new(e) as _)
-            .context(ConvertRowGroup)?,
-    );
-
-    for record_batch in record_batches {
-        let record_batch: RecordBatch = record_batch
-            .try_into()
-            .map_err(|e| Box::new(e) as _)
-            .context(ConvertRowGroup)?;
-
-        let num_cols = record_batch.num_columns();
-        let num_rows = record_batch.num_rows();
-        for row_idx in 0..num_rows {
-            let mut row_builder = row_group_builder.row_builder();
-            for col_idx in 0..num_cols {
-                let val = record_batch.column(col_idx).datum(row_idx);
-                row_builder = row_builder
-                    .append_datum(val)
-                    .map_err(|e| Box::new(e) as _)
-                    .context(ConvertRowGroup)?;
-            }
-            row_builder
-                .finish()
-                .map_err(|e| Box::new(e) as _)
-                .context(ConvertRowGroup)?;
-        }
-    }
-
-    Ok(row_group_builder.build())
 }
