@@ -48,3 +48,6 @@ smallvec = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
 trace_metric = { workspace = true }
+
+[dev-dependencies]
+common_types = { workspace = true, features = ["test"] }

@@ -1056,7 +1056,7 @@ impl Serialize for Datum {
 /// A view to a datum.
 ///
 /// Holds copy of integer like datum and reference of string like datum.
-#[derive(Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum DatumView<'a> {
     Null,
     Timestamp(Timestamp),
@@ -1075,6 +1075,30 @@ pub enum DatumView<'a> {
     Boolean(bool),
     Date(i32),
     Time(i64),
+}
+
+impl<'a> From<&'a Datum> for DatumView<'a> {
+    fn from(src: &'a Datum) -> DatumView<'a> {
+        match src {
+            Datum::Null => DatumView::Null,
+            Datum::Timestamp(v) => DatumView::Timestamp(*v),
+            Datum::Double(v) => DatumView::Double(*v),
+            Datum::Float(v) => DatumView::Float(*v),
+            Datum::Varbinary(v) => DatumView::Varbinary(v),
+            Datum::String(v) => DatumView::String(v),
+            Datum::UInt64(v) => DatumView::UInt64(*v),
+            Datum::UInt32(v) => DatumView::UInt32(*v),
+            Datum::UInt16(v) => DatumView::UInt16(*v),
+            Datum::UInt8(v) => DatumView::UInt8(*v),
+            Datum::Int64(v) => DatumView::Int64(*v),
+            Datum::Int32(v) => DatumView::Int32(*v),
+            Datum::Int16(v) => DatumView::Int16(*v),
+            Datum::Int8(v) => DatumView::Int8(*v),
+            Datum::Boolean(v) => DatumView::Boolean(*v),
+            Datum::Date(v) => DatumView::Date(*v),
+            Datum::Time(v) => DatumView::Time(*v),
+        }
+    }
 }
 
 impl<'a> DatumView<'a> {

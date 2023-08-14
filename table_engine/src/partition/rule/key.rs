@@ -16,12 +16,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use bytes_ext::{BufMut, BytesMut};
 use common_types::{
-    datum::Datum,
+    datum::DatumView,
     row::{Row, RowGroup},
 };
-use hash_ext::hash64;
+use hash_ext::hash64_over_read;
 use itertools::Itertools;
 use log::{debug, error};
 use snafu::OptionExt;
@@ -109,36 +108,31 @@ impl KeyRule {
         Ok(groups)
     }
 
-    fn compute_partition_for_inserted_row(
-        &self,
-        row: &Row,
-        target_column_idxs: &[usize],
-        buf: &mut BytesMut,
-    ) -> usize {
+    fn compute_partition_for_inserted_row(&self, row: &Row, target_column_idxs: &[usize]) -> usize {
         let partition_keys = target_column_idxs
             .iter()
-            .map(|col_idx| &row[*col_idx])
-            .collect_vec();
-        compute_partition(&partition_keys, self.partition_num, buf)
+            .map(|col_idx| DatumView::from(&row[*col_idx]));
+        compute_partition(partition_keys, self.partition_num)
     }
 
     fn compute_partition_for_keys_group(
         &self,
         group: &[usize],
         filters: &[PartitionFilter],
-        buf: &mut BytesMut,
     ) -> Result<HashSet<usize>> {
-        buf.clear();
-
         let mut partitions = HashSet::new();
         let expanded_group = expand_partition_keys_group(group, filters)?;
         for partition_keys in expanded_group {
-            let partition_key_refs = partition_keys.iter().collect_vec();
-            let partition = compute_partition(&partition_key_refs, self.partition_num, buf);
+            let partition = compute_partition(partition_keys.into_iter(), self.partition_num);
             partitions.insert(partition);
         }
 
         Ok(partitions)
+    }
+
+    #[inline]
+    fn all_partitions(&self) -> Vec<usize> {
+        (0..self.partition_num).collect_vec()
     }
 }
 
@@ -167,20 +161,17 @@ impl PartitionRule for KeyRule {
             })?;
 
         // Compute partitions.
-        let mut buf = BytesMut::new();
         let partitions = row_group
             .iter()
-            .map(|row| self.compute_partition_for_inserted_row(row, &typed_idxs, &mut buf))
+            .map(|row| self.compute_partition_for_inserted_row(row, &typed_idxs))
             .collect();
         Ok(partitions)
     }
 
     fn locate_partitions_for_read(&self, filters: &[PartitionFilter]) -> Result<Vec<usize>> {
-        let all_partitions = (0..self.partition_num).collect();
-
         // Filters are empty.
         if filters.is_empty() {
-            return Ok(all_partitions);
+            return Ok(self.all_partitions());
         }
 
         // Group the filters by their columns.
@@ -192,20 +183,18 @@ impl PartitionRule for KeyRule {
             })
             .unwrap_or_default();
         if candidate_partition_keys_groups.is_empty() {
-            return Ok(all_partitions);
+            return Ok(self.all_partitions());
         }
 
-        let mut buf = BytesMut::new();
         let (first_group, rest_groups) = candidate_partition_keys_groups.split_first().unwrap();
-        let mut target_partitions =
-            self.compute_partition_for_keys_group(first_group, filters, &mut buf)?;
+        let mut target_partitions = self.compute_partition_for_keys_group(first_group, filters)?;
         for group in rest_groups {
             // Same as above, if found invalid, return all partitions.
-            let partitions = match self.compute_partition_for_keys_group(group, filters, &mut buf) {
+            let partitions = match self.compute_partition_for_keys_group(group, filters) {
                 Ok(partitions) => partitions,
                 Err(e) => {
                     error!("KeyRule locate partition for read, err:{}", e);
-                    return Ok(all_partitions);
+                    return Ok(self.all_partitions());
                 }
             };
 
@@ -219,18 +208,18 @@ impl PartitionRule for KeyRule {
     }
 }
 
-fn expand_partition_keys_group(
+fn expand_partition_keys_group<'a>(
     group: &[usize],
-    filters: &[PartitionFilter],
-) -> Result<Vec<Vec<Datum>>> {
+    filters: &'a [PartitionFilter],
+) -> Result<impl Iterator<Item = Vec<DatumView<'a>>>> {
     let mut datum_by_columns = Vec::with_capacity(group.len());
     for filter_idx in group {
         let filter = &filters[*filter_idx];
         let datums = match &filter.condition {
             // Only `Eq` is supported now.
             // TODO: to support `In`'s extracting.
-            PartitionCondition::Eq(datum) => vec![datum.clone()],
-            PartitionCondition::In(datums) => datums.clone(),
+            PartitionCondition::Eq(datum) => vec![DatumView::from(datum)],
+            PartitionCondition::In(datums) => datums.iter().map(DatumView::from).collect_vec(),
             _ => {
                 return Internal {
                     msg: format!("invalid partition filter found, filter:{filter:?},"),
@@ -242,33 +231,100 @@ fn expand_partition_keys_group(
         datum_by_columns.push(datums);
     }
 
-    let expanded_group = datum_by_columns
+    Ok(datum_by_columns
         .into_iter()
         .map(|filters| filters.into_iter())
-        .multi_cartesian_product()
-        .collect_vec();
-    Ok(expanded_group)
+        .multi_cartesian_product())
+}
+
+/// The adapter to implement [`std::io::Read`] over the partition keys, which is
+/// used for computing hash.
+struct PartitionKeysReadAdapter<'a, T> {
+    key_views: T,
+    /// The current key for reading bytes.
+    ///
+    /// It can be `None` if the whole current key is
+    curr_key: Option<DatumView<'a>>,
+    /// The offset in the serialized bytes from `curr_key`.
+    ///
+    /// This field has no meaning when the `curr_key` is `None`.
+    curr_key_offset: usize,
+}
+
+impl<'a, T> PartitionKeysReadAdapter<'a, T> {
+    fn new(key_views: T) -> Self {
+        Self {
+            key_views,
+            curr_key: None,
+            curr_key_offset: 0,
+        }
+    }
+}
+
+impl<'a, T> std::io::Read for PartitionKeysReadAdapter<'a, T>
+where
+    T: Iterator<Item = DatumView<'a>>,
+{
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        // Fetch the next key.
+        if self.curr_key.is_none() {
+            self.curr_key = self.key_views.next();
+            self.curr_key_offset = 0;
+        }
+
+        // The `key_views` has been exhausted.
+        if self.curr_key.is_none() {
+            return Ok(0);
+        }
+
+        let datum_view = self.curr_key.as_ref().unwrap();
+        let offset = self.curr_key_offset;
+        let mut n_bytes = 0;
+        let mut key_exhausted = false;
+        datum_view.do_with_bytes(|source: &[u8]| {
+            debug_assert!(!source.is_empty());
+            debug_assert!(offset < source.len());
+
+            let end = (offset + buf.len()).min(source.len());
+            let read_slice = &source[offset..end];
+            buf[..read_slice.len()].copy_from_slice(read_slice);
+
+            // Update the offset to the end.
+            self.curr_key_offset = end;
+            // Current key is exhausted.
+            key_exhausted = end == source.len();
+            // Record the number of bytes that has been read.
+            n_bytes = read_slice.len();
+        });
+
+        // Clear the current key if it is exhausted.
+        if key_exhausted {
+            self.curr_key = None;
+        }
+
+        Ok(n_bytes)
+    }
 }
 
 // Compute partition
-pub(crate) fn compute_partition(
-    partition_keys: &[&Datum],
+pub(crate) fn compute_partition<'a>(
+    partition_keys: impl Iterator<Item = DatumView<'a>>,
     partition_num: usize,
-    buf: &mut BytesMut,
 ) -> usize {
-    buf.clear();
-    partition_keys
-        .iter()
-        .for_each(|datum| buf.put_slice(&datum.to_bytes()));
-
-    (hash64(buf) % (partition_num as u64)) as usize
+    let reader = PartitionKeysReadAdapter::new(partition_keys);
+    (hash64_over_read(reader) as usize) % partition_num
 }
 
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
 
-    use common_types::{datum::DatumKind, string::StringBytes};
+    use bytes_ext::{BufMut, BytesMut};
+    use common_types::{
+        datum::{Datum, DatumKind},
+        string::StringBytes,
+    };
+    use hash_ext::hash64;
 
     use super::*;
 
@@ -291,10 +347,10 @@ mod tests {
         let defined_idxs = vec![1_usize, 2, 3, 4];
 
         // Actual
-        let mut buf = BytesMut::new();
-        let actual = key_rule.compute_partition_for_inserted_row(&row, &defined_idxs, &mut buf);
+        let actual = key_rule.compute_partition_for_inserted_row(&row, &defined_idxs);
 
         // Expected
+        let mut buf = BytesMut::new();
         buf.clear();
         buf.put_slice(&datums[1].to_bytes());
         buf.put_slice(&datums[2].to_bytes());
@@ -399,7 +455,10 @@ mod tests {
         let group = vec![0, 1, 2];
 
         // Expanded group
-        let expanded_group = expand_partition_keys_group(&group, &filters).unwrap();
+        let expanded_group = expand_partition_keys_group(&group, &filters)
+            .unwrap()
+            .map(|v| v.iter().map(|view| view.to_datum()).collect_vec())
+            .collect_vec();
         let expected = vec![
             vec![Datum::UInt32(1), Datum::UInt32(2), Datum::UInt32(3)],
             vec![Datum::UInt32(1), Datum::UInt32(22), Datum::UInt32(3)],
