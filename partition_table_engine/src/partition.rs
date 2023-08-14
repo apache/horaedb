@@ -126,10 +126,10 @@ impl Table for PartitionTableImpl {
     }
 
     // TODO: maybe we should ask remote sub table whether support pushdown
-    fn support_pushdown(&self, read_schema: &Schema, columns: &[String]) -> bool {
+    fn support_pushdown(&self, read_schema: &Schema, col_names: &[String]) -> bool {
         let need_dedup = self.table_data.options.need_dedup();
 
-        support_pushdown(read_schema, need_dedup, columns)
+        support_pushdown(read_schema, need_dedup, col_names)
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {

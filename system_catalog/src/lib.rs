@@ -125,6 +125,10 @@ impl Table for SystemTableAdapter {
         TableStats::default()
     }
 
+    fn support_pushdown(&self, _read_schema: &Schema, _col_names: &[String]) -> bool {
+        false
+    }
+
     async fn write(&self, _request: WriteRequest) -> table_engine::table::Result<usize> {
         Ok(0)
     }
