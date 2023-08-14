@@ -39,13 +39,18 @@ use crate::{
         CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
         OpenShardRequest, OpenShardResult, OpenTableRequest, TableEngine,
     },
+    remote::{
+        self,
+        model::{self, GetTableInfoRequest, WriteBatchResult},
+        RemoteEngine,
+    },
     stream::{
         self, ErrNoSource, ErrWithSource, PartitionedStreams, RecordBatchStream,
         SendableRecordBatchStream,
     },
     table::{
         AlterSchemaRequest, FlushRequest, GetRequest, ReadRequest, Result, Table, TableId,
-        TableRef, TableStats, UnsupportedMethod, WriteRequest,
+        TableInfo, TableRef, TableStats, UnsupportedMethod, WriteRequest,
     },
     MEMORY_ENGINE_TYPE,
 };
@@ -322,5 +327,37 @@ impl TableEngine for MemoryTableEngine {
     /// Close tables on same shard.
     async fn close_shard(&self, _request: CloseShardRequest) -> Vec<crate::engine::Result<String>> {
         vec![Ok("".to_string())]
+    }
+}
+
+/// Mock remote engine
+#[derive(Debug)]
+pub struct MockRemoteEngine;
+
+#[async_trait]
+impl RemoteEngine for MockRemoteEngine {
+    async fn read(
+        &self,
+        _request: remote::model::ReadRequest,
+    ) -> remote::Result<SendableRecordBatchStream> {
+        todo!()
+    }
+
+    async fn write(&self, _request: remote::model::WriteRequest) -> remote::Result<usize> {
+        todo!()
+    }
+
+    async fn write_batch(
+        &self,
+        _requests: Vec<remote::model::WriteRequest>,
+    ) -> remote::Result<Vec<WriteBatchResult>> {
+        todo!()
+    }
+
+    async fn get_table_info(
+        &self,
+        _request: GetTableInfoRequest,
+    ) -> remote::Result<model::TableInfo> {
+        todo!()
     }
 }
