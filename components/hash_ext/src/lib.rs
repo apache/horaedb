@@ -59,7 +59,7 @@ mod test {
             (b"cse_engine_hash_mod_test_bytes1", 6401327391689448380),
             (b"cse_engine_hash_mod_test_bytes2", 10824100215277000151),
         ] {
-            assert_eq!(code, hash64(&key[..]));
+            assert_eq!(code, hash64(key.as_slice()));
         }
     }
 

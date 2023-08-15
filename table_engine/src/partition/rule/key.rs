@@ -17,7 +17,7 @@
 use std::collections::{HashMap, HashSet};
 
 use common_types::{
-    datum::DatumView,
+    datum::{Datum, DatumView},
     row::{Row, RowGroup},
 };
 use hash_ext::hash64;
@@ -111,7 +111,7 @@ impl KeyRule {
     fn compute_partition_for_inserted_row(&self, row: &Row, target_column_idxs: &[usize]) -> usize {
         let partition_keys = target_column_idxs
             .iter()
-            .map(|col_idx| DatumView::from(&row[*col_idx]));
+            .map(|col_idx| row[*col_idx].as_view());
         compute_partition(partition_keys, self.partition_num)
     }
 
@@ -218,8 +218,8 @@ fn expand_partition_keys_group<'a>(
         let datums = match &filter.condition {
             // Only `Eq` is supported now.
             // TODO: to support `In`'s extracting.
-            PartitionCondition::Eq(datum) => vec![DatumView::from(datum)],
-            PartitionCondition::In(datums) => datums.iter().map(DatumView::from).collect_vec(),
+            PartitionCondition::Eq(datum) => vec![datum.as_view()],
+            PartitionCondition::In(datums) => datums.iter().map(Datum::as_view).collect_vec(),
             _ => {
                 return Internal {
                     msg: format!("invalid partition filter found, filter:{filter:?},"),
@@ -265,7 +265,7 @@ impl<'a, T> PartitionKeysReadAdapter<'a, T>
 where
     T: Iterator<Item = DatumView<'a>>,
 {
-    /// Read the serialized bytes from `curr_key` to fill the buf as much
+    /// Read the serialized bytes from `curr_key` to fill the `buf` as much
     /// as possible.
     fn read_once(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         // Fetch the next key.
@@ -317,11 +317,12 @@ where
     /// bytes from the `self.key_views` are exhausted.
     ///
     /// NOTE: The best way is to fill the `buf` key after key rather than fill
-    /// the `buf`. And an example can illustrate the reason for this way, saying
-    /// there are two `key_views`s, ['a', 'bc'], and ['ab', 'c'], in the way to
-    /// fill the buf as much as possible, the two `key_views`s will output the
-    /// same hash result, while the best way can generate different results.
-    /// However, here the best way is not chose for compatibility.
+    /// the `buf` as much as possible. And an example can illustrate the reason
+    /// for this way, saying there are two `key_views`s, ['a', 'bc'], and
+    /// ['ab', 'c'], in the way to fill the buf as much as possible, the two
+    /// `key_views`s will output the same hash result, while the best way
+    /// can generate different results. However, here the best way is not
+    /// chosen for compatibility.
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut total_n_bytes = 0;
         loop {
@@ -354,7 +355,7 @@ pub(crate) fn compute_partition<'a>(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
+    use std::{collections::BTreeSet, io::Read};
 
     use bytes_ext::{BufMut, BytesMut};
     use common_types::{
@@ -364,6 +365,41 @@ mod tests {
     use hash_ext::hash64;
 
     use super::*;
+
+    /// This test ensures the output of `read` method of
+    /// [PartitionKeysReadAdapter] to be the same as the provided `buf`'s length
+    /// as much as possible.
+    #[test]
+    fn test_partition_keys_read_adapter() {
+        let datums = vec![
+            Datum::Int32(1),
+            Datum::String(StringBytes::copy_from_str(
+                "test_partition_keys_read_adapter_key0",
+            )),
+            Datum::String(StringBytes::copy_from_str(
+                "test_partition_keys_read_adapter_key1",
+            )),
+            Datum::Null,
+        ];
+        let datum_views = datums.iter().map(Datum::as_view);
+        let mut adapter = PartitionKeysReadAdapter::new(datum_views);
+        let mut buf = vec![0; 16];
+        let mut total_bytes = 0;
+        loop {
+            let n = adapter.read(&mut buf).unwrap();
+            total_bytes += n;
+            if n < buf.len() {
+                // The reader has been exhausted. Let's check it.
+                assert_eq!(adapter.read(&mut buf).unwrap(), 0);
+                break;
+            }
+
+            assert_eq!(n, buf.len());
+        }
+
+        let expect_total_bytes: usize = datums.iter().map(|v| v.size()).sum();
+        assert_eq!(total_bytes, expect_total_bytes);
+    }
 
     #[test]
     fn test_compute_partition_for_inserted_row() {
