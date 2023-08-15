@@ -147,7 +147,6 @@ where
         RequestContext::builder()
             .catalog(default_catalog)
             .schema(default_schema)
-            .enable_partition_table_access(false)
             .timeout(self.timeout)
             .build()
             .context(CreateContext)

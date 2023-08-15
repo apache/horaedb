@@ -39,7 +39,6 @@ mod write;
 pub const FORWARDED_FROM: &str = "forwarded-from";
 
 use std::{
-    fmt,
     ops::Bound,
     sync::Arc,
     time::{Duration, Instant},
@@ -73,7 +72,6 @@ use log::{error, info};
 use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use query_frontend::plan::Plan;
 use router::{endpoint::Endpoint, Router};
-use runtime::Runtime;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{EngineRuntimes, TableState},
@@ -555,35 +553,19 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Context {
-    pub request_id: RequestId,
-    pub runtime: Arc<Runtime>,
-    pub timeout: Option<Duration>,
-    pub forwarded_from: Option<String>,
+    request_id: RequestId,
+    timeout: Option<Duration>,
+    forwarded_from: Option<String>,
 }
 
 impl Context {
-    pub fn new(
-        runtime: Arc<Runtime>,
-        timeout: Option<Duration>,
-        forwarded_from: Option<String>,
-    ) -> Self {
+    pub fn new(timeout: Option<Duration>, forwarded_from: Option<String>) -> Self {
         Self {
-            runtime,
+            request_id: RequestId::next_id(),
             timeout,
             forwarded_from,
-            request_id: RequestId::next_id(),
         }
-    }
-}
-
-impl fmt::Debug for Context {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Context")
-            .field("id", &self.request_id)
-            .field("timeout", &self.timeout)
-            .field("forwarded_from", &self.forwarded_from)
-            .finish()
     }
 }

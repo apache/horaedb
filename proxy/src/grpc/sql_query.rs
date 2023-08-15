@@ -33,7 +33,7 @@ use log::{error, warn};
 use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use router::endpoint::Endpoint;
 use snafu::ResultExt;
-use tokio::sync::mpsc;
+use tokio::{runtime::Handle, sync::mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Channel, IntoRequest};
 
@@ -141,13 +141,12 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         };
 
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
-        let runtime = ctx.runtime.clone();
         let resp_compress_min_length = self.resp_compress_min_length;
         let output = self
             .as_ref()
             .fetch_sql_query_output(ctx, schema, &req.sql, false)
             .await?;
-        runtime.spawn(async move {
+        Handle::current().spawn(async move {
             match output {
                 Output::AffectedRows(rows) => {
                     let resp =

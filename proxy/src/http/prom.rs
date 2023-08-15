@@ -31,13 +31,12 @@ use ceresdbproto::storage::{
 };
 use common_types::{
     datum::DatumKind,
-    request_id::RequestId,
     schema::{RecordSchema, TSID_COLUMN},
 };
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
-use log::{debug, error};
+use log::{error, info};
 use prom_remote_api::types::{
     Label, LabelMatcher, Query, QueryResult, RemoteStorage, Sample, TimeSeries, WriteRequest,
 };
@@ -85,11 +84,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             }),
             table_requests: write_table_requests,
         };
-        let ctx = ProxyContext::new(
-            self.engine_runtimes.write_runtime.clone(),
-            ctx.timeout,
-            None,
-        );
+        let ctx = ProxyContext::new(ctx.timeout, None);
 
         match self.handle_write_internal(ctx, table_request).await {
             Ok(result) => {
@@ -126,15 +121,14 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         metric: String,
         query: Query,
     ) -> Result<QueryResult> {
+        let request_id = ctx.request_id;
+        let begin_instant = Instant::now();
+        let deadline = ctx.timeout.map(|t| begin_instant + t);
+        info!("Handle prom remote query begin, ctx:{ctx:?}, metric:{metric}, request:{query:?}");
+
         // Open partition table if needed.
         self.maybe_open_partition_table_if_not_exist(&ctx.catalog, &ctx.schema, &metric)
             .await?;
-
-        let request_id = RequestId::next_id();
-        let begin_instant = Instant::now();
-        let deadline = ctx.timeout.map(|t| begin_instant + t);
-
-        debug!("Query handler try to process request, request_id:{request_id}, request:{query:?}");
 
         let provider = CatalogMetaProvider {
             manager: self.instance.catalog_manager.clone(),
@@ -170,7 +164,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             .await?;
 
         let cost = begin_instant.saturating_elapsed().as_millis();
-        debug!("Query handler finished, request_id:{request_id}, cost:{cost}ms, query:{query:?}");
+        info!("Handle prom remote query sucess, ctx:{ctx:?}, cost:{cost}ms");
 
         convert_query_result(metric, timestamp_col_name, field_col_name, output)
     }

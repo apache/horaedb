@@ -19,7 +19,6 @@ use std::time::Instant;
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, SqlQueryRequest, SqlQueryResponse,
 };
-use common_types::request_id::RequestId;
 use futures::FutureExt;
 use generic_error::BoxError;
 use http::StatusCode;
@@ -78,12 +77,12 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         sql: &str,
         enable_partition_table_access: bool,
     ) -> Result<Output> {
-        let request_id = RequestId::next_id();
+        let request_id = ctx.request_id;
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
-        info!("Handle sql query begin, catalog:{catalog}, schema:{schema}, ctx;{ctx:?}, sql:{sql}");
+        info!("Handle sql query begin, catalog:{catalog}, schema:{schema}, ctx:{ctx:?}, sql:{sql}");
 
         let instance = &self.instance;
         // TODO(yingwen): Privilege check, cannot access data of other tenant
@@ -161,7 +160,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         })?;
 
         let cost = begin_instant.saturating_elapsed();
-        info!("Handle sql query success, catalog:{catalog}, schema:{schema}, cost:{cost:?}, ctx:{ctx:?}, sql:{sql:?}");
+        info!("Handle sql query success, catalog:{catalog}, schema:{schema}, cost:{cost:?}, ctx:{ctx:?}");
 
         match &output {
             Output::AffectedRows(_) => Ok(output),

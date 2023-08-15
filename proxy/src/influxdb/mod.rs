@@ -23,7 +23,6 @@ use std::time::Instant;
 use ceresdbproto::storage::{
     RequestContext as GrpcRequestContext, WriteRequest as GrpcWriteRequest,
 };
-use common_types::request_id::RequestId;
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
@@ -80,11 +79,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             }),
             table_requests: write_table_requests,
         };
-        let proxy_context = Context::new(
-            self.engine_runtimes.write_runtime.clone(),
-            ctx.timeout,
-            None,
-        );
+        let proxy_context = Context::new(ctx.timeout, None);
 
         match self
             .handle_write_internal(proxy_context, table_request)
@@ -125,7 +120,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         ctx: RequestContext,
         req: InfluxqlRequest,
     ) -> Result<Output> {
-        let request_id = RequestId::next_id();
+        let request_id = ctx.request_id;
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
 

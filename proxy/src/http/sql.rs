@@ -51,7 +51,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         req: Request,
     ) -> Result<Output> {
         let schema = &ctx.schema;
-        let ctx = Context::new(self.engine_runtimes.read_runtime.clone(), ctx.timeout, None);
+        let ctx = Context::new(ctx.timeout, None);
 
         match self
             .handle_sql(&ctx, schema, &req.query, true)
