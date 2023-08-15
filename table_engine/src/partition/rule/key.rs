@@ -265,7 +265,9 @@ impl<'a, T> PartitionKeysReadAdapter<'a, T>
 where
     T: Iterator<Item = DatumView<'a>>,
 {
-    fn read_next_key(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    /// Read the serialized bytes from `curr_key` to fill the buf as much
+    /// as possible.
+    fn read_once(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         // Fetch the next key.
         if self.curr_key.is_none() {
             self.curr_key = self.key_views.next();
@@ -310,9 +312,9 @@ impl<'a, T> std::io::Read for PartitionKeysReadAdapter<'a, T>
 where
     T: Iterator<Item = DatumView<'a>>,
 {
-    /// This implementation will fill the whole buf if possible, and the only
-    /// scenario where the buf is not fully filled is that the reader is
-    /// exhausted.
+    /// This implementation will fill the whole buf as much as possible, and the
+    /// only scenario where the buf is not fully filled is that the serialized
+    /// bytes from the `self.key_views` are exhausted.
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut total_n_bytes = 0;
         loop {
@@ -322,9 +324,9 @@ where
             debug_assert!(total_n_bytes < buf.len());
 
             let next_buf = &mut buf[total_n_bytes..];
-            let n_bytes = self.read_next_key(next_buf)?;
+            let n_bytes = self.read_once(next_buf)?;
             if n_bytes == 0 {
-                // All the bytes
+                // No more data can be pulled.
                 break;
             }
             total_n_bytes += n_bytes;
