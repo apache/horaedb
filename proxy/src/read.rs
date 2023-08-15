@@ -107,21 +107,15 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
                 msg: "Failed to parse sql",
             })?;
 
+        // TODO: For simplicity, we only support executing one statement
+        let stmts_len = stmts.len();
         ensure!(
-            !stmts.is_empty(),
+            stmts_len == 1,
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: "No valid query statement provided",
-            }
-        );
-
-        // TODO(yingwen): For simplicity, we only support executing one statement now
-        // TODO(yingwen): INSERT/UPDATE/DELETE can be batched
-        ensure!(
-            stmts.len() == 1,
-            ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: "Only support execute one statement",
+                msg: format!(
+                    "Only support execute one statement now, current num:{stmts_len}, sql:{sql}"
+                ),
             }
         );
 
@@ -141,7 +135,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to create plan",
+                msg: format!("Failed to create plan, query:{sql}"),
             })?;
 
         let mut plan_maybe_expired = false;
@@ -163,11 +157,10 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         };
         let output = output.box_err().with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to execute plan",
+            msg: format!("Failed to execute plan, sql:{sql}"),
         })?;
 
         let cost = begin_instant.saturating_elapsed();
-
         info!("Handle sql query success, catalog:{catalog}, schema:{schema}, cost:{cost:?}, ctx:{ctx:?}, sql:{sql:?}");
 
         match &output {

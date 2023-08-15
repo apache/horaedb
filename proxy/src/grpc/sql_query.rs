@@ -57,7 +57,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         self.hotspot_recorder.inc_sql_query_reqs(&req).await;
         match self.handle_sql_query_internal(&ctx, &req).await {
             Err(e) => {
-                error!("Failed to handle sql query, ctx:{ctx:?}, req:{req:?}, err:{e}");
+                error!("Failed to handle sql query, ctx:{ctx:?}, err:{e}");
 
                 GRPC_HANDLER_COUNTER_VEC.query_failed.inc();
                 SqlQueryResponse {
