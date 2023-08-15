@@ -498,7 +498,7 @@ impl Datum {
             Datum::Timestamp(v) => v.as_i64() as u64,
             Datum::Double(v) => *v as u64,
             Datum::Float(v) => *v as u64,
-            Datum::Varbinary(v) => hash64(v),
+            Datum::Varbinary(v) => hash64(&v[..]),
             Datum::String(v) => hash64(v.as_bytes()),
             Datum::UInt64(v) => *v,
             Datum::UInt32(v) => *v as u64,

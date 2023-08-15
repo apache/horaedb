@@ -152,7 +152,7 @@ impl UUIDBuilder {
     }
 
     fn finish(self) -> u64 {
-        hash64(&self.buf)
+        hash64(&self.buf[..])
     }
 }
 

@@ -20,7 +20,7 @@ use common_types::{
     datum::DatumView,
     row::{Row, RowGroup},
 };
-use hash_ext::hash64_over_read;
+use hash_ext::hash64;
 use itertools::Itertools;
 use log::{debug, error};
 use snafu::OptionExt;
@@ -340,7 +340,7 @@ pub(crate) fn compute_partition<'a>(
     partition_num: usize,
 ) -> usize {
     let reader = PartitionKeysReadAdapter::new(partition_keys);
-    (hash64_over_read(reader) as usize) % partition_num
+    (hash64(reader) as usize) % partition_num
 }
 
 #[cfg(test)]
@@ -384,7 +384,7 @@ mod tests {
         buf.put_slice(&datums[2].to_bytes());
         buf.put_slice(&datums[3].to_bytes());
         buf.put_slice(&datums[4].to_bytes());
-        let expected = (hash64(&buf) % (partition_num as u64)) as usize;
+        let expected = (hash64(&buf[..]) % (partition_num as u64)) as usize;
 
         assert_eq!(actual, expected);
     }
