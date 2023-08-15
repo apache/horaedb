@@ -55,10 +55,11 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         GRPC_HANDLER_COUNTER_VEC.incoming_query.inc();
 
         self.hotspot_recorder.inc_sql_query_reqs(&req).await;
-        match self.handle_sql_query_internal(ctx, req).await {
+        match self.handle_sql_query_internal(&ctx, &req).await {
             Err(e) => {
+                error!("Failed to handle sql query, ctx:{ctx:?}, req:{req:?}, err:{e}");
+
                 GRPC_HANDLER_COUNTER_VEC.query_failed.inc();
-                error!("Failed to handle sql query, err:{e}");
                 SqlQueryResponse {
                     header: Some(error::build_err_header(e)),
                     ..Default::default()
@@ -73,8 +74,8 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
 
     async fn handle_sql_query_internal(
         &self,
-        ctx: Context,
-        req: SqlQueryRequest,
+        ctx: &Context,
+        req: &SqlQueryRequest,
     ) -> Result<SqlQueryResponse> {
         if req.context.is_none() {
             return ErrNoCause {
@@ -86,7 +87,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
 
         let req_context = req.context.as_ref().unwrap();
         let schema = &req_context.database;
-        match self.handle_sql(ctx, schema, &req.sql).await? {
+        match self.handle_sql(ctx, schema, &req.sql, false).await? {
             SqlResponse::Forwarded(resp) => Ok(resp),
             SqlResponse::Local(output) => convert_output(&output, self.resp_compress_min_length),
         }
@@ -99,7 +100,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     ) -> BoxStream<'static, SqlQueryResponse> {
         GRPC_HANDLER_COUNTER_VEC.stream_query.inc();
         self.hotspot_recorder.inc_sql_query_reqs(&req).await;
-        match self.clone().handle_stream_query_internal(ctx, req).await {
+        match self.clone().handle_stream_query_internal(&ctx, &req).await {
             Err(e) => stream::once(async {
                 error!("Failed to handle stream sql query, err:{e}");
                 GRPC_HANDLER_COUNTER_VEC.stream_query_failed.inc();
@@ -118,8 +119,8 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
 
     async fn handle_stream_query_internal(
         self: Arc<Self>,
-        ctx: Context,
-        req: SqlQueryRequest,
+        ctx: &Context,
+        req: &SqlQueryRequest,
     ) -> Result<BoxStream<'static, SqlQueryResponse>> {
         if req.context.is_none() {
             return ErrNoCause {
@@ -130,12 +131,8 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         }
 
         let req_context = req.context.as_ref().unwrap();
-        let schema = req_context.database.clone();
-        let req = match self
-            .clone()
-            .maybe_forward_stream_sql_query(ctx.clone(), &req)
-            .await
-        {
+        let schema = &req_context.database;
+        let req = match self.clone().maybe_forward_stream_sql_query(ctx, req).await {
             Some(resp) => match resp {
                 ForwardResult::Forwarded(resp) => return resp,
                 ForwardResult::Local => req,
@@ -148,7 +145,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         let resp_compress_min_length = self.resp_compress_min_length;
         let output = self
             .as_ref()
-            .fetch_sql_query_output(ctx, &schema, &req.sql)
+            .fetch_sql_query_output(ctx, schema, &req.sql, false)
             .await?;
         runtime.spawn(async move {
             match output {
@@ -189,7 +186,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
 
     async fn maybe_forward_stream_sql_query(
         self: Arc<Self>,
-        ctx: Context,
+        ctx: &Context,
         req: &SqlQueryRequest,
     ) -> Option<ForwardResult<BoxStream<'static, SqlQueryResponse>, Error>> {
         if req.tables.len() != 1 {
@@ -203,7 +200,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             schema: req_ctx.database.clone(),
             table: req.tables[0].clone(),
             req: req.clone().into_request(),
-            forwarded_from: ctx.forwarded_from,
+            forwarded_from: ctx.forwarded_from.clone(),
         };
         let do_query = |mut client: StorageServiceClient<Channel>,
                         request: tonic::Request<SqlQueryRequest>,

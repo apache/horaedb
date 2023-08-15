@@ -50,9 +50,10 @@ pub enum SqlResponse {
 impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     pub(crate) async fn handle_sql(
         &self,
-        ctx: Context,
+        ctx: &Context,
         schema: &str,
         sql: &str,
+        enable_partition_table_access: bool,
     ) -> Result<SqlResponse> {
         if let Some(resp) = self
             .maybe_forward_sql_query(ctx.clone(), schema, sql)
@@ -65,22 +66,24 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         };
 
         Ok(SqlResponse::Local(
-            self.fetch_sql_query_output(ctx, schema, sql).await?,
+            self.fetch_sql_query_output(ctx, schema, sql, enable_partition_table_access)
+                .await?,
         ))
     }
 
     pub(crate) async fn fetch_sql_query_output(
         &self,
-        ctx: Context,
+        ctx: &Context,
         schema: &str,
         sql: &str,
+        enable_partition_table_access: bool,
     ) -> Result<Output> {
         let request_id = RequestId::next_id();
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
-        info!("Handle sql query, request_id:{request_id}, deadline:{deadline:?}, schema:{schema}, sql:{sql}");
+        info!("Handle sql query begin, catalog:{catalog}, schema:{schema}, ctx;{ctx:?}, sql:{sql}");
 
         let instance = &self.instance;
         // TODO(yingwen): Privilege check, cannot access data of other tenant
@@ -108,7 +111,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             !stmts.is_empty(),
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!("No valid query statement provided, sql:{sql}",),
+                msg: "No valid query statement provided",
             }
         );
 
@@ -118,11 +121,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             stmts.len() == 1,
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!(
-                    "Only support execute one statement now, current num:{}, sql:{}",
-                    stmts.len(),
-                    sql
-                ),
+                msg: "Only support execute one statement",
             }
         );
 
@@ -142,7 +141,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to create plan, query:{sql}"),
+                msg: "Failed to create plan",
             })?;
 
         let mut plan_maybe_expired = false;
@@ -155,7 +154,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             }
         }
 
-        let output = if ctx.enable_partition_table_access {
+        let output = if enable_partition_table_access {
             self.execute_plan_involving_partition_table(request_id, catalog, schema, plan, deadline)
                 .await
         } else {
@@ -164,11 +163,12 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         };
         let output = output.box_err().with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to execute plan, sql:{sql}"),
+            msg: "Failed to execute plan",
         })?;
 
         let cost = begin_instant.saturating_elapsed();
-        info!("Handle sql query success, catalog:{catalog}, schema:{schema}, request_id:{request_id}, cost:{cost:?}, sql:{sql:?}");
+
+        info!("Handle sql query success, catalog:{catalog}, schema:{schema}, cost:{cost:?}, ctx:{ctx:?}, sql:{sql:?}");
 
         match &output {
             Output::AffectedRows(_) => Ok(output),

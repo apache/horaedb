@@ -39,6 +39,7 @@ mod write;
 pub const FORWARDED_FROM: &str = "forwarded-from";
 
 use std::{
+    fmt,
     ops::Bound,
     sync::Arc,
     time::{Duration, Instant},
@@ -556,8 +557,33 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
 
 #[derive(Clone)]
 pub struct Context {
-    pub timeout: Option<Duration>,
+    pub request_id: RequestId,
     pub runtime: Arc<Runtime>,
-    pub enable_partition_table_access: bool,
+    pub timeout: Option<Duration>,
     pub forwarded_from: Option<String>,
+}
+
+impl Context {
+    pub fn new(
+        runtime: Arc<Runtime>,
+        timeout: Option<Duration>,
+        forwarded_from: Option<String>,
+    ) -> Self {
+        Self {
+            runtime,
+            timeout,
+            forwarded_from,
+            request_id: RequestId::next_id(),
+        }
+    }
+}
+
+impl fmt::Debug for Context {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Context")
+            .field("id", &self.request_id)
+            .field("timeout", &self.timeout)
+            .field("forwarded_from", &self.forwarded_from)
+            .finish()
+    }
 }

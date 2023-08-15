@@ -56,12 +56,11 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             }),
             table_requests: write_table_requests,
         };
-        let proxy_context = Context {
-            timeout: ctx.timeout,
-            runtime: self.engine_runtimes.write_runtime.clone(),
-            enable_partition_table_access: false,
-            forwarded_from: None,
-        };
+        let proxy_context = Context::new(
+            self.engine_runtimes.write_runtime.clone(),
+            ctx.timeout,
+            None,
+        );
 
         match self
             .handle_write_internal(proxy_context, table_request)

@@ -85,12 +85,11 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             }),
             table_requests: write_table_requests,
         };
-        let ctx = ProxyContext {
-            runtime: self.engine_runtimes.write_runtime.clone(),
-            timeout: ctx.timeout,
-            enable_partition_table_access: false,
-            forwarded_from: None,
-        };
+        let ctx = ProxyContext::new(
+            self.engine_runtimes.write_runtime.clone(),
+            ctx.timeout,
+            None,
+        );
 
         match self.handle_write_internal(ctx, table_request).await {
             Ok(result) => {
