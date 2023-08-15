@@ -487,7 +487,8 @@ pub trait Table: std::fmt::Debug {
     /// Get table's statistics.
     fn stats(&self) -> TableStats;
 
-    /// Whether the columns used in filter expr can be pushdown....
+    /// Whether the columns used in filter expr can be pushdown.
+    ///
     /// `read_schema` is used here to avoid upper layer see different schema
     /// during one query.
     fn support_pushdown(&self, _read_schema: &Schema, _col_names: &[String]) -> bool;
