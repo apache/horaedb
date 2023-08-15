@@ -1,4 +1,16 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Sst reader implementation based on parquet.
 
@@ -12,25 +24,19 @@ use std::{
 
 use arrow::{datatypes::SchemaRef, record_batch::RecordBatch as ArrowRecordBatch};
 use async_trait::async_trait;
-use bytes::Bytes;
+use bytes_ext::Bytes;
 use common_types::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
 };
-use common_util::{
-    error::{BoxError, GenericResult},
-    runtime::{AbortOnDropMany, JoinHandle, Runtime},
-    time::InstantExt,
-};
 use datafusion::{
     common::ToDFSchema,
+    datasource::physical_plan::{parquet::page_filter::PagePruningPredicate, ParquetFileMetrics},
     physical_expr::{create_physical_expr, execution_props::ExecutionProps},
-    physical_plan::{
-        file_format::{parquet::page_filter::PagePruningPredicate, ParquetFileMetrics},
-        metrics::ExecutionPlanMetricsSet,
-    },
+    physical_plan::metrics::ExecutionPlanMetricsSet,
 };
 use futures::{Stream, StreamExt};
+use generic_error::{BoxError, GenericResult};
 use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
@@ -38,27 +44,36 @@ use parquet::{
     file::metadata::RowGroupMetaData,
 };
 use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader};
+use runtime::{AbortOnDropMany, JoinHandle, Runtime};
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use time_ext::InstantExt;
+use tokio::sync::{
+    mpsc::{self, Receiver, Sender},
+    watch,
+};
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
-use crate::sst::{
-    factory::{ObjectStorePickerRef, ReadFrequency, SstReadOptions},
-    meta_data::{
-        cache::{MetaCacheRef, MetaData},
-        SstMetaData,
+use crate::{
+    prefetchable_stream::{NoopPrefetcher, PrefetchableStream},
+    sst::{
+        factory::{ObjectStorePickerRef, ReadFrequency, SstReadOptions},
+        meta_data::{
+            cache::{MetaCacheRef, MetaData},
+            SstMetaData,
+        },
+        parquet::{
+            encoding::ParquetDecoder,
+            meta_data::{ParquetFilter, ParquetMetaDataRef},
+            row_group_pruner::RowGroupPruner,
+        },
+        reader::{error::*, Result, SstReader},
     },
-    parquet::{
-        encoding::ParquetDecoder,
-        meta_data::{ParquetFilter, ParquetMetaDataRef},
-        row_group_pruner::RowGroupPruner,
-    },
-    reader::{error::*, Result, SstReader},
 };
 
 const PRUNE_ROW_GROUPS_METRICS_COLLECTOR_NAME: &str = "prune_row_groups";
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
+type RecordBatchWithKeyStream = Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>;
 
 pub struct Reader<'a> {
     /// The path where the data is persisted.
@@ -128,7 +143,7 @@ impl<'a> Reader<'a> {
     async fn maybe_read_parallelly(
         &mut self,
         read_parallelism: usize,
-    ) -> Result<Vec<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>>> {
+    ) -> Result<Vec<RecordBatchWithKeyStream>> {
         assert!(read_parallelism > 0);
 
         self.init_if_necessary().await?;
@@ -153,10 +168,10 @@ impl<'a> Reader<'a> {
             .into_iter()
             .map(|stream| {
                 Box::new(RecordBatchProjector::new(
-                    self.path.to_string(),
                     stream,
                     row_projector.clone(),
                     sst_meta_data.clone(),
+                    self.metrics.metrics_collector.clone(),
                 )) as _
             })
             .collect();
@@ -222,6 +237,8 @@ impl<'a> Reader<'a> {
             .context(DataFusionError)
     }
 
+    // TODO: remove it and use the suggested api.
+    #[allow(deprecated)]
     async fn fetch_record_batch_streams(
         &mut self,
         suggested_parallelism: usize,
@@ -358,17 +375,7 @@ impl<'a> Reader<'a> {
                     file_path: self.path.to_string(),
                 })?;
 
-        let object_store_reader = parquet_ext::reader::ObjectStoreReader::new(
-            self.store.clone(),
-            self.path.clone(),
-            Arc::new(parquet_meta_data),
-        );
-
-        let parquet_meta_data = parquet_ext::meta_data::meta_with_page_indexes(object_store_reader)
-            .await
-            .with_context(|| DecodePageIndexes {
-                file_path: self.path.to_string(),
-            })?;
+        // TODO: Support page index until https://github.com/CeresDB/ceresdb/issues/1040 is fixed.
 
         MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
             .box_err()
@@ -448,42 +455,46 @@ impl<'a> ChunkReader for ChunkReaderAdapter<'a> {
     }
 }
 
+#[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
+pub(crate) struct ProjectorMetrics {
+    #[metric(number, sum)]
+    pub row_num: usize,
+    #[metric(number, sum)]
+    pub row_mem: usize,
+    #[metric(duration, sum)]
+    pub project_record_batch: Duration,
+    #[metric(collector)]
+    pub metrics_collector: Option<MetricsCollector>,
+}
+
 struct RecordBatchProjector {
-    path: String,
     stream: SendableRecordBatchStream,
     row_projector: ArrowRecordBatchProjector,
 
-    row_num: usize,
+    metrics: ProjectorMetrics,
     start_time: Instant,
     sst_meta: ParquetMetaDataRef,
 }
 
 impl RecordBatchProjector {
     fn new(
-        path: String,
         stream: SendableRecordBatchStream,
         row_projector: ArrowRecordBatchProjector,
         sst_meta: ParquetMetaDataRef,
+        metrics_collector: Option<MetricsCollector>,
     ) -> Self {
+        let metrics = ProjectorMetrics {
+            metrics_collector,
+            ..Default::default()
+        };
+
         Self {
-            path,
             stream,
             row_projector,
-            row_num: 0,
+            metrics,
             start_time: Instant::now(),
             sst_meta,
         }
-    }
-}
-
-impl Drop for RecordBatchProjector {
-    fn drop(&mut self) {
-        debug!(
-            "RecordBatchProjector dropped, path:{} rows:{}, cost:{}ms.",
-            self.path,
-            self.row_num,
-            self.start_time.saturating_elapsed().as_millis(),
-        );
     }
 }
 
@@ -505,7 +516,10 @@ impl Stream for RecordBatchProjector {
                             .box_err()
                             .context(DecodeRecordBatch)?;
 
-                        projector.row_num += record_batch.num_rows();
+                        for col in record_batch.columns() {
+                            projector.metrics.row_mem += col.get_array_memory_size();
+                        }
+                        projector.metrics.row_num += record_batch.num_rows();
 
                         let projected_batch = projector
                             .row_projector
@@ -518,7 +532,10 @@ impl Stream for RecordBatchProjector {
                 }
             }
             Poll::Pending => Poll::Pending,
-            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Ready(None) => {
+                projector.metrics.project_record_batch += projector.start_time.saturating_elapsed();
+                Poll::Ready(None)
+            }
         }
     }
 
@@ -539,20 +556,39 @@ impl<'a> SstReader for Reader<'a> {
 
     async fn read(
         &mut self,
-    ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>> {
+    ) -> Result<Box<dyn PrefetchableStream<Item = Result<RecordBatchWithKey>>>> {
         let mut streams = self.maybe_read_parallelly(1).await?;
         assert_eq!(streams.len(), 1);
         let stream = streams.pop().expect("impossible to fetch no stream");
 
-        Ok(stream)
+        Ok(Box::new(NoopPrefetcher(stream)))
     }
 }
 
 struct RecordBatchReceiver {
+    bg_prefetch_tx: Option<watch::Sender<()>>,
     rx_group: Vec<Receiver<Result<RecordBatchWithKey>>>,
     cur_rx_idx: usize,
     #[allow(dead_code)]
     drop_helper: AbortOnDropMany<()>,
+}
+
+#[async_trait]
+impl PrefetchableStream for RecordBatchReceiver {
+    type Item = Result<RecordBatchWithKey>;
+
+    async fn start_prefetch(&mut self) {
+        // Start the prefetch work in background when first poll is called.
+        if let Some(tx) = self.bg_prefetch_tx.take() {
+            if tx.send(()).is_err() {
+                error!("The receiver for start prefetching has been closed");
+            }
+        }
+    }
+
+    async fn fetch_next(&mut self) -> Option<Self::Item> {
+        self.next().await
+    }
 }
 
 impl Stream for RecordBatchReceiver {
@@ -561,6 +597,13 @@ impl Stream for RecordBatchReceiver {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if self.rx_group.is_empty() {
             return Poll::Ready(None);
+        }
+
+        // Start the prefetch work in background when first poll is called.
+        if let Some(tx) = self.bg_prefetch_tx.take() {
+            if tx.send(()).is_err() {
+                error!("The receiver for start prefetching has been closed");
+            }
         }
 
         let cur_rx_idx = self.cur_rx_idx;
@@ -631,8 +674,15 @@ impl<'a> ThreadedReader<'a> {
         &mut self,
         mut reader: Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>,
         tx: Sender<Result<RecordBatchWithKey>>,
+        mut rx: watch::Receiver<()>,
     ) -> JoinHandle<()> {
         self.runtime.spawn(async move {
+            // Wait for the notification to start the bg prefetch work.
+            if rx.changed().await.is_err() {
+                error!("The prefetch notifier has been closed, exit the prefetch work");
+                return;
+            }
+
             while let Some(batch) = reader.next().await {
                 if let Err(e) = tx.send(batch).await {
                     error!("fail to send the fetched record batch result, err:{}", e);
@@ -650,7 +700,7 @@ impl<'a> SstReader for ThreadedReader<'a> {
 
     async fn read(
         &mut self,
-    ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>> {
+    ) -> Result<Box<dyn PrefetchableStream<Item = Result<RecordBatchWithKey>>>> {
         // Get underlying sst readers and channels.
         let sub_readers = self
             .inner
@@ -658,6 +708,7 @@ impl<'a> SstReader for ThreadedReader<'a> {
             .await?;
         if sub_readers.is_empty() {
             return Ok(Box::new(RecordBatchReceiver {
+                bg_prefetch_tx: None,
                 rx_group: Vec::new(),
                 cur_rx_idx: 0,
                 drop_helper: AbortOnDropMany(Vec::new()),
@@ -675,13 +726,17 @@ impl<'a> SstReader for ThreadedReader<'a> {
             .map(|_| mpsc::channel::<Result<RecordBatchWithKey>>(channel_cap_per_sub_reader))
             .unzip();
 
+        let (bg_prefetch_tx, bg_prefetch_rx) = watch::channel(());
         // Start the background readings.
         let mut handles = Vec::with_capacity(sub_readers.len());
         for (sub_reader, tx) in sub_readers.into_iter().zip(tx_group.into_iter()) {
-            handles.push(self.read_record_batches_from_sub_reader(sub_reader, tx));
+            let bg_prefetch_handle =
+                self.read_record_batches_from_sub_reader(sub_reader, tx, bg_prefetch_rx.clone());
+            handles.push(bg_prefetch_handle);
         }
 
         Ok(Box::new(RecordBatchReceiver {
+            bg_prefetch_tx: Some(bg_prefetch_tx),
             rx_group,
             cur_rx_idx: 0,
             drop_helper: AbortOnDropMany(handles),

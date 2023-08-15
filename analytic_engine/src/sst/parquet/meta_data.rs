@@ -1,10 +1,22 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // MetaData for SST based on parquet.
 
 use std::{fmt, ops::Index, sync::Arc};
 
-use bytes::Bytes;
+use bytes_ext::Bytes;
 use ceresdbproto::{schema as schema_pb, sst as sst_pb};
 use common_types::{
     datum::DatumKind,
@@ -12,7 +24,7 @@ use common_types::{
     time::TimeRange,
     SequenceNumber,
 };
-use common_util::define_result;
+use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use xorfilter::xor8::{Xor8, Xor8Builder};
 
@@ -369,11 +381,9 @@ impl From<ParquetMetaData> for MetaData {
 
 impl fmt::Debug for ParquetMetaData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use common_util::byte::encode;
-
         f.debug_struct("ParquetMetaData")
-            .field("min_key", &encode(&self.min_key))
-            .field("max_key", &encode(&self.max_key))
+            .field("min_key", &hex::encode(&self.min_key))
+            .field("max_key", &hex::encode(&self.max_key))
             .field("time_range", &self.time_range)
             .field("max_sequence", &self.max_sequence)
             .field("schema", &self.schema)

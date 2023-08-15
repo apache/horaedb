@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Read logic of instance
 
@@ -15,9 +27,10 @@ use common_types::{
     schema::RecordSchema,
     time::TimeRange,
 };
-use common_util::{define_result, error::BoxError};
 use futures::stream::Stream;
+use generic_error::BoxError;
 use log::debug;
+use macros::define_result;
 use snafu::{ResultExt, Snafu};
 use table_engine::{
     stream::{
@@ -36,7 +49,6 @@ use crate::{
         merge::{MergeBuilder, MergeConfig, MergeIterator},
         IterOptions, RecordBatchWithKeyIterator,
     },
-    space::SpaceAndTable,
     sst::factory::{ReadFrequency, SstReadOptions},
     table::{
         data::TableData,
@@ -73,37 +85,27 @@ const ITER_NUM_METRIC_NAME: &str = "iter_num";
 const MERGE_ITER_METRICS_COLLECTOR_NAME_PREFIX: &str = "merge_iter";
 const CHAIN_ITER_METRICS_COLLECTOR_NAME_PREFIX: &str = "chain_iter";
 
-/// Check whether it needs to apply merge sorting when reading the table with
-/// the `table_options` by the `read_request`.
-fn need_merge_sort_streams(table_options: &TableOptions, read_request: &ReadRequest) -> bool {
-    table_options.need_dedup() || read_request.order.is_in_order()
-}
-
 impl Instance {
     /// Read data in multiple time range from table, and return
     /// `read_parallelism` output streams.
     pub async fn partitioned_read_from_table(
         &self,
-        space_table: &SpaceAndTable,
+        table_data: &TableData,
         request: ReadRequest,
     ) -> Result<PartitionedStreams> {
         debug!(
             "Instance read from table, space_id:{}, table:{}, table_id:{:?}, request:{:?}",
-            space_table.space().id,
-            space_table.table_data().name,
-            space_table.table_data().id,
-            request
+            table_data.space_id, table_data.name, table_data.id, request
         );
 
-        let table_data = space_table.table_data();
         let table_options = table_data.table_options();
-
         // Collect metrics.
         table_data.metrics.on_read_request_begin();
-        let need_merge_sort = need_merge_sort_streams(&table_options, &request);
+        let need_merge_sort = table_options.need_dedup();
         request.metrics_collector.collect(Metric::boolean(
             MERGE_SORT_METRIC_NAME.to_string(),
             need_merge_sort,
+            None,
         ));
 
         if need_merge_sort {
@@ -122,14 +124,9 @@ impl Instance {
     fn build_partitioned_streams(
         &self,
         request: &ReadRequest,
-        mut partitioned_iters: Vec<impl RecordBatchWithKeyIterator + 'static>,
+        partitioned_iters: Vec<impl RecordBatchWithKeyIterator + 'static>,
     ) -> Result<PartitionedStreams> {
         let read_parallelism = request.opts.read_parallelism;
-
-        if read_parallelism == 1 && request.order.is_in_desc_order() {
-            // TODO(xikai): it seems this can be avoided.
-            partitioned_iters.reverse();
-        };
 
         // Split iterators into `read_parallelism` groups.
         let mut splitted_iters: Vec<_> = std::iter::repeat_with(Vec::new)
@@ -161,7 +158,6 @@ impl Instance {
         let sequence = table_data.last_sequence();
         let projected_schema = request.projected_schema.clone();
         let sst_read_options = SstReadOptions {
-            reverse: request.order.is_in_desc_order(),
             frequency: ReadFrequency::Frequent,
             projected_schema: projected_schema.clone(),
             predicate: request.predicate.clone(),
@@ -195,7 +191,7 @@ impl Instance {
                 store_picker: self.space_store.store_picker(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: table_options.need_dedup(),
-                reverse: request.order.is_in_desc_order(),
+                reverse: false,
             };
 
             let merge_iter = MergeBuilder::new(merge_config)
@@ -216,6 +212,7 @@ impl Instance {
         request.metrics_collector.collect(Metric::number(
             ITER_NUM_METRIC_NAME.to_string(),
             iters.len(),
+            None,
         ));
 
         Ok(iters)
@@ -229,11 +226,7 @@ impl Instance {
     ) -> Result<Vec<ChainIterator>> {
         let projected_schema = request.projected_schema.clone();
 
-        assert!(request.order.is_out_of_order());
-
         let sst_read_options = SstReadOptions {
-            // no need to read in order so just read in asc order by default.
-            reverse: false,
             frequency: ReadFrequency::Frequent,
             projected_schema: projected_schema.clone(),
             predicate: request.predicate.clone(),
@@ -256,6 +249,7 @@ impl Instance {
                 request_id: request.request_id,
                 metrics_collector: Some(metrics_collector),
                 deadline: request.opts.deadline,
+                num_streams_to_prefetch: self.scan_options.num_streams_to_prefetch,
                 space_id: table_data.space_id,
                 table_id: table_data.id,
                 projected_schema: projected_schema.clone(),

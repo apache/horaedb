@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Compaction scheduler.
 
@@ -14,16 +26,15 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::request_id::RequestId;
-use common_util::{
-    config::{ReadableDuration, ReadableSize},
-    define_result,
-    runtime::{JoinHandle, Runtime},
-    time::DurationExt,
-};
+use futures::{stream::FuturesUnordered, StreamExt};
 use log::{debug, error, info, warn};
+use macros::define_result;
+use runtime::{JoinHandle, Runtime};
 use serde::{Deserialize, Serialize};
+use size_ext::ReadableSize;
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
+use time_ext::{DurationExt, ReadableDuration};
 use tokio::{
     sync::{
         mpsc::{self, error::TrySendError, Receiver, Sender},
@@ -49,7 +60,7 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to join compaction schedule worker, err:{}", source))]
-    JoinWorker { source: common_util::runtime::Error },
+    JoinWorker { source: runtime::Error },
 }
 
 define_result!(Error);
@@ -237,7 +248,7 @@ impl OngoingTaskLimit {
 
         if dropped > 0 {
             warn!(
-                "Too many compaction pending tasks,  limit: {}, dropped {} older tasks.",
+                "Too many compaction pending tasks, limit:{}, dropped:{}.",
                 self.max_pending_compaction_tasks, dropped,
             );
         }
@@ -428,12 +439,11 @@ impl ScheduleWorker {
         let ongoing = self.limit.ongoing_tasks();
         match schedule_task {
             ScheduleTask::Request(compact_req) => {
-                debug!("Ongoing compaction tasks:{}", ongoing);
+                debug!("Ongoing compaction tasks:{ongoing}");
                 if ongoing >= self.max_ongoing_tasks {
                     self.limit.add_request(compact_req);
                     warn!(
-                        "Too many compaction ongoing tasks:{}, max:{}, buf_len:{}",
-                        ongoing,
+                        "Too many compaction ongoing tasks:{ongoing}, max:{}, buf_len:{}",
                         self.max_ongoing_tasks,
                         self.limit.request_buf_len()
                     );
@@ -444,11 +454,19 @@ impl ScheduleWorker {
             ScheduleTask::Schedule => {
                 if self.max_ongoing_tasks > ongoing {
                     let pending = self.limit.drain_requests(self.max_ongoing_tasks - ongoing);
-                    let len = pending.len();
-                    for compact_req in pending {
-                        self.handle_table_compaction_request(compact_req).await;
-                    }
-                    debug!("Scheduled {} pending compaction tasks.", len);
+                    let mut futures: FuturesUnordered<_> = pending
+                        .into_iter()
+                        .map(|req| self.handle_table_compaction_request(req))
+                        .collect();
+
+                    debug!("Scheduled {} pending compaction tasks.", futures.len());
+                    while (futures.next().await).is_some() {}
+                } else {
+                    warn!(
+                        "Too many compaction ongoing tasks:{ongoing}, max:{}, buf_len:{}",
+                        self.max_ongoing_tasks,
+                        self.limit.request_buf_len()
+                    );
                 }
             }
             ScheduleTask::Exit => (),
@@ -462,10 +480,7 @@ impl ScheduleWorker {
         waiter_notifier: WaiterNotifier,
         token: MemoryUsageToken,
     ) {
-        // Mark files being in compaction.
-        compaction_task.mark_files_being_compacted(true);
-
-        let keep_scheduling_compaction = !compaction_task.compaction_inputs.is_empty();
+        let keep_scheduling_compaction = compaction_task.contains_min_level();
 
         let runtime = self.runtime.clone();
         let space_store = self.space_store.clone();
@@ -491,6 +506,14 @@ impl ScheduleWorker {
             // Release the token after compaction finished.
             let _token = token;
 
+            // We will reschedule table with many l0 sst as fast as we can.
+            if keep_scheduling_compaction {
+                schedule_table_compaction(
+                    sender,
+                    TableCompactionRequest::no_waiter(table_data.clone()),
+                )
+                .await;
+            }
             let res = space_store
                 .compact_table(
                     request_id,
@@ -502,16 +525,6 @@ impl ScheduleWorker {
                 )
                 .await;
 
-            if let Err(e) = &res {
-                // Compaction is failed, we need to unset the compaction mark.
-                compaction_task.mark_files_being_compacted(false);
-
-                error!(
-                    "Failed to compact table, table_name:{}, table_id:{}, request_id:{}, err:{}",
-                    table_data.name, table_data.id, request_id, e
-                );
-            }
-
             task.limit.finish_task();
             task.schedule_worker_if_need().await;
 
@@ -519,16 +532,9 @@ impl ScheduleWorker {
             match res {
                 Ok(()) => {
                     waiter_notifier.notify_wait_result(Ok(()));
-
-                    if keep_scheduling_compaction {
-                        schedule_table_compaction(
-                            sender,
-                            TableCompactionRequest::no_waiter(table_data.clone()),
-                        )
-                        .await;
-                    }
                 }
                 Err(e) => {
+                    error!("Failed to compact table, table_name:{}, table_id:{}, request_id:{request_id}, err:{e}", table_data.name, table_data.id);
                     let e = Arc::new(e);
 
                     let wait_err = WaitError::Compaction { source: e };
@@ -648,7 +654,7 @@ impl ScheduleWorker {
         for table_data in &tables_buf {
             let last_flush_time = table_data.last_flush_time();
             let flush_deadline_ms = last_flush_time + self.max_unflushed_duration.as_millis_u64();
-            let now_ms = common_util::time::current_time_millis();
+            let now_ms = time_ext::current_time_millis();
             if now_ms > flush_deadline_ms {
                 info!(
                     "Scheduled flush is triggered, table:{}, last_flush_time:{last_flush_time}ms, max_unflushed_duration:{:?}",

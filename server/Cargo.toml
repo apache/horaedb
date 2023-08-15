@@ -1,3 +1,17 @@
+# Copyright 2023 The CeresDB Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 [package]
 name = "server"
 
@@ -15,26 +29,29 @@ analytic_engine = { workspace = true }
 arrow = { workspace = true }
 arrow_ext = { workspace = true }
 async-trait = { workspace = true }
-bytes = { workspace = true }
+bytes_ext = { workspace = true }
 catalog = { workspace = true }
 ceresdbproto = { workspace = true }
 clru = { workspace = true }
 cluster = { workspace = true }
 common_types = { workspace = true }
-common_util = { workspace = true }
 datafusion = { workspace = true }
 df_operator = { workspace = true }
+future_ext = { workspace = true }
 futures = { workspace = true }
+generic_error = { workspace = true }
 http = "0.2"
 influxdb-line-protocol = "1.0"
 interpreters = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 logger = { workspace = true }
+macros = { workspace = true }
 meta_client = { workspace = true }
 opensrv-mysql = "0.1.0"
 partition_table_engine = { workspace = true }
 paste = { workspace = true }
+pgwire = "0.15.0"
 profile = { workspace = true }
 prom-remote-api = { workspace = true, features = ["warp"] }
 prometheus = { workspace = true }
@@ -45,12 +62,15 @@ query_engine = { workspace = true }
 query_frontend = { workspace = true }
 remote_engine_client = { workspace = true }
 router = { workspace = true }
+runtime = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+size_ext = { workspace = true }
 snafu = { workspace = true }
 spin = { workspace = true }
 sqlparser = { workspace = true }
 table_engine = { workspace = true }
+time_ext = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { workspace = true }

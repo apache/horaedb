@@ -1,4 +1,16 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Projected schema
 
@@ -8,7 +20,7 @@ use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
     column_schema::{ColumnSchema, ReadOp},
-    datum::Datum,
+    datum::{Datum, DatumKind},
     row::Row,
     schema::{ArrowSchemaRef, RecordSchema, RecordSchemaWithKey, Schema},
 };
@@ -97,6 +109,14 @@ impl RowProjector {
 
         Row::from_datums(datums_buffer)
     }
+
+    /// Returns a datum kind selected
+    /// using an index into the source schema columns.
+    pub fn datum_kind(&self, index: usize) -> &DatumKind {
+        assert!(index < self.source_schema.num_columns());
+
+        &self.source_schema.column(index).data_type
+    }
 }
 
 #[derive(Clone)]
@@ -124,6 +144,10 @@ impl ProjectedSchema {
 
     pub fn is_all_projection(&self) -> bool {
         self.0.is_all_projection()
+    }
+
+    pub fn projection(&self) -> Option<Vec<usize>> {
+        self.0.projection()
     }
 
     /// Returns the [RowProjector] to project the rows with source schema to
@@ -250,6 +274,10 @@ impl ProjectedSchemaInner {
     /// Selecting all the columns is the all projection.
     fn is_all_projection(&self) -> bool {
         self.projection.is_none()
+    }
+
+    fn projection(&self) -> Option<Vec<usize>> {
+        self.projection.clone()
     }
 
     // TODO(yingwen): We can fill missing not null column with default value instead

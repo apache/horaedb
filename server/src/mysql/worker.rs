@@ -1,13 +1,25 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use interpreters::interpreter::Output;
 use log::{error, info};
 use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaWriter};
 use proxy::{context::RequestContext, http::sql::Request, Proxy};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use snafu::ResultExt;
 
 use crate::mysql::{
@@ -15,18 +27,19 @@ use crate::mysql::{
     writer::MysqlQueryResultWriter,
 };
 
-pub struct MysqlWorker<W: std::io::Write + Send + Sync, Q> {
+pub struct MysqlWorker<W: std::io::Write + Send + Sync, Q, P> {
     generic_hold: PhantomData<W>,
-    proxy: Arc<Proxy<Q>>,
+    proxy: Arc<Proxy<Q, P>>,
     timeout: Option<Duration>,
 }
 
-impl<W, Q> MysqlWorker<W, Q>
+impl<W, Q, P> MysqlWorker<W, Q, P>
 where
     W: std::io::Write + Send + Sync,
     Q: QueryExecutor + 'static,
+    P: PhysicalPlanner,
 {
-    pub fn new(proxy: Arc<Proxy<Q>>, timeout: Option<Duration>) -> Self {
+    pub fn new(proxy: Arc<Proxy<Q, P>>, timeout: Option<Duration>) -> Self {
         Self {
             generic_hold: PhantomData::default(),
             proxy,
@@ -36,10 +49,11 @@ where
 }
 
 #[async_trait::async_trait]
-impl<W, Q> AsyncMysqlShim<W> for MysqlWorker<W, Q>
+impl<W, Q, P> AsyncMysqlShim<W> for MysqlWorker<W, Q, P>
 where
     W: std::io::Write + Send + Sync,
     Q: QueryExecutor + 'static,
+    P: PhysicalPlanner,
 {
     type Error = crate::mysql::error::Error;
 
@@ -92,10 +106,11 @@ where
     }
 }
 
-impl<W, Q> MysqlWorker<W, Q>
+impl<W, Q, P> MysqlWorker<W, Q, P>
 where
     W: std::io::Write + Send + Sync,
     Q: QueryExecutor + 'static,
+    P: PhysicalPlanner,
 {
     async fn do_query<'a>(&'a mut self, sql: &'a str) -> Result<Output> {
         let ctx = self.create_ctx()?;

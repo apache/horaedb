@@ -1,4 +1,16 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Datafusion `TableProvider` adapter
 
@@ -14,14 +26,14 @@ use async_trait::async_trait;
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
 use datafusion::{
     config::{ConfigEntry, ConfigExtension, ExtensionOptions},
-    datasource::datasource::{TableProvider, TableProviderFilterPushDown},
+    datasource::TableProvider,
     error::{DataFusionError, Result},
     execution::context::{SessionState, TaskContext},
-    logical_expr::{Expr, TableSource, TableType},
+    logical_expr::{Expr, TableProviderFilterPushDown, TableSource, TableType},
     physical_expr::PhysicalSortExpr,
     physical_plan::{
         metrics::{Count, MetricValue, MetricsSet},
-        DisplayFormatType, ExecutionPlan, Metric, Partitioning,
+        DisplayAs, DisplayFormatType, ExecutionPlan, Metric, Partitioning,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
@@ -31,8 +43,8 @@ use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector};
 
 use crate::{
     predicate::{PredicateBuilder, PredicateRef},
-    stream::{SendableRecordBatchStream, ToDfStream},
-    table::{self, ReadOptions, ReadOrder, ReadRequest, TableRef},
+    stream::{ScanStreamState, ToDfStream},
+    table::{ReadOptions, ReadRequest, TableRef},
 };
 
 const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_table";
@@ -130,7 +142,6 @@ impl TableProviderAdapter {
         projection: Option<&Vec<usize>>,
         filters: &[Expr],
         limit: Option<usize>,
-        read_order: ReadOrder,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         let ceresdb_options = state.config_options().extensions.get::<CeresdbOptions>();
         assert!(ceresdb_options.is_some());
@@ -139,24 +150,17 @@ impl TableProviderAdapter {
         let deadline = ceresdb_options
             .request_timeout
             .map(|n| Instant::now() + Duration::from_millis(n));
+        let read_parallelism = state.config().target_partitions();
         debug!(
-            "scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, read_order:{:?}, deadline:{:?}",
+            "scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, deadline:{:?}, parallelism:{}",
             self.table.name(),
             request_id,
             projection,
             filters,
             limit,
-            read_order,
             deadline,
+            read_parallelism,
         );
-
-        // Forbid the parallel reading if the data order is required.
-        let read_parallelism = if read_order.is_in_order() && self.table.partition_info().is_none()
-        {
-            1
-        } else {
-            state.config().target_partitions()
-        };
 
         let predicate = self.check_and_build_predicate_from_filters(filters);
         let mut scan_table = ScanTable {
@@ -168,7 +172,6 @@ impl TableProviderAdapter {
             })?,
             table: self.table.clone(),
             request_id,
-            read_order,
             read_parallelism,
             predicate,
             deadline,
@@ -181,12 +184,13 @@ impl TableProviderAdapter {
     }
 
     fn check_and_build_predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
-        let unique_keys = self.read_schema.unique_keys();
-
-        let push_down_filters = filters
+        let pushdown_filters = filters
             .iter()
             .filter_map(|filter| {
-                if Self::only_filter_unique_key_columns(filter, &unique_keys) {
+                let filter_cols = visitor::find_columns_by_expr(filter);
+
+                let support_pushdown = self.table.support_pushdown(&self.read_schema, &filter_cols);
+                if support_pushdown {
                     Some(filter.clone())
                 } else {
                     None
@@ -195,21 +199,25 @@ impl TableProviderAdapter {
             .collect::<Vec<_>>();
 
         PredicateBuilder::default()
-            .add_pushdown_exprs(&push_down_filters)
-            .extract_time_range(&self.read_schema, &push_down_filters)
+            .add_pushdown_exprs(&pushdown_filters)
+            .extract_time_range(&self.read_schema, filters)
             .build()
     }
 
-    fn only_filter_unique_key_columns(filter: &Expr, unique_keys: &[&str]) -> bool {
-        let filter_cols = visitor::find_columns_by_expr(filter);
-        for filter_col in filter_cols {
-            // If a column which is not part of the unique key occurred in `filter`, the
-            // `filter` shouldn't be pushed down.
-            if !unique_keys.contains(&filter_col.as_str()) {
-                return false;
-            }
-        }
-        true
+    fn pushdown_inner(&self, filters: &[&Expr]) -> Vec<TableProviderFilterPushDown> {
+        filters
+            .iter()
+            .map(|filter| {
+                let filter_cols = visitor::find_columns_by_expr(filter);
+
+                let support_pushdown = self.table.support_pushdown(&self.read_schema, &filter_cols);
+                if support_pushdown {
+                    TableProviderFilterPushDown::Exact
+                } else {
+                    TableProviderFilterPushDown::Inexact
+                }
+            })
+            .collect()
     }
 }
 
@@ -231,12 +239,14 @@ impl TableProvider for TableProviderAdapter {
         filters: &[Expr],
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        self.scan_table(state, projection, filters, limit, ReadOrder::None)
-            .await
+        self.scan_table(state, projection, filters, limit).await
     }
 
-    fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {
-        Ok(TableProviderFilterPushDown::Inexact)
+    fn supports_filters_pushdown(
+        &self,
+        filters: &[&Expr],
+    ) -> Result<Vec<TableProviderFilterPushDown>> {
+        Ok(self.pushdown_inner(filters))
     }
 
     /// Get the type of this table for metadata/catalog purposes.
@@ -262,32 +272,11 @@ impl TableSource for TableProviderAdapter {
 
     /// Tests whether the table provider can make use of a filter expression
     /// to optimize data retrieval.
-    fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {
-        Ok(TableProviderFilterPushDown::Inexact)
-    }
-}
-
-#[derive(Default)]
-struct ScanStreamState {
-    inited: bool,
-    err: Option<table::Error>,
-    streams: Vec<Option<SendableRecordBatchStream>>,
-}
-
-impl ScanStreamState {
-    fn take_stream(&mut self, index: usize) -> Result<SendableRecordBatchStream> {
-        if let Some(e) = &self.err {
-            return Err(DataFusionError::Execution(format!(
-                "Failed to read table, partition:{index}, err:{e}"
-            )));
-        }
-
-        // TODO(yingwen): Return an empty stream if index is out of bound.
-        self.streams[index].take().ok_or_else(|| {
-            DataFusionError::Execution(format!(
-                "Read partition multiple times is not supported, partition:{index}"
-            ))
-        })
+    fn supports_filters_pushdown(
+        &self,
+        filters: &[&Expr],
+    ) -> Result<Vec<TableProviderFilterPushDown>> {
+        Ok(self.pushdown_inner(filters))
     }
 }
 
@@ -296,7 +285,6 @@ struct ScanTable {
     projected_schema: ProjectedSchema,
     table: TableRef,
     request_id: RequestId,
-    read_order: ReadOrder,
     read_parallelism: usize,
     predicate: PredicateRef,
     deadline: Option<Instant>,
@@ -316,27 +304,23 @@ impl ScanTable {
             },
             projected_schema: self.projected_schema.clone(),
             predicate: self.predicate.clone(),
-            order: self.read_order,
             metrics_collector: self.metrics_collector.clone(),
         };
 
         let read_res = self.table.partitioned_read(req).await;
 
         let mut stream_state = self.stream_state.lock().unwrap();
-        if stream_state.inited {
+
+        if stream_state.is_inited() {
             return Ok(());
         }
 
-        match read_res {
-            Ok(partitioned_streams) => {
-                self.read_parallelism = partitioned_streams.streams.len();
-                stream_state.streams = partitioned_streams.streams.into_iter().map(Some).collect();
-            }
-            Err(e) => {
-                stream_state.err = Some(e);
-            }
+        // FIXME: in new version distributed query, we should remove this.
+        if let Ok(partitioned_streams) = &read_res {
+            self.read_parallelism = partitioned_streams.streams.len();
         }
-        stream_state.inited = true;
+
+        stream_state.init(read_res);
 
         Ok(())
     }
@@ -379,33 +363,40 @@ impl ExecutionPlan for ScanTable {
         _context: Arc<TaskContext>,
     ) -> Result<DfSendableRecordBatchStream> {
         let mut stream_state = self.stream_state.lock().unwrap();
+
+        if !stream_state.is_inited() {
+            return Err(DataFusionError::Internal(
+                "Scan stream can't be executed before inited".to_string(),
+            ));
+        }
+
         let stream = stream_state.take_stream(partition)?;
 
         Ok(Box::pin(ToDfStream(stream)))
     }
 
-    fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "ScanTable: table={}, parallelism={}, order={:?}, ",
-            self.table.name(),
-            self.read_parallelism,
-            self.read_order,
-        )
-    }
-
     fn metrics(&self) -> Option<MetricsSet> {
+        let mut metric_set = MetricsSet::new();
+
         let mut format_visitor = FormatCollectorVisitor::default();
         self.metrics_collector.visit(&mut format_visitor);
         let metrics_desc = format_visitor.into_string();
+        metric_set.push(Arc::new(Metric::new(
+            MetricValue::Count {
+                name: format!("\n{metrics_desc}").into(),
+                count: Count::new(),
+            },
+            None,
+        )));
 
-        let metric_value = MetricValue::Count {
-            name: format!("\n{metrics_desc}").into(),
-            count: Count::new(),
-        };
-        let metric = Metric::new(metric_value, None);
-        let mut metric_set = MetricsSet::new();
-        metric_set.push(Arc::new(metric));
+        let pushdown_filters = &self.predicate;
+        metric_set.push(Arc::new(Metric::new(
+            MetricValue::Count {
+                name: format!("\n{pushdown_filters:?}").into(),
+                count: Count::new(),
+            },
+            None,
+        )));
 
         Some(metric_set)
     }
@@ -416,148 +407,24 @@ impl ExecutionPlan for ScanTable {
     }
 }
 
+impl DisplayAs for ScanTable {
+    fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "ScanTable: table={}, parallelism={}",
+            self.table.name(),
+            self.read_parallelism,
+        )
+    }
+}
+
 impl fmt::Debug for ScanTable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ScanTable")
             .field("projected_schema", &self.projected_schema)
             .field("table", &self.table.name())
-            .field("read_order", &self.read_order)
             .field("read_parallelism", &self.read_parallelism)
             .field("predicate", &self.predicate)
             .finish()
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::sync::Arc;
-
-    use common_types::{
-        column_schema,
-        datum::DatumKind,
-        schema::{Builder, Schema},
-    };
-    use datafusion::{
-        logical_expr::{col, Expr},
-        scalar::ScalarValue,
-    };
-
-    use super::*;
-    use crate::{memory::MemoryTable, table::TableId};
-
-    fn build_user_defined_primary_key_schema() -> Schema {
-        Builder::new()
-            .auto_increment_column_id(true)
-            .add_key_column(
-                column_schema::Builder::new("user_define1".to_string(), DatumKind::String)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_key_column(
-                column_schema::Builder::new("timestamp".to_string(), DatumKind::Timestamp)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field1".to_string(), DatumKind::String)
-                    .is_tag(true)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field2".to_string(), DatumKind::Double)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .build()
-            .unwrap()
-    }
-
-    fn build_default_primary_key_schema() -> Schema {
-        Builder::new()
-            .auto_increment_column_id(true)
-            .add_key_column(
-                column_schema::Builder::new("tsid".to_string(), DatumKind::UInt64)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_key_column(
-                column_schema::Builder::new("timestamp".to_string(), DatumKind::Timestamp)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("user_define1".to_string(), DatumKind::String)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field1".to_string(), DatumKind::String)
-                    .is_tag(true)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field2".to_string(), DatumKind::Double)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .build()
-            .unwrap()
-    }
-
-    fn build_filters() -> Vec<Expr> {
-        let filter1 = col("timestamp").lt(Expr::Literal(ScalarValue::UInt64(Some(10086))));
-        let filter2 =
-            col("user_define1").eq(Expr::Literal(ScalarValue::Utf8(Some("10086".to_string()))));
-        let filter3 = col("field1").eq(Expr::Literal(ScalarValue::Utf8(Some("10087".to_string()))));
-        let filter4 = col("field2").eq(Expr::Literal(ScalarValue::Float64(Some(10088.0))));
-
-        vec![filter1, filter2, filter3, filter4]
-    }
-
-    #[test]
-    pub fn test_push_down_in_user_defined_primary_key_case() {
-        let test_filters = build_filters();
-        let user_defined_pk_schema = build_user_defined_primary_key_schema();
-
-        let table = MemoryTable::new(
-            "test_table".to_string(),
-            TableId::new(0),
-            user_defined_pk_schema,
-            "memory".to_string(),
-        );
-        let provider = TableProviderAdapter::new(Arc::new(table));
-        let predicate = provider.check_and_build_predicate_from_filters(&test_filters);
-
-        let expected_filters = vec![test_filters[0].clone(), test_filters[1].clone()];
-        assert_eq!(predicate.exprs(), &expected_filters);
-    }
-
-    #[test]
-    pub fn test_push_down_in_default_primary_key_case() {
-        let test_filters = build_filters();
-        let default_pk_schema = build_default_primary_key_schema();
-
-        let table = MemoryTable::new(
-            "test_table".to_string(),
-            TableId::new(0),
-            default_pk_schema,
-            "memory".to_string(),
-        );
-        let provider = TableProviderAdapter::new(Arc::new(table));
-        let predicate = provider.check_and_build_predicate_from_filters(&test_filters);
-
-        let expected_filters = vec![test_filters[0].clone(), test_filters[2].clone()];
-        assert_eq!(predicate.exprs(), &expected_filters);
     }
 }

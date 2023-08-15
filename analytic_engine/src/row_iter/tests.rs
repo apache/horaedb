@@ -1,4 +1,16 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use async_trait::async_trait;
 use common_types::{
@@ -10,7 +22,7 @@ use common_types::{
     },
     schema::{IndexInWriterSchema, RecordSchemaWithKey, Schema},
 };
-use common_util::define_result;
+use macros::define_result;
 use snafu::Snafu;
 
 use crate::row_iter::RecordBatchWithKeyIterator;
@@ -71,7 +83,7 @@ pub fn build_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> RecordBatc
 
         writer.write_row(&row).unwrap();
 
-        let source_row = ContiguousRowReader::with_schema(&buf, &schema);
+        let source_row = ContiguousRowReader::try_new(&buf, &schema).unwrap();
         let projected_row = ProjectedContiguousRow::new(source_row, &row_projected_schema);
         builder
             .append_projected_contiguous_row(&projected_row)

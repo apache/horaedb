@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use std::{
     fmt,
@@ -10,16 +22,16 @@ use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatchWithKey, request_id::RequestId,
     schema::RecordSchemaWithKey,
 };
-use common_util::{define_result, error::GenericError};
-use futures::StreamExt;
+use generic_error::GenericError;
 use log::debug;
+use macros::define_result;
 use snafu::{ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 use crate::{
     row_iter::{
-        record_batch_stream, record_batch_stream::SequencedRecordBatchStream,
+        record_batch_stream, record_batch_stream::BoxedPrefetchableRecordBatchStream,
         RecordBatchWithKeyIterator,
     },
     space::SpaceId,
@@ -60,6 +72,7 @@ pub struct ChainConfig<'a> {
     pub projected_schema: ProjectedSchema,
     /// Predicate of the query.
     pub predicate: PredicateRef,
+    pub num_streams_to_prefetch: usize,
 
     pub sst_read_options: SstReadOptions,
     /// Sst factory
@@ -171,8 +184,10 @@ impl<'a> Builder<'a> {
             request_id: self.config.request_id,
             schema: self.config.projected_schema.to_record_schema_with_key(),
             streams,
+            num_streams_to_prefetch: self.config.num_streams_to_prefetch,
             ssts: self.ssts,
             next_stream_idx: 0,
+            next_prefetch_stream_idx: 0,
             inited_at: None,
             created_at: Instant::now(),
             metrics: Metrics::new(
@@ -203,6 +218,9 @@ struct Metrics {
     /// Inited time of the iterator.
     #[metric(duration)]
     since_init: Duration,
+    /// Actual scan duration.
+    #[metric(duration)]
+    scan_duration: Duration,
     #[metric(collector)]
     metrics_collector: Option<MetricsCollector>,
 }
@@ -220,6 +238,7 @@ impl Metrics {
             total_rows_fetched: 0,
             since_create: Duration::default(),
             since_init: Duration::default(),
+            scan_duration: Duration::default(),
             metrics_collector,
         }
     }
@@ -234,6 +253,7 @@ impl fmt::Debug for Metrics {
             .field("total_rows_fetched", &self.total_rows_fetched)
             .field("duration_since_create", &self.since_create)
             .field("duration_since_init", &self.since_init)
+            .field("scan_duration", &self.scan_duration)
             .finish()
     }
 }
@@ -247,17 +267,19 @@ pub struct ChainIterator {
     table_id: TableId,
     request_id: RequestId,
     schema: RecordSchemaWithKey,
-    streams: Vec<SequencedRecordBatchStream>,
+    streams: Vec<BoxedPrefetchableRecordBatchStream>,
+    num_streams_to_prefetch: usize,
     /// ssts are kept here to avoid them from being purged.
     #[allow(dead_code)]
     ssts: Vec<Vec<FileHandle>>,
     /// The range of the index is [0, streams.len()] and the iterator is
     /// exhausted if it reaches `streams.len()`.
     next_stream_idx: usize,
+    next_prefetch_stream_idx: usize,
 
     inited_at: Option<Instant>,
     created_at: Instant,
-    // metrics for the iterator.
+    /// metrics for the iterator.
     metrics: Metrics,
 }
 
@@ -271,6 +293,57 @@ impl ChainIterator {
         debug!("Init ChainIterator, space_id:{}, table_id:{:?}, request_id:{}, total_streams:{}, schema:{:?}",
             self.space_id, self.table_id, self.request_id, self.streams.len(), self.schema
         );
+    }
+
+    /// Maybe prefetch the necessary stream for future reading.
+    async fn maybe_prefetch(&mut self) {
+        while self.next_prefetch_stream_idx < self.next_stream_idx + self.num_streams_to_prefetch
+            && self.next_prefetch_stream_idx < self.streams.len()
+        {
+            self.streams[self.next_prefetch_stream_idx]
+                .start_prefetch()
+                .await;
+            self.next_prefetch_stream_idx += 1;
+        }
+    }
+
+    async fn next_batch_internal(&mut self) -> Result<Option<RecordBatchWithKey>> {
+        self.init_if_necessary();
+        self.maybe_prefetch().await;
+
+        while self.next_stream_idx < self.streams.len() {
+            let read_stream = &mut self.streams[self.next_stream_idx];
+            let sequenced_record_batch = read_stream
+                .fetch_next()
+                .await
+                .transpose()
+                .context(PollNextRecordBatch)?;
+
+            match sequenced_record_batch {
+                Some(v) => {
+                    self.metrics.total_rows_fetched += v.num_rows();
+                    self.metrics.total_batch_fetched += 1;
+
+                    if v.num_rows() > 0 {
+                        return Ok(Some(v.record_batch));
+                    }
+                }
+                // Fetch next stream only if the current sequence_record_batch is None.
+                None => {
+                    self.next_stream_idx += 1;
+                    self.maybe_prefetch().await;
+                }
+            }
+        }
+
+        self.metrics.since_create = self.created_at.elapsed();
+        self.metrics.since_init = self
+            .inited_at
+            .as_ref()
+            .map(|v| v.elapsed())
+            .unwrap_or_default();
+
+        Ok(None)
     }
 }
 
@@ -292,38 +365,11 @@ impl RecordBatchWithKeyIterator for ChainIterator {
     }
 
     async fn next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
-        self.init_if_necessary();
+        let timer = Instant::now();
+        let res = self.next_batch_internal().await;
+        self.metrics.scan_duration += timer.elapsed();
 
-        while self.next_stream_idx < self.streams.len() {
-            let read_stream = &mut self.streams[self.next_stream_idx];
-            let sequenced_record_batch = read_stream
-                .next()
-                .await
-                .transpose()
-                .context(PollNextRecordBatch)?;
-
-            match sequenced_record_batch {
-                Some(v) => {
-                    self.metrics.total_rows_fetched += v.num_rows();
-                    self.metrics.total_batch_fetched += 1;
-
-                    if v.num_rows() > 0 {
-                        return Ok(Some(v.record_batch));
-                    }
-                }
-                // Fetch next stream only if the current sequence_record_batch is None.
-                None => self.next_stream_idx += 1,
-            }
-        }
-
-        self.metrics.since_create = self.created_at.elapsed();
-        self.metrics.since_init = self
-            .inited_at
-            .as_ref()
-            .map(|v| v.elapsed())
-            .unwrap_or_default();
-
-        Ok(None)
+        res
     }
 }
 
@@ -356,8 +402,10 @@ mod tests {
             request_id: RequestId::next_id(),
             schema: schema.to_record_schema_with_key(),
             streams,
+            num_streams_to_prefetch: 2,
             ssts: Vec::new(),
             next_stream_idx: 0,
+            next_prefetch_stream_idx: 0,
             inited_at: None,
             created_at: Instant::now(),
             metrics: Metrics::new(0, 0, None),

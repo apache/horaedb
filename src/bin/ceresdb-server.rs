@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! The main entry point to start the server
 
@@ -9,7 +21,6 @@ use ceresdb::{
     setup,
 };
 use clap::{App, Arg};
-use common_util::{panic, toml};
 use log::info;
 
 /// By this environment variable, the address of current node can be overridden.
@@ -63,7 +74,7 @@ fn main() {
     let mut config = match matches.value_of("config") {
         Some(path) => {
             let mut toml_buf = String::new();
-            toml::parse_toml_from_path(path, &mut toml_buf).expect("Failed to parse config.")
+            toml_ext::parse_toml_from_path(path, &mut toml_buf).expect("Failed to parse config.")
         }
         None => Config::default(),
     };
@@ -85,7 +96,7 @@ fn main() {
     // Setup tracing.
     let _writer_guard = setup::setup_tracing(&config);
 
-    panic::set_panic_hook(false);
+    panic_ext::set_panic_hook(false);
 
     // Log version.
     info!("version:{}", version);

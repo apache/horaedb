@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 mod error;
 #[allow(dead_code)]
@@ -18,24 +30,24 @@ use ceresdbproto::{
         SqlQueryRequest, SqlQueryResponse, WriteRequest, WriteResponse,
     },
 };
-use common_util::time::InstantExt;
 use futures::{stream, stream::BoxStream, StreamExt};
 use http::StatusCode;
 use proxy::{Context, Proxy, FORWARDED_FROM};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use table_engine::engine::EngineRuntimes;
+use time_ext::InstantExt;
 
 use crate::grpc::metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC;
 
 #[derive(Clone)]
-pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
-    pub proxy: Arc<Proxy<Q>>,
+pub struct StorageServiceImpl<Q, P> {
+    pub proxy: Arc<Proxy<Q, P>>,
     pub runtimes: Arc<EngineRuntimes>,
     pub timeout: Option<Duration>,
 }
 
 #[async_trait]
-impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> StorageService for StorageServiceImpl<Q, P> {
     type StreamSqlQueryStream = BoxStream<'static, Result<SqlQueryResponse, tonic::Status>>;
 
     async fn route(
@@ -154,7 +166,7 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
 }
 
 // TODO: Use macros to simplify duplicate code
-impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> StorageServiceImpl<Q, P> {
     async fn route_internal(
         &self,
         req: tonic::Request<RouteRequest>,
@@ -420,7 +432,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
 
     async fn stream_sql_query_internal(
         ctx: Context,
-        proxy: Arc<Proxy<Q>>,
+        proxy: Arc<Proxy<Q, P>>,
         req: tonic::Request<SqlQueryRequest>,
     ) -> Result<
         tonic::Response<BoxStream<'static, Result<SqlQueryResponse, tonic::Status>>>,

@@ -1,12 +1,24 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Setup the analytic engine
 
 use std::{num::NonZeroUsize, path::Path, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
-use common_util::define_result;
 use futures::Future;
+use macros::define_result;
 use message_queue::kafka::kafka_impl::KafkaImpl;
 use object_store::{
     aliyun,
@@ -68,7 +80,7 @@ pub enum Error {
     OpenObkv { source: table_kv::obkv::Error },
 
     #[snafu(display("Failed to execute in runtime, err:{}", source))]
-    RuntimeExec { source: common_util::runtime::Error },
+    RuntimeExec { source: runtime::Error },
 
     #[snafu(display("Failed to open object store, err:{}", source))]
     OpenObjectStore {
@@ -173,15 +185,63 @@ impl WalsOpener for RocksDBWalsOpener {
         let data_path = Path::new(&rocksdb_wal_config.data_dir);
         let wal_path = data_path.join(WAL_DIR_NAME);
         let data_wal = RocksWalBuilder::new(wal_path, write_runtime.clone())
+            .max_subcompactions(rocksdb_wal_config.data_namespace.max_subcompactions)
             .max_background_jobs(rocksdb_wal_config.data_namespace.max_background_jobs)
             .enable_statistics(rocksdb_wal_config.data_namespace.enable_statistics)
+            .write_buffer_size(rocksdb_wal_config.data_namespace.write_buffer_size.0)
+            .max_write_buffer_number(rocksdb_wal_config.data_namespace.max_write_buffer_number)
+            .level_zero_file_num_compaction_trigger(
+                rocksdb_wal_config
+                    .data_namespace
+                    .level_zero_file_num_compaction_trigger,
+            )
+            .level_zero_slowdown_writes_trigger(
+                rocksdb_wal_config
+                    .data_namespace
+                    .level_zero_slowdown_writes_trigger,
+            )
+            .level_zero_stop_writes_trigger(
+                rocksdb_wal_config
+                    .data_namespace
+                    .level_zero_stop_writes_trigger,
+            )
+            .fifo_compaction_max_table_files_size(
+                rocksdb_wal_config
+                    .data_namespace
+                    .fifo_compaction_max_table_files_size
+                    .0,
+            )
             .build()
             .context(OpenWal)?;
 
         let manifest_path = data_path.join(MANIFEST_DIR_NAME);
         let manifest_wal = RocksWalBuilder::new(manifest_path, write_runtime)
+            .max_subcompactions(rocksdb_wal_config.meta_namespace.max_subcompactions)
             .max_background_jobs(rocksdb_wal_config.meta_namespace.max_background_jobs)
             .enable_statistics(rocksdb_wal_config.meta_namespace.enable_statistics)
+            .write_buffer_size(rocksdb_wal_config.meta_namespace.write_buffer_size.0)
+            .max_write_buffer_number(rocksdb_wal_config.meta_namespace.max_write_buffer_number)
+            .level_zero_file_num_compaction_trigger(
+                rocksdb_wal_config
+                    .meta_namespace
+                    .level_zero_file_num_compaction_trigger,
+            )
+            .level_zero_slowdown_writes_trigger(
+                rocksdb_wal_config
+                    .meta_namespace
+                    .level_zero_slowdown_writes_trigger,
+            )
+            .level_zero_stop_writes_trigger(
+                rocksdb_wal_config
+                    .meta_namespace
+                    .level_zero_stop_writes_trigger,
+            )
+            .fifo_compaction_max_table_files_size(
+                rocksdb_wal_config
+                    .meta_namespace
+                    .fifo_compaction_max_table_files_size
+                    .0,
+            )
             .build()
             .context(OpenManifestWal)?;
         let opened_wals = OpenedWals {
@@ -459,12 +519,18 @@ fn open_storage(
             }
         };
 
+        store = Arc::new(StoreWithMetrics::new(
+            store,
+            engine_runtimes.io_runtime.clone(),
+        ));
+
         if opts.disk_cache_capacity.as_byte() > 0 {
             let path = Path::new(&opts.disk_cache_dir).join(DISK_CACHE_DIR_NAME);
             tokio::fs::create_dir_all(&path).await.context(CreateDir {
                 path: path.to_string_lossy().into_owned(),
             })?;
 
+            // TODO: Consider the readonly cache.
             store = Arc::new(
                 DiskCacheStore::try_new(
                     path.to_string_lossy().into_owned(),
@@ -477,11 +543,6 @@ fn open_storage(
                 .context(OpenObjectStore)?,
             ) as _;
         }
-
-        store = Arc::new(StoreWithMetrics::new(
-            store,
-            engine_runtimes.io_runtime.clone(),
-        ));
 
         if opts.mem_cache_capacity.as_byte() > 0 {
             let mem_cache = Arc::new(

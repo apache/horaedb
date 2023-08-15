@@ -1,17 +1,27 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Payloads to write to wal
 
+use bytes_ext::{Buf, BufMut, SafeBuf, SafeBufMut};
 use ceresdbproto::{manifest as manifest_pb, table_requests};
+use codec::{row::WalRowDecoder, Decoder};
 use common_types::{
-    bytes::{Buf, BufMut, SafeBuf, SafeBufMut},
     row::{RowGroup, RowGroupBuilder},
     schema::Schema,
 };
-use common_util::{
-    codec::{row::WalRowDecoder, Decoder},
-    define_result,
-};
+use macros::define_result;
 use prost::Message;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use wal::log_batch::{Payload, PayloadDecoder};
@@ -21,7 +31,7 @@ use crate::{table_options, TableOptions};
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to encode header, err:{}", source))]
-    EncodeHeader { source: common_types::bytes::Error },
+    EncodeHeader { source: bytes_ext::Error },
 
     #[snafu(display("Failed to encode body, err:{}.\nBacktrace:\n{}", source, backtrace))]
     EncodeBody {
@@ -30,7 +40,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to decode header, err:{}", source))]
-    DecodeHeader { source: common_types::bytes::Error },
+    DecodeHeader { source: bytes_ext::Error },
 
     #[snafu(display(
         "Invalid wal entry header, value:{}.\nBacktrace:\n{}",
@@ -49,9 +59,7 @@ pub enum Error {
     DecodeSchema { source: common_types::schema::Error },
 
     #[snafu(display("Failed to decode row, err:{}", source))]
-    DecodeRow {
-        source: common_util::codec::row::Error,
-    },
+    DecodeRow { source: codec::row::Error },
 
     #[snafu(display(
         "Table schema is not found in the write request.\nBacktrace:\n{}",

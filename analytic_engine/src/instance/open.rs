@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Open logic of instance
 
@@ -8,7 +20,7 @@ use std::{
 };
 
 use common_types::table::ShardId;
-use log::info;
+use log::{error, info};
 use object_store::ObjectStoreRef;
 use snafu::ResultExt;
 use table_engine::{engine::TableDef, table::TableId};
@@ -64,6 +76,7 @@ impl Instance {
             spaces: spaces.clone(),
             file_purger: file_purger.clone(),
             preflush_write_buffer_size_ratio: ctx.config.preflush_write_buffer_size_ratio,
+            manifest_snapshot_every_n_updates: ctx.config.manifest.snapshot_every_n_updates,
         });
         let manifest = ManifestImpl::open(
             ctx.config.manifest.clone(),
@@ -87,6 +100,7 @@ impl Instance {
         let scan_options_for_compaction = ScanOptions {
             background_read_parallelism: 1,
             max_record_batches_in_flight: MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ,
+            num_streams_to_prefetch: ctx.config.num_streams_to_prefetch,
         };
         let compaction_runtime = ctx.runtimes.compact_runtime.clone();
         let compaction_scheduler = Arc::new(SchedulerImpl::new(
@@ -100,6 +114,7 @@ impl Instance {
         let scan_options = ScanOptions {
             background_read_parallelism: ctx.config.sst_background_read_parallelism,
             max_record_batches_in_flight: ctx.config.scan_max_record_batches_in_flight,
+            num_streams_to_prefetch: ctx.config.num_streams_to_prefetch,
         };
 
         let iter_options = ctx
@@ -273,6 +288,11 @@ impl ShardOpener {
 
     /// Recover table meta data from manifest based on shard.
     async fn recover_table_metas(&mut self) -> Result<()> {
+        info!(
+            "ShardOpener recover table metas begin, shard_id:{}",
+            self.shard_id
+        );
+
         for (table_id, state) in self.stages.iter_mut() {
             match state {
                 // Only do the meta recovery work in `RecoverTableMeta` state.
@@ -288,7 +308,10 @@ impl ShardOpener {
                             let table_data = ctx.space.find_table_by_id(*table_id);
                             Ok(table_data.map(|data| (data, ctx.space.clone())))
                         }
-                        Err(e) => Err(e),
+                        Err(e) => {
+                            error!("ShardOpener recover single table meta failed, table:{:?}, shard_id:{}, err:{e}", ctx.table_def, self.shard_id);
+                            Err(e)
+                        }
                     };
 
                     match result {
@@ -313,11 +336,20 @@ impl ShardOpener {
             }
         }
 
+        info!(
+            "ShardOpener recover table metas finish, shard_id:{}",
+            self.shard_id
+        );
         Ok(())
     }
 
     /// Recover table data based on shard.
     async fn recover_table_datas(&mut self) -> Result<()> {
+        info!(
+            "ShardOpener recover table datas begin, shard_id:{}",
+            self.shard_id
+        );
+
         // Replay wal logs of tables.
         let mut replay_table_datas = Vec::with_capacity(self.stages.len());
         for (table_id, stage) in self.stages.iter_mut() {
@@ -338,6 +370,15 @@ impl ShardOpener {
                     .fail();
                 }
             }
+        }
+
+        if replay_table_datas.is_empty() {
+            info!(
+                "ShardOpener recover empty table datas finish, shard_id:{}",
+                self.shard_id
+            );
+
+            return Ok(());
         }
 
         let replay_mode = match self.recover_mode {
@@ -370,6 +411,7 @@ impl ShardOpener {
                 }
 
                 (TableOpenStage::RecoverTableData(_), Some(e)) => {
+                    error!("ShardOpener replay wals of single table failed, table:{}, table_id:{}, shard_id:{}, err:{e}", table_data.name, table_data.id, self.shard_id);
                     *stage = TableOpenStage::Failed(e);
                 }
 
@@ -381,6 +423,10 @@ impl ShardOpener {
             }
         }
 
+        info!(
+            "ShardOpener recover table datas finish, shard_id:{}",
+            self.shard_id
+        );
         Ok(())
     }
 

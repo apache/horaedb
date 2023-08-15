@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Contains common methods used by the read process.
 
@@ -8,12 +20,12 @@ use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, SqlQueryRequest, SqlQueryResponse,
 };
 use common_types::request_id::RequestId;
-use common_util::{error::BoxError, time::InstantExt};
 use futures::FutureExt;
+use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{error, info, warn};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use query_frontend::{
     frontend,
     frontend::{Context as SqlContext, Frontend},
@@ -21,6 +33,7 @@ use query_frontend::{
 };
 use router::endpoint::Endpoint;
 use snafu::{ensure, ResultExt};
+use time_ext::InstantExt;
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
@@ -34,7 +47,7 @@ pub enum SqlResponse {
     Local(Output),
 }
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     pub(crate) async fn handle_sql(
         &self,
         ctx: Context,
@@ -67,7 +80,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
-        info!("Handle sql query, request_id:{request_id}, schema:{schema}, sql:{sql}");
+        info!("Handle sql query, request_id:{request_id}, deadline:{deadline:?}, schema:{schema}, sql:{sql}");
 
         let instance = &self.instance;
         // TODO(yingwen): Privilege check, cannot access data of other tenant
@@ -115,8 +128,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         // Open partition table if needed.
         let table_name = frontend::parse_table_name(&stmts);
-        if let Some(table_name) = table_name {
-            self.maybe_open_partition_table_if_not_exist(catalog, schema, &table_name)
+        if let Some(table_name) = &table_name {
+            self.maybe_open_partition_table_if_not_exist(catalog, schema, table_name)
                 .await?;
         }
 
@@ -131,6 +144,16 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: format!("Failed to create plan, query:{sql}"),
             })?;
+
+        let mut plan_maybe_expired = false;
+        if let Some(table_name) = &table_name {
+            match self.is_plan_expired(&plan, catalog, schema, table_name) {
+                Ok(v) => plan_maybe_expired = v,
+                Err(err) => {
+                    warn!("Plan expire check failed, err:{err}");
+                }
+            }
+        }
 
         let output = if ctx.enable_partition_table_access {
             self.execute_plan_involving_partition_table(request_id, catalog, schema, plan, deadline)
@@ -147,7 +170,27 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let cost = begin_instant.saturating_elapsed();
         info!("Handle sql query success, catalog:{catalog}, schema:{schema}, request_id:{request_id}, cost:{cost:?}, sql:{sql:?}");
 
-        Ok(output)
+        match &output {
+            Output::AffectedRows(_) => Ok(output),
+            Output::Records(v) => {
+                if plan_maybe_expired {
+                    let row_nums = v
+                        .iter()
+                        .fold(0_usize, |acc, record_batch| acc + record_batch.num_rows());
+                    if row_nums == 0 {
+                        warn!("Query time range maybe exceed TTL, sql:{sql}");
+
+                        // TODO: Cannot return this error directly, empty query
+                        // should return 200, not 4xx/5xx
+                        // All protocols should recognize this error.
+                        // return Err(Error::QueryMaybeExceedTTL {
+                        //     msg: format!("Query time range maybe exceed TTL,
+                        // sql:{sql}"), });
+                    }
+                }
+                Ok(output)
+            }
+        }
     }
 
     async fn maybe_forward_sql_query(

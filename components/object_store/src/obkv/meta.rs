@@ -1,11 +1,21 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use std::{ops::Range, str, sync::Arc, time};
 
-use common_util::{
-    define_result,
-    error::{BoxError, GenericError},
-};
+use generic_error::{BoxError, GenericError};
+use macros::define_result;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
@@ -168,7 +178,7 @@ impl ObkvObjectMeta {
     }
 
     /// Compute the convered parts based on given range parameter
-    pub fn compute_covered_parts(&self, range: Range<usize>) -> Result<ConveredParts> {
+    pub fn compute_covered_parts(&self, range: Range<usize>) -> Result<Option<ConveredParts>> {
         ensure!(
             range.end <= self.size,
             OutOfRange {
@@ -176,17 +186,26 @@ impl ObkvObjectMeta {
                 object_size: self.size,
             }
         );
+
+        // if the range is empty, return empty parts
+        if range.is_empty() {
+            return Ok(None);
+        }
+
         let batch_size = self.part_size;
         let start_index = range.start / batch_size;
         let start_offset = range.start % batch_size;
-        let end_index = range.end / batch_size;
-        let end_offset = range.end % batch_size;
 
-        Ok(ConveredParts {
+        let inclusive_end = range.end - 1;
+
+        let end_index = inclusive_end / batch_size;
+        let end_offset = inclusive_end % batch_size;
+
+        Ok(Some(ConveredParts {
             part_keys: &self.parts[start_index..=end_index],
             start_offset,
             end_offset,
-        })
+        }))
     }
 }
 
@@ -215,7 +234,7 @@ impl<T: TableKv> MetaManager<T> {
     pub async fn save(&self, meta: ObkvObjectMeta) -> Result<()> {
         let mut batch = T::WriteBatch::default();
         let encode_bytes = meta.encode()?;
-        batch.insert(meta.location.as_bytes(), &encode_bytes);
+        batch.insert_or_update(meta.location.as_bytes(), &encode_bytes);
         self.client
             .as_ref()
             .write(WriteContext::default(), OBJECT_STORE_META, batch)
@@ -303,7 +322,7 @@ mod test {
 
     #[test]
     fn test_estimate_size() {
-        let meta = build_test_meta();
+        let meta = build_test_meta0();
 
         let expect = meta.estimate_size_of_json();
         let json = &serde_json::to_string(&meta).unwrap();
@@ -314,40 +333,49 @@ mod test {
 
     #[test]
     fn test_compute_convered_parts() {
-        let meta = build_test_meta();
+        let meta = build_test_meta0();
 
         let range1 = Range { start: 0, end: 1 };
-        let expect = meta.compute_covered_parts(range1).unwrap();
+        let expect = meta.compute_covered_parts(range1).unwrap().unwrap();
         assert!(expect.part_keys.len() == 1);
         assert!(expect.start_offset == 0);
-        assert!(expect.end_offset == 1);
+        assert!(expect.end_offset == 0);
+
+        let range1 = Range {
+            start: 0,
+            end: 1024,
+        };
+        let expect = meta.compute_covered_parts(range1).unwrap().unwrap();
+        assert!(expect.part_keys.len() == 1);
+        assert!(expect.start_offset == 0);
+        assert!(expect.end_offset == 1023);
 
         let range1 = Range {
             start: 0,
             end: 8190,
         };
-        let expect = meta.compute_covered_parts(range1).unwrap();
+        let expect = meta.compute_covered_parts(range1).unwrap().unwrap();
         assert!(expect.part_keys.len() == 8);
         assert!(expect.start_offset == 0);
-        assert!(expect.end_offset == 1022);
+        assert!(expect.end_offset == 1021);
 
         let range1 = Range {
             start: 1023,
             end: 1025,
         };
-        let expect = meta.compute_covered_parts(range1).unwrap();
+        let expect = meta.compute_covered_parts(range1).unwrap().unwrap();
         assert!(expect.part_keys.len() == 2);
         assert!(expect.start_offset == 1023);
-        assert!(expect.end_offset == 1);
+        assert!(expect.end_offset == 0);
 
         let range1 = Range {
             start: 8189,
             end: 8190,
         };
-        let expect = meta.compute_covered_parts(range1).unwrap();
+        let expect = meta.compute_covered_parts(range1).unwrap().unwrap();
         assert!(expect.part_keys.len() == 1);
         assert!(expect.start_offset == 1021);
-        assert!(expect.end_offset == 1022);
+        assert!(expect.end_offset == 1021);
 
         let range1 = Range {
             start: 8189,
@@ -355,9 +383,23 @@ mod test {
         };
         let expect = meta.compute_covered_parts(range1);
         assert!(expect.is_err());
+
+        let meta = build_test_meta1();
+        let range1 = Range {
+            start: 0,
+            end: 1024,
+        };
+        let expect = meta.compute_covered_parts(range1).unwrap().unwrap();
+        assert!(expect.part_keys.len() == 1);
+        assert!(expect.start_offset == 0);
+        assert!(expect.end_offset == 1023);
+
+        let range1 = Range { start: 0, end: 0 };
+        let expect = meta.compute_covered_parts(range1).unwrap();
+        assert!(expect.is_none());
     }
 
-    fn build_test_meta() -> ObkvObjectMeta {
+    fn build_test_meta0() -> ObkvObjectMeta {
         ObkvObjectMeta {
             location: String::from("/test/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxfdsfjlajflk"),
             last_modified: 123456789,
@@ -374,6 +416,18 @@ mod test {
                 String::from("/test/xx/4"),
                 String::from("/test/xx/5"),
             ],
+            version: String::from("123456fsdalfkassa;l;kjfaklasadffsd"),
+        }
+    }
+
+    fn build_test_meta1() -> ObkvObjectMeta {
+        ObkvObjectMeta {
+            location: String::from("/test/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxfdsfjlajflk"),
+            last_modified: 123456789,
+            size: 1024,
+            unique_id: Some(String::from("1245689u438uferjalfjkda")),
+            part_size: 1024,
+            parts: vec![String::from("/test/xx/0")],
             version: String::from("123456fsdalfkassa;l;kjfaklasadffsd"),
         }
     }

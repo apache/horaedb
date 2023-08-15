@@ -1,4 +1,16 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Region context
 
@@ -8,12 +20,11 @@ use std::{
     sync::Arc,
 };
 
-use common_types::{bytes::BytesMut, table::TableId, SequenceNumber};
-use common_util::{
-    define_result,
-    error::{BoxError, GenericError},
-};
+use bytes_ext::BytesMut;
+use common_types::{table::TableId, SequenceNumber};
+use generic_error::{BoxError, GenericError};
 use log::{debug, warn};
+use macros::define_result;
 use message_queue::{MessageQueue, Offset};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use tokio::sync::{Mutex, RwLock};
@@ -310,7 +321,7 @@ impl TableMeta {
         // The `start_sequence_offset_mapping` is possible to be incomplete during
         // recovery.
         let offset = inner.start_sequence_offset_mapping.get(&sequence_num);
-        if offset.is_none() && inner.next_sequence_num != inner.latest_marked_deleted {
+        if offset.is_none() && inner.next_sequence_num != sequence_num {
             warn!("Start sequence offset mapping is incomplete, 
             just not update the marked deleted sequence in this flush, new marked deleted, sequence num:{}, previous:{}",
                 sequence_num, inner.latest_marked_deleted);
@@ -469,14 +480,12 @@ impl OffsetRange {
 }
 
 /// Builder for `RegionMeta`
-#[allow(unused)]
 #[derive(Debug)]
 pub struct RegionContextBuilder {
     region_id: u64,
     table_metas: HashMap<TableId, TableMetaInner>,
 }
 
-#[allow(unused)]
 impl RegionContextBuilder {
     pub fn new(region_id: u64) -> Self {
         Self {
@@ -503,28 +512,22 @@ impl RegionContextBuilder {
     pub fn apply_region_meta_delta(&mut self, delta: RegionMetaDelta) -> Result<()> {
         debug!("Apply region meta delta, delta:{:?}", delta);
 
+        // It is likely that snapshot not exist(e.g. no table has ever flushed).
         let mut table_meta = self
             .table_metas
             .entry(delta.table_id)
             .or_insert_with(TableMetaInner::default);
 
-        ensure!(table_meta.next_sequence_num < delta.sequence_num + 1, Build { msg: format!("apply delta failed, 
-                next sequence number in delta should't be less than or equal to the one in builder, but now are:{} and {}",
-                delta.sequence_num + 1,
-                table_meta.next_sequence_num,
-            ) });
         table_meta.next_sequence_num = delta.sequence_num + 1;
-
-        ensure!(table_meta.current_high_watermark < delta.offset + 1, Build { msg: format!("apply delta failed, 
-                high watermark in delta should't be less than or equal to the one in builder, but now are:{} and {}",
-                delta.offset + 1,
-                table_meta.current_high_watermark,
-            ) });
         table_meta.current_high_watermark = delta.offset + 1;
 
-        table_meta
-            .start_sequence_offset_mapping
-            .insert(delta.sequence_num, delta.offset);
+        // Because recover from the `region_safe_delete_offset`, some outdated logs will
+        // be loaded.
+        if delta.sequence_num >= table_meta.latest_marked_deleted {
+            table_meta
+                .start_sequence_offset_mapping
+                .insert(delta.sequence_num, delta.offset);
+        }
 
         Ok(())
     }
@@ -557,7 +560,6 @@ impl RegionContextBuilder {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct RegionMetaDelta {
     table_id: TableId,
@@ -565,7 +567,6 @@ pub struct RegionMetaDelta {
     offset: Offset,
 }
 
-#[allow(unused)]
 impl RegionMetaDelta {
     pub fn new(table_id: TableId, sequence_num: SequenceNumber, offset: Offset) -> Self {
         Self {

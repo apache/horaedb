@@ -1,11 +1,23 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! A router based on the [`cluster::Cluster`].
 
 use async_trait::async_trait;
 use ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use log::trace;
 use meta_client::types::RouteTablesRequest;
 use moka::future::Cache;
@@ -162,20 +174,15 @@ impl Router for ClusterBasedRouter {
 mod tests {
     use std::{collections::HashMap, sync::Arc, thread::sleep, time::Duration};
 
-    use ceresdbproto::{
-        meta_event::{
-            CloseTableOnShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest,
-            OpenTableOnShardRequest,
-        },
-        storage::RequestContext,
+    use ceresdbproto::storage::RequestContext;
+    use cluster::{
+        shard_lock_manager::ShardLockManagerRef, shard_set::ShardRef, Cluster, ClusterNodesResp,
     };
-    use cluster::{shard_lock_manager::ShardLockManagerRef, Cluster, ClusterNodesResp};
     use common_types::table::ShardId;
-    use common_util::config::ReadableDuration;
     use meta_client::types::{
         NodeShard, RouteEntry, RouteTablesResponse, ShardInfo, ShardRole::Leader, TableInfo,
-        TablesOfShard,
     };
+    use time_ext::ReadableDuration;
 
     use super::*;
 
@@ -191,37 +198,19 @@ mod tests {
             unimplemented!();
         }
 
-        async fn open_shard(&self, _: &ShardInfo) -> cluster::Result<TablesOfShard> {
+        async fn open_shard(&self, _: &ShardInfo) -> cluster::Result<ShardRef> {
             unimplemented!();
         }
 
-        async fn close_shard(&self, _: ShardId) -> cluster::Result<TablesOfShard> {
+        fn shard(&self, _: ShardId) -> Option<ShardRef> {
             unimplemented!();
         }
 
-        async fn freeze_shard(&self, _: ShardId) -> cluster::Result<TablesOfShard> {
+        async fn close_shard(&self, _: ShardId) -> cluster::Result<ShardRef> {
             unimplemented!();
         }
 
-        async fn create_table_on_shard(
-            &self,
-            _req: &CreateTableOnShardRequest,
-        ) -> cluster::Result<()> {
-            unimplemented!();
-        }
-
-        async fn drop_table_on_shard(&self, _req: &DropTableOnShardRequest) -> cluster::Result<()> {
-            unimplemented!();
-        }
-
-        async fn open_table_on_shard(&self, _req: &OpenTableOnShardRequest) -> cluster::Result<()> {
-            unimplemented!();
-        }
-
-        async fn close_table_on_shard(
-            &self,
-            _req: &CloseTableOnShardRequest,
-        ) -> cluster::Result<()> {
+        fn list_shards(&self) -> Vec<ShardInfo> {
             unimplemented!();
         }
 
@@ -247,6 +236,7 @@ mod tests {
                                 id: 0,
                                 role: Leader,
                                 version: 100,
+                                status: Default::default(),
                             },
                         }],
                     },

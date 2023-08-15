@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Table unit in wal.
 
@@ -13,13 +25,12 @@ use std::{
     time::Duration,
 };
 
-use common_types::{bytes::BytesMut, table::TableId};
-use common_util::{
-    define_result,
-    error::{BoxError, GenericError},
-    runtime::Runtime,
-};
-use log::debug;
+use bytes_ext::BytesMut;
+use common_types::table::TableId;
+use generic_error::{BoxError, GenericError};
+use log::{debug, warn};
+use macros::define_result;
+use runtime::{self, Runtime};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use table_kv::{
     KeyBoundary, ScanContext, ScanIter, ScanRequest, TableError, TableKv, WriteBatch, WriteContext,
@@ -105,7 +116,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to execute in runtime, err:{}", source))]
-    RuntimeExec { source: common_util::runtime::Error },
+    RuntimeExec { source: runtime::Error },
 
     #[snafu(display("Failed to delete table, region_id:{}, err:{}", region_id, source))]
     Delete {
@@ -189,6 +200,17 @@ pub struct TableUnit {
     runtimes: WalRuntimes,
     state: TableUnitState,
     writer: Mutex<TableUnitWriter>,
+}
+
+impl std::fmt::Debug for TableUnit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TableUnit")
+            .field("region_id", &self.state.region_id)
+            .field("table_id", &self.state.table_id)
+            .field("start_sequence", &self.state.start_sequence)
+            .field("last_sequence", &self.state.last_sequence)
+            .finish()
+    }
 }
 
 // Async or non-blocking operations.
@@ -452,16 +474,22 @@ impl TableUnit {
                 region_id,
                 table_id,
             )? {
-                ensure!(
-                    sequence + 1 >= start_sequence,
-                    LoadLastSequence {
-                        table_id,
-                        msg: format!(
-                            "found last sequence, but last sequence + 1 < start sequence,
-                            last sequence:{sequence}, start sequence:{start_sequence}",
-                        )
-                    }
-                );
+                #[rustfmt::skip]
+                // FIXME: In some cases, the `flushed sequence`
+                // may be greater than the `actual last sequence of written logs`.
+                //
+                // Such as following case:
+                //  + Write wal logs failed(last sequence stored in memory will increase when write failed). 
+                //  + Get last sequence from memory(greater then actual last sequence now). 
+                //  + Mark the got last sequence as flushed sequence.
+                let actual_next_sequence = sequence + 1;
+                if actual_next_sequence < start_sequence {
+                    warn!("TableKv WAL found start_sequence greater than actual_next_sequence, 
+                    start_sequence:{start_sequence}, actual_next_sequence:{actual_next_sequence}, table_id:{table_id}, region_id:{region_id}");
+
+                    break;
+                }
+
                 return Ok(sequence);
             }
         }

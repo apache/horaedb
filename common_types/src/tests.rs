@@ -1,4 +1,16 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use bytes_ext::Bytes;
 use sqlparser::ast::{BinaryOperator, Expr, Value};
@@ -128,8 +140,13 @@ fn default_value_schema_builder() -> schema::Builder {
         .unwrap()
 }
 
-/// Build a schema for testing:
-/// (key1(varbinary), key2(timestamp), field1(double), field2(string))
+/// Build a schema for testing, which contains 6 columns:
+/// - key1(varbinary)
+/// - key2(timestamp)
+/// - field1(double)
+/// - field2(string)
+/// - field3(Time)
+/// - field4(Date)
 pub fn build_schema() -> Schema {
     base_schema_builder().build().unwrap()
 }
@@ -143,6 +160,32 @@ pub fn build_schema() -> Schema {
 /// field5(uint32, default field4 + 2)
 pub fn build_default_value_schema() -> Schema {
     default_value_schema_builder().build().unwrap()
+}
+
+/// Build a schema for testing:
+/// (key1(varbinary), key2(timestamp), field1(double), field2(string),
+/// field3(date), field4(time)) tag1(string dictionary), tag2(string dictionary)
+pub fn build_schema_with_dictionary() -> Schema {
+    let builder = base_schema_builder()
+        .add_normal_column(
+            column_schema::Builder::new("tag1".to_string(), DatumKind::String)
+                .is_tag(true)
+                .is_dictionary(true)
+                .is_nullable(true)
+                .build()
+                .unwrap(),
+        )
+        .unwrap()
+        .add_normal_column(
+            column_schema::Builder::new("tag2".to_string(), DatumKind::String)
+                .is_tag(true)
+                .is_dictionary(true)
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+
+    builder.build().unwrap()
 }
 
 /// Build a schema for testing:
@@ -193,6 +236,31 @@ pub fn build_schema_for_cpu() -> Schema {
     builder.build().unwrap()
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn build_row_for_dictionary(
+    key1: &[u8],
+    key2: i64,
+    field1: f64,
+    field2: &str,
+    field3: i32,
+    field4: i64,
+    tag1: Option<&str>,
+    tag2: &str,
+) -> Row {
+    let datums = vec![
+        Datum::Varbinary(Bytes::copy_from_slice(key1)),
+        Datum::Timestamp(Timestamp::new(key2)),
+        Datum::Double(field1),
+        Datum::String(StringBytes::from(field2)),
+        Datum::Date(field3),
+        Datum::Time(field4),
+        tag1.map(|v| Datum::String(StringBytes::from(v)))
+            .unwrap_or(Datum::Null),
+        Datum::String(StringBytes::from(tag2)),
+    ];
+
+    Row::from_datums(datums)
+}
 pub fn build_projected_schema() -> ProjectedSchema {
     let schema = build_schema();
     assert!(schema.num_columns() > 1);
@@ -283,7 +351,7 @@ pub fn build_record_batch_with_key_by_rows(rows: Vec<Row>) -> RecordBatchWithKey
 
         writer.write_row(&row).unwrap();
 
-        let source_row = ContiguousRowReader::with_schema(&buf, &schema);
+        let source_row = ContiguousRowReader::try_new(&buf, &schema).unwrap();
         let projected_row = ProjectedContiguousRow::new(source_row, &row_projected_schema);
         builder
             .append_projected_contiguous_row(&projected_row)

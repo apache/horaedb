@@ -1,16 +1,28 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Update to meta
 
 use std::convert::TryFrom;
 
-use bytes::{Buf, BufMut};
+use bytes_ext::{Buf, BufMut};
 use ceresdbproto::{manifest as manifest_pb, schema as schema_pb};
 use common_types::{
     schema::{Schema, Version},
     SequenceNumber,
 };
-use common_util::define_result;
+use macros::define_result;
 use prost::Message;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
@@ -19,6 +31,7 @@ use wal::log_batch::{Payload, PayloadDecoder};
 use crate::{
     manifest::meta_snapshot::MetaSnapshot,
     space::SpaceId,
+    sst::manager::FileId,
     table::{
         data::{MemTableId, TableShardInfo},
         version::TableVersionMeta,
@@ -230,6 +243,7 @@ pub struct VersionEditMeta {
     /// Id of memtables to remove from immutable memtable lists.
     /// No need to persist.
     pub mems_to_remove: Vec<MemTableId>,
+    pub max_file_id: FileId,
 }
 
 impl VersionEditMeta {
@@ -241,6 +255,7 @@ impl VersionEditMeta {
             flushed_sequence: self.flushed_sequence,
             files_to_add: self.files_to_add,
             files_to_delete: self.files_to_delete,
+            max_file_id: self.max_file_id,
         }
     }
 }
@@ -259,6 +274,7 @@ impl From<VersionEditMeta> for manifest_pb::VersionEditMeta {
             flushed_sequence: v.flushed_sequence,
             files_to_add,
             files_to_delete,
+            max_file_id: v.max_file_id,
         }
     }
 }
@@ -284,6 +300,7 @@ impl TryFrom<manifest_pb::VersionEditMeta> for VersionEditMeta {
             files_to_add,
             files_to_delete,
             mems_to_remove: Vec::default(),
+            max_file_id: src.max_file_id,
         })
     }
 }
@@ -451,6 +468,7 @@ impl From<Snapshot> for manifest_pb::Snapshot {
                 files_to_add: version_meta.ordered_files(),
                 files_to_delete: vec![],
                 mems_to_remove: vec![],
+                max_file_id: version_meta.max_file_id,
             });
             (
                 table_meta,

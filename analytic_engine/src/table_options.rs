@@ -1,20 +1,33 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Constants for table options.
 
 use std::{collections::HashMap, string::ToString, time::Duration};
 
 use ceresdbproto::manifest as manifest_pb;
-use common_types::time::Timestamp;
-use common_util::{
-    config::{ReadableDuration, ReadableSize, TimeUnit},
-    define_result,
-    time::DurationExt,
+use common_types::{
+    time::Timestamp, ARENA_BLOCK_SIZE, COMPACTION_STRATEGY, COMPRESSION, ENABLE_TTL,
+    NUM_ROWS_PER_ROW_GROUP, OPTION_KEY_ENABLE_TTL, SEGMENT_DURATION, STORAGE_FORMAT, TTL,
+    UPDATE_MODE, WRITE_BUFFER_SIZE,
 };
 use datafusion::parquet::basic::Compression as ParquetCompression;
+use macros::define_result;
 use serde::{Deserialize, Serialize};
+use size_ext::ReadableSize;
 use snafu::{Backtrace, GenerateBacktrace, OptionExt, ResultExt, Snafu};
-use table_engine::OPTION_KEY_ENABLE_TTL;
+use time_ext::{parse_duration, DurationExt, ReadableDuration, TimeUnit};
 
 use crate::{
     compaction::{
@@ -22,18 +35,6 @@ use crate::{
     },
     memtable::MemtableType,
 };
-
-pub const SEGMENT_DURATION: &str = "segment_duration";
-pub const ENABLE_TTL: &str = OPTION_KEY_ENABLE_TTL;
-pub const TTL: &str = "ttl";
-pub const ARENA_BLOCK_SIZE: &str = "arena_block_size";
-pub const WRITE_BUFFER_SIZE: &str = "write_buffer_size";
-pub const COMPACTION_STRATEGY: &str = "compaction_strategy";
-pub const NUM_ROWS_PER_ROW_GROUP: &str = "num_rows_per_row_group";
-pub const UPDATE_MODE: &str = "update_mode";
-pub const COMPRESSION: &str = "compression";
-pub const STORAGE_FORMAT: &str = "storage_format";
-pub const MEMTABLE_TYPE: &str = "memtable_type";
 
 const UPDATE_MODE_OVERWRITE: &str = "OVERWRITE";
 const UPDATE_MODE_APPEND: &str = "APPEND";
@@ -68,8 +69,11 @@ const MAX_NUM_ROWS_PER_ROW_GROUP: usize = 10_000_000;
 #[derive(Debug, Snafu)]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
-    #[snafu(display("Failed to parse duration, err:{}.\nBacktrace:\n{}", err, backtrace))]
-    ParseDuration { err: String, backtrace: Backtrace },
+    #[snafu(display("Failed to parse duration, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    ParseDuration {
+        source: time_ext::Error,
+        backtrace: Backtrace,
+    },
 
     #[snafu(display("Failed to parse size, err:{}.\nBacktrace:\n{}", err, backtrace))]
     ParseSize { err: String, backtrace: Backtrace },
@@ -413,6 +417,11 @@ pub struct TableOptions {
 }
 
 impl TableOptions {
+    pub fn from_map(map: &HashMap<String, String>, is_create: bool) -> Result<Self> {
+        let opt = Self::default();
+        merge_table_options(map, &opt, is_create)
+    }
+
     #[inline]
     pub fn segment_duration(&self) -> Option<Duration> {
         self.segment_duration.map(|v| v.0)
@@ -717,7 +726,11 @@ fn merge_table_options(
     let mut table_opts = table_old_opts.clone();
     if is_create {
         if let Some(v) = options.get(SEGMENT_DURATION) {
-            table_opts.segment_duration = Some(parse_duration(v)?);
+            if v.is_empty() {
+                table_opts.segment_duration = None;
+            } else {
+                table_opts.segment_duration = Some(parse_duration(v).context(ParseDuration)?);
+            }
         }
         if let Some(v) = options.get(UPDATE_MODE) {
             table_opts.update_mode = UpdateMode::parse_from(v)?;
@@ -725,7 +738,7 @@ fn merge_table_options(
     }
 
     if let Some(v) = options.get(TTL) {
-        table_opts.ttl = parse_duration(v)?;
+        table_opts.ttl = parse_duration(v).context(ParseDuration)?;
     }
     if let Some(v) = options.get(OPTION_KEY_ENABLE_TTL) {
         table_opts.enable_ttl = v.parse::<bool>().context(ParseBool)?;
@@ -755,14 +768,6 @@ fn merge_table_options(
         table_opts.memtable_type = MemtableType::parse_from(v);
     }
     Ok(table_opts)
-}
-
-fn parse_duration(v: &str) -> Result<ReadableDuration> {
-    v.parse::<ReadableDuration>()
-        .map_err(|err| Error::ParseDuration {
-            err,
-            backtrace: Backtrace::generate(),
-        })
 }
 
 fn parse_size(v: &str) -> Result<ReadableSize> {

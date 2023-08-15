@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Record batch
 
@@ -102,7 +114,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RecordBatchData {
     arrow_record_batch: ArrowRecordBatch,
     column_blocks: Vec<ColumnBlock>,
@@ -192,7 +204,7 @@ impl TryFrom<ArrowRecordBatch> for RecordBatchData {
 
 // TODO(yingwen): The schema in RecordBatch should be much simple because it may
 // lack some information.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RecordBatch {
     schema: RecordSchema,
     data: RecordBatchData,
@@ -318,7 +330,23 @@ fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch>
                     DataType::Timestamp(TimeUnit::Millisecond, None),
                     field.is_nullable(),
                 ),
-                _ => Field::new(field.name(), field.data_type().clone(), field.is_nullable()),
+                _ => {
+                    let (dict_id, dict_is_ordered) = {
+                        match field.data_type() {
+                            DataType::Dictionary(_, _) => {
+                                (field.dict_id().unwrap(), field.dict_is_ordered().unwrap())
+                            }
+                            _ => (0, false),
+                        }
+                    };
+                    Field::new_dict(
+                        field.name(),
+                        field.data_type().clone(),
+                        field.is_nullable(),
+                        dict_id,
+                        dict_is_ordered,
+                    )
+                }
             };
             f.set_metadata(field.metadata().clone());
             f
@@ -477,7 +505,13 @@ impl RecordBatchWithKeyBuilder {
         let builders = schema_with_key
             .columns()
             .iter()
-            .map(|column_schema| ColumnBlockBuilder::with_capacity(&column_schema.data_type, 0))
+            .map(|column_schema| {
+                ColumnBlockBuilder::with_capacity(
+                    &column_schema.data_type,
+                    0,
+                    column_schema.is_dictionary,
+                )
+            })
             .collect();
         Self {
             schema_with_key,
@@ -490,7 +524,11 @@ impl RecordBatchWithKeyBuilder {
             .columns()
             .iter()
             .map(|column_schema| {
-                ColumnBlockBuilder::with_capacity(&column_schema.data_type, capacity)
+                ColumnBlockBuilder::with_capacity(
+                    &column_schema.data_type,
+                    capacity,
+                    column_schema.is_dictionary,
+                )
             })
             .collect();
         Self {
@@ -660,9 +698,12 @@ impl ArrowRecordBatchProjector {
                 }
                 None => {
                     // Need to push row with specific type.
-                    let null_block =
-                        ColumnBlock::new_null_with_type(&column_schema.data_type, num_rows)
-                            .context(CreateColumnBlock)?;
+                    let null_block = ColumnBlock::new_null_with_type(
+                        &column_schema.data_type,
+                        num_rows,
+                        column_schema.is_dictionary,
+                    )
+                    .context(CreateColumnBlock)?;
                     column_blocks.push(null_block);
                 }
             }

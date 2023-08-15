@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Merge SST bench.
 
@@ -24,9 +36,9 @@ use analytic_engine::{
     table::sst_util,
 };
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
-use common_util::runtime::Runtime;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef};
+use runtime::Runtime;
 use table_engine::{predicate::Predicate, table::TableId};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 
@@ -64,9 +76,9 @@ impl MergeSstBench {
         let scan_options = ScanOptions {
             background_read_parallelism: 1,
             max_record_batches_in_flight: 1024,
+            num_streams_to_prefetch: 0,
         };
         let sst_read_options = SstReadOptions {
-            reverse: false,
             frequency: ReadFrequency::Frequent,
             num_rows_per_row_group: config.num_rows_per_row_group,
             projected_schema,
@@ -192,6 +204,7 @@ impl MergeSstBench {
             sst_factory: &sst_factory,
             sst_read_options: self.sst_read_options.clone(),
             store_picker: &store_picker,
+            num_streams_to_prefetch: 0,
         })
         .ssts(vec![self.file_handles.clone()]);
 

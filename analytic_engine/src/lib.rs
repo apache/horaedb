@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Analytic table engine implementations
 
@@ -11,6 +23,7 @@ mod instance;
 mod manifest;
 pub mod memtable;
 mod payload;
+pub mod prefetchable_stream;
 pub mod row_iter;
 mod sampler;
 pub mod setup;
@@ -23,12 +36,13 @@ pub mod table_meta_set_impl;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
-use common_util::config::{ReadableDuration, ReadableSize};
 use manifest::details::Options as ManifestOptions;
 use message_queue::kafka::config::Config as KafkaConfig;
 use object_store::config::StorageOptions;
 use serde::{Deserialize, Serialize};
+use size_ext::ReadableSize;
 use table_kv::config::ObkvConfig;
+use time_ext::ReadableDuration;
 use wal::{
     message_queue_impl::config::Config as MessageQueueWalConfig,
     rocks_impl::config::Config as RocksDBWalConfig, table_kv_impl::model::NamespaceConfig,
@@ -81,6 +95,8 @@ pub struct Config {
     pub scan_max_record_batches_in_flight: usize,
     /// Sst background reading parallelism
     pub sst_background_read_parallelism: usize,
+    /// Number of streams to prefetch
+    pub num_streams_to_prefetch: usize,
     /// Max buffer size for writing sst
     pub write_sst_max_buffer_size: ReadableSize,
     /// Max retry limit After flush failed
@@ -134,6 +150,7 @@ impl Default for Config {
             preflush_write_buffer_size_ratio: 0.75,
             scan_batch_size: None,
             sst_background_read_parallelism: 8,
+            num_streams_to_prefetch: 2,
             scan_max_record_batches_in_flight: 1024,
             write_sst_max_buffer_size: ReadableSize::mb(10),
             max_retry_flush_limit: 0,
@@ -175,6 +192,7 @@ pub struct ManifestNamespaceConfig {
     pub init_scan_batch_size: i32,
     pub clean_scan_timeout: ReadableDuration,
     pub clean_scan_batch_size: usize,
+    pub bucket_create_parallelism: usize,
 }
 
 impl Default for ManifestNamespaceConfig {
@@ -188,6 +206,7 @@ impl Default for ManifestNamespaceConfig {
             init_scan_batch_size: namespace_config.init_scan_batch_size,
             clean_scan_timeout: namespace_config.clean_scan_timeout,
             clean_scan_batch_size: namespace_config.clean_scan_batch_size,
+            bucket_create_parallelism: namespace_config.bucket_create_parallelism,
         }
     }
 }
@@ -202,6 +221,7 @@ impl From<ManifestNamespaceConfig> for NamespaceConfig {
             init_scan_batch_size: manifest_config.init_scan_batch_size,
             clean_scan_timeout: manifest_config.clean_scan_timeout,
             clean_scan_batch_size: manifest_config.clean_scan_batch_size,
+            bucket_create_parallelism: manifest_config.bucket_create_parallelism,
         }
     }
 }
@@ -223,6 +243,7 @@ pub struct WalNamespaceConfig {
     pub ttl: ReadableDuration,
     pub init_scan_timeout: ReadableDuration,
     pub init_scan_batch_size: i32,
+    pub bucket_create_parallelism: usize,
 }
 
 impl Default for WalNamespaceConfig {
@@ -235,6 +256,7 @@ impl Default for WalNamespaceConfig {
             ttl: namespace_config.ttl.unwrap(),
             init_scan_timeout: namespace_config.init_scan_timeout,
             init_scan_batch_size: namespace_config.init_scan_batch_size,
+            bucket_create_parallelism: namespace_config.bucket_create_parallelism,
         }
     }
 }
@@ -247,6 +269,7 @@ impl From<WalNamespaceConfig> for NamespaceConfig {
             ttl: Some(wal_config.ttl),
             init_scan_timeout: wal_config.init_scan_timeout,
             init_scan_batch_size: wal_config.init_scan_batch_size,
+            bucket_create_parallelism: wal_config.bucket_create_parallelism,
             ..Default::default()
         }
     }

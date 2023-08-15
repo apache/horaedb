@@ -1,4 +1,16 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Predict for query table.
 //! Reference to: https://github.com/influxdata/influxdb_iox/blob/29b10413051f8c4a2193e8633aa133e45b0e505a/query/src/predicate.rs
@@ -9,13 +21,17 @@ use common_types::{
     schema::Schema,
     time::{TimeRange, Timestamp},
 };
-use common_util::error::{BoxError, GenericError};
 use datafusion::{
-    logical_expr::{Expr, Operator},
+    logical_expr::{
+        expr::{Alias, InList},
+        Expr, Operator,
+    },
     scalar::ScalarValue,
 };
 use datafusion_proto::bytes::Serializeable;
+use generic_error::{BoxError, GenericError};
 use log::debug;
+use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
@@ -45,7 +61,7 @@ pub enum Error {
 define_result!(Error);
 
 /// Predicate helps determine whether specific row group should be read.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Predicate {
     /// Predicates in the query for filter out the columns that meet all the
     /// exprs.
@@ -374,11 +390,11 @@ impl<'a> TimeRangeExtractor<'a> {
 
                 TimeRange::min_to_max()
             }
-            Expr::InList {
+            Expr::InList(InList {
                 expr,
                 list,
                 negated,
-            } => {
+            }) => {
                 if let Expr::Column(column) = expr.as_ref() {
                     if column.name == self.timestamp_column_name {
                         return Self::time_range_from_list_expr(list, *negated);
@@ -388,13 +404,12 @@ impl<'a> TimeRangeExtractor<'a> {
                 TimeRange::min_to_max()
             }
 
-            Expr::Alias(_, _)
+            Expr::Alias(Alias { .. })
             | Expr::ScalarVariable(_, _)
             | Expr::Column(_)
             | Expr::Literal(_)
             | Expr::Not(_)
             | Expr::Like { .. }
-            | Expr::ILike { .. }
             | Expr::SimilarTo { .. }
             | Expr::IsNotNull(_)
             | Expr::IsNull(_)
@@ -423,6 +438,143 @@ impl<'a> TimeRangeExtractor<'a> {
             | Expr::GetIndexedField { .. }
             | Expr::OuterReferenceColumn { .. }
             | Expr::Placeholder { .. } => TimeRange::min_to_max(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use common_types::{
+        tests::build_schema_with_dictionary,
+        time::{TimeRange, Timestamp},
+    };
+    use datafusion::{
+        prelude::{col, Expr},
+        scalar::ScalarValue,
+    };
+
+    use crate::predicate::PredicateBuilder;
+
+    fn set_timestamp(ts: i64) -> Expr {
+        Expr::Literal(ScalarValue::TimestampMillisecond(Some(ts), None))
+    }
+    #[test]
+    fn test_extract_range() {
+        // The actual range needs to be a subset of the predicate range
+        let schema = build_schema_with_dictionary();
+        let cases = vec![
+            (
+                // key2 > 10000
+                col("key2").gt(set_timestamp(10000)),
+                TimeRange::new(Timestamp::new(10001), Timestamp::MAX).unwrap(),
+            ),
+            (
+                // key2 > 10000 and key2 > 500
+                col("key2")
+                    .gt(set_timestamp(10000))
+                    .and(col("key2").gt(set_timestamp(500))),
+                TimeRange::new(Timestamp::new(10001), Timestamp::MAX).unwrap(),
+            ),
+            (
+                // key2 > 10000 or key2 > 500
+                col("key2")
+                    .gt(set_timestamp(10000))
+                    .or(col("key2").gt(set_timestamp(500))),
+                TimeRange::new(Timestamp::new(501), Timestamp::MAX).unwrap(),
+            ),
+            (
+                // key2 > 10000 or (key2 > 500 and key2 > 300)
+                col("key2").gt(set_timestamp(10000)).or(col("key2")
+                    .gt(set_timestamp(500))
+                    .and(col("key2").gt(set_timestamp(300)))),
+                TimeRange::new(Timestamp::new(501), Timestamp::MAX).unwrap(),
+            ),
+            (
+                // key2 > 10000 or (key2 > 500 and key2 < 600)
+                col("key2").gt(set_timestamp(10000)).or(col("key2")
+                    .gt(set_timestamp(500))
+                    .and(col("key2").lt(set_timestamp(600)))),
+                TimeRange::new(Timestamp::new(501), Timestamp::MAX).unwrap(),
+            ),
+            (
+                // key2 > 500 and key2 < 600
+                col("key2")
+                    .gt(set_timestamp(500))
+                    .and(col("key2").lt(set_timestamp(600))),
+                TimeRange::new(Timestamp::new(501), Timestamp::new(600)).unwrap(),
+            ),
+            (
+                // key2 > 10000 and (key2 > 500 and key2 < 600)
+                col("key2").gt(set_timestamp(10000)).and(
+                    col("key2")
+                        .gt(set_timestamp(500))
+                        .and(col("key2").lt(set_timestamp(600))),
+                ),
+                TimeRange::new(Timestamp::new(0), Timestamp::new(0)).unwrap(),
+            ),
+            (
+                // key2 > 10000 and (key2 > 500 and key2 > 600)
+                col("key2").gt(set_timestamp(10000)).and(
+                    col("key2")
+                        .gt(set_timestamp(500))
+                        .and(col("key2").gt(set_timestamp(600))),
+                ),
+                TimeRange::new(Timestamp::new(10001), Timestamp::MAX).unwrap(),
+            ),
+            (
+                // key2 > 10 and (key2 < 500 and key2 > 1)
+                col("key2").gt(set_timestamp(10)).and(
+                    col("key2")
+                        .lt(set_timestamp(500))
+                        .and(col("key2").gt(set_timestamp(1))),
+                ),
+                TimeRange::new(Timestamp::new(11), Timestamp::new(500)).unwrap(),
+            ),
+            (
+                // key2 < 10 and key2 > 11
+                col("key2")
+                    .lt(set_timestamp(10))
+                    .and(col("key2").gt(set_timestamp(11))),
+                TimeRange::new(Timestamp::new(0), Timestamp::new(0)).unwrap(),
+            ),
+            (
+                // key2 < 10 or key2 > 11
+                col("key2")
+                    .lt(set_timestamp(10))
+                    .or(col("key2").gt(set_timestamp(11))),
+                TimeRange::new(Timestamp::MIN, Timestamp::MAX).unwrap(),
+            ),
+            (
+                // (key2 < 10 or key2 > 11) and key2 > 1000
+                (col("key2")
+                    .lt(set_timestamp(10))
+                    .or(col("key2").gt(set_timestamp(11))))
+                .and(col("key2").gt(set_timestamp(1000))),
+                TimeRange::new(Timestamp::new(1001), Timestamp::MAX).unwrap(),
+            ),
+            (
+                // (key2 > 10 or key2 > 100) and key2 > 5
+                (col("key2")
+                    .lt(set_timestamp(10))
+                    .or(col("key2").gt(set_timestamp(100))))
+                .and(col("key2").gt(set_timestamp(5))),
+                TimeRange::new(Timestamp::new(6), Timestamp::MAX).unwrap(),
+            ),
+            (
+                // (key2 > 1 or key2 > 100) and key2 > 5
+                (col("key2")
+                    .lt(set_timestamp(10))
+                    .or(col("key2").gt(set_timestamp(100))))
+                .and(col("key2").gt(set_timestamp(5))),
+                TimeRange::new(Timestamp::new(6), Timestamp::MAX).unwrap(),
+            ),
+        ];
+        for (expr, expcted) in cases {
+            let predict = PredicateBuilder::default()
+                .add_pushdown_exprs(&vec![expr.clone()])
+                .extract_time_range(&schema, &vec![expr])
+                .build();
+            assert_eq!(predict.time_range(), expcted);
         }
     }
 }

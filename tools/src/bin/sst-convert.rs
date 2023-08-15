@@ -1,10 +1,23 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! A cli to convert ssts between different options
 
-use std::{error::Error, sync::Arc};
+use std::sync::Arc;
 
 use analytic_engine::{
+    prefetchable_stream::PrefetchableStreamExt,
     sst::{
         factory::{
             Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, ScanOptions, SstReadHint,
@@ -17,9 +30,9 @@ use analytic_engine::{
 use anyhow::{Context, Result};
 use clap::Parser;
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId};
-use common_util::runtime::{self, Runtime};
-use futures::stream::StreamExt;
+use generic_error::BoxError;
 use object_store::{LocalFileSystem, Path};
+use runtime::Runtime;
 use table_engine::predicate::Predicate;
 use tools::sst_util;
 
@@ -79,7 +92,6 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     let factory = FactoryImpl;
     let scan_options = ScanOptions::default();
     let reader_opts = SstReadOptions {
-        reverse: false,
         frequency: ReadFrequency::Once,
         num_rows_per_row_group: 8192,
         projected_schema: ProjectedSchema::no_projection(sst_meta.schema.clone()),
@@ -114,12 +126,8 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         .create_writer(&builder_opts, &output, &store_picker, Level::MAX)
         .await
         .expect("no sst writer found");
-    let sst_stream = reader
-        .read()
-        .await
-        .unwrap()
-        .map(|batch| batch.map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>));
-    let sst_stream = Box::new(sst_stream) as _;
+    let sst_stream = reader.read().await.unwrap().map(BoxError::box_err);
+    let sst_stream = sst_stream.into_boxed_stream();
     let sst_info = writer
         .write(RequestId::next_id(), &sst_meta, sst_stream)
         .await?;

@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Table abstraction
 
@@ -22,7 +34,8 @@ use common_types::{
     row::{Row, RowGroup},
     schema::{RecordSchemaWithKey, Schema, Version},
 };
-use common_util::error::{BoxError, GenericError};
+use generic_error::{BoxError, GenericError};
+use macros::define_result;
 use serde::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use trace_metric::MetricsCollector;
@@ -355,44 +368,6 @@ pub struct GetRequest {
     pub primary_key: Vec<Datum>,
 }
 
-#[derive(Copy, Clone, Debug)]
-pub enum ReadOrder {
-    /// No order requirements from the read request.
-    None = 0,
-    Asc,
-    Desc,
-}
-
-impl ReadOrder {
-    pub fn from_is_asc(is_asc: Option<bool>) -> Self {
-        match is_asc {
-            Some(true) => ReadOrder::Asc,
-            Some(false) => ReadOrder::Desc,
-            None => ReadOrder::None,
-        }
-    }
-
-    #[inline]
-    pub fn is_out_of_order(&self) -> bool {
-        matches!(self, ReadOrder::None)
-    }
-
-    #[inline]
-    pub fn is_in_order(&self) -> bool {
-        !self.is_out_of_order()
-    }
-
-    #[inline]
-    pub fn is_in_desc_order(&self) -> bool {
-        matches!(self, ReadOrder::Desc)
-    }
-
-    #[inline]
-    pub fn into_i32(self) -> i32 {
-        self as i32
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct ReadRequest {
     /// Read request id.
@@ -404,8 +379,6 @@ pub struct ReadRequest {
     pub projected_schema: ProjectedSchema,
     /// Predicate of the query.
     pub predicate: PredicateRef,
-    /// Read the rows in reverse order.
-    pub order: ReadOrder,
     /// Collector for metrics of this read request.
     pub metrics_collector: MetricsCollector,
 }
@@ -432,7 +405,7 @@ impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
             opts: Some(request.opts.into()),
             projected_schema: Some(request.projected_schema.into()),
             predicate: Some(predicate_pb),
-            order: request.order.into_i32(),
+            order: 0,
         })
     }
 }
@@ -455,19 +428,11 @@ impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
                 .box_err()
                 .context(ConvertPredicate)?,
         );
-        let order = if pb.order == ceresdbproto::remote_engine::ReadOrder::Asc as i32 {
-            ReadOrder::Asc
-        } else if pb.order == ceresdbproto::remote_engine::ReadOrder::Desc as i32 {
-            ReadOrder::Desc
-        } else {
-            ReadOrder::None
-        };
         Ok(Self {
             request_id: RequestId::next_id(),
             opts,
             projected_schema,
             predicate,
-            order,
             metrics_collector: MetricsCollector::default(),
         })
     }
@@ -521,6 +486,12 @@ pub trait Table: std::fmt::Debug {
 
     /// Get table's statistics.
     fn stats(&self) -> TableStats;
+
+    /// Whether the columns used in filter expr can be pushdown.
+    ///
+    /// `read_schema` is used here to avoid upper layer see different schema
+    /// during one query.
+    fn support_pushdown(&self, _read_schema: &Schema, _col_names: &[String]) -> bool;
 
     /// Write to table.
     async fn write(&self, request: WriteRequest) -> Result<usize>;

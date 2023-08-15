@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Grpc services
 
@@ -16,29 +28,32 @@ use ceresdbproto::{
     storage::storage_service_server::StorageServiceServer,
 };
 use cluster::ClusterRef;
-use common_types::column_schema;
-use common_util::{
-    define_result,
-    error::GenericError,
-    runtime::{JoinHandle, Runtime},
-};
+use common_types::{column_schema, record_batch::RecordBatch};
 use futures::FutureExt;
+use generic_error::GenericError;
 use log::{info, warn};
+use macros::define_result;
 use proxy::{
     forward,
+    hotspot::HotspotRecorder,
     instance::InstanceRef,
     schema_config_provider::{self},
     Proxy,
 };
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
+use runtime::{JoinHandle, Runtime};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
-use crate::grpc::{
-    meta_event_service::MetaServiceImpl, remote_engine_service::RemoteEngineServiceImpl,
-    storage_service::StorageServiceImpl,
+use crate::{
+    dedup_requests::RequestNotifiers,
+    grpc::{
+        meta_event_service::MetaServiceImpl,
+        remote_engine_service::{error, RemoteEngineServiceImpl, StreamReadReqKey},
+        storage_service::StorageServiceImpl,
+    },
 };
 
 mod meta_event_service;
@@ -92,6 +107,9 @@ pub enum Error {
     #[snafu(display("Missing proxy.\nBacktrace:\n{}", backtrace))]
     MissingProxy { backtrace: Backtrace },
 
+    #[snafu(display("Missing HotspotRecorder.\nBacktrace:\n{}", backtrace))]
+    MissingHotspotRecorder { backtrace: Backtrace },
+
     #[snafu(display("Catalog name is not utf8.\nBacktrace:\n{}", backtrace))]
     ParseCatalogName {
         source: std::string::FromUtf8Error,
@@ -135,17 +153,17 @@ pub enum Error {
 define_result!(Error);
 
 /// Rpc services manages all grpc services of the server.
-pub struct RpcServices<Q: QueryExecutor + 'static> {
+pub struct RpcServices<Q: QueryExecutor + 'static, P: PhysicalPlanner> {
     serve_addr: SocketAddr,
-    rpc_server: StorageServiceServer<StorageServiceImpl<Q>>,
-    meta_rpc_server: Option<MetaEventServiceServer<MetaServiceImpl<Q>>>,
-    remote_engine_server: RemoteEngineServiceServer<RemoteEngineServiceImpl<Q>>,
+    rpc_server: StorageServiceServer<StorageServiceImpl<Q, P>>,
+    meta_rpc_server: Option<MetaEventServiceServer<MetaServiceImpl<Q, P>>>,
+    remote_engine_server: RemoteEngineServiceServer<RemoteEngineServiceImpl<Q, P>>,
     runtime: Arc<Runtime>,
     stop_tx: Option<Sender<()>>,
     join_handle: Option<JoinHandle<()>>,
 }
 
-impl<Q: QueryExecutor + 'static> RpcServices<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RpcServices<Q, P> {
     pub async fn start(&mut self) -> Result<()> {
         let rpc_server = self.rpc_server.clone();
         let meta_rpc_server = self.meta_rpc_server.clone();
@@ -190,17 +208,19 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
     }
 }
 
-pub struct Builder<Q> {
+pub struct Builder<Q, P> {
     endpoint: String,
     timeout: Option<Duration>,
     runtimes: Option<Arc<EngineRuntimes>>,
-    instance: Option<InstanceRef<Q>>,
+    instance: Option<InstanceRef<Q, P>>,
     cluster: Option<ClusterRef>,
     opened_wals: Option<OpenedWals>,
-    proxy: Option<Arc<Proxy<Q>>>,
+    proxy: Option<Arc<Proxy<Q, P>>>,
+    request_notifiers: Option<Arc<RequestNotifiers<StreamReadReqKey, error::Result<RecordBatch>>>>,
+    hotspot_recorder: Option<Arc<HotspotRecorder>>,
 }
 
-impl<Q> Builder<Q> {
+impl<Q, P> Builder<Q, P> {
     pub fn new() -> Self {
         Self {
             endpoint: "0.0.0.0:8381".to_string(),
@@ -210,6 +230,8 @@ impl<Q> Builder<Q> {
             cluster: None,
             opened_wals: None,
             proxy: None,
+            request_notifiers: None,
+            hotspot_recorder: None,
         }
     }
 
@@ -223,7 +245,7 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn instance(mut self, instance: InstanceRef<Q>) -> Self {
+    pub fn instance(mut self, instance: InstanceRef<Q, P>) -> Self {
         self.instance = Some(instance);
         self
     }
@@ -244,24 +266,37 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn proxy(mut self, proxy: Arc<Proxy<Q>>) -> Self {
+    pub fn proxy(mut self, proxy: Arc<Proxy<Q, P>>) -> Self {
         self.proxy = Some(proxy);
+        self
+    }
+
+    pub fn hotspot_recorder(mut self, hotspot_recorder: Arc<HotspotRecorder>) -> Self {
+        self.hotspot_recorder = Some(hotspot_recorder);
+        self
+    }
+
+    pub fn request_notifiers(mut self, enable_query_dedup: bool) -> Self {
+        if enable_query_dedup {
+            self.request_notifiers = Some(Arc::new(RequestNotifiers::default()));
+        }
         self
     }
 }
 
-impl<Q: QueryExecutor + 'static> Builder<Q> {
-    pub fn build(self) -> Result<RpcServices<Q>> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
+    pub fn build(self) -> Result<RpcServices<Q, P>> {
         let runtimes = self.runtimes.context(MissingRuntimes)?;
         let instance = self.instance.context(MissingInstance)?;
         let opened_wals = self.opened_wals.context(MissingWals)?;
         let proxy = self.proxy.context(MissingProxy)?;
+        let hotspot_recorder = self.hotspot_recorder.context(MissingHotspotRecorder)?;
 
         let meta_rpc_server = self.cluster.map(|v| {
             let builder = meta_event_service::Builder {
                 cluster: v,
                 instance: instance.clone(),
-                runtime: runtimes.default_runtime.clone(),
+                runtime: runtimes.meta_runtime.clone(),
                 opened_wals,
             };
             MetaEventServiceServer::new(builder.build())
@@ -271,6 +306,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             let service = RemoteEngineServiceImpl {
                 instance,
                 runtimes: runtimes.clone(),
+                request_notifiers: self.request_notifiers,
+                hotspot_recorder,
             };
             RemoteEngineServiceServer::new(service)
         };

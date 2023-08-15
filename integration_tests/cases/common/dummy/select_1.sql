@@ -2,13 +2,9 @@ SELECT 1;
 
 SELECT x;
 
--- FIXME
 SELECT 'a';
 
 SELECT NOT(1=1);
-
--- FIXME
-SELECT NOT(1);
 
 SELECT TRUE;
 

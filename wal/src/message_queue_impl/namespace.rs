@@ -1,18 +1,28 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Namespace of wal on message queue
 
 use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 
 use common_types::SequenceNumber;
-use common_util::{
-    define_result,
-    runtime::Runtime,
-    timed_task::{TaskHandle, TimedTask},
-};
 use log::{debug, error, info};
+use macros::define_result;
 use message_queue::{ConsumeIterator, MessageQueue};
+use runtime::Runtime;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
+use timed_task::{TaskHandle, TimedTask};
 use tokio::sync::RwLock;
 
 use crate::{
@@ -31,10 +41,7 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Failed to open region, namespace:{}, location:{:?}, err:{}",
-        namespace,
-        location,
-        source
+        "Failed to get sequence, namespace:{namespace}, location:{location:?}, err:{source}",
     ))]
     GetSequence {
         namespace: String,
@@ -43,10 +50,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to open region, namespace:{}, request:{:?}, err:{}",
-        namespace,
-        request,
-        source
+        "Failed to read table logs, namespace:{namespace}, request:{request:?}, err:{source}",
     ))]
     ReadWithCause {
         namespace: String,
@@ -56,10 +60,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to open region, namespace:{}, request:{:?}, \nBacktrace:\n{}",
-        namespace,
-        request,
-        backtrace,
+        "Failed to read table logs, namespace:{namespace}, request:{request:?}, \nBacktrace:\n{backtrace}",
     ))]
     ReadNoCause {
         namespace: String,
@@ -69,10 +70,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to open region, namespace:{}, request:{:?}, err:{}",
-        namespace,
-        request,
-        source
+        "Failed to scan region logs, namespace:{namespace}, request:{request:?}, err:{source}",
     ))]
     ScanWithCause {
         namespace: String,
@@ -82,10 +80,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to open region, namespace:{}, request:{:?}, \nBacktrace:\n{}",
-        namespace,
-        request,
-        backtrace,
+        "Failed to scan region logs, namespace:{namespace}, request:{request:?}, \nBacktrace:\n{backtrace}",
     ))]
     ScanNoCause {
         namespace: String,
@@ -95,11 +90,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to open region, namespace:{}, location:{:?}, batch_size:{}, err:{}",
-        namespace,
-        location,
-        batch_size,
-        source
+        "Failed to write logs, namespace:{namespace}, location:{location:?}, batch_size:{batch_size}, err:{source}",
     ))]
     Write {
         namespace: String,
@@ -109,11 +100,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to open region, namespace:{}, location:{:?}, sequence_num:{}, err:{}",
-        namespace,
-        location,
-        sequence_num,
-        source
+        "Failed to mark logs deleted, namespace:{namespace}, location:{location:?}, sequence_num:{sequence_num}, err:{source}",
     ))]
     MarkDeleteTo {
         namespace: String,
@@ -122,16 +109,16 @@ pub enum Error {
         source: region::Error,
     },
 
-    #[snafu(display("Failed to clean logs, namespace:{}, err:{}", namespace, source))]
+    #[snafu(display("Failed to clean logs, namespace:{namespace}, err:{source}"))]
     CleanLogs {
         namespace: String,
         source: region::Error,
     },
 
-    #[snafu(display("Failed to close namespace, namespace:{}, err:{}", namespace, source))]
+    #[snafu(display("Failed to close namespace, namespace:{namespace}, err:{source}"))]
     Close {
         namespace: String,
-        source: common_util::runtime::Error,
+        source: runtime::Error,
     },
 }
 
@@ -230,6 +217,18 @@ impl<M: MessageQueue> Namespace<M> {
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         self.inner.mark_delete_to(location, sequence_num).await
+    }
+
+    pub async fn get_statistics(&self) -> String {
+        let regions = self.inner.regions.read().await;
+        let mut region_stats = Vec::with_capacity(regions.len());
+        for (region_id, region) in regions.iter() {
+            let snapshot = region.make_meta_snapshot().await;
+            let region_stat = format!("region_id:{region_id}, snapshot:{snapshot:?}",);
+            region_stats.push(region_stat);
+        }
+
+        region_stats.join("\n")
     }
 }
 

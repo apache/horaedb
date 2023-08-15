@@ -1,4 +1,16 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! SST bench.
 
@@ -12,10 +24,9 @@ use analytic_engine::sst::{
     meta_data::cache::{MetaCache, MetaCacheRef},
 };
 use common_types::{projected_schema::ProjectedSchema, schema::Schema};
-use common_util::runtime::Runtime;
-use futures::stream::StreamExt;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
+use runtime::Runtime;
 
 use crate::{config::SstBenchConfig, util};
 
@@ -43,9 +54,9 @@ impl SstBench {
         let scan_options = ScanOptions {
             background_read_parallelism: 1,
             max_record_batches_in_flight: 1024,
+            num_streams_to_prefetch: 0,
         };
         let sst_read_options = SstReadOptions {
-            reverse: config.reverse,
             frequency: ReadFrequency::Frequent,
             num_rows_per_row_group: config.num_rows_per_row_group,
             projected_schema,
@@ -100,7 +111,7 @@ impl SstBench {
 
             let mut total_rows = 0;
             let mut batch_num = 0;
-            while let Some(batch) = sst_stream.next().await {
+            while let Some(batch) = sst_stream.fetch_next().await {
                 let num_rows = batch.unwrap().num_rows();
                 total_rows += num_rows;
                 batch_num += 1;

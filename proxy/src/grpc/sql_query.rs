@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Query handler
 
@@ -13,12 +25,12 @@ use ceresdbproto::{
     },
 };
 use common_types::record_batch::RecordBatch;
-use common_util::error::BoxError;
 use futures::{stream, stream::BoxStream, FutureExt, StreamExt};
+use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{error, warn};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use router::endpoint::Endpoint;
 use snafu::ResultExt;
 use tokio::sync::mpsc;
@@ -28,20 +40,25 @@ use tonic::{transport::Channel, IntoRequest};
 use crate::{
     error::{self, ErrNoCause, ErrWithCause, Error, Result},
     forward::{ForwardRequest, ForwardResult},
-    grpc::metrics::GRPC_HANDLER_COUNTER_VEC,
+    metrics::GRPC_HANDLER_COUNTER_VEC,
     read::SqlResponse,
     Context, Proxy,
 };
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     pub async fn handle_sql_query(&self, ctx: Context, req: SqlQueryRequest) -> SqlQueryResponse {
+        // Incoming query maybe larger than query_failed + query_succeeded for some
+        // corner case, like lots of time-consuming queries come in at the same time and
+        // cause server OOM.
+        GRPC_HANDLER_COUNTER_VEC.incoming_query.inc();
+
         self.hotspot_recorder.inc_sql_query_reqs(&req).await;
         match self.handle_sql_query_internal(ctx, req).await {
             Err(e) => {
-                error!("Failed to handle sql query, err:{e}");
                 GRPC_HANDLER_COUNTER_VEC.query_failed.inc();
+                error!("Failed to handle sql query, err:{e}");
                 SqlQueryResponse {
                     header: Some(error::build_err_header(e)),
                     ..Default::default()
@@ -80,6 +97,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: SqlQueryRequest,
     ) -> BoxStream<'static, SqlQueryResponse> {
+        GRPC_HANDLER_COUNTER_VEC.stream_query.inc();
         self.hotspot_recorder.inc_sql_query_reqs(&req).await;
         match self.clone().handle_stream_query_internal(ctx, req).await {
             Err(e) => stream::once(async {

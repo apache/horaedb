@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! MemTable
 
@@ -10,8 +22,8 @@ pub mod skiplist;
 
 use std::{ops::Bound, sync::Arc, time::Instant};
 
+use bytes_ext::{ByteVec, Bytes};
 use common_types::{
-    bytes::{ByteVec, Bytes},
     projected_schema::ProjectedSchema,
     record_batch::RecordBatchWithKey,
     row::Row,
@@ -19,6 +31,8 @@ use common_types::{
     SequenceNumber,
 };
 use common_util::{define_result, error::GenericError};
+use generic_error::GenericError;
+use macros::define_result;
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, Snafu};
 use trace_metric::MetricsCollector;
@@ -64,9 +78,7 @@ pub enum Error {
     DecodeInternalKey { source: crate::memtable::key::Error },
 
     #[snafu(display("Failed to decode row, err:{}", source))]
-    DecodeRow {
-        source: common_util::codec::row::Error,
-    },
+    DecodeRow { source: codec::row::Error },
 
     #[snafu(display("Failed to append row to batch builder, err:{}", source))]
     AppendRow {
@@ -76,6 +88,11 @@ pub enum Error {
     #[snafu(display("Failed to build record batch, err:{}", source,))]
     BuildRecordBatch {
         source: common_types::record_batch::Error,
+    },
+
+    #[snafu(display("Failed to decode continuous row, err:{}", source))]
+    DecodeContinuousRow {
+        source: common_types::row::contiguous::Error,
     },
 
     #[snafu(display("Failed to project memtable schema, err:{}", source))]
@@ -109,6 +126,17 @@ pub enum Error {
 
     #[snafu(display("msg:{msg}"))]
     InternalNoCause { msg: String },
+    #[snafu(display(
+        "Timeout when iter memtable, now:{:?}, deadline:{:?}.\nBacktrace:\n{}",
+        now,
+        deadline,
+        backtrace
+    ))]
+    IterTimeout {
+        now: Instant,
+        deadline: Instant,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
@@ -229,6 +257,19 @@ pub trait MemTable {
     ///
     /// If the memtable is empty, then the last sequence is 0.
     fn last_sequence(&self) -> SequenceNumber;
+
+    /// Metrics of inner state.
+    fn metrics(&self) -> Metrics;
+}
+
+#[derive(Debug)]
+pub struct Metrics {
+    /// Size of original rows.
+    pub row_raw_size: usize,
+    /// Size of rows after encoded.
+    pub row_encoded_size: usize,
+    /// Row number count.
+    pub row_count: usize,
 }
 
 /// A reference to memtable

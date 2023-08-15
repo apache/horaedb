@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Utils to create table.
 
@@ -15,13 +27,13 @@ use common_types::{
     table::DEFAULT_SHARD_ID,
     time::Timestamp,
 };
-use common_util::config::ReadableDuration;
 use table_engine::{
     self,
     engine::{CreateTableRequest, TableState},
     predicate::Predicate,
-    table::{GetRequest, ReadOptions, ReadOrder, ReadRequest, SchemaId, TableId, TableSeq},
+    table::{GetRequest, ReadOptions, ReadRequest, SchemaId, TableId, TableSeq},
 };
+use time_ext::ReadableDuration;
 use trace_metric::MetricsCollector;
 
 use crate::{table_options, tests::row_util};
@@ -119,8 +131,8 @@ impl FixedSchemaTable {
         row_util::new_row_6(data)
     }
 
-    pub fn new_read_all_request(&self, opts: ReadOptions, read_order: ReadOrder) -> ReadRequest {
-        new_read_all_request_with_order(self.create_request.table_schema.clone(), opts, read_order)
+    pub fn new_read_all_request(&self, opts: ReadOptions) -> ReadRequest {
+        new_read_all_request_with_order(self.create_request.table_schema.clone(), opts)
     }
 
     pub fn new_get_request(&self, key: KeyTuple) -> GetRequest {
@@ -175,23 +187,18 @@ pub fn read_opts_list() -> Vec<ReadOptions> {
     ]
 }
 
-pub fn new_read_all_request_with_order(
-    schema: Schema,
-    opts: ReadOptions,
-    order: ReadOrder,
-) -> ReadRequest {
+pub fn new_read_all_request_with_order(schema: Schema, opts: ReadOptions) -> ReadRequest {
     ReadRequest {
         request_id: RequestId::next_id(),
         opts,
         projected_schema: ProjectedSchema::no_projection(schema),
         predicate: Arc::new(Predicate::empty()),
-        order,
         metrics_collector: MetricsCollector::default(),
     }
 }
 
 pub fn new_read_all_request(schema: Schema, opts: ReadOptions) -> ReadRequest {
-    new_read_all_request_with_order(schema, opts, ReadOrder::None)
+    new_read_all_request_with_order(schema, opts)
 }
 
 pub fn assert_batch_eq_to_row_group(record_batches: &[RecordBatch], row_group: &RowGroup) {
@@ -276,7 +283,7 @@ impl Builder {
 
     pub fn enable_ttl(mut self, enable_ttl: bool) -> Self {
         self.create_request.options.insert(
-            table_engine::OPTION_KEY_ENABLE_TTL.to_string(),
+            common_types::OPTION_KEY_ENABLE_TTL.to_string(),
             enable_ttl.to_string(),
         );
         self
@@ -285,7 +292,7 @@ impl Builder {
     pub fn ttl(mut self, duration: ReadableDuration) -> Self {
         self.create_request
             .options
-            .insert(table_options::TTL.to_string(), duration.to_string());
+            .insert(common_types::TTL.to_string(), duration.to_string());
         self
     }
 

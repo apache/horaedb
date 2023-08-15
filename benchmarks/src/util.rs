@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Utilities.
 
@@ -21,18 +33,15 @@ use analytic_engine::{
     table::sst_util,
     table_options::StorageFormat,
 };
+use bytes_ext::{BufMut, SafeBufMut};
 use common_types::{
-    bytes::{BufMut, SafeBufMut},
     projected_schema::ProjectedSchema,
     schema::{IndexInWriterSchema, Schema},
 };
-use common_util::{
-    define_result,
-    runtime::{self, Runtime},
-};
-use futures::stream::StreamExt;
+use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::file::footer;
+use runtime::Runtime;
 use snafu::{ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::TableId};
 use wal::log_batch::Payload;
@@ -40,10 +49,10 @@ use wal::log_batch::Payload;
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to writer header, err:{}.", source))]
-    WriteHeader { source: common_types::bytes::Error },
+    WriteHeader { source: bytes_ext::Error },
 
     #[snafu(display("Failed to writer body, err:{}.", source))]
-    WriteBody { source: common_types::bytes::Error },
+    WriteBody { source: bytes_ext::Error },
 }
 
 define_result!(Error);
@@ -104,9 +113,9 @@ pub async fn load_sst_to_memtable(
     let scan_options = ScanOptions {
         background_read_parallelism: 1,
         max_record_batches_in_flight: 1024,
+        num_streams_to_prefetch: 0,
     };
     let sst_read_options = SstReadOptions {
-        reverse: false,
         frequency: ReadFrequency::Frequent,
         num_rows_per_row_group: 8192,
         projected_schema: ProjectedSchema::no_projection(schema.clone()),
@@ -134,7 +143,7 @@ pub async fn load_sst_to_memtable(
 
     let mut sequence = crate::INIT_SEQUENCE;
 
-    while let Some(batch) = sst_stream.next().await {
+    while let Some(batch) = sst_stream.fetch_next().await {
         let batch = batch.unwrap();
 
         for i in 0..batch.num_rows() {

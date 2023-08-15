@@ -1,4 +1,16 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use common_types::{
     column_schema::ColumnSchema,
@@ -150,6 +162,7 @@ mod tests {
                     name: "id".to_string(),
                     data_type: DatumKind::Int32,
                     is_nullable: false,
+                    is_dictionary: false,
                     is_tag: false,
                     comment: "".to_string(),
                     escaped_name: "id".to_string(),
@@ -163,6 +176,7 @@ mod tests {
                     name: "name".to_string(),
                     data_type: DatumKind::String,
                     is_nullable: true,
+                    is_dictionary: false,
                     is_tag: true,
                     comment: "".to_string(),
                     escaped_name: "name".to_string(),
@@ -177,6 +191,7 @@ mod tests {
                     data_type: DatumKind::Timestamp,
                     is_nullable: true,
                     is_tag: true,
+                    is_dictionary: false,
                     comment: "".to_string(),
                     escaped_name: "birthday".to_string(),
                     default_value: None,
@@ -190,6 +205,7 @@ mod tests {
                     data_type: DatumKind::Boolean,
                     is_nullable: true,
                     is_tag: true,
+                    is_dictionary: false,
                     comment: "".to_string(),
                     escaped_name: "is_show".to_string(),
                     default_value: None,
@@ -203,6 +219,7 @@ mod tests {
                     data_type: DatumKind::Double,
                     is_nullable: true,
                     is_tag: true,
+                    is_dictionary: false,
                     comment: "".to_string(),
                     escaped_name: "money".to_string(),
                     default_value: None,

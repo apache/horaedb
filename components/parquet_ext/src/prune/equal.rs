@@ -1,9 +1,21 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use arrow::datatypes::SchemaRef;
 use datafusion::{
     common::Column,
-    logical_expr::{Expr, Operator},
+    logical_expr::{expr::InList, Expr, Operator},
     scalar::ScalarValue,
 };
 
@@ -173,11 +185,11 @@ fn normalize_predicate_expression(expr: &Expr) -> NormalizedExpr {
             Operator::NotEq => normalize_equal_expr(left, right, false),
             _ => unhandled,
         },
-        Expr::InList {
+        Expr::InList(InList {
             expr,
             list,
             negated,
-        } if list.len() < MAX_ELEMS_IN_LIST_FOR_FILTER => {
+        }) if list.len() < MAX_ELEMS_IN_LIST_FOR_FILTER => {
             if list.is_empty() {
                 if *negated {
                     // "not in empty list" is always true
@@ -344,7 +356,7 @@ mod tests {
                     Expr::not_eq(make_literal_expr(0), make_column_expr("c1")),
                     Expr::eq(make_literal_expr(1), make_column_expr("c2")),
                 ),
-                Expr::not(make_column_expr("c3")),
+                !make_column_expr("c3"),
             ),
         );
 
@@ -373,7 +385,7 @@ mod tests {
     fn test_normalize_unhandled() {
         let lt_expr = Expr::gt(make_column_expr("c0"), make_literal_expr(0));
         let empty_list_expr = Expr::in_list(make_column_expr("c0"), vec![], true);
-        let not_expr = Expr::not(make_column_expr("c0"));
+        let not_expr = !make_column_expr("c0");
 
         let unhandled_exprs = vec![lt_expr, empty_list_expr, not_expr];
         let expect_expr = NormalizedExpr::True;
@@ -415,7 +427,7 @@ mod tests {
                     Expr::not_eq(make_literal_expr(0), make_column_expr("c1")),
                     Expr::eq(make_literal_expr(1), make_column_expr("c2")),
                 ),
-                Expr::not(make_column_expr("c3")),
+                !make_column_expr("c3"),
             ),
         );
         assert!(EqPruner::new(&true_expr).prune(&f));

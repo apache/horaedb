@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Schema of table
 
@@ -340,8 +352,21 @@ impl IndexInWriterSchema {
     /// this column should be filled by null.
     ///
     /// Panic if the index_in_table is out of bound
+    #[inline]
     pub fn column_index_in_writer(&self, index_in_table: usize) -> Option<usize> {
         self.0[index_in_table]
+    }
+
+    /// Reserve the capacity for the additional columns.
+    #[inline]
+    pub fn reserve_columns(&mut self, additional: usize) {
+        self.0.reserve(additional);
+    }
+
+    /// Push a new column index.
+    #[inline]
+    pub fn push_column(&mut self, column_index: Option<usize>) {
+        self.0.push(column_index)
     }
 }
 
@@ -690,7 +715,7 @@ impl Schema {
         self.column_schemas.num_columns()
     }
 
-    /// Returns true if idx is primary key idnex
+    /// Returns true if idx is primary key index
     pub fn is_primary_key_index(&self, idx: &usize) -> bool {
         self.primary_key_indexes.contains(idx)
     }
@@ -791,7 +816,7 @@ impl Schema {
         writer_schema: &Schema,
         index_in_writer: &mut IndexInWriterSchema,
     ) -> std::result::Result<(), CompatError> {
-        index_in_writer.0.reserve(self.num_columns());
+        index_in_writer.reserve_columns(self.num_columns());
 
         let mut num_col_in_writer = 0;
         for column in self.columns() {
@@ -809,7 +834,7 @@ impl Schema {
                         .context(IncompatWriteColumn)?;
 
                     // Column is compatible, push index mapping
-                    index_in_writer.0.push(Some(writer_index));
+                    index_in_writer.push_column(Some(writer_index));
                 }
                 None => {
                     // Column is not found in writer, then the column should be nullable.
@@ -819,7 +844,7 @@ impl Schema {
                     );
 
                     // Column is nullable, push index mapping
-                    index_in_writer.0.push(None);
+                    index_in_writer.push_column(None);
                 }
             }
         }
@@ -859,34 +884,26 @@ impl Schema {
         }
     }
 
-    pub fn unique_keys(&self) -> Vec<&str> {
-        // Only filters on the columns belonging to the unique key can be pushed down.
-        if self.tsid_column().is_some() {
-            // When tsid exists, that means default primary key (tsid, timestamp) is used.
-            // So, all filters of tag columns(tsid is the hash result of all tags),
-            // timestamp key and tsid can be pushed down.
-            let mut keys = self
-                .columns()
-                .iter()
-                .filter_map(|column| {
-                    if column.is_tag {
-                        Some(column.name.as_str())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-            keys.extend([&self.tsid_column().unwrap().name, self.timestamp_name()]);
+    pub fn is_unique_column(&self, col_name: &str) -> bool {
+        // primary key is obvious unique.
+        let is_primary_key = self
+            .primary_key_indexes()
+            .iter()
+            .map(|key_idx| self.column(*key_idx).name.as_str())
+            .any(|primary_key| primary_key == col_name);
 
-            keys
-        } else {
-            // When tsid does not exist, that means user defined primary key is used.
-            // So, only filters of primary key can be pushed down.
-            self.primary_key_indexes()
-                .iter()
-                .map(|key_idx| self.column(*key_idx).name.as_str())
-                .collect()
+        if is_primary_key {
+            return true;
         }
+
+        if self.tsid_column().is_none() {
+            return false;
+        }
+
+        // When tsid exists, it means tag column is also unique.
+        self.columns()
+            .iter()
+            .any(|column| column.is_tag && column.name == col_name)
     }
 
     /// Panic if projection is invalid.
@@ -1292,9 +1309,10 @@ impl SchemaEncoder {
 
 #[cfg(test)]
 mod tests {
+    use bytes_ext::Bytes;
+
     use super::*;
     use crate::{
-        bytes::Bytes,
         datum::Datum,
         row::{Row, RowWithMeta},
         time::Timestamp,

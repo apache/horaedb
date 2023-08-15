@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Interpreter for insert statement
 
@@ -10,14 +22,13 @@ use std::{
 
 use arrow::{array::ArrayRef, error::ArrowError, record_batch::RecordBatch};
 use async_trait::async_trait;
+use codec::{compact::MemCompactEncoder, Encoder};
 use common_types::{
     column_block::{ColumnBlock, ColumnBlockBuilder},
     column_schema::ColumnId,
     datum::Datum,
-    hash::hash64,
     row::RowGroup,
 };
-use common_util::codec::{compact::MemCompactEncoder, Encoder};
 use datafusion::{
     common::ToDFSchema,
     error::DataFusionError,
@@ -28,6 +39,8 @@ use datafusion::{
     },
 };
 use df_operator::visitor::find_columns_by_expr;
+use hash_ext::hash64;
+use macros::define_result;
 use query_frontend::plan::InsertPlan;
 use snafu::{OptionExt, ResultExt, Snafu};
 use table_engine::table::{TableRef, WriteRequest};
@@ -64,9 +77,7 @@ pub enum Error {
     WriteTable { source: table_engine::table::Error },
 
     #[snafu(display("Failed to encode tsid, err:{}", source))]
-    EncodeTsid {
-        source: common_util::codec::compact::Error,
-    },
+    EncodeTsid { source: codec::compact::Error },
 
     #[snafu(display("Failed to convert arrow array to column block, err:{}", source))]
     ConvertColumnBlock {
@@ -197,7 +208,7 @@ impl<'a> TsidBuilder<'a> {
     }
 
     fn finish(self) -> u64 {
-        hash64(self.hash_bytes)
+        hash64(&self.hash_bytes[..])
     }
 }
 
@@ -345,7 +356,11 @@ fn get_or_extract_column_from_row_groups(
         .unwrap_or_else(|| {
             let data_type = row_groups.schema().column(column_idx).data_type;
             let iter = row_groups.iter_column(column_idx);
-            let mut builder = ColumnBlockBuilder::with_capacity(&data_type, iter.size_hint().0);
+            let mut builder = ColumnBlockBuilder::with_capacity(
+                &data_type,
+                iter.size_hint().0,
+                row_groups.schema().column(column_idx).is_dictionary,
+            );
 
             for datum in iter {
                 builder.append(datum.clone()).context(BuildColumnBlock)?;

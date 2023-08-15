@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! This module implements [write][1] and [query][2] for InfluxDB.
 //! [1]: https://docs.influxdata.com/influxdb/v1.8/tools/api/#write-http-endpoint
@@ -12,16 +24,17 @@ use ceresdbproto::storage::{
     RequestContext as GrpcRequestContext, WriteRequest as GrpcWriteRequest,
 };
 use common_types::request_id::RequestId;
-use common_util::{error::BoxError, time::InstantExt};
+use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, info};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use query_frontend::{
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,
 };
 use snafu::{ensure, ResultExt};
+use time_ext::InstantExt;
 
 use crate::{
     context::RequestContext,
@@ -30,10 +43,11 @@ use crate::{
         convert_influxql_output, convert_write_request, InfluxqlRequest, InfluxqlResponse,
         WriteRequest, WriteResponse,
     },
+    metrics::HTTP_HANDLER_COUNTER_VEC,
     Context, Proxy,
 };
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     pub async fn handle_influxdb_query(
         &self,
         ctx: RequestContext,
@@ -48,11 +62,23 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: RequestContext,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
+        let write_table_requests = convert_write_request(req)?;
+
+        let num_rows: usize = write_table_requests
+            .iter()
+            .map(|req| {
+                req.entries
+                    .iter()
+                    .map(|e| e.field_groups.len())
+                    .sum::<usize>()
+            })
+            .sum();
+
         let table_request = GrpcWriteRequest {
             context: Some(GrpcRequestContext {
                 database: ctx.schema.clone(),
             }),
-            table_requests: convert_write_request(req)?,
+            table_requests: write_table_requests,
         };
         let proxy_context = Context {
             timeout: ctx.timeout,
@@ -60,16 +86,39 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             enable_partition_table_access: false,
             forwarded_from: None,
         };
-        let result = self
+
+        match self
             .handle_write_internal(proxy_context, table_request)
-            .await?;
+            .await
+        {
+            Ok(result) => {
+                if result.failed != 0 {
+                    HTTP_HANDLER_COUNTER_VEC.write_failed.inc();
+                    HTTP_HANDLER_COUNTER_VEC
+                        .write_failed_row
+                        .inc_by(result.failed as u64);
+                    ErrNoCause {
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        msg: format!("fail to write storage, failed rows:{:?}", result.failed),
+                    }
+                    .fail()?;
+                }
 
-        debug!(
-            "Influxdb write finished, catalog:{}, schema:{}, result:{result:?}",
-            ctx.catalog, ctx.schema
-        );
+                debug!(
+                    "Influxdb write finished, catalog:{}, schema:{}, result:{result:?}",
+                    ctx.catalog, ctx.schema
+                );
 
-        Ok(())
+                Ok(())
+            }
+            Err(e) => {
+                HTTP_HANDLER_COUNTER_VEC.write_failed.inc();
+                HTTP_HANDLER_COUNTER_VEC
+                    .write_failed_row
+                    .inc_by(num_rows as u64);
+                Err(e)
+            }
+        }
     }
 
     async fn fetch_influxdb_query_output(

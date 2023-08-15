@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Table version
 
@@ -17,7 +29,7 @@ use common_types::{
     time::{TimeRange, Timestamp},
     SequenceNumber,
 };
-use common_util::define_result;
+use macros::define_result;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
@@ -32,7 +44,7 @@ use crate::{
         manager::{FileId, LevelsController},
     },
     table::{
-        data::MemTableId,
+        data::{MemTableId, DEFAULT_ALLOC_STEP},
         version_edit::{AddFile, VersionEdit},
     },
 };
@@ -130,6 +142,8 @@ impl fmt::Debug for MemTableState {
         f.debug_struct("MemTableState")
             .field("time_range", &self.time_range)
             .field("id", &self.id)
+            .field("mem", &self.mem.approximate_memory_usage())
+            .field("metrics", &self.mem.metrics())
             .field("last_sequence", &self.mem.last_sequence())
             .finish()
     }
@@ -278,16 +292,19 @@ impl MemTableView {
         mutable_usage + immutable_usage
     }
 
-    /// Switch all memtables or just sample the segment duration.
+    /// Instead of replace the old memtable by a new memtable, we just move the
+    /// old memtable to immutable memtables and left mutable memtables
+    /// empty. New mutable memtable will be constructed via put request.
+    fn switch_memtables(&mut self) -> Option<SequenceNumber> {
+        self.mutables.move_to_inmem(&mut self.immutables)
+    }
+
+    /// Sample the segment duration.
     ///
     /// If the sampling memtable is still active, return the suggested segment
     /// duration or move all mutable memtables into immutable memtables if
     /// the sampling memtable is freezed and returns None.
-    ///
-    /// Instead of replace the old memtable by a new memtable, we just move the
-    /// old memtable to immutable memtables and left mutable memtables
-    /// empty. New mutable memtable will be constructed via put request.
-    fn switch_memtables_or_suggest_duration(&mut self) -> Option<Duration> {
+    fn suggest_duration(&mut self) -> Option<Duration> {
         if let Some(v) = &mut self.sampling_mem {
             if !v.freezed {
                 // Other memtable should be empty during sampling phase.
@@ -304,15 +321,15 @@ impl MemTableView {
             }
         }
 
-        self.mutables.move_to_inmem(&mut self.immutables);
-
         None
     }
 
-    fn freeze_sampling_memtable(&mut self) {
+    fn freeze_sampling_memtable(&mut self) -> Option<SequenceNumber> {
         if let Some(v) = &mut self.sampling_mem {
             v.freezed = true;
+            return Some(v.mem.last_sequence());
         }
+        None
     }
 
     /// Returns memtables need to be flushed. Only sampling memtable and
@@ -414,13 +431,20 @@ impl MutableMemTableSet {
     }
 
     /// Move all mutable memtables to immutable memtables.
-    fn move_to_inmem(&mut self, immem: &mut ImmutableMemTableSet) {
-        for m in self.0.values() {
-            let state = m.clone();
+    fn move_to_inmem(&mut self, immem: &mut ImmutableMemTableSet) -> Option<SequenceNumber> {
+        let last_seq = self
+            .0
+            .values()
+            .map(|m| {
+                let last_sequence = m.mem.last_sequence();
+                immem.0.insert(m.id, m.clone());
 
-            immem.0.insert(m.id, state);
-        }
+                last_sequence
+            })
+            .max();
+
         self.0.clear();
+        last_seq
     }
 
     fn memtables_for_read(&self, time_range: TimeRange, mems: &mut MemTableVec) {
@@ -508,6 +532,12 @@ struct TableVersionInner {
     /// The earliest sequence number of the entries already flushed (inclusive).
     /// All log entry with sequence <= `flushed_sequence` can be deleted
     flushed_sequence: SequenceNumber,
+    /// Max id of the sst file.
+    ///
+    /// The id is allocated by step, so there are some still unused ids smaller
+    /// than the max one. And this field is only a mem state for Manifest,
+    /// it can only be updated during recover or by Manifest.
+    max_file_id: FileId,
 }
 
 impl TableVersionInner {
@@ -546,6 +576,7 @@ impl TableVersion {
                 memtable_view: MemTableView::new(),
                 levels_controller: LevelsController::new(purge_queue),
                 flushed_sequence: 0,
+                max_file_id: 0,
             }),
         }
     }
@@ -568,29 +599,29 @@ impl TableVersion {
             .total_memory_usage()
     }
 
-    /// Switch all mutable memtables or just return the suggested segment
-    /// duration if sampling memtable is still active.
+    /// Return the suggested segment duration if sampling memtable is still
+    /// active.
+    pub fn suggest_duration(&self) -> Option<Duration> {
+        self.inner.write().unwrap().memtable_view.suggest_duration()
+    }
+
+    /// Switch all mutable memtables
     ///
-    /// Returns a duration if a sampled segment duration needs to be persisted.
-    ///
-    /// REQUIRE: Do in write worker
-    pub fn switch_memtables_or_suggest_duration(&self) -> Option<Duration> {
-        self.inner
-            .write()
-            .unwrap()
-            .memtable_view
-            .switch_memtables_or_suggest_duration()
+    /// Returns the maxium `SequenceNumber` in the mutable memtables needs to be
+    /// freezed.
+    pub fn switch_memtables(&self) -> Option<SequenceNumber> {
+        self.inner.write().unwrap().memtable_view.switch_memtables()
     }
 
     /// Stop timestamp sampling and freezed the sampling memtable.
     ///
     /// REQUIRE: Do in write worker
-    pub fn freeze_sampling(&self) {
+    pub fn freeze_sampling_memtable(&self) -> Option<SequenceNumber> {
         self.inner
             .write()
             .unwrap()
             .memtable_view
-            .freeze_sampling_memtable();
+            .freeze_sampling_memtable()
     }
 
     /// See [MemTableView::pick_memtables_to_flush]
@@ -660,6 +691,8 @@ impl TableVersion {
         // TODO(yingwen): else, log warning
         inner.flushed_sequence = cmp::max(inner.flushed_sequence, edit.flushed_sequence);
 
+        inner.max_file_id = cmp::max(inner.max_file_id, edit.max_file_id);
+
         // Add sst files to level first.
         for add_file in edit.files_to_add {
             inner
@@ -685,6 +718,8 @@ impl TableVersion {
         let mut inner = self.inner.write().unwrap();
 
         inner.flushed_sequence = cmp::max(inner.flushed_sequence, meta.flushed_sequence);
+
+        inner.max_file_id = cmp::max(inner.max_file_id, meta.max_file_id);
 
         for add_file in meta.files.into_values() {
             inner
@@ -727,9 +762,9 @@ impl TableVersion {
         picker_ctx: PickerContext,
         picker: &CompactionPickerRef,
     ) -> picker::Result<CompactionTask> {
-        let inner = self.inner.read().unwrap();
+        let mut inner = self.inner.write().unwrap();
 
-        picker.pick_compaction(picker_ctx, &inner.levels_controller)
+        picker.pick_compaction(picker_ctx, &mut inner.levels_controller)
     }
 
     pub fn has_expired_sst(&self, expire_time: Option<Timestamp>) -> bool {
@@ -770,6 +805,7 @@ impl TableVersion {
         TableVersionSnapshot {
             flushed_sequence: inner.flushed_sequence,
             files,
+            max_file_id: inner.max_file_id,
         }
     }
 }
@@ -777,6 +813,7 @@ impl TableVersion {
 pub struct TableVersionSnapshot {
     pub flushed_sequence: SequenceNumber,
     pub files: HashMap<FileId, AddFile>,
+    pub max_file_id: FileId,
 }
 
 /// During recovery, we apply all version edit to [TableVersionMeta] first, then
@@ -798,6 +835,12 @@ impl TableVersionMeta {
 
             self.files.insert(add_file.file.id, add_file);
         }
+
+        self.max_file_id = cmp::max(self.max_file_id, edit.max_file_id);
+
+        // aligned max file id.
+        self.max_file_id =
+            (self.max_file_id + DEFAULT_ALLOC_STEP - 1) / DEFAULT_ALLOC_STEP * DEFAULT_ALLOC_STEP;
 
         for delete_file in edit.files_to_delete {
             self.files.remove(&delete_file.file_id);
@@ -870,7 +913,8 @@ mod tests {
         assert!(mutable.is_none());
 
         // Nothing to switch.
-        assert!(version.switch_memtables_or_suggest_duration().is_none());
+        assert!(version.suggest_duration().is_none());
+        assert!(version.switch_memtables().is_none());
     }
 
     fn check_flushable_mem_with_sampling(
@@ -936,8 +980,9 @@ mod tests {
 
         version.set_sampling(sampling_mem);
 
-        let duration = version.switch_memtables_or_suggest_duration().unwrap();
+        let duration = version.suggest_duration().unwrap();
         assert_eq!(table_options::DEFAULT_SEGMENT_DURATION, duration);
+        assert!(version.switch_memtables().is_none());
 
         // Flushable memtables only contains sampling memtable.
         let flushable_mems = version.pick_memtables_to_flush(last_sequence);
@@ -954,9 +999,11 @@ mod tests {
         assert_eq!(memtable_id, actual_memtable.id);
 
         // Switch still return duration before freezed.
-        let duration = version.switch_memtables_or_suggest_duration().unwrap();
+        let duration = version.suggest_duration().unwrap();
         assert_eq!(table_options::DEFAULT_SEGMENT_DURATION, duration);
+        assert!(version.switch_memtables().is_none());
 
+        version.switch_memtables();
         // Flushable memtables only contains sampling memtable before sampling
         // memtable is freezed.
         let flushable_mems = version.pick_memtables_to_flush(last_sequence);
@@ -977,11 +1024,11 @@ mod tests {
         version.set_sampling(sampling_mem);
         assert_eq!(
             table_options::DEFAULT_SEGMENT_DURATION,
-            version.switch_memtables_or_suggest_duration().unwrap()
+            version.suggest_duration().unwrap()
         );
-
+        assert!(version.switch_memtables().is_none());
         // Freeze the sampling memtable.
-        version.freeze_sampling();
+        version.freeze_sampling_memtable();
 
         // No memtable after switch and freezed.
         let now = Timestamp::now();
@@ -1029,7 +1076,8 @@ mod tests {
         assert_eq!(memtable_id2, read_view.memtables[0].id);
 
         // Switch mutable memtable.
-        assert!(version.switch_memtables_or_suggest_duration().is_none());
+        assert!(version.suggest_duration().is_none());
+        assert!(version.switch_memtables().is_some());
         // No memtable after switch.
         let now = Timestamp::now();
         assert!(version
@@ -1055,7 +1103,7 @@ mod tests {
 
         // Prepare sampling memtable.
         version.set_sampling(sampling_mem);
-        version.freeze_sampling();
+        version.freeze_sampling_memtable();
 
         let now = Timestamp::now();
         let time_range =
@@ -1073,8 +1121,8 @@ mod tests {
         version.insert_mutable(mem_state);
 
         // Switch memtable.
-        assert!(version.switch_memtables_or_suggest_duration().is_none());
-
+        assert!(version.suggest_duration().is_none());
+        assert!(version.switch_memtables().is_some());
         let max_sequence = 120;
         let file_id = 13;
         let add_file = AddFileMocker::new(file_id)
@@ -1086,6 +1134,7 @@ mod tests {
             mems_to_remove: vec![memtable_id1, memtable_id2],
             files_to_add: vec![add_file],
             files_to_delete: vec![],
+            max_file_id: 0,
         };
         version.apply_edit(edit);
 

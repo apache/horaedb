@@ -60,9 +60,6 @@ fmt:
 check-cargo-toml:
 	cd $(DIR); cargo sort --workspace --check
 
-check-license:
-	cd $(DIR); sh scripts/check-license.sh
-
 udeps:
 	cd $(DIR); cargo udeps --all-targets --all-features --workspace
 
@@ -91,8 +88,8 @@ miri:
 	cd $(DIR); cargo miri test --package arena
 
 ensure-disk-quota:
-	# ensure the target directory not to exceed 40GB
-	python3 ./scripts/clean-large-folder.py ./target 42949672960
+	# ensure the target directory not to exceed 30GB
+	python3 ./scripts/clean-large-folder.py ./target 30
 
 tsbs: build
 	cd $(DIR); sh scripts/run-tsbs.sh

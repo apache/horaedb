@@ -1,8 +1,24 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Table implementation
 
-use std::{collections::HashMap, fmt, sync::Mutex};
+use std::{
+    collections::HashMap,
+    fmt,
+    sync::{Arc, Mutex},
+};
 
 use async_trait::async_trait;
 use common_types::{
@@ -10,9 +26,10 @@ use common_types::{
     schema::Schema,
     time::TimeRange,
 };
-use common_util::error::BoxError;
 use datafusion::{common::Column, logical_expr::Expr};
+use future_ext::CancellationSafeFuture;
 use futures::TryStreamExt;
+use generic_error::BoxError;
 use log::{error, warn};
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
@@ -21,9 +38,9 @@ use table_engine::{
     stream::{PartitionedStreams, SendableRecordBatchStream},
     table::{
         AlterOptions, AlterSchema, AlterSchemaRequest, Compact, Flush, FlushRequest, Get,
-        GetInvalidPrimaryKey, GetNullPrimaryKey, GetRequest, MergeWrite, ReadOptions, ReadOrder,
-        ReadRequest, Result, Scan, Table, TableId, TableStats, TooManyPendingWrites,
-        WaitForPendingWrites, Write, WriteRequest,
+        GetInvalidPrimaryKey, GetNullPrimaryKey, GetRequest, MergeWrite, ReadOptions, ReadRequest,
+        Result, Scan, Table, TableId, TableStats, TooManyPendingWrites, WaitForPendingWrites,
+        Write, WriteRequest,
     },
     ANALYTIC_ENGINE_TYPE,
 };
@@ -33,7 +50,7 @@ use trace_metric::MetricsCollector;
 use self::data::TableDataRef;
 use crate::{
     instance::{alter::Alterer, write::Writer, InstanceRef},
-    space::{SpaceAndTable, SpaceId},
+    space::{SpaceAndTable, SpaceRef},
 };
 
 pub mod data;
@@ -47,38 +64,56 @@ const GET_METRICS_COLLECTOR_NAME: &str = "get";
 // writes.
 const ADDITIONAL_PENDING_WRITE_CAP_RATIO: usize = 10;
 
+struct WriteRequests {
+    pub space: SpaceRef,
+    pub table_data: TableDataRef,
+    pub instance: InstanceRef,
+    pub pending_writes: Arc<Mutex<PendingWriteQueue>>,
+}
+
+impl WriteRequests {
+    pub fn new(
+        instance: InstanceRef,
+        space: SpaceRef,
+        table_data: TableDataRef,
+        pending_writes: Arc<Mutex<PendingWriteQueue>>,
+    ) -> Self {
+        Self {
+            space,
+            instance,
+            table_data,
+            pending_writes,
+        }
+    }
+}
+
 /// Table trait implementation
 pub struct TableImpl {
-    space_table: SpaceAndTable,
+    space: SpaceRef,
     /// Instance
     instance: InstanceRef,
     /// Engine type
     engine_type: String,
-
-    space_id: SpaceId,
-    table_id: TableId,
 
     /// Holds a strong reference to prevent the underlying table from being
     /// dropped when this handle exist.
     table_data: TableDataRef,
 
     /// Buffer for written rows.
-    pending_writes: Mutex<PendingWriteQueue>,
+    pending_writes: Arc<Mutex<PendingWriteQueue>>,
 }
 
 impl TableImpl {
     pub fn new(instance: InstanceRef, space_table: SpaceAndTable) -> Self {
         let pending_writes = Mutex::new(PendingWriteQueue::new(instance.max_rows_in_write_queue));
         let table_data = space_table.table_data().clone();
-        let space_id = space_table.space().space_id();
+        let space = space_table.space().clone();
         Self {
-            space_table,
+            space,
             instance,
             engine_type: ANALYTIC_ENGINE_TYPE.to_string(),
-            space_id,
-            table_id: table_data.id,
             table_data,
-            pending_writes,
+            pending_writes: Arc::new(pending_writes),
         }
     }
 }
@@ -86,8 +121,8 @@ impl TableImpl {
 impl fmt::Debug for TableImpl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TableImpl")
-            .field("space_id", &self.space_id)
-            .field("table_id", &self.table_id)
+            .field("space_id", &self.space.id)
+            .field("table_id", &self.table_data.id)
             .finish()
     }
 }
@@ -250,25 +285,28 @@ impl TableImpl {
             let mut pending_queue = self.pending_writes.lock().unwrap();
             pending_queue.try_push(request)
         };
-        let (request, mut serial_exec, notifiers) = match queue_res {
+
+        match queue_res {
             QueueResult::First => {
                 // This is the first request in the queue, and we should
                 // take responsibilities for merging and writing the
                 // requests in the queue.
-                let serial_exec = self.table_data.serial_exec.lock().await;
-                // The `serial_exec` is acquired, let's merge the pending requests and write
-                // them all.
-                let pending_writes = {
-                    let mut pending_queue = self.pending_writes.lock().unwrap();
-                    pending_queue.take_pending_writes()
-                };
-                assert!(
-                    !pending_writes.is_empty(),
-                    "The pending writes should contain at least the one just pushed."
+                let write_requests = WriteRequests::new(
+                    self.instance.clone(),
+                    self.space.clone(),
+                    self.table_data.clone(),
+                    self.pending_writes.clone(),
                 );
-                let merged_write_request =
-                    merge_pending_write_requests(pending_writes.writes, pending_writes.num_rows);
-                (merged_write_request, serial_exec, pending_writes.notifiers)
+
+                match CancellationSafeFuture::new(
+                    Self::write_requests(write_requests),
+                    self.instance.write_runtime().clone(),
+                )
+                .await
+                {
+                    Ok(_) => Ok(num_rows),
+                    Err(e) => Err(e),
+                }
             }
             QueueResult::Waiter(rx) => {
                 // The request is successfully pushed into the queue, and just wait for the
@@ -276,9 +314,9 @@ impl TableImpl {
                 match rx.await {
                     Ok(res) => {
                         res.box_err().context(Write { table: self.name() })?;
-                        return Ok(num_rows);
+                        Ok(num_rows)
                     }
-                    Err(_) => return WaitForPendingWrites { table: self.name() }.fail(),
+                    Err(_) => WaitForPendingWrites { table: self.name() }.fail(),
                 }
             }
             QueueResult::Reject(_) => {
@@ -288,24 +326,44 @@ impl TableImpl {
                     self.instance.max_rows_in_write_queue,
                     self.name(),
                 );
-                return TooManyPendingWrites { table: self.name() }.fail();
+                TooManyPendingWrites { table: self.name() }.fail()
             }
+        }
+    }
+
+    async fn write_requests(write_requests: WriteRequests) -> Result<()> {
+        let mut serial_exec = write_requests.table_data.serial_exec.lock().await;
+        // The `serial_exec` is acquired, let's merge the pending requests and write
+        // them all.
+        let pending_writes = {
+            let mut pending_queue = write_requests.pending_writes.lock().unwrap();
+            pending_queue.take_pending_writes()
         };
+        assert!(
+            !pending_writes.is_empty(),
+            "The pending writes should contain at least the one just pushed."
+        );
+        let merged_write_request =
+            merge_pending_write_requests(pending_writes.writes, pending_writes.num_rows);
 
         let mut writer = Writer::new(
-            self.instance.clone(),
-            self.space_table.clone(),
+            write_requests.instance,
+            write_requests.space,
+            write_requests.table_data.clone(),
             &mut serial_exec,
         );
         let write_res = writer
-            .write(request)
+            .write(merged_write_request)
             .await
             .box_err()
-            .context(Write { table: self.name() });
+            .context(Write {
+                table: write_requests.table_data.name.clone(),
+            });
 
         // There is no waiter for pending writes, return the write result.
+        let notifiers = pending_writes.notifiers;
         if notifiers.is_empty() {
-            return write_res;
+            return Ok(());
         }
 
         // Notify the waiters for the pending writes.
@@ -315,11 +373,11 @@ impl TableImpl {
                     if notifier.send(Ok(())).is_err() {
                         warn!(
                             "Failed to notify the ok result of pending writes, table:{}",
-                            self.name()
+                            write_requests.table_data.name
                         );
                     }
                 }
-                Ok(num_rows)
+                Ok(())
             }
             Err(e) => {
                 let err_msg = format!("Failed to do merge write, err:{e}");
@@ -328,7 +386,7 @@ impl TableImpl {
                     if notifier.send(err).is_err() {
                         warn!(
                             "Failed to notify the error result of pending writes, table:{}",
-                            self.name()
+                            write_requests.table_data.name
                         );
                     }
                 }
@@ -341,6 +399,17 @@ impl TableImpl {
     fn should_queue_write_request(&self, request: &WriteRequest) -> bool {
         request.row_group.num_rows() < self.instance.max_rows_in_write_queue
     }
+}
+
+pub fn support_pushdown(schema: &Schema, need_dedup: bool, col_names: &[String]) -> bool {
+    if !need_dedup {
+        return true;
+    }
+
+    // When table need dedup, only unique keys columns support pushdown
+    col_names
+        .iter()
+        .all(|col_name| schema.is_unique_column(col_name.as_str()))
 }
 
 #[async_trait]
@@ -373,12 +442,14 @@ impl Table for TableImpl {
         self.table_data.metrics.table_stats()
     }
 
+    fn support_pushdown(&self, read_schema: &Schema, col_names: &[String]) -> bool {
+        let need_dedup = self.table_data.table_options().need_dedup();
+
+        support_pushdown(read_schema, need_dedup, col_names)
+    }
+
     async fn write(&self, request: WriteRequest) -> Result<usize> {
-        let _timer = self
-            .space_table
-            .table_data()
-            .metrics
-            .start_table_total_timer();
+        let _timer = self.table_data.metrics.start_table_total_timer();
 
         if self.should_queue_write_request(&request) {
             return self.write_with_pending_queue(request).await;
@@ -387,7 +458,8 @@ impl Table for TableImpl {
         let mut serial_exec = self.table_data.serial_exec.lock().await;
         let mut writer = Writer::new(
             self.instance.clone(),
-            self.space_table.clone(),
+            self.space.clone(),
+            self.table_data.clone(),
             &mut serial_exec,
         );
         writer
@@ -401,7 +473,7 @@ impl Table for TableImpl {
         request.opts.read_parallelism = 1;
         let mut streams = self
             .instance
-            .partitioned_read_from_table(&self.space_table, request)
+            .partitioned_read_from_table(&self.table_data, request)
             .await
             .box_err()
             .context(Scan { table: self.name() })?;
@@ -448,7 +520,6 @@ impl Table for TableImpl {
             opts: ReadOptions::default(),
             projected_schema: request.projected_schema,
             predicate,
-            order: ReadOrder::None,
             metrics_collector: MetricsCollector::new(GET_METRICS_COLLECTOR_NAME.to_string()),
         };
         let mut batch_stream = self
@@ -492,7 +563,7 @@ impl Table for TableImpl {
     async fn partitioned_read(&self, request: ReadRequest) -> Result<PartitionedStreams> {
         let streams = self
             .instance
-            .partitioned_read_from_table(&self.space_table, request)
+            .partitioned_read_from_table(&self.table_data, request)
             .await
             .box_err()
             .context(Scan { table: self.name() })?;
