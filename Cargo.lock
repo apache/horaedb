@@ -2339,6 +2339,7 @@ name = "df_engine_extensions"
 version = "1.2.6-alpha"
 dependencies = [
  "arrow 43.0.0",
+ "catalog",
  "common_types",
  "datafusion",
  "generic_error",

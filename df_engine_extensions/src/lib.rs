@@ -15,4 +15,3 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 pub mod dist_sql_query;
-pub mod executor_preprocessor;

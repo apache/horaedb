@@ -18,6 +18,8 @@ pub mod consts;
 pub mod manager;
 pub mod schema;
 pub mod table_operator;
+#[cfg(feature = "test")]
+pub mod test_util;
 
 use std::sync::Arc;
 
