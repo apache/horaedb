@@ -315,6 +315,13 @@ where
     /// This implementation will fill the whole buf as much as possible, and the
     /// only scenario where the buf is not fully filled is that the serialized
     /// bytes from the `self.key_views` are exhausted.
+    ///
+    /// NOTE: The best way is to fill the `buf` key after key rather than fill
+    /// the `buf`. And an example can illustrate the reason for this way, saying
+    /// there are two `key_views`s, ['a', 'bc'], and ['ab', 'c'], in the way to
+    /// fill the buf as much as possible, the two `key_views`s will output the
+    /// same hash result, while the best way can generate different results.
+    /// However, here the best way is not chose for compatibility.
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut total_n_bytes = 0;
         loop {
