@@ -204,7 +204,7 @@ impl<'a> TsidBuilder<'a> {
     }
 
     fn finish(self) -> u64 {
-        hash64(self.hash_bytes)
+        hash64(&self.hash_bytes[..])
     }
 }
 

@@ -498,7 +498,7 @@ impl Datum {
             Datum::Timestamp(v) => v.as_i64() as u64,
             Datum::Double(v) => *v as u64,
             Datum::Float(v) => *v as u64,
-            Datum::Varbinary(v) => hash64(v),
+            Datum::Varbinary(v) => hash64(&v[..]),
             Datum::String(v) => hash64(v.as_bytes()),
             Datum::UInt64(v) => *v,
             Datum::UInt32(v) => *v as u64,
@@ -937,7 +937,6 @@ impl Datum {
         }
     }
 
-    #[cfg(test)]
     pub fn as_view(&self) -> DatumView {
         match self {
             Datum::Null => DatumView::Null,
@@ -1056,7 +1055,7 @@ impl Serialize for Datum {
 /// A view to a datum.
 ///
 /// Holds copy of integer like datum and reference of string like datum.
-#[derive(Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum DatumView<'a> {
     Null,
     Timestamp(Timestamp),
