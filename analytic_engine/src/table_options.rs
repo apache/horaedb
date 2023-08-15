@@ -717,7 +717,11 @@ fn merge_table_options(
     let mut table_opts = table_old_opts.clone();
     if is_create {
         if let Some(v) = options.get(SEGMENT_DURATION) {
-            table_opts.segment_duration = Some(parse_duration(v).context(ParseDuration)?);
+            if v.is_empty() {
+                table_opts.segment_duration = None;
+            } else {
+                table_opts.segment_duration = Some(parse_duration(v).context(ParseDuration)?);
+            }
         }
         if let Some(v) = options.get(UPDATE_MODE) {
             table_opts.update_mode = UpdateMode::parse_from(v)?;
