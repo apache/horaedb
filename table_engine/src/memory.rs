@@ -118,6 +118,10 @@ impl Table for MemoryTable {
         TableStats::default()
     }
 
+    fn support_pushdown(&self, _read_schema: &Schema, _col_names: &[String]) -> bool {
+        false
+    }
+
     async fn write(&self, request: WriteRequest) -> Result<usize> {
         // TODO(yingwen) Maybe check schema?
         let mut row_groups = self.row_groups.write().unwrap();

@@ -884,34 +884,26 @@ impl Schema {
         }
     }
 
-    pub fn unique_keys(&self) -> Vec<&str> {
-        // Only filters on the columns belonging to the unique key can be pushed down.
-        if self.tsid_column().is_some() {
-            // When tsid exists, that means default primary key (tsid, timestamp) is used.
-            // So, all filters of tag columns(tsid is the hash result of all tags),
-            // timestamp key and tsid can be pushed down.
-            let mut keys = self
-                .columns()
-                .iter()
-                .filter_map(|column| {
-                    if column.is_tag {
-                        Some(column.name.as_str())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-            keys.extend([&self.tsid_column().unwrap().name, self.timestamp_name()]);
+    pub fn is_unique_column(&self, col_name: &str) -> bool {
+        // primary key is obvious unique.
+        let is_primary_key = self
+            .primary_key_indexes()
+            .iter()
+            .map(|key_idx| self.column(*key_idx).name.as_str())
+            .any(|primary_key| primary_key == col_name);
 
-            keys
-        } else {
-            // When tsid does not exist, that means user defined primary key is used.
-            // So, only filters of primary key can be pushed down.
-            self.primary_key_indexes()
-                .iter()
-                .map(|key_idx| self.column(*key_idx).name.as_str())
-                .collect()
+        if is_primary_key {
+            return true;
         }
+
+        if self.tsid_column().is_none() {
+            return false;
+        }
+
+        // When tsid exists, it means tag column is also unique.
+        self.columns()
+            .iter()
+            .any(|column| column.is_tag && column.name == col_name)
     }
 
     /// Panic if projection is invalid.

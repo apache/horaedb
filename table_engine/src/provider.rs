@@ -23,9 +23,7 @@ use std::{
 
 use arrow::datatypes::SchemaRef;
 use async_trait::async_trait;
-use common_types::{
-    projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema, UPDATE_MODE,
-};
+use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
 use datafusion::{
     config::{ConfigEntry, ConfigExtension, ExtensionOptions},
     datasource::TableProvider,
@@ -186,12 +184,13 @@ impl TableProviderAdapter {
     }
 
     fn check_and_build_predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
-        let pushdown_states = self.pushdown_inner(&filters.iter().collect::<Vec<_>>());
         let pushdown_filters = filters
             .iter()
-            .zip(pushdown_states.iter())
-            .filter_map(|(filter, state)| {
-                if matches!(state, &TableProviderFilterPushDown::Exact) {
+            .filter_map(|filter| {
+                let filter_cols = visitor::find_columns_by_expr(filter);
+
+                let support_pushdown = self.table.support_pushdown(&self.read_schema, &filter_cols);
+                if support_pushdown {
                     Some(filter.clone())
                 } else {
                     None
@@ -205,33 +204,14 @@ impl TableProviderAdapter {
             .build()
     }
 
-    fn only_filter_unique_key_columns(filter: &Expr, unique_keys: &[&str]) -> bool {
-        let filter_cols = visitor::find_columns_by_expr(filter);
-        for filter_col in filter_cols {
-            // If a column which is not part of the unique key occurred in `filter`, the
-            // `filter` shouldn't be pushed down.
-            if !unique_keys.contains(&filter_col.as_str()) {
-                return false;
-            }
-        }
-        true
-    }
-
     fn pushdown_inner(&self, filters: &[&Expr]) -> Vec<TableProviderFilterPushDown> {
-        let unique_keys = self.read_schema.unique_keys();
-        // TODO: add pushdown check in table trait
-        let options = &self.table.options();
-        let is_append = matches!(options.get(UPDATE_MODE), Some(mode) if mode == "APPEND");
-        let is_system_engine = self.table.engine_type() == "system";
-
         filters
             .iter()
             .map(|filter| {
-                if is_system_engine {
-                    return TableProviderFilterPushDown::Inexact;
-                }
+                let filter_cols = visitor::find_columns_by_expr(filter);
 
-                if is_append || Self::only_filter_unique_key_columns(filter, &unique_keys) {
+                let support_pushdown = self.table.support_pushdown(&self.read_schema, &filter_cols);
+                if support_pushdown {
                     TableProviderFilterPushDown::Exact
                 } else {
                     TableProviderFilterPushDown::Inexact
@@ -396,17 +376,27 @@ impl ExecutionPlan for ScanTable {
     }
 
     fn metrics(&self) -> Option<MetricsSet> {
+        let mut metric_set = MetricsSet::new();
+
         let mut format_visitor = FormatCollectorVisitor::default();
         self.metrics_collector.visit(&mut format_visitor);
         let metrics_desc = format_visitor.into_string();
+        metric_set.push(Arc::new(Metric::new(
+            MetricValue::Count {
+                name: format!("\n{metrics_desc}").into(),
+                count: Count::new(),
+            },
+            None,
+        )));
 
-        let metric_value = MetricValue::Count {
-            name: format!("\n{metrics_desc}").into(),
-            count: Count::new(),
-        };
-        let metric = Metric::new(metric_value, None);
-        let mut metric_set = MetricsSet::new();
-        metric_set.push(Arc::new(metric));
+        let pushdown_filters = &self.predicate;
+        metric_set.push(Arc::new(Metric::new(
+            MetricValue::Count {
+                name: format!("\n{pushdown_filters:?}").into(),
+                count: Count::new(),
+            },
+            None,
+        )));
 
         Some(metric_set)
     }
@@ -436,139 +426,5 @@ impl fmt::Debug for ScanTable {
             .field("read_parallelism", &self.read_parallelism)
             .field("predicate", &self.predicate)
             .finish()
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::sync::Arc;
-
-    use common_types::{
-        column_schema,
-        datum::DatumKind,
-        schema::{Builder, Schema},
-    };
-    use datafusion::{
-        logical_expr::{col, Expr},
-        scalar::ScalarValue,
-    };
-
-    use super::*;
-    use crate::{memory::MemoryTable, table::TableId};
-
-    fn build_user_defined_primary_key_schema() -> Schema {
-        Builder::new()
-            .auto_increment_column_id(true)
-            .add_key_column(
-                column_schema::Builder::new("user_define1".to_string(), DatumKind::String)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_key_column(
-                column_schema::Builder::new("timestamp".to_string(), DatumKind::Timestamp)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field1".to_string(), DatumKind::String)
-                    .is_tag(true)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field2".to_string(), DatumKind::Double)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .build()
-            .unwrap()
-    }
-
-    fn build_default_primary_key_schema() -> Schema {
-        Builder::new()
-            .auto_increment_column_id(true)
-            .add_key_column(
-                column_schema::Builder::new("tsid".to_string(), DatumKind::UInt64)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_key_column(
-                column_schema::Builder::new("timestamp".to_string(), DatumKind::Timestamp)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("user_define1".to_string(), DatumKind::String)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field1".to_string(), DatumKind::String)
-                    .is_tag(true)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field2".to_string(), DatumKind::Double)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .build()
-            .unwrap()
-    }
-
-    fn build_filters() -> Vec<Expr> {
-        let filter1 = col("timestamp").lt(Expr::Literal(ScalarValue::UInt64(Some(10086))));
-        let filter2 =
-            col("user_define1").eq(Expr::Literal(ScalarValue::Utf8(Some("10086".to_string()))));
-        let filter3 = col("field1").eq(Expr::Literal(ScalarValue::Utf8(Some("10087".to_string()))));
-        let filter4 = col("field2").eq(Expr::Literal(ScalarValue::Float64(Some(10088.0))));
-
-        vec![filter1, filter2, filter3, filter4]
-    }
-
-    #[test]
-    pub fn test_push_down_in_user_defined_primary_key_case() {
-        let test_filters = build_filters();
-        let user_defined_pk_schema = build_user_defined_primary_key_schema();
-
-        let table = MemoryTable::new(
-            "test_table".to_string(),
-            TableId::new(0),
-            user_defined_pk_schema,
-            "memory".to_string(),
-        );
-        let provider = TableProviderAdapter::new(Arc::new(table));
-        let predicate = provider.check_and_build_predicate_from_filters(&test_filters);
-
-        let expected_filters = vec![test_filters[0].clone(), test_filters[1].clone()];
-        assert_eq!(predicate.exprs(), &expected_filters);
-    }
-
-    #[test]
-    pub fn test_push_down_in_default_primary_key_case() {
-        let test_filters = build_filters();
-        let default_pk_schema = build_default_primary_key_schema();
-
-        let table = MemoryTable::new(
-            "test_table".to_string(),
-            TableId::new(0),
-            default_pk_schema,
-            "memory".to_string(),
-        );
-        let provider = TableProviderAdapter::new(Arc::new(table));
-        let predicate = provider.check_and_build_predicate_from_filters(&test_filters);
-
-        let expected_filters = vec![test_filters[0].clone(), test_filters[2].clone()];
-        assert_eq!(predicate.exprs(), &expected_filters);
     }
 }

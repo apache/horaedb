@@ -25,6 +25,7 @@ workspace = true
 workspace = true
 
 [dependencies]
+analytic_engine = { workspace = true }
 async-trait = { workspace = true }
 common_types = { workspace = true }
 futures = { workspace = true }

@@ -16,6 +16,7 @@
 
 use std::{collections::HashMap, fmt};
 
+use analytic_engine::{table::support_pushdown, TableOptions};
 use async_trait::async_trait;
 use common_types::{
     row::{Row, RowGroupBuilder},
@@ -55,7 +56,7 @@ pub struct TableData {
     pub table_id: TableId,
     pub table_schema: Schema,
     pub partition_info: PartitionInfo,
-    pub options: HashMap<String, String>,
+    pub options: TableOptions,
     pub engine_type: String,
 }
 
@@ -109,7 +110,7 @@ impl Table for PartitionTableImpl {
 
     // TODO: get options from sub partition table with remote engine
     fn options(&self) -> HashMap<String, String> {
-        self.table_data.options.clone()
+        self.table_data.options.to_raw_map()
     }
 
     fn partition_info(&self) -> Option<PartitionInfo> {
@@ -122,6 +123,13 @@ impl Table for PartitionTableImpl {
 
     fn stats(&self) -> TableStats {
         TableStats::default()
+    }
+
+    // TODO: maybe we should ask remote sub table whether support pushdown
+    fn support_pushdown(&self, read_schema: &Schema, col_names: &[String]) -> bool {
+        let need_dedup = self.table_data.options.need_dedup();
+
+        support_pushdown(read_schema, need_dedup, col_names)
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {

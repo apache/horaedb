@@ -412,6 +412,11 @@ pub struct TableOptions {
 }
 
 impl TableOptions {
+    pub fn from_map(map: &HashMap<String, String>, is_create: bool) -> Result<Self> {
+        let opt = Self::default();
+        merge_table_options(map, &opt, is_create)
+    }
+
     #[inline]
     pub fn segment_duration(&self) -> Option<Duration> {
         self.segment_duration.map(|v| v.0)
@@ -712,7 +717,11 @@ fn merge_table_options(
     let mut table_opts = table_old_opts.clone();
     if is_create {
         if let Some(v) = options.get(SEGMENT_DURATION) {
-            table_opts.segment_duration = Some(parse_duration(v).context(ParseDuration)?);
+            if v.is_empty() {
+                table_opts.segment_duration = None;
+            } else {
+                table_opts.segment_duration = Some(parse_duration(v).context(ParseDuration)?);
+            }
         }
         if let Some(v) = options.get(UPDATE_MODE) {
             table_opts.update_mode = UpdateMode::parse_from(v)?;

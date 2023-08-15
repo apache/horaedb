@@ -4621,6 +4621,7 @@ dependencies = [
 name = "partition_table_engine"
 version = "1.2.6-alpha"
 dependencies = [
+ "analytic_engine",
  "async-trait",
  "common_types",
  "futures 0.3.28",
