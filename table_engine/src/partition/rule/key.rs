@@ -243,7 +243,7 @@ struct PartitionKeysReadAdapter<'a, T> {
     key_views: T,
     /// The current key for reading bytes.
     ///
-    /// It can be `None` if the whole current key is
+    /// It can be `None` if the whole current key is exhausted.
     curr_key: Option<DatumView<'a>>,
     /// The offset in the serialized bytes from `curr_key`.
     ///
@@ -261,11 +261,11 @@ impl<'a, T> PartitionKeysReadAdapter<'a, T> {
     }
 }
 
-impl<'a, T> std::io::Read for PartitionKeysReadAdapter<'a, T>
+impl<'a, T> PartitionKeysReadAdapter<'a, T>
 where
     T: Iterator<Item = DatumView<'a>>,
 {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    fn read_next_key(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         // Fetch the next key.
         if self.curr_key.is_none() {
             self.curr_key = self.key_views.next();
@@ -303,6 +303,34 @@ where
         }
 
         Ok(n_bytes)
+    }
+}
+
+impl<'a, T> std::io::Read for PartitionKeysReadAdapter<'a, T>
+where
+    T: Iterator<Item = DatumView<'a>>,
+{
+    /// This implementation will fill the whole buf if possible, and the only
+    /// scenario where the buf is not fully filled is that the reader is
+    /// exhausted.
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let mut total_n_bytes = 0;
+        loop {
+            if total_n_bytes == buf.len() {
+                break;
+            }
+            debug_assert!(total_n_bytes < buf.len());
+
+            let next_buf = &mut buf[total_n_bytes..];
+            let n_bytes = self.read_next_key(next_buf)?;
+            if n_bytes == 0 {
+                // All the bytes
+                break;
+            }
+            total_n_bytes += n_bytes;
+        }
+
+        Ok(total_n_bytes)
     }
 }
 
@@ -344,7 +372,7 @@ mod tests {
             Datum::Null,
         ];
         let row = Row::from_datums(datums.clone());
-        let defined_idxs = vec![1_usize, 2, 3, 4];
+        let defined_idxs = vec![1, 2, 3, 4];
 
         // Actual
         let actual = key_rule.compute_partition_for_inserted_row(&row, &defined_idxs);
