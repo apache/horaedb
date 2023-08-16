@@ -21,7 +21,7 @@ use datafusion::{
     error::{DataFusionError, Result},
     physical_plan::ExecutionPlan,
 };
-use df_engine_extensions::dist_sql_query::partitioned_table_scan::UnresolvedPartitionedScan;
+use df_engine_extensions::dist_sql_query::physical_plan::UnresolvedPartitionedScan;
 use table_engine::{
     partition::{
         format_sub_partition_table_name, rule::df_adapter::DfPartitionRuleAdapter, PartitionInfo,

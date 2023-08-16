@@ -12,5 +12,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod partitioned_table_scan;
-pub mod sub_table_scan;
+pub mod physical_plan;
