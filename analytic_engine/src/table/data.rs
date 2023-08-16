@@ -681,6 +681,7 @@ impl TableDataSet {
             .map(|t| t.memtable_memory_usage())
             .sum()
     }
+
     pub fn find_maximum_mutable_memory_usage_table(&self) -> Option<TableDataRef> {
         // TODO: Possible performance issue here when there are too many tables.
         self.table_datas

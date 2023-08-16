@@ -30,7 +30,6 @@ use common_types::{
     schema::{IndexInWriterSchema, Schema},
     SequenceNumber,
 };
-use common_util::{define_result, error::GenericError};
 use generic_error::GenericError;
 use macros::define_result;
 use serde::{Deserialize, Serialize};
@@ -119,7 +118,7 @@ pub enum Error {
     IterReverse { source: GenericError },
 
     #[snafu(display("Timeout when iter memtable.\nBacktrace:\n{}", backtrace))]
-    IterTimeout { backtrace: Backtrace },
+    IterTimeoutEmpty { backtrace: Backtrace },
 
     #[snafu(display("msg:{msg}, err:{source}"))]
     Internal { msg: String, source: GenericError },

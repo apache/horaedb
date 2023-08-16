@@ -21,7 +21,6 @@ use std::{
 
 use arrow::datatypes::DataType;
 use common_types::{column_block::ColumnBlock, datum::DatumKind};
-use common_util::{define_result, error::GenericError};
 use datafusion::{
     error::DataFusionError,
     logical_expr::{

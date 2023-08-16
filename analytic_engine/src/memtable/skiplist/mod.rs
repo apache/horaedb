@@ -38,7 +38,7 @@ use snafu::{ensure, ResultExt};
 use crate::memtable::{
     iter::ReversedColumnarIterator,
     key::{BytewiseComparator, ComparableInternalKey, KeySequence},
-    skiplist::iter::{ColumnarIterImpl, ReversedColumnarIterator},
+    skiplist::iter::ColumnarIterImpl,
     ColumnarIterPtr, EncodeInternalKey, InvalidPutSequence, InvalidRow, MemTable,
     Metrics as MemtableMetrics, PutContext, Result, ScanContext, ScanRequest,
 };

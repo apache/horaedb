@@ -26,17 +26,15 @@ use common_types::{
     schema::Schema,
     SequenceNumber,
 };
-use common_util::{codec::row, time::InstantExt};
-use generic_error::BoxError;
 use log::trace;
 use skiplist::{ArenaSlice, IterRef, Skiplist};
 use snafu::ResultExt;
 
 use crate::memtable::{
     key::{self, BytewiseComparator, KeySequence},
-    skiplist::{BytewiseComparator, SkiplistMemTable},
+    skiplist::SkiplistMemTable,
     AppendRow, BuildRecordBatch, DecodeContinuousRow, DecodeInternalKey, EncodeInternalKey,
-    IterReverse, IterTimeout, ProjectSchema, Result, ScanContext, ScanRequest,
+    IterTimeout, ProjectSchema, Result, ScanContext, ScanRequest,
 };
 
 /// Iterator state

@@ -181,7 +181,7 @@ impl std::fmt::Display for ColumnData {
 
 impl Column {
     pub fn new(row_count: usize, datum_kind: DatumKind) -> Result<Self> {
-        let mut valid = BitSet::new();
+        let mut valid = BitSet::default();
         valid.append_unset(row_count);
 
         let data = match datum_kind {

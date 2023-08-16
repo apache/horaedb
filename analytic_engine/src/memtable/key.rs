@@ -24,19 +24,9 @@
 
 use std::{cmp::Ordering, mem};
 
-use bytes::BufMut;
 use bytes_ext::{BufMut, BytesMut, SafeBuf, SafeBufMut};
 use codec::{memcomparable::MemComparable, Decoder, Encoder};
-use common_types::{
-    bytes::{BytesMut, SafeBuf, SafeBufMut},
-    row::Row,
-    schema::Schema,
-    SequenceNumber,
-};
-use common_util::{
-    codec::{memcomparable::MemComparable, Decoder, Encoder},
-    define_result,
-};
+use common_types::{row::Row, schema::Schema, SequenceNumber};
 use macros::define_result;
 use skiplist::KeyComparator;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};

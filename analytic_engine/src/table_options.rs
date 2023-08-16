@@ -18,7 +18,7 @@ use std::{collections::HashMap, string::ToString, time::Duration};
 
 use ceresdbproto::manifest as manifest_pb;
 use common_types::{
-    time::Timestamp, ARENA_BLOCK_SIZE, COMPACTION_STRATEGY, COMPRESSION, ENABLE_TTL,
+    time::Timestamp, ARENA_BLOCK_SIZE, COMPACTION_STRATEGY, COMPRESSION, ENABLE_TTL, MEMTABLE_TYPE,
     NUM_ROWS_PER_ROW_GROUP, OPTION_KEY_ENABLE_TTL, SEGMENT_DURATION, STORAGE_FORMAT, TTL,
     UPDATE_MODE, WRITE_BUFFER_SIZE,
 };
