@@ -134,7 +134,7 @@ impl NormalTableScanBuilder {
 #[async_trait]
 impl TableScanBuilder for NormalTableScanBuilder {
     async fn build(&self, request: ReadRequest) -> Result<Arc<dyn ExecutionPlan>> {
-        let scan_table = ScanTable::new(self.table.clone(), request);
+        let mut scan_table = ScanTable::new(self.table.clone(), request);
         scan_table.maybe_init_stream().await?;
 
         Ok(Arc::new(scan_table))
@@ -330,12 +330,12 @@ pub struct ScanTable {
 
     // FIXME: in origin partitioned table scan need to modify the parallelism when initializing
     // stream...
-    parallelism: AtomicUsize,
+    parallelism: usize,
 }
 
 impl ScanTable {
     pub fn new(table: TableRef, request: ReadRequest) -> Self {
-        let parallelism = AtomicUsize::new(request.opts.read_parallelism);
+        let parallelism = request.opts.read_parallelism;
         Self {
             table,
             request,
@@ -344,7 +344,7 @@ impl ScanTable {
         }
     }
 
-    async fn maybe_init_stream(&self) -> Result<()> {
+    async fn maybe_init_stream(&mut self) -> Result<()> {
         let read_res = self.table.partitioned_read(self.request.clone()).await;
 
         let mut stream_state = self.stream_state.lock().unwrap();
@@ -352,8 +352,7 @@ impl ScanTable {
             return Ok(());
         }
         stream_state.init(read_res);
-        self.parallelism
-            .store(stream_state.streams.len(), Ordering::Relaxed);
+        self.parallelism = stream_state.streams.len();
 
         Ok(())
     }
@@ -369,9 +368,11 @@ impl ExecutionPlan for ScanTable {
     }
 
     fn output_partitioning(&self) -> Partitioning {
-        // It represents how current node map the inputs to outputs.
+        // It represents how current node map the input streams to output ones.
         // However, we have no inputs here, so `UnknownPartitioning` is suitable.
-        Partitioning::UnknownPartitioning(self.parallelism.load(Ordering::Relaxed))
+        // In datafusion, always set it to `UnknownPartitioning` in the scan plan, for example:
+        //  https://github.com/apache/arrow-datafusion/blob/cf152af6515f0808d840e1fe9c63b02802595826/datafusion/core/src/datasource/physical_plan/csv.rs#L175
+        Partitioning::UnknownPartitioning(self.parallelism)
     }
 
     fn output_ordering(&self) -> Option<&[PhysicalSortExpr]> {
