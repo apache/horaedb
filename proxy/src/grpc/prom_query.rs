@@ -26,7 +26,6 @@ use ceresdbproto::{
 use common_types::{
     datum::DatumKind,
     record_batch::RecordBatch,
-    request_id::RequestId,
     schema::{RecordSchema, TSID_COLUMN},
 };
 use generic_error::BoxError;
@@ -76,7 +75,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         ctx: Context,
         req: PrometheusQueryRequest,
     ) -> Result<PrometheusQueryResponse> {
-        let request_id = RequestId::next_id();
+        let request_id = ctx.request_id;
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let req_ctx = req.context.context(ErrNoCause {

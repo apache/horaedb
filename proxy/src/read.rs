@@ -19,7 +19,6 @@ use std::time::Instant;
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, SqlQueryRequest, SqlQueryResponse,
 };
-use common_types::request_id::RequestId;
 use futures::FutureExt;
 use generic_error::BoxError;
 use http::StatusCode;
@@ -50,9 +49,10 @@ pub enum SqlResponse {
 impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     pub(crate) async fn handle_sql(
         &self,
-        ctx: Context,
+        ctx: &Context,
         schema: &str,
         sql: &str,
+        enable_partition_table_access: bool,
     ) -> Result<SqlResponse> {
         if let Some(resp) = self
             .maybe_forward_sql_query(ctx.clone(), schema, sql)
@@ -65,22 +65,25 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         };
 
         Ok(SqlResponse::Local(
-            self.fetch_sql_query_output(ctx, schema, sql).await?,
+            self.fetch_sql_query_output(ctx, schema, sql, enable_partition_table_access)
+                .await?,
         ))
     }
 
     pub(crate) async fn fetch_sql_query_output(
         &self,
-        ctx: Context,
+        ctx: &Context,
+        // TODO: maybe we can put params below input a new ReadRequest struct.
         schema: &str,
         sql: &str,
+        enable_partition_table_access: bool,
     ) -> Result<Output> {
-        let request_id = RequestId::next_id();
+        let request_id = ctx.request_id;
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
-        info!("Handle sql query, request_id:{request_id}, deadline:{deadline:?}, schema:{schema}, sql:{sql}");
+        info!("Handle sql query begin, catalog:{catalog}, schema:{schema}, deadline:{deadline:?}, ctx:{ctx:?}, sql:{sql}");
 
         let instance = &self.instance;
         // TODO(yingwen): Privilege check, cannot access data of other tenant
@@ -104,24 +107,14 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
                 msg: "Failed to parse sql",
             })?;
 
+        // TODO: For simplicity, we only support executing one statement
+        let stmts_len = stmts.len();
         ensure!(
-            !stmts.is_empty(),
-            ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: format!("No valid query statement provided, sql:{sql}",),
-            }
-        );
-
-        // TODO(yingwen): For simplicity, we only support executing one statement now
-        // TODO(yingwen): INSERT/UPDATE/DELETE can be batched
-        ensure!(
-            stmts.len() == 1,
+            stmts_len == 1,
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!(
-                    "Only support execute one statement now, current num:{}, sql:{}",
-                    stmts.len(),
-                    sql
+                    "Only support execute one statement now, current num:{stmts_len}, sql:{sql}"
                 ),
             }
         );
@@ -155,7 +148,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             }
         }
 
-        let output = if ctx.enable_partition_table_access {
+        let output = if enable_partition_table_access {
             self.execute_plan_involving_partition_table(request_id, catalog, schema, plan, deadline)
                 .await
         } else {
@@ -168,7 +161,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         })?;
 
         let cost = begin_instant.saturating_elapsed();
-        info!("Handle sql query success, catalog:{catalog}, schema:{schema}, request_id:{request_id}, cost:{cost:?}, sql:{sql:?}");
+        info!("Handle sql query successfully, catalog:{catalog}, schema:{schema}, cost:{cost:?}, ctx:{ctx:?}");
 
         match &output {
             Output::AffectedRows(_) => Ok(output),

@@ -103,8 +103,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         ctx: Context,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
-        let request_id = RequestId::next_id();
-
+        let request_id = ctx.request_id;
         let write_context = req.context.clone().context(ErrNoCause {
             msg: "Missing context",
             code: StatusCode::BAD_REQUEST,
@@ -138,8 +137,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         ctx: Context,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
-        let request_id = RequestId::next_id();
-
+        let request_id = ctx.request_id;
         let write_context = req.context.clone().context(ErrNoCause {
             msg: "Missing context",
             code: StatusCode::BAD_REQUEST,

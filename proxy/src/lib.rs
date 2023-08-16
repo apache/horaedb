@@ -72,7 +72,6 @@ use log::{error, info};
 use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use query_frontend::plan::Plan;
 use router::{endpoint::Endpoint, Router};
-use runtime::Runtime;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{EngineRuntimes, TableState},
@@ -554,10 +553,19 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Context {
-    pub timeout: Option<Duration>,
-    pub runtime: Arc<Runtime>,
-    pub enable_partition_table_access: bool,
-    pub forwarded_from: Option<String>,
+    request_id: RequestId,
+    timeout: Option<Duration>,
+    forwarded_from: Option<String>,
+}
+
+impl Context {
+    pub fn new(timeout: Option<Duration>, forwarded_from: Option<String>) -> Self {
+        Self {
+            request_id: RequestId::next_id(),
+            timeout,
+            forwarded_from,
+        }
+    }
 }

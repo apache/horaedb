@@ -638,7 +638,6 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
                             .catalog(catalog.unwrap_or(default_catalog))
                             .schema(schema)
                             .timeout(timeout)
-                            .enable_partition_table_access(true)
                             .build()
                             .context(CreateContext)
                             .map_err(reject::custom)
