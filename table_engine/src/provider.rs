@@ -17,10 +17,7 @@
 use std::{
     any::Any,
     fmt,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -370,8 +367,8 @@ impl ExecutionPlan for ScanTable {
     fn output_partitioning(&self) -> Partitioning {
         // It represents how current node map the input streams to output ones.
         // However, we have no inputs here, so `UnknownPartitioning` is suitable.
-        // In datafusion, always set it to `UnknownPartitioning` in the scan plan, for example:
-        //  https://github.com/apache/arrow-datafusion/blob/cf152af6515f0808d840e1fe9c63b02802595826/datafusion/core/src/datasource/physical_plan/csv.rs#L175
+        // In datafusion, always set it to `UnknownPartitioning` in the scan plan, for
+        // example:  https://github.com/apache/arrow-datafusion/blob/cf152af6515f0808d840e1fe9c63b02802595826/datafusion/core/src/datasource/physical_plan/csv.rs#L175
         Partitioning::UnknownPartitioning(self.parallelism)
     }
 
