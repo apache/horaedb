@@ -29,7 +29,9 @@ use table_engine::{
     table::ReadRequest,
 };
 
-/// Unresolved partitioned table scan which can't be executed before resolving
+/// Placeholder of partitioned table's scan plan
+/// It is inexecutable actually and just for carrying the necessary information
+/// of building remote execution plans for sub tables.
 #[derive(Debug)]
 pub struct UnresolvedPartitionedScan {
     pub sub_tables: Vec<TableIdentifier>,
@@ -95,9 +97,9 @@ impl DisplayAs for UnresolvedPartitionedScan {
     }
 }
 
-/// Executable partitioned table scan
-///
-/// It will send the `remote_exec_plan`s to corresponding nodes to execute.
+/// The executable scan plan of the partitioned table
+/// It includes remote execution plans of sub tables, and will send them to
+/// related nodes to execute.
 #[derive(Debug)]
 pub struct ResolvedPartitionedScan {
     pub remote_engine: RemoteEngineRef,

@@ -26,7 +26,9 @@ use datafusion::{
 };
 use table_engine::{provider::ScanTable, remote::model::TableIdentifier, table::ReadRequest};
 
-/// Unresolved sub table scan which can't be executed before resolving
+/// Placeholder of sub table's scan plan
+/// It is inexecutable actually and just for carrying the necessary information
+/// of building the executable scan plan.
 #[derive(Debug)]
 pub struct UnresolvedSubTableScan {
     pub table: TableIdentifier,
