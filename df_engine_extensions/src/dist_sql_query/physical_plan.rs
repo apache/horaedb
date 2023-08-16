@@ -27,7 +27,6 @@ use datafusion::{
     },
 };
 use table_engine::{
-    provider::ScanTable,
     remote::{model::TableIdentifier, RemoteEngineRef},
     table::ReadRequest,
 };
@@ -261,6 +260,3 @@ impl DisplayAs for UnresolvedSubTableScan {
         )
     }
 }
-
-/// `ResolvedSubTableScan` is `ScanTable` actually.
-pub type ResolvedSubTableScan = ScanTable;
