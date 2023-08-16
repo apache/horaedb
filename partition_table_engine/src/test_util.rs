@@ -102,8 +102,12 @@ impl Table for PartitionedMemoryTable {
         TableStats::default()
     }
 
+    fn support_pushdown(&self, _read_schema: &Schema, _col_names: &[String]) -> bool {
+        false
+    }
+
     async fn write(&self, _request: WriteRequest) -> table_engine::table::Result<usize> {
-        todo!()
+        unimplemented!()
     }
 
     // batch_size is ignored now
@@ -111,18 +115,18 @@ impl Table for PartitionedMemoryTable {
         &self,
         _request: ReadRequest,
     ) -> table_engine::table::Result<SendableRecordBatchStream> {
-        todo!()
+        unimplemented!()
     }
 
     async fn get(&self, _request: GetRequest) -> table_engine::table::Result<Option<Row>> {
-        todo!()
+        unimplemented!()
     }
 
     async fn partitioned_read(
         &self,
         _request: ReadRequest,
     ) -> table_engine::table::Result<PartitionedStreams> {
-        todo!()
+        unimplemented!()
     }
 
     // TODO: Alter schema is not supported now
@@ -130,7 +134,7 @@ impl Table for PartitionedMemoryTable {
         &self,
         _request: AlterSchemaRequest,
     ) -> table_engine::table::Result<usize> {
-        todo!()
+        unimplemented!()
     }
 
     // TODO: Alter modify setting is not supported now
@@ -138,14 +142,14 @@ impl Table for PartitionedMemoryTable {
         &self,
         _options: HashMap<String, String>,
     ) -> table_engine::table::Result<usize> {
-        todo!()
+        unimplemented!()
     }
 
     async fn flush(&self, _request: FlushRequest) -> table_engine::table::Result<()> {
-        todo!()
+        unimplemented!()
     }
 
     async fn compact(&self) -> table_engine::table::Result<()> {
-        todo!()
+        unimplemented!()
     }
 }

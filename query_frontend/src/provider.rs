@@ -29,8 +29,12 @@ use datafusion::{
 };
 use df_operator::{registry::FunctionRegistry, scalar::ScalarUdf, udaf::AggregateUdf};
 use macros::define_result;
+use partition_table_engine::provider::PartitionedTableScanBuilder;
 use snafu::{OptionExt, ResultExt, Snafu};
-use table_engine::{provider::TableProviderAdapter, table::TableRef};
+use table_engine::{
+    provider::{NormalTableScanBuilder, TableProviderAdapter},
+    table::TableRef,
+};
 
 use crate::container::{TableContainer, TableReference};
 
@@ -100,14 +104,14 @@ impl ResolvedTable {
     fn into_table_provider(self) -> Arc<dyn TableProvider> {
         if self.table.partition_info().is_some() && enable_dedicated_partitioned_table_provider() {
             let partition_info = self.table.partition_info().unwrap();
-            Arc::new(partition_table_engine::provider::TableProviderAdapter::new(
-                self.table,
-                self.catalog,
-                self.schema,
-                partition_info,
-            ))
+            let builder =
+                PartitionedTableScanBuilder::new(self.catalog, self.schema, partition_info);
+
+            Arc::new(TableProviderAdapter::new(self.table.clone(), builder))
         } else {
-            Arc::new(TableProviderAdapter::new(self.table))
+            let builder = NormalTableScanBuilder;
+
+            Arc::new(TableProviderAdapter::new(self.table.clone(), builder))
         }
     }
 }

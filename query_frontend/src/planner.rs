@@ -1375,8 +1375,9 @@ mod tests {
         datasource::source_as_provider,
         logical_expr::LogicalPlan,
     };
-    use partition_table_engine::provider::TableProviderAdapter as PartitionedTableProviderAdapter;
+    use partition_table_engine::provider::PartitionedTableScanBuilder;
     use sqlparser::ast::Value;
+    use table_engine::provider::TableProviderAdapter;
 
     use super::*;
     use crate::{
@@ -1648,7 +1649,7 @@ mod tests {
                     let provider = source_as_provider(&scan.source).unwrap();
                     if provider
                         .as_any()
-                        .downcast_ref::<PartitionedTableProviderAdapter>()
+                        .downcast_ref::<TableProviderAdapter<PartitionedTableScanBuilder>>()
                         .is_none()
                     {
                         panic!("It should be partitioned table provider");

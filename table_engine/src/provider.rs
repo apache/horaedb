@@ -114,25 +114,51 @@ impl ExtensionOptions for CeresdbOptions {
     }
 }
 
+/// Builder for table scan which is for supporting different scan impls
+#[async_trait]
+pub trait TableScanBuilder: fmt::Debug + Send + Sync + 'static {
+    async fn build(&self, table: TableRef, request: ReadRequest) -> Result<Arc<dyn ExecutionPlan>>;
+}
+
+#[derive(Debug)]
+pub struct NormalTableScanBuilder;
+
+#[async_trait]
+impl TableScanBuilder for NormalTableScanBuilder {
+    async fn build(&self, table: TableRef, request: ReadRequest) -> Result<Arc<dyn ExecutionPlan>> {
+        let scan_table = ScanTable::new(table, request);
+        scan_table.maybe_init_stream().await?;
+
+        Ok(Arc::new(scan_table))
+    }
+}
+
 /// An adapter to [TableProvider] with schema snapshot.
 ///
 /// This adapter holds a schema snapshot of the table and always returns that
 /// schema to caller.
 #[derive(Debug)]
-pub struct TableProviderAdapter {
+pub struct TableProviderAdapter<B> {
     table: TableRef,
     /// The schema of the table when this adapter is created, used as schema
     /// snapshot for read to avoid the reader sees different schema during
     /// query
     read_schema: Schema,
+
+    /// Table scan builder
+    builder: B,
 }
 
-impl TableProviderAdapter {
-    pub fn new(table: TableRef) -> Self {
+impl<B: TableScanBuilder> TableProviderAdapter<B> {
+    pub fn new(table: TableRef, builder: B) -> Self {
         // Take a snapshot of the schema
         let read_schema = table.schema();
 
-        Self { table, read_schema }
+        Self {
+            table,
+            read_schema,
+            builder,
+        }
     }
 
     pub fn as_table_ref(&self) -> &TableRef {
@@ -155,7 +181,7 @@ impl TableProviderAdapter {
             .map(|n| Instant::now() + Duration::from_millis(n));
         let read_parallelism = state.config().target_partitions();
         debug!(
-            "scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, deadline:{:?}, parallelism:{}",
+            "TableProvider scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, deadline:{:?}, parallelism:{}",
             self.table.name(),
             request_id,
             projection,
@@ -187,10 +213,7 @@ impl TableProviderAdapter {
             metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
         };
 
-        let scan_table = ScanTable::new(self.table.clone(), request);
-        scan_table.maybe_init_stream().await?;
-
-        Ok(Arc::new(scan_table))
+        self.builder.build(self.table.clone(), request).await
     }
 
     fn check_and_build_predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
@@ -232,7 +255,7 @@ impl TableProviderAdapter {
 }
 
 #[async_trait]
-impl TableProvider for TableProviderAdapter {
+impl<B: TableScanBuilder> TableProvider for TableProviderAdapter<B> {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -265,7 +288,7 @@ impl TableProvider for TableProviderAdapter {
     }
 }
 
-impl TableSource for TableProviderAdapter {
+impl<B: TableScanBuilder> TableSource for TableProviderAdapter<B> {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -392,7 +415,7 @@ impl ExecutionPlan for ScanTable {
             None,
         )));
 
-        let pushdown_filters = &self.predicate;
+        let pushdown_filters = &self.request.predicate;
         metric_set.push(Arc::new(Metric::new(
             MetricValue::Count {
                 name: format!("\n{pushdown_filters:?}").into(),

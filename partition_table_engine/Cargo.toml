@@ -26,6 +26,7 @@ workspace = true
 
 [dependencies]
 analytic_engine = { workspace = true }
+arrow = { workspace = true }
 async-trait = { workspace = true }
 common_types = { workspace = true }
 datafusion = { workspace = true }
@@ -39,4 +40,3 @@ macros = { workspace = true }
 prometheus = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
-trace_metric = { workspace = true }
