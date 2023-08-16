@@ -24,6 +24,7 @@ use table_engine::{
     table::{ReadRequest, TableRef},
 };
 
+pub mod codec;
 pub mod physical_plan;
 pub mod resolver;
 

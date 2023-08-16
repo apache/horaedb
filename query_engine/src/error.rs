@@ -82,6 +82,14 @@ pub enum Error {
         msg: Option<String>,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("PhysicalPlanEncoder err with cause, msg:{msg}, err:{source}",))]
+    PhysicalPlanEncoderWithCause { msg: String, source: GenericError },
+
+    #[snafu(display(
+        "PhysicalPlanEncoder err with no cause, msg:{msg}.\nBacktrace:\n{backtrace}",
+    ))]
+    PhysicalPlanEncoderNoCause { msg: String, backtrace: Backtrace },
 }
 
 define_result!(Error);

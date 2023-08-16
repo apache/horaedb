@@ -15,6 +15,7 @@
 //! Datafusion physical execution plan
 
 use std::{
+    any::Any,
     fmt::{Debug, Formatter},
     sync::Arc,
 };
@@ -32,11 +33,11 @@ use crate::{
     physical_planner::{PhysicalPlan, TaskContext},
 };
 
-pub struct DataFusionPhysicalPlanImpl {
+pub struct DataFusionPhysicalPlanAdapter {
     plan: Arc<dyn ExecutionPlan>,
 }
 
-impl DataFusionPhysicalPlanImpl {
+impl DataFusionPhysicalPlanAdapter {
     pub fn new(plan: Arc<dyn ExecutionPlan>) -> Self {
         Self { plan }
     }
@@ -46,7 +47,7 @@ impl DataFusionPhysicalPlanImpl {
     }
 }
 
-impl Debug for DataFusionPhysicalPlanImpl {
+impl Debug for DataFusionPhysicalPlanAdapter {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DataFusionPhysicalPlan")
             .field("plan", &self.plan)
@@ -55,7 +56,11 @@ impl Debug for DataFusionPhysicalPlanImpl {
 }
 
 #[async_trait]
-impl PhysicalPlan for DataFusionPhysicalPlanImpl {
+impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn execute(&self, task_ctx: &TaskContext) -> Result<SendableRecordBatchStream> {
         let df_task_ctx =
             task_ctx
