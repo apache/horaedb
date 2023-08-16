@@ -33,8 +33,6 @@ use log::{error, warn};
 use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use router::endpoint::Endpoint;
 use snafu::ResultExt;
-use tokio::{runtime::Handle, sync::mpsc};
-use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
@@ -44,8 +42,6 @@ use crate::{
     read::SqlResponse,
     Context, Proxy,
 };
-
-const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 
 impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     pub async fn handle_sql_query(&self, ctx: Context, req: SqlQueryRequest) -> SqlQueryResponse {
@@ -140,47 +136,42 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             None => req,
         };
 
-        let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let resp_compress_min_length = self.resp_compress_min_length;
         let output = self
             .as_ref()
             .fetch_sql_query_output(ctx, schema, &req.sql, false)
             .await?;
-        Handle::current().spawn(async move {
-            match output {
-                Output::AffectedRows(rows) => {
-                    let resp =
-                        QueryResponseBuilder::with_ok_header().build_with_affected_rows(rows);
-                    if tx.send(resp).await.is_err() {
-                        error!("Failed to send affected rows resp in stream sql query");
-                    }
-                    GRPC_HANDLER_COUNTER_VEC
-                        .query_affected_row
-                        .inc_by(rows as u64);
-                }
-                Output::Records(batches) => {
-                    let mut num_rows = 0;
-                    for batch in &batches {
-                        let resp = {
-                            let mut writer = QueryResponseWriter::new(resp_compress_min_length);
-                            writer.write(batch)?;
-                            writer.finish()
-                        }?;
 
-                        if tx.send(resp).await.is_err() {
-                            error!("Failed to send record batches resp in stream sql query");
-                            break;
-                        }
-                        num_rows += batch.num_rows();
-                    }
-                    GRPC_HANDLER_COUNTER_VEC
-                        .query_succeeded_row
-                        .inc_by(num_rows as u64);
-                }
+        match output {
+            Output::AffectedRows(rows) => {
+                GRPC_HANDLER_COUNTER_VEC
+                    .query_affected_row
+                    .inc_by(rows as u64);
+
+                let resp = QueryResponseBuilder::with_ok_header().build_with_affected_rows(rows);
+
+                Ok(Box::pin(stream::once(async { resp })))
             }
-            Ok::<(), Error>(())
-        });
-        Ok(ReceiverStream::new(rx).boxed())
+            Output::Records(batches) => {
+                let mut num_rows = 0;
+                let mut results = Vec::with_capacity(batches.len());
+                for batch in &batches {
+                    let resp = {
+                        let mut writer = QueryResponseWriter::new(resp_compress_min_length);
+                        writer.write(batch)?;
+                        writer.finish()
+                    }?;
+                    results.push(resp);
+                    num_rows += batch.num_rows();
+                }
+
+                GRPC_HANDLER_COUNTER_VEC
+                    .query_succeeded_row
+                    .inc_by(num_rows as u64);
+
+                Ok(Box::pin(stream::iter(results)))
+            }
+        }
     }
 
     async fn maybe_forward_stream_sql_query(

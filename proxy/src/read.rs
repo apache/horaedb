@@ -73,6 +73,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     pub(crate) async fn fetch_sql_query_output(
         &self,
         ctx: &Context,
+        // TODO: maybe we can put params below input a new ReadRequest struct.
         schema: &str,
         sql: &str,
         enable_partition_table_access: bool,
@@ -82,7 +83,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
-        info!("Handle sql query begin, catalog:{catalog}, schema:{schema}, ctx:{ctx:?}, sql:{sql}");
+        info!("Handle sql query begin, catalog:{catalog}, schema:{schema}, deadline:{deadline:?}, ctx:{ctx:?}, sql:{sql}");
 
         let instance = &self.instance;
         // TODO(yingwen): Privilege check, cannot access data of other tenant
