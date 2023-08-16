@@ -1375,7 +1375,7 @@ mod tests {
         datasource::source_as_provider,
         logical_expr::LogicalPlan,
     };
-    use partition_table_engine::provider::PartitionedTableScanBuilder;
+    use partition_table_engine::scan_builder::PartitionedTableScanBuilder;
     use sqlparser::ast::Value;
     use table_engine::provider::TableProviderAdapter;
 

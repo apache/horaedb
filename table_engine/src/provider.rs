@@ -117,16 +117,24 @@ impl ExtensionOptions for CeresdbOptions {
 /// Builder for table scan which is for supporting different scan impls
 #[async_trait]
 pub trait TableScanBuilder: fmt::Debug + Send + Sync + 'static {
-    async fn build(&self, table: TableRef, request: ReadRequest) -> Result<Arc<dyn ExecutionPlan>>;
+    async fn build(&self, request: ReadRequest) -> Result<Arc<dyn ExecutionPlan>>;
 }
 
 #[derive(Debug)]
-pub struct NormalTableScanBuilder;
+pub struct NormalTableScanBuilder {
+    table: TableRef,
+}
+
+impl NormalTableScanBuilder {
+    pub fn new(table: TableRef) -> Self {
+        Self { table }
+    }
+}
 
 #[async_trait]
 impl TableScanBuilder for NormalTableScanBuilder {
-    async fn build(&self, table: TableRef, request: ReadRequest) -> Result<Arc<dyn ExecutionPlan>> {
-        let scan_table = ScanTable::new(table, request);
+    async fn build(&self, request: ReadRequest) -> Result<Arc<dyn ExecutionPlan>> {
+        let scan_table = ScanTable::new(self.table.clone(), request);
         scan_table.maybe_init_stream().await?;
 
         Ok(Arc::new(scan_table))
@@ -205,6 +213,7 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
             batch_size: state.config_options().execution.batch_size,
         };
 
+        // TODO: metrics collector name should relate to detail scan impl?
         let request = ReadRequest {
             request_id,
             opts,
@@ -213,7 +222,7 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
             metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
         };
 
-        self.builder.build(self.table.clone(), request).await
+        self.builder.build(request).await
     }
 
     fn check_and_build_predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {

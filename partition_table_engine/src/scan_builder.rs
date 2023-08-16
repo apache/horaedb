@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
-
-//! Datafusion `TableProvider` adapter
+//! Partitioned table scan builder
 
 use std::sync::Arc;
 
@@ -30,19 +28,26 @@ use table_engine::{
     },
     provider::TableScanBuilder,
     remote::model::TableIdentifier,
-    table::{ReadRequest, TableRef},
+    table::ReadRequest,
 };
 
 #[derive(Debug)]
 pub struct PartitionedTableScanBuilder {
+    table_name: String,
     catalog_name: String,
     schema_name: String,
     partition_info: PartitionInfo,
 }
 
 impl PartitionedTableScanBuilder {
-    pub fn new(catalog_name: String, schema_name: String, partition_info: PartitionInfo) -> Self {
+    pub fn new(
+        table_name: String,
+        catalog_name: String,
+        schema_name: String,
+        partition_info: PartitionInfo,
+    ) -> Self {
         Self {
+            table_name,
             catalog_name,
             schema_name,
             partition_info,
@@ -51,7 +56,7 @@ impl PartitionedTableScanBuilder {
 
     fn get_sub_table_idents(
         &self,
-        table: &TableRef,
+        table_name: &str,
         partition_info: &PartitionInfo,
         partitions: Vec<usize>,
     ) -> Vec<TableIdentifier> {
@@ -63,7 +68,7 @@ impl PartitionedTableScanBuilder {
                 TableIdentifier {
                     catalog: self.catalog_name.clone(),
                     schema: self.schema_name.clone(),
-                    table: format_sub_partition_table_name(table.name(), partition_name),
+                    table: format_sub_partition_table_name(table_name, partition_name),
                 }
             })
             .collect()
@@ -72,12 +77,14 @@ impl PartitionedTableScanBuilder {
 
 #[async_trait]
 impl TableScanBuilder for PartitionedTableScanBuilder {
-    async fn build(&self, table: TableRef, request: ReadRequest) -> Result<Arc<dyn ExecutionPlan>> {
+    async fn build(&self, request: ReadRequest) -> Result<Arc<dyn ExecutionPlan>> {
         // Build partition rule.
+        let table_schema_snapshot = request.projected_schema.original_schema();
         let df_partition_rule =
-            DfPartitionRuleAdapter::new(self.partition_info.clone(), &table.schema()).map_err(
-                |e| DataFusionError::Internal(format!("failed to build partition rule, err:{e}")),
-            )?;
+            DfPartitionRuleAdapter::new(self.partition_info.clone(), table_schema_snapshot)
+                .map_err(|e| {
+                    DataFusionError::Internal(format!("failed to build partition rule, err:{e}"))
+                })?;
 
         // Evaluate expr and locate partition.
         let partitions = df_partition_rule
@@ -85,7 +92,8 @@ impl TableScanBuilder for PartitionedTableScanBuilder {
             .map_err(|e| {
                 DataFusionError::Internal(format!("failed to locate partition for read, err:{e}"))
             })?;
-        let sub_tables = self.get_sub_table_idents(&table, &self.partition_info, partitions);
+        let sub_tables =
+            self.get_sub_table_idents(&self.table_name, &self.partition_info, partitions);
 
         // Build plan.
         let plan = UnresolvedPartitionedScan {

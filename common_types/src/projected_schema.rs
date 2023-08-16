@@ -177,6 +177,10 @@ impl ProjectedSchema {
     pub fn to_projected_arrow_schema(&self) -> ArrowSchemaRef {
         self.0.record_schema.to_arrow_schema_ref()
     }
+
+    pub fn original_schema(&self) -> &Schema {
+        &self.0.original_schema
+    }
 }
 
 impl From<ProjectedSchema> for ceresdbproto::schema::ProjectedSchema {
