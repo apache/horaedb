@@ -160,7 +160,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         })?;
 
         let cost = begin_instant.saturating_elapsed();
-        info!("Handle sql query success, catalog:{catalog}, schema:{schema}, cost:{cost:?}, ctx:{ctx:?}");
+        info!("Handle sql query successfully, catalog:{catalog}, schema:{schema}, cost:{cost:?}, ctx:{ctx:?}");
 
         match &output {
             Output::AffectedRows(_) => Ok(output),

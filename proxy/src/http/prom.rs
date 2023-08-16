@@ -164,7 +164,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             .await?;
 
         let cost = begin_instant.saturating_elapsed().as_millis();
-        info!("Handle prom remote query sucess, ctx:{ctx:?}, cost:{cost}ms");
+        info!("Handle prom remote query successfully, ctx:{ctx:?}, cost:{cost}ms");
 
         convert_query_result(metric, timestamp_col_name, field_col_name, output)
     }
