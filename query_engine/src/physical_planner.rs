@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{fmt, sync::Arc};
+use std::{any::Any, fmt, sync::Arc};
 
 use async_trait::async_trait;
 use datafusion::execution::TaskContext as DfTaskContext;
@@ -36,6 +36,8 @@ pub trait PhysicalPlanner: fmt::Debug + Send + Sync + 'static {
 pub type PhysicalPlannerRef = Arc<dyn PhysicalPlanner>;
 
 pub trait PhysicalPlan: std::fmt::Debug + Send + Sync + 'static {
+    fn as_any(&self) -> &dyn Any;
+
     /// execute this plan and returns the result
     fn execute(&self, task_ctx: &TaskContext) -> Result<SendableRecordBatchStream>;
 

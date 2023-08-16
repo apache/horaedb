@@ -15,43 +15,96 @@
 use std::{fmt, sync::Arc};
 
 use bytes_ext::Bytes;
-use datafusion::execution::{runtime_env::RuntimeEnv, FunctionRegistry};
+use datafusion::{
+    error::DataFusionError,
+    execution::{runtime_env::RuntimeEnv, FunctionRegistry},
+};
+use datafusion_proto::{
+    bytes::{
+        physical_plan_from_bytes_with_extension_codec, physical_plan_to_bytes_with_extension_codec,
+    },
+    physical_plan::{AsExecutionPlan, PhysicalExtensionCodec as DatafusionPhysicalExtensionCodec},
+    protobuf,
+};
+use generic_error::BoxError;
+use prost::Message;
+use snafu::ResultExt;
 
-use crate::{codec::PhysicalPlanCodec, error::*, physical_planner::PhysicalPlanPtr};
+use crate::{
+    codec::PhysicalPlanCodec, datafusion_impl::physical_plan::DataFusionPhysicalPlanAdapter,
+    error::*, physical_planner::PhysicalPlanPtr,
+};
 
 /// Datafusion encoder powered by `datafusion-proto`
 // TODO: replace `datafusion-proto` with `substrait`?
 // TODO: make use of it.
-pub struct DataFusionPhysicalPlanEncoderImpl {
-    _runtime_env: Arc<RuntimeEnv>,
-    _function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
+pub struct DataFusionPhysicalPlanEncoderImpl<C> {
+    runtime_env: Arc<RuntimeEnv>,
+    function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
+    extension_codec: C,
 }
 
-impl DataFusionPhysicalPlanEncoderImpl {
+impl<C: DatafusionPhysicalExtensionCodec> DataFusionPhysicalPlanEncoderImpl<C> {
     // TODO: use `SessionContext` to init it.
     pub fn new(
         runtime_env: Arc<RuntimeEnv>,
         function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
+        extension_codec: C,
     ) -> Self {
         Self {
-            _runtime_env: runtime_env,
-            _function_registry: function_registry,
+            runtime_env,
+            function_registry,
+            extension_codec,
         }
     }
 }
 
-impl fmt::Debug for DataFusionPhysicalPlanEncoderImpl {
+impl<C: DatafusionPhysicalExtensionCodec + Send + Sync + 'static> fmt::Debug
+    for DataFusionPhysicalPlanEncoderImpl<C>
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "DataFusionPhysicalPlanEncoderImpl")
     }
 }
 
-impl PhysicalPlanCodec for DataFusionPhysicalPlanEncoderImpl {
-    fn encode(&self, _plan: &crate::physical_planner::PhysicalPlanPtr) -> Result<Bytes> {
-        todo!()
+impl<C: DatafusionPhysicalExtensionCodec + Send + Sync + 'static> PhysicalPlanCodec
+    for DataFusionPhysicalPlanEncoderImpl<C>
+{
+    fn encode(&self, plan: &crate::physical_planner::PhysicalPlanPtr) -> Result<Bytes> {
+        if let Some(plan) = plan
+            .as_any()
+            .downcast_ref::<DataFusionPhysicalPlanAdapter>()
+        {
+            physical_plan_to_bytes_with_extension_codec(
+                plan.as_df_physical_plan(),
+                &self.extension_codec,
+            )
+            .box_err()
+            .context(PhysicalPlanEncoderWithCause {
+                msg: "failed to encode datafusion physical plan",
+            })
+        } else {
+            PhysicalPlanEncoderNoCause {
+                msg: format!("unexpected physical plan:{plan:?}"),
+            }
+            .fail()
+        }
     }
 
-    fn decode(&self, _bytes: &[u8]) -> Result<PhysicalPlanPtr> {
-        todo!()
+    fn decode(&self, bytes: &[u8]) -> Result<PhysicalPlanPtr> {
+        let plan_pb = protobuf::PhysicalPlanNode::decode(bytes)
+            .box_err()
+            .with_context(|| PhysicalPlanEncoderWithCause {
+                msg: "failed to decode bytes to protobuf plan".to_string(),
+            })?;
+
+        let df_plan = plan_pb
+            .try_into_physical_plan(self.function_registry.as_ref(), &self.runtime_env, &self.extension_codec)
+            .box_err()
+            .with_context(|| PhysicalPlanEncoderWithCause {
+                msg: format!("failed to convert protobuf plan to datafusion physical plan, protobuf plan:{plan_pb:?}") ,
+            })?;
+
+        Ok(Box::new(DataFusionPhysicalPlanAdapter::new(df_plan)))
     }
 }

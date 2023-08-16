@@ -77,6 +77,7 @@ impl DatafusionQueryEngineImpl {
         let physical_plan_codec = Arc::new(DataFusionPhysicalPlanEncoderImpl::new(
             runtime_env,
             function_registry,
+            df_engine_extensions::codec::PhysicalExtensionCodecImpl::new(),
         ));
 
         Ok(Self {
