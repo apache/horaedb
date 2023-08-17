@@ -180,7 +180,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         if num_rows > 0 {
             if let Some(deadline) = self.deadline {
                 let now = Instant::now();
-                if now.duration_since(deadline).is_zero() {
+                if now >= deadline {
                     return IterTimeout { now, deadline }.fail();
                 }
             }
