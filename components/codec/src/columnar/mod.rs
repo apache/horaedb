@@ -27,15 +27,15 @@ use macros::define_result;
 use snafu::{self, ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use self::{
+    bytes::{BytesValuesDecoder, BytesValuesEncoder},
     float::{F64ValuesDecoder, F64ValuesEncoder},
     int::{I32ValuesDecoder, I64ValuesDecoder, I64ValuesEncoder},
-    string::{StringValuesDecoder, StringValuesEncoder},
 };
 use crate::{columnar::int::I32ValuesEncoder, varint, Decoder};
 
+mod bytes;
 mod float;
 mod int;
-mod string;
 mod timestamp;
 
 #[derive(Debug, Snafu)]
@@ -219,10 +219,17 @@ impl ColumnarEncoder {
             DatumKind::Timestamp => todo!(),
             DatumKind::Double => todo!(),
             DatumKind::Float => todo!(),
-            DatumKind::Varbinary => todo!(),
+            DatumKind::Varbinary => {
+                let enc = BytesValuesEncoder::default();
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.into_bytes()))
+            }
             DatumKind::String => {
-                let enc = StringValuesEncoder::default();
-                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.into_str()))
+                let enc = BytesValuesEncoder::default();
+                enc.estimated_encoded_size(
+                    datums
+                        .clone()
+                        .filter_map(|v| v.into_str().map(|v| v.as_bytes())),
+                )
             }
             DatumKind::UInt64 => todo!(),
             DatumKind::UInt32 => todo!(),
@@ -259,10 +266,16 @@ impl ColumnarEncoder {
                 enc.encode(buf, datums.filter_map(|v| v.as_f64()))
             }
             DatumKind::Float => todo!(),
-            DatumKind::Varbinary => todo!(),
+            DatumKind::Varbinary => {
+                let enc = BytesValuesEncoder::default();
+                enc.encode(buf, datums.filter_map(|v| v.into_bytes()))
+            }
             DatumKind::String => {
-                let enc = StringValuesEncoder::default();
-                enc.encode(buf, datums.filter_map(|v| v.into_str()))
+                let enc = BytesValuesEncoder::default();
+                enc.encode(
+                    buf,
+                    datums.filter_map(|v| v.into_str().map(|v| v.as_bytes())),
+                )
             }
             DatumKind::UInt64 => todo!(),
             DatumKind::UInt32 => todo!(),
@@ -384,13 +397,17 @@ impl ColumnarDecoder {
                 decoder.decode(buf, with_float)
             }
             DatumKind::Float => todo!(),
-            DatumKind::Varbinary => todo!(),
+            DatumKind::Varbinary => {
+                let with_bytes = |v| f(Datum::from(v));
+                let decoder = BytesValuesDecoder::default();
+                decoder.decode(buf, with_bytes)
+            }
             DatumKind::String => {
                 let with_str = |value| {
                     let datum = unsafe { Datum::from(StringBytes::from_bytes_unchecked(value)) };
                     f(datum)
                 };
-                let decoder = StringValuesDecoder::default();
+                let decoder = BytesValuesDecoder::default();
                 decoder.decode(buf, with_str)
             }
             DatumKind::UInt64 => todo!(),

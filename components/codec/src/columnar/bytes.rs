@@ -23,12 +23,12 @@ use crate::{
 };
 
 #[derive(Default)]
-pub struct StringValuesEncoder<'a> {
+pub struct BytesValuesEncoder<'a> {
     _lifetime: PhantomData<&'a ()>,
 }
 
-impl<'a> ValuesEncoder for StringValuesEncoder<'a> {
-    type ValueType = &'a str;
+impl<'a> ValuesEncoder for BytesValuesEncoder<'a> {
+    type ValueType = &'a [u8];
 
     fn encode<B, I>(&self, buf: &mut B, values: I) -> Result<()>
     where
@@ -39,7 +39,7 @@ impl<'a> ValuesEncoder for StringValuesEncoder<'a> {
             debug_assert!(v.len() < u32::MAX as usize);
 
             varint::encode_uvarint(buf, v.len() as u64).context(Varint)?;
-            buf.put_slice(v.as_bytes());
+            buf.put_slice(v);
         }
 
         Ok(())
@@ -60,9 +60,9 @@ impl<'a> ValuesEncoder for StringValuesEncoder<'a> {
 }
 
 #[derive(Clone, Default)]
-pub struct StringValuesDecoder;
+pub struct BytesValuesDecoder;
 
-impl ValuesDecoder for StringValuesDecoder {
+impl ValuesDecoder for BytesValuesDecoder {
     type ValueType = Bytes;
 
     fn decode<B, F>(&self, buf: &mut B, mut f: F) -> Result<()>
