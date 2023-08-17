@@ -21,12 +21,17 @@ use bytes_ext::{Buf, BufMut};
 use common_types::{
     datum::{Datum, DatumKind, DatumView},
     row::bitset::{BitSet, RoBitSet},
+    string::StringBytes,
 };
 use macros::define_result;
 use snafu::{self, ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
-use self::int::I32ValuesDecoder;
-use crate::{columnar::int::I32ValuesEncoder, Decoder};
+use self::{
+    float::{F64ValuesDecoder, F64ValuesEncoder},
+    int::{I32ValuesDecoder, I64ValuesDecoder, I64ValuesEncoder},
+    string::{StringValuesDecoder, StringValuesEncoder},
+};
+use crate::{columnar::int::I32ValuesEncoder, varint, Decoder};
 
 mod float;
 mod int;
@@ -53,6 +58,12 @@ pub enum Error {
         found: usize,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Failed to varint, err:{source}"))]
+    Varint { source: varint::Error },
+
+    #[snafu(display("Failed to do compact encoding, err:{source}"))]
+    CompactEncode { source: crate::compact::Error },
 }
 
 define_result!(Error);
@@ -72,7 +83,12 @@ pub trait ValuesEncoder {
     /// The estimated size for memory pre-allocated.
     fn estimated_encoded_size<I>(&self, values: I) -> usize
     where
-        I: Iterator<Item = Self::ValueType>;
+        I: Iterator<Item = Self::ValueType>,
+    {
+        let (lower, higher) = values.size_hint();
+        let num = lower.max(higher.unwrap_or_default());
+        num * std::mem::size_of::<Self::ValueType>()
+    }
 }
 
 pub trait ValuesDecoder {
@@ -204,12 +220,18 @@ impl ColumnarEncoder {
             DatumKind::Double => todo!(),
             DatumKind::Float => todo!(),
             DatumKind::Varbinary => todo!(),
-            DatumKind::String => todo!(),
+            DatumKind::String => {
+                let enc = StringValuesEncoder::default();
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.into_str()))
+            }
             DatumKind::UInt64 => todo!(),
             DatumKind::UInt32 => todo!(),
             DatumKind::UInt16 => todo!(),
             DatumKind::UInt8 => todo!(),
-            DatumKind::Int64 => todo!(),
+            DatumKind::Int64 => {
+                let enc = I64ValuesEncoder;
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_i64()))
+            }
             DatumKind::Int32 => {
                 let enc = I32ValuesEncoder;
                 enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_i32()))
@@ -232,15 +254,24 @@ impl ColumnarEncoder {
         match datum_kind {
             DatumKind::Null => Ok(()),
             DatumKind::Timestamp => todo!(),
-            DatumKind::Double => todo!(),
+            DatumKind::Double => {
+                let enc = F64ValuesEncoder;
+                enc.encode(buf, datums.filter_map(|v| v.as_f64()))
+            }
             DatumKind::Float => todo!(),
             DatumKind::Varbinary => todo!(),
-            DatumKind::String => todo!(),
+            DatumKind::String => {
+                let enc = StringValuesEncoder::default();
+                enc.encode(buf, datums.filter_map(|v| v.into_str()))
+            }
             DatumKind::UInt64 => todo!(),
             DatumKind::UInt32 => todo!(),
             DatumKind::UInt16 => todo!(),
             DatumKind::UInt8 => todo!(),
-            DatumKind::Int64 => todo!(),
+            DatumKind::Int64 => {
+                let enc = I64ValuesEncoder;
+                enc.encode(buf, datums.filter_map(|v| v.as_i64()))
+            }
             DatumKind::Int32 => {
                 let enc = I32ValuesEncoder;
                 enc.encode(buf, datums.filter_map(|v| v.as_i32()))
@@ -347,20 +378,35 @@ impl ColumnarDecoder {
         match datum_kind {
             DatumKind::Null => Ok(()),
             DatumKind::Timestamp => todo!(),
-            DatumKind::Double => todo!(),
+            DatumKind::Double => {
+                let with_float = |v| f(Datum::from(v));
+                let decoder = F64ValuesDecoder;
+                decoder.decode(buf, with_float)
+            }
             DatumKind::Float => todo!(),
             DatumKind::Varbinary => todo!(),
-            DatumKind::String => todo!(),
+            DatumKind::String => {
+                let with_str = |value| {
+                    let datum = unsafe { Datum::from(StringBytes::from_bytes_unchecked(value)) };
+                    f(datum)
+                };
+                let decoder = StringValuesDecoder::default();
+                decoder.decode(buf, with_str)
+            }
             DatumKind::UInt64 => todo!(),
             DatumKind::UInt32 => todo!(),
             DatumKind::UInt16 => todo!(),
             DatumKind::UInt8 => todo!(),
-            DatumKind::Int64 => todo!(),
-            DatumKind::Int32 => {
-                let with_i32 = |value: i32| {
+            DatumKind::Int64 => {
+                let with_i64 = |value: i64| {
                     let datum = Datum::from(value);
                     f(datum)
                 };
+                let decoder = I64ValuesDecoder;
+                decoder.decode(buf, with_i64)
+            }
+            DatumKind::Int32 => {
+                let with_i32 = |v| f(Datum::from(v));
                 let decoder = I32ValuesDecoder;
                 decoder.decode(buf, with_i32)
             }
@@ -461,5 +507,35 @@ mod tests {
         ];
 
         check_encode_end_decode(10, datums, DatumKind::Null);
+    }
+
+    #[test]
+    fn test_i64() {
+        let datums = vec![
+            Datum::from(10i64),
+            Datum::from(1i64),
+            Datum::from(2i64),
+            Datum::from(18i64),
+            Datum::from(38i64),
+            Datum::from(48i64),
+            Datum::from(80i64),
+            Datum::from(81i64),
+            Datum::from(82i64),
+        ];
+
+        check_encode_end_decode(10, datums, DatumKind::Int64);
+    }
+
+    #[test]
+    fn test_string() {
+        let datums = vec![
+            Datum::from("vvvv"),
+            Datum::from("xxxx"),
+            Datum::from("8"),
+            Datum::from("9999"),
+            Datum::from(""),
+        ];
+
+        check_encode_end_decode(10, datums, DatumKind::String);
     }
 }

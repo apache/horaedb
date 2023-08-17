@@ -13,8 +13,12 @@
 // limitations under the License.
 
 use bytes_ext::{Buf, BufMut};
+use snafu::ResultExt;
 
-use crate::columnar::{Result, ValuesDecoder, ValuesEncoder};
+use crate::{
+    columnar::{Result, ValuesDecoder, ValuesEncoder, Varint},
+    varint,
+};
 
 pub struct I32ValuesEncoder;
 
@@ -39,7 +43,7 @@ impl ValuesEncoder for I32ValuesEncoder {
     {
         let (lower, higher) = values.size_hint();
         let num = lower.max(higher.unwrap_or_default());
-        num * std::mem::size_of::<i32>()
+        num * std::mem::size_of::<Self::ValueType>()
     }
 }
 
@@ -55,6 +59,52 @@ impl ValuesDecoder for I32ValuesDecoder {
     {
         while buf.remaining() > 0 {
             let v = buf.get_i32();
+            f(v)?;
+        }
+
+        Ok(())
+    }
+}
+
+pub struct I64ValuesEncoder;
+
+impl ValuesEncoder for I64ValuesEncoder {
+    type ValueType = i64;
+
+    fn encode<B, I>(&self, buf: &mut B, values: I) -> Result<()>
+    where
+        B: BufMut,
+        I: Iterator<Item = Self::ValueType>,
+    {
+        for v in values {
+            varint::encode_varint(buf, v).context(Varint)?;
+        }
+
+        Ok(())
+    }
+
+    fn estimated_encoded_size<I>(&self, values: I) -> usize
+    where
+        I: Iterator<Item = Self::ValueType>,
+    {
+        let (lower, higher) = values.size_hint();
+        let num = lower.max(higher.unwrap_or_default());
+        num * std::mem::size_of::<Self::ValueType>()
+    }
+}
+
+pub struct I64ValuesDecoder;
+
+impl ValuesDecoder for I64ValuesDecoder {
+    type ValueType = i64;
+
+    fn decode<B, F>(&self, buf: &mut B, mut f: F) -> Result<()>
+    where
+        B: Buf,
+        F: FnMut(Self::ValueType) -> Result<()>,
+    {
+        while buf.remaining() > 0 {
+            let v = varint::decode_varint(buf).context(Varint)?;
             f(v)?;
         }
 

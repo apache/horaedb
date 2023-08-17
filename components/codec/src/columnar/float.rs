@@ -11,3 +11,44 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+use bytes_ext::{Buf, BufMut};
+
+use crate::columnar::{Result, ValuesDecoder, ValuesEncoder};
+
+pub struct F64ValuesEncoder;
+
+impl ValuesEncoder for F64ValuesEncoder {
+    type ValueType = f64;
+
+    fn encode<B, I>(&self, buf: &mut B, values: I) -> Result<()>
+    where
+        B: BufMut,
+        I: Iterator<Item = Self::ValueType>,
+    {
+        for v in values {
+            buf.put_f64(v);
+        }
+
+        Ok(())
+    }
+}
+
+pub struct F64ValuesDecoder;
+
+impl ValuesDecoder for F64ValuesDecoder {
+    type ValueType = f64;
+
+    fn decode<B, F>(&self, buf: &mut B, mut f: F) -> Result<()>
+    where
+        B: Buf,
+        F: FnMut(Self::ValueType) -> Result<()>,
+    {
+        while buf.remaining() > 0 {
+            let v = buf.get_f64();
+            f(v)?;
+        }
+
+        Ok(())
+    }
+}

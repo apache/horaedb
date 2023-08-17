@@ -1260,16 +1260,30 @@ impl<'a> DatumView<'a> {
         }
     }
 
-    pub fn as_bytes(&self) -> Option<&[u8]> {
+    pub fn as_f64(&self) -> Option<f64> {
         match self {
-            DatumView::Varbinary(v) => Some(*v),
+            DatumView::Double(v) => Some(*v),
             _ => None,
         }
     }
 
-    pub fn as_str(&self) -> Option<&str> {
+    pub fn as_f32(&self) -> Option<f32> {
         match self {
-            DatumView::String(v) => Some(*v),
+            DatumView::Float(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn into_str(self) -> Option<&'a str> {
+        match self {
+            DatumView::String(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn into_bytes(self) -> Option<&'a [u8]> {
+        match self {
+            DatumView::Varbinary(v) => Some(v),
             _ => None,
         }
     }
