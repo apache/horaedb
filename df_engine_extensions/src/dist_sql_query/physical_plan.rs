@@ -35,6 +35,7 @@ use table_engine::{
 /// Placeholder of partitioned table's scan plan
 /// It is inexecutable actually and just for carrying the necessary information
 /// of building remote execution plans for sub tables.
+// TODO: can we skip this and generate `ResolvedPartitionedScan` directly?
 #[derive(Debug)]
 pub struct UnresolvedPartitionedScan {
     pub sub_tables: Vec<TableIdentifier>,
