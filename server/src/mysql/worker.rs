@@ -19,7 +19,6 @@ use interpreters::interpreter::Output;
 use log::{error, info};
 use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaWriter};
 use proxy::{context::RequestContext, http::sql::Request, Proxy};
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use snafu::ResultExt;
 
 use crate::mysql::{

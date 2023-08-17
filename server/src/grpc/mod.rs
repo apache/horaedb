@@ -40,7 +40,6 @@ use proxy::{
     schema_config_provider::{self},
     Proxy,
 };
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use runtime::{JoinHandle, Runtime};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;

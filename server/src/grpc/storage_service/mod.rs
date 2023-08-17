@@ -33,7 +33,6 @@ use ceresdbproto::{
 use futures::{stream, stream::BoxStream, StreamExt};
 use http::StatusCode;
 use proxy::{Context, Proxy, FORWARDED_FROM};
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use table_engine::engine::EngineRuntimes;
 use time_ext::InstantExt;
 

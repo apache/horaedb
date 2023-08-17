@@ -29,7 +29,6 @@ use pgwire::{
     error::{PgWireError, PgWireResult},
 };
 use proxy::{context::RequestContext, http::sql::Request, Proxy};
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use snafu::ResultExt;
 
 use crate::postgresql::error::{CreateContext, Result};

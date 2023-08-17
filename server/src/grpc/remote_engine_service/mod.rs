@@ -35,7 +35,6 @@ use proxy::{
     hotspot::{HotspotRecorder, Message},
     instance::InstanceRef,
 };
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::EngineRuntimes,

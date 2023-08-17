@@ -32,9 +32,7 @@ use proxy::{
     schema_config_provider::SchemaConfigProviderRef,
     Proxy,
 };
-use query_engine::{
-    executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner, QueryEngineRef,
-};
+use query_engine::QueryEngineRef;
 use remote_engine_client::RemoteEngineImpl;
 use router::{endpoint::Endpoint, RouterRef};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};

@@ -15,7 +15,6 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use proxy::Proxy;
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use snafu::{OptionExt, ResultExt};
 use table_engine::engine::EngineRuntimes;
 

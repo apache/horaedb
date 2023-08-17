@@ -69,7 +69,6 @@ use interpreters::{
     interpreter::{InterpreterPtr, Output},
 };
 use log::{error, info};
-use query_engine::executor::Executor as QueryExecutor;
 use query_frontend::plan::Plan;
 use router::{endpoint::Endpoint, Router};
 use snafu::{OptionExt, ResultExt};

@@ -37,7 +37,6 @@ use proxy::{
     opentsdb::types::{PutParams, PutRequest},
     Proxy,
 };
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use router::endpoint::Endpoint;
 use runtime::{Runtime, RuntimeRef};
 use serde::Serialize;

@@ -114,7 +114,7 @@ impl FunctionRegistry for FunctionRegistryImpl {
     }
 
     fn to_df_function_registry(self: Arc<Self>) -> Arc<dyn DfFunctionRegistry + Send + Sync> {
-        Arc::new(DfFunctionRegistryAdapter(self.clone()))
+        Arc::new(DfFunctionRegistryAdapter(self))
     }
 }
 

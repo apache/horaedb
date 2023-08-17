@@ -36,11 +36,7 @@ use proxy::{
         cluster_based::ClusterBasedProvider, config_based::ConfigBasedProvider,
     },
 };
-use query_engine::{
-    datafusion_impl::{physical_planner::DatafusionPhysicalPlannerImpl, DatafusionQueryEngineImpl},
-    executor::{Executor, ExecutorImpl},
-    physical_planner::PhysicalPlanner,
-};
+use query_engine::datafusion_impl::DatafusionQueryEngineImpl;
 use router::{rule_based::ClusterView, ClusterBasedRouter, RuleBasedRouter};
 use server::{
     config::{StaticRouteConfig, StaticTopologyConfig},

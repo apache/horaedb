@@ -20,7 +20,6 @@ use pgwire::api::{
     StatelessMakeHandler,
 };
 use proxy::Proxy;
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use runtime::JoinHandle;
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Receiver, Sender};

@@ -46,7 +46,6 @@ use log::{error, info, warn};
 use meta_client::types::{ShardInfo, TableInfo};
 use paste::paste;
 use proxy::instance::InstanceRef;
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use runtime::Runtime;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{engine::TableEngineRef, ANALYTIC_ENGINE_TYPE};
