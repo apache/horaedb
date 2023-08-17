@@ -19,22 +19,19 @@ use std::sync::Arc;
 use catalog::manager::ManagerRef;
 use df_operator::registry::FunctionRegistryRef;
 use interpreters::table_manipulator::TableManipulatorRef;
+use query_engine::QueryEngineRef;
 use table_engine::{engine::TableEngineRef, remote::RemoteEngineRef};
 
 use crate::limiter::Limiter;
 
 /// A cluster instance. Usually there is only one instance per cluster
-///
-/// Q: query_engine::executor::Executor
-/// P: query_engine::physical_planner::PhysicalPlanner
-pub struct Instance<Q, P> {
+pub struct Instance {
     pub catalog_manager: ManagerRef,
-    pub query_executor: Q,
-    pub physical_planner: P,
-
+    pub query_engine: QueryEngineRef,
     pub table_engine: TableEngineRef,
     pub partition_table_engine: TableEngineRef,
     // User defined functions registry.
+    // TODO: remove it, it should be part of query engine...
     pub function_registry: FunctionRegistryRef,
     pub limiter: Limiter,
     pub table_manipulator: TableManipulatorRef,
@@ -42,4 +39,4 @@ pub struct Instance<Q, P> {
 }
 
 /// A reference counted instance pointer
-pub type InstanceRef<Q, P> = Arc<Instance<Q, P>>;
+pub type InstanceRef = Arc<Instance>;

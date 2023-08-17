@@ -24,10 +24,10 @@ use crate::mysql::{
     service::MysqlService,
 };
 
-pub struct Builder<Q, P> {
+pub struct Builder {
     config: Config,
     runtimes: Option<Arc<EngineRuntimes>>,
-    proxy: Option<Arc<Proxy<Q, P>>>,
+    proxy: Option<Arc<Proxy>>,
 }
 
 #[derive(Debug)]
@@ -37,7 +37,7 @@ pub struct Config {
     pub timeout: Option<Duration>,
 }
 
-impl<Q, P> Builder<Q, P> {
+impl Builder {
     pub fn new(config: Config) -> Self {
         Self {
             config,
@@ -51,14 +51,14 @@ impl<Q, P> Builder<Q, P> {
         self
     }
 
-    pub fn proxy(mut self, proxy: Arc<Proxy<Q, P>>) -> Self {
+    pub fn proxy(mut self, proxy: Arc<Proxy>) -> Self {
         self.proxy = Some(proxy);
         self
     }
 }
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
-    pub fn build(self) -> Result<MysqlService<Q, P>> {
+impl Builder {
+    pub fn build(self) -> Result<MysqlService> {
         let runtimes = self.runtimes.context(MissingRuntimes)?;
         let proxy = self.proxy.context(MissingInstance)?;
 

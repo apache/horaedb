@@ -27,19 +27,17 @@ use crate::mysql::{
     writer::MysqlQueryResultWriter,
 };
 
-pub struct MysqlWorker<W: std::io::Write + Send + Sync, Q, P> {
+pub struct MysqlWorker<W: std::io::Write + Send + Sync> {
     generic_hold: PhantomData<W>,
-    proxy: Arc<Proxy<Q, P>>,
+    proxy: Arc<Proxy>,
     timeout: Option<Duration>,
 }
 
-impl<W, Q, P> MysqlWorker<W, Q, P>
+impl<W> MysqlWorker<W>
 where
     W: std::io::Write + Send + Sync,
-    Q: QueryExecutor + 'static,
-    P: PhysicalPlanner,
 {
-    pub fn new(proxy: Arc<Proxy<Q, P>>, timeout: Option<Duration>) -> Self {
+    pub fn new(proxy: Arc<Proxy>, timeout: Option<Duration>) -> Self {
         Self {
             generic_hold: PhantomData::default(),
             proxy,
@@ -49,11 +47,9 @@ where
 }
 
 #[async_trait::async_trait]
-impl<W, Q, P> AsyncMysqlShim<W> for MysqlWorker<W, Q, P>
+impl<W> AsyncMysqlShim<W> for MysqlWorker<W>
 where
     W: std::io::Write + Send + Sync,
-    Q: QueryExecutor + 'static,
-    P: PhysicalPlanner,
 {
     type Error = crate::mysql::error::Error;
 
@@ -106,11 +102,9 @@ where
     }
 }
 
-impl<W, Q, P> MysqlWorker<W, Q, P>
+impl<W> MysqlWorker<W>
 where
     W: std::io::Write + Send + Sync,
-    Q: QueryExecutor + 'static,
-    P: PhysicalPlanner,
 {
     async fn do_query<'a>(&'a mut self, sql: &'a str) -> Result<Output> {
         let ctx = self.create_ctx()?;

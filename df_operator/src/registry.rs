@@ -14,8 +14,18 @@
 
 //! Function registry.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
+use datafusion::{
+    error::{DataFusionError, Result as DfResult},
+    execution::FunctionRegistry as DfFunctionRegistry,
+    logical_expr::{
+        AggregateUDF as DfAggregateUDF, ScalarUDF as DfScalarUDF, WindowUDF as DfWindowUDF,
+    },
+};
 use macros::define_result;
 use snafu::{ensure, Backtrace, Snafu};
 
@@ -31,6 +41,7 @@ define_result!(Error);
 
 /// A registry knows how to build logical expressions out of user-defined
 /// function' names
+// TODO: maybe unnecessary to define inner trait rather than using datafusion's?
 pub trait FunctionRegistry {
     fn register_udf(&mut self, udf: ScalarUdf) -> Result<()>;
 
@@ -40,7 +51,10 @@ pub trait FunctionRegistry {
 
     fn find_udaf(&self, name: &str) -> Result<Option<AggregateUdf>>;
 
-    fn list_udfs(&self) -> Result<Vec<ScalarUdf>>;
+    fn list_udfs(&self) -> HashSet<String>;
+
+    // TODO: can we remove restriction about `Send` and `Sync`?
+    fn to_df_function_registry(self: Arc<Self>) -> Arc<dyn DfFunctionRegistry + Send + Sync>;
 }
 
 /// Default function registry.
@@ -95,9 +109,46 @@ impl FunctionRegistry for FunctionRegistryImpl {
         Ok(udaf)
     }
 
-    fn list_udfs(&self) -> Result<Vec<ScalarUdf>> {
-        let udfs = self.scalar_functions.values().cloned().collect();
-        Ok(udfs)
+    fn list_udfs(&self) -> HashSet<String> {
+        self.scalar_functions.keys().cloned().collect()
+    }
+
+    fn to_df_function_registry(self: Arc<Self>) -> Arc<dyn DfFunctionRegistry + Send + Sync> {
+        Arc::new(DfFunctionRegistryAdapter(self.clone()))
+    }
+}
+
+struct DfFunctionRegistryAdapter(FunctionRegistryRef);
+
+impl DfFunctionRegistry for DfFunctionRegistryAdapter {
+    fn udfs(&self) -> HashSet<String> {
+        self.0.list_udfs()
+    }
+
+    fn udf(&self, name: &str) -> DfResult<Arc<DfScalarUDF>> {
+        self.0
+            .find_udf(name)
+            .map_err(|e| DataFusionError::Internal(format!("failed to find udf, err:{e}")))?
+            .ok_or(DataFusionError::Internal(format!(
+                "udf not found, name:{name}"
+            )))
+            .map(|f| f.to_datafusion_udf())
+    }
+
+    fn udaf(&self, name: &str) -> DfResult<Arc<DfAggregateUDF>> {
+        self.0
+            .find_udaf(name)
+            .map_err(|e| DataFusionError::Internal(format!("failed to find udaf, err:{e}")))?
+            .ok_or(DataFusionError::Internal(format!(
+                "udaf not found, name:{name}"
+            )))
+            .map(|f| f.to_datafusion_udaf())
+    }
+
+    fn udwf(&self, _name: &str) -> DfResult<Arc<DfWindowUDF>> {
+        Err(DataFusionError::Internal(
+            "no udwfs defined now".to_string(),
+        ))
     }
 }
 

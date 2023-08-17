@@ -40,14 +40,14 @@ use time_ext::InstantExt;
 use crate::grpc::metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC;
 
 #[derive(Clone)]
-pub struct StorageServiceImpl<Q, P> {
-    pub proxy: Arc<Proxy<Q, P>>,
+pub struct StorageServiceImpl {
+    pub proxy: Arc<Proxy>,
     pub runtimes: Arc<EngineRuntimes>,
     pub timeout: Option<Duration>,
 }
 
 #[async_trait]
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> StorageService for StorageServiceImpl<Q, P> {
+impl StorageService for StorageServiceImpl {
     type StreamSqlQueryStream = BoxStream<'static, Result<SqlQueryResponse, tonic::Status>>;
 
     async fn route(
@@ -165,7 +165,7 @@ fn get_forwarded_from<T>(req: &tonic::Request<T>) -> Option<String> {
 }
 
 // TODO: Use macros to simplify duplicate code
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> StorageServiceImpl<Q, P> {
+impl StorageServiceImpl {
     async fn route_internal(
         &self,
         req: tonic::Request<RouteRequest>,
@@ -392,7 +392,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> StorageServiceImpl<Q, P> {
     async fn stream_sql_query_internal(
         &self,
         ctx: Context,
-        proxy: Arc<Proxy<Q, P>>,
+        proxy: Arc<Proxy>,
         req: tonic::Request<SqlQueryRequest>,
     ) -> Result<
         tonic::Response<BoxStream<'static, Result<SqlQueryResponse, tonic::Status>>>,

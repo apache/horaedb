@@ -102,15 +102,15 @@ const RETRY: RetryConfig = RetryConfig {
 };
 
 /// Builder for [MetaServiceImpl].
-pub struct Builder<Q, P> {
+pub struct Builder {
     pub cluster: ClusterRef,
-    pub instance: InstanceRef<Q, P>,
+    pub instance: InstanceRef,
     pub runtime: Arc<Runtime>,
     pub opened_wals: OpenedWals,
 }
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
-    pub fn build(self) -> MetaServiceImpl<Q, P> {
+impl Builder {
+    pub fn build(self) -> MetaServiceImpl {
         let Self {
             cluster,
             instance,
@@ -131,9 +131,9 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
 }
 
 #[derive(Clone)]
-pub struct MetaServiceImpl<Q: QueryExecutor + 'static, P: PhysicalPlanner> {
+pub struct MetaServiceImpl {
     cluster: ClusterRef,
-    instance: InstanceRef<Q, P>,
+    instance: InstanceRef,
     runtime: Arc<Runtime>,
     wal_region_closer: WalRegionCloserRef,
 }
@@ -187,7 +187,7 @@ macro_rules! handle_request {
     };
 }
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> MetaServiceImpl<Q, P> {
+impl MetaServiceImpl {
     handle_request!(open_shard, OpenShardRequest, OpenShardResponse);
 
     handle_request!(close_shard, CloseShardRequest, CloseShardResponse);
@@ -577,7 +577,7 @@ async fn handle_close_table_on_shard(
 }
 
 #[async_trait]
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> MetaEventService for MetaServiceImpl<Q, P> {
+impl MetaEventService for MetaServiceImpl {
     async fn open_shard(
         &self,
         request: tonic::Request<OpenShardRequest>,

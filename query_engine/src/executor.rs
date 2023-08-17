@@ -14,7 +14,7 @@
 
 //! Query executor
 
-use std::time::Instant;
+use std::{fmt, sync::Arc, time::Instant};
 
 use async_trait::async_trait;
 use common_types::record_batch::RecordBatch;
@@ -34,7 +34,7 @@ pub type RecordBatchVec = Vec<RecordBatch>;
 ///
 /// Executes the logical plan
 #[async_trait]
-pub trait Executor: Clone + Send + Sync {
+pub trait Executor: fmt::Debug + Send + Sync + 'static {
     // TODO(yingwen): Maybe return a stream
     /// Execute the query, returning the query results as RecordBatchVec
     ///
@@ -47,7 +47,9 @@ pub trait Executor: Clone + Send + Sync {
     ) -> Result<RecordBatchVec>;
 }
 
-#[derive(Clone, Default)]
+pub type ExecutorRef = Arc<dyn Executor>;
+
+#[derive(Debug, Clone, Default)]
 pub struct ExecutorImpl;
 
 #[async_trait]

@@ -39,7 +39,6 @@ use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, error, info};
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use query_frontend::{
     frontend::{Context as FrontendContext, Frontend},
     plan::{AlterTableOperation, AlterTablePlan, InsertPlan, Plan},
@@ -74,7 +73,7 @@ pub(crate) struct WriteResponse {
     pub failed: u32,
 }
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
+impl Proxy {
     pub(crate) async fn handle_write_internal(
         &self,
         ctx: Context,

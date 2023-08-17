@@ -19,7 +19,24 @@
 pub mod config;
 pub mod context;
 pub mod datafusion_impl;
+pub mod encoding;
 pub mod error;
 pub mod executor;
 pub mod physical_planner;
+use std::fmt;
+
 pub use config::Config;
+
+use crate::{
+    encoding::PhysicalPlanEncoderRef, executor::ExecutorRef, physical_planner::PhysicalPlannerRef,
+};
+
+pub trait QueryEngine: fmt::Debug + Send + Sync {
+    fn physical_planner(&self) -> PhysicalPlannerRef;
+
+    fn executor(&self) -> ExecutorRef;
+
+    fn physical_plan_encoder(&self) -> PhysicalPlanEncoderRef;
+}
+
+pub type QueryEngineRef = Box<dyn QueryEngine>;

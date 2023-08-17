@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::{fmt, sync::Arc};
+
 use async_trait::async_trait;
 use query_frontend::plan::QueryPlan;
 use table_engine::stream::SendableRecordBatchStream;
@@ -25,12 +27,14 @@ use crate::{context::Context, error::*};
 ///   + Create the initial physical plan from the optimized logical.
 ///   + Optimize and get the final physical plan.
 #[async_trait]
-pub trait PhysicalPlanner: Clone + Send + Sync + 'static {
+pub trait PhysicalPlanner: fmt::Debug + Send + Sync + 'static {
     /// Create a physical plan from a logical plan
     async fn plan(&self, ctx: &Context, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr>;
 }
 
-pub trait PhysicalPlan: std::fmt::Debug {
+pub type PhysicalPlannerRef = Arc<dyn PhysicalPlanner>;
+
+pub trait PhysicalPlan: std::fmt::Debug + Send + Sync + 'static {
     /// execute this plan and returns the result
     fn execute(&self) -> Result<SendableRecordBatchStream>;
 
@@ -38,4 +42,4 @@ pub trait PhysicalPlan: std::fmt::Debug {
     fn metrics_to_string(&self) -> String;
 }
 
-pub type PhysicalPlanPtr = Box<dyn PhysicalPlan + Send + Sync>;
+pub type PhysicalPlanPtr = Box<dyn PhysicalPlan>;

@@ -188,6 +188,7 @@ catalog = { workspace = true }
 catalog_impls = { workspace = true }
 clap = { workspace = true }
 cluster = { workspace = true }
+datafusion = { workspace = true }
 df_operator = { workspace = true }
 etcd-client = { workspace = true }
 interpreters = { workspace = true }

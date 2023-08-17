@@ -30,7 +30,6 @@ use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{error, warn};
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use router::endpoint::Endpoint;
 use snafu::ResultExt;
 use tonic::{transport::Channel, IntoRequest};
@@ -43,7 +42,7 @@ use crate::{
     Context, Proxy,
 };
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
+impl Proxy {
     pub async fn handle_sql_query(&self, ctx: Context, req: SqlQueryRequest) -> SqlQueryResponse {
         // Incoming query maybe larger than query_failed + query_succeeded for some
         // corner case, like lots of time-consuming queries come in at the same time and

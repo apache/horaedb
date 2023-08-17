@@ -24,8 +24,8 @@ use tokio::sync::oneshot::{self, Receiver, Sender};
 
 use crate::mysql::{error::Result, worker::MysqlWorker};
 
-pub struct MysqlService<Q, P> {
-    proxy: Arc<Proxy<Q, P>>,
+pub struct MysqlService {
+    proxy: Arc<Proxy>,
     runtimes: Arc<EngineRuntimes>,
     socket_addr: SocketAddr,
     join_handler: Option<JoinHandle<()>>,
@@ -33,13 +33,13 @@ pub struct MysqlService<Q, P> {
     timeout: Option<Duration>,
 }
 
-impl<Q, P> MysqlService<Q, P> {
+impl MysqlService {
     pub fn new(
-        proxy: Arc<Proxy<Q, P>>,
+        proxy: Arc<Proxy>,
         runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
         timeout: Option<Duration>,
-    ) -> MysqlService<Q, P> {
+    ) -> MysqlService {
         Self {
             proxy,
             runtimes,
@@ -51,7 +51,7 @@ impl<Q, P> MysqlService<Q, P> {
     }
 }
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> MysqlService<Q, P> {
+impl MysqlService {
     pub async fn start(&mut self) -> Result<()> {
         let (tx, rx) = oneshot::channel();
 
@@ -77,7 +77,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> MysqlService<Q, P> {
     }
 
     async fn loop_accept(
-        proxy: Arc<Proxy<Q, P>>,
+        proxy: Arc<Proxy>,
         runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
         timeout: Option<Duration>,

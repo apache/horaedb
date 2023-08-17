@@ -15,7 +15,7 @@
 //! Interpreter factory
 
 use catalog::manager::ManagerRef;
-use query_engine::{executor::Executor, physical_planner::PhysicalPlanner};
+use query_engine::{executor::ExecutorRef, physical_planner::PhysicalPlannerRef};
 use query_frontend::plan::Plan;
 use table_engine::engine::TableEngineRef;
 
@@ -35,18 +35,18 @@ use crate::{
 };
 
 /// A factory to create interpreters
-pub struct Factory<Q, P> {
-    query_executor: Q,
-    physical_planner: P,
+pub struct Factory {
+    query_executor: ExecutorRef,
+    physical_planner: PhysicalPlannerRef,
     catalog_manager: ManagerRef,
     table_engine: TableEngineRef,
     table_manipulator: TableManipulatorRef,
 }
 
-impl<Q: Executor + 'static, P: PhysicalPlanner> Factory<Q, P> {
+impl Factory {
     pub fn new(
-        query_executor: Q,
-        physical_planner: P,
+        query_executor: ExecutorRef,
+        physical_planner: PhysicalPlannerRef,
         catalog_manager: ManagerRef,
         table_engine: TableEngineRef,
         table_manipulator: TableManipulatorRef,

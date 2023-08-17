@@ -17,7 +17,10 @@
 use async_trait::async_trait;
 use log::debug;
 use macros::define_result;
-use query_engine::{executor::Executor, physical_planner::PhysicalPlanner};
+use query_engine::{
+    executor::{Executor, ExecutorRef},
+    physical_planner::{PhysicalPlanner, PhysicalPlannerRef},
+};
 use query_frontend::plan::QueryPlan;
 use snafu::{ResultExt, Snafu};
 
@@ -38,19 +41,19 @@ pub enum Error {
 define_result!(Error);
 
 /// Select interpreter
-pub struct SelectInterpreter<T, P> {
+pub struct SelectInterpreter {
     ctx: Context,
     plan: QueryPlan,
-    executor: T,
-    physical_planner: P,
+    executor: ExecutorRef,
+    physical_planner: PhysicalPlannerRef,
 }
 
-impl<T: Executor + 'static, P: PhysicalPlanner> SelectInterpreter<T, P> {
+impl SelectInterpreter {
     pub fn create(
         ctx: Context,
         plan: QueryPlan,
-        executor: T,
-        physical_planner: P,
+        executor: ExecutorRef,
+        physical_planner: PhysicalPlannerRef,
     ) -> InterpreterPtr {
         Box::new(Self {
             ctx,
@@ -62,7 +65,7 @@ impl<T: Executor + 'static, P: PhysicalPlanner> SelectInterpreter<T, P> {
 }
 
 #[async_trait]
-impl<T: Executor, P: PhysicalPlanner> Interpreter for SelectInterpreter<T, P> {
+impl Interpreter for SelectInterpreter {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         let request_id = self.ctx.request_id();
         debug!(

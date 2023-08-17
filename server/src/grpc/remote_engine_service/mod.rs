@@ -110,14 +110,14 @@ impl<F: FnMut()> Drop for ExecutionGuard<F> {
 }
 
 #[derive(Clone)]
-pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static, P: PhysicalPlanner> {
-    pub instance: InstanceRef<Q, P>,
+pub struct RemoteEngineServiceImpl {
+    pub instance: InstanceRef,
     pub runtimes: Arc<EngineRuntimes>,
     pub request_notifiers: Option<Arc<RequestNotifiers<StreamReadReqKey, Result<RecordBatch>>>>,
     pub hotspot_recorder: Arc<HotspotRecorder>,
 }
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteEngineServiceImpl<Q, P> {
+impl RemoteEngineServiceImpl {
     async fn stream_read_internal(
         &self,
         request: Request<ReadRequest>,
@@ -426,9 +426,7 @@ struct HandlerContext {
 }
 
 #[async_trait]
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteEngineService
-    for RemoteEngineServiceImpl<Q, P>
-{
+impl RemoteEngineService for RemoteEngineServiceImpl {
     type ReadStream = BoxStream<'static, std::result::Result<ReadResponse, Status>>;
 
     async fn read(

@@ -24,15 +24,15 @@ use crate::postgresql::{
     PostgresqlService,
 };
 
-pub struct Builder<Q, P> {
+pub struct Builder {
     ip: String,
     port: u16,
     runtimes: Option<Arc<EngineRuntimes>>,
-    proxy: Option<Arc<Proxy<Q, P>>>,
+    proxy: Option<Arc<Proxy>>,
     timeout: Option<Duration>,
 }
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
+impl Builder {
     pub fn new() -> Self {
         Self {
             ip: "127.0.0.1".to_string(),
@@ -43,7 +43,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
         }
     }
 
-    pub fn build(self) -> Result<PostgresqlService<Q, P>> {
+    pub fn build(self) -> Result<PostgresqlService> {
         let runtimes = self.runtimes.context(MissingRuntimes)?;
         let proxy = self.proxy.context(MissingInstance)?;
 
@@ -69,7 +69,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
         self
     }
 
-    pub fn proxy(mut self, proxy: Arc<Proxy<Q, P>>) -> Self {
+    pub fn proxy(mut self, proxy: Arc<Proxy>) -> Self {
         self.proxy = Some(proxy);
         self
     }

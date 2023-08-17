@@ -27,18 +27,18 @@ use tokio::sync::oneshot::{self, Receiver, Sender};
 
 use crate::postgresql::{error::Result, handler::PostgresqlHandler};
 
-pub struct PostgresqlService<Q, P> {
+pub struct PostgresqlService {
     addr: SocketAddr,
-    proxy: Arc<Proxy<Q, P>>,
+    proxy: Arc<Proxy>,
     runtimes: Arc<EngineRuntimes>,
     join_handler: Option<JoinHandle<()>>,
     tx: Option<Sender<()>>,
     timeout: Option<Duration>,
 }
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> PostgresqlService<Q, P> {
+impl PostgresqlService {
     pub fn new(
-        proxy: Arc<Proxy<Q, P>>,
+        proxy: Arc<Proxy>,
         runtimes: Arc<EngineRuntimes>,
         addr: SocketAddr,
         timeout: Option<Duration>,
@@ -78,7 +78,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> PostgresqlService<Q, P> {
     }
 
     async fn loop_accept(
-        proxy: Arc<Proxy<Q, P>>,
+        proxy: Arc<Proxy>,
         timeout: Option<Duration>,
         runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
