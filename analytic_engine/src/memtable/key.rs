@@ -10,7 +10,7 @@
 //!         - sequence number
 //!         - index
 
-use std::{cmp::Ordering, mem};
+use std::mem;
 
 use bytes::BufMut;
 use common_types::{
@@ -23,7 +23,6 @@ use common_util::{
     codec::{memcomparable::MemComparable, Decoder, Encoder},
     define_result,
 };
-use skiplist::KeyComparator;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
@@ -209,23 +208,6 @@ pub fn internal_key_for_seek<'a>(
     Ok(&scratch[..])
 }
 
-/// Encode internal key from user key for seek
-///
-/// - user_key: the user key to encode
-/// - sequence: the sequence number to encode into internal key
-/// - scratch: buffer to store the encoded internal key, the scratch will be
-///   clear
-///
-/// Returns the slice to the encoded internal key
-pub fn user_key_for_seek<'a>(user_key: &[u8], scratch: &'a mut BytesMut) -> Result<&'a [u8]> {
-    scratch.clear();
-
-    scratch.reserve(user_key.len());
-    scratch.extend_from_slice(user_key);
-
-    Ok(&scratch[..])
-}
-
 /// Decode user key and sequence number from the internal key
 pub fn user_key_from_internal_key(internal_key: &[u8]) -> Result<(&[u8], KeySequence)> {
     // Empty user key is meaningless
@@ -241,21 +223,6 @@ pub fn user_key_from_internal_key(internal_key: &[u8]) -> Result<(&[u8], KeySequ
     let sequence = SequenceCodec.decode(&mut right)?;
 
     Ok((left, sequence))
-}
-
-#[derive(Debug, Clone)]
-pub struct BytewiseComparator;
-
-impl KeyComparator for BytewiseComparator {
-    #[inline]
-    fn compare_key(&self, lhs: &[u8], rhs: &[u8]) -> Ordering {
-        lhs.cmp(rhs)
-    }
-
-    #[inline]
-    fn same_key(&self, lhs: &[u8], rhs: &[u8]) -> bool {
-        lhs == rhs
-    }
 }
 
 #[cfg(test)]

@@ -660,6 +660,18 @@ pub mod tests {
                 collector: Arc::new(NoopCollector),
             };
 
+            let factory = SkiplistMemTableFactory;
+            factory.create_memtable(memtable_opts).unwrap()
+        }
+
+        pub fn build_columnar(&self) -> MemTableRef {
+            let memtable_opts = MemTableOptions {
+                schema: default_schema(),
+                arena_block_size: 1024 * 1024,
+                creation_sequence: 1000,
+                collector: Arc::new(NoopCollector),
+            };
+
             let factory = ColumnarMemTableFactory;
             factory.create_memtable(memtable_opts).unwrap()
         }

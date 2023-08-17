@@ -3,7 +3,6 @@
 use std::{
     collections::HashMap,
     sync::{
-        atomic,
         atomic::{AtomicU64, AtomicUsize, Ordering},
         Arc, RwLock,
     },
@@ -11,19 +10,18 @@ use std::{
 
 use arena::MonoIncArena;
 use bytes::Bytes;
-use common_types::{column::Column, datum::Datum, row::Row, schema::Schema, SequenceNumber};
+use common_types::{
+    column::Column, column_schema::ColumnId, datum::Datum, row::Row, schema::Schema, SequenceNumber,
+};
 use common_util::error::BoxError;
 use log::debug;
-use skiplist::Skiplist;
+use skiplist::{BytewiseComparator, Skiplist};
 use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::memtable::{
-    columnar::iter::ColumnarIterImpl,
-    factory::Options,
-    iter::ReversedColumnarIterator,
-    key::{BytewiseComparator, KeySequence},
-    ColumnarIterPtr, Internal, InternalNoCause, InvalidPutSequence, MemTable, PutContext, Result,
-    ScanContext, ScanRequest,
+    columnar::iter::ColumnarIterImpl, factory::Options, key::KeySequence,
+    reversed_iter::ReversedColumnarIterator, ColumnarIterPtr, Internal, InternalNoCause,
+    InvalidPutSequence, MemTable, PutContext, Result, ScanContext, ScanRequest,
 };
 
 pub mod factory;
@@ -32,7 +30,7 @@ pub mod iter;
 pub struct ColumnarMemTable {
     /// Schema of this memtable, is immutable.
     schema: Schema,
-    memtable: Arc<RwLock<HashMap<String, Column>>>,
+    memtable: Arc<RwLock<HashMap<ColumnId, Column>>>,
     /// The last sequence of the rows in this memtable. Update to this field
     /// require external synchronization.
     last_sequence: AtomicU64,
@@ -80,18 +78,18 @@ impl MemTable for ColumnarMemTable {
         let mut columns = HashMap::with_capacity(schema.num_columns());
 
         for (i, column_schema) in schema.columns().iter().enumerate() {
-            let column = if let Some(column) = columns.get_mut(&column_schema.name) {
+            let column = if let Some(column) = columns.get_mut(&column_schema.id) {
                 column
             } else {
-                let column =
-                    Column::new(1, column_schema.data_type)
-                        .box_err()
-                        .context(Internal {
-                            msg: "new column failed",
-                        })?;
-                columns.insert(column_schema.name.to_string(), column);
+                // TODO: impl append() one row in column, avoid memory expansion.
+                let column = Column::with_capacity(1, column_schema.data_type)
+                    .box_err()
+                    .context(Internal {
+                        msg: "new column failed",
+                    })?;
+                columns.insert(column_schema.id, column);
                 columns
-                    .get_mut(&column_schema.name)
+                    .get_mut(&column_schema.id)
                     .context(InternalNoCause {
                         msg: "get column failed",
                     })?
@@ -140,11 +138,19 @@ impl MemTable for ColumnarMemTable {
             ctx, request
         );
 
+        let timestamp_column = self
+            .schema
+            .columns()
+            .get(self.schema.timestamp_index())
+            .context(InternalNoCause {
+                msg: "timestamp column is missing",
+            })?;
+
         let num_rows = self
             .memtable
             .read()
             .unwrap()
-            .get(self.schema.timestamp_name())
+            .get(&timestamp_column.id)
             .context(InternalNoCause {
                 msg: "get timestamp column failed",
             })?
@@ -161,7 +167,7 @@ impl MemTable for ColumnarMemTable {
             self.schema.clone(),
             ctx,
             request,
-            self.last_sequence.load(Ordering::Acquire),
+            self.last_sequence.load(Ordering::Relaxed),
             skiplist,
         )?;
         if reverse {
@@ -187,13 +193,12 @@ impl MemTable for ColumnarMemTable {
             }
         );
 
-        self.last_sequence
-            .store(sequence, atomic::Ordering::Relaxed);
+        self.last_sequence.store(sequence, Ordering::Relaxed);
 
         Ok(())
     }
 
     fn last_sequence(&self) -> SequenceNumber {
-        self.last_sequence.load(atomic::Ordering::Relaxed)
+        self.last_sequence.load(Ordering::Relaxed)
     }
 }

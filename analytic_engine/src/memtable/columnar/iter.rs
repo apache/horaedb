@@ -9,10 +9,10 @@ use std::{
 };
 
 use arena::{Arena, BasicStats, MonoIncArena};
-use bytes::BytesMut;
 use common_types::{
     bytes::{ByteVec, Bytes},
     column::Column,
+    column_schema::ColumnId,
     datum::Datum,
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{RecordBatchWithKey, RecordBatchWithKeyBuilder},
@@ -26,12 +26,13 @@ use common_util::{
     time::InstantExt,
 };
 use log::trace;
-use skiplist::{ArenaSlice, IterRef, Skiplist};
+use parquet::data_type::AsBytes;
+use skiplist::{ArenaSlice, BytewiseComparator, IterRef, Skiplist};
 use snafu::{OptionExt, ResultExt};
 
 use crate::memtable::{
     key,
-    key::{BytewiseComparator, KeySequence, SequenceCodec},
+    key::{KeySequence, SequenceCodec},
     AppendRow, BuildRecordBatch, DecodeInternalKey, Internal, InternalNoCause, IterTimeout,
     ProjectSchema, Result, ScanContext, ScanRequest,
 };
@@ -49,7 +50,7 @@ enum State {
 
 /// Columnar iterator for [ColumnarMemTable]
 pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> {
-    memtable: Arc<RwLock<HashMap<String, Column>>>,
+    memtable: Arc<RwLock<HashMap<ColumnId, Column>>>,
     row_num: usize,
     current_idx: usize,
     // Schema related:
@@ -83,7 +84,7 @@ pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
 impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
     /// Create a new [ColumnarIterImpl].
     pub fn new(
-        memtable: Arc<RwLock<HashMap<String, Column>>>,
+        memtable: Arc<RwLock<HashMap<ColumnId, Column>>>,
         row_num: usize,
         schema: Schema,
         ctx: ScanContext,
@@ -134,12 +135,11 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
             for idx in self.memtable_schema.primary_key_indexes() {
                 let column_schema = self.memtable_schema.column(*idx);
-                let column =
-                    memtable
-                        .get(&column_schema.name)
-                        .with_context(|| InternalNoCause {
-                            msg: format!("column not found, column:{}", column_schema.name),
-                        })?;
+                let column = memtable
+                    .get(&column_schema.id)
+                    .with_context(|| InternalNoCause {
+                        msg: format!("column not found, column:{}", column_schema.name),
+                    })?;
                 for (i, key) in key_vec.iter_mut().enumerate().take(self.row_num) {
                     let datum = column.get_datum(i);
                     encoder
@@ -162,31 +162,17 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
             match &self.start_user_key {
                 Bound::Included(user_key) => {
-                    // Construct seek key
-                    let mut key_buf = BytesMut::new();
-                    let seek_key = key::user_key_for_seek(user_key, &mut key_buf)
-                        .box_err()
-                        .context(Internal {
-                            msg: "encode seek key",
-                        })?;
-
                     // Seek the skiplist
-                    self.iter.seek(seek_key);
+                    self.iter.seek(user_key.as_bytes());
                 }
                 Bound::Excluded(user_key) => {
                     // Construct seek key, just seek to the key with next prefix, so there is no
                     // need to skip the key until we meet the first key >
                     // start_user_key
-                    let next_user_key = row::key_prefix_next(user_key);
-                    let mut key_buf = BytesMut::new();
-                    let seek_key = key::user_key_for_seek(&next_user_key, &mut key_buf)
-                        .box_err()
-                        .context(Internal {
-                            msg: "encode seek key",
-                        })?;
+                    let seek_key = row::key_prefix_next(user_key);
 
                     // Seek the skiplist
-                    self.iter.seek(seek_key);
+                    self.iter.seek(seek_key.as_ref());
                 }
                 Bound::Unbounded => self.iter.seek_to_first(),
             }
@@ -315,7 +301,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         for (col_idx, column_schema_idx) in self.projector.source_projection().iter().enumerate() {
             if let Some(column_schema_idx) = column_schema_idx {
                 let column_schema = self.memtable_schema.column(*column_schema_idx);
-                if let Some(column) = memtable.get(&column_schema.name) {
+                if let Some(column) = memtable.get(&column_schema.id) {
                     for (i, row_idx) in row_idxs.iter().enumerate() {
                         let datum = column.get_datum(*row_idx as usize);
                         rows[i][col_idx] = datum;
@@ -339,7 +325,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         for (col_idx, column_schema_idx) in self.projector.source_projection().iter().enumerate() {
             if let Some(column_schema_idx) = column_schema_idx {
                 let column_schema = self.memtable_schema.column(*column_schema_idx);
-                if let Some(column) = memtable.get(&column_schema.name) {
+                if let Some(column) = memtable.get(&column_schema.id) {
                     for (i, row) in rows.iter_mut().enumerate().take(self.batch_size) {
                         let row_idx = self.current_idx + i;
                         if row_idx >= column.len() {

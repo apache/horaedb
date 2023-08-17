@@ -15,11 +15,11 @@ use common_types::{
 };
 use common_util::{codec::row, time::InstantExt};
 use log::trace;
-use skiplist::{ArenaSlice, IterRef, Skiplist};
+use skiplist::{ArenaSlice, BytewiseComparator, IterRef, Skiplist};
 use snafu::ResultExt;
 
 use crate::memtable::{
-    key::{self, BytewiseComparator, KeySequence},
+    key::{self, KeySequence},
     skiplist::SkiplistMemTable,
     AppendRow, BuildRecordBatch, DecodeInternalKey, EncodeInternalKey, IterTimeout, ProjectSchema,
     Result, ScanContext, ScanRequest,

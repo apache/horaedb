@@ -19,12 +19,12 @@ use common_types::{
 };
 use common_util::{codec::Encoder, error::BoxError};
 use log::{debug, trace};
-use skiplist::Skiplist;
+use skiplist::{BytewiseComparator, Skiplist};
 use snafu::{ensure, ResultExt};
 
 use crate::memtable::{
-    iter::ReversedColumnarIterator,
-    key::{BytewiseComparator, ComparableInternalKey, KeySequence},
+    key::{ComparableInternalKey, KeySequence},
+    reversed_iter::ReversedColumnarIterator,
     skiplist::iter::ColumnarIterImpl,
     ColumnarIterPtr, EncodeInternalKey, InvalidPutSequence, InvalidRow, MemTable, PutContext,
     Result, ScanContext, ScanRequest,

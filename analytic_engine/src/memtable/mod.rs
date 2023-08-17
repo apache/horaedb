@@ -4,8 +4,8 @@
 
 pub mod columnar;
 pub mod factory;
-mod iter;
 pub mod key;
+mod reversed_iter;
 pub mod skiplist;
 
 use std::{ops::Bound, sync::Arc, time::Instant};
