@@ -12,17 +12,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use generic_error::GenericError;
-use macros::define_result;
-use snafu::Snafu;
-define_result!(Error);
-
-#[derive(Snafu, Debug)]
-#[snafu(visibility(pub))]
-pub enum Error {
-    #[snafu(display("Internal error, message:{}, err:{}", msg, source))]
-    Internal { msg: String, source: GenericError },
-
-    #[snafu(display("Datafusion error, message:{}, err:{}", msg, source))]
-    Datafusion { msg: String, source: GenericError },
-}
+pub mod physical_plan;

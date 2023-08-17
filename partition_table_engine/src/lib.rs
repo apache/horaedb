@@ -17,6 +17,8 @@
 mod error;
 mod metrics;
 mod partition;
+pub mod scan_builder;
+pub mod test_util;
 
 use std::sync::Arc;
 

@@ -2322,6 +2322,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "df_engine_extensions"
+version = "1.2.6-alpha"
+dependencies = [
+ "arrow 43.0.0",
+ "datafusion",
+ "generic_error",
+ "snafu 0.6.10",
+ "table_engine",
+]
+
+[[package]]
 name = "df_operator"
 version = "1.2.6-alpha"
 dependencies = [
@@ -4622,11 +4633,16 @@ name = "partition_table_engine"
 version = "1.2.6-alpha"
 dependencies = [
  "analytic_engine",
+ "arrow 43.0.0",
  "async-trait",
  "common_types",
+ "datafusion",
+ "df_engine_extensions",
+ "df_operator",
  "futures 0.3.28",
  "generic_error",
  "lazy_static",
+ "log",
  "macros",
  "prometheus 0.12.0",
  "snafu 0.6.10",
@@ -5378,6 +5394,7 @@ dependencies = [
  "lazy_static",
  "log",
  "macros",
+ "partition_table_engine",
  "paste 1.0.12",
  "prom-remote-api",
  "regex",
