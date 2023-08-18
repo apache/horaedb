@@ -30,8 +30,7 @@ use crate::{context::Context, error::*, physical_planner::PhysicalPlanPtr};
 /// Executes the logical plan
 #[async_trait]
 pub trait Executor: fmt::Debug + Send + Sync + 'static {
-    // TODO(yingwen): Maybe return a stream
-    /// Execute the query, returning the query results as RecordBatchVec
+    /// Execute the query, return the record batch stream
     ///
     /// REQUIRE: The meta data of tables in query should be found from
     /// ContextRef
