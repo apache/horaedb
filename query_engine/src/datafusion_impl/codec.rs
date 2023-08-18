@@ -46,11 +46,11 @@ impl fmt::Debug for DataFusionPhysicalPlanEncoderImpl {
 }
 
 impl PhysicalPlanCodec for DataFusionPhysicalPlanEncoderImpl {
-    fn try_encode(&self, _plan: &crate::physical_planner::PhysicalPlanPtr) -> Result<Bytes> {
+    fn encode(&self, _plan: &crate::physical_planner::PhysicalPlanPtr) -> Result<Bytes> {
         todo!()
     }
 
-    fn try_decode(&self, _bytes: &[u8]) -> Result<PhysicalPlanPtr> {
+    fn decode(&self, _bytes: &[u8]) -> Result<PhysicalPlanPtr> {
         todo!()
     }
 }
