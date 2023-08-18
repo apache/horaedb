@@ -30,7 +30,9 @@ use snafu::{self, ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use self::{
     bytes::{BytesValuesDecoder, BytesValuesEncoder},
     float::{F64ValuesDecoder, F64ValuesEncoder},
-    int::{I32ValuesDecoder, I64ValuesDecoder, I64ValuesEncoder},
+    int::{
+        I32ValuesDecoder, I64ValuesDecoder, I64ValuesEncoder, U64ValuesDecoder, U64ValuesEncoder,
+    },
 };
 use crate::{columnar::int::I32ValuesEncoder, varint, Decoder};
 
@@ -239,7 +241,10 @@ impl ColumnarEncoder {
                         .filter_map(|v| v.into_str().map(|v| v.as_bytes())),
                 )
             }
-            DatumKind::UInt64 => todo!(),
+            DatumKind::UInt64 => {
+                let enc = U64ValuesEncoder;
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_u64()))
+            }
             DatumKind::UInt32 => todo!(),
             DatumKind::UInt16 => todo!(),
             DatumKind::UInt8 => todo!(),
@@ -291,7 +296,10 @@ impl ColumnarEncoder {
                     datums.filter_map(|v| v.into_str().map(|v| v.as_bytes())),
                 )
             }
-            DatumKind::UInt64 => todo!(),
+            DatumKind::UInt64 => {
+                let enc = U64ValuesEncoder;
+                enc.encode(buf, datums.filter_map(|v| v.as_u64()))
+            }
             DatumKind::UInt32 => todo!(),
             DatumKind::UInt16 => todo!(),
             DatumKind::UInt8 => todo!(),
@@ -428,7 +436,14 @@ impl ColumnarDecoder {
                 let decoder = BytesValuesDecoder::default();
                 decoder.decode(buf, with_str)
             }
-            DatumKind::UInt64 => todo!(),
+            DatumKind::UInt64 => {
+                let with_u64 = |value: u64| {
+                    let datum = Datum::from(value);
+                    f(datum)
+                };
+                let decoder = U64ValuesDecoder;
+                decoder.decode(buf, with_u64)
+            }
             DatumKind::UInt32 => todo!(),
             DatumKind::UInt16 => todo!(),
             DatumKind::UInt8 => todo!(),

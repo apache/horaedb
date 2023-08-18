@@ -89,7 +89,7 @@ impl ValuesEncoder for I64ValuesEncoder {
     {
         let (lower, higher) = values.size_hint();
         let num = lower.max(higher.unwrap_or_default());
-        num * std::mem::size_of::<Self::ValueType>()
+        num * 10
     }
 }
 
@@ -105,6 +105,52 @@ impl ValuesDecoder for I64ValuesDecoder {
     {
         while buf.remaining() > 0 {
             let v = varint::decode_varint(buf).context(Varint)?;
+            f(v)?;
+        }
+
+        Ok(())
+    }
+}
+
+pub struct U64ValuesEncoder;
+
+impl ValuesEncoder for U64ValuesEncoder {
+    type ValueType = u64;
+
+    fn encode<B, I>(&self, buf: &mut B, values: I) -> Result<()>
+    where
+        B: BufMut,
+        I: Iterator<Item = Self::ValueType>,
+    {
+        for v in values {
+            varint::encode_uvarint(buf, v).context(Varint)?;
+        }
+
+        Ok(())
+    }
+
+    fn estimated_encoded_size<I>(&self, values: I) -> usize
+    where
+        I: Iterator<Item = Self::ValueType>,
+    {
+        let (lower, higher) = values.size_hint();
+        let num = lower.max(higher.unwrap_or_default());
+        num * 10
+    }
+}
+
+pub struct U64ValuesDecoder;
+
+impl ValuesDecoder for U64ValuesDecoder {
+    type ValueType = u64;
+
+    fn decode<B, F>(&self, buf: &mut B, mut f: F) -> Result<()>
+    where
+        B: Buf,
+        F: FnMut(Self::ValueType) -> Result<()>,
+    {
+        while buf.remaining() > 0 {
+            let v = varint::decode_uvarint(buf).context(Varint)?;
             f(v)?;
         }
 
