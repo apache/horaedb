@@ -3298,6 +3298,7 @@ dependencies = [
  "datafusion",
  "datafusion-proto",
  "df_operator",
+ "futures 0.3.28",
  "generic_error",
  "hash_ext",
  "log",

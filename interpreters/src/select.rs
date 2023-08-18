@@ -15,15 +15,19 @@
 //! Interpreter for select statement
 
 use async_trait::async_trait;
+use futures::TryStreamExt;
+use generic_error::{BoxError, GenericError};
 use log::debug;
 use macros::define_result;
 use query_engine::{executor::ExecutorRef, physical_planner::PhysicalPlannerRef};
 use query_frontend::plan::QueryPlan;
 use snafu::{ResultExt, Snafu};
+use table_engine::stream::SendableRecordBatchStream;
 
 use crate::{
     context::Context,
     interpreter::{Interpreter, InterpreterPtr, Output, Result as InterpreterResult, Select},
+    RecordBatchVec,
 };
 
 #[derive(Debug, Snafu)]
@@ -31,8 +35,8 @@ pub enum Error {
     #[snafu(display("Failed to create query context, err:{}", source))]
     CreateQueryContext { source: crate::context::Error },
 
-    #[snafu(display("Failed to execute logical plan, err:{}", source))]
-    ExecutePlan { source: query_engine::error::Error },
+    #[snafu(display("Failed to execute physical plan, msg:{}, err:{}", msg, source))]
+    ExecutePlan { msg: String, source: GenericError },
 }
 
 define_result!(Error);
@@ -81,14 +85,20 @@ impl Interpreter for SelectInterpreter {
             .physical_planner
             .plan(&query_ctx, self.plan)
             .await
-            .context(ExecutePlan)
+            .box_err()
+            .context(ExecutePlan {
+                msg: "failed to build physical plan",
+            })
             .context(Select)?;
 
-        let record_batches = self
+        let record_batch_stream = self
             .executor
             .execute(&query_ctx, physical_plan)
             .await
-            .context(ExecutePlan)
+            .box_err()
+            .context(ExecutePlan {
+                msg: "failed to execute physical plan",
+            })
             .context(Select)?;
 
         debug!(
@@ -96,6 +106,19 @@ impl Interpreter for SelectInterpreter {
             request_id
         );
 
+        let record_batches = collect(record_batch_stream).await?;
+
         Ok(Output::Records(record_batches))
     }
+}
+
+async fn collect(stream: SendableRecordBatchStream) -> InterpreterResult<RecordBatchVec> {
+    stream
+        .try_collect()
+        .await
+        .box_err()
+        .context(ExecutePlan {
+            msg: "failed to collect execution results",
+        })
+        .context(Select)
 }

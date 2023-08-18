@@ -21,12 +21,12 @@ use arrow::{
 };
 use async_trait::async_trait;
 use macros::define_result;
-use query_engine::executor::RecordBatchVec;
 use query_frontend::plan::ExistsTablePlan;
 use snafu::{ResultExt, Snafu};
 
-use crate::interpreter::{
-    Exists, Interpreter, InterpreterPtr, Output, Result as InterpreterResult,
+use crate::{
+    interpreter::{Exists, Interpreter, InterpreterPtr, Output, Result as InterpreterResult},
+    RecordBatchVec,
 };
 
 #[derive(Debug, Snafu)]
