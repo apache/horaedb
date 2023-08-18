@@ -227,7 +227,10 @@ impl ColumnarEncoder {
                         .filter_map(|v| v.as_timestamp().map(|v| v.as_i64())),
                 )
             }
-            DatumKind::Double => todo!(),
+            DatumKind::Double => {
+                let enc = F64ValuesEncoder;
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_f64()))
+            }
             DatumKind::Float => todo!(),
             DatumKind::Varbinary => {
                 let enc = BytesValuesEncoder::default();
