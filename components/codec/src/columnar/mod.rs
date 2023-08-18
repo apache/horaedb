@@ -22,6 +22,7 @@ use common_types::{
     datum::{Datum, DatumKind, DatumView},
     row::bitset::{BitSet, RoBitSet},
     string::StringBytes,
+    time::Timestamp,
 };
 use macros::define_result;
 use snafu::{self, ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -216,7 +217,14 @@ impl ColumnarEncoder {
 
         let data_size = match hint.datum_kind {
             DatumKind::Null => 0,
-            DatumKind::Timestamp => todo!(),
+            DatumKind::Timestamp => {
+                let enc = I64ValuesEncoder;
+                enc.estimated_encoded_size(
+                    datums
+                        .clone()
+                        .filter_map(|v| v.as_timestamp().map(|v| v.as_i64())),
+                )
+            }
             DatumKind::Double => todo!(),
             DatumKind::Float => todo!(),
             DatumKind::Varbinary => {
@@ -260,7 +268,13 @@ impl ColumnarEncoder {
     {
         match datum_kind {
             DatumKind::Null => Ok(()),
-            DatumKind::Timestamp => todo!(),
+            DatumKind::Timestamp => {
+                let enc = I64ValuesEncoder;
+                enc.encode(
+                    buf,
+                    datums.filter_map(|v| v.as_timestamp().map(|v| v.as_i64())),
+                )
+            }
             DatumKind::Double => {
                 let enc = F64ValuesEncoder;
                 enc.encode(buf, datums.filter_map(|v| v.as_f64()))
@@ -390,7 +404,11 @@ impl ColumnarDecoder {
     {
         match datum_kind {
             DatumKind::Null => Ok(()),
-            DatumKind::Timestamp => todo!(),
+            DatumKind::Timestamp => {
+                let with_i64 = |v| f(Datum::from(Timestamp::new(v)));
+                let decoder = I64ValuesDecoder;
+                decoder.decode(buf, with_i64)
+            }
             DatumKind::Double => {
                 let with_float = |v| f(Datum::from(v));
                 let decoder = F64ValuesDecoder;
