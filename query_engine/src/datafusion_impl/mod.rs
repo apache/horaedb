@@ -20,17 +20,16 @@ use datafusion::execution::{
 };
 
 use crate::{
+    codec::PhysicalPlanCodecRef,
     datafusion_impl::{
-        encoding::DataFusionPhysicalPlanEncoderImpl,
-        physical_planner::DatafusionPhysicalPlannerImpl,
+        codec::DataFusionPhysicalPlanEncoderImpl, physical_planner::DatafusionPhysicalPlannerImpl,
     },
-    encoding::PhysicalPlanEncoderRef,
     executor::{ExecutorImpl, ExecutorRef},
     physical_planner::PhysicalPlannerRef,
     Config, QueryEngine,
 };
 
-pub mod encoding;
+pub mod codec;
 pub mod logical_optimizer;
 pub mod physical_optimizer;
 pub mod physical_plan;
@@ -44,7 +43,7 @@ use crate::error::*;
 pub struct DatafusionQueryEngineImpl {
     physical_planner: PhysicalPlannerRef,
     executor: ExecutorRef,
-    physical_plan_encoder: PhysicalPlanEncoderRef,
+    physical_plan_codec: PhysicalPlanCodecRef,
 }
 
 impl DatafusionQueryEngineImpl {
@@ -60,7 +59,7 @@ impl DatafusionQueryEngineImpl {
             runtime_env.clone(),
         ));
         let executor = Arc::new(ExecutorImpl);
-        let physical_plan_encoder = Arc::new(DataFusionPhysicalPlanEncoderImpl::new(
+        let physical_plan_codec = Arc::new(DataFusionPhysicalPlanEncoderImpl::new(
             runtime_env,
             function_registry,
         ));
@@ -68,7 +67,7 @@ impl DatafusionQueryEngineImpl {
         Ok(Self {
             physical_planner,
             executor,
-            physical_plan_encoder,
+            physical_plan_codec,
         })
     }
 }
@@ -82,7 +81,7 @@ impl QueryEngine for DatafusionQueryEngineImpl {
         self.executor.clone()
     }
 
-    fn physical_plan_encoder(&self) -> PhysicalPlanEncoderRef {
-        self.physical_plan_encoder.clone()
+    fn physical_plan_codec(&self) -> PhysicalPlanCodecRef {
+        self.physical_plan_codec.clone()
     }
 }

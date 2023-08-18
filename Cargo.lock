@@ -5357,6 +5357,7 @@ version = "1.2.6-alpha"
 dependencies = [
  "arrow 43.0.0",
  "async-trait",
+ "bytes_ext",
  "chrono",
  "common_types",
  "datafusion",
@@ -5366,7 +5367,6 @@ dependencies = [
  "iox_query",
  "log",
  "macros",
- "prost",
  "query_frontend",
  "serde",
  "snafu 0.6.10",

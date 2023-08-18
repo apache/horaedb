@@ -94,7 +94,7 @@ arena = { path = "components/arena" }
 async-stream = "0.3.4"
 async-trait = "0.1.72"
 base64 = "0.13"
-bytes = "1.1.0"
+bytes = "1"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }

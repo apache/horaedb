@@ -51,7 +51,7 @@ pub trait FunctionRegistry {
 
     fn find_udaf(&self, name: &str) -> Result<Option<AggregateUdf>>;
 
-    fn list_udfs(&self) -> HashSet<String>;
+    fn list_udfs(&self) -> Result<Vec<ScalarUdf>>;
 
     // TODO: can we remove restriction about `Send` and `Sync`?
     fn to_df_function_registry(self: Arc<Self>) -> Arc<dyn DfFunctionRegistry + Send + Sync>;
@@ -109,8 +109,8 @@ impl FunctionRegistry for FunctionRegistryImpl {
         Ok(udaf)
     }
 
-    fn list_udfs(&self) -> HashSet<String> {
-        self.scalar_functions.keys().cloned().collect()
+    fn list_udfs(&self) -> Result<Vec<ScalarUdf>> {
+        Ok(self.scalar_functions.values().cloned().collect())
     }
 
     fn to_df_function_registry(self: Arc<Self>) -> Arc<dyn DfFunctionRegistry + Send + Sync> {
@@ -122,7 +122,12 @@ struct DfFunctionRegistryAdapter(FunctionRegistryRef);
 
 impl DfFunctionRegistry for DfFunctionRegistryAdapter {
     fn udfs(&self) -> HashSet<String> {
-        self.0.list_udfs()
+        self.0
+            .list_udfs()
+            .expect("failed to list udfs")
+            .into_iter()
+            .map(|f| f.name().to_string())
+            .collect()
     }
 
     fn udf(&self, name: &str) -> DfResult<Arc<DfScalarUDF>> {

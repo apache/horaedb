@@ -14,14 +14,14 @@
 
 use std::{fmt, sync::Arc};
 
-use prost::bytes::Bytes;
+use bytes_ext::Bytes;
 
 use crate::{error::Result, physical_planner::PhysicalPlanPtr};
 
-pub trait PhysicalPlanEncoder: fmt::Debug + Send + Sync + 'static {
+pub trait PhysicalPlanCodec: fmt::Debug + Send + Sync + 'static {
     fn try_encode(&self, plan: &PhysicalPlanPtr) -> Result<Bytes>;
 
     fn try_decode(&self, bytes: &[u8]) -> Result<PhysicalPlanPtr>;
 }
 
-pub type PhysicalPlanEncoderRef = Arc<dyn PhysicalPlanEncoder>;
+pub type PhysicalPlanCodecRef = Arc<dyn PhysicalPlanCodec>;

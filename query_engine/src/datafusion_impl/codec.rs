@@ -14,10 +14,10 @@
 
 use std::{fmt, sync::Arc};
 
+use bytes_ext::Bytes;
 use datafusion::execution::{runtime_env::RuntimeEnv, FunctionRegistry};
-use prost::bytes::Bytes;
 
-use crate::{encoding::PhysicalPlanEncoder, error::*, physical_planner::PhysicalPlanPtr};
+use crate::{codec::PhysicalPlanCodec, error::*, physical_planner::PhysicalPlanPtr};
 
 /// Datafusion encoder powered by `datafusion-proto`
 // TODO: replace `datafusion-proto` with `substrait`?
@@ -45,7 +45,7 @@ impl fmt::Debug for DataFusionPhysicalPlanEncoderImpl {
     }
 }
 
-impl PhysicalPlanEncoder for DataFusionPhysicalPlanEncoderImpl {
+impl PhysicalPlanCodec for DataFusionPhysicalPlanEncoderImpl {
     fn try_encode(&self, _plan: &crate::physical_planner::PhysicalPlanPtr) -> Result<Bytes> {
         todo!()
     }
