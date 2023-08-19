@@ -38,14 +38,18 @@ use crate::{
 };
 
 /// Physical planner based on datafusion
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DatafusionPhysicalPlannerImpl {
     config: Config,
+    runtime_env: Arc<RuntimeEnv>,
 }
 
 impl DatafusionPhysicalPlannerImpl {
-    pub fn new(config: Config) -> Self {
-        Self { config }
+    pub fn new(config: Config, runtime_env: Arc<RuntimeEnv>) -> Self {
+        Self {
+            config,
+            runtime_env,
+        }
     }
 
     pub fn build_df_session_ctx(&self, config: &Config, ctx: &Context) -> SessionContext {
@@ -70,9 +74,8 @@ impl DatafusionPhysicalPlannerImpl {
 
         // Using default logcial optimizer, if want to add more custom rule, using
         // `add_optimizer_rule` to add.
-        let state =
-            SessionState::with_config_rt(df_session_config, Arc::new(RuntimeEnv::default()))
-                .with_query_planner(Arc::new(QueryPlannerAdapter));
+        let state = SessionState::with_config_rt(df_session_config, self.runtime_env.clone())
+            .with_query_planner(Arc::new(QueryPlannerAdapter));
 
         // Register analyzer rules
         let state = Self::register_analyzer_rules(state);

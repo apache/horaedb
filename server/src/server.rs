@@ -32,7 +32,7 @@ use proxy::{
     schema_config_provider::SchemaConfigProviderRef,
     Proxy,
 };
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
+use query_engine::QueryEngineRef;
 use remote_engine_client::RemoteEngineImpl;
 use router::{endpoint::Endpoint, RouterRef};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -66,11 +66,8 @@ pub enum Error {
     #[snafu(display("Missing catalog manager.\nBacktrace:\n{}", backtrace))]
     MissingCatalogManager { backtrace: Backtrace },
 
-    #[snafu(display("Missing query executor.\nBacktrace:\n{}", backtrace))]
-    MissingQueryExecutor { backtrace: Backtrace },
-
-    #[snafu(display("Missing physical planner.\nBacktrace:\n{}", backtrace))]
-    MissingPhysicalPlanner { backtrace: Backtrace },
+    #[snafu(display("Missing query engine.\nBacktrace:\n{}", backtrace))]
+    MissingQueryEngine { backtrace: Backtrace },
 
     #[snafu(display("Missing table engine.\nBacktrace:\n{}", backtrace))]
     MissingTableEngine { backtrace: Backtrace },
@@ -125,17 +122,17 @@ define_result!(Error);
 
 // TODO(yingwen): Consider a config manager
 /// Server
-pub struct Server<Q: QueryExecutor + 'static, P: PhysicalPlanner> {
-    http_service: Service<Q, P>,
-    rpc_services: RpcServices<Q, P>,
-    mysql_service: mysql::MysqlService<Q, P>,
-    postgresql_service: postgresql::PostgresqlService<Q, P>,
-    instance: InstanceRef<Q, P>,
+pub struct Server {
+    http_service: Service,
+    rpc_services: RpcServices,
+    mysql_service: mysql::MysqlService,
+    postgresql_service: postgresql::PostgresqlService,
+    instance: InstanceRef,
     cluster: Option<ClusterRef>,
     local_tables_recoverer: Option<LocalTablesRecoverer>,
 }
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Server<Q, P> {
+impl Server {
     pub async fn stop(mut self) {
         self.rpc_services.shutdown().await;
         self.http_service.stop();
@@ -212,7 +209,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Server<Q, P> {
 }
 
 #[must_use]
-pub struct Builder<Q, P> {
+pub struct Builder {
     server_config: ServerConfig,
     remote_engine_client_config: remote_engine_client::config::Config,
     node_addr: String,
@@ -220,11 +217,7 @@ pub struct Builder<Q, P> {
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
     catalog_manager: Option<ManagerRef>,
-
-    // TODO: maybe place these two components in a `QueryEngine`.
-    query_executor: Option<Q>,
-    physical_planner: Option<P>,
-
+    query_engine: Option<QueryEngineRef>,
     table_engine: Option<TableEngineRef>,
     table_manipulator: Option<TableManipulatorRef>,
     function_registry: Option<FunctionRegistryRef>,
@@ -236,7 +229,7 @@ pub struct Builder<Q, P> {
     opened_wals: Option<OpenedWals>,
 }
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
+impl Builder {
     pub fn new(config: ServerConfig) -> Self {
         Self {
             server_config: config,
@@ -246,8 +239,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
             engine_runtimes: None,
             log_runtime: None,
             catalog_manager: None,
-            query_executor: None,
-            physical_planner: None,
+            query_engine: None,
             table_engine: None,
             table_manipulator: None,
             function_registry: None,
@@ -285,13 +277,8 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
         self
     }
 
-    pub fn query_executor(mut self, val: Q) -> Self {
-        self.query_executor = Some(val);
-        self
-    }
-
-    pub fn physical_planner(mut self, val: P) -> Self {
-        self.physical_planner = Some(val);
+    pub fn query_engine(mut self, val: QueryEngineRef) -> Self {
+        self.query_engine = Some(val);
         self
     }
 
@@ -344,11 +331,10 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
     }
 
     /// Build and run the server
-    pub fn build(self) -> Result<Server<Q, P>> {
+    pub fn build(self) -> Result<Server> {
         // Build instance
         let catalog_manager = self.catalog_manager.context(MissingCatalogManager)?;
-        let query_executor = self.query_executor.context(MissingQueryExecutor)?;
-        let physical_planner = self.physical_planner.context(MissingPhysicalPlanner)?;
+        let query_engine = self.query_engine.context(MissingQueryEngine)?;
         let table_engine = self.table_engine.context(MissingTableEngine)?;
         let table_manipulator = self.table_manipulator.context(MissingTableManipulator)?;
         let function_registry = self.function_registry.context(MissingFunctionRegistry)?;
@@ -376,8 +362,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
         let instance = {
             let instance = Instance {
                 catalog_manager,
-                query_executor,
-                physical_planner,
+                query_engine,
                 table_engine,
                 partition_table_engine,
                 function_registry,

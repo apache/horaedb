@@ -16,9 +16,8 @@ use common_types::{
     column_schema::ColumnSchema,
     datum::{Datum, DatumKind},
 };
-use interpreters::interpreter::Output;
+use interpreters::{interpreter::Output, RecordBatchVec};
 use opensrv_mysql::{Column, ColumnFlags, ColumnType, OkResponse, QueryResultWriter};
-use query_engine::executor::RecordBatchVec;
 
 use crate::mysql::error::Result;
 

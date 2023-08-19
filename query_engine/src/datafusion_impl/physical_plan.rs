@@ -34,9 +34,6 @@ use table_engine::stream::{FromDfStream, SendableRecordBatchStream};
 
 use crate::{error::*, physical_planner::PhysicalPlan};
 
-/// Datafusion physical plan adapter
-///
-/// Because we need to
 pub struct DataFusionPhysicalPlanImpl {
     ctx: SessionContext,
     plan: Arc<dyn ExecutionPlan>,

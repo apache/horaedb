@@ -12,31 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Query engine
-//!
-//! Optimizes and executes logical plan
+use std::{fmt, sync::Arc};
 
-pub mod codec;
-pub mod config;
-pub mod context;
-pub mod datafusion_impl;
-pub mod error;
-pub mod executor;
-pub mod physical_planner;
-use std::fmt;
+use bytes_ext::Bytes;
 
-pub use config::Config;
+use crate::{error::Result, physical_planner::PhysicalPlanPtr};
 
-use crate::{
-    codec::PhysicalPlanCodecRef, executor::ExecutorRef, physical_planner::PhysicalPlannerRef,
-};
+pub trait PhysicalPlanCodec: fmt::Debug + Send + Sync + 'static {
+    fn encode(&self, plan: &PhysicalPlanPtr) -> Result<Bytes>;
 
-pub trait QueryEngine: fmt::Debug + Send + Sync {
-    fn physical_planner(&self) -> PhysicalPlannerRef;
-
-    fn executor(&self) -> ExecutorRef;
-
-    fn physical_plan_codec(&self) -> PhysicalPlanCodecRef;
+    fn decode(&self, bytes: &[u8]) -> Result<PhysicalPlanPtr>;
 }
 
-pub type QueryEngineRef = Box<dyn QueryEngine>;
+pub type PhysicalPlanCodecRef = Arc<dyn PhysicalPlanCodec>;

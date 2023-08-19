@@ -35,16 +35,12 @@ use common_types::{
 };
 use generic_error::BoxError;
 use http::StatusCode;
-use interpreters::interpreter::Output;
+use interpreters::{interpreter::Output, RecordBatchVec};
 use log::{error, info};
 use prom_remote_api::types::{
     Label, LabelMatcher, Query, QueryResult, RemoteStorage, Sample, TimeSeries, WriteRequest,
 };
 use prost::Message;
-use query_engine::{
-    executor::{Executor as QueryExecutor, RecordBatchVec},
-    physical_planner::PhysicalPlanner,
-};
 use query_frontend::{
     frontend::{Context, Frontend},
     promql::{RemoteQueryPlan, DEFAULT_FIELD_COLUMN, NAME_LABEL},
@@ -64,7 +60,7 @@ use crate::{
 
 impl reject::Reject for Error {}
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
+impl Proxy {
     /// Handle write samples to remote storage with remote storage protocol.
     async fn handle_prom_remote_write(&self, ctx: RequestContext, req: WriteRequest) -> Result<()> {
         let write_table_requests = convert_write_request(req)?;
@@ -206,7 +202,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
 }
 
 #[async_trait]
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteStorage for Proxy<Q, P> {
+impl RemoteStorage for Proxy {
     type Context = RequestContext;
     type Err = Error;
 

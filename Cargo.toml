@@ -94,7 +94,7 @@ arena = { path = "components/arena" }
 async-stream = "0.3.4"
 async-trait = "0.1.72"
 base64 = "0.13"
-bytes = "1.1.0"
+bytes = "1"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
@@ -188,6 +188,7 @@ catalog = { workspace = true }
 catalog_impls = { workspace = true }
 clap = { workspace = true }
 cluster = { workspace = true }
+datafusion = { workspace = true }
 df_operator = { workspace = true }
 etcd-client = { workspace = true }
 interpreters = { workspace = true }

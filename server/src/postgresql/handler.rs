@@ -29,19 +29,16 @@ use pgwire::{
     error::{PgWireError, PgWireResult},
 };
 use proxy::{context::RequestContext, http::sql::Request, Proxy};
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use snafu::ResultExt;
 
 use crate::postgresql::error::{CreateContext, Result};
-pub struct PostgresqlHandler<Q, P> {
-    pub(crate) proxy: Arc<Proxy<Q, P>>,
+pub struct PostgresqlHandler {
+    pub(crate) proxy: Arc<Proxy>,
     pub(crate) timeout: Option<Duration>,
 }
 
 #[async_trait]
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> SimpleQueryHandler
-    for PostgresqlHandler<Q, P>
-{
+impl SimpleQueryHandler for PostgresqlHandler {
     async fn do_query<'a, C>(&self, _client: &C, sql: &'a str) -> PgWireResult<Vec<Response<'a>>>
     where
         C: ClientInfo + Unpin + Send + Sync,
@@ -66,7 +63,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> SimpleQueryHandler
     }
 }
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> PostgresqlHandler<Q, P> {
+impl PostgresqlHandler {
     fn create_ctx(&self) -> Result<RequestContext> {
         let default_catalog = self
             .proxy

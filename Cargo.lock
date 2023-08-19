@@ -1246,6 +1246,7 @@ dependencies = [
  "catalog_impls",
  "clap 3.2.23",
  "cluster",
+ "datafusion",
  "df_operator",
  "etcd-client",
  "interpreters",
@@ -3297,6 +3298,7 @@ dependencies = [
  "datafusion",
  "datafusion-proto",
  "df_operator",
+ "futures 0.3.28",
  "generic_error",
  "hash_ext",
  "log",
@@ -5355,6 +5357,7 @@ version = "1.2.6-alpha"
 dependencies = [
  "arrow 43.0.0",
  "async-trait",
+ "bytes_ext",
  "chrono",
  "common_types",
  "datafusion",

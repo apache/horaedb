@@ -14,11 +14,9 @@
 
 //! Query executor
 
-use std::time::Instant;
+use std::{fmt, sync::Arc, time::Instant};
 
 use async_trait::async_trait;
-use common_types::record_batch::RecordBatch;
-use futures::TryStreamExt;
 use generic_error::BoxError;
 use log::{debug, info};
 use snafu::ResultExt;
@@ -27,16 +25,12 @@ use time_ext::InstantExt;
 
 use crate::{context::Context, error::*, physical_planner::PhysicalPlanPtr};
 
-// Use a type alias so that we are able to replace the implementation
-pub type RecordBatchVec = Vec<RecordBatch>;
-
 /// Query executor
 ///
 /// Executes the logical plan
 #[async_trait]
-pub trait Executor: Clone + Send + Sync {
-    // TODO(yingwen): Maybe return a stream
-    /// Execute the query, returning the query results as RecordBatchVec
+pub trait Executor: fmt::Debug + Send + Sync + 'static {
+    /// Execute the query, return the record batch stream
     ///
     /// REQUIRE: The meta data of tables in query should be found from
     /// ContextRef
@@ -44,10 +38,12 @@ pub trait Executor: Clone + Send + Sync {
         &self,
         ctx: &Context,
         physical_plan: PhysicalPlanPtr,
-    ) -> Result<RecordBatchVec>;
+    ) -> Result<SendableRecordBatchStream>;
 }
 
-#[derive(Clone, Default)]
+pub type ExecutorRef = Arc<dyn Executor>;
+
+#[derive(Debug, Clone, Default)]
 pub struct ExecutorImpl;
 
 #[async_trait]
@@ -56,7 +52,7 @@ impl Executor for ExecutorImpl {
         &self,
         ctx: &Context,
         physical_plan: PhysicalPlanPtr,
-    ) -> Result<RecordBatchVec> {
+    ) -> Result<SendableRecordBatchStream> {
         let begin_instant = Instant::now();
 
         debug!(
@@ -71,10 +67,6 @@ impl Executor for ExecutorImpl {
                 msg: Some("failed to execute physical plan".to_string()),
             })?;
 
-        // Collect all records in the pool, as the stream may perform some costly
-        // calculation
-        let record_batches = collect(stream).await?;
-
         info!(
             "Executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
             ctx.request_id,
@@ -82,16 +74,6 @@ impl Executor for ExecutorImpl {
             physical_plan.metrics_to_string()
         );
 
-        Ok(record_batches)
+        Ok(stream)
     }
-}
-
-async fn collect(stream: SendableRecordBatchStream) -> Result<RecordBatchVec> {
-    stream
-        .try_collect()
-        .await
-        .box_err()
-        .with_context(|| ExecutorWithCause {
-            msg: Some("failed to collect query results".to_string()),
-        })
 }
