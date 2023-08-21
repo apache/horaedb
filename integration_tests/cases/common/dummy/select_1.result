@@ -20,12 +20,6 @@ NOT Int64(1) = Int64(1),
 Boolean(false),
 
 
-SELECT NOT(1);
-
-NOT Int64(1),
-Int64(-2),
-
-
 SELECT TRUE;
 
 Boolean(true),

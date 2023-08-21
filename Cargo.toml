@@ -1,11 +1,25 @@
+# Copyright 2023 The CeresDB Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 [package]
 name = "ceresdb"
-version = "1.2.2"
+version = "1.2.6-alpha"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
 
 [workspace.package]
-version = "1.2.2"
+version = "1.2.6-alpha"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
 
@@ -18,21 +32,36 @@ members = [
     "catalog_impls",
     "cluster",
     "common_types",
-    "common_util",
+    "components/alloc_tracker",
     "components/arena",
     "components/arrow_ext",
     "components/bytes_ext",
+    "components/codec",
+    "components/future_ext",
+    "components/hash_ext",
+    "components/id_allocator",
     "components/logger",
+    "components/macros",
     "components/message_queue",
+    "components/metric_ext",
     "components/object_store",
+    "components/panic_ext",
     "components/parquet_ext",
+    "components/partitioned_lock",
     "components/profile",
+    "components/runtime",
+    "components/size_ext",
     "components/skiplist",
     "components/table_kv",
+    "components/test_util",
+    "components/time_ext",
+    "components/timed_task",
+    "components/toml_ext",
     "components/trace_metric",
     "components/trace_metric_derive",
     "components/trace_metric_derive_tests",
     "components/tracing_util",
+    "df_engine_extensions",
     "df_operator",
     "integration_tests",
     "integration_tests/sdk/rust",
@@ -56,50 +85,62 @@ name = "ceresdb-server"
 path = "src/bin/ceresdb-server.rs"
 
 [workspace.dependencies]
-arrow = { version = "38.0.0", features = ["prettyprint"] }
-arrow_ipc = { version = "38.0.0" }
+alloc_tracker = { path = "components/alloc_tracker" }
+arrow = { version = "43.0.0", features = ["prettyprint"] }
+arrow_ipc = { version = "43.0.0" }
 arrow_ext = { path = "components/arrow_ext" }
 analytic_engine = { path = "analytic_engine" }
 arena = { path = "components/arena" }
 async-stream = "0.3.4"
-async-trait = "0.1.53"
+async-trait = "0.1.72"
 base64 = "0.13"
-bytes = "1.1.0"
+bytes = "1"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-ceresdbproto = "1.0.4"
+ceresdbproto = "1.0.10"
+codec = { path = "components/codec" }
 chrono = "0.4"
 clap = "3.0"
 clru = "0.6.1"
 cluster = { path = "cluster" }
-criterion = "0.3"
+criterion = "0.5"
 common_types = { path = "common_types" }
-common_util = { path = "common_util" }
-datafusion = { git = "https://github.com/jiacai2050/arrow-datafusion.git", rev = "13314c37020b90246db9b80f8294370c06e61018" }
-datafusion-proto = { git = "https://github.com/jiacai2050/arrow-datafusion.git", rev = "13314c37020b90246db9b80f8294370c06e61018" }
+datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
+datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
 df_operator = { path = "df_operator" }
+df_engine_extensions = { path = "df_engine_extensions" }
+future_ext = { path = "components/future_ext" }
 etcd-client = "0.10.3"
 env_logger = "0.6"
 futures = "0.3"
-xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
+generic_error = { path = "components/generic_error" }
+hash_ext = { path = "components/hash_ext" }
+hex = "0.4.3"
 lazy_static = "1.4.0"
 log = "0.4"
 logger = { path = "components/logger" }
 lru = "0.7.6"
-influxql-logical-planner = { git = "https://github.com/CeresDB/influxql", rev = "efbc589", package = "iox_query_influxql" }
-influxql-parser = { git = "https://github.com/CeresDB/influxql", rev = "efbc589", package = "influxdb_influxql_parser" }
-influxql-query = { git = "https://github.com/CeresDB/influxql", rev = "efbc589", package = "iox_query" }
-influxql-schema = { git = "https://github.com/CeresDB/influxql", rev = "efbc589", package = "schema" }
+id_allocator = { path = "components/id_allocator" }
+influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "iox_query_influxql" }
+influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "influxdb_influxql_parser" }
+influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "iox_query" }
+influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "schema" }
 interpreters = { path = "interpreters" }
 itertools = "0.10.5"
+macros = { path = "components/macros" }
+message_queue = { path = "components/message_queue" }
 meta_client = { path = "meta_client" }
+metric_ext = { path = "components/metric_ext" }
 object_store = { path = "components/object_store" }
+panic_ext = { path = "components/panic_ext" }
+partitioned_lock = { path = "components/partitioned_lock" }
 partition_table_engine = { path = "partition_table_engine" }
 parquet_ext = { path = "components/parquet_ext" }
-parquet = { version = "38.0.0" }
+parquet = { version = "43.0.0" }
 paste = "1.0"
 pin-project-lite = "0.2.8"
+pprof = "0.12.1"
 profile = { path = "components/profile" }
 prom-remote-api = { version = "0.2.2" }
 prometheus = "0.12"
@@ -107,32 +148,38 @@ prometheus-static-metric = "0.5"
 prost = "0.11"
 proxy = { path = "proxy" }
 query_engine = { path = "query_engine" }
+query_frontend = { path = "query_frontend" }
 rand = "0.7"
 remote_engine_client = { path = "remote_engine_client" }
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "json"] }
 router = { path = "router" }
+runtime = { path = "components/runtime" }
 snafu = { version = "0.6.10", features = ["backtraces"] }
 serde = "1.0"
 serde_json = "1.0.60"
 server = { path = "server" }
+size_ext = { path = "components/size_ext" }
 smallvec = "1.6"
 slog = "2.7"
 spin = "0.9.6"
-query_frontend = { path = "query_frontend" }
-sqlparser = { version = "0.33", features = ["serde"] }
+sqlparser = { version = "0.35", features = ["serde"] }
 system_catalog = { path = "system_catalog" }
 table_engine = { path = "table_engine" }
 table_kv = { path = "components/table_kv" }
 tempfile = "3.1.0"
+test_util = { path = "components/test_util" }
+time_ext = { path = "components/time_ext" }
 toml = "0.7"
+toml_ext = { path = "components/toml_ext" }
+timed_task = { path = "components/timed_task" }
 tracing_util = { path = "components/tracing_util" }
 trace_metric = { path = "components/trace_metric" }
 trace_metric_derive = { path = "components/trace_metric_derive" }
 trace_metric_derive_tests = { path = "components/trace_metric_derive_tests" }
 tonic = "0.8.1"
-tokio = { version = "1.25", features = ["full"] }
+tokio = { version = "1.29", features = ["full"] }
 wal = { path = "wal" }
-message_queue = { path = "components/message_queue" }
+xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
 zstd = { version = "0.12", default-features = false }
 
 [dependencies]
@@ -141,7 +188,7 @@ catalog = { workspace = true }
 catalog_impls = { workspace = true }
 clap = { workspace = true }
 cluster = { workspace = true }
-common_util = { workspace = true }
+datafusion = { workspace = true }
 df_operator = { workspace = true }
 etcd-client = { workspace = true }
 interpreters = { workspace = true }
@@ -149,14 +196,17 @@ log = { workspace = true }
 logger = { workspace = true }
 meta_client = { workspace = true }
 moka = { version = "0.10", features = ["future"] }
+panic_ext = { workspace = true }
 proxy = { workspace = true }
 query_engine = { workspace = true }
 router = { workspace = true }
+runtime = { workspace = true }
 serde = { workspace = true }
 server = { workspace = true }
 signal-hook = "0.3"
 table_engine = { workspace = true }
 toml = { workspace = true }
+toml_ext = { workspace = true }
 tracing_util = { workspace = true }
 
 [build-dependencies]

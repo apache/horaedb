@@ -1,4 +1,16 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Factory for different kinds sst writer and reader.
 
@@ -6,8 +18,9 @@ use std::{fmt::Debug, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::projected_schema::ProjectedSchema;
-use common_util::{define_result, runtime::Runtime};
+use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
+use runtime::Runtime;
 use snafu::{ResultExt, Snafu};
 use table_engine::predicate::PredicateRef;
 use trace_metric::MetricsCollector;
@@ -102,6 +115,8 @@ pub struct ScanOptions {
     pub background_read_parallelism: usize,
     /// The max record batches in flight
     pub max_record_batches_in_flight: usize,
+    /// The number of streams to prefetch when scan
+    pub num_streams_to_prefetch: usize,
 }
 
 impl Default for ScanOptions {
@@ -109,13 +124,13 @@ impl Default for ScanOptions {
         Self {
             background_read_parallelism: 1,
             max_record_batches_in_flight: 64,
+            num_streams_to_prefetch: 2,
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct SstReadOptions {
-    pub reverse: bool,
     pub frequency: ReadFrequency,
     pub num_rows_per_row_group: usize,
     pub projected_schema: ProjectedSchema,

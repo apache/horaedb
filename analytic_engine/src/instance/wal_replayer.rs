@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Wal replayer
 
@@ -10,8 +22,10 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::{schema::IndexInWriterSchema, table::ShardId};
-use common_util::error::BoxError;
+use generic_error::BoxError;
+use lazy_static::lazy_static;
 use log::{debug, error, info, trace};
+use prometheus::{exponential_buckets, register_histogram, Histogram};
 use snafu::ResultExt;
 use table_engine::table::TableId;
 use tokio::sync::MutexGuard;
@@ -33,6 +47,22 @@ use crate::{
     payload::{ReadPayload, WalDecoder},
     table::data::TableDataRef,
 };
+
+// Metrics of wal replayer
+lazy_static! {
+    static ref PULL_LOGS_DURATION_HISTOGRAM: Histogram = register_histogram!(
+        "wal_replay_pull_logs_duration",
+        "Histogram for pull logs duration in wal replay in seconds",
+        exponential_buckets(0.01, 2.0, 13).unwrap()
+    )
+    .unwrap();
+    static ref APPLY_LOGS_DURATION_HISTOGRAM: Histogram = register_histogram!(
+        "wal_replay_apply_logs_duration",
+        "Histogram for apply logs duration in wal replay in seconds",
+        exponential_buckets(0.01, 2.0, 13).unwrap()
+    )
+    .unwrap();
+}
 
 /// Wal replayer supporting both table based and region based
 // TODO: limit the memory usage in `RegionBased` mode.
@@ -186,6 +216,7 @@ impl TableBasedReplay {
         let mut log_entry_buf = VecDeque::with_capacity(context.wal_replay_batch_size);
         loop {
             // fetch entries to log_entry_buf
+            let _timer = PULL_LOGS_DURATION_HISTOGRAM.start_timer();
             let decoder = WalDecoder::default();
             log_entry_buf = log_iter
                 .next_log_entries(decoder, log_entry_buf)
@@ -198,6 +229,7 @@ impl TableBasedReplay {
             }
 
             // Replay all log entries of current table
+            let _timer = APPLY_LOGS_DURATION_HISTOGRAM.start_timer();
             replay_table_log_entries(
                 &context.flusher,
                 context.max_retry_flush_limit,
@@ -276,6 +308,7 @@ impl RegionBasedReplay {
 
         // Split and replay logs.
         loop {
+            let _timer = PULL_LOGS_DURATION_HISTOGRAM.start_timer();
             let decoder = WalDecoder::default();
             log_entry_buf = log_iter
                 .next_log_entries(decoder, log_entry_buf)
@@ -287,6 +320,7 @@ impl RegionBasedReplay {
                 break;
             }
 
+            let _timer = APPLY_LOGS_DURATION_HISTOGRAM.start_timer();
             Self::replay_single_batch(context, &log_entry_buf, &mut serial_exec_ctxs, faileds)
                 .await?;
         }

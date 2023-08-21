@@ -1,22 +1,35 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Compaction picker.
 
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     sync::Arc,
     time::Duration,
 };
 
 use common_types::time::Timestamp;
-use common_util::{config::TimeUnit, define_result};
 use log::{debug, info};
+use macros::define_result;
 use snafu::Snafu;
+use time_ext::TimeUnit;
 
 use crate::{
     compaction::{
-        CompactionInputFiles, CompactionStrategy, CompactionTask, SizeTieredCompactionOptions,
-        TimeWindowCompactionOptions,
+        CompactionInputFiles, CompactionStrategy, CompactionTask, CompactionTaskBuilder,
+        SizeTieredCompactionOptions, TimeWindowCompactionOptions,
     },
     sst::{
         file::{FileHandle, Level},
@@ -60,7 +73,7 @@ pub trait CompactionPicker {
     fn pick_compaction(
         &self,
         ctx: PickerContext,
-        levels_controller: &LevelsController,
+        levels_controller: &mut LevelsController,
     ) -> Result<CompactionTask>;
 }
 
@@ -86,10 +99,10 @@ pub struct CommonCompactionPicker {
 impl CommonCompactionPicker {
     pub fn new(strategy: CompactionStrategy) -> Self {
         let level_picker: LevelPickerRef = match strategy {
-            CompactionStrategy::SizeTiered(_) | CompactionStrategy::Default => {
-                Arc::new(SizeTieredPicker::default())
+            CompactionStrategy::SizeTiered(_) => Arc::new(SizeTieredPicker::default()),
+            CompactionStrategy::TimeWindow(_) | CompactionStrategy::Default => {
+                Arc::new(TimeWindowPicker::default())
             }
-            CompactionStrategy::TimeWindow(_) => Arc::new(TimeWindowPicker::default()),
         };
         Self { level_picker }
     }
@@ -123,13 +136,11 @@ impl CompactionPicker for CommonCompactionPicker {
     fn pick_compaction(
         &self,
         ctx: PickerContext,
-        levels_controller: &LevelsController,
+        levels_controller: &mut LevelsController,
     ) -> Result<CompactionTask> {
         let expire_time = ctx.ttl.map(Timestamp::expire_time);
-        let mut compaction_task = CompactionTask {
-            expired: levels_controller.expired_ssts(expire_time),
-            ..Default::default()
-        };
+        let mut builder =
+            CompactionTaskBuilder::with_expired(levels_controller.expired_ssts(expire_time));
 
         if let Some(input_files) =
             self.pick_compact_candidates(&ctx, levels_controller, expire_time)
@@ -139,10 +150,10 @@ impl CompactionPicker for CommonCompactionPicker {
                 ctx.strategy, input_files
             );
 
-            compaction_task.compaction_inputs = vec![input_files];
+            builder.add_inputs(input_files);
         }
 
-        Ok(compaction_task)
+        Ok(builder.build())
     }
 }
 
@@ -178,10 +189,33 @@ fn trim_to_threshold(
         .collect()
 }
 
+// TODO: Remove this function when pick_by_seq is stable.
+fn prefer_pick_by_seq() -> bool {
+    std::env::var("CERESDB_COMPACT_PICK_BY_SEQ").unwrap_or_else(|_| "true".to_string()) == "true"
+}
+
 /// Size tiered compaction strategy
-/// See https://github.com/jeffjirsa/twcs/blob/master/src/main/java/com/jeffjirsa/cassandra/db/compaction/SizeTieredCompactionStrategy.java
-#[derive(Default)]
-pub struct SizeTieredPicker {}
+///
+/// Origin solution[1] will only consider file size, but this will cause data
+/// corrupt, see https://github.com/CeresDB/ceresdb/pull/1041
+///
+/// So we could only compact files with adjacent seq, or ssts without
+/// overlapping key range among them. Currently solution is relative simple,
+/// only pick adjacent sst. Maybe a better, but more complex solution could be
+/// introduced later.
+///
+/// [1]: https://github.com/jeffjirsa/twcs/blob/master/src/main/java/com/jeffjirsa/cassandra/db/compaction/SizeTieredCompactionStrategy.java
+pub struct SizeTieredPicker {
+    pick_by_seq: bool,
+}
+
+impl Default for SizeTieredPicker {
+    fn default() -> Self {
+        Self {
+            pick_by_seq: prefer_pick_by_seq(),
+        }
+    }
+}
 
 /// Similar size files group
 #[derive(Debug, Clone)]
@@ -243,44 +277,15 @@ impl LevelPicker for SizeTieredPicker {
             return None;
         }
 
-        let all_segments: BTreeSet<_> = files_by_segment.keys().collect();
         let opts = ctx.size_tiered_opts();
-
         // Iterate the segment in reverse order, so newest segment is examined first.
-        for (idx, segment_key) in all_segments.iter().rev().enumerate() {
-            // segment_key should always exist.
-            if let Some(segment) = files_by_segment.get(segment_key) {
-                let buckets = Self::get_buckets(
-                    segment.to_vec(),
-                    opts.bucket_high,
-                    opts.bucket_low,
-                    opts.min_sstable_size.as_byte() as f32,
-                );
-
-                let files = Self::most_interesting_bucket(
-                    buckets,
-                    opts.min_threshold,
-                    opts.max_threshold,
-                    opts.max_input_sstable_size.as_byte(),
-                );
-
-                if files.is_some() {
-                    info!(
-                        "Compact segment, idx: {}, size:{}, segment_key:{:?}, files:{:?}",
-                        idx,
-                        segment.len(),
-                        segment_key,
-                        segment
-                    );
-                    return files;
-                }
-                debug!(
-                    "No compaction necessary for segment, size:{}, segment_key:{:?}, idx:{}",
-                    segment.len(),
-                    segment_key,
-                    idx
-                );
+        for (idx, (segment_key, segment)) in files_by_segment.iter().rev().enumerate() {
+            let files = self.pick_ssts(segment.to_vec(), &opts);
+            if files.is_some() {
+                info!("Compact segment, idx:{idx}, segment_key:{segment_key:?}, files:{segment:?}");
+                return files;
             }
+            debug!("No compaction necessary for segment, idx:{idx}, segment_key:{segment_key:?}");
         }
 
         None
@@ -288,6 +293,71 @@ impl LevelPicker for SizeTieredPicker {
 }
 
 impl SizeTieredPicker {
+    fn pick_ssts(
+        &self,
+        files: Vec<FileHandle>,
+        opts: &SizeTieredCompactionOptions,
+    ) -> Option<Vec<FileHandle>> {
+        if self.pick_by_seq {
+            return Self::pick_by_seq(
+                files,
+                opts.min_threshold,
+                opts.max_threshold,
+                opts.max_input_sstable_size.as_byte(),
+            );
+        }
+
+        Self::pick_by_size(files, opts)
+    }
+
+    fn pick_by_seq(
+        mut files: Vec<FileHandle>,
+        min_threshold: usize,
+        max_threshold: usize,
+        max_input_sstable_size: u64,
+    ) -> Option<Vec<FileHandle>> {
+        // Sort files by max_seq desc.
+        files.sort_unstable_by_key(|b| std::cmp::Reverse(b.max_sequence()));
+
+        'outer: for start in 0..files.len() {
+            // Try max_threshold first, since we hope to compact as many small files as we
+            // can.
+            for step in (min_threshold..=max_threshold).rev() {
+                let end = (start + step).min(files.len());
+                if end - start < min_threshold {
+                    // too little files, switch to next loop and find again.
+                    continue 'outer;
+                }
+
+                let curr_size: u64 = files[start..end].iter().map(|f| f.size()).sum();
+                if curr_size <= max_input_sstable_size {
+                    return Some(files[start..end].to_vec());
+                }
+            }
+        }
+
+        None
+    }
+
+    fn pick_by_size(
+        files: Vec<FileHandle>,
+        opts: &SizeTieredCompactionOptions,
+    ) -> Option<Vec<FileHandle>> {
+        let buckets = Self::get_buckets(
+            files,
+            opts.bucket_high,
+            opts.bucket_low,
+            opts.min_sstable_size.as_byte() as f32,
+        );
+
+        Self::most_interesting_bucket(
+            buckets,
+            opts.min_threshold,
+            opts.max_threshold,
+            opts.max_input_sstable_size.as_byte(),
+        )
+    }
+
     ///  Group files of similar size into buckets.
     fn get_buckets(
         mut files: Vec<FileHandle>,
@@ -352,7 +422,7 @@ impl SizeTieredPicker {
             return None;
         }
 
-        // Find the hotest bucket
+        // Find the hottest bucket
         if let Some((bucket, hotness)) =
             pruned_bucket_and_hotness
                 .into_iter()
@@ -361,12 +431,12 @@ impl SizeTieredPicker {
                     if !c.is_eq() {
                         return c;
                     }
-                    //TODO(boyan), compacting smallest sstables first?
+                    // TODO(boyan), compacting smallest sstables first?
                     b1.avg_size.cmp(&b2.avg_size)
                 })
         {
             debug!(
-                "Find the hotest bucket, hotness: {}, bucket: {:?}",
+                "Find the hottest bucket, hotness: {}, bucket: {:?}",
                 hotness, bucket
             );
             Some(bucket.files)
@@ -380,8 +450,8 @@ impl SizeTieredPicker {
         level: Level,
         segment_duration: Duration,
         expire_time: Option<Timestamp>,
-    ) -> HashMap<Timestamp, Vec<FileHandle>> {
-        let mut files_by_segment = HashMap::new();
+    ) -> BTreeMap<Timestamp, Vec<FileHandle>> {
+        let mut files_by_segment = BTreeMap::new();
         let uncompact_files = find_uncompact_files(levels_controller, level, expire_time);
         for file in uncompact_files {
             // We use the end time of the range to calculate segment.
@@ -422,8 +492,17 @@ impl SizeTieredPicker {
 
 /// Time window compaction strategy
 /// See https://github.com/jeffjirsa/twcs/blob/master/src/main/java/com/jeffjirsa/cassandra/db/compaction/TimeWindowCompactionStrategy.java
-#[derive(Default)]
-pub struct TimeWindowPicker {}
+pub struct TimeWindowPicker {
+    pick_by_seq: bool,
+}
+
+impl Default for TimeWindowPicker {
+    fn default() -> Self {
+        Self {
+            pick_by_seq: prefer_pick_by_seq(),
+        }
+    }
+}
 
 impl TimeWindowPicker {
     fn get_window_bounds_in_millis(window: &Duration, ts: i64) -> (i64, i64) {
@@ -481,6 +560,7 @@ impl TimeWindowPicker {
     }
 
     fn newest_bucket(
+        &self,
         buckets: HashMap<i64, Vec<FileHandle>>,
         size_tiered_opts: SizeTieredCompactionOptions,
         now: i64,
@@ -494,40 +574,21 @@ impl TimeWindowPicker {
         // First compact latest buckets
         for key in all_keys.into_iter().rev() {
             if let Some(bucket) = buckets.get(key) {
-                debug!("Key {}, now {}", key, now);
+                debug!("Newest bucket loop, key:{key}, now:{now}");
 
-                let max_input_sstable_size = size_tiered_opts.max_input_sstable_size.as_byte();
                 if bucket.len() >= size_tiered_opts.min_threshold && *key >= now {
                     // If we're in the newest bucket, we'll use STCS to prioritize sstables
-                    let buckets = SizeTieredPicker::get_buckets(
-                        bucket.to_vec(),
-                        size_tiered_opts.bucket_high,
-                        size_tiered_opts.bucket_low,
-                        size_tiered_opts.min_sstable_size.as_byte() as f32,
-                    );
-                    let files = SizeTieredPicker::most_interesting_bucket(
-                        buckets,
-                        size_tiered_opts.min_threshold,
-                        size_tiered_opts.max_threshold,
-                        max_input_sstable_size,
-                    );
+                    let size_picker = SizeTieredPicker::default();
+                    let files = size_picker.pick_ssts(bucket.to_vec(), &size_tiered_opts);
 
                     if files.is_some() {
                         return files;
                     }
                 } else if bucket.len() >= 2 && *key < now {
                     debug!("Bucket size {} >= 2 and not in current bucket, compacting what's here: {:?}", bucket.len(), bucket);
-                    // Sort by sstable file size
-                    let mut sorted_files = bucket.to_vec();
-                    sorted_files.sort_unstable_by_key(FileHandle::size);
-                    let candidate_files = trim_to_threshold(
-                        sorted_files,
-                        size_tiered_opts.max_threshold,
-                        max_input_sstable_size,
-                    );
-                    // At least 2 sst for compaction
-                    if candidate_files.len() > 1 {
-                        return Some(candidate_files);
+                    let files = self.pick_sst_for_old_bucket(bucket.to_vec(), &size_tiered_opts);
+                    if files.is_some() {
+                        return files;
                     }
                 } else {
                     debug!(
@@ -538,6 +599,34 @@ impl TimeWindowPicker {
                     );
                 }
             }
+        }
+
+        None
+    }
+
+    fn pick_sst_for_old_bucket(
+        &self,
+        mut files: Vec<FileHandle>,
+        size_tiered_opts: &SizeTieredCompactionOptions,
+    ) -> Option<Vec<FileHandle>> {
+        let max_input_size = size_tiered_opts.max_input_sstable_size.as_byte();
+        // For old bucket, sst is likely already compacted, so min_thresold is not very
+        // strict, and greedy as `size_tiered_opts`.
+        let min_threshold = 2;
+        if self.pick_by_seq {
+            return SizeTieredPicker::pick_by_seq(
+                files,
+                min_threshold,
+                size_tiered_opts.max_threshold,
+                max_input_size,
+            );
+        }
+
+        files.sort_unstable_by_key(FileHandle::size);
+        let candidate_files =
+            trim_to_threshold(files, size_tiered_opts.max_threshold, max_input_size);
+        if candidate_files.len() >= min_threshold {
+            return Some(candidate_files);
         }
 
         None
@@ -599,7 +688,7 @@ impl LevelPicker for TimeWindowPicker {
         );
         assert!(now >= max_bucket_ts);
 
-        Self::newest_bucket(buckets, opts.size_tiered, now)
+        self.newest_bucket(buckets, opts.size_tiered, now)
     }
 }
 
@@ -607,12 +696,12 @@ impl LevelPicker for TimeWindowPicker {
 mod tests {
     use std::time::Duration;
 
+    use bytes_ext::Bytes;
     use common_types::{
-        bytes::Bytes,
         tests::build_schema,
         time::{TimeRange, Timestamp},
     };
-    use common_util::hash_map;
+    use macros::hash_map;
     use tokio::sync::mpsc;
 
     use super::*;
@@ -734,39 +823,39 @@ mod tests {
         };
         let now = Timestamp::now();
         {
-            let lc = build_old_bucket_case(now.as_i64());
-            let task = twp.pick_compaction(ctx.clone(), &lc).unwrap();
-            assert_eq!(task.compaction_inputs[0].files.len(), 2);
-            assert_eq!(task.compaction_inputs[0].files[0].id(), 0);
-            assert_eq!(task.compaction_inputs[0].files[1].id(), 1);
+            let mut lc = build_old_bucket_case(now.as_i64());
+            let task = twp.pick_compaction(ctx.clone(), &mut lc).unwrap();
+            assert_eq!(task.inputs[0].files.len(), 2);
+            assert_eq!(task.inputs[0].files[0].id(), 0);
+            assert_eq!(task.inputs[0].files[1].id(), 1);
             assert_eq!(task.expired[0].files.len(), 1);
             assert_eq!(task.expired[0].files[0].id(), 3);
         }
 
         {
-            let lc = build_newest_bucket_case(now.as_i64());
-            let task = twp.pick_compaction(ctx.clone(), &lc).unwrap();
-            assert_eq!(task.compaction_inputs[0].files.len(), 4);
-            assert_eq!(task.compaction_inputs[0].files[0].id(), 2);
-            assert_eq!(task.compaction_inputs[0].files[1].id(), 3);
-            assert_eq!(task.compaction_inputs[0].files[2].id(), 4);
-            assert_eq!(task.compaction_inputs[0].files[3].id(), 5);
+            let mut lc = build_newest_bucket_case(now.as_i64());
+            let task = twp.pick_compaction(ctx.clone(), &mut lc).unwrap();
+            assert_eq!(task.inputs[0].files.len(), 4);
+            assert_eq!(task.inputs[0].files[0].id(), 2);
+            assert_eq!(task.inputs[0].files[1].id(), 3);
+            assert_eq!(task.inputs[0].files[2].id(), 4);
+            assert_eq!(task.inputs[0].files[3].id(), 5);
         }
 
         {
-            let lc = build_newest_bucket_no_match_case(now.as_i64());
-            let task = twp.pick_compaction(ctx.clone(), &lc).unwrap();
-            assert_eq!(task.compaction_inputs.len(), 0);
+            let mut lc = build_newest_bucket_no_match_case(now.as_i64());
+            let task = twp.pick_compaction(ctx.clone(), &mut lc).unwrap();
+            assert_eq!(task.inputs.len(), 0);
         }
 
         // If ttl is None, then no file is expired.
         ctx.ttl = None;
         {
-            let lc = build_old_bucket_case(now.as_i64());
-            let task = twp.pick_compaction(ctx, &lc).unwrap();
-            assert_eq!(task.compaction_inputs[0].files.len(), 2);
-            assert_eq!(task.compaction_inputs[0].files[0].id(), 0);
-            assert_eq!(task.compaction_inputs[0].files[1].id(), 1);
+            let mut lc = build_old_bucket_case(now.as_i64());
+            let task = twp.pick_compaction(ctx, &mut lc).unwrap();
+            assert_eq!(task.inputs[0].files.len(), 2);
+            assert_eq!(task.inputs[0].files[0].id(), 0);
+            assert_eq!(task.inputs[0].files[1].id(), 1);
             assert!(task.expired[0].files.is_empty());
         }
     }
@@ -783,6 +872,26 @@ mod tests {
                     id: 1,
                     row_num: 0,
                     max_seq: 0,
+                    storage_format: StorageFormat::default(),
+                };
+                let queue = FilePurgeQueue::new(1, 1.into(), tx.clone());
+                FileHandle::new(file_meta, queue)
+            })
+            .collect()
+    }
+
+    fn build_file_handles_seq(sizes: Vec<(u64, u64)>) -> Vec<FileHandle> {
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        sizes
+            .into_iter()
+            .map(|(size, max_seq)| {
+                let file_meta = FileMeta {
+                    size,
+                    time_range: TimeRange::new_unchecked_for_test(0, 1),
+                    id: 1,
+                    row_num: 0,
+                    max_seq,
                     storage_format: StorageFormat::default(),
                 };
                 let queue = FilePurgeQueue::new(1, 1.into(), tx.clone());
@@ -846,6 +955,7 @@ mod tests {
     #[test]
     fn test_time_window_newest_bucket() {
         let size_tiered_opts = SizeTieredCompactionOptions::default();
+        let tw_picker = TimeWindowPicker { pick_by_seq: false };
         // old bucket have enough sst for compaction
         {
             let old_bucket = build_file_handles(vec![
@@ -859,7 +969,9 @@ mod tests {
             ]);
 
             let buckets = hash_map! { 100 => old_bucket, 200 => new_bucket };
-            let bucket = TimeWindowPicker::newest_bucket(buckets, size_tiered_opts, 200).unwrap();
+            let bucket = tw_picker
+                .newest_bucket(buckets, size_tiered_opts, 200)
+                .unwrap();
             assert_eq!(
                 vec![100, 101, 102],
                 bucket.into_iter().map(|f| f.size()).collect::<Vec<_>>()
@@ -876,8 +988,95 @@ mod tests {
             ]);
 
             let buckets = hash_map! { 100 => old_bucket, 200 => new_bucket };
-            let bucket = TimeWindowPicker::newest_bucket(buckets, size_tiered_opts, 200);
+            let bucket = tw_picker.newest_bucket(buckets, size_tiered_opts, 200);
             assert_eq!(None, bucket);
         }
+    }
+
+    #[test]
+    fn test_time_window_newest_bucket_for_seq() {
+        let size_tiered_opts = SizeTieredCompactionOptions::default();
+        let tw_picker = TimeWindowPicker { pick_by_seq: true };
+        // old bucket have enough sst for compaction
+        {
+            let old_bucket = build_file_handles(vec![
+                (102, TimeRange::new_unchecked_for_test(100, 200)),
+                (100, TimeRange::new_unchecked_for_test(100, 200)),
+                (101, TimeRange::new_unchecked_for_test(100, 200)),
+            ]);
+            let new_bucket = build_file_handles(vec![
+                (200, TimeRange::new_unchecked_for_test(200, 300)),
+                (201, TimeRange::new_unchecked_for_test(200, 300)),
+            ]);
+
+            let buckets = hash_map! { 100 => old_bucket, 200 => new_bucket };
+            let bucket = tw_picker
+                .newest_bucket(buckets, size_tiered_opts, 200)
+                .unwrap();
+            assert_eq!(
+                vec![102, 100, 101],
+                bucket.into_iter().map(|f| f.size()).collect::<Vec<_>>()
+            );
+        }
+
+        // old bucket have only 1 sst, which is not enough for compaction
+        {
+            let old_bucket =
+                build_file_handles(vec![(100, TimeRange::new_unchecked_for_test(100, 200))]);
+            let new_bucket = build_file_handles(vec![
+                (200, TimeRange::new_unchecked_for_test(200, 300)),
+                (201, TimeRange::new_unchecked_for_test(200, 300)),
+            ]);
+
+            let buckets = hash_map! { 100 => old_bucket, 200 => new_bucket };
+            let bucket = tw_picker.newest_bucket(buckets, size_tiered_opts, 200);
+            assert_eq!(None, bucket);
+        }
+    }
+
+    #[test]
+    fn test_size_pick_by_max_seq() {
+        let input_files = build_file_handles_seq(vec![
+            // size, seq
+            (20, 10),
+            (10, 20),
+            (201, 25),
+            (100, 30),
+            (100, 40),
+            (100, 50),
+        ]);
+
+        assert_eq!(
+            vec![50, 40, 30],
+            SizeTieredPicker::pick_by_seq(input_files.clone(), 2, 5, 300)
+                .unwrap()
+                .iter()
+                .map(|f| f.max_sequence())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            vec![50, 40, 30],
+            SizeTieredPicker::pick_by_seq(input_files.clone(), 2, 5, 500)
+                .unwrap()
+                .iter()
+                .map(|f| f.max_sequence())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            vec![50, 40, 30, 25],
+            SizeTieredPicker::pick_by_seq(input_files.clone(), 2, 5, 501)
+                .unwrap()
+                .iter()
+                .map(|f| f.max_sequence())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            vec![20, 10],
+            SizeTieredPicker::pick_by_seq(input_files, 2, 5, 30)
+                .unwrap()
+                .iter()
+                .map(|f| f.max_sequence())
+                .collect::<Vec<_>>()
+        );
     }
 }

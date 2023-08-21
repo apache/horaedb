@@ -1,10 +1,23 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Tools to generate SST.
 
 use std::sync::Arc;
 
 use analytic_engine::{
+    prefetchable_stream::PrefetchableStreamExt,
     row_iter::{
         self,
         dedup::DedupIterator,
@@ -26,10 +39,10 @@ use analytic_engine::{
     table_options::{Compression, StorageFormatHint},
 };
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId};
-use common_util::runtime::Runtime;
-use futures::TryStreamExt;
+use generic_error::BoxError;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
+use runtime::Runtime;
 use serde::Deserialize;
 use table_engine::{predicate::Predicate, table::TableId};
 use tokio::sync::mpsc;
@@ -103,9 +116,9 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
     let scan_options = ScanOptions {
         background_read_parallelism: 1,
         max_record_batches_in_flight: 1024,
+        num_streams_to_prefetch: 2,
     };
     let sst_read_options = SstReadOptions {
-        reverse: false,
         frequency: ReadFrequency::Once,
         num_rows_per_row_group: config.num_rows_per_row_group,
         projected_schema,
@@ -149,9 +162,12 @@ async fn sst_to_record_batch_stream(
         .await
         .unwrap();
 
-    let sst_stream = sst_reader.read().await.unwrap();
-
-    Box::new(sst_stream.map_err(|e| Box::new(e) as _))
+    sst_reader
+        .read()
+        .await
+        .unwrap()
+        .map(|res| res.box_err())
+        .into_boxed_stream()
 }
 
 #[derive(Debug, Deserialize)]
@@ -207,6 +223,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     let scan_options = ScanOptions {
         background_read_parallelism: 1,
         max_record_batches_in_flight: 1024,
+        num_streams_to_prefetch: 0,
     };
 
     let request_id = RequestId::next_id();
@@ -214,7 +231,6 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     let store_picker: ObjectStorePickerRef = Arc::new(store);
     let projected_schema = ProjectedSchema::no_projection(schema.clone());
     let sst_read_options = SstReadOptions {
-        reverse: false,
         frequency: ReadFrequency::Once,
         num_rows_per_row_group: config.num_rows_per_row_group,
         projected_schema: projected_schema.clone(),

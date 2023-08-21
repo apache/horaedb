@@ -1,4 +1,16 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Time types
 
@@ -10,6 +22,10 @@ use std::{
 };
 
 use ceresdbproto::time_range;
+use datafusion::{
+    prelude::{col, lit, Expr},
+    scalar::ScalarValue,
+};
 use snafu::{Backtrace, OptionExt, Snafu};
 
 /// Error of time module.
@@ -298,28 +314,17 @@ impl TryFrom<time_range::TimeRange> for TimeRange {
     }
 }
 
-#[cfg(feature = "datafusion")]
-mod datafusion_ext {
-    use datafusion::{
-        prelude::{col, lit, Expr},
-        scalar::ScalarValue,
-    };
+impl TimeRange {
+    /// Creates expression like:
+    /// start <= time && time < end
+    pub fn to_df_expr(&self, column_name: impl AsRef<str>) -> Expr {
+        let ts_start = ScalarValue::TimestampMillisecond(Some(self.inclusive_start.as_i64()), None);
+        let ts_end = ScalarValue::TimestampMillisecond(Some(self.exclusive_end.as_i64()), None);
+        let column_name = column_name.as_ref();
+        let ts_low = col(column_name).gt_eq(lit(ts_start));
+        let ts_high = col(column_name).lt(lit(ts_end));
 
-    use crate::time::TimeRange;
-
-    impl TimeRange {
-        /// Creates expression like:
-        /// start <= time && time < end
-        pub fn to_df_expr(&self, column_name: impl AsRef<str>) -> Expr {
-            let ts_start =
-                ScalarValue::TimestampMillisecond(Some(self.inclusive_start.as_i64()), None);
-            let ts_end = ScalarValue::TimestampMillisecond(Some(self.exclusive_end.as_i64()), None);
-            let column_name = column_name.as_ref();
-            let ts_low = col(column_name).gt_eq(lit(ts_start));
-            let ts_high = col(column_name).lt(lit(ts_end));
-
-            ts_low.and(ts_high)
-        }
+        ts_low.and(ts_high)
     }
 }
 

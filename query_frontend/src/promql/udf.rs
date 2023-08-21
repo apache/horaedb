@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Copy from IOx
 // https://github.com/influxdata/influxdb_iox/blob/d0f588d3b800894fe0ebd06b6f9a184ca6a603d7/predicate/src/regex.rs
@@ -9,13 +21,13 @@ use arrow::{
     array::{ArrayRef, BooleanArray, StringArray, UInt64Array},
     datatypes::DataType,
 };
-use common_types::hash::hash64;
-use common_util::codec::{compact::MemCompactEncoder, Encoder};
+use codec::{compact::MemCompactEncoder, Encoder};
 use datafusion::{
     error::{DataFusionError, Result as DataFusionResult},
     logical_expr::{create_udf, Expr, Volatility},
     physical_plan::{functions::make_scalar_function, udf::ScalarUDF},
 };
+use hash_ext::hash64;
 
 /// The name of the regex_match UDF given to DataFusion.
 pub const REGEX_MATCH_UDF_NAME: &str = "RegexMatch";
@@ -140,7 +152,7 @@ impl UUIDBuilder {
     }
 
     fn finish(self) -> u64 {
-        hash64(&self.buf)
+        hash64(&self.buf[..])
     }
 }
 

@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use std::{convert::TryFrom, sync::Arc};
 
@@ -12,7 +24,9 @@ use common_types::{
 };
 use datafusion::{
     logical_expr::{
-        avg, count, lit,
+        avg, count,
+        expr::{Alias, ScalarUDF},
+        lit,
         logical_plan::{Extension, LogicalPlan, LogicalPlanBuilder},
         max, min, sum, Expr as DataFusionExpr,
     },
@@ -297,13 +311,13 @@ impl Expr {
                     let unique_id_expr =
                         // TSID is lost after aggregate, but PromAlignNode need a unique id, so
                         // mock UUID as tsid based on groupby keys
-                        DataFusionExpr::Alias(
-                            Box::new(DataFusionExpr::ScalarUDF {
+                        DataFusionExpr::Alias(Alias {
+                            expr: Box::new(DataFusionExpr::ScalarUDF(ScalarUDF {
                                 fun: Arc::new(create_unique_id(tag_exprs.len())),
                                 args: tag_exprs.clone(),
-                            }),
-                            TSID_COLUMN.to_string(),
-                        );
+                            })),
+                            name: TSID_COLUMN.to_string(),
+                        });
                     let mut projection = tag_exprs.clone();
                     projection.extend(vec![
                         ident(&column_name.timestamp),
@@ -350,7 +364,10 @@ impl Expr {
             }
         };
 
-        Ok(DataFusionExpr::Alias(Box::new(expr), alias))
+        Ok(DataFusionExpr::Alias(Alias {
+            expr: Box::new(expr),
+            name: alias,
+        }))
     }
 }
 
@@ -557,7 +574,7 @@ impl Selector {
             .context(TableNotFound { name: &table })?;
 
         let table_provider = meta_provider
-            .get_table_provider(table_ref.name().into())
+            .get_table_provider(table_ref.table.name().into())
             .context(TableProviderNotFound { name: &table })?;
         let schema = Schema::try_from(table_provider.schema()).context(BuildTableSchema)?;
         let timestamp_column_name = schema.timestamp_name().to_string();

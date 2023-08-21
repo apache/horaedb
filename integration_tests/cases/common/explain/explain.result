@@ -9,8 +9,8 @@ affected_rows: 0
 EXPLAIN SELECT t FROM `04_explain_t`;
 
 plan_type,plan,
-String("logical_plan"),String("Projection: 04_explain_t.t\n  TableScan: 04_explain_t projection=[t]"),
-String("physical_plan"),String("ProjectionExec: expr=[t@0 as t]\n  ScanTable: table=04_explain_t, parallelism=8, order=None, \n"),
+String("logical_plan"),String("TableScan: 04_explain_t projection=[t]"),
+String("physical_plan"),String("ScanTable: table=04_explain_t, parallelism=8\n"),
 
 
 DROP TABLE `04_explain_t`;

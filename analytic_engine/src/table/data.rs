@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Table data
 
@@ -7,8 +19,9 @@ use std::{
     convert::TryInto,
     fmt,
     fmt::Formatter,
+    num::NonZeroUsize,
     sync::{
-        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::Duration,
@@ -23,15 +36,20 @@ use common_types::{
     time::{TimeRange, Timestamp},
     SequenceNumber,
 };
-use common_util::define_result;
+use generic_error::{GenericError, GenericResult};
+use id_allocator::IdAllocator;
 use log::{debug, info};
+use macros::define_result;
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 
 use crate::{
     instance::serial_executor::TableOpSerialExecutor,
-    manifest::meta_edit::AddTableMeta,
+    manifest::{
+        meta_edit::{AddTableMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta},
+        ManifestRef,
+    },
     memtable::{
         columnar::factory::ColumnarMemTableFactory,
         factory::{FactoryRef as MemTableFactoryRef, Options as MemTableOptions},
@@ -71,11 +89,16 @@ pub enum Error {
     FindMemTable {
         source: crate::table::version::Error,
     },
+
+    #[snafu(display("Failed to alloc file id, err:{}", source))]
+    AllocFileId { source: GenericError },
 }
 
 define_result!(Error);
 
 pub type MemTableId = u64;
+
+pub const DEFAULT_ALLOC_STEP: u64 = 100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TableShardInfo {
@@ -130,10 +153,8 @@ pub struct TableData {
     /// Allocating memtable id should be guarded by write lock
     last_memtable_id: AtomicU64,
 
-    /// Last id of the sst file
-    ///
-    /// Write to last_file_id require external synchronization
-    last_file_id: AtomicU64,
+    /// Allocating file id
+    allocator: IdAllocator,
 
     /// Last flush time
     ///
@@ -144,6 +165,12 @@ pub struct TableData {
     ///
     /// No write/alter is allowed if the table is dropped.
     dropped: AtomicBool,
+
+    /// Manifest updates after last snapshot
+    manifest_updates: AtomicUsize,
+
+    /// Every n manifest updates to trigger a snapshot
+    manifest_snapshot_every_n_updates: NonZeroUsize,
 
     /// Metrics of this table
     pub metrics: Metrics,
@@ -165,7 +192,6 @@ impl fmt::Debug for TableData {
             .field("opts", &self.opts)
             .field("last_sequence", &self.last_sequence)
             .field("last_memtable_id", &self.last_memtable_id)
-            .field("last_file_id", &self.last_file_id)
             .field("dropped", &self.dropped.load(Ordering::Relaxed))
             .field("shard_info", &self.shard_info)
             .finish()
@@ -206,6 +232,7 @@ impl TableData {
         purger: &FilePurger,
         preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
+        manifest_snapshot_every_n_updates: NonZeroUsize,
     ) -> Result<Self> {
         // FIXME(yingwen): Validate TableOptions, such as bucket_duration >=
         // segment_duration and bucket_duration is aligned to segment_duration
@@ -236,12 +263,14 @@ impl TableData {
             current_version,
             last_sequence: AtomicU64::new(0),
             last_memtable_id: AtomicU64::new(0),
-            last_file_id: AtomicU64::new(0),
+            allocator: IdAllocator::new(0, 0, DEFAULT_ALLOC_STEP),
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
             shard_info: TableShardInfo::new(shard_id),
             serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(table_id)),
+            manifest_updates: AtomicUsize::new(0),
+            manifest_snapshot_every_n_updates,
         })
     }
 
@@ -254,6 +283,8 @@ impl TableData {
         shard_id: ShardId,
         preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
+        allocator: IdAllocator,
+        manifest_snapshot_every_n_updates: NonZeroUsize,
     ) -> Result<Self> {
         let memtable_factory = Arc::new(ColumnarMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
@@ -277,12 +308,14 @@ impl TableData {
             current_version,
             last_sequence: AtomicU64::new(0),
             last_memtable_id: AtomicU64::new(0),
-            last_file_id: AtomicU64::new(0),
+            allocator,
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
             shard_info: TableShardInfo::new(shard_id),
             serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(add_meta.table_id)),
+            manifest_updates: AtomicUsize::new(0),
+            manifest_snapshot_every_n_updates,
         })
     }
 
@@ -362,6 +395,12 @@ impl TableData {
     #[inline]
     pub fn memtable_memory_usage(&self) -> usize {
         self.current_version.total_memory_usage()
+    }
+
+    /// Returns mutable memtable memory usage in bytes.
+    #[inline]
+    pub fn mutable_memory_usage(&self) -> usize {
+        self.current_version.mutable_memory_usage()
     }
 
     /// Find memtable for given timestamp to insert, create if not exists
@@ -449,12 +488,11 @@ impl TableData {
 
         let mutable_usage = self.current_version.mutable_memory_usage();
         let total_usage = self.current_version.total_memory_usage();
-
         let in_flush = serial_exec.flush_scheduler().is_in_flush();
         // Inspired by https://github.com/facebook/rocksdb/blob/main/include/rocksdb/write_buffer_manager.h#L94
         if mutable_usage > mutable_limit && !in_flush {
             info!(
-                "TableData should flush, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
+                "TableData should flush by mutable limit, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
                 self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size
             );
             return true;
@@ -473,7 +511,7 @@ impl TableData {
 
         if should_flush {
             info!(
-                "TableData should flush, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
+                "TableData should flush by total usage, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
                 self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size
             );
         }
@@ -481,22 +519,43 @@ impl TableData {
         should_flush
     }
 
-    /// Set `last_file_id`, mainly used in recover
-    ///
-    /// This operation require external synchronization
-    pub fn set_last_file_id(&self, last_file_id: FileId) {
-        self.last_file_id.store(last_file_id, Ordering::Relaxed);
+    /// Use allocator to alloc a file id for a new file.
+    pub async fn alloc_file_id(&self, manifest: &ManifestRef) -> Result<FileId> {
+        // Persist next max file id to manifest.
+        let persist_max_file_id = move |next_max_file_id| async move {
+            self.persist_max_file_id(manifest, next_max_file_id).await
+        };
+
+        self.allocator
+            .alloc_id(persist_max_file_id)
+            .await
+            .context(AllocFileId)
     }
 
-    /// Returns the last file id
-    pub fn last_file_id(&self) -> FileId {
-        self.last_file_id.load(Ordering::Relaxed)
-    }
-
-    /// Alloc a file id for a new file
-    pub fn alloc_file_id(&self) -> FileId {
-        let last = self.last_file_id.fetch_add(1, Ordering::Relaxed);
-        last + 1
+    async fn persist_max_file_id(
+        &self,
+        manifest: &ManifestRef,
+        next_max_file_id: FileId,
+    ) -> GenericResult<()> {
+        let manifest_update = VersionEditMeta {
+            space_id: self.space_id,
+            table_id: self.id,
+            flushed_sequence: 0,
+            files_to_add: vec![],
+            files_to_delete: vec![],
+            mems_to_remove: vec![],
+            max_file_id: next_max_file_id,
+        };
+        let edit_req = {
+            let meta_update = MetaUpdate::VersionEdit(manifest_update);
+            MetaEditRequest {
+                shard_info: self.shard_info,
+                meta_edit: MetaEdit::Update(meta_update),
+            }
+        };
+        // table version's max file id will be update when apply this meta update.
+        manifest.apply_edit(edit_req).await?;
+        Ok(())
     }
 
     /// Set the sst file path into the object storage path.
@@ -528,6 +587,20 @@ impl TableData {
             id: self.id.as_u64(),
             shard_info: self.shard_info,
         }
+    }
+
+    pub fn increase_manifest_updates(&self, updates_num: usize) {
+        self.manifest_updates
+            .fetch_add(updates_num, Ordering::Relaxed);
+    }
+
+    pub fn should_do_manifest_snapshot(&self) -> bool {
+        let updates = self.manifest_updates.load(Ordering::Relaxed);
+        updates >= self.manifest_snapshot_every_n_updates.get()
+    }
+
+    pub fn reset_manifest_updates(&self) {
+        self.manifest_updates.store(0, Ordering::Relaxed);
     }
 }
 
@@ -609,6 +682,14 @@ impl TableDataSet {
             .sum()
     }
 
+    pub fn find_maximum_mutable_memory_usage_table(&self) -> Option<TableDataRef> {
+        // TODO: Possible performance issue here when there are too many tables.
+        self.table_datas
+            .values()
+            .max_by_key(|t| t.mutable_memory_usage())
+            .cloned()
+    }
+
     /// List all tables to `tables`
     pub fn list_all_tables(&self, tables: &mut Vec<TableDataRef>) {
         for table_data in self.table_datas.values().cloned() {
@@ -623,11 +704,11 @@ pub mod tests {
 
     use arena::NoopCollector;
     use common_types::{datum::DatumKind, table::DEFAULT_SHARD_ID};
-    use common_util::config::ReadableDuration;
     use table_engine::{
         engine::{CreateTableRequest, TableState},
         table::SchemaId,
     };
+    use time_ext::ReadableDuration;
 
     use super::*;
     use crate::{
@@ -639,7 +720,7 @@ pub mod tests {
 
     const DEFAULT_SPACE_ID: SpaceId = 1;
 
-    fn default_schema() -> Schema {
+    pub fn default_schema() -> Schema {
         table::create_schema_builder(
             &[("key", DatumKind::Timestamp)],
             &[("value", DatumKind::Double)],
@@ -682,6 +763,7 @@ pub mod tests {
         table_id: TableId,
         table_name: String,
         shard_id: ShardId,
+        manifest_snapshot_every_n_updates: NonZeroUsize,
     }
 
     impl TableDataMocker {
@@ -697,6 +779,14 @@ pub mod tests {
 
         pub fn shard_id(mut self, shard_id: ShardId) -> Self {
             self.shard_id = shard_id;
+            self
+        }
+
+        pub fn manifest_snapshot_every_n_updates(
+            mut self,
+            manifest_snapshot_every_n_updates: NonZeroUsize,
+        ) -> Self {
+            self.manifest_snapshot_every_n_updates = manifest_snapshot_every_n_updates;
             self
         }
 
@@ -731,6 +821,7 @@ pub mod tests {
                 &purger,
                 0.75,
                 collector,
+                self.manifest_snapshot_every_n_updates,
             )
             .unwrap()
         }
@@ -742,6 +833,7 @@ pub mod tests {
                 table_id: table::new_table_id(2, 1),
                 table_name: "mocked_table".to_string(),
                 shard_id: DEFAULT_SHARD_ID,
+                manifest_snapshot_every_n_updates: NonZeroUsize::new(usize::MAX).unwrap(),
             }
         }
     }
@@ -762,7 +854,6 @@ pub mod tests {
         assert_eq!(TableShardInfo::new(shard_id), table_data.shard_info);
         assert_eq!(0, table_data.last_sequence());
         assert!(!table_data.is_dropped());
-        assert_eq!(0, table_data.last_file_id());
         assert_eq!(0, table_data.last_memtable_id());
         assert!(table_data.dedup());
     }
@@ -795,7 +886,7 @@ pub mod tests {
             Some(ReadableDuration(table_options::DEFAULT_SEGMENT_DURATION));
         table_data.set_table_options(table_opts);
         // Freeze sampling memtable.
-        current_version.freeze_sampling();
+        current_version.freeze_sampling_memtable();
 
         // A new mutable memtable should be created.
         let mutable = table_data.find_or_create_mutable(now_ts, &schema).unwrap();
@@ -834,5 +925,31 @@ pub mod tests {
     fn test_compute_mutable_limit_panic() {
         compute_mutable_limit(80, 1.1);
         compute_mutable_limit(80, -0.1);
+    }
+
+    #[test]
+    fn test_manifest_snapshot_trigger() {
+        // When snapshot_every_n_updates is not zero.
+        let table_data = TableDataMocker::default()
+            .manifest_snapshot_every_n_updates(NonZeroUsize::new(5).unwrap())
+            .build();
+
+        check_manifest_snapshot_trigger(&table_data);
+        // Reset and check again.
+        table_data.reset_manifest_updates();
+        check_manifest_snapshot_trigger(&table_data);
+    }
+
+    fn check_manifest_snapshot_trigger(table_data: &TableData) {
+        // When no updates yet, result should be false.
+        assert!(!table_data.should_do_manifest_snapshot());
+
+        // Eq case.
+        table_data.increase_manifest_updates(5);
+        assert!(table_data.should_do_manifest_snapshot());
+
+        // Greater case.
+        table_data.increase_manifest_updates(5);
+        assert!(table_data.should_do_manifest_snapshot());
     }
 }

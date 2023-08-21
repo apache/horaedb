@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -14,14 +26,12 @@ use ceresdbproto::{
 use common_types::{
     datum::DatumKind,
     record_batch::RecordBatch,
-    request_id::RequestId,
     schema::{RecordSchema, TSID_COLUMN},
 };
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use http::StatusCode;
-use interpreters::interpreter::Output;
+use interpreters::{interpreter::Output, RecordBatchVec};
 use log::info;
-use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
 use query_frontend::{
     frontend::{Context as SqlContext, Error as FrontendError, Frontend},
     promql::ColumnNames,
@@ -35,8 +45,9 @@ use crate::{
     Context, Proxy,
 };
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl Proxy {
     /// Implement prometheus query in grpc service.
+    /// Note: not used in prod now.
     pub async fn handle_prom_query(
         &self,
         ctx: Context,
@@ -60,7 +71,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: PrometheusQueryRequest,
     ) -> Result<PrometheusQueryResponse> {
-        let request_id = RequestId::next_id();
+        let request_id = ctx.request_id;
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let req_ctx = req.context.context(ErrNoCause {
@@ -373,54 +384,77 @@ mod tests {
                     .unwrap(),
             )
             .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new("tag_dictionary".to_string(), DatumKind::String)
+                    .is_tag(true)
+                    .is_dictionary(true)
+                    .is_nullable(true)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap()
             .build()
             .unwrap()
     }
 
     fn build_column_block() -> Vec<ColumnBlock> {
-        let build_row = |ts: i64, tsid: u64, field1: f64, field2: &str| -> Row {
+        let build_row = |ts: i64, tsid: u64, field1: f64, field2: &str, dic: Option<&str>| -> Row {
             let datums = vec![
                 Datum::Timestamp(Timestamp::new(ts)),
                 Datum::UInt64(tsid),
                 Datum::Double(field1),
                 Datum::String(StringBytes::from(field2)),
+                dic.map(|v| Datum::String(StringBytes::from(v)))
+                    .unwrap_or(Datum::Null),
             ];
 
             Row::from_datums(datums)
         };
 
         let rows = vec![
-            build_row(1000001, 1, 10.0, "v5"),
-            build_row(1000002, 1, 11.0, "v5"),
-            build_row(1000000, 2, 10.0, "v4"),
-            build_row(1000000, 3, 10.0, "v3"),
+            build_row(1000001, 1, 10.0, "v5", Some("d1")),
+            build_row(1000002, 1, 11.0, "v5", None),
+            build_row(1000000, 2, 10.0, "v4", Some("d2")),
+            build_row(1000000, 3, 10.0, "v3", None),
         ];
 
-        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::Timestamp, 2);
+        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::Timestamp, 2, false);
         for row in &rows {
             builder.append(row[0].clone()).unwrap();
         }
         let timestamp_block = builder.build();
 
-        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::UInt64, 2);
+        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::UInt64, 2, false);
         for row in &rows {
             builder.append(row[1].clone()).unwrap();
         }
         let tsid_block = builder.build();
 
-        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::Double, 2);
+        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::Double, 2, false);
         for row in &rows {
             builder.append(row[2].clone()).unwrap();
         }
         let field_block = builder.build();
 
-        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::String, 2);
+        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::String, 2, false);
         for row in &rows {
             builder.append(row[3].clone()).unwrap();
         }
         let tag_block = builder.build();
 
-        vec![timestamp_block, tsid_block, field_block, tag_block]
+        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::String, 2, true);
+        for row in &rows {
+            builder.append(row[4].clone()).unwrap();
+        }
+        let dictionary_block = builder.build();
+
+        vec![
+            timestamp_block,
+            tsid_block,
+            field_block,
+            tag_block,
+            dictionary_block,
+        ]
     }
 
     fn make_sample(timestamp: i64, value: f64) -> Sample {
@@ -440,7 +474,7 @@ mod tests {
 
         let column_name = ColumnNames {
             timestamp: "timestamp".to_string(),
-            tag_keys: vec!["tag1".to_string()],
+            tag_keys: vec!["tag1".to_string(), "tag_dictionary".to_string()],
             field: "field1".to_string(),
         };
         let converter = RecordConverter::try_new(&column_name, &schema.to_record_schema()).unwrap();
@@ -461,11 +495,17 @@ mod tests {
         );
         assert_eq!(
             tsid_to_tags.get(&1).unwrap().clone(),
-            make_tags(vec![("tag1".to_string(), "v5".to_string())])
+            make_tags(vec![
+                ("tag1".to_string(), "v5".to_string()),
+                ("tag_dictionary".to_string(), "d1".to_string())
+            ])
         );
         assert_eq!(
             tsid_to_tags.get(&2).unwrap().clone(),
-            make_tags(vec![("tag1".to_string(), "v4".to_string())])
+            make_tags(vec![
+                ("tag1".to_string(), "v4".to_string()),
+                ("tag_dictionary".to_string(), "d2".to_string())
+            ])
         );
         assert_eq!(
             tsid_to_tags.get(&3).unwrap().clone(),

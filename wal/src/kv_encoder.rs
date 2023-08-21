@@ -1,17 +1,24 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Common Encoding for Wal logs
 
-use common_types::{
-    bytes::{self, Buf, BufMut, BytesMut, SafeBuf, SafeBufMut},
-    table::TableId,
-    SequenceNumber,
-};
-use common_util::{
-    codec::{Decoder, Encoder},
-    define_result,
-    error::{BoxError, GenericError},
-};
+use bytes_ext::{self, Buf, BufMut, BytesMut, SafeBuf, SafeBufMut};
+use codec::{Decoder, Encoder};
+use common_types::{table::TableId, SequenceNumber};
+use generic_error::{BoxError, GenericError};
+use macros::define_result;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
@@ -35,39 +42,39 @@ pub const NEWEST_META_VALUE_ENCODING_VERSION: u8 = META_VALUE_ENCODING_V0;
 pub enum Error {
     #[snafu(display("Failed to encode log key, err:{}", source))]
     EncodeLogKey {
-        source: bytes::Error,
+        source: bytes_ext::Error,
         backtrace: Backtrace,
     },
 
     #[snafu(display("Failed to encode log value header, err:{}", source))]
-    EncodeLogValueHeader { source: bytes::Error },
+    EncodeLogValueHeader { source: bytes_ext::Error },
 
     #[snafu(display("Failed to encode log value payload, err:{}", source))]
     EncodeLogValuePayload { source: GenericError },
 
     #[snafu(display("Failed to decode log key, err:{}", source))]
-    DecodeLogKey { source: bytes::Error },
+    DecodeLogKey { source: bytes_ext::Error },
 
     #[snafu(display("Failed to decode log value header, err:{}", source))]
-    DecodeLogValueHeader { source: bytes::Error },
+    DecodeLogValueHeader { source: bytes_ext::Error },
 
     #[snafu(display("Failed to decode log value payload, err:{}", source))]
     DecodeLogValuePayload { source: GenericError },
 
     #[snafu(display("Failed to encode meta key, err:{}", source))]
     EncodeMetaKey {
-        source: bytes::Error,
+        source: bytes_ext::Error,
         backtrace: Backtrace,
     },
 
     #[snafu(display("Failed to encode meta value, err:{}", source))]
-    EncodeMetaValue { source: bytes::Error },
+    EncodeMetaValue { source: bytes_ext::Error },
 
     #[snafu(display("Failed to decode meta key, err:{}", source))]
-    DecodeMetaKey { source: bytes::Error },
+    DecodeMetaKey { source: bytes_ext::Error },
 
     #[snafu(display("Failed to decode meta value, err:{}", source))]
-    DecodeMetaValue { source: bytes::Error },
+    DecodeMetaValue { source: bytes_ext::Error },
 
     #[snafu(display(
         "Found invalid meta key type, expect:{:?}, given:{}.\nBacktrace:\n{}",
@@ -115,17 +122,14 @@ pub enum Namespace {
 }
 
 /// Log key in old wal design, map the `TableId` to `RegionId`
-#[allow(unused)]
 pub type LogKey = (u64, SequenceNumber);
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct LogKeyEncoder {
     pub version: u8,
     pub namespace: Namespace,
 }
 
-#[allow(unused)]
 impl LogKeyEncoder {
     /// Create newest version encoder.
     pub fn newest() -> Self {
@@ -202,13 +206,11 @@ impl Decoder<LogKey> for LogKeyEncoder {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct LogValueEncoder {
     pub version: u8,
 }
 
-#[allow(unused)]
 impl LogValueEncoder {
     /// Create newest version encoder.
     pub fn newest() -> Self {
@@ -240,12 +242,10 @@ impl<T: Payload> Encoder<T> for LogValueEncoder {
     }
 }
 
-#[allow(unused)]
 pub struct LogValueDecoder {
     pub version: u8,
 }
 
-#[allow(unused)]
 impl LogValueDecoder {
     pub fn decode<'a>(&self, mut buf: &'a [u8]) -> Result<&'a [u8]> {
         let version = buf.try_get_u8().context(DecodeLogValueHeader)?;
@@ -275,7 +275,7 @@ pub struct MetaKeyEncoder {
 
 #[derive(Clone, Debug)]
 pub struct MetaKey {
-    pub region_id: u64,
+    pub table_id: u64,
 }
 
 impl MetaKeyEncoder {
@@ -303,7 +303,7 @@ impl Encoder<MetaKey> for MetaKeyEncoder {
         buf.try_put_u8(self.namespace as u8)
             .context(EncodeMetaKey)?;
         buf.try_put_u8(self.key_type as u8).context(EncodeMetaKey)?;
-        buf.try_put_u64(meta_key.region_id).context(EncodeMetaKey)?;
+        buf.try_put_u64(meta_key.table_id).context(EncodeMetaKey)?;
         buf.try_put_u8(self.version).context(EncodeMetaKey)?;
 
         Ok(())
@@ -338,7 +338,7 @@ impl Decoder<MetaKey> for MetaKeyEncoder {
             }
         );
 
-        let region_id = buf.try_get_u64().context(DecodeMetaKey)?;
+        let table_id = buf.try_get_u64().context(DecodeMetaKey)?;
 
         // check version
         let version = buf.try_get_u8().context(DecodeMetaKey)?;
@@ -350,7 +350,7 @@ impl Decoder<MetaKey> for MetaKeyEncoder {
             }
         );
 
-        Ok(MetaKey { region_id })
+        Ok(MetaKey { table_id })
     }
 }
 
@@ -475,7 +475,6 @@ impl MaxSeqMetaEncoding {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct LogEncoding {
     key_enc: LogKeyEncoder,
@@ -484,7 +483,6 @@ pub struct LogEncoding {
     value_enc_version: u8,
 }
 
-#[allow(unused)]
 impl LogEncoding {
     pub fn newest() -> Self {
         Self {
@@ -589,7 +587,6 @@ impl LogBatchEncoder {
 }
 
 /// Common log key used in multiple wal implementation
-#[allow(unused)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct CommonLogKey {
     /// Id of region which the table belongs to,
@@ -599,7 +596,6 @@ pub struct CommonLogKey {
     pub sequence_num: SequenceNumber,
 }
 
-#[allow(unused)]
 impl CommonLogKey {
     pub fn new(region_id: u64, table_id: TableId, sequence_num: SequenceNumber) -> Self {
         Self {
@@ -610,14 +606,12 @@ impl CommonLogKey {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct CommonLogKeyEncoder {
     pub version: u8,
     pub namespace: Namespace,
 }
 
-#[allow(unused)]
 impl CommonLogKeyEncoder {
     /// Create newest version encoder.
     pub fn newest() -> Self {
@@ -697,7 +691,6 @@ impl Decoder<CommonLogKey> for CommonLogKeyEncoder {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct CommonLogEncoding {
     key_enc: CommonLogKeyEncoder,
@@ -706,7 +699,6 @@ pub struct CommonLogEncoding {
     value_enc_version: u8,
 }
 
-#[allow(unused)]
 impl CommonLogEncoding {
     pub fn newest() -> Self {
         Self {
@@ -753,7 +745,7 @@ impl CommonLogEncoding {
 
 #[cfg(test)]
 mod tests {
-    use common_types::bytes::BytesMut;
+    use bytes_ext::BytesMut;
 
     use super::*;
     use crate::{

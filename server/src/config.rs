@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Server configs
 
@@ -6,7 +18,6 @@ use std::collections::HashMap;
 
 use cluster::config::SchemaConfig;
 use common_types::schema::TIMESTAMP_COLUMN;
-use common_util::config::{ReadableDuration, ReadableSize};
 use meta_client::types::ShardId;
 use proxy::{forward, hotspot};
 use router::{
@@ -14,7 +25,9 @@ use router::{
     rule_based::{ClusterView, RuleList},
 };
 use serde::{Deserialize, Serialize};
+use size_ext::ReadableSize;
 use table_engine::ANALYTIC_ENGINE_TYPE;
+use time_ext::ReadableDuration;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
@@ -94,6 +107,7 @@ pub struct ServerConfig {
     /// The address to listen.
     pub bind_addr: String,
     pub mysql_port: u16,
+    pub postgresql_port: u16,
     pub http_port: u16,
     pub grpc_port: u16,
 
@@ -120,6 +134,9 @@ pub struct ServerConfig {
 
     /// Config of remote engine client
     pub remote_client: remote_engine_client::Config,
+
+    /// Whether to deduplicate requests
+    pub enable_query_dedup: bool,
 }
 
 impl Default for ServerConfig {
@@ -128,6 +145,7 @@ impl Default for ServerConfig {
             bind_addr: String::from("127.0.0.1"),
             http_port: 5440,
             mysql_port: 3307,
+            postgresql_port: 5433,
             grpc_port: 8831,
             timeout: None,
             http_max_body_size: ReadableSize::mb(64),
@@ -139,6 +157,7 @@ impl Default for ServerConfig {
             route_cache: router::RouteCacheConfig::default(),
             hotspot: hotspot::Config::default(),
             remote_client: remote_engine_client::Config::default(),
+            enable_query_dedup: false,
         }
     }
 }

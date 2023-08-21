@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Row type
 
@@ -17,6 +29,7 @@ use crate::{
     time::Timestamp,
 };
 
+pub mod bitset;
 pub mod contiguous;
 
 #[derive(Debug, Snafu)]
@@ -88,7 +101,7 @@ pub enum Error {
     },
 }
 
-// Do not depend on common_util crates
+// Do not depend on test_util crates
 pub type Result<T> = std::result::Result<T, Error>;
 
 // TODO(yingwen):
@@ -106,16 +119,19 @@ pub struct Row {
 
 impl Row {
     /// Convert vec of Datum into Row
+    #[inline]
     pub fn from_datums(cols: Vec<Datum>) -> Self {
         Self { cols }
     }
 
     /// Returns the column num
+    #[inline]
     pub fn num_columns(&self) -> usize {
         self.cols.len()
     }
 
     /// Iterate all datums
+    #[inline]
     pub fn iter(&self) -> IterDatum {
         IterDatum {
             iter: self.cols.iter(),
@@ -123,10 +139,16 @@ impl Row {
     }
 
     /// Get the timestamp column
+    #[inline]
     pub fn timestamp(&self, schema: &Schema) -> Option<Timestamp> {
         let timestamp_index = schema.timestamp_index();
 
         self.cols[timestamp_index].as_timestamp()
+    }
+
+    #[inline]
+    pub fn size(&self) -> usize {
+        self.cols.iter().map(|col| col.size()).sum()
     }
 }
 

@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Kafka implementation's detail
 
@@ -9,9 +21,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use common_util::define_result;
 use futures::StreamExt;
 use log::info;
+use macros::define_result;
 use rskafka::{
     client::{
         consumer::{StartOffset as KafkaStartOffset, StreamConsumer, StreamConsumerBuilder},
@@ -21,6 +33,7 @@ use rskafka::{
         Client, ClientBuilder,
     },
     record::{Record, RecordAndOffset},
+    BackoffConfig,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::sync::RwLock;
@@ -141,7 +154,14 @@ impl KafkaImplInner {
             panic!("The boost broker must be set");
         }
 
-        let mut client_builder = ClientBuilder::new(config.client.boost_brokers.clone().unwrap());
+        let backoff_config = BackoffConfig {
+            init_backoff: config.init_retry_interval.0,
+            max_backoff: config.max_retry_interval.0,
+            base: config.retry_interval_factor,
+            max_retry: config.max_retry,
+        };
+        let mut client_builder = ClientBuilder::new(config.client.boost_brokers.clone().unwrap())
+            .backoff_config(backoff_config);
         if let Some(max_message_size) = config.client.max_message_size {
             client_builder = client_builder.max_message_size(max_message_size);
         }
@@ -276,6 +296,7 @@ impl MessageQueue for KafkaImpl {
             })
     }
 
+    // FIXME: consume a empty topic may be hanged forever...
     async fn consume(
         &self,
         topic_name: &str,

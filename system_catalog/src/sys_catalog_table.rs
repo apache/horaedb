@@ -1,14 +1,27 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Table to store system catalog
 
 use std::{collections::HashMap, mem};
 
 use async_trait::async_trait;
+use bytes_ext::{BufMut, Bytes, BytesMut, SafeBuf, SafeBufMut};
 use catalog::consts;
 use ceresdbproto::sys_catalog::{CatalogEntry, SchemaEntry, TableEntry};
+use codec::{memcomparable::MemComparable, Encoder};
 use common_types::{
-    bytes::{BufMut, Bytes, BytesMut, SafeBuf, SafeBufMut},
     column_schema,
     datum::{Datum, DatumKind},
     projected_schema::ProjectedSchema,
@@ -19,12 +32,9 @@ use common_types::{
     table::DEFAULT_SHARD_ID,
     time::Timestamp,
 };
-use common_util::{
-    codec::{memcomparable::MemComparable, Encoder},
-    define_result,
-};
 use futures::TryStreamExt;
 use log::{debug, info, warn};
+use macros::define_result;
 use prost::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{
@@ -35,8 +45,7 @@ use table_engine::{
     },
     predicate::PredicateBuilder,
     table::{
-        GetRequest, ReadOptions, ReadOrder, ReadRequest, SchemaId, TableId, TableInfo, TableRef,
-        WriteRequest,
+        GetRequest, ReadOptions, ReadRequest, SchemaId, TableId, TableInfo, TableRef, WriteRequest,
     },
 };
 use tokio::sync::Mutex;
@@ -109,21 +118,19 @@ pub enum Error {
     VisitorOpenTable { source: table_engine::engine::Error },
 
     #[snafu(display("Failed to encode entry key header, err:{}", source))]
-    EncodeKeyHeader { source: common_types::bytes::Error },
+    EncodeKeyHeader { source: bytes_ext::Error },
 
     #[snafu(display("Failed to encode entry body, err:{}", source))]
-    EncodeKeyBody {
-        source: common_util::codec::memcomparable::Error,
-    },
+    EncodeKeyBody { source: codec::memcomparable::Error },
 
     #[snafu(display("Failed to encode table key type, err:{}", source))]
-    EncodeTableKeyType { source: common_types::bytes::Error },
+    EncodeTableKeyType { source: bytes_ext::Error },
 
     #[snafu(display("Failed to read entry key header, err:{}", source))]
-    ReadKeyHeader { source: common_types::bytes::Error },
+    ReadKeyHeader { source: bytes_ext::Error },
 
     #[snafu(display("Failed to read table key header, err:{}", source))]
-    ReadTableKeyHeader { source: common_types::bytes::Error },
+    ReadTableKeyHeader { source: bytes_ext::Error },
 
     #[snafu(display(
         "Invalid entry key header, value:{}.\nBacktrace:\n{}",
@@ -296,7 +303,7 @@ impl SysCatalogTable {
 
         let mut options = HashMap::new();
         options.insert(
-            table_engine::OPTION_KEY_ENABLE_TTL.to_string(),
+            common_types::OPTION_KEY_ENABLE_TTL.to_string(),
             DEFAULT_ENABLE_TTL.to_string(),
         );
         let create_request = CreateTableRequest {
@@ -531,7 +538,6 @@ impl SysCatalogTable {
             // The schema of sys catalog table is never changed
             projected_schema: ProjectedSchema::no_projection(self.table.schema()),
             predicate: PredicateBuilder::default().build(),
-            order: ReadOrder::None,
             metrics_collector: MetricsCollector::default(),
         };
         let mut batch_stream = self.table.read(read_request).await.context(ReadTable)?;

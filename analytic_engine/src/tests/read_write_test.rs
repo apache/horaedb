@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Read write test.
 
@@ -6,7 +18,6 @@ use std::{thread, time};
 
 use common_types::time::Timestamp;
 use log::info;
-use table_engine::table::ReadOrder;
 
 use crate::{
     setup::WalsOpener,
@@ -645,9 +656,6 @@ fn test_write_buffer_size_overflow<T: WalsOpener>(
         rows.extend_from_slice(&rows1);
         rows.extend_from_slice(&rows2);
 
-        // TODO(boyan) a better way to wait  table flushing finishes.
-        thread::sleep(time::Duration::from_millis(500));
-
         // Read with different opts.
         util::check_read(
             &test_ctx,
@@ -658,9 +666,13 @@ fn test_write_buffer_size_overflow<T: WalsOpener>(
         )
         .await;
 
+        // TODO(lee) a better way to wait table flushing finishes.
+        thread::sleep(time::Duration::from_millis(500));
+
         let stats = table.stats();
         assert_eq!(old_stats.num_read + 5, stats.num_read);
         assert_eq!(old_stats.num_write + 2, stats.num_write);
+
         // Flush when reaches (db/space) write_buffer size limitation.
         assert_eq!(old_stats.num_flush + 1, stats.num_flush);
 
@@ -675,194 +687,6 @@ fn test_write_buffer_size_overflow<T: WalsOpener>(
             "Test read write table after reopen",
             test_table_name,
             &rows,
-        )
-        .await;
-    });
-}
-
-#[test]
-fn test_table_write_read_reverse_rocks() {
-    let rocksdb_ctxs = rocksdb_ctxs();
-    for ctx in rocksdb_ctxs {
-        test_table_write_read_reverse(ctx);
-    }
-}
-
-#[test]
-fn test_table_write_read_reverse_mem_wal() {
-    let memory_ctxs = memory_ctxs();
-    for ctx in memory_ctxs {
-        test_table_write_read_reverse(ctx);
-    }
-}
-
-fn test_table_write_read_reverse<T: EngineBuildContext>(engine_context: T) {
-    let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context(engine_context);
-
-    env.block_on(async {
-        test_ctx.open().await;
-
-        let test_table = "test_table";
-        let fixed_schema_table = test_ctx.create_fixed_schema_table(test_table).await;
-
-        let start_ms = test_ctx.start_ms();
-        let rows = [
-            (
-                "key1",
-                Timestamp::new(start_ms),
-                "tag1-1",
-                11.0,
-                110.0,
-                "tag2-1",
-            ),
-            // update the first row
-            (
-                "key1",
-                Timestamp::new(start_ms),
-                "tag1-2",
-                12.0,
-                110.0,
-                "tag2-2",
-            ),
-            (
-                "key1",
-                Timestamp::new(start_ms + 1),
-                "tag1-2",
-                12.0,
-                110.0,
-                "tag2-2",
-            ),
-            (
-                "key2",
-                Timestamp::new(start_ms),
-                "tag1-3",
-                13.0,
-                110.0,
-                "tag2-3",
-            ),
-            (
-                "key2",
-                Timestamp::new(start_ms + 1),
-                "tag1-3",
-                13.0,
-                110.0,
-                "tag2-3",
-            ),
-        ];
-        let expect_reversed_rows = vec![rows[4], rows[3], rows[2], rows[1]];
-        let row_group = fixed_schema_table.rows_to_row_group(&rows);
-
-        // Write data to table.
-        test_ctx.write_to_table(test_table, row_group).await;
-
-        // Read reverse
-        util::check_read_with_order(
-            &test_ctx,
-            &fixed_schema_table,
-            "Test read write table",
-            test_table,
-            &expect_reversed_rows,
-            ReadOrder::Desc,
-        )
-        .await;
-    });
-}
-
-#[test]
-#[ignore = "https://github.com/CeresDB/ceresdb/issues/313"]
-fn test_table_write_read_reverse_after_flush_rocks() {
-    let rocksdb_ctxs = rocksdb_ctxs();
-    for ctx in rocksdb_ctxs {
-        test_table_write_read_reverse_after_flush(ctx);
-    }
-}
-
-#[test]
-#[ignore = "https://github.com/CeresDB/ceresdb/issues/313"]
-fn test_table_write_read_reverse_after_flush_mem_wal() {
-    let memory_ctxs = memory_ctxs();
-    for ctx in memory_ctxs {
-        test_table_write_read_reverse_after_flush(ctx);
-    }
-}
-
-fn test_table_write_read_reverse_after_flush<T: EngineBuildContext>(engine_context: T) {
-    let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context(engine_context);
-
-    env.block_on(async {
-        test_ctx.open().await;
-
-        let test_table = "test_table";
-        let fixed_schema_table = test_ctx.create_fixed_schema_table(test_table).await;
-
-        let start_ms = test_ctx.start_ms();
-        let rows1 = [
-            (
-                "key1",
-                Timestamp::new(start_ms),
-                "tag1-1",
-                11.0,
-                110.0,
-                "tag2-1",
-            ),
-            (
-                "key2",
-                Timestamp::new(start_ms),
-                "tag1-3",
-                13.0,
-                110.0,
-                "tag2-3",
-            ),
-            (
-                "key2",
-                Timestamp::new(start_ms + 1),
-                "tag1-3",
-                13.0,
-                110.0,
-                "tag2-3",
-            ),
-        ];
-
-        let rows2 = vec![
-            // update the first row
-            (
-                "key1",
-                Timestamp::new(start_ms),
-                "tag1-2",
-                12.0,
-                110.0,
-                "tag2-2",
-            ),
-            (
-                "key1",
-                Timestamp::new(start_ms + 1),
-                "tag1-2",
-                12.0,
-                110.0,
-                "tag2-2",
-            ),
-        ];
-
-        let expect_reversed_rows = vec![rows1[2], rows1[1], rows2[1], rows2[0]];
-        let row_group1 = fixed_schema_table.rows_to_row_group(&rows1);
-        // Write data to table and flush
-        test_ctx.write_to_table(test_table, row_group1).await;
-        test_ctx.flush_table(test_table).await;
-
-        let row_group2 = fixed_schema_table.rows_to_row_group(&rows2);
-        // Write data to table and not flush
-        test_ctx.write_to_table(test_table, row_group2).await;
-
-        // Read reverse
-        util::check_read_with_order(
-            &test_ctx,
-            &fixed_schema_table,
-            "Test read write table",
-            test_table,
-            &expect_reversed_rows,
-            ReadOrder::Desc,
         )
         .await;
     });

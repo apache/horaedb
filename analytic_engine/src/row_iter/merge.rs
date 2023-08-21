@@ -1,4 +1,16 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use std::{
     cmp,
@@ -18,9 +30,10 @@ use common_types::{
     schema::RecordSchemaWithKey,
     SequenceNumber,
 };
-use common_util::{define_result, error::GenericError};
 use futures::{stream::FuturesUnordered, StreamExt};
+use generic_error::GenericError;
 use log::{debug, trace};
+use macros::define_result;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
@@ -28,7 +41,7 @@ use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 use crate::{
     row_iter::{
         record_batch_stream,
-        record_batch_stream::{SequencedRecordBatch, SequencedRecordBatchStream},
+        record_batch_stream::{BoxedPrefetchableRecordBatchStream, SequencedRecordBatch},
         IterOptions, RecordBatchWithKeyIterator,
     },
     space::SpaceId,
@@ -104,6 +117,8 @@ pub struct MergeConfig<'a> {
     pub merge_iter_options: IterOptions,
 
     pub need_dedup: bool,
+    // TODO: Currently, the read the sst in a reverse order is not supported yet, that is to say,
+    // the output won't be expected if it is set.
     pub reverse: bool,
 }
 
@@ -343,7 +358,7 @@ impl BufferedStreamState {
 
 struct BufferedStream {
     schema: RecordSchemaWithKey,
-    stream: SequencedRecordBatchStream,
+    stream: BoxedPrefetchableRecordBatchStream,
     /// `None` state means the stream is exhausted.
     state: Option<BufferedStreamState>,
 }
@@ -351,7 +366,7 @@ struct BufferedStream {
 impl BufferedStream {
     async fn build(
         schema: RecordSchemaWithKey,
-        mut stream: SequencedRecordBatchStream,
+        mut stream: BoxedPrefetchableRecordBatchStream,
     ) -> Result<Self> {
         let buffered_record_batch = Self::pull_next_non_empty_batch(&mut stream).await?;
         let state = buffered_record_batch.map(|v| BufferedStreamState {
@@ -403,10 +418,15 @@ impl BufferedStream {
     ///
     /// The returned record batch is ensured `num_rows() > 0`.
     async fn pull_next_non_empty_batch(
-        stream: &mut SequencedRecordBatchStream,
+        stream: &mut BoxedPrefetchableRecordBatchStream,
     ) -> Result<Option<SequencedRecordBatch>> {
         loop {
-            match stream.next().await.transpose().context(PullRecordBatch)? {
+            match stream
+                .fetch_next()
+                .await
+                .transpose()
+                .context(PullRecordBatch)?
+            {
                 Some(record_batch) => {
                     trace!(
                         "MergeIterator one record batch is fetched:{:?}",
@@ -615,7 +635,7 @@ pub struct MergeIterator {
     inited: bool,
     schema: RecordSchemaWithKey,
     record_batch_builder: RecordBatchWithKeyBuilder,
-    origin_streams: Vec<SequencedRecordBatchStream>,
+    origin_streams: Vec<BoxedPrefetchableRecordBatchStream>,
     /// ssts are kept here to avoid them from being purged.
     #[allow(dead_code)]
     ssts: Vec<Vec<FileHandle>>,
@@ -634,7 +654,7 @@ impl MergeIterator {
         table_id: TableId,
         request_id: RequestId,
         schema: RecordSchemaWithKey,
-        streams: Vec<SequencedRecordBatchStream>,
+        streams: Vec<BoxedPrefetchableRecordBatchStream>,
         ssts: Vec<Vec<FileHandle>>,
         iter_options: IterOptions,
         reverse: bool,

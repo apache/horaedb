@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Adapter to providers in datafusion
 
@@ -7,7 +19,7 @@ use std::{any::Any, borrow::Cow, cell::RefCell, collections::HashMap, sync::Arc}
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
 use datafusion::{
-    catalog::{catalog::CatalogProvider, schema::SchemaProvider},
+    catalog::{schema::SchemaProvider, CatalogProvider},
     common::DataFusionError,
     config::ConfigOptions,
     datasource::{DefaultTableSource, TableProvider},
@@ -16,8 +28,13 @@ use datafusion::{
     sql::planner::ContextProvider,
 };
 use df_operator::{registry::FunctionRegistry, scalar::ScalarUdf, udaf::AggregateUdf};
+use macros::define_result;
+use partition_table_engine::scan_builder::PartitionedTableScanBuilder;
 use snafu::{OptionExt, ResultExt, Snafu};
-use table_engine::{provider::TableProviderAdapter, table::TableRef};
+use table_engine::{
+    provider::{NormalTableScanBuilder, TableProviderAdapter},
+    table::TableRef,
+};
 
 use crate::container::{TableContainer, TableReference};
 
@@ -67,6 +84,46 @@ pub enum Error {
 
 define_result!(Error);
 
+/// Table with catalog and schema
+// TODO: we should enable to get catalog and schema from table
+// (for example, store catalog id and schema id in table).
+// See issue: https://github.com/CeresDB/ceresdb/issues/1157
+#[derive(Debug, Clone)]
+pub struct ResolvedTable {
+    pub catalog: String,
+    pub schema: String,
+    pub table: TableRef,
+}
+
+// FIXME: the new partitioned table scan logic is incomplete now, we can't
+// enable it when normal running. So we left a button here to enable it just for
+// testing.
+fn enable_dedicated_partitioned_table_provider() -> bool {
+    std::env::var("CERESDB_DEDICATED_PARTITIONED_TABLE_PROVIDER")
+        .unwrap_or_else(|_| "false".to_string())
+        == "true"
+}
+
+impl ResolvedTable {
+    fn into_table_provider(self) -> Arc<dyn TableProvider> {
+        if self.table.partition_info().is_some() && enable_dedicated_partitioned_table_provider() {
+            let partition_info = self.table.partition_info().unwrap();
+            let builder = PartitionedTableScanBuilder::new(
+                self.table.name().to_string(),
+                self.catalog,
+                self.schema,
+                partition_info,
+            );
+
+            Arc::new(TableProviderAdapter::new(self.table.clone(), builder))
+        } else {
+            let builder = NormalTableScanBuilder::new(self.table.clone());
+
+            Arc::new(TableProviderAdapter::new(self.table.clone(), builder))
+        }
+    }
+}
+
 /// MetaProvider provides meta info needed by Frontend
 pub trait MetaProvider {
     /// Default catalog name
@@ -80,7 +137,7 @@ pub trait MetaProvider {
     /// Note that this function may block current thread. We can't make this
     /// function async as the underlying (aka. datafusion) planner needs a
     /// sync provider.
-    fn table(&self, name: TableReference) -> Result<Option<TableRef>>;
+    fn table(&self, name: TableReference) -> Result<Option<ResolvedTable>>;
 
     /// Get udf by name.
     fn scalar_udf(&self, name: &str) -> Result<Option<ScalarUdf>>;
@@ -118,14 +175,14 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
         self.default_schema
     }
 
-    fn table(&self, name: TableReference) -> Result<Option<TableRef>> {
+    fn table(&self, name: TableReference) -> Result<Option<ResolvedTable>> {
         let resolved = name.resolve(self.default_catalog, self.default_schema);
 
         let catalog = match self
             .manager
             .catalog_by_name(resolved.catalog.as_ref())
-            .context(FindCatalog {
-                name: resolved.catalog,
+            .with_context(|| FindCatalog {
+                name: resolved.catalog.to_string(),
             })? {
             Some(c) => c,
             None => return Ok(None),
@@ -145,12 +202,18 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
             }
         };
 
-        schema
+        let table = schema
             .table_by_name(resolved.table.as_ref())
             .map_err(Box::new)
-            .context(FindTable {
-                name: resolved.table,
-            })
+            .with_context(|| FindTable {
+                name: resolved.table.to_string(),
+            })?;
+
+        Ok(table.map(|t| ResolvedTable {
+            catalog: resolved.catalog.to_string(),
+            schema: resolved.schema.to_string(),
+            table: t,
+        }))
     }
 
     fn scalar_udf(&self, name: &str) -> Result<Option<ScalarUdf>> {
@@ -204,6 +267,9 @@ pub struct ContextProviderAdapter<'a, P> {
 
 impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     /// Create a adapter from meta provider
+    // TODO: `read_parallelism` here seems useless, `ContextProviderAdapter` is only
+    // used during creating `LogicalPlan`, and `read_parallelism` is used when
+    // creating `PhysicalPlan`.
     pub fn new(meta_provider: &'a P, read_parallelism: usize) -> Self {
         let default_catalog = meta_provider.default_catalog_name().to_string();
         let default_schema = meta_provider.default_schema_name().to_string();
@@ -240,12 +306,10 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
         }
     }
 
-    pub fn table_source(&self, table_ref: TableRef) -> Arc<(dyn TableSource + 'static)> {
-        let table_adapter = Arc::new(TableProviderAdapter::new(table_ref));
+    pub fn table_source(&self, resolved_table: ResolvedTable) -> Arc<(dyn TableSource + 'static)> {
+        let table_provider = resolved_table.into_table_provider();
 
-        Arc::new(DefaultTableSource {
-            table_provider: table_adapter,
-        })
+        Arc::new(DefaultTableSource { table_provider })
     }
 }
 
@@ -258,7 +322,7 @@ impl<'a, P: MetaProvider> MetaProvider for ContextProviderAdapter<'a, P> {
         self.meta_provider.default_schema_name()
     }
 
-    fn table(&self, name: TableReference) -> Result<Option<TableRef>> {
+    fn table(&self, name: TableReference) -> Result<Option<ResolvedTable>> {
         self.meta_provider.table(name)
     }
 
@@ -281,16 +345,16 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
         name: TableReference,
     ) -> std::result::Result<Arc<(dyn TableSource + 'static)>, DataFusionError> {
         // Find in local cache
-        if let Some(table_ref) = self.table_cache.borrow().get(name.clone()) {
-            return Ok(self.table_source(table_ref));
+        if let Some(resolved) = self.table_cache.borrow().get(name.clone()) {
+            return Ok(self.table_source(resolved));
         }
 
         // Find in meta provider
         // TODO: possible to remove this clone?
         match self.meta_provider.table(name.clone()) {
-            Ok(Some(table)) => {
-                self.table_cache.borrow_mut().insert(name, table.clone());
-                Ok(self.table_source(table))
+            Ok(Some(resolved)) => {
+                self.table_cache.borrow_mut().insert(name, resolved.clone());
+                Ok(self.table_source(resolved))
             }
             Ok(None) => Err(DataFusionError::Execution(format!(
                 "Table is not found, {:?}",
@@ -345,6 +409,10 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
     fn options(&self) -> &ConfigOptions {
         &self.config
     }
+
+    fn get_window_meta(&self, _name: &str) -> Option<Arc<datafusion::logical_expr::WindowUDF>> {
+        None
+    }
 }
 
 struct SchemaProviderAdapter {
@@ -379,7 +447,7 @@ impl SchemaProvider for SchemaProviderAdapter {
 
         self.tables
             .get(name_ref)
-            .map(|table_ref| Arc::new(TableProviderAdapter::new(table_ref)) as _)
+            .map(|resolved| resolved.into_table_provider())
     }
 
     fn table_exist(&self, name: &str) -> bool {

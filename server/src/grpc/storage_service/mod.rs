@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 mod error;
 #[allow(dead_code)]
@@ -18,24 +30,23 @@ use ceresdbproto::{
         SqlQueryRequest, SqlQueryResponse, WriteRequest, WriteResponse,
     },
 };
-use common_util::time::InstantExt;
 use futures::{stream, stream::BoxStream, StreamExt};
 use http::StatusCode;
 use proxy::{Context, Proxy, FORWARDED_FROM};
-use query_engine::executor::Executor as QueryExecutor;
 use table_engine::engine::EngineRuntimes;
+use time_ext::InstantExt;
 
 use crate::grpc::metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC;
 
 #[derive(Clone)]
-pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
-    pub proxy: Arc<Proxy<Q>>,
+pub struct StorageServiceImpl {
+    pub proxy: Arc<Proxy>,
     pub runtimes: Arc<EngineRuntimes>,
     pub timeout: Option<Duration>,
 }
 
 #[async_trait]
-impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
+impl StorageService for StorageServiceImpl {
     type StreamSqlQueryStream = BoxStream<'static, Result<SqlQueryResponse, tonic::Status>>;
 
     async fn route(
@@ -134,16 +145,9 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
     ) -> Result<tonic::Response<Self::StreamSqlQueryStream>, tonic::Status> {
         let begin_instant = Instant::now();
         let proxy = self.proxy.clone();
-        let ctx = Context {
-            runtime: self.runtimes.read_runtime.clone(),
-            timeout: self.timeout,
-            enable_partition_table_access: false,
-            forwarded_from: req
-                .metadata()
-                .get(FORWARDED_FROM)
-                .map(|value| value.to_str().unwrap().to_string()),
-        };
-        let stream = Self::stream_sql_query_internal(ctx, proxy, req).await;
+        let ctx = Context::new(self.timeout, get_forwarded_from(&req));
+
+        let stream = self.stream_sql_query_internal(ctx, proxy, req).await;
 
         GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .handle_stream_sql_query
@@ -153,21 +157,19 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
     }
 }
 
+fn get_forwarded_from<T>(req: &tonic::Request<T>) -> Option<String> {
+    req.metadata()
+        .get(FORWARDED_FROM)
+        .map(|value| value.to_str().unwrap().to_string())
+}
+
 // TODO: Use macros to simplify duplicate code
-impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
+impl StorageServiceImpl {
     async fn route_internal(
         &self,
         req: tonic::Request<RouteRequest>,
     ) -> Result<tonic::Response<RouteResponse>, tonic::Status> {
-        let ctx = Context {
-            runtime: self.runtimes.read_runtime.clone(),
-            timeout: self.timeout,
-            enable_partition_table_access: false,
-            forwarded_from: req
-                .metadata()
-                .get(FORWARDED_FROM)
-                .map(|value| value.to_str().unwrap().to_string()),
-        };
+        let ctx = Context::new(self.timeout, get_forwarded_from(&req));
         let req = req.into_inner();
         let proxy = self.proxy.clone();
 
@@ -194,15 +196,8 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         &self,
         req: tonic::Request<WriteRequest>,
     ) -> Result<tonic::Response<WriteResponse>, tonic::Status> {
-        let ctx = Context {
-            runtime: self.runtimes.write_runtime.clone(),
-            timeout: self.timeout,
-            enable_partition_table_access: false,
-            forwarded_from: req
-                .metadata()
-                .get(FORWARDED_FROM)
-                .map(|value| value.to_str().unwrap().to_string()),
-        };
+        let ctx = Context::new(self.timeout, get_forwarded_from(&req));
+
         let req = req.into_inner();
         let proxy = self.proxy.clone();
 
@@ -238,22 +233,13 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         &self,
         req: tonic::Request<SqlQueryRequest>,
     ) -> Result<tonic::Response<SqlQueryResponse>, tonic::Status> {
-        let ctx = Context {
-            runtime: self.runtimes.read_runtime.clone(),
-            timeout: self.timeout,
-            enable_partition_table_access: false,
-            forwarded_from: req
-                .metadata()
-                .get(FORWARDED_FROM)
-                .map(|value| value.to_str().unwrap().to_string()),
-        };
-        let req = req.into_inner();
+        let ctx = Context::new(self.timeout, get_forwarded_from(&req));
         let proxy = self.proxy.clone();
 
         let join_handle = self
             .runtimes
             .read_runtime
-            .spawn(async move { proxy.handle_sql_query(ctx, req).await });
+            .spawn(async move { proxy.handle_sql_query(ctx, req.into_inner()).await });
 
         let resp = match join_handle.await {
             Ok(v) => v,
@@ -306,15 +292,8 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         &self,
         req: tonic::Request<PrometheusQueryRequest>,
     ) -> Result<tonic::Response<PrometheusQueryResponse>, tonic::Status> {
-        let ctx = Context {
-            runtime: self.runtimes.read_runtime.clone(),
-            timeout: self.timeout,
-            enable_partition_table_access: false,
-            forwarded_from: req
-                .metadata()
-                .get(FORWARDED_FROM)
-                .map(|value| value.to_str().unwrap().to_string()),
-        };
+        let ctx = Context::new(self.timeout, get_forwarded_from(&req));
+
         let req = req.into_inner();
         let proxy = self.proxy.clone();
 
@@ -349,20 +328,11 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         &self,
         req: tonic::Request<tonic::Streaming<WriteRequest>>,
     ) -> Result<tonic::Response<WriteResponse>, tonic::Status> {
-        let mut total_success = 0;
-
-        let ctx = Context {
-            runtime: self.runtimes.write_runtime.clone(),
-            timeout: self.timeout,
-            enable_partition_table_access: false,
-            forwarded_from: req
-                .metadata()
-                .get(FORWARDED_FROM)
-                .map(|value| value.to_str().unwrap().to_string()),
-        };
+        let ctx = Context::new(self.timeout, get_forwarded_from(&req));
         let mut stream = req.into_inner();
         let proxy = self.proxy.clone();
 
+        let mut total_success = 0;
         let join_handle = self.runtimes.write_runtime.spawn(async move {
             let mut resp = WriteResponse::default();
             let mut has_err = false;
@@ -419,17 +389,16 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
     }
 
     async fn stream_sql_query_internal(
+        &self,
         ctx: Context,
-        proxy: Arc<Proxy<Q>>,
+        proxy: Arc<Proxy>,
         req: tonic::Request<SqlQueryRequest>,
     ) -> Result<
         tonic::Response<BoxStream<'static, Result<SqlQueryResponse, tonic::Status>>>,
         tonic::Status,
     > {
         let query_req = req.into_inner();
-
-        let runtime = ctx.runtime.clone();
-        let join_handle = runtime.spawn(async move {
+        let join_handle = self.runtimes.read_runtime.spawn(async move {
             proxy
                 .handle_stream_sql_query(ctx, query_req)
                 .await

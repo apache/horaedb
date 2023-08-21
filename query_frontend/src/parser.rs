@@ -1,10 +1,23 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! SQL parser
 //!
 //! Some codes are copied from datafusion: <https://github.com/apache/arrow/blob/9d86440946b8b07e03abb94fad2da278affae08f/rust/datafusion/src/sql/parser.rs#L74>
 
 use log::debug;
+use macros::define_result;
 use paste::paste;
 use sqlparser::{
     ast::{
@@ -37,6 +50,7 @@ macro_rules! parser_err {
 
 const TS_KEY: &str = "__ts_key";
 const TAG: &str = "TAG";
+const DICTIONARY: &str = "DICTIONARY";
 const UNSIGN: &str = "UNSIGN";
 const MODIFY: &str = "MODIFY";
 const SETTING: &str = "SETTING";
@@ -62,6 +76,7 @@ macro_rules! is_custom_column {
 }
 
 is_custom_column!(TAG);
+is_custom_column!(DICTIONARY);
 is_custom_column!(UNSIGN);
 
 /// Get the comment from the [`ColumnOption`] if it is a comment option.
@@ -326,6 +341,22 @@ impl<'a> Parser<'a> {
         // WITH ...
         let options = self.parser.parse_options(Keyword::WITH)?;
 
+        // Only String Column Can Be Dictionary Encoded
+        for c in &columns {
+            let mut is_dictionary = false;
+            for op in &c.options {
+                if is_dictionary_column(&op.option) {
+                    is_dictionary = true;
+                }
+            }
+            if c.data_type != DataType::String && is_dictionary {
+                return parser_err!(format!(
+                    "Only string column can be dictionary encoded: {:?}",
+                    c.to_string()
+                ));
+            }
+        }
+
         Ok(Statement::Create(Box::new(CreateTable {
             if_not_exists,
             table_name,
@@ -512,6 +543,10 @@ impl<'a> Parser<'a> {
             // Support TAG for ceresdb
             Ok(Some(ColumnOption::DialectSpecific(vec![
                 Token::make_keyword(TAG),
+            ])))
+        } else if self.consume_token(DICTIONARY) {
+            Ok(Some(ColumnOption::DialectSpecific(vec![
+                Token::make_keyword(DICTIONARY),
             ])))
         } else if self.consume_token(UNSIGN) {
             // Support unsign for ceresdb
@@ -971,6 +1006,52 @@ mod tests {
             }
             _ => panic!("failed"),
         }
+    }
+
+    #[test]
+    fn test_dictionary_column() {
+        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag dictionary, c2 float dictionary, c3 bigint unsign)";
+        assert!(Parser::parse_sql(sql).is_err());
+        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag dictionary, c2 string dictionary, c3 bigint unsign)";
+        let statements = Parser::parse_sql(sql).unwrap();
+        assert_eq!(statements.len(), 1);
+        match &statements[0] {
+            Statement::Create(v) => {
+                let columns = &v.columns;
+                assert_eq!(3, columns.len());
+                for c in columns {
+                    if c.name.value == "c1" {
+                        assert_eq!(2, c.options.len());
+                        let opt = &c.options[0];
+                        assert!(is_tag_column(&opt.option));
+                        let opt = &c.options[1];
+                        assert!(is_dictionary_column(&opt.option));
+                    } else if c.name.value == "c2" {
+                        assert_eq!(1, c.options.len());
+                        let opt = &c.options[0];
+                        assert!(is_dictionary_column(&opt.option));
+                    } else if c.name.value == "c3" {
+                        assert_eq!(1, c.options.len());
+                        let opt = &c.options[0];
+                        assert!(is_unsign_column(&opt.option));
+                    } else {
+                        panic!("failed");
+                    }
+                }
+            }
+            _ => panic!("failed"),
+        }
+    }
+
+    #[test]
+    fn test_dictionary_use_unstring_column() {
+        let sql =
+            "CREATE TABLE IF NOT EXISTS t(c1 string tag, c2 float dictionary, c3 bigint unsign)";
+        assert!(Parser::parse_sql(sql).is_err());
+        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag dictionary, c2 float dictionary, c3 bigint unsign)";
+        assert!(Parser::parse_sql(sql).is_err());
+        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag, c2 float dictionary, c3 bigint unsign dictionary)";
+        assert!(Parser::parse_sql(sql).is_err());
     }
 
     #[test]

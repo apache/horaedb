@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Table container
 
@@ -7,12 +19,14 @@ use std::{borrow::Cow, collections::HashMap};
 pub use datafusion::catalog::{ResolvedTableReference, TableReference};
 use table_engine::table::TableRef;
 
+use crate::provider::ResolvedTable;
+
 // Rust has poor support of using tuple as map key, so we use a 3 level
 // map to store catalog -> schema -> table mapping
 type CatalogMap = HashMap<String, SchemaMap>;
 type SchemaMap = HashMap<String, TableMap>;
 // TODO(chenxiang): change to LRU to evict deleted/migrated tables
-type TableMap = HashMap<String, TableRef>;
+type TableMap = HashMap<String, ResolvedTable>;
 
 /// Container to hold table adapters
 ///
@@ -44,7 +58,7 @@ impl TableContainer {
         }
     }
 
-    pub fn get(&self, name: TableReference) -> Option<TableRef> {
+    pub fn get(&self, name: TableReference) -> Option<ResolvedTable> {
         match name {
             TableReference::Bare { table } => self.get_default(table.as_ref()),
             TableReference::Partial { schema, table } => {
@@ -68,11 +82,11 @@ impl TableContainer {
         }
     }
 
-    fn get_default(&self, table: &str) -> Option<TableRef> {
+    fn get_default(&self, table: &str) -> Option<ResolvedTable> {
         self.default_tables.get(table).cloned()
     }
 
-    fn get_other(&self, catalog: &str, schema: &str, table: &str) -> Option<TableRef> {
+    fn get_other(&self, catalog: &str, schema: &str, table: &str) -> Option<ResolvedTable> {
         self.other_tables
             .get(catalog)
             .and_then(|schemas| schemas.get(schema))
@@ -80,18 +94,18 @@ impl TableContainer {
             .cloned()
     }
 
-    pub fn insert(&mut self, name: TableReference, table_ref: TableRef) {
+    pub fn insert(&mut self, name: TableReference, resolved_table: ResolvedTable) {
         match name {
-            TableReference::Bare { table } => self.insert_default(table.as_ref(), table_ref),
+            TableReference::Bare { table } => self.insert_default(table.as_ref(), resolved_table),
             TableReference::Partial { schema, table } => {
                 if schema == self.default_schema {
-                    self.insert_default(table.as_ref(), table_ref)
+                    self.insert_default(table.as_ref(), resolved_table)
                 } else {
                     self.insert_other(
                         self.default_catalog.clone(),
                         schema.to_string(),
                         table.to_string(),
-                        table_ref,
+                        resolved_table,
                     )
                 }
             }
@@ -101,21 +115,22 @@ impl TableContainer {
                 table,
             } => {
                 if catalog == self.default_catalog && schema == self.default_schema {
-                    self.insert_default(table.as_ref(), table_ref)
+                    self.insert_default(table.as_ref(), resolved_table)
                 } else {
                     self.insert_other(
                         catalog.to_string(),
                         schema.to_string(),
                         table.to_string(),
-                        table_ref,
+                        resolved_table,
                     )
                 }
             }
         }
     }
 
-    fn insert_default(&mut self, table: &str, table_adapter: TableRef) {
-        self.default_tables.insert(table.to_string(), table_adapter);
+    fn insert_default(&mut self, table: &str, resolved_table: ResolvedTable) {
+        self.default_tables
+            .insert(table.to_string(), resolved_table);
     }
 
     fn insert_other(
@@ -123,14 +138,14 @@ impl TableContainer {
         catalog: String,
         schema: String,
         table: String,
-        table_ref: TableRef,
+        resolved_table: ResolvedTable,
     ) {
         self.other_tables
             .entry(catalog)
             .or_insert_with(HashMap::new)
             .entry(schema)
             .or_insert_with(HashMap::new)
-            .insert(table, table_ref);
+            .insert(table, resolved_table);
     }
 
     /// Visit all tables
@@ -141,7 +156,7 @@ impl TableContainer {
         F: FnMut(ResolvedTableReference, &TableRef) -> Result<(), E>,
     {
         // Visit default tables first
-        for (table, adapter) in &self.default_tables {
+        for (table, resolved) in &self.default_tables {
             // default_catalog/default_schema can be empty string, but that's
             // ok since we have table under them
             let table_ref = ResolvedTableReference {
@@ -149,19 +164,19 @@ impl TableContainer {
                 schema: Cow::from(&self.default_schema),
                 table: Cow::from(table),
             };
-            f(table_ref, adapter)?;
+            f(table_ref, &resolved.table)?;
         }
 
         // Visit other tables
         for (catalog, schemas) in &self.other_tables {
             for (schema, tables) in schemas {
-                for (table, adapter) in tables {
+                for (table, resolved) in tables {
                     let table_ref = ResolvedTableReference {
                         catalog: Cow::from(catalog),
                         schema: Cow::from(schema),
                         table: Cow::from(table),
                     };
-                    f(table_ref, adapter)?;
+                    f(table_ref, &resolved.table)?;
                 }
             }
         }

@@ -31,7 +31,7 @@ def prepare_data(ts):
 CREATE TABLE if not exists `{}` (
     `t` timestamp NOT NULL,
     `tag1` string TAG,
-    `tag2` string TAG,
+    `TAG2` string TAG,
     `value` double NOT NULL,
     `VALUE2` double NOT NULL,
     timestamp KEY (t)
@@ -39,7 +39,7 @@ CREATE TABLE if not exists `{}` (
         """.format(t))
 
     execute_sql("""
-insert into {}(t, tag1, tag2, value, VALUE2)
+insert into {}(t, tag1, TAG2, value, VALUE2)
 values
 ({}, "v1", "v2", 1, 2),
 ({}, "v1", "v2", 11, 22)
@@ -47,7 +47,7 @@ values
     """.format(table, ts-5000, ts))
 
     execute_sql("""
-insert into {}(t, tag1, tag2, value, VALUE2)
+insert into {}(t, tag1, TAG2, value, VALUE2)
 values
 ({}, "v1", "v2", 10, 20),
 ({}, "v1", "v2", 110, 220)
@@ -60,11 +60,15 @@ def remote_query(ts):
 
     r = execute_pql(table + '{tag1="v1"}[5m]')
     result = r['data']['result']
-    assert result == [{'metric': {'__name__': table, 'tag1': 'v1', 'tag2': 'v2'}, 'values': [[ts-5, '1'], [ts, '11']]}]
+    assert result == [{'metric': {'__name__': table, 'tag1': 'v1', 'TAG2': 'v2'}, 'values': [[ts-5, '1'], [ts, '11']]}]
+
+    r = execute_pql(table + '{TAG2="v2"}[5m]')
+    result = r['data']['result']
+    assert result == [{'metric': {'__name__': table, 'tag1': 'v1', 'TAG2': 'v2'}, 'values': [[ts-5, '1'], [ts, '11']]}]
 
     r = execute_pql(table + '{tag1=~"v1"}[5m]')
     result = r['data']['result']
-    assert result == [{'metric': {'__name__': table, 'tag1': 'v1', 'tag2': 'v2'}, 'values': [[ts-5, '1'], [ts, '11']]}]
+    assert result == [{'metric': {'__name__': table, 'tag1': 'v1', 'TAG2': 'v2'}, 'values': [[ts-5, '1'], [ts, '11']]}]
 
     r = execute_pql(table + '{tag1!="v1"}[5m]')
     result = r['data']['result']
@@ -77,12 +81,12 @@ def remote_query(ts):
     # uppercase field
     r = execute_pql(table + '{tag1="v1",__ceresdb_field__="VALUE2"}[5m]')
     result = r['data']['result']
-    assert result == [{'metric': {'__name__': table, 'tag1': 'v1', 'tag2': 'v2'}, 'values': [[ts-5, '2'], [ts, '22']]}]
+    assert result == [{'metric': {'__name__': table, 'tag1': 'v1', 'TAG2': 'v2'}, 'values': [[ts-5, '2'], [ts, '22']]}]
 
     # uppercase table
     r = execute_pql(table2 + '{tag1="v1"}[5m]')
     result = r['data']['result']
-    assert result == [{'metric': {'__name__': table2, 'tag1': 'v1', 'tag2': 'v2'}, 'values': [[ts-5, '10'], [ts, '110']]}]
+    assert result == [{'metric': {'__name__': table2, 'tag1': 'v1', 'TAG2': 'v2'}, 'values': [[ts-5, '10'], [ts, '110']]}]
 
 def main():
     ts = now()

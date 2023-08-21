@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Server
 
@@ -11,14 +23,16 @@ use df_operator::registry::FunctionRegistryRef;
 use interpreters::table_manipulator::TableManipulatorRef;
 use log::{info, warn};
 use logger::RuntimeLevel;
+use macros::define_result;
 use partition_table_engine::PartitionTableEngine;
 use proxy::{
+    hotspot::HotspotRecorder,
     instance::{Instance, InstanceRef},
     limiter::Limiter,
     schema_config_provider::SchemaConfigProviderRef,
     Proxy,
 };
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::QueryEngineRef;
 use remote_engine_client::RemoteEngineImpl;
 use router::{endpoint::Endpoint, RouterRef};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -31,6 +45,8 @@ use crate::{
     local_tables::{self, LocalTablesRecoverer},
     mysql,
     mysql::error::Error as MysqlError,
+    postgresql,
+    postgresql::error::Error as PostgresqlError,
 };
 
 #[derive(Debug, Snafu)]
@@ -50,8 +66,8 @@ pub enum Error {
     #[snafu(display("Missing catalog manager.\nBacktrace:\n{}", backtrace))]
     MissingCatalogManager { backtrace: Backtrace },
 
-    #[snafu(display("Missing query executor.\nBacktrace:\n{}", backtrace))]
-    MissingQueryExecutor { backtrace: Backtrace },
+    #[snafu(display("Missing query engine.\nBacktrace:\n{}", backtrace))]
+    MissingQueryEngine { backtrace: Backtrace },
 
     #[snafu(display("Missing table engine.\nBacktrace:\n{}", backtrace))]
     MissingTableEngine { backtrace: Backtrace },
@@ -77,8 +93,14 @@ pub enum Error {
     #[snafu(display("Failed to build mysql service, err:{}", source))]
     BuildMysqlService { source: MysqlError },
 
+    #[snafu(display("Failed to build postgresql service, err:{}", source))]
+    BuildPostgresqlService { source: PostgresqlError },
+
     #[snafu(display("Failed to start mysql service, err:{}", source))]
     StartMysqlService { source: MysqlError },
+
+    #[snafu(display("Failed to start postgresql service, err:{}", source))]
+    StartPostgresqlService { source: PostgresqlError },
 
     #[snafu(display("Failed to register system catalog, err:{}", source))]
     RegisterSystemCatalog { source: catalog::manager::Error },
@@ -100,20 +122,22 @@ define_result!(Error);
 
 // TODO(yingwen): Consider a config manager
 /// Server
-pub struct Server<Q: QueryExecutor + 'static> {
-    http_service: Service<Q>,
-    rpc_services: RpcServices<Q>,
-    mysql_service: mysql::MysqlService<Q>,
-    instance: InstanceRef<Q>,
+pub struct Server {
+    http_service: Service,
+    rpc_services: RpcServices,
+    mysql_service: mysql::MysqlService,
+    postgresql_service: postgresql::PostgresqlService,
+    instance: InstanceRef,
     cluster: Option<ClusterRef>,
     local_tables_recoverer: Option<LocalTablesRecoverer>,
 }
 
-impl<Q: QueryExecutor + 'static> Server<Q> {
+impl Server {
     pub async fn stop(mut self) {
         self.rpc_services.shutdown().await;
         self.http_service.stop();
         self.mysql_service.shutdown();
+        self.postgresql_service.shutdown();
 
         if let Some(cluster) = &self.cluster {
             cluster.stop().await.expect("fail to stop cluster");
@@ -141,13 +165,21 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
         self.create_default_schema_if_not_exists().await;
 
         info!("Server start, start services");
+
         self.http_service.start().await.context(HttpService {
             msg: "start failed",
         })?;
+
         self.mysql_service
             .start()
             .await
             .context(StartMysqlService)?;
+
+        self.postgresql_service
+            .start()
+            .await
+            .context(StartPostgresqlService)?;
+
         self.rpc_services.start().await.context(StartGrpcService)?;
 
         info!("Server start finished");
@@ -177,7 +209,7 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
 }
 
 #[must_use]
-pub struct Builder<Q> {
+pub struct Builder {
     server_config: ServerConfig,
     remote_engine_client_config: remote_engine_client::config::Config,
     node_addr: String,
@@ -185,7 +217,7 @@ pub struct Builder<Q> {
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
     catalog_manager: Option<ManagerRef>,
-    query_executor: Option<Q>,
+    query_engine: Option<QueryEngineRef>,
     table_engine: Option<TableEngineRef>,
     table_manipulator: Option<TableManipulatorRef>,
     function_registry: Option<FunctionRegistryRef>,
@@ -197,7 +229,7 @@ pub struct Builder<Q> {
     opened_wals: Option<OpenedWals>,
 }
 
-impl<Q: QueryExecutor + 'static> Builder<Q> {
+impl Builder {
     pub fn new(config: ServerConfig) -> Self {
         Self {
             server_config: config,
@@ -207,7 +239,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             engine_runtimes: None,
             log_runtime: None,
             catalog_manager: None,
-            query_executor: None,
+            query_engine: None,
             table_engine: None,
             table_manipulator: None,
             function_registry: None,
@@ -245,8 +277,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         self
     }
 
-    pub fn query_executor(mut self, val: Q) -> Self {
-        self.query_executor = Some(val);
+    pub fn query_engine(mut self, val: QueryEngineRef) -> Self {
+        self.query_engine = Some(val);
         self
     }
 
@@ -299,10 +331,10 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
     }
 
     /// Build and run the server
-    pub fn build(self) -> Result<Server<Q>> {
+    pub fn build(self) -> Result<Server> {
         // Build instance
         let catalog_manager = self.catalog_manager.context(MissingCatalogManager)?;
-        let query_executor = self.query_executor.context(MissingQueryExecutor)?;
+        let query_engine = self.query_engine.context(MissingQueryEngine)?;
         let table_engine = self.table_engine.context(MissingTableEngine)?;
         let table_manipulator = self.table_manipulator.context(MissingTableManipulator)?;
         let function_registry = self.function_registry.context(MissingFunctionRegistry)?;
@@ -315,6 +347,10 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let config_content = self.config_content.expect("Missing config content");
 
+        let hotspot_recorder = Arc::new(HotspotRecorder::new(
+            self.server_config.hotspot,
+            engine_runtimes.default_runtime.clone(),
+        ));
         let remote_engine_ref = Arc::new(RemoteEngineImpl::new(
             self.remote_engine_client_config.clone(),
             router.clone(),
@@ -326,7 +362,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let instance = {
             let instance = Instance {
                 catalog_manager,
-                query_executor,
+                query_engine,
                 table_engine,
                 partition_table_engine,
                 function_registry,
@@ -362,7 +398,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             self.server_config.resp_compress_min_length.as_byte() as usize,
             self.server_config.auto_create_table,
             provider.clone(),
-            self.server_config.hotspot,
+            hotspot_recorder.clone(),
             engine_runtimes.clone(),
             self.cluster.is_some(),
         ));
@@ -371,6 +407,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .engine_runtimes(engine_runtimes.clone())
             .log_runtime(log_runtime)
             .config_content(config_content)
+            .cluster(self.cluster.clone())
             .proxy(proxy.clone())
             .opened_wals(opened_wals.clone())
             .build()
@@ -390,6 +427,14 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .build()
             .context(BuildMysqlService)?;
 
+        let postgresql_service = postgresql::Builder::new()
+            .ip(self.server_config.bind_addr.clone())
+            .port(self.server_config.postgresql_port)
+            .proxy(proxy.clone())
+            .runtimes(engine_runtimes.clone())
+            .build()
+            .context(BuildPostgresqlService)?;
+
         let rpc_services = grpc::Builder::new()
             .endpoint(grpc_endpoint.to_string())
             .runtimes(engine_runtimes)
@@ -398,6 +443,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .opened_wals(opened_wals)
             .timeout(self.server_config.timeout.map(|v| v.0))
             .proxy(proxy)
+            .hotspot_recorder(hotspot_recorder)
+            .request_notifiers(self.server_config.enable_query_dedup)
             .build()
             .context(BuildGrpcService)?;
 
@@ -405,6 +452,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             http_service,
             rpc_services,
             mysql_service,
+            postgresql_service,
             instance,
             cluster: self.cluster,
             local_tables_recoverer: self.local_tables_recoverer,

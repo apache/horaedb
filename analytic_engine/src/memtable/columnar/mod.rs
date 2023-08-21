@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use std::{
     collections::HashMap,
@@ -9,11 +21,11 @@ use std::{
 };
 
 use arena::MonoIncArena;
-use bytes::Bytes;
+use bytes_ext::Bytes;
 use common_types::{
     column::Column, column_schema::ColumnId, datum::Datum, row::Row, schema::Schema, SequenceNumber,
 };
-use common_util::error::BoxError;
+use generic_error::BoxError;
 use log::debug;
 use skiplist::{BytewiseComparator, Skiplist};
 use snafu::{ensure, OptionExt, ResultExt};
@@ -21,11 +33,18 @@ use snafu::{ensure, OptionExt, ResultExt};
 use crate::memtable::{
     columnar::iter::ColumnarIterImpl, factory::Options, key::KeySequence,
     reversed_iter::ReversedColumnarIterator, ColumnarIterPtr, Internal, InternalNoCause,
-    InvalidPutSequence, MemTable, PutContext, Result, ScanContext, ScanRequest,
+    InvalidPutSequence, MemTable, Metrics as MemtableMetrics, PutContext, Result, ScanContext,
+    ScanRequest,
 };
 
 pub mod factory;
 pub mod iter;
+
+#[derive(Default, Debug)]
+struct Metrics {
+    row_raw_size: AtomicUsize,
+    row_count: AtomicUsize,
+}
 
 pub struct ColumnarMemTable {
     /// Schema of this memtable, is immutable.
@@ -37,6 +56,8 @@ pub struct ColumnarMemTable {
     row_num: AtomicUsize,
     opts: Options,
     memtable_size: AtomicUsize,
+
+    metrics: Metrics,
 }
 
 impl ColumnarMemTable {
@@ -129,6 +150,13 @@ impl MemTable for ColumnarMemTable {
         // May have performance issue.
         self.memtable_size
             .store(self.memtable_size(), Ordering::Relaxed);
+
+        // Update metrics
+        self.metrics
+            .row_raw_size
+            .fetch_add(row.size(), Ordering::Relaxed);
+        self.metrics.row_count.fetch_add(1, Ordering::Relaxed);
+
         Ok(())
     }
 
@@ -200,5 +228,15 @@ impl MemTable for ColumnarMemTable {
 
     fn last_sequence(&self) -> SequenceNumber {
         self.last_sequence.load(Ordering::Relaxed)
+    }
+
+    fn metrics(&self) -> MemtableMetrics {
+        let row_raw_size = self.metrics.row_raw_size.load(Ordering::Relaxed);
+        let row_count = self.metrics.row_count.load(Ordering::Relaxed);
+        MemtableMetrics {
+            row_raw_size,
+            row_encoded_size: self.memtable_size.load(Ordering::Relaxed),
+            row_count,
+        }
     }
 }

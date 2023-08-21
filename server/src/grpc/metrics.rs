@@ -1,11 +1,23 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Grpc server metrics
 
 use lazy_static::lazy_static;
 use prometheus::{
-    exponential_buckets, register_histogram_vec, register_int_counter_vec, HistogramVec,
-    IntCounterVec,
+    exponential_buckets, register_histogram, register_histogram_vec, register_int_counter_vec,
+    Histogram, HistogramVec, IntCounterVec,
 };
 use prometheus_static_metric::{auto_flush_from, make_auto_flush_static_metric};
 
@@ -38,13 +50,13 @@ make_auto_flush_static_metric! {
     pub label_enum RemoteEngineGrpcTypeKind {
         write_succeeded,
         write_failed,
-        query_succeeded,
-        query_failed,
+        stream_query,
         stream_query_succeeded,
         stream_query_failed,
         write_succeeded_row,
         write_failed_row,
         query_succeeded_row,
+        dedupped_stream_query,
     }
 
     pub struct RemoteEngineGrpcHandlerCounterVec: LocalIntCounter {
@@ -90,6 +102,12 @@ lazy_static! {
             &["type"]
         )
         .unwrap();
+    pub static ref REMOTE_ENGINE_WRITE_BATCH_NUM_ROWS_HISTOGRAM: Histogram = register_histogram!(
+        "remote_engine_write_batch_num_rows",
+        "Bucketed histogram of grpc server handler",
+        vec![1.0, 10.0, 50.0, 100.0, 500.0, 1000.0, 2000.0]
+    )
+    .unwrap();
     pub static ref META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC_GLOBAL: HistogramVec =
         register_histogram_vec!(
             "meta_event_grpc_handler_duration",

@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use std::io::Cursor;
 
@@ -11,9 +23,10 @@ use common_types::{
     datum::{Datum, DatumKind},
     record_batch::RecordBatch,
 };
-use common_util::error::BoxError;
-use interpreters::interpreter::Output;
-use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
+use generic_error::BoxError;
+use http::StatusCode;
+use interpreters::{interpreter::Output, RecordBatchVec};
+use log::error;
 use serde::{
     ser::{SerializeMap, SerializeSeq},
     Deserialize, Serialize,
@@ -22,25 +35,27 @@ use snafu::{OptionExt, ResultExt};
 
 use crate::{
     context::RequestContext,
-    error::{Internal, InternalNoCause, Result},
+    error::{ErrNoCause, Internal, InternalNoCause, Result},
     read::SqlResponse,
     Context, Proxy,
 };
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl Proxy {
     pub async fn handle_http_sql_query(
         &self,
         ctx: &RequestContext,
         req: Request,
     ) -> Result<Output> {
-        let context = Context {
-            timeout: ctx.timeout,
-            runtime: self.engine_runtimes.read_runtime.clone(),
-            enable_partition_table_access: true,
-            forwarded_from: None,
-        };
+        let schema = &ctx.schema;
+        let ctx = Context::new(ctx.timeout, None);
 
-        match self.handle_sql(context, &ctx.schema, &req.query).await? {
+        match self
+            .handle_sql(&ctx, schema, &req.query, true)
+            .await
+            .map_err(|e| {
+                error!("Handle sql query failed, ctx:{ctx:?}, req:{req:?}, err:{e}");
+                e
+            })? {
             SqlResponse::Forwarded(resp) => convert_sql_response_to_output(resp),
             SqlResponse::Local(output) => Ok(output),
         }
@@ -162,6 +177,19 @@ fn convert_records(records: RecordBatchVec) -> Response {
 }
 
 fn convert_sql_response_to_output(sql_query_response: SqlQueryResponse) -> Result<Output> {
+    if let Some(header) = sql_query_response.header {
+        if header.code as u16 != StatusCode::OK.as_u16() {
+            return ErrNoCause {
+                code: StatusCode::from_u16(header.code as u16)
+                    .box_err()
+                    .context(Internal {
+                        msg: format!("Invalid code, code:{}", header.code),
+                    })?,
+                msg: format!("Query failed, err:{}", header.error),
+            }
+            .fail();
+        }
+    }
     let output_pb = sql_query_response.output.context(InternalNoCause {
         msg: "Output is empty in sql query response".to_string(),
     })?;

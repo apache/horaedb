@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Contains common methods used by the write process.
 
@@ -22,12 +34,11 @@ use common_types::{
     schema::Schema,
     time::Timestamp,
 };
-use common_util::error::BoxError;
 use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
+use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, error, info};
-use query_engine::executor::Executor as QueryExecutor;
 use query_frontend::{
     frontend::{Context as FrontendContext, Frontend},
     plan::{AlterTableOperation, AlterTablePlan, InsertPlan, Plan},
@@ -45,8 +56,7 @@ use crate::{
     Context, Proxy,
 };
 
-type WriteResponseFutures<'a> =
-    Vec<BoxFuture<'a, common_util::runtime::Result<Result<WriteResponse>>>>;
+type WriteResponseFutures<'a> = Vec<BoxFuture<'a, runtime::Result<Result<WriteResponse>>>>;
 
 #[derive(Debug)]
 pub struct WriteContext {
@@ -63,7 +73,7 @@ pub(crate) struct WriteResponse {
     pub failed: u32,
 }
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl Proxy {
     pub(crate) async fn handle_write_internal(
         &self,
         ctx: Context,
@@ -92,8 +102,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
-        let request_id = RequestId::next_id();
-
+        let request_id = ctx.request_id;
         let write_context = req.context.clone().context(ErrNoCause {
             msg: "Missing context",
             code: StatusCode::BAD_REQUEST,
@@ -127,8 +136,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
-        let request_id = RequestId::next_id();
-
+        let request_id = ctx.request_id;
         let write_context = req.context.clone().context(ErrNoCause {
             msg: "Missing context",
             code: StatusCode::BAD_REQUEST,
@@ -391,7 +399,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
     async fn collect_write_response(
         &self,
-        futures: Vec<BoxFuture<'_, common_util::runtime::Result<Result<WriteResponse>>>>,
+        futures: Vec<BoxFuture<'_, runtime::Result<Result<WriteResponse>>>>,
     ) -> Result<WriteResponse> {
         let mut futures: FuturesUnordered<_> = futures.into_iter().collect();
         let mut success = 0;
@@ -684,7 +692,6 @@ fn find_new_columns(
             );
 
             let tag_name = &tag_names[name_index];
-
             build_column(&mut columns, schema, tag_name, &tag.value, true)?;
         }
 

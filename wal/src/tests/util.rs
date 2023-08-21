@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! utilities for testing wal module.
 
@@ -10,19 +22,14 @@ use std::{
 };
 
 use async_trait::async_trait;
-use common_types::{
-    bytes::{BufMut, SafeBuf, SafeBufMut},
-    table::TableId,
-    SequenceNumber,
-};
-use common_util::{
-    config::ReadableDuration,
-    runtime::{self, Runtime},
-};
+use bytes_ext::{BufMut, SafeBuf, SafeBufMut};
+use common_types::{table::TableId, SequenceNumber};
 use message_queue::kafka::{config::Config as KafkaConfig, kafka_impl::KafkaImpl};
+use runtime::{self, Runtime};
 use snafu::Snafu;
 use table_kv::memory::MemoryImpl;
 use tempfile::TempDir;
+use time_ext::ReadableDuration;
 
 use crate::{
     kv_encoder::LogBatchEncoder,

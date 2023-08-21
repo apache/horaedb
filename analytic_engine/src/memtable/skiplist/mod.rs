@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! MemTable based on skiplist
 
@@ -7,17 +19,18 @@ pub mod iter;
 
 use std::{
     convert::TryInto,
-    sync::atomic::{self, AtomicU64},
+    sync::atomic::{self, AtomicU64, AtomicUsize},
 };
 
 use arena::{Arena, BasicStats};
+use bytes_ext::Bytes;
+use codec::Encoder;
 use common_types::{
-    bytes::Bytes,
     row::{contiguous::ContiguousRowWriter, Row},
     schema::Schema,
     SequenceNumber,
 };
-use common_util::{codec::Encoder, error::BoxError};
+use generic_error::BoxError;
 use log::{debug, trace};
 use skiplist::{BytewiseComparator, Skiplist};
 use snafu::{ensure, ResultExt};
@@ -26,9 +39,16 @@ use crate::memtable::{
     key::{ComparableInternalKey, KeySequence},
     reversed_iter::ReversedColumnarIterator,
     skiplist::iter::ColumnarIterImpl,
-    ColumnarIterPtr, EncodeInternalKey, InvalidPutSequence, InvalidRow, MemTable, PutContext,
-    Result, ScanContext, ScanRequest,
+    ColumnarIterPtr, EncodeInternalKey, InvalidPutSequence, InvalidRow, MemTable,
+    Metrics as MemtableMetrics, PutContext, Result, ScanContext, ScanRequest,
 };
+
+#[derive(Default, Debug)]
+struct Metrics {
+    row_raw_size: AtomicUsize,
+    row_encoded_size: AtomicUsize,
+    row_count: AtomicUsize,
+}
 
 /// MemTable implementation based on skiplist
 pub struct SkiplistMemTable<A: Arena<Stats = BasicStats> + Clone + Sync + Send> {
@@ -38,6 +58,8 @@ pub struct SkiplistMemTable<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
     /// The last sequence of the rows in this memtable. Update to this field
     /// require external synchronization.
     last_sequence: AtomicU64,
+
+    metrics: Metrics,
 }
 
 impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
@@ -95,8 +117,19 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
         let row_value = &mut ctx.value_buf;
         let mut row_writer = ContiguousRowWriter::new(row_value, schema, &ctx.index_in_writer);
         row_writer.write_row(row).box_err().context(InvalidRow)?;
-
+        let encoded_size = internal_key.len() + row_value.len();
         self.skiplist.put(internal_key, row_value);
+
+        // Update metrics
+        self.metrics
+            .row_raw_size
+            .fetch_add(row.size(), atomic::Ordering::Relaxed);
+        self.metrics
+            .row_count
+            .fetch_add(1, atomic::Ordering::Relaxed);
+        self.metrics
+            .row_encoded_size
+            .fetch_add(encoded_size, atomic::Ordering::Relaxed);
 
         Ok(())
     }
@@ -147,6 +180,20 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
     fn last_sequence(&self) -> SequenceNumber {
         self.last_sequence.load(atomic::Ordering::Relaxed)
     }
+
+    fn metrics(&self) -> MemtableMetrics {
+        let row_raw_size = self.metrics.row_raw_size.load(atomic::Ordering::Relaxed);
+        let row_encoded_size = self
+            .metrics
+            .row_encoded_size
+            .load(atomic::Ordering::Relaxed);
+        let row_count = self.metrics.row_count.load(atomic::Ordering::Relaxed);
+        MemtableMetrics {
+            row_raw_size,
+            row_encoded_size,
+            row_count,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -155,8 +202,9 @@ mod tests {
     use std::{ops::Bound, sync::Arc};
 
     use arena::NoopCollector;
+    use bytes_ext::ByteVec;
+    use codec::memcomparable::MemComparable;
     use common_types::{
-        bytes::ByteVec,
         datum::Datum,
         projected_schema::ProjectedSchema,
         record_batch::RecordBatchWithKey,
@@ -165,7 +213,6 @@ mod tests {
         tests::{build_row, build_schema},
         time::Timestamp,
     };
-    use common_util::codec::memcomparable::MemComparable;
 
     use super::*;
     use crate::memtable::{

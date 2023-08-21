@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Planner converts a SQL AST into logical plans
 
@@ -26,7 +38,6 @@ use common_types::{
     row::{RowGroup, RowGroupBuilder},
     schema::{self, Builder as SchemaBuilder, Schema, TSID_COLUMN},
 };
-use common_util::error::GenericError;
 use datafusion::{
     common::{DFField, DFSchema},
     error::DataFusionError,
@@ -37,8 +48,10 @@ use datafusion::{
         ResolvedTableReference,
     },
 };
+use generic_error::GenericError;
 use influxql_parser::statement::Statement as InfluxqlStatement;
 use log::{debug, trace};
+use macros::define_result;
 use prom_remote_api::types::Query as PromRemoteQuery;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
@@ -431,6 +444,7 @@ pub fn build_schema_from_write_table_request(
             if let Some(column_schema) = name_column_map.get(tag_name) {
                 ensure_data_type_compatible(table, tag_name, true, data_type, column_schema)?;
             }
+
             let column_schema = build_column_schema(tag_name, data_type, true)?;
             name_column_map.insert(tag_name, column_schema);
         }
@@ -465,7 +479,6 @@ pub fn build_schema_from_write_table_request(
                             column_schema,
                         )?;
                     }
-
                     let column_schema = build_column_schema(field_name, data_type, false)?;
                     name_column_map.insert(field_name, column_schema);
                 }
@@ -1013,9 +1026,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
     pub(crate) fn find_table(&self, table_name: &str) -> Result<Option<TableRef>> {
         let table_ref = get_table_ref(table_name);
-        self.meta_provider
+        let resolved_table = self
+            .meta_provider
             .table(table_ref)
-            .context(MetaProviderFindTable)
+            .context(MetaProviderFindTable)?;
+        Ok(resolved_table.map(|resolved| resolved.table))
     }
 }
 
@@ -1234,6 +1249,7 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
     // Process column options
     let mut is_nullable = true; // A column is nullable by default.
     let mut is_tag = false;
+    let mut is_dictionary = false;
     let mut is_unsign = false;
     let mut comment = String::new();
     let mut default_value = None;
@@ -1242,6 +1258,8 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
             is_nullable = false;
         } else if parser::is_tag_column(&option_def.option) {
             is_tag = true;
+        } else if parser::is_dictionary_column(&option_def.option) {
+            is_dictionary = true;
         } else if parser::is_unsign_column(&option_def.option) {
             is_unsign = true;
         } else if let Some(default_value_expr) = parser::get_default_value(&option_def.option) {
@@ -1260,6 +1278,7 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
     let builder = column_schema::Builder::new(col.name.value.clone(), data_type)
         .is_nullable(is_nullable)
         .is_tag(is_tag)
+        .is_dictionary(is_dictionary)
         .comment(comment)
         .default_value(default_value);
 
@@ -1351,7 +1370,14 @@ mod tests {
     use ceresdbproto::storage::{
         value, Field, FieldGroup, Tag, Value as PbValue, WriteSeriesEntry,
     };
+    use datafusion::{
+        common::tree_node::{TreeNode, TreeNodeVisitor, VisitRecursion},
+        datasource::source_as_provider,
+        logical_expr::LogicalPlan,
+    };
+    use partition_table_engine::scan_builder::PartitionedTableScanBuilder;
     use sqlparser::ast::Value;
+    use table_engine::provider::TableProviderAdapter;
 
     use super::*;
     use crate::{
@@ -1361,13 +1387,17 @@ mod tests {
     };
 
     fn quick_test(sql: &str, expected: &str) -> Result<()> {
+        let plan = sql_to_logical_plan(sql)?;
+        assert_eq!(format!("{plan:#?}"), expected);
+        Ok(())
+    }
+
+    fn sql_to_logical_plan(sql: &str) -> Result<Plan> {
         let mock = MockMetaProvider::default();
         let planner = build_planner(&mock);
         let mut statements = Parser::parse_sql(sql).unwrap();
         assert_eq!(statements.len(), 1);
-        let plan = planner.statement_to_plan(statements.remove(0))?;
-        assert_eq!(format!("{plan:#?}"), expected);
-        Ok(())
+        planner.statement_to_plan(statements.remove(0))
     }
 
     fn build_planner(provider: &MockMetaProvider) -> Planner<MockMetaProvider> {
@@ -1441,6 +1471,7 @@ mod tests {
                         data_type: String,
                         is_nullable: false,
                         is_tag: true,
+                        is_dictionary: false,
                         comment: "",
                         escaped_name: "c1",
                         default_value: None,
@@ -1451,6 +1482,7 @@ mod tests {
                         data_type: Timestamp,
                         is_nullable: false,
                         is_tag: false,
+                        is_dictionary: false,
                         comment: "",
                         escaped_name: "ts",
                         default_value: None,
@@ -1461,6 +1493,7 @@ mod tests {
                         data_type: String,
                         is_nullable: true,
                         is_tag: false,
+                        is_dictionary: false,
                         comment: "",
                         escaped_name: "c3",
                         default_value: None,
@@ -1471,6 +1504,7 @@ mod tests {
                         data_type: UInt32,
                         is_nullable: true,
                         is_tag: false,
+                        is_dictionary: false,
                         comment: "",
                         escaped_name: "c4",
                         default_value: Some(
@@ -1488,6 +1522,7 @@ mod tests {
                         data_type: UInt32,
                         is_nullable: true,
                         is_tag: false,
+                        is_dictionary: false,
                         comment: "",
                         escaped_name: "c5",
                         default_value: Some(
@@ -1514,6 +1549,7 @@ mod tests {
                         data_type: String,
                         is_nullable: true,
                         is_tag: false,
+                        is_dictionary: false,
                         comment: "",
                         escaped_name: "c6",
                         default_value: Some(
@@ -1587,6 +1623,51 @@ mod tests {
     }
 
     #[test]
+    fn test_partitioned_table_query_statement_to_plan() {
+        // enable dedicated partitioned table provider in this test.
+        std::env::set_var("CERESDB_DEDICATED_PARTITIONED_TABLE_PROVIDER", "true");
+
+        let sql = "select * from test_partitioned_table;";
+        let plan = sql_to_logical_plan(sql).unwrap();
+        let df_plan = if let Plan::Query(query_plan) = plan {
+            query_plan.df_plan
+        } else {
+            panic!("It should be query plan");
+        };
+
+        // Check if it is successful to build a partitioned table source.
+        struct CheckVisitor;
+
+        impl TreeNodeVisitor for CheckVisitor {
+            type N = LogicalPlan;
+
+            fn pre_visit(
+                &mut self,
+                plan: &LogicalPlan,
+            ) -> datafusion::error::Result<VisitRecursion> {
+                if let LogicalPlan::TableScan(scan) = plan {
+                    let provider = source_as_provider(&scan.source).unwrap();
+                    if provider
+                        .as_any()
+                        .downcast_ref::<TableProviderAdapter<PartitionedTableScanBuilder>>()
+                        .is_none()
+                    {
+                        panic!("It should be partitioned table provider");
+                    }
+                }
+
+                Ok(VisitRecursion::Continue)
+            }
+        }
+
+        let mut visitor = CheckVisitor;
+        df_plan.visit(&mut visitor).unwrap();
+
+        // Rollback
+        std::env::set_var("CERESDB_DEDICATED_PARTITIONED_TABLE_PROVIDER", "false");
+    }
+
+    #[test]
     fn test_insert_statement_to_plan() {
         let sql = "INSERT INTO test_tablex(key1, key2, field1, field2) VALUES('tagk', 1638428434000, 100, 'hello3');";
         assert!(quick_test(sql, "").is_err());
@@ -1612,6 +1693,7 @@ mod tests {
                             data_type: Varbinary,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key1",
                             default_value: None,
@@ -1622,6 +1704,7 @@ mod tests {
                             data_type: Timestamp,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key2",
                             default_value: None,
@@ -1632,6 +1715,7 @@ mod tests {
                             data_type: Double,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field1",
                             default_value: None,
@@ -1642,6 +1726,7 @@ mod tests {
                             data_type: String,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field2",
                             default_value: None,
@@ -1652,6 +1737,7 @@ mod tests {
                             data_type: Date,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field3",
                             default_value: None,
@@ -1662,6 +1748,7 @@ mod tests {
                             data_type: Time,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field4",
                             default_value: None,
@@ -1687,6 +1774,7 @@ mod tests {
                             data_type: Varbinary,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key1",
                             default_value: None,
@@ -1697,6 +1785,7 @@ mod tests {
                             data_type: Timestamp,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key2",
                             default_value: None,
@@ -1707,6 +1796,7 @@ mod tests {
                             data_type: Double,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field1",
                             default_value: None,
@@ -1717,6 +1807,7 @@ mod tests {
                             data_type: String,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field2",
                             default_value: None,
@@ -1727,6 +1818,7 @@ mod tests {
                             data_type: Date,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field3",
                             default_value: None,
@@ -1737,6 +1829,7 @@ mod tests {
                             data_type: Time,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field4",
                             default_value: None,
@@ -1851,6 +1944,7 @@ mod tests {
                             data_type: Varbinary,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key1",
                             default_value: None,
@@ -1861,6 +1955,7 @@ mod tests {
                             data_type: Timestamp,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key2",
                             default_value: None,
@@ -1871,6 +1966,7 @@ mod tests {
                             data_type: Double,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field1",
                             default_value: None,
@@ -1881,6 +1977,7 @@ mod tests {
                             data_type: String,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field2",
                             default_value: None,
@@ -1891,6 +1988,7 @@ mod tests {
                             data_type: Date,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field3",
                             default_value: None,
@@ -1901,6 +1999,7 @@ mod tests {
                             data_type: Time,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field4",
                             default_value: None,
@@ -1914,6 +2013,119 @@ mod tests {
                 ],
             },
         },
+    },
+)"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_alter_column_with_dictionary_encode() {
+        let sql = "ALTER TABLE test_table ADD column dic string dictionary;";
+        quick_test(
+            sql,
+            r#"AlterTable(
+    AlterTablePlan {
+        table: MemoryTable {
+            name: "test_table",
+            id: TableId(
+                100,
+            ),
+            schema: Schema {
+                timestamp_index: 1,
+                tsid_index: None,
+                column_schemas: ColumnSchemas {
+                    columns: [
+                        ColumnSchema {
+                            id: 1,
+                            name: "key1",
+                            data_type: Varbinary,
+                            is_nullable: false,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "key1",
+                            default_value: None,
+                        },
+                        ColumnSchema {
+                            id: 2,
+                            name: "key2",
+                            data_type: Timestamp,
+                            is_nullable: false,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "key2",
+                            default_value: None,
+                        },
+                        ColumnSchema {
+                            id: 3,
+                            name: "field1",
+                            data_type: Double,
+                            is_nullable: true,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "field1",
+                            default_value: None,
+                        },
+                        ColumnSchema {
+                            id: 4,
+                            name: "field2",
+                            data_type: String,
+                            is_nullable: true,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "field2",
+                            default_value: None,
+                        },
+                        ColumnSchema {
+                            id: 5,
+                            name: "field3",
+                            data_type: Date,
+                            is_nullable: true,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "field3",
+                            default_value: None,
+                        },
+                        ColumnSchema {
+                            id: 6,
+                            name: "field4",
+                            data_type: Time,
+                            is_nullable: true,
+                            is_tag: false,
+                            is_dictionary: false,
+                            comment: "",
+                            escaped_name: "field4",
+                            default_value: None,
+                        },
+                    ],
+                },
+                version: 1,
+                primary_key_indexes: [
+                    0,
+                    1,
+                ],
+            },
+        },
+        operations: AddColumn(
+            [
+                ColumnSchema {
+                    id: 0,
+                    name: "dic",
+                    data_type: String,
+                    is_nullable: true,
+                    is_tag: false,
+                    is_dictionary: true,
+                    comment: "",
+                    escaped_name: "dic",
+                    default_value: None,
+                },
+            ],
+        ),
     },
 )"#,
         )
@@ -1946,6 +2158,7 @@ mod tests {
                             data_type: Varbinary,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key1",
                             default_value: None,
@@ -1956,6 +2169,7 @@ mod tests {
                             data_type: Timestamp,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key2",
                             default_value: None,
@@ -1966,6 +2180,7 @@ mod tests {
                             data_type: Double,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field1",
                             default_value: None,
@@ -1976,6 +2191,7 @@ mod tests {
                             data_type: String,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field2",
                             default_value: None,
@@ -1986,6 +2202,7 @@ mod tests {
                             data_type: Date,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field3",
                             default_value: None,
@@ -1996,6 +2213,7 @@ mod tests {
                             data_type: Time,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field4",
                             default_value: None,
@@ -2017,6 +2235,7 @@ mod tests {
                     data_type: String,
                     is_nullable: true,
                     is_tag: false,
+                    is_dictionary: false,
                     comment: "",
                     escaped_name: "add_col",
                     default_value: None,
@@ -2055,6 +2274,7 @@ mod tests {
                             data_type: Varbinary,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key1",
                             default_value: None,
@@ -2065,6 +2285,7 @@ mod tests {
                             data_type: Timestamp,
                             is_nullable: false,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "key2",
                             default_value: None,
@@ -2075,6 +2296,7 @@ mod tests {
                             data_type: Double,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field1",
                             default_value: None,
@@ -2085,6 +2307,7 @@ mod tests {
                             data_type: String,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field2",
                             default_value: None,
@@ -2095,6 +2318,7 @@ mod tests {
                             data_type: Date,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field3",
                             default_value: None,
@@ -2105,6 +2329,7 @@ mod tests {
                             data_type: Time,
                             is_nullable: true,
                             is_tag: false,
+                            is_dictionary: false,
                             comment: "",
                             escaped_name: "field4",
                             default_value: None,
@@ -2156,6 +2381,7 @@ mod tests {
                                 data_type: Varbinary,
                                 is_nullable: false,
                                 is_tag: false,
+                                is_dictionary: false,
                                 comment: "",
                                 escaped_name: "key1",
                                 default_value: None,
@@ -2166,6 +2392,7 @@ mod tests {
                                 data_type: Timestamp,
                                 is_nullable: false,
                                 is_tag: false,
+                                is_dictionary: false,
                                 comment: "",
                                 escaped_name: "key2",
                                 default_value: None,
@@ -2176,6 +2403,7 @@ mod tests {
                                 data_type: Double,
                                 is_nullable: true,
                                 is_tag: false,
+                                is_dictionary: false,
                                 comment: "",
                                 escaped_name: "field1",
                                 default_value: None,
@@ -2186,6 +2414,7 @@ mod tests {
                                 data_type: String,
                                 is_nullable: true,
                                 is_tag: false,
+                                is_dictionary: false,
                                 comment: "",
                                 escaped_name: "field2",
                                 default_value: None,
@@ -2196,6 +2425,7 @@ mod tests {
                                 data_type: Date,
                                 is_nullable: true,
                                 is_tag: false,
+                                is_dictionary: false,
                                 comment: "",
                                 escaped_name: "field3",
                                 default_value: None,
@@ -2206,6 +2436,7 @@ mod tests {
                                 data_type: Time,
                                 is_nullable: true,
                                 is_tag: false,
+                                is_dictionary: false,
                                 comment: "",
                                 escaped_name: "field4",
                                 default_value: None,

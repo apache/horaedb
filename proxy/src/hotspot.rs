@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! hotspot recorder
 use std::{fmt::Write, sync::Arc, time::Duration};
@@ -6,10 +18,11 @@ use std::{fmt::Write, sync::Arc, time::Duration};
 use ceresdbproto::storage::{
     PrometheusQueryRequest, RequestContext, SqlQueryRequest, WriteRequest,
 };
-use common_util::{runtime::Runtime, timed_task::TimedTask};
 use log::{info, warn};
+use runtime::Runtime;
 use serde::{Deserialize, Serialize};
 use spin::Mutex as SpinMutex;
+use timed_task::TimedTask;
 use tokio::sync::mpsc::{self, Sender};
 
 use crate::{hotspot_lru::HotspotLru, util};
@@ -44,7 +57,7 @@ impl Default for Config {
     }
 }
 
-enum Message {
+pub enum Message {
     Query(QueryKey),
     Write {
         key: WriteKey,
@@ -116,6 +129,7 @@ pub struct Dump {
     pub write_field_hots: Vec<String>,
 }
 
+// TODO: move HotspotRecorder to components dir for reuse.
 impl HotspotRecorder {
     pub fn new(config: Config, runtime: Arc<Runtime>) -> Self {
         let hotspot_query = Self::init_lru(config.query_cap);
@@ -286,7 +300,7 @@ impl HotspotRecorder {
         }
     }
 
-    async fn send_msg_or_log(&self, method: &str, msg: Message) {
+    pub async fn send_msg_or_log(&self, method: &str, msg: Message) {
         if let Err(e) = self.tx.send(msg).await {
             warn!(
                 "HotspotRecoder::{} fail to send \
@@ -308,7 +322,7 @@ mod test {
             WriteTableRequest,
         },
     };
-    use common_util::runtime::Builder;
+    use runtime::Builder;
 
     fn new_runtime() -> Arc<Runtime> {
         let runtime = Builder::default()

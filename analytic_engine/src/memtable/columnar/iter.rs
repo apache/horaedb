@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use std::{
     cmp::Ordering,
@@ -9,8 +21,9 @@ use std::{
 };
 
 use arena::{Arena, BasicStats, MonoIncArena};
+use bytes_ext::{ByteVec, Bytes};
+use codec::{memcomparable::MemComparable, row, Encoder};
 use common_types::{
-    bytes::{ByteVec, Bytes},
     column::Column,
     column_schema::ColumnId,
     datum::Datum,
@@ -20,11 +33,7 @@ use common_types::{
     schema::Schema,
     SequenceNumber,
 };
-use common_util::{
-    codec::{memcomparable::MemComparable, row, Encoder},
-    error::BoxError,
-    time::InstantExt,
-};
+use generic_error::BoxError;
 use log::trace;
 use parquet::data_type::AsBytes;
 use skiplist::{ArenaSlice, BytewiseComparator, IterRef, Skiplist};
@@ -192,8 +201,9 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
         if !rows.is_empty() {
             if let Some(deadline) = self.deadline {
-                if deadline.check_deadline() {
-                    return IterTimeout {}.fail();
+                let now = Instant::now();
+                if now >= deadline {
+                    return IterTimeout { now, deadline }.fail();
                 }
             }
 

@@ -1,19 +1,29 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! A cli to query sst meta data
 
-use std::sync::Arc;
+use std::{collections::HashMap, fmt, str::FromStr, sync::Arc};
 
 use analytic_engine::sst::{meta_data::cache::MetaData, parquet::async_reader::ChunkReaderAdapter};
 use anyhow::{Context, Result};
 use clap::Parser;
-use common_util::{
-    runtime::{self, Runtime},
-    time::format_as_ymdhms,
-};
 use futures::StreamExt;
 use object_store::{LocalFileSystem, ObjectMeta, ObjectStoreRef, Path};
 use parquet_ext::{meta_data::fetch_parquet_metadata, reader::ObjectStoreReader};
+use runtime::Runtime;
+use time_ext::format_as_ymdhms;
 use tokio::{runtime::Handle, task::JoinSet};
 
 #[derive(Parser, Debug)]
@@ -34,6 +44,72 @@ struct Args {
     /// Print page indexes
     #[clap(short, long, required(false))]
     page_indexes: bool,
+
+    /// Which field to sort ssts[valid: seq/time/size/row].
+    #[clap(short, long, default_value = "time")]
+    sort: SortBy,
+}
+
+#[derive(Debug)]
+enum SortBy {
+    /// Max Sequence number
+    Seq,
+    /// Time range
+    Time,
+    /// File size
+    Size,
+    /// Row numbers
+    Row,
+}
+
+impl fmt::Display for SortBy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl FromStr for SortBy {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let sort_by = match s {
+            "seq" => Self::Seq,
+            "time" => Self::Time,
+            "size" => Self::Size,
+            "row" => Self::Row,
+            _ => return Err(format!("Invalid sort by, value:{s}")),
+        };
+
+        Ok(sort_by)
+    }
+}
+
+#[derive(Default, Debug)]
+struct FileStatistics {
+    file_count: u64,
+    size: usize,
+    metadata_size: usize,
+    kv_size: usize,
+    filter_size: usize,
+    row_num: i64,
+}
+
+impl ToString for FileStatistics {
+    fn to_string(&self) -> String {
+        format!("FileStatistics {{\n\tfile_count: {},\n\tsize: {:.2},\n\tmetadata_size: {:.2}, \n\tkv_size: {:.2},\n\tfilter_size: {:.2},\n\trow_num: {},\n}}",
+                self.file_count,
+                as_mb(self.size),
+                as_mb(self.metadata_size),
+                as_mb(self.kv_size),
+                as_mb(self.filter_size),
+                self.row_num)
+    }
+}
+
+#[derive(Default, Debug)]
+struct FieldStatistics {
+    compressed_size: i64,
+    uncompressed_size: i64,
 }
 
 fn new_runtime(thread_num: usize) -> Runtime {
@@ -91,14 +167,27 @@ async fn run(args: Args) -> Result<()> {
         metas.push(meta);
     }
 
-    // sort by time_range asc
-    metas.sort_by(|a, b| {
-        a.1.custom()
-            .time_range
-            .inclusive_start()
-            .cmp(&b.1.custom().time_range.inclusive_start())
-    });
+    match args.sort {
+        SortBy::Time => metas.sort_by(|a, b| {
+            a.1.custom()
+                .time_range
+                .inclusive_start()
+                .cmp(&b.1.custom().time_range.inclusive_start())
+        }),
+        SortBy::Seq => {
+            metas.sort_by(|a, b| a.1.custom().max_sequence.cmp(&b.1.custom().max_sequence))
+        }
+        SortBy::Size => metas.sort_by(|a, b| a.0.size.cmp(&b.0.size)),
+        SortBy::Row => metas.sort_by(|a, b| {
+            a.1.parquet()
+                .file_metadata()
+                .num_rows()
+                .cmp(&b.1.parquet().file_metadata().num_rows())
+        }),
+    };
 
+    let mut file_stats = FileStatistics::default();
+    let mut field_stats_map = HashMap::new();
     for (object_meta, sst_metadata, metadata_size, kv_size) in metas {
         let ObjectMeta { location, size, .. } = &object_meta;
         let custom_meta = sst_metadata.custom();
@@ -114,6 +203,27 @@ async fn run(args: Args) -> Result<()> {
             .unwrap_or(0);
         let file_metadata = parquet_meta.file_metadata();
         let row_num = file_metadata.num_rows();
+
+        file_stats.file_count += 1;
+        file_stats.size += object_meta.size;
+        file_stats.metadata_size += metadata_size;
+        file_stats.kv_size += kv_size;
+        file_stats.filter_size += filter_size;
+        file_stats.row_num += row_num;
+
+        let fields = file_metadata.schema().get_fields();
+        for (_, row_group) in parquet_meta.row_groups().iter().enumerate() {
+            for i in 0..fields.len() {
+                let column_meta = row_group.column(i);
+                let field_name = fields.get(i).unwrap().get_basic_info().name().to_string();
+                let mut field_stats = field_stats_map
+                    .entry(field_name)
+                    .or_insert(FieldStatistics::default());
+                field_stats.compressed_size += column_meta.compressed_size();
+                field_stats.uncompressed_size += column_meta.uncompressed_size();
+            }
+        }
+
         if verbose {
             println!("object_meta:{object_meta:?}, parquet_meta:{parquet_meta:?}, custom_meta:{custom_meta:?}");
         } else {
@@ -127,6 +237,17 @@ async fn run(args: Args) -> Result<()> {
         }
     }
 
+    println!("{}", file_stats.to_string());
+    println!("FieldStatistics: ");
+    for (k, v) in field_stats_map.iter() {
+        println!(
+            "{},\t compressed_size: {:.2}mb,\t uncompressed_size: {:.2}mb,\t compress_ratio: {:.2}",
+            k,
+            as_mb(v.compressed_size as usize),
+            as_mb(v.uncompressed_size as usize),
+            v.uncompressed_size as f64 / v.compressed_size as f64
+        );
+    }
     Ok(())
 }
 

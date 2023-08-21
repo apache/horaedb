@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! In-memory table engine implementations
 
@@ -18,8 +30,8 @@ use common_types::{
     row::{Row, RowGroup},
     schema::{RecordSchema, Schema},
 };
-use common_util::error::BoxError;
 use futures::stream::Stream;
+use generic_error::BoxError;
 use snafu::{OptionExt, ResultExt};
 
 use crate::{
@@ -104,6 +116,10 @@ impl Table for MemoryTable {
 
     fn stats(&self) -> TableStats {
         TableStats::default()
+    }
+
+    fn support_pushdown(&self, _read_schema: &Schema, _col_names: &[String]) -> bool {
+        false
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {
@@ -229,7 +245,7 @@ fn row_group_to_record_batch(
                 ),
             })?;
         let cols = rows.iter_column(col_index);
-        let column_block = build_column_block(&column.data_type, cols)?;
+        let column_block = build_column_block(&column.data_type, cols, column.is_dictionary)?;
         column_blocks.push(column_block);
     }
 
@@ -243,8 +259,10 @@ fn row_group_to_record_batch(
 fn build_column_block<'a, I: Iterator<Item = &'a Datum>>(
     data_type: &DatumKind,
     iter: I,
+    is_dictionary: bool,
 ) -> stream::Result<ColumnBlock> {
-    let mut builder = ColumnBlockBuilder::with_capacity(data_type, iter.size_hint().0);
+    let mut builder =
+        ColumnBlockBuilder::with_capacity(data_type, iter.size_hint().0, is_dictionary);
     for datum in iter {
         builder
             .append(datum.clone())

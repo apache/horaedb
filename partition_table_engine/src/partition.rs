@@ -1,16 +1,29 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Distributed Table implementation
 
 use std::{collections::HashMap, fmt};
 
+use analytic_engine::{table::support_pushdown, TableOptions};
 use async_trait::async_trait;
 use common_types::{
     row::{Row, RowGroupBuilder},
     schema::Schema,
 };
-use common_util::error::BoxError;
 use futures::{stream::FuturesUnordered, StreamExt};
+use generic_error::BoxError;
 use snafu::ResultExt;
 use table_engine::{
     partition::{
@@ -43,7 +56,7 @@ pub struct TableData {
     pub table_id: TableId,
     pub table_schema: Schema,
     pub partition_info: PartitionInfo,
-    pub options: HashMap<String, String>,
+    pub options: TableOptions,
     pub engine_type: String,
 }
 
@@ -97,7 +110,7 @@ impl Table for PartitionTableImpl {
 
     // TODO: get options from sub partition table with remote engine
     fn options(&self) -> HashMap<String, String> {
-        self.table_data.options.clone()
+        self.table_data.options.to_raw_map()
     }
 
     fn partition_info(&self) -> Option<PartitionInfo> {
@@ -110,6 +123,13 @@ impl Table for PartitionTableImpl {
 
     fn stats(&self) -> TableStats {
         TableStats::default()
+    }
+
+    // TODO: maybe we should ask remote sub table whether support pushdown
+    fn support_pushdown(&self, read_schema: &Schema, col_names: &[String]) -> bool {
+        let need_dedup = self.table_data.options.need_dedup();
+
+        support_pushdown(read_schema, need_dedup, col_names)
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {

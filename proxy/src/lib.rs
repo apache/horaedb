@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! The proxy module provides features such as forwarding and authentication,
 //! adapts to different protocols.
@@ -6,7 +18,7 @@
 #![feature(trait_alias)]
 
 pub mod context;
-mod error;
+pub mod error;
 mod error_util;
 pub mod forward;
 mod grpc;
@@ -17,6 +29,8 @@ pub mod http;
 pub mod influxdb;
 pub mod instance;
 pub mod limiter;
+mod metrics;
+pub mod opentsdb;
 mod read;
 pub mod schema_config_provider;
 mod util;
@@ -25,37 +39,46 @@ mod write;
 pub const FORWARDED_FROM: &str = "forwarded-from";
 
 use std::{
+    ops::Bound,
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use ::http::StatusCode;
-use catalog::schema::{
-    CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, SchemaRef,
+use catalog::{
+    schema::{
+        CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, SchemaRef,
+    },
+    CatalogRef,
 };
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
     PrometheusRemoteQueryResponse, Route, RouteRequest,
 };
-use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID};
-use common_util::{error::BoxError, runtime::Runtime};
+use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID, ENABLE_TTL, TTL};
+use datafusion::{
+    prelude::{Column, Expr},
+    scalar::ScalarValue,
+};
 use futures::FutureExt;
+use generic_error::BoxError;
+use influxql_query::logical_optimizer::range_predicate::find_time_range;
 use interpreters::{
     context::Context as InterpreterContext,
     factory::Factory,
     interpreter::{InterpreterPtr, Output},
 };
 use log::{error, info};
-use query_engine::executor::Executor as QueryExecutor;
 use query_frontend::plan::Plan;
 use router::{endpoint::Endpoint, Router};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{EngineRuntimes, TableState},
     remote::model::{GetTableInfoRequest, TableIdentifier},
-    table::TableId,
+    table::{TableId, TableRef},
     PARTITION_TABLE_ENGINE_TYPE,
 };
+use time_ext::{current_time_millis, parse_duration};
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
@@ -66,10 +89,13 @@ use crate::{
     schema_config_provider::SchemaConfigProviderRef,
 };
 
-pub struct Proxy<Q> {
+// Because the clock may have errors, choose 1 hour as the error buffer
+const QUERY_EXPIRED_BUFFER: Duration = Duration::from_secs(60 * 60);
+
+pub struct Proxy {
     router: Arc<dyn Router + Send + Sync>,
     forwarder: ForwarderRef,
-    instance: InstanceRef<Q>,
+    instance: InstanceRef,
     resp_compress_min_length: usize,
     auto_create_table: bool,
     schema_config_provider: SchemaConfigProviderRef,
@@ -78,17 +104,17 @@ pub struct Proxy<Q> {
     cluster_with_meta: bool,
 }
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl Proxy {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         router: Arc<dyn Router + Send + Sync>,
-        instance: InstanceRef<Q>,
+        instance: InstanceRef,
         forward_config: forward::Config,
         local_endpoint: Endpoint,
         resp_compress_min_length: usize,
         auto_create_table: bool,
         schema_config_provider: SchemaConfigProviderRef,
-        hotspot_config: hotspot::Config,
+        hotspot_recorder: Arc<HotspotRecorder>,
         engine_runtimes: Arc<EngineRuntimes>,
         cluster_with_meta: bool,
     ) -> Self {
@@ -96,10 +122,6 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             forward_config,
             router.clone(),
             local_endpoint,
-        ));
-        let hotspot_recorder = Arc::new(HotspotRecorder::new(
-            hotspot_config,
-            engine_runtimes.default_runtime.clone(),
         ));
 
         Self {
@@ -115,7 +137,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         }
     }
 
-    pub fn instance(&self) -> InstanceRef<Q> {
+    pub fn instance(&self) -> InstanceRef {
         self.instance.clone()
     }
 
@@ -164,12 +186,71 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         })
     }
 
-    async fn maybe_open_partition_table_if_not_exist(
+    /// Returns true when query range maybe exceeding ttl,
+    /// Note: False positive is possible
+    // TODO(tanruixiang): Add integration testing when supported by the testing
+    // framework
+    fn is_plan_expired(
         &self,
+        plan: &Plan,
         catalog_name: &str,
         schema_name: &str,
         table_name: &str,
-    ) -> Result<()> {
+    ) -> Result<bool> {
+        if let Plan::Query(query) = &plan {
+            let catalog = self.get_catalog(catalog_name)?;
+            let schema = self.get_schema(&catalog, schema_name)?;
+            let table_ref = match self.get_table(&schema, table_name) {
+                Ok(Some(v)) => v,
+                _ => return Ok(false),
+            };
+            if let Some(value) = table_ref.options().get(ENABLE_TTL) {
+                if value == "false" {
+                    return Ok(false);
+                }
+            }
+            let ttl_duration = if let Some(ttl) = table_ref.options().get(TTL) {
+                if let Ok(ttl) = parse_duration(ttl) {
+                    ttl
+                } else {
+                    return Ok(false);
+                }
+            } else {
+                return Ok(false);
+            };
+
+            let timestamp_name = &table_ref
+                .schema()
+                .column(table_ref.schema().timestamp_index())
+                .name
+                .clone();
+            let ts_col = Column::from_name(timestamp_name);
+            let range = find_time_range(&query.df_plan, &ts_col)
+                .box_err()
+                .context(Internal {
+                    msg: "Failed to find time range",
+                })?;
+            match range.end {
+                Bound::Included(x) | Bound::Excluded(x) => {
+                    if let Expr::Literal(ScalarValue::Int64(Some(x))) = x {
+                        let now = current_time_millis() as i64;
+                        let deadline = now
+                            - ttl_duration.as_millis() as i64
+                            - QUERY_EXPIRED_BUFFER.as_millis() as i64;
+
+                        if x * 1_000 <= deadline {
+                            return Ok(true);
+                        }
+                    }
+                }
+                Bound::Unbounded => (),
+            }
+        }
+
+        Ok(false)
+    }
+
+    fn get_catalog(&self, catalog_name: &str) -> Result<CatalogRef> {
         let catalog = self
             .instance
             .catalog_manager
@@ -183,7 +264,10 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!("Catalog not found, catalog_name:{catalog_name}"),
             })?;
+        Ok(catalog)
+    }
 
+    fn get_schema(&self, catalog: &CatalogRef, schema_name: &str) -> Result<SchemaRef> {
         // TODO: support create schema if not exist
         let schema = catalog
             .schema_by_name(schema_name)
@@ -196,7 +280,10 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!("Schema not found, schema_name:{schema_name}"),
             })?;
+        Ok(schema)
+    }
 
+    fn get_table(&self, schema: &SchemaRef, table_name: &str) -> Result<Option<TableRef>> {
         let table = schema
             .table_by_name(table_name)
             .box_err()
@@ -204,6 +291,20 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: format!("Failed to find table, table_name:{table_name}"),
             })?;
+        Ok(table)
+    }
+
+    async fn maybe_open_partition_table_if_not_exist(
+        &self,
+        catalog_name: &str,
+        schema_name: &str,
+        table_name: &str,
+    ) -> Result<()> {
+        let catalog = self.get_catalog(catalog_name)?;
+
+        let schema = self.get_schema(&catalog, schema_name)?;
+
+        let table = self.get_table(&schema, table_name)?;
 
         let table_info_in_meta = self
             .router
@@ -410,7 +511,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .enable_partition_table_access(enable_partition_table_access)
             .build();
         let interpreter_factory = Factory::new(
-            self.instance.query_executor.clone(),
+            self.instance.query_engine.executor(),
+            self.instance.query_engine.physical_planner(),
             self.instance.catalog_manager.clone(),
             self.instance.table_engine.clone(),
             self.instance.table_manipulator.clone(),
@@ -450,10 +552,19 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Context {
-    pub timeout: Option<Duration>,
-    pub runtime: Arc<Runtime>,
-    pub enable_partition_table_access: bool,
-    pub forwarded_from: Option<String>,
+    request_id: RequestId,
+    timeout: Option<Duration>,
+    forwarded_from: Option<String>,
+}
+
+impl Context {
+    pub fn new(timeout: Option<Duration>, forwarded_from: Option<String>) -> Self {
+        Self {
+            request_id: RequestId::next_id(),
+            timeout,
+            forwarded_from,
+        }
+    }
 }

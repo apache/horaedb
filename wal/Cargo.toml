@@ -1,3 +1,17 @@
+# Copyright 2023 The CeresDB Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 [package]
 name = "wal"
 
@@ -19,24 +33,30 @@ features = ["portable"]
 
 [dependencies]
 async-trait = { workspace = true }
+bytes_ext = { workspace = true }
 ceresdbproto = { workspace = true }
 chrono = { workspace = true }
+codec = { workspace = true }
 common_types = { workspace = true }
-common_util = { workspace = true }
 futures = { workspace = true, features = ["async-await"], optional = true }
+generic_error = { workspace = true }
 log = { workspace = true }
+macros = { workspace = true }
 message_queue = { workspace = true }
 prost = { workspace = true }
+runtime = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+size_ext = { workspace = true }
 smallvec = { workspace = true }
 snafu = { workspace = true }
 table_kv = { workspace = true }
 tempfile = { workspace = true, optional = true }
+time_ext = { workspace = true }
+timed_task = { workspace = true }
 tokio = { workspace = true }
 uuid = { version = "1.3", features = ["v4"], optional = true }
 
 [dev-dependencies]
-env_logger = { workspace = true }
 futures = { workspace = true, features = ["async-await"] }
 rand = "0.8.5"

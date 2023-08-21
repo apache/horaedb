@@ -1,4 +1,16 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use std::{
     collections::HashSet,
@@ -15,11 +27,11 @@ use std::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
-use common_util::error::{BoxError, GenericError};
 use futures::{
     stream::{BoxStream, FuturesOrdered},
     StreamExt,
 };
+use generic_error::{BoxError, GenericError};
 use log::debug;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
@@ -459,68 +471,69 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                     source,
                 })?;
 
-        let mut range_buffer = Vec::with_capacity(range.end - range.start);
         let covered_parts = meta
-            .compute_covered_parts(range)
+            .compute_covered_parts(range.clone())
             .box_err()
             .map_err(|source| StoreError::NotFound {
                 path: location.to_string(),
                 source,
             })?;
 
-        let keys: Vec<&[u8]> = covered_parts
-            .part_keys
-            .iter()
-            .map(|key| key.as_bytes())
-            .collect();
-        let values =
-            self.client
-                .get_batch(table_name, keys)
-                .map_err(|source| StoreError::NotFound {
-                    path: location.to_string(),
-                    source: Box::new(source),
-                })?;
-
-        if covered_parts.part_keys.len() != values.len() {
-            DataPartsLength {
-                part_len: covered_parts.part_keys.len(),
-                value_len: values.len(),
-            }
-            .fail()
-            .map_err(|source| StoreError::Generic {
-                store: OBKV,
-                source: Box::new(source),
-            })?
-        }
-
-        for (index, (key, value)) in covered_parts.part_keys.iter().zip(values).enumerate() {
-            if let Some(bytes) = value {
-                let mut begin = 0;
-                let mut end = bytes.len();
-                if index == 0 {
-                    begin = covered_parts.start_offset;
-                }
-                // the last one
-                if index == covered_parts.part_keys.len() - 1 {
-                    end = covered_parts.end_offset;
-                }
-                range_buffer.extend_from_slice(&bytes[begin..end]);
-            } else {
-                DataPartNotFound { part_key: key }
-                    .fail()
+        if let Some(covered_parts) = covered_parts {
+            let mut range_buffer = Vec::with_capacity(range.end - range.start);
+            let keys: Vec<&[u8]> = covered_parts
+                .part_keys
+                .iter()
+                .map(|key| key.as_bytes())
+                .collect();
+            let values =
+                self.client
+                    .get_batch(table_name, keys)
                     .map_err(|source| StoreError::NotFound {
                         path: location.to_string(),
                         source: Box::new(source),
                     })?;
+
+            if covered_parts.part_keys.len() != values.len() {
+                DataPartsLength {
+                    part_len: covered_parts.part_keys.len(),
+                    value_len: values.len(),
+                }
+                .fail()
+                .map_err(|source| StoreError::Generic {
+                    store: OBKV,
+                    source: Box::new(source),
+                })?
             }
+
+            for (index, (key, value)) in covered_parts.part_keys.iter().zip(values).enumerate() {
+                if let Some(bytes) = value {
+                    let mut begin = 0;
+                    let mut end = bytes.len() - 1;
+                    if index == 0 {
+                        begin = covered_parts.start_offset;
+                    }
+                    // the last one
+                    if index == covered_parts.part_keys.len() - 1 {
+                        end = covered_parts.end_offset;
+                    }
+                    range_buffer.extend_from_slice(&bytes[begin..=end]);
+                } else {
+                    DataPartNotFound { part_key: key }
+                        .fail()
+                        .map_err(|source| StoreError::NotFound {
+                            path: location.to_string(),
+                            source: Box::new(source),
+                        })?;
+                }
+            }
+
+            debug!("ObkvObjectStore get_range operation, location:{location}, table:{table_name}, cost:{:?}", instant.elapsed());
+
+            return Ok(range_buffer.into());
+        } else {
+            return Ok(Bytes::new());
         }
-
-        debug!(
-            "ObkvObjectStore get_range operation, location:{location}, table:{table_name}, cost:{:?}",
-            instant.elapsed()
-        );
-
-        Ok(range_buffer.into())
     }
 
     /// Return the metadata for the specified location
@@ -795,9 +808,9 @@ mod test {
     use std::sync::Arc;
 
     use bytes::Bytes;
-    use common_util::runtime::{Builder, Runtime};
     use futures::StreamExt;
     use rand::{thread_rng, Rng};
+    use runtime::{Builder, Runtime};
     use table_kv::memory::MemoryImpl;
     use tokio::io::AsyncWriteExt;
     use upstream::{path::Path, ObjectStore};

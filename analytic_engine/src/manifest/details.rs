@@ -1,10 +1,23 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Implementation of Manifest
 
 use std::{
     collections::VecDeque,
     fmt, mem,
+    num::NonZeroUsize,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -13,18 +26,18 @@ use std::{
 
 use async_trait::async_trait;
 use ceresdbproto::manifest as manifest_pb;
-use common_util::{
-    config::ReadableDuration,
-    define_result,
-    error::{BoxError, GenericError, GenericResult},
-};
+use generic_error::{BoxError, GenericError, GenericResult};
+use lazy_static::lazy_static;
 use log::{debug, info, warn};
+use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
+use prometheus::{exponential_buckets, register_histogram, Histogram};
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::table::TableId;
+use time_ext::ReadableDuration;
 use tokio::sync::Mutex;
 use wal::{
     kv_encoder::LogBatchEncoder,
@@ -44,7 +57,7 @@ use crate::{
         LoadRequest, Manifest, SnapshotRequest,
     },
     space::SpaceId,
-    table::data::TableShardInfo,
+    table::data::{TableDataRef, TableShardInfo},
 };
 
 #[derive(Debug, Snafu)]
@@ -139,6 +152,21 @@ pub enum Error {
 
 define_result!(Error);
 
+lazy_static! {
+    static ref RECOVER_TABLE_META_FROM_SNAPSHOT_DURATION: Histogram = register_histogram!(
+        "recover_table_meta_from_snapshot_duration",
+        "Histogram for recover table meta from snapshot in seconds",
+        exponential_buckets(0.01, 2.0, 13).unwrap()
+    )
+    .unwrap();
+    static ref RECOVER_TABLE_META_FROM_LOG_DURATION: Histogram = register_histogram!(
+        "recover_table_meta_from_log_duration",
+        "Histogram for recover table meta from log in seconds",
+        exponential_buckets(0.01, 2.0, 13).unwrap()
+    )
+    .unwrap();
+}
+
 #[async_trait]
 trait MetaUpdateLogEntryIterator {
     async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdate)>>;
@@ -183,13 +211,15 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
 ///
 /// Get snapshot of or modify table's metadata through it.
 pub(crate) trait TableMetaSet: fmt::Debug + Send + Sync {
+    // Get snapshot of `TableData`.
     fn get_table_snapshot(
         &self,
         space_id: SpaceId,
         table_id: TableId,
     ) -> Result<Option<MetaSnapshot>>;
 
-    fn apply_edit_to_table(&self, update: MetaEditRequest) -> Result<()>;
+    // Apply update to `TableData` and return it.
+    fn apply_edit_to_table(&self, update: MetaEditRequest) -> Result<TableDataRef>;
 }
 
 /// Snapshot recoverer
@@ -199,6 +229,8 @@ pub(crate) trait TableMetaSet: fmt::Debug + Send + Sync {
 // `SnapshotReoverer`.
 #[derive(Debug, Clone)]
 struct SnapshotRecoverer<LogStore, SnapshotStore> {
+    table_id: TableId,
+    space_id: SpaceId,
     log_store: LogStore,
     snapshot_store: SnapshotStore,
 }
@@ -210,13 +242,23 @@ where
 {
     async fn recover(&self) -> Result<Option<Snapshot>> {
         // Load the current snapshot first.
-        match self.snapshot_store.load().await? {
+        let snapshot_opt = {
+            let _timer = RECOVER_TABLE_META_FROM_SNAPSHOT_DURATION.start_timer();
+            self.snapshot_store.load().await?
+        };
+
+        match snapshot_opt {
             Some(v) => Ok(Some(self.create_latest_snapshot_with_prev(v).await?)),
             None => self.create_latest_snapshot_without_prev().await,
         }
     }
 
     async fn create_latest_snapshot_with_prev(&self, prev_snapshot: Snapshot) -> Result<Snapshot> {
+        debug!(
+            "Manifest recover with prev snapshot, snapshot:{:?}, table_id:{}, space_id:{}",
+            prev_snapshot, self.table_id, self.space_id
+        );
+
         let log_start_boundary = ReadBoundary::Excluded(prev_snapshot.end_seq);
         let mut reader = self.log_store.scan(log_start_boundary).await?;
 
@@ -227,6 +269,8 @@ where
             MetaSnapshotBuilder::default()
         };
         while let Some((seq, update)) = reader.next_update().await? {
+            let _timer = RECOVER_TABLE_META_FROM_LOG_DURATION.start_timer();
+
             latest_seq = seq;
             manifest_data_builder
                 .apply_update(update)
@@ -239,12 +283,19 @@ where
     }
 
     async fn create_latest_snapshot_without_prev(&self) -> Result<Option<Snapshot>> {
+        debug!(
+            "Manifest recover without prev snapshot, table_id:{}, space_id:{}",
+            self.table_id, self.space_id
+        );
+
         let mut reader = self.log_store.scan(ReadBoundary::Min).await?;
 
         let mut latest_seq = SequenceNumber::MIN;
         let mut manifest_data_builder = MetaSnapshotBuilder::default();
         let mut has_logs = false;
         while let Some((seq, update)) = reader.next_update().await? {
+            let _timer = RECOVER_TABLE_META_FROM_LOG_DURATION.start_timer();
+
             latest_seq = seq;
             manifest_data_builder
                 .apply_update(update)
@@ -258,6 +309,10 @@ where
                 data: manifest_data_builder.build(),
             }))
         } else {
+            debug!(
+                "Manifest recover nothing, table_id:{}, space_id:{}",
+                self.table_id, self.space_id
+            );
             Ok(None)
         }
     }
@@ -308,14 +363,17 @@ where
 
 /// Options for manifest
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct Options {
     /// Steps to do snapshot
-    pub snapshot_every_n_updates: usize,
+    // TODO: move this field to suitable place.
+    pub snapshot_every_n_updates: NonZeroUsize,
 
     /// Timeout to read manifest entries
     pub scan_timeout: ReadableDuration,
 
     /// Batch size to read manifest entries
+    // TODO: use NonZeroUsize
     pub scan_batch_size: usize,
 
     /// Timeout to store manifest entries
@@ -325,7 +383,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            snapshot_every_n_updates: 10_000,
+            snapshot_every_n_updates: NonZeroUsize::new(100).unwrap(),
             scan_timeout: ReadableDuration::secs(5),
             scan_batch_size: 100,
             store_timeout: ReadableDuration::secs(5),
@@ -391,20 +449,12 @@ impl ManifestImpl {
     /// Do snapshot if no other snapshot is triggered.
     ///
     /// Returns the latest snapshot if snapshot is done.
-    async fn maybe_do_snapshot(
+    async fn do_snapshot_internal(
         &self,
         space_id: SpaceId,
         table_id: TableId,
         location: WalLocation,
-        force: bool,
     ) -> Result<Option<Snapshot>> {
-        if !force {
-            let num_updates = self.num_updates_since_snapshot.load(Ordering::Relaxed);
-            if num_updates < self.opts.snapshot_every_n_updates {
-                return Ok(None);
-            }
-        }
-
         if let Ok(_guard) = self.snapshot_write_guard.try_lock() {
             let log_store = WalBasedLogStore {
                 opts: self.opts.clone(),
@@ -423,26 +473,11 @@ impl ManifestImpl {
                 table_id,
             };
 
-            let snapshot = snapshotter.snapshot().await?.map(|v| {
-                self.decrease_num_updates();
-                v
-            });
+            let snapshot = snapshotter.snapshot().await?;
             Ok(snapshot)
         } else {
             debug!("Avoid concurrent snapshot");
             Ok(None)
-        }
-    }
-
-    // with snapshot guard held
-    fn decrease_num_updates(&self) {
-        if self.opts.snapshot_every_n_updates
-            > self.num_updates_since_snapshot.load(Ordering::Relaxed)
-        {
-            self.num_updates_since_snapshot.store(0, Ordering::Relaxed);
-        } else {
-            self.num_updates_since_snapshot
-                .fetch_sub(self.opts.snapshot_every_n_updates, Ordering::Relaxed);
         }
     }
 }
@@ -464,17 +499,25 @@ impl Manifest for ManifestImpl {
         let location = WalLocation::new(shard_id as u64, table_id.as_u64());
         let space_id = meta_update.space_id();
 
-        self.maybe_do_snapshot(space_id, table_id, location, false)
-            .await?;
-
         self.store_update_to_wal(meta_update, location).await?;
 
         // Update memory.
-        self.table_meta_set.apply_edit_to_table(request).box_err()
+        let table_data = self.table_meta_set.apply_edit_to_table(request).box_err()?;
+
+        // Update manifest updates count.
+        table_data.increase_manifest_updates(1);
+        // Judge if snapshot is needed.
+        if table_data.should_do_manifest_snapshot() {
+            self.do_snapshot_internal(space_id, table_id, location)
+                .await?;
+            table_data.reset_manifest_updates();
+        }
+
+        Ok(())
     }
 
     async fn recover(&self, load_req: &LoadRequest) -> GenericResult<()> {
-        info!("Manifest recover, request:{:?}", load_req);
+        info!("Manifest recover begin, request:{load_req:?}");
 
         // Load table meta snapshot from storage.
         let location = WalLocation::new(load_req.shard_id as u64, load_req.table_id.as_u64());
@@ -490,6 +533,8 @@ impl Manifest for ManifestImpl {
             self.store.clone(),
         );
         let reoverer = SnapshotRecoverer {
+            table_id: load_req.table_id,
+            space_id: load_req.space_id,
             log_store,
             snapshot_store,
         };
@@ -505,6 +550,8 @@ impl Manifest for ManifestImpl {
             self.table_meta_set.apply_edit_to_table(request)?;
         }
 
+        info!("Manifest recover finish, request:{load_req:?}");
+
         Ok(())
     }
 
@@ -516,7 +563,7 @@ impl Manifest for ManifestImpl {
         let space_id = request.space_id;
         let table_id = request.table_id;
 
-        self.maybe_do_snapshot(space_id, table_id, location, true)
+        self.do_snapshot_internal(space_id, table_id, location)
             .await
             .box_err()?;
 
@@ -687,14 +734,15 @@ impl MetaUpdateLogStore for WalBasedLogStore {
 
 #[cfg(test)]
 mod tests {
-    use std::{path::PathBuf, sync::Arc, vec};
+    use std::{num::NonZeroUsize, path::PathBuf, sync::Arc, vec};
 
+    use arena::NoopCollector;
     use common_types::{
         column_schema, datum::DatumKind, schema, schema::Schema, table::DEFAULT_SHARD_ID,
     };
-    use common_util::{runtime, runtime::Runtime, tests::init_log_for_test};
     use futures::future::BoxFuture;
     use object_store::LocalFileSystem;
+    use runtime::Runtime;
     use table_engine::table::{SchemaId, TableId, TableSeqGenerator};
     use wal::rocks_impl::manager::Builder as WalBuilder;
 
@@ -708,7 +756,8 @@ mod tests {
             },
             LoadRequest, Manifest,
         },
-        table::data::TableShardInfo,
+        sst::file::tests::FilePurgerMocker,
+        table::data::{tests::default_schema, TableData, TableShardInfo},
         TableOptions,
     };
 
@@ -760,7 +809,7 @@ mod tests {
             Ok(builder.clone().build())
         }
 
-        fn apply_edit_to_table(&self, request: MetaEditRequest) -> Result<()> {
+        fn apply_edit_to_table(&self, request: MetaEditRequest) -> Result<TableDataRef> {
             let mut builder = self.builder.lock().unwrap();
             let MetaEditRequest {
                 shard_info: _,
@@ -780,7 +829,24 @@ mod tests {
                 }
             }
 
-            Ok(())
+            let table_opts = TableOptions::default();
+            let purger = FilePurgerMocker::mock();
+            let collector = Arc::new(NoopCollector);
+            let test_data = TableData::new(
+                0,
+                TableId::new(0),
+                "test_table".to_string(),
+                default_schema(),
+                0,
+                table_opts,
+                &purger,
+                0.75,
+                collector,
+                NonZeroUsize::new(usize::MAX).unwrap(),
+            )
+            .unwrap();
+
+            Ok(Arc::new(test_data))
         }
     }
 
@@ -795,12 +861,12 @@ mod tests {
 
     impl TestContext {
         fn new(prefix: &str, schema_id: SchemaId) -> Self {
-            init_log_for_test();
+            test_util::init_log_for_test();
             let dir = tempfile::Builder::new().prefix(prefix).tempdir().unwrap();
             let runtime = build_runtime(2);
 
             let options = Options {
-                snapshot_every_n_updates: 100,
+                snapshot_every_n_updates: NonZeroUsize::new(100).unwrap(),
                 ..Default::default()
             };
             Self {
@@ -894,6 +960,7 @@ mod tests {
                 files_to_add: vec![],
                 files_to_delete: vec![],
                 mems_to_remove: vec![],
+                max_file_id: 0,
             })
         }
 
@@ -1162,7 +1229,7 @@ mod tests {
                 .await;
 
             manifest
-                .maybe_do_snapshot(ctx.schema_id.as_u32(), table_id, location, true)
+                .do_snapshot_internal(ctx.schema_id.as_u32(), table_id, location)
                 .await
                 .unwrap();
 
@@ -1221,7 +1288,7 @@ mod tests {
 
             let location = WalLocation::new(DEFAULT_SHARD_ID as u64, table_id.as_u64());
             manifest
-                .maybe_do_snapshot(ctx.schema_id.as_u32(), table_id, location, true)
+                .do_snapshot_internal(ctx.schema_id.as_u32(), table_id, location)
                 .await
                 .unwrap();
             for i in 500..550 {
@@ -1386,7 +1453,8 @@ mod tests {
                 assert_eq!(snapshot.data, expect_table_manifest_data);
                 assert_eq!(snapshot.end_seq, log_store.next_seq() - 1);
 
-                let recovered_snapshot = recover_snapshot(&log_store, &snapshot_store).await;
+                let recovered_snapshot =
+                    recover_snapshot(table_id, 0, &log_store, &snapshot_store).await;
                 assert_eq!(snapshot, recovered_snapshot.unwrap());
             }
             // The logs in the log store should be cleared after snapshot.
@@ -1418,7 +1486,8 @@ mod tests {
                 assert_eq!(snapshot.data, expect_table_manifest_data);
                 assert_eq!(snapshot.end_seq, log_store.next_seq() - 1);
 
-                let recovered_snapshot = recover_snapshot(&log_store, &snapshot_store).await;
+                let recovered_snapshot =
+                    recover_snapshot(table_id, 0, &log_store, &snapshot_store).await;
                 assert_eq!(snapshot, recovered_snapshot.unwrap());
             }
             // The logs in the log store should be cleared after snapshot.
@@ -1446,10 +1515,14 @@ mod tests {
     }
 
     async fn recover_snapshot(
+        table_id: TableId,
+        space_id: SpaceId,
         log_store: &MemLogStore,
         snapshot_store: &MemSnapshotStore,
     ) -> Option<Snapshot> {
         let recoverer = SnapshotRecoverer {
+            table_id,
+            space_id,
             log_store: log_store.clone(),
             snapshot_store: snapshot_store.clone(),
         };

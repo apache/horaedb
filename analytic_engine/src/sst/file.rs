@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Sst file and storage info
 
@@ -18,13 +30,11 @@ use common_types::{
     time::{TimeRange, Timestamp},
     SequenceNumber,
 };
-use common_util::{
-    define_result,
-    metric::Meter,
-    runtime::{JoinHandle, Runtime},
-};
 use log::{error, info, warn};
+use macros::define_result;
+use metric_ext::Meter;
 use object_store::ObjectStoreRef;
+use runtime::{JoinHandle, Runtime};
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::{
@@ -38,7 +48,7 @@ use crate::{space::SpaceId, sst::manager::FileId, table::sst_util, table_options
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to join purger, err:{}", source))]
-    StopPurger { source: common_util::runtime::Error },
+    StopPurger { source: runtime::Error },
 }
 
 define_result!(Error);

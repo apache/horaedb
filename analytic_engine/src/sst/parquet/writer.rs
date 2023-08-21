@@ -1,12 +1,24 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Sst writer implementation based on parquet.
 
 use async_trait::async_trait;
 use common_types::{record_batch::RecordBatchWithKey, request_id::RequestId};
-use common_util::error::BoxError;
 use datafusion::parquet::basic::Compression;
 use futures::StreamExt;
+use generic_error::BoxError;
 use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use snafu::ResultExt;
@@ -330,18 +342,15 @@ mod tests {
 
     use std::{sync::Arc, task::Poll};
 
+    use bytes_ext::Bytes;
     use common_types::{
-        bytes::Bytes,
         projected_schema::ProjectedSchema,
-        tests::{build_row, build_schema},
+        tests::{build_row, build_row_for_dictionary, build_schema, build_schema_with_dictionary},
         time::{TimeRange, Timestamp},
-    };
-    use common_util::{
-        runtime::{self, Runtime},
-        tests::init_log_for_test,
     };
     use futures::stream;
     use object_store::LocalFileSystem;
+    use runtime::{self, Runtime};
     use table_engine::predicate::Predicate;
     use tempfile::tempdir;
 
@@ -362,12 +371,13 @@ mod tests {
 
     #[test]
     fn test_parquet_build_and_read() {
-        init_log_for_test();
+        test_util::init_log_for_test();
 
         let runtime = Arc::new(runtime::Builder::default().build().unwrap());
-        parquet_write_and_then_read_back(runtime.clone(), 3, vec![3, 3, 3, 3, 3]);
-        parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 4, 4, 3]);
-        parquet_write_and_then_read_back(runtime, 5, vec![5, 5, 5]);
+        parquet_write_and_then_read_back(runtime.clone(), 2, vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
+        parquet_write_and_then_read_back(runtime.clone(), 3, vec![3, 3, 3, 3, 3, 3, 2]);
+        parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 4, 4, 4, 4]);
+        parquet_write_and_then_read_back(runtime, 5, vec![5, 5, 5, 5]);
     }
 
     fn parquet_write_and_then_read_back(
@@ -390,8 +400,8 @@ mod tests {
             let store_picker: ObjectStorePickerRef = Arc::new(store);
             let sst_file_path = Path::from("data.par");
 
-            let schema = build_schema();
-            let projected_schema = ProjectedSchema::no_projection(schema.clone());
+            let schema = build_schema_with_dictionary();
+            let reader_projected_schema = ProjectedSchema::no_projection(schema.clone());
             let sst_meta = MetaData {
                 min_key: Bytes::from_static(b"100"),
                 max_key: Bytes::from_static(b"200"),
@@ -410,9 +420,37 @@ mod tests {
                 // reach here when counter is 9 7 5 3 1
                 let ts = 100 + counter;
                 let rows = vec![
-                    build_row(b"a", ts, 10.0, "v4", 1000, 1_000_000),
-                    build_row(b"b", ts, 10.0, "v4", 1000, 1_000_000),
-                    build_row(b"c", ts, 10.0, "v4", 1000, 1_000_000),
+                    build_row_for_dictionary(
+                        b"a",
+                        ts,
+                        10.0,
+                        "v4",
+                        1000,
+                        1_000_000,
+                        Some("tagv1"),
+                        "tagv2",
+                    ),
+                    build_row_for_dictionary(
+                        b"b",
+                        ts,
+                        10.0,
+                        "v4",
+                        1000,
+                        1_000_000,
+                        Some("tagv2"),
+                        "tagv4",
+                    ),
+                    build_row_for_dictionary(b"c", ts, 10.0, "v4", 1000, 1_000_000, None, "tagv2"),
+                    build_row_for_dictionary(
+                        b"d",
+                        ts,
+                        10.0,
+                        "v4",
+                        1000,
+                        1_000_000,
+                        Some("tagv3"),
+                        "tagv2",
+                    ),
                 ];
                 let batch = build_record_batch_with_key(schema.clone(), rows);
                 Poll::Ready(Some(Ok(batch)))
@@ -428,19 +466,22 @@ mod tests {
                 .await
                 .unwrap();
             let sst_info = writer
-                .write(RequestId::next_id(), &sst_meta, record_batch_stream)
+                .write(
+                    RequestId::next_id(),
+                    &sst_meta,
+                    Box::new(record_batch_stream),
+                )
                 .await
                 .unwrap();
 
-            assert_eq!(15, sst_info.row_num);
+            assert_eq!(20, sst_info.row_num);
 
             let scan_options = ScanOptions::default();
             // read sst back to test
             let sst_read_options = SstReadOptions {
-                reverse: false,
                 frequency: ReadFrequency::Frequent,
                 num_rows_per_row_group: 5,
-                projected_schema,
+                projected_schema: reader_projected_schema,
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: None,
                 scan_options,
@@ -483,9 +524,46 @@ mod tests {
             let mut stream = reader.read().await.unwrap();
             let mut expect_rows = vec![];
             for counter in &[4, 3, 2, 1, 0] {
-                expect_rows.push(build_row(b"a", 100 + counter, 10.0, "v4", 1000, 1_000_000));
-                expect_rows.push(build_row(b"b", 100 + counter, 10.0, "v4", 1000, 1_000_000));
-                expect_rows.push(build_row(b"c", 100 + counter, 10.0, "v4", 1000, 1_000_000));
+                expect_rows.push(build_row_for_dictionary(
+                    b"a",
+                    100 + counter,
+                    10.0,
+                    "v4",
+                    1000,
+                    1_000_000,
+                    Some("tagv1"),
+                    "tagv2",
+                ));
+                expect_rows.push(build_row_for_dictionary(
+                    b"b",
+                    100 + counter,
+                    10.0,
+                    "v4",
+                    1000,
+                    1_000_000,
+                    Some("tagv2"),
+                    "tagv4",
+                ));
+                expect_rows.push(build_row_for_dictionary(
+                    b"c",
+                    100 + counter,
+                    10.0,
+                    "v4",
+                    1000,
+                    1_000_000,
+                    None,
+                    "tagv2",
+                ));
+                expect_rows.push(build_row_for_dictionary(
+                    b"d",
+                    100 + counter,
+                    10.0,
+                    "v4",
+                    1000,
+                    1_000_000,
+                    Some("tagv3"),
+                    "tagv2",
+                ));
             }
             check_stream(&mut stream, expect_rows).await;
         });
@@ -519,7 +597,7 @@ mod tests {
         input_num_rows: Vec<usize>,
         expected_num_rows: Vec<usize>,
     ) {
-        init_log_for_test();
+        test_util::init_log_for_test();
         let schema = build_schema();
         let mut poll_cnt = 0;
         let schema_clone = schema.clone();

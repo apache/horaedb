@@ -1,19 +1,31 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Skiplist memtable iterator
 
 use std::{cmp::Ordering, ops::Bound, time::Instant};
 
 use arena::{Arena, BasicStats};
+use bytes_ext::{Bytes, BytesMut};
+use codec::row;
 use common_types::{
-    bytes::{Bytes, BytesMut},
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{RecordBatchWithKey, RecordBatchWithKeyBuilder},
     row::contiguous::{ContiguousRowReader, ProjectedContiguousRow},
     schema::Schema,
     SequenceNumber,
 };
-use common_util::{codec::row, time::InstantExt};
 use log::trace;
 use skiplist::{ArenaSlice, BytewiseComparator, IterRef, Skiplist};
 use snafu::ResultExt;
@@ -21,8 +33,8 @@ use snafu::ResultExt;
 use crate::memtable::{
     key::{self, KeySequence},
     skiplist::SkiplistMemTable,
-    AppendRow, BuildRecordBatch, DecodeInternalKey, EncodeInternalKey, IterTimeout, ProjectSchema,
-    Result, ScanContext, ScanRequest,
+    AppendRow, BuildRecordBatch, DecodeContinuousRow, DecodeInternalKey, EncodeInternalKey,
+    IterTimeout, ProjectSchema, Result, ScanContext, ScanRequest,
 };
 
 /// Iterator state
@@ -147,7 +159,8 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         let mut num_rows = 0;
         while self.iter.valid() && num_rows < self.batch_size {
             if let Some(row) = self.fetch_next_row()? {
-                let row_reader = ContiguousRowReader::with_schema(&row, &self.memtable_schema);
+                let row_reader = ContiguousRowReader::try_new(&row, &self.memtable_schema)
+                    .context(DecodeContinuousRow)?;
                 let projected_row = ProjectedContiguousRow::new(row_reader, &self.projector);
 
                 trace!("Column iterator fetch next row, row:{:?}", projected_row);
@@ -165,8 +178,9 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
         if num_rows > 0 {
             if let Some(deadline) = self.deadline {
-                if deadline.check_deadline() {
-                    return IterTimeout {}.fail();
+                let now = Instant::now();
+                if now >= deadline {
+                    return IterTimeout { now, deadline }.fail();
                 }
             }
 

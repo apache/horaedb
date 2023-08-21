@@ -1,4 +1,16 @@
-// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use std::{convert::TryFrom, mem, sync::Arc};
 
@@ -10,17 +22,15 @@ use arrow::{
     util::bit_util,
 };
 use async_trait::async_trait;
+use bytes_ext::{BytesMut, SafeBufMut};
 use ceresdbproto::sst as sst_pb;
 use common_types::{
-    bytes::{BytesMut, SafeBufMut},
     datum::DatumKind,
     schema::{ArrowSchema, ArrowSchemaRef, DataType, Field, Schema},
 };
-use common_util::{
-    define_result,
-    error::{BoxError, GenericError},
-};
+use generic_error::{BoxError, GenericError};
 use log::trace;
+use macros::define_result;
 use parquet::{
     arrow::AsyncArrowWriter,
     basic::Compression,
@@ -526,7 +536,25 @@ impl HybridRecordDecoder {
             .iter()
             .map(|f| {
                 if let DataType::List(nested_field) = f.data_type() {
-                    Arc::new(Field::new(f.name(), nested_field.data_type().clone(), true))
+                    match f.data_type() {
+                        DataType::Dictionary(_, _) => {
+                            assert!(f.dict_id().is_some(), "Dictionary must have dict_id");
+                            assert!(
+                                f.dict_is_ordered().is_some(),
+                                "Dictionary must have dict_is_ordered"
+                            );
+                            let dict_id = f.dict_id().unwrap();
+                            let dict_is_ordered = f.dict_is_ordered().unwrap();
+                            Arc::new(Field::new_dict(
+                                f.name(),
+                                nested_field.data_type().clone(),
+                                true,
+                                dict_id,
+                                dict_is_ordered,
+                            ))
+                        }
+                        _ => Arc::new(Field::new(f.name(), nested_field.data_type().clone(), true)),
+                    }
                 } else {
                     f.clone()
                 }
@@ -760,8 +788,8 @@ mod tests {
     use std::{pin::Pin, sync::Mutex, task::Poll};
 
     use arrow::array::{Int32Array, StringArray, TimestampMillisecondArray, UInt64Array};
+    use bytes_ext::Bytes;
     use common_types::{
-        bytes::Bytes,
         column_schema,
         schema::{Builder, Schema, TSID_COLUMN},
         time::{TimeRange, Timestamp},
@@ -1030,11 +1058,11 @@ mod tests {
             ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns).unwrap();
         let input_record_batch2 =
             ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns2).unwrap();
-        let row_nums = encoder
+        let num_rows = encoder
             .encode(vec![input_record_batch, input_record_batch2])
             .await
             .unwrap();
-        assert_eq!(2, row_nums);
+        assert_eq!(2, num_rows);
 
         // read encoded records back, and then compare with input records
         encoder.close().await.unwrap();
