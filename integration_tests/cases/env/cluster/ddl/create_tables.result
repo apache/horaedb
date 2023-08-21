@@ -92,7 +92,7 @@ String("a"),String("int"),Boolean(false),Boolean(true),Boolean(false),
 show create table `05_create_tables_t4`;
 
 Table,Create Table,
-String("05_create_tables_t4"),String("CREATE TABLE `05_create_tables_t4` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `a` int, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+String("05_create_tables_t4"),String("CREATE TABLE `05_create_tables_t4` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `a` int, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
 
 
 CREATE TABLE `05_create_tables_t5`(c1 int, t timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
@@ -110,7 +110,7 @@ String("c1"),String("int"),Boolean(false),Boolean(true),Boolean(false),
 show create table `05_create_tables_t5`;
 
 Table,Create Table,
-String("05_create_tables_t5"),String("CREATE TABLE `05_create_tables_t5` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `c1` int, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+String("05_create_tables_t5"),String("CREATE TABLE `05_create_tables_t5` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `c1` int, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
 
 
 CREATE TABLE `05_create_tables_t6`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY, t2 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
@@ -132,7 +132,7 @@ String("c1"),String("int"),Boolean(false),Boolean(true),Boolean(false),
 show create table `05_create_tables_t7`;
 
 Table,Create Table,
-String("05_create_tables_t7"),String("CREATE TABLE `05_create_tables_t7` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `c1` int COMMENT 'id', PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+String("05_create_tables_t7"),String("CREATE TABLE `05_create_tables_t7` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `c1` int COMMENT 'id', PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
 
 
 CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
@@ -142,7 +142,7 @@ affected_rows: 0
 show create table `05_create_tables_t8`;
 
 Table,Create Table,
-String("05_create_tables_t8"),String("CREATE TABLE `05_create_tables_t8` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+String("05_create_tables_t8"),String("CREATE TABLE `05_create_tables_t8` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
 
 
 drop table `05_create_tables_t8`;
@@ -156,7 +156,7 @@ affected_rows: 0
 show create table `05_create_tables_t8`;
 
 Table,Create Table,
-String("05_create_tables_t8"),String("CREATE TABLE `05_create_tables_t8` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='COLUMNAR', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+String("05_create_tables_t8"),String("CREATE TABLE `05_create_tables_t8` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='COLUMNAR', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
 
 
 drop table `05_create_tables_t8`;
@@ -170,7 +170,7 @@ affected_rows: 0
 show create table `05_create_tables_t8`;
 
 Table,Create Table,
-String("05_create_tables_t8"),String("CREATE TABLE `05_create_tables_t8` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='HYBRID', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+String("05_create_tables_t8"),String("CREATE TABLE `05_create_tables_t8` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='HYBRID', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
 
 
 drop table `05_create_tables_t8`;
@@ -184,7 +184,7 @@ affected_rows: 0
 show create table `05_create_tables_t9`;
 
 Table,Create Table,
-String("05_create_tables_t9"),String("CREATE TABLE `05_create_tables_t9` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, `c2` bigint DEFAULT 0, `c3` uint32 DEFAULT 1 + 1, `c4` string DEFAULT 'xxx', `c5` uint32 DEFAULT c3 * 2 + 1, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+String("05_create_tables_t9"),String("CREATE TABLE `05_create_tables_t9` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, `c2` bigint DEFAULT 0, `c3` uint32 DEFAULT 1 + 1, `c4` string DEFAULT 'xxx', `c5` uint32 DEFAULT c3 * 2 + 1, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
 
 
 drop table `05_create_tables_t9`;
@@ -198,7 +198,7 @@ affected_rows: 0
 show create table `05_create_tables_t10`;
 
 Table,Create Table,
-String("05_create_tables_t10"),String("CREATE TABLE `05_create_tables_t10` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+String("05_create_tables_t10"),String("CREATE TABLE `05_create_tables_t10` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int, PRIMARY KEY(tsid,t1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
 
 
 drop table `05_create_tables_t10`;
@@ -212,7 +212,7 @@ affected_rows: 0
 show create table `05_create_tables_t11`;
 
 Table,Create Table,
-String("05_create_tables_t11"),String("CREATE TABLE `05_create_tables_t11` (`t1` timestamp NOT NULL, `tsid` uint64 NOT NULL, `c1` int, PRIMARY KEY(t1,tsid), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+String("05_create_tables_t11"),String("CREATE TABLE `05_create_tables_t11` (`t1` timestamp NOT NULL, `tsid` uint64 NOT NULL, `c1` int, PRIMARY KEY(t1,tsid), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
 
 
 drop table `05_create_tables_t11`;

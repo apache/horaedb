@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Forked from <https://github.com/tikv/agatedb/blob/8510bff2bfde5b766c3f83cf81c00141967d48a4/skiplist>
 //!
@@ -16,6 +16,6 @@ mod slice;
 
 const MAX_HEIGHT: usize = 20;
 
-pub use key::{FixedLengthSuffixComparator, KeyComparator};
+pub use key::{BytewiseComparator, FixedLengthSuffixComparator, KeyComparator};
 pub use list::{IterRef, Skiplist};
 pub use slice::ArenaSlice;

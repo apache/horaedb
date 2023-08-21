@@ -207,7 +207,6 @@ pub fn assert_batch_eq_to_row_group(record_batches: &[RecordBatch], row_group: &
     }
 
     let mut cursor = RecordBatchesCursor::new(record_batches);
-
     for row in row_group.iter() {
         for (column_idx, datum) in row.iter().enumerate() {
             assert_eq!(

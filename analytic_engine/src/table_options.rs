@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Constants for table options.
 
@@ -16,8 +16,11 @@ use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, GenerateBacktrace, OptionExt, ResultExt, Snafu};
 use table_engine::OPTION_KEY_ENABLE_TTL;
 
-use crate::compaction::{
-    self, CompactionStrategy, SizeTieredCompactionOptions, TimeWindowCompactionOptions,
+use crate::{
+    compaction::{
+        self, CompactionStrategy, SizeTieredCompactionOptions, TimeWindowCompactionOptions,
+    },
+    memtable::MemtableType,
 };
 
 pub const SEGMENT_DURATION: &str = "segment_duration";
@@ -30,6 +33,7 @@ pub const NUM_ROWS_PER_ROW_GROUP: &str = "num_rows_per_row_group";
 pub const UPDATE_MODE: &str = "update_mode";
 pub const COMPRESSION: &str = "compression";
 pub const STORAGE_FORMAT: &str = "storage_format";
+pub const MEMTABLE_TYPE: &str = "memtable_type";
 
 const UPDATE_MODE_OVERWRITE: &str = "OVERWRITE";
 const UPDATE_MODE_APPEND: &str = "APPEND";
@@ -404,6 +408,8 @@ pub struct TableOptions {
     pub num_rows_per_row_group: usize,
     /// Table Compression
     pub compression: Compression,
+    /// Memtable type
+    pub memtable_type: MemtableType,
 }
 
 impl TableOptions {
@@ -450,6 +456,7 @@ impl TableOptions {
                 STORAGE_FORMAT.to_string(),
                 self.storage_format_hint.to_string(),
             ),
+            (MEMTABLE_TYPE.to_string(), self.memtable_type.to_string()),
         ]
         .into_iter()
         .collect();
@@ -590,6 +597,7 @@ impl From<TableOptions> for manifest_pb::TableOptions {
             storage_format_hint: Some(manifest_pb::StorageFormatHint::from(
                 opts.storage_format_hint,
             )),
+            // TODO: persist `memtable_type` in PB.
         }
     }
 }
@@ -661,6 +669,7 @@ impl TryFrom<manifest_pb::TableOptions> for TableOptions {
             write_buffer_size: opts.write_buffer_size,
             compression: Compression::from(compression),
             storage_format_hint: StorageFormatHint::try_from(storage_format_hint)?,
+            memtable_type: MemtableType::SkipList,
         };
 
         Ok(table_opts)
@@ -680,6 +689,7 @@ impl Default for TableOptions {
             write_buffer_size: DEFAULT_WRITE_BUFFER_SIZE,
             compression: Compression::Zstd,
             storage_format_hint: StorageFormatHint::default(),
+            memtable_type: MemtableType::SkipList,
         }
     }
 }
@@ -740,6 +750,9 @@ fn merge_table_options(
     }
     if let Some(v) = options.get(STORAGE_FORMAT) {
         table_opts.storage_format_hint = v.as_str().try_into()?;
+    }
+    if let Some(v) = options.get(MEMTABLE_TYPE) {
+        table_opts.memtable_type = MemtableType::parse_from(v);
     }
     Ok(table_opts)
 }

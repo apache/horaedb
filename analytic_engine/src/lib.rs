@@ -3,6 +3,7 @@
 //! Analytic table engine implementations
 
 #![feature(option_get_or_insert_default)]
+
 mod compaction;
 mod context;
 mod engine;

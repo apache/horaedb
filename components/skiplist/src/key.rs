@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::cmp::Ordering;
 
@@ -7,6 +7,21 @@ use bytes::Bytes;
 pub trait KeyComparator: Clone {
     fn compare_key(&self, lhs: &[u8], rhs: &[u8]) -> Ordering;
     fn same_key(&self, lhs: &[u8], rhs: &[u8]) -> bool;
+}
+
+#[derive(Debug, Clone)]
+pub struct BytewiseComparator;
+
+impl KeyComparator for BytewiseComparator {
+    #[inline]
+    fn compare_key(&self, lhs: &[u8], rhs: &[u8]) -> Ordering {
+        lhs.cmp(rhs)
+    }
+
+    #[inline]
+    fn same_key(&self, lhs: &[u8], rhs: &[u8]) -> bool {
+        lhs == rhs
+    }
 }
 
 #[derive(Default, Debug, Clone, Copy)]

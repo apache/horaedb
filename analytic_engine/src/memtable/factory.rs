@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! MemTable factory
 
@@ -17,6 +17,7 @@ pub enum Error {}
 define_result!(Error);
 
 /// MemTable options
+#[derive(Clone)]
 pub struct Options {
     /// Schema of the skiplist.
     pub schema: Schema,
