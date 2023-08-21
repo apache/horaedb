@@ -43,6 +43,10 @@ impl PhysicalPlanner for DatafusionPhysicalPlannerImpl {
     async fn plan(&self, ctx: &Context, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr> {
         // Register catalogs to datafusion execution context.
         let catalogs = CatalogProviderAdapter::new_adapters(logical_plan.tables.clone());
+        // TODO: maybe we should not build `SessionContext` in each physical plan's
+        // building. We need to do so because we place some dynamic
+        // information(such as `timeout`) in `SessionConfig`, maybe it is better
+        // to remove it to `TaskContext`.
         let df_ctx = self.df_ctx_builder.build(ctx);
         for (name, catalog) in catalogs {
             df_ctx.register_catalog(&name, Arc::new(catalog));
