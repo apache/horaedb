@@ -12,24 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::Arc;
+use std::{fmt, sync::Arc, time::Instant};
 
-use datafusion::execution::{
-    runtime_env::{RuntimeConfig, RuntimeEnv},
-    FunctionRegistry,
+use datafusion::{
+    execution::{
+        context::{QueryPlanner, SessionState},
+        runtime_env::{RuntimeConfig, RuntimeEnv},
+        FunctionRegistry,
+    },
+    optimizer::analyzer::Analyzer,
+    physical_optimizer::PhysicalOptimizerRule,
+    prelude::{SessionConfig, SessionContext},
 };
+use table_engine::provider::CeresdbOptions;
 
 use crate::{
     codec::PhysicalPlanCodecRef,
+    context::Context,
     datafusion_impl::{
-        codec::DataFusionPhysicalPlanEncoderImpl, physical_planner::DatafusionPhysicalPlannerImpl,
+        codec::DataFusionPhysicalPlanEncoderImpl, executor::DatafusionExecutorImpl,
+        logical_optimizer::type_conversion::TypeConversion,
+        physical_planner::DatafusionPhysicalPlannerImpl,
+        physical_planner_extension::QueryPlannerAdapter,
     },
-    executor::{ExecutorImpl, ExecutorRef},
+    executor::ExecutorRef,
     physical_planner::PhysicalPlannerRef,
     Config, QueryEngine,
 };
 
 pub mod codec;
+pub mod executor;
 pub mod logical_optimizer;
 pub mod physical_optimizer;
 pub mod physical_plan;
@@ -53,12 +65,15 @@ impl DatafusionQueryEngineImpl {
         function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
     ) -> Result<Self> {
         let runtime_env = Arc::new(RuntimeEnv::new(runtime_config).unwrap());
-
-        let physical_planner = Arc::new(DatafusionPhysicalPlannerImpl::new(
+        let physical_planner = Arc::new(QueryPlannerAdapter);
+        let df_ctx_builder = Arc::new(DfContextBuilder::new(
             config,
             runtime_env.clone(),
+            physical_planner,
         ));
-        let executor = Arc::new(ExecutorImpl);
+
+        let physical_planner = Arc::new(DatafusionPhysicalPlannerImpl::new(df_ctx_builder.clone()));
+        let executor = Arc::new(DatafusionExecutorImpl::new(df_ctx_builder));
         let physical_plan_codec = Arc::new(DataFusionPhysicalPlanEncoderImpl::new(
             runtime_env,
             function_registry,
@@ -83,5 +98,96 @@ impl QueryEngine for DatafusionQueryEngineImpl {
 
     fn physical_plan_codec(&self) -> PhysicalPlanCodecRef {
         self.physical_plan_codec.clone()
+    }
+}
+
+/// Datafusion context builder
+#[derive(Clone)]
+pub struct DfContextBuilder {
+    config: Config,
+    runtime_env: Arc<RuntimeEnv>,
+    physical_planner: Arc<dyn QueryPlanner + Send + Sync>,
+}
+
+impl fmt::Debug for DfContextBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DfContextBuilder")
+            .field("config", &self.config)
+            .field("runtime_env", &self.runtime_env)
+            .field("physical_planner", &"QueryPlannerAdapter")
+            .finish()
+    }
+}
+
+impl DfContextBuilder {
+    pub fn new(
+        config: Config,
+        runtime_env: Arc<RuntimeEnv>,
+        physical_planner: Arc<dyn QueryPlanner + Send + Sync>,
+    ) -> Self {
+        Self {
+            config,
+            runtime_env,
+            physical_planner,
+        }
+    }
+
+    pub fn build(&self, ctx: &Context) -> SessionContext {
+        let timeout = ctx
+            .deadline
+            .map(|deadline| deadline.duration_since(Instant::now()).as_millis() as u64);
+        let ceresdb_options = CeresdbOptions {
+            request_id: ctx.request_id.as_u64(),
+            request_timeout: timeout,
+        };
+        let mut df_session_config = SessionConfig::new()
+            .with_default_catalog_and_schema(
+                ctx.default_catalog.clone(),
+                ctx.default_schema.clone(),
+            )
+            .with_target_partitions(self.config.read_parallelism);
+
+        df_session_config
+            .options_mut()
+            .extensions
+            .insert(ceresdb_options);
+
+        // Using default logcial optimizer, if want to add more custom rule, using
+        // `add_optimizer_rule` to add.
+        let state = SessionState::with_config_rt(df_session_config, self.runtime_env.clone())
+            .with_query_planner(self.physical_planner.clone());
+
+        // Register analyzer rules
+        let state = Self::register_analyzer_rules(state);
+
+        // Register iox optimizers, used by influxql.
+        let state = influxql_query::logical_optimizer::register_iox_logical_optimizers(state);
+
+        SessionContext::with_state(state)
+    }
+
+    // TODO: this is not used now, bug of RepartitionAdapter is already fixed in
+    // datafusion itself. Remove this code in future.
+    #[allow(dead_code)]
+    fn apply_adapters_for_physical_optimize_rules(
+        default_rules: &[Arc<dyn PhysicalOptimizerRule + Send + Sync>],
+    ) -> Vec<Arc<dyn PhysicalOptimizerRule + Send + Sync>> {
+        let mut new_rules = Vec::with_capacity(default_rules.len());
+        for rule in default_rules {
+            new_rules.push(physical_optimizer::may_adapt_optimize_rule(rule.clone()))
+        }
+
+        new_rules
+    }
+
+    fn register_analyzer_rules(mut state: SessionState) -> SessionState {
+        // Our analyzer has high priority, so first add we custom rules, then add the
+        // default ones.
+        state = state.with_analyzer_rules(vec![Arc::new(TypeConversion)]);
+        for rule in Analyzer::new().rules {
+            state = state.add_analyzer_rule(rule);
+        }
+
+        state
     }
 }
