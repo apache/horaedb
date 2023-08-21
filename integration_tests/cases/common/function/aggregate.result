@@ -91,7 +91,7 @@ COUNT(02_function_aggregate_table1.arch),
 Int64(4),
 
 
-SELECT distinct(`arch`) FROM `02_function_aggregate_table1`;
+SELECT distinct(`arch`) FROM `02_function_aggregate_table1` ORDER BY `arch` DESC;
 
 arch,
 String("x86-64"),
