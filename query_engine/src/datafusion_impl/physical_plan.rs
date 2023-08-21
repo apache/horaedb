@@ -27,7 +27,6 @@ use datafusion::{
         coalesce_partitions::CoalescePartitionsExec, display::DisplayableExecutionPlan,
         ExecutionPlan,
     },
-    prelude::SessionContext,
 };
 use generic_error::BoxError;
 use snafu::{OptionExt, ResultExt};

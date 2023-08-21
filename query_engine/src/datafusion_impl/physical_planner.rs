@@ -12,30 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 
 use async_trait::async_trait;
-use datafusion::{
-    execution::{context::SessionState, runtime_env::RuntimeEnv},
-    optimizer::analyzer::Analyzer,
-    physical_optimizer::PhysicalOptimizerRule,
-    prelude::{SessionConfig, SessionContext},
-};
 use generic_error::BoxError;
 use query_frontend::{plan::QueryPlan, provider::CatalogProviderAdapter};
 use snafu::ResultExt;
-use table_engine::provider::CeresdbOptions;
 
 use crate::{
     context::Context,
-    datafusion_impl::{
-        logical_optimizer::type_conversion::TypeConversion, physical_optimizer,
-        physical_plan::DataFusionPhysicalPlanImpl, physical_planner_extension::QueryPlannerAdapter,
-        DfContextBuilder,
-    },
+    datafusion_impl::{physical_plan::DataFusionPhysicalPlanImpl, DfContextBuilder},
     error::*,
     physical_planner::{PhysicalPlanPtr, PhysicalPlanner},
-    Config,
 };
 
 /// Physical planner based on datafusion

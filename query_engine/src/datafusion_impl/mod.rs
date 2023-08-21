@@ -73,7 +73,7 @@ impl DatafusionQueryEngineImpl {
         ));
 
         let physical_planner = Arc::new(DatafusionPhysicalPlannerImpl::new(df_ctx_builder.clone()));
-        let executor = Arc::new(DatafusionExecutorImpl::new(df_ctx_builder.clone()));
+        let executor = Arc::new(DatafusionExecutorImpl::new(df_ctx_builder));
         let physical_plan_codec = Arc::new(DataFusionPhysicalPlanEncoderImpl::new(
             runtime_env,
             function_registry,

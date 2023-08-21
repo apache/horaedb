@@ -26,7 +26,7 @@ use crate::{
     datafusion_impl::{physical_plan::DfTaskContextAdapter, DfContextBuilder},
     error::*,
     executor::Executor,
-    physical_planner::{PhysicalPlanPtr, TaskContext},
+    physical_planner::PhysicalPlanPtr,
 };
 
 #[derive(Debug, Clone)]
@@ -48,12 +48,12 @@ impl Executor for DatafusionExecutorImpl {
         ctx: &Context,
         physical_plan: PhysicalPlanPtr,
     ) -> Result<SendableRecordBatchStream> {
-        let begin_instant = Instant::now();
-
         debug!(
-            "Executor physical optimization finished, request_id:{}, physical_plan: {:?}",
+            "DatafusionExecutorImpl begin to execute plan, request_id:{}, physical_plan: {:?}",
             ctx.request_id, physical_plan
         );
+
+        let begin_instant = Instant::now();
 
         let session_ctx = self.df_ctx_builder.build(ctx);
         let task_ctx = DfTaskContextAdapter::new(session_ctx.task_ctx());
@@ -66,7 +66,7 @@ impl Executor for DatafusionExecutorImpl {
             })?;
 
         info!(
-            "Executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
+            "DatafusionExecutorImpl finish to execute plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
             ctx.request_id,
             begin_instant.saturating_elapsed().as_millis(),
             physical_plan.metrics_to_string()

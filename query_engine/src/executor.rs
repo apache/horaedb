@@ -14,14 +14,10 @@
 
 //! Query executor
 
-use std::{fmt, sync::Arc, time::Instant};
+use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
-use generic_error::BoxError;
-use log::{debug, info};
-use snafu::ResultExt;
 use table_engine::stream::SendableRecordBatchStream;
-use time_ext::InstantExt;
 
 use crate::{context::Context, error::*, physical_planner::PhysicalPlanPtr};
 
