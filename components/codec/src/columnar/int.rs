@@ -16,15 +16,16 @@ use bytes_ext::{Buf, BufMut};
 use snafu::ResultExt;
 
 use crate::{
-    columnar::{Result, ValuesDecoder, ValuesEncoder, Varint},
+    columnar::{
+        Result, ValuesDecoder, ValuesDecoderImpl, ValuesEncoder, ValuesEncoderImpl, Varint,
+    },
     varint,
 };
 
-pub struct I32ValuesEncoder;
+/// The max number of the bytes used to store a varint encoding u64/i64.
+const MAX_NUM_BYTES_OF_64VARINT: usize = 10;
 
-impl ValuesEncoder for I32ValuesEncoder {
-    type ValueType = i32;
-
+impl ValuesEncoder<i32> for ValuesEncoderImpl {
     fn encode<B, I>(&self, buf: &mut B, values: I) -> Result<()>
     where
         B: BufMut,
@@ -36,22 +37,9 @@ impl ValuesEncoder for I32ValuesEncoder {
 
         Ok(())
     }
-
-    fn estimated_encoded_size<I>(&self, values: I) -> usize
-    where
-        I: Iterator<Item = i32>,
-    {
-        let (lower, higher) = values.size_hint();
-        let num = lower.max(higher.unwrap_or_default());
-        num * std::mem::size_of::<Self::ValueType>()
-    }
 }
 
-pub struct I32ValuesDecoder;
-
-impl ValuesDecoder for I32ValuesDecoder {
-    type ValueType = i32;
-
+impl ValuesDecoder<i32> for ValuesDecoderImpl {
     fn decode<B, F>(&self, buf: &mut B, mut f: F) -> Result<()>
     where
         B: Buf,
@@ -66,15 +54,11 @@ impl ValuesDecoder for I32ValuesDecoder {
     }
 }
 
-pub struct I64ValuesEncoder;
-
-impl ValuesEncoder for I64ValuesEncoder {
-    type ValueType = i64;
-
+impl ValuesEncoder<i64> for ValuesEncoderImpl {
     fn encode<B, I>(&self, buf: &mut B, values: I) -> Result<()>
     where
         B: BufMut,
-        I: Iterator<Item = Self::ValueType>,
+        I: Iterator<Item = i64>,
     {
         for v in values {
             varint::encode_varint(buf, v).context(Varint)?;
@@ -85,23 +69,19 @@ impl ValuesEncoder for I64ValuesEncoder {
 
     fn estimated_encoded_size<I>(&self, values: I) -> usize
     where
-        I: Iterator<Item = Self::ValueType>,
+        I: Iterator<Item = i64>,
     {
         let (lower, higher) = values.size_hint();
         let num = lower.max(higher.unwrap_or_default());
-        num * 10
+        num * MAX_NUM_BYTES_OF_64VARINT
     }
 }
 
-pub struct I64ValuesDecoder;
-
-impl ValuesDecoder for I64ValuesDecoder {
-    type ValueType = i64;
-
+impl ValuesDecoder<i64> for ValuesDecoderImpl {
     fn decode<B, F>(&self, buf: &mut B, mut f: F) -> Result<()>
     where
         B: Buf,
-        F: FnMut(Self::ValueType) -> Result<()>,
+        F: FnMut(i64) -> Result<()>,
     {
         while buf.remaining() > 0 {
             let v = varint::decode_varint(buf).context(Varint)?;
@@ -112,15 +92,11 @@ impl ValuesDecoder for I64ValuesDecoder {
     }
 }
 
-pub struct U64ValuesEncoder;
-
-impl ValuesEncoder for U64ValuesEncoder {
-    type ValueType = u64;
-
+impl ValuesEncoder<u64> for ValuesEncoderImpl {
     fn encode<B, I>(&self, buf: &mut B, values: I) -> Result<()>
     where
         B: BufMut,
-        I: Iterator<Item = Self::ValueType>,
+        I: Iterator<Item = u64>,
     {
         for v in values {
             varint::encode_uvarint(buf, v).context(Varint)?;
@@ -131,23 +107,19 @@ impl ValuesEncoder for U64ValuesEncoder {
 
     fn estimated_encoded_size<I>(&self, values: I) -> usize
     where
-        I: Iterator<Item = Self::ValueType>,
+        I: Iterator<Item = u64>,
     {
         let (lower, higher) = values.size_hint();
         let num = lower.max(higher.unwrap_or_default());
-        num * 10
+        num * MAX_NUM_BYTES_OF_64VARINT
     }
 }
 
-pub struct U64ValuesDecoder;
-
-impl ValuesDecoder for U64ValuesDecoder {
-    type ValueType = u64;
-
+impl ValuesDecoder<u64> for ValuesDecoderImpl {
     fn decode<B, F>(&self, buf: &mut B, mut f: F) -> Result<()>
     where
         B: Buf,
-        F: FnMut(Self::ValueType) -> Result<()>,
+        F: FnMut(u64) -> Result<()>,
     {
         while buf.remaining() > 0 {
             let v = varint::decode_uvarint(buf).context(Varint)?;

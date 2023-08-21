@@ -12,28 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
-
 use bytes_ext::{Buf, BufMut, Bytes};
 use snafu::ResultExt;
 
 use crate::{
-    columnar::{Result, ValuesDecoder, ValuesEncoder, Varint},
+    columnar::{
+        Result, ValuesDecoder, ValuesDecoderImpl, ValuesEncoder, ValuesEncoderImpl, Varint,
+    },
     varint,
 };
 
-#[derive(Default)]
-pub struct BytesValuesEncoder<'a> {
-    _lifetime: PhantomData<&'a ()>,
-}
-
-impl<'a> ValuesEncoder for BytesValuesEncoder<'a> {
-    type ValueType = &'a [u8];
-
+impl<'a> ValuesEncoder<&'a [u8]> for ValuesEncoderImpl {
     fn encode<B, I>(&self, buf: &mut B, values: I) -> Result<()>
     where
         B: BufMut,
-        I: Iterator<Item = Self::ValueType>,
+        I: Iterator<Item = &'a [u8]>,
     {
         for v in values {
             debug_assert!(v.len() < u32::MAX as usize);
@@ -47,7 +40,7 @@ impl<'a> ValuesEncoder for BytesValuesEncoder<'a> {
 
     fn estimated_encoded_size<I>(&self, values: I) -> usize
     where
-        I: Iterator<Item = Self::ValueType>,
+        I: Iterator<Item = &'a [u8]>,
     {
         let mut total_bytes = 0;
         for v in values {
@@ -59,16 +52,11 @@ impl<'a> ValuesEncoder for BytesValuesEncoder<'a> {
     }
 }
 
-#[derive(Clone, Default)]
-pub struct BytesValuesDecoder;
-
-impl ValuesDecoder for BytesValuesDecoder {
-    type ValueType = Bytes;
-
+impl ValuesDecoder<Bytes> for ValuesDecoderImpl {
     fn decode<B, F>(&self, buf: &mut B, mut f: F) -> Result<()>
     where
         B: Buf,
-        F: FnMut(Self::ValueType) -> Result<()>,
+        F: FnMut(Bytes) -> Result<()>,
     {
         while buf.remaining() > 0 {
             let str_len = varint::decode_uvarint(buf).context(Varint)? as usize;
