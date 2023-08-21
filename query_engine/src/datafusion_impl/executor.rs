@@ -23,10 +23,10 @@ use time_ext::InstantExt;
 
 use crate::{
     context::Context,
-    datafusion_impl::{physical_plan::DfTaskContextAdapter, DfContextBuilder},
+    datafusion_impl::DfContextBuilder,
     error::*,
     executor::Executor,
-    physical_planner::PhysicalPlanPtr,
+    physical_planner::{PhysicalPlanPtr, TaskContext},
 };
 
 #[derive(Debug, Clone)]
@@ -55,9 +55,10 @@ impl Executor for DatafusionExecutorImpl {
 
         let begin_instant = Instant::now();
 
+        // TODO: build the `TaskContext` directly rather than through `SessionContext`.
         let session_ctx = self.df_ctx_builder.build(ctx);
-        let task_ctx = DfTaskContextAdapter::new(session_ctx.task_ctx());
-
+        let df_task_ctx = session_ctx.task_ctx();
+        let task_ctx = TaskContext::default().with_datafusion_task_ctx(df_task_ctx);
         let stream = physical_plan
             .execute(&task_ctx)
             .box_err()

@@ -15,18 +15,13 @@
 //! Datafusion physical execution plan
 
 use std::{
-    any::Any,
-    fmt::{self, Debug, Formatter},
+    fmt::{Debug, Formatter},
     sync::Arc,
 };
 
 use async_trait::async_trait;
-use datafusion::{
-    execution::context::TaskContext as DfTaskContext,
-    physical_plan::{
-        coalesce_partitions::CoalescePartitionsExec, display::DisplayableExecutionPlan,
-        ExecutionPlan,
-    },
+use datafusion::physical_plan::{
+    coalesce_partitions::CoalescePartitionsExec, display::DisplayableExecutionPlan, ExecutionPlan,
 };
 use generic_error::BoxError;
 use snafu::{OptionExt, ResultExt};
@@ -61,15 +56,13 @@ impl Debug for DataFusionPhysicalPlanImpl {
 
 #[async_trait]
 impl PhysicalPlan for DataFusionPhysicalPlanImpl {
-    fn execute(&self, task_ctx: &dyn TaskContext) -> Result<SendableRecordBatchStream> {
-        let df_task_ctx = task_ctx
-            .as_any()
-            .downcast_ref::<DfTaskContextAdapter>()
-            .with_context(|| PhysicalPlanNoCause {
-                msg: Some(format!("unexpected task context:{task_ctx:?}")),
-            })?
-            .as_df_task_context();
-
+    fn execute(&self, task_ctx: &TaskContext) -> Result<SendableRecordBatchStream> {
+        let df_task_ctx =
+            task_ctx
+                .try_to_datafusion_task_ctx()
+                .with_context(|| PhysicalPlanNoCause {
+                    msg: Some("datafusion task ctx not found".to_string()),
+                })?;
         let partition_count = self.plan.output_partitioning().partition_count();
         let df_stream = if partition_count <= 1 {
             self.plan
@@ -101,34 +94,5 @@ impl PhysicalPlan for DataFusionPhysicalPlanImpl {
         DisplayableExecutionPlan::with_metrics(&*self.plan)
             .indent(true)
             .to_string()
-    }
-}
-
-/// Datafusion task context adapter
-pub struct DfTaskContextAdapter {
-    task_context: Arc<DfTaskContext>,
-}
-
-impl DfTaskContextAdapter {
-    pub fn new(task_context: Arc<DfTaskContext>) -> Self {
-        Self { task_context }
-    }
-}
-
-impl fmt::Debug for DfTaskContextAdapter {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Datafusion task context")
-    }
-}
-
-impl DfTaskContextAdapter {
-    fn as_df_task_context(&self) -> Arc<DfTaskContext> {
-        self.task_context.clone()
-    }
-}
-
-impl TaskContext for DfTaskContextAdapter {
-    fn as_any(&self) -> &dyn Any {
-        self
     }
 }
