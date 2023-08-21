@@ -50,7 +50,7 @@ use crate::{
     },
     table::{
         AlterSchemaRequest, FlushRequest, GetRequest, ReadRequest, Result, Table, TableId,
-        TableInfo, TableRef, TableStats, UnsupportedMethod, WriteRequest,
+        TableRef, TableStats, UnsupportedMethod, WriteRequest,
     },
     MEMORY_ENGINE_TYPE,
 };

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, sync::Arc, vec};
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use table_engine::table::{SchemaId, TableRef};
@@ -110,7 +110,7 @@ impl Catalog for MockCatalog {
         Ok(self.schemas.get(name).cloned())
     }
 
-    async fn create_schema<'a>(&'a self, name: NameRef<'a>) -> Result<()> {
+    async fn create_schema<'a>(&'a self, _name: NameRef<'a>) -> Result<()> {
         unimplemented!()
     }
 

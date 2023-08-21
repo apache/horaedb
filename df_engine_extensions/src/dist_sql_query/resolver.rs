@@ -24,9 +24,8 @@ use table_engine::{
     table::{ReadRequest, TableRef},
 };
 
-use crate::dist_sql_query::{
-    partitioned_table_scan::{ResolvedPartitionedScan, UnresolvedPartitionedScan},
-    sub_table_scan::{ResolvedSubTableScan, UnresolvedSubTableScan},
+use crate::dist_sql_query::physical_plan::{
+    ResolvedPartitionedScan, UnresolvedPartitionedScan, UnresolvedSubTableScan,
 };
 
 /// Resolver which makes datafuison dist query related plan executable.
@@ -47,6 +46,7 @@ struct PartitionedScanResolver {
 }
 
 impl PartitionedScanResolver {
+    #[allow(dead_code)]
     pub fn new(remote_engine: RemoteEngineRef) -> Self {
         Self { remote_engine }
     }
@@ -88,6 +88,7 @@ impl PartitionedScanResolver {
 
         // There may be `ResolvedPartitionedScan` node in children, try to extend such
         // children.
+        // TODO: push down the computation physical node here.
         Self::maybe_extend_partitioned_scan(new_children, plan)
     }
 
@@ -116,6 +117,7 @@ struct SubScanResolver<B> {
 }
 
 impl<B: ResolvedSubScanBuilder> SubScanResolver<B> {
+    #[allow(dead_code)]
     pub fn new(catalog_manager: CatalogManagerRef, scan_builder: B) -> Self {
         Self {
             catalog_manager,
@@ -210,9 +212,8 @@ mod test {
     use trace_metric::MetricsCollector;
 
     use crate::dist_sql_query::{
-        partitioned_table_scan::UnresolvedPartitionedScan,
+        physical_plan::{UnresolvedPartitionedScan, UnresolvedSubTableScan},
         resolver::{PartitionedScanResolver, ResolvedSubScanBuilder, SubScanResolver},
-        sub_table_scan::UnresolvedSubTableScan,
     };
 
     #[test]
@@ -252,7 +253,7 @@ mod test {
             read_request: ReadRequest,
         ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
             Ok(Arc::new(MockScan {
-                request: read_request.clone(),
+                request: read_request,
             }))
         }
     }
@@ -345,7 +346,7 @@ mod test {
             // Projection: [time, tag1, tag2, value, field2]
             let projection = vec![1_usize, 2, 3, 4, 5];
             let projected_schema =
-                ProjectedSchema::new(test_schema.clone(), Some(projection.clone())).unwrap();
+                ProjectedSchema::new(test_schema.clone(), Some(projection)).unwrap();
             // Filter: time < 1691974518000 and tag1 == 'test_tag'
             let logical_filters = vec![(expr_fn::col("time")
                 .lt(ScalarValue::TimestampMillisecond(Some(1691974518000), None).lit()))
@@ -406,7 +407,7 @@ mod test {
             let read_request = ReadRequest {
                 request_id: 42.into(),
                 opts: ReadOptions::default(),
-                projected_schema: projected_schema.clone(),
+                projected_schema,
                 predicate,
                 metrics_collector: MetricsCollector::default(),
             };
