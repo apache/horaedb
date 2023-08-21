@@ -19,6 +19,7 @@
 
 use bytes_ext::{Buf, BufMut, Bytes};
 use common_types::{
+    column_schema::ColumnId,
     datum::{Datum, DatumKind, DatumView},
     row::bitset::{BitSet, RoBitSet},
     string::StringBytes,
@@ -102,7 +103,7 @@ struct ValuesDecoderImpl;
 
 #[derive(Clone, Debug)]
 pub struct ColumnarEncoder {
-    column_idx: u32,
+    column_id: ColumnId,
 }
 
 /// A hint helps column encoding.
@@ -143,11 +144,11 @@ impl EncodeHint {
 impl ColumnarEncoder {
     const VERSION: u8 = 0;
 
-    pub fn new(column_idx: u32) -> Self {
-        Self { column_idx }
+    pub fn new(column_id: ColumnId) -> Self {
+        Self { column_id }
     }
 
-    /// The header includes `version`, `datum_kind`, `column_idx`, `num_datums`
+    /// The header includes `version`, `datum_kind`, `column_id`, `num_datums`
     /// and `num_nulls`.
     ///
     /// Refer to the [encode](ColumnarEncoder::encode) method.
@@ -159,7 +160,7 @@ impl ColumnarEncoder {
     /// The layout of the final serialized bytes:
     /// ```plaintext
     /// +-------------+----------------+-----------------+-----------------+----------------+---------------+---------------------+
-    /// | version(u8) | datum_kind(u8) | column_idx(u32) | num_datums(u32) | num_nulls(u32) | nulls_bit_set | non-null data block |
+    /// | version(u8) | datum_kind(u8) | column_id(u32) | num_datums(u32) | num_nulls(u32) | nulls_bit_set | non-null data block |
     /// +-------------+----------------+-----------------+-----------------+----------------+---------------+---------------------+
     /// ```
     /// Note:
@@ -175,7 +176,7 @@ impl ColumnarEncoder {
     {
         buf.put_u8(Self::VERSION);
         buf.put_u8(hint.datum_kind.into_u8());
-        buf.put_u32(self.column_idx);
+        buf.put_u32(self.column_id);
         let num_datums = hint.compute_num_datums(&datums);
         assert!(num_datums < u32::MAX as usize);
         buf.put_u32(num_datums as u32);
@@ -292,7 +293,7 @@ pub struct ColumnarDecoder;
 
 #[derive(Debug, Clone)]
 pub struct DecodeResult {
-    pub column_idx: u32,
+    pub column_id: ColumnId,
     pub datums: Vec<Datum>,
 }
 
@@ -307,12 +308,12 @@ impl Decoder<DecodeResult> for ColumnarDecoder {
         );
 
         let datum_kind = DatumKind::try_from(buf.get_u8()).context(InvalidDatumKind)?;
-        let column_idx = buf.get_u32();
+        let column_id = buf.get_u32();
         let num_datums = buf.get_u32() as usize;
 
         if matches!(datum_kind, DatumKind::Null) {
             return Ok(DecodeResult {
-                column_idx,
+                column_id,
                 datums: vec![Datum::Null; num_datums],
             });
         }
@@ -326,7 +327,7 @@ impl Decoder<DecodeResult> for ColumnarDecoder {
             Self::decode_without_nulls(buf, num_datums, datum_kind)?
         };
 
-        Ok(DecodeResult { column_idx, datums })
+        Ok(DecodeResult { column_id, datums })
     }
 }
 
@@ -431,8 +432,8 @@ impl ColumnarDecoder {
 mod tests {
     use super::*;
 
-    fn check_encode_end_decode(column_idx: u32, datums: Vec<Datum>, datum_kind: DatumKind) {
-        let encoder = ColumnarEncoder::new(column_idx);
+    fn check_encode_end_decode(column_id: ColumnId, datums: Vec<Datum>, datum_kind: DatumKind) {
+        let encoder = ColumnarEncoder::new(column_id);
         let views = datums.iter().map(|v| v.as_view());
         let mut hint = EncodeHint {
             num_nulls: None,
@@ -449,10 +450,10 @@ mod tests {
 
         let decoder = ColumnarDecoder;
         let DecodeResult {
-            column_idx: decoded_column_idx,
+            column_id: decoded_column_id,
             datums: decoded_datums,
         } = decoder.decode(&mut buf.as_slice()).unwrap();
-        assert_eq!(column_idx, decoded_column_idx);
+        assert_eq!(column_id, decoded_column_id);
         assert_eq!(datums, decoded_datums);
     }
 
