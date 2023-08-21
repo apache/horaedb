@@ -17,7 +17,8 @@ use snafu::ResultExt;
 
 use crate::{
     columnar::{
-        Result, ValuesDecoder, ValuesDecoderImpl, ValuesEncoder, ValuesEncoderImpl, Varint,
+        DecodeContext, Result, ValuesDecoder, ValuesDecoderImpl, ValuesEncoder, ValuesEncoderImpl,
+        Varint,
     },
     varint,
 };
@@ -40,7 +41,7 @@ impl ValuesEncoder<i32> for ValuesEncoderImpl {
 }
 
 impl ValuesDecoder<i32> for ValuesDecoderImpl {
-    fn decode<B, F>(&self, buf: &mut B, mut f: F) -> Result<()>
+    fn decode<B, F>(&self, _ctx: DecodeContext<'_>, buf: &mut B, mut f: F) -> Result<()>
     where
         B: Buf,
         F: FnMut(i32) -> Result<()>,
@@ -78,7 +79,7 @@ impl ValuesEncoder<i64> for ValuesEncoderImpl {
 }
 
 impl ValuesDecoder<i64> for ValuesDecoderImpl {
-    fn decode<B, F>(&self, buf: &mut B, mut f: F) -> Result<()>
+    fn decode<B, F>(&self, _ctx: DecodeContext<'_>, buf: &mut B, mut f: F) -> Result<()>
     where
         B: Buf,
         F: FnMut(i64) -> Result<()>,
@@ -116,7 +117,7 @@ impl ValuesEncoder<u64> for ValuesEncoderImpl {
 }
 
 impl ValuesDecoder<u64> for ValuesDecoderImpl {
-    fn decode<B, F>(&self, buf: &mut B, mut f: F) -> Result<()>
+    fn decode<B, F>(&self, _ctx: DecodeContext<'_>, buf: &mut B, mut f: F) -> Result<()>
     where
         B: Buf,
         F: FnMut(u64) -> Result<()>,

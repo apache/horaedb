@@ -30,4 +30,4 @@ bytes_ext = { workspace = true }
 common_types = { workspace = true, features = ["test"] }
 macros = { workspace = true }
 snafu = { workspace = true }
-
+zstd = { workspace = true }

@@ -1548,6 +1548,7 @@ dependencies = [
  "common_types",
  "macros",
  "snafu 0.6.10",
+ "zstd",
 ]
 
 [[package]]
