@@ -31,6 +31,7 @@ use crate::{
     datafusion_impl::{
         logical_optimizer::type_conversion::TypeConversion, physical_optimizer,
         physical_plan::DataFusionPhysicalPlanImpl, physical_planner_extension::QueryPlannerAdapter,
+        DfContextBuilder,
     },
     error::*,
     physical_planner::{PhysicalPlanPtr, PhysicalPlanner},
@@ -40,75 +41,12 @@ use crate::{
 /// Physical planner based on datafusion
 #[derive(Debug, Clone)]
 pub struct DatafusionPhysicalPlannerImpl {
-    config: Config,
-    runtime_env: Arc<RuntimeEnv>,
+    df_ctx_builder: Arc<DfContextBuilder>,
 }
 
 impl DatafusionPhysicalPlannerImpl {
-    pub fn new(config: Config, runtime_env: Arc<RuntimeEnv>) -> Self {
-        Self {
-            config,
-            runtime_env,
-        }
-    }
-
-    pub fn build_df_session_ctx(&self, config: &Config, ctx: &Context) -> SessionContext {
-        let timeout = ctx
-            .deadline
-            .map(|deadline| deadline.duration_since(Instant::now()).as_millis() as u64);
-        let ceresdb_options = CeresdbOptions {
-            request_id: ctx.request_id.as_u64(),
-            request_timeout: timeout,
-        };
-        let mut df_session_config = SessionConfig::new()
-            .with_default_catalog_and_schema(
-                ctx.default_catalog.clone(),
-                ctx.default_schema.clone(),
-            )
-            .with_target_partitions(config.read_parallelism);
-
-        df_session_config
-            .options_mut()
-            .extensions
-            .insert(ceresdb_options);
-
-        // Using default logcial optimizer, if want to add more custom rule, using
-        // `add_optimizer_rule` to add.
-        let state = SessionState::with_config_rt(df_session_config, self.runtime_env.clone())
-            .with_query_planner(Arc::new(QueryPlannerAdapter));
-
-        // Register analyzer rules
-        let state = Self::register_analyzer_rules(state);
-
-        // Register iox optimizers, used by influxql.
-        let state = influxql_query::logical_optimizer::register_iox_logical_optimizers(state);
-
-        SessionContext::with_state(state)
-    }
-
-    // TODO: this is not used now, bug of RepartitionAdapter is already fixed in
-    // datafusion itself. Remove this code in future.
-    #[allow(dead_code)]
-    fn apply_adapters_for_physical_optimize_rules(
-        default_rules: &[Arc<dyn PhysicalOptimizerRule + Send + Sync>],
-    ) -> Vec<Arc<dyn PhysicalOptimizerRule + Send + Sync>> {
-        let mut new_rules = Vec::with_capacity(default_rules.len());
-        for rule in default_rules {
-            new_rules.push(physical_optimizer::may_adapt_optimize_rule(rule.clone()))
-        }
-
-        new_rules
-    }
-
-    fn register_analyzer_rules(mut state: SessionState) -> SessionState {
-        // Our analyzer has high priority, so first add we custom rules, then add the
-        // default ones.
-        state = state.with_analyzer_rules(vec![Arc::new(TypeConversion)]);
-        for rule in Analyzer::new().rules {
-            state = state.add_analyzer_rule(rule);
-        }
-
-        state
+    pub fn new(df_ctx_builder: Arc<DfContextBuilder>) -> Self {
+        Self { df_ctx_builder }
     }
 }
 
@@ -117,7 +55,7 @@ impl PhysicalPlanner for DatafusionPhysicalPlannerImpl {
     async fn plan(&self, ctx: &Context, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr> {
         // Register catalogs to datafusion execution context.
         let catalogs = CatalogProviderAdapter::new_adapters(logical_plan.tables.clone());
-        let df_ctx = self.build_df_session_ctx(&self.config, ctx);
+        let df_ctx = self.df_ctx_builder.build(ctx);
         for (name, catalog) in catalogs {
             df_ctx.register_catalog(&name, Arc::new(catalog));
         }
@@ -129,7 +67,7 @@ impl PhysicalPlanner for DatafusionPhysicalPlannerImpl {
             .await
             .box_err()
             .context(PhysicalPlannerWithCause { msg: None })?;
-        let physical_plan = DataFusionPhysicalPlanImpl::with_plan(df_ctx.clone(), exec_plan);
+        let physical_plan = DataFusionPhysicalPlanImpl::new(exec_plan);
 
         Ok(Box::new(physical_plan))
     }

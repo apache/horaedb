@@ -42,38 +42,3 @@ pub trait Executor: fmt::Debug + Send + Sync + 'static {
 }
 
 pub type ExecutorRef = Arc<dyn Executor>;
-
-#[derive(Debug, Clone, Default)]
-pub struct ExecutorImpl;
-
-#[async_trait]
-impl Executor for ExecutorImpl {
-    async fn execute(
-        &self,
-        ctx: &Context,
-        physical_plan: PhysicalPlanPtr,
-    ) -> Result<SendableRecordBatchStream> {
-        let begin_instant = Instant::now();
-
-        debug!(
-            "Executor physical optimization finished, request_id:{}, physical_plan: {:?}",
-            ctx.request_id, physical_plan
-        );
-
-        let stream = physical_plan
-            .execute()
-            .box_err()
-            .with_context(|| ExecutorWithCause {
-                msg: Some("failed to execute physical plan".to_string()),
-            })?;
-
-        info!(
-            "Executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
-            ctx.request_id,
-            begin_instant.saturating_elapsed().as_millis(),
-            physical_plan.metrics_to_string()
-        );
-
-        Ok(stream)
-    }
-}

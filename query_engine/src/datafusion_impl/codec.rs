@@ -28,6 +28,7 @@ pub struct DataFusionPhysicalPlanEncoderImpl {
 }
 
 impl DataFusionPhysicalPlanEncoderImpl {
+    // TODO: use `SessionContext` to init it.
     pub fn new(
         runtime_env: Arc<RuntimeEnv>,
         function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
