@@ -1077,6 +1077,11 @@ pub enum DatumView<'a> {
 }
 
 impl<'a> DatumView<'a> {
+    #[inline]
+    pub fn is_null(&self) -> bool {
+        matches!(self, DatumView::Null)
+    }
+
     /// Return the kind of datum
     pub fn kind(&self) -> DatumKind {
         match self {
@@ -1170,13 +1175,6 @@ impl<'a> DatumView<'a> {
         }
     }
 
-    pub fn as_str(&self) -> Option<&str> {
-        match self {
-            DatumView::String(v) => Some(v),
-            _ => None,
-        }
-    }
-
     pub fn to_datum(&self) -> Datum {
         match self {
             DatumView::Null => Datum::Null,
@@ -1196,6 +1194,97 @@ impl<'a> DatumView<'a> {
             DatumView::Boolean(v) => Datum::Boolean(*v),
             DatumView::Date(v) => Datum::Date(*v),
             DatumView::Time(v) => Datum::Time(*v),
+        }
+    }
+
+    pub fn as_i8(&self) -> Option<i8> {
+        match self {
+            DatumView::Int8(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn as_i16(&self) -> Option<i16> {
+        match self {
+            DatumView::Int16(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn as_i32(&self) -> Option<i32> {
+        match self {
+            DatumView::Int32(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            DatumView::Int64(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn as_u8(&self) -> Option<u8> {
+        match self {
+            DatumView::UInt8(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn as_u16(&self) -> Option<u16> {
+        match self {
+            DatumView::UInt16(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn as_u32(&self) -> Option<u32> {
+        match self {
+            DatumView::UInt32(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            DatumView::UInt64(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn as_timestamp(&self) -> Option<Timestamp> {
+        match self {
+            DatumView::Timestamp(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            DatumView::Double(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn as_f32(&self) -> Option<f32> {
+        match self {
+            DatumView::Float(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn into_str(self) -> Option<&'a str> {
+        match self {
+            DatumView::String(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn into_bytes(self) -> Option<&'a [u8]> {
+        match self {
+            DatumView::Varbinary(v) => Some(v),
+            _ => None,
         }
     }
 }
