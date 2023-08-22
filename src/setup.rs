@@ -24,7 +24,8 @@ use analytic_engine::{
 use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
-use df_operator::registry::FunctionRegistryImpl;
+use datafusion::execution::runtime_env::RuntimeConfig as DfRuntimeConfig;
+use df_operator::registry::{FunctionRegistry, FunctionRegistryImpl};
 use interpreters::table_manipulator::{catalog_based, meta_based};
 use log::info;
 use logger::RuntimeLevel;
@@ -35,11 +36,7 @@ use proxy::{
         cluster_based::ClusterBasedProvider, config_based::ConfigBasedProvider,
     },
 };
-use query_engine::{
-    datafusion_impl::physical_planner::DatafusionPhysicalPlannerImpl,
-    executor::{Executor, ExecutorImpl},
-    physical_planner::PhysicalPlanner,
-};
+use query_engine::datafusion_impl::DatafusionQueryEngineImpl;
 use router::{rule_based::ClusterView, ClusterBasedRouter, RuleBasedRouter};
 use server::{
     config::{StaticRouteConfig, StaticTopologyConfig},
@@ -129,9 +126,16 @@ async fn run_server_with_runtimes<T>(
         .expect("Failed to create function registry");
     let function_registry = Arc::new(function_registry);
 
-    // Create query executor
-    let query_executor = ExecutorImpl;
-    let physical_planner = DatafusionPhysicalPlannerImpl::new(config.query_engine.clone());
+    // Create query engine
+    // TODO: use a builder to support different query engine?
+    let query_engine = Box::new(
+        DatafusionQueryEngineImpl::new(
+            config.query_engine.clone(),
+            DfRuntimeConfig::default(),
+            function_registry.clone().to_df_function_registry(),
+        )
+        .expect("Failed to init datafusion query engine"),
+    );
 
     // Config limiter
     let limiter = Limiter::new(config.limiter.clone());
@@ -142,8 +146,7 @@ async fn run_server_with_runtimes<T>(
         .config_content(config_content)
         .engine_runtimes(engine_runtimes.clone())
         .log_runtime(log_runtime.clone())
-        .query_executor(query_executor)
-        .physical_planner(physical_planner)
+        .query_engine(query_engine)
         .function_registry(function_registry)
         .limiter(limiter);
 
@@ -202,13 +205,13 @@ async fn build_table_engine_proxy(engine_builder: EngineBuilder<'_>) -> Arc<Tabl
     })
 }
 
-async fn build_with_meta<Q: Executor + 'static, P: PhysicalPlanner, T: WalsOpener>(
+async fn build_with_meta<T: WalsOpener>(
     config: &Config,
     cluster_config: &ClusterConfig,
-    builder: Builder<Q, P>,
+    builder: Builder,
     runtimes: Arc<EngineRuntimes>,
     wal_opener: T,
-) -> Builder<Q, P> {
+) -> Builder {
     // Build meta related modules.
     let node_meta_info = NodeMetaInfo {
         addr: config.node.addr.clone(),
@@ -274,13 +277,13 @@ async fn build_with_meta<Q: Executor + 'static, P: PhysicalPlanner, T: WalsOpene
         .schema_config_provider(schema_config_provider)
 }
 
-async fn build_without_meta<Q: Executor + 'static, P: PhysicalPlanner, T: WalsOpener>(
+async fn build_without_meta<T: WalsOpener>(
     config: &Config,
     static_route_config: &StaticRouteConfig,
-    builder: Builder<Q, P>,
+    builder: Builder,
     runtimes: Arc<EngineRuntimes>,
     wal_builder: T,
-) -> Builder<Q, P> {
+) -> Builder {
     let opened_wals = wal_builder
         .open_wals(&config.analytic.wal, runtimes.clone())
         .await

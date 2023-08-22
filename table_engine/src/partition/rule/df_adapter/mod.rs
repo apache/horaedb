@@ -74,7 +74,6 @@ impl DfPartitionRuleAdapter {
 
 #[cfg(test)]
 mod tests {
-    use bytes_ext::BytesMut;
     use common_types::{
         column_schema,
         datum::{Datum, DatumKind},
@@ -121,9 +120,8 @@ mod tests {
             Datum::String(StringBytes::from("test")),
             Datum::UInt64(42),
         ];
-        let partition_key_refs = partition_keys.iter().collect::<Vec<_>>();
-        let mut buf = BytesMut::new();
-        let expected = compute_partition(&partition_key_refs, partition_num, &mut buf);
+        let partition_key_refs = partition_keys.iter().map(Datum::as_view);
+        let expected = compute_partition(partition_key_refs, partition_num);
 
         assert_eq!(partitions[0], expected);
 
@@ -239,12 +237,11 @@ mod tests {
 
         // Expected
         let partition_keys_1 = test_datums[0].clone();
-        let partition_key_refs_1 = partition_keys_1.iter().collect::<Vec<_>>();
+        let partition_key_refs_1 = partition_keys_1.iter().map(Datum::as_view);
         let partition_keys_2 = test_datums[1].clone();
-        let partition_key_refs_2 = partition_keys_2.iter().collect::<Vec<_>>();
-        let mut buf = BytesMut::new();
-        let expected_1 = compute_partition(&partition_key_refs_1, partition_num, &mut buf);
-        let expected_2 = compute_partition(&partition_key_refs_2, partition_num, &mut buf);
+        let partition_key_refs_2 = partition_keys_2.iter().map(Datum::as_view);
+        let expected_1 = compute_partition(partition_key_refs_1, partition_num);
+        let expected_2 = compute_partition(partition_key_refs_2, partition_num);
         let expecteds = vec![expected_1, expected_2];
 
         assert_eq!(partitions, expecteds);

@@ -26,17 +26,12 @@ use ceresdbproto::{
 use common_types::{
     datum::DatumKind,
     record_batch::RecordBatch,
-    request_id::RequestId,
     schema::{RecordSchema, TSID_COLUMN},
 };
 use generic_error::BoxError;
 use http::StatusCode;
-use interpreters::interpreter::Output;
+use interpreters::{interpreter::Output, RecordBatchVec};
 use log::info;
-use query_engine::{
-    executor::{Executor as QueryExecutor, RecordBatchVec},
-    physical_planner::PhysicalPlanner,
-};
 use query_frontend::{
     frontend::{Context as SqlContext, Error as FrontendError, Frontend},
     promql::ColumnNames,
@@ -50,7 +45,7 @@ use crate::{
     Context, Proxy,
 };
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
+impl Proxy {
     /// Implement prometheus query in grpc service.
     /// Note: not used in prod now.
     pub async fn handle_prom_query(
@@ -76,7 +71,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         ctx: Context,
         req: PrometheusQueryRequest,
     ) -> Result<PrometheusQueryResponse> {
-        let request_id = RequestId::next_id();
+        let request_id = ctx.request_id;
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let req_ctx = req.context.context(ErrNoCause {

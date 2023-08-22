@@ -22,4 +22,7 @@ define_result!(Error);
 pub enum Error {
     #[snafu(display("Internal error, message:{}, err:{}", msg, source))]
     Internal { msg: String, source: GenericError },
+
+    #[snafu(display("Datafusion error, message:{}, err:{}", msg, source))]
+    Datafusion { msg: String, source: GenericError },
 }

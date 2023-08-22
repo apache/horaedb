@@ -214,6 +214,7 @@ pub fn key_prefix_next(key: &[u8]) -> BytesMut {
 
     buf
 }
+
 #[cfg(test)]
 mod test {
     use common_types::schema::IndexInWriterSchema;

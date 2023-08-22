@@ -13,11 +13,10 @@
 // limitations under the License.
 
 use ceresdbproto::storage::{WriteRequest, WriteResponse};
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 
 use crate::{error, error::build_ok_header, metrics::GRPC_HANDLER_COUNTER_VEC, Context, Proxy};
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
+impl Proxy {
     pub async fn handle_write(&self, ctx: Context, req: WriteRequest) -> WriteResponse {
         self.hotspot_recorder.inc_write_reqs(&req).await;
 

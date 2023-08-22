@@ -23,12 +23,10 @@ use std::time::Instant;
 use ceresdbproto::storage::{
     RequestContext as GrpcRequestContext, WriteRequest as GrpcWriteRequest,
 };
-use common_types::request_id::RequestId;
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, info};
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use query_frontend::{
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,
@@ -47,7 +45,7 @@ use crate::{
     Context, Proxy,
 };
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
+impl Proxy {
     pub async fn handle_influxdb_query(
         &self,
         ctx: RequestContext,
@@ -80,12 +78,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             }),
             table_requests: write_table_requests,
         };
-        let proxy_context = Context {
-            timeout: ctx.timeout,
-            runtime: self.engine_runtimes.write_runtime.clone(),
-            enable_partition_table_access: false,
-            forwarded_from: None,
-        };
+        let proxy_context = Context::new(ctx.timeout, None);
 
         match self
             .handle_write_internal(proxy_context, table_request)
@@ -126,7 +119,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         ctx: RequestContext,
         req: InfluxqlRequest,
     ) -> Result<Output> {
-        let request_id = RequestId::next_id();
+        let request_id = ctx.request_id;
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
 

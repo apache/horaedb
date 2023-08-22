@@ -16,7 +16,7 @@
 /// - Memory: aHash
 /// - Disk: SeaHash
 /// https://github.com/CeresDB/hash-benchmark-rs
-use std::hash::BuildHasher;
+use std::{hash::BuildHasher, io::Read};
 
 pub use ahash;
 use byteorder::{ByteOrder, LittleEndian};
@@ -34,9 +34,9 @@ impl BuildHasher for SeaHasherBuilder {
     }
 }
 
-pub fn hash64(mut bytes: &[u8]) -> u64 {
+pub fn hash64<R: Read>(mut source: R) -> u64 {
     let mut out = [0; 16];
-    murmur3_x64_128(&mut bytes, 0, &mut out);
+    murmur3_x64_128(&mut source, 0, &mut out);
     // in most cases we run on little endian target
     LittleEndian::read_u64(&out[0..8])
 }
@@ -53,13 +53,13 @@ mod test {
 
     #[test]
     fn test_murmur_hash() {
-        assert_eq!(hash64(&[]), 0);
+        assert_eq!(hash64(&(vec![])[..]), 0);
 
         for (key, code) in [
             (b"cse_engine_hash_mod_test_bytes1", 6401327391689448380),
             (b"cse_engine_hash_mod_test_bytes2", 10824100215277000151),
         ] {
-            assert_eq!(code, hash64(key));
+            assert_eq!(code, hash64(key.as_slice()));
         }
     }
 

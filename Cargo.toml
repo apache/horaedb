@@ -61,6 +61,7 @@ members = [
     "components/trace_metric_derive",
     "components/trace_metric_derive_tests",
     "components/tracing_util",
+    "df_engine_extensions",
     "df_operator",
     "integration_tests",
     "integration_tests/sdk/rust",
@@ -93,11 +94,11 @@ arena = { path = "components/arena" }
 async-stream = "0.3.4"
 async-trait = "0.1.72"
 base64 = "0.13"
-bytes = "1.1.0"
+bytes = "1"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-ceresdbproto = "1.0"
+ceresdbproto = "1.0.10"
 codec = { path = "components/codec" }
 chrono = "0.4"
 clap = "3.0"
@@ -108,6 +109,7 @@ common_types = { path = "common_types" }
 datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
 datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
 df_operator = { path = "df_operator" }
+df_engine_extensions = { path = "df_engine_extensions" }
 future_ext = { path = "components/future_ext" }
 etcd-client = "0.10.3"
 env_logger = "0.6"
@@ -186,6 +188,7 @@ catalog = { workspace = true }
 catalog_impls = { workspace = true }
 clap = { workspace = true }
 cluster = { workspace = true }
+datafusion = { workspace = true }
 df_operator = { workspace = true }
 etcd-client = { workspace = true }
 interpreters = { workspace = true }

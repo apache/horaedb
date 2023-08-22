@@ -1246,6 +1246,7 @@ dependencies = [
  "catalog_impls",
  "clap 3.2.23",
  "cluster",
+ "datafusion",
  "df_operator",
  "etcd-client",
  "interpreters",
@@ -1302,9 +1303,9 @@ dependencies = [
 
 [[package]]
 name = "ceresdbproto"
-version = "1.0.9"
+version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25926e49d9d931b3089b26aba55cd5057631db452137f45d0d24f8b5dae8a28c"
+checksum = "ea8a61d72d30452b689e761344d9502bcc5feb2dbd06f08b507b2e164b549aee"
 dependencies = [
  "prost",
  "protoc-bin-vendored",
@@ -2322,6 +2323,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "df_engine_extensions"
+version = "1.2.6-alpha"
+dependencies = [
+ "arrow 43.0.0",
+ "datafusion",
+ "generic_error",
+ "snafu 0.6.10",
+ "table_engine",
+]
+
+[[package]]
 name = "df_operator"
 version = "1.2.6-alpha"
 dependencies = [
@@ -3286,6 +3298,7 @@ dependencies = [
  "datafusion",
  "datafusion-proto",
  "df_operator",
+ "futures 0.3.28",
  "generic_error",
  "hash_ext",
  "log",
@@ -4621,11 +4634,17 @@ dependencies = [
 name = "partition_table_engine"
 version = "1.2.6-alpha"
 dependencies = [
+ "analytic_engine",
+ "arrow 43.0.0",
  "async-trait",
  "common_types",
+ "datafusion",
+ "df_engine_extensions",
+ "df_operator",
  "futures 0.3.28",
  "generic_error",
  "lazy_static",
+ "log",
  "macros",
  "prometheus 0.12.0",
  "snafu 0.6.10",
@@ -5338,6 +5357,7 @@ version = "1.2.6-alpha"
 dependencies = [
  "arrow 43.0.0",
  "async-trait",
+ "bytes_ext",
  "chrono",
  "common_types",
  "datafusion",
@@ -5377,6 +5397,7 @@ dependencies = [
  "lazy_static",
  "log",
  "macros",
+ "partition_table_engine",
  "paste 1.0.12",
  "prom-remote-api",
  "regex",

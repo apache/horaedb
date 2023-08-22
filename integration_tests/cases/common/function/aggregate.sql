@@ -53,6 +53,8 @@ VALUES
 
 SELECT count(`arch`) FROM `02_function_aggregate_table1`;
 
+SELECT distinct(`arch`) FROM `02_function_aggregate_table1` ORDER BY `arch` DESC;
+
 SELECT count(distinct(`arch`)) FROM `02_function_aggregate_table1`;
 
 DROP TABLE `02_function_aggregate_table1`;

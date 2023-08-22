@@ -23,6 +23,7 @@ pub mod config;
 mod status_code;
 
 use std::{
+    fmt,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -165,6 +166,12 @@ impl RemoteEngine for RemoteEngineImpl {
             .await
             .box_err()
             .context(remote::GetTableInfo)
+    }
+}
+
+impl fmt::Debug for RemoteEngineImpl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "RemoteEngineImpl")
     }
 }
 

@@ -20,7 +20,6 @@ use ceresdbproto::storage::{
 };
 use http::StatusCode;
 use log::debug;
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 
 use crate::{
     context::RequestContext,
@@ -32,7 +31,7 @@ use crate::{
 
 pub mod types;
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
+impl Proxy {
     pub async fn handle_opentsdb_put(
         &self,
         ctx: RequestContext,
@@ -56,12 +55,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             }),
             table_requests: write_table_requests,
         };
-        let proxy_context = Context {
-            timeout: ctx.timeout,
-            runtime: self.engine_runtimes.write_runtime.clone(),
-            enable_partition_table_access: false,
-            forwarded_from: None,
-        };
+        let proxy_context = Context::new(ctx.timeout, None);
 
         match self
             .handle_write_internal(proxy_context, table_request)

@@ -16,6 +16,7 @@
 
 use std::time::Duration;
 
+use common_types::request_id::RequestId;
 use macros::define_result;
 use snafu::{ensure, Backtrace, Snafu};
 
@@ -42,15 +43,16 @@ define_result!(Error);
 /// Context for request, may contains
 /// 1. Request context and options
 /// 2. Info from http headers
+#[derive(Debug)]
 pub struct RequestContext {
     /// Catalog of the request
     pub catalog: String,
     /// Schema of request
     pub schema: String,
-    /// Enable partition table_access flag
-    pub enable_partition_table_access: bool,
     /// Request timeout
     pub timeout: Option<Duration>,
+    /// Request id
+    pub request_id: RequestId,
 }
 
 impl RequestContext {
@@ -63,7 +65,6 @@ impl RequestContext {
 pub struct Builder {
     catalog: String,
     schema: String,
-    enable_partition_table_access: bool,
     timeout: Option<Duration>,
 }
 
@@ -75,11 +76,6 @@ impl Builder {
 
     pub fn schema(mut self, schema: String) -> Self {
         self.schema = schema;
-        self
-    }
-
-    pub fn enable_partition_table_access(mut self, enable_partition_table_access: bool) -> Self {
-        self.enable_partition_table_access = enable_partition_table_access;
         self
     }
 
@@ -95,8 +91,8 @@ impl Builder {
         Ok(RequestContext {
             catalog: self.catalog,
             schema: self.schema,
-            enable_partition_table_access: self.enable_partition_table_access,
             timeout: self.timeout,
+            request_id: RequestId::next_id(),
         })
     }
 }

@@ -16,8 +16,9 @@
 
 use async_trait::async_trait;
 use macros::define_result;
-use query_engine::executor::RecordBatchVec;
 use snafu::Snafu;
+
+use crate::RecordBatchVec;
 
 // Make the variant closer to actual error code like invalid arguments.
 #[derive(Debug, Snafu)]

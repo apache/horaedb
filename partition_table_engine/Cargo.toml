@@ -25,11 +25,17 @@ workspace = true
 workspace = true
 
 [dependencies]
+analytic_engine = { workspace = true }
+arrow = { workspace = true }
 async-trait = { workspace = true }
 common_types = { workspace = true }
+datafusion = { workspace = true }
+df_engine_extensions = { workspace = true }
+df_operator = { workspace = true }
 futures = { workspace = true }
 generic_error = { workspace = true }
 lazy_static = { workspace = true }
+log = { workspace = true }
 macros = { workspace = true }
 prometheus = { workspace = true }
 snafu = { workspace = true }

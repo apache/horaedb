@@ -17,9 +17,12 @@
 mod error;
 mod metrics;
 mod partition;
+pub mod scan_builder;
+pub mod test_util;
 
 use std::sync::Arc;
 
+use analytic_engine::TableOptions;
 use async_trait::async_trait;
 use generic_error::BoxError;
 use snafu::{OptionExt, ResultExt};
@@ -67,7 +70,9 @@ impl TableEngine for PartitionTableEngine {
             partition_info: request.partition_info.context(UnexpectedNoCause {
                 msg: "partition info not found",
             })?,
-            options: request.options,
+            options: TableOptions::from_map(&request.options, true)
+                .box_err()
+                .context(Unexpected)?,
             engine_type: request.engine,
         };
         Ok(Arc::new(

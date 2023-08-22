@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::{fmt, sync::Arc};
+
 use async_trait::async_trait;
+use datafusion::execution::TaskContext as DfTaskContext;
 use query_frontend::plan::QueryPlan;
 use table_engine::stream::SendableRecordBatchStream;
 
@@ -25,17 +28,36 @@ use crate::{context::Context, error::*};
 ///   + Create the initial physical plan from the optimized logical.
 ///   + Optimize and get the final physical plan.
 #[async_trait]
-pub trait PhysicalPlanner: Clone + Send + Sync + 'static {
+pub trait PhysicalPlanner: fmt::Debug + Send + Sync + 'static {
     /// Create a physical plan from a logical plan
     async fn plan(&self, ctx: &Context, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr>;
 }
 
-pub trait PhysicalPlan: std::fmt::Debug {
+pub type PhysicalPlannerRef = Arc<dyn PhysicalPlanner>;
+
+pub trait PhysicalPlan: std::fmt::Debug + Send + Sync + 'static {
     /// execute this plan and returns the result
-    fn execute(&self) -> Result<SendableRecordBatchStream>;
+    fn execute(&self, task_ctx: &TaskContext) -> Result<SendableRecordBatchStream>;
 
     /// Convert internal metrics to string.
     fn metrics_to_string(&self) -> String;
 }
 
-pub type PhysicalPlanPtr = Box<dyn PhysicalPlan + Send + Sync>;
+pub type PhysicalPlanPtr = Box<dyn PhysicalPlan>;
+
+/// Task context, just a wrapper of datafusion task context now
+#[derive(Default)]
+pub struct TaskContext {
+    df_task_context: Option<Arc<DfTaskContext>>,
+}
+
+impl TaskContext {
+    pub fn with_datafusion_task_ctx(mut self, df_task_ctx: Arc<DfTaskContext>) -> Self {
+        self.df_task_context = Some(df_task_ctx);
+        self
+    }
+
+    pub fn try_to_datafusion_task_ctx(&self) -> Option<Arc<DfTaskContext>> {
+        self.df_task_context.clone()
+    }
+}

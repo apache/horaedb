@@ -18,6 +18,8 @@
 
 #![feature(string_remove_matches)]
 
+use common_types::record_batch::RecordBatch;
+
 pub mod alter_table;
 pub mod context;
 pub mod create;
@@ -36,3 +38,6 @@ mod show_create;
 
 #[cfg(test)]
 mod tests;
+
+// Use a type alias so that we are able to replace the implementation
+pub type RecordBatchVec = Vec<RecordBatch>;

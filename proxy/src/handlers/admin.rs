@@ -14,8 +14,6 @@
 
 use std::collections::BTreeSet;
 
-use query_engine::physical_planner::PhysicalPlanner;
-
 use crate::{handlers::prelude::*, limiter::BlockRule};
 
 #[derive(Debug, Deserialize)]
@@ -40,9 +38,9 @@ pub struct BlockResponse {
     block_rules: BTreeSet<BlockRule>,
 }
 
-pub async fn handle_block<Q: QueryExecutor + 'static, P: PhysicalPlanner>(
+pub async fn handle_block(
     _ctx: RequestContext,
-    instance: InstanceRef<Q, P>,
+    instance: InstanceRef,
     request: BlockRequest,
 ) -> Result<BlockResponse> {
     let limiter = &instance.limiter;

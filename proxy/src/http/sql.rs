@@ -25,11 +25,8 @@ use common_types::{
 };
 use generic_error::BoxError;
 use http::StatusCode;
-use interpreters::interpreter::Output;
-use query_engine::{
-    executor::{Executor as QueryExecutor, RecordBatchVec},
-    physical_planner::PhysicalPlanner,
-};
+use interpreters::{interpreter::Output, RecordBatchVec};
+use log::error;
 use serde::{
     ser::{SerializeMap, SerializeSeq},
     Deserialize, Serialize,
@@ -43,20 +40,22 @@ use crate::{
     Context, Proxy,
 };
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
+impl Proxy {
     pub async fn handle_http_sql_query(
         &self,
         ctx: &RequestContext,
         req: Request,
     ) -> Result<Output> {
-        let context = Context {
-            timeout: ctx.timeout,
-            runtime: self.engine_runtimes.read_runtime.clone(),
-            enable_partition_table_access: true,
-            forwarded_from: None,
-        };
+        let schema = &ctx.schema;
+        let ctx = Context::new(ctx.timeout, None);
 
-        match self.handle_sql(context, &ctx.schema, &req.query).await? {
+        match self
+            .handle_sql(&ctx, schema, &req.query, true)
+            .await
+            .map_err(|e| {
+                error!("Handle sql query failed, ctx:{ctx:?}, req:{req:?}, err:{e}");
+                e
+            })? {
             SqlResponse::Forwarded(resp) => convert_sql_response_to_output(resp),
             SqlResponse::Local(output) => Ok(output),
         }

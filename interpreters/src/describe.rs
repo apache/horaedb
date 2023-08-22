@@ -21,13 +21,13 @@ use arrow::{
 };
 use async_trait::async_trait;
 use macros::define_result;
-use query_engine::executor::RecordBatchVec;
 use query_frontend::plan::DescribeTablePlan;
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableRef;
 
-use crate::interpreter::{
-    Describe, Interpreter, InterpreterPtr, Output, Result as InterpreterResult,
+use crate::{
+    interpreter::{Describe, Interpreter, InterpreterPtr, Output, Result as InterpreterResult},
+    RecordBatchVec,
 };
 
 #[derive(Debug, Snafu)]

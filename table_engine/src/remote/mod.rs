@@ -16,7 +16,7 @@
 
 pub mod model;
 
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
 use generic_error::GenericError;
@@ -46,7 +46,7 @@ define_result!(Error);
 
 /// Remote table engine interface
 #[async_trait]
-pub trait RemoteEngine: Send + Sync {
+pub trait RemoteEngine: fmt::Debug + Send + Sync {
     /// Read from the remote engine.
     async fn read(&self, request: ReadRequest) -> Result<SendableRecordBatchStream>;
 

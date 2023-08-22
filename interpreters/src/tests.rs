@@ -22,10 +22,9 @@ use catalog::{
 };
 use catalog_impls::table_based::TableBasedManager;
 use common_types::request_id::RequestId;
-use query_engine::{
-    datafusion_impl::physical_planner::DatafusionPhysicalPlannerImpl, executor::ExecutorImpl,
-    Config as QueryConfig,
-};
+use datafusion::execution::runtime_env::RuntimeConfig;
+use df_operator::registry::{FunctionRegistry, FunctionRegistryImpl};
+use query_engine::{datafusion_impl::DatafusionQueryEngineImpl, QueryEngineRef};
 use query_frontend::{
     parser::Parser, plan::Plan, planner::Planner, provider::MetaProvider, tests::MockMetaProvider,
 };
@@ -60,6 +59,7 @@ where
     pub meta_provider: M,
     pub catalog_manager: ManagerRef,
     pub table_manipulator: TableManipulatorRef,
+    pub query_engine: QueryEngineRef,
 }
 
 impl<M> Env<M>
@@ -75,10 +75,10 @@ impl<M> Env<M>
 where
     M: MetaProvider,
 {
-    async fn build_factory(&self) -> Factory<ExecutorImpl, DatafusionPhysicalPlannerImpl> {
+    async fn build_factory(&self) -> Factory {
         Factory::new(
-            ExecutorImpl,
-            DatafusionPhysicalPlannerImpl::new(query_engine::Config::default()),
+            self.query_engine.executor(),
+            self.query_engine.physical_planner(),
             self.catalog_manager.clone(),
             self.engine(),
             self.table_manipulator.clone(),
@@ -229,8 +229,8 @@ where
         let table_operator = TableOperator::new(catalog_manager.clone());
         let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
         let insert_factory = Factory::new(
-            ExecutorImpl,
-            DatafusionPhysicalPlannerImpl::new(QueryConfig::default()),
+            self.query_engine.executor(),
+            self.query_engine.physical_planner(),
             catalog_manager.clone(),
             self.engine(),
             table_manipulator.clone(),
@@ -249,8 +249,8 @@ where
         let select_sql =
             "SELECT key1, key2, field1, field2, field3, field4, field5 from test_missing_columns_table";
         let select_factory = Factory::new(
-            ExecutorImpl,
-            DatafusionPhysicalPlannerImpl::new(QueryConfig::default()),
+            self.query_engine.executor(),
+            self.query_engine.physical_planner(),
             catalog_manager,
             self.engine(),
             table_manipulator,
@@ -370,12 +370,22 @@ async fn test_interpreters<T: EngineBuildContext>(engine_context: T) {
     let catalog_manager = Arc::new(build_catalog_manager(engine.clone()).await);
     let table_operator = TableOperator::new(catalog_manager.clone());
     let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
+    let function_registry = Arc::new(FunctionRegistryImpl::default());
+    let query_engine = Box::new(
+        DatafusionQueryEngineImpl::new(
+            query_engine::Config::default(),
+            RuntimeConfig::default(),
+            function_registry.to_df_function_registry(),
+        )
+        .unwrap(),
+    );
 
     let env = Env {
         engine: test_ctx.clone_engine(),
         meta_provider: mock,
         catalog_manager,
         table_manipulator,
+        query_engine,
     };
 
     env.test_create_table().await;

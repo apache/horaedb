@@ -30,11 +30,8 @@ use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{error, warn};
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use router::endpoint::Endpoint;
 use snafu::ResultExt;
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
@@ -45,9 +42,7 @@ use crate::{
     Context, Proxy,
 };
 
-const STREAM_QUERY_CHANNEL_LEN: usize = 20;
-
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
+impl Proxy {
     pub async fn handle_sql_query(&self, ctx: Context, req: SqlQueryRequest) -> SqlQueryResponse {
         // Incoming query maybe larger than query_failed + query_succeeded for some
         // corner case, like lots of time-consuming queries come in at the same time and
@@ -55,10 +50,11 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         GRPC_HANDLER_COUNTER_VEC.incoming_query.inc();
 
         self.hotspot_recorder.inc_sql_query_reqs(&req).await;
-        match self.handle_sql_query_internal(ctx, req).await {
+        match self.handle_sql_query_internal(&ctx, &req).await {
             Err(e) => {
+                error!("Failed to handle sql query, ctx:{ctx:?}, err:{e}");
+
                 GRPC_HANDLER_COUNTER_VEC.query_failed.inc();
-                error!("Failed to handle sql query, err:{e}");
                 SqlQueryResponse {
                     header: Some(error::build_err_header(e)),
                     ..Default::default()
@@ -73,8 +69,8 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
 
     async fn handle_sql_query_internal(
         &self,
-        ctx: Context,
-        req: SqlQueryRequest,
+        ctx: &Context,
+        req: &SqlQueryRequest,
     ) -> Result<SqlQueryResponse> {
         if req.context.is_none() {
             return ErrNoCause {
@@ -86,7 +82,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
 
         let req_context = req.context.as_ref().unwrap();
         let schema = &req_context.database;
-        match self.handle_sql(ctx, schema, &req.sql).await? {
+        match self.handle_sql(ctx, schema, &req.sql, false).await? {
             SqlResponse::Forwarded(resp) => Ok(resp),
             SqlResponse::Local(output) => convert_output(&output, self.resp_compress_min_length),
         }
@@ -99,7 +95,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     ) -> BoxStream<'static, SqlQueryResponse> {
         GRPC_HANDLER_COUNTER_VEC.stream_query.inc();
         self.hotspot_recorder.inc_sql_query_reqs(&req).await;
-        match self.clone().handle_stream_query_internal(ctx, req).await {
+        match self.clone().handle_stream_query_internal(&ctx, &req).await {
             Err(e) => stream::once(async {
                 error!("Failed to handle stream sql query, err:{e}");
                 GRPC_HANDLER_COUNTER_VEC.stream_query_failed.inc();
@@ -118,8 +114,8 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
 
     async fn handle_stream_query_internal(
         self: Arc<Self>,
-        ctx: Context,
-        req: SqlQueryRequest,
+        ctx: &Context,
+        req: &SqlQueryRequest,
     ) -> Result<BoxStream<'static, SqlQueryResponse>> {
         if req.context.is_none() {
             return ErrNoCause {
@@ -130,12 +126,8 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         }
 
         let req_context = req.context.as_ref().unwrap();
-        let schema = req_context.database.clone();
-        let req = match self
-            .clone()
-            .maybe_forward_stream_sql_query(ctx.clone(), &req)
-            .await
-        {
+        let schema = &req_context.database;
+        let req = match self.clone().maybe_forward_stream_sql_query(ctx, req).await {
             Some(resp) => match resp {
                 ForwardResult::Forwarded(resp) => return resp,
                 ForwardResult::Local => req,
@@ -143,53 +135,47 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             None => req,
         };
 
-        let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
-        let runtime = ctx.runtime.clone();
         let resp_compress_min_length = self.resp_compress_min_length;
         let output = self
             .as_ref()
-            .fetch_sql_query_output(ctx, &schema, &req.sql)
+            .fetch_sql_query_output(ctx, schema, &req.sql, false)
             .await?;
-        runtime.spawn(async move {
-            match output {
-                Output::AffectedRows(rows) => {
-                    let resp =
-                        QueryResponseBuilder::with_ok_header().build_with_affected_rows(rows);
-                    if tx.send(resp).await.is_err() {
-                        error!("Failed to send affected rows resp in stream sql query");
-                    }
-                    GRPC_HANDLER_COUNTER_VEC
-                        .query_affected_row
-                        .inc_by(rows as u64);
-                }
-                Output::Records(batches) => {
-                    let mut num_rows = 0;
-                    for batch in &batches {
-                        let resp = {
-                            let mut writer = QueryResponseWriter::new(resp_compress_min_length);
-                            writer.write(batch)?;
-                            writer.finish()
-                        }?;
 
-                        if tx.send(resp).await.is_err() {
-                            error!("Failed to send record batches resp in stream sql query");
-                            break;
-                        }
-                        num_rows += batch.num_rows();
-                    }
-                    GRPC_HANDLER_COUNTER_VEC
-                        .query_succeeded_row
-                        .inc_by(num_rows as u64);
-                }
+        match output {
+            Output::AffectedRows(rows) => {
+                GRPC_HANDLER_COUNTER_VEC
+                    .query_affected_row
+                    .inc_by(rows as u64);
+
+                let resp = QueryResponseBuilder::with_ok_header().build_with_affected_rows(rows);
+
+                Ok(Box::pin(stream::once(async { resp })))
             }
-            Ok::<(), Error>(())
-        });
-        Ok(ReceiverStream::new(rx).boxed())
+            Output::Records(batches) => {
+                let mut num_rows = 0;
+                let mut results = Vec::with_capacity(batches.len());
+                for batch in &batches {
+                    let resp = {
+                        let mut writer = QueryResponseWriter::new(resp_compress_min_length);
+                        writer.write(batch)?;
+                        writer.finish()
+                    }?;
+                    results.push(resp);
+                    num_rows += batch.num_rows();
+                }
+
+                GRPC_HANDLER_COUNTER_VEC
+                    .query_succeeded_row
+                    .inc_by(num_rows as u64);
+
+                Ok(Box::pin(stream::iter(results)))
+            }
+        }
     }
 
     async fn maybe_forward_stream_sql_query(
         self: Arc<Self>,
-        ctx: Context,
+        ctx: &Context,
         req: &SqlQueryRequest,
     ) -> Option<ForwardResult<BoxStream<'static, SqlQueryResponse>, Error>> {
         if req.tables.len() != 1 {
@@ -203,7 +189,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             schema: req_ctx.database.clone(),
             table: req.tables[0].clone(),
             req: req.clone().into_request(),
-            forwarded_from: ctx.forwarded_from,
+            forwarded_from: ctx.forwarded_from.clone(),
         };
         let do_query = |mut client: StorageServiceClient<Channel>,
                         request: tonic::Request<SqlQueryRequest>,

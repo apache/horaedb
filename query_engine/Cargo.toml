@@ -28,6 +28,7 @@ workspace = true
 # In alphabetical order
 arrow = { workspace = true }
 async-trait = { workspace = true }
+bytes_ext = { workspace = true }
 chrono = { workspace = true }
 common_types = { workspace = true }
 datafusion = { workspace = true }

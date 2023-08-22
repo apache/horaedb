@@ -31,21 +31,16 @@ use ceresdbproto::storage::{
 };
 use common_types::{
     datum::DatumKind,
-    request_id::RequestId,
     schema::{RecordSchema, TSID_COLUMN},
 };
 use generic_error::BoxError;
 use http::StatusCode;
-use interpreters::interpreter::Output;
-use log::{debug, error};
+use interpreters::{interpreter::Output, RecordBatchVec};
+use log::{error, info};
 use prom_remote_api::types::{
     Label, LabelMatcher, Query, QueryResult, RemoteStorage, Sample, TimeSeries, WriteRequest,
 };
 use prost::Message;
-use query_engine::{
-    executor::{Executor as QueryExecutor, RecordBatchVec},
-    physical_planner::PhysicalPlanner,
-};
 use query_frontend::{
     frontend::{Context, Frontend},
     promql::{RemoteQueryPlan, DEFAULT_FIELD_COLUMN, NAME_LABEL},
@@ -65,7 +60,7 @@ use crate::{
 
 impl reject::Reject for Error {}
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
+impl Proxy {
     /// Handle write samples to remote storage with remote storage protocol.
     async fn handle_prom_remote_write(&self, ctx: RequestContext, req: WriteRequest) -> Result<()> {
         let write_table_requests = convert_write_request(req)?;
@@ -85,12 +80,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             }),
             table_requests: write_table_requests,
         };
-        let ctx = ProxyContext {
-            runtime: self.engine_runtimes.write_runtime.clone(),
-            timeout: ctx.timeout,
-            enable_partition_table_access: false,
-            forwarded_from: None,
-        };
+        let ctx = ProxyContext::new(ctx.timeout, None);
 
         match self.handle_write_internal(ctx, table_request).await {
             Ok(result) => {
@@ -127,15 +117,14 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         metric: String,
         query: Query,
     ) -> Result<QueryResult> {
+        let request_id = ctx.request_id;
+        let begin_instant = Instant::now();
+        let deadline = ctx.timeout.map(|t| begin_instant + t);
+        info!("Handle prom remote query begin, ctx:{ctx:?}, metric:{metric}, request:{query:?}");
+
         // Open partition table if needed.
         self.maybe_open_partition_table_if_not_exist(&ctx.catalog, &ctx.schema, &metric)
             .await?;
-
-        let request_id = RequestId::next_id();
-        let begin_instant = Instant::now();
-        let deadline = ctx.timeout.map(|t| begin_instant + t);
-
-        debug!("Query handler try to process request, request_id:{request_id}, request:{query:?}");
 
         let provider = CatalogMetaProvider {
             manager: self.instance.catalog_manager.clone(),
@@ -171,7 +160,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             .await?;
 
         let cost = begin_instant.saturating_elapsed().as_millis();
-        debug!("Query handler finished, request_id:{request_id}, cost:{cost}ms, query:{query:?}");
+        info!("Handle prom remote query successfully, ctx:{ctx:?}, cost:{cost}ms");
 
         convert_query_result(metric, timestamp_col_name, field_col_name, output)
     }
@@ -213,7 +202,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
 }
 
 #[async_trait]
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> RemoteStorage for Proxy<Q, P> {
+impl RemoteStorage for Proxy {
     type Context = RequestContext;
     type Err = Error;
 

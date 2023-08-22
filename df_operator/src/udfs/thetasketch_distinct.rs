@@ -127,7 +127,7 @@ impl HllDistinct {
         for row_idx in 0..num_rows {
             let datum = merged_col.datum_view(row_idx);
             // Try to deserialize the hll.
-            let hll_string = datum.as_str().context(StateNotString)?;
+            let hll_string = datum.into_str().context(StateNotString)?;
             let hll_bytes = base64::decode(hll_string).context(DecodeBase64)?;
             // Try to deserialize the hll.
             let hll = bincode::deserialize(&hll_bytes).context(DecodeHll)?;

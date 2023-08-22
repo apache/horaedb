@@ -121,11 +121,9 @@ impl Client {
 
         // Write to remote.
         let table_ident = request.table.clone();
-        let request_pb = WriteRequest::convert_to_pb(request, self.compression)
-            .box_err()
-            .context(Convert {
-                msg: "Failed to convert WriteRequest to pb",
-            })?;
+        let request_pb = request.convert_into_pb().box_err().context(Convert {
+            msg: "Failed to convert WriteRequest to pb",
+        })?;
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
 
         let result = rpc_client
@@ -184,16 +182,10 @@ impl Client {
                 request,
                 channel,
             } = context;
-            let compress_options = self.compression;
+            let batch_request_pb = request.convert_into_pb().box_err().context(Convert {
+                msg: "failed to convert request to pb",
+            })?;
             let handle = self.io_runtime.spawn(async move {
-                let batch_request_pb =
-                    match WriteBatchRequest::convert_write_batch_to_pb(request, compress_options)
-                        .box_err()
-                    {
-                        Ok(pb) => pb,
-                        Err(e) => return Err(e),
-                    };
-
                 let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
                 let rpc_result = rpc_client
                     .write_batch(Request::new(batch_request_pb))

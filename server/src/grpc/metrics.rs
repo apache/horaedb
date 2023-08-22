@@ -16,8 +16,8 @@
 
 use lazy_static::lazy_static;
 use prometheus::{
-    exponential_buckets, register_histogram_vec, register_int_counter_vec, HistogramVec,
-    IntCounterVec,
+    exponential_buckets, register_histogram, register_histogram_vec, register_int_counter_vec,
+    Histogram, HistogramVec, IntCounterVec,
 };
 use prometheus_static_metric::{auto_flush_from, make_auto_flush_static_metric};
 
@@ -102,6 +102,12 @@ lazy_static! {
             &["type"]
         )
         .unwrap();
+    pub static ref REMOTE_ENGINE_WRITE_BATCH_NUM_ROWS_HISTOGRAM: Histogram = register_histogram!(
+        "remote_engine_write_batch_num_rows",
+        "Bucketed histogram of grpc server handler",
+        vec![1.0, 10.0, 50.0, 100.0, 500.0, 1000.0, 2000.0]
+    )
+    .unwrap();
     pub static ref META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC_GLOBAL: HistogramVec =
         register_histogram_vec!(
             "meta_event_grpc_handler_duration",

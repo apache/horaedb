@@ -37,7 +37,6 @@ use proxy::{
     opentsdb::types::{PutParams, PutRequest},
     Proxy,
 };
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use router::endpoint::Endpoint;
 use runtime::{Runtime, RuntimeRef};
 use serde::Serialize;
@@ -143,10 +142,10 @@ impl reject::Reject for Error {}
 ///
 /// Endpoints beginning with /debug are for internal use, and may subject to
 /// breaking changes.
-pub struct Service<Q, P> {
+pub struct Service {
     // In cluster mode, cluster is valid, while in stand-alone mode, cluster is None
     cluster: Option<ClusterRef>,
-    proxy: Arc<Proxy<Q, P>>,
+    proxy: Arc<Proxy>,
     engine_runtimes: Arc<EngineRuntimes>,
     log_runtime: Arc<RuntimeLevel>,
     profiler: Arc<Profiler>,
@@ -157,7 +156,7 @@ pub struct Service<Q, P> {
     opened_wals: OpenedWals,
 }
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
+impl Service {
     pub async fn start(&mut self) -> Result<()> {
         let ip_addr: IpAddr = self
             .config
@@ -195,7 +194,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
     }
 }
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
+impl Service {
     fn routes(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
@@ -279,7 +278,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
             .and(self.with_proxy())
             .and(self.with_read_runtime())
             .and_then(
-                |req, ctx, proxy: Arc<Proxy<Q, P>>, runtime: RuntimeRef| async move {
+                |req, ctx, proxy: Arc<Proxy>, runtime: RuntimeRef| async move {
                     let result = runtime
                         .spawn(async move {
                             proxy
@@ -312,7 +311,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
             .and(warp::get())
             .and(self.with_context())
             .and(self.with_proxy())
-            .and_then(|table: String, ctx, proxy: Arc<Proxy<Q, P>>| async move {
+            .and_then(|table: String, ctx, proxy: Arc<Proxy>| async move {
                 let result = proxy
                     .handle_http_route(&ctx, table)
                     .await
@@ -345,7 +344,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
             .and(warp::query::<WriteParams>())
             .and(warp::body::bytes())
             .and(self.with_proxy())
-            .and_then(|ctx, params, lines, proxy: Arc<Proxy<Q, P>>| async move {
+            .and_then(|ctx, params, lines, proxy: Arc<Proxy>| async move {
                 let request = WriteRequest::new(lines, params);
                 let result = proxy.handle_influxdb_write(ctx, request).await;
                 match result {
@@ -363,21 +362,19 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
             .and(warp::query::<InfluxqlParams>())
             .and(warp::body::form::<HashMap<String, String>>())
             .and(self.with_proxy())
-            .and_then(
-                |method, ctx, params, body, proxy: Arc<Proxy<Q, P>>| async move {
-                    let request =
-                        InfluxqlRequest::try_new(method, body, params).map_err(reject::custom)?;
-                    let result = proxy
-                        .handle_influxdb_query(ctx, request)
-                        .await
-                        .box_err()
-                        .context(HandleRequest);
-                    match result {
-                        Ok(res) => Ok(reply::json(&res)),
-                        Err(e) => Err(reject::custom(e)),
-                    }
-                },
-            );
+            .and_then(|method, ctx, params, body, proxy: Arc<Proxy>| async move {
+                let request =
+                    InfluxqlRequest::try_new(method, body, params).map_err(reject::custom)?;
+                let result = proxy
+                    .handle_influxdb_query(ctx, request)
+                    .await
+                    .box_err()
+                    .context(HandleRequest);
+                match result {
+                    Ok(res) => Ok(reply::json(&res)),
+                    Err(e) => Err(reject::custom(e)),
+                }
+            });
 
         warp::path!("influxdb" / "v1" / ..).and(write_api.or(query_api))
     }
@@ -395,7 +392,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
             .and(warp::query::<PutParams>())
             .and(warp::body::bytes())
             .and(self.with_proxy())
-            .and_then(|ctx, params, points, proxy: Arc<Proxy<Q, P>>| async move {
+            .and_then(|ctx, params, points, proxy: Arc<Proxy>| async move {
                 let request = PutRequest::new(points, params);
                 let result = proxy.handle_opentsdb_put(ctx, request).await;
                 match result {
@@ -414,7 +411,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
         warp::path!("debug" / "flush_memtable")
             .and(warp::post())
             .and(self.with_instance())
-            .and_then(|instance: InstanceRef<Q, P>| async move {
+            .and_then(|instance: InstanceRef| async move {
                 let get_all_tables = || {
                     let mut tables = Vec::new();
                     for catalog in instance
@@ -638,7 +635,6 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
                             .catalog(catalog.unwrap_or(default_catalog))
                             .schema(schema)
                             .timeout(timeout)
-                            .enable_partition_table_access(true)
                             .build()
                             .context(CreateContext)
                             .map_err(reject::custom)
@@ -652,7 +648,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
         warp::any().map(move || profiler.clone())
     }
 
-    fn with_proxy(&self) -> impl Filter<Extract = (Arc<Proxy<Q, P>>,), Error = Infallible> + Clone {
+    fn with_proxy(&self) -> impl Filter<Extract = (Arc<Proxy>,), Error = Infallible> + Clone {
         let proxy = self.proxy.clone();
         warp::any().map(move || proxy.clone())
     }
@@ -669,9 +665,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
         warp::any().map(move || runtime.clone())
     }
 
-    fn with_instance(
-        &self,
-    ) -> impl Filter<Extract = (InstanceRef<Q, P>,), Error = Infallible> + Clone {
+    fn with_instance(&self) -> impl Filter<Extract = (InstanceRef,), Error = Infallible> + Clone {
         let instance = self.proxy.instance();
         warp::any().map(move || instance.clone())
     }
@@ -697,17 +691,17 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Service<Q, P> {
 }
 
 /// Service builder
-pub struct Builder<Q, P> {
+pub struct Builder {
     config: HttpConfig,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
     config_content: Option<String>,
     cluster: Option<ClusterRef>,
-    proxy: Option<Arc<Proxy<Q, P>>>,
+    proxy: Option<Arc<Proxy>>,
     opened_wals: Option<OpenedWals>,
 }
 
-impl<Q, P> Builder<Q, P> {
+impl Builder {
     pub fn new(config: HttpConfig) -> Self {
         Self {
             config,
@@ -740,7 +734,7 @@ impl<Q, P> Builder<Q, P> {
         self
     }
 
-    pub fn proxy(mut self, proxy: Arc<Proxy<Q, P>>) -> Self {
+    pub fn proxy(mut self, proxy: Arc<Proxy>) -> Self {
         self.proxy = Some(proxy);
         self
     }
@@ -751,9 +745,9 @@ impl<Q, P> Builder<Q, P> {
     }
 }
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Builder<Q, P> {
+impl Builder {
     /// Build and start the service
-    pub fn build(self) -> Result<Service<Q, P>> {
+    pub fn build(self) -> Result<Service> {
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let config_content = self.config_content.context(MissingInstance)?;

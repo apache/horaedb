@@ -69,10 +69,8 @@ use interpreters::{
     interpreter::{InterpreterPtr, Output},
 };
 use log::{error, info};
-use query_engine::{executor::Executor as QueryExecutor, physical_planner::PhysicalPlanner};
 use query_frontend::plan::Plan;
 use router::{endpoint::Endpoint, Router};
-use runtime::Runtime;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{EngineRuntimes, TableState},
@@ -94,10 +92,10 @@ use crate::{
 // Because the clock may have errors, choose 1 hour as the error buffer
 const QUERY_EXPIRED_BUFFER: Duration = Duration::from_secs(60 * 60);
 
-pub struct Proxy<Q, P> {
+pub struct Proxy {
     router: Arc<dyn Router + Send + Sync>,
     forwarder: ForwarderRef,
-    instance: InstanceRef<Q, P>,
+    instance: InstanceRef,
     resp_compress_min_length: usize,
     auto_create_table: bool,
     schema_config_provider: SchemaConfigProviderRef,
@@ -106,11 +104,11 @@ pub struct Proxy<Q, P> {
     cluster_with_meta: bool,
 }
 
-impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
+impl Proxy {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         router: Arc<dyn Router + Send + Sync>,
-        instance: InstanceRef<Q, P>,
+        instance: InstanceRef,
         forward_config: forward::Config,
         local_endpoint: Endpoint,
         resp_compress_min_length: usize,
@@ -139,7 +137,7 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
         }
     }
 
-    pub fn instance(&self) -> InstanceRef<Q, P> {
+    pub fn instance(&self) -> InstanceRef {
         self.instance.clone()
     }
 
@@ -513,8 +511,8 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
             .enable_partition_table_access(enable_partition_table_access)
             .build();
         let interpreter_factory = Factory::new(
-            self.instance.query_executor.clone(),
-            self.instance.physical_planner.clone(),
+            self.instance.query_engine.executor(),
+            self.instance.query_engine.physical_planner(),
             self.instance.catalog_manager.clone(),
             self.instance.table_engine.clone(),
             self.instance.table_manipulator.clone(),
@@ -554,10 +552,19 @@ impl<Q: QueryExecutor + 'static, P: PhysicalPlanner> Proxy<Q, P> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Context {
-    pub timeout: Option<Duration>,
-    pub runtime: Arc<Runtime>,
-    pub enable_partition_table_access: bool,
-    pub forwarded_from: Option<String>,
+    request_id: RequestId,
+    timeout: Option<Duration>,
+    forwarded_from: Option<String>,
+}
+
+impl Context {
+    pub fn new(timeout: Option<Duration>, forwarded_from: Option<String>) -> Self {
+        Self {
+            request_id: RequestId::next_id(),
+            timeout,
+            forwarded_from,
+        }
+    }
 }

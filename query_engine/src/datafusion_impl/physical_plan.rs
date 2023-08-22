@@ -20,31 +20,25 @@ use std::{
 };
 
 use async_trait::async_trait;
-use datafusion::{
-    execution::context::TaskContext,
-    physical_plan::{
-        coalesce_partitions::CoalescePartitionsExec, display::DisplayableExecutionPlan,
-        ExecutionPlan,
-    },
-    prelude::SessionContext,
+use datafusion::physical_plan::{
+    coalesce_partitions::CoalescePartitionsExec, display::DisplayableExecutionPlan, ExecutionPlan,
 };
 use generic_error::BoxError;
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use table_engine::stream::{FromDfStream, SendableRecordBatchStream};
 
-use crate::{error::*, physical_planner::PhysicalPlan};
+use crate::{
+    error::*,
+    physical_planner::{PhysicalPlan, TaskContext},
+};
 
-/// Datafusion physical plan adapter
-///
-/// Because we need to
 pub struct DataFusionPhysicalPlanImpl {
-    ctx: SessionContext,
     plan: Arc<dyn ExecutionPlan>,
 }
 
 impl DataFusionPhysicalPlanImpl {
-    pub fn with_plan(ctx: SessionContext, plan: Arc<dyn ExecutionPlan>) -> Self {
-        Self { ctx, plan }
+    pub fn new(plan: Arc<dyn ExecutionPlan>) -> Self {
+        Self { plan }
     }
 
     pub fn as_df_physical_plan(&self) -> Arc<dyn ExecutionPlan> {
@@ -62,12 +56,17 @@ impl Debug for DataFusionPhysicalPlanImpl {
 
 #[async_trait]
 impl PhysicalPlan for DataFusionPhysicalPlanImpl {
-    fn execute(&self) -> Result<SendableRecordBatchStream> {
-        let task_context = Arc::new(TaskContext::from(&self.ctx));
+    fn execute(&self, task_ctx: &TaskContext) -> Result<SendableRecordBatchStream> {
+        let df_task_ctx =
+            task_ctx
+                .try_to_datafusion_task_ctx()
+                .with_context(|| PhysicalPlanNoCause {
+                    msg: Some("datafusion task ctx not found".to_string()),
+                })?;
         let partition_count = self.plan.output_partitioning().partition_count();
         let df_stream = if partition_count <= 1 {
             self.plan
-                .execute(0, task_context)
+                .execute(0, df_task_ctx)
                 .box_err()
                 .context(PhysicalPlanWithCause {
                     msg: Some(format!("partition_count:{partition_count}")),
@@ -77,7 +76,7 @@ impl PhysicalPlan for DataFusionPhysicalPlanImpl {
             let plan = CoalescePartitionsExec::new(self.plan.clone());
             // MergeExec must produce a single partition
             assert_eq!(1, plan.output_partitioning().partition_count());
-            plan.execute(0, task_context)
+            plan.execute(0, df_task_ctx)
                 .box_err()
                 .context(PhysicalPlanWithCause {
                     msg: Some(format!("partition_count:{partition_count}")),
