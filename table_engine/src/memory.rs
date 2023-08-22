@@ -41,7 +41,7 @@ use crate::{
     },
     remote::{
         self,
-        model::{self, GetTableInfoRequest, WriteBatchResult},
+        model::{self, ExecutePlanRequest, GetTableInfoRequest, WriteBatchResult},
         RemoteEngine,
     },
     stream::{
@@ -358,6 +358,13 @@ impl RemoteEngine for MockRemoteEngine {
         &self,
         _request: GetTableInfoRequest,
     ) -> remote::Result<model::TableInfo> {
+        todo!()
+    }
+
+    async fn execute_physical_plan(
+        &self,
+        _request: ExecutePlanRequest,
+    ) -> remote::Result<SendableRecordBatchStream> {
         todo!()
     }
 }
