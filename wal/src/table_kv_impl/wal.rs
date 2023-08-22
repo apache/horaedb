@@ -172,6 +172,8 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
         ctx: &manager::WriteContext,
         batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
+        manager::collect_write_log_metrics(batch);
+
         self.namespace
             .write_log(ctx, batch)
             .await
