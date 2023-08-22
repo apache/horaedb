@@ -1,4 +1,18 @@
-use crate::bits::{Bit, Error, Read};
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::bits::{Bit, Error};
 
 /// BufferedReader
 ///
@@ -25,8 +39,8 @@ impl<'a> BufferedReader<'a> {
     }
 }
 
-impl<'a> Read for BufferedReader<'a> {
-    fn read_bit(&mut self) -> Result<Bit, Error> {
+impl<'a> BufferedReader<'a> {
+    pub fn read_bit(&mut self) -> Result<Bit, Error> {
         if self.pos == 8 {
             self.index += 1;
             self.pos = 0;
@@ -45,7 +59,7 @@ impl<'a> Read for BufferedReader<'a> {
         Ok(bit)
     }
 
-    fn read_byte(&mut self) -> Result<u8, Error> {
+    pub fn read_byte(&mut self) -> Result<u8, Error> {
         if self.pos == 0 {
             self.pos += 8;
             return self.get_byte();
@@ -71,7 +85,7 @@ impl<'a> Read for BufferedReader<'a> {
 
     // example: read_bits(4): read data:u64 0000 0000 0000 000f
     // datastore in low position
-    fn read_bits(&mut self, mut num: u32) -> Result<u64, Error> {
+    pub fn read_bits(&mut self, mut num: u32) -> Result<u64, Error> {
         // can't read more than 64 bits into a u64
         if num > 64 {
             num = 64;
@@ -94,7 +108,8 @@ impl<'a> Read for BufferedReader<'a> {
         Ok(bits)
     }
 
-    fn peak_bits(&mut self, num: u32) -> Result<u64, Error> {
+    #[allow(dead_code)]
+    pub fn peak_bits(&mut self, num: u32) -> Result<u64, Error> {
         // save the current index and pos so we can reset them after calling `read_bits`
         let index = self.index;
         let pos = self.pos;
@@ -110,7 +125,7 @@ impl<'a> Read for BufferedReader<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::bits::{Bit, BufferedReader, Error, Read};
+    use crate::bits::{Bit, BufferedReader, Error};
 
     #[test]
     fn read_bit() {

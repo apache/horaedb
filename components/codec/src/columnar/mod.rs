@@ -88,6 +88,9 @@ pub enum Error {
 
     #[snafu(display("Bytes is not enough, length:{len}.\nBacktrace:\n{backtrace}"))]
     NotEnoughBytes { len: usize, backtrace: Backtrace },
+
+    #[snafu(display("Failed to read encoded data, err:{source}"))]
+    ReadEncode { source: crate::bits::Error },
 }
 
 define_result!(Error);
@@ -744,5 +747,41 @@ mod tests {
             .collect();
 
         check_encode_end_decode(10, datums, DatumKind::String);
+    }
+
+    #[test]
+    fn test_timestamp() {
+        let one_timestamp = vec![Datum::Timestamp(Timestamp::new(1000i64))];
+        check_encode_end_decode(10, one_timestamp, DatumKind::Timestamp);
+
+        let two_timestamp = vec![
+            Datum::Timestamp(Timestamp::new(1000i64)),
+            Datum::Timestamp(Timestamp::new(1050i64)),
+        ];
+        check_encode_end_decode(10, two_timestamp, DatumKind::Timestamp);
+
+        let sample_timestamp = vec![
+            Datum::Timestamp(Timestamp::new(1000i64)),
+            Datum::Timestamp(Timestamp::new(1010i64)),
+            Datum::Timestamp(Timestamp::new(1020i64)),
+            Datum::Timestamp(Timestamp::new(1090i64)),
+        ];
+        check_encode_end_decode(10, sample_timestamp, DatumKind::Timestamp);
+
+        let decreasing_timestamp = vec![
+            Datum::Timestamp(Timestamp::new(1000i64)),
+            Datum::Timestamp(Timestamp::new(950i64)),
+            Datum::Timestamp(Timestamp::new(900i64)),
+        ];
+        check_encode_end_decode(10, decreasing_timestamp, DatumKind::Timestamp);
+
+        let complex_timestamp = vec![
+            Datum::Timestamp(Timestamp::new(1692845701000)),
+            Datum::Timestamp(Timestamp::new(1692845702000)),
+            Datum::Timestamp(Timestamp::new(1692845730000)),
+            Datum::Timestamp(Timestamp::new(1692845760000)),
+            Datum::Timestamp(Timestamp::new(1692845860000)),
+        ];
+        check_encode_end_decode(10, complex_timestamp, DatumKind::Timestamp);
     }
 }

@@ -1,3 +1,17 @@
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use std::{error, fmt};
 
 /// Bit
@@ -41,44 +55,6 @@ impl error::Error for Error {
             Error::Eof => "Encountered the end of the stream",
         }
     }
-}
-
-/// Read
-///
-/// Read is a trait that encapsulates the functionality required to read from a
-/// stream of bytes.
-pub trait Read {
-    /// Read a single bit from the underlying stream.
-    fn read_bit(&mut self) -> Result<Bit, Error>;
-
-    /// Read a single byte from the underlying stream.
-    fn read_byte(&mut self) -> Result<u8, Error>;
-
-    /// Read `num` bits from the underlying stream.
-    fn read_bits(&mut self, num: u32) -> Result<u64, Error>;
-
-    /// Get the next `num` bits, but do not update place in stream.
-    fn peak_bits(&mut self, num: u32) -> Result<u64, Error>;
-}
-
-/// Write
-///
-/// Write is a trait that encapsulates the functionality required to write a
-/// stream of bytes.
-pub trait Write {
-    // Write a single bit to the underlying stream.
-    fn write_bit(&mut self, bit: Bit);
-
-    // Write a single byte to the underlying stream.
-    fn write_byte(&mut self, byte: u8);
-
-    // Write the bottom `num` bits of `bits` to the underlying stream.
-    fn write_bits(&mut self, bits: u64, num: u32);
-
-    // Close the underlying stream and return a pointer to the array of bytes.
-    fn close(self) -> Box<[u8]>;
-
-    fn len(&self) -> usize;
 }
 
 pub mod buffered_write;
