@@ -17,6 +17,7 @@
 // TODO(yingwen): Buf use generic type to avoid cost of vtable call per
 // encode/decode
 
+mod bits;
 pub mod columnar;
 pub mod compact;
 mod consts;
