@@ -24,7 +24,6 @@ use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 
-pub use self::metadata_reader::CustomMetadataReaderBuilder;
 use crate::{
     space::SpaceId,
     sst::{
@@ -51,7 +50,7 @@ pub enum Error {
     KvMetaDataNotFound { backtrace: Backtrace },
 
     #[snafu(display(
-        "Key value meta path version in parquet is empty\nBacktrace\n:{}",
+        "Key value meta version in parquet is empty\nBacktrace\n:{}",
         backtrace
     ))]
     KvMetaVersionEmpty { backtrace: Backtrace },
@@ -59,13 +58,9 @@ pub enum Error {
     #[snafu(display("Key value meta path in parquet is empty\nBacktrace\n:{}", backtrace))]
     KvMetaPathEmpty { backtrace: Backtrace },
 
-    #[snafu(display(
-        "Mata path version {} is wrong\nBacktrace\n:{}",
-        path_version,
-        backtrace
-    ))]
-    MetaPathVersionWrong {
-        path_version: String,
+    #[snafu(display("Unknown mata version, value:{}.\nBacktrace\n:{}", version, backtrace))]
+    UnknownMetaVersion {
+        version: String,
         backtrace: Backtrace,
     },
 

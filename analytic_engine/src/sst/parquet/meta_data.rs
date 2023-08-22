@@ -379,6 +379,18 @@ impl From<ParquetMetaData> for MetaData {
     }
 }
 
+impl From<Arc<ParquetMetaData>> for MetaData {
+    fn from(meta: Arc<ParquetMetaData>) -> Self {
+        Self {
+            min_key: meta.min_key.clone(),
+            max_key: meta.max_key.clone(),
+            time_range: meta.time_range,
+            max_sequence: meta.max_sequence,
+            schema: meta.schema.clone(),
+        }
+    }
+}
+
 impl fmt::Debug for ParquetMetaData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ParquetMetaData")

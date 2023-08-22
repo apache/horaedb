@@ -197,10 +197,16 @@ pub enum Error {
 
 define_result!(Error);
 
-pub const META_KEY: &str = "meta";
-pub const META_PATH_KEY: &str = "meta_path";
-pub const META_PATH_VERSION_KEY: &str = "meta_path_version";
-pub const META_PATH_VERSION: &str = "2";
+// In v1 format, our customized meta is encoded in parquet itself, this may
+// incur storage overhead since parquet KV only accept string, so we need to
+// base64 our meta.
+// In v2, we save meta in another independent file on object_store, its path is
+// encoded in parquet KV, which is identified by `meta_path`.
+pub const META_VERSION_V1: &str = "1";
+pub const META_VERSION_CURRENT: &str = "2";
+pub const META_KEY: &str = "meta"; // used in v1
+pub const META_PATH_KEY: &str = "meta_path"; // used in v2
+pub const META_VERSION_KEY: &str = "meta_version";
 pub const META_VALUE_HEADER: u8 = 0;
 
 /// Encode the sst custom meta data into binary key value pair.
@@ -364,8 +370,8 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
             value: metadata_path,
         };
         let version_kv = KeyValue {
-            key: META_PATH_VERSION_KEY.to_string(),
-            value: Some(META_PATH_VERSION.to_string()),
+            key: META_VERSION_KEY.to_string(),
+            value: Some(META_VERSION_CURRENT.to_string()),
         };
         let writer = self.arrow_writer.as_mut().unwrap();
         writer.append_key_value_metadata(path_kv);

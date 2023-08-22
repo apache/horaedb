@@ -24,7 +24,7 @@ use snafu::{ensure, OptionExt};
 
 use crate::sst::{
     meta_data::{
-        metadata_reader::CustomMetadataReaderBuilder, KvMetaDataNotFound, KvMetaVersionEmpty,
+        metadata_reader::parse_metadata, KvMetaDataNotFound, KvMetaVersionEmpty,
         ParquetMetaDataRef, Result,
     },
     parquet::encoding,
@@ -65,38 +65,27 @@ impl MetaData {
         let mut meta_path = None;
         let mut other_kv_metas: Vec<KeyValue> = Vec::with_capacity(kv_metas.len() - 1);
         let mut custom_kv_meta = None;
-        // The meta_path_version in v1 is None.
-        let mut meta_path_version = None;
+        let mut meta_version = "1";
 
         for kv_meta in kv_metas {
-            // Remove our extended custom meta data from the parquet metadata for small
-            // memory consumption in the cache.
             if kv_meta.key == encoding::META_KEY {
                 custom_kv_meta = Some(kv_meta);
             } else if kv_meta.key == encoding::META_PATH_KEY {
                 meta_path = kv_meta.value.as_ref().map(|path| Path::from(path.as_str()))
-            } else if kv_meta.key == encoding::META_PATH_VERSION_KEY {
-                meta_path_version =
-                    Some(kv_meta.value.as_ref().context(KvMetaVersionEmpty)?.clone());
+            } else if kv_meta.key == encoding::META_VERSION_KEY {
+                meta_version = kv_meta.value.as_ref().context(KvMetaVersionEmpty)?;
             } else {
                 other_kv_metas.push(kv_meta.clone());
             }
         }
 
-        // Must ensure custom metadata only store in one place (V2)
-        ensure!(
-            custom_kv_meta.is_none() || meta_path.is_none(),
-            KvMetaDataNotFound
-        );
-
-        let custom = CustomMetadataReaderBuilder::build(
-            meta_path_version,
+        let custom = parse_metadata(
+            meta_version,
             custom_kv_meta,
             ignore_sst_filter,
             meta_path.clone(),
             store,
-        )?
-        .get_metadata()
+        )
         .await?;
 
         // let's build a new parquet metadata without the extended key value

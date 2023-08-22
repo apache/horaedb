@@ -18,16 +18,17 @@ use async_trait::async_trait;
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::{data_type::AsBytes, file::metadata::KeyValue};
-use snafu::{OptionExt, ResultExt};
+use snafu::{ensure, OptionExt, ResultExt};
 
+use super::UnknownMetaVersion;
 use crate::sst::{
     meta_data::{
         DecodeCustomMetaData, FetchAndDecodeSstMeta, FetchFromStore, KvMetaDataNotFound,
-        KvMetaPathEmpty, MetaPathVersionWrong,
+        KvMetaPathEmpty,
     },
     parquet::{
-        encoding::{self, decode_sst_custom_meta_data, META_PATH_VERSION},
-        meta_data::ParquetMetaData,
+        encoding::{self, decode_sst_custom_meta_data, META_VERSION_CURRENT, META_VERSION_V1},
+        meta_data::{ParquetMetaData, ParquetMetaDataRef},
     },
 };
 
@@ -35,53 +36,44 @@ define_result!(super::Error);
 
 #[async_trait]
 pub trait CustomMetadataReader {
-    async fn get_metadata(&self) -> Result<Arc<ParquetMetaData>>;
+    async fn get_metadata(&self) -> Result<ParquetMetaData>;
 }
 
-pub struct CustomMetadataReaderBuilder;
-
-pub struct MetaPathV1Reader<'a> {
+pub struct MetaV1Reader<'a> {
     custom_kv_meta: Option<&'a KeyValue>,
-    ignore_sst_filter: bool,
 }
 
-impl<'a> MetaPathV1Reader<'a> {
-    fn new(custom_kv_meta: Option<&'a KeyValue>, ignore_sst_filter: bool) -> Self {
-        Self {
-            custom_kv_meta,
-            ignore_sst_filter,
-        }
+impl<'a> MetaV1Reader<'a> {
+    fn new(custom_kv_meta: Option<&'a KeyValue>) -> Self {
+        Self { custom_kv_meta }
     }
 }
 
 #[async_trait]
-impl CustomMetadataReader for MetaPathV1Reader<'_> {
-    async fn get_metadata(&self) -> Result<Arc<ParquetMetaData>> {
+impl CustomMetadataReader for MetaV1Reader<'_> {
+    async fn get_metadata(&self) -> Result<ParquetMetaData> {
         let custom_kv_meta = self.custom_kv_meta.context(KvMetaDataNotFound)?;
-        let mut sst_meta =
-            encoding::decode_sst_meta_data(custom_kv_meta).context(DecodeCustomMetaData)?;
-        if self.ignore_sst_filter {
-            sst_meta.parquet_filter = None;
-        }
-        Ok(Arc::new(sst_meta))
+
+        encoding::decode_sst_meta_data(custom_kv_meta).context(DecodeCustomMetaData)
     }
 }
 
-pub struct MetaPathV2Reader {
+pub struct MetaV2Reader {
     meta_path: Option<Path>,
     store: ObjectStoreRef,
 }
 
-impl MetaPathV2Reader {
+impl MetaV2Reader {
     fn new(meta_path: Option<Path>, store: ObjectStoreRef) -> Self {
         Self { meta_path, store }
     }
 }
 
 #[async_trait]
-impl CustomMetadataReader for MetaPathV2Reader {
-    async fn get_metadata(&self) -> Result<Arc<ParquetMetaData>> {
+impl CustomMetadataReader for MetaV2Reader {
+    async fn get_metadata(&self) -> Result<ParquetMetaData> {
         let decode_custom_metadata = match &self.meta_path {
+            None => return KvMetaPathEmpty {}.fail(),
             Some(meta_path) => {
                 let metadata = self
                     .store
@@ -96,37 +88,41 @@ impl CustomMetadataReader for MetaPathV2Reader {
                         file_path: meta_path.to_string(),
                     })?;
 
-                Some(
-                    decode_sst_custom_meta_data(metadata.as_bytes())
-                        .context(DecodeCustomMetaData)?,
-                )
+                decode_sst_custom_meta_data(metadata.as_bytes()).context(DecodeCustomMetaData)?
             }
-            None => return KvMetaPathEmpty {}.fail(),
         };
-        Ok(Arc::new(decode_custom_metadata.unwrap()))
+
+        Ok(decode_custom_metadata)
     }
 }
 
-impl<'a> CustomMetadataReaderBuilder {
-    pub fn build(
-        meta_path_version: Option<String>,
-        custom_kv_meta: Option<&'a KeyValue>,
-        ignore_sst_filter: bool,
-        meta_path: Option<Path>,
-        store: ObjectStoreRef,
-    ) -> Result<Box<dyn CustomMetadataReader + Send + Sync + 'a>> {
-        match meta_path_version {
-            None => Ok(Box::new(MetaPathV1Reader::new(
-                custom_kv_meta,
-                ignore_sst_filter,
-            ))),
-            Some(v) if v.as_str() == META_PATH_VERSION => {
-                Ok(Box::new(MetaPathV2Reader::new(meta_path, store)))
+pub async fn parse_metadata(
+    meta_version: &str,
+    custom_kv_meta: Option<&KeyValue>,
+    ignore_sst_filter: bool,
+    meta_path: Option<Path>,
+    store: ObjectStoreRef,
+) -> Result<ParquetMetaDataRef> {
+    // Must ensure custom metadata only store in one place
+    ensure!(
+        custom_kv_meta.is_none() || meta_path.is_none(),
+        KvMetaDataNotFound
+    );
+
+    let reader: Box<dyn CustomMetadataReader + Send + Sync + '_> = match meta_version {
+        META_VERSION_V1 => Box::new(MetaV1Reader::new(custom_kv_meta)),
+        META_VERSION_CURRENT => Box::new(MetaV2Reader::new(meta_path, store)),
+        _ => {
+            return UnknownMetaVersion {
+                version: meta_version,
             }
-            _ => MetaPathVersionWrong {
-                path_version: meta_path_version.unwrap(),
-            }
-            .fail(),
+            .fail()
         }
+    };
+    let mut metadata = reader.get_metadata().await?;
+    if ignore_sst_filter {
+        metadata.parquet_filter = None;
     }
+
+    Ok(Arc::new(metadata))
 }

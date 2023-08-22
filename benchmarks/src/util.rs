@@ -26,8 +26,7 @@ use analytic_engine::{
         },
         file::{FileHandle, FileMeta, FilePurgeQueue},
         manager::FileId,
-        meta_data::{cache::MetaCacheRef, CustomMetadataReaderBuilder},
-        parquet::encoding,
+        meta_data::cache::{self, MetaCacheRef},
         writer::MetaData,
     },
     table::sst_util,
@@ -40,7 +39,7 @@ use common_types::{
 };
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
-use parquet::file::{footer, metadata::KeyValue};
+use parquet::file::footer;
 use runtime::Runtime;
 use snafu::{ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::TableId};
@@ -66,50 +65,25 @@ pub fn new_runtime(thread_num: usize) -> Runtime {
         .unwrap()
 }
 
-pub async fn meta_from_sst(
+pub async fn parquet_metadata(
     store: &ObjectStoreRef,
     sst_path: &Path,
-    _meta_cache: &Option<MetaCacheRef>,
-) -> (MetaData, Option<Path>) {
+) -> parquet_ext::ParquetMetaData {
     let get_result = store.get(sst_path).await.unwrap();
     let chunk_reader = get_result.bytes().await.unwrap();
-    let metadata = footer::parse_metadata(&chunk_reader).unwrap();
-    let kv_metas = metadata.file_metadata().key_value_metadata().unwrap();
+    footer::parse_metadata(&chunk_reader).unwrap()
+}
 
-    let mut meta_path = None;
-    let mut other_kv_metas: Vec<KeyValue> = Vec::with_capacity(kv_metas.len() - 1);
-    let mut custom_kv_meta = None;
-    // The meta_path_version in v1 is None.
-    let mut meta_path_version = None;
+pub async fn meta_from_sst(
+    metadata: &parquet_ext::ParquetMetaData,
+    store: &ObjectStoreRef,
+    _meta_cache: &Option<MetaCacheRef>,
+) -> MetaData {
+    let md = cache::MetaData::try_new(metadata, false, store.clone())
+        .await
+        .unwrap();
 
-    for kv_meta in kv_metas {
-        // Remove our extended custom meta data from the parquet metadata for small
-        // memory consumption in the cache.
-        if kv_meta.key == encoding::META_KEY {
-            custom_kv_meta = Some(kv_meta);
-        } else if kv_meta.key == encoding::META_PATH_KEY {
-            meta_path = kv_meta.value.as_ref().map(|path| Path::from(path.as_str()))
-        } else if kv_meta.key == encoding::META_PATH_VERSION_KEY {
-            meta_path_version = Some(kv_meta.value.as_ref().unwrap().clone());
-        } else {
-            other_kv_metas.push(kv_meta.clone());
-        }
-    }
-
-    let custom = CustomMetadataReaderBuilder::build(
-        meta_path_version,
-        custom_kv_meta,
-        false,
-        meta_path.clone(),
-        store.clone(),
-    )
-    .unwrap()
-    .get_metadata()
-    .await
-    .unwrap();
-    let custom = Arc::try_unwrap(custom).unwrap();
-
-    (MetaData::from(custom), meta_path)
+    MetaData::from(md.custom().clone())
 }
 
 pub async fn schema_from_sst(
@@ -117,7 +91,8 @@ pub async fn schema_from_sst(
     sst_path: &Path,
     meta_cache: &Option<MetaCacheRef>,
 ) -> Schema {
-    let (sst_meta, _) = meta_from_sst(store, sst_path, meta_cache).await;
+    let parquet_metadata = parquet_metadata(store, sst_path).await;
+    let sst_meta = meta_from_sst(&parquet_metadata, store, meta_cache).await;
     sst_meta.schema
 }
 
@@ -202,8 +177,9 @@ pub async fn file_handles_from_ssts(
 
     for file_id in sst_file_ids.iter() {
         let path = sst_util::new_sst_file_path(space_id, table_id, *file_id);
+        let parquet_metadata = parquet_metadata(store, &path).await;
+        let sst_meta = meta_from_sst(&parquet_metadata, store, meta_cache).await;
 
-        let (sst_meta, meta_path) = meta_from_sst(store, &path, meta_cache).await;
         let file_meta = FileMeta {
             id: *file_id,
             size: 0,
@@ -211,7 +187,7 @@ pub async fn file_handles_from_ssts(
             time_range: sst_meta.time_range,
             max_seq: sst_meta.max_sequence,
             storage_format: StorageFormat::Columnar,
-            meta_path,
+            meta_path: None,
         };
 
         let handle = FileHandle::new(file_meta, purge_queue.clone());
