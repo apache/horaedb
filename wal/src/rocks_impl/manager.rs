@@ -42,7 +42,7 @@ use crate::{
     kv_encoder::{CommonLogEncoding, CommonLogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
-        error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
+        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
         ScanRequest, SyncLogIterator, WalLocation, WalManager, WriteContext,
     },
 };
@@ -203,6 +203,8 @@ impl TableUnit {
             ctx,
             batch.entries.len()
         );
+
+        manager::collect_write_log_metrics(batch);
 
         let entries_num = batch.len() as u64;
         let (wb, max_sequence_num) = {
