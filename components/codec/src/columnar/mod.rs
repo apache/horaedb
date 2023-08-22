@@ -602,6 +602,22 @@ mod tests {
     }
 
     #[test]
+    fn test_massive_string() {
+        let sample_datums = vec![
+            Datum::from("vvvv"),
+            Datum::from("xxxx"),
+            Datum::from("8"),
+            Datum::from("9999"),
+        ];
+        let mut datums = Vec::with_capacity(sample_datums.len() * 100);
+        for _ in 0..100 {
+            datums.append(&mut sample_datums.clone());
+        }
+
+        check_encode_end_decode(10, datums, DatumKind::String);
+    }
+
+    #[test]
     fn test_large_string() {
         let large_string_bytes = vec![
             vec![b'a'; 500],
