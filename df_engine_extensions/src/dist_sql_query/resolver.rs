@@ -19,13 +19,11 @@ use datafusion::{
     error::{DataFusionError, Result as DfResult},
     physical_plan::ExecutionPlan,
 };
-use table_engine::{
-    remote::{model::TableIdentifier, RemoteEngineRef},
-    table::{ReadRequest, TableRef},
-};
+use table_engine::{remote::model::TableIdentifier, table::TableRef};
 
-use crate::dist_sql_query::physical_plan::{
-    ResolvedPartitionedScan, UnresolvedPartitionedScan, UnresolvedSubTableScan,
+use crate::dist_sql_query::{
+    physical_plan::{ResolvedPartitionedScan, UnresolvedPartitionedScan, UnresolvedSubTableScan},
+    ExecutableScanBuilder, RemotePhysicalPlanExecutor,
 };
 
 /// Resolver which makes datafuison dist query related plan executable.
@@ -41,14 +39,14 @@ pub trait Resolver {
 }
 
 /// Resolver which makes the partitioned table scan plan executable
-struct PartitionedScanResolver {
-    remote_engine: RemoteEngineRef,
+struct PartitionedScanResolver<R> {
+    remote_executor: R,
 }
 
-impl PartitionedScanResolver {
+impl<R: RemotePhysicalPlanExecutor> PartitionedScanResolver<R> {
     #[allow(dead_code)]
-    pub fn new(remote_engine: RemoteEngineRef) -> Self {
-        Self { remote_engine }
+    pub fn new(remote_executor: R) -> Self {
+        Self { remote_executor }
     }
 
     fn resolve_plan(&self, plan: Arc<dyn ExecutionPlan>) -> DfResult<Arc<dyn ExecutionPlan>> {
@@ -67,7 +65,7 @@ impl PartitionedScanResolver {
                 .collect::<Vec<_>>();
 
             return Ok(Arc::new(ResolvedPartitionedScan {
-                remote_engine: self.remote_engine.clone(),
+                remote_executor: self.remote_executor.clone(),
                 remote_exec_plans: remote_plans,
             }));
         }
@@ -104,7 +102,7 @@ impl PartitionedScanResolver {
     }
 }
 
-impl Resolver for PartitionedScanResolver {
+impl<R: RemotePhysicalPlanExecutor> Resolver for PartitionedScanResolver<R> {
     fn resolve(&self, plan: Arc<dyn ExecutionPlan>) -> DfResult<Arc<dyn ExecutionPlan>> {
         self.resolve_plan(plan)
     }
@@ -116,7 +114,7 @@ struct SubScanResolver<B> {
     scan_builder: B,
 }
 
-impl<B: ResolvedSubScanBuilder> SubScanResolver<B> {
+impl<B: ExecutableScanBuilder> SubScanResolver<B> {
     #[allow(dead_code)]
     pub fn new(catalog_manager: CatalogManagerRef, scan_builder: B) -> Self {
         Self {
@@ -170,16 +168,7 @@ impl<B: ResolvedSubScanBuilder> SubScanResolver<B> {
     }
 }
 
-/// Executable scan's builder
-///
-/// It is not suitable to restrict the detailed implementation of executable
-/// scan, so we define a builder here which return the general `ExecutionPlan`.
-pub trait ResolvedSubScanBuilder {
-    fn build(&self, table: TableRef, read_request: ReadRequest)
-        -> DfResult<Arc<dyn ExecutionPlan>>;
-}
-
-impl<B: ResolvedSubScanBuilder> Resolver for SubScanResolver<B> {
+impl<B: ExecutableScanBuilder> Resolver for SubScanResolver<B> {
     fn resolve(&self, plan: Arc<dyn ExecutionPlan>) -> DfResult<Arc<dyn ExecutionPlan>> {
         self.resolve_plan(plan)
     }
@@ -189,21 +178,23 @@ impl<B: ResolvedSubScanBuilder> Resolver for SubScanResolver<B> {
 mod test {
     use std::sync::Arc;
 
+    use async_trait::async_trait;
     use catalog::{manager::ManagerRef, test_util::MockCatalogManagerBuilder};
     use common_types::{projected_schema::ProjectedSchema, tests::build_schema_for_cpu};
     use datafusion::{
+        error::Result as DfResult,
         logical_expr::{expr_fn, Literal, Operator},
         physical_plan::{
             displayable,
             expressions::{binary, col, lit},
             filter::FilterExec,
             projection::ProjectionExec,
-            DisplayAs, ExecutionPlan, PhysicalExpr,
+            DisplayAs, ExecutionPlan, PhysicalExpr, SendableRecordBatchStream,
         },
         scalar::ScalarValue,
     };
     use table_engine::{
-        memory::{MemoryTable, MockRemoteEngine},
+        memory::MemoryTable,
         predicate::PredicateBuilder,
         remote::model::TableIdentifier,
         table::{ReadOptions, ReadRequest, TableId, TableRef},
@@ -213,7 +204,8 @@ mod test {
 
     use crate::dist_sql_query::{
         physical_plan::{UnresolvedPartitionedScan, UnresolvedSubTableScan},
-        resolver::{PartitionedScanResolver, ResolvedSubScanBuilder, SubScanResolver},
+        resolver::{PartitionedScanResolver, RemotePhysicalPlanExecutor, SubScanResolver},
+        ExecutableScanBuilder,
     };
 
     #[test]
@@ -221,7 +213,7 @@ mod test {
         let ctx = TestContext::new();
         let plan = ctx.build_basic_partitioned_table_plan();
         let resolver = PartitionedScanResolver {
-            remote_engine: Arc::new(MockRemoteEngine),
+            remote_executor: MockRemotePhysicalPlanExecutor,
         };
         let new_plan = displayable(resolver.resolve_plan(plan).unwrap().as_ref())
             .indent(true)
@@ -244,9 +236,10 @@ mod test {
     }
 
     // Mock scan and its builder
+    #[derive(Debug)]
     struct MockScanBuilder;
 
-    impl ResolvedSubScanBuilder for MockScanBuilder {
+    impl ExecutableScanBuilder for MockScanBuilder {
         fn build(
             &self,
             _table: TableRef,
@@ -314,6 +307,21 @@ mod test {
             f: &mut std::fmt::Formatter,
         ) -> std::fmt::Result {
             write!(f, "MockScan")
+        }
+    }
+
+    // Mock remote executor
+    #[derive(Debug, Clone)]
+    struct MockRemotePhysicalPlanExecutor;
+
+    #[async_trait]
+    impl RemotePhysicalPlanExecutor for MockRemotePhysicalPlanExecutor {
+        async fn execute(
+            &self,
+            _table: TableIdentifier,
+            _physical_plan: Arc<dyn ExecutionPlan>,
+        ) -> DfResult<SendableRecordBatchStream> {
+            unimplemented!()
         }
     }
 

@@ -26,10 +26,9 @@ use datafusion::{
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
-use table_engine::{
-    remote::{model::TableIdentifier, RemoteEngineRef},
-    table::ReadRequest,
-};
+use table_engine::{remote::model::TableIdentifier, table::ReadRequest};
+
+use crate::dist_sql_query::RemotePhysicalPlanExecutor;
 
 /// Placeholder of partitioned table's scan plan
 /// It is inexecutable actually and just for carrying the necessary information
@@ -104,16 +103,16 @@ impl DisplayAs for UnresolvedPartitionedScan {
 /// It includes remote execution plans of sub tables, and will send them to
 /// related nodes to execute.
 #[derive(Debug)]
-pub struct ResolvedPartitionedScan {
-    pub remote_engine: RemoteEngineRef,
+pub struct ResolvedPartitionedScan<R> {
+    pub remote_executor: R,
     pub remote_exec_plans: Vec<(TableIdentifier, Arc<dyn ExecutionPlan>)>,
 }
 
-impl ResolvedPartitionedScan {
+impl<R: RemotePhysicalPlanExecutor> ResolvedPartitionedScan<R> {
     pub fn extend_remote_exec_plans(
         &self,
         extended_node: Arc<dyn ExecutionPlan>,
-    ) -> DfResult<Arc<ResolvedPartitionedScan>> {
+    ) -> DfResult<Arc<ResolvedPartitionedScan<R>>> {
         let origin_plans = self.remote_exec_plans.clone();
         let new_plans = origin_plans
             .into_iter()
@@ -126,7 +125,7 @@ impl ResolvedPartitionedScan {
             .collect::<DfResult<Vec<_>>>()?;
 
         let plan = ResolvedPartitionedScan {
-            remote_engine: self.remote_engine.clone(),
+            remote_executor: self.remote_executor.clone(),
             remote_exec_plans: new_plans,
         };
 
@@ -134,7 +133,7 @@ impl ResolvedPartitionedScan {
     }
 }
 
-impl ExecutionPlan for ResolvedPartitionedScan {
+impl<R: RemotePhysicalPlanExecutor> ExecutionPlan for ResolvedPartitionedScan<R> {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -182,7 +181,7 @@ impl ExecutionPlan for ResolvedPartitionedScan {
 }
 
 // TODO: make display for the plan more pretty.
-impl DisplayAs for ResolvedPartitionedScan {
+impl<R: RemotePhysicalPlanExecutor> DisplayAs for ResolvedPartitionedScan<R> {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
