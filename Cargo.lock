@@ -1546,9 +1546,9 @@ version = "1.2.6-alpha"
 dependencies = [
  "bytes_ext",
  "common_types",
+ "lz4_flex",
  "macros",
  "snafu 0.6.10",
- "zstd",
 ]
 
 [[package]]
@@ -3725,6 +3725,15 @@ checksum = "57d27b317e207b10f69f5e75494119e391a96f48861ae870d1da6edac98ca900"
 dependencies = [
  "cc",
  "libc",
+]
+
+[[package]]
+name = "lz4_flex"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ea9b256699eda7b0387ffbc776dd625e28bde3918446381781245b7a50349d8"
+dependencies = [
+ "twox-hash",
 ]
 
 [[package]]

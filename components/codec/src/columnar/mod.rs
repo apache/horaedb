@@ -125,8 +125,11 @@ trait ValuesDecoder<T> {
         F: FnMut(T) -> Result<()>;
 }
 
+#[derive(Debug, Default)]
 /// The implementation for [`ValuesEncoder`].
-struct ValuesEncoderImpl;
+struct ValuesEncoderImpl {
+    bytes_compress_threshold: usize,
+}
 
 /// The implementation for [`ValuesDecoder`].
 struct ValuesDecoderImpl;
@@ -134,6 +137,7 @@ struct ValuesDecoderImpl;
 #[derive(Clone, Debug)]
 pub struct ColumnarEncoder {
     column_id: ColumnId,
+    bytes_compress_threshold: usize,
 }
 
 /// A hint helps column encoding.
@@ -174,8 +178,11 @@ impl EncodeHint {
 impl ColumnarEncoder {
     const VERSION: u8 = 0;
 
-    pub fn new(column_id: ColumnId) -> Self {
-        Self { column_id }
+    pub fn new(column_id: ColumnId, bytes_compress_threshold: usize) -> Self {
+        Self {
+            column_id,
+            bytes_compress_threshold,
+        }
     }
 
     /// The header includes `version`, `datum_kind`, `column_id`, `num_datums`
@@ -231,7 +238,7 @@ impl ColumnarEncoder {
             buf.put_slice(bit_set.as_bytes());
         }
 
-        Self::encode_datums(buf, datums, hint.datum_kind)
+        self.encode_datums(buf, datums, hint.datum_kind)
     }
 
     pub fn estimated_encoded_size<'a, I>(&self, datums: I, hint: &mut EncodeHint) -> usize
@@ -245,69 +252,75 @@ impl ColumnarEncoder {
             BitSet::num_bytes(num_datums)
         };
 
-        let data_size =
-            match hint.datum_kind {
-                DatumKind::Null => 0,
-                DatumKind::Timestamp => ValuesEncoderImpl.estimated_encoded_size(
-                    datums
-                        .clone()
-                        .filter_map(|v| v.as_timestamp().map(|v| v.as_i64())),
-                ),
-                DatumKind::Double => ValuesEncoderImpl
-                    .estimated_encoded_size(datums.clone().filter_map(|v| v.as_f64())),
-                DatumKind::Float => todo!(),
-                DatumKind::Varbinary => ValuesEncoderImpl
-                    .estimated_encoded_size(datums.clone().filter_map(|v| v.into_bytes())),
-                DatumKind::String => ValuesEncoderImpl.estimated_encoded_size(
-                    datums
-                        .clone()
-                        .filter_map(|v| v.into_str().map(|v| v.as_bytes())),
-                ),
-                DatumKind::UInt64 => ValuesEncoderImpl
-                    .estimated_encoded_size(datums.clone().filter_map(|v| v.as_u64())),
-                DatumKind::UInt32 => todo!(),
-                DatumKind::UInt16 => todo!(),
-                DatumKind::UInt8 => todo!(),
-                DatumKind::Int64 => ValuesEncoderImpl
-                    .estimated_encoded_size(datums.clone().filter_map(|v| v.as_i64())),
-                DatumKind::Int32 => ValuesEncoderImpl
-                    .estimated_encoded_size(datums.clone().filter_map(|v| v.as_i32())),
-                DatumKind::Int16 => todo!(),
-                DatumKind::Int8 => todo!(),
-                DatumKind::Boolean => todo!(),
-                DatumKind::Date => todo!(),
-                DatumKind::Time => todo!(),
-            };
+        let enc = ValuesEncoderImpl::default();
+        let data_size = match hint.datum_kind {
+            DatumKind::Null => 0,
+            DatumKind::Timestamp => enc.estimated_encoded_size(
+                datums
+                    .clone()
+                    .filter_map(|v| v.as_timestamp().map(|v| v.as_i64())),
+            ),
+            DatumKind::Double => {
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_f64()))
+            }
+            DatumKind::Float => todo!(),
+            DatumKind::Varbinary => {
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.into_bytes()))
+            }
+            DatumKind::String => enc.estimated_encoded_size(
+                datums
+                    .clone()
+                    .filter_map(|v| v.into_str().map(|v| v.as_bytes())),
+            ),
+            DatumKind::UInt64 => {
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_u64()))
+            }
+            DatumKind::UInt32 => todo!(),
+            DatumKind::UInt16 => todo!(),
+            DatumKind::UInt8 => todo!(),
+            DatumKind::Int64 => {
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_i64()))
+            }
+            DatumKind::Int32 => {
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_i32()))
+            }
+            DatumKind::Int16 => todo!(),
+            DatumKind::Int8 => todo!(),
+            DatumKind::Boolean => todo!(),
+            DatumKind::Date => todo!(),
+            DatumKind::Time => todo!(),
+        };
 
         Self::header_size() + bit_set_size + data_size
     }
 
-    fn encode_datums<'a, I, B>(buf: &mut B, datums: I, datum_kind: DatumKind) -> Result<()>
+    fn encode_datums<'a, I, B>(&self, buf: &mut B, datums: I, datum_kind: DatumKind) -> Result<()>
     where
         I: Iterator<Item = DatumView<'a>> + Clone,
         B: BufMut,
     {
+        let enc = ValuesEncoderImpl {
+            bytes_compress_threshold: self.bytes_compress_threshold,
+        };
         match datum_kind {
             DatumKind::Null => Ok(()),
-            DatumKind::Timestamp => ValuesEncoderImpl.encode(
+            DatumKind::Timestamp => enc.encode(
                 buf,
                 datums.filter_map(|v| v.as_timestamp().map(|v| v.as_i64())),
             ),
-            DatumKind::Double => ValuesEncoderImpl.encode(buf, datums.filter_map(|v| v.as_f64())),
+            DatumKind::Double => enc.encode(buf, datums.filter_map(|v| v.as_f64())),
             DatumKind::Float => todo!(),
-            DatumKind::Varbinary => {
-                ValuesEncoderImpl.encode(buf, datums.filter_map(|v| v.into_bytes()))
-            }
-            DatumKind::String => ValuesEncoderImpl.encode(
+            DatumKind::Varbinary => enc.encode(buf, datums.filter_map(|v| v.into_bytes())),
+            DatumKind::String => enc.encode(
                 buf,
                 datums.filter_map(|v| v.into_str().map(|v| v.as_bytes())),
             ),
-            DatumKind::UInt64 => ValuesEncoderImpl.encode(buf, datums.filter_map(|v| v.as_u64())),
+            DatumKind::UInt64 => enc.encode(buf, datums.filter_map(|v| v.as_u64())),
             DatumKind::UInt32 => todo!(),
             DatumKind::UInt16 => todo!(),
             DatumKind::UInt8 => todo!(),
-            DatumKind::Int64 => ValuesEncoderImpl.encode(buf, datums.filter_map(|v| v.as_i64())),
-            DatumKind::Int32 => ValuesEncoderImpl.encode(buf, datums.filter_map(|v| v.as_i32())),
+            DatumKind::Int64 => enc.encode(buf, datums.filter_map(|v| v.as_i64())),
+            DatumKind::Int32 => enc.encode(buf, datums.filter_map(|v| v.as_i32())),
             DatumKind::Int16 => todo!(),
             DatumKind::Int8 => todo!(),
             DatumKind::Boolean => todo!(),
@@ -468,7 +481,7 @@ mod tests {
     use super::*;
 
     fn check_encode_end_decode(column_id: ColumnId, datums: Vec<Datum>, datum_kind: DatumKind) {
-        let encoder = ColumnarEncoder::new(column_id);
+        let encoder = ColumnarEncoder::new(column_id, 256);
         let views = datums.iter().map(|v| v.as_view());
         let mut hint = EncodeHint {
             num_nulls: None,

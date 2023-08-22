@@ -15,8 +15,8 @@
 use std::io::{Read, Write};
 
 use bytes_ext::{Buf, BufMut, Bytes, WriterOnBufMut};
+use lz4_flex::frame::{FrameDecoder as Lz4Decoder, FrameEncoder as Lz4Encoder};
 use snafu::{ensure, ResultExt};
-use zstd::{Decoder as ZstdStreamDecoder, Encoder as ZstdStreamEncoder};
 
 use crate::{
     columnar::{
@@ -35,7 +35,7 @@ use crate::{
 ///
 /// Currently, the `compression` has two optional values:
 /// - 0: No compression over the data block
-/// - 1: the data block is compressed by ZSTD
+/// - 1: the data block will be compressed if it is too long
 ///
 /// And the lengths in the `length block` are encoded in varint.
 /// And the reason to put `length_block_len` and `compression` at the footer is
@@ -44,16 +44,13 @@ struct Encoding;
 
 impl Encoding {
     const COMPRESSION_SIZE: usize = 1;
-    /// If the data block exceeds this threshold, it will be compressed.
-    const COMPRESS_BYTES_THRESHOLD: usize = 256;
     const LENGTH_BLOCK_LEN_SIZE: usize = 4;
     const VERSION: u8 = 0;
     const VERSION_SIZE: usize = 1;
-    const ZSTD_LEVEL: i32 = 3;
 
-    fn decide_compression(data_block_len: usize) -> Compression {
-        if data_block_len > Self::COMPRESS_BYTES_THRESHOLD {
-            Compression::Zstd
+    fn decide_compression(data_block_len: usize, threshold: usize) -> Compression {
+        if data_block_len > threshold {
+            Compression::Lz4
         } else {
             Compression::NoCompression
         }
@@ -62,7 +59,7 @@ impl Encoding {
     fn decode_compression(v: u8) -> Result<Compression> {
         let version = match v {
             0 => Compression::NoCompression,
-            1 => Compression::Zstd,
+            1 => Compression::Lz4,
             _ => InvalidCompression { flag: v }.fail()?,
         };
 
@@ -79,7 +76,7 @@ impl Encoding {
 enum Compression {
     #[default]
     NoCompression = 0,
-    Zstd = 1,
+    Lz4 = 1,
 }
 
 impl<'a> ValuesEncoder<&'a [u8]> for ValuesEncoderImpl {
@@ -103,14 +100,15 @@ impl<'a> ValuesEncoder<&'a [u8]> for ValuesEncoderImpl {
         assert!(length_block_len < u32::MAX as usize);
 
         // Encode the `data_block`.
-        let compression = Encoding::decide_compression(data_block_len);
+        let compression =
+            Encoding::decide_compression(data_block_len, self.bytes_compress_threshold);
         match compression {
             Compression::NoCompression => {
                 for v in values {
                     buf.put_slice(v);
                 }
             }
-            Compression::Zstd => encode_with_compress(buf, values).context(Compress)?,
+            Compression::Lz4 => encode_with_compress(buf, values).context(Compress)?,
         }
 
         // Encode the `data_block` offset.
@@ -142,11 +140,11 @@ where
     I: Iterator<Item = &'a [u8]>,
 {
     let writer = WriterOnBufMut { buf };
-    let mut zstd_enc = ZstdStreamEncoder::new(writer, Encoding::ZSTD_LEVEL)?;
+    let mut enc = Lz4Encoder::new(writer);
     for v in values {
-        zstd_enc.write_all(v)?;
+        enc.write_all(v)?;
     }
-    zstd_enc.finish()?;
+    enc.finish()?;
 
     Ok(())
 }
@@ -180,7 +178,7 @@ fn decode_with_compression<F>(
 where
     F: FnMut(Bytes) -> Result<()>,
 {
-    let mut decoder = ZstdStreamDecoder::new(compressed_data_block_buf).context(Decompress)?;
+    let mut decoder = Lz4Decoder::new(compressed_data_block_buf);
     decoder.read_to_end(reused_buf).context(Decompress)?;
     decode_without_compression(&mut length_block_buf, &reused_buf[..], f)
 }
@@ -219,7 +217,7 @@ impl ValuesDecoder<Bytes> for ValuesDecoderImpl {
             Compression::NoCompression => {
                 decode_without_compression(&mut length_block, data_block, f)
             }
-            Compression::Zstd => decode_with_compression(length_block, data_block, ctx.buf, f),
+            Compression::Lz4 => decode_with_compression(length_block, data_block, ctx.buf, f),
         }
     }
 }

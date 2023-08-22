@@ -182,6 +182,7 @@ where
     }
 }
 
+/// The wrapper on the [`BufMut`] for implementing [`std::io::Write`].
 pub struct WriterOnBufMut<'a, B: BufMut> {
     pub buf: &'a mut B,
 }
