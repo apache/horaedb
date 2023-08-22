@@ -40,7 +40,10 @@ use snafu::ResultExt;
 use table_engine::{
     remote::{
         self,
-        model::{GetTableInfoRequest, ReadRequest, TableInfo, WriteBatchResult, WriteRequest},
+        model::{
+            ExecutePlanRequest, GetTableInfoRequest, ReadRequest, TableInfo, WriteBatchResult,
+            WriteRequest,
+        },
         RemoteEngine,
     },
     stream::{self, ErrWithSource, RecordBatchStream, SendableRecordBatchStream},
@@ -167,6 +170,19 @@ impl RemoteEngine for RemoteEngineImpl {
             .box_err()
             .context(remote::GetTableInfo)
     }
+
+    async fn execute_physical_plan(
+        &self,
+        request: ExecutePlanRequest,
+    ) -> remote::Result<SendableRecordBatchStream> {
+        let client_read_stream = self
+            .client
+            .execute_physical_plan(request)
+            .await
+            .box_err()
+            .context(remote::ExecutePhysicalPlan)?;
+        Ok(Box::pin(RemoteReadRecordBatchStream(client_read_stream)))
+    }
 }
 
 impl fmt::Debug for RemoteEngineImpl {
@@ -199,6 +215,6 @@ impl Stream for RemoteReadRecordBatchStream {
 
 impl RecordBatchStream for RemoteReadRecordBatchStream {
     fn schema(&self) -> &RecordSchema {
-        &self.0.projected_record_schema
+        &self.0.record_schema
     }
 }

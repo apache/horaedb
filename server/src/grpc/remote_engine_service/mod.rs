@@ -534,7 +534,7 @@ impl RemoteEngineService for RemoteEngineServiceImpl {
 
     async fn execute_physical_plan(
         &self,
-        _request: Request<ExecutePlanRequest>,
+        request: Request<ExecutePlanRequest>,
     ) -> std::result::Result<Response<Self::ExecutePhysicalPlanStream>, Status> {
         todo!()
     }
