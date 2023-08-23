@@ -46,6 +46,19 @@ impl BitSet {
         }
     }
 
+    /// Create a u8 according to a given 8bits array.
+    ///
+    /// The values in the `bits` whose index is greater than 8 will be ignored.
+    pub fn one_byte(bits: &[bool]) -> u8 {
+        let mut v = 0u8;
+        for (idx, set) in bits.iter().take(8).map(|v| *v as u8).enumerate() {
+            let (_, bit_idx) = RoBitSet::compute_byte_bit_index(idx);
+            v |= set << bit_idx
+        }
+
+        v
+    }
+
     /// Initialize a [`BitSet`] with all bits set.
     pub fn all_set(num_bits: usize) -> Self {
         Self {
@@ -227,5 +240,22 @@ mod tests {
         assert!(BitSet::try_from_raw(raw_bytes.clone(), 50).is_none());
         assert!(BitSet::try_from_raw(raw_bytes.clone(), 40).is_some());
         assert!(BitSet::try_from_raw(raw_bytes, 1).is_some());
+    }
+
+    #[test]
+    fn test_one_byte() {
+        let bits = [false, false, false, false, false, false];
+        assert_eq!(0, BitSet::one_byte(&bits));
+
+        let bits = [true, false, false, false, false, false];
+        assert_eq!(1, BitSet::one_byte(&bits));
+
+        let bits = [false, false, false, true, false, false, true, true];
+        assert_eq!(128 + 64 + 8, BitSet::one_byte(&bits));
+
+        let bits = [
+            false, false, false, false, false, false, true, true, true, true,
+        ];
+        assert_eq!(128 + 64, BitSet::one_byte(&bits));
     }
 }
