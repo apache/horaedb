@@ -13,47 +13,60 @@
 // limitations under the License.
 
 use bytes_ext::{Buf, BufMut};
-use snafu::ResultExt;
+use snafu::{ensure, ResultExt};
 
 use crate::{
     columnar::{
-        DecodeContext, Result, ValuesDecoder, ValuesDecoderImpl, ValuesEncoder, ValuesEncoderImpl,
-        Varint,
+        DecodeContext, InvalidVersion, Result, ValuesDecoder, ValuesDecoderImpl, ValuesEncoder,
+        ValuesEncoderImpl, Varint,
     },
     varint,
 };
 
 /// The max number of the bytes used to store a varint encoding u64/i64.
 const MAX_NUM_BYTES_OF_64VARINT: usize = 10;
+const VERSION: u8 = 0;
+const VERSION_SIZE: usize = 1;
 
-impl ValuesEncoder<i32> for ValuesEncoderImpl {
-    fn encode<B, I>(&self, buf: &mut B, values: I) -> Result<()>
-    where
-        B: BufMut,
-        I: Iterator<Item = i32>,
-    {
-        for v in values {
-            buf.put_i32(v);
+macro_rules! impl_int_encoding {
+    ($int_type: ty, $write_method: ident, $read_method: ident) => {
+        impl ValuesEncoder<$int_type> for ValuesEncoderImpl {
+            fn encode<B, I>(&self, buf: &mut B, values: I) -> Result<()>
+            where
+                B: BufMut,
+                I: Iterator<Item = $int_type>,
+            {
+                for v in values {
+                    buf.$write_method(v);
+                }
+
+                Ok(())
+            }
         }
 
-        Ok(())
-    }
-}
+        impl ValuesDecoder<$int_type> for ValuesDecoderImpl {
+            fn decode<B, F>(&self, _ctx: DecodeContext<'_>, buf: &mut B, mut f: F) -> Result<()>
+            where
+                B: Buf,
+                F: FnMut($int_type) -> Result<()>,
+            {
+                while buf.remaining() > 0 {
+                    let v = buf.$read_method();
+                    f(v)?;
+                }
 
-impl ValuesDecoder<i32> for ValuesDecoderImpl {
-    fn decode<B, F>(&self, _ctx: DecodeContext<'_>, buf: &mut B, mut f: F) -> Result<()>
-    where
-        B: Buf,
-        F: FnMut(i32) -> Result<()>,
-    {
-        while buf.remaining() > 0 {
-            let v = buf.get_i32();
-            f(v)?;
+                Ok(())
+            }
         }
-
-        Ok(())
-    }
+    };
 }
+
+impl_int_encoding!(i8, put_i8, get_i8);
+impl_int_encoding!(u8, put_u8, get_u8);
+impl_int_encoding!(u16, put_u16, get_u16);
+impl_int_encoding!(i16, put_i16, get_i16);
+impl_int_encoding!(u32, put_u32, get_u32);
+impl_int_encoding!(i32, put_i32, get_i32);
 
 impl ValuesEncoder<i64> for ValuesEncoderImpl {
     fn encode<B, I>(&self, buf: &mut B, values: I) -> Result<()>
@@ -61,6 +74,7 @@ impl ValuesEncoder<i64> for ValuesEncoderImpl {
         B: BufMut,
         I: Iterator<Item = i64>,
     {
+        buf.put_u8(VERSION);
         for v in values {
             varint::encode_varint(buf, v).context(Varint)?;
         }
@@ -74,7 +88,7 @@ impl ValuesEncoder<i64> for ValuesEncoderImpl {
     {
         let (lower, higher) = values.size_hint();
         let num = lower.max(higher.unwrap_or_default());
-        num * MAX_NUM_BYTES_OF_64VARINT
+        num * MAX_NUM_BYTES_OF_64VARINT + VERSION_SIZE
     }
 }
 
@@ -84,6 +98,9 @@ impl ValuesDecoder<i64> for ValuesDecoderImpl {
         B: Buf,
         F: FnMut(i64) -> Result<()>,
     {
+        let version = buf.get_u8();
+        ensure!(version == VERSION, InvalidVersion { version });
+
         while buf.remaining() > 0 {
             let v = varint::decode_varint(buf).context(Varint)?;
             f(v)?;
@@ -112,7 +129,7 @@ impl ValuesEncoder<u64> for ValuesEncoderImpl {
     {
         let (lower, higher) = values.size_hint();
         let num = lower.max(higher.unwrap_or_default());
-        num * MAX_NUM_BYTES_OF_64VARINT
+        num * MAX_NUM_BYTES_OF_64VARINT + VERSION_SIZE
     }
 }
 
@@ -122,6 +139,9 @@ impl ValuesDecoder<u64> for ValuesDecoderImpl {
         B: Buf,
         F: FnMut(u64) -> Result<()>,
     {
+        let version = buf.get_u8();
+        ensure!(version == VERSION, InvalidVersion { version });
+
         while buf.remaining() > 0 {
             let v = varint::decode_uvarint(buf).context(Varint)?;
             f(v)?;
