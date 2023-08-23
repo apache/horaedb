@@ -291,16 +291,23 @@ impl<'a> ObjectStoreMultiUploadAborter<'a> {
 async fn write_metadata<W>(
     mut meta_sink: W,
     parquet_metadata: ParquetMetaData,
-    meta_path: object_store::Path,
+    meta_path: &object_store::Path,
 ) -> writer::Result<()>
 where
     W: AsyncWrite + Send + Unpin,
 {
     let buf = encode_sst_custom_meta_data(parquet_metadata).context(EncodePbData)?;
-    meta_sink.write_all(buf.as_bytes()).await.context(Io {
+    meta_sink
+        .write_all(buf.as_bytes())
+        .await
+        .with_context(|| Io {
+            file: meta_path.clone(),
+        })?;
+
+    meta_sink.shutdown().await.with_context(|| Io {
         file: meta_path.clone(),
     })?;
-    meta_sink.shutdown().await.context(Io { file: meta_path })?;
+
     Ok(())
 }
 
@@ -350,14 +357,10 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
                     return Err(e);
                 }
             };
-        /*
-            TODO: If you want to store multiple metadata in a single file, you
-            need to implement append's abort, object_store may not support this
-            behavior.
-        */
+
         let (meta_aborter, meta_sink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, &meta_path).await?;
-        match write_metadata(meta_sink, parquet_metadata, meta_path.clone()).await {
+        match write_metadata(meta_sink, parquet_metadata, &meta_path).await {
             Ok(v) => v,
             Err(e) => {
                 multi_upload_abort(self.path, aborter).await;
