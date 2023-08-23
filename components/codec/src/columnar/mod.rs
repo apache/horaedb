@@ -682,7 +682,14 @@ mod tests {
             Datum::from(false),
         ];
 
-        check_encode_end_decode(10, datums, DatumKind::Boolean);
+        check_encode_end_decode(10, datums.clone(), DatumKind::Boolean);
+
+        let mut massive_datums = Vec::with_capacity(10 * datums.len());
+        for _ in 0..10 {
+            massive_datums.append(&mut datums.clone());
+        }
+
+        check_encode_end_decode(10, massive_datums, DatumKind::Boolean);
     }
 
     #[test]

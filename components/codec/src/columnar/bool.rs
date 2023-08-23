@@ -195,16 +195,14 @@ impl Encoding {
         let expected_len = Self::VERSION_SIZE + Self::NUM_VALUES_SIZE + Self::COMPRESSION_SIZE;
         ensure!(buf.len() >= expected_len, NotEnoughBytes { len: buf.len() });
 
+        let bit_set_start = Self::VERSION_SIZE + Self::NUM_VALUES_SIZE;
         let num_values = {
-            let start = buf.len() - Self::COMPRESSION_SIZE - Self::NUM_VALUES_SIZE;
-            let end = buf.len() - Self::COMPRESSION_SIZE;
-            let mut num_buf = &buf[start..end];
+            let mut num_buf = &buf[Self::VERSION_SIZE..bit_set_start];
             num_buf.get_u32() as usize
         };
 
-        let start = Self::VERSION_SIZE;
-        let end = buf.len() - Self::COMPRESSION_SIZE - Self::NUM_VALUES_SIZE;
-        let bit_set_buf = &buf[start..end];
+        let bit_set_end = buf.len() - Self::COMPRESSION_SIZE;
+        let bit_set_buf = &buf[bit_set_start..bit_set_end];
         let bit_set = RoBitSet::try_new(bit_set_buf, num_values).context(InvalidBitSetBuf)?;
 
         for i in 0..num_values {
