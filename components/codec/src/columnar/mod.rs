@@ -275,17 +275,25 @@ impl ColumnarEncoder {
             DatumKind::UInt64 => {
                 enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_u64()))
             }
-            DatumKind::UInt32 => todo!(),
-            DatumKind::UInt16 => todo!(),
-            DatumKind::UInt8 => todo!(),
+            DatumKind::UInt32 => {
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_u32()))
+            }
+            DatumKind::UInt16 => {
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_u16()))
+            }
+            DatumKind::UInt8 => {
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_u8()))
+            }
             DatumKind::Int64 => {
                 enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_i64()))
             }
             DatumKind::Int32 => {
                 enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_i32()))
             }
-            DatumKind::Int16 => todo!(),
-            DatumKind::Int8 => todo!(),
+            DatumKind::Int16 => {
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_i16()))
+            }
+            DatumKind::Int8 => enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_i8())),
             DatumKind::Boolean => todo!(),
             DatumKind::Date => todo!(),
             DatumKind::Time => todo!(),
@@ -316,13 +324,13 @@ impl ColumnarEncoder {
                 datums.filter_map(|v| v.into_str().map(|v| v.as_bytes())),
             ),
             DatumKind::UInt64 => enc.encode(buf, datums.filter_map(|v| v.as_u64())),
-            DatumKind::UInt32 => todo!(),
-            DatumKind::UInt16 => todo!(),
-            DatumKind::UInt8 => todo!(),
+            DatumKind::UInt32 => enc.encode(buf, datums.filter_map(|v| v.as_u32())),
+            DatumKind::UInt16 => enc.encode(buf, datums.filter_map(|v| v.as_u16())),
+            DatumKind::UInt8 => enc.encode(buf, datums.filter_map(|v| v.as_u8())),
             DatumKind::Int64 => enc.encode(buf, datums.filter_map(|v| v.as_i64())),
             DatumKind::Int32 => enc.encode(buf, datums.filter_map(|v| v.as_i32())),
-            DatumKind::Int16 => todo!(),
-            DatumKind::Int8 => todo!(),
+            DatumKind::Int16 => enc.encode(buf, datums.filter_map(|v| v.as_i16())),
+            DatumKind::Int8 => enc.encode(buf, datums.filter_map(|v| v.as_i8())),
             DatumKind::Boolean => todo!(),
             DatumKind::Date => todo!(),
             DatumKind::Time => todo!(),
@@ -454,9 +462,27 @@ impl ColumnarDecoder {
                 };
                 ValuesDecoderImpl.decode(ctx, buf, with_u64)
             }
-            DatumKind::UInt32 => todo!(),
-            DatumKind::UInt16 => todo!(),
-            DatumKind::UInt8 => todo!(),
+            DatumKind::UInt32 => {
+                let with_u32 = |value: u32| {
+                    let datum = Datum::from(value);
+                    f(datum)
+                };
+                ValuesDecoderImpl.decode(ctx, buf, with_u32)
+            }
+            DatumKind::UInt16 => {
+                let with_u16 = |value: u16| {
+                    let datum = Datum::from(value);
+                    f(datum)
+                };
+                ValuesDecoderImpl.decode(ctx, buf, with_u16)
+            }
+            DatumKind::UInt8 => {
+                let with_u8 = |value: u8| {
+                    let datum = Datum::from(value);
+                    f(datum)
+                };
+                ValuesDecoderImpl.decode(ctx, buf, with_u8)
+            }
             DatumKind::Int64 => {
                 let with_i64 = |value: i64| {
                     let datum = Datum::from(value);
@@ -468,8 +494,20 @@ impl ColumnarDecoder {
                 let with_i32 = |v: i32| f(Datum::from(v));
                 ValuesDecoderImpl.decode(ctx, buf, with_i32)
             }
-            DatumKind::Int16 => todo!(),
-            DatumKind::Int8 => todo!(),
+            DatumKind::Int16 => {
+                let with_i16 = |value: i16| {
+                    let datum = Datum::from(value);
+                    f(datum)
+                };
+                ValuesDecoderImpl.decode(ctx, buf, with_i16)
+            }
+            DatumKind::Int8 => {
+                let with_i8 = |value: i8| {
+                    let datum = Datum::from(value);
+                    f(datum)
+                };
+                ValuesDecoderImpl.decode(ctx, buf, with_i8)
+            }
             DatumKind::Boolean => todo!(),
             DatumKind::Date => todo!(),
             DatumKind::Time => todo!(),
@@ -510,20 +548,44 @@ mod tests {
     }
 
     #[test]
-    fn test_i32() {
-        let datums = vec![
-            Datum::from(10i32),
-            Datum::from(1i32),
-            Datum::from(2i32),
-            Datum::from(18i32),
-            Datum::from(38i32),
-            Datum::from(48i32),
-            Datum::from(80i32),
-            Datum::from(81i32),
-            Datum::from(82i32),
-        ];
+    fn test_small_int() {
+        let datums = vec![10u32, 1u32, 2u32, 81u32, 82u32];
 
-        check_encode_end_decode(10, datums, DatumKind::Int32);
+        check_encode_end_decode(
+            10,
+            datums.iter().map(|v| Datum::from(*v)).collect(),
+            DatumKind::UInt32,
+        );
+
+        check_encode_end_decode(
+            10,
+            datums.iter().map(|v| Datum::from(*v as i32)).collect(),
+            DatumKind::Int32,
+        );
+
+        check_encode_end_decode(
+            10,
+            datums.iter().map(|v| Datum::from(*v as u16)).collect(),
+            DatumKind::UInt16,
+        );
+
+        check_encode_end_decode(
+            10,
+            datums.iter().map(|v| Datum::from(*v as i16)).collect(),
+            DatumKind::Int16,
+        );
+
+        check_encode_end_decode(
+            10,
+            datums.iter().map(|v| Datum::from(*v as i8)).collect(),
+            DatumKind::Int8,
+        );
+
+        check_encode_end_decode(
+            10,
+            datums.iter().map(|v| Datum::from(*v as u8)).collect(),
+            DatumKind::UInt8,
+        );
     }
 
     #[test]
@@ -580,9 +642,9 @@ mod tests {
             Datum::from(18i64),
             Datum::from(38i64),
             Datum::from(48i64),
-            Datum::from(80i64),
-            Datum::from(81i64),
-            Datum::from(82i64),
+            Datum::from(-80i64),
+            Datum::from(-81i64),
+            Datum::from(-82i64),
         ];
 
         check_encode_end_decode(10, datums, DatumKind::Int64);
