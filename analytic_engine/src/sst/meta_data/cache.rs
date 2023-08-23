@@ -303,10 +303,8 @@ mod tests {
 
         let parquet_file = File::open(parquet_file_path.as_path()).unwrap();
         let parquet_meta_data = footer::parse_metadata(&parquet_file).unwrap();
-
         let store =
             Arc::new(LocalFileSystem::new_with_prefix(parquet_file_path.as_path()).unwrap());
-
         let meta_data = MetaData::try_new(&parquet_meta_data, false, store)
             .await
             .unwrap();

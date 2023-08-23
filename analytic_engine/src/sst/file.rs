@@ -303,7 +303,7 @@ impl Drop for FileHandleInner {
         info!("FileHandle is dropped, meta:{:?}", self.meta);
 
         // Push file cannot block or be async because we are in drop().
-        self.purge_queue.push_file(self.meta.clone());
+        self.purge_queue.push_file(&self.meta);
     }
 }
 
@@ -477,7 +477,7 @@ impl FilePurgeQueue {
         self.inner.closed.store(true, Ordering::SeqCst);
     }
 
-    fn push_file(&self, file_meta: FileMeta) {
+    fn push_file(&self, file_meta: &FileMeta) {
         if self.inner.closed.load(Ordering::SeqCst) {
             warn!("Purger closed, ignore file_id:{}", file_meta.id);
             return;
@@ -489,7 +489,7 @@ impl FilePurgeQueue {
             space_id: self.inner.space_id,
             table_id: self.inner.table_id,
             file_id: file_meta.id,
-            associated_files: file_meta.associated_files,
+            associated_files: file_meta.associated_files.clone(),
         };
 
         if let Err(send_res) = self.inner.sender.send(Request::Purge(request)) {

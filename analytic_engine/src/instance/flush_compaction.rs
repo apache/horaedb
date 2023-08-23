@@ -847,7 +847,7 @@ impl SpaceStore {
                 read_opts: sst_read_options,
                 store_picker: self.store_picker.clone(),
             };
-            let (sst_metas, _) = meta_reader
+            let sst_metas = meta_reader
                 .fetch_metas(&input.files)
                 .await
                 .context(ReadSstMeta)?;

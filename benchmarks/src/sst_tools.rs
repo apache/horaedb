@@ -283,7 +283,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             read_opts: sst_read_options,
             store_picker: store_picker.clone(),
         };
-        let (sst_metas, _) = meta_reader.fetch_metas(&file_handles).await.unwrap();
+        let sst_metas = meta_reader.fetch_metas(&file_handles).await.unwrap();
         MetaData::merge(sst_metas.into_iter().map(MetaData::from), schema)
     };
     let output_sst_config = SstConfig {

@@ -16,7 +16,6 @@
 
 use async_trait::async_trait;
 use common_types::record_batch::RecordBatchWithKey;
-use object_store::Path;
 
 use crate::{prefetchable_stream::PrefetchableStream, sst::meta_data::SstMetaData};
 
@@ -103,8 +102,6 @@ pub use error::*;
 #[async_trait]
 pub trait SstReader {
     async fn meta_data(&mut self) -> Result<SstMetaData>;
-
-    async fn meta_path(&mut self) -> Result<Option<Path>>;
 
     async fn read(
         &mut self,
