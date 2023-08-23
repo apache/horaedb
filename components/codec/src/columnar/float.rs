@@ -14,7 +14,9 @@
 
 use bytes_ext::{Buf, BufMut};
 
-use crate::columnar::{Result, ValuesDecoder, ValuesDecoderImpl, ValuesEncoder, ValuesEncoderImpl};
+use crate::columnar::{
+    DecodeContext, Result, ValuesDecoder, ValuesDecoderImpl, ValuesEncoder, ValuesEncoderImpl,
+};
 
 impl ValuesEncoder<f64> for ValuesEncoderImpl {
     fn encode<B, I>(&self, buf: &mut B, values: I) -> Result<()>
@@ -31,7 +33,7 @@ impl ValuesEncoder<f64> for ValuesEncoderImpl {
 }
 
 impl ValuesDecoder<f64> for ValuesDecoderImpl {
-    fn decode<B, F>(&self, buf: &mut B, mut f: F) -> Result<()>
+    fn decode<B, F>(&self, _ctx: DecodeContext<'_>, buf: &mut B, mut f: F) -> Result<()>
     where
         B: Buf,
         F: FnMut(f64) -> Result<()>,

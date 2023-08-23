@@ -28,6 +28,6 @@ workspace = true
 # In alphabetical order
 bytes_ext = { workspace = true }
 common_types = { workspace = true, features = ["test"] }
+lz4_flex = { workspace = true }
 macros = { workspace = true }
 snafu = { workspace = true }
-

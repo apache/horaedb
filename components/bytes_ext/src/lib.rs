@@ -182,6 +182,26 @@ where
     }
 }
 
+/// The wrapper on the [`BufMut`] for implementing [`std::io::Write`].
+pub struct WriterOnBufMut<'a, B: BufMut> {
+    pub buf: &'a mut B,
+}
+
+impl<'a, B> std::io::Write for WriterOnBufMut<'a, B>
+where
+    B: BufMut,
+{
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.buf.put_slice(buf);
+
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
