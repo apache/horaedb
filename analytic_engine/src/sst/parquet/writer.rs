@@ -185,7 +185,7 @@ impl RecordBatchGroupWriter {
     async fn write_all<W: AsyncWrite + Send + Unpin + 'static>(
         mut self,
         sink: W,
-        meta_path: Path,
+        meta_path: &Path,
     ) -> Result<(usize, ParquetMetaData)> {
         let mut prev_record_batch: Option<RecordBatchWithKey> = None;
         let mut arrow_row_group = Vec::new();
@@ -340,10 +340,10 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
         let (aborter, sink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, self.path).await?;
 
-        let meta_path = sst_util::new_custom_metadata_path(self.path);
+        let meta_path = Path::from(sst_util::new_custom_metadata_path(self.path.as_ref()));
 
         let (total_num_rows, parquet_metadata) =
-            match group_writer.write_all(sink, meta_path.clone()).await {
+            match group_writer.write_all(sink, &meta_path).await {
                 Ok(v) => v,
                 Err(e) => {
                     multi_upload_abort(self.path, aborter).await;
@@ -376,6 +376,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             file_size: file_head.size,
             row_num: total_num_rows,
             storage_format,
+            meta_path: meta_path.to_string(),
         })
     }
 }

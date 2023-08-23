@@ -92,11 +92,12 @@ pub type RecordBatchStreamItem = std::result::Result<RecordBatchWithKey, Generic
 // TODO(yingwen): SstReader also has a RecordBatchStream, can we use same type?
 pub type RecordBatchStream = Box<dyn Stream<Item = RecordBatchStreamItem> + Send + Unpin>;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct SstInfo {
     pub file_size: usize,
     pub row_num: usize,
     pub storage_format: StorageFormat,
+    pub meta_path: String,
 }
 
 #[derive(Debug, Clone)]

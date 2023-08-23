@@ -59,7 +59,6 @@ use crate::{
     },
     table::{
         data::{self, TableData, TableDataRef},
-        sst_util::new_custom_metadata_path,
         version::{FlushableMemTables, MemTableState, SamplingMemTable},
         version_edit::{AddFile, DeleteFile},
     },
@@ -479,7 +478,6 @@ impl FlushTask {
         let mut batch_record_senders = Vec::with_capacity(time_ranges.len());
         let mut sst_handlers = Vec::with_capacity(time_ranges.len());
         let mut file_ids = Vec::with_capacity(time_ranges.len());
-        let mut custom_metadata_path = Vec::with_capacity(time_ranges.len());
 
         let sst_write_options = SstWriteOptions {
             storage_format_hint: self.table_data.table_options().storage_format_hint,
@@ -498,7 +496,6 @@ impl FlushTask {
                 .context(AllocFileId)?;
 
             let sst_file_path = self.table_data.set_sst_file_path(file_id);
-            let sst_custom_metadata_path = new_custom_metadata_path(&sst_file_path);
             // TODO: `min_key` & `max_key` should be figured out when writing sst.
             let sst_meta = MetaData {
                 min_key: min_key.clone(),
@@ -548,7 +545,6 @@ impl FlushTask {
             batch_record_senders.push(batch_record_sender);
             sst_handlers.push(handler);
             file_ids.push(file_id);
-            custom_metadata_path.push(Some(sst_custom_metadata_path));
         }
 
         let iter = build_mem_table_iter(sampling_mem.mem.clone(), &self.table_data)?;
@@ -586,7 +582,7 @@ impl FlushTask {
                     time_range: sst_meta.time_range,
                     max_seq: sst_meta.max_sequence,
                     storage_format: sst_info.storage_format,
-                    meta_path: custom_metadata_path[idx].take(),
+                    associated_files: vec![sst_info.meta_path],
                 },
             })
         }
@@ -625,8 +621,6 @@ impl FlushTask {
             .context(AllocFileId)?;
 
         let sst_file_path = self.table_data.set_sst_file_path(file_id);
-        let custom_meta_path = new_custom_metadata_path(&sst_file_path);
-
         let storage_format_hint = self.table_data.table_options().storage_format_hint;
         let sst_write_options = SstWriteOptions {
             storage_format_hint,
@@ -670,7 +664,7 @@ impl FlushTask {
             time_range: memtable_state.time_range,
             max_seq: memtable_state.last_sequence(),
             storage_format: sst_info.storage_format,
-            meta_path: Some(custom_meta_path),
+            associated_files: vec![sst_info.meta_path],
         }))
     }
 }
@@ -845,7 +839,7 @@ impl SpaceStore {
             row_iter::record_batch_with_key_iter_to_stream(merge_iter)
         };
 
-        let (sst_meta, sst_meta_paths) = {
+        let sst_meta = {
             let meta_reader = SstMetaReader {
                 space_id: table_data.space_id,
                 table_id: table_data.id,
@@ -853,14 +847,12 @@ impl SpaceStore {
                 read_opts: sst_read_options,
                 store_picker: self.store_picker.clone(),
             };
-            let (sst_metas, sst_meta_paths) = meta_reader
+            let (sst_metas, _) = meta_reader
                 .fetch_metas(&input.files)
                 .await
                 .context(ReadSstMeta)?;
-            (
-                MetaData::merge(sst_metas.into_iter().map(MetaData::from), schema),
-                sst_meta_paths,
-            )
+
+            MetaData::merge(sst_metas.into_iter().map(MetaData::from), schema)
         };
 
         // Alloc file id for the merged sst.
@@ -870,8 +862,6 @@ impl SpaceStore {
             .context(AllocFileId)?;
 
         let sst_file_path = table_data.set_sst_file_path(file_id);
-        let custom_mata_path = new_custom_metadata_path(&sst_file_path);
-
         let mut sst_writer = self
             .sst_factory
             .create_writer(
@@ -919,11 +909,10 @@ impl SpaceStore {
         // Store updates to edit_meta.
         edit_meta.files_to_delete.reserve(input.files.len());
         // The compacted file can be deleted later.
-        for (file, meta_path) in input.files.iter().zip(sst_meta_paths.into_iter()) {
+        for file in &input.files {
             edit_meta.files_to_delete.push(DeleteFile {
                 level: input.level,
                 file_id: file.id(),
-                meta_path,
             });
         }
 
@@ -937,7 +926,7 @@ impl SpaceStore {
                 max_seq: sst_meta.max_sequence,
                 time_range: sst_meta.time_range,
                 storage_format: sst_info.storage_format,
-                meta_path: Some(custom_mata_path),
+                associated_files: vec![sst_info.meta_path],
             },
         });
 
@@ -964,7 +953,6 @@ impl SpaceStore {
             edit_meta.files_to_delete.push(DeleteFile {
                 level: expired.level,
                 file_id: file.id(),
-                meta_path: file.meta().meta_path,
             });
         }
     }

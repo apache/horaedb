@@ -65,7 +65,7 @@ impl MetaData {
         let mut meta_path = None;
         let mut other_kv_metas: Vec<KeyValue> = Vec::with_capacity(kv_metas.len() - 1);
         let mut custom_kv_meta = None;
-        let mut meta_version = "1";
+        let mut meta_version = encoding::META_VERSION_V1; // default is v1
 
         for kv_meta in kv_metas {
             if kv_meta.key == encoding::META_KEY {

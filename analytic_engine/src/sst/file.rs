@@ -441,8 +441,8 @@ pub struct FileMeta {
     pub max_seq: u64,
     /// The format of the file.
     pub storage_format: StorageFormat,
-    /// custom meta_path
-    pub meta_path: Option<Path>,
+    /// Associated files, such as: meta_path
+    pub associated_files: Vec<String>,
 }
 
 impl FileMeta {
@@ -489,7 +489,7 @@ impl FilePurgeQueue {
             space_id: self.inner.space_id,
             table_id: self.inner.table_id,
             file_id: file_meta.id,
-            meta_path: file_meta.meta_path,
+            associated_files: file_meta.associated_files,
         };
 
         if let Err(send_res) = self.inner.sender.send(Request::Purge(request)) {
@@ -513,7 +513,7 @@ pub struct FilePurgeRequest {
     space_id: SpaceId,
     table_id: TableId,
     file_id: FileId,
-    meta_path: Option<Path>,
+    associated_files: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -583,7 +583,8 @@ impl FilePurger {
                         sst_file_path.to_string()
                     );
 
-                    if let Some(path) = purge_request.meta_path {
+                    for path in purge_request.associated_files {
+                        let path = Path::from(path);
                         if let Err(e) = store.delete(&path).await {
                             error!(
                                 "File purger failed to delete file, meta_path:{}, err:{}",
