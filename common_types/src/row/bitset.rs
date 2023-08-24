@@ -28,6 +28,24 @@ const UNSET_BIT_MASK: [u8; 8] = [
     255 - 128,
 ];
 
+/// A bit set representing at most 8 bits with a underlying u8.
+pub struct OneByteBitSet(pub u8);
+
+impl OneByteBitSet {
+    /// Create from a given boolean slice.
+    ///
+    /// The values in the `bits` whose index is greater than 8 will be ignored.
+    pub fn from_slice(bits: &[bool]) -> Self {
+        let mut v = 0u8;
+        for (idx, set) in bits.iter().take(8).map(|v| *v as u8).enumerate() {
+            let (_, bit_idx) = RoBitSet::compute_byte_bit_index(idx);
+            v |= set << bit_idx
+        }
+
+        Self(v)
+    }
+}
+
 /// A basic implementation supporting read/write.
 #[derive(Debug, Default, Clone)]
 pub struct BitSet {
@@ -44,19 +62,6 @@ impl BitSet {
             buffer: vec![0; Self::num_bytes(num_bits)],
             num_bits,
         }
-    }
-
-    /// Create a u8 according to a given 8bits array.
-    ///
-    /// The values in the `bits` whose index is greater than 8 will be ignored.
-    pub fn one_byte(bits: &[bool]) -> u8 {
-        let mut v = 0u8;
-        for (idx, set) in bits.iter().take(8).map(|v| *v as u8).enumerate() {
-            let (_, bit_idx) = RoBitSet::compute_byte_bit_index(idx);
-            v |= set << bit_idx
-        }
-
-        v
     }
 
     /// Initialize a [`BitSet`] with all bits set.
@@ -185,6 +190,7 @@ mod tests {
     use std::assert_eq;
 
     use super::BitSet;
+    use crate::row::bitset::OneByteBitSet;
 
     #[test]
     fn test_set_op() {
@@ -245,17 +251,17 @@ mod tests {
     #[test]
     fn test_one_byte() {
         let bits = [false, false, false, false, false, false];
-        assert_eq!(0, BitSet::one_byte(&bits));
+        assert_eq!(0, OneByteBitSet::from_slice(&bits).0);
 
         let bits = [true, false, false, false, false, false];
-        assert_eq!(1, BitSet::one_byte(&bits));
+        assert_eq!(1, OneByteBitSet::from_slice(&bits).0);
 
         let bits = [false, false, false, true, false, false, true, true];
-        assert_eq!(128 + 64 + 8, BitSet::one_byte(&bits));
+        assert_eq!(128 + 64 + 8, OneByteBitSet::from_slice(&bits).0);
 
         let bits = [
             false, false, false, false, false, false, true, true, true, true,
         ];
-        assert_eq!(128 + 64, BitSet::one_byte(&bits));
+        assert_eq!(128 + 64, OneByteBitSet::from_slice(&bits).0);
     }
 }

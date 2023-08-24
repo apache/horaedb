@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use bytes_ext::{Buf, BufMut};
-use common_types::row::bitset::{BitSet, RoBitSet};
+use common_types::row::bitset::{BitSet, OneByteBitSet, RoBitSet};
 use snafu::{ensure, OptionExt};
 
 use super::{
@@ -48,7 +48,7 @@ enum Compression {
 
 impl Encoding {
     const COMPRESSION_SIZE: usize = 1;
-    /// The overhead for compression is 5B, so it is not good to always enable
+    /// The overhead for compression is 4B, so it is not good to always enable
     /// the compression.
     const COMPRESS_THRESHOLD: usize = 10;
     const NUM_VALUES_SIZE: usize = 4;
@@ -169,8 +169,8 @@ impl Encoding {
             one_byte_bits[offset] = v;
             offset += 1;
             if offset == 8 {
-                let bit_set = BitSet::one_byte(&one_byte_bits);
-                buf.put_u8(bit_set);
+                let bit_set = OneByteBitSet::from_slice(&one_byte_bits);
+                buf.put_u8(bit_set.0);
 
                 // Reset the offset and the bits buf.
                 offset = 0;
@@ -180,8 +180,8 @@ impl Encoding {
 
         // Put the remaining bits.
         if offset > 0 {
-            let bit_set = BitSet::one_byte(&one_byte_bits);
-            buf.put_u8(bit_set);
+            let bit_set = OneByteBitSet::from_slice(&one_byte_bits);
+            buf.put_u8(bit_set.0);
         }
 
         buf.put_u8(Compression::BitSet as u8);
