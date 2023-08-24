@@ -19,6 +19,7 @@ use std::sync::Arc;
 use analytic_engine::setup::OpenedWals;
 use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
+use datafusion::execution::{runtime_env::RuntimeConfig, FunctionRegistry};
 use df_operator::registry::FunctionRegistryRef;
 use interpreters::table_manipulator::TableManipulatorRef;
 use log::{info, warn};
@@ -32,11 +33,14 @@ use proxy::{
     schema_config_provider::SchemaConfigProviderRef,
     Proxy,
 };
-use query_engine::QueryEngineRef;
+use query_engine::{QueryEngineBuilder, QueryEngineType};
 use remote_engine_client::RemoteEngineImpl;
 use router::{endpoint::Endpoint, RouterRef};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_engine::engine::{EngineRuntimes, TableEngineRef};
+use table_engine::{
+    engine::{EngineRuntimes, TableEngineRef},
+    remote::RemoteEngineRef,
+};
 
 use crate::{
     config::ServerConfig,
@@ -84,6 +88,15 @@ pub enum Error {
     #[snafu(display("Missing limiter.\nBacktrace:\n{}", backtrace))]
     MissingLimiter { backtrace: Backtrace },
 
+    #[snafu(display("Missing datafusion context.\nBacktrace:\n{}", backtrace))]
+    MissingDatafusionContext { backtrace: Backtrace },
+
+    #[snafu(display("Missing query engine config.\nBacktrace:\n{}", backtrace))]
+    MissingQueryEngineConfig { backtrace: Backtrace },
+
+    #[snafu(display("Missing config content.\nBacktrace:\n{}", backtrace))]
+    MissingConfigContent { backtrace: Backtrace },
+
     #[snafu(display("Http service failed, msg:{}, err:{}", msg, source))]
     HttpService {
         msg: String,
@@ -116,6 +129,9 @@ pub enum Error {
 
     #[snafu(display("Failed to open tables in standalone mode, err:{}", source))]
     OpenLocalTables { source: local_tables::Error },
+
+    #[snafu(display("Failed to build query engine, err:{source}"))]
+    BuildQueryEngine { source: query_engine::error::Error },
 }
 
 define_result!(Error);
@@ -211,13 +227,12 @@ impl Server {
 #[must_use]
 pub struct Builder {
     server_config: ServerConfig,
-    remote_engine_client_config: remote_engine_client::config::Config,
     node_addr: String,
+    query_engine_config: Option<query_engine::config::Config>,
     config_content: Option<String>,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
     catalog_manager: Option<ManagerRef>,
-    query_engine: Option<QueryEngineRef>,
     table_engine: Option<TableEngineRef>,
     table_manipulator: Option<TableManipulatorRef>,
     function_registry: Option<FunctionRegistryRef>,
@@ -227,19 +242,20 @@ pub struct Builder {
     schema_config_provider: Option<SchemaConfigProviderRef>,
     local_tables_recoverer: Option<LocalTablesRecoverer>,
     opened_wals: Option<OpenedWals>,
+    remote_engine: Option<RemoteEngineRef>,
+    datatfusion_context: Option<DatafusionContext>,
 }
 
 impl Builder {
     pub fn new(config: ServerConfig) -> Self {
         Self {
             server_config: config,
-            remote_engine_client_config: remote_engine_client::Config::default(),
             node_addr: "".to_string(),
+            query_engine_config: None,
             config_content: None,
             engine_runtimes: None,
             log_runtime: None,
             catalog_manager: None,
-            query_engine: None,
             table_engine: None,
             table_manipulator: None,
             function_registry: None,
@@ -249,6 +265,8 @@ impl Builder {
             schema_config_provider: None,
             local_tables_recoverer: None,
             opened_wals: None,
+            remote_engine: None,
+            datatfusion_context: None,
         }
     }
 
@@ -259,6 +277,14 @@ impl Builder {
 
     pub fn config_content(mut self, config_content: String) -> Self {
         self.config_content = Some(config_content);
+        self
+    }
+
+    pub fn query_engine_config(
+        mut self,
+        query_engine_config: query_engine::config::Config,
+    ) -> Self {
+        self.query_engine_config = Some(query_engine_config);
         self
     }
 
@@ -274,11 +300,6 @@ impl Builder {
 
     pub fn catalog_manager(mut self, val: ManagerRef) -> Self {
         self.catalog_manager = Some(val);
-        self
-    }
-
-    pub fn query_engine(mut self, val: QueryEngineRef) -> Self {
-        self.query_engine = Some(val);
         self
     }
 
@@ -330,11 +351,20 @@ impl Builder {
         self
     }
 
+    pub fn remote_engine(mut self, remote_engine: RemoteEngineRef) -> Self {
+        self.remote_engine = Some(remote_engine);
+        self
+    }
+
+    pub fn datafusion_context(mut self, datafusion_context: DatafusionContext) -> Self {
+        self.datatfusion_context = Some(datafusion_context);
+        self
+    }
+
     /// Build and run the server
     pub fn build(self) -> Result<Server> {
         // Build instance
         let catalog_manager = self.catalog_manager.context(MissingCatalogManager)?;
-        let query_engine = self.query_engine.context(MissingQueryEngine)?;
         let table_engine = self.table_engine.context(MissingTableEngine)?;
         let table_manipulator = self.table_manipulator.context(MissingTableManipulator)?;
         let function_registry = self.function_registry.context(MissingFunctionRegistry)?;
@@ -345,19 +375,36 @@ impl Builder {
             .context(MissingSchemaConfigProvider)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
-        let config_content = self.config_content.expect("Missing config content");
+        let config_content = self.config_content.context(MissingConfigContent)?;
+        let query_engine_config = self.query_engine_config.context(MissingQueryEngineConfig)?;
+        let datafusion_context = self.datatfusion_context.context(MissingDatafusionContext)?;
 
         let hotspot_recorder = Arc::new(HotspotRecorder::new(
             self.server_config.hotspot,
             engine_runtimes.default_runtime.clone(),
         ));
+
+        // Build remote engine.
         let remote_engine_ref = Arc::new(RemoteEngineImpl::new(
-            self.remote_engine_client_config.clone(),
+            self.server_config.remote_client.clone(),
             router.clone(),
             engine_runtimes.io_runtime.clone(),
         ));
 
+        // Build partitioned table engine.
+        // TODO: remove the partitioned table engine.
         let partition_table_engine = Arc::new(PartitionTableEngine::new(remote_engine_ref.clone()));
+
+        // Build query engine.
+        let query_engine_builder = QueryEngineBuilder::default()
+            .config(query_engine_config)
+            .catalog_manager(catalog_manager.clone())
+            .df_function_registry(datafusion_context.function_registry)
+            .df_runtime_config(datafusion_context.runtime_config)
+            .remote_engine(remote_engine_ref.clone());
+        let query_engine = query_engine_builder
+            .build(QueryEngineType::Datafusion)
+            .context(BuildQueryEngine)?;
 
         let instance = {
             let instance = Instance {
@@ -459,4 +506,9 @@ impl Builder {
         };
         Ok(server)
     }
+}
+
+pub struct DatafusionContext {
+    pub function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
+    pub runtime_config: RuntimeConfig,
 }

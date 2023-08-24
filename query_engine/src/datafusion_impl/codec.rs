@@ -15,14 +15,9 @@
 use std::{fmt, sync::Arc};
 
 use bytes_ext::Bytes;
-use datafusion::{
-    error::DataFusionError,
-    execution::{runtime_env::RuntimeEnv, FunctionRegistry},
-};
+use datafusion::execution::{runtime_env::RuntimeEnv, FunctionRegistry};
 use datafusion_proto::{
-    bytes::{
-        physical_plan_from_bytes_with_extension_codec, physical_plan_to_bytes_with_extension_codec,
-    },
+    bytes::physical_plan_to_bytes_with_extension_codec,
     physical_plan::{AsExecutionPlan, PhysicalExtensionCodec as DatafusionPhysicalExtensionCodec},
     protobuf,
 };

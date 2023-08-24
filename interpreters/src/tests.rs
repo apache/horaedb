@@ -28,7 +28,7 @@ use query_engine::{datafusion_impl::DatafusionQueryEngineImpl, QueryEngineRef};
 use query_frontend::{
     parser::Parser, plan::Plan, planner::Planner, provider::MetaProvider, tests::MockMetaProvider,
 };
-use table_engine::engine::TableEngineRef;
+use table_engine::{engine::TableEngineRef, memory::MockRemoteEngine};
 
 use crate::{
     context::Context,
@@ -371,11 +371,14 @@ async fn test_interpreters<T: EngineBuildContext>(engine_context: T) {
     let table_operator = TableOperator::new(catalog_manager.clone());
     let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
     let function_registry = Arc::new(FunctionRegistryImpl::default());
+    let remote_engine = Arc::new(MockRemoteEngine);
     let query_engine = Box::new(
         DatafusionQueryEngineImpl::new(
-            query_engine::Config::default(),
+            query_engine::config::Config::default(),
             RuntimeConfig::default(),
             function_registry.to_df_function_registry(),
+            remote_engine,
+            catalog_manager.clone(),
         )
         .unwrap(),
     );

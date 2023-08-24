@@ -19,13 +19,19 @@ use snafu::{Backtrace, Snafu};
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
-    #[snafu(display("Physical plan err with cause,, msg:{msg:?}, err:{source}",))]
+    #[snafu(display("Failed to init query engine, msg:{msg}.\nBacktrace:\n{backtrace}"))]
+    InitNoCause { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Failed to init query engine, msg:{msg}, err:{source}"))]
+    InitWithCause { msg: String, source: GenericError },
+
+    #[snafu(display("Physical plan err with cause,, msg:{msg:?}, err:{source}"))]
     PhysicalPlanWithCause {
         msg: Option<String>,
         source: GenericError,
     },
 
-    #[snafu(display("Physical plan err with no cause, msg:{msg:?}.\nBacktrace:\n{backtrace}",))]
+    #[snafu(display("Physical plan err with no cause, msg:{msg:?}.\nBacktrace:\n{backtrace}"))]
     PhysicalPlanNoCause {
         msg: Option<String>,
         backtrace: Backtrace,

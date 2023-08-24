@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{fmt, sync::Arc};
+use std::sync::Arc;
 
 use catalog::manager::ManagerRef as CatalogManagerRef;
 use datafusion::{
@@ -53,7 +53,7 @@ pub struct Resolver {
     // TODO: hold `SessionContext` here rather than these two parts.
     runtime_env: Arc<RuntimeEnv>,
     function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
-    
+
     extension_codec: Arc<dyn PhysicalExtensionCodec>,
 }
 
@@ -202,7 +202,7 @@ mod test {
     use common_types::{projected_schema::ProjectedSchema, tests::build_schema_for_cpu};
     use datafusion::{
         error::Result as DfResult,
-        execution::{runtime_env::RuntimeEnv, FunctionRegistry},
+        execution::{runtime_env::RuntimeEnv, FunctionRegistry, TaskContext},
         logical_expr::{expr_fn, Literal, Operator},
         physical_plan::{
             displayable,
@@ -213,7 +213,6 @@ mod test {
         },
         scalar::ScalarValue,
     };
-    use prost::bytes::Bytes;
     use table_engine::{
         memory::MemoryTable,
         predicate::PredicateBuilder,
@@ -228,7 +227,7 @@ mod test {
         dist_sql_query::{
             physical_plan::{UnresolvedPartitionedScan, UnresolvedSubTableScan},
             resolver::Resolver,
-            ExecutableScanBuilder, RemotePhysicalPlanExecutor,
+            EncodedPlan, ExecutableScanBuilder, RemotePhysicalPlanExecutor,
         },
     };
 
@@ -359,7 +358,8 @@ mod test {
         async fn execute(
             &self,
             _table: TableIdentifier,
-            _encoded_plan: Bytes,
+            _task_context: &TaskContext,
+            _encoded_plan: EncodedPlan,
         ) -> DfResult<SendableRecordBatchStream> {
             unimplemented!()
         }
