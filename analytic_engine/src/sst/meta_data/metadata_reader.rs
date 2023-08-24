@@ -27,7 +27,7 @@ use crate::sst::{
         KvMetaPathEmpty,
     },
     parquet::{
-        encoding::{self, decode_sst_custom_meta_data, META_VERSION_CURRENT, META_VERSION_V1},
+        encoding::{self, decode_sst_meta_data_v2, META_VERSION_CURRENT, META_VERSION_V1},
         meta_data::{ParquetMetaData, ParquetMetaDataRef},
     },
 };
@@ -54,7 +54,7 @@ impl CustomMetadataReader for MetaV1Reader<'_> {
     async fn get_metadata(&self) -> Result<ParquetMetaData> {
         let custom_kv_meta = self.custom_kv_meta.context(KvMetaDataNotFound)?;
 
-        encoding::decode_sst_meta_data(custom_kv_meta).context(DecodeCustomMetaData)
+        encoding::decode_sst_meta_data_v1(custom_kv_meta).context(DecodeCustomMetaData)
     }
 }
 
@@ -72,27 +72,25 @@ impl MetaV2Reader {
 #[async_trait]
 impl CustomMetadataReader for MetaV2Reader {
     async fn get_metadata(&self) -> Result<ParquetMetaData> {
-        let decode_custom_metadata = match &self.meta_path {
-            None => return KvMetaPathEmpty {}.fail(),
+        match &self.meta_path {
+            None => KvMetaPathEmpty {}.fail(),
             Some(meta_path) => {
                 let metadata = self
                     .store
                     .get(meta_path)
                     .await
-                    .with_context(|| FetchAndDecodeSstMeta {
+                    .with_context(|| FetchFromStore {
                         file_path: meta_path.to_string(),
                     })?
                     .bytes()
                     .await
-                    .with_context(|| FetchFromStore {
+                    .with_context(|| FetchAndDecodeSstMeta {
                         file_path: meta_path.to_string(),
                     })?;
 
-                decode_sst_custom_meta_data(metadata.as_bytes()).context(DecodeCustomMetaData)?
+                decode_sst_meta_data_v2(metadata.as_bytes()).context(DecodeCustomMetaData)
             }
-        };
-
-        Ok(decode_custom_metadata)
+        }
     }
 }
 

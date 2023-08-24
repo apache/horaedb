@@ -31,7 +31,7 @@ use crate::{
         factory::{ObjectStorePickerRef, SstWriteOptions},
         file::Level,
         parquet::{
-            encoding::{encode_sst_custom_meta_data, ParquetEncoder},
+            encoding::{encode_sst_meta_data_v2, ParquetEncoder},
             meta_data::{ParquetFilter, ParquetMetaData, RowGroupFilterBuilder},
         },
         writer::{
@@ -296,7 +296,7 @@ async fn write_metadata<W>(
 where
     W: AsyncWrite + Send + Unpin,
 {
-    let buf = encode_sst_custom_meta_data(parquet_metadata).context(EncodePbData)?;
+    let buf = encode_sst_meta_data_v2(parquet_metadata).context(EncodePbData)?;
     meta_sink
         .write_all(buf.as_bytes())
         .await

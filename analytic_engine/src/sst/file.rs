@@ -24,12 +24,14 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    time::Duration,
 };
 
 use common_types::{
     time::{TimeRange, Timestamp},
     SequenceNumber,
 };
+use future_ext::{retry_async, RetryConfig};
 use log::{error, info, warn};
 use macros::define_result;
 use metric_ext::Meter;
@@ -529,6 +531,11 @@ pub struct FilePurger {
 }
 
 impl FilePurger {
+    const RETRY_CONFIG: RetryConfig = RetryConfig {
+        max_retries: 3,
+        interval: Duration::from_millis(500),
+    };
+
     pub fn start(runtime: &Runtime, store: ObjectStoreRef) -> Self {
         // We must use unbound channel, so the sender wont block when the handle is
         // dropped.
@@ -565,6 +572,13 @@ impl FilePurger {
         FilePurgeQueue::new(space_id, table_id, self.sender.clone())
     }
 
+    // TODO: currently we ignore errors when delete.
+    async fn delete_file(store: &ObjectStoreRef, path: &Path) {
+        if let Err(e) = retry_async(|| store.delete(path), &Self::RETRY_CONFIG).await {
+            error!("File purger failed to delete file, path:{path}, err:{e}");
+        }
+    }
+
     async fn purge_file_loop(store: ObjectStoreRef, mut receiver: UnboundedReceiver<Request>) {
         info!("File purger start");
 
@@ -585,22 +599,10 @@ impl FilePurger {
 
                     for path in purge_request.associated_files {
                         let path = Path::from(path);
-                        if let Err(e) = store.delete(&path).await {
-                            error!(
-                                "File purger failed to delete file, meta_path:{}, err:{}",
-                                path.to_string(),
-                                e
-                            );
-                        }
+                        Self::delete_file(&store, &path).await;
                     }
 
-                    if let Err(e) = store.delete(&sst_file_path).await {
-                        error!(
-                            "File purger failed to delete file, sst_file_path:{}, err:{}",
-                            sst_file_path.to_string(),
-                            e
-                        );
-                    }
+                    Self::delete_file(&store, &sst_file_path).await;
                 }
                 Request::Exit => break,
             }

@@ -40,7 +40,6 @@ pub struct MetaData {
     /// consumption.
     parquet: parquet_ext::ParquetMetaDataRef,
     custom: ParquetMetaDataRef,
-    meta_path: Option<Path>,
 }
 
 impl MetaData {
@@ -113,11 +112,7 @@ impl MetaData {
 
             Arc::new(thin_parquet_meta_data)
         };
-        Ok(Self {
-            parquet,
-            custom,
-            meta_path,
-        })
+        Ok(Self { parquet, custom })
     }
 
     #[inline]
@@ -128,11 +123,6 @@ impl MetaData {
     #[inline]
     pub fn custom(&self) -> &ParquetMetaDataRef {
         &self.custom
-    }
-
-    #[inline]
-    pub fn meta_path(&self) -> Option<Path> {
-        self.meta_path.clone()
     }
 }
 
@@ -257,7 +247,8 @@ mod tests {
         .unwrap();
         let mut writer = ArrowWriter::try_new(file, batch.schema(), None).unwrap();
 
-        let encoded_meta_data = encoding::encode_sst_meta_data(custom_meta_data.clone()).unwrap();
+        let encoded_meta_data =
+            encoding::encode_sst_meta_data_v1(custom_meta_data.clone()).unwrap();
         writer.append_key_value_metadata(encoded_meta_data);
 
         writer.write(&batch).unwrap();
