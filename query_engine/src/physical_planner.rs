@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use query_frontend::plan::QueryPlan;
 use table_engine::stream::SendableRecordBatchStream;
 
-use crate::{context::Context, error::*, datafusion_impl::task_context::DatafusionTaskExecContext};
+use crate::{context::Context, datafusion_impl::task_context::DatafusionTaskExecContext, error::*};
 
 /// Physical query planner that converts a logical plan to a
 /// physical plan suitable for execution.
@@ -34,7 +34,7 @@ pub trait PhysicalPlanner: fmt::Debug + Send + Sync + 'static {
 
 pub type PhysicalPlannerRef = Arc<dyn PhysicalPlanner>;
 
-pub trait PhysicalPlan: std::fmt::Debug + Send + Sync + 'static {
+pub trait PhysicalPlan: std::fmt::Debug + Send + 'static {
     fn as_any(&self) -> &dyn Any;
 
     /// execute this plan and returns the result

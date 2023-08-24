@@ -23,7 +23,10 @@ use time_ext::InstantExt;
 
 use crate::{
     context::Context,
-    datafusion_impl::{task_context::{Preprocessor, DatafusionTaskExecContext}, DfContextBuilder},
+    datafusion_impl::{
+        task_context::{DatafusionTaskExecContext, Preprocessor},
+        DfContextBuilder,
+    },
     error::*,
     executor::Executor,
     physical_planner::{PhysicalPlanPtr, TaskExecContext},
@@ -50,12 +53,12 @@ impl DatafusionExecutorImpl {
     fn task_exec_context(&self, ctx: &Context) -> TaskExecContext {
         let session_ctx = self.df_ctx_builder.build(ctx);
         let task_ctx = session_ctx.task_ctx();
-        
+
         let df_ctx = DatafusionTaskExecContext {
             task_ctx,
             preprocessor: self.preprocessor.clone(),
         };
-        
+
         TaskExecContext::default().with_datafusion_context(df_ctx)
     }
 }

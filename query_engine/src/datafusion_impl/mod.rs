@@ -28,11 +28,9 @@ use datafusion::{
 use table_engine::{provider::CeresdbOptions, remote::RemoteEngineRef};
 
 use crate::{
-    codec::PhysicalPlanCodecRef,
     context::Context,
     datafusion_impl::{
-        codec::DataFusionPhysicalPlanEncoderImpl, executor::DatafusionExecutorImpl,
-        logical_optimizer::type_conversion::TypeConversion,
+        executor::DatafusionExecutorImpl, logical_optimizer::type_conversion::TypeConversion,
         physical_planner::DatafusionPhysicalPlannerImpl,
         physical_planner_extension::QueryPlannerAdapter, task_context::Preprocessor,
     },
@@ -41,7 +39,6 @@ use crate::{
     Config, QueryEngine,
 };
 
-pub mod codec;
 pub mod executor;
 pub mod logical_optimizer;
 pub mod physical_optimizer;
@@ -57,7 +54,6 @@ use crate::error::*;
 pub struct DatafusionQueryEngineImpl {
     physical_planner: PhysicalPlannerRef,
     executor: ExecutorRef,
-    physical_plan_codec: PhysicalPlanCodecRef,
 }
 
 impl DatafusionQueryEngineImpl {
@@ -88,17 +84,9 @@ impl DatafusionQueryEngineImpl {
         ));
         let executor = Arc::new(DatafusionExecutorImpl::new(df_ctx_builder, preprocessor));
 
-        // TODO: remove useless physical plan codec
-        let physical_plan_codec = Arc::new(DataFusionPhysicalPlanEncoderImpl::new(
-            runtime_env,
-            function_registry,
-            df_engine_extensions::codec::PhysicalExtensionCodecImpl::new(),
-        ));
-
         Ok(Self {
             physical_planner,
             executor,
-            physical_plan_codec,
         })
     }
 }
@@ -110,10 +98,6 @@ impl QueryEngine for DatafusionQueryEngineImpl {
 
     fn executor(&self) -> ExecutorRef {
         self.executor.clone()
-    }
-
-    fn physical_plan_codec(&self) -> PhysicalPlanCodecRef {
-        self.physical_plan_codec.clone()
     }
 }
 
