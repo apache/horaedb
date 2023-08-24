@@ -14,28 +14,38 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use catalog::{manager::ManagerRef, test_util::MockCatalogManagerBuilder};
 use common_types::{projected_schema::ProjectedSchema, tests::build_schema_for_cpu};
 use datafusion::{
+    error::Result as DfResult,
+    execution::{runtime_env::RuntimeEnv, FunctionRegistry},
     logical_expr::{expr_fn, Literal, Operator},
     physical_plan::{
         expressions::{binary, col, lit},
         filter::FilterExec,
         projection::ProjectionExec,
-        ExecutionPlan, PhysicalExpr,
+        DisplayAs, ExecutionPlan, PhysicalExpr, SendableRecordBatchStream,
     },
     scalar::ScalarValue,
 };
+use prost::bytes::Bytes;
 use table_engine::{
     memory::MemoryTable,
     predicate::PredicateBuilder,
     remote::model::TableIdentifier,
-    table::{ReadOptions, ReadRequest, TableId},
+    table::{ReadOptions, ReadRequest, TableId, TableRef},
     ANALYTIC_ENGINE_TYPE,
 };
 use trace_metric::MetricsCollector;
 
-use crate::dist_sql_query::physical_plan::{UnresolvedPartitionedScan, UnresolvedSubTableScan};
+use crate::{
+    dist_sql_query::{
+        physical_plan::{UnresolvedPartitionedScan, UnresolvedSubTableScan},
+        resolver::Resolver,
+        ExecutableScanBuilder, RemotePhysicalPlanExecutor,
+    },
+};
 
 // Test context
 pub struct TestContext {
@@ -164,6 +174,17 @@ impl TestContext {
         }
     }
 
+    // Return resolver
+    pub fn resolver(&self) -> Resolver {
+        Resolver::new(
+            Arc::new(MockRemotePhysicalPlanExecutor),
+            self.catalog_manager.clone(),
+            Box::new(MockScanBuilder),
+            Arc::new(RuntimeEnv::default()),
+            Arc::new(MockFunctionRegistry),
+        )
+    }
+
     // Return test catalog manager
     pub fn catalog_manager(&self) -> ManagerRef {
         self.catalog_manager.clone()
@@ -203,5 +224,115 @@ impl TestContext {
 
     pub fn read_request(&self) -> ReadRequest {
         self.request.clone()
+    }
+}
+
+// Mock function registry
+struct MockFunctionRegistry;
+
+impl FunctionRegistry for MockFunctionRegistry {
+    fn udfs(&self) -> std::collections::HashSet<String> {
+        unimplemented!()
+    }
+
+    fn udf(&self, _name: &str) -> DfResult<Arc<datafusion::logical_expr::ScalarUDF>> {
+        unimplemented!()
+    }
+
+    fn udaf(&self, _name: &str) -> DfResult<Arc<datafusion::logical_expr::AggregateUDF>> {
+        unimplemented!()
+    }
+
+    fn udwf(&self, _name: &str) -> DfResult<Arc<datafusion::logical_expr::WindowUDF>> {
+        unimplemented!()
+    }
+}
+
+// Mock scan and its builder
+#[derive(Debug)]
+struct MockScanBuilder;
+
+impl ExecutableScanBuilder for MockScanBuilder {
+    fn build(
+        &self,
+        _table: TableRef,
+        read_request: ReadRequest,
+    ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
+        Ok(Arc::new(MockScan {
+            request: read_request,
+        }))
+    }
+}
+
+#[derive(Debug)]
+struct MockScan {
+    request: ReadRequest,
+}
+
+impl ExecutionPlan for MockScan {
+    fn as_any(&self) -> &dyn std::any::Any {
+        unimplemented!()
+    }
+
+    fn schema(&self) -> arrow::datatypes::SchemaRef {
+        self.request.projected_schema.to_projected_arrow_schema()
+    }
+
+    fn output_partitioning(&self) -> datafusion::physical_plan::Partitioning {
+        datafusion::physical_plan::Partitioning::UnknownPartitioning(
+            self.request.opts.read_parallelism,
+        )
+    }
+
+    fn output_ordering(&self) -> Option<&[datafusion::physical_expr::PhysicalSortExpr]> {
+        None
+    }
+
+    fn children(&self) -> Vec<Arc<dyn ExecutionPlan>> {
+        vec![]
+    }
+
+    fn with_new_children(
+        self: Arc<Self>,
+        _children: Vec<Arc<dyn ExecutionPlan>>,
+    ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
+        unimplemented!()
+    }
+
+    fn execute(
+        &self,
+        _partition: usize,
+        _context: Arc<datafusion::execution::TaskContext>,
+    ) -> datafusion::error::Result<datafusion::physical_plan::SendableRecordBatchStream> {
+        unimplemented!()
+    }
+
+    fn statistics(&self) -> datafusion::physical_plan::Statistics {
+        unimplemented!()
+    }
+}
+
+impl DisplayAs for MockScan {
+    fn fmt_as(
+        &self,
+        _t: datafusion::physical_plan::DisplayFormatType,
+        f: &mut std::fmt::Formatter,
+    ) -> std::fmt::Result {
+        write!(f, "MockScan")
+    }
+}
+
+// Mock remote executor
+#[derive(Debug, Clone)]
+struct MockRemotePhysicalPlanExecutor;
+
+#[async_trait]
+impl RemotePhysicalPlanExecutor for MockRemotePhysicalPlanExecutor {
+    async fn execute(
+        &self,
+        _table: TableIdentifier,
+        _encoded_plan: Bytes,
+    ) -> DfResult<SendableRecordBatchStream> {
+        unimplemented!()
     }
 }

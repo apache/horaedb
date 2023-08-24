@@ -26,6 +26,7 @@ use datafusion::{
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
+use datafusion_proto::physical_plan::PhysicalExtensionCodec;
 use table_engine::{remote::model::TableIdentifier, table::ReadRequest};
 
 use crate::dist_sql_query::RemotePhysicalPlanExecutor;
@@ -103,16 +104,17 @@ impl DisplayAs for UnresolvedPartitionedScan {
 /// It includes remote execution plans of sub tables, and will send them to
 /// related nodes to execute.
 #[derive(Debug)]
-pub struct ResolvedPartitionedScan<R> {
-    pub remote_executor: R,
+pub struct ResolvedPartitionedScan {
+    pub remote_executor: Arc<dyn RemotePhysicalPlanExecutor>,
     pub remote_exec_plans: Vec<(TableIdentifier, Arc<dyn ExecutionPlan>)>,
+    pub extension_codec: Arc<dyn PhysicalExtensionCodec>,
 }
 
-impl<R: RemotePhysicalPlanExecutor> ResolvedPartitionedScan<R> {
+impl ResolvedPartitionedScan {
     pub fn extend_remote_exec_plans(
         &self,
         extended_node: Arc<dyn ExecutionPlan>,
-    ) -> DfResult<Arc<ResolvedPartitionedScan<R>>> {
+    ) -> DfResult<Arc<ResolvedPartitionedScan>> {
         let new_plans = self
             .remote_exec_plans
             .iter()
@@ -127,13 +129,14 @@ impl<R: RemotePhysicalPlanExecutor> ResolvedPartitionedScan<R> {
         let plan = ResolvedPartitionedScan {
             remote_executor: self.remote_executor.clone(),
             remote_exec_plans: new_plans,
+            extension_codec: self.extension_codec.clone(),
         };
 
         Ok(Arc::new(plan))
     }
 }
 
-impl<R: RemotePhysicalPlanExecutor> ExecutionPlan for ResolvedPartitionedScan<R> {
+impl ExecutionPlan for ResolvedPartitionedScan {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -181,7 +184,7 @@ impl<R: RemotePhysicalPlanExecutor> ExecutionPlan for ResolvedPartitionedScan<R>
 }
 
 // TODO: make display for the plan more pretty.
-impl<R: RemotePhysicalPlanExecutor> DisplayAs for ResolvedPartitionedScan<R> {
+impl DisplayAs for ResolvedPartitionedScan {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,

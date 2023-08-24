@@ -14,7 +14,7 @@
 
 //! Model for remote table engine
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{collections::HashMap, time::Instant};
 
 use bytes_ext::{ByteVec, Bytes};
 use ceresdbproto::remote_engine::{self, execute_plan_request, row_group::Rows::Contiguous};

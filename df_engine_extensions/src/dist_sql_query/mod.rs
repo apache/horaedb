@@ -19,6 +19,7 @@ use datafusion::{
     error::Result as DfResult,
     physical_plan::{ExecutionPlan, SendableRecordBatchStream},
 };
+use prost::bytes::Bytes;
 use table_engine::{
     remote::model::TableIdentifier,
     table::{ReadRequest, TableRef},
@@ -32,13 +33,15 @@ pub mod test_util;
 
 /// Remote datafusion physical plan executor
 #[async_trait]
-pub trait RemotePhysicalPlanExecutor: Clone + fmt::Debug + Send + Sync + 'static {
+pub trait RemotePhysicalPlanExecutor: fmt::Debug + Send + Sync + 'static {
     async fn execute(
         &self,
         table: TableIdentifier,
-        physical_plan: Arc<dyn ExecutionPlan>,
+        encoded_plan: Bytes,
     ) -> DfResult<SendableRecordBatchStream>;
 }
+
+type RemotePhysicalPlanExecutorRef = Arc<dyn RemotePhysicalPlanExecutor>;
 
 /// Executable scan's builder
 ///
@@ -48,3 +51,5 @@ pub trait ExecutableScanBuilder: fmt::Debug + Send + Sync + 'static {
     fn build(&self, table: TableRef, read_request: ReadRequest)
         -> DfResult<Arc<dyn ExecutionPlan>>;
 }
+
+type ExecutableScanBuilderRef = Box<dyn ExecutableScanBuilder>;

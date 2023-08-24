@@ -29,11 +29,7 @@ use ceresdbproto::{
     remote_engine::{self, read_response::Output::Arrow, remote_engine_service_client::*},
     storage::arrow_payload,
 };
-use common_types::{
-    projected_schema::ProjectedSchema,
-    record_batch::RecordBatch,
-    schema::{RecordSchema, Schema},
-};
+use common_types::{record_batch::RecordBatch, schema::RecordSchema};
 use futures::{Stream, StreamExt};
 use generic_error::BoxError;
 use log::info;
