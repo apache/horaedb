@@ -12,18 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use catalog::manager::ManagerRef as CatalogManagerRef;
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
+    execution::{runtime_env::RuntimeEnv, FunctionRegistry},
     physical_plan::ExecutionPlan,
 };
+use datafusion_proto::{
+    physical_plan::{AsExecutionPlan, PhysicalExtensionCodec},
+    protobuf,
+};
+use prost::Message;
 use table_engine::{remote::model::TableIdentifier, table::TableRef};
 
-use crate::dist_sql_query::{
-    physical_plan::{ResolvedPartitionedScan, UnresolvedPartitionedScan, UnresolvedSubTableScan},
-    ExecutableScanBuilder, RemotePhysicalPlanExecutor,
+use crate::{
+    codec::PhysicalExtensionCodecImpl,
+    dist_sql_query::{
+        physical_plan::{
+            ResolvedPartitionedScan, UnresolvedPartitionedScan, UnresolvedSubTableScan,
+        },
+        ExecutableScanBuilderRef, RemotePhysicalPlanExecutorRef,
+    },
 };
 
 /// Resolver which makes datafuison dist query related plan executable.
@@ -34,22 +45,41 @@ use crate::dist_sql_query::{
 /// So we define`Resolver` should be defined to finish it, it may be like task
 /// generator responsible for generating task for executor to run based on
 /// physical plan.
-pub trait Resolver {
-    fn resolve(&self, plan: Arc<dyn ExecutionPlan>) -> DfResult<Arc<dyn ExecutionPlan>>;
+pub struct Resolver {
+    remote_executor: RemotePhysicalPlanExecutorRef,
+    catalog_manager: CatalogManagerRef,
+    scan_builder: ExecutableScanBuilderRef,
+
+    // TODO: hold `SessionContext` here rather than these two parts.
+    runtime_env: Arc<RuntimeEnv>,
+    function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
+    
+    extension_codec: Arc<dyn PhysicalExtensionCodec>,
 }
 
-/// Resolver which makes the partitioned table scan plan executable
-struct PartitionedScanResolver<R> {
-    remote_executor: R,
-}
-
-impl<R: RemotePhysicalPlanExecutor> PartitionedScanResolver<R> {
-    #[allow(dead_code)]
-    pub fn new(remote_executor: R) -> Self {
-        Self { remote_executor }
+impl Resolver {
+    pub fn new(
+        remote_executor: RemotePhysicalPlanExecutorRef,
+        catalog_manager: CatalogManagerRef,
+        scan_builder: ExecutableScanBuilderRef,
+        runtime_env: Arc<RuntimeEnv>,
+        function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
+    ) -> Self {
+        Self {
+            remote_executor,
+            catalog_manager,
+            scan_builder,
+            runtime_env,
+            function_registry,
+            extension_codec: Arc::new(PhysicalExtensionCodecImpl::new()),
+        }
     }
 
-    fn resolve_plan(&self, plan: Arc<dyn ExecutionPlan>) -> DfResult<Arc<dyn ExecutionPlan>> {
+    /// Resolve partitioned scan
+    pub fn resolve_partitioned_scan(
+        &self,
+        plan: Arc<dyn ExecutionPlan>,
+    ) -> DfResult<Arc<dyn ExecutionPlan>> {
         // Leave node, let's resolve it and return.
         if let Some(unresolved) = plan.as_any().downcast_ref::<UnresolvedPartitionedScan>() {
             let sub_tables = unresolved.sub_tables.clone();
@@ -67,6 +97,7 @@ impl<R: RemotePhysicalPlanExecutor> PartitionedScanResolver<R> {
             return Ok(Arc::new(ResolvedPartitionedScan {
                 remote_executor: self.remote_executor.clone(),
                 remote_exec_plans: remote_plans,
+                extension_codec: self.extension_codec.clone(),
             }));
         }
 
@@ -79,7 +110,7 @@ impl<R: RemotePhysicalPlanExecutor> PartitionedScanResolver<R> {
         // Resolve children if exist.
         let mut new_children = Vec::with_capacity(children.len());
         for child in children {
-            let child = self.resolve_plan(child)?;
+            let child = self.resolve_partitioned_scan(child)?;
 
             new_children.push(child);
         }
@@ -90,40 +121,23 @@ impl<R: RemotePhysicalPlanExecutor> PartitionedScanResolver<R> {
         Self::maybe_extend_partitioned_scan(new_children, plan)
     }
 
-    fn maybe_extend_partitioned_scan(
-        new_children: Vec<Arc<dyn ExecutionPlan>>,
-        current_node: Arc<dyn ExecutionPlan>,
+    /// Resolve encoded sub table scanning plan.
+    pub fn resolve_sub_scan(&self, encoded_plan: &[u8]) -> DfResult<Arc<dyn ExecutionPlan>> {
+        // Decode to datafusion physical plan.
+        let protobuf = protobuf::PhysicalPlanNode::decode(encoded_plan).map_err(|e| {
+            DataFusionError::Plan(format!("failed to decode bytes to physical plan, err:{e}"))
+        })?;
+        protobuf.try_into_physical_plan(
+            self.function_registry.as_ref(),
+            &self.runtime_env,
+            self.extension_codec.as_ref(),
+        )
+    }
+
+    pub fn resolve_sub_scan_internal(
+        &self,
+        plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
-        if new_children.is_empty() {
-            return Ok(current_node);
-        }
-
-        current_node.with_new_children(new_children)
-    }
-}
-
-impl<R: RemotePhysicalPlanExecutor> Resolver for PartitionedScanResolver<R> {
-    fn resolve(&self, plan: Arc<dyn ExecutionPlan>) -> DfResult<Arc<dyn ExecutionPlan>> {
-        self.resolve_plan(plan)
-    }
-}
-
-/// Resolver which makes the sub table scan plan executable
-struct SubScanResolver<B> {
-    catalog_manager: CatalogManagerRef,
-    scan_builder: B,
-}
-
-impl<B: ExecutableScanBuilder> SubScanResolver<B> {
-    #[allow(dead_code)]
-    pub fn new(catalog_manager: CatalogManagerRef, scan_builder: B) -> Self {
-        Self {
-            catalog_manager,
-            scan_builder,
-        }
-    }
-
-    fn resolve_plan(&self, plan: Arc<dyn ExecutionPlan>) -> DfResult<Arc<dyn ExecutionPlan>> {
         // Leave node, let's resolve it and return.
         if let Some(unresolved) = plan.as_any().downcast_ref::<UnresolvedSubTableScan>() {
             let table = self.find_table(&unresolved.table)?;
@@ -141,12 +155,23 @@ impl<B: ExecutableScanBuilder> SubScanResolver<B> {
         // Resolve children if exist.
         let mut new_children = Vec::with_capacity(children.len());
         for child in children {
-            let child = self.resolve_plan(child)?;
+            let child = self.resolve_sub_scan_internal(child)?;
 
             new_children.push(child);
         }
 
         plan.with_new_children(new_children)
+    }
+
+    fn maybe_extend_partitioned_scan(
+        new_children: Vec<Arc<dyn ExecutionPlan>>,
+        current_node: Arc<dyn ExecutionPlan>,
+    ) -> DfResult<Arc<dyn ExecutionPlan>> {
+        if new_children.is_empty() {
+            return Ok(current_node);
+        }
+
+        current_node.with_new_children(new_children)
     }
 
     fn find_table(&self, table_ident: &TableIdentifier) -> DfResult<TableRef> {
@@ -168,12 +193,6 @@ impl<B: ExecutableScanBuilder> SubScanResolver<B> {
     }
 }
 
-impl<B: ExecutableScanBuilder> Resolver for SubScanResolver<B> {
-    fn resolve(&self, plan: Arc<dyn ExecutionPlan>) -> DfResult<Arc<dyn ExecutionPlan>> {
-        self.resolve_plan(plan)
-    }
-}
-
 #[cfg(test)]
 mod test {
     use std::sync::Arc;
@@ -183,6 +202,7 @@ mod test {
     use common_types::{projected_schema::ProjectedSchema, tests::build_schema_for_cpu};
     use datafusion::{
         error::Result as DfResult,
+        execution::{runtime_env::RuntimeEnv, FunctionRegistry},
         logical_expr::{expr_fn, Literal, Operator},
         physical_plan::{
             displayable,
@@ -193,6 +213,7 @@ mod test {
         },
         scalar::ScalarValue,
     };
+    use prost::bytes::Bytes;
     use table_engine::{
         memory::MemoryTable,
         predicate::PredicateBuilder,
@@ -202,20 +223,21 @@ mod test {
     };
     use trace_metric::MetricsCollector;
 
-    use crate::dist_sql_query::{
-        physical_plan::{UnresolvedPartitionedScan, UnresolvedSubTableScan},
-        resolver::{PartitionedScanResolver, RemotePhysicalPlanExecutor, SubScanResolver},
-        ExecutableScanBuilder,
+    use crate::{
+        codec::PhysicalExtensionCodecImpl,
+        dist_sql_query::{
+            physical_plan::{UnresolvedPartitionedScan, UnresolvedSubTableScan},
+            resolver::Resolver,
+            ExecutableScanBuilder, RemotePhysicalPlanExecutor,
+        },
     };
 
     #[test]
     fn test_resolve_simple_partitioned_scan() {
         let ctx = TestContext::new();
         let plan = ctx.build_basic_partitioned_table_plan();
-        let resolver = PartitionedScanResolver {
-            remote_executor: MockRemotePhysicalPlanExecutor,
-        };
-        let new_plan = displayable(resolver.resolve_plan(plan).unwrap().as_ref())
+        let resolver = ctx.resolver();
+        let new_plan = displayable(resolver.resolve_partitioned_scan(plan).unwrap().as_ref())
             .indent(true)
             .to_string();
         insta::assert_snapshot!(new_plan);
@@ -225,14 +247,32 @@ mod test {
     fn test_resolve_simple_sub_scan() {
         let ctx = TestContext::new();
         let plan = ctx.build_basic_sub_table_plan();
-        let resolver = SubScanResolver {
-            catalog_manager: ctx.catalog_manager(),
-            scan_builder: MockScanBuilder,
-        };
-        let new_plan = displayable(resolver.resolve_plan(plan).unwrap().as_ref())
+        let resolver = ctx.resolver();
+        let new_plan = displayable(resolver.resolve_sub_scan_internal(plan).unwrap().as_ref())
             .indent(true)
             .to_string();
         insta::assert_snapshot!(new_plan);
+    }
+
+    // Mock function registry
+    struct MockFunctionRegistry;
+
+    impl FunctionRegistry for MockFunctionRegistry {
+        fn udfs(&self) -> std::collections::HashSet<String> {
+            unimplemented!()
+        }
+
+        fn udf(&self, _name: &str) -> DfResult<Arc<datafusion::logical_expr::ScalarUDF>> {
+            unimplemented!()
+        }
+
+        fn udaf(&self, _name: &str) -> DfResult<Arc<datafusion::logical_expr::AggregateUDF>> {
+            unimplemented!()
+        }
+
+        fn udwf(&self, _name: &str) -> DfResult<Arc<datafusion::logical_expr::WindowUDF>> {
+            unimplemented!()
+        }
     }
 
     // Mock scan and its builder
@@ -319,7 +359,7 @@ mod test {
         async fn execute(
             &self,
             _table: TableIdentifier,
-            _physical_plan: Arc<dyn ExecutionPlan>,
+            _encoded_plan: Bytes,
         ) -> DfResult<SendableRecordBatchStream> {
             unimplemented!()
         }
@@ -444,9 +484,16 @@ mod test {
             }
         }
 
-        // Return test catalog manager
-        fn catalog_manager(&self) -> ManagerRef {
-            self.catalog_manager.clone()
+        // Return resolver
+        fn resolver(&self) -> Resolver {
+            Resolver {
+                remote_executor: Arc::new(MockRemotePhysicalPlanExecutor),
+                catalog_manager: self.catalog_manager.clone(),
+                scan_builder: Box::new(MockScanBuilder),
+                runtime_env: Arc::new(RuntimeEnv::default()),
+                function_registry: Arc::new(MockFunctionRegistry),
+                extension_codec: Arc::new(PhysicalExtensionCodecImpl::new()),
+            }
         }
 
         // Basic plan includes:
