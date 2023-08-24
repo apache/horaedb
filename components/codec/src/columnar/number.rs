@@ -28,13 +28,13 @@ const MAX_NUM_BYTES_OF_64VARINT: usize = 10;
 const VERSION: u8 = 0;
 const VERSION_SIZE: usize = 1;
 
-macro_rules! impl_int_encoding {
-    ($int_type: ty, $write_method: ident, $read_method: ident) => {
-        impl ValuesEncoder<$int_type> for ValuesEncoderImpl {
+macro_rules! impl_number_encoding {
+    ($num_type: ty, $write_method: ident, $read_method: ident) => {
+        impl ValuesEncoder<$num_type> for ValuesEncoderImpl {
             fn encode<B, I>(&self, buf: &mut B, values: I) -> Result<()>
             where
                 B: BufMut,
-                I: Iterator<Item = $int_type>,
+                I: Iterator<Item = $num_type>,
             {
                 for v in values {
                     buf.$write_method(v);
@@ -44,11 +44,11 @@ macro_rules! impl_int_encoding {
             }
         }
 
-        impl ValuesDecoder<$int_type> for ValuesDecoderImpl {
+        impl ValuesDecoder<$num_type> for ValuesDecoderImpl {
             fn decode<B, F>(&self, _ctx: DecodeContext<'_>, buf: &mut B, mut f: F) -> Result<()>
             where
                 B: Buf,
-                F: FnMut($int_type) -> Result<()>,
+                F: FnMut($num_type) -> Result<()>,
             {
                 while buf.remaining() > 0 {
                     let v = buf.$read_method();
@@ -61,12 +61,14 @@ macro_rules! impl_int_encoding {
     };
 }
 
-impl_int_encoding!(i8, put_i8, get_i8);
-impl_int_encoding!(u8, put_u8, get_u8);
-impl_int_encoding!(u16, put_u16, get_u16);
-impl_int_encoding!(i16, put_i16, get_i16);
-impl_int_encoding!(u32, put_u32, get_u32);
-impl_int_encoding!(i32, put_i32, get_i32);
+impl_number_encoding!(i8, put_i8, get_i8);
+impl_number_encoding!(u8, put_u8, get_u8);
+impl_number_encoding!(u16, put_u16, get_u16);
+impl_number_encoding!(i16, put_i16, get_i16);
+impl_number_encoding!(u32, put_u32, get_u32);
+impl_number_encoding!(i32, put_i32, get_i32);
+impl_number_encoding!(f32, put_f32, get_f32);
+impl_number_encoding!(f64, put_f64, get_f64);
 
 impl ValuesEncoder<i64> for ValuesEncoderImpl {
     fn encode<B, I>(&self, buf: &mut B, values: I) -> Result<()>

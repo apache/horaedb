@@ -32,8 +32,7 @@ use crate::varint;
 
 mod bool;
 mod bytes;
-mod float;
-mod int;
+mod number;
 mod timestamp;
 
 #[derive(Debug, Snafu)]
@@ -267,7 +266,9 @@ impl ColumnarEncoder {
             DatumKind::Double => {
                 enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_f64()))
             }
-            DatumKind::Float => todo!(),
+            DatumKind::Float => {
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_f32()))
+            }
             DatumKind::Varbinary => {
                 enc.estimated_encoded_size(datums.clone().filter_map(|v| v.into_bytes()))
             }
@@ -301,7 +302,9 @@ impl ColumnarEncoder {
             DatumKind::Boolean => {
                 enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_bool()))
             }
-            DatumKind::Date => todo!(),
+            DatumKind::Date => {
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_date_i32()))
+            }
             DatumKind::Time => todo!(),
         };
 
@@ -323,7 +326,7 @@ impl ColumnarEncoder {
                 datums.filter_map(|v| v.as_timestamp().map(|v| v.as_i64())),
             ),
             DatumKind::Double => enc.encode(buf, datums.filter_map(|v| v.as_f64())),
-            DatumKind::Float => todo!(),
+            DatumKind::Float => enc.encode(buf, datums.filter_map(|v| v.as_f32())),
             DatumKind::Varbinary => enc.encode(buf, datums.filter_map(|v| v.into_bytes())),
             DatumKind::String => enc.encode(
                 buf,
@@ -338,7 +341,7 @@ impl ColumnarEncoder {
             DatumKind::Int16 => enc.encode(buf, datums.filter_map(|v| v.as_i16())),
             DatumKind::Int8 => enc.encode(buf, datums.filter_map(|v| v.as_i8())),
             DatumKind::Boolean => enc.encode(buf, datums.filter_map(|v| v.as_bool())),
-            DatumKind::Date => todo!(),
+            DatumKind::Date => enc.encode(buf, datums.filter_map(|v| v.as_date_i32())),
             DatumKind::Time => todo!(),
         }
     }
@@ -449,7 +452,10 @@ impl ColumnarDecoder {
                 let with_float = |v: f64| f(Datum::from(v));
                 ValuesDecoderImpl.decode(ctx, buf, with_float)
             }
-            DatumKind::Float => todo!(),
+            DatumKind::Float => {
+                let with_float = |v: f32| f(Datum::from(v));
+                ValuesDecoderImpl.decode(ctx, buf, with_float)
+            }
             DatumKind::Varbinary => {
                 let with_bytes = |v: Bytes| f(Datum::from(v));
                 ValuesDecoderImpl.decode(ctx, buf, with_bytes)
@@ -518,7 +524,13 @@ impl ColumnarDecoder {
                 let with_bool = |v: bool| f(Datum::from(v));
                 ValuesDecoderImpl.decode(ctx, buf, with_bool)
             }
-            DatumKind::Date => todo!(),
+            DatumKind::Date => {
+                let with_i32 = |value: i32| {
+                    let datum = Datum::Date(value);
+                    f(datum)
+                };
+                ValuesDecoderImpl.decode(ctx, buf, with_i32)
+            }
             DatumKind::Time => todo!(),
         }
     }
@@ -640,6 +652,15 @@ mod tests {
         ];
 
         check_encode_end_decode(10, datums, DatumKind::Null);
+    }
+
+    #[test]
+    fn test_float() {
+        let datums = vec![Datum::from(10.0f32), Datum::from(9.0f32)];
+        check_encode_end_decode(10, datums, DatumKind::Float);
+
+        let datums = vec![Datum::from(10.0f64), Datum::from(1.0f64)];
+        check_encode_end_decode(10, datums, DatumKind::Double);
     }
 
     #[test]
