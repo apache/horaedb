@@ -30,7 +30,7 @@ use table_engine::stream::{FromDfStream, SendableRecordBatchStream};
 
 use crate::{
     error::*,
-    physical_planner::{PhysicalPlan, TaskContext},
+    physical_planner::{PhysicalPlan, TaskExecContext},
 };
 
 pub struct DataFusionPhysicalPlanAdapter {
@@ -61,17 +61,18 @@ impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
         self
     }
 
-    fn execute(&self, task_ctx: &TaskContext) -> Result<SendableRecordBatchStream> {
+    fn execute(&self, task_ctx: &TaskExecContext) -> Result<SendableRecordBatchStream> {
         let df_task_ctx =
             task_ctx
-                .try_to_datafusion_task_ctx()
+                .as_datafusion_task_ctx()
                 .with_context(|| PhysicalPlanNoCause {
                     msg: Some("datafusion task ctx not found".to_string()),
                 })?;
+
         let partition_count = self.plan.output_partitioning().partition_count();
         let df_stream = if partition_count <= 1 {
             self.plan
-                .execute(0, df_task_ctx)
+                .execute(0, df_task_ctx.task_ctx.clone())
                 .box_err()
                 .context(PhysicalPlanWithCause {
                     msg: Some(format!("partition_count:{partition_count}")),
@@ -81,7 +82,7 @@ impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
             let plan = CoalescePartitionsExec::new(self.plan.clone());
             // MergeExec must produce a single partition
             assert_eq!(1, plan.output_partitioning().partition_count());
-            plan.execute(0, df_task_ctx)
+            plan.execute(0, df_task_ctx.task_ctx.clone())
                 .box_err()
                 .context(PhysicalPlanWithCause {
                     msg: Some(format!("partition_count:{partition_count}")),

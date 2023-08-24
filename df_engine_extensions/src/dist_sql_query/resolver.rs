@@ -195,18 +195,10 @@ impl Resolver {
 
 #[cfg(test)]
 mod test {
-    
 
-    
-    use datafusion::{
-        physical_plan::{displayable},
-    };
-    
-    
+    use datafusion::physical_plan::displayable;
 
-    use crate::dist_sql_query::{
-        test_util::TestContext,
-    };
+    use crate::dist_sql_query::test_util::TestContext;
 
     #[test]
     fn test_resolve_simple_partitioned_scan() {

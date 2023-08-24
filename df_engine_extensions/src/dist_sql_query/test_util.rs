@@ -19,7 +19,7 @@ use catalog::{manager::ManagerRef, test_util::MockCatalogManagerBuilder};
 use common_types::{projected_schema::ProjectedSchema, tests::build_schema_for_cpu};
 use datafusion::{
     error::Result as DfResult,
-    execution::{runtime_env::RuntimeEnv, FunctionRegistry},
+    execution::{runtime_env::RuntimeEnv, FunctionRegistry, TaskContext},
     logical_expr::{expr_fn, Literal, Operator},
     physical_plan::{
         expressions::{binary, col, lit},
@@ -29,7 +29,6 @@ use datafusion::{
     },
     scalar::ScalarValue,
 };
-use prost::bytes::Bytes;
 use table_engine::{
     memory::MemoryTable,
     predicate::PredicateBuilder,
@@ -39,12 +38,10 @@ use table_engine::{
 };
 use trace_metric::MetricsCollector;
 
-use crate::{
-    dist_sql_query::{
-        physical_plan::{UnresolvedPartitionedScan, UnresolvedSubTableScan},
-        resolver::Resolver,
-        ExecutableScanBuilder, RemotePhysicalPlanExecutor,
-    },
+use crate::dist_sql_query::{
+    physical_plan::{UnresolvedPartitionedScan, UnresolvedSubTableScan},
+    resolver::Resolver,
+    EncodedPlan, ExecutableScanBuilder, RemotePhysicalPlanExecutor,
 };
 
 // Test context
@@ -331,7 +328,8 @@ impl RemotePhysicalPlanExecutor for MockRemotePhysicalPlanExecutor {
     async fn execute(
         &self,
         _table: TableIdentifier,
-        _encoded_plan: Bytes,
+        _task_context: &TaskContext,
+        _encoded_plan: EncodedPlan,
     ) -> DfResult<SendableRecordBatchStream> {
         unimplemented!()
     }
