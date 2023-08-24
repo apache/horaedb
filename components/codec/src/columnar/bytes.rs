@@ -52,18 +52,18 @@ impl Encoding {
         if data_block_len > threshold {
             Compression::Lz4
         } else {
-            Compression::NoCompression
+            Compression::None
         }
     }
 
     fn decode_compression(&self, v: u8) -> Result<Compression> {
-        let version = match v {
-            0 => Compression::NoCompression,
+        let compression = match v {
+            0 => Compression::None,
             1 => Compression::Lz4,
             _ => InvalidCompression { flag: v }.fail()?,
         };
 
-        Ok(version)
+        Ok(compression)
     }
 
     fn encode<'a, B, I>(
@@ -92,7 +92,7 @@ impl Encoding {
         // Encode the `data_block`.
         let compression = Self::decide_compression(data_block_len, data_block_compress_threshold);
         match compression {
-            Compression::NoCompression => {
+            Compression::None => {
                 for v in values {
                     buf.put_slice(v);
                 }
@@ -157,9 +157,7 @@ impl Encoding {
         let data_block = &chunk[length_block_end..length_block_len_offset];
 
         match compression {
-            Compression::NoCompression => {
-                self.decode_without_compression(&mut length_block, data_block, f)
-            }
+            Compression::None => self.decode_without_compression(&mut length_block, data_block, f),
             Compression::Lz4 => self.decode_with_compression(length_block, data_block, ctx.buf, f),
         }
     }
@@ -227,7 +225,7 @@ impl Encoding {
 #[repr(C)]
 enum Compression {
     #[default]
-    NoCompression = 0,
+    None = 0,
     Lz4 = 1,
 }
 

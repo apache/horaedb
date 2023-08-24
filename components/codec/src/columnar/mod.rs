@@ -30,6 +30,7 @@ use snafu::{self, ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::varint;
 
+mod bool;
 mod bytes;
 mod float;
 mod int;
@@ -44,11 +45,14 @@ pub enum Error {
     #[snafu(display("Invalid compression flag:{flag}.\nBacktrace:\n{backtrace}"))]
     InvalidCompression { flag: u8, backtrace: Backtrace },
 
+    #[snafu(display("Invalid boolean value:{value}.\nBacktrace:\n{backtrace}"))]
+    InvalidBooleanValue { value: u8, backtrace: Backtrace },
+
     #[snafu(display("Invalid datum kind, err:{source}"))]
     InvalidDatumKind { source: common_types::datum::Error },
 
-    #[snafu(display("No enough bytes to compose the nulls bit set.\nBacktrace:\n{backtrace}"))]
-    InvalidNullsBitSet { backtrace: Backtrace },
+    #[snafu(display("No enough bytes to compose the bit set.\nBacktrace:\n{backtrace}"))]
+    InvalidBitSetBuf { backtrace: Backtrace },
 
     #[snafu(display(
         "Datums is not enough, expect:{expect}, found:{found}.\nBacktrace:\n{backtrace}"
@@ -294,7 +298,9 @@ impl ColumnarEncoder {
                 enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_i16()))
             }
             DatumKind::Int8 => enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_i8())),
-            DatumKind::Boolean => todo!(),
+            DatumKind::Boolean => {
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_bool()))
+            }
             DatumKind::Date => todo!(),
             DatumKind::Time => todo!(),
         };
@@ -331,7 +337,7 @@ impl ColumnarEncoder {
             DatumKind::Int32 => enc.encode(buf, datums.filter_map(|v| v.as_i32())),
             DatumKind::Int16 => enc.encode(buf, datums.filter_map(|v| v.as_i16())),
             DatumKind::Int8 => enc.encode(buf, datums.filter_map(|v| v.as_i8())),
-            DatumKind::Boolean => todo!(),
+            DatumKind::Boolean => enc.encode(buf, datums.filter_map(|v| v.as_bool())),
             DatumKind::Date => todo!(),
             DatumKind::Time => todo!(),
         }
@@ -388,12 +394,12 @@ impl ColumnarDecoder {
         datum_kind: DatumKind,
     ) -> Result<Vec<Datum>> {
         let chunk = buf.chunk();
-        let bit_set = RoBitSet::try_new(chunk, num_datums).context(InvalidNullsBitSet)?;
+        let bit_set = RoBitSet::try_new(chunk, num_datums).context(InvalidBitSetBuf)?;
 
         let mut datums = Vec::with_capacity(num_datums);
         let with_datum = |datum: Datum| {
             let idx = datums.len();
-            let null = bit_set.is_unset(idx).context(InvalidNullsBitSet)?;
+            let null = bit_set.is_unset(idx).context(InvalidBitSetBuf)?;
             if null {
                 datums.push(Datum::Null);
             }
@@ -508,7 +514,10 @@ impl ColumnarDecoder {
                 };
                 ValuesDecoderImpl.decode(ctx, buf, with_i8)
             }
-            DatumKind::Boolean => todo!(),
+            DatumKind::Boolean => {
+                let with_bool = |v: bool| f(Datum::from(v));
+                ValuesDecoderImpl.decode(ctx, buf, with_bool)
+            }
             DatumKind::Date => todo!(),
             DatumKind::Time => todo!(),
         }
@@ -661,6 +670,26 @@ mod tests {
         ];
 
         check_encode_end_decode(10, datums, DatumKind::String);
+    }
+
+    #[test]
+    fn test_boolean() {
+        let datums = vec![
+            Datum::from(false),
+            Datum::from(false),
+            Datum::from(true),
+            Datum::Null,
+            Datum::from(false),
+        ];
+
+        check_encode_end_decode(10, datums.clone(), DatumKind::Boolean);
+
+        let mut massive_datums = Vec::with_capacity(10 * datums.len());
+        for _ in 0..10 {
+            massive_datums.append(&mut datums.clone());
+        }
+
+        check_encode_end_decode(10, massive_datums, DatumKind::Boolean);
     }
 
     #[test]
