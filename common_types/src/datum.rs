@@ -1197,6 +1197,13 @@ impl<'a> DatumView<'a> {
         }
     }
 
+    pub fn as_date_i32(&self) -> Option<i32> {
+        match self {
+            DatumView::Date(v) => Some(*v),
+            _ => None,
+        }
+    }
+
     pub fn as_i8(&self) -> Option<i8> {
         match self {
             DatumView::Int8(v) => Some(*v),
