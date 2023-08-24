@@ -171,7 +171,7 @@ impl Factory for FactoryImpl {
         };
 
         match storage_format {
-            StorageFormat::Columnar | StorageFormat::Hybrid => {
+            StorageFormat::Columnar => {
                 let reader = AsyncParquetReader::new(
                     path,
                     options,
@@ -197,16 +197,9 @@ impl Factory for FactoryImpl {
         store_picker: &'a ObjectStorePickerRef,
         level: Level,
     ) -> Result<Box<dyn SstWriter + Send + 'a>> {
-        let hybrid_encoding = match options.storage_format_hint {
-            StorageFormatHint::Specific(format) => matches!(format, StorageFormat::Hybrid),
-            // `Auto` is mapped to columnar parquet format now, may change in future.
-            StorageFormatHint::Auto => false,
-        };
-
         Ok(Box::new(ParquetSstWriter::new(
             path,
             level,
-            hybrid_encoding,
             store_picker,
             options,
         )))

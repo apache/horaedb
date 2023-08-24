@@ -288,7 +288,6 @@ mod tests {
             max_sequence: 1001,
             schema,
             parquet_filter: None,
-            collapsible_cols_idx: vec![],
         };
         write_parquet_file_with_metadata(parquet_file_path.as_path(), &custom_meta_data);
 

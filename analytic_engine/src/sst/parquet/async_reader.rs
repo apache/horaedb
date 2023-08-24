@@ -63,9 +63,7 @@ use crate::{
             SstMetaData,
         },
         parquet::{
-            encoding::ParquetDecoder,
-            meta_data::{ParquetFilter, ParquetMetaDataRef},
-            row_group_pruner::RowGroupPruner,
+            encoding::ParquetDecoder, meta_data::ParquetFilter, row_group_pruner::RowGroupPruner,
         },
         reader::{error::*, Result, SstReader},
     },
@@ -157,20 +155,12 @@ impl<'a> Reader<'a> {
             ArrowRecordBatchProjector::from(row_projector)
         };
 
-        let sst_meta_data = self
-            .meta_data
-            .as_ref()
-            // metadata must be inited after `init_if_necessary`.
-            .unwrap()
-            .custom();
-
         let streams: Vec<_> = streams
             .into_iter()
             .map(|stream| {
                 Box::new(RecordBatchProjector::new(
                     stream,
                     row_projector.clone(),
-                    sst_meta_data.clone(),
                     self.metrics.metrics_collector.clone(),
                 )) as _
             })
@@ -474,14 +464,12 @@ struct RecordBatchProjector {
 
     metrics: ProjectorMetrics,
     start_time: Instant,
-    sst_meta: ParquetMetaDataRef,
 }
 
 impl RecordBatchProjector {
     fn new(
         stream: SendableRecordBatchStream,
         row_projector: ArrowRecordBatchProjector,
-        sst_meta: ParquetMetaDataRef,
         metrics_collector: Option<MetricsCollector>,
     ) -> Self {
         let metrics = ProjectorMetrics {
@@ -494,7 +482,6 @@ impl RecordBatchProjector {
             row_projector,
             metrics,
             start_time: Instant::now(),
-            sst_meta,
         }
     }
 }
@@ -510,8 +497,7 @@ impl Stream for RecordBatchProjector {
                 match record_batch.box_err().context(DecodeRecordBatch {}) {
                     Err(e) => Poll::Ready(Some(Err(e))),
                     Ok(record_batch) => {
-                        let parquet_decoder =
-                            ParquetDecoder::new(&projector.sst_meta.collapsible_cols_idx);
+                        let parquet_decoder = ParquetDecoder::new();
                         let record_batch = parquet_decoder
                             .decode_record_batch(record_batch)
                             .box_err()
