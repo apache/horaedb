@@ -347,7 +347,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
         let (aborter, sink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, self.path).await?;
 
-        let meta_path = Path::from(sst_util::new_custom_metadata_path(self.path.as_ref()));
+        let meta_path = Path::from(sst_util::new_metadata_path(self.path.as_ref()));
 
         let (total_num_rows, parquet_metadata) =
             match group_writer.write_all(sink, &meta_path).await {
