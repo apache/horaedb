@@ -106,8 +106,8 @@ clru = "0.6.1"
 cluster = { path = "cluster" }
 criterion = "0.5"
 common_types = { path = "common_types" }
-datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
-datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
+datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9a536e73a3fa3b600eeee5fb272195fd4b35e211" }
+datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9a536e73a3fa3b600eeee5fb272195fd4b35e211" }
 df_operator = { path = "df_operator" }
 df_engine_extensions = { path = "df_engine_extensions" }
 future_ext = { path = "components/future_ext" }
@@ -122,10 +122,10 @@ log = "0.4"
 logger = { path = "components/logger" }
 lru = "0.7.6"
 id_allocator = { path = "components/id_allocator" }
-influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "iox_query_influxql" }
-influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "influxdb_influxql_parser" }
-influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "iox_query" }
-influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "schema" }
+influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "770509695a5912fc4d7335d18f490a4aaa5be731", package = "iox_query_influxql" }
+influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "770509695a5912fc4d7335d18f490a4aaa5be731", package = "influxdb_influxql_parser" }
+influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "770509695a5912fc4d7335d18f490a4aaa5be731", package = "iox_query" }
+influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "770509695a5912fc4d7335d18f490a4aaa5be731", package = "schema" }
 interpreters = { path = "interpreters" }
 itertools = "0.10.5"
 macros = { path = "components/macros" }
@@ -162,7 +162,7 @@ size_ext = { path = "components/size_ext" }
 smallvec = "1.6"
 slog = "2.7"
 spin = "0.9.6"
-sqlparser = { version = "0.35", features = ["serde"] }
+sqlparser = { git = "https://github.com/chunshao90/sqlparser-rs", rev = "8d7a9156893129b7d3cf1456808b963baa493e3e", features = ["serde", "visitor"] }
 system_catalog = { path = "system_catalog" }
 table_engine = { path = "table_engine" }
 table_kv = { path = "components/table_kv" }
