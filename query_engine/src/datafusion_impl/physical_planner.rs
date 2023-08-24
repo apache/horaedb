@@ -21,7 +21,10 @@ use snafu::ResultExt;
 
 use crate::{
     context::Context,
-    datafusion_impl::{physical_plan::DataFusionPhysicalPlanAdapter, DfContextBuilder},
+    datafusion_impl::{
+        physical_plan::{DataFusionPhysicalPlanAdapter, TypedPlan},
+        DfContextBuilder,
+    },
     error::*,
     physical_planner::{PhysicalPlanPtr, PhysicalPlanner},
 };
@@ -59,7 +62,7 @@ impl PhysicalPlanner for DatafusionPhysicalPlannerImpl {
             .await
             .box_err()
             .context(PhysicalPlannerWithCause { msg: None })?;
-        let physical_plan = DataFusionPhysicalPlanAdapter::new(exec_plan);
+        let physical_plan = DataFusionPhysicalPlanAdapter::new(TypedPlan::Normal(exec_plan));
 
         Ok(Box::new(physical_plan))
     }

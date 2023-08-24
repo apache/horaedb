@@ -127,14 +127,16 @@ impl Resolver {
         let protobuf = protobuf::PhysicalPlanNode::decode(encoded_plan).map_err(|e| {
             DataFusionError::Plan(format!("failed to decode bytes to physical plan, err:{e}"))
         })?;
-        protobuf.try_into_physical_plan(
+        let plan = protobuf.try_into_physical_plan(
             self.function_registry.as_ref(),
             &self.runtime_env,
             self.extension_codec.as_ref(),
-        )
+        )?;
+
+        self.resolve_sub_scan_internal(plan)
     }
 
-    pub fn resolve_sub_scan_internal(
+    fn resolve_sub_scan_internal(
         &self,
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {

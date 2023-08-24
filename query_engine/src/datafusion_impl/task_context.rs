@@ -29,6 +29,8 @@ use datafusion::{
 use df_engine_extensions::dist_sql_query::{
     resolver::Resolver, EncodedPlan, ExecutableScanBuilder, RemotePhysicalPlanExecutor,
 };
+use generic_error::BoxError;
+use snafu::ResultExt;
 use table_engine::{
     provider::{CeresdbOptions, ScanTable},
     remote::{
@@ -40,6 +42,8 @@ use table_engine::{
     stream::ToDfStream,
     table::{ReadRequest, TableRef},
 };
+
+use crate::{datafusion_impl::physical_plan::TypedPlan, error::*};
 
 #[allow(dead_code)]
 pub struct DatafusionTaskExecContext {
@@ -73,6 +77,35 @@ impl Preprocessor {
         Self {
             dist_query_resolver: resolver,
         }
+    }
+
+    pub fn process(&self, typed_plan: &TypedPlan) -> Result<Arc<dyn ExecutionPlan>> {
+        match typed_plan {
+            TypedPlan::Normal(plan) => Ok(plan.clone()),
+            TypedPlan::Partitioned(plan) => self.preprocess_partitioned_table_plan(plan),
+            TypedPlan::Remote(plan) => self.preprocess_remote_plan(plan),
+        }
+    }
+
+    fn preprocess_remote_plan(&self, encoded_plan: &[u8]) -> Result<Arc<dyn ExecutionPlan>> {
+        self.dist_query_resolver
+            .resolve_sub_scan(encoded_plan)
+            .box_err()
+            .with_context(|| ExecutorWithCause {
+                msg: format!("failed to preprocess remote plan"),
+            })
+    }
+
+    fn preprocess_partitioned_table_plan(
+        &self,
+        plan: &Arc<dyn ExecutionPlan>,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
+        self.dist_query_resolver
+            .resolve_partitioned_scan(plan.clone())
+            .box_err()
+            .with_context(|| ExecutorWithCause {
+                msg: format!("failed to preprocess partitioned table plan, plan:{plan:?}"),
+            })
     }
 }
 

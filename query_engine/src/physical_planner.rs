@@ -34,7 +34,7 @@ pub trait PhysicalPlanner: fmt::Debug + Send + Sync + 'static {
 
 pub type PhysicalPlannerRef = Arc<dyn PhysicalPlanner>;
 
-pub trait PhysicalPlan: std::fmt::Debug + Send + Sync + 'static {
+pub trait PhysicalPlan: std::fmt::Debug + Send + 'static {
     fn as_any(&self) -> &dyn Any;
 
     /// execute this plan and returns the result
