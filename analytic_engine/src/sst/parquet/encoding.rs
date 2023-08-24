@@ -148,32 +148,6 @@ pub enum Error {
         source: GenericError,
         backtrace: Backtrace,
     },
-
-    #[snafu(display(
-        "Failed to decode hybrid record batch, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
-    ))]
-    DecodeRecordBatch {
-        source: GenericError,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display(
-    "Sst meta data collapsible_cols_idx is empty, fail to decode hybrid record batch.\nBacktrace:\n{}",
-    backtrace
-    ))]
-    CollapsibleColsIdxEmpty { backtrace: Backtrace },
-
-    #[snafu(display(
-        "Key column must be string type. type:{}\nBacktrace:\n{}",
-        type_name,
-        backtrace
-    ))]
-    StringKeyColumnRequired {
-        type_name: String,
-        backtrace: Backtrace,
-    },
 }
 
 define_result!(Error);

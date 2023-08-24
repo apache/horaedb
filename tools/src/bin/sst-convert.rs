@@ -59,7 +59,7 @@ struct Args {
     #[clap(short, long, default_value_t = 8192)]
     batch_size: usize,
 
-    /// Storage format(values: columnar/hybrid)
+    /// Storage format(values: columnar)
     #[clap(short, long, default_value = "columnar")]
     output_format: String,
 }
