@@ -286,12 +286,12 @@ async fn parse_metadata(
 
     let md = if page_indexes {
         let object_store_reader =
-            ObjectStoreReader::new(storage, path.clone(), Arc::new(parquet_metadata));
+            ObjectStoreReader::new(storage.clone(), path.clone(), Arc::new(parquet_metadata));
         let parquet_metadata =
             parquet_ext::meta_data::meta_with_page_indexes(object_store_reader).await?;
-        MetaData::try_new(&parquet_metadata, false)?
+        MetaData::try_new(&parquet_metadata, false, storage).await?
     } else {
-        MetaData::try_new(&parquet_metadata, false)?
+        MetaData::try_new(&parquet_metadata, false, storage).await?
     };
 
     Ok((md, metadata_size, kv_size))

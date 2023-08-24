@@ -873,6 +873,7 @@ mod tests {
                     row_num: 0,
                     max_seq: 0,
                     storage_format: StorageFormat::default(),
+                    associated_files: Vec::new(),
                 };
                 let queue = FilePurgeQueue::new(1, 1.into(), tx.clone());
                 FileHandle::new(file_meta, queue)
@@ -893,6 +894,7 @@ mod tests {
                     row_num: 0,
                     max_seq,
                     storage_format: StorageFormat::default(),
+                    associated_files: Vec::new(),
                 };
                 let queue = FilePurgeQueue::new(1, 1.into(), tx.clone());
                 FileHandle::new(file_meta, queue)

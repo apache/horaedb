@@ -1303,9 +1303,9 @@ dependencies = [
 
 [[package]]
 name = "ceresdbproto"
-version = "1.0.10"
+version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea8a61d72d30452b689e761344d9502bcc5feb2dbd06f08b507b2e164b549aee"
+checksum = "963a7021095c631e843df0afa20de53cd33cb1ac08f99e633825e1ca58496ac1"
 dependencies = [
  "prost",
  "protoc-bin-vendored",

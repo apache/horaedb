@@ -496,7 +496,6 @@ impl FlushTask {
                 .context(AllocFileId)?;
 
             let sst_file_path = self.table_data.set_sst_file_path(file_id);
-
             // TODO: `min_key` & `max_key` should be figured out when writing sst.
             let sst_meta = MetaData {
                 min_key: min_key.clone(),
@@ -583,6 +582,7 @@ impl FlushTask {
                     time_range: sst_meta.time_range,
                     max_seq: sst_meta.max_sequence,
                     storage_format: sst_info.storage_format,
+                    associated_files: vec![sst_info.meta_path],
                 },
             })
         }
@@ -621,7 +621,6 @@ impl FlushTask {
             .context(AllocFileId)?;
 
         let sst_file_path = self.table_data.set_sst_file_path(file_id);
-
         let storage_format_hint = self.table_data.table_options().storage_format_hint;
         let sst_write_options = SstWriteOptions {
             storage_format_hint,
@@ -665,6 +664,7 @@ impl FlushTask {
             time_range: memtable_state.time_range,
             max_seq: memtable_state.last_sequence(),
             storage_format: sst_info.storage_format,
+            associated_files: vec![sst_info.meta_path],
         }))
     }
 }
@@ -851,6 +851,7 @@ impl SpaceStore {
                 .fetch_metas(&input.files)
                 .await
                 .context(ReadSstMeta)?;
+
             MetaData::merge(sst_metas.into_iter().map(MetaData::from), schema)
         };
 
@@ -861,7 +862,6 @@ impl SpaceStore {
             .context(AllocFileId)?;
 
         let sst_file_path = table_data.set_sst_file_path(file_id);
-
         let mut sst_writer = self
             .sst_factory
             .create_writer(
@@ -926,6 +926,7 @@ impl SpaceStore {
                 max_seq: sst_meta.max_sequence,
                 time_range: sst_meta.time_range,
                 storage_format: sst_info.storage_format,
+                associated_files: vec![sst_info.meta_path],
             },
         });
 

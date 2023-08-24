@@ -13,8 +13,9 @@
 // limitations under the License.
 
 pub mod cache;
+mod metadata_reader;
 
-use std::sync::Arc;
+use std::{str::Utf8Error, sync::Arc};
 
 use ceresdbproto::sst as sst_pb;
 use common_types::{schema::Schema, time::TimeRange, SequenceNumber};
@@ -47,6 +48,21 @@ pub enum Error {
     ))]
     KvMetaDataNotFound { backtrace: Backtrace },
 
+    #[snafu(display(
+        "Key value meta version in parquet is empty\nBacktrace\n:{}",
+        backtrace
+    ))]
+    KvMetaVersionEmpty { backtrace: Backtrace },
+
+    #[snafu(display("Key value meta path in parquet is empty\nBacktrace\n:{}", backtrace))]
+    KvMetaPathEmpty { backtrace: Backtrace },
+
+    #[snafu(display("Unknown mata version, value:{}.\nBacktrace\n:{}", version, backtrace))]
+    UnknownMetaVersion {
+        version: String,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display("Metadata in proto struct is not found.\nBacktrace\n:{}", backtrace))]
     MetaDataNotFound { backtrace: Backtrace },
 
@@ -64,6 +80,36 @@ pub enum Error {
 
     #[snafu(display("Failed to convert parquet meta data, err:{}", source))]
     ConvertParquetMetaData { source: parquet::meta_data::Error },
+
+    #[snafu(display("Meet a object store error, err:{source}\nBacktrace:\n{backtrace}"))]
+    ObjectStoreError {
+        source: object_store::ObjectStoreError,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Failed to decode sst meta data, file_path:{file_path}, err:{source}.\nBacktrace:\n{backtrace:?}",
+    ))]
+    FetchAndDecodeSstMeta {
+        file_path: String,
+        source: object_store::ObjectStoreError,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Failed to decode sst meta data, file_path:{file_path}, err:{source}.\nBacktrace:\n{backtrace:?}",
+    ))]
+    FetchFromStore {
+        file_path: String,
+        source: object_store::ObjectStoreError,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Meet a object store error, err:{source}\nBacktrace:\n{backtrace}"))]
+    Utf8ErrorWrapper {
+        source: Utf8Error,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);

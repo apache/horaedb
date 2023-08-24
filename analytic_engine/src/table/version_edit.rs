@@ -74,6 +74,7 @@ impl From<AddFile> for manifest_pb::AddFileMeta {
             size: v.file.size,
             row_num: v.file.row_num,
             storage_format: manifest_pb::StorageFormat::from(v.file.storage_format) as i32,
+            associated_files: v.file.associated_files,
         }
     }
 }
@@ -97,6 +98,7 @@ impl TryFrom<manifest_pb::AddFileMeta> for AddFile {
                 time_range,
                 max_seq: src.max_seq,
                 storage_format: StorageFormat::from(storage_format),
+                associated_files: src.associated_files,
             },
         };
 
@@ -191,6 +193,7 @@ pub mod tests {
                     time_range: self.time_range,
                     max_seq: self.max_seq,
                     storage_format: StorageFormat::default(),
+                    associated_files: Vec::new(),
                 },
             }
         }

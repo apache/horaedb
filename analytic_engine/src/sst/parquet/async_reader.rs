@@ -377,7 +377,8 @@ impl<'a> Reader<'a> {
 
         // TODO: Support page index until https://github.com/CeresDB/ceresdb/issues/1040 is fixed.
 
-        MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
+        MetaData::try_new(&parquet_meta_data, ignore_sst_filter, self.store.clone())
+            .await
             .box_err()
             .context(DecodeSstMeta)
     }
