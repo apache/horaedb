@@ -14,13 +14,19 @@
 
 //! Write logic of instance
 
+use std::iter;
+
 use bytes_ext::ByteVec;
 use ceresdbproto::{schema as schema_pb, table_requests};
-use codec::row;
+use codec::{
+    columnar::{ColumnarEncoder, EncodeHint},
+    row,
+};
 use common_types::{
-    row::{RowGroup, RowGroupSlicer},
+    row::RowGroup,
     schema::{IndexInWriterSchema, Schema},
 };
+use itertools::Itertools;
 use logger::{debug, error, info, trace, warn};
 use macros::define_result;
 use smallvec::SmallVec;
@@ -28,6 +34,7 @@ use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::table::WriteRequest;
 use wal::{
     kv_encoder::LogBatchEncoder,
+    log_batch::Payload,
     manager::{SequenceNumber, WalLocation, WriteContext},
 };
 
@@ -40,6 +47,7 @@ use crate::{
     payload::WritePayload,
     space::SpaceRef,
     table::{data::TableDataRef, version::MemTableForWrite},
+    WalEncodeConfig,
 };
 
 #[derive(Debug, Snafu)]
@@ -123,30 +131,67 @@ const MAX_ROWS_TO_WRITE: usize = 10_000_000;
 pub(crate) struct EncodeContext {
     pub row_group: RowGroup,
     pub index_in_writer: IndexInWriterSchema,
-    pub encoded_rows: Vec<ByteVec>,
 }
 
+enum EncodedPayload {
+    Cols(Vec<ByteVec>),
+    Rows(Vec<ByteVec>),
+}
 impl EncodeContext {
     pub fn new(row_group: RowGroup) -> Self {
         Self {
             row_group,
             index_in_writer: IndexInWriterSchema::default(),
-            encoded_rows: Vec::new(),
         }
     }
 
-    pub fn encode_rows(&mut self, table_schema: &Schema) -> Result<()> {
+    fn encode(
+        &mut self,
+        config: &WalEncodeConfig,
+        table_schema: &Schema,
+    ) -> Result<EncodedPayload> {
+        if config.enable_columnar_format {
+            self.encode_cols(config).map(EncodedPayload::Cols)
+        } else {
+            self.encode_rows(table_schema).map(EncodedPayload::Rows)
+        }
+    }
+
+    fn encode_cols(&mut self, config: &WalEncodeConfig) -> Result<Vec<ByteVec>> {
+        let row_group_schema = self.row_group.schema();
+        let mut encoded_cols = Vec::with_capacity(row_group_schema.num_columns());
+
+        for col_idx in 0..row_group_schema.num_columns() {
+            let col_schema = row_group_schema.column(col_idx);
+            let col_iter = self.row_group.iter_column(col_idx).map(|v| v.as_view());
+            let enc = ColumnarEncoder::new(col_schema.id, config.num_bytes_compress_threshold);
+            let mut hint = EncodeHint {
+                num_nulls: None,
+                num_datums: Some(self.row_group.num_rows()),
+                datum_kind: col_schema.data_type,
+            };
+            let sz = enc.estimated_encoded_size(col_iter.clone(), &mut hint);
+            let mut buf = Vec::with_capacity(sz);
+            enc.encode(&mut buf, col_iter, &mut hint).unwrap();
+            encoded_cols.push(buf);
+        }
+
+        Ok(encoded_cols)
+    }
+
+    fn encode_rows(&mut self, table_schema: &Schema) -> Result<Vec<ByteVec>> {
+        let mut encoded_rows = Vec::new();
         row::encode_row_group_for_wal(
             &self.row_group,
             table_schema,
             &self.index_in_writer,
-            &mut self.encoded_rows,
+            &mut encoded_rows,
         )
         .context(EncodeRowGroup)?;
 
-        assert_eq!(self.row_group.num_rows(), self.encoded_rows.len());
+        assert_eq!(self.row_group.num_rows(), encoded_rows.len());
 
-        Ok(())
+        Ok(encoded_rows)
     }
 }
 
@@ -160,15 +205,9 @@ struct WriteRowGroupSplitter {
     max_bytes_per_batch: usize,
 }
 
-enum SplitResult<'a> {
-    Splitted {
-        encoded_batches: Vec<Vec<ByteVec>>,
-        row_group_batches: Vec<RowGroupSlicer<'a>>,
-    },
-    Integrate {
-        encoded_rows: Vec<ByteVec>,
-        row_group: RowGroupSlicer<'a>,
-    },
+enum SplitResult {
+    Splitted { encoded_batches: Vec<Vec<ByteVec>> },
+    Integrate { encoded_rows: Vec<ByteVec> },
 }
 
 impl WriteRowGroupSplitter {
@@ -179,34 +218,19 @@ impl WriteRowGroupSplitter {
     }
 
     /// Split the write request into multiple batches.
-    ///
-    /// NOTE: The length of the `encoded_rows` should be the same as the number
-    /// of rows in the `row_group`.
-    pub fn split<'a>(
-        &'_ self,
-        encoded_rows: Vec<ByteVec>,
-        row_group: &'a RowGroup,
-    ) -> SplitResult<'a> {
+    pub fn split(&self, encoded_rows: Vec<ByteVec>) -> SplitResult {
         let end_row_indexes = self.compute_batches(&encoded_rows);
         if end_row_indexes.len() <= 1 {
             // No need to split.
-            return SplitResult::Integrate {
-                encoded_rows,
-                row_group: RowGroupSlicer::from(row_group),
-            };
+            return SplitResult::Integrate { encoded_rows };
         }
 
         let mut prev_end_row_index = 0;
         let mut encoded_batches = Vec::with_capacity(end_row_indexes.len());
-        let mut row_group_batches = Vec::with_capacity(end_row_indexes.len());
         for end_row_index in &end_row_indexes {
             let end_row_index = *end_row_index;
             let curr_batch = Vec::with_capacity(end_row_index - prev_end_row_index);
             encoded_batches.push(curr_batch);
-            let row_group_slicer =
-                RowGroupSlicer::new(prev_end_row_index..end_row_index, row_group);
-            row_group_batches.push(row_group_slicer);
-
             prev_end_row_index = end_row_index;
         }
 
@@ -218,10 +242,7 @@ impl WriteRowGroupSplitter {
             encoded_batches[current_batch_idx].push(encoded_row);
         }
 
-        SplitResult::Splitted {
-            encoded_batches,
-            row_group_batches,
-        }
+        SplitResult::Splitted { encoded_batches }
     }
 
     /// Compute the end row indexes in the original `encoded_rows` of each
@@ -298,7 +319,7 @@ impl<'a> MemTableWriter<'a> {
     pub fn write(
         &self,
         sequence: SequenceNumber,
-        row_group: &RowGroupSlicer,
+        row_group: &RowGroup,
         index_in_writer: IndexInWriterSchema,
     ) -> Result<()> {
         let _timer = self.table_data.metrics.start_table_write_memtable_timer();
@@ -372,76 +393,96 @@ impl<'a> Writer<'a> {
 
         self.preprocess_write(&mut encode_ctx).await?;
 
-        {
+        let encoded_payload = {
             let _timer = self.table_data.metrics.start_table_write_encode_timer();
             let schema = self.table_data.schema();
-            encode_ctx.encode_rows(&schema)?;
-        }
+            encode_ctx.encode(&self.instance.wal_encode, &schema)?
+        };
 
+        let seq = match encoded_payload {
+            EncodedPayload::Rows(encoded_rows) => self.write_to_wal_in_rows(encoded_rows).await?,
+            EncodedPayload::Cols(encoded_cols) => self.write_to_wal_in_cols(encoded_cols).await?,
+        };
+
+        // Write the row group to the memtable and update the state in the mem.
+        let table_data = self.table_data.clone();
         let EncodeContext {
             row_group,
             index_in_writer,
-            encoded_rows,
         } = encode_ctx;
-
-        let table_data = self.table_data.clone();
-        let split_res = self.maybe_split_write_request(encoded_rows, &row_group);
-        match split_res {
-            SplitResult::Integrate {
-                encoded_rows,
-                row_group,
-            } => {
-                self.write_table_row_group(&table_data, row_group, index_in_writer, encoded_rows)
-                    .await?;
-            }
-            SplitResult::Splitted {
-                encoded_batches,
-                row_group_batches,
-            } => {
-                for (encoded_rows, row_group) in encoded_batches.into_iter().zip(row_group_batches)
-                {
-                    self.write_table_row_group(
-                        &table_data,
-                        row_group,
-                        index_in_writer.clone(),
-                        encoded_rows,
-                    )
-                    .await?;
-                }
-            }
-        }
+        self.write_to_mem(&table_data, &row_group, index_in_writer, seq)
+            .await?;
 
         Ok(row_group.num_rows())
     }
 
-    fn maybe_split_write_request<'b>(
-        &'a self,
+    async fn write_to_wal_in_rows(&self, encoded_rows: Vec<ByteVec>) -> Result<SequenceNumber> {
+        let split_res = self.maybe_split_write_request(encoded_rows);
+        match split_res {
+            SplitResult::Integrate { encoded_rows } => {
+                let write_req = self.make_rowwise_write_request(encoded_rows);
+                let payload = WritePayload::Write(&write_req);
+                self.write_to_wal(iter::once(payload)).await
+            }
+            SplitResult::Splitted { encoded_batches } => {
+                let write_reqs = encoded_batches
+                    .into_iter()
+                    .map(|v| self.make_rowwise_write_request(v))
+                    .collect_vec();
+
+                let payload = write_reqs.iter().map(WritePayload::Write);
+                self.write_to_wal(payload).await
+            }
+        }
+    }
+
+    async fn write_to_wal_in_cols(&self, encoded_cols: Vec<ByteVec>) -> Result<SequenceNumber> {
+        let write_req = table_requests::WriteRequest {
+            version: 1,
+            schema: None,
+            rows: vec![],
+            cols: encoded_cols,
+        };
+        let payload = WritePayload::Write(&write_req);
+
+        self.write_to_wal(iter::once(payload)).await
+    }
+
+    fn make_rowwise_write_request(
+        &self,
         encoded_rows: Vec<ByteVec>,
-        row_group: &'b RowGroup,
-    ) -> SplitResult<'b> {
+    ) -> table_requests::WriteRequest {
+        table_requests::WriteRequest {
+            version: 0,
+            // Use the table schema instead of the schema in request to avoid schema
+            // mismatch during replaying
+            schema: Some(schema_pb::TableSchema::from(&self.table_data.schema())),
+            rows: encoded_rows,
+            cols: vec![],
+        }
+    }
+
+    fn maybe_split_write_request(&self, encoded_rows: Vec<ByteVec>) -> SplitResult {
         if self.instance.max_bytes_per_write_batch.is_none() {
-            return SplitResult::Integrate {
-                encoded_rows,
-                row_group: RowGroupSlicer::from(row_group),
-            };
+            return SplitResult::Integrate { encoded_rows };
         }
 
         let splitter = WriteRowGroupSplitter::new(self.instance.max_bytes_per_write_batch.unwrap());
-        splitter.split(encoded_rows, row_group)
+        splitter.split(encoded_rows)
     }
 
-    async fn write_table_row_group(
+    /// Write `row_group` to memtable and update the memory states.
+    async fn write_to_mem(
         &mut self,
         table_data: &TableDataRef,
-        row_group: RowGroupSlicer<'_>,
+        row_group: &RowGroup,
         index_in_writer: IndexInWriterSchema,
-        encoded_rows: Vec<ByteVec>,
+        sequence: SequenceNumber,
     ) -> Result<()> {
-        let sequence = self.write_to_wal(encoded_rows).await?;
         let memtable_writer = MemTableWriter::new(table_data.clone(), self.serial_exec);
 
         memtable_writer
-            .write(sequence, &row_group, index_in_writer)
+            .write(sequence, row_group, index_in_writer)
             .map_err(|e| {
                 error!(
                     "Failed to write to memtable, table:{}, table_id:{}, err:{}",
@@ -557,29 +598,22 @@ impl<'a> Writer<'a> {
     }
 
     /// Write log_batch into wal, return the sequence number of log_batch.
-    async fn write_to_wal(&self, encoded_rows: Vec<ByteVec>) -> Result<SequenceNumber> {
+    async fn write_to_wal<I, P>(&self, payloads: I) -> Result<SequenceNumber>
+    where
+        I: Iterator<Item = P>,
+        P: Payload,
+    {
         let _timer = self.table_data.metrics.start_table_write_wal_timer();
-        // Convert into pb
-        let write_req_pb = table_requests::WriteRequest {
-            // FIXME: Shall we avoid the magic number here?
-            version: 0,
-            // Use the table schema instead of the schema in request to avoid schema
-            // mismatch during replaying
-            schema: Some(schema_pb::TableSchema::from(&self.table_data.schema())),
-            rows: encoded_rows,
-            cols: Vec::new(),
-        };
-
-        // Encode payload
-        let payload = WritePayload::Write(&write_req_pb);
         let table_location = self.table_data.table_location();
         let wal_location =
             instance::create_wal_location(table_location.id, table_location.shard_info);
         let log_batch_encoder = LogBatchEncoder::create(wal_location);
-        let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
-            table: &self.table_data.name,
-            wal_location,
-        })?;
+        let log_batch = log_batch_encoder
+            .encode_batch(payloads)
+            .context(EncodePayloads {
+                table: &self.table_data.name,
+                wal_location,
+            })?;
 
         // Write to wal manager
         let write_ctx = WriteContext::default();
@@ -736,40 +770,24 @@ mod tests {
             }
         };
         for (batch_size, sizes, expected_batches) in cases {
-            let (encoded_rows, row_group) = generate_rows_for_test(sizes.clone());
+            let (encoded_rows, _) = generate_rows_for_test(sizes.clone());
             let write_row_group_splitter = WriteRowGroupSplitter::new(batch_size);
-            let split_res = write_row_group_splitter.split(encoded_rows, &row_group);
+            let split_res = write_row_group_splitter.split(encoded_rows);
             if expected_batches.is_empty() {
                 assert!(matches!(split_res, SplitResult::Integrate { .. }));
             } else if expected_batches.len() == 1 {
                 assert!(matches!(split_res, SplitResult::Integrate { .. }));
-                if let SplitResult::Integrate {
-                    encoded_rows,
-                    row_group,
-                } = split_res
-                {
+                if let SplitResult::Integrate { encoded_rows } = split_res {
                     check_encoded_rows(&encoded_rows, &expected_batches[0]);
-                    assert_eq!(row_group.num_rows(), expected_batches[0].len());
                 }
             } else {
                 assert!(matches!(split_res, SplitResult::Splitted { .. }));
-                if let SplitResult::Splitted {
-                    encoded_batches,
-                    row_group_batches,
-                } = split_res
-                {
-                    assert_eq!(encoded_batches.len(), row_group_batches.len());
+                if let SplitResult::Splitted { encoded_batches } = split_res {
                     assert_eq!(encoded_batches.len(), expected_batches.len());
-                    let mut batch_start_index = 0;
-                    for ((encoded_batch, row_group_batch), expected_batch) in encoded_batches
-                        .iter()
-                        .zip(row_group_batches.iter())
-                        .zip(expected_batches.iter())
+                    for (encoded_batch, expected_batch) in
+                        encoded_batches.iter().zip(expected_batches.iter())
                     {
                         check_encoded_rows(encoded_batch, expected_batch);
-                        assert_eq!(row_group_batch.num_rows(), expected_batch.len());
-                        assert_eq!(row_group_batch.slice_range().start, batch_start_index);
-                        batch_start_index += expected_batch.len();
                     }
                 }
             }

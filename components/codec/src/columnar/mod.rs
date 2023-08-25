@@ -117,7 +117,7 @@ trait ValuesEncoder<T> {
 /// The decode context for decoding column.
 pub struct DecodeContext<'a> {
     /// Buffer for reuse during decoding.
-    buf: &'a mut Vec<u8>,
+    pub buf: &'a mut Vec<u8>,
 }
 
 /// The trait bound on the decoders for different types.

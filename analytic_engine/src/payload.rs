@@ -16,15 +16,20 @@
 
 use bytes_ext::{Buf, BufMut, SafeBuf, SafeBufMut};
 use ceresdbproto::{manifest as manifest_pb, table_requests};
-use codec::{row::WalRowDecoder, Decoder};
+use codec::{
+    columnar::{ColumnarDecoder, DecodeContext, DecodeResult},
+    row::WalRowDecoder,
+    Decoder,
+};
 use common_types::{
-    row::{RowGroup, RowGroupBuilder},
+    row::{RowGroup, RowGroupBuilder, RowGroupBuilderFromColumn},
     schema::Schema,
+    table::TableId,
 };
 use macros::define_result;
 use prost::Message;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use wal::log_batch::{Payload, PayloadDecoder};
+use wal::log_batch::{Payload, PayloadDecodeContext, PayloadDecoder};
 
 use crate::{table_options, TableOptions};
 
@@ -61,10 +66,18 @@ pub enum Error {
     #[snafu(display("Failed to decode row, err:{}", source))]
     DecodeRow { source: codec::row::Error },
 
+    #[snafu(display("Failed to decode column, err:{}", source))]
+    DecodeColumn { source: codec::columnar::Error },
+
+    #[snafu(display("Failed to build row group, err:{}", source))]
+    BuildRowGroup { source: common_types::row::Error },
+
     #[snafu(display(
-        "Table schema is not found in the write request.\nBacktrace:\n{}",
-        backtrace
+        "Invalid version of write request, version:{version}.\nBacktrace:\n{backtrace}"
     ))]
+    InvalidWriteReqVersion { version: u32, backtrace: Backtrace },
+
+    #[snafu(display("Table schema is not found.\nBacktrace:\n{}", backtrace))]
     TableSchemaNotFound { backtrace: Backtrace },
 
     #[snafu(display(
@@ -163,10 +176,19 @@ pub enum ReadPayload {
 }
 
 impl ReadPayload {
-    fn decode_write_from_pb(buf: &[u8]) -> Result<Self> {
+    fn decode_write_from_pb(schema: Schema, buf: &[u8]) -> Result<Self> {
         let write_req_pb: table_requests::WriteRequest =
             Message::decode(buf).context(DecodeBody)?;
 
+        let version = write_req_pb.version;
+        match version {
+            0 => Self::decode_rowwise_write_req(write_req_pb),
+            1 => Self::decode_columnar_write_req(schema, write_req_pb),
+            _ => InvalidWriteReqVersion { version }.fail(),
+        }
+    }
+
+    fn decode_rowwise_write_req(write_req_pb: table_requests::WriteRequest) -> Result<Self> {
         // Consume and convert schema in pb
         let schema: Schema = write_req_pb
             .schema
@@ -188,6 +210,33 @@ impl ReadPayload {
 
         let row_group = builder.build();
 
+        Ok(Self::Write { row_group })
+    }
+
+    fn decode_columnar_write_req(
+        schema: Schema,
+        write_req_pb: table_requests::WriteRequest,
+    ) -> Result<Self> {
+        let encoded_cols = write_req_pb.cols;
+        let mut row_group_builder =
+            RowGroupBuilderFromColumn::with_capacity(schema, encoded_cols.len());
+        let mut decode_buf = Vec::new();
+        for encoded_col in encoded_cols {
+            let decoder = ColumnarDecoder;
+            let mut col_buf = encoded_col.as_slice();
+            let decode_ctx = DecodeContext {
+                buf: &mut decode_buf,
+            };
+            let DecodeResult { column_id, datums } = decoder
+                .decode(decode_ctx, &mut col_buf)
+                .context(DecodeColumn)?;
+
+            row_group_builder
+                .try_add_column(column_id, datums)
+                .context(BuildRowGroup)?;
+        }
+
+        let row_group = row_group_builder.build();
         Ok(Self::Write { row_group })
     }
 
@@ -220,15 +269,40 @@ impl ReadPayload {
     }
 }
 
-/// Wal payload decoder
-#[derive(Default)]
-pub struct WalDecoder;
+/// The provider is used to provide the schema according to the table id.
+pub trait TableSchemaProvider {
+    fn table_schema(&self, table_id: TableId) -> Option<Schema>;
+}
 
-impl PayloadDecoder for WalDecoder {
+pub struct SingleSchemaProviderAdapter {
+    pub schema: Schema,
+}
+
+impl TableSchemaProvider for SingleSchemaProviderAdapter {
+    fn table_schema(&self, _table_id: TableId) -> Option<Schema> {
+        Some(self.schema.clone())
+    }
+}
+
+/// Wal payload decoder
+pub struct WalDecoder<P> {
+    schema_provider: P,
+}
+
+impl<P: TableSchemaProvider> WalDecoder<P> {
+    pub fn new(schema_provider: P) -> Self {
+        Self { schema_provider }
+    }
+}
+
+impl<P> PayloadDecoder for WalDecoder<P>
+where
+    P: TableSchemaProvider + Send + Sync,
+{
     type Error = Error;
     type Target = ReadPayload;
 
-    fn decode<B: Buf>(&self, buf: &mut B) -> Result<Self::Target> {
+    fn decode<B: Buf>(&self, ctx: &PayloadDecodeContext, buf: &mut B) -> Result<Self::Target> {
         let header_value = buf.try_get_u8().context(DecodeHeader)?;
         let header = match Header::from_u8(header_value) {
             Some(header) => header,
@@ -241,8 +315,12 @@ impl PayloadDecoder for WalDecoder {
         };
 
         let chunk = buf.chunk();
+        let schema = self
+            .schema_provider
+            .table_schema(ctx.table_id)
+            .context(TableSchemaNotFound)?;
         let payload = match header {
-            Header::Write => ReadPayload::decode_write_from_pb(chunk)?,
+            Header::Write => ReadPayload::decode_write_from_pb(schema, chunk)?,
             Header::AlterSchema => ReadPayload::decode_alter_schema_from_pb(chunk)?,
             Header::AlterOption => ReadPayload::decode_alter_option_from_pb(chunk)?,
         };

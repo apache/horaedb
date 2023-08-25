@@ -16,13 +16,14 @@
 
 use std::{
     cmp,
-    ops::{Index, IndexMut, Range},
+    collections::HashMap,
+    ops::{Index, IndexMut},
 };
 
 use snafu::{ensure, Backtrace, OptionExt, Snafu};
 
 use crate::{
-    column_schema::ColumnSchema,
+    column_schema::{ColumnId, ColumnSchema},
     datum::{Datum, DatumKind, DatumView},
     record_batch::RecordBatchWithKey,
     schema::{RecordSchemaWithKey, Schema},
@@ -47,7 +48,19 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid column num of row, expect:{}, given:{}.\nBacktrace:\n{}",
+        "Invalid row num, expect:{}, given:{}.\nBacktrace:\n{}",
+        expect,
+        given,
+        backtrace
+    ))]
+    InvalidRowNum {
+        expect: usize,
+        given: usize,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Invalid column num, expect:{}, given:{}.\nBacktrace:\n{}",
         expect,
         given,
         backtrace
@@ -97,6 +110,14 @@ pub enum Error {
     ))]
     ColumnNotFoundInSchema {
         column: String,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Duplicate column id is found, column_id:{column_id}.\nBacktrace:\n{backtrace}",
+    ))]
+    DuplicateColumnId {
+        column_id: ColumnId,
         backtrace: Backtrace,
     },
 }
@@ -213,54 +234,6 @@ pub fn check_row_schema(row: &Row, schema: &Schema) -> Result<()> {
     }
 
     Ok(())
-}
-
-#[derive(Debug)]
-pub struct RowGroupSlicer<'a> {
-    range: Range<usize>,
-    row_group: &'a RowGroup,
-}
-
-impl<'a> From<&'a RowGroup> for RowGroupSlicer<'a> {
-    fn from(value: &'a RowGroup) -> RowGroupSlicer<'a> {
-        Self {
-            range: 0..value.rows.len(),
-            row_group: value,
-        }
-    }
-}
-
-impl<'a> RowGroupSlicer<'a> {
-    pub fn new(range: Range<usize>, row_group: &'a RowGroup) -> Self {
-        Self { range, row_group }
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.range.is_empty()
-    }
-
-    #[inline]
-    pub fn schema(&self) -> &Schema {
-        self.row_group.schema()
-    }
-
-    #[inline]
-    pub fn iter(&self) -> IterRow<'a> {
-        IterRow {
-            iter: self.row_group.rows[self.range.start..self.range.end].iter(),
-        }
-    }
-
-    #[inline]
-    pub fn slice_range(&self) -> Range<usize> {
-        self.range.clone()
-    }
-
-    #[inline]
-    pub fn num_rows(&self) -> usize {
-        self.range.len()
-    }
 }
 
 // TODO(yingwen): For multiple rows that share the same schema, no need to store
@@ -390,7 +363,7 @@ impl<'a> Iterator for IterRow<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct IterCol<'a> {
     rows: &'a Vec<Row>,
     row_index: usize,
@@ -418,6 +391,88 @@ impl<'a> Iterator for IterCol<'a> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.rows.len() - self.row_index;
         (remaining, Some(remaining))
+    }
+}
+
+/// Build the [`RowGroup`] from the columns.
+pub struct RowGroupBuilderFromColumn {
+    schema: Schema,
+    cols: HashMap<ColumnId, Vec<Datum>>,
+}
+
+impl RowGroupBuilderFromColumn {
+    pub fn with_capacity(schema: Schema, num_cols: usize) -> Self {
+        Self {
+            schema,
+            cols: HashMap::with_capacity(num_cols),
+        }
+    }
+
+    /// The newly-added column should have the same elements as the
+    /// previously-added column's.
+    pub fn try_add_column(&mut self, col_id: ColumnId, col: Vec<Datum>) -> Result<()> {
+        if let Some(num_rows) = self.num_rows() {
+            ensure!(
+                num_rows == col.len(),
+                InvalidRowNum {
+                    expect: num_rows,
+                    given: col.len(),
+                }
+            );
+        }
+
+        let old = self.cols.insert(col_id, col);
+        ensure!(old.is_none(), DuplicateColumnId { column_id: col_id });
+
+        Ok(())
+    }
+
+    pub fn build(mut self) -> RowGroup {
+        let num_rows = self.num_rows().unwrap_or(0);
+        let num_cols = self.schema.num_columns();
+        let mut rows = Vec::with_capacity(num_rows);
+
+        // Pre-allocate the memory for column data in every row.
+        for _ in 0..num_rows {
+            let row = Vec::with_capacity(num_cols);
+            rows.push(row);
+        }
+
+        let mut add_column_to_row = |row_idx: usize, datum: Datum| {
+            rows[row_idx].push(datum);
+        };
+
+        for col_schema in self.schema.columns() {
+            let col_id = col_schema.id;
+            let datums = self.cols.remove(&col_id);
+
+            match datums {
+                Some(v) => {
+                    for (row_idx, datum) in v.into_iter().enumerate() {
+                        add_column_to_row(row_idx, datum);
+                    }
+                }
+                None => {
+                    for row_idx in 0..num_rows {
+                        add_column_to_row(row_idx, Datum::Null);
+                    }
+                }
+            }
+        }
+
+        let rows = rows.into_iter().map(Row::from_datums).collect::<Vec<_>>();
+
+        RowGroup {
+            schema: self.schema,
+            rows,
+            min_timestamp: Timestamp::now(),
+            max_timestamp: Timestamp::now(),
+        }
+    }
+
+    #[inline]
+    fn num_rows(&self) -> Option<usize> {
+        self.cols.iter().next().map(|(_, v)| v.len())
     }
 }
 

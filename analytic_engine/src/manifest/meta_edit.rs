@@ -26,7 +26,7 @@ use macros::define_result;
 use prost::Message;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
-use wal::log_batch::{Payload, PayloadDecoder};
+use wal::log_batch::{Payload, PayloadDecodeContext, PayloadDecoder};
 
 use crate::{
     manifest::meta_snapshot::MetaSnapshot,
@@ -408,7 +408,7 @@ impl PayloadDecoder for MetaUpdateDecoder {
     type Error = Error;
     type Target = MetaUpdate;
 
-    fn decode<B: Buf>(&self, buf: &mut B) -> Result<Self::Target> {
+    fn decode<B: Buf>(&self, _ctx: &PayloadDecodeContext, buf: &mut B) -> Result<Self::Target> {
         let meta_update_pb =
             manifest_pb::MetaUpdate::decode(buf.chunk()).context(DecodePayloadPb)?;
         MetaUpdate::try_from(meta_update_pb)

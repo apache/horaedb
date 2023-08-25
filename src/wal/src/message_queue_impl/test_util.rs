@@ -71,9 +71,8 @@ impl<Mq: MessageQueue> TestContext<Mq> {
             .map(|(table_id, data)| {
                 let log_batch_encoder =
                     LogBatchEncoder::create(WalLocation::new(region_id, table_id));
-                let log_write_batch = log_batch_encoder
-                    .encode_batch::<MemoryPayload, u32>(&data)
-                    .unwrap();
+                let payloads = data.iter().map(|v| MemoryPayload { val: *v });
+                let log_write_batch = log_batch_encoder.encode_batch(payloads).unwrap();
 
                 (table_id, TestDataOfTable::new(data, log_write_batch))
             })
