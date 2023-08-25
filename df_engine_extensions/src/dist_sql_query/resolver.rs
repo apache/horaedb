@@ -30,8 +30,8 @@ use crate::dist_sql_query::{
 ///
 /// The reason we define a `Resolver` rather than `physical optimization rule`
 /// is: As I see, physical optimization rule is responsible for optimizing a bad
-/// plan to good one, rater than making a inexecutable plan executable.
-/// So we define`Resolver` should be defined to finish it, it may be like task
+/// plan to good one, rather than making a inexecutable plan executable.
+/// So we define `Resolver` to make it, it may be somthing similar to task
 /// generator responsible for generating task for executor to run based on
 /// physical plan.
 pub trait Resolver {
