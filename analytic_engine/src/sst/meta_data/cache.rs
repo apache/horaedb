@@ -163,12 +163,18 @@ mod tests {
         schema::Builder as CustomSchemaBuilder,
         time::{TimeRange, Timestamp},
     };
-    use object_store::LocalFileSystem;
+    use object_store::{LocalFileSystem, ObjectStoreRef};
     use parquet::{arrow::ArrowWriter, file::footer};
     use parquet_ext::ParquetMetaData;
 
     use super::MetaData;
-    use crate::sst::parquet::{encoding, meta_data::ParquetMetaData as CustomParquetMetaData};
+    use crate::{
+        sst::parquet::{
+            encoding::{self, META_PATH_KEY, META_VERSION_KEY},
+            meta_data::ParquetMetaData as CustomParquetMetaData,
+        },
+        table::sst_util::new_metadata_path,
+    };
 
     // TODO: remove it and use the suggested api.
     #[allow(deprecated)]
@@ -202,7 +208,7 @@ mod tests {
 
         if let Some(kv_metas) = original_file_md.key_value_metadata() {
             let processed_kv_metas = processed_file_md.key_value_metadata().unwrap();
-            assert_eq!(kv_metas.len(), processed_kv_metas.len() + 1);
+            assert_eq!(kv_metas.len(), processed_kv_metas.len() + 2);
             let mut idx_for_processed = 0;
             for kv in kv_metas {
                 if kv.key == encoding::META_KEY {
@@ -216,7 +222,8 @@ mod tests {
         }
     }
 
-    fn write_parquet_file_with_metadata(
+    async fn write_parquet_file_with_metadata(
+        store: ObjectStoreRef,
         parquet_file_path: &Path,
         custom_meta_data: &CustomParquetMetaData,
     ) {
@@ -246,13 +253,21 @@ mod tests {
         )
         .unwrap();
         let mut writer = ArrowWriter::try_new(file, batch.schema(), None).unwrap();
-
-        let encoded_meta_data =
-            encoding::encode_sst_meta_data_v1(custom_meta_data.clone()).unwrap();
-        writer.append_key_value_metadata(encoded_meta_data);
-
+        let meta_path = new_metadata_path(parquet_file_path.to_str().unwrap());
+        writer.append_key_value_metadata(parquet::format::KeyValue {
+            key: META_PATH_KEY.to_string(),
+            value: Some(meta_path.clone()),
+        });
+        writer.append_key_value_metadata(parquet::format::KeyValue {
+            key: META_VERSION_KEY.to_string(),
+            value: Some("2".to_string()),
+        });
         writer.write(&batch).unwrap();
         writer.close().unwrap();
+
+        let bytes = encoding::encode_sst_meta_data_v2(custom_meta_data.clone()).unwrap();
+        let meta_path = object_store::Path::from(meta_path);
+        store.put(&meta_path, bytes).await.unwrap();
     }
 
     #[tokio::test]
@@ -289,12 +304,16 @@ mod tests {
             schema,
             parquet_filter: None,
         };
-        write_parquet_file_with_metadata(parquet_file_path.as_path(), &custom_meta_data);
+        let store = Arc::new(LocalFileSystem::new_with_prefix(temp_dir.path()).unwrap());
+        write_parquet_file_with_metadata(
+            store.clone(),
+            parquet_file_path.as_path(),
+            &custom_meta_data,
+        )
+        .await;
 
         let parquet_file = File::open(parquet_file_path.as_path()).unwrap();
         let parquet_meta_data = footer::parse_metadata(&parquet_file).unwrap();
-        let store =
-            Arc::new(LocalFileSystem::new_with_prefix(parquet_file_path.as_path()).unwrap());
         let meta_data = MetaData::try_new(&parquet_meta_data, false, store)
             .await
             .unwrap();
