@@ -81,24 +81,25 @@ impl Preprocessor {
         }
     }
 
-    pub fn process(&self, typed_plan: &TypedPlan) -> Result<Arc<dyn ExecutionPlan>> {
+    pub async fn process(&self, typed_plan: &TypedPlan) -> Result<Arc<dyn ExecutionPlan>> {
         match typed_plan {
             TypedPlan::Normal(plan) => Ok(plan.clone()),
-            TypedPlan::Partitioned(plan) => self.preprocess_partitioned_table_plan(plan),
-            TypedPlan::Remote(plan) => self.preprocess_remote_plan(plan),
+            TypedPlan::Partitioned(plan) => self.preprocess_partitioned_table_plan(plan).await,
+            TypedPlan::Remote(plan) => self.preprocess_remote_plan(plan).await,
         }
     }
 
-    fn preprocess_remote_plan(&self, encoded_plan: &[u8]) -> Result<Arc<dyn ExecutionPlan>> {
+    async fn preprocess_remote_plan(&self, encoded_plan: &[u8]) -> Result<Arc<dyn ExecutionPlan>> {
         self.dist_query_resolver
             .resolve_sub_scan(encoded_plan)
+            .await
             .box_err()
             .with_context(|| ExecutorWithCause {
                 msg: format!("failed to preprocess remote plan"),
             })
     }
 
-    fn preprocess_partitioned_table_plan(
+    async fn preprocess_partitioned_table_plan(
         &self,
         plan: &Arc<dyn ExecutionPlan>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
@@ -189,12 +190,17 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
 #[derive(Debug)]
 struct ExecutableScanBuilderImpl;
 
+#[async_trait]
 impl ExecutableScanBuilder for ExecutableScanBuilderImpl {
-    fn build(
+    async fn build(
         &self,
         table: TableRef,
         read_request: ReadRequest,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
-        Ok(Arc::new(ScanTable::new(table, read_request)))
+        let mut scan = ScanTable::new(table, read_request);
+        scan.maybe_init_stream().await.map_err(|e| {
+            DataFusionError::Internal(format!("failed to build executable table scan, err:{e}"))
+        })?;
+        Ok(Arc::new(scan))
     }
 }

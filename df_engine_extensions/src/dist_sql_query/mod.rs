@@ -53,9 +53,13 @@ type RemotePhysicalPlanExecutorRef = Arc<dyn RemotePhysicalPlanExecutor>;
 ///
 /// It is not suitable to restrict the detailed implementation of executable
 /// scan, so we define a builder here which return the general `ExecutionPlan`.
+#[async_trait]
 pub trait ExecutableScanBuilder: fmt::Debug + Send + Sync + 'static {
-    fn build(&self, table: TableRef, read_request: ReadRequest)
-        -> DfResult<Arc<dyn ExecutionPlan>>;
+    async fn build(
+        &self,
+        table: TableRef,
+        read_request: ReadRequest,
+    ) -> DfResult<Arc<dyn ExecutionPlan>>;
 }
 
 type ExecutableScanBuilderRef = Box<dyn ExecutableScanBuilder>;

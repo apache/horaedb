@@ -34,11 +34,12 @@ pub trait PhysicalPlanner: fmt::Debug + Send + Sync + 'static {
 
 pub type PhysicalPlannerRef = Arc<dyn PhysicalPlanner>;
 
-pub trait PhysicalPlan: std::fmt::Debug + Send + 'static {
+#[async_trait]
+pub trait PhysicalPlan: std::fmt::Debug + Sync + Send + 'static {
     fn as_any(&self) -> &dyn Any;
 
     /// execute this plan and returns the result
-    fn execute(&self, task_ctx: &TaskExecContext) -> Result<SendableRecordBatchStream>;
+    async fn execute(&self, task_ctx: &TaskExecContext) -> Result<SendableRecordBatchStream>;
 
     /// Convert internal metrics to string.
     fn metrics_to_string(&self) -> String;

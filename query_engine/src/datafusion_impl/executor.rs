@@ -81,6 +81,7 @@ impl Executor for DatafusionExecutorImpl {
         let task_ctx = self.task_exec_context(ctx);
         let stream = physical_plan
             .execute(&task_ctx)
+            .await
             .box_err()
             .with_context(|| ExecutorWithCause {
                 msg: Some("failed to execute physical plan".to_string()),

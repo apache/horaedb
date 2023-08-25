@@ -343,7 +343,7 @@ impl ScanTable {
         }
     }
 
-    async fn maybe_init_stream(&mut self) -> Result<()> {
+    pub async fn maybe_init_stream(&mut self) -> Result<()> {
         let read_res = self.table.partitioned_read(self.request.clone()).await;
 
         let mut stream_state = self.stream_state.lock().unwrap();

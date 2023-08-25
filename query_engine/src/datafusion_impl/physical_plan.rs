@@ -21,6 +21,7 @@ use std::{
     sync::Arc,
 };
 
+use arc_swap::ArcSwapOption;
 use async_trait::async_trait;
 use datafusion::physical_plan::{
     coalesce_partitions::CoalescePartitionsExec, display::DisplayableExecutionPlan, ExecutionPlan,
@@ -42,8 +43,11 @@ pub enum TypedPlan {
 }
 
 impl TypedPlan {
-    fn maybe_preprocess(&self, preprocessor: &Preprocessor) -> Result<Arc<dyn ExecutionPlan>> {
-        preprocessor.process(self)
+    async fn maybe_preprocess(
+        &self,
+        preprocessor: &Preprocessor,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
+        preprocessor.process(self).await
     }
 }
 
@@ -59,14 +63,14 @@ impl fmt::Debug for TypedPlan {
 
 pub struct DataFusionPhysicalPlanAdapter {
     original_plan: TypedPlan,
-    executable_plan: RefCell<Option<Arc<dyn ExecutionPlan>>>,
+    executable_plan: ArcSwapOption<Arc<dyn ExecutionPlan>>,
 }
 
 impl DataFusionPhysicalPlanAdapter {
     pub fn new(typed_plan: TypedPlan) -> Self {
         Self {
             original_plan: typed_plan,
-            executable_plan: RefCell::new(None),
+            executable_plan: ArcSwapOption::from(None),
         }
     }
 }
@@ -85,7 +89,7 @@ impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
         self
     }
 
-    fn execute(&self, task_ctx: &TaskExecContext) -> Result<SendableRecordBatchStream> {
+    async fn execute(&self, task_ctx: &TaskExecContext) -> Result<SendableRecordBatchStream> {
         // Get datafusion task context.
         let df_task_ctx =
             task_ctx
@@ -97,7 +101,9 @@ impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
         // Maybe need preprocess for getting executable plan.
         let executable = self
             .original_plan
-            .maybe_preprocess(&df_task_ctx.preprocessor)?;
+            .maybe_preprocess(&df_task_ctx.preprocessor)
+            .await?;
+
         // Coalesce the multiple outputs plan.
         let partition_count = executable.output_partitioning().partition_count();
         let executable = if partition_count <= 1 {
@@ -105,7 +111,8 @@ impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
         } else {
             Arc::new(CoalescePartitionsExec::new(executable))
         };
-        *self.executable_plan.borrow_mut() = Some(executable.clone());
+        self.executable_plan
+            .swap(Some(Arc::new(executable.clone())));
 
         // Execute the plan.
         // Ensure to be `Some` here.
@@ -124,9 +131,9 @@ impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
     }
 
     fn metrics_to_string(&self) -> String {
-        let executable_opt = &*self.executable_plan.borrow();
+        let executable_opt = &*self.executable_plan.load();
         match executable_opt {
-            Some(plan) => DisplayableExecutionPlan::with_metrics(plan.as_ref())
+            Some(plan) => DisplayableExecutionPlan::with_metrics(plan.as_ref().as_ref())
                 .indent(true)
                 .to_string(),
             None => "Plan is not executed yet".to_string(),

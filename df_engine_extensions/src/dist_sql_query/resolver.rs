@@ -14,6 +14,7 @@
 
 use std::sync::Arc;
 
+use async_recursion::async_recursion;
 use catalog::manager::ManagerRef as CatalogManagerRef;
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
@@ -122,7 +123,7 @@ impl Resolver {
     }
 
     /// Resolve encoded sub table scanning plan.
-    pub fn resolve_sub_scan(&self, encoded_plan: &[u8]) -> DfResult<Arc<dyn ExecutionPlan>> {
+    pub async fn resolve_sub_scan(&self, encoded_plan: &[u8]) -> DfResult<Arc<dyn ExecutionPlan>> {
         // Decode to datafusion physical plan.
         let protobuf = protobuf::PhysicalPlanNode::decode(encoded_plan).map_err(|e| {
             DataFusionError::Plan(format!("failed to decode bytes to physical plan, err:{e}"))
@@ -133,19 +134,27 @@ impl Resolver {
             self.extension_codec.as_ref(),
         )?;
 
-        self.resolve_sub_scan_internal(plan)
+        self.resolve_sub_scan_internal(plan).await
     }
 
-    fn resolve_sub_scan_internal(
+    #[async_recursion]
+    async fn resolve_sub_scan_internal(
         &self,
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
         // Leave node, let's resolve it and return.
-        if let Some(unresolved) = plan.as_any().downcast_ref::<UnresolvedSubTableScan>() {
-            let table = self.find_table(&unresolved.table)?;
-            return self
-                .scan_builder
-                .build(table, unresolved.read_request.clone());
+        let build_scan_opt =
+            if let Some(unresolved) = plan.as_any().downcast_ref::<UnresolvedSubTableScan>() {
+                let table = self.find_table(&unresolved.table)?;
+                let read_request = unresolved.read_request.clone();
+
+                Some((table, read_request))
+            } else {
+                None
+            };
+
+        if let Some((table, request)) = build_scan_opt {
+            return self.scan_builder.build(table, request).await;
         }
 
         let children = plan.children().clone();
@@ -157,7 +166,7 @@ impl Resolver {
         // Resolve children if exist.
         let mut new_children = Vec::with_capacity(children.len());
         for child in children {
-            let child = self.resolve_sub_scan_internal(child)?;
+            let child = self.resolve_sub_scan_internal(child).await?;
 
             new_children.push(child);
         }
@@ -245,14 +254,20 @@ mod test {
         insta::assert_snapshot!(new_plan);
     }
 
-    #[test]
-    fn test_resolve_simple_sub_scan() {
+    #[tokio::test]
+    async fn test_resolve_simple_sub_scan() {
         let ctx = TestContext::new();
         let plan = ctx.build_basic_sub_table_plan();
         let resolver = ctx.resolver();
-        let new_plan = displayable(resolver.resolve_sub_scan_internal(plan).unwrap().as_ref())
-            .indent(true)
-            .to_string();
+        let new_plan = displayable(
+            resolver
+                .resolve_sub_scan_internal(plan)
+                .await
+                .unwrap()
+                .as_ref(),
+        )
+        .indent(true)
+        .to_string();
         insta::assert_snapshot!(new_plan);
     }
 
@@ -281,8 +296,9 @@ mod test {
     #[derive(Debug)]
     struct MockScanBuilder;
 
+    #[async_trait]
     impl ExecutableScanBuilder for MockScanBuilder {
-        fn build(
+        async fn build(
             &self,
             _table: TableRef,
             read_request: ReadRequest,
