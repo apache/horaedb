@@ -40,7 +40,6 @@ use crate::{
     Config, QueryEngine,
 };
 
-pub mod codec;
 pub mod executor;
 pub mod logical_optimizer;
 pub mod physical_optimizer;

@@ -16,7 +16,6 @@
 //!
 //! Optimizes and executes logical plan
 
-pub mod codec;
 pub mod config;
 pub mod context;
 pub mod datafusion_impl;
@@ -35,8 +34,6 @@ pub trait QueryEngine: fmt::Debug + Send + Sync {
     fn physical_planner(&self) -> PhysicalPlannerRef;
 
     fn executor(&self) -> ExecutorRef;
-
-    fn physical_plan_codec(&self) -> PhysicalPlanCodecRef;
 }
 
 pub type QueryEngineRef = Box<dyn QueryEngine>;
