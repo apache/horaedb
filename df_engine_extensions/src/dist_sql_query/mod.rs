@@ -21,6 +21,7 @@ use datafusion::{
     execution::TaskContext,
     physical_plan::{ExecutionPlan, SendableRecordBatchStream},
 };
+use futures::future::BoxFuture;
 use prost::bytes::Bytes;
 use table_engine::{
     remote::model::TableIdentifier,
@@ -32,14 +33,13 @@ pub mod physical_plan;
 pub mod resolver;
 
 /// Remote datafusion physical plan executor
-#[async_trait]
 pub trait RemotePhysicalPlanExecutor: fmt::Debug + Send + Sync + 'static {
-    async fn execute(
+    fn execute(
         &self,
         table: TableIdentifier,
         task_context: &TaskContext,
         encoded_plan: EncodedPlan,
-    ) -> DfResult<SendableRecordBatchStream>;
+    ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>>;
 }
 
 pub struct EncodedPlan {

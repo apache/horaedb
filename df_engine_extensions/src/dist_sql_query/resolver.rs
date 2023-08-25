@@ -215,6 +215,7 @@ mod test {
         },
         scalar::ScalarValue,
     };
+    use futures::future::BoxFuture;
     use table_engine::{
         memory::MemoryTable,
         predicate::PredicateBuilder,
@@ -355,14 +356,13 @@ mod test {
     #[derive(Debug, Clone)]
     struct MockRemotePhysicalPlanExecutor;
 
-    #[async_trait]
     impl RemotePhysicalPlanExecutor for MockRemotePhysicalPlanExecutor {
-        async fn execute(
+        fn execute(
             &self,
             _table: TableIdentifier,
             _task_context: &TaskContext,
             _encoded_plan: EncodedPlan,
-        ) -> DfResult<SendableRecordBatchStream> {
+        ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
             unimplemented!()
         }
     }
