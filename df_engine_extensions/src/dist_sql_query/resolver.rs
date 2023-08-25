@@ -84,21 +84,9 @@ impl<R: RemotePhysicalPlanExecutor> PartitionedScanResolver<R> {
             new_children.push(child);
         }
 
-        // There may be `ResolvedPartitionedScan` node in children, try to extend such
-        // children.
-        // TODO: push down the computation physical node here.
-        Self::maybe_extend_partitioned_scan(new_children, plan)
-    }
-
-    fn maybe_extend_partitioned_scan(
-        new_children: Vec<Arc<dyn ExecutionPlan>>,
-        current_node: Arc<dyn ExecutionPlan>,
-    ) -> DfResult<Arc<dyn ExecutionPlan>> {
-        if new_children.is_empty() {
-            return Ok(current_node);
-        }
-
-        current_node.with_new_children(new_children)
+        // TODO: Push down the computation physical node here rather than simply
+        // rebuild.
+        plan.with_new_children(new_children)
     }
 }
 
