@@ -26,6 +26,7 @@ workspace = true
 
 [dependencies]
 arrow = { workspace = true }
+async-recursion = "1.0.4"
 async-trait = { workspace = true }
 catalog = { workspace = true, features = ["test"] }
 ceresdbproto = { workspace = true }
@@ -40,4 +41,5 @@ table_engine = { workspace = true }
 
 [dev-dependencies]
 insta = { version = "1.31.0" }
+tokio = { workspace = true }
 trace_metric = { workspace = true }
