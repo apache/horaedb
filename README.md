@@ -21,9 +21,11 @@ Any contribution is welcome!
 Read our [Contributing Guide](CONTRIBUTING.md) and make your first contribution!
 
 ## Acknowledgment
-Some design of CeresDB references [influxdb_iox](https://github.com/influxdata/influxdb_iox), and some specific module implementations reference [tikv](https://github.com/tikv/tikv) and other excellent open source projects, thanks to InfluxDB, TiKV, and any other referenced great open source projects.
+When develop CeresDB, we benefit a lot from several other open source projects,  such as [influxdb_iox](https://github.com/influxdata/influxdb_iox), [tikv](https://github.com/tikv/tikv) etc, thanks for their awesome work.
 
-## Licensing
+In our production usage, we heavily use [OceanBase](https://github.com/oceanbase/oceanbase) as implementation of both WAL and ObjectStorage, and OceanBase team help us maintain stability of our cluster, thanks for their kindly support.
+
+## License
 CeresDB is under [Apache License 2.0](./LICENSE).
 
 ## Community and support
