@@ -372,7 +372,7 @@ async fn test_interpreters<T: EngineBuildContext>(engine_context: T) {
     let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
     let function_registry = Arc::new(FunctionRegistryImpl::default());
     let remote_engine = Arc::new(MockRemoteEngine);
-    let query_engine = Box::new(
+    let query_engine = Arc::new(
         DatafusionQueryEngineImpl::new(
             query_engine::config::Config::default(),
             RuntimeConfig::default(),

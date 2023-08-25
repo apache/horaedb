@@ -41,7 +41,7 @@ pub trait QueryEngine: fmt::Debug + Send + Sync {
     fn executor(&self) -> ExecutorRef;
 }
 
-pub type QueryEngineRef = Box<dyn QueryEngine>;
+pub type QueryEngineRef = Arc<dyn QueryEngine>;
 
 /// Query engine builder
 #[derive(Default)]
@@ -53,6 +53,7 @@ pub struct QueryEngineBuilder {
     remote_engine: Option<RemoteEngineRef>,
 }
 
+#[derive(Debug)]
 pub enum QueryEngineType {
     Datafusion,
 }
@@ -117,7 +118,7 @@ impl QueryEngineBuilder {
             catalog_manager,
         )?;
 
-        Ok(Box::new(df_query_engine))
+        Ok(Arc::new(df_query_engine))
     }
 
     pub fn build(self, engine_type: QueryEngineType) -> Result<QueryEngineRef> {

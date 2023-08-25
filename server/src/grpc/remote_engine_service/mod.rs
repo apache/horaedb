@@ -14,20 +14,25 @@
 
 // Remote engine rpc service implementation.
 
-use std::{hash::Hash, sync::Arc, time::Instant};
+use std::{
+    hash::Hash,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use arrow_ext::ipc::{self, CompressOptions, CompressOutput, CompressionMethod};
 use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::SchemaRef};
 use ceresdbproto::{
     remote_engine::{
-        read_response::Output::Arrow, remote_engine_service_server::RemoteEngineService, row_group,
+        execute_plan_request, read_response::Output::Arrow,
+        remote_engine_service_server::RemoteEngineService, row_group, ExecContext,
         ExecutePlanRequest, GetTableInfoRequest, GetTableInfoResponse, ReadRequest, ReadResponse,
         WriteBatchRequest, WriteRequest, WriteResponse,
     },
     storage::{arrow_payload, ArrowPayload},
 };
-use common_types::record_batch::RecordBatch;
+use common_types::{record_batch::RecordBatch, request_id::RequestId};
 use futures::stream::{self, BoxStream, FuturesUnordered, StreamExt};
 use generic_error::BoxError;
 use log::{error, info};
@@ -35,12 +40,17 @@ use proxy::{
     hotspot::{HotspotRecorder, Message},
     instance::InstanceRef,
 };
+use query_engine::{
+    datafusion_impl::physical_plan::{DataFusionPhysicalPlanAdapter, TypedPlan},
+    executor::ExecutorRef,
+    QueryEngineRef, QueryEngineType,
+};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::EngineRuntimes,
     predicate::PredicateRef,
     remote::model::{self, TableIdentifier},
-    stream::PartitionedStreams,
+    stream::{PartitionedStreams, SendableRecordBatchStream},
     table::TableRef,
 };
 use time_ext::InstantExt;
@@ -106,6 +116,69 @@ impl<F: FnMut()> Drop for ExecutionGuard<F> {
             (self.f)()
         }
     }
+}
+
+macro_rules! record_stream_to_response_stream {
+    ($record_stream_result:ident, $StreamType:ident) => {
+        match $record_stream_result {
+            Ok(stream) => {
+                let new_stream: Self::$StreamType = Box::pin(stream.map(|res| match res {
+                    Ok(record_batch) => {
+                        let resp = match ipc::encode_record_batch(
+                            &record_batch.into_arrow_record_batch(),
+                            CompressOptions {
+                                compress_min_length: DEFAULT_COMPRESS_MIN_LENGTH,
+                                method: CompressionMethod::Zstd,
+                            },
+                        )
+                        .box_err()
+                        .context(ErrWithCause {
+                            code: StatusCode::Internal,
+                            msg: "encode record batch failed",
+                        }) {
+                            Err(e) => ReadResponse {
+                                header: Some(error::build_err_header(e)),
+                                ..Default::default()
+                            },
+                            Ok(CompressOutput { payload, method }) => {
+                                let compression = match method {
+                                    CompressionMethod::None => arrow_payload::Compression::None,
+                                    CompressionMethod::Zstd => arrow_payload::Compression::Zstd,
+                                };
+
+                                ReadResponse {
+                                    header: Some(error::build_ok_header()),
+                                    output: Some(Arrow(ArrowPayload {
+                                        record_batches: vec![payload],
+                                        compression: compression as i32,
+                                    })),
+                                }
+                            }
+                        };
+
+                        Ok(resp)
+                    }
+                    Err(e) => {
+                        let resp = ReadResponse {
+                            header: Some(error::build_err_header(e)),
+                            ..Default::default()
+                        };
+                        Ok(resp)
+                    }
+                }));
+
+                Ok(Response::new(new_stream))
+            }
+            Err(e) => {
+                let resp = ReadResponse {
+                    header: Some(error::build_err_header(e)),
+                    ..Default::default()
+                };
+                let stream = stream::once(async { Ok(resp) });
+                Ok(Response::new(Box::pin(stream)))
+            }
+        }
+    };
 }
 
 #[derive(Clone)]
@@ -409,6 +482,50 @@ impl RemoteEngineServiceImpl {
         Ok(Response::new(batch_resp))
     }
 
+    async fn execute_physical_plan_internal(
+        &self,
+        request: Request<ExecutePlanRequest>,
+    ) -> Result<SendableRecordBatchStream> {
+        let instant = Instant::now();
+        let request = request.into_inner();
+        let query_engine = self.instance.query_engine.clone();
+
+        let stream_result = self
+            .runtimes
+            .read_runtime
+            .spawn(async move { handle_execute_plan(request, query_engine).await })
+            .await
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::Internal,
+                msg: "failed to run execute physical plan task",
+            })?;
+
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .stream_read
+            .observe(instant.saturating_elapsed().as_secs_f64());
+
+        stream_result
+    }
+
+    fn check_and_extract_plan(
+        typed_plan: execute_plan_request::PhysicalPlan,
+        engine_type: QueryEngineType,
+    ) -> Result<Vec<u8>> {
+        match (typed_plan, engine_type) {
+            (execute_plan_request::PhysicalPlan::Datafusion(plan), QueryEngineType::Datafusion) => {
+                Ok(plan)
+            }
+            (plan, engine_type) => ErrNoCause {
+                code: StatusCode::Internal,
+                msg: format!(
+                    "plan type mismatch engine type, plan:{plan:?}, engine_type:{engine_type:?}"
+                ),
+            }
+            .fail(),
+        }
+    }
+
     fn handler_ctx(&self) -> HandlerContext {
         HandlerContext {
             catalog_manager: self.instance.catalog_manager.clone(),
@@ -451,64 +568,7 @@ impl RemoteEngineService for RemoteEngineServiceImpl {
             None => self.stream_read_internal(request).await,
         };
 
-        match result {
-            Ok(stream) => {
-                let new_stream: Self::ReadStream = Box::pin(stream.map(|res| match res {
-                    Ok(record_batch) => {
-                        let resp = match ipc::encode_record_batch(
-                            &record_batch.into_arrow_record_batch(),
-                            CompressOptions {
-                                compress_min_length: DEFAULT_COMPRESS_MIN_LENGTH,
-                                method: CompressionMethod::Zstd,
-                            },
-                        )
-                        .box_err()
-                        .context(ErrWithCause {
-                            code: StatusCode::Internal,
-                            msg: "encode record batch failed",
-                        }) {
-                            Err(e) => ReadResponse {
-                                header: Some(error::build_err_header(e)),
-                                ..Default::default()
-                            },
-                            Ok(CompressOutput { payload, method }) => {
-                                let compression = match method {
-                                    CompressionMethod::None => arrow_payload::Compression::None,
-                                    CompressionMethod::Zstd => arrow_payload::Compression::Zstd,
-                                };
-
-                                ReadResponse {
-                                    header: Some(error::build_ok_header()),
-                                    output: Some(Arrow(ArrowPayload {
-                                        record_batches: vec![payload],
-                                        compression: compression as i32,
-                                    })),
-                                }
-                            }
-                        };
-
-                        Ok(resp)
-                    }
-                    Err(e) => {
-                        let resp = ReadResponse {
-                            header: Some(error::build_err_header(e)),
-                            ..Default::default()
-                        };
-                        Ok(resp)
-                    }
-                }));
-
-                Ok(Response::new(new_stream))
-            }
-            Err(e) => {
-                let resp = ReadResponse {
-                    header: Some(error::build_err_header(e)),
-                    ..Default::default()
-                };
-                let stream = stream::once(async { Ok(resp) });
-                Ok(Response::new(Box::pin(stream)))
-            }
-        }
+        record_stream_to_response_stream!(result, ReadStream)
     }
 
     async fn write(
@@ -534,9 +594,21 @@ impl RemoteEngineService for RemoteEngineServiceImpl {
 
     async fn execute_physical_plan(
         &self,
-        _request: Request<ExecutePlanRequest>,
+        request: Request<ExecutePlanRequest>,
     ) -> std::result::Result<Response<Self::ExecutePhysicalPlanStream>, Status> {
-        todo!()
+        let record_stream_result =
+            self.execute_physical_plan_internal(request)
+                .await
+                .map(|stream| {
+                    stream.map(|batch_result| {
+                        batch_result.box_err().with_context(|| ErrWithCause {
+                            code: StatusCode::Internal,
+                            msg: "failed to poll record batch",
+                        })
+                    })
+                });
+
+        record_stream_to_response_stream!(record_stream_result, ExecutePhysicalPlanStream)
     }
 }
 
@@ -730,6 +802,81 @@ async fn handle_get_table_info(
             partition_info: table.partition_info().map(Into::into),
         }),
     })
+}
+
+async fn handle_execute_plan(
+    request: ExecutePlanRequest,
+    query_engine: QueryEngineRef,
+) -> Result<SendableRecordBatchStream> {
+    // Build execution context.
+    let ctx_in_req = request.context.with_context(|| ErrNoCause {
+        code: StatusCode::Internal,
+        msg: "execution context not found in physical plan request",
+    })?;
+
+    let ExecContext {
+        request_id,
+        default_catalog,
+        default_schema,
+        timeout_ms,
+    } = ctx_in_req;
+
+    let request_id = RequestId::from(request_id);
+    let deadline = if timeout_ms >= 0 {
+        Some(Instant::now() + Duration::from_millis(timeout_ms as u64))
+    } else {
+        None
+    };
+
+    let exec_ctx = query_engine::context::Context {
+        request_id,
+        deadline,
+        default_catalog,
+        default_schema,
+    };
+
+    // Build physical plan.
+    let typed_plan_in_req = request.physical_plan.with_context(|| ErrNoCause {
+        code: StatusCode::Internal,
+        msg: "plan not found in physical plan request",
+    })?;
+    // FIXME: return the type from query engine.
+    let valid_plan = check_and_extract_plan(typed_plan_in_req, QueryEngineType::Datafusion)?;
+    // TODO: Build remote plan in physical planner.
+    let physical_plan = Box::new(DataFusionPhysicalPlanAdapter::new(TypedPlan::Remote(
+        valid_plan,
+    )));
+
+    // Execute plan.
+    let executor = query_engine.executor();
+    let stream_result = executor
+        .execute(&exec_ctx, physical_plan)
+        .await
+        .box_err()
+        .with_context(|| ErrWithCause {
+            code: StatusCode::Internal,
+            msg: "failed to execute remote plan",
+        });
+
+    stream_result
+}
+
+fn check_and_extract_plan(
+    typed_plan: execute_plan_request::PhysicalPlan,
+    engine_type: QueryEngineType,
+) -> Result<Vec<u8>> {
+    match (typed_plan, engine_type) {
+        (execute_plan_request::PhysicalPlan::Datafusion(plan), QueryEngineType::Datafusion) => {
+            Ok(plan)
+        }
+        (plan, engine_type) => ErrNoCause {
+            code: StatusCode::Internal,
+            msg: format!(
+                "plan type mismatch engine type, plan:{plan:?}, engine_type:{engine_type:?}"
+            ),
+        }
+        .fail(),
+    }
 }
 
 fn find_table_by_identifier(
