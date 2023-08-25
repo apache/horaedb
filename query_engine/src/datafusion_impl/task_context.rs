@@ -29,6 +29,7 @@ use datafusion::{
 use df_engine_extensions::dist_sql_query::{
     resolver::Resolver, EncodedPlan, ExecutableScanBuilder, RemotePhysicalPlanExecutor,
 };
+use futures::future::BoxFuture;
 use generic_error::BoxError;
 use snafu::ResultExt;
 use table_engine::{
@@ -123,14 +124,13 @@ struct RemotePhysicalPlanExecutorImpl {
     remote_engine: RemoteEngineRef,
 }
 
-#[async_trait]
 impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
-    async fn execute(
+    fn execute(
         &self,
         table: TableIdentifier,
         task_context: &TaskContext,
         encoded_plan: EncodedPlan,
-    ) -> DfResult<SendableRecordBatchStream> {
+    ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         // Get the custom context to rebuild execution context.
         let ceresdb_options = task_context
             .session_config()
@@ -153,30 +153,34 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
             default_schema,
         };
 
-        // Build request.
-        let remote_request = RemoteExecuteRequest {
-            context: exec_ctx,
-            physical_plan: PhysicalPlan::Datafusion(encoded_plan.plan),
-        };
+        // Build returned stream future.
+        let remote_engine = self.remote_engine.clone();
+        let future = Box::pin(async move {
+            let remote_request = RemoteExecuteRequest {
+                context: exec_ctx,
+                physical_plan: PhysicalPlan::Datafusion(encoded_plan.plan),
+            };
 
-        let request = ExecutePlanRequest {
-            table,
-            plan_schema: encoded_plan.schema,
-            remote_request,
-        };
+            let request = ExecutePlanRequest {
+                table,
+                plan_schema: encoded_plan.schema,
+                remote_request,
+            };
 
-        // Remote execute.
-        let stream = self
-            .remote_engine
-            .execute_physical_plan(request)
-            .await
-            .map_err(|e| {
-                DataFusionError::Internal(format!(
-                    "failed to execute physical plan by remote engine, err:{e}"
-                ))
-            })?;
+            // Remote execute.
+            let stream = remote_engine
+                .execute_physical_plan(request)
+                .await
+                .map_err(|e| {
+                    DataFusionError::Internal(format!(
+                        "failed to execute physical plan by remote engine, err:{e}"
+                    ))
+                })?;
 
-        Ok(Box::pin(ToDfStream(stream)))
+            Ok(Box::pin(ToDfStream(stream)) as _)
+        });
+
+        Ok(future)
     }
 }
 

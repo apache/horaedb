@@ -2348,6 +2348,7 @@ dependencies = [
  "common_types",
  "datafusion",
  "datafusion-proto",
+ "futures 0.3.28",
  "generic_error",
  "insta",
  "prost",
