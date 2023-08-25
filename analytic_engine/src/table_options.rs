@@ -125,6 +125,12 @@ pub enum Error {
 
     #[snafu(display("Storage format hint is missing.\nBacktrace:\n{}", backtrace))]
     MissingStorageFormatHint { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Hybrid format is deprecated, and cannot be used any more.\nBacktrace:\n{}",
+        backtrace
+    ))]
+    HybridDeprecated { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -281,7 +287,7 @@ impl TryFrom<manifest_pb::StorageFormatHint> for StorageFormatHint {
             manifest_pb::storage_format_hint::Hint::Specific(format) => {
                 let storage_format = manifest_pb::StorageFormat::from_i32(format)
                     .context(UnknownStorageFormatType { value: format })?;
-                StorageFormatHint::Specific(storage_format.into())
+                StorageFormatHint::Specific(storage_format.try_into()?)
             }
         };
 
@@ -319,13 +325,13 @@ impl From<StorageFormat> for manifest_pb::StorageFormat {
     }
 }
 
-impl From<manifest_pb::StorageFormat> for StorageFormat {
-    fn from(format: manifest_pb::StorageFormat) -> Self {
+impl TryFrom<manifest_pb::StorageFormat> for StorageFormat {
+    type Error = Error;
+
+    fn try_from(format: manifest_pb::StorageFormat) -> Result<Self> {
         match format {
-            manifest_pb::StorageFormat::Columnar => Self::Columnar,
-            manifest_pb::StorageFormat::Hybrid => {
-                panic!("Hybrid format is already deprecated, and cannot be used anymore!")
-            }
+            manifest_pb::StorageFormat::Columnar => Ok(Self::Columnar),
+            manifest_pb::StorageFormat::Hybrid => HybridDeprecated {}.fail(),
         }
     }
 }

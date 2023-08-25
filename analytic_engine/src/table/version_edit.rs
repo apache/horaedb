@@ -45,6 +45,9 @@ pub enum Error {
     #[snafu(display("Fail to convert table schema, err:{}", source))]
     ConvertTableSchema { source: common_types::schema::Error },
 
+    #[snafu(display("Fail to convert storage format, err:{}", source))]
+    ConvertStorageFormat { source: crate::table_options::Error },
+
     #[snafu(display("Time range is not found.\nBacktrace:\n{}", backtrace))]
     TimeRangeNotFound { backtrace: Backtrace },
 
@@ -97,7 +100,8 @@ impl TryFrom<manifest_pb::AddFileMeta> for AddFile {
                 row_num: src.row_num,
                 time_range,
                 max_seq: src.max_seq,
-                storage_format: StorageFormat::from(storage_format),
+                storage_format: StorageFormat::try_from(storage_format)
+                    .context(ConvertStorageFormat)?,
                 associated_files: src.associated_files,
             },
         };
