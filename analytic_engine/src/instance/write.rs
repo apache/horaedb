@@ -468,9 +468,10 @@ impl<'a> Writer<'a> {
         table_data.set_last_sequence(sequence);
 
         // Collect metrics.
+        let num_columns = row_group.schema().num_columns();
         table_data
             .metrics
-            .on_write_request_done(row_group.num_rows());
+            .on_write_request_done(row_group.num_rows(), num_columns);
 
         Ok(())
     }
