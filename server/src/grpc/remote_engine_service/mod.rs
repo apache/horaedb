@@ -508,24 +508,6 @@ impl RemoteEngineServiceImpl {
         stream_result
     }
 
-    fn check_and_extract_plan(
-        typed_plan: execute_plan_request::PhysicalPlan,
-        engine_type: QueryEngineType,
-    ) -> Result<Vec<u8>> {
-        match (typed_plan, engine_type) {
-            (execute_plan_request::PhysicalPlan::Datafusion(plan), QueryEngineType::Datafusion) => {
-                Ok(plan)
-            }
-            (plan, engine_type) => ErrNoCause {
-                code: StatusCode::Internal,
-                msg: format!(
-                    "plan type mismatch engine type, plan:{plan:?}, engine_type:{engine_type:?}"
-                ),
-            }
-            .fail(),
-        }
-    }
-
     fn handler_ctx(&self) -> HandlerContext {
         HandlerContext {
             catalog_manager: self.instance.catalog_manager.clone(),
