@@ -113,14 +113,14 @@ impl<R: RemotePhysicalPlanExecutor> ResolvedPartitionedScan<R> {
         &self,
         extended_node: Arc<dyn ExecutionPlan>,
     ) -> DfResult<Arc<ResolvedPartitionedScan<R>>> {
-        let origin_plans = self.remote_exec_plans.clone();
-        let new_plans = origin_plans
-            .into_iter()
+        let new_plans = self
+            .remote_exec_plans
+            .iter()
             .map(|(table, plan)| {
                 extended_node
                     .clone()
-                    .with_new_children(vec![plan])
-                    .map(|extended_plan| (table, extended_plan))
+                    .with_new_children(vec![plan.clone()])
+                    .map(|extended_plan| (table.clone(), extended_plan))
             })
             .collect::<DfResult<Vec<_>>>()?;
 
