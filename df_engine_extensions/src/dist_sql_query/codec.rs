@@ -14,11 +14,7 @@
 
 use std::sync::Arc;
 
-use ceresdbproto::remote_engine::{
-    dist_sql_query_extension_node::{self, TypedPlan},
-    extension_node::TypedExtension,
-    DistSqlQueryExtensionNode,
-};
+use ceresdbproto::remote_engine::{extension_node::TypedExtension, DistSqlQueryExtensionNode};
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     execution::FunctionRegistry,
@@ -43,8 +39,8 @@ impl TypedPhysicalExtensionCodec for DistSqlQueryCodec {
         _registry: &dyn FunctionRegistry,
     ) -> Option<DfResult<Arc<dyn ExecutionPlan>>> {
         if let TypedExtension::DistSqlQuery(extension) = typed_extension {
-            match extension.typed_plan.clone() {
-                Some(TypedPlan::UnreolvedSubScan(plan_pb)) => {
+            match extension.unresolved_sub_scan.clone() {
+                Some(plan_pb) => {
                     Some(UnresolvedSubTableScan::try_from(plan_pb).map(|plan| Arc::new(plan) as _))
                 }
                 None => Some(Err(DataFusionError::Internal(format!(
@@ -60,7 +56,7 @@ impl TypedPhysicalExtensionCodec for DistSqlQueryCodec {
         let plan_pb_res: DfResult<DistSqlQueryExtensionNode> =
             if let Some(plan) = node.as_any().downcast_ref::<UnresolvedSubTableScan>() {
                 plan.clone().try_into().map(|pb| DistSqlQueryExtensionNode {
-                    typed_plan: Some(TypedPlan::UnreolvedSubScan(pb)),
+                    unresolved_sub_scan: Some(pb),
                 })
             } else {
                 return None;

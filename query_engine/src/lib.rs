@@ -26,9 +26,7 @@ use std::fmt;
 
 pub use config::Config;
 
-use crate::{
-    codec::PhysicalPlanCodecRef, executor::ExecutorRef, physical_planner::PhysicalPlannerRef,
-};
+use crate::{executor::ExecutorRef, physical_planner::PhysicalPlannerRef};
 
 pub trait QueryEngine: fmt::Debug + Send + Sync {
     fn physical_planner(&self) -> PhysicalPlannerRef;
