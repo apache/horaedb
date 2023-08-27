@@ -66,9 +66,9 @@ impl PhysicalExtensionCodec for PhysicalExtensionCodecImpl {
 
         let typed_extension = extension_node
             .typed_extension
-            .ok_or(DataFusionError::Internal(format!(
-                "typed extension not found"
-            )))?;
+            .ok_or(DataFusionError::Internal(
+                "typed extension not found".to_string(),
+            ))?;
 
         for typed_codec in &self.typed_codecs {
             if let Some(result) = typed_codec.try_decode(&typed_extension, inputs, registry) {
@@ -100,5 +100,11 @@ impl PhysicalExtensionCodec for PhysicalExtensionCodecImpl {
         Err(DataFusionError::Internal(
             "unimplemented extension physical plan".to_string(),
         ))
+    }
+}
+
+impl Default for PhysicalExtensionCodecImpl {
+    fn default() -> Self {
+        Self::new()
     }
 }

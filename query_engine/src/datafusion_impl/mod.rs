@@ -62,11 +62,7 @@ impl DatafusionQueryEngineImpl {
     ) -> Result<Self> {
         let runtime_env = Arc::new(RuntimeEnv::new(runtime_config).unwrap());
         let physical_planner = Arc::new(QueryPlannerAdapter);
-        let df_ctx_builder = Arc::new(DfContextBuilder::new(
-            config,
-            runtime_env.clone(),
-            physical_planner,
-        ));
+        let df_ctx_builder = Arc::new(DfContextBuilder::new(config, runtime_env, physical_planner));
 
         let physical_planner = Arc::new(DatafusionPhysicalPlannerImpl::new(df_ctx_builder.clone()));
         let executor = Arc::new(DatafusionExecutorImpl::new(df_ctx_builder));

@@ -43,9 +43,9 @@ impl TypedPhysicalExtensionCodec for DistSqlQueryCodec {
                 Some(plan_pb) => {
                     Some(UnresolvedSubTableScan::try_from(plan_pb).map(|plan| Arc::new(plan) as _))
                 }
-                None => Some(Err(DataFusionError::Internal(format!(
-                    "actual node not found in dist query extension plan"
-                )))),
+                None => Some(Err(DataFusionError::Internal(
+                    "actual node not found in dist query extension plan".to_string(),
+                ))),
             }
         } else {
             None
@@ -62,6 +62,6 @@ impl TypedPhysicalExtensionCodec for DistSqlQueryCodec {
                 return None;
             };
 
-        Some(plan_pb_res.map(|pb| TypedExtension::DistSqlQuery(pb)))
+        Some(plan_pb_res.map(TypedExtension::DistSqlQuery))
     }
 }
