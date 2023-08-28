@@ -200,4 +200,8 @@ impl TestContext {
 
         Arc::new(ProjectionExec::try_new(self.physical_projection.clone(), filter).unwrap())
     }
+
+    pub fn read_request(&self) -> ReadRequest {
+        self.request.clone()
+    }
 }
