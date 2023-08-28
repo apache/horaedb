@@ -15,7 +15,6 @@
 use std::{error, fmt};
 
 /// Bit
-///
 /// An enum used to represent a single bit, can be either `Zero` or `One`.
 #[derive(Debug, PartialEq)]
 pub enum Bit {
@@ -34,7 +33,6 @@ impl Bit {
 }
 
 /// Error
-///
 /// Enum used to represent potential errors when interacting with a stream.
 #[derive(Debug, PartialEq)]
 pub enum Error {

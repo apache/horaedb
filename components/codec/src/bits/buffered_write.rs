@@ -17,7 +17,6 @@ use std::boxed::Box;
 use crate::bits::Bit;
 
 /// BufferedWriter
-///
 /// BufferedWriter writes bytes to a buffer.
 #[derive(Debug, Default, Clone)]
 pub struct BufferedWriter {
@@ -58,6 +57,9 @@ impl BufferedWriter {
     }
 
     fn last_index(&self) -> usize {
+        if self.buf.len() == 0 {
+            return 0;
+        }
         self.buf.len() - 1
     }
 }

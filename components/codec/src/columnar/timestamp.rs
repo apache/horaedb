@@ -27,9 +27,9 @@ use crate::{
 /// We use delta-of-delta algorithm to compress timestamp, for details, please refer to this paper http://www.vldb.org/pvldb/vol8/p1816-teller.pdf
 /// The layout for the timestamp:
 /// ```plaintext
-/// +--------------+------------------------+-------------------+--------------------------+------------------+------------------+
-/// | version(u8) | first_timestamp(64bits) | control_bit(1bit) | delta_of_delta(1~36bits) | delta_of_delta...| end_mast(36bits) |
-/// +-------------+-------------------------+-------------------+--------------------------+------------------+------------------+
+/// +--------------+------------------------+-------------------+--------------------------+------------------+------------------+--------------------+-------------------+
+/// | version(u8) | first_timestamp(64bits) | control_bit(1bit) | delta_of_delta(1~36bits) | delta_of_delta...| end_mask(36bits) | timestamp_len(u32) | timestamp(i64)... |
+/// +-------------+-------------------------+-------------------+--------------------------+------------------+------------------+--------------------+-------------------+
 
 const ENCODE_VERSION: u8 = 1;
 const NUM_BYTES_ENCODE_VERSION_LEN: usize = 1;
@@ -176,7 +176,7 @@ impl TimestampDecoder {
         let first_timestamp = reader.read_bits(64).context(ReadEncode)?;
         f(Timestamp::new(first_timestamp as i64))?;
 
-        let control_bit = reader.read_bit().context(ReadEncode)?;
+        let control_bit = reader.next_bit().context(ReadEncode)?;
         if control_bit == Bit::Zero {
             return Ok(());
         }
@@ -187,7 +187,7 @@ impl TimestampDecoder {
             let mut dod_control_bits_size = 0;
             // 0,10,110,1110,1111
             for _ in 0..4 {
-                let bit = reader.read_bit().context(ReadEncode)?;
+                let bit = reader.next_bit().context(ReadEncode)?;
 
                 if bit == Bit::One {
                     dod_control_bits_size += 1;
