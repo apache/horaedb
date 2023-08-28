@@ -27,7 +27,7 @@ use arrow_ext::operation;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
-    column::{cast_nanosecond_to_mills, ColumnBlock, ColumnBlockBuilder},
+    column_block::{cast_nanosecond_to_mills, ColumnBlock, ColumnBlockBuilder},
     datum::DatumKind,
     projected_schema::{ProjectedSchema, RowProjector},
     row::{
@@ -43,7 +43,7 @@ pub enum Error {
     SchemaLen { backtrace: Backtrace },
 
     #[snafu(display("Failed to create column block, err:{}", source))]
-    CreateColumnBlock { source: crate::column::Error },
+    CreateColumnBlock { source: crate::column_block::Error },
 
     #[snafu(display(
         "Failed to create arrow record batch, err:{}.\nBacktrace:\n{}",
@@ -59,7 +59,7 @@ pub enum Error {
     IterateDatum { source: crate::row::Error },
 
     #[snafu(display("Failed to append datum, err:{}", source))]
-    AppendDatum { source: crate::column::Error },
+    AppendDatum { source: crate::column_block::Error },
 
     #[snafu(display(
         "Column not in schema with key, column_name:{}.\nBacktrace:\n{}",

@@ -21,6 +21,21 @@ pub trait KeyComparator: Clone {
     fn same_key(&self, lhs: &[u8], rhs: &[u8]) -> bool;
 }
 
+#[derive(Debug, Clone)]
+pub struct BytewiseComparator;
+
+impl KeyComparator for BytewiseComparator {
+    #[inline]
+    fn compare_key(&self, lhs: &[u8], rhs: &[u8]) -> Ordering {
+        lhs.cmp(rhs)
+    }
+
+    #[inline]
+    fn same_key(&self, lhs: &[u8], rhs: &[u8]) -> bool {
+        lhs == rhs
+    }
+}
+
 #[derive(Default, Debug, Clone, Copy)]
 pub struct FixedLengthSuffixComparator {
     len: usize,

@@ -51,8 +51,10 @@ use crate::{
         ManifestRef,
     },
     memtable::{
+        columnar::factory::ColumnarMemTableFactory,
         factory::{FactoryRef as MemTableFactoryRef, Options as MemTableOptions},
         skiplist::factory::SkiplistMemTableFactory,
+        MemtableType,
     },
     space::SpaceId,
     sst::{file::FilePurger, manager::FileId},
@@ -235,7 +237,11 @@ impl TableData {
         // FIXME(yingwen): Validate TableOptions, such as bucket_duration >=
         // segment_duration and bucket_duration is aligned to segment_duration
 
-        let memtable_factory = Arc::new(SkiplistMemTableFactory);
+        let memtable_factory: MemTableFactoryRef = match table_opts.memtable_type {
+            MemtableType::SkipList => Arc::new(SkiplistMemTableFactory),
+            MemtableType::Columnar => Arc::new(ColumnarMemTableFactory),
+        };
+
         let purge_queue = purger.create_purge_queue(space_id, table_id);
         let current_version = TableVersion::new(purge_queue);
         let metrics = Metrics::default();
@@ -280,7 +286,7 @@ impl TableData {
         allocator: IdAllocator,
         manifest_snapshot_every_n_updates: NonZeroUsize,
     ) -> Result<Self> {
-        let memtable_factory = Arc::new(SkiplistMemTableFactory);
+        let memtable_factory = Arc::new(ColumnarMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
         let current_version = TableVersion::new(purge_queue);
         let metrics = Metrics::default();
@@ -665,6 +671,17 @@ impl TableDataSet {
             .cloned()
     }
 
+    pub fn total_memory_usage(&self) -> usize {
+        if self.table_datas.is_empty() {
+            return 0;
+        }
+        // TODO: Possible performance issue here when there are too many tables.
+        self.table_datas
+            .values()
+            .map(|t| t.memtable_memory_usage())
+            .sum()
+    }
+
     pub fn find_maximum_mutable_memory_usage_table(&self) -> Option<TableDataRef> {
         // TODO: Possible performance issue here when there are too many tables.
         self.table_datas
@@ -725,6 +742,18 @@ pub mod tests {
             };
 
             let factory = SkiplistMemTableFactory;
+            factory.create_memtable(memtable_opts).unwrap()
+        }
+
+        pub fn build_columnar(&self) -> MemTableRef {
+            let memtable_opts = MemTableOptions {
+                schema: default_schema(),
+                arena_block_size: 1024 * 1024,
+                creation_sequence: 1000,
+                collector: Arc::new(NoopCollector),
+            };
+
+            let factory = ColumnarMemTableFactory;
             factory.create_memtable(memtable_opts).unwrap()
         }
     }

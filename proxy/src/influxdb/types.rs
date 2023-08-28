@@ -616,7 +616,7 @@ mod tests {
 
     use arrow::datatypes::{Field as ArrowField, Fields, Schema as ArrowSchema};
     use common_types::{
-        column::{ColumnBlock, ColumnBlockBuilder},
+        column_block::{ColumnBlock, ColumnBlockBuilder},
         column_schema,
         datum::DatumKind,
         schema,

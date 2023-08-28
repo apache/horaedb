@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use chrono::{Datelike, FixedOffset, TimeZone};
 use common_types::{
-    column::{ColumnBlock, ColumnBlockBuilder, TimestampColumn},
+    column_block::{ColumnBlock, ColumnBlockBuilder, TimestampColumn},
     datum::{Datum, DatumKind},
     time::Timestamp,
 };
@@ -69,7 +69,9 @@ pub enum Error {
     TruncateTimestamp { timestamp: i64, period: Period },
 
     #[snafu(display("Failed to build result column, err:{}", source))]
-    BuildColumn { source: common_types::column::Error },
+    BuildColumn {
+        source: common_types::column_block::Error,
+    },
 }
 
 define_result!(Error);

@@ -12,31 +12,37 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Skiplist memtable factory
+//! Columnar memtable factory
 
-use std::sync::{atomic::AtomicU64, Arc};
-
-use arena::MonoIncArena;
-use skiplist::{BytewiseComparator, Skiplist};
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicU64, AtomicUsize},
+        Arc, RwLock,
+    },
+};
 
 use crate::memtable::{
+    columnar::ColumnarMemTable,
     factory::{Factory, Options, Result},
-    skiplist::SkiplistMemTable,
     MemTableRef,
 };
 
 /// Factory to create memtable
 #[derive(Debug)]
-pub struct SkiplistMemTableFactory;
+pub struct ColumnarMemTableFactory;
 
-impl Factory for SkiplistMemTableFactory {
+impl Factory for ColumnarMemTableFactory {
     fn create_memtable(&self, opts: Options) -> Result<MemTableRef> {
-        let arena = MonoIncArena::with_collector(opts.arena_block_size as usize, opts.collector);
-        let skiplist = Skiplist::with_arena(BytewiseComparator, arena);
-        let memtable = Arc::new(SkiplistMemTable {
-            schema: opts.schema,
-            skiplist,
+        let memtable = Arc::new(ColumnarMemTable {
+            memtable: Arc::new(RwLock::new(HashMap::with_capacity(
+                opts.schema.num_columns(),
+            ))),
+            schema: opts.schema.clone(),
             last_sequence: AtomicU64::new(opts.creation_sequence),
+            row_num: AtomicUsize::new(0),
+            opts,
+            memtable_size: AtomicUsize::new(0),
             metrics: Default::default(),
         });
 

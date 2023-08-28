@@ -14,8 +14,10 @@
 
 //! MemTable
 
+pub mod columnar;
 pub mod factory;
 pub mod key;
+mod reversed_iter;
 pub mod skiplist;
 
 use std::{ops::Bound, sync::Arc, time::Instant};
@@ -30,12 +32,40 @@ use common_types::{
 };
 use generic_error::GenericError;
 use macros::define_result;
+use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, Snafu};
 use trace_metric::MetricsCollector;
 
 use crate::memtable::key::KeySequence;
 
 const DEFAULT_SCAN_BATCH_SIZE: usize = 500;
+const MEMTABLE_TYPE_SKIPLIST: &str = "skiplist";
+const MEMTABLE_TYPE_COLUMNAR: &str = "columnar";
+
+#[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
+pub enum MemtableType {
+    SkipList,
+    Columnar,
+}
+
+impl MemtableType {
+    pub fn parse_from(s: &str) -> Self {
+        if s.eq_ignore_ascii_case(MEMTABLE_TYPE_COLUMNAR) {
+            MemtableType::Columnar
+        } else {
+            MemtableType::SkipList
+        }
+    }
+}
+
+impl ToString for MemtableType {
+    fn to_string(&self) -> String {
+        match self {
+            MemtableType::SkipList => MEMTABLE_TYPE_SKIPLIST.to_string(),
+            MemtableType::Columnar => MEMTABLE_TYPE_COLUMNAR.to_string(),
+        }
+    }
+}
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
@@ -98,6 +128,12 @@ pub enum Error {
         deadline: Instant,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("msg:{msg}, err:{source}"))]
+    Internal { msg: String, source: GenericError },
+
+    #[snafu(display("msg:{msg}"))]
+    InternalNoCause { msg: String },
 }
 
 define_result!(Error);
@@ -194,7 +230,7 @@ pub trait MemTable {
         &self,
         ctx: &mut PutContext,
         sequence: KeySequence,
-        row: &Row,
+        row_group: &Row,
         schema: &Schema,
     ) -> Result<()>;
 

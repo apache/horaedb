@@ -18,7 +18,7 @@ use std::{collections::HashMap, string::ToString, time::Duration};
 
 use ceresdbproto::manifest as manifest_pb;
 use common_types::{
-    time::Timestamp, ARENA_BLOCK_SIZE, COMPACTION_STRATEGY, COMPRESSION, ENABLE_TTL,
+    time::Timestamp, ARENA_BLOCK_SIZE, COMPACTION_STRATEGY, COMPRESSION, ENABLE_TTL, MEMTABLE_TYPE,
     NUM_ROWS_PER_ROW_GROUP, OPTION_KEY_ENABLE_TTL, SEGMENT_DURATION, STORAGE_FORMAT, TTL,
     UPDATE_MODE, WRITE_BUFFER_SIZE,
 };
@@ -29,8 +29,11 @@ use size_ext::ReadableSize;
 use snafu::{Backtrace, GenerateBacktrace, OptionExt, ResultExt, Snafu};
 use time_ext::{parse_duration, DurationExt, ReadableDuration, TimeUnit};
 
-use crate::compaction::{
-    self, CompactionStrategy, SizeTieredCompactionOptions, TimeWindowCompactionOptions,
+use crate::{
+    compaction::{
+        self, CompactionStrategy, SizeTieredCompactionOptions, TimeWindowCompactionOptions,
+    },
+    memtable::MemtableType,
 };
 
 const UPDATE_MODE_OVERWRITE: &str = "OVERWRITE";
@@ -393,6 +396,8 @@ pub struct TableOptions {
     pub num_rows_per_row_group: usize,
     /// Table Compression
     pub compression: Compression,
+    /// Memtable type
+    pub memtable_type: MemtableType,
 }
 
 impl TableOptions {
@@ -444,6 +449,7 @@ impl TableOptions {
                 STORAGE_FORMAT.to_string(),
                 self.storage_format_hint.to_string(),
             ),
+            (MEMTABLE_TYPE.to_string(), self.memtable_type.to_string()),
         ]
         .into_iter()
         .collect();
@@ -584,6 +590,7 @@ impl From<TableOptions> for manifest_pb::TableOptions {
             storage_format_hint: Some(manifest_pb::StorageFormatHint::from(
                 opts.storage_format_hint,
             )),
+            // TODO: persist `memtable_type` in PB.
         }
     }
 }
@@ -655,6 +662,7 @@ impl TryFrom<manifest_pb::TableOptions> for TableOptions {
             write_buffer_size: opts.write_buffer_size,
             compression: Compression::from(compression),
             storage_format_hint: StorageFormatHint::try_from(storage_format_hint)?,
+            memtable_type: MemtableType::SkipList,
         };
 
         Ok(table_opts)
@@ -674,6 +682,7 @@ impl Default for TableOptions {
             write_buffer_size: DEFAULT_WRITE_BUFFER_SIZE,
             compression: Compression::Zstd,
             storage_format_hint: StorageFormatHint::default(),
+            memtable_type: MemtableType::SkipList,
         }
     }
 }
@@ -738,6 +747,9 @@ fn merge_table_options(
     }
     if let Some(v) = options.get(STORAGE_FORMAT) {
         table_opts.storage_format_hint = v.as_str().try_into()?;
+    }
+    if let Some(v) = options.get(MEMTABLE_TYPE) {
+        table_opts.memtable_type = MemtableType::parse_from(v);
     }
     Ok(table_opts)
 }

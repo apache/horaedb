@@ -345,7 +345,7 @@ impl RecordConverter {
 mod tests {
 
     use common_types::{
-        column::{ColumnBlock, ColumnBlockBuilder},
+        column_block::{ColumnBlock, ColumnBlockBuilder},
         column_schema,
         datum::{Datum, DatumKind},
         row::Row,
