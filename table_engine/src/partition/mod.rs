@@ -254,3 +254,12 @@ pub fn format_sub_partition_table_name(table_name: &str, partition_name: &str) -
 pub fn is_sub_partition_table(table_name: &str) -> bool {
     table_name.starts_with(PARTITION_TABLE_PREFIX)
 }
+
+/// Explicit selected partition
+#[derive(Debug, Clone)]
+pub enum SelectedPartition {
+    /// Represent by id
+    Id(usize),
+    /// Represent by name
+    Name(String),
+}

@@ -217,6 +217,7 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
             projected_schema,
             predicate,
             metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
+            selected_partitions: Vec::new(),
         };
 
         self.builder.build(request).await

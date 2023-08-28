@@ -44,21 +44,22 @@ use datafusion::{
     optimizer::simplify_expressions::{ExprSimplifier, SimplifyContext},
     physical_expr::{create_physical_expr, execution_props::ExecutionProps},
     sql::{
-        planner::{ParserOptions, PlannerContext, SqlToRel},
+        planner::{object_name_to_table_reference, ParserOptions, PlannerContext, SqlToRel},
         ResolvedTableReference,
     },
 };
-use generic_error::GenericError;
+use generic_error::{BoxError, GenericError};
 use influxql_parser::statement::Statement as InfluxqlStatement;
 use log::{debug, trace};
 use macros::define_result;
 use prom_remote_api::types::Query as PromRemoteQuery;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
-    visit_statements_mut, ColumnDef, ColumnOption, Expr, Expr as SqlExpr, Ident, Query, SelectItem,
-    SetExpr, SqlOption, Statement as SqlStatement, TableConstraint, UnaryOperator, Value, Values,
+    visit_statements_mut, ColumnDef, ColumnOption, Expr, Expr as SqlExpr, Ident, Query,
+    SelectItem, SetExpr, SqlOption, Statement as SqlStatement, TableConstraint, TableFactor,
+    UnaryOperator, Value, Values, Visit, Visitor,
 };
-use table_engine::table::TableRef;
+use table_engine::{partition::SelectedPartition, table::TableRef};
 
 use crate::{
     ast::{
@@ -273,6 +274,14 @@ pub enum Error {
     BuildInfluxqlPlan {
         source: crate::influxql::error::Error,
     },
+
+    #[snafu(display(
+        "Failed to select partitions of partitioned table explicitly, msg:{msg}, err:{source}"
+    ))]
+    SelectPartitionsWithCause { msg: String, source: GenericError },
+
+    #[snafu(display("Failed to select partitions of partitioned table explicitly, msg:{msg}.\nBacktrace:\n{backtrace}"))]
+    SelectPartitionsNoCause { msg: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -593,8 +602,13 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn sql_statement_to_datafusion_plan(self, sql_stmt: SqlStatement) -> Result<Plan> {
-        let df_planner = SqlToRel::new_with_options(&self.meta_provider, DEFAULT_PARSER_OPTS);
+        // Maybe define the selected partitions explicitly, try to extract them first.
+        let default_catalog = self.meta_provider.default_catalog_name();
+        let default_schema = self.meta_provider.default_schema_name();
+        let _selected_partitions =
+            Self::maybe_extract_selected_partitions(&sql_stmt, default_catalog, default_schema)?;
 
+        let df_planner = SqlToRel::new_with_options(&self.meta_provider, DEFAULT_PARSER_OPTS);
         let df_plan = df_planner
             .sql_statement_to_plan(sql_stmt)
             .context(DatafusionPlan)?;
@@ -608,6 +622,87 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             df_plan,
             tables: Arc::new(tables),
         }))
+    }
+
+    /// Extract selected partitions from tables by using visitor
+    fn maybe_extract_selected_partitions(
+        sql_stmt: &SqlStatement,
+        default_catalog: &str,
+        default_schema: &str,
+    ) -> Result<HashMap<String, Vec<SelectedPartition>>> {
+        // Visitor for `TableFactor`
+        struct TableFactorVisitor<F>(F);
+
+        impl<F: FnMut(&TableFactor) -> ControlFlow<()>> Visitor for TableFactorVisitor<F> {
+            type Break = ();
+
+            fn pre_visit_table_factor(
+                &mut self,
+                table_factor: &TableFactor,
+            ) -> ControlFlow<Self::Break> {
+                self.0(table_factor)
+            }
+        }
+
+        // Define the extract visitor.
+        let mut selected_partitions_res = Ok(HashMap::new());
+        let mut extract_partitions_visitor = TableFactorVisitor(|table_factor: &TableFactor| {
+            // Check has error happened.
+            if selected_partitions_res.is_err() {
+                return ControlFlow::Break(());
+            }
+
+            // Still in the right way, try to extend selected partitions.
+            let selected_partitions = selected_partitions_res.as_mut().unwrap();
+            if let TableFactor::Table {
+                name, partitions, ..
+            } = table_factor
+            {
+                // TODO: we always use `DEFAULT_PARSER_OPTS` now, maybe make it a config in
+                // later.
+                let maybe_unresolved = match object_name_to_table_reference(
+                    name.clone(),
+                    DEFAULT_PARSER_OPTS.enable_ident_normalization,
+                ) {
+                    Ok(maybe_unresolved) => maybe_unresolved,
+                    Err(e) => {
+                        selected_partitions_res =
+                            Err(e).box_err().with_context(|| SelectPartitionsWithCause {
+                                msg: "failed to parse object name to table reference".to_string(),
+                            });
+                        return ControlFlow::Break(());
+                    }
+                };
+                let resolved_table_ref = maybe_unresolved.resolve(default_catalog, default_schema);
+
+                // Try to convert the partition exprs.
+                let partitions_res = partitions
+                    .iter()
+                    .map(try_to_covert_selected_partitions_stmt)
+                    .collect::<Result<Vec<_>>>();
+                let partitions = match partitions_res {
+                    Ok(partitions) => partitions,
+                    Err(e) => {
+                        selected_partitions_res =
+                            Err(e).box_err().with_context(|| SelectPartitionsWithCause {
+                                msg: format!("failed to convert selected partition exprs, exprs:{partitions:?}"),
+                            });
+                        return ControlFlow::Break(());
+                    }
+                };
+
+                // Collect the selected partitions.
+                selected_partitions.insert(resolved_table_ref.to_string(), partitions);
+            }
+
+            // Not found or process successfully, just continue.
+            ControlFlow::Continue(())
+        });
+
+        // Visit it.
+        sql_stmt.visit(&mut extract_partitions_visitor);
+
+        selected_partitions_res
     }
 
     fn tsid_column_schema() -> Result<ColumnSchema> {
@@ -1060,6 +1155,26 @@ fn normalize_func_name(sql_stmt: &mut SqlStatement) {
         }
         ControlFlow::<()>::Continue(())
     });
+}
+
+fn try_to_covert_selected_partitions_stmt(stmt: &Expr) -> Result<SelectedPartition> {
+    // It must be a identifier stmt.
+    // FIXME: we should consider quote style.
+    match stmt {
+        Expr::Identifier(Ident { value, .. }) => {
+            let selected_partition = match value.parse::<usize>().ok() {
+                Some(id) => SelectedPartition::Id(id),
+                None => SelectedPartition::Name(value.clone()),
+            };
+
+            Ok(selected_partition)
+        }
+
+        other => SelectPartitionsNoCause {
+            msg: format!("unexpected selected partitions statement, statement:{other}"),
+        }
+        .fail(),
+    }
 }
 
 #[derive(Debug)]
