@@ -31,7 +31,7 @@ use crate::{
         factory::{ObjectStorePickerRef, SstWriteOptions},
         file::Level,
         parquet::{
-            encoding::{encode_sst_meta_data_v2, ParquetEncoder},
+            encoding::{encode_sst_meta_data, ParquetEncoder},
             meta_data::{ParquetFilter, ParquetMetaData, RowGroupFilterBuilder},
         },
         writer::{
@@ -49,7 +49,6 @@ pub struct ParquetSstWriter<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
     level: Level,
-    hybrid_encoding: bool,
     /// The storage where the data is persist.
     store: &'a ObjectStoreRef,
     /// Max row group size.
@@ -62,7 +61,6 @@ impl<'a> ParquetSstWriter<'a> {
     pub fn new(
         path: &'a Path,
         level: Level,
-        hybrid_encoding: bool,
         store_picker: &'a ObjectStorePickerRef,
         options: &SstWriteOptions,
     ) -> Self {
@@ -70,7 +68,6 @@ impl<'a> ParquetSstWriter<'a> {
         Self {
             path,
             level,
-            hybrid_encoding,
             store,
             num_rows_per_row_group: options.num_rows_per_row_group,
             compression: options.compression.into(),
@@ -83,7 +80,6 @@ impl<'a> ParquetSstWriter<'a> {
 /// encode them to parquet file.
 struct RecordBatchGroupWriter {
     request_id: RequestId,
-    hybrid_encoding: bool,
     input: RecordBatchStream,
     input_exhausted: bool,
     meta_data: MetaData,
@@ -178,8 +174,7 @@ impl RecordBatchGroupWriter {
     }
 
     fn need_custom_filter(&self) -> bool {
-        // TODO: support filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
-        !self.hybrid_encoding && !self.level.is_min()
+        !self.level.is_min()
     }
 
     async fn write_all<W: AsyncWrite + Send + Unpin + 'static>(
@@ -194,7 +189,6 @@ impl RecordBatchGroupWriter {
         let mut parquet_encoder = ParquetEncoder::try_new(
             sink,
             &self.meta_data.schema,
-            self.hybrid_encoding,
             self.num_rows_per_row_group,
             self.max_buffer_size,
             self.compression,
@@ -296,7 +290,7 @@ async fn write_metadata<W>(
 where
     W: AsyncWrite + Send + Unpin,
 {
-    let buf = encode_sst_meta_data_v2(parquet_metadata).context(EncodePbData)?;
+    let buf = encode_sst_meta_data(parquet_metadata).context(EncodePbData)?;
     meta_sink
         .write_all(buf.as_bytes())
         .await
@@ -333,7 +327,6 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
         );
 
         let group_writer = RecordBatchGroupWriter {
-            hybrid_encoding: self.hybrid_encoding,
             request_id,
             input,
             input_exhausted: false,
@@ -370,15 +363,10 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
         }
 
         let file_head = self.store.head(self.path).await.context(Storage)?;
-        let storage_format = if self.hybrid_encoding {
-            StorageFormat::Hybrid
-        } else {
-            StorageFormat::Columnar
-        };
         Ok(SstInfo {
             file_size: file_head.size,
             row_num: total_num_rows,
-            storage_format,
+            storage_format: StorageFormat::Columnar,
             meta_path: meta_path.to_string(),
         })
     }
@@ -665,7 +653,6 @@ mod tests {
 
         let mut group_writer = RecordBatchGroupWriter {
             request_id: RequestId::next_id(),
-            hybrid_encoding: false,
             input: record_batch_stream,
             input_exhausted: false,
             num_rows_per_row_group,

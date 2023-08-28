@@ -348,7 +348,6 @@ pub struct ParquetMetaData {
     pub max_sequence: SequenceNumber,
     pub schema: Schema,
     pub parquet_filter: Option<ParquetFilter>,
-    pub collapsible_cols_idx: Vec<u32>,
 }
 
 pub type ParquetMetaDataRef = Arc<ParquetMetaData>;
@@ -362,7 +361,6 @@ impl From<MetaData> for ParquetMetaData {
             max_sequence: meta.max_sequence,
             schema: meta.schema,
             parquet_filter: None,
-            collapsible_cols_idx: Vec::new(),
         }
     }
 }
@@ -407,7 +405,6 @@ impl fmt::Debug for ParquetMetaData {
                     .map(|filter| filter.size())
                     .unwrap_or(0),
             )
-            .field("collapsible_cols_idx", &self.collapsible_cols_idx)
             .finish()
     }
 }
@@ -421,7 +418,8 @@ impl From<ParquetMetaData> for sst_pb::ParquetMetaData {
             time_range: Some(src.time_range.into()),
             schema: Some(schema_pb::TableSchema::from(&src.schema)),
             filter: src.parquet_filter.map(|v| v.into()),
-            collapsible_cols_idx: src.collapsible_cols_idx,
+            // collapsible_cols_idx is used in hybrid format ,and it's deprecated.
+            collapsible_cols_idx: Vec::new(),
         }
     }
 }
@@ -447,7 +445,6 @@ impl TryFrom<sst_pb::ParquetMetaData> for ParquetMetaData {
             max_sequence: src.max_sequence,
             schema,
             parquet_filter,
-            collapsible_cols_idx: src.collapsible_cols_idx,
         })
     }
 }

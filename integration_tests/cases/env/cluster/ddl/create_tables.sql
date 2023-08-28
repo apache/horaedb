@@ -58,15 +58,6 @@ CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) 
 show create table `05_create_tables_t8`;
 drop table `05_create_tables_t8`;
 
-CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'hybrid');
-show create table `05_create_tables_t8`;
-drop table `05_create_tables_t8`;
-
--- Use Dictionary Encode
-CREATE TABLE `05_create_tables_t9`(c1 int, d string dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'hybrid');
-show create table `05_create_tables_t9`;
-drop table `05_create_tables_t9`;
-
 CREATE TABLE `05_create_tables_t9`(c1 int, d string dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'columnar');
 show create table `05_create_tables_t9`;
 drop table `05_create_tables_t9`;

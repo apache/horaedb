@@ -27,7 +27,7 @@ use crate::sst::{
         KvMetaPathEmpty,
     },
     parquet::{
-        encoding::{self, decode_sst_meta_data_v2, META_VERSION_CURRENT, META_VERSION_V1},
+        encoding::{self, decode_sst_meta_data_from_bytes, META_VERSION_CURRENT, META_VERSION_V1},
         meta_data::{ParquetMetaData, ParquetMetaDataRef},
     },
 };
@@ -54,7 +54,7 @@ impl CustomMetadataReader for MetaV1Reader<'_> {
     async fn get_metadata(&self) -> Result<ParquetMetaData> {
         let custom_kv_meta = self.custom_kv_meta.context(KvMetaDataNotFound)?;
 
-        encoding::decode_sst_meta_data_v1(custom_kv_meta).context(DecodeCustomMetaData)
+        encoding::decode_sst_meta_data_from_kv(custom_kv_meta).context(DecodeCustomMetaData)
     }
 }
 
@@ -88,7 +88,7 @@ impl CustomMetadataReader for MetaV2Reader {
                         file_path: meta_path.to_string(),
                     })?;
 
-                decode_sst_meta_data_v2(metadata.as_bytes()).context(DecodeCustomMetaData)
+                decode_sst_meta_data_from_bytes(metadata.as_bytes()).context(DecodeCustomMetaData)
             }
         }
     }

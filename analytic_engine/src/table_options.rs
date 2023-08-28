@@ -41,7 +41,6 @@ const COMPRESSION_SNAPPY: &str = "SNAPPY";
 const COMPRESSION_ZSTD: &str = "ZSTD";
 const STORAGE_FORMAT_AUTO: &str = "AUTO";
 const STORAGE_FORMAT_COLUMNAR: &str = "COLUMNAR";
-const STORAGE_FORMAT_HYBRID: &str = "HYBRID";
 
 /// Default bucket duration (1d)
 const BUCKET_DURATION_1D: Duration = Duration::from_secs(24 * 60 * 60);
@@ -126,6 +125,12 @@ pub enum Error {
 
     #[snafu(display("Storage format hint is missing.\nBacktrace:\n{}", backtrace))]
     MissingStorageFormatHint { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Hybrid format is deprecated, and cannot be used any more.\nBacktrace:\n{}",
+        backtrace
+    ))]
+    HybridDeprecated { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -253,25 +258,6 @@ pub enum StorageFormat {
     /// | .....     |           |             |       |       |
     /// ```
     Columnar,
-
-    /// Design for time-series data
-    /// Collapsible Columns within same primary key are collapsed
-    /// into list, other columns are the same format with columnar's.
-    ///
-    /// Whether a column is collapsible is decided by
-    /// `Schema::is_collapsible_column`
-    ///
-    /// Note: minTime/maxTime is optional and not implemented yet, mainly used
-    /// for time-range pushdown filter
-    ///
-    ///```plaintext
-    /// | Device ID | Timestamp           | Status Code | Tag 1 | Tag 2 | minTime | maxTime |
-    /// |-----------|---------------------|-------------|-------|-------|---------|---------|
-    /// | A         | [12:01,12:02,12:03] | [0,0,0]     | v1    | v1    | 12:01   | 12:03   |
-    /// | B         | [12:01,12:02,12:03] | [0,1,0]     | v2    | v2    | 12:01   | 12:03   |
-    /// | ...       |                     |             |       |       |         |         |
-    /// ```
-    Hybrid,
 }
 
 impl From<StorageFormatHint> for manifest_pb::StorageFormatHint {
@@ -301,7 +287,7 @@ impl TryFrom<manifest_pb::StorageFormatHint> for StorageFormatHint {
             manifest_pb::storage_format_hint::Hint::Specific(format) => {
                 let storage_format = manifest_pb::StorageFormat::from_i32(format)
                     .context(UnknownStorageFormatType { value: format })?;
-                StorageFormatHint::Specific(storage_format.into())
+                StorageFormatHint::Specific(storage_format.try_into()?)
             }
         };
 
@@ -324,7 +310,6 @@ impl TryFrom<&str> for StorageFormatHint {
     fn try_from(value: &str) -> Result<Self> {
         let format = match value.to_uppercase().as_str() {
             STORAGE_FORMAT_COLUMNAR => Self::Specific(StorageFormat::Columnar),
-            STORAGE_FORMAT_HYBRID => Self::Specific(StorageFormat::Hybrid),
             STORAGE_FORMAT_AUTO => Self::Auto,
             _ => return UnknownStorageFormatHint { value }.fail(),
         };
@@ -336,16 +321,17 @@ impl From<StorageFormat> for manifest_pb::StorageFormat {
     fn from(format: StorageFormat) -> Self {
         match format {
             StorageFormat::Columnar => Self::Columnar,
-            StorageFormat::Hybrid => Self::Hybrid,
         }
     }
 }
 
-impl From<manifest_pb::StorageFormat> for StorageFormat {
-    fn from(format: manifest_pb::StorageFormat) -> Self {
+impl TryFrom<manifest_pb::StorageFormat> for StorageFormat {
+    type Error = Error;
+
+    fn try_from(format: manifest_pb::StorageFormat) -> Result<Self> {
         match format {
-            manifest_pb::StorageFormat::Columnar => Self::Columnar,
-            manifest_pb::StorageFormat::Hybrid => Self::Hybrid,
+            manifest_pb::StorageFormat::Columnar => Ok(Self::Columnar),
+            manifest_pb::StorageFormat::Hybrid => HybridDeprecated {}.fail(),
         }
     }
 }
@@ -356,7 +342,6 @@ impl TryFrom<&str> for StorageFormat {
     fn try_from(value: &str) -> Result<Self> {
         let format = match value.to_uppercase().as_str() {
             STORAGE_FORMAT_COLUMNAR => Self::Columnar,
-            STORAGE_FORMAT_HYBRID => Self::Hybrid,
             _ => return UnknownStorageFormat { value }.fail(),
         };
         Ok(format)
@@ -367,7 +352,6 @@ impl ToString for StorageFormat {
     fn to_string(&self) -> String {
         match self {
             Self::Columnar => STORAGE_FORMAT_COLUMNAR,
-            Self::Hybrid => STORAGE_FORMAT_HYBRID,
         }
         .to_string()
     }
