@@ -25,7 +25,7 @@ use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOpe
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
 use datafusion::execution::runtime_env::RuntimeConfig as DfRuntimeConfig;
-use df_operator::registry::{FunctionRegistryImpl};
+use df_operator::registry::FunctionRegistryImpl;
 use interpreters::table_manipulator::{catalog_based, meta_based};
 use log::info;
 use logger::RuntimeLevel;

@@ -23,7 +23,6 @@ use catalog::{
 use catalog_impls::table_based::TableBasedManager;
 use common_types::request_id::RequestId;
 use datafusion::execution::runtime_env::RuntimeConfig;
-
 use query_engine::{datafusion_impl::DatafusionQueryEngineImpl, QueryEngineRef};
 use query_frontend::{
     parser::Parser, plan::Plan, planner::Planner, provider::MetaProvider, tests::MockMetaProvider,
