@@ -209,13 +209,19 @@ mod tests {
         if let Some(kv_metas) = original_file_md.key_value_metadata() {
             let processed_kv_metas = processed_file_md.key_value_metadata().unwrap();
             assert_eq!(kv_metas.len(), processed_kv_metas.len() + 2);
-            let mut idx_for_processed = 0;
             for kv in kv_metas {
-                if kv.key == encoding::META_KEY {
-                    continue;
+                match kv.key.as_str() {
+                    "ARROW:schema" => {
+                        // don't care this
+                    }
+                    encoding::META_KEY => assert!(kv.value.is_none()),
+                    encoding::META_VERSION_KEY => assert_eq!("2", kv.value.clone().unwrap()),
+                    encoding::META_PATH_KEY => {
+                        let meta_path = kv.value.as_ref().unwrap();
+                        assert!(meta_path.ends_with(".metadata"));
+                    }
+                    _ => panic!("Unknown parquet kv, value:{kv:?}"),
                 }
-                assert_eq!(kv, &processed_kv_metas[idx_for_processed]);
-                idx_for_processed += 1;
             }
         } else {
             assert!(processed_file_md.key_value_metadata().is_none());
