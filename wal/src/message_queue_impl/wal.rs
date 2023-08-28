@@ -26,8 +26,8 @@ use snafu::ResultExt;
 use crate::{
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
-        error::*, AsyncLogIterator, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId,
-        ScanContext, ScanRequest, WalLocation, WalManager, WriteContext,
+        self, error::*, AsyncLogIterator, BatchLogIteratorAdapter, ReadContext, ReadRequest,
+        RegionId, ScanContext, ScanRequest, WalLocation, WalManager, WriteContext,
     },
     message_queue_impl::{
         config::Config,
@@ -105,6 +105,7 @@ impl<M: MessageQueue> WalManager for MessageQueueImpl<M> {
     }
 
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
+        manager::collect_write_log_metrics(batch);
         self.0.write(ctx, batch).await.box_err().context(Write)
     }
 

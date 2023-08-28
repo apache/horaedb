@@ -48,7 +48,7 @@ define_result!(Error);
 //      return PutUvarint(buf, ux)
 // }
 // ```
-pub fn encode_varint<B: SafeBufMut>(buf: &mut B, value: i64) -> Result<()> {
+pub fn encode_varint<B: SafeBufMut>(buf: &mut B, value: i64) -> Result<usize> {
     let mut x = (value as u64) << 1;
     if value < 0 {
         x = !x;
@@ -71,13 +71,15 @@ pub fn encode_varint<B: SafeBufMut>(buf: &mut B, value: i64) -> Result<()> {
 // 	return i + 1
 // }
 // ```
-pub fn encode_uvarint<B: SafeBufMut>(buf: &mut B, mut x: u64) -> Result<()> {
+pub fn encode_uvarint<B: SafeBufMut>(buf: &mut B, mut x: u64) -> Result<usize> {
+    let mut num_bytes = 0;
     while x >= 0x80 {
         buf.try_put_u8(x as u8 | 0x80).context(EncodeVarint)?;
         x >>= 7;
+        num_bytes += 1;
     }
     buf.try_put_u8(x as u8).context(EncodeVarint)?;
-    Ok(())
+    Ok(num_bytes + 1)
 }
 
 // from https://golang.org/src/encoding/binary/varint.go?s=2955:2991#L84

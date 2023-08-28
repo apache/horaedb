@@ -26,8 +26,7 @@ use analytic_engine::{
         },
         file::{FileHandle, FileMeta, FilePurgeQueue},
         manager::FileId,
-        meta_data::cache::MetaCacheRef,
-        parquet::encoding,
+        meta_data::cache::{self, MetaCacheRef},
         writer::MetaData,
     },
     table::sst_util,
@@ -66,18 +65,25 @@ pub fn new_runtime(thread_num: usize) -> Runtime {
         .unwrap()
 }
 
-pub async fn meta_from_sst(
+pub async fn parquet_metadata(
     store: &ObjectStoreRef,
     sst_path: &Path,
-    _meta_cache: &Option<MetaCacheRef>,
-) -> MetaData {
+) -> parquet_ext::ParquetMetaData {
     let get_result = store.get(sst_path).await.unwrap();
     let chunk_reader = get_result.bytes().await.unwrap();
-    let metadata = footer::parse_metadata(&chunk_reader).unwrap();
-    let kv_metas = metadata.file_metadata().key_value_metadata().unwrap();
+    footer::parse_metadata(&chunk_reader).unwrap()
+}
 
-    let parquet_meta_data = encoding::decode_sst_meta_data(&kv_metas[0]).unwrap();
-    MetaData::from(parquet_meta_data)
+pub async fn meta_from_sst(
+    metadata: &parquet_ext::ParquetMetaData,
+    store: &ObjectStoreRef,
+    _meta_cache: &Option<MetaCacheRef>,
+) -> MetaData {
+    let md = cache::MetaData::try_new(metadata, false, store.clone())
+        .await
+        .unwrap();
+
+    MetaData::from(md.custom().clone())
 }
 
 pub async fn schema_from_sst(
@@ -85,7 +91,8 @@ pub async fn schema_from_sst(
     sst_path: &Path,
     meta_cache: &Option<MetaCacheRef>,
 ) -> Schema {
-    let sst_meta = meta_from_sst(store, sst_path, meta_cache).await;
+    let parquet_metadata = parquet_metadata(store, sst_path).await;
+    let sst_meta = meta_from_sst(&parquet_metadata, store, meta_cache).await;
     sst_meta.schema
 }
 
@@ -170,8 +177,9 @@ pub async fn file_handles_from_ssts(
 
     for file_id in sst_file_ids.iter() {
         let path = sst_util::new_sst_file_path(space_id, table_id, *file_id);
+        let parquet_metadata = parquet_metadata(store, &path).await;
+        let sst_meta = meta_from_sst(&parquet_metadata, store, meta_cache).await;
 
-        let sst_meta = meta_from_sst(store, &path, meta_cache).await;
         let file_meta = FileMeta {
             id: *file_id,
             size: 0,
@@ -179,6 +187,7 @@ pub async fn file_handles_from_ssts(
             time_range: sst_meta.time_range,
             max_seq: sst_meta.max_sequence,
             storage_format: StorageFormat::Columnar,
+            associated_files: Vec::new(),
         };
 
         let handle = FileHandle::new(file_meta, purge_queue.clone());

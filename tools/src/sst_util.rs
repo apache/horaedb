@@ -29,6 +29,6 @@ pub async fn meta_from_sst(store: &ObjectStoreRef, sst_path: &Path) -> MetaData 
         .find(|kv| kv.key == encoding::META_KEY)
         .unwrap();
 
-    let parquet_meta_data = encoding::decode_sst_meta_data(kv_meta).unwrap();
+    let parquet_meta_data = encoding::decode_sst_meta_data_from_kv(kv_meta).unwrap();
     MetaData::from(parquet_meta_data)
 }

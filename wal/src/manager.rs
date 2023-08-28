@@ -27,7 +27,10 @@ use generic_error::BoxError;
 use runtime::Runtime;
 use snafu::ResultExt;
 
-use crate::log_batch::{LogEntry, LogWriteBatch, PayloadDecoder};
+use crate::{
+    log_batch::{LogEntry, LogWriteBatch, PayloadDecoder},
+    metrics::WAL_WRITE_BYTES_HISTOGRAM,
+};
 
 pub mod error {
     use generic_error::GenericError;
@@ -331,6 +334,12 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
 
     /// Get statistics
     async fn get_statistics(&self) -> Option<String>;
+}
+
+/// Used to collect the metrics about the write logs.
+pub(crate) fn collect_write_log_metrics(batch: &LogWriteBatch) {
+    let total_bytes: usize = batch.entries.iter().map(|v| v.payload.len()).sum();
+    WAL_WRITE_BYTES_HISTOGRAM.observe(total_bytes as f64);
 }
 
 #[derive(Debug)]

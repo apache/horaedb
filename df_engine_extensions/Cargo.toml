@@ -26,7 +26,14 @@ workspace = true
 
 [dependencies]
 arrow = { workspace = true }
+async-trait = { workspace = true }
+catalog = { workspace = true, features = ["test"] }
 datafusion = { workspace = true }
 generic_error = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
+
+[dev-dependencies]
+common_types = { workspace = true, features = ["test"] }
+insta = { version = "1.31.0" }
+trace_metric = { workspace = true }

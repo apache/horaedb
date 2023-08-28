@@ -12,4 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::{fmt, sync::Arc};
+
+use async_trait::async_trait;
+use datafusion::{
+    error::Result as DfResult,
+    physical_plan::{ExecutionPlan, SendableRecordBatchStream},
+};
+use table_engine::{
+    remote::model::TableIdentifier,
+    table::{ReadRequest, TableRef},
+};
+
 pub mod physical_plan;
+pub mod resolver;
+
+/// Remote datafusion physical plan executor
+#[async_trait]
+pub trait RemotePhysicalPlanExecutor: Clone + fmt::Debug + Send + Sync + 'static {
+    async fn execute(
+        &self,
+        table: TableIdentifier,
+        physical_plan: Arc<dyn ExecutionPlan>,
+    ) -> DfResult<SendableRecordBatchStream>;
+}
+
+/// Executable scan's builder
+///
+/// It is not suitable to restrict the detailed implementation of executable
+/// scan, so we define a builder here which return the general `ExecutionPlan`.
+pub trait ExecutableScanBuilder: fmt::Debug + Send + Sync + 'static {
+    fn build(&self, table: TableRef, read_request: ReadRequest)
+        -> DfResult<Arc<dyn ExecutionPlan>>;
+}

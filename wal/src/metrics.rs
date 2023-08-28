@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Sst implementation based on parquet.
+use lazy_static::lazy_static;
+use prometheus::{exponential_buckets, register_histogram, Histogram};
 
-pub mod async_reader;
-pub mod encoding;
-pub mod meta_data;
-mod row_group_pruner;
-pub mod writer;
-
-pub use async_reader::{Reader as AsyncParquetReader, ThreadedReader};
+lazy_static! {
+    pub static ref WAL_WRITE_BYTES_HISTOGRAM: Histogram = register_histogram!(
+        "wal_write_bytes_distribution",
+        "Bucketed histogram of wal write bytes",
+        exponential_buckets(64.0, 4.0, 10).unwrap()
+    )
+    .unwrap();
+}

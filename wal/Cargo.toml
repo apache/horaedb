@@ -40,9 +40,11 @@ codec = { workspace = true }
 common_types = { workspace = true }
 futures = { workspace = true, features = ["async-await"], optional = true }
 generic_error = { workspace = true }
+lazy_static = { workspace = true }
 log = { workspace = true }
 macros = { workspace = true }
 message_queue = { workspace = true }
+prometheus = { workspace = true }
 prost = { workspace = true }
 runtime = { workspace = true }
 serde = { workspace = true }

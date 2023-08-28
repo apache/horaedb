@@ -176,7 +176,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v3
         with:
-          name: CI-${{ github.head_ref }}.${{ github.sha }}
+          name: CI-${{ github.sha }}
           path: |
             /tmp/ceresdb-stdout.log
             /tmp/ceresmeta.log
@@ -250,7 +250,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v3
         with:
-          name: sdk-test-${{ github.head_ref }}.${{ github.sha }}
+          name: sdk-test-${{ github.sha }}
           path: |
             /tmp/ceresdb-stdout.log
 

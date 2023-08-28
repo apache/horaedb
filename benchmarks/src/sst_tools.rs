@@ -110,7 +110,8 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
     let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path.clone()).unwrap()) as _;
     let input_path = Path::from(config.input_file_name);
 
-    let sst_meta = util::meta_from_sst(&store, &input_path, &None).await;
+    let parquet_metadata = util::parquet_metadata(&store, &input_path).await;
+    let sst_meta = util::meta_from_sst(&parquet_metadata, &store, &None).await;
 
     let projected_schema = ProjectedSchema::no_projection(sst_meta.schema.clone());
     let scan_options = ScanOptions {

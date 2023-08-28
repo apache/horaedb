@@ -162,6 +162,7 @@ pub mod tests {
                         time_range: sst_meta.time_range(),
                         max_seq: sst_meta.max_sequence(),
                         storage_format: StorageFormat::Columnar,
+                        associated_files: Vec::new(),
                     },
                 );
             }
