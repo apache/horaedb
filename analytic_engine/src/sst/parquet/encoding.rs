@@ -165,7 +165,7 @@ pub const META_VERSION_KEY: &str = "meta_version";
 pub const META_VALUE_HEADER: u8 = 0;
 
 /// Encode the sst custom meta data into binary key value pair.
-pub fn encode_sst_meta_data_v2(meta_data: ParquetMetaData) -> Result<Bytes> {
+pub fn encode_sst_meta_data(meta_data: ParquetMetaData) -> Result<Bytes> {
     let meta_data_pb = sst_pb::ParquetMetaData::from(meta_data);
 
     let mut buf = BytesMut::with_capacity(meta_data_pb.encoded_len() + 1);
@@ -178,7 +178,7 @@ pub fn encode_sst_meta_data_v2(meta_data: ParquetMetaData) -> Result<Bytes> {
 }
 
 /// Decode the sst custom meta data from the binary key value pair.
-pub fn decode_sst_meta_data_v2(bytes: &[u8]) -> Result<ParquetMetaData> {
+pub fn decode_sst_meta_data_from_bytes(bytes: &[u8]) -> Result<ParquetMetaData> {
     ensure!(
         bytes[0] == META_VALUE_HEADER,
         InvalidMetaBytesHeader {
@@ -193,19 +193,9 @@ pub fn decode_sst_meta_data_v2(bytes: &[u8]) -> Result<ParquetMetaData> {
     ParquetMetaData::try_from(meta_data_pb).context(ConvertSstMetaData)
 }
 
-/// Encode the sst meta data into binary key value pair.
-// TODO: remove this function when hybrid format is not supported.
-pub fn encode_sst_meta_data_v1(meta_data: ParquetMetaData) -> Result<KeyValue> {
-    let buf = encode_sst_meta_data_v2(meta_data)?;
-
-    Ok(KeyValue {
-        key: META_KEY.to_string(),
-        value: Some(base64::encode(buf.as_ref())),
-    })
-}
-
 /// Decode the sst meta data from the binary key value pair.
-pub fn decode_sst_meta_data_v1(kv: &KeyValue) -> Result<ParquetMetaData> {
+/// Used in v1 format.
+pub fn decode_sst_meta_data_from_kv(kv: &KeyValue) -> Result<ParquetMetaData> {
     ensure!(
         kv.key == META_KEY,
         InvalidMetaKey {
@@ -222,7 +212,7 @@ pub fn decode_sst_meta_data_v1(kv: &KeyValue) -> Result<ParquetMetaData> {
 
     let raw_bytes = base64::decode(meta_value).context(DecodeBase64MetaValue { meta_value })?;
 
-    decode_sst_meta_data_v2(&raw_bytes)
+    decode_sst_meta_data_from_bytes(&raw_bytes)
 }
 
 /// RecordEncoder is used for encoding ArrowBatch.
@@ -232,8 +222,6 @@ pub fn decode_sst_meta_data_v1(kv: &KeyValue) -> Result<ParquetMetaData> {
 trait RecordEncoder {
     /// Encode vector of arrow batch, return encoded row number
     async fn encode(&mut self, record_batches: Vec<ArrowRecordBatch>) -> Result<usize>;
-
-    fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()>;
 
     fn set_meta_data_path(&mut self, metadata_path: Option<String>) -> Result<()>;
 
@@ -300,12 +288,6 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
         Ok(record_batch.num_rows())
     }
 
-    // TODO: this function is not need any more in meta v2 format,
-    // remove it in future.
-    fn set_meta_data(&mut self, _meta_data: ParquetMetaData) -> Result<()> {
-        Ok(())
-    }
-
     fn set_meta_data_path(&mut self, metadata_path: Option<String>) -> Result<()> {
         let path_kv = KeyValue {
             key: META_PATH_KEY.to_string(),
@@ -370,10 +352,6 @@ impl ParquetEncoder {
         }
 
         self.record_encoder.encode(arrow_record_batches).await
-    }
-
-    pub fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
-        self.record_encoder.set_meta_data(meta_data)
     }
 
     pub fn set_meta_data_path(&mut self, meta_data_path: Option<String>) -> Result<()> {

@@ -271,7 +271,7 @@ mod tests {
         writer.write(&batch).unwrap();
         writer.close().unwrap();
 
-        let bytes = encoding::encode_sst_meta_data_v2(custom_meta_data.clone()).unwrap();
+        let bytes = encoding::encode_sst_meta_data(custom_meta_data.clone()).unwrap();
         let meta_path = object_store::Path::from(meta_path);
         store.put(&meta_path, bytes).await.unwrap();
     }
