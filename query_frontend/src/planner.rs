@@ -55,9 +55,9 @@ use macros::define_result;
 use prom_remote_api::types::Query as PromRemoteQuery;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
-    visit_statements_mut, ColumnDef, ColumnOption, Expr, Expr as SqlExpr, Ident, Query,
-    SelectItem, SetExpr, SqlOption, Statement as SqlStatement, TableConstraint, TableFactor,
-    UnaryOperator, Value, Values, Visit, Visitor,
+    visit_statements_mut, ColumnDef, ColumnOption, Expr, Expr as SqlExpr, Ident, Query, SelectItem,
+    SetExpr, SqlOption, Statement as SqlStatement, TableConstraint, TableFactor, UnaryOperator,
+    Value, Values, Visit, Visitor,
 };
 use table_engine::{partition::SelectedPartition, table::TableRef};
 
@@ -602,12 +602,18 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn sql_statement_to_datafusion_plan(self, sql_stmt: SqlStatement) -> Result<Plan> {
-        // Maybe define the selected partitions explicitly, try to extract them first.
+        // Maybe define the selected partitions explicitly, try to extract them first
+        // and set it to `ContextProviderAdapter` if exist.
         let default_catalog = self.meta_provider.default_catalog_name();
         let default_schema = self.meta_provider.default_schema_name();
-        let _selected_partitions =
+        let selected_partitions =
             Self::maybe_extract_selected_partitions(&sql_stmt, default_catalog, default_schema)?;
+        if !selected_partitions.is_empty() {
+            self.meta_provider
+                .maybe_set_selected_partitions(selected_partitions);
+        };
 
+        // Generate logical plan.
         let df_planner = SqlToRel::new_with_options(&self.meta_provider, DEFAULT_PARSER_OPTS);
         let df_plan = df_planner
             .sql_statement_to_plan(sql_stmt)

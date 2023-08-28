@@ -32,6 +32,7 @@ use macros::define_result;
 use partition_table_engine::scan_builder::PartitionedTableScanBuilder;
 use snafu::{OptionExt, ResultExt, Snafu};
 use table_engine::{
+    partition::SelectedPartition,
     provider::{NormalTableScanBuilder, TableProviderAdapter},
     table::TableRef,
 };
@@ -263,6 +264,8 @@ pub struct ContextProviderAdapter<'a, P> {
     meta_provider: &'a P,
     /// Read config for each table.
     config: ConfigOptions,
+    /// Explicitly selecting partitions for partitioned table
+    selected_partitions: RefCell<Option<HashMap<String, Vec<SelectedPartition>>>>,
 }
 
 impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
@@ -281,6 +284,7 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
             err: RefCell::new(None),
             meta_provider,
             config,
+            selected_partitions: RefCell::new(None),
         }
     }
 
@@ -310,6 +314,16 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
         let table_provider = resolved_table.into_table_provider();
 
         Arc::new(DefaultTableSource { table_provider })
+    }
+
+    /// Save explicitly selected partitions for partitioned table
+    pub fn maybe_set_selected_partitions(
+        &self,
+        selected_partitions: HashMap<String, Vec<SelectedPartition>>,
+    ) {
+        if self.selected_partitions.borrow().is_none() {
+            *self.selected_partitions.borrow_mut() = Some(selected_partitions);
+        }
     }
 }
 
