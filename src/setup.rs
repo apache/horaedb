@@ -25,7 +25,7 @@ use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOpe
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
 use datafusion::execution::runtime_env::RuntimeConfig as DfRuntimeConfig;
-use df_operator::registry::{FunctionRegistry, FunctionRegistryImpl};
+use df_operator::registry::{FunctionRegistryImpl};
 use interpreters::table_manipulator::{catalog_based, meta_based};
 use log::info;
 use logger::RuntimeLevel;
@@ -129,12 +129,8 @@ async fn run_server_with_runtimes<T>(
     // Create query engine
     // TODO: use a builder to support different query engine?
     let query_engine = Box::new(
-        DatafusionQueryEngineImpl::new(
-            config.query_engine.clone(),
-            DfRuntimeConfig::default(),
-            function_registry.clone().to_df_function_registry(),
-        )
-        .expect("Failed to init datafusion query engine"),
+        DatafusionQueryEngineImpl::new(config.query_engine.clone(), DfRuntimeConfig::default())
+            .expect("Failed to init datafusion query engine"),
     );
 
     // Config limiter

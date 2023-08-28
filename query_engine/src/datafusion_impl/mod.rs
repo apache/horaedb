@@ -18,7 +18,6 @@ use datafusion::{
     execution::{
         context::{QueryPlanner, SessionState},
         runtime_env::{RuntimeConfig, RuntimeEnv},
-        FunctionRegistry,
     },
     optimizer::analyzer::Analyzer,
     physical_optimizer::PhysicalOptimizerRule,
@@ -55,11 +54,7 @@ pub struct DatafusionQueryEngineImpl {
 }
 
 impl DatafusionQueryEngineImpl {
-    pub fn new(
-        config: Config,
-        runtime_config: RuntimeConfig,
-        _function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
-    ) -> Result<Self> {
+    pub fn new(config: Config, runtime_config: RuntimeConfig) -> Result<Self> {
         let runtime_env = Arc::new(RuntimeEnv::new(runtime_config).unwrap());
         let physical_planner = Arc::new(QueryPlannerAdapter);
         let df_ctx_builder = Arc::new(DfContextBuilder::new(config, runtime_env, physical_planner));

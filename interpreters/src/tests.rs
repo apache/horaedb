@@ -23,7 +23,7 @@ use catalog::{
 use catalog_impls::table_based::TableBasedManager;
 use common_types::request_id::RequestId;
 use datafusion::execution::runtime_env::RuntimeConfig;
-use df_operator::registry::{FunctionRegistry, FunctionRegistryImpl};
+
 use query_engine::{datafusion_impl::DatafusionQueryEngineImpl, QueryEngineRef};
 use query_frontend::{
     parser::Parser, plan::Plan, planner::Planner, provider::MetaProvider, tests::MockMetaProvider,
@@ -370,14 +370,9 @@ async fn test_interpreters<T: EngineBuildContext>(engine_context: T) {
     let catalog_manager = Arc::new(build_catalog_manager(engine.clone()).await);
     let table_operator = TableOperator::new(catalog_manager.clone());
     let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
-    let function_registry = Arc::new(FunctionRegistryImpl::default());
     let query_engine = Box::new(
-        DatafusionQueryEngineImpl::new(
-            query_engine::Config::default(),
-            RuntimeConfig::default(),
-            function_registry.to_df_function_registry(),
-        )
-        .unwrap(),
+        DatafusionQueryEngineImpl::new(query_engine::Config::default(), RuntimeConfig::default())
+            .unwrap(),
     );
 
     let env = Env {
