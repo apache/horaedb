@@ -54,7 +54,7 @@ impl Proxy {
                 &ctx,
                 schema,
                 &req.query,
-                self.access_partition_table.enable_http,
+                self.sub_table_access_perm.enable_http,
             )
             .await
             .map_err(|e| {

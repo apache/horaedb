@@ -118,7 +118,7 @@ pub struct Proxy {
     hotspot_recorder: Arc<HotspotRecorder>,
     engine_runtimes: Arc<EngineRuntimes>,
     cluster_with_meta: bool,
-    access_partition_table: SubTableAccessPerm,
+    sub_table_access_perm: SubTableAccessPerm,
 }
 
 impl Proxy {
@@ -134,7 +134,7 @@ impl Proxy {
         hotspot_recorder: Arc<HotspotRecorder>,
         engine_runtimes: Arc<EngineRuntimes>,
         cluster_with_meta: bool,
-        access_partition_table: SubTableAccessPerm,
+        sub_table_access_perm: SubTableAccessPerm,
     ) -> Self {
         let forwarder = Arc::new(Forwarder::new(
             forward_config,
@@ -152,7 +152,7 @@ impl Proxy {
             hotspot_recorder,
             engine_runtimes,
             cluster_with_meta,
-            access_partition_table,
+            sub_table_access_perm,
         }
     }
 
