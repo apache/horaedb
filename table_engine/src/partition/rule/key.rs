@@ -267,7 +267,9 @@ where
 {
     /// Read the serialized bytes from `curr_key` to fill the `buf` as much
     /// as possible.
-    fn read_once(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    ///
+    /// If the Ok(None) is returned, it means the reader has been exhausted.
+    fn read_once(&mut self, buf: &mut [u8]) -> std::io::Result<Option<usize>> {
         // Fetch the next key.
         if self.curr_key.is_none() {
             self.curr_key = self.key_views.next();
@@ -276,7 +278,7 @@ where
 
         // The `key_views` has been exhausted.
         if self.curr_key.is_none() {
-            return Ok(0);
+            return Ok(None);
         }
 
         let datum_view = self.curr_key.as_ref().unwrap();
@@ -284,9 +286,6 @@ where
         let mut n_bytes = 0;
         let mut key_exhausted = false;
         datum_view.do_with_bytes(|source: &[u8]| {
-            debug_assert!(!source.is_empty());
-            debug_assert!(offset < source.len());
-
             let end = (offset + buf.len()).min(source.len());
             let read_slice = &source[offset..end];
             buf[..read_slice.len()].copy_from_slice(read_slice);
@@ -304,7 +303,7 @@ where
             self.curr_key = None;
         }
 
-        Ok(n_bytes)
+        Ok(Some(n_bytes))
     }
 }
 
@@ -329,15 +328,16 @@ where
             if total_n_bytes == buf.len() {
                 break;
             }
-            debug_assert!(total_n_bytes < buf.len());
+            assert!(total_n_bytes < buf.len());
 
             let next_buf = &mut buf[total_n_bytes..];
             let n_bytes = self.read_once(next_buf)?;
-            if n_bytes == 0 {
+            if let Some(n) = n_bytes {
+                total_n_bytes += n;
+            } else {
                 // No more data can be pulled.
                 break;
             }
-            total_n_bytes += n_bytes;
         }
 
         Ok(total_n_bytes)
@@ -399,6 +399,39 @@ mod tests {
 
         let expect_total_bytes: usize = datums.iter().map(|v| v.size()).sum();
         assert_eq!(total_bytes, expect_total_bytes);
+    }
+
+    #[test]
+    fn test_compute_partition_for_inserted_row_with_empty_string() {
+        let partition_num = 16;
+        let key_rule = KeyRule {
+            typed_key_columns: vec![ColumnWithType::new("col1".to_string(), DatumKind::String)],
+            partition_num,
+        };
+
+        let datums = vec![
+            Datum::Int32(1),
+            Datum::String(StringBytes::copy_from_str("")),
+            Datum::String(StringBytes::copy_from_str("xtest")),
+            Datum::Int64(84),
+            Datum::Null,
+        ];
+        let row = Row::from_datums(datums.clone());
+        let defined_idxs = vec![1, 2, 3, 4];
+
+        // Actual
+        let actual = key_rule.compute_partition_for_inserted_row(&row, &defined_idxs);
+
+        // Expected
+        let mut buf = BytesMut::new();
+        buf.clear();
+        buf.put_slice(&datums[1].to_bytes());
+        buf.put_slice(&datums[2].to_bytes());
+        buf.put_slice(&datums[3].to_bytes());
+        buf.put_slice(&datums[4].to_bytes());
+        let expected = (hash64(&buf[..]) % (partition_num as u64)) as usize;
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
