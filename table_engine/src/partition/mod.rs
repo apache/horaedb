@@ -257,9 +257,9 @@ pub fn is_sub_partition_table(table_name: &str) -> bool {
 
 /// Explicit selected partition
 #[derive(Debug, Clone)]
-pub enum SelectedPartition {
+pub enum SelectedPartitions {
     /// Represent by id
-    Id(usize),
+    Ids(Vec<usize>),
     /// Represent by name
-    Name(String),
+    Names(Vec<String>),
 }

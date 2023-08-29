@@ -19,7 +19,7 @@ use std::{borrow::Cow, collections::HashMap};
 pub use datafusion::catalog::{ResolvedTableReference, TableReference};
 use table_engine::table::TableRef;
 
-use crate::provider::{TableContextRef};
+use crate::provider::TableContextRef;
 
 // Rust has poor support of using tuple as map key, so we use a 3 level
 // map to store catalog -> schema -> table mapping

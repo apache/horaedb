@@ -20,6 +20,7 @@ use std::{
     convert::TryFrom,
     mem,
     ops::ControlFlow,
+    slice::Iter,
     sync::Arc,
 };
 
@@ -59,7 +60,7 @@ use sqlparser::ast::{
     SetExpr, SqlOption, Statement as SqlStatement, TableConstraint, TableFactor, UnaryOperator,
     Value, Values, Visit, Visitor,
 };
-use table_engine::{partition::SelectedPartition, table::TableRef};
+use table_engine::{partition::SelectedPartitions, table::TableRef};
 
 use crate::{
     ast::{
@@ -635,7 +636,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         sql_stmt: &SqlStatement,
         default_catalog: &str,
         default_schema: &str,
-    ) -> Result<HashMap<String, Vec<SelectedPartition>>> {
+    ) -> Result<HashMap<String, SelectedPartitions>> {
         // Visitor for `TableFactor`
         struct TableFactorVisitor<F>(F);
 
@@ -682,10 +683,8 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                 let resolved_table_ref = maybe_unresolved.resolve(default_catalog, default_schema);
 
                 // Try to convert the partition exprs.
-                let partitions_res = partitions
-                    .iter()
-                    .map(try_to_covert_selected_partitions_stmt)
-                    .collect::<Result<Vec<_>>>();
+                let convert = SelectedPartitionsConverter(&partitions);
+                let partitions_res = convert.try_to_convert();
                 let partitions = match partitions_res {
                     Ok(partitions) => partitions,
                     Err(e) => {
@@ -1163,26 +1162,99 @@ fn normalize_func_name(sql_stmt: &mut SqlStatement) {
     });
 }
 
-fn try_to_covert_selected_partitions_stmt(stmt: &Expr) -> Result<SelectedPartition> {
-    // It must be a identifier stmt.
-    // FIXME: we should consider quote style.
-    match stmt {
-        Expr::Identifier(Ident { value, .. }) => {
-            let selected_partition = match value.parse::<usize>().ok() {
-                Some(id) => SelectedPartition::Id(id),
-                None => SelectedPartition::Name(value.clone()),
+/// Converter for converting selected partition exprs to `SelectedPartitions`
+struct SelectedPartitionsConverter<'a>(&'a [Expr]);
+
+impl<'a> SelectedPartitionsConverter<'a> {
+    fn try_to_convert(&self) -> Result<SelectedPartitions> {
+        let mut stmt_iter = self.0.iter();
+
+        // Convert the first selected partition.
+        let first_stmt = match stmt_iter.next() {
+            Some(stmt) => stmt,
+            None => {
+                return SelectPartitionsNoCause {
+                    msg: "unexpected empty stmts when trying to convert".to_string(),
+                }
+                .fail()
+            }
+        };
+        let mut selected_partitions = self.try_to_convert_first(first_stmt)?;
+
+        // Convert the rests.
+        self.try_to_convert_rests(stmt_iter, &mut selected_partitions)?;
+
+        Ok(selected_partitions)
+    }
+
+    fn try_to_convert_first(&self, first_stmt: &Expr) -> Result<SelectedPartitions> {
+        let ident = match first_stmt {
+            Expr::Identifier(ident) => ident,
+
+            other => {
+                return SelectPartitionsNoCause {
+                    msg: format!("unexpected selected partitions statement, statement:{other}"),
+                }
+                .fail()
+            }
+        };
+
+        // TODO: we should consider quote style.
+        let selected_partitions = match ident.value.parse::<usize>().ok() {
+            Some(id) => {
+                let mut ids = Vec::with_capacity(self.0.len());
+                ids.push(id);
+                SelectedPartitions::Ids(ids)
+            }
+            None => {
+                let mut names = Vec::with_capacity(self.0.len());
+                names.push(ident.value.clone());
+                SelectedPartitions::Names(names)
+            }
+        };
+
+        Ok(selected_partitions)
+    }
+
+    fn try_to_convert_rests(
+        &self,
+        rest_expr: Iter<'_, Expr>,
+        selecteds: &mut SelectedPartitions,
+    ) -> Result<()> {
+        for stmt in rest_expr {
+            let ident = match stmt {
+                Expr::Identifier(ident) => ident,
+
+                other => {
+                    return SelectPartitionsNoCause {
+                        msg: format!("unexpected selected partitions statement, statement:{other}"),
+                    }
+                    .fail()
+                }
             };
 
-            Ok(selected_partition)
+            // TODO: we should consider quote style.
+            match selecteds {
+                SelectedPartitions::Ids(ids) => {
+                    let id = ident.value.parse::<usize>()
+                        .box_err()
+                        .with_context(|| SelectPartitionsWithCause {
+                            msg: format!("inconsistent selected partitions, base)selected_type:Ids, new_pushed:{ident:?}"),
+                        })?;
+                    ids.push(id);
+                }
+                SelectedPartitions::Names(names) => {
+                    // TODO: we should check the validity of name.
+                    names.push(ident.value.clone());
+                }
+            }
         }
 
-        other => SelectPartitionsNoCause {
-            msg: format!("unexpected selected partitions statement, statement:{other}"),
-        }
-        .fail(),
+        Ok(())
     }
 }
 
+// Ok(selected_partition)
 #[derive(Debug)]
 enum InsertMode {
     // Insert the value in expr with given index directly.

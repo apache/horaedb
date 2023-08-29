@@ -521,7 +521,7 @@ impl Table for TableImpl {
             projected_schema: request.projected_schema,
             predicate,
             metrics_collector: MetricsCollector::new(GET_METRICS_COLLECTOR_NAME.to_string()),
-            selected_partitions: Vec::new(),
+            selected_partitions: None,
         };
         let mut batch_stream = self
             .read(read_request)

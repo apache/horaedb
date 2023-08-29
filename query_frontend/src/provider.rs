@@ -32,7 +32,7 @@ use macros::define_result;
 use partition_table_engine::scan_builder::PartitionedTableScanBuilder;
 use snafu::{OptionExt, ResultExt, Snafu};
 use table_engine::{
-    partition::SelectedPartition,
+    partition::SelectedPartitions,
     provider::{NormalTableScanBuilder, TableProviderAdapter},
     table::TableRef,
 };
@@ -101,7 +101,7 @@ pub struct TableContext {
     pub catalog: String,
     pub schema: String,
     pub table: TableRef,
-    pub selected_partitions: Vec<SelectedPartition>,
+    pub selected_partitions: Option<SelectedPartitions>,
 }
 
 pub type TableContextRef = Arc<TableContext>;
@@ -288,7 +288,7 @@ pub struct ContextProviderAdapter<'a, P> {
     /// Read config for each table.
     config: ConfigOptions,
     /// Explicitly selecting partitions for partitioned table
-    selected_partitions: RefCell<Option<HashMap<String, Vec<SelectedPartition>>>>,
+    selected_partitions: RefCell<Option<HashMap<String, SelectedPartitions>>>,
 }
 
 impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
@@ -342,7 +342,7 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     /// Save explicitly selected partitions for partitioned table
     pub fn maybe_set_selected_partitions(
         &self,
-        selected_partitions: HashMap<String, Vec<SelectedPartition>>,
+        selected_partitions: HashMap<String, SelectedPartitions>,
     ) {
         if self.selected_partitions.borrow().is_none() {
             *self.selected_partitions.borrow_mut() = Some(selected_partitions);
@@ -390,7 +390,7 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
         // TODO: possible to remove this clone?
         match self.meta_provider.table(name.clone()) {
             Ok(Some(resolved)) => {
-                let selected_partitions =
+                let selected_partitions_opt =
                     if let Some(selecteds) = &*self.selected_partitions.borrow() {
                         let table_ref = ResolvedTableReference {
                             catalog: Cow::Borrowed(&resolved.catalog),
@@ -398,19 +398,16 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
                             table: Cow::Borrowed(resolved.table.name()),
                         };
 
-                        match selecteds.get(&table_ref.to_string()) {
-                            Some(v) => v.clone(),
-                            None => Vec::new(),
-                        }
+                        selecteds.get(&table_ref.to_string()).cloned()
                     } else {
-                        Vec::new()
+                        None
                     };
 
                 let table_ctx = Arc::new(TableContext {
                     catalog: resolved.catalog,
                     schema: resolved.schema,
                     table: resolved.table,
-                    selected_partitions,
+                    selected_partitions: selected_partitions_opt,
                 });
 
                 self.table_cache

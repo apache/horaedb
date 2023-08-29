@@ -42,7 +42,7 @@ use trace_metric::MetricsCollector;
 
 use crate::{
     engine::TableState,
-    partition::{PartitionInfo, SelectedPartition},
+    partition::{PartitionInfo, SelectedPartitions},
     predicate::PredicateRef,
     stream::{PartitionedStreams, SendableRecordBatchStream},
 };
@@ -382,10 +382,10 @@ pub struct ReadRequest {
     /// Collector for metrics of this read request.
     pub metrics_collector: MetricsCollector,
     /// Explicit selected partitions for partitioned table
-    /// It should always be empty when querying the normal table.
+    /// It should always be `None` when querying the normal table.
     /// It should not be serialized.
     // TODO: maybe not suitable to place it in `ReadRequest`.
-    pub selected_partitions: Vec<SelectedPartition>,
+    pub selected_partitions: Option<SelectedPartitions>,
 }
 
 impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
@@ -439,7 +439,7 @@ impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
             projected_schema,
             predicate,
             metrics_collector: MetricsCollector::default(),
-            selected_partitions: Vec::new(),
+            selected_partitions: None,
         })
     }
 }

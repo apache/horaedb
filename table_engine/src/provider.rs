@@ -42,7 +42,7 @@ use log::debug;
 use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector};
 
 use crate::{
-    partition::SelectedPartition,
+    partition::SelectedPartitions,
     predicate::{PredicateBuilder, PredicateRef},
     stream::{ScanStreamState, ToDfStream},
     table::{ReadOptions, ReadRequest, TableRef},
@@ -156,11 +156,15 @@ pub struct TableProviderAdapter<B> {
 
     /// Explicit Selected partitions for partitioned table
     /// It should always be empty for normal table.
-    selected_partitions: Vec<SelectedPartition>,
+    selected_partitions: Option<SelectedPartitions>,
 }
 
 impl<B: TableScanBuilder> TableProviderAdapter<B> {
-    pub fn new(table: TableRef, builder: B, selected_partitions: Vec<SelectedPartition>) -> Self {
+    pub fn new(
+        table: TableRef,
+        builder: B,
+        selected_partitions: Option<SelectedPartitions>,
+    ) -> Self {
         // Take a snapshot of the schema
         let read_schema = table.schema();
 
@@ -183,7 +187,7 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
         filters: &[Expr],
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        if self.table.partition_info().is_none() && !self.selected_partitions.is_empty() {
+        if self.table.partition_info().is_none() && self.selected_partitions.is_some() {
             return Err(DataFusionError::Internal(
                 format!("only partitioned table can define selected partitions, invalid_table's id:{}, name:{}", 
                     self.table.id(), self.table.name())
