@@ -16,15 +16,21 @@
 
 use std::sync::Arc;
 
+use analytic_engine::sst::writer::BuildParquetFilter;
 use async_trait::async_trait;
+use common_types::schema::Schema;
 use datafusion::{
     error::{DataFusionError, Result},
     physical_plan::ExecutionPlan,
+    prelude::Expr,
 };
 use df_engine_extensions::dist_sql_query::physical_plan::UnresolvedPartitionedScan;
+use generic_error::BoxError;
 use table_engine::{
     partition::{
-        format_sub_partition_table_name, rule::df_adapter::DfPartitionRuleAdapter, PartitionInfo,
+        format_sub_partition_table_name, rule::df_adapter::DfPartitionRuleAdapter,
+        BuildPartitionsMode, ExplicitMode, NormalMode, PartitionInfo, QueryPartitionsBuilder,
+        SelectedPartitions,
     },
     provider::TableScanBuilder,
     remote::model::TableIdentifier,
@@ -78,22 +84,38 @@ impl PartitionedTableScanBuilder {
 #[async_trait]
 impl TableScanBuilder for PartitionedTableScanBuilder {
     async fn build(&self, request: ReadRequest) -> Result<Arc<dyn ExecutionPlan>> {
-        // Build partition rule.
-        let table_schema_snapshot = request.projected_schema.original_schema();
-        let df_partition_rule =
-            DfPartitionRuleAdapter::new(self.partition_info.clone(), table_schema_snapshot)
-                .map_err(|e| {
-                    DataFusionError::Internal(format!("failed to build partition rule, err:{e}"))
-                })?;
+        // Partitions builder.
+        let partitions_builder = QueryPartitionsBuilder::new(
+            &self.catalog_name,
+            &self.schema_name,
+            &self.table_name,
+            &self.partition_info,
+        );
 
-        // Evaluate expr and locate partition.
-        let partitions = df_partition_rule
-            .locate_partitions_for_read(request.predicate.exprs())
+        // Build sub table idents.
+        let table_schema_snapshot = request.projected_schema.original_schema();
+        let build_partitions_mode = match &request.selected_partitions {
+            Some(selected) => {
+                let explicit = ExplicitMode {
+                    selected_partitions: selected,
+                };
+                BuildPartitionsMode::Explicit(explicit)
+            }
+
+            None => {
+                let normal = NormalMode {
+                    exprs: request.predicate.exprs(),
+                    schema: table_schema_snapshot,
+                };
+                BuildPartitionsMode::Normal(normal)
+            }
+        };
+
+        let sub_tables = partitions_builder
+            .build(build_partitions_mode)
             .map_err(|e| {
-                DataFusionError::Internal(format!("failed to locate partition for read, err:{e}"))
+                DataFusionError::Internal(format!("failed to build partitions, err:{e}"))
             })?;
-        let sub_tables =
-            self.get_sub_table_idents(&self.table_name, &self.partition_info, partitions);
 
         // Build plan.
         let plan = UnresolvedPartitionedScan {

@@ -27,7 +27,7 @@ use generic_error::BoxError;
 use snafu::ResultExt;
 use table_engine::{
     partition::{
-        format_sub_partition_table_name, rule::df_adapter::DfPartitionRuleAdapter, PartitionInfo,
+        format_sub_partition_table_name, rule::df_adapter::DfPartitionRuleAdapter, PartitionInfo, QueryPartitionsBuilder,
     },
     remote::{
         model::{
@@ -237,7 +237,21 @@ impl Table for PartitionTableImpl {
             .with_label_values(&["total"])
             .start_timer();
 
-        // Build partition rule.
+        // Build partitions.
+        let partitions_builder = QueryPartitionsBuilder::new(
+            &self.table_data.catalog_name,
+            &self.table_data.schema_name,
+            &self.table_data.table_name,
+            &self.table_data.partition_info,
+        );
+
+        let sub_tables = {
+            let _locate_timer = PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM
+                .with_label_values(&["locate"])
+                .start_timer();
+
+
+        };
         let df_partition_rule = match self.partition_info() {
             None => UnexpectedWithMsg {
                 msg: "partition table partition info can't be empty",

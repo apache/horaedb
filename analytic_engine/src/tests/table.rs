@@ -194,7 +194,7 @@ pub fn new_read_all_request_with_order(schema: Schema, opts: ReadOptions) -> Rea
         projected_schema: ProjectedSchema::no_projection(schema),
         predicate: Arc::new(Predicate::empty()),
         metrics_collector: MetricsCollector::default(),
-        selected_partitions: Vec::new(),
+        selected_partitions: None,
     }
 }
 

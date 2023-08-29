@@ -18,8 +18,13 @@ pub mod rule;
 
 use bytes_ext::Bytes;
 use ceresdbproto::cluster::partition_info::Info;
+use common_types::schema::Schema;
+use datafusion::{error::DataFusionError, prelude::Expr};
+use generic_error::{BoxError, GenericError};
 use macros::define_result;
-use snafu::{Backtrace, Snafu};
+use snafu::{Backtrace, ResultExt, Snafu};
+
+use crate::{partition::rule::df_adapter::DfPartitionRuleAdapter, remote::model::TableIdentifier};
 
 const PARTITION_TABLE_PREFIX: &str = "__";
 
@@ -74,6 +79,12 @@ pub enum Error {
 
     #[snafu(display("Partition info could not be empty"))]
     EmptyPartitionInfo {},
+
+    #[snafu(display("Failed to build partitions, msg:{msg}, err:{source}\n"))]
+    BuildPartitionsWithCause { msg: String, source: GenericError },
+
+    #[snafu(display("Failed to build partitions, msg:{msg}.\nBacktrace:{backtrace}\n"))]
+    BuildPartitionsNoCause { msg: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -262,4 +273,100 @@ pub enum SelectedPartitions {
     Ids(Vec<usize>),
     /// Represent by name
     Names(Vec<String>),
+}
+
+pub struct QueryPartitionsBuilder<'a> {
+    pub catalog_name: &'a str,
+    pub schema_name: &'a str,
+    pub table_name: &'a str,
+    pub partition_info: &'a PartitionInfo,
+}
+
+impl<'a> QueryPartitionsBuilder<'a> {
+    pub fn new(
+        catalog_name: &'a str,
+        schema_name: &'a str,
+        table_name: &'a str,
+        partition_info: &'a PartitionInfo,
+    ) -> Self {
+        Self {
+            catalog_name,
+            schema_name,
+            table_name,
+            partition_info,
+        }
+    }
+
+    pub fn build(self, mode: BuildPartitionsMode<'a>) -> Result<Vec<TableIdentifier>> {
+        let sub_tables = match mode {
+            BuildPartitionsMode::Normal(NormalMode { exprs, schema }) => {
+                let df_partition_rule =
+                    DfPartitionRuleAdapter::new(self.partition_info.clone(), schema)
+                        .box_err()
+                        .with_context(|| BuildPartitionsWithCause {
+                            msg: "failed to build partition rule".to_string(),
+                        })?;
+
+                // Evaluate expr and locate partition.
+                let partitions = df_partition_rule
+                    .locate_partitions_for_read(exprs)
+                    .box_err()
+                    .with_context(|| BuildPartitionsWithCause {
+                        msg: "failed to locate partition for read".to_string(),
+                    })?;
+
+                self.build_sub_table_idents_from_ids(
+                    &self.table_name,
+                    self.partition_info,
+                    &partitions,
+                )
+            }
+            BuildPartitionsMode::Explicit(ExplicitMode {
+                selected_partitions,
+            }) => match selected_partitions {
+                SelectedPartitions::Ids(ids) => {
+                    self.build_sub_table_idents_from_ids(&self.table_name, self.partition_info, ids)
+                }
+                SelectedPartitions::Names(_) => {
+                    unimplemented!()
+                }
+            },
+        };
+
+        Ok(sub_tables)
+    }
+
+    fn build_sub_table_idents_from_ids(
+        &self,
+        table_name: &str,
+        partition_info: &PartitionInfo,
+        partition_ids: &[usize],
+    ) -> Vec<TableIdentifier> {
+        let definitions = partition_info.get_definitions();
+        partition_ids
+            .into_iter()
+            .map(|p| {
+                let partition_name = &definitions[*p].name;
+                TableIdentifier {
+                    catalog: self.catalog_name.to_string(),
+                    schema: self.schema_name.to_string(),
+                    table: format_sub_partition_table_name(table_name, partition_name),
+                }
+            })
+            .collect()
+    }
+}
+
+pub enum BuildPartitionsMode<'a> {
+    Normal(NormalMode<'a>),
+    Explicit(ExplicitMode<'a>),
+}
+
+pub struct NormalMode<'a> {
+    pub exprs: &'a [Expr],
+    pub schema: &'a Schema,
+}
+
+pub struct ExplicitMode<'a> {
+    pub selected_partitions: &'a SelectedPartitions,
 }

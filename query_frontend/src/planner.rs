@@ -683,7 +683,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                 let resolved_table_ref = maybe_unresolved.resolve(default_catalog, default_schema);
 
                 // Try to convert the partition exprs.
-                let convert = SelectedPartitionsConverter(&partitions);
+                let convert = SelectedPartitionsConverter(partitions);
                 let partitions_res = convert.try_to_convert();
                 let partitions = match partitions_res {
                     Ok(partitions) => partitions,
