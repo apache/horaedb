@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use cluster::config::SchemaConfig;
 use common_types::schema::TIMESTAMP_COLUMN;
 use meta_client::types::ShardId;
-use proxy::{forward, hotspot, AccessPartitionTableConfig};
+use proxy::{forward, hotspot, SubTableAccessPerm};
 use router::{
     endpoint::Endpoint,
     rule_based::{ClusterView, RuleList},
@@ -139,7 +139,7 @@ pub struct ServerConfig {
     pub enable_query_dedup: bool,
 
     /// Whether enable to access partition table
-    pub enable_partition_table_access: AccessPartitionTableConfig,
+    pub sub_table_access_perm: SubTableAccessPerm,
 }
 
 impl Default for ServerConfig {
@@ -161,7 +161,7 @@ impl Default for ServerConfig {
             hotspot: hotspot::Config::default(),
             remote_client: remote_engine_client::Config::default(),
             enable_query_dedup: false,
-            enable_partition_table_access: AccessPartitionTableConfig::default(),
+            sub_table_access_perm: SubTableAccessPerm::default(),
         }
     }
 }

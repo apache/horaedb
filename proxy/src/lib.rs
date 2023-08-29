@@ -94,16 +94,16 @@ use crate::{
 const QUERY_EXPIRED_BUFFER: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct AccessPartitionTableConfig {
+pub struct SubTableAccessPerm {
     pub enable_http: bool,
-    pub enable_other: bool,
+    pub enable_others: bool,
 }
 
-impl Default for AccessPartitionTableConfig {
+impl Default for SubTableAccessPerm {
     fn default() -> Self {
         Self {
             enable_http: true,
-            enable_other: false,
+            enable_others: false,
         }
     }
 }
@@ -118,7 +118,7 @@ pub struct Proxy {
     hotspot_recorder: Arc<HotspotRecorder>,
     engine_runtimes: Arc<EngineRuntimes>,
     cluster_with_meta: bool,
-    access_partition_table: AccessPartitionTableConfig,
+    access_partition_table: SubTableAccessPerm,
 }
 
 impl Proxy {
@@ -134,7 +134,7 @@ impl Proxy {
         hotspot_recorder: Arc<HotspotRecorder>,
         engine_runtimes: Arc<EngineRuntimes>,
         cluster_with_meta: bool,
-        access_partition_table: AccessPartitionTableConfig,
+        access_partition_table: SubTableAccessPerm,
     ) -> Self {
         let forwarder = Arc::new(Forwarder::new(
             forward_config,

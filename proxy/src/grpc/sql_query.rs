@@ -87,7 +87,7 @@ impl Proxy {
                 ctx,
                 schema,
                 &req.sql,
-                self.access_partition_table.enable_other,
+                self.access_partition_table.enable_others,
             )
             .await?
         {
@@ -150,7 +150,7 @@ impl Proxy {
                 ctx,
                 schema,
                 &req.sql,
-                self.access_partition_table.enable_other,
+                self.access_partition_table.enable_others,
             )
             .await?;
 
