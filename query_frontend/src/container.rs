@@ -19,14 +19,14 @@ use std::{borrow::Cow, collections::HashMap};
 pub use datafusion::catalog::{ResolvedTableReference, TableReference};
 use table_engine::table::TableRef;
 
-use crate::provider::ResolvedTable;
+use crate::provider::{TableContextRef};
 
 // Rust has poor support of using tuple as map key, so we use a 3 level
 // map to store catalog -> schema -> table mapping
 type CatalogMap = HashMap<String, SchemaMap>;
 type SchemaMap = HashMap<String, TableMap>;
 // TODO(chenxiang): change to LRU to evict deleted/migrated tables
-type TableMap = HashMap<String, ResolvedTable>;
+type TableMap = HashMap<String, TableContextRef>;
 
 /// Container to hold table adapters
 ///
@@ -58,7 +58,7 @@ impl TableContainer {
         }
     }
 
-    pub fn get(&self, name: TableReference) -> Option<ResolvedTable> {
+    pub fn get(&self, name: TableReference) -> Option<TableContextRef> {
         match name {
             TableReference::Bare { table } => self.get_default(table.as_ref()),
             TableReference::Partial { schema, table } => {
@@ -82,11 +82,11 @@ impl TableContainer {
         }
     }
 
-    fn get_default(&self, table: &str) -> Option<ResolvedTable> {
+    fn get_default(&self, table: &str) -> Option<TableContextRef> {
         self.default_tables.get(table).cloned()
     }
 
-    fn get_other(&self, catalog: &str, schema: &str, table: &str) -> Option<ResolvedTable> {
+    fn get_other(&self, catalog: &str, schema: &str, table: &str) -> Option<TableContextRef> {
         self.other_tables
             .get(catalog)
             .and_then(|schemas| schemas.get(schema))
@@ -94,18 +94,18 @@ impl TableContainer {
             .cloned()
     }
 
-    pub fn insert(&mut self, name: TableReference, resolved_table: ResolvedTable) {
+    pub fn insert(&mut self, name: TableReference, table_ctx: TableContextRef) {
         match name {
-            TableReference::Bare { table } => self.insert_default(table.as_ref(), resolved_table),
+            TableReference::Bare { table } => self.insert_default(table.as_ref(), table_ctx),
             TableReference::Partial { schema, table } => {
                 if schema == self.default_schema {
-                    self.insert_default(table.as_ref(), resolved_table)
+                    self.insert_default(table.as_ref(), table_ctx)
                 } else {
                     self.insert_other(
                         self.default_catalog.clone(),
                         schema.to_string(),
                         table.to_string(),
-                        resolved_table,
+                        table_ctx,
                     )
                 }
             }
@@ -115,22 +115,21 @@ impl TableContainer {
                 table,
             } => {
                 if catalog == self.default_catalog && schema == self.default_schema {
-                    self.insert_default(table.as_ref(), resolved_table)
+                    self.insert_default(table.as_ref(), table_ctx)
                 } else {
                     self.insert_other(
                         catalog.to_string(),
                         schema.to_string(),
                         table.to_string(),
-                        resolved_table,
+                        table_ctx,
                     )
                 }
             }
         }
     }
 
-    fn insert_default(&mut self, table: &str, resolved_table: ResolvedTable) {
-        self.default_tables
-            .insert(table.to_string(), resolved_table);
+    fn insert_default(&mut self, table: &str, table_ctx: TableContextRef) {
+        self.default_tables.insert(table.to_string(), table_ctx);
     }
 
     fn insert_other(
@@ -138,14 +137,14 @@ impl TableContainer {
         catalog: String,
         schema: String,
         table: String,
-        resolved_table: ResolvedTable,
+        table_ctx: TableContextRef,
     ) {
         self.other_tables
             .entry(catalog)
             .or_insert_with(HashMap::new)
             .entry(schema)
             .or_insert_with(HashMap::new)
-            .insert(table, resolved_table);
+            .insert(table, table_ctx);
     }
 
     /// Visit all tables

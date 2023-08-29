@@ -25,7 +25,7 @@ use datafusion::{
     datasource::{DefaultTableSource, TableProvider},
     logical_expr::TableSource,
     physical_plan::{udaf::AggregateUDF, udf::ScalarUDF},
-    sql::planner::ContextProvider,
+    sql::{planner::ContextProvider, ResolvedTableReference},
 };
 use df_operator::{registry::FunctionRegistry, scalar::ScalarUdf, udaf::AggregateUdf};
 use macros::define_result;
@@ -96,6 +96,16 @@ pub struct ResolvedTable {
     pub table: TableRef,
 }
 
+#[derive(Debug)]
+pub struct TableContext {
+    pub catalog: String,
+    pub schema: String,
+    pub table: TableRef,
+    pub selected_partitions: Vec<SelectedPartition>,
+}
+
+pub type TableContextRef = Arc<TableContext>;
+
 // FIXME: the new partitioned table scan logic is incomplete now, we can't
 // enable it when normal running. So we left a button here to enable it just for
 // testing.
@@ -105,23 +115,36 @@ fn enable_dedicated_partitioned_table_provider() -> bool {
         == "true"
 }
 
-impl ResolvedTable {
-    fn into_table_provider(self) -> Arc<dyn TableProvider> {
-        if self.table.partition_info().is_some() && enable_dedicated_partitioned_table_provider() {
-            let partition_info = self.table.partition_info().unwrap();
-            let builder = PartitionedTableScanBuilder::new(
-                self.table.name().to_string(),
-                self.catalog,
-                self.schema,
-                partition_info,
-            );
+fn build_table_provider(table_ctx: &TableContext) -> Arc<dyn TableProvider> {
+    let TableContext {
+        catalog,
+        schema,
+        table,
+        selected_partitions,
+    } = table_ctx;
 
-            Arc::new(TableProviderAdapter::new(self.table.clone(), builder))
-        } else {
-            let builder = NormalTableScanBuilder::new(self.table.clone());
+    if table.partition_info().is_some() && enable_dedicated_partitioned_table_provider() {
+        let partition_info = table.partition_info().unwrap();
+        let builder = PartitionedTableScanBuilder::new(
+            table.name().to_string(),
+            catalog.clone(),
+            schema.clone(),
+            partition_info,
+        );
 
-            Arc::new(TableProviderAdapter::new(self.table.clone(), builder))
-        }
+        Arc::new(TableProviderAdapter::new(
+            table.clone(),
+            builder,
+            selected_partitions.clone(),
+        ))
+    } else {
+        let builder = NormalTableScanBuilder::new(table.clone());
+
+        Arc::new(TableProviderAdapter::new(
+            table.clone(),
+            builder,
+            selected_partitions.clone(),
+        ))
     }
 }
 
@@ -310,8 +333,8 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
         }
     }
 
-    pub fn table_source(&self, resolved_table: ResolvedTable) -> Arc<(dyn TableSource + 'static)> {
-        let table_provider = resolved_table.into_table_provider();
+    pub fn table_source(&self, table_ctx: &TableContext) -> Arc<(dyn TableSource + 'static)> {
+        let table_provider = build_table_provider(table_ctx);
 
         Arc::new(DefaultTableSource { table_provider })
     }
@@ -359,16 +382,42 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
         name: TableReference,
     ) -> std::result::Result<Arc<(dyn TableSource + 'static)>, DataFusionError> {
         // Find in local cache
-        if let Some(resolved) = self.table_cache.borrow().get(name.clone()) {
-            return Ok(self.table_source(resolved));
+        if let Some(table_ctx) = self.table_cache.borrow().get(name.clone()) {
+            return Ok(self.table_source(&table_ctx));
         }
 
         // Find in meta provider
         // TODO: possible to remove this clone?
         match self.meta_provider.table(name.clone()) {
             Ok(Some(resolved)) => {
-                self.table_cache.borrow_mut().insert(name, resolved.clone());
-                Ok(self.table_source(resolved))
+                let selected_partitions =
+                    if let Some(selecteds) = &*self.selected_partitions.borrow() {
+                        let table_ref = ResolvedTableReference {
+                            catalog: Cow::Borrowed(&resolved.catalog),
+                            schema: Cow::Borrowed(&resolved.schema),
+                            table: Cow::Borrowed(resolved.table.name()),
+                        };
+
+                        match selecteds.get(&table_ref.to_string()) {
+                            Some(v) => v.clone(),
+                            None => Vec::new(),
+                        }
+                    } else {
+                        Vec::new()
+                    };
+
+                let table_ctx = Arc::new(TableContext {
+                    catalog: resolved.catalog,
+                    schema: resolved.schema,
+                    table: resolved.table,
+                    selected_partitions,
+                });
+
+                self.table_cache
+                    .borrow_mut()
+                    .insert(name, table_ctx.clone());
+
+                Ok(self.table_source(&table_ctx))
             }
             Ok(None) => Err(DataFusionError::Execution(format!(
                 "Table is not found, {:?}",
@@ -461,7 +510,7 @@ impl SchemaProvider for SchemaProviderAdapter {
 
         self.tables
             .get(name_ref)
-            .map(|resolved| resolved.into_table_provider())
+            .map(|table_ctx| build_table_provider(&table_ctx))
     }
 
     fn table_exist(&self, name: &str) -> bool {

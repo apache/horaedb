@@ -42,6 +42,7 @@ use log::debug;
 use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector};
 
 use crate::{
+    partition::SelectedPartition,
     predicate::{PredicateBuilder, PredicateRef},
     stream::{ScanStreamState, ToDfStream},
     table::{ReadOptions, ReadRequest, TableRef},
@@ -152,10 +153,14 @@ pub struct TableProviderAdapter<B> {
 
     /// Table scan builder
     builder: B,
+
+    /// Explicit Selected partitions for partitioned table
+    /// It should always be empty for normal table.
+    selected_partitions: Vec<SelectedPartition>,
 }
 
 impl<B: TableScanBuilder> TableProviderAdapter<B> {
-    pub fn new(table: TableRef, builder: B) -> Self {
+    pub fn new(table: TableRef, builder: B, selected_partitions: Vec<SelectedPartition>) -> Self {
         // Take a snapshot of the schema
         let read_schema = table.schema();
 
@@ -163,6 +168,7 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
             table,
             read_schema,
             builder,
+            selected_partitions,
         }
     }
 
@@ -177,6 +183,13 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
         filters: &[Expr],
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
+        if self.table.partition_info().is_none() && !self.selected_partitions.is_empty() {
+            return Err(DataFusionError::Internal(
+                format!("only partitioned table can define selected partitions, invalid_table's id:{}, name:{}", 
+                    self.table.id(), self.table.name())
+            ));
+        }
+
         let ceresdb_options = state.config_options().extensions.get::<CeresdbOptions>();
         assert!(ceresdb_options.is_some());
         let ceresdb_options = ceresdb_options.unwrap();
@@ -217,7 +230,8 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
             projected_schema,
             predicate,
             metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
-            selected_partitions: Vec::new(),
+            // TODO: can we eliminate this clone...
+            selected_partitions: self.selected_partitions.clone(),
         };
 
         self.builder.build(request).await
