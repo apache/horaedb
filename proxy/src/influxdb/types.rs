@@ -383,7 +383,7 @@ impl InfluxqlResultBuilder {
 
         let series = ordered_group_keys
             .into_iter()
-            .zip(self.value_groups.into_iter())
+            .zip(self.value_groups)
             .map(|(group_key, value_group)| {
                 let name = group_key.measurement;
                 let tags = if group_key.group_by_tag_values.is_empty() {
@@ -616,7 +616,7 @@ mod tests {
 
     use arrow::datatypes::{Field as ArrowField, Fields, Schema as ArrowSchema};
     use common_types::{
-        column::{ColumnBlock, ColumnBlockBuilder},
+        column_block::{ColumnBlock, ColumnBlockBuilder},
         column_schema,
         datum::DatumKind,
         schema,

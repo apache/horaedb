@@ -24,6 +24,9 @@ workspace = true
 [package.edition]
 workspace = true
 
+[features]
+test = []
+
 [dependencies]
 async-trait = { workspace = true }
 common_types = { workspace = true }

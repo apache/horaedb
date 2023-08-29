@@ -602,7 +602,7 @@ mod tests {
 
     #[test]
     fn test_valid_tag_type() {
-        let invalid_tag_types = vec![DatumKind::Null, DatumKind::Float, DatumKind::Double];
+        let invalid_tag_types = [DatumKind::Null, DatumKind::Float, DatumKind::Double];
 
         for v in &DatumKind::VALUES {
             assert_eq!(
@@ -614,7 +614,7 @@ mod tests {
 
     #[test]
     fn test_valid_dictionary_type() {
-        let valid_dictionary_types = vec![DatumKind::String];
+        let valid_dictionary_types = [DatumKind::String];
 
         for v in &DatumKind::VALUES {
             assert_eq!(

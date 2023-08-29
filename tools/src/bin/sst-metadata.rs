@@ -216,7 +216,7 @@ async fn run(args: Args) -> Result<()> {
             for i in 0..fields.len() {
                 let column_meta = row_group.column(i);
                 let field_name = fields.get(i).unwrap().get_basic_info().name().to_string();
-                let mut field_stats = field_stats_map
+                let field_stats = field_stats_map
                     .entry(field_name)
                     .or_insert(FieldStatistics::default());
                 field_stats.compressed_size += column_meta.compressed_size();
@@ -286,12 +286,12 @@ async fn parse_metadata(
 
     let md = if page_indexes {
         let object_store_reader =
-            ObjectStoreReader::new(storage, path.clone(), Arc::new(parquet_metadata));
+            ObjectStoreReader::new(storage.clone(), path.clone(), Arc::new(parquet_metadata));
         let parquet_metadata =
             parquet_ext::meta_data::meta_with_page_indexes(object_store_reader).await?;
-        MetaData::try_new(&parquet_metadata, false)?
+        MetaData::try_new(&parquet_metadata, false, storage).await?
     } else {
-        MetaData::try_new(&parquet_metadata, false)?
+        MetaData::try_new(&parquet_metadata, false, storage).await?
     };
 
     Ok((md, metadata_size, kv_size))

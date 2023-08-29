@@ -781,21 +781,6 @@ impl Schema {
         self.column(i).is_tag
     }
 
-    /// Whether i-nth column can be collapsed to List describe in
-    /// `StorageFormat::Hybrid`
-    pub fn is_collapsible_column(&self, i: usize) -> bool {
-        if self.timestamp_index == i {
-            return true;
-        }
-
-        if self.is_tag_column(i) {
-            return false;
-        }
-
-        self.tsid_index
-            .map_or_else(|| true, |tsid_idx| tsid_idx != i)
-    }
-
     /// Get the version of this schema
     #[inline]
     pub fn version(&self) -> Version {

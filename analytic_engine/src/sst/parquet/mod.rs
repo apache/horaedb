@@ -16,7 +16,6 @@
 
 pub mod async_reader;
 pub mod encoding;
-mod hybrid;
 pub mod meta_data;
 mod row_group_pruner;
 pub mod writer;

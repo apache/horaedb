@@ -217,7 +217,7 @@ impl TableBasedReplay {
         loop {
             // fetch entries to log_entry_buf
             let _timer = PULL_LOGS_DURATION_HISTOGRAM.start_timer();
-            let decoder = WalDecoder::default();
+            let decoder = WalDecoder;
             log_entry_buf = log_iter
                 .next_log_entries(decoder, log_entry_buf)
                 .await
@@ -309,7 +309,7 @@ impl RegionBasedReplay {
         // Split and replay logs.
         loop {
             let _timer = PULL_LOGS_DURATION_HISTOGRAM.start_timer();
-            let decoder = WalDecoder::default();
+            let decoder = WalDecoder;
             log_entry_buf = log_iter
                 .next_log_entries(decoder, log_entry_buf)
                 .await

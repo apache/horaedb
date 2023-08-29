@@ -24,16 +24,18 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    time::Duration,
 };
 
 use common_types::{
     time::{TimeRange, Timestamp},
     SequenceNumber,
 };
+use future_ext::{retry_async, RetryConfig};
 use log::{error, info, warn};
 use macros::define_result;
 use metric_ext::Meter;
-use object_store::ObjectStoreRef;
+use object_store::{ObjectStoreRef, Path};
 use runtime::{JoinHandle, Runtime};
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
@@ -303,7 +305,7 @@ impl Drop for FileHandleInner {
         info!("FileHandle is dropped, meta:{:?}", self.meta);
 
         // Push file cannot block or be async because we are in drop().
-        self.purge_queue.push_file(self.meta.id);
+        self.purge_queue.push_file(&self.meta);
     }
 }
 
@@ -367,7 +369,7 @@ struct FileHandleSet {
 
 impl FileHandleSet {
     fn latest(&self) -> Option<FileHandle> {
-        if let Some(file) = self.file_map.values().rev().next() {
+        if let Some(file) = self.file_map.values().next_back() {
             return Some(file.clone());
         }
         None
@@ -441,6 +443,8 @@ pub struct FileMeta {
     pub max_seq: u64,
     /// The format of the file.
     pub storage_format: StorageFormat,
+    /// Associated files, such as: meta_path
+    pub associated_files: Vec<String>,
 }
 
 impl FileMeta {
@@ -475,9 +479,9 @@ impl FilePurgeQueue {
         self.inner.closed.store(true, Ordering::SeqCst);
     }
 
-    fn push_file(&self, file_id: FileId) {
+    fn push_file(&self, file_meta: &FileMeta) {
         if self.inner.closed.load(Ordering::SeqCst) {
-            warn!("Purger closed, ignore file_id:{file_id}");
+            warn!("Purger closed, ignore file_id:{}", file_meta.id);
             return;
         }
 
@@ -486,7 +490,8 @@ impl FilePurgeQueue {
         let request = FilePurgeRequest {
             space_id: self.inner.space_id,
             table_id: self.inner.table_id,
-            file_id,
+            file_id: file_meta.id,
+            associated_files: file_meta.associated_files.clone(),
         };
 
         if let Err(send_res) = self.inner.sender.send(Request::Purge(request)) {
@@ -510,6 +515,7 @@ pub struct FilePurgeRequest {
     space_id: SpaceId,
     table_id: TableId,
     file_id: FileId,
+    associated_files: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -525,6 +531,11 @@ pub struct FilePurger {
 }
 
 impl FilePurger {
+    const RETRY_CONFIG: RetryConfig = RetryConfig {
+        max_retries: 3,
+        interval: Duration::from_millis(500),
+    };
+
     pub fn start(runtime: &Runtime, store: ObjectStoreRef) -> Self {
         // We must use unbound channel, so the sender wont block when the handle is
         // dropped.
@@ -561,6 +572,13 @@ impl FilePurger {
         FilePurgeQueue::new(space_id, table_id, self.sender.clone())
     }
 
+    // TODO: currently we ignore errors when delete.
+    async fn delete_file(store: &ObjectStoreRef, path: &Path) {
+        if let Err(e) = retry_async(|| store.delete(path), &Self::RETRY_CONFIG).await {
+            error!("File purger failed to delete file, path:{path}, err:{e}");
+        }
+    }
+
     async fn purge_file_loop(store: ObjectStoreRef, mut receiver: UnboundedReceiver<Request>) {
         info!("File purger start");
 
@@ -579,13 +597,12 @@ impl FilePurger {
                         sst_file_path.to_string()
                     );
 
-                    if let Err(e) = store.delete(&sst_file_path).await {
-                        error!(
-                            "File purger failed to delete file, sst_file_path:{}, err:{}",
-                            sst_file_path.to_string(),
-                            e
-                        );
+                    for path in purge_request.associated_files {
+                        let path = Path::from(path);
+                        Self::delete_file(&store, &path).await;
                     }
+
+                    Self::delete_file(&store, &sst_file_path).await;
                 }
                 Request::Exit => break,
             }

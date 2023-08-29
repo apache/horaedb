@@ -102,21 +102,18 @@ impl Proxy {
                 msg: "Invalid request",
             })?;
 
-        let (plan, column_name) =
-            frontend
-                .promql_expr_to_plan(&mut sql_ctx, expr)
-                .map_err(|e| {
-                    let code = if is_table_not_found_error(&e) {
-                        StatusCode::NOT_FOUND
-                    } else {
-                        StatusCode::INTERNAL_SERVER_ERROR
-                    };
-                    Error::ErrWithCause {
-                        code,
-                        msg: "Failed to create plan".to_string(),
-                        source: Box::new(e),
-                    }
-                })?;
+        let (plan, column_name) = frontend.promql_expr_to_plan(&sql_ctx, expr).map_err(|e| {
+            let code = if is_table_not_found_error(&e) {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            Error::ErrWithCause {
+                code,
+                msg: "Failed to create plan".to_string(),
+                source: Box::new(e),
+            }
+        })?;
 
         self.instance
             .limiter
@@ -345,7 +342,7 @@ impl RecordConverter {
 mod tests {
 
     use common_types::{
-        column::{ColumnBlock, ColumnBlockBuilder},
+        column_block::{ColumnBlock, ColumnBlockBuilder},
         column_schema,
         datum::{Datum, DatumKind},
         row::Row,

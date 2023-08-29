@@ -16,7 +16,6 @@
 //!
 //! Optimizes and executes logical plan
 
-pub mod codec;
 pub mod config;
 pub mod context;
 pub mod datafusion_impl;
@@ -27,16 +26,12 @@ use std::fmt;
 
 pub use config::Config;
 
-use crate::{
-    codec::PhysicalPlanCodecRef, executor::ExecutorRef, physical_planner::PhysicalPlannerRef,
-};
+use crate::{executor::ExecutorRef, physical_planner::PhysicalPlannerRef};
 
 pub trait QueryEngine: fmt::Debug + Send + Sync {
     fn physical_planner(&self) -> PhysicalPlannerRef;
 
     fn executor(&self) -> ExecutorRef;
-
-    fn physical_plan_codec(&self) -> PhysicalPlanCodecRef;
 }
 
 pub type QueryEngineRef = Box<dyn QueryEngine>;

@@ -506,7 +506,6 @@ fn test_table_write_get_override_case<T: EngineBuildContext>(
                 "tag2-3",
             ),
         ];
-
         util::check_get(
             &test_ctx,
             &fixed_schema_table,

@@ -468,9 +468,10 @@ impl<'a> Writer<'a> {
         table_data.set_last_sequence(sequence);
 
         // Collect metrics.
+        let num_columns = row_group.schema().num_columns();
         table_data
             .metrics
-            .on_write_request_done(row_group.num_rows());
+            .on_write_request_done(row_group.num_rows(), num_columns);
 
         Ok(())
     }
@@ -566,6 +567,7 @@ impl<'a> Writer<'a> {
             // mismatch during replaying
             schema: Some(schema_pb::TableSchema::from(&self.table_data.schema())),
             rows: encoded_rows,
+            cols: Vec::new(),
         };
 
         // Encode payload

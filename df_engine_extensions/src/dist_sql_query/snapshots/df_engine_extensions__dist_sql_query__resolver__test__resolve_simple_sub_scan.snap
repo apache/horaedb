@@ -1,0 +1,9 @@
+---
+source: df_engine_extensions/src/dist_sql_query/resolver.rs
+assertion_line: 218
+expression: new_plan
+---
+ProjectionExec: expr=[time@0 as time, tag1@1 as tag1, tag2@2 as tag2, value@3 as value, field2@4 as field2]
+  FilterExec: time@0 < 1691974518000 AND tag1@1 = test_tag
+    MockScan
+

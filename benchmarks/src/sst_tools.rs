@@ -110,7 +110,8 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
     let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path.clone()).unwrap()) as _;
     let input_path = Path::from(config.input_file_name);
 
-    let sst_meta = util::meta_from_sst(&store, &input_path, &None).await;
+    let parquet_metadata = util::parquet_metadata(&store, &input_path).await;
+    let sst_meta = util::meta_from_sst(&parquet_metadata, &store, &None).await;
 
     let projected_schema = ProjectedSchema::no_projection(sst_meta.schema.clone());
     let scan_options = ScanOptions {
@@ -227,7 +228,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     };
 
     let request_id = RequestId::next_id();
-    let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
+    let sst_factory: SstFactoryRef = Arc::new(FactoryImpl);
     let store_picker: ObjectStorePickerRef = Arc::new(store);
     let projected_schema = ProjectedSchema::no_projection(schema.clone());
     let sst_read_options = SstReadOptions {

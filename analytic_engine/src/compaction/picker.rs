@@ -543,7 +543,7 @@ impl TimeWindowPicker {
 
             let (left, _) = Self::get_window_bounds_in_millis(window, ts);
 
-            let bucket_files = buckets.entry(left).or_insert_with(Vec::new);
+            let bucket_files = buckets.entry(left).or_default();
 
             bucket_files.push(f.clone());
 
@@ -724,7 +724,6 @@ mod tests {
             max_sequence: 200,
             schema: build_schema(),
             parquet_filter: Default::default(),
-            collapsible_cols_idx: Vec::new(),
         };
 
         SstMetaData::Parquet(Arc::new(parquet_meta_data))
@@ -814,7 +813,7 @@ mod tests {
 
     #[test]
     fn test_time_window_picker() {
-        let picker_manager = PickerManager::default();
+        let picker_manager = PickerManager;
         let twp = picker_manager.get_picker(CompactionStrategy::Default);
         let mut ctx = PickerContext {
             segment_duration: Duration::from_millis(1000),
@@ -873,6 +872,7 @@ mod tests {
                     row_num: 0,
                     max_seq: 0,
                     storage_format: StorageFormat::default(),
+                    associated_files: Vec::new(),
                 };
                 let queue = FilePurgeQueue::new(1, 1.into(), tx.clone());
                 FileHandle::new(file_meta, queue)
@@ -893,6 +893,7 @@ mod tests {
                     row_num: 0,
                     max_seq,
                     storage_format: StorageFormat::default(),
+                    associated_files: Vec::new(),
                 };
                 let queue = FilePurgeQueue::new(1, 1.into(), tx.clone());
                 FileHandle::new(file_meta, queue)

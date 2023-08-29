@@ -42,7 +42,7 @@ env:
   CERESMETA_IMAGE_NAME: ceresdb/ceresmeta-server:latest
   CERESDB_IMAGE_NAME: ceresdb/ceresdb-server:latest
   LOCK_FILE: Cargo.lock
-  RUST_VERSION: nightly-2023-02-02
+  RUST_VERSION: nightly-2023-08-28
 
 jobs:
   style-check:
@@ -176,7 +176,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v3
         with:
-          name: CI-${{ github.head_ref }}.${{ github.sha }}
+          name: CI-${{ github.sha }}
           path: |
             /tmp/ceresdb-stdout.log
             /tmp/ceresmeta.log
@@ -250,7 +250,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v3
         with:
-          name: sdk-test-${{ github.head_ref }}.${{ github.sha }}
+          name: sdk-test-${{ github.sha }}
           path: |
             /tmp/ceresdb-stdout.log
 

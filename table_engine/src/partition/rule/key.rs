@@ -52,10 +52,10 @@ impl KeyRule {
     /// Above logics are preparing for implementing something like:
     ///     fa1 && fa2 && fb =  (fa1 && fb) && (fa2 && fb)
     /// Partitions about above expression will be calculated by following steps:
-    ///     + partitions about "(fa1 && fb)" will be calculated first,
-    ///        assume "partitions 1"
-    ///     + partitions about "(fa2 && fb)"  will be calculated after,
-    ///        assume "partitions 2"
+    ///     + partitions about "(fa1 && fb)" will be calculated first, assume
+    ///       "partitions 1"
+    ///     + partitions about "(fa2 && fb)"  will be calculated after, assume
+    ///       "partitions 2"
     ///     + "total partitions" = "partitions 1" intersection "partitions 2"
     fn get_candidate_partition_keys_groups(
         &self,

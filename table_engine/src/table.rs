@@ -429,7 +429,7 @@ impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
                 .context(ConvertPredicate)?,
         );
         Ok(Self {
-            request_id: RequestId::next_id(),
+            request_id: pb.request_id.into(),
             opts,
             projected_schema,
             predicate,

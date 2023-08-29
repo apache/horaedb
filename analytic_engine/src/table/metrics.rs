@@ -48,6 +48,12 @@ lazy_static! {
     )
     .unwrap();
 
+    static ref TABLE_WRITE_FIELDS_COUNTER: IntCounter = register_int_counter!(
+        "table_write_fields_counter",
+        "Fields counter of table write"
+    )
+    .unwrap();
+
     static ref TABLE_READ_REQUEST_COUNTER: IntCounter = register_int_counter!(
         "table_read_request_counter",
         "Read request counter of table"
@@ -208,8 +214,9 @@ impl Metrics {
     }
 
     #[inline]
-    pub fn on_write_request_done(&self, num_rows: usize) {
+    pub fn on_write_request_done(&self, num_rows: usize, num_columns: usize) {
         TABLE_WRITE_BATCH_HISTOGRAM.observe(num_rows as f64);
+        TABLE_WRITE_FIELDS_COUNTER.inc_by((num_columns * num_rows) as u64);
     }
 
     #[inline]

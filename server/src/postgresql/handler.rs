@@ -130,7 +130,7 @@ fn into_pg_reponse<'a>(out: Output) -> PgWireResult<Response<'a>> {
 
             Ok(Response::Query(QueryResponse::new(
                 schema,
-                stream::iter(data_rows.into_iter()),
+                stream::iter(data_rows),
             )))
         }
     }

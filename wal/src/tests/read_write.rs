@@ -34,7 +34,7 @@ static INIT_LOG: Once = Once::new();
 
 #[test]
 fn test_rocksdb_wal() {
-    let builder = RocksWalBuilder::default();
+    let builder = RocksWalBuilder;
 
     test_all(builder, false);
 }

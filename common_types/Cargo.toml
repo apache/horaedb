@@ -39,6 +39,8 @@ hash_ext = { workspace = true }
 macros = { workspace = true }
 paste = { workspace = true }
 prost = { workspace = true }
+rand = { workspace = true }
+seahash = "4.1.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }

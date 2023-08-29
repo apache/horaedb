@@ -24,7 +24,7 @@ use arrow::{array::ArrayRef, error::ArrowError, record_batch::RecordBatch};
 use async_trait::async_trait;
 use codec::{compact::MemCompactEncoder, Encoder};
 use common_types::{
-    column::{ColumnBlock, ColumnBlockBuilder},
+    column_block::{ColumnBlock, ColumnBlockBuilder},
     column_schema::ColumnId,
     datum::Datum,
     row::RowGroup,
@@ -80,13 +80,17 @@ pub enum Error {
     EncodeTsid { source: codec::compact::Error },
 
     #[snafu(display("Failed to convert arrow array to column block, err:{}", source))]
-    ConvertColumnBlock { source: common_types::column::Error },
+    ConvertColumnBlock {
+        source: common_types::column_block::Error,
+    },
 
     #[snafu(display("Failed to find input columns of expr, column_name:{}", column_name))]
     FindExpressionInput { column_name: String },
 
     #[snafu(display("Failed to build column block, err:{}", source))]
-    BuildColumnBlock { source: common_types::column::Error },
+    BuildColumnBlock {
+        source: common_types::column_block::Error,
+    },
 }
 
 define_result!(Error);

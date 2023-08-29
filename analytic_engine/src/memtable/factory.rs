@@ -29,6 +29,7 @@ pub enum Error {}
 define_result!(Error);
 
 /// MemTable options
+#[derive(Clone)]
 pub struct Options {
     /// Schema of the skiplist.
     pub schema: Schema,

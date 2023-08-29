@@ -20,7 +20,7 @@ use std::{
 };
 
 use arrow::datatypes::DataType;
-use common_types::{column::ColumnBlock, datum::DatumKind};
+use common_types::{column_block::ColumnBlock, datum::DatumKind};
 use datafusion::{
     error::DataFusionError,
     logical_expr::{
@@ -44,7 +44,9 @@ const FUNC_ARG_NUM: usize = 5;
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display("Failed to convert array to ColumnarValue, err:{}", source))]
-    InvalidArray { source: common_types::column::Error },
+    InvalidArray {
+        source: common_types::column_block::Error,
+    },
 
     #[snafu(display("Invalid function arguments, err:{}", source))]
     InvalidArguments { source: GenericError },

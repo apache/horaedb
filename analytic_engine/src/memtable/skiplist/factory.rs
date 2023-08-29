@@ -17,11 +17,11 @@
 use std::sync::{atomic::AtomicU64, Arc};
 
 use arena::MonoIncArena;
-use skiplist::Skiplist;
+use skiplist::{BytewiseComparator, Skiplist};
 
 use crate::memtable::{
     factory::{Factory, Options, Result},
-    skiplist::{BytewiseComparator, SkiplistMemTable},
+    skiplist::SkiplistMemTable,
     MemTableRef,
 };
 

@@ -22,8 +22,8 @@ use catalog::{manager::ManagerRef, schema::SchemaRef};
 use ceresdbproto::{
     remote_engine::{
         read_response::Output::Arrow, remote_engine_service_server::RemoteEngineService, row_group,
-        GetTableInfoRequest, GetTableInfoResponse, ReadRequest, ReadResponse, WriteBatchRequest,
-        WriteRequest, WriteResponse,
+        ExecutePlanRequest, GetTableInfoRequest, GetTableInfoResponse, ReadRequest, ReadResponse,
+        WriteBatchRequest, WriteRequest, WriteResponse,
     },
     storage::{arrow_payload, ArrowPayload},
 };
@@ -426,6 +426,7 @@ struct HandlerContext {
 
 #[async_trait]
 impl RemoteEngineService for RemoteEngineServiceImpl {
+    type ExecutePhysicalPlanStream = BoxStream<'static, std::result::Result<ReadResponse, Status>>;
     type ReadStream = BoxStream<'static, std::result::Result<ReadResponse, Status>>;
 
     async fn read(
@@ -529,6 +530,13 @@ impl RemoteEngineService for RemoteEngineServiceImpl {
         request: Request<WriteBatchRequest>,
     ) -> std::result::Result<Response<WriteResponse>, Status> {
         self.write_batch_internal(request).await
+    }
+
+    async fn execute_physical_plan(
+        &self,
+        _request: Request<ExecutePlanRequest>,
+    ) -> std::result::Result<Response<Self::ExecutePhysicalPlanStream>, Status> {
+        todo!()
     }
 }
 

@@ -144,7 +144,7 @@ impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
     }
 }
 
-struct SequenceCodec;
+pub struct SequenceCodec;
 
 impl Encoder<KeySequence> for SequenceCodec {
     type Error = Error;

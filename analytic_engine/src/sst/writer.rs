@@ -48,6 +48,18 @@ pub mod error {
         #[snafu(display("Failed to encode meta data, err:{}", source))]
         EncodeMetaData { source: GenericError },
 
+        #[snafu(display("Failed to encode pb data, err:{}", source))]
+        EncodePbData {
+            source: crate::sst::parquet::encoding::Error,
+        },
+
+        #[snafu(display("IO failed, file:{file}, source:{source}.\nbacktrace:\n{backtrace}",))]
+        Io {
+            file: String,
+            source: std::io::Error,
+            backtrace: Backtrace,
+        },
+
         #[snafu(display(
             "Failed to encode record batch into sst, err:{}.\nBacktrace:\n{}",
             source,
@@ -80,11 +92,12 @@ pub type RecordBatchStreamItem = std::result::Result<RecordBatchWithKey, Generic
 // TODO(yingwen): SstReader also has a RecordBatchStream, can we use same type?
 pub type RecordBatchStream = Box<dyn Stream<Item = RecordBatchStreamItem> + Send + Unpin>;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct SstInfo {
     pub file_size: usize,
     pub row_num: usize,
     pub storage_format: StorageFormat,
+    pub meta_path: String,
 }
 
 #[derive(Debug, Clone)]

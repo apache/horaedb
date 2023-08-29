@@ -17,7 +17,7 @@
 use std::{fmt, ops::Deref};
 
 use arrow::array::ArrayRef as DfArrayRef;
-use common_types::column::ColumnBlock;
+use common_types::column_block::ColumnBlock;
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     physical_plan::Accumulator as DfAccumulator,

@@ -26,11 +26,9 @@ use datafusion::{
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
-use table_engine::{
-    provider::ScanTable,
-    remote::{model::TableIdentifier, RemoteEngineRef},
-    table::ReadRequest,
-};
+use table_engine::{remote::model::TableIdentifier, table::ReadRequest};
+
+use crate::dist_sql_query::RemotePhysicalPlanExecutor;
 
 /// Placeholder of partitioned table's scan plan
 /// It is inexecutable actually and just for carrying the necessary information
@@ -105,12 +103,37 @@ impl DisplayAs for UnresolvedPartitionedScan {
 /// It includes remote execution plans of sub tables, and will send them to
 /// related nodes to execute.
 #[derive(Debug)]
-pub struct ResolvedPartitionedScan {
-    pub remote_engine: RemoteEngineRef,
+pub struct ResolvedPartitionedScan<R> {
+    pub remote_executor: R,
     pub remote_exec_plans: Vec<(TableIdentifier, Arc<dyn ExecutionPlan>)>,
 }
 
-impl ExecutionPlan for ResolvedPartitionedScan {
+impl<R: RemotePhysicalPlanExecutor> ResolvedPartitionedScan<R> {
+    pub fn extend_remote_exec_plans(
+        &self,
+        extended_node: Arc<dyn ExecutionPlan>,
+    ) -> DfResult<Arc<ResolvedPartitionedScan<R>>> {
+        let new_plans = self
+            .remote_exec_plans
+            .iter()
+            .map(|(table, plan)| {
+                extended_node
+                    .clone()
+                    .with_new_children(vec![plan.clone()])
+                    .map(|extended_plan| (table.clone(), extended_plan))
+            })
+            .collect::<DfResult<Vec<_>>>()?;
+
+        let plan = ResolvedPartitionedScan {
+            remote_executor: self.remote_executor.clone(),
+            remote_exec_plans: new_plans,
+        };
+
+        Ok(Arc::new(plan))
+    }
+}
+
+impl<R: RemotePhysicalPlanExecutor> ExecutionPlan for ResolvedPartitionedScan<R> {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -158,7 +181,7 @@ impl ExecutionPlan for ResolvedPartitionedScan {
 }
 
 // TODO: make display for the plan more pretty.
-impl DisplayAs for ResolvedPartitionedScan {
+impl<R: RemotePhysicalPlanExecutor> DisplayAs for ResolvedPartitionedScan<R> {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -172,7 +195,7 @@ impl DisplayAs for ResolvedPartitionedScan {
 /// Placeholder of sub table's scan plan
 /// It is inexecutable actually and just for carrying the necessary information
 /// of building the executable scan plan.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnresolvedSubTableScan {
     pub table: TableIdentifier,
     pub read_request: ReadRequest,
@@ -237,5 +260,48 @@ impl DisplayAs for UnresolvedSubTableScan {
     }
 }
 
-/// `ResolvedSubTableScan` is `ScanTable` actually.
-pub type ResolvedSubTableScan = ScanTable;
+impl TryFrom<ceresdbproto::remote_engine::UnresolvedSubScan> for UnresolvedSubTableScan {
+    type Error = DataFusionError;
+
+    fn try_from(
+        value: ceresdbproto::remote_engine::UnresolvedSubScan,
+    ) -> Result<Self, Self::Error> {
+        let table_ident: TableIdentifier = value
+            .table
+            .ok_or(DataFusionError::Internal(
+                "table ident not found".to_string(),
+            ))?
+            .into();
+        let read_request: ReadRequest = value
+            .read_request
+            .ok_or(DataFusionError::Internal(
+                "read request not found".to_string(),
+            ))?
+            .try_into()
+            .map_err(|e| {
+                DataFusionError::Internal(format!("failed to decode read request, err:{e}"))
+            })?;
+
+        Ok(Self {
+            table: table_ident,
+            read_request,
+        })
+    }
+}
+
+impl TryFrom<UnresolvedSubTableScan> for ceresdbproto::remote_engine::UnresolvedSubScan {
+    type Error = DataFusionError;
+
+    fn try_from(value: UnresolvedSubTableScan) -> Result<Self, Self::Error> {
+        let table_ident: ceresdbproto::remote_engine::TableIdentifier = value.table.into();
+        let read_request: ceresdbproto::remote_engine::TableReadRequest =
+            value.read_request.try_into().map_err(|e| {
+                DataFusionError::Internal(format!("failed to encode read request, err:{e}"))
+            })?;
+
+        Ok(Self {
+            table: Some(table_ident),
+            read_request: Some(read_request),
+        })
+    }
+}

@@ -62,7 +62,7 @@ where
     fn drop(&mut self) {
         if !self.done {
             let inner = self.inner.take().unwrap();
-            let handle = self.runtime.spawn(async move { inner.await });
+            let handle = self.runtime.spawn(inner);
             drop(handle);
         }
     }

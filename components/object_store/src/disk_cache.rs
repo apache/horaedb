@@ -132,7 +132,7 @@ struct Manifest {
 
 impl Manifest {
     const CURRENT_VERSION: usize = 2;
-    const FILE_NAME: &str = "manifest.json";
+    const FILE_NAME: &'static str = "manifest.json";
 
     #[inline]
     fn is_valid(&self, version: usize, page_size: usize) -> bool {
@@ -876,7 +876,7 @@ mod test {
 
         // remove cached values, then get again
         {
-            for range in vec![0..16, 16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
+            for range in [0..16, 16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
                 let data_cache = store
                     .inner
                     .cache
@@ -887,7 +887,7 @@ mod test {
                 assert!(test_file_exists(&store.cache_dir, &location, &range));
             }
 
-            for range in vec![16..32, 48..64, 80..96] {
+            for range in [16..32, 48..64, 80..96] {
                 let mut data_cache = store
                     .inner
                     .cache
@@ -1105,7 +1105,7 @@ mod test {
                     .await
                     .unwrap()
             };
-            for range in vec![16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
+            for range in [16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
                 let filename = DiskCacheStore::page_cache_name(&location, &range);
                 let cache = store.cache.meta_cache.lock(&filename);
                 assert!(cache.contains(&filename));
