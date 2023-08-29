@@ -71,6 +71,7 @@ use interpreters::{
 use log::{error, info};
 use query_frontend::plan::Plan;
 use router::{endpoint::Endpoint, Router};
+use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{EngineRuntimes, TableState},
@@ -92,6 +93,21 @@ use crate::{
 // Because the clock may have errors, choose 1 hour as the error buffer
 const QUERY_EXPIRED_BUFFER: Duration = Duration::from_secs(60 * 60);
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SubTableAccessPerm {
+    pub enable_http: bool,
+    pub enable_others: bool,
+}
+
+impl Default for SubTableAccessPerm {
+    fn default() -> Self {
+        Self {
+            enable_http: true,
+            enable_others: false,
+        }
+    }
+}
+
 pub struct Proxy {
     router: Arc<dyn Router + Send + Sync>,
     forwarder: ForwarderRef,
@@ -102,6 +118,7 @@ pub struct Proxy {
     hotspot_recorder: Arc<HotspotRecorder>,
     engine_runtimes: Arc<EngineRuntimes>,
     cluster_with_meta: bool,
+    sub_table_access_perm: SubTableAccessPerm,
 }
 
 impl Proxy {
@@ -117,6 +134,7 @@ impl Proxy {
         hotspot_recorder: Arc<HotspotRecorder>,
         engine_runtimes: Arc<EngineRuntimes>,
         cluster_with_meta: bool,
+        sub_table_access_perm: SubTableAccessPerm,
     ) -> Self {
         let forwarder = Arc::new(Forwarder::new(
             forward_config,
@@ -134,6 +152,7 @@ impl Proxy {
             hotspot_recorder,
             engine_runtimes,
             cluster_with_meta,
+            sub_table_access_perm,
         }
     }
 

@@ -50,7 +50,12 @@ impl Proxy {
         let ctx = Context::new(ctx.timeout, None);
 
         match self
-            .handle_sql(&ctx, schema, &req.query, true)
+            .handle_sql(
+                &ctx,
+                schema,
+                &req.query,
+                self.sub_table_access_perm.enable_http,
+            )
             .await
             .map_err(|e| {
                 error!("Handle sql query failed, ctx:{ctx:?}, req:{req:?}, err:{e}");

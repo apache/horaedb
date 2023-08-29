@@ -82,7 +82,15 @@ impl Proxy {
 
         let req_context = req.context.as_ref().unwrap();
         let schema = &req_context.database;
-        match self.handle_sql(ctx, schema, &req.sql, false).await? {
+        match self
+            .handle_sql(
+                ctx,
+                schema,
+                &req.sql,
+                self.sub_table_access_perm.enable_others,
+            )
+            .await?
+        {
             SqlResponse::Forwarded(resp) => Ok(resp),
             SqlResponse::Local(output) => convert_output(&output, self.resp_compress_min_length),
         }
@@ -138,7 +146,12 @@ impl Proxy {
         let resp_compress_min_length = self.resp_compress_min_length;
         let output = self
             .as_ref()
-            .fetch_sql_query_output(ctx, schema, &req.sql, false)
+            .fetch_sql_query_output(
+                ctx,
+                schema,
+                &req.sql,
+                self.sub_table_access_perm.enable_others,
+            )
             .await?;
 
         match output {

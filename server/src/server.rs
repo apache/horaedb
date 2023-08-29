@@ -401,6 +401,7 @@ impl Builder {
             hotspot_recorder.clone(),
             engine_runtimes.clone(),
             self.cluster.is_some(),
+            self.server_config.sub_table_access_perm,
         ));
 
         let http_service = http::Builder::new(http_config)
