@@ -169,11 +169,11 @@ impl TimestampDecoder {
         let mut reader = BufferedReader::new(buf.chunk());
 
         let version = reader
-            .read_bits((NUM_BYTES_ENCODE_VERSION_LEN * 8) as u32)
+            .next_bits((NUM_BYTES_ENCODE_VERSION_LEN * 8) as u32)
             .context(ReadEncode)? as u8;
         ensure!(version == ENCODE_VERSION, InvalidVersion { version });
 
-        let first_timestamp = reader.read_bits(64).context(ReadEncode)?;
+        let first_timestamp = reader.next_bits(64).context(ReadEncode)?;
         f(Timestamp::new(first_timestamp as i64))?;
 
         let control_bit = reader.next_bit().context(ReadEncode)?;
@@ -201,7 +201,7 @@ impl TimestampDecoder {
             let dod = match dod_masks {
                 DeltaOfDeltaEncodeMasks::ZeroEncode() => 0,
                 DeltaOfDeltaEncodeMasks::NormalEncode(_, _, dod_bits_len) => {
-                    let mut dod = reader.read_bits(dod_bits_len as u32).context(ReadEncode)?;
+                    let mut dod = reader.next_bits(dod_bits_len as u32).context(ReadEncode)?;
 
                     if dod_bits_len == 32 {
                         // need to sign extend negative numbers
