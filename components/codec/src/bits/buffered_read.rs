@@ -14,7 +14,7 @@
 
 use crate::bits::{Bit, Error};
 
-const BIT_MASKS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
+const BIT_MASKS: [u8; 8] = [128, 64, 32, 16, 8, 4, 2, 1];
 
 /// BufferedReader
 /// BufferedReader encapsulates a buffer of bytes which can be read from.
