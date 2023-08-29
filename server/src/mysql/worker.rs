@@ -38,7 +38,7 @@ where
 {
     pub fn new(proxy: Arc<Proxy>, timeout: Option<Duration>) -> Self {
         Self {
-            generic_hold: PhantomData::default(),
+            generic_hold: PhantomData,
             proxy,
             timeout,
         }

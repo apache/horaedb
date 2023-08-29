@@ -187,12 +187,10 @@ impl Client {
             })?;
             let handle = self.io_runtime.spawn(async move {
                 let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
-                let rpc_result = rpc_client
+                rpc_client
                     .write_batch(Request::new(batch_request_pb))
                     .await
-                    .box_err();
-
-                rpc_result
+                    .box_err()
             });
 
             remote_writes.push(handle);

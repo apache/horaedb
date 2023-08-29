@@ -171,17 +171,11 @@ impl Limiter {
     }
 
     pub fn add_write_block_list(&self, block_list: Vec<String>) {
-        self.write_block_list
-            .write()
-            .unwrap()
-            .extend(block_list.into_iter())
+        self.write_block_list.write().unwrap().extend(block_list)
     }
 
     pub fn add_read_block_list(&self, block_list: Vec<String>) {
-        self.read_block_list
-            .write()
-            .unwrap()
-            .extend(block_list.into_iter())
+        self.read_block_list.write().unwrap().extend(block_list)
     }
 
     pub fn set_write_block_list(&self, block_list: Vec<String>) {
@@ -219,7 +213,7 @@ impl Limiter {
     }
 
     pub fn add_block_rules(&self, rules: Vec<BlockRule>) {
-        self.rules.write().unwrap().extend(rules.into_iter());
+        self.rules.write().unwrap().extend(rules);
     }
 
     pub fn remove_block_rules(&self, rules_to_remove: &[BlockRule]) {

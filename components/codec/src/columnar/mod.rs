@@ -392,7 +392,7 @@ impl ColumnarDecoder {
 impl ColumnarDecoder {
     fn decode_with_nulls<B: Buf>(
         ctx: DecodeContext<'_>,
-        buf: &mut B,
+        buf: &B,
         num_datums: usize,
         datum_kind: DatumKind,
     ) -> Result<Vec<Datum>> {
@@ -570,7 +570,7 @@ mod tests {
 
     #[test]
     fn test_small_int() {
-        let datums = vec![10u32, 1u32, 2u32, 81u32, 82u32];
+        let datums = [10u32, 1u32, 2u32, 81u32, 82u32];
 
         check_encode_end_decode(
             10,

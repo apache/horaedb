@@ -228,7 +228,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     };
 
     let request_id = RequestId::next_id();
-    let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
+    let sst_factory: SstFactoryRef = Arc::new(FactoryImpl);
     let store_picker: ObjectStorePickerRef = Arc::new(store);
     let projected_schema = ProjectedSchema::no_projection(schema.clone());
     let sst_read_options = SstReadOptions {

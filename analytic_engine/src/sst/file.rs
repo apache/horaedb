@@ -369,7 +369,7 @@ struct FileHandleSet {
 
 impl FileHandleSet {
     fn latest(&self) -> Option<FileHandle> {
-        if let Some(file) = self.file_map.values().rev().next() {
+        if let Some(file) = self.file_map.values().next_back() {
             return Some(file.clone());
         }
         None

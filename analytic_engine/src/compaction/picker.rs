@@ -543,7 +543,7 @@ impl TimeWindowPicker {
 
             let (left, _) = Self::get_window_bounds_in_millis(window, ts);
 
-            let bucket_files = buckets.entry(left).or_insert_with(Vec::new);
+            let bucket_files = buckets.entry(left).or_default();
 
             bucket_files.push(f.clone());
 
@@ -813,7 +813,7 @@ mod tests {
 
     #[test]
     fn test_time_window_picker() {
-        let picker_manager = PickerManager::default();
+        let picker_manager = PickerManager;
         let twp = picker_manager.get_picker(CompactionStrategy::Default);
         let mut ctx = PickerContext {
             segment_duration: Duration::from_millis(1000),

@@ -130,7 +130,7 @@ impl Proxy {
         let plan = frontend
             // TODO(yingwen): Check error, some error may indicate that the sql is invalid. Now we
             // return internal server error in those cases
-            .statement_to_plan(&mut sql_ctx, stmts.remove(0))
+            .statement_to_plan(&sql_ctx, stmts.remove(0))
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,

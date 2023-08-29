@@ -311,7 +311,7 @@ impl SchedulerImpl {
             space_store,
             runtime: runtime.clone(),
             schedule_interval: config.schedule_interval.0,
-            picker_manager: PickerManager::default(),
+            picker_manager: PickerManager,
             max_ongoing_tasks: config.max_ongoing_tasks,
             max_unflushed_duration: config.max_unflushed_duration.0,
             write_sst_max_buffer_size,

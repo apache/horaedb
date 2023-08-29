@@ -429,7 +429,7 @@ async fn open_instance(
         manifest_storages,
         wal_manager,
         store_picker,
-        Arc::new(FactoryImpl::default()),
+        Arc::new(FactoryImpl),
     )
     .await
     .context(OpenInstance)?;

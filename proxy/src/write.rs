@@ -268,9 +268,9 @@ impl Proxy {
             function_registry: &*self.instance.function_registry,
         };
         let frontend = Frontend::new(provider);
-        let mut ctx = FrontendContext::new(request_id, deadline);
+        let ctx = FrontendContext::new(request_id, deadline);
         let plan = frontend
-            .write_req_to_plan(&mut ctx, schema_config, write_table_req)
+            .write_req_to_plan(&ctx, schema_config, write_table_req)
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,

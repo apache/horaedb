@@ -595,8 +595,8 @@ struct ObjectStoreBasedSnapshotStore {
 }
 
 impl ObjectStoreBasedSnapshotStore {
-    const CURRENT_SNAPSHOT_NAME: &str = "current";
-    const SNAPSHOT_PATH_PREFIX: &str = "manifest/snapshot";
+    const CURRENT_SNAPSHOT_NAME: &'static str = "current";
+    const SNAPSHOT_PATH_PREFIX: &'static str = "manifest/snapshot";
 
     pub fn new(space_id: SpaceId, table_id: TableId, store: ObjectStoreRef) -> Self {
         let snapshot_path = Self::snapshot_path(space_id, table_id);

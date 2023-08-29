@@ -146,7 +146,7 @@ impl MergeMemTableBench {
         let table_id = self.table_id;
         let sequence = u64::MAX;
         let projected_schema = self.projected_schema.clone();
-        let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
+        let sst_factory: SstFactoryRef = Arc::new(FactoryImpl);
         let iter_options = IterOptions {
             batch_size: self.sst_read_options.num_rows_per_row_group,
         };

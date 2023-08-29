@@ -407,12 +407,6 @@ impl Instance {
         let shard_id = request.shard_id;
         let mut table_ctxs = Vec::with_capacity(request.table_defs.len());
 
-        // Open tables.
-        struct TableInfo {
-            name: String,
-            id: TableId,
-        }
-
         let mut spaces_of_tables = Vec::with_capacity(request.table_defs.len());
         for table_def in request.table_defs {
             let context = SpaceContext {

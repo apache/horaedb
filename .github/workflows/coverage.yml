@@ -31,7 +31,7 @@ env:
   RUSTFLAGS: "-C debuginfo=1"
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
-  RUST_VERSION: nightly-2023-02-02
+  RUST_VERSION: nightly-2023-08-28
 
 jobs:
   coverage:
