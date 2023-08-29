@@ -401,6 +401,7 @@ impl Builder {
             hotspot_recorder.clone(),
             engine_runtimes.clone(),
             self.cluster.is_some(),
+            self.server_config.enable_partition_table_access,
         ));
 
         let http_service = http::Builder::new(http_config)
