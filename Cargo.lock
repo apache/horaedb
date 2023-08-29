@@ -1303,9 +1303,9 @@ dependencies = [
 
 [[package]]
 name = "ceresdbproto"
-version = "1.0.11"
+version = "1.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "963a7021095c631e843df0afa20de53cd33cb1ac08f99e633825e1ca58496ac1"
+checksum = "d70476a15f2916909df7015f8053d02f25dd851c1e36224edf7142b0f8f9e624"
 dependencies = [
  "prost",
  "protoc-bin-vendored",
@@ -2344,10 +2344,13 @@ dependencies = [
  "arrow 43.0.0",
  "async-trait",
  "catalog",
+ "ceresdbproto",
  "common_types",
  "datafusion",
+ "datafusion-proto",
  "generic_error",
  "insta",
+ "prost",
  "snafu 0.6.10",
  "table_engine",
  "trace_metric",
@@ -5415,12 +5418,15 @@ dependencies = [
  "chrono",
  "common_types",
  "datafusion",
+ "datafusion-proto",
+ "df_engine_extensions",
  "df_operator",
  "futures 0.3.28",
  "generic_error",
  "iox_query",
  "log",
  "macros",
+ "prost",
  "query_frontend",
  "serde",
  "snafu 0.6.10",
@@ -7546,7 +7552,7 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 0.1.10",
+ "cfg-if 1.0.0",
  "rand 0.8.5",
  "static_assertions",
 ]

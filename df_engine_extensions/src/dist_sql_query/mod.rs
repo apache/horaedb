@@ -24,8 +24,11 @@ use table_engine::{
     table::{ReadRequest, TableRef},
 };
 
+pub mod codec;
 pub mod physical_plan;
 pub mod resolver;
+#[cfg(test)]
+pub mod test_util;
 
 /// Remote datafusion physical plan executor
 #[async_trait]

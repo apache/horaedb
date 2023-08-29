@@ -567,6 +567,7 @@ impl<'a> Writer<'a> {
             // mismatch during replaying
             schema: Some(schema_pb::TableSchema::from(&self.table_data.schema())),
             rows: encoded_rows,
+            cols: Vec::new(),
         };
 
         // Encode payload
