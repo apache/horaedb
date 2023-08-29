@@ -118,7 +118,7 @@ impl SchemaTopologies {
 
         self.topologies
             .entry(schema_name.to_string())
-            .or_insert_with(Default::default)
+            .or_default()
             .update_tables(tables);
 
         true

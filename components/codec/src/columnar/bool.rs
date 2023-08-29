@@ -99,7 +99,7 @@ impl Encoding {
         }
     }
 
-    fn decode<B, F>(&self, buf: &mut B, f: F) -> Result<()>
+    fn decode<B, F>(&self, buf: &B, f: F) -> Result<()>
     where
         B: Buf,
         F: FnMut(bool) -> Result<()>,

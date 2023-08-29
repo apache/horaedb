@@ -142,9 +142,9 @@ impl TableContainer {
     ) {
         self.other_tables
             .entry(catalog)
-            .or_insert_with(HashMap::new)
+            .or_default()
             .entry(schema)
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(table, resolved_table);
     }
 

@@ -617,7 +617,7 @@ impl EngineBuildContext for RocksDBEngineBuildContext {
     type WalsOpener = RocksDBWalsOpener;
 
     fn wals_opener(&self) -> Self::WalsOpener {
-        RocksDBWalsOpener::default()
+        RocksDBWalsOpener
     }
 
     fn config(&self) -> Config {

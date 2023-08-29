@@ -639,7 +639,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             }));
         }
 
-        let iter = futures::stream::iter(meta_list.into_iter());
+        let iter = futures::stream::iter(meta_list);
         debug!(
             "ObkvObjectStore list operation, prefix:{path}, cost:{:?}",
             instant.elapsed()
@@ -682,7 +682,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             }
         }
 
-        let common_prefixes = Vec::from_iter(common_prefixes.into_iter());
+        let common_prefixes = Vec::from_iter(common_prefixes);
         debug!(
             "ObkvObjectStore list_with_delimiter operation, prefix:{path}, cost:{:?}",
             instant.elapsed()

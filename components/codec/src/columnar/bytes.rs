@@ -125,7 +125,7 @@ impl Encoding {
     }
 
     /// The layout can be referred to the docs of [`Encoding`].
-    fn decode<B, F>(&self, ctx: DecodeContext<'_>, buf: &mut B, f: F) -> Result<()>
+    fn decode<B, F>(&self, ctx: DecodeContext<'_>, buf: &B, f: F) -> Result<()>
     where
         B: Buf,
         F: FnMut(Bytes) -> Result<()>,

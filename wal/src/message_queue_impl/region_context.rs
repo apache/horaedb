@@ -513,10 +513,7 @@ impl RegionContextBuilder {
         debug!("Apply region meta delta, delta:{:?}", delta);
 
         // It is likely that snapshot not exist(e.g. no table has ever flushed).
-        let mut table_meta = self
-            .table_metas
-            .entry(delta.table_id)
-            .or_insert_with(TableMetaInner::default);
+        let table_meta = self.table_metas.entry(delta.table_id).or_default();
 
         table_meta.next_sequence_num = delta.sequence_num + 1;
         table_meta.current_high_watermark = delta.offset + 1;

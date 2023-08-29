@@ -778,8 +778,7 @@ mod tests {
 
     impl MockRandomSenders {
         fn start_to_send(&mut self) {
-            while !self.tx_group.is_empty() {
-                let tx = self.tx_group.pop().unwrap();
+            while let Some(tx) = self.tx_group.pop() {
                 let test_data = self.test_datas.pop().unwrap();
                 tokio::spawn(async move {
                     for datum in test_data {

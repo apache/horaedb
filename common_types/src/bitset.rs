@@ -298,7 +298,11 @@ mod tests {
     }
 
     fn iter_set_bools(bools: &[bool]) -> impl Iterator<Item = usize> + '_ {
-        bools.iter().enumerate().filter_map(|(x, y)| y.then(|| x))
+        bools
+            .iter()
+            .enumerate()
+            .filter(|&(_, y)| *y)
+            .map(|(x, _)| x)
     }
 
     #[test]
@@ -347,7 +351,7 @@ mod tests {
     }
 
     fn make_rng() -> StdRng {
-        let seed = OsRng::default().next_u64();
+        let seed = OsRng.next_u64();
         println!("Seed: {seed}");
         StdRng::seed_from_u64(seed)
     }

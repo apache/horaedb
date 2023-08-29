@@ -524,7 +524,7 @@ impl ShardLock {
         lease_id: i64,
         expired_at: Instant,
         on_lock_expired: OnExpired,
-        etcd_client: &mut Client,
+        etcd_client: &Client,
         runtime: &RuntimeRef,
     ) -> Result<()>
     where

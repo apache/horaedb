@@ -137,10 +137,10 @@ impl Proxy {
             function_registry: &*self.instance.function_registry,
         };
         let frontend = Frontend::new(provider);
-        let mut sql_ctx = SqlContext::new(request_id, deadline);
+        let sql_ctx = SqlContext::new(request_id, deadline);
 
         let mut stmts = frontend
-            .parse_influxql(&mut sql_ctx, &req.query)
+            .parse_influxql(&sql_ctx, &req.query)
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::BAD_REQUEST,
@@ -164,7 +164,7 @@ impl Proxy {
         );
 
         let plan = frontend
-            .influxql_stmt_to_plan(&mut sql_ctx, stmts.remove(0))
+            .influxql_stmt_to_plan(&sql_ctx, stmts.remove(0))
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::BAD_REQUEST,

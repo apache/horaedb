@@ -348,7 +348,7 @@ mod tests {
 
         let _ = prefix_store.get(&test_filepath).await;
         let _ = prefix_store.get_range(&test_filepath, 0..1).await;
-        let _ = prefix_store.get_ranges(&test_filepath, &[0..2]).await;
+        let _ = prefix_store.get_ranges(&test_filepath, &[0..2; 1]).await;
 
         let meta = prefix_store.head(&test_filepath).await.unwrap();
         assert!(!meta.location.as_ref().starts_with(test_prefix));

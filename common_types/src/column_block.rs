@@ -1033,7 +1033,7 @@ macro_rules! define_column_block_builder {
 
                 /// Append the [DatumView] into the builder, the datum view should have same the data
                 /// type of builder
-                pub fn append_view<'a>(&mut self, datum: DatumView<'a>) -> Result<()> {
+                pub fn append_view(&mut self, datum: DatumView<'_>) -> Result<()> {
                     let given = datum.kind();
                     match self {
                         Self::Null { rows } => match datum {

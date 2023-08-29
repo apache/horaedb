@@ -427,7 +427,7 @@ impl TableOptions {
                 SEGMENT_DURATION.to_string(),
                 self.segment_duration
                     .map(|v| v.to_string())
-                    .unwrap_or_else(String::new),
+                    .unwrap_or_default(),
             ),
             (UPDATE_MODE.to_string(), self.update_mode.to_string()),
             (ENABLE_TTL.to_string(), self.enable_ttl.to_string()),

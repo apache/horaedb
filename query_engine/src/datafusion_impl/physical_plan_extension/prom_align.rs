@@ -425,7 +425,7 @@ impl PromAlignReader {
             })?;
         field_array
             .into_iter()
-            .zip(timestamp_array.into_iter())
+            .zip(timestamp_array)
             .map(|(field, timestamp)| {
                 Ok(Sample {
                     value: field.with_context(|| PhysicalPlanNoCause {

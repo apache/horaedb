@@ -383,7 +383,7 @@ impl InfluxqlResultBuilder {
 
         let series = ordered_group_keys
             .into_iter()
-            .zip(self.value_groups.into_iter())
+            .zip(self.value_groups)
             .map(|(group_key, value_group)| {
                 let name = group_key.measurement;
                 let tags = if group_key.group_by_tag_values.is_empty() {

@@ -133,14 +133,14 @@ impl Proxy {
             function_registry: &*self.instance.function_registry,
         };
         let frontend = Frontend::new(provider);
-        let mut plan_ctx = Context::new(request_id, deadline);
+        let plan_ctx = Context::new(request_id, deadline);
 
         let RemoteQueryPlan {
             plan,
             timestamp_col_name,
             field_col_name,
         } = frontend
-            .prom_remote_query_to_plan(&mut plan_ctx, query.clone())
+            .prom_remote_query_to_plan(&plan_ctx, query.clone())
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::BAD_REQUEST,
