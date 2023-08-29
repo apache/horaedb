@@ -357,12 +357,10 @@ pub(crate) fn compute_partition<'a>(
 mod tests {
     use std::{collections::BTreeSet, io::Read};
 
-    use bytes_ext::{BufMut, BytesMut};
     use common_types::{
         datum::{Datum, DatumKind},
         string::StringBytes,
     };
-    use hash_ext::hash64;
 
     use super::*;
 
@@ -403,7 +401,7 @@ mod tests {
 
     #[test]
     fn test_compute_partition_for_inserted_row_with_empty_string() {
-        let partition_num = 16;
+        let partition_num = 161709;
         let key_rule = KeyRule {
             typed_key_columns: vec![ColumnWithType::new("col1".to_string(), DatumKind::String)],
             partition_num,
@@ -416,22 +414,11 @@ mod tests {
             Datum::Int64(84),
             Datum::Null,
         ];
-        let row = Row::from_datums(datums.clone());
+        let row = Row::from_datums(datums);
         let defined_idxs = vec![1, 2, 3, 4];
 
-        // Actual
-        let actual = key_rule.compute_partition_for_inserted_row(&row, &defined_idxs);
-
-        // Expected
-        let mut buf = BytesMut::new();
-        buf.clear();
-        buf.put_slice(&datums[1].to_bytes());
-        buf.put_slice(&datums[2].to_bytes());
-        buf.put_slice(&datums[3].to_bytes());
-        buf.put_slice(&datums[4].to_bytes());
-        let expected = (hash64(&buf[..]) % (partition_num as u64)) as usize;
-
-        assert_eq!(actual, expected);
+        let partition_id = key_rule.compute_partition_for_inserted_row(&row, &defined_idxs);
+        assert_eq!(partition_id, 104979);
     }
 
     #[test]
@@ -449,22 +436,12 @@ mod tests {
             Datum::Int64(84),
             Datum::Null,
         ];
-        let row = Row::from_datums(datums.clone());
+        let row = Row::from_datums(datums);
         let defined_idxs = vec![1, 2, 3, 4];
 
         // Actual
-        let actual = key_rule.compute_partition_for_inserted_row(&row, &defined_idxs);
-
-        // Expected
-        let mut buf = BytesMut::new();
-        buf.clear();
-        buf.put_slice(&datums[1].to_bytes());
-        buf.put_slice(&datums[2].to_bytes());
-        buf.put_slice(&datums[3].to_bytes());
-        buf.put_slice(&datums[4].to_bytes());
-        let expected = (hash64(&buf[..]) % (partition_num as u64)) as usize;
-
-        assert_eq!(actual, expected);
+        let partition_id = key_rule.compute_partition_for_inserted_row(&row, &defined_idxs);
+        assert_eq!(partition_id, 6);
     }
 
     #[test]
