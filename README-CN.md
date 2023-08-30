@@ -144,7 +144,7 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 ## 致谢
 在开发 CeresDB 的过程中， 我们受到很多开源项目的影响和启发，例如  [influxdb_iox](https://github.com/influxdata/influxdb_iox), [tikv](https://github.com/tikv/tikv) 等等。感谢这些杰出的项目。
 
-在我们的生产实践中，我们的 WAL 和 ObjectStore 组件深度使用 [OceanBase](https://github.com/oceanbase/oceanbase.git), OceanBase 团队帮助我们维护集群的稳定，感谢OceanBase团队热情的帮助。
+在生产环境中，我们重度使用 [OceanBase](https://github.com/oceanbase/oceanbase) 作为 WAL 和 ObjectStore 的实现，而且 OceanBase 团队还帮助我们一起维护集群的稳定，感谢 OceanBase 团队一直以来的帮助。
 
 ## 开源许可
 CeresDB 基于 [Apache License 2.0](./LICENSE) 协议。
