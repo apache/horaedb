@@ -14,21 +14,32 @@
 
 //! dist sql query physical plans
 
-use std::{any::Any, fmt, sync::Arc};
+use std::{
+    any::Any,
+    fmt,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 
-use arrow::datatypes::SchemaRef;
+use arrow::{datatypes::SchemaRef as ArrowSchemaRef, record_batch::RecordBatch};
+use common_types::schema::RecordSchema;
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     execution::TaskContext,
     physical_expr::PhysicalSortExpr,
     physical_plan::{
-        DisplayAs, DisplayFormatType, ExecutionPlan, Partitioning,
+        DisplayAs, DisplayFormatType, ExecutionPlan, Partitioning, RecordBatchStream,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
+use datafusion_proto::{
+    bytes::physical_plan_to_bytes_with_extension_codec, physical_plan::PhysicalExtensionCodec,
+};
+use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use table_engine::{remote::model::TableIdentifier, table::ReadRequest};
 
-use crate::dist_sql_query::RemotePhysicalPlanExecutor;
+use crate::dist_sql_query::{EncodedPlan, RemotePhysicalPlanExecutor};
 
 /// Placeholder of partitioned table's scan plan
 /// It is inexecutable actually and just for carrying the necessary information
@@ -45,7 +56,7 @@ impl ExecutionPlan for UnresolvedPartitionedScan {
         self
     }
 
-    fn schema(&self) -> SchemaRef {
+    fn schema(&self) -> ArrowSchemaRef {
         self.read_request
             .projected_schema
             .to_projected_arrow_schema()
@@ -103,16 +114,17 @@ impl DisplayAs for UnresolvedPartitionedScan {
 /// It includes remote execution plans of sub tables, and will send them to
 /// related nodes to execute.
 #[derive(Debug)]
-pub struct ResolvedPartitionedScan<R> {
-    pub remote_executor: R,
+pub struct ResolvedPartitionedScan {
+    pub remote_executor: Arc<dyn RemotePhysicalPlanExecutor>,
     pub remote_exec_plans: Vec<(TableIdentifier, Arc<dyn ExecutionPlan>)>,
+    pub extension_codec: Arc<dyn PhysicalExtensionCodec>,
 }
 
-impl<R: RemotePhysicalPlanExecutor> ResolvedPartitionedScan<R> {
+impl ResolvedPartitionedScan {
     pub fn extend_remote_exec_plans(
         &self,
         extended_node: Arc<dyn ExecutionPlan>,
-    ) -> DfResult<Arc<ResolvedPartitionedScan<R>>> {
+    ) -> DfResult<Arc<ResolvedPartitionedScan>> {
         let new_plans = self
             .remote_exec_plans
             .iter()
@@ -127,18 +139,19 @@ impl<R: RemotePhysicalPlanExecutor> ResolvedPartitionedScan<R> {
         let plan = ResolvedPartitionedScan {
             remote_executor: self.remote_executor.clone(),
             remote_exec_plans: new_plans,
+            extension_codec: self.extension_codec.clone(),
         };
 
         Ok(Arc::new(plan))
     }
 }
 
-impl<R: RemotePhysicalPlanExecutor> ExecutionPlan for ResolvedPartitionedScan<R> {
+impl ExecutionPlan for ResolvedPartitionedScan {
     fn as_any(&self) -> &dyn Any {
         self
     }
 
-    fn schema(&self) -> SchemaRef {
+    fn schema(&self) -> ArrowSchemaRef {
         self.remote_exec_plans
             .first()
             .expect("remote_exec_plans should not be empty")
@@ -169,10 +182,34 @@ impl<R: RemotePhysicalPlanExecutor> ExecutionPlan for ResolvedPartitionedScan<R>
 
     fn execute(
         &self,
-        _partition: usize,
-        _context: Arc<TaskContext>,
+        partition: usize,
+        context: Arc<TaskContext>,
     ) -> DfResult<DfSendableRecordBatchStream> {
-        todo!()
+        let (sub_table, plan) = &self.remote_exec_plans[partition];
+
+        // Encode to build `EncodedPlan`.
+        let plan_bytes = physical_plan_to_bytes_with_extension_codec(
+            plan.clone(),
+            self.extension_codec.as_ref(),
+        )?;
+        let record_schema = RecordSchema::try_from(plan.schema()).map_err(|e| {
+            DataFusionError::Internal(format!(
+                "failed to convert arrow_schema to record_schema, arrow_schema:{}, err:{e}",
+                plan.schema()
+            ))
+        })?;
+        let encoded_plan = EncodedPlan {
+            plan: plan_bytes,
+            schema: record_schema,
+        };
+
+        // Send plan for remote execution.
+        let stream_future =
+            self.remote_executor
+                .execute(sub_table.clone(), &context, encoded_plan)?;
+        let record_stream = PartitionedScanStream::new(stream_future, plan.schema());
+
+        Ok(Box::pin(record_stream))
     }
 
     fn statistics(&self) -> Statistics {
@@ -180,8 +217,88 @@ impl<R: RemotePhysicalPlanExecutor> ExecutionPlan for ResolvedPartitionedScan<R>
     }
 }
 
+/// Partitioned scan stream
+struct PartitionedScanStream {
+    /// Future to init the stream
+    stream_future: BoxFuture<'static, DfResult<DfSendableRecordBatchStream>>,
+
+    /// Inited stream to poll the record
+    stream_state: StreamState,
+
+    /// Record schema
+    arrow_record_schema: ArrowSchemaRef,
+}
+
+impl PartitionedScanStream {
+    /// Create an empty RecordBatchStream
+    pub fn new(
+        stream_future: BoxFuture<'static, DfResult<DfSendableRecordBatchStream>>,
+        arrow_record_schema: ArrowSchemaRef,
+    ) -> Self {
+        Self {
+            stream_future,
+            stream_state: StreamState::Initializing,
+            arrow_record_schema,
+        }
+    }
+}
+
+impl RecordBatchStream for PartitionedScanStream {
+    fn schema(&self) -> ArrowSchemaRef {
+        self.arrow_record_schema.clone()
+    }
+}
+
+impl Stream for PartitionedScanStream {
+    type Item = DfResult<RecordBatch>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+
+        loop {
+            let stream_state = &mut this.stream_state;
+            match stream_state {
+                StreamState::Initializing => {
+                    let poll_res = this.stream_future.poll_unpin(cx);
+                    match poll_res {
+                        Poll::Ready(Ok(stream)) => {
+                            *stream_state = StreamState::Polling(stream);
+                        }
+                        Poll::Ready(Err(e)) => {
+                            *stream_state = StreamState::Failed(e.to_string());
+                            return Poll::Ready(Some(Err(e)));
+                        }
+                        Poll::Pending => return Poll::Pending,
+                    }
+                }
+
+                StreamState::Polling(stream) => {
+                    let poll_res = stream.poll_next_unpin(cx);
+                    if let Poll::Ready(Some(Err(e))) = &poll_res {
+                        *stream_state = StreamState::Failed(e.to_string());
+                    }
+
+                    return poll_res;
+                }
+
+                StreamState::Failed(err_msg) => {
+                    return Poll::Ready(Some(Err(DataFusionError::Internal(format!(
+                        "failed to poll record stream, err:{err_msg}"
+                    )))));
+                }
+            }
+        }
+    }
+}
+
+pub enum StreamState {
+    Initializing,
+    Polling(DfSendableRecordBatchStream),
+    Failed(String),
+}
+
 // TODO: make display for the plan more pretty.
-impl<R: RemotePhysicalPlanExecutor> DisplayAs for ResolvedPartitionedScan<R> {
+impl DisplayAs for ResolvedPartitionedScan {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -206,7 +323,7 @@ impl ExecutionPlan for UnresolvedSubTableScan {
         self
     }
 
-    fn schema(&self) -> SchemaRef {
+    fn schema(&self) -> ArrowSchemaRef {
         self.read_request
             .projected_schema
             .to_projected_arrow_schema()
