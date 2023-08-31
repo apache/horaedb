@@ -286,7 +286,7 @@ impl TableData {
         allocator: IdAllocator,
         manifest_snapshot_every_n_updates: NonZeroUsize,
     ) -> Result<Self> {
-        let memtable_factory = Arc::new(ColumnarMemTableFactory);
+        let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
         let current_version = TableVersion::new(purge_queue);
         let metrics = Metrics::default();
