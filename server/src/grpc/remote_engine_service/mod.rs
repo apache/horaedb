@@ -562,7 +562,7 @@ async fn handle_stream_read(
     let begin = Instant::now();
     let table = find_table_by_identifier(&ctx, &table_ident)?;
     let res = table
-        .partitioned_read(read_request)
+        .partitioned_read(read_request.clone())
         .await
         .box_err()
         .with_context(|| ErrWithCause {
@@ -572,15 +572,25 @@ async fn handle_stream_read(
     match res {
         Ok(streams) => {
             info!(
-        "Handle stream read success, request_id:{request_id}, table:{table_ident:?}, cost:{:?}",
-        begin.elapsed(),
-    );
+                "Handle stream read success, request_id:{request_id}, table:{table_ident:?}, cost:{:?}, read_options:{:?}, predicate:{:?}",
+                begin.elapsed(),
+                read_request.opts,
+                read_request.predicate,
+            );
+
             REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
                 .stream_query_succeeded
                 .inc();
             Ok(streams)
         }
         Err(e) => {
+            error!(
+                "Handle stream read failed, request_id:{request_id}, table:{table_ident:?}, cost:{:?}, read_options:{:?}, predicate:{:?}, err:{e}",
+                begin.elapsed(),
+                read_request.opts,
+                read_request.predicate,
+            );
+
             REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC
                 .stream_query_failed
                 .inc();

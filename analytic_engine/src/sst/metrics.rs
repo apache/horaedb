@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use lazy_static::lazy_static;
-use prometheus::{exponential_buckets, register_histogram, Histogram};
+use prometheus::{exponential_buckets, register_counter, register_histogram, Counter, Histogram};
 
 lazy_static! {
     // Histogram:
@@ -22,5 +22,15 @@ lazy_static! {
         "sst_get_range_length",
         "Histogram for sst get range length",
         exponential_buckets(100.0, 2.0, 5).unwrap()
+    ).unwrap();
+
+    pub static ref META_DATA_CACHE_HIT_COUNTER: Counter = register_counter!(
+        "META_DATA_CACHE_HIT",
+        "The counter for meta data cache hit"
+    ).unwrap();
+
+    pub static ref META_DATA_CACHE_MISS_COUNTER: Counter = register_counter!(
+        "META_DATA_CACHE_MISS",
+        "The counter for meta data cache miss"
     ).unwrap();
 }

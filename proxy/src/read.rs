@@ -160,7 +160,7 @@ impl Proxy {
         })?;
 
         let cost = begin_instant.saturating_elapsed();
-        info!("Handle sql query successfully, catalog:{catalog}, schema:{schema}, cost:{cost:?}, ctx:{ctx:?}");
+        info!("Handle sql query successfully, catalog:{catalog}, schema:{schema}, cost:{cost:?}, ctx:{ctx:?}, sql:{sql}");
 
         match &output {
             Output::AffectedRows(_) => Ok(output),

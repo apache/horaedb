@@ -27,6 +27,7 @@ use crate::sst::{
         metadata_reader::parse_metadata, KvMetaDataNotFound, KvMetaVersionEmpty,
         ParquetMetaDataRef, Result,
     },
+    metrics::{META_DATA_CACHE_HIT_COUNTER, META_DATA_CACHE_MISS_COUNTER},
     parquet::encoding,
 };
 
@@ -140,7 +141,14 @@ impl MetaCache {
     }
 
     pub fn get(&self, key: &str) -> Option<MetaData> {
-        self.cache.write().unwrap().get(key).cloned()
+        let v = self.cache.write().unwrap().get(key).cloned();
+        if v.is_some() {
+            META_DATA_CACHE_HIT_COUNTER.inc()
+        } else {
+            META_DATA_CACHE_MISS_COUNTER.inc()
+        }
+
+        v
     }
 
     pub fn put(&self, key: String, value: MetaData) {

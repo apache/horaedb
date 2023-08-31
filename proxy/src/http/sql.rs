@@ -49,20 +49,25 @@ impl Proxy {
         let schema = &ctx.schema;
         let ctx = Context::new(ctx.timeout, None);
 
-        match self
+        let query_res = self
             .handle_sql(
                 &ctx,
                 schema,
                 &req.query,
                 self.sub_table_access_perm.enable_http,
             )
-            .await
-            .map_err(|e| {
-                error!("Handle sql query failed, ctx:{ctx:?}, req:{req:?}, err:{e}");
-                e
-            })? {
-            SqlResponse::Forwarded(resp) => convert_sql_response_to_output(resp),
-            SqlResponse::Local(output) => Ok(output),
+            .await;
+
+        match query_res {
+            Err(e) => {
+                error!(
+                    "Handle sql query failed, schema:{schema}, ctx:{ctx:?}, sql:{}, err:{e}",
+                    req.query,
+                );
+                Err(e)
+            }
+            Ok(SqlResponse::Forwarded(resp)) => convert_sql_response_to_output(resp),
+            Ok(SqlResponse::Local(output)) => Ok(output),
         }
     }
 }
