@@ -25,16 +25,6 @@ pub struct BufferedWriter {
 }
 
 impl BufferedWriter {
-    #[allow(dead_code)]
-    /// new creates a new BufferedWriter
-    pub fn new() -> Self {
-        BufferedWriter {
-            buf: Vec::new(),
-            // set pos to 8 to indicate the buffer has no space presently since it is empty
-            pos: 8,
-        }
-    }
-
     pub fn with_capacity(capacity: usize) -> Self {
         BufferedWriter {
             buf: Vec::with_capacity(capacity),
@@ -73,10 +63,9 @@ impl BufferedWriter {
 
         let i = self.last_index();
 
-        match bit {
-            Bit::Zero => (),
-            Bit::One => self.buf[i] |= 1u8.wrapping_shl(7 - self.pos),
-        };
+        if bit != Bit(0) {
+            self.buf[i] |= 1u8.wrapping_shl(7 - self.pos);
+        }
 
         self.pos += 1;
     }
@@ -119,9 +108,9 @@ impl BufferedWriter {
         while num > 0 {
             let byte = bits.wrapping_shr(63);
             if byte == 1 {
-                self.write_bit(Bit::One);
+                self.write_bit(Bit(1));
             } else {
-                self.write_bit(Bit::Zero);
+                self.write_bit(Bit(0));
             }
 
             bits = bits.wrapping_shl(1);
@@ -146,36 +135,36 @@ mod tests {
 
     #[test]
     fn write_bit() {
-        let mut b = BufferedWriter::new();
+        let mut b = BufferedWriter::with_capacity(0);
 
         // 170 = 0b10101010
         for i in 0..8 {
             if i % 2 == 0 {
-                b.write_bit(Bit::One);
+                b.write_bit(Bit(1));
                 continue;
             }
 
-            b.write_bit(Bit::Zero);
+            b.write_bit(Bit(0));
         }
 
         // 146 = 0b10010010
         for i in 0..8 {
             if i % 3 == 0 {
-                b.write_bit(Bit::One);
+                b.write_bit(Bit(1));
                 continue;
             }
 
-            b.write_bit(Bit::Zero);
+            b.write_bit(Bit(0));
         }
 
         // 136 = 010001000
         for i in 0..8 {
             if i % 4 == 0 {
-                b.write_bit(Bit::One);
+                b.write_bit(Bit(1));
                 continue;
             }
 
-            b.write_bit(Bit::Zero);
+            b.write_bit(Bit(0));
         }
 
         assert_eq!(b.buf.len(), 3);
@@ -187,7 +176,7 @@ mod tests {
 
     #[test]
     fn write_byte() {
-        let mut b = BufferedWriter::new();
+        let mut b = BufferedWriter::with_capacity(0);
 
         b.write_byte(234);
         b.write_byte(188);
@@ -201,10 +190,10 @@ mod tests {
 
         // write some bits so we can test `write_byte` when the last byte is partially
         // filled
-        b.write_bit(Bit::One);
-        b.write_bit(Bit::One);
-        b.write_bit(Bit::One);
-        b.write_bit(Bit::One);
+        b.write_bit(Bit(1));
+        b.write_bit(Bit(1));
+        b.write_bit(Bit(1));
+        b.write_bit(Bit(1));
         b.write_byte(0b11110000); // 1111 1111 0000
         b.write_byte(0b00001111); // 1111 1111 0000 0000 1111
         b.write_byte(0b00001111); // 1111 1111 0000 0000 1111 0000 1111
@@ -217,7 +206,7 @@ mod tests {
 
     #[test]
     fn write_bits() {
-        let mut b = BufferedWriter::new();
+        let mut b = BufferedWriter::with_capacity(0);
 
         // 101011
         b.write_bits(43, 6);
@@ -244,16 +233,16 @@ mod tests {
 
     #[test]
     fn write_mixed() {
-        let mut b = BufferedWriter::new();
+        let mut b = BufferedWriter::with_capacity(0);
 
         // 1010 1010
         for i in 0..8 {
             if i % 2 == 0 {
-                b.write_bit(Bit::One);
+                b.write_bit(Bit(1));
                 continue;
             }
 
-            b.write_bit(Bit::Zero);
+            b.write_bit(Bit(0));
         }
 
         // 0000 1001
@@ -266,7 +255,7 @@ mod tests {
 
         // 1111
         for _ in 0..4 {
-            b.write_bit(Bit::One);
+            b.write_bit(Bit(1));
         }
 
         assert_eq!(b.buf.len(), 4);

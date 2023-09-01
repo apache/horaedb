@@ -115,13 +115,13 @@ impl TimestampEncoder {
                 // // write one control bit so we can distinguish a stream which contains only
                 // an initial // timestamp, this assumes the first bit of the
                 // END_MARKER is 1
-                writer.write_bit(Bit::One);
+                writer.write_bit(Bit(1));
                 control_bit_flag = false;
             }
             let cur_delta = v - last_ts;
             let delta_of_delta = cur_delta - last_delta;
             match TimestampEncoder::encode_delta_of_delta_masks(delta_of_delta) {
-                DeltaOfDeltaEncodeMasks::ZeroEncode() => writer.write_bit(Bit::Zero),
+                DeltaOfDeltaEncodeMasks::ZeroEncode() => writer.write_bit(Bit(0)),
                 DeltaOfDeltaEncodeMasks::NormalEncode(
                     control_bis,
                     control_bits_len,
@@ -137,7 +137,7 @@ impl TimestampEncoder {
 
         // write control bit when only the first timestamp exists
         if control_bit_flag {
-            writer.write_bit(Bit::Zero);
+            writer.write_bit(Bit(0));
         }
         // write end mask
         if !first {
@@ -177,7 +177,7 @@ impl TimestampDecoder {
         f(Timestamp::new(first_timestamp as i64))?;
 
         let control_bit = reader.next_bit().context(ReadEncode)?;
-        if control_bit == Bit::Zero {
+        if control_bit == Bit(0) {
             return Ok(());
         }
 
@@ -189,7 +189,7 @@ impl TimestampDecoder {
             for _ in 0..4 {
                 let bit = reader.next_bit().context(ReadEncode)?;
 
-                if bit == Bit::One {
+                if bit == Bit(1) {
                     dod_control_bits_size += 1;
                 } else {
                     break;

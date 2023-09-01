@@ -15,22 +15,11 @@
 use std::{error, fmt};
 
 /// Bit
-/// An enum used to represent a single bit, can be either `Zero` or `One`.
+/// An u8 struct used to represent a single bit,
+/// when it is equal to zero, it represents bit zero, otherwise it represents
+/// bit one.
 #[derive(Debug, PartialEq)]
-pub enum Bit {
-    Zero,
-    One,
-}
-
-impl Bit {
-    /// Convert a bit to u64, so `Zero` becomes 0 and `One` becomes 1.
-    pub fn to_u64(&self) -> u64 {
-        match self {
-            Bit::Zero => 0,
-            Bit::One => 1,
-        }
-    }
-}
+pub struct Bit(pub u8);
 
 /// Error
 /// Enum used to represent potential errors when interacting with a stream.

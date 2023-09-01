@@ -53,9 +53,9 @@ impl<'a> BufferedReader<'a> {
         let byte = self.get_byte()?;
 
         let bit = if byte & BIT_MASKS[self.bit_idx as usize] == 0 {
-            Bit::Zero
+            Bit(0)
         } else {
-            Bit::One
+            Bit(1)
         };
 
         self.bit_idx += 1;
@@ -105,7 +105,7 @@ impl<'a> BufferedReader<'a> {
 
         while num > 0 {
             self.next_bit()
-                .map(|bit| bits = bits.wrapping_shl(1) | bit.to_u64())?;
+                .map(|bit| bits = bits.wrapping_shl(1) | bit.0 as u64)?;
 
             num -= 1;
         }
@@ -123,23 +123,23 @@ mod tests {
         let bytes = vec![0b01101100, 0b11101001];
         let mut b = BufferedReader::new(&bytes);
 
-        assert_eq!(b.next_bit().unwrap(), Bit::Zero);
-        assert_eq!(b.next_bit().unwrap(), Bit::One);
-        assert_eq!(b.next_bit().unwrap(), Bit::One);
-        assert_eq!(b.next_bit().unwrap(), Bit::Zero);
-        assert_eq!(b.next_bit().unwrap(), Bit::One);
-        assert_eq!(b.next_bit().unwrap(), Bit::One);
-        assert_eq!(b.next_bit().unwrap(), Bit::Zero);
-        assert_eq!(b.next_bit().unwrap(), Bit::Zero);
+        assert_eq!(b.next_bit().unwrap(), Bit(0));
+        assert_eq!(b.next_bit().unwrap(), Bit(1));
+        assert_eq!(b.next_bit().unwrap(), Bit(1));
+        assert_eq!(b.next_bit().unwrap(), Bit(0));
+        assert_eq!(b.next_bit().unwrap(), Bit(1));
+        assert_eq!(b.next_bit().unwrap(), Bit(1));
+        assert_eq!(b.next_bit().unwrap(), Bit(0));
+        assert_eq!(b.next_bit().unwrap(), Bit(0));
 
-        assert_eq!(b.next_bit().unwrap(), Bit::One);
-        assert_eq!(b.next_bit().unwrap(), Bit::One);
-        assert_eq!(b.next_bit().unwrap(), Bit::One);
-        assert_eq!(b.next_bit().unwrap(), Bit::Zero);
-        assert_eq!(b.next_bit().unwrap(), Bit::One);
-        assert_eq!(b.next_bit().unwrap(), Bit::Zero);
-        assert_eq!(b.next_bit().unwrap(), Bit::Zero);
-        assert_eq!(b.next_bit().unwrap(), Bit::One);
+        assert_eq!(b.next_bit().unwrap(), Bit(1));
+        assert_eq!(b.next_bit().unwrap(), Bit(1));
+        assert_eq!(b.next_bit().unwrap(), Bit(1));
+        assert_eq!(b.next_bit().unwrap(), Bit(0));
+        assert_eq!(b.next_bit().unwrap(), Bit(1));
+        assert_eq!(b.next_bit().unwrap(), Bit(0));
+        assert_eq!(b.next_bit().unwrap(), Bit(0));
+        assert_eq!(b.next_bit().unwrap(), Bit(1));
 
         assert_eq!(b.next_bit().err().unwrap(), Error::Eof);
     }
@@ -155,10 +155,10 @@ mod tests {
 
         // read some individual bits we can test `read_byte` when the position in the
         // byte we are currently reading is non-zero
-        assert_eq!(b.next_bit().unwrap(), Bit::One);
-        assert_eq!(b.next_bit().unwrap(), Bit::One);
-        assert_eq!(b.next_bit().unwrap(), Bit::One);
-        assert_eq!(b.next_bit().unwrap(), Bit::One);
+        assert_eq!(b.next_bit().unwrap(), Bit(1));
+        assert_eq!(b.next_bit().unwrap(), Bit(1));
+        assert_eq!(b.next_bit().unwrap(), Bit(1));
+        assert_eq!(b.next_bit().unwrap(), Bit(1));
 
         assert_eq!(b.next_byte().unwrap(), 15);
 
@@ -182,7 +182,7 @@ mod tests {
         let bytes = vec![0b01101101, 0b01101101];
         let mut b = BufferedReader::new(&bytes);
 
-        assert_eq!(b.next_bit().unwrap(), Bit::Zero);
+        assert_eq!(b.next_bit().unwrap(), Bit(0));
         assert_eq!(b.next_bits(3).unwrap(), 0b110);
         assert_eq!(b.next_byte().unwrap(), 0b11010110);
         assert_eq!(b.next_bits(2).unwrap(), 0b11);
