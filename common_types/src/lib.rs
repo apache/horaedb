@@ -14,6 +14,7 @@
 
 //! Contains common types
 
+pub mod array_map;
 pub mod bitset;
 pub mod column;
 pub mod column_block;

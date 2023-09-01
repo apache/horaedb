@@ -34,6 +34,7 @@ use prost::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
+    array_map::ArrayMap,
     column_schema::{self, ColumnId, ColumnSchema},
     datum::DatumKind,
     row::{contiguous, RowView},
@@ -380,7 +381,7 @@ pub(crate) struct ColumnSchemas {
     columns: Vec<ColumnSchema>,
     /// Column name to index of that column schema in `columns`, the index is
     /// guaranteed to be valid
-    name_to_index: HashMap<String, usize>,
+    name_to_index: ArrayMap<String, usize>,
     /// Byte offsets of each column in contiguous row.
     byte_offsets: Vec<usize>,
     /// String buffer offset in contiguous row.

@@ -3,3 +3,4 @@ target
 .idea/
 .vscode
 .dir-locals.el
+.project
