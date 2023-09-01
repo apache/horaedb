@@ -15,11 +15,12 @@
 use std::borrow::Borrow;
 
 /// An array based map, optimized for `get` whose size is small.
+#[derive(Default)]
 pub struct ArrayMap<K, V> {
     array: Vec<(K, V)>,
 }
 
-impl<K: PartialEq, V> ArrayMap<K, V> {
+impl<K, V> ArrayMap<K, V> {
     pub fn new() -> Self {
         Self { array: Vec::new() }
     }
@@ -30,7 +31,10 @@ impl<K: PartialEq, V> ArrayMap<K, V> {
         }
     }
 
-    pub fn insert(&mut self, k: K, v: V) {
+    pub fn insert(&mut self, k: K, v: V)
+    where
+        K: PartialEq,
+    {
         for kv in self.array.iter_mut() {
             if kv.0 == k {
                 kv.1 = v;
@@ -51,17 +55,24 @@ impl<K: PartialEq, V> ArrayMap<K, V> {
                 return Some(v);
             }
         }
+
         None
     }
 
     pub fn len(&self) -> usize {
         self.array.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.array.is_empty()
+    }
 }
 
 impl<K: PartialEq + Ord, V> FromIterator<(K, V)> for ArrayMap<K, V> {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
         let mut array = iter.into_iter().collect::<Vec<_>>();
+        // When a key appears multiple times in iterator, the last one will be used as
+        // value.
         array.sort_by(|a, b| a.0.cmp(&b.0));
         array.reverse();
         array.dedup_by(|a, b| a.0.eq(&b.0));
