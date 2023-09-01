@@ -116,10 +116,7 @@ impl Resolver {
             new_children.push(child);
         }
 
-        // There may be `ResolvedPartitionedScan` node in children, try to extend such
-        // children.
-        // TODO: push down the computation physical node here.
-        Self::maybe_extend_partitioned_scan(new_children, plan)
+        plan.with_new_children(new_children)
     }
 
     /// Resolve encoded sub table scanning plan.
@@ -172,17 +169,6 @@ impl Resolver {
         }
 
         plan.with_new_children(new_children)
-    }
-
-    fn maybe_extend_partitioned_scan(
-        new_children: Vec<Arc<dyn ExecutionPlan>>,
-        current_node: Arc<dyn ExecutionPlan>,
-    ) -> DfResult<Arc<dyn ExecutionPlan>> {
-        if new_children.is_empty() {
-            return Ok(current_node);
-        }
-
-        current_node.with_new_children(new_children)
     }
 
     fn find_table(&self, table_ident: &TableIdentifier) -> DfResult<TableRef> {

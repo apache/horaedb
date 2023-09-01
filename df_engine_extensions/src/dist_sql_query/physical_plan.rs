@@ -291,6 +291,31 @@ impl Stream for PartitionedScanStream {
     }
 }
 
+/// Stream state
+/// Before polling record batch from it, we must initializing the record batch
+/// stream first. The process of state changing is like:
+///
+/// ```plaintext
+///         ┌────┐                                        
+///         │INIT│                                        
+///         └──┬─┘                                        
+///   _________▽_________                                 
+///  ╱                   ╲         ┌───────┐             
+/// ╱ Success to init the ╲________│POLLING│             
+/// ╲ record batch stream ╱yes     └────┬──┘             
+///  ╲___________________╱      ________▽_________        
+///            │no             ╱                  ╲       
+///        ┌───▽──┐           ╱ Success to poll    ╲___   
+///        │FAILED│           ╲ all record batches ╱yes│  
+///        └──────┘            ╲__________________╱    │  
+///                                     │no            │  
+///                                 ┌───▽──┐           │  
+///                                 │FAILED│           │  
+///                                 └──────┘           │  
+///                                                  ┌─▽─┐
+///                                                  │END│
+///                                                  └───┘
+/// ```
 pub enum StreamState {
     Initializing,
     Polling(DfSendableRecordBatchStream),
