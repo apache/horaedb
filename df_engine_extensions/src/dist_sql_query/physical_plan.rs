@@ -222,7 +222,7 @@ struct PartitionedScanStream {
     /// Future to init the stream
     stream_future: BoxFuture<'static, DfResult<DfSendableRecordBatchStream>>,
 
-    /// Inited stream to poll the record
+    /// Stream to poll the records
     stream_state: StreamState,
 
     /// Record schema

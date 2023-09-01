@@ -120,6 +120,8 @@ impl Resolver {
     }
 
     /// Resolve encoded sub table scanning plan.
+    // TODO: because we need to async init the `ScanTable` plan before executing,
+    // so sub scan plan's resolving can just be async now...
     pub async fn resolve_sub_scan(&self, encoded_plan: &[u8]) -> DfResult<Arc<dyn ExecutionPlan>> {
         // Decode to datafusion physical plan.
         let protobuf = protobuf::PhysicalPlanNode::decode(encoded_plan).map_err(|e| {
