@@ -198,7 +198,7 @@ mod test {
     use crate::dist_sql_query::test_util::TestContext;
 
     #[test]
-    fn test_resolve_simple_partitioned_scan() {
+    fn test_basic_partitioned_scan() {
         let ctx = TestContext::new();
         let plan = ctx.build_basic_partitioned_table_plan();
         let resolver = ctx.resolver();
@@ -209,7 +209,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_resolve_simple_sub_scan() {
+    async fn test_basic_sub_scan() {
         let ctx = TestContext::new();
         let plan = ctx.build_basic_sub_table_plan();
         let resolver = ctx.resolver();
@@ -223,5 +223,31 @@ mod test {
         .indent(true)
         .to_string();
         insta::assert_snapshot!(new_plan);
+    }
+
+    #[tokio::test]
+    async fn test_unprocessed_plan() {
+        let ctx = TestContext::new();
+        let plan = ctx.build_unprocessed_plan();
+        let resolver = ctx.resolver();
+
+        let original_plan_display = displayable(plan.as_ref()).indent(true).to_string();
+
+        // It should not be processed by `resolve_partitioned_scan`.
+        let new_plan = resolver.resolve_partitioned_scan(plan.clone()).unwrap();
+
+        let new_plan_display = displayable(new_plan.as_ref()).indent(true).to_string();
+
+        assert_eq!(original_plan_display, new_plan_display);
+
+        // It should not be processed by `resolve_sub_scan_internal`.
+        let new_plan = resolver
+            .resolve_sub_scan_internal(plan.clone())
+            .await
+            .unwrap();
+
+        let new_plan_display = displayable(new_plan.as_ref()).indent(true).to_string();
+
+        assert_eq!(original_plan_display, new_plan_display);
     }
 }

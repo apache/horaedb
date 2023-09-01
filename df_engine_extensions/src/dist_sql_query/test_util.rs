@@ -220,6 +220,15 @@ impl TestContext {
         Arc::new(ProjectionExec::try_new(self.physical_projection.clone(), filter).unwrap())
     }
 
+    // Plan that should not be processed by resolver.
+    pub fn build_unprocessed_plan(&self) -> Arc<dyn ExecutionPlan> {
+        let mock_scan = Arc::new(MockScan {
+            request: self.request.clone(),
+        });
+
+        Arc::new(ProjectionExec::try_new(self.physical_projection.clone(), mock_scan).unwrap())
+    }
+
     pub fn read_request(&self) -> ReadRequest {
         self.request.clone()
     }
@@ -270,7 +279,7 @@ struct MockScan {
 
 impl ExecutionPlan for MockScan {
     fn as_any(&self) -> &dyn std::any::Any {
-        unimplemented!()
+        self
     }
 
     fn schema(&self) -> arrow::datatypes::SchemaRef {
