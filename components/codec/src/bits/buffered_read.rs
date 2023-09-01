@@ -186,7 +186,7 @@ mod tests {
         assert_eq!(b.next_bits(3).unwrap(), 0b110);
         assert_eq!(b.next_byte().unwrap(), 0b11010110);
         assert_eq!(b.next_bits(2).unwrap(), 0b11);
-        assert_eq!(b.next_bit().unwrap(), Bit::Zero);
+        assert_eq!(b.next_bit().unwrap(), Bit(0));
         assert_eq!(b.next_bits(1).unwrap(), 0b1);
         assert_eq!(b.next_bit().err().unwrap(), Error::Eof);
     }
