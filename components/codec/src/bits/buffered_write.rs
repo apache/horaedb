@@ -14,7 +14,7 @@
 
 use std::boxed::Box;
 
-use crate::bits::Bit;
+use crate::bits::{Bit, BIT_MASKS};
 
 /// BufferedWriter
 /// BufferedWriter writes bytes to a buffer.
@@ -64,7 +64,7 @@ impl BufferedWriter {
         let i = self.last_index();
 
         if bit != Bit(0) {
-            self.buf[i] |= 1u8.wrapping_shl(7 - self.pos);
+            self.buf[i] |= BIT_MASKS[self.pos as usize];
         }
 
         self.pos += 1;

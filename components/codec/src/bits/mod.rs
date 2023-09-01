@@ -14,6 +14,8 @@
 
 use std::{error, fmt};
 
+const BIT_MASKS: [u8; 8] = [128, 64, 32, 16, 8, 4, 2, 1];
+
 /// Bit
 /// An u8 struct used to represent a single bit,
 /// when it is equal to zero, it represents bit zero, otherwise it represents

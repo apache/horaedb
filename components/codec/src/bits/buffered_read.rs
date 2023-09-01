@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::bits::{Bit, Error};
-
-const BIT_MASKS: [u8; 8] = [128, 64, 32, 16, 8, 4, 2, 1];
+use crate::bits::{Bit, Error, BIT_MASKS};
 
 /// BufferedReader
 /// BufferedReader encapsulates a buffer of bytes which can be read from.
