@@ -29,10 +29,10 @@ use futures::stream::BoxStream;
 use hash_ext::SeaHasherBuilder;
 use log::{debug, error, info, warn};
 use lru::LruCache;
-use notifier::notifier::{RequestNotifiers};
+use notifier::notifier::RequestNotifiers;
 use partitioned_lock::PartitionedMutex;
 use serde::{Deserialize, Serialize};
-use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use snafu::{ensure, Backtrace, GenerateBacktrace, ResultExt, Snafu};
 use time_ext;
 use tokio::{
     fs::{self, File, OpenOptions},
@@ -79,8 +79,8 @@ enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Receive message from channel error.\nbacktrace:\n"))]
-    ReceiveMessageFromChannel,
+    #[snafu(display("Receive message from channel error.\nbacktrace:\n{backtrace}"))]
+    ReceiveMessageFromChannel { backtrace: Backtrace },
 
     #[snafu(display("Invalid manifest page size, old:{old}, new:{new}."))]
     InvalidManifest { old: usize, new: usize },
@@ -649,7 +649,9 @@ impl DiskCacheStore {
         if data.is_none() {
             return Err(ObjectStoreError::Generic {
                 store: "DiskCacheStore",
-                source: Box::new(Error::ReceiveMessageFromChannel),
+                source: Box::new(Error::ReceiveMessageFromChannel {
+                    backtrace: Backtrace::generate(),
+                }),
             });
         }
         let bytes = data.unwrap()?;
