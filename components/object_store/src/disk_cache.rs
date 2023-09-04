@@ -606,18 +606,14 @@ impl DiskCacheStore {
             let (tx, rx) = mpsc::channel(MPSC_CHANNEL_BUFFER_SIZE);
             let filename = Self::page_cache_name(location, &aligned_range);
 
-            match self
+            if let notifier::notifier::RequestResult::First = self
                 .request_notifiers
                 .insert_notifier(filename.to_owned(), tx)
             {
-                notifier::notifier::RequestResult::First => {
-                    need_fetch_block.push(aligned_range);
-                    need_fetch_block_filename.push(filename);
-                }
-                notifier::notifier::RequestResult::Wait => {
-                    continue;
-                }
-            };
+                need_fetch_block.push(aligned_range);
+                need_fetch_block_filename.push(filename);
+            }
+
             rxs.push(rx);
         }
         let need_fetch_blocks = self
@@ -667,7 +663,7 @@ impl DiskCacheStore {
         let mut rx = self
             .fetch_data(location, vec![aligned_range.clone()])
             .await?;
-        assert!(rx.len() == 1);
+        assert_eq!(rx.len(), 1);
         let bytes = Self::get_data_from_channel_data(rx[0].recv().await)?;
 
         Ok(bytes)
@@ -979,6 +975,54 @@ mod test {
                 b"i j k l m n o p q r s t u v w x y za b c d e f g h i j k l m n o p q r s t u v w x y"
             )
         );
+    }
+
+    #[tokio::test]
+    async fn test_fuzz_disk_cache_multi_thread_fetch_same_block() {
+        let page_size = 16;
+        // 51 byte
+        let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
+        let location = Path::from("1.sst");
+        let store = Arc::new(prepare_store(page_size, 32, 0).await);
+
+        let mut buf = BytesMut::with_capacity(data.len() * 4);
+        // extend 4 times, then location will contain 200 bytes
+        for _ in 0..4 {
+            buf.extend_from_slice(data);
+        }
+        store.inner.put(&location, buf.freeze()).await.unwrap();
+
+        let testcases = vec![
+            (0..6, "a b c "),
+            (0..16, "a b c d e f g h "),
+            // len of aligned ranges will be 2
+            (0..17, "a b c d e f g h i"),
+            (16..17, "i"),
+            // len of aligned ranges will be 6
+            (16..100, "i j k l m n o p q r s t u v w x y za b c d e f g h i j k l m n o p q r s t u v w x y"),
+        ];
+        let testcases: Vec<(Range<usize>, &str)> =
+            testcases.iter().cycle().take(9).cloned().collect();
+
+        let mut tasks = vec![];
+        for (input, expected) in testcases {
+            let store_copy = store.clone();
+            let location_copy = location.to_owned();
+
+            tasks.push(tokio::spawn(async move {
+                assert_eq!(
+                    store_copy
+                        .inner
+                        .get_range(&location_copy, input)
+                        .await
+                        .unwrap(),
+                    Bytes::copy_from_slice(expected.as_bytes())
+                );
+            }));
+        }
+        for i in tasks {
+            i.await.unwrap();
+        }
     }
 
     #[tokio::test]
