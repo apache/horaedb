@@ -89,8 +89,8 @@ pub enum Error {
     #[snafu(display("Bytes is not enough, length:{len}.\nBacktrace:\n{backtrace}"))]
     NotEnoughBytes { len: usize, backtrace: Backtrace },
 
-    #[snafu(display("Failed to read encoded data, err:{source}"))]
-    ReadEncode { source: crate::bits::Error },
+    #[snafu(display("Failed to read encoded data"))]
+    ReadEncode {},
 }
 
 define_result!(Error);
@@ -261,11 +261,9 @@ impl ColumnarEncoder {
         let enc = ValuesEncoderImpl::default();
         let data_size = match hint.datum_kind {
             DatumKind::Null => 0,
-            DatumKind::Timestamp => enc.estimated_encoded_size(
-                datums
-                    .clone()
-                    .filter_map(|v| v.as_timestamp().map(|v| v.as_i64())),
-            ),
+            DatumKind::Timestamp => {
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_timestamp()))
+            }
             DatumKind::Double => {
                 enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_f64()))
             }
@@ -324,10 +322,7 @@ impl ColumnarEncoder {
         };
         match datum_kind {
             DatumKind::Null => Ok(()),
-            DatumKind::Timestamp => enc.encode(
-                buf,
-                datums.filter_map(|v| v.as_timestamp().map(|v| v.as_i64())),
-            ),
+            DatumKind::Timestamp => enc.encode(buf, datums.filter_map(|v| v.as_timestamp())),
             DatumKind::Double => enc.encode(buf, datums.filter_map(|v| v.as_f64())),
             DatumKind::Float => enc.encode(buf, datums.filter_map(|v| v.as_f32())),
             DatumKind::Varbinary => enc.encode(buf, datums.filter_map(|v| v.into_bytes())),
@@ -448,8 +443,8 @@ impl ColumnarDecoder {
         match datum_kind {
             DatumKind::Null => Ok(()),
             DatumKind::Timestamp => {
-                let with_i64 = |v| f(Datum::from(Timestamp::new(v)));
-                ValuesDecoderImpl.decode(ctx, buf, with_i64)
+                let with_timestamp = |v: Timestamp| f(Datum::from(v));
+                ValuesDecoderImpl.decode(ctx, buf, with_timestamp)
             }
             DatumKind::Double => {
                 let with_float = |v: f64| f(Datum::from(v));
@@ -783,5 +778,20 @@ mod tests {
             Datum::Timestamp(Timestamp::new(1692845860000)),
         ];
         check_encode_end_decode(10, complex_timestamp, DatumKind::Timestamp);
+
+        let fallback_timestamp = vec![
+            Datum::Timestamp(Timestamp::new(0)),
+            Datum::Timestamp(Timestamp::new(0)),
+            Datum::Timestamp(Timestamp::new(1692845730000)),
+            Datum::Timestamp(Timestamp::new(0)),
+            Datum::Timestamp(Timestamp::new(1692845860000)),
+        ];
+        check_encode_end_decode(10, fallback_timestamp, DatumKind::Timestamp);
+
+        let fallback_two_timestamp = vec![
+            Datum::Timestamp(Timestamp::new(0)),
+            Datum::Timestamp(Timestamp::new(1692845730000)),
+        ];
+        check_encode_end_decode(10, fallback_two_timestamp, DatumKind::Timestamp);
     }
 }

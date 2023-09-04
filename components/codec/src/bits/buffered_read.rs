@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::bits::{Bit, Error, BIT_MASKS};
+use crate::bits::{Bit, BIT_MASKS};
 
 /// BufferedReader
 /// BufferedReader encapsulates a buffer of bytes which can be read from.
@@ -36,53 +36,57 @@ impl<'a> BufferedReader<'a> {
         }
     }
 
-    fn get_byte(&mut self) -> Result<u8, Error> {
-        self.bytes.get(self.byte_idx).cloned().ok_or(Error::Eof)
+    fn get_byte(&self) -> Option<u8> {
+        if self.is_eof() {
+            return None;
+        }
+        self.bytes.get(self.byte_idx).cloned()
+    }
+
+    #[inline]
+    fn is_eof(&self) -> bool {
+        self.byte_idx >= self.bytes.len()
+    }
+
+    fn advance_one_bit(&mut self) {
+        if self.bit_idx == 7 {
+            self.bit_idx = 0;
+            self.byte_idx += 1;
+        } else {
+            self.bit_idx += 1;
+        }
     }
 }
 
 impl<'a> BufferedReader<'a> {
-    pub fn next_bit(&mut self) -> Result<Bit, Error> {
-        if self.bit_idx == 8 {
-            self.byte_idx += 1;
-            self.bit_idx = 0;
+    pub fn next_bit(&mut self) -> Option<Bit> {
+        if self.is_eof() {
+            return None;
         }
-
-        let byte = self.get_byte()?;
-
-        let bit = if byte & BIT_MASKS[self.bit_idx as usize] == 0 {
-            Bit(0)
-        } else {
-            Bit(1)
-        };
-
-        self.bit_idx += 1;
-
-        Ok(bit)
+        let byte = self.get_byte().unwrap();
+        let bit = Bit(u8::from(byte & BIT_MASKS[self.bit_idx as usize] != 0));
+        self.advance_one_bit();
+        Some(bit)
     }
 
-    pub fn next_byte(&mut self) -> Result<u8, Error> {
+    fn next_byte(&mut self) -> Option<u8> {
         if self.bit_idx == 0 {
-            self.bit_idx += 8;
-            return self.get_byte();
-        }
-
-        if self.bit_idx == 8 {
+            let byte = self.get_byte();
             self.byte_idx += 1;
-            return self.get_byte();
+            return byte;
         }
 
         let mut byte = 0;
-        let mut b = self.get_byte()?;
+        let mut b = self.get_byte().unwrap();
 
         byte |= b.wrapping_shl(self.bit_idx);
 
         self.byte_idx += 1;
-        b = self.get_byte()?;
+        b = self.get_byte().unwrap();
 
         byte |= b.wrapping_shr(8 - self.bit_idx);
 
-        Ok(byte)
+        Some(byte)
     }
 
     /// Fetch the next `num` bits, and advance the inner cursor. And the
@@ -90,7 +94,7 @@ impl<'a> BufferedReader<'a> {
     ///
     /// Example: the returned value will be `0x0000 0000 0000 000F` if 4 bits is
     /// fetched and they are all set.
-    pub fn next_bits(&mut self, mut num: u32) -> Result<u64, Error> {
+    pub fn next_bits(&mut self, mut num: u32) -> Option<u64> {
         // can't read more than 64 bits into a u64
         assert!(num <= 64);
 
@@ -108,13 +112,13 @@ impl<'a> BufferedReader<'a> {
             num -= 1;
         }
 
-        Ok(bits)
+        Some(bits)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::bits::{Bit, BufferedReader, Error};
+    use crate::bits::{Bit, BufferedReader};
 
     #[test]
     fn next_bit() {
@@ -139,7 +143,7 @@ mod tests {
         assert_eq!(b.next_bit().unwrap(), Bit(0));
         assert_eq!(b.next_bit().unwrap(), Bit(1));
 
-        assert_eq!(b.next_bit().err().unwrap(), Error::Eof);
+        assert_eq!(b.next_bit(), None);
     }
 
     #[test]
@@ -160,7 +164,7 @@ mod tests {
 
         assert_eq!(b.next_byte().unwrap(), 15);
 
-        assert_eq!(b.next_byte().err().unwrap(), Error::Eof);
+        assert_eq!(b.next_byte(), None);
     }
 
     #[test]
@@ -172,7 +176,7 @@ mod tests {
         assert_eq!(b.next_bits(1).unwrap(), 0b1);
         assert_eq!(b.next_bits(20).unwrap(), 0b01110001110111110101);
         assert_eq!(b.next_bits(8).unwrap(), 0b00010100);
-        assert_eq!(b.next_bits(4).err().unwrap(), Error::Eof);
+        assert_eq!(b.next_bits(4), None);
     }
 
     #[test]
@@ -186,6 +190,6 @@ mod tests {
         assert_eq!(b.next_bits(2).unwrap(), 0b11);
         assert_eq!(b.next_bit().unwrap(), Bit(0));
         assert_eq!(b.next_bits(1).unwrap(), 0b1);
-        assert_eq!(b.next_bit().err().unwrap(), Error::Eof);
+        assert_eq!(b.next_bit(), None);
     }
 }

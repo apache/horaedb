@@ -1546,6 +1546,7 @@ version = "1.2.6-alpha"
 dependencies = [
  "bytes_ext",
  "common_types",
+ "log",
  "lz4_flex",
  "macros",
  "snafu 0.6.10",

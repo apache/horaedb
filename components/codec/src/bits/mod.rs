@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{error, fmt};
-
 const BIT_MASKS: [u8; 8] = [128, 64, 32, 16, 8, 4, 2, 1];
 
 /// Bit
@@ -22,29 +20,6 @@ const BIT_MASKS: [u8; 8] = [128, 64, 32, 16, 8, 4, 2, 1];
 /// bit one.
 #[derive(Debug, PartialEq)]
 pub struct Bit(pub u8);
-
-/// Error
-/// Enum used to represent potential errors when interacting with a stream.
-#[derive(Debug, PartialEq)]
-pub enum Error {
-    Eof,
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Error::Eof => write!(f, "Encountered the end of the stream"),
-        }
-    }
-}
-
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match *self {
-            Error::Eof => "Encountered the end of the stream",
-        }
-    }
-}
 
 pub mod buffered_write;
 

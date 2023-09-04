@@ -14,7 +14,8 @@
 
 use bytes_ext::{Buf, BufMut};
 use common_types::time::Timestamp;
-use snafu::{ensure, ResultExt};
+use log::debug;
+use snafu::{ensure, OptionExt};
 
 use crate::{
     bits::{Bit, BufferedReader, BufferedWriter},
@@ -27,27 +28,21 @@ use crate::{
 /// We use delta-of-delta algorithm to compress timestamp, for details, please refer to this paper http://www.vldb.org/pvldb/vol8/p1816-teller.pdf
 /// The layout for the timestamp:
 /// ```plaintext
-/// +--------------+------------------------+-------------------+--------------------------+------------------+------------------+--------------------+-------------------+
-/// | version(u8) | first_timestamp(64bits) | control_bit(1bit) | delta_of_delta(1~36bits) | delta_of_delta...| end_mask(36bits) | timestamp_len(u32) | timestamp(i64)... |
-/// +-------------+-------------------------+-------------------+--------------------------+------------------+------------------+--------------------+-------------------+
+/// +----------------+-------------------------+-------------------+--------------------------+------------------+------------------+-----------------------+----------------------+
+/// | version(8bits) | first_timestamp(64bits) | control_bit(1bit) | delta_of_delta(1~36bits) | delta_of_delta...| end_mask(36bits) | timestamp_len(32bits) | timestamp(64bits)... |
+/// +----------------+-------------------------+-------------------+--------------------------+------------------+------------------+-----------------------+----------------------+
 
 const ENCODE_VERSION: u8 = 1;
 const NUM_BYTES_ENCODE_VERSION_LEN: usize = 1;
 
-/// The max number of the bytes used to store a delta of delta encoding of
-/// first timestamp.
-const NUM_BYTES_OF_FIRST_TS_ENCODE: usize = 8;
-
-/// The max number of the bytes used to store a delta of delta encoding of
-/// dod result.
-const MAX_NUM_BYTES_OF_DOD_ENCODE: usize = 5;
+const NUM_BYTES_TIMESTAMP_LEN: usize = 4;
+const NUM_BYTES_TIMESTAMP: usize = 8;
 
 /// END_MARKER is a special bit sequence used to indicate the end of the
 /// stream
 const END_MARKER: u64 = 0b1111_0000_0000_0000_0000_0000_0000_0000_0000;
 /// END_MARKER_LEN is the length, in bits, of END_MARKER
 const NUM_BITS_END_MARKER_LEN: usize = 36;
-const NUM_BYTES_END_MARKER_LEN: usize = 5;
 
 // Encode the timestamp using the delta-of-delta algorithm
 struct TimestampEncoder {}
@@ -55,23 +50,30 @@ struct TimestampEncoder {}
 struct TimestampDecoder {}
 
 enum DeltaOfDeltaEncodeMasks {
-    ZeroEncode(),
-    NormalEncode(u8, u8, u8),
+    Zero(),
+    Normal(u8, u8, u8),
+    None(),
 }
 
 impl TimestampEncoder {
     fn encode_delta_of_delta_masks(dod: i64) -> DeltaOfDeltaEncodeMasks {
         // max support 2^31/3600/1000/24/2=12 day
-        assert!(dod <= std::i32::MAX as i64);
+        if dod > std::i32::MAX as i64 {
+            debug!(
+                "dod reach max value, fallback to origin timestamp encode, dod:{:?}",
+                dod
+            );
+            return DeltaOfDeltaEncodeMasks::None();
+        }
         let dod = dod as i32;
 
         // store the delta of delta using variable length encoding
         match dod {
-            0 => DeltaOfDeltaEncodeMasks::ZeroEncode(),
-            -63..=64 => DeltaOfDeltaEncodeMasks::NormalEncode(0b10, 2, 7),
-            -255..=256 => DeltaOfDeltaEncodeMasks::NormalEncode(0b110, 3, 9),
-            -2047..=2048 => DeltaOfDeltaEncodeMasks::NormalEncode(0b1110, 4, 12),
-            _ => DeltaOfDeltaEncodeMasks::NormalEncode(0b1111, 4, 32),
+            0 => DeltaOfDeltaEncodeMasks::Zero(),
+            -63..=64 => DeltaOfDeltaEncodeMasks::Normal(0b10, 2, 7),
+            -255..=256 => DeltaOfDeltaEncodeMasks::Normal(0b110, 3, 9),
+            -2047..=2048 => DeltaOfDeltaEncodeMasks::Normal(0b1110, 4, 12),
+            _ => DeltaOfDeltaEncodeMasks::Normal(0b1111, 4, 32),
         }
     }
 
@@ -98,50 +100,67 @@ impl TimestampEncoder {
             (8 * NUM_BYTES_ENCODE_VERSION_LEN) as u32,
         );
 
+        // variables used for none encode timestamp
+        let mut need_fallback = false;
+        let mut dod_encode_ts_len = 1;
+
+        // variables used to encode dod
         let mut first = true;
-        let mut control_bit_flag = true;
         let mut last_ts: i64 = 0;
         let mut last_delta: i64 = 0;
-        for v in values {
-            if first {
-                // store the first timestamp exactly
-                writer.write_bits(v as u64, 64);
-                first = false;
-                last_ts = v;
-                continue;
-            }
-            if !first && control_bit_flag {
-                // remove according to the paper
-                // // write one control bit so we can distinguish a stream which contains only
-                // an initial // timestamp, this assumes the first bit of the
-                // END_MARKER is 1
-                writer.write_bit(Bit(1));
-                control_bit_flag = false;
-            }
-            let cur_delta = v - last_ts;
-            let delta_of_delta = cur_delta - last_delta;
-            match TimestampEncoder::encode_delta_of_delta_masks(delta_of_delta) {
-                DeltaOfDeltaEncodeMasks::ZeroEncode() => writer.write_bit(Bit(0)),
-                DeltaOfDeltaEncodeMasks::NormalEncode(
-                    control_bis,
-                    control_bits_len,
-                    dod_bits_len,
-                ) => {
-                    writer.write_bits(control_bis as u64, control_bits_len as u32);
-                    writer.write_bits(delta_of_delta as u64, dod_bits_len as u32);
-                }
-            };
-            last_delta = cur_delta;
-            last_ts = v;
-        }
 
-        // write control bit when only the first timestamp exists
-        if control_bit_flag {
-            writer.write_bit(Bit(0));
-        }
-        // write end mask
-        if !first {
-            writer.write_bits(END_MARKER, NUM_BITS_END_MARKER_LEN as u32);
+        for v in values {
+            if !need_fallback {
+                if first {
+                    // store the first timestamp exactly
+                    writer.write_bits(v as u64, 64);
+                    first = false;
+                    last_ts = v;
+                    if num == 1 {
+                        writer.write_bit(Bit(0))
+                    } else {
+                        writer.write_bit(Bit(1))
+                    }
+                    continue;
+                }
+                let cur_delta = v - last_ts;
+                let delta_of_delta = cur_delta - last_delta;
+                match TimestampEncoder::encode_delta_of_delta_masks(delta_of_delta) {
+                    DeltaOfDeltaEncodeMasks::Zero() => {
+                        writer.write_bit(Bit(0));
+                        dod_encode_ts_len += 1;
+                    }
+                    DeltaOfDeltaEncodeMasks::Normal(
+                        control_bis,
+                        control_bits_len,
+                        dod_bits_len,
+                    ) => {
+                        writer.write_bits(control_bis as u64, control_bits_len as u32);
+                        writer.write_bits(delta_of_delta as u64, dod_bits_len as u32);
+                        dod_encode_ts_len += 1;
+                    }
+                    DeltaOfDeltaEncodeMasks::None() => {
+                        writer.write_bits(END_MARKER, NUM_BITS_END_MARKER_LEN as u32);
+
+                        let fallback_ts_num = num - dod_encode_ts_len;
+                        writer.write_bits(fallback_ts_num as u64, 32);
+                        writer.write_bits(v as u64, 64);
+                        need_fallback = true;
+                    }
+                };
+                last_delta = cur_delta;
+                last_ts = v;
+
+                if num == dod_encode_ts_len {
+                    // write end mask
+                    writer.write_bits(END_MARKER, NUM_BITS_END_MARKER_LEN as u32);
+                    writer.write_bits(0, 32);
+                    continue;
+                }
+            } else {
+                // Unable to encode with dod, break out of loop and fallback to i64 storage
+                writer.write_bits(v as u64, 64);
+            }
         }
 
         buf.put_slice(writer.close().as_ref());
@@ -150,18 +169,18 @@ impl TimestampEncoder {
 }
 
 impl TimestampDecoder {
-    fn encode_delta_of_delta_masks(dod_control_bits_size: &mut i32) -> DeltaOfDeltaEncodeMasks {
+    fn encode_delta_of_delta_masks(dod_control_bits_size: i32) -> DeltaOfDeltaEncodeMasks {
         match dod_control_bits_size {
-            0 => DeltaOfDeltaEncodeMasks::ZeroEncode(),
-            1 => DeltaOfDeltaEncodeMasks::NormalEncode(0b10, 2, 7),
-            2 => DeltaOfDeltaEncodeMasks::NormalEncode(0b110, 3, 9),
-            3 => DeltaOfDeltaEncodeMasks::NormalEncode(0b1110, 4, 12),
-            4 => DeltaOfDeltaEncodeMasks::NormalEncode(0b1111, 4, 32),
+            0 => DeltaOfDeltaEncodeMasks::Zero(),
+            1 => DeltaOfDeltaEncodeMasks::Normal(0b10, 2, 7),
+            2 => DeltaOfDeltaEncodeMasks::Normal(0b110, 3, 9),
+            3 => DeltaOfDeltaEncodeMasks::Normal(0b1110, 4, 12),
+            4 => DeltaOfDeltaEncodeMasks::Normal(0b1111, 4, 32),
             _ => unreachable!(),
         }
     }
 
-    pub fn decode<B, F>(buf: &mut B, mut f: F) -> Result<()>
+    pub fn decode<B, F>(buf: &B, mut f: F) -> Result<()>
     where
         B: Buf,
         F: FnMut(Timestamp) -> Result<()>,
@@ -196,11 +215,11 @@ impl TimestampDecoder {
                 }
             }
 
-            let dod_masks = Self::encode_delta_of_delta_masks(&mut dod_control_bits_size);
+            let dod_masks = Self::encode_delta_of_delta_masks(dod_control_bits_size);
 
             let dod = match dod_masks {
-                DeltaOfDeltaEncodeMasks::ZeroEncode() => 0,
-                DeltaOfDeltaEncodeMasks::NormalEncode(_, _, dod_bits_len) => {
+                DeltaOfDeltaEncodeMasks::Zero() => 0,
+                DeltaOfDeltaEncodeMasks::Normal(_, _, dod_bits_len) => {
                     let mut dod = reader.next_bits(dod_bits_len as u32).context(ReadEncode)?;
 
                     if dod_bits_len == 32 {
@@ -227,11 +246,14 @@ impl TimestampDecoder {
                         dod
                     }
                 }
+                _ => {
+                    panic!("none encode dod could not be decoded")
+                }
             };
 
             // Reach end mask
             if dod == 0 && dod_control_bits_size == 4 {
-                return Ok(());
+                break;
             }
 
             let cur_delta = last_delta.wrapping_add(dod);
@@ -242,6 +264,15 @@ impl TimestampDecoder {
             last_delta = cur_delta;
             last_timestamp = cur_timestamp;
         }
+
+        // decode unencoded timestamps
+        let timestamp_len = reader.next_bits(32).context(ReadEncode)?;
+        for _ in 0..timestamp_len {
+            let timestamp = reader.next_bits(64).context(ReadEncode)?;
+            f(Timestamp::new(timestamp as i64))?;
+        }
+
+        Ok(())
     }
 }
 
@@ -261,10 +292,11 @@ impl ValuesEncoder<Timestamp> for ValuesEncoderImpl {
         let (lower, higher) = values.size_hint();
         let num = lower.max(higher.unwrap_or_default());
         NUM_BYTES_ENCODE_VERSION_LEN
-            + NUM_BYTES_OF_FIRST_TS_ENCODE
             + 1
-            + (num - 1) * MAX_NUM_BYTES_OF_DOD_ENCODE
-            + NUM_BYTES_END_MARKER_LEN
+            + NUM_BITS_END_MARKER_LEN
+            + NUM_BYTES_TIMESTAMP_LEN
+            + NUM_BYTES_TIMESTAMP * num
+            + 1
     }
 }
 
