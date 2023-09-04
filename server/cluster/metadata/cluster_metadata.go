@@ -456,22 +456,24 @@ func (c *ClusterMetadata) RouteTables(_ context.Context, schemaName string, tabl
 		if err != nil {
 			return RouteTablesResult{}, errors.WithMessage(err, "table manager get table")
 		}
-		if exists {
-			// TODO: Adapt to the current implementation of the partition table, which may need to be reconstructed later.
-			if !table.IsPartitioned() {
-				tables[table.ID] = table
-				tableIDs = append(tableIDs, table.ID)
-			} else {
-				routeEntries[table.Name] = RouteEntry{
-					Table: TableInfo{
-						ID:            table.ID,
-						Name:          table.Name,
-						SchemaID:      table.SchemaID,
-						SchemaName:    schemaName,
-						PartitionInfo: table.PartitionInfo,
-					},
-					NodeShards: nil,
-				}
+		if !exists {
+			continue
+		}
+
+		// TODO: Adapt to the current implementation of the partition table, which may need to be reconstructed later.
+		if !table.IsPartitioned() {
+			tables[table.ID] = table
+			tableIDs = append(tableIDs, table.ID)
+		} else {
+			routeEntries[table.Name] = RouteEntry{
+				Table: TableInfo{
+					ID:            table.ID,
+					Name:          table.Name,
+					SchemaID:      table.SchemaID,
+					SchemaName:    schemaName,
+					PartitionInfo: table.PartitionInfo,
+				},
+				NodeShards: nil,
 			}
 		}
 	}
@@ -495,9 +497,9 @@ func (c *ClusterMetadata) RouteTables(_ context.Context, schemaName string, tabl
 		// If nodeShards length bigger than 1, randomly select a nodeShard.
 		nodeShardsResult := nodeShards
 		if len(nodeShards) > 1 {
-			selectIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(nodeShards))))
-			if err != nil {
-				return RouteTablesResult{}, errors.WithMessage(err, "generate random node index")
+			selectIndex, err2 := rand.Int(rand.Reader, big.NewInt(int64(len(nodeShards))))
+			if err2 != nil {
+				return RouteTablesResult{}, errors.WithMessage(err2, "generate random node index")
 			}
 			nodeShardsResult = []ShardNodeWithVersion{nodeShards[selectIndex.Uint64()]}
 		}
