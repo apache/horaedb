@@ -978,7 +978,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_fuzz_disk_cache_multi_thread_fetch_same_block() {
+    async fn test_disk_cache_multi_thread_fetch_same_block() {
         let page_size = 16;
         // 51 byte
         let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
