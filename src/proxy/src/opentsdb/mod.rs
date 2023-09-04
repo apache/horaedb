@@ -24,6 +24,7 @@ use horaedbproto::storage::{
 use http::StatusCode;
 use logger::debug;
 
+use self::types::QueryRequest;
 use crate::{
     context::RequestContext,
     error::{ErrNoCause, Result},
@@ -92,5 +93,15 @@ impl Proxy {
                 Err(e)
             }
         }
+    }
+
+    pub async fn handle_opentsdb_query(
+        &self,
+        ctx: RequestContext,
+        req: QueryRequest,
+    ) -> Result<()> {
+        log::info!("get req: {req:?}");
+
+        Ok(())
     }
 }
