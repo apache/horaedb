@@ -82,6 +82,9 @@ enum Error {
     #[snafu(display("Receive message from channel error.\nbacktrace:\n{backtrace}"))]
     ReceiveMessageFromChannel { backtrace: Backtrace },
 
+    #[snafu(display("Fetch Data from object sotre error.\nbacktrace:\n{backtrace}"))]
+    FetchDataFromObjectStore { backtrace: Backtrace },
+
     #[snafu(display("Invalid manifest page size, old:{old}, new:{new}."))]
     InvalidManifest { old: usize, new: usize },
 
@@ -619,7 +622,32 @@ impl DiskCacheStore {
         let need_fetch_blocks = self
             .underlying_store
             .get_ranges(location, &need_fetch_block[..])
-            .await?;
+            .await;
+
+        if let Err(err) = need_fetch_blocks {
+            for filename in need_fetch_block_filename {
+                let notifiers = self
+                    .request_notifiers
+                    .take_notifiers(&filename.to_owned())
+                    .unwrap();
+                for notifier in &notifiers {
+                    if let Err(e) = notifier
+                        .send(Err(ObjectStoreError::Generic {
+                            store: "DiskCacheStore",
+                            source: Box::new(Error::FetchDataFromObjectStore {
+                                backtrace: Backtrace::generate(),
+                            }),
+                        }))
+                        .await
+                    {
+                        error!("Failed to send disk cache handler err result, err:{}.", e);
+                    }
+                }
+            }
+            return Err(err);
+        }
+
+        let need_fetch_blocks = need_fetch_blocks.unwrap();
 
         for (bytes, filename) in need_fetch_blocks
             .iter()
