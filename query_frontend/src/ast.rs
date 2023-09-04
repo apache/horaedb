@@ -86,8 +86,14 @@ pub struct CreateTable {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Partition {
+    Random(RandomPartition),
     Hash(HashPartition),
     Key(KeyPartition),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct RandomPartition {
+    pub partition_num: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]

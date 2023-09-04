@@ -35,6 +35,7 @@ use crate::partition::rule::filter::{PartitionCondition, PartitionFilter};
 pub trait FilterExtractor: Send + Sync + 'static {
     fn extract(&self, filters: &[Expr], columns: &[String]) -> Vec<PartitionFilter>;
 }
+
 pub struct KeyExtractor;
 
 impl FilterExtractor for KeyExtractor {

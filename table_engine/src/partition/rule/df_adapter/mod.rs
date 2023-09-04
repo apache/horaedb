@@ -33,7 +33,7 @@ pub struct DfPartitionRuleAdapter {
     rule: PartitionRuleRef,
 
     /// `PartitionFilter` extractor for datafusion `Expr`
-    extractor: FilterExtractorRef,
+    extractor: Option<FilterExtractorRef>,
 }
 
 impl DfPartitionRuleAdapter {
@@ -55,19 +55,23 @@ impl DfPartitionRuleAdapter {
     pub fn locate_partitions_for_read(&self, filters: &[Expr]) -> Result<Vec<usize>> {
         // Extract partition filters from datafusion filters.
         let columns = self.columns();
-        let partition_filters = self.extractor.extract(filters, &columns);
+        let partition_filters = match &self.extractor {
+            Some(extractor) => extractor.extract(filters, &columns),
+            None => vec![],
+        };
 
         // Locate partitions from filters.
         self.rule.locate_partitions_for_read(&partition_filters)
     }
 
-    fn create_extractor(partition_info: &PartitionInfo) -> Result<FilterExtractorRef> {
+    fn create_extractor(partition_info: &PartitionInfo) -> Result<Option<FilterExtractorRef>> {
         match partition_info {
-            PartitionInfo::Key(_) => Ok(Box::new(KeyExtractor)),
+            PartitionInfo::Key(_) => Ok(Some(Box::new(KeyExtractor))),
             PartitionInfo::Hash(_) => BuildPartitionRule {
                 msg: format!("unsupported partition strategy, strategy:{partition_info:?}"),
             }
             .fail(),
+            PartitionInfo::Random(_) => Ok(None),
         }
     }
 }

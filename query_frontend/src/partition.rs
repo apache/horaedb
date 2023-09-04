@@ -20,11 +20,11 @@ use generic_error::BoxError;
 use snafu::ResultExt;
 use sqlparser::ast::Expr as SqlExpr;
 use table_engine::partition::{
-    HashPartitionInfo, KeyPartitionInfo, PartitionDefinition, PartitionInfo,
+    HashPartitionInfo, KeyPartitionInfo, PartitionDefinition, PartitionInfo, RandomPartitionInfo,
 };
 
 use crate::{
-    ast::{HashPartition, KeyPartition, Partition},
+    ast::{HashPartition, KeyPartition, Partition, RandomPartition},
     planner::{ParsePartitionWithCause, Result, UnsupportedPartition},
 };
 
@@ -36,12 +36,21 @@ pub struct PartitionParser;
 impl PartitionParser {
     pub fn parse(partition_stmt: Partition) -> Result<PartitionInfo> {
         Ok(match partition_stmt {
-            Partition::Hash(stmt) => PartitionInfo::Hash(PartitionParser::parse_hash(stmt)?),
-            Partition::Key(stmt) => PartitionInfo::Key(PartitionParser::parse_key_partition(stmt)?),
+            Partition::Random(stmt) => PartitionInfo::Random(Self::parse_random(stmt)),
+            Partition::Hash(stmt) => PartitionInfo::Hash(Self::parse_hash(stmt)?),
+            Partition::Key(stmt) => PartitionInfo::Key(Self::parse_key(stmt)?),
         })
     }
 
-    pub fn parse_hash(hash_stmt: HashPartition) -> Result<HashPartitionInfo> {
+    fn parse_random(random_stmt: RandomPartition) -> RandomPartitionInfo {
+        let definitions = make_partition_definitions(random_stmt.partition_num);
+        RandomPartitionInfo {
+            version: DEFAULT_PARTITION_VERSION,
+            definitions,
+        }
+    }
+
+    fn parse_hash(hash_stmt: HashPartition) -> Result<HashPartitionInfo> {
         let HashPartition {
             linear,
             partition_num,
@@ -70,7 +79,7 @@ impl PartitionParser {
         }
     }
 
-    pub fn parse_key_partition(key_partition_stmt: KeyPartition) -> Result<KeyPartitionInfo> {
+    fn parse_key(key_partition_stmt: KeyPartition) -> Result<KeyPartitionInfo> {
         let KeyPartition {
             linear,
             partition_num,
