@@ -38,6 +38,7 @@ lazy_static = { workspace = true }
 log = { workspace = true }
 lru = { workspace = true }
 macros = { workspace = true }
+notifier = { path = "../notifier" }
 partitioned_lock = { workspace = true }
 prometheus = { workspace = true }
 prometheus-static-metric = { workspace = true }

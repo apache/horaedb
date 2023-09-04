@@ -99,3 +99,29 @@ pub enum RequestResult {
     // There are other requests for this key, just wait for the result.
     Wait,
 }
+
+pub struct ExecutionGuard<F: FnMut()> {
+    f: F,
+    cancelled: bool,
+}
+
+impl<F: FnMut()> ExecutionGuard<F> {
+    pub fn new(f: F) -> Self {
+        Self {
+            f,
+            cancelled: false,
+        }
+    }
+
+    pub fn cancel(&mut self) {
+        self.cancelled = true;
+    }
+}
+
+impl<F: FnMut()> Drop for ExecutionGuard<F> {
+    fn drop(&mut self) {
+        if !self.cancelled {
+            (self.f)()
+        }
+    }
+}

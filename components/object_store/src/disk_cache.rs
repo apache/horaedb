@@ -27,8 +27,9 @@ use chrono::{DateTime, Utc};
 use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
 use hash_ext::SeaHasherBuilder;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use lru::LruCache;
+use notifier::notifier::{RequestNotifiers};
 use partitioned_lock::PartitionedMutex;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
@@ -36,6 +37,7 @@ use time_ext;
 use tokio::{
     fs::{self, File, OpenOptions},
     io::{AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt},
+    sync::mpsc,
 };
 use upstream::{
     path::Path, Error as ObjectStoreError, GetResult, ListResult, MultipartId, ObjectMeta,
@@ -44,6 +46,7 @@ use upstream::{
 
 const FILE_SIZE_CACHE_CAP: usize = 1 << 18;
 const FILE_SIZE_CACHE_PARTITION_BITS: usize = 8;
+const MPSC_CHANNEL_BUFFER_SIZE: usize = 20;
 pub const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
 #[derive(Debug, Snafu)]
@@ -75,6 +78,9 @@ enum Error {
         source: serde_json::Error,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Receive message from channel error.\nbacktrace:\n"))]
+    ReceiveMessageFromChannel,
 
     #[snafu(display("Invalid manifest page size, old:{old}, new:{new}."))]
     InvalidManifest { old: usize, new: usize },
@@ -434,6 +440,7 @@ pub struct DiskCacheStore {
     page_size: usize,
     meta_cache: PartitionedMutex<LruCache<Path, FileMeta>, SeaHasherBuilder>,
     underlying_store: Arc<dyn ObjectStore>,
+    request_notifiers: Arc<RequestNotifiers<String, Result<Bytes>>>,
 }
 
 impl DiskCacheStore {
@@ -466,12 +473,15 @@ impl DiskCacheStore {
             SeaHasherBuilder,
         )?;
 
+        let request_notifiers = Arc::new(RequestNotifiers::default());
+
         Ok(Self {
             cache,
             cap,
             page_size,
             meta_cache,
             underlying_store,
+            request_notifiers,
         })
     }
 
@@ -583,19 +593,81 @@ impl DiskCacheStore {
         )
     }
 
+    async fn fetch_data(
+        &self,
+        location: &Path,
+        aligned_ranges: Vec<Range<usize>>,
+    ) -> Result<Vec<tokio::sync::mpsc::Receiver<Result<Bytes>>>> {
+        let mut rxs = Vec::with_capacity(aligned_ranges.len());
+        let mut need_fetch_block = vec![];
+        let mut need_fetch_block_filename = vec![];
+
+        for aligned_range in aligned_ranges.into_iter() {
+            let (tx, rx) = mpsc::channel(MPSC_CHANNEL_BUFFER_SIZE);
+            let filename = Self::page_cache_name(location, &aligned_range);
+
+            match self
+                .request_notifiers
+                .insert_notifier(filename.to_owned(), tx)
+            {
+                notifier::notifier::RequestResult::First => {
+                    need_fetch_block.push(aligned_range);
+                    need_fetch_block_filename.push(filename);
+                }
+                notifier::notifier::RequestResult::Wait => {
+                    continue;
+                }
+            };
+            rxs.push(rx);
+        }
+        let need_fetch_blocks = self
+            .underlying_store
+            .get_ranges(location, &need_fetch_block[..])
+            .await?;
+
+        for (bytes, filename) in need_fetch_blocks
+            .iter()
+            .zip(need_fetch_block_filename.iter())
+        {
+            let notifiers = self
+                .request_notifiers
+                .take_notifiers(&filename.to_owned())
+                .unwrap();
+            self.cache
+                .insert_data(filename.to_owned(), bytes.clone())
+                .await;
+            for notifier in &notifiers {
+                if let Err(e) = notifier.send(Ok(bytes.clone())).await {
+                    error!("Failed to send disk cache handler result, err:{}.", e);
+                }
+            }
+        }
+        Ok(rxs)
+    }
+
+    fn get_data_from_channel_data(data: Option<Result<Bytes>>) -> Result<Bytes> {
+        if data.is_none() {
+            return Err(ObjectStoreError::Generic {
+                store: "DiskCacheStore",
+                source: Box::new(Error::ReceiveMessageFromChannel),
+            });
+        }
+        let bytes = data.unwrap()?;
+        Ok(bytes)
+    }
+
     /// Fetch the data from the underlying store and then cache it.
     async fn fetch_and_cache_data(
         &self,
         location: &Path,
         aligned_range: &Range<usize>,
     ) -> Result<Bytes> {
-        let bytes = self
-            .underlying_store
-            .get_range(location, aligned_range.clone())
+        let mut rx = self
+            .fetch_data(location, vec![aligned_range.clone()])
             .await?;
+        assert!(rx.len() == 1);
+        let bytes = Self::get_data_from_channel_data(rx[0].recv().await)?;
 
-        let filename = Self::page_cache_name(location, aligned_range);
-        self.cache.insert_data(filename, bytes.clone()).await;
         Ok(bytes)
     }
 
@@ -744,10 +816,13 @@ impl ObjectStore for DiskCacheStore {
             }
         }
 
-        let missing_ranged_bytes = self
-            .underlying_store
-            .get_ranges(location, &missing_ranges)
-            .await?;
+        let mut missing_ranged_bytes = vec![];
+        let mut rxs = self.fetch_data(location, missing_ranges.clone()).await?;
+
+        for i in rxs.iter_mut() {
+            missing_ranged_bytes.push(Self::get_data_from_channel_data(i.recv().await)?);
+        }
+
         assert_eq!(missing_ranged_bytes.len(), missing_ranges.len());
 
         for ((missing_range, missing_range_idx), bytes) in missing_ranges
@@ -755,9 +830,6 @@ impl ObjectStore for DiskCacheStore {
             .zip(missing_range_idx.into_iter())
             .zip(missing_ranged_bytes.into_iter())
         {
-            let filename = Self::page_cache_name(location, &missing_range);
-            self.cache.insert_data(filename, bytes.clone()).await;
-
             let offset = missing_range.start;
             let truncated_range = (missing_range.start.max(range.start) - offset)
                 ..(missing_range.end.min(range.end) - offset);

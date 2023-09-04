@@ -33,6 +33,7 @@ use futures::FutureExt;
 use generic_error::GenericError;
 use log::{info, warn};
 use macros::define_result;
+use notifier::notifier::RequestNotifiers;
 use proxy::{
     forward,
     hotspot::HotspotRecorder,
@@ -46,13 +47,10 @@ use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
-use crate::{
-    dedup_requests::RequestNotifiers,
-    grpc::{
-        meta_event_service::MetaServiceImpl,
-        remote_engine_service::{error, RemoteEngineServiceImpl, StreamReadReqKey},
-        storage_service::StorageServiceImpl,
-    },
+use crate::grpc::{
+    meta_event_service::MetaServiceImpl,
+    remote_engine_service::{error, RemoteEngineServiceImpl, StreamReadReqKey},
+    storage_service::StorageServiceImpl,
 };
 
 mod meta_event_service;
