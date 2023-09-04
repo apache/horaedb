@@ -23,7 +23,7 @@ use ceresdbproto::storage::{
 };
 use generic_error::BoxError;
 use http::StatusCode;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::from_slice;
 use snafu::{OptionExt, ResultExt};
 use time_ext::try_to_millis;
@@ -209,4 +209,33 @@ pub(crate) fn validate(points: &[Point]) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Filter {
+    pub r#type: String,
+    pub tagk: String,
+    pub filter: String,
+    #[serde(rename = "groupBy")]
+    pub group_by: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SubQuery {
+    pub metric: String,
+    pub aggregator: String,
+    #[serde(default)]
+    pub rate: bool,
+    pub downsample: Option<String>,
+    pub tags: Option<HashMap<String, String>>,
+    pub filters: Option<Vec<Filter>>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct QueryRequest {
+    pub start: i64,
+    pub end: i64,
+    pub queries: Vec<SubQuery>,
+    #[serde(rename = "msResolution", default)]
+    pub ms_resolution: bool,
 }
