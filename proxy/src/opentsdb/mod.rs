@@ -12,16 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! This module implements [put][1] for OpenTSDB
+//! This module implements [put][1], [query][2] for OpenTSDB
 //! [1]: http://opentsdb.net/docs/build/html/api_http/put.html
+//! [2]: http://opentsdb.net/docs/build/html/api_http/query/index.html
 
 use ceresdbproto::storage::{
     RequestContext as GrpcRequestContext, WriteRequest as GrpcWriteRequest,
 };
 use http::StatusCode;
 use log::debug;
+use query_frontend::opentsdb::types::QueryRequest;
 
-use self::types::QueryRequest;
 use crate::{
     context::RequestContext,
     error::{ErrNoCause, Result},
@@ -39,7 +40,6 @@ impl Proxy {
         req: PutRequest,
     ) -> Result<PutResponse> {
         let write_table_requests = convert_put_request(req)?;
-
         let num_rows: usize = write_table_requests
             .iter()
             .map(|req| {

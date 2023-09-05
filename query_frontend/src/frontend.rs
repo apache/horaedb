@@ -29,6 +29,7 @@ use table_engine::table;
 
 use crate::{
     ast::{Statement, TableName},
+    opentsdb::types::{OpentsdbQueryPlan, QueryRequest},
     parser::Parser,
     plan::Plan,
     planner::Planner,
@@ -166,6 +167,15 @@ impl<P: MetaProvider> Frontend<P> {
     pub fn influxql_stmt_to_plan(&self, ctx: &Context, stmt: InfluxqlStatement) -> Result<Plan> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
         planner.influxql_stmt_to_plan(stmt).context(CreatePlan)
+    }
+
+    pub fn opentsdb_query_to_plan(
+        &self,
+        ctx: &Context,
+        query: QueryRequest,
+    ) -> Result<OpentsdbQueryPlan> {
+        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+        planner.opentsdb_query_to_plan(query).context(CreatePlan)
     }
 
     pub fn write_req_to_plan(

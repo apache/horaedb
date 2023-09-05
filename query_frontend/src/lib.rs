@@ -22,6 +22,7 @@ pub mod ast;
 pub mod container;
 pub mod frontend;
 pub mod influxql;
+pub mod opentsdb;
 pub mod parser;
 mod partition;
 pub mod plan;
