@@ -28,7 +28,7 @@ export HOST_NUM=${HOST_NUM:-10000}
 export TS_START="2022-09-05T00:00:00Z"
 export TS_END="2022-09-05T01:00:01Z"
 export EXE_FILE_NAME=${CURR_DIR}/tsbs/tsbs_generate_queries
-# where generated queries stored
+# Where generated queries stored
 export BULK_DATA_DIR=${CURR_DIR}/dist-query-testing/tsbs-cpu-only
 export FORMATS=ceresdb
 # Used for `generate_queries.sh` end.
@@ -38,8 +38,10 @@ single-groupby-1-8-1 \
 single-groupby-5-1-1 \
 single-groupby-5-8-1"
 export QUERIES=20
-
-export QUERY_RESPONSE_FILE=${CURR_DIR}/output/resp.txt
+# Where query results stored
+export QUERY_RESULTS_FILE=${CURR_DIR}/output/resp.txt
+TSBS_REPO_PATH=${CURR_DIR}/tsbs
+DATA_REPO_PATH=${CURR_DIR}/dist-query-testing
 
 set -x
 
@@ -56,9 +58,25 @@ mkdir -p ${LOG_DIR}
 
 # Prepare components
 ## tsbs
-git clone -b support-partitioned-table --depth 1 --single-branch https://github.com/Rachelint/tsbs.git
+if [[ -d ${TSBS_REPO_PATH} && $UPDATE_REPOS_TO_LATEST == 'true' ]]; then
+  echo "Remove old tsbs..."
+  rm -rf ${TSBS_REPO_PATH}
+fi
+
+if [[ ! -d ${TSBS_REPO_PATH} ]]; then
+    echo "Pull tsbs repo..."
+    git clone -b support-partitioned-table --depth 1 --single-branch https://github.com/Rachelint/tsbs.git
+fi
 ## data
-git clone -b main --depth 1 --single-branch https://github.com/CeresDB/dist-query-testing.git
+if [[ -d ${DATA_REPO_PATH} && $UPDATE_REPOS_TO_LATEST == 'true' ]]; then
+  echo "Remove old dist query testing..."
+  rm -rf ${DATA_REPO_PATH}
+fi
+
+if [[ ! -d ${DATA_REPO_PATH} ]]; then
+    echo "Pull old dist query testing repo..."
+    git clone -b main --depth 1 --single-branch https://github.com/CeresDB/dist-query-testing.git
+fi
 ## build tsbs bins
 cd tsbs
 go build ./cmd/tsbs_generate_data
@@ -71,4 +89,4 @@ ${CURR_DIR}/tsbs/tsbs_load_ceresdb --ceresdb-addr=${CERESDB_ADDR} --file ${DATA_
 
 # Run queries against ceresdb
 # TODO: support more kinds of queries besides 5-8-1.
-cat ${BULK_DATA_DIR}/single-groupby-5-8-1-queries.gz | gunzip | ${CURR_DIR}/tsbs/tsbs_run_queries_ceresdb --ceresdb-addr=${CERESDB_ADDR} --print-responses true --access-mode proxy --responses-file ${QUERY_RESPONSE_FILE} | tee ${LOG_DIR}/5-8-1.log
+cat ${BULK_DATA_DIR}/single-groupby-5-8-1-queries.gz | gunzip | ${CURR_DIR}/tsbs/tsbs_run_queries_ceresdb --ceresdb-addr=${CERESDB_ADDR} --print-responses true --access-mode proxy --responses-file ${QUERY_RESULTS_FILE} | tee ${LOG_DIR}/5-8-1.log

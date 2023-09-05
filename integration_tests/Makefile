@@ -25,6 +25,9 @@ export CLUSTER_CERESDB_STDOUT_FILE_0 ?= /tmp/ceresdb-stdout-0.log
 export CLUSTER_CERESDB_STDOUT_FILE_1 ?= /tmp/ceresdb-stdout-1.log
 export RUST_BACKTRACE=1
 
+# Whether update related repos
+export UPDATE_REPOS_TO_LATEST ?= true
+
 clean:
 	rm -rf $(CERESDB_DATA_DIR) $(CERESDB_DATA_DIR_0) $(CERESDB_DATA_DIR_1) $(CERESMETA_DATA_DIR)
 
