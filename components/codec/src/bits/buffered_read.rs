@@ -77,12 +77,18 @@ impl<'a> BufferedReader<'a> {
         }
 
         let mut byte = 0;
-        let mut b = self.get_byte().unwrap();
+        let mut b = match self.get_byte() {
+            None => return None,
+            Some(b) => b,
+        };
 
         byte |= b.wrapping_shl(self.bit_idx);
 
         self.byte_idx += 1;
-        b = self.get_byte().unwrap();
+        b = match self.get_byte() {
+            None => return None,
+            Some(b) => b,
+        };
 
         byte |= b.wrapping_shr(8 - self.bit_idx);
 
