@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use async_trait::async_trait;
-use common_types::schema::SchemaEncoder;
+use common_types::{schema::SchemaEncoder, table::ShardId};
 use generic_error::BoxError;
 use log::info;
 use meta_client::{
@@ -23,8 +23,9 @@ use meta_client::{
 use query_frontend::plan::{CreateTablePlan, DropTablePlan};
 use snafu::ResultExt;
 use table_engine::{
-    engine::TableEngineRef,
+    engine::{TableEngineRef, TableState},
     partition::{format_sub_partition_table_name, PartitionInfo},
+    table::{SchemaId, TableId},
 };
 
 use crate::{
@@ -49,13 +50,39 @@ impl TableManipulator for TableManipulatorImpl {
         &self,
         ctx: Context,
         plan: CreateTablePlan,
-        _table_engine: TableEngineRef,
+        table_engine: TableEngineRef,
     ) -> Result<Output> {
+        let schema_name = ctx.default_schema().to_string();
+        {
+            let create_table_req = table_engine::engine::CreateTableRequest {
+                catalog_name: ctx.default_catalog().to_string(),
+                schema_name: schema_name.clone(),
+                // FIXME: the schema id and table id are not necessary to do create table check,
+                // maybe we should use another request struct instead of `CreateTableRequest` here.
+                schema_id: SchemaId::MIN,
+                table_id: TableId::MIN,
+                table_name: plan.table.clone(),
+                table_schema: plan.table_schema.clone(),
+                engine: plan.engine.clone(),
+                options: plan.options.clone(),
+                state: TableState::Stable,
+                shard_id: ShardId::MIN,
+                partition_info: plan.partition_info.clone(),
+            };
+            table_engine
+                .validate_create_table(&create_table_req)
+                .await
+                .box_err()
+                .with_context(|| CreateWithCause {
+                    msg: format!("invalid parameters to create table, plan:{plan:?}"),
+                })?;
+        }
+
         let encoded_schema = SchemaEncoder::default()
             .encode(&plan.table_schema)
             .box_err()
             .with_context(|| CreateWithCause {
-                msg: format!("fail to encode table schema, ctx:{ctx:?}, plan:{plan:?}"),
+                msg: format!("fail to encode table schema, plan:{plan:?}"),
             })?;
 
         let partition_table_info = create_partition_table_info(&plan.table, &plan.partition_info);

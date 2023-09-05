@@ -35,16 +35,11 @@ use crate::{
 
 impl Instance {
     /// Validate the request of creating table.
-    fn validate_create_table(
-        &self,
-        space: &SpaceRef,
-        request: &CreateTableRequest,
-    ) -> Result<TableOptions> {
+    pub fn validate_create_table(&self, request: &CreateTableRequest) -> Result<TableOptions> {
         let table_opts =
-            table_options::merge_table_options_for_alter(&request.options, &self.table_opts)
+            table_options::merge_table_options_for_create(&request.options, &self.table_opts)
                 .box_err()
                 .context(InvalidOptions {
-                    space_id: space.id,
                     table_id: request.table_id,
                     table: &request.table_name,
                 })?;
@@ -79,7 +74,7 @@ impl Instance {
             .fail();
         }
 
-        let mut table_opts = self.validate_create_table(&space, &request)?;
+        let mut table_opts = self.validate_create_table(&request)?;
         // Sanitize options before creating table.
         table_opts.sanitize();
 

@@ -315,6 +315,9 @@ pub trait TableEngine: Send + Sync {
     /// Close the engine gracefully.
     async fn close(&self) -> Result<()>;
 
+    /// Validate the request of create table.
+    async fn validate_create_table(&self, request: &CreateTableRequest) -> Result<()>;
+
     /// Create table
     async fn create_table(&self, request: CreateTableRequest) -> Result<TableRef>;
 

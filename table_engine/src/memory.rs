@@ -293,6 +293,13 @@ impl TableEngine for MemoryTableEngine {
         Ok(())
     }
 
+    async fn validate_create_table(
+        &self,
+        _request: &CreateTableRequest,
+    ) -> crate::engine::Result<()> {
+        Ok(())
+    }
+
     async fn create_table(&self, request: CreateTableRequest) -> crate::engine::Result<TableRef> {
         Ok(Arc::new(MemoryTable::new(
             request.table_name,

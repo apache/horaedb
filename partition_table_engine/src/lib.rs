@@ -60,6 +60,11 @@ impl TableEngine for PartitionTableEngine {
         Ok(())
     }
 
+    /// Validate the request of create table.
+    async fn validate_create_table(&self, _request: &CreateTableRequest) -> Result<()> {
+        Ok(())
+    }
+
     async fn create_table(&self, request: CreateTableRequest) -> Result<TableRef> {
         let table_data = TableData {
             catalog_name: request.catalog_name,

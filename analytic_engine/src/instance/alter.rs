@@ -212,15 +212,17 @@ impl<'a> Alterer<'a> {
             "Instance alter options, space_id:{}, tables:{:?}, old_table_opts:{:?}, options:{:?}",
             self.table_data.space_id, self.table_data.name, current_table_options, options
         );
-        let mut table_opts =
-            table_options::merge_table_options_for_alter(&options, &current_table_options)
-                .box_err()
-                .context(InvalidOptions {
-                    space_id: self.table_data.space_id,
-                    table: &self.table_data.name,
-                    table_id: self.table_data.id,
-                })?;
-        table_opts.sanitize();
+        let table_opts = {
+            let mut opts =
+                table_options::merge_table_options_for_alter(&options, &current_table_options)
+                    .box_err()
+                    .context(InvalidOptions {
+                        table: &self.table_data.name,
+                        table_id: self.table_data.id,
+                    })?;
+            opts.sanitize();
+            opts
+        };
         let manifest_update = AlterOptionsMeta {
             space_id: self.table_data.space_id,
             table_id: self.table_data.id,

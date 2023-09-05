@@ -100,6 +100,12 @@ impl TableEngine for TableEngineImpl {
         Ok(())
     }
 
+    async fn validate_create_table(&self, request: &CreateTableRequest) -> Result<()> {
+        self.instance.validate_create_table(request)?;
+
+        Ok(())
+    }
+
     async fn create_table(&self, request: CreateTableRequest) -> Result<TableRef> {
         let space_id = build_space_id(request.schema_id);
 
