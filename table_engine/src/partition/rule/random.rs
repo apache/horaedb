@@ -28,9 +28,10 @@ impl PartitionRule for RandomRule {
         vec![]
     }
 
-    fn locate_partitions_for_write(&self, _row_group: &RowGroup) -> Result<Vec<usize>> {
+    fn locate_partitions_for_write(&self, row_group: &RowGroup) -> Result<Vec<usize>> {
         let value: usize = rand::random();
-        Ok(vec![value % self.partition_num])
+        let partition_idx = value % self.partition_num;
+        Ok(vec![partition_idx; row_group.num_rows()])
     }
 
     fn locate_partitions_for_read(
