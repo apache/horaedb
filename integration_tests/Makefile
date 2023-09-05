@@ -78,3 +78,7 @@ run-opentsdb:
 
 run-recovery: clean build-ceresdb kill-old-process
 	cd recovery && ./run.sh && ./run.sh shard_based
+
+run-dist-query: prepare build-meta
+	CERESDB_INTEGRATION_TEST_BIN_RUN_MODE=build_cluster $(CERESDB_TEST_BINARY)
+	cd dist_query && sh ./run.sh
