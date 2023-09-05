@@ -27,6 +27,7 @@ mod database;
 
 const CASE_ROOT_PATH_ENV: &str = "CERESDB_TEST_CASE_PATH";
 const ENV_FILTER_ENV: &str = "CERESDB_ENV_FILTER";
+const RUN_MODE: &str = "CERESDB_INTEGRATION_TEST_BIN_RUN_MODE";
 
 struct CeresDBController;
 struct UntypedCeresDB {
@@ -75,16 +76,34 @@ impl EnvController for CeresDBController {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let case_dir = env::var(CASE_ROOT_PATH_ENV)?;
-    let env_filter = env::var(ENV_FILTER_ENV).unwrap_or_else(|_| ".*".to_string());
     let controller = CeresDBController;
-    let config = sqlness::ConfigBuilder::default()
-        .case_dir(case_dir)
-        .env_filter(env_filter)
-        .follow_links(true)
-        .build()?;
-    let runner = Runner::new_with_config(config, controller).await?;
-    runner.run().await?;
+    let run_mode = env::var(RUN_MODE).unwrap_or_else(|_| "sql_test".to_string());
+
+    match run_mode.as_str() {
+        // Run sql tests powered by `sqlness`.
+        "sql_test" => {
+            let case_dir = env::var(CASE_ROOT_PATH_ENV)?;
+            let env_filter = env::var(ENV_FILTER_ENV).unwrap_or_else(|_| ".*".to_string());
+            let config = sqlness::ConfigBuilder::default()
+                .case_dir(case_dir)
+                .env_filter(env_filter)
+                .follow_links(true)
+                .build()?;
+            let runner = Runner::new_with_config(config, controller).await?;
+            runner.run().await?;
+        },
+        // Just build the cluster testing env.
+        "build_cluster" => {
+            let _ = controller.start("cluster", None).await;
+        },
+        // Just build the local testing env.
+        "build_local" => {
+            let _ = controller.start("local", None).await;
+        },
+        other => {
+            panic!("Unknown run mode:{other}")
+        }   
+    }
 
     Ok(())
 }
