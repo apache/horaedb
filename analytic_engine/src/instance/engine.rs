@@ -243,6 +243,11 @@ pub enum Error {
         msg: Option<String>,
         backtrace: Backtrace,
     },
+
+    #[snafu(display(
+        "Try to create a random partition table in overwrite mode, table:{table}.\nBacktrace:\n{backtrace}",
+    ))]
+    TryCreateRandomPartitionTableInOverwriteMode { table: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -250,7 +255,9 @@ define_result!(Error);
 impl From<Error> for table_engine::engine::Error {
     fn from(err: Error) -> Self {
         match &err {
-            Error::InvalidOptions { table, .. } | Error::SpaceNotExist { table, .. } => {
+            Error::InvalidOptions { table, .. }
+            | Error::SpaceNotExist { table, .. }
+            | Error::TryCreateRandomPartitionTableInOverwriteMode { table, .. } => {
                 Self::InvalidArguments {
                     table: table.clone(),
                     source: Box::new(err),

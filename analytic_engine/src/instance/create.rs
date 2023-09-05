@@ -16,21 +16,54 @@
 
 use generic_error::BoxError;
 use log::info;
-use snafu::{OptionExt, ResultExt};
-use table_engine::engine::CreateTableRequest;
+use snafu::{ensure, OptionExt, ResultExt};
+use table_engine::{engine::CreateTableRequest, partition::PartitionInfo};
 
 use crate::{
     instance::{
-        engine::{CreateOpenFailedTable, InvalidOptions, Result, TableNotExist, WriteManifest},
+        engine::{
+            CreateOpenFailedTable, InvalidOptions, Result, TableNotExist,
+            TryCreateRandomPartitionTableInOverwriteMode, WriteManifest,
+        },
         Instance,
     },
     manifest::meta_edit::{AddTableMeta, MetaEdit, MetaEditRequest, MetaUpdate},
     space::SpaceRef,
     table::data::{TableDataRef, TableShardInfo},
-    table_options,
+    table_options, TableOptions,
 };
 
 impl Instance {
+    /// Validate the request of creating table.
+    fn validate_create_table(
+        &self,
+        space: &SpaceRef,
+        request: &CreateTableRequest,
+    ) -> Result<TableOptions> {
+        let table_opts =
+            table_options::merge_table_options_for_alter(&request.options, &self.table_opts)
+                .box_err()
+                .context(InvalidOptions {
+                    space_id: space.id,
+                    table_id: request.table_id,
+                    table: &request.table_name,
+                })?;
+
+        if let Some(partition_info) = &request.partition_info {
+            let dedup_on_random_partition =
+                table_opts.need_dedup() && matches!(partition_info, PartitionInfo::Random(_));
+
+            ensure!(
+                !dedup_on_random_partition,
+                TryCreateRandomPartitionTableInOverwriteMode {
+                    table: &request.table_name,
+                }
+            );
+        }
+
+        Ok(table_opts)
+    }
+
     /// Create table need to be handled by write worker.
     pub async fn do_create_table(
         &self,
@@ -46,14 +79,7 @@ impl Instance {
             .fail();
         }
 
-        let mut table_opts =
-            table_options::merge_table_options_for_create(&request.options, &self.table_opts)
-                .box_err()
-                .context(InvalidOptions {
-                    space_id: space.id,
-                    table: &request.table_name,
-                    table_id: request.table_id,
-                })?;
+        let mut table_opts = self.validate_create_table(&space, &request)?;
         // Sanitize options before creating table.
         table_opts.sanitize();
 

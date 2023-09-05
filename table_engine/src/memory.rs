@@ -319,7 +319,7 @@ impl TableEngine for MemoryTableEngine {
 
     async fn open_shard(
         &self,
-        _equest: OpenShardRequest,
+        _request: OpenShardRequest,
     ) -> crate::engine::Result<OpenShardResult> {
         Ok(OpenShardResult::default())
     }
