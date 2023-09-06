@@ -38,12 +38,12 @@ use crate::{
 
 impl Instance {
     /// Validate the request of creating table.
-    pub fn validate_create_table(&self, params: CreateTableParams<'_>) -> Result<TableOptions> {
+    pub fn validate_create_table(&self, params: &CreateTableParams) -> Result<TableOptions> {
         let table_opts =
-            table_options::merge_table_options_for_create(params.table_options, &self.table_opts)
+            table_options::merge_table_options_for_create(&params.table_options, &self.table_opts)
                 .box_err()
                 .context(InvalidOptions {
-                    table: params.table_name,
+                    table: &params.table_name,
                 })?;
 
         if let Some(partition_info) = &params.partition_info {
@@ -53,7 +53,7 @@ impl Instance {
             ensure!(
                 !dedup_on_random_partition,
                 TryCreateRandomPartitionTableInOverwriteMode {
-                    table: params.table_name,
+                    table: &params.table_name,
                 }
             );
         }
@@ -69,14 +69,14 @@ impl Instance {
     ) -> Result<TableDataRef> {
         info!("Instance create table, request:{:?}", request);
 
-        if space.is_open_failed_table(&request.table_name) {
+        if space.is_open_failed_table(&request.params.table_name) {
             return CreateOpenFailedTable {
-                table: request.table_name,
+                table: request.params.table_name,
             }
             .fail();
         }
 
-        let mut table_opts = self.validate_create_table(CreateTableParams::from(&request))?;
+        let mut table_opts = self.validate_create_table(&request.params)?;
         // Sanitize options before creating table.
         table_opts.sanitize();
 
@@ -89,8 +89,8 @@ impl Instance {
             let meta_update = MetaUpdate::AddTable(AddTableMeta {
                 space_id: space.id,
                 table_id: request.table_id,
-                table_name: request.table_name.clone(),
-                schema: request.table_schema,
+                table_name: request.params.table_name.clone(),
+                schema: request.params.table_schema,
                 opts: table_opts,
             });
             MetaEditRequest {
@@ -102,9 +102,9 @@ impl Instance {
             .manifest
             .apply_edit(edit_req)
             .await
-            .with_context(|| WriteManifest {
+            .context(WriteManifest {
                 space_id: space.id,
-                table: request.table_name.clone(),
+                table: &request.params.table_name,
                 table_id: request.table_id,
             })?;
 
@@ -114,7 +114,7 @@ impl Instance {
             .with_context(|| TableNotExist {
                 msg: format!(
                     "table not exist, space_id:{}, table_id:{}, table_name:{}",
-                    space.id, request.table_id, request.table_name
+                    space.id, request.table_id, request.params.table_name
                 ),
             })
     }

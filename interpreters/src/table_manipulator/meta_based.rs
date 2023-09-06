@@ -53,15 +53,16 @@ impl TableManipulator for TableManipulatorImpl {
     ) -> Result<Output> {
         {
             let params = table_engine::engine::CreateTableParams {
-                catalog_name: ctx.default_catalog(),
-                schema_name: ctx.default_schema(),
-                table_name: &plan.table,
-                engine: &plan.engine,
-                table_options: &plan.options,
-                partition_info: &plan.partition_info,
+                catalog_name: ctx.default_catalog().to_string(),
+                schema_name: ctx.default_schema().to_string(),
+                table_name: plan.table.clone(),
+                table_schema: plan.table_schema.clone(),
+                engine: plan.engine.clone(),
+                table_options: plan.options.clone(),
+                partition_info: plan.partition_info.clone(),
             };
             table_engine
-                .validate_create_table(params)
+                .validate_create_table(&params)
                 .await
                 .box_err()
                 .with_context(|| CreateWithCause {

@@ -25,7 +25,7 @@ use generic_error::BoxError;
 use log::info;
 use snafu::ResultExt;
 use table_engine::{
-    engine::{TableEngineRef, TableState},
+    engine::{CreateTableParams, TableEngineRef, TableState},
     table::TableId,
 };
 
@@ -244,17 +244,20 @@ impl ShardOperator {
         };
 
         // Build create table request and options.
-        let create_table_request = CreateTableRequest {
+        let params = CreateTableParams {
             catalog_name: ctx.catalog,
             schema_name: table_info.schema_name.clone(),
             table_name: table_info.name.clone(),
-            table_id: Some(TableId::new(table_info.id)),
             table_schema: ctx.table_schema,
             engine: ctx.engine,
-            options: ctx.options,
+            table_options: ctx.options,
+            partition_info,
+        };
+        let create_table_request = CreateTableRequest {
+            params,
+            table_id: Some(TableId::new(table_info.id)),
             state: TableState::Stable,
             shard_id: shard_info.id,
-            partition_info,
         };
 
         let create_opts = CreateOptions {

@@ -40,8 +40,8 @@ use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{
     self,
     engine::{
-        CreateTableRequest, DropTableRequest, OpenTableRequest, TableEngineRef, TableRequestType,
-        TableState,
+        CreateTableParams, CreateTableRequest, DropTableRequest, OpenTableRequest, TableEngineRef,
+        TableRequestType, TableState,
     },
     predicate::PredicateBuilder,
     table::{
@@ -306,16 +306,19 @@ impl SysCatalogTable {
             common_types::OPTION_KEY_ENABLE_TTL.to_string(),
             DEFAULT_ENABLE_TTL.to_string(),
         );
-        let create_request = CreateTableRequest {
+        let params = CreateTableParams {
             catalog_name: consts::SYSTEM_CATALOG.to_string(),
             schema_name: consts::SYSTEM_CATALOG_SCHEMA.to_string(),
-            schema_id: SYSTEM_SCHEMA_ID,
             table_name: SYS_CATALOG_TABLE_NAME.to_string(),
-            table_id: SYS_CATALOG_TABLE_ID,
             table_schema,
             partition_info: None,
             engine: table_engine.engine_type().to_string(),
-            options,
+            table_options: options,
+        };
+        let create_request = CreateTableRequest {
+            params,
+            schema_id: SYSTEM_SCHEMA_ID,
+            table_id: SYS_CATALOG_TABLE_ID,
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
         };

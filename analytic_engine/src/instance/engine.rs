@@ -326,8 +326,8 @@ impl Instance {
         request: CreateTableRequest,
     ) -> Result<SpaceAndTable> {
         let context = SpaceContext {
-            catalog_name: request.catalog_name.clone(),
-            schema_name: request.schema_name.clone(),
+            catalog_name: request.params.catalog_name.clone(),
+            schema_name: request.params.schema_name.clone(),
         };
         let space = self.find_or_create_space(space_id, context).await?;
         let table_data = self.do_create_table(space.clone(), request).await?;

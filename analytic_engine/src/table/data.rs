@@ -705,7 +705,7 @@ pub mod tests {
     use arena::NoopCollector;
     use common_types::{datum::DatumKind, table::DEFAULT_SHARD_ID};
     use table_engine::{
-        engine::{CreateTableRequest, TableState},
+        engine::{CreateTableParams, CreateTableRequest, TableState},
         table::SchemaId,
     };
     use time_ext::ReadableDuration;
@@ -793,18 +793,21 @@ pub mod tests {
         pub fn build(self) -> TableData {
             let space_id = DEFAULT_SPACE_ID;
             let table_schema = default_schema();
-            let create_request = CreateTableRequest {
+            let params = CreateTableParams {
                 catalog_name: "test_catalog".to_string(),
                 schema_name: "public".to_string(),
-                schema_id: SchemaId::from_u32(DEFAULT_SPACE_ID),
-                table_id: self.table_id,
                 table_name: self.table_name,
                 table_schema,
                 engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
-                options: HashMap::new(),
+                table_options: HashMap::new(),
+                partition_info: None,
+            };
+            let create_request = CreateTableRequest {
+                params,
+                schema_id: SchemaId::from_u32(DEFAULT_SPACE_ID),
+                table_id: self.table_id,
                 state: TableState::Stable,
                 shard_id: self.shard_id,
-                partition_info: None,
             };
 
             let table_opts = TableOptions::default();
@@ -814,8 +817,8 @@ pub mod tests {
             TableData::new(
                 space_id,
                 create_request.table_id,
-                create_request.table_name,
-                create_request.table_schema,
+                create_request.params.table_name,
+                create_request.params.table_schema,
                 create_request.shard_id,
                 table_opts,
                 &purger,

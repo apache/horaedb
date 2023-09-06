@@ -294,9 +294,9 @@ impl Schema for SchemaImpl {
     ) -> schema::Result<TableRef> {
         // FIXME: Error should be returned if create_if_not_exist is false.
         if let Some(table) = self.get_table(
-            &request.catalog_name,
-            &request.schema_name,
-            &request.table_name,
+            &request.params.catalog_name,
+            &request.params.schema_name,
+            &request.params.table_name,
         )? {
             return Ok(table);
         }
@@ -305,16 +305,16 @@ impl Schema for SchemaImpl {
         let _create_table_guard = self.create_table_mutex.lock().await;
 
         if let Some(table) = self.get_table(
-            &request.catalog_name,
-            &request.schema_name,
-            &request.table_name,
+            &request.params.catalog_name,
+            &request.params.schema_name,
+            &request.params.table_name,
         )? {
             return Ok(table);
         }
 
         // Do real create table.
         // Partition table is not stored in ShardTableManager.
-        if request.partition_info.is_none() {
+        if request.params.partition_info.is_none() {
             let shard =
                 self.shard_set
                     .get(request.shard_id)
@@ -325,7 +325,7 @@ impl Schema for SchemaImpl {
 
             // TODO: seems unnecessary?
             let _ = shard
-                .find_table(&request.schema_name, &request.table_name)
+                .find_table(&request.params.schema_name, &request.params.table_name)
                 .with_context(|| schema::CreateTable {
                     request: request.clone(),
                     msg: "table not found in shard".to_string(),

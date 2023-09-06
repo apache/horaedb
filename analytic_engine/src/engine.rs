@@ -100,7 +100,7 @@ impl TableEngine for TableEngineImpl {
         Ok(())
     }
 
-    async fn validate_create_table(&self, params: CreateTableParams<'_>) -> Result<()> {
+    async fn validate_create_table(&self, params: &CreateTableParams) -> Result<()> {
         self.instance.validate_create_table(params)?;
 
         Ok(())

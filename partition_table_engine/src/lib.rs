@@ -61,24 +61,24 @@ impl TableEngine for PartitionTableEngine {
     }
 
     /// Validate the request of create table.
-    async fn validate_create_table(&self, _params: CreateTableParams<'_>) -> Result<()> {
+    async fn validate_create_table(&self, _params: &CreateTableParams) -> Result<()> {
         Ok(())
     }
 
     async fn create_table(&self, request: CreateTableRequest) -> Result<TableRef> {
         let table_data = TableData {
-            catalog_name: request.catalog_name,
-            schema_name: request.schema_name,
-            table_name: request.table_name,
+            catalog_name: request.params.catalog_name,
+            schema_name: request.params.schema_name,
+            table_name: request.params.table_name,
             table_id: request.table_id,
-            table_schema: request.table_schema,
-            partition_info: request.partition_info.context(UnexpectedNoCause {
+            table_schema: request.params.table_schema,
+            partition_info: request.params.partition_info.context(UnexpectedNoCause {
                 msg: "partition info not found",
             })?,
-            options: TableOptions::from_map(&request.options, true)
+            options: TableOptions::from_map(&request.params.table_options, true)
                 .box_err()
                 .context(Unexpected)?,
-            engine_type: request.engine,
+            engine_type: request.params.engine,
         };
         Ok(Arc::new(
             PartitionTableImpl::new(table_data, self.remote_engine_ref.clone())
