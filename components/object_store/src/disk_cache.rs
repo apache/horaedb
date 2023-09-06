@@ -19,7 +19,7 @@
 //! Page is used for reasons below:
 //! - reduce file size in case of there are too many request with small range.
 
-use std::{fmt::Display, ops::Range, sync::Arc};
+use std::{fmt::Display, mem, ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
@@ -37,7 +37,7 @@ use time_ext;
 use tokio::{
     fs::{self, File, OpenOptions},
     io::{AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt},
-    sync::mpsc,
+    sync::oneshot::{self, error::RecvError},
 };
 use upstream::{
     path::Path, Error as ObjectStoreError, GetResult, ListResult, MultipartId, ObjectMeta,
@@ -46,7 +46,6 @@ use upstream::{
 
 const FILE_SIZE_CACHE_CAP: usize = 1 << 18;
 const FILE_SIZE_CACHE_PARTITION_BITS: usize = 8;
-const MPSC_CHANNEL_BUFFER_SIZE: usize = 20;
 pub const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
 #[derive(Debug, Snafu)]
@@ -443,7 +442,7 @@ pub struct DiskCacheStore {
     page_size: usize,
     meta_cache: PartitionedMutex<LruCache<Path, FileMeta>, SeaHasherBuilder>,
     underlying_store: Arc<dyn ObjectStore>,
-    request_notifiers: Arc<RequestNotifiers<String, Result<Bytes>>>,
+    request_notifiers: Arc<RequestNotifiers<String, oneshot::Sender<Result<Bytes>>>>,
 }
 
 impl DiskCacheStore {
@@ -596,25 +595,26 @@ impl DiskCacheStore {
         )
     }
 
-    async fn fetch_data(
+    async fn deduped_fetch_data(
         &self,
         location: &Path,
         aligned_ranges: Vec<Range<usize>>,
-    ) -> Result<Vec<tokio::sync::mpsc::Receiver<Result<Bytes>>>> {
-        let mut rxs = Vec::with_capacity(aligned_ranges.len());
+    ) -> Result<Vec<tokio::sync::oneshot::Receiver<Result<Bytes>>>> {
+        let mut rxs: Vec<oneshot::Receiver<Result<Bytes>>> =
+            Vec::with_capacity(aligned_ranges.len());
         let mut need_fetch_block = vec![];
         let mut need_fetch_block_filename = vec![];
 
-        for aligned_range in aligned_ranges.into_iter() {
-            let (tx, rx) = mpsc::channel(MPSC_CHANNEL_BUFFER_SIZE);
-            let filename = Self::page_cache_name(location, &aligned_range);
+        for aligned_range in aligned_ranges {
+            let (tx, rx) = oneshot::channel();
+            let cache_key = Self::page_cache_name(location, &aligned_range);
 
             if let notifier::notifier::RequestResult::First = self
                 .request_notifiers
-                .insert_notifier(filename.to_owned(), tx)
+                .insert_notifier(cache_key.to_owned(), tx)
             {
                 need_fetch_block.push(aligned_range);
-                need_fetch_block_filename.push(filename);
+                need_fetch_block_filename.push(cache_key);
             }
 
             rxs.push(rx);
@@ -630,17 +630,14 @@ impl DiskCacheStore {
                     .request_notifiers
                     .take_notifiers(&filename.to_owned())
                     .unwrap();
-                for notifier in &notifiers {
-                    if let Err(e) = notifier
-                        .send(Err(ObjectStoreError::Generic {
-                            store: "DiskCacheStore",
-                            source: Box::new(Error::FetchDataFromObjectStore {
-                                backtrace: Backtrace::generate(),
-                            }),
-                        }))
-                        .await
-                    {
-                        error!("Failed to send disk cache handler err result, err:{}.", e);
+                for notifier in notifiers {
+                    if let Err(e) = notifier.send(Err(ObjectStoreError::Generic {
+                        store: "DiskCacheStore",
+                        source: Box::new(Error::FetchDataFromObjectStore {
+                            backtrace: Backtrace::generate(),
+                        }),
+                    })) {
+                        error!("Failed to send disk cache handler err result, err:{:?}.", e);
                     }
                 }
             }
@@ -660,26 +657,33 @@ impl DiskCacheStore {
             self.cache
                 .insert_data(filename.to_owned(), bytes.clone())
                 .await;
-            for notifier in &notifiers {
-                if let Err(e) = notifier.send(Ok(bytes.clone())).await {
-                    error!("Failed to send disk cache handler result, err:{}.", e);
+            for notifier in notifiers {
+                if let Err(e) = notifier.send(Ok(bytes.clone())) {
+                    error!("Failed to send disk cache handler result, err:{:?}.", e);
                 }
             }
         }
         Ok(rxs)
     }
 
-    fn get_data_from_channel_data(data: Option<Result<Bytes>>) -> Result<Bytes> {
-        if data.is_none() {
-            return Err(ObjectStoreError::Generic {
+    fn get_data_from_channel_data(
+        data: std::result::Result<Result<Bytes>, RecvError>,
+    ) -> Result<Bytes> {
+        match data {
+            Ok(Ok(bytes)) => Ok(bytes),
+            Ok(Err(_)) => Err(ObjectStoreError::Generic {
+                store: "DiskCacheStore",
+                source: Box::new(Error::FetchDataFromObjectStore {
+                    backtrace: Backtrace::generate(),
+                }),
+            }),
+            Err(_) => Err(ObjectStoreError::Generic {
                 store: "DiskCacheStore",
                 source: Box::new(Error::ReceiveMessageFromChannel {
                     backtrace: Backtrace::generate(),
                 }),
-            });
+            }),
         }
-        let bytes = data.unwrap()?;
-        Ok(bytes)
     }
 
     /// Fetch the data from the underlying store and then cache it.
@@ -688,12 +692,15 @@ impl DiskCacheStore {
         location: &Path,
         aligned_range: &Range<usize>,
     ) -> Result<Bytes> {
-        let mut rx = self
-            .fetch_data(location, vec![aligned_range.clone()])
+        let rx = self
+            .deduped_fetch_data(location, vec![aligned_range.clone()])
             .await?;
         assert_eq!(rx.len(), 1);
-        let bytes = Self::get_data_from_channel_data(rx[0].recv().await)?;
-
+        let mut bytes_vec = vec![];
+        for i in rx {
+            bytes_vec.push(Self::get_data_from_channel_data(i.await)?);
+        }
+        let bytes = mem::replace(&mut bytes_vec[0], Bytes::default());
         Ok(bytes)
     }
 
@@ -843,10 +850,12 @@ impl ObjectStore for DiskCacheStore {
         }
 
         let mut missing_ranged_bytes = vec![];
-        let mut rxs = self.fetch_data(location, missing_ranges.clone()).await?;
+        let mut rxs = self
+            .deduped_fetch_data(location, missing_ranges.clone())
+            .await?;
 
         for i in rxs.iter_mut() {
-            missing_ranged_bytes.push(Self::get_data_from_channel_data(i.recv().await)?);
+            missing_ranged_bytes.push(Self::get_data_from_channel_data(i.await)?);
         }
 
         assert_eq!(missing_ranged_bytes.len(), missing_ranges.len());

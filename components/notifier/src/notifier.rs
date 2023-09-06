@@ -16,22 +16,20 @@ use std::{collections::HashMap, hash::Hash, sync::RwLock};
 
 use tokio::sync::mpsc::Sender;
 
-type Notifier<T> = Sender<T>;
-
 #[derive(Debug)]
 struct Notifiers<T> {
-    notifiers: RwLock<Vec<Notifier<T>>>,
+    notifiers: RwLock<Vec<T>>,
 }
 
 impl<T> Notifiers<T> {
-    pub fn new(notifier: Notifier<T>) -> Self {
+    pub fn new(notifier: T) -> Self {
         let notifiers = vec![notifier];
         Self {
             notifiers: RwLock::new(notifiers),
         }
     }
 
-    pub fn add_notifier(&self, notifier: Notifier<T>) {
+    pub fn add_notifier(&self, notifier: T) {
         self.notifiers.write().unwrap().push(notifier);
     }
 }
@@ -60,7 +58,7 @@ where
     K: PartialEq + Eq + Hash,
 {
     /// Insert a notifier for the given key.
-    pub fn insert_notifier(&self, key: K, notifier: Notifier<T>) -> RequestResult {
+    pub fn insert_notifier(&self, key: K, notifier: T) -> RequestResult {
         // First try to read the notifiers, if the key exists, add the notifier to the
         // notifiers.
         let notifiers_by_key = self.notifiers_by_key.read().unwrap();
@@ -84,7 +82,7 @@ where
     }
 
     /// Take the notifiers for the given key, and remove the key from the map.
-    pub fn take_notifiers(&self, key: &K) -> Option<Vec<Notifier<T>>> {
+    pub fn take_notifiers(&self, key: &K) -> Option<Vec<T>> {
         self.notifiers_by_key
             .write()
             .unwrap()
