@@ -146,7 +146,7 @@ impl Server {
 
     pub async fn start(&mut self) -> Result<()> {
         // Run in standalone mode
-        if let Some(local_tables_recoverer) = &self.local_tables_recoverer {
+        if let Some(local_tables_recoverer) = self.local_tables_recoverer.as_mut() {
             info!("Server start, open local tables");
             local_tables_recoverer
                 .recover()

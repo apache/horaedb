@@ -80,6 +80,9 @@ impl Shard {
         let data = Arc::new(std::sync::RwLock::new(ShardData {
             shard_info: tables_of_shard.shard_info,
             tables: tables_of_shard.tables,
+            open_success_tables: vec![],
+            open_missing_tables: vec![],
+            open_failed_tables: vec![],
         }));
 
         let operator = tokio::sync::Mutex::new(ShardOperator { data: data.clone() });
@@ -160,6 +163,16 @@ impl Shard {
         let operator = self.operator.lock().await;
         operator.close_table(ctx).await
     }
+
+    pub fn get_open_failed_tables(&self) -> Result<Vec<String>> {
+        let data = self.data.read().unwrap();
+        Ok(data.open_failed_tables())
+    }
+
+    pub fn get_open_missing_tables(&self) -> Result<Vec<String>> {
+        let data = self.data.read().unwrap();
+        Ok(data.open_missing_tables())
+    }
 }
 
 pub type ShardRef = Arc<Shard>;
@@ -179,6 +192,15 @@ pub struct ShardData {
 
     /// Tables in shard
     pub tables: Vec<TableInfo>,
+
+    /// Tables open missing
+    pub open_success_tables: Vec<String>,
+
+    /// Tables open missing
+    pub open_missing_tables: Vec<String>,
+
+    /// Tables open failed
+    pub open_failed_tables: Vec<String>,
 }
 
 impl ShardData {
@@ -214,6 +236,16 @@ impl ShardData {
     #[inline]
     pub fn is_opened(&self) -> bool {
         self.shard_info.is_opened()
+    }
+
+    #[inline]
+    pub fn open_missing_tables(&self) -> Vec<String> {
+        self.open_missing_tables.clone()
+    }
+
+    #[inline]
+    pub fn open_failed_tables(&self) -> Vec<String> {
+        self.open_failed_tables.clone()
     }
 
     #[inline]
@@ -253,7 +285,9 @@ impl ShardData {
 
         // Update tables of shard.
         self.shard_info = curr_shard;
-        self.tables.push(new_table);
+        self.tables.push(new_table.clone());
+
+        self.open_success_tables.push(new_table.name);
 
         Ok(())
     }
@@ -263,7 +297,7 @@ impl ShardData {
             prev_version: prev_shard_version,
             shard_info: curr_shard,
             table_info: new_table,
-        } = updated_info;
+        } = updated_info.clone();
 
         ensure!(
             !self.is_frozen(),
@@ -291,6 +325,39 @@ impl ShardData {
         // Update tables of shard.
         self.shard_info = curr_shard;
         self.tables.swap_remove(table_idx);
+
+        match self
+            .open_success_tables
+            .iter()
+            .position(|x| *x == updated_info.clone().table_info.name)
+        {
+            None => {}
+            Some(idx) => {
+                self.open_success_tables.remove(idx);
+            }
+        };
+
+        match self
+            .open_missing_tables
+            .iter()
+            .position(|x| *x == updated_info.clone().table_info.name)
+        {
+            None => {}
+            Some(idx) => {
+                self.open_missing_tables.remove(idx);
+            }
+        };
+
+        match self
+            .open_failed_tables
+            .iter()
+            .position(|x| *x == updated_info.clone().table_info.name)
+        {
+            None => {}
+            Some(idx) => {
+                self.open_failed_tables.remove(idx);
+            }
+        };
 
         Ok(())
     }

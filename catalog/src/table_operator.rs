@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::time::Instant;
+use std::{collections::HashMap, time::Instant};
 
 use generic_error::BoxError;
 use log::{error, info, warn};
 use snafu::{OptionExt, ResultExt};
-use table_engine::{engine, table::TableRef};
+use table_engine::{
+    engine,
+    table::{TableId, TableRef},
+};
 use time_ext::InstantExt;
 
 use crate::{
@@ -43,7 +46,11 @@ impl TableOperator {
         Self { catalog_manager }
     }
 
-    pub async fn open_shard(&self, request: OpenShardRequest, opts: OpenOptions) -> Result<()> {
+    pub async fn open_shard(
+        &mut self,
+        request: OpenShardRequest,
+        opts: OpenOptions,
+    ) -> Result<OpenShardResult> {
         let instant = Instant::now();
         let table_engine = opts.table_engine;
         let shard_id = request.shard_id;
@@ -71,9 +78,9 @@ impl TableOperator {
             .context(TableOperatorWithCause { msg: None })?;
 
         // Check and register successful opened table into schema.
-        let mut success_count = 0_u32;
-        let mut missing_table_count = 0_u32;
-        let mut open_table_errs = Vec::new();
+        let mut open_success_tables = HashMap::new();
+        let mut open_missing_tables = HashMap::new();
+        let mut open_failed_tables = HashMap::new();
 
         for (table_id, schema) in related_schemas {
             let table_result = shard_result
@@ -87,39 +94,49 @@ impl TableOperator {
             match table_result {
                 Ok(Some(table)) => {
                     schema.register_table(table);
-                    success_count += 1;
+                    open_success_tables.insert(table_id, schema);
                 }
                 Ok(None) => {
                     error!("TableOperator failed to open a missing table, table_id:{table_id}, schema_id:{:?}, shard_id:{shard_id}", schema.id());
-                    missing_table_count += 1;
+                    open_missing_tables.insert(table_id, schema);
                 }
                 Err(e) => {
                     error!("TableOperator failed to open table, table_id:{table_id}, schema_id:{:?}, shard_id:{shard_id}, err:{}", schema.id(), e);
-                    open_table_errs.push(e);
+                    open_failed_tables.insert(table_id, schema);
                 }
             }
         }
 
         info!(
-            "Open shard finish, shard id:{shard_id}, cost:{}ms, success_count:{success_count}, missing_table_count:{missing_table_count}, open_table_errs:{open_table_errs:?}",
+            "Open shard finish, shard id:{shard_id}, cost:{}ms, success_count:{}, missing_table_count:{}, open_table_errs:{}",
             instant.saturating_elapsed().as_millis(),
+            open_success_tables.len(),
+            open_missing_tables.len(),
+            open_failed_tables.len(),
         );
 
-        if missing_table_count == 0 && open_table_errs.is_empty() {
-            Ok(())
-        } else {
+        if !open_missing_tables.is_empty() || !open_missing_tables.is_empty() {
             let msg = format!(
                 "Failed to open shard, some tables open failed, shard id:{shard_id}, \
-                missing_table_count:{missing_table_count}, \
+                missing_table_count:{}, \
                 open_err_count:{}",
-                open_table_errs.len()
+                open_missing_tables.len(),
+                open_failed_tables.len()
             );
-
-            TableOperatorNoCause { msg }.fail()
+            error!("{}", msg);
         }
+        Ok(OpenShardResult {
+            open_success_tables: Default::default(),
+            open_missing_tables,
+            open_failed_tables,
+        })
     }
 
-    pub async fn close_shard(&self, request: CloseShardRequest, opts: CloseOptions) -> Result<()> {
+    pub async fn close_shard(
+        &mut self,
+        request: CloseShardRequest,
+        opts: CloseOptions,
+    ) -> Result<()> {
         let instant = Instant::now();
         let table_engine = opts.table_engine;
         let shard_id = request.shard_id;
@@ -283,5 +300,25 @@ impl TableOperator {
             .context(TableOperatorNoCause {
                 msg: format!("schema not found, schema_name:{schema_name}"),
             })
+    }
+}
+
+pub struct OpenShardResult {
+    open_success_tables: HashMap<TableId, SchemaRef>,
+    open_missing_tables: HashMap<TableId, SchemaRef>,
+    open_failed_tables: HashMap<TableId, SchemaRef>,
+}
+
+impl OpenShardResult {
+    pub fn get_open_success_tables(&self) -> HashMap<TableId, SchemaRef> {
+        self.open_success_tables.clone()
+    }
+
+    pub fn get_open_missing_tables(&self) -> HashMap<TableId, SchemaRef> {
+        self.open_missing_tables.clone()
+    }
+
+    pub fn get_open_failed_tables(&self) -> HashMap<TableId, SchemaRef> {
+        self.open_failed_tables.clone()
     }
 }

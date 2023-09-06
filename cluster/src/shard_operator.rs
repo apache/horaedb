@@ -33,7 +33,7 @@ use crate::{
     shard_operation::WalRegionCloserRef,
     shard_set::{ShardDataRef, UpdatedTableInfo},
     CloseShardWithCause, CloseTableWithCause, CreateTableWithCause, DropTableWithCause,
-    OpenShardWithCause, OpenTableWithCause, Result,
+    OpenShardNoCause, OpenShardWithCause, OpenTableWithCause, Result,
 };
 
 pub struct OpenContext {
@@ -121,7 +121,7 @@ pub struct ShardOperator {
 }
 
 impl ShardOperator {
-    pub async fn open(&self, ctx: OpenContext) -> Result<()> {
+    pub async fn open(&self, mut ctx: OpenContext) -> Result<()> {
         let (shard_info, tables) = {
             let data = self.data.read().unwrap();
             let shard_info = data.shard_info.clone();
@@ -151,20 +151,31 @@ impl ShardOperator {
             table_engine: ctx.table_engine.clone(),
         };
 
-        ctx.table_operator
-            .open_shard(open_shard_request, opts)
-            .await
-            .box_err()
-            .with_context(|| OpenShardWithCause {
+        let open_shard_result = Box::new(
+            ctx.table_operator
+                .open_shard(open_shard_request, opts)
+                .await
+                .box_err()
+                .with_context(|| OpenShardWithCause {
+                    msg: format!("shard_info:{shard_info:?}"),
+                })?,
+        );
+
+        if !open_shard_result.get_open_missing_tables().is_empty()
+            || !open_shard_result.get_open_failed_tables().is_empty()
+        {
+            return OpenShardNoCause {
                 msg: format!("shard_info:{shard_info:?}"),
-            })?;
+            }
+            .fail();
+        }
 
         info!("ShardOperator open sequentially finish, shard_id:{shard_info:?}");
 
         Ok(())
     }
 
-    pub async fn close(&self, ctx: CloseContext) -> Result<()> {
+    pub async fn close(&self, mut ctx: CloseContext) -> Result<()> {
         let (shard_info, tables) = {
             let data = self.data.read().unwrap();
             let shard_info = data.shard_info.clone();
@@ -409,5 +420,20 @@ impl ShardOperator {
         info!("ShardOperator close table sequentially finish, shard_info:{shard_info:?}, table_info:{table_info:?}");
 
         Ok(())
+    }
+
+    pub async fn get_open_success_tables(&self) -> Result<Vec<String>> {
+        let data = self.data.read().unwrap();
+        Ok(data.open_success_tables.clone())
+    }
+
+    pub async fn get_open_failed_tables(&self) -> Result<Vec<String>> {
+        let data = self.data.read().unwrap();
+        Ok(data.open_failed_tables.clone())
+    }
+
+    pub async fn get_open_missing_tables(&self) -> Result<Vec<String>> {
+        let data = self.data.read().unwrap();
+        Ok(data.open_missing_tables.clone())
     }
 }

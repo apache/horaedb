@@ -216,6 +216,7 @@ impl Service {
             .or(self.server_config())
             .or(self.shards())
             .or(self.wal_stats())
+            .or(self.tables())
             .with(warp::log("http_requests"))
             .with(warp::log::custom(|info| {
                 let path = info.path();
@@ -602,6 +603,43 @@ impl Service {
                     Ok(res) => Ok(reply::json(&res)),
                     Err(e) => Err(reject::custom(e)),
                 }
+            })
+    }
+
+    // GET /debug/tables
+    fn tables(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("debug" / "tables")
+            .and(warp::get())
+            .and(self.with_cluster())
+            .and_then(|cluster: Option<ClusterRef>| async move {
+                let cluster = match cluster {
+                    Some(cluster) => cluster,
+                    None => return Err(reject::custom(Error::QueryShards {})),
+                };
+                let shard_infos = cluster.list_shards();
+                let mut result = HashMap::new();
+                for shard_info in shard_infos {
+                    let shard = match cluster.shard(shard_info.id) {
+                        None => return Err(reject::custom(Error::QueryShards {})),
+                        Some(shard) => shard,
+                    };
+                    let open_failed_tables = match shard.get_open_failed_tables() {
+                        Ok(open_failed_tables) => open_failed_tables,
+                        Err(_) => return Err(reject::custom(Error::QueryShards {})),
+                    };
+                    let open_missing_tables = match shard.get_open_missing_tables() {
+                        Ok(open_missing_tables) => open_missing_tables,
+                        Err(_) => return Err(reject::custom(Error::QueryShards {})),
+                    };
+                    let tables = HashMap::from([
+                        ("openFailedTables", open_failed_tables),
+                        ("openMissingTables", open_missing_tables),
+                    ]);
+                    result.insert(shard_info.id, tables);
+                }
+                Ok(reply::json(&result))
             })
     }
 

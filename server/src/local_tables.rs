@@ -63,7 +63,7 @@ impl LocalTablesRecoverer {
         }
     }
 
-    pub async fn recover(&self) -> Result<()> {
+    pub async fn recover(&mut self) -> Result<()> {
         if self.table_infos.is_empty() {
             return Ok(());
         }
