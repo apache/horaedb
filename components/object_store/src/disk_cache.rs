@@ -19,7 +19,7 @@
 //! Page is used for reasons below:
 //! - reduce file size in case of there are too many request with small range.
 
-use std::{fmt::Display, mem, ops::Range, sync::Arc};
+use std::{fmt::Display, ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
@@ -700,7 +700,7 @@ impl DiskCacheStore {
         for i in rx {
             bytes_vec.push(Self::get_data_from_channel_data(i.await)?);
         }
-        let bytes = mem::replace(&mut bytes_vec[0], Bytes::default());
+        let bytes = std::mem::take(&mut bytes_vec[0]);
         Ok(bytes)
     }
 
