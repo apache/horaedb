@@ -89,8 +89,8 @@ pub enum Error {
     #[snafu(display("Bytes is not enough, length:{len}.\nBacktrace:\n{backtrace}"))]
     NotEnoughBytes { len: usize, backtrace: Backtrace },
 
-    #[snafu(display("Failed to read encoded data"))]
-    ReadEncode {},
+    #[snafu(display("Failed to read encoded data.\nBacktrace:\n{backtrace}"))]
+    ReadEncode { backtrace: Backtrace },
 }
 
 define_result!(Error);
