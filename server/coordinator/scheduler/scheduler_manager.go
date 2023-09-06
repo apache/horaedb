@@ -135,6 +135,7 @@ func (m *ManagerImpl) Start(ctx context.Context) error {
 				continue
 			}
 			if clusterSnapshot.Topology.IsPrepareFinished() {
+				m.logger.Info("try to update cluster state to stable")
 				if err := m.clusterMetadata.UpdateClusterView(ctx, storage.ClusterStateStable, clusterSnapshot.Topology.ClusterView.ShardNodes); err != nil {
 					m.logger.Error("update cluster view failed", zap.Error(err))
 				}
