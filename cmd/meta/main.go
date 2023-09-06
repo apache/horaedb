@@ -17,6 +17,16 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	buildDate  string
+	branchName string
+	commitID   string
+)
+
+func buildVersion() string {
+	return fmt.Sprintf("CeresMeta Server\nGit commit:%s\nGit branch:%s\nBuild date:%s", commitID, branchName, buildDate)
+}
+
 func panicf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	panic(msg)
@@ -35,6 +45,11 @@ func main() {
 
 	if err != nil {
 		panicf("fail to parse config from command line params, err:%v", err)
+	}
+
+	if cfgParser.NeedPrintVersion() {
+		println(buildVersion())
+		return
 	}
 
 	if err := cfg.ValidateAndAdjust(); err != nil {
@@ -63,6 +78,7 @@ func main() {
 		panicf("fail to init global logger, err:%v", err)
 	}
 	defer logger.Sync() //nolint:errcheck
+	log.Info(fmt.Sprintf("server start with version: %s", buildVersion()))
 	// TODO: Do adjustment to config for preparing joining existing cluster.
 	log.Info("server start with config", zap.String("config", string(cfgByte)))
 

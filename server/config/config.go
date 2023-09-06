@@ -216,6 +216,7 @@ type Parser struct {
 	flagSet        *flag.FlagSet
 	cfg            *Config
 	configFilePath string
+	version        *bool
 }
 
 func (p *Parser) Parse(arguments []string) (*Config, error) {
@@ -226,6 +227,10 @@ func (p *Parser) Parse(arguments []string) (*Config, error) {
 		return nil, ErrInvalidCommandArgs.WithCausef("fail to parse flag arguments:%v, err:%v", arguments, err)
 	}
 	return p.cfg, nil
+}
+
+func (p *Parser) NeedPrintVersion() bool {
+	return *p.version
 }
 
 func makeDefaultNodeName() (string, error) {
@@ -304,9 +309,13 @@ func MakeConfigParser() (*Parser, error) {
 
 		HTTPPort: defaultHTTPPort,
 	}
+
+	version := fs.Bool("version", false, "print version information")
+
 	builder := &Parser{
 		flagSet: fs,
 		cfg:     cfg,
+		version: version,
 	}
 
 	fs.StringVar(&builder.configFilePath, "config", "", "config file path")
