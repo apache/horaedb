@@ -3,3 +3,6 @@ target
 .idea/
 .vscode
 .dir-locals.el
+integration_tests/dist_query/dist-query-testing
+integration_tests/dist_query/tsbs
+integration_tests/dist_query/output
