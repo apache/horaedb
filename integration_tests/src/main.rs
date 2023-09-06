@@ -91,18 +91,18 @@ async fn main() -> Result<()> {
                 .build()?;
             let runner = Runner::new_with_config(config, controller).await?;
             runner.run().await?;
-        },
+        }
         // Just build the cluster testing env.
         "build_cluster" => {
             let _ = controller.start("cluster", None).await;
-        },
+        }
         // Just build the local testing env.
         "build_local" => {
             let _ = controller.start("local", None).await;
-        },
+        }
         other => {
             panic!("Unknown run mode:{other}")
-        }   
+        }
     }
 
     Ok(())

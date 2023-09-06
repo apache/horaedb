@@ -47,7 +47,7 @@ fi
 
 if [[ ! -d ${TSBS_REPO_PATH} ]] && [[ ${DIST_QUERY_TEST_NO_INIT} == 'false' ]]; then
     echo "Pull tsbs repo..."
-    git clone -b support-partitioned-table --depth 1 --single-branch https://github.com/Rachelint/tsbs.git
+    git clone -b feat-ceresdb --depth 1 --single-branch https://github.com/CeresDB/tsbs.git
 fi
 ## Data
 if [[ -d ${DATA_REPO_PATH} ]] && [[ $UPDATE_REPOS_TO_LATEST == 'true' ]] && [[ ${DIST_QUERY_TEST_NO_INIT} == 'false' ]]; then
@@ -55,7 +55,6 @@ if [[ -d ${DATA_REPO_PATH} ]] && [[ $UPDATE_REPOS_TO_LATEST == 'true' ]] && [[ $
   rm -rf ${DATA_REPO_PATH}
 fi
 
-echo ${DATA_REPO_PATH}
 if [[ ! -d ${DATA_REPO_PATH} ]] && [[ ${DIST_QUERY_TEST_NO_INIT} == 'false' ]]; then
     echo "Pull dist query testing repo..."
     git clone -b main --depth 1 --single-branch https://github.com/CeresDB/dist-query-testing.git

@@ -27,7 +27,6 @@ def main():
     for diff in diffs:
         diff_num += 1
         print(diff)
-    print(diff_num)
 
     f_expected.close()
     f_actual.close()
@@ -41,7 +40,7 @@ def main():
         print("Test failed...")
         assert(False)
 
-    # Haha, test pass!
+    # Haha, test passed!
     print("Test passed...")
 
 if __name__ == '__main__':
