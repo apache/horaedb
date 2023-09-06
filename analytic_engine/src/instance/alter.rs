@@ -218,7 +218,6 @@ impl<'a> Alterer<'a> {
                     .box_err()
                     .context(InvalidOptions {
                         table: &self.table_data.name,
-                        table_id: self.table_data.id,
                     })?;
             opts.sanitize();
             opts

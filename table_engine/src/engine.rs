@@ -305,6 +305,30 @@ pub struct TableDef {
 
 pub type CloseShardRequest = OpenShardRequest;
 
+/// The necessary params used to create table.
+#[derive(Clone, Debug)]
+pub struct CreateTableParams<'a> {
+    pub catalog_name: &'a str,
+    pub schema_name: &'a str,
+    pub table_name: &'a str,
+    pub table_options: &'a HashMap<String, String>,
+    pub partition_info: &'a Option<PartitionInfo>,
+    pub engine: &'a str,
+}
+
+impl<'a> From<&'a CreateTableRequest> for CreateTableParams<'a> {
+    fn from(req: &'a CreateTableRequest) -> CreateTableParams<'a> {
+        CreateTableParams {
+            catalog_name: &req.catalog_name,
+            schema_name: &req.schema_name,
+            table_name: &req.table_name,
+            table_options: &req.options,
+            partition_info: &req.partition_info,
+            engine: &req.engine,
+        }
+    }
+}
+
 /// Table engine
 // TODO(yingwen): drop table support to release resource owned by the table
 #[async_trait]
@@ -316,7 +340,7 @@ pub trait TableEngine: Send + Sync {
     async fn close(&self) -> Result<()>;
 
     /// Validate the request of create table.
-    async fn validate_create_table(&self, request: &CreateTableRequest) -> Result<()>;
+    async fn validate_create_table(&self, request: CreateTableParams<'_>) -> Result<()>;
 
     /// Create table
     async fn create_table(&self, request: CreateTableRequest) -> Result<TableRef>;

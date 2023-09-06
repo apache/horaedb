@@ -36,8 +36,8 @@ use snafu::{OptionExt, ResultExt};
 
 use crate::{
     engine::{
-        CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
-        OpenShardRequest, OpenShardResult, OpenTableRequest, TableEngine,
+        CloseShardRequest, CloseTableRequest, CreateTableParams, CreateTableRequest,
+        DropTableRequest, OpenShardRequest, OpenShardResult, OpenTableRequest, TableEngine,
     },
     remote::{
         self,
@@ -295,7 +295,7 @@ impl TableEngine for MemoryTableEngine {
 
     async fn validate_create_table(
         &self,
-        _request: &CreateTableRequest,
+        _request: CreateTableParams<'_>,
     ) -> crate::engine::Result<()> {
         Ok(())
     }

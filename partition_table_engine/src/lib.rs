@@ -28,9 +28,9 @@ use generic_error::BoxError;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{
-        CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
-        OpenShardRequest, OpenShardResult, OpenTableRequest, Result, TableEngine, Unexpected,
-        UnexpectedNoCause,
+        CloseShardRequest, CloseTableRequest, CreateTableParams, CreateTableRequest,
+        DropTableRequest, OpenShardRequest, OpenShardResult, OpenTableRequest, Result, TableEngine,
+        Unexpected, UnexpectedNoCause,
     },
     remote::RemoteEngineRef,
     table::TableRef,
@@ -61,7 +61,7 @@ impl TableEngine for PartitionTableEngine {
     }
 
     /// Validate the request of create table.
-    async fn validate_create_table(&self, _request: &CreateTableRequest) -> Result<()> {
+    async fn validate_create_table(&self, _params: CreateTableParams<'_>) -> Result<()> {
         Ok(())
     }
 

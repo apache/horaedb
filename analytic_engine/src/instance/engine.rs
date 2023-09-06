@@ -124,12 +124,8 @@ pub enum Error {
         source: GenericError,
     },
 
-    #[snafu(display("Invalid options, table:{table}, table_id:{table_id}, err:{source}",))]
-    InvalidOptions {
-        table: String,
-        table_id: TableId,
-        source: GenericError,
-    },
+    #[snafu(display("Invalid options, table:{table}, err:{source}",))]
+    InvalidOptions { table: String, source: GenericError },
 
     #[snafu(display(
         "Failed to create table data, space_id:{}, table:{}, table_id:{}, err:{}",

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use async_trait::async_trait;
-use common_types::{schema::SchemaEncoder, table::ShardId};
+use common_types::schema::SchemaEncoder;
 use generic_error::BoxError;
 use log::info;
 use meta_client::{
@@ -23,9 +23,8 @@ use meta_client::{
 use query_frontend::plan::{CreateTablePlan, DropTablePlan};
 use snafu::ResultExt;
 use table_engine::{
-    engine::{TableEngineRef, TableState},
+    engine::TableEngineRef,
     partition::{format_sub_partition_table_name, PartitionInfo},
-    table::{SchemaId, TableId},
 };
 
 use crate::{
@@ -52,25 +51,17 @@ impl TableManipulator for TableManipulatorImpl {
         plan: CreateTablePlan,
         table_engine: TableEngineRef,
     ) -> Result<Output> {
-        let schema_name = ctx.default_schema().to_string();
         {
-            let create_table_req = table_engine::engine::CreateTableRequest {
-                catalog_name: ctx.default_catalog().to_string(),
-                schema_name: schema_name.clone(),
-                // FIXME: the schema id and table id are not necessary to do create table check,
-                // maybe we should use another request struct instead of `CreateTableRequest` here.
-                schema_id: SchemaId::MIN,
-                table_id: TableId::MIN,
-                table_name: plan.table.clone(),
-                table_schema: plan.table_schema.clone(),
-                engine: plan.engine.clone(),
-                options: plan.options.clone(),
-                state: TableState::Stable,
-                shard_id: ShardId::MIN,
-                partition_info: plan.partition_info.clone(),
+            let params = table_engine::engine::CreateTableParams {
+                catalog_name: ctx.default_catalog(),
+                schema_name: ctx.default_schema(),
+                table_name: &plan.table,
+                engine: &plan.engine,
+                table_options: &plan.options,
+                partition_info: &plan.partition_info,
             };
             table_engine
-                .validate_create_table(&create_table_req)
+                .validate_create_table(params)
                 .await
                 .box_err()
                 .with_context(|| CreateWithCause {

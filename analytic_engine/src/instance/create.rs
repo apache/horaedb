@@ -17,7 +17,10 @@
 use generic_error::BoxError;
 use log::info;
 use snafu::{ensure, OptionExt, ResultExt};
-use table_engine::{engine::CreateTableRequest, partition::PartitionInfo};
+use table_engine::{
+    engine::{CreateTableParams, CreateTableRequest},
+    partition::PartitionInfo,
+};
 
 use crate::{
     instance::{
@@ -35,23 +38,22 @@ use crate::{
 
 impl Instance {
     /// Validate the request of creating table.
-    pub fn validate_create_table(&self, request: &CreateTableRequest) -> Result<TableOptions> {
+    pub fn validate_create_table(&self, params: CreateTableParams<'_>) -> Result<TableOptions> {
         let table_opts =
-            table_options::merge_table_options_for_create(&request.options, &self.table_opts)
+            table_options::merge_table_options_for_create(params.table_options, &self.table_opts)
                 .box_err()
                 .context(InvalidOptions {
-                    table_id: request.table_id,
-                    table: &request.table_name,
+                    table: params.table_name,
                 })?;
 
-        if let Some(partition_info) = &request.partition_info {
+        if let Some(partition_info) = &params.partition_info {
             let dedup_on_random_partition =
                 table_opts.need_dedup() && matches!(partition_info, PartitionInfo::Random(_));
 
             ensure!(
                 !dedup_on_random_partition,
                 TryCreateRandomPartitionTableInOverwriteMode {
-                    table: &request.table_name,
+                    table: params.table_name,
                 }
             );
         }
@@ -74,7 +76,7 @@ impl Instance {
             .fail();
         }
 
-        let mut table_opts = self.validate_create_table(&request)?;
+        let mut table_opts = self.validate_create_table(CreateTableParams::from(&request))?;
         // Sanitize options before creating table.
         table_opts.sanitize();
 
