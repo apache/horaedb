@@ -44,10 +44,7 @@ impl PartitionParser {
 
     fn parse_random(random_stmt: RandomPartition) -> RandomPartitionInfo {
         let definitions = make_partition_definitions(random_stmt.partition_num);
-        RandomPartitionInfo {
-            version: DEFAULT_PARTITION_VERSION,
-            definitions,
-        }
+        RandomPartitionInfo { definitions }
     }
 
     fn parse_hash(hash_stmt: HashPartition) -> Result<HashPartitionInfo> {

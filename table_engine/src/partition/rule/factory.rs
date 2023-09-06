@@ -72,16 +72,6 @@ impl PartitionRuleFactory {
     }
 
     fn create_random_rule(random_info: RandomPartitionInfo) -> Result<PartitionRuleRef> {
-        ensure!(
-            random_info.version == DEFAULT_PARTITION_VERSION,
-            BuildPartitionRule {
-                msg: format!(
-                    "only support random partition info version:{DEFAULT_PARTITION_VERSION}, input_version:{}",
-                    random_info.version
-                )
-            }
-        );
-
         Ok(Box::new(RandomRule {
             partition_num: random_info.definitions.len(),
         }))

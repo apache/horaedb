@@ -231,7 +231,7 @@ pub const DEFAULT_ENABLE_TTL: &str = "false";
 
 // TODO(yingwen): Add a type column once support int8 type and maybe split key
 // into multiple columns.
-/// SysCatalogTable is a special table to keep tracks of the system infomations
+/// SysCatalogTable is a special table to keep tracks of the system information.
 ///
 /// Similar to kudu's SysCatalogTable
 /// - see <https://github.com/apache/kudu/blob/76cb0dd808aaef548ef80682e13a00711e7dd6a4/src/kudu/master/sys_catalog.h#L133>

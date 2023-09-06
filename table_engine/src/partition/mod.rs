@@ -104,7 +104,6 @@ pub struct PartitionDefinition {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RandomPartitionInfo {
-    pub version: i32,
     pub definitions: Vec<PartitionDefinition>,
 }
 
@@ -215,7 +214,6 @@ impl From<KeyPartitionInfo> for ceresdbproto::cluster::KeyPartitionInfo {
 impl From<ceresdbproto::cluster::RandomPartitionInfo> for RandomPartitionInfo {
     fn from(partition_info_pb: ceresdbproto::cluster::RandomPartitionInfo) -> Self {
         RandomPartitionInfo {
-            version: partition_info_pb.version,
             definitions: partition_info_pb
                 .definitions
                 .into_iter()
@@ -228,7 +226,6 @@ impl From<ceresdbproto::cluster::RandomPartitionInfo> for RandomPartitionInfo {
 impl From<RandomPartitionInfo> for ceresdbproto::cluster::RandomPartitionInfo {
     fn from(partition_info: RandomPartitionInfo) -> Self {
         ceresdbproto::cluster::RandomPartitionInfo {
-            version: partition_info.version,
             definitions: partition_info
                 .definitions
                 .into_iter()
