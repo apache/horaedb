@@ -14,8 +14,6 @@
 
 use std::{collections::HashMap, hash::Hash, sync::RwLock};
 
-use tokio::sync::mpsc::Sender;
-
 #[derive(Debug)]
 struct Notifiers<T> {
     notifiers: RwLock<Vec<T>>,

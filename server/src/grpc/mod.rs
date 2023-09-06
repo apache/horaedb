@@ -44,7 +44,10 @@ use proxy::{
 use runtime::{JoinHandle, Runtime};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
-use tokio::sync::oneshot::{self, Sender};
+use tokio::sync::{
+    mpsc,
+    oneshot::{self, Sender},
+};
 use tonic::transport::Server;
 
 use crate::grpc::{
@@ -213,7 +216,8 @@ pub struct Builder {
     cluster: Option<ClusterRef>,
     opened_wals: Option<OpenedWals>,
     proxy: Option<Arc<Proxy>>,
-    request_notifiers: Option<Arc<RequestNotifiers<StreamReadReqKey, error::Result<RecordBatch>>>>,
+    request_notifiers:
+        Option<Arc<RequestNotifiers<StreamReadReqKey, mpsc::Sender<error::Result<RecordBatch>>>>>,
     hotspot_recorder: Option<Arc<HotspotRecorder>>,
 }
 

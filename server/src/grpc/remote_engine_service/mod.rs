@@ -109,7 +109,8 @@ impl<F: FnMut()> Drop for ExecutionGuard<F> {
 pub struct RemoteEngineServiceImpl {
     pub instance: InstanceRef,
     pub runtimes: Arc<EngineRuntimes>,
-    pub request_notifiers: Option<Arc<RequestNotifiers<StreamReadReqKey, Result<RecordBatch>>>>,
+    pub request_notifiers:
+        Option<Arc<RequestNotifiers<StreamReadReqKey, mpsc::Sender<Result<RecordBatch>>>>>,
     pub hotspot_recorder: Arc<HotspotRecorder>,
 }
 
@@ -164,7 +165,9 @@ impl RemoteEngineServiceImpl {
 
     async fn deduped_stream_read_internal(
         &self,
-        request_notifiers: Arc<RequestNotifiers<StreamReadReqKey, Result<RecordBatch>>>,
+        request_notifiers: Arc<
+            RequestNotifiers<StreamReadReqKey, mpsc::Sender<Result<RecordBatch>>>,
+        >,
         request: Request<ReadRequest>,
     ) -> Result<ReceiverStream<Result<RecordBatch>>> {
         let instant = Instant::now();
