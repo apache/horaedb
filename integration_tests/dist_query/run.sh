@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 # Get current dir
 export CURR_DIR=$(pwd)
