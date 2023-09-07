@@ -26,11 +26,9 @@ export CLUSTER_CERESDB_STDOUT_FILE_1 ?= /tmp/ceresdb-stdout-1.log
 export RUST_BACKTRACE=1
 
 # Whether update related repos
+# We don't want to rebuild the binarie and data on sometimes(e.g. debugging in local),
+# and we can set it to false.
 export UPDATE_REPOS_TO_LATEST ?= true
-
-# Used in dist query test, we don't want to rebuild the binarie and data in sometimes(e.g. debugging),
-# and we can set it to true.
-export DIST_QUERY_TEST_NO_INIT ?= false
 
 clean:
 	rm -rf $(CERESDB_DATA_DIR) $(CERESDB_DATA_DIR_0) $(CERESDB_DATA_DIR_1) $(CERESMETA_DATA_DIR)

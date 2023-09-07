@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Get current dir
 export CURR_DIR=$(pwd)
@@ -40,32 +40,31 @@ mkdir -p ${OUTPUT_DIR}
 
 # Prepare components
 ## Tsbs
-if [[ -d ${TSBS_REPO_PATH} ]] && [[ ${UPDATE_REPOS_TO_LATEST} == 'true' ]] && [[ ${DIST_QUERY_TEST_NO_INIT} == 'false' ]]; then
+if [[ -d ${TSBS_REPO_PATH} ]] && [[ ${UPDATE_REPOS_TO_LATEST} == 'true' ]]; then
   echo "Remove old tsbs..."
   rm -rf ${TSBS_REPO_PATH}
 fi
 
-if [[ ! -d ${TSBS_REPO_PATH} ]] && [[ ${DIST_QUERY_TEST_NO_INIT} == 'false' ]]; then
-    echo "Pull tsbs repo..."
+if [[ ! -d ${TSBS_REPO_PATH} ]]; then
+    echo "Pull tsbs repo and build..."
     git clone -b feat-ceresdb --depth 1 --single-branch https://github.com/CeresDB/tsbs.git
-fi
-## Data
-if [[ -d ${DATA_REPO_PATH} ]] && [[ $UPDATE_REPOS_TO_LATEST == 'true' ]] && [[ ${DIST_QUERY_TEST_NO_INIT} == 'false' ]]; then
-  echo "Remove old dist query testing..."
-  rm -rf ${DATA_REPO_PATH}
-fi
-
-if [[ ! -d ${DATA_REPO_PATH} ]] && [[ ${DIST_QUERY_TEST_NO_INIT} == 'false' ]]; then
-    echo "Pull dist query testing repo..."
-    git clone -b main --depth 1 --single-branch https://github.com/CeresDB/dist-query-testing.git
-fi
-## Build tsbs bins
-if [[ ${DIST_QUERY_TEST_NO_INIT} == 'false' ]]; then 
     cd tsbs
     go build ./cmd/tsbs_generate_data
     go build ./cmd/tsbs_load_ceresdb
     go build ./cmd/tsbs_generate_queries
     go build ./cmd/tsbs_run_queries_ceresdb
+    cd ..
+fi
+
+## Data
+if [[ -d ${DATA_REPO_PATH} ]] && [[ ${UPDATE_REPOS_TO_LATEST} == 'true' ]]; then
+  echo "Remove old dist query testing..."
+  rm -rf ${DATA_REPO_PATH}
+fi
+
+if [[ ! -d ${DATA_REPO_PATH} ]]; then
+    echo "Pull dist query testing repo..."
+    git clone -b main --depth 1 --single-branch https://github.com/CeresDB/dist-query-testing.git
 fi
 
 # Clean old table if exist
