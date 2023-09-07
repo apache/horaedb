@@ -8,14 +8,14 @@ CERESMETA_DATA_DIR = /tmp/ceresmeta
 export CERESDB_TEST_CASE_PATH ?= $(ROOT)/cases/env
 export CERESDB_TEST_BINARY ?= $(ROOT)/../target/$(MODE)/ceresdb-test
 
-# environment variables for standalone
+# Environment variables for standalone
 export CERESDB_SERVER_GRPC_ENDPOINT ?= 127.0.0.1:8831
 export CERESDB_SERVER_HTTP_ENDPOINT ?= 127.0.0.1:5440
 export CERESDB_BINARY_PATH ?= $(ROOT)/../target/$(MODE)/ceresdb-server
 export CERESDB_STDOUT_FILE ?= /tmp/ceresdb-stdout.log
 export CERESDB_CONFIG_FILE ?= $(ROOT)/../docs/minimal.toml
 
-# environment variables for cluster
+# Environment variables for cluster
 export CERESMETA_BINARY_PATH ?= $(ROOT)/ceresmeta/ceresmeta
 export CERESMETA_CONFIG_PATH ?= $(ROOT)/config/ceresmeta.toml
 export CERESMETA_STDOUT_FILE ?= /tmp/ceresmeta-stdout.log
@@ -25,11 +25,16 @@ export CLUSTER_CERESDB_STDOUT_FILE_0 ?= /tmp/ceresdb-stdout-0.log
 export CLUSTER_CERESDB_STDOUT_FILE_1 ?= /tmp/ceresdb-stdout-1.log
 export RUST_BACKTRACE=1
 
+# Whether update related repos
+# We don't want to rebuild the binarie and data on sometimes(e.g. debugging in local),
+# and we can set it to false.
+export UPDATE_REPOS_TO_LATEST ?= true
+
 clean:
 	rm -rf $(CERESDB_DATA_DIR) $(CERESDB_DATA_DIR_0) $(CERESDB_DATA_DIR_1) $(CERESMETA_DATA_DIR)
 
 build-meta:
-	sh ./build_meta.sh
+	./build_meta.sh
 
 build-ceresdb:
 	cd .. && cargo build --bin ceresdb-server
@@ -78,3 +83,7 @@ run-opentsdb:
 
 run-recovery: clean build-ceresdb kill-old-process
 	cd recovery && ./run.sh && ./run.sh shard_based
+
+run-dist-query: prepare build-meta
+	CERESDB_INTEGRATION_TEST_BIN_RUN_MODE=build_cluster $(CERESDB_TEST_BINARY)
+	cd dist_query && ./run.sh
