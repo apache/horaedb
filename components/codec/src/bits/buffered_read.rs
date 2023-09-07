@@ -82,7 +82,7 @@ impl<'a> BufferedReader<'a> {
             Some(b) => b,
         };
 
-        byte |= b.wrapping_shl(self.bit_idx);
+        byte |= b << self.bit_idx;
 
         self.byte_idx += 1;
         b = match self.get_byte() {
@@ -90,7 +90,7 @@ impl<'a> BufferedReader<'a> {
             Some(b) => b,
         };
 
-        byte |= b.wrapping_shr(8 - self.bit_idx);
+        byte |= b >> 8 - self.bit_idx;
 
         Some(byte)
     }
@@ -107,13 +107,12 @@ impl<'a> BufferedReader<'a> {
         let mut bits: u64 = 0;
         while num >= 8 {
             let byte = self.next_byte().map(u64::from)?;
-            bits = bits.wrapping_shl(8) | byte;
+            bits = bits << 8 | byte;
             num -= 8;
         }
 
         while num > 0 {
-            self.next_bit()
-                .map(|bit| bits = bits.wrapping_shl(1) | bit.0 as u64)?;
+            self.next_bit().map(|bit| bits = bits << 1 | bit.0 as u64)?;
 
             num -= 1;
         }

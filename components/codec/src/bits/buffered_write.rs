@@ -80,12 +80,12 @@ impl BufferedWriter {
         }
 
         let i = self.last_index();
-        let mut b = byte.wrapping_shr(self.pos);
+        let mut b = byte >> self.pos;
         self.buf[i] |= b;
 
         self.grow();
 
-        b = byte.wrapping_shl(8 - self.pos);
+        b = byte << (8 - self.pos);
         self.buf[i + 1] |= b;
     }
 
@@ -96,24 +96,24 @@ impl BufferedWriter {
             num = 64;
         }
 
-        bits = bits.wrapping_shl(64 - num);
+        bits = bits << (64 - num);
         while num >= 8 {
-            let byte = bits.wrapping_shr(56);
+            let byte = bits >> 56;
             self.write_byte(byte as u8);
 
-            bits = bits.wrapping_shl(8);
+            bits <<= 8;
             num -= 8;
         }
 
         while num > 0 {
-            let byte = bits.wrapping_shr(63);
+            let byte = bits >> 63;
             if byte == 1 {
                 self.write_bit(Bit(1));
             } else {
                 self.write_bit(Bit(0));
             }
 
-            bits = bits.wrapping_shl(1);
+            bits <<= 1;
             num -= 1;
         }
     }

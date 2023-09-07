@@ -64,8 +64,37 @@ enum DeltaOfDeltaEncodeMasks {
     None(),
 }
 
-impl TimestampEncoder {
-    fn encode_delta_of_delta_masks(dod: i64) -> DeltaOfDeltaEncodeMasks {
+impl From<i32> for DeltaOfDeltaEncodeMasks {
+    fn from(dod_control_bits_size: i32) -> Self {
+        match dod_control_bits_size {
+            0 => DeltaOfDeltaEncodeMasks::Zero(),
+            1 => DeltaOfDeltaEncodeMasks::Normal {
+                control_bits: 0b10,
+                control_bits_len: 2,
+                dod_bits_len: 7,
+            },
+            2 => DeltaOfDeltaEncodeMasks::Normal {
+                control_bits: 0b110,
+                control_bits_len: 3,
+                dod_bits_len: 9,
+            },
+            3 => DeltaOfDeltaEncodeMasks::Normal {
+                control_bits: 0b1110,
+                control_bits_len: 4,
+                dod_bits_len: 12,
+            },
+            4 => DeltaOfDeltaEncodeMasks::Normal {
+                control_bits: 0b1111,
+                control_bits_len: 4,
+                dod_bits_len: 32,
+            },
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl From<i64> for DeltaOfDeltaEncodeMasks {
+    fn from(dod: i64) -> Self {
         // max support 2^31/3600/1000/24/2=12 day
         if dod > std::i32::MAX as i64 {
             debug!(
@@ -101,7 +130,9 @@ impl TimestampEncoder {
             },
         }
     }
+}
 
+impl TimestampEncoder {
     pub fn encode<B, I>(buf: &mut B, values: I) -> Result<()>
     where
         B: BufMut,
@@ -120,10 +151,7 @@ impl TimestampEncoder {
         let mut writer = BufferedWriter::with_capacity(0);
 
         // write version
-        writer.write_bits(
-            ENCODE_VERSION as u64,
-            (8 * NUM_BYTES_ENCODE_VERSION_LEN) as u32,
-        );
+        writer.write_byte(ENCODE_VERSION);
 
         // variables used for none encode timestamp
         let mut need_fallback = false;
@@ -150,7 +178,7 @@ impl TimestampEncoder {
                 }
                 let cur_delta = v - prev_ts;
                 let delta_of_delta = cur_delta - prev_delta;
-                match Self::encode_delta_of_delta_masks(delta_of_delta) {
+                match DeltaOfDeltaEncodeMasks::from(delta_of_delta) {
                     DeltaOfDeltaEncodeMasks::Zero() => {
                         writer.write_bit(Bit(0));
                         dod_encode_ts_len += 1;
@@ -194,44 +222,15 @@ impl TimestampEncoder {
 }
 
 impl TimestampDecoder {
-    fn encode_delta_of_delta_masks(dod_control_bits_size: i32) -> DeltaOfDeltaEncodeMasks {
-        match dod_control_bits_size {
-            0 => DeltaOfDeltaEncodeMasks::Zero(),
-            1 => DeltaOfDeltaEncodeMasks::Normal {
-                control_bits: 0b10,
-                control_bits_len: 2,
-                dod_bits_len: 7,
-            },
-            2 => DeltaOfDeltaEncodeMasks::Normal {
-                control_bits: 0b110,
-                control_bits_len: 3,
-                dod_bits_len: 9,
-            },
-            3 => DeltaOfDeltaEncodeMasks::Normal {
-                control_bits: 0b1110,
-                control_bits_len: 4,
-                dod_bits_len: 12,
-            },
-            4 => DeltaOfDeltaEncodeMasks::Normal {
-                control_bits: 0b1111,
-                control_bits_len: 4,
-                dod_bits_len: 32,
-            },
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn decode<B, F>(buf: &B, mut f: F) -> Result<()>
+    pub fn decode<B, F>(buf: &mut B, mut f: F) -> Result<()>
     where
         B: Buf,
         F: FnMut(Timestamp) -> Result<()>,
     {
-        let mut reader = BufferedReader::new(buf.chunk());
-
-        let version = reader
-            .next_bits((NUM_BYTES_ENCODE_VERSION_LEN * 8) as u32)
-            .context(ReadEncode)? as u8;
+        let version = buf.get_u8();
         ensure!(version == ENCODE_VERSION, InvalidVersion { version });
+
+        let mut reader = BufferedReader::new(buf.chunk());
 
         let first_timestamp = reader.next_bits(64).context(ReadEncode)?;
         f(Timestamp::new(first_timestamp as i64))?;
@@ -258,7 +257,7 @@ impl TimestampDecoder {
                 }
             }
 
-            let dod_masks = Self::encode_delta_of_delta_masks(dod_control_bits_size);
+            let dod_masks = DeltaOfDeltaEncodeMasks::from(dod_control_bits_size);
 
             let dod = match dod_masks {
                 DeltaOfDeltaEncodeMasks::Zero() => 0,
