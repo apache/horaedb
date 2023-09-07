@@ -1299,6 +1299,7 @@ dependencies = [
  "serde",
  "sqlness",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
