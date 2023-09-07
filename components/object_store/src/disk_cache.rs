@@ -833,12 +833,11 @@ impl ObjectStore for DiskCacheStore {
             }
         }
 
-        let mut missing_ranged_bytes = vec![];
-        let mut rxs = self
+        let mut missing_ranged_bytes = Vec::with_capacity(missing_ranges.len());
+        let rxs = self
             .deduped_fetch_data(location, missing_ranges.clone())
             .await?;
-
-        for rx in rxs.iter_mut() {
+        for rx in rxs {
             let bytes = rx.await.context(ReceiveBytesFromChannel)??;
             missing_ranged_bytes.push(bytes);
         }
@@ -1017,20 +1016,18 @@ mod test {
         let testcases = vec![
             (0..6, "a b c "),
             (0..16, "a b c d e f g h "),
-            // len of aligned ranges will be 2
             (0..17, "a b c d e f g h i"),
             (16..17, "i"),
-            // len of aligned ranges will be 6
             (16..100, "i j k l m n o p q r s t u v w x y za b c d e f g h i j k l m n o p q r s t u v w x y"),
         ];
         let testcases = testcases
             .iter()
             .cycle()
-            .take(testcases.len() * 9)
+            .take(testcases.len() * 100)
             .cloned()
             .collect::<Vec<_>>();
 
-        let mut tasks = vec![];
+        let mut tasks = Vec::with_capacity(testcases.len());
         for (input, _) in &testcases {
             let store = store.clone();
             let location = location.clone();
