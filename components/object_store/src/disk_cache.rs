@@ -1043,7 +1043,7 @@ mod test {
             (16..100, "i j k l m n o p q r s t u v w x y za b c d e f g h i j k l m n o p q r s t u v w x y"),
         ];
         let testcases: Vec<(Range<usize>, &str)> =
-            testcases.iter().cycle().take(9).cloned().collect();
+            testcases.iter().cycle().take(testcases.len() * 9).cloned().collect();
 
         let mut tasks = vec![];
         for (input, expected) in testcases {
