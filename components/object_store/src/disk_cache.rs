@@ -81,9 +81,9 @@ enum Error {
     },
 
     #[snafu(display(
-        "Failed to receive message from channel, source:{source}.\nbacktrace:\n{backtrace}"
+        "Failed to receive bytes from channel, source:{source}.\nbacktrace:\n{backtrace}"
     ))]
-    ReceiveMessageFromChannel {
+    ReceiveBytesFromChannel {
         backtrace: Backtrace,
         source: RecvError,
     },
@@ -637,7 +637,6 @@ impl DiskCacheStore {
             .underlying_store
             .get_ranges(location, &need_fetch_block[..])
             .await;
-
         let fetched_bytes = match fetched_bytes {
             Err(err) => {
                 for cache_key in need_fetch_block_cache_key {
@@ -646,7 +645,7 @@ impl DiskCacheStore {
                         if let Err(e) = notifier.send(Err(Error::WaitNotifier {
                             message: err.to_string(),
                         })) {
-                            error!("Failed to send disk cache handler err result, err:{:?}.", e);
+                            error!("Failed to send notifier error result, err:{:?}.", e);
                         }
                     }
                 }
@@ -664,7 +663,7 @@ impl DiskCacheStore {
             self.cache.insert_data(cache_key, bytes.clone()).await;
             for notifier in notifiers {
                 if let Err(e) = notifier.send(Ok(bytes.clone())) {
-                    error!("Failed to send disk cache handler result, err:{:?}.", e);
+                    error!("Failed to send notifier success result, err:{:?}.", e);
                 }
             }
         }
@@ -681,10 +680,11 @@ impl DiskCacheStore {
         let mut rxs = self
             .deduped_fetch_data(location, [aligned_range.clone()])
             .await?;
+
         assert_eq!(rxs.len(), 1);
 
         let rx = rxs.remove(0);
-        let bytes = rx.await.context(ReceiveMessageFromChannel)??;
+        let bytes = rx.await.context(ReceiveBytesFromChannel)??;
         Ok(bytes)
     }
 
@@ -839,7 +839,7 @@ impl ObjectStore for DiskCacheStore {
             .await?;
 
         for rx in rxs.iter_mut() {
-            let bytes = rx.await.context(ReceiveMessageFromChannel)??;
+            let bytes = rx.await.context(ReceiveBytesFromChannel)??;
             missing_ranged_bytes.push(bytes);
         }
 
