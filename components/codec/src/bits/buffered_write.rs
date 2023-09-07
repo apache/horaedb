@@ -92,11 +92,9 @@ impl BufferedWriter {
     // example: wtire_bits(4): data(u64 0000 0000 0000 00ff), write data 1111
     pub fn write_bits(&mut self, mut bits: u64, mut num: u32) {
         // we should never write more than 64 bits for a u64
-        if num > 64 {
-            num = 64;
-        }
+        assert!(num <= 64);
 
-        bits <<= (64 - num);
+        bits <<= 64 - num;
         while num >= 8 {
             let byte = bits >> 56;
             self.write_byte(byte as u8);

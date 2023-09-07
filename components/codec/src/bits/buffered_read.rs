@@ -105,6 +105,7 @@ impl<'a> BufferedReader<'a> {
         assert!(num <= 64);
 
         let mut bits: u64 = 0;
+
         while num >= 8 {
             let byte = self.next_byte().map(u64::from)?;
             bits = bits << 8 | byte;
