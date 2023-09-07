@@ -28,7 +28,7 @@ use ceresdbproto::{
     storage::storage_service_server::StorageServiceServer,
 };
 use cluster::ClusterRef;
-use common_types::{column_schema, record_batch::RecordBatch};
+use common_types::column_schema;
 use futures::FutureExt;
 use generic_error::GenericError;
 use log::{info, warn};
@@ -44,15 +44,11 @@ use proxy::{
 use runtime::{JoinHandle, Runtime};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
-use tokio::sync::{
-    mpsc,
-    oneshot::{self, Sender},
-};
+use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
 use crate::grpc::{
-    meta_event_service::MetaServiceImpl,
-    remote_engine_service::{error, RemoteEngineServiceImpl, StreamReadReqKey},
+    meta_event_service::MetaServiceImpl, remote_engine_service::RemoteEngineServiceImpl,
     storage_service::StorageServiceImpl,
 };
 
@@ -216,8 +212,7 @@ pub struct Builder {
     cluster: Option<ClusterRef>,
     opened_wals: Option<OpenedWals>,
     proxy: Option<Arc<Proxy>>,
-    request_notifiers:
-        Option<Arc<RequestNotifiers<StreamReadReqKey, mpsc::Sender<error::Result<RecordBatch>>>>>,
+    enable_dedup_stream_read: bool,
     hotspot_recorder: Option<Arc<HotspotRecorder>>,
 }
 
@@ -231,7 +226,7 @@ impl Builder {
             cluster: None,
             opened_wals: None,
             proxy: None,
-            request_notifiers: None,
+            enable_dedup_stream_read: false,
             hotspot_recorder: None,
         }
     }
@@ -277,10 +272,8 @@ impl Builder {
         self
     }
 
-    pub fn request_notifiers(mut self, enable_query_dedup: bool) -> Self {
-        if enable_query_dedup {
-            self.request_notifiers = Some(Arc::new(RequestNotifiers::default()));
-        }
+    pub fn request_notifiers(mut self, v: bool) -> Self {
+        self.enable_dedup_stream_read = v;
         self
     }
 }
@@ -304,10 +297,13 @@ impl Builder {
         });
 
         let remote_engine_server = {
+            let request_notifiers = self
+                .enable_dedup_stream_read
+                .then(|| Arc::new(RequestNotifiers::default()));
             let service = RemoteEngineServiceImpl {
                 instance,
                 runtimes: runtimes.clone(),
-                request_notifiers: self.request_notifiers,
+                request_notifiers,
                 hotspot_recorder,
             };
             RemoteEngineServiceServer::new(service)
