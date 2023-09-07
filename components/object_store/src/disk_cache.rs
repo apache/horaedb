@@ -604,8 +604,8 @@ impl DiskCacheStore {
     ) -> Result<Vec<tokio::sync::oneshot::Receiver<Result<Bytes>>>> {
         let mut rxs: Vec<oneshot::Receiver<Result<Bytes>>> =
             Vec::with_capacity(aligned_ranges.len());
-        let mut need_fetch_block = vec![];
-        let mut need_fetch_block_cache_key = vec![];
+        let mut need_fetch_block = Vec::new();
+        let mut need_fetch_block_cache_key = Vec::new();
 
         for aligned_range in aligned_ranges {
             let (tx, rx) = oneshot::channel();
@@ -623,12 +623,12 @@ impl DiskCacheStore {
 
             rxs.push(rx);
         }
-        let need_fetch_blocks = self
+        let fetched_blocks = self
             .underlying_store
             .get_ranges(location, &need_fetch_block[..])
             .await;
 
-        if let Err(err) = need_fetch_blocks {
+        if let Err(err) = fetched_blocks {
             for cache_key in need_fetch_block_cache_key {
                 let notifiers = self
                     .request_notifiers
@@ -648,7 +648,7 @@ impl DiskCacheStore {
             return Err(err);
         }
 
-        let need_fetch_blocks = need_fetch_blocks.unwrap();
+        let need_fetch_blocks = fetched_blocks.unwrap();
 
         for (bytes, cache_key) in need_fetch_blocks
             .iter()
