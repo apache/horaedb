@@ -19,7 +19,7 @@
 //! Page is used for reasons below:
 //! - reduce file size in case of there are too many request with small range.
 
-use std::{fmt::Display, ops::Range, sync::Arc};
+use std::{fmt::Display, ops::Range, result::Result as StdResult, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
@@ -32,12 +32,12 @@ use lru::LruCache;
 use notifier::notifier::RequestNotifiers;
 use partitioned_lock::PartitionedMutex;
 use serde::{Deserialize, Serialize};
-use snafu::{ensure, Backtrace, GenerateBacktrace, ResultExt, Snafu};
+use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use time_ext;
 use tokio::{
     fs::{self, File, OpenOptions},
     io::{AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt},
-    sync::oneshot::{self, error::RecvError},
+    sync::oneshot::{self, error::RecvError, Receiver},
 };
 use upstream::{
     path::Path, Error as ObjectStoreError, GetResult, ListResult, MultipartId, ObjectMeta,
@@ -80,11 +80,19 @@ enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Receive message from channel error.\nbacktrace:\n{backtrace}"))]
-    ReceiveMessageFromChannel { backtrace: Backtrace },
+    #[snafu(display(
+        "Failed to receive message from channel, source:{source}.\nbacktrace:\n{backtrace}"
+    ))]
+    ReceiveMessageFromChannel {
+        backtrace: Backtrace,
+        source: RecvError,
+    },
 
-    #[snafu(display("Fetch Data from object sotre error.\nbacktrace:\n{backtrace}"))]
+    #[snafu(display("Fetch data failed, error.\nbacktrace:\n{backtrace}"))]
     FetchDataFromObjectStore { backtrace: Backtrace },
+
+    #[snafu(display("Wait notifier failed, message:{message}."))]
+    WaitNotifier { message: String },
 
     #[snafu(display("Invalid manifest page size, old:{old}, new:{new}."))]
     InvalidManifest { old: usize, new: usize },
@@ -444,7 +452,7 @@ pub struct DiskCacheStore {
     page_size: usize,
     meta_cache: PartitionedMutex<LruCache<Path, FileMeta>, SeaHasherBuilder>,
     underlying_store: Arc<dyn ObjectStore>,
-    request_notifiers: Arc<RequestNotifiers<String, oneshot::Sender<Result<Bytes>>>>,
+    request_notifiers: Arc<RequestNotifiers<String, oneshot::Sender<StdResult<Bytes, Error>>>>,
 }
 
 impl DiskCacheStore {
@@ -600,10 +608,11 @@ impl DiskCacheStore {
     async fn deduped_fetch_data(
         &self,
         location: &Path,
-        aligned_ranges: Vec<Range<usize>>,
-    ) -> Result<Vec<tokio::sync::oneshot::Receiver<Result<Bytes>>>> {
-        let mut rxs: Vec<oneshot::Receiver<Result<Bytes>>> =
-            Vec::with_capacity(aligned_ranges.len());
+        aligned_ranges: impl IntoIterator<Item = Range<usize>>,
+    ) -> Result<Vec<Receiver<StdResult<Bytes, Error>>>> {
+        let aligned_ranges = aligned_ranges.into_iter();
+        let (size, _) = aligned_ranges.size_hint();
+        let mut rxs = Vec::with_capacity(size);
         let mut need_fetch_block = Vec::new();
         let mut need_fetch_block_cache_key = Vec::new();
 
@@ -623,71 +632,44 @@ impl DiskCacheStore {
 
             rxs.push(rx);
         }
-        let fetched_blocks = self
+
+        let fetched_bytes = self
             .underlying_store
             .get_ranges(location, &need_fetch_block[..])
             .await;
 
-        if let Err(err) = fetched_blocks {
-            for cache_key in need_fetch_block_cache_key {
-                let notifiers = self
-                    .request_notifiers
-                    .take_notifiers(&cache_key.to_owned())
-                    .unwrap();
-                for notifier in notifiers {
-                    if let Err(e) = notifier.send(Err(ObjectStoreError::Generic {
-                        store: "DiskCacheStore",
-                        source: Box::new(Error::FetchDataFromObjectStore {
-                            backtrace: Backtrace::generate(),
-                        }),
-                    })) {
-                        error!("Failed to send disk cache handler err result, err:{:?}.", e);
+        let fetched_bytes = match fetched_bytes {
+            Err(err) => {
+                for cache_key in need_fetch_block_cache_key {
+                    let notifiers = self.request_notifiers.take_notifiers(&cache_key).unwrap();
+                    for notifier in notifiers {
+                        if let Err(e) = notifier.send(Err(Error::WaitNotifier {
+                            message: err.to_string(),
+                        })) {
+                            error!("Failed to send disk cache handler err result, err:{:?}.", e);
+                        }
                     }
                 }
+
+                return Err(err);
             }
-            return Err(err);
-        }
+            Ok(v) => v,
+        };
 
-        let need_fetch_blocks = fetched_blocks.unwrap();
-
-        for (bytes, cache_key) in need_fetch_blocks
-            .iter()
-            .zip(need_fetch_block_cache_key.iter())
+        for (bytes, cache_key) in fetched_bytes
+            .into_iter()
+            .zip(need_fetch_block_cache_key.into_iter())
         {
-            let notifiers = self
-                .request_notifiers
-                .take_notifiers(&cache_key.to_owned())
-                .unwrap();
-            self.cache
-                .insert_data(cache_key.to_owned(), bytes.clone())
-                .await;
+            let notifiers = self.request_notifiers.take_notifiers(&cache_key).unwrap();
+            self.cache.insert_data(cache_key, bytes.clone()).await;
             for notifier in notifiers {
                 if let Err(e) = notifier.send(Ok(bytes.clone())) {
                     error!("Failed to send disk cache handler result, err:{:?}.", e);
                 }
             }
         }
-        Ok(rxs)
-    }
 
-    fn get_data_from_channel_data(
-        data: std::result::Result<Result<Bytes>, RecvError>,
-    ) -> Result<Bytes> {
-        match data {
-            Ok(Ok(bytes)) => Ok(bytes),
-            Ok(Err(_)) => Err(ObjectStoreError::Generic {
-                store: "DiskCacheStore",
-                source: Box::new(Error::FetchDataFromObjectStore {
-                    backtrace: Backtrace::generate(),
-                }),
-            }),
-            Err(_) => Err(ObjectStoreError::Generic {
-                store: "DiskCacheStore",
-                source: Box::new(Error::ReceiveMessageFromChannel {
-                    backtrace: Backtrace::generate(),
-                }),
-            }),
-        }
+        Ok(rxs)
     }
 
     /// Fetch the data from the underlying store and then cache it.
@@ -696,15 +678,13 @@ impl DiskCacheStore {
         location: &Path,
         aligned_range: &Range<usize>,
     ) -> Result<Bytes> {
-        let rx = self
-            .deduped_fetch_data(location, vec![aligned_range.clone()])
+        let mut rxs = self
+            .deduped_fetch_data(location, [aligned_range.clone()])
             .await?;
-        assert_eq!(rx.len(), 1);
-        let mut bytes_vec = vec![];
-        for i in rx {
-            bytes_vec.push(Self::get_data_from_channel_data(i.await)?);
-        }
-        let bytes = std::mem::take(&mut bytes_vec[0]);
+        assert_eq!(rxs.len(), 1);
+
+        let rx = rxs.remove(0);
+        let bytes = rx.await.context(ReceiveMessageFromChannel)??;
         Ok(bytes)
     }
 
@@ -858,8 +838,9 @@ impl ObjectStore for DiskCacheStore {
             .deduped_fetch_data(location, missing_ranges.clone())
             .await?;
 
-        for i in rxs.iter_mut() {
-            missing_ranged_bytes.push(Self::get_data_from_channel_data(i.await)?);
+        for rx in rxs.iter_mut() {
+            let bytes = rx.await.context(ReceiveMessageFromChannel)??;
+            missing_ranged_bytes.push(bytes);
         }
 
         assert_eq!(missing_ranged_bytes.len(), missing_ranges.len());
@@ -1042,27 +1023,27 @@ mod test {
             // len of aligned ranges will be 6
             (16..100, "i j k l m n o p q r s t u v w x y za b c d e f g h i j k l m n o p q r s t u v w x y"),
         ];
-        let testcases: Vec<(Range<usize>, &str)> =
-            testcases.iter().cycle().take(testcases.len() * 9).cloned().collect();
+        let testcases = testcases
+            .iter()
+            .cycle()
+            .take(testcases.len() * 9)
+            .cloned()
+            .collect::<Vec<_>>();
 
         let mut tasks = vec![];
-        for (input, expected) in testcases {
-            let store_copy = store.clone();
-            let location_copy = location.to_owned();
+        for (input, _) in &testcases {
+            let store = store.clone();
+            let location = location.clone();
+            let input = input.clone();
 
             tasks.push(tokio::spawn(async move {
-                assert_eq!(
-                    store_copy
-                        .inner
-                        .get_range(&location_copy, input)
-                        .await
-                        .unwrap(),
-                    Bytes::copy_from_slice(expected.as_bytes())
-                );
+                store.inner.get_range(&location, input).await.unwrap()
             }));
         }
-        for i in tasks {
-            i.await.unwrap();
+
+        let actual = futures::future::join_all(tasks).await;
+        for (actual, (_, expected)) in actual.into_iter().zip(testcases.into_iter()) {
+            assert_eq!(actual.unwrap(), Bytes::from(expected))
         }
     }
 
