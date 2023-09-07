@@ -311,7 +311,7 @@ impl<T: WalsOpener> TestContext<T> {
     }
 
     async fn create_table(&mut self, create_request: CreateTableRequest) {
-        let table_name = create_request.table_name.clone();
+        let table_name = create_request.params.table_name.clone();
         let table = self.engine().create_table(create_request).await.unwrap();
 
         self.name_to_tables.insert(table_name.to_string(), table);

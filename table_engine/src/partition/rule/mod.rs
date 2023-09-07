@@ -18,6 +18,7 @@ pub mod df_adapter;
 mod factory;
 mod filter;
 mod key;
+mod random;
 
 use common_types::{datum::DatumKind, row::RowGroup};
 

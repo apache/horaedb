@@ -222,7 +222,8 @@ impl TableOperator {
         request: CreateTableRequest,
         opts: CreateOptions,
     ) -> Result<TableRef> {
-        let schema = self.schema_by_name(&request.catalog_name, &request.schema_name)?;
+        let schema =
+            self.schema_by_name(&request.params.catalog_name, &request.params.schema_name)?;
 
         // TODO: we should create table directly by table engine, and register table
         // into schema like opening.

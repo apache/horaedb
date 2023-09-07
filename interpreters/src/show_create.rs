@@ -124,9 +124,8 @@ impl ShowCreateInterpreter {
     }
 
     fn render_partition_info(partition_info: Option<PartitionInfo>) -> String {
-        let mut res = String::new();
         if partition_info.is_none() {
-            return res;
+            return String::new();
         }
 
         let partition_info = partition_info.unwrap();
@@ -136,47 +135,40 @@ impl ShowCreateInterpreter {
                     Ok(expr) => expr,
                     Err(e) => {
                         error!("show create table parse partition info failed, err:{}", e);
-                        return res;
+                        return String::new();
                     }
                 };
 
                 if v.linear {
-                    res += format!(
-                        " PARTITION BY LINEAR HASH({}) PARTITIONS {}",
-                        expr,
+                    format!(
+                        " PARTITION BY LINEAR HASH({expr}) PARTITIONS {}",
                         v.definitions.len()
                     )
-                    .as_str()
                 } else {
-                    res += format!(
-                        " PARTITION BY HASH({}) PARTITIONS {}",
-                        expr,
+                    format!(
+                        " PARTITION BY HASH({expr}) PARTITIONS {}",
                         v.definitions.len()
                     )
-                    .as_str()
                 }
             }
             PartitionInfo::Key(v) => {
                 let rendered_partition_key = v.partition_key.join(",");
                 if v.linear {
-                    res += format!(
-                        " PARTITION BY LINEAR KEY({}) PARTITIONS {}",
-                        rendered_partition_key,
+                    format!(
+                        " PARTITION BY LINEAR KEY({rendered_partition_key}) PARTITIONS {}",
                         v.definitions.len()
                     )
-                    .as_str()
                 } else {
-                    res += format!(
-                        " PARTITION BY KEY({}) PARTITIONS {}",
-                        rendered_partition_key,
+                    format!(
+                        " PARTITION BY KEY({rendered_partition_key}) PARTITIONS {}",
                         v.definitions.len()
                     )
-                    .as_str()
                 }
             }
+            PartitionInfo::Random(v) => {
+                format!(" PARTITIONS {}", v.definitions.len())
+            }
         }
-
-        res
     }
 
     fn render_options(opts: HashMap<String, String>) -> String {

@@ -730,13 +730,13 @@ impl Schema for SchemaImpl {
             request
         );
 
-        self.validate_schema_info(&request.catalog_name, &request.schema_name)?;
+        self.validate_schema_info(&request.params.catalog_name, &request.params.schema_name)?;
 
         // TODO(yingwen): Validate table id is unique.
 
         // Check table existence
         if let Some(table) =
-            self.check_create_table_read(&request.table_name, opts.create_if_not_exists)?
+            self.check_create_table_read(&request.params.table_name, opts.create_if_not_exists)?
         {
             return Ok(table);
         }
@@ -745,15 +745,15 @@ impl Schema for SchemaImpl {
         let _lock = self.mutex.lock().await;
         // Check again
         if let Some(table) =
-            self.check_create_table_read(&request.table_name, opts.create_if_not_exists)?
+            self.check_create_table_read(&request.params.table_name, opts.create_if_not_exists)?
         {
             return Ok(table);
         }
 
         // Create table
-        let table_id = self.alloc_table_id(&request.table_name).await?;
+        let table_id = self.alloc_table_id(&request.params.table_name).await?;
         let request = request.into_engine_create_request(Some(table_id), self.schema_id);
-        let table_name = request.table_name.clone();
+        let table_name = request.params.table_name.clone();
         let table = opts
             .table_engine
             .create_table(request.clone())
@@ -767,7 +767,7 @@ impl Schema for SchemaImpl {
             .await
             .box_err()
             .context(WriteTableMeta {
-                table: &request.table_name,
+                table: &request.params.table_name,
             })?;
 
         {
@@ -882,7 +882,7 @@ mod tests {
     };
     use common_types::table::DEFAULT_SHARD_ID;
     use table_engine::{
-        engine::{TableEngineRef, TableState},
+        engine::{CreateTableParams, TableEngineRef, TableState},
         memory::MemoryTableEngine,
         proxy::TableEngineProxy,
         ANALYTIC_ENGINE_TYPE,
@@ -914,17 +914,21 @@ mod tests {
     }
 
     async fn build_create_table_req(table_name: &str, schema: SchemaRef) -> CreateTableRequest {
-        CreateTableRequest {
+        let params = CreateTableParams {
             catalog_name: DEFAULT_CATALOG.to_string(),
             schema_name: schema.name().to_string(),
             table_name: table_name.to_string(),
-            table_id: None,
             table_schema: common_types::tests::build_schema(),
             engine: ANALYTIC_ENGINE_TYPE.to_string(),
-            options: HashMap::new(),
+            table_options: HashMap::new(),
+            partition_info: None,
+        };
+
+        CreateTableRequest {
+            params,
+            table_id: None,
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
-            partition_info: None,
         }
     }
 

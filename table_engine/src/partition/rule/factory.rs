@@ -20,9 +20,10 @@ use snafu::{ensure, OptionExt};
 use crate::partition::{
     rule::{
         key::{KeyRule, DEFAULT_PARTITION_VERSION},
+        random::RandomRule,
         ColumnWithType, PartitionRuleRef,
     },
-    BuildPartitionRule, KeyPartitionInfo, PartitionInfo, Result,
+    BuildPartitionRule, KeyPartitionInfo, PartitionInfo, RandomPartitionInfo, Result,
 };
 
 pub struct PartitionRuleFactory;
@@ -31,6 +32,7 @@ impl PartitionRuleFactory {
     pub fn create(partition_info: PartitionInfo, schema: &Schema) -> Result<PartitionRuleRef> {
         match partition_info {
             PartitionInfo::Key(key_info) => Self::create_key_rule(key_info, schema),
+            PartitionInfo::Random(random_info) => Self::create_random_rule(random_info),
             _ => BuildPartitionRule {
                 msg: format!("unsupported partition strategy, strategy:{partition_info:?}"),
             }
@@ -66,6 +68,12 @@ impl PartitionRuleFactory {
         Ok(Box::new(KeyRule {
             typed_key_columns,
             partition_num: key_info.definitions.len(),
+        }))
+    }
+
+    fn create_random_rule(random_info: RandomPartitionInfo) -> Result<PartitionRuleRef> {
+        Ok(Box::new(RandomRule {
+            partition_num: random_info.definitions.len(),
         }))
     }
 }

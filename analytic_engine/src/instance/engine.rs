@@ -124,19 +124,8 @@ pub enum Error {
         source: GenericError,
     },
 
-    #[snafu(display(
-        "Invalid options, space_id:{}, table:{}, table_id:{}, err:{}",
-        space_id,
-        table,
-        table_id,
-        source
-    ))]
-    InvalidOptions {
-        space_id: SpaceId,
-        table: String,
-        table_id: TableId,
-        source: GenericError,
-    },
+    #[snafu(display("Invalid options, table:{table}, err:{source}",))]
+    InvalidOptions { table: String, source: GenericError },
 
     #[snafu(display(
         "Failed to create table data, space_id:{}, table:{}, table_id:{}, err:{}",
@@ -243,6 +232,11 @@ pub enum Error {
         msg: Option<String>,
         backtrace: Backtrace,
     },
+
+    #[snafu(display(
+        "Try to create a random partition table in overwrite mode, table:{table}.\nBacktrace:\n{backtrace}",
+    ))]
+    TryCreateRandomPartitionTableInOverwriteMode { table: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -250,7 +244,9 @@ define_result!(Error);
 impl From<Error> for table_engine::engine::Error {
     fn from(err: Error) -> Self {
         match &err {
-            Error::InvalidOptions { table, .. } | Error::SpaceNotExist { table, .. } => {
+            Error::InvalidOptions { table, .. }
+            | Error::SpaceNotExist { table, .. }
+            | Error::TryCreateRandomPartitionTableInOverwriteMode { table, .. } => {
                 Self::InvalidArguments {
                     table: table.clone(),
                     source: Box::new(err),
@@ -330,8 +326,8 @@ impl Instance {
         request: CreateTableRequest,
     ) -> Result<SpaceAndTable> {
         let context = SpaceContext {
-            catalog_name: request.catalog_name.clone(),
-            schema_name: request.schema_name.clone(),
+            catalog_name: request.params.catalog_name.clone(),
+            schema_name: request.params.schema_name.clone(),
         };
         let space = self.find_or_create_space(space_id, context).await?;
         let table_data = self.do_create_table(space.clone(), request).await?;

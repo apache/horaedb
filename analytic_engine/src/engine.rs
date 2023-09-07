@@ -22,9 +22,9 @@ use log::{error, info};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{
-        Close, CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
-        OpenShard, OpenShardRequest, OpenShardResult, OpenTableNoCause, OpenTableRequest,
-        OpenTableWithCause, Result, TableDef, TableEngine,
+        Close, CloseShardRequest, CloseTableRequest, CreateTableParams, CreateTableRequest,
+        DropTableRequest, OpenShard, OpenShardRequest, OpenShardResult, OpenTableNoCause,
+        OpenTableRequest, OpenTableWithCause, Result, TableDef, TableEngine,
     },
     table::{SchemaId, TableRef},
     ANALYTIC_ENGINE_TYPE,
@@ -96,6 +96,12 @@ impl TableEngine for TableEngineImpl {
         self.instance.close().await.box_err().context(Close)?;
 
         info!("Table engine closed");
+
+        Ok(())
+    }
+
+    async fn validate_create_table(&self, params: &CreateTableParams) -> Result<()> {
+        self.instance.validate_create_table(params)?;
 
         Ok(())
     }

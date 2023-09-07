@@ -155,46 +155,44 @@ pub enum TableRequestType {
     Drop,
 }
 
+/// The necessary params used to create table.
+#[derive(Clone, Debug)]
+pub struct CreateTableParams {
+    pub catalog_name: String,
+    pub schema_name: String,
+    pub table_name: String,
+    pub table_options: HashMap<String, String>,
+    pub table_schema: Schema,
+    pub partition_info: Option<PartitionInfo>,
+    pub engine: String,
+}
+
 /// Create table request
 // TODO(yingwen): Add option for create_if_not_exists?
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct CreateTableRequest {
-    /// Catalog name
-    pub catalog_name: String,
-    /// Schema name
-    pub schema_name: String,
+    pub params: CreateTableParams,
     /// Schema id
     pub schema_id: SchemaId,
     /// Table id
     pub table_id: TableId,
-    // TODO(yingwen): catalog and schema, or add a table path struct?
-    /// Table name
-    pub table_name: String,
-    /// Table schema
-    pub table_schema: Schema,
-    /// Table engine type
-    pub engine: String,
-    /// Table options used by each engine
-    pub options: HashMap<String, String>,
     /// Tells state of the table
     pub state: TableState,
     /// Shard id, shard is the table set about scheduling from nodes
     /// It will be assigned the default value in standalone mode,
     /// and just be useful in cluster mode
     pub shard_id: ShardId,
-    /// Partition info if this is a partitioned table
-    pub partition_info: Option<PartitionInfo>,
 }
 
 impl From<CreateTableRequest> for sys_catalog_pb::TableEntry {
     fn from(req: CreateTableRequest) -> Self {
         sys_catalog_pb::TableEntry {
-            catalog_name: req.catalog_name,
-            schema_name: req.schema_name,
+            catalog_name: req.params.catalog_name,
+            schema_name: req.params.schema_name,
             schema_id: req.schema_id.as_u32(),
             table_id: req.table_id.as_u64(),
-            table_name: req.table_name,
-            engine: req.engine,
+            table_name: req.params.table_name,
+            engine: req.params.engine,
             state: sys_catalog_pb::TableState::from(req.state) as i32,
             created_time: 0,
             modified_time: 0,
@@ -205,12 +203,12 @@ impl From<CreateTableRequest> for sys_catalog_pb::TableEntry {
 impl From<CreateTableRequest> for TableInfo {
     fn from(req: CreateTableRequest) -> Self {
         Self {
-            catalog_name: req.catalog_name,
-            schema_name: req.schema_name,
+            catalog_name: req.params.catalog_name,
+            schema_name: req.params.schema_name,
             schema_id: req.schema_id,
-            table_name: req.table_name,
+            table_name: req.params.table_name,
             table_id: req.table_id,
-            engine: req.engine,
+            engine: req.params.engine,
             state: req.state,
         }
     }
@@ -314,6 +312,12 @@ pub trait TableEngine: Send + Sync {
 
     /// Close the engine gracefully.
     async fn close(&self) -> Result<()>;
+
+    /// Validate the params used to create a table.
+    ///
+    /// This validation can be used before doing real table creation to avoid
+    /// unnecessary works if the params is invalid.
+    async fn validate_create_table(&self, request: &CreateTableParams) -> Result<()>;
 
     /// Create table
     async fn create_table(&self, request: CreateTableRequest) -> Result<TableRef>;

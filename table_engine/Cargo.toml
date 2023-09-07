@@ -42,6 +42,7 @@ itertools = { workspace = true }
 log = { workspace = true }
 macros = { workspace = true }
 prost = { workspace = true }
+rand = { workspace = true }
 runtime = { workspace = true }
 serde = { workspace = true }
 smallvec = { workspace = true }

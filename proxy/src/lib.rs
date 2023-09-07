@@ -74,7 +74,7 @@ use router::{endpoint::Endpoint, Router};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
-    engine::{EngineRuntimes, TableState},
+    engine::{CreateTableParams, EngineRuntimes, TableState},
     remote::model::{GetTableInfoRequest, TableIdentifier},
     table::{TableId, TableRef},
     PARTITION_TABLE_ENGINE_TYPE,
@@ -406,17 +406,20 @@ impl Proxy {
         // Partition table is a virtual table, so we need to create it manually.
         // Partition info is stored in ceresmeta, so we need to use create_table_request
         // to create it.
-        let create_table_request = CreateTableRequest {
+        let params = CreateTableParams {
             catalog_name: catalog_name.to_string(),
             schema_name: schema_name.to_string(),
             table_name: partition_table_info.name,
-            table_id: Some(TableId::new(partition_table_info.id)),
             table_schema: table.table_schema,
             engine: table.engine,
-            options: table.options,
+            table_options: table.options,
+            partition_info: partition_table_info.partition_info,
+        };
+        let create_table_request = CreateTableRequest {
+            params,
+            table_id: Some(TableId::new(partition_table_info.id)),
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
-            partition_info: partition_table_info.partition_info,
         };
         let create_opts = CreateOptions {
             table_engine: self.instance.partition_table_engine.clone(),

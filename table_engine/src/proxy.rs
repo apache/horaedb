@@ -18,9 +18,9 @@ use async_trait::async_trait;
 
 use crate::{
     engine::{
-        CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
-        OpenShardRequest, OpenShardResult, OpenTableRequest, TableEngine, TableEngineRef,
-        UnknownEngineType,
+        CloseShardRequest, CloseTableRequest, CreateTableParams, CreateTableRequest,
+        DropTableRequest, OpenShardRequest, OpenShardResult, OpenTableRequest, TableEngine,
+        TableEngineRef, UnknownEngineType,
     },
     memory::MemoryTableEngine,
     table::TableRef,
@@ -48,9 +48,16 @@ impl TableEngine for TableEngineProxy {
         Ok(())
     }
 
+    async fn validate_create_table(&self, params: &CreateTableParams) -> crate::engine::Result<()> {
+        match params.engine.as_str() {
+            MEMORY_ENGINE_TYPE => self.memory.validate_create_table(params).await,
+            ANALYTIC_ENGINE_TYPE => self.analytic.validate_create_table(params).await,
+            engine_type => UnknownEngineType { engine_type }.fail(),
+        }
+    }
+
     async fn create_table(&self, request: CreateTableRequest) -> crate::engine::Result<TableRef> {
-        // TODO(yingwen): Use a map
-        match request.engine.as_str() {
+        match request.params.engine.as_str() {
             MEMORY_ENGINE_TYPE => self.memory.create_table(request).await,
             ANALYTIC_ENGINE_TYPE => self.analytic.create_table(request).await,
             engine_type => UnknownEngineType { engine_type }.fail(),

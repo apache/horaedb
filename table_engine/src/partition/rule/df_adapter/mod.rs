@@ -17,7 +17,7 @@
 use common_types::{row::RowGroup, schema::Schema};
 use datafusion::logical_expr::Expr;
 
-use self::extractor::KeyExtractor;
+use self::extractor::{KeyExtractor, NoopExtractor};
 use crate::partition::{
     rule::{
         df_adapter::extractor::FilterExtractorRef, factory::PartitionRuleFactory, PartitionRuleRef,
@@ -68,6 +68,7 @@ impl DfPartitionRuleAdapter {
                 msg: format!("unsupported partition strategy, strategy:{partition_info:?}"),
             }
             .fail(),
+            PartitionInfo::Random(_) => Ok(Box::new(NoopExtractor)),
         }
     }
 }

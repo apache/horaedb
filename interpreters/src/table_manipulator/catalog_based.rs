@@ -20,7 +20,7 @@ use catalog::{
 use common_types::table::DEFAULT_SHARD_ID;
 use query_frontend::plan::{CreateTablePlan, DropTablePlan};
 use snafu::{ensure, ResultExt};
-use table_engine::engine::{TableEngineRef, TableState};
+use table_engine::engine::{CreateTableParams, TableEngineRef, TableState};
 
 use crate::{
     context::Context,
@@ -64,17 +64,20 @@ impl TableManipulator for TableManipulatorImpl {
             ..
         } = plan;
 
-        let request = CreateTableRequest {
+        let params = CreateTableParams {
             catalog_name: default_catalog.to_string(),
             schema_name: default_schema.to_string(),
             table_name: table.clone(),
-            table_id: None,
             table_schema,
             engine,
-            options,
+            table_options: options,
+            partition_info: None,
+        };
+        let request = CreateTableRequest {
+            params,
+            table_id: None,
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
-            partition_info: None,
         };
 
         let opts = CreateOptions {

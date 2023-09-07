@@ -81,6 +81,7 @@ define_result!(Error);
 /// Info for how to partition table
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PartitionInfo {
+    Random(RandomPartitionInfo),
     Hash(HashPartitionInfo),
     Key(KeyPartitionInfo),
 }
@@ -88,6 +89,7 @@ pub enum PartitionInfo {
 impl PartitionInfo {
     pub fn get_definitions(&self) -> Vec<PartitionDefinition> {
         match self {
+            Self::Random(v) => v.definitions.clone(),
             Self::Hash(v) => v.definitions.clone(),
             Self::Key(v) => v.definitions.clone(),
         }
@@ -98,6 +100,11 @@ impl PartitionInfo {
 pub struct PartitionDefinition {
     pub name: String,
     pub origin_name: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RandomPartitionInfo {
+    pub definitions: Vec<PartitionDefinition>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -204,6 +211,30 @@ impl From<KeyPartitionInfo> for ceresdbproto::cluster::KeyPartitionInfo {
     }
 }
 
+impl From<ceresdbproto::cluster::RandomPartitionInfo> for RandomPartitionInfo {
+    fn from(partition_info_pb: ceresdbproto::cluster::RandomPartitionInfo) -> Self {
+        RandomPartitionInfo {
+            definitions: partition_info_pb
+                .definitions
+                .into_iter()
+                .map(|v| v.into())
+                .collect(),
+        }
+    }
+}
+
+impl From<RandomPartitionInfo> for ceresdbproto::cluster::RandomPartitionInfo {
+    fn from(partition_info: RandomPartitionInfo) -> Self {
+        ceresdbproto::cluster::RandomPartitionInfo {
+            definitions: partition_info
+                .definitions
+                .into_iter()
+                .map(|v| v.into())
+                .collect(),
+        }
+    }
+}
+
 impl From<PartitionInfo> for ceresdbproto::cluster::PartitionInfo {
     fn from(partition_info: PartitionInfo) -> Self {
         match partition_info {
@@ -217,6 +248,12 @@ impl From<PartitionInfo> for ceresdbproto::cluster::PartitionInfo {
                 let key_partition_info = ceresdbproto::cluster::KeyPartitionInfo::from(v);
                 ceresdbproto::cluster::PartitionInfo {
                     info: Some(Info::Key(key_partition_info)),
+                }
+            }
+            PartitionInfo::Random(v) => {
+                let random_partition_info = ceresdbproto::cluster::RandomPartitionInfo::from(v);
+                ceresdbproto::cluster::PartitionInfo {
+                    info: Some(Info::Random(random_partition_info)),
                 }
             }
         }
@@ -238,6 +275,10 @@ impl TryFrom<ceresdbproto::cluster::PartitionInfo> for PartitionInfo {
                 Info::Key(v) => {
                     let key_partition_info = KeyPartitionInfo::from(v);
                     Ok(Self::Key(key_partition_info))
+                }
+                Info::Random(v) => {
+                    let random_partition_info = RandomPartitionInfo::from(v);
+                    Ok(Self::Random(random_partition_info))
                 }
             },
             None => Err(Error::EmptyPartitionInfo {}),
