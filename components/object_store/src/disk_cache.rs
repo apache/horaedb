@@ -44,6 +44,8 @@ use upstream::{
     ObjectStore, Result,
 };
 
+use crate::metrics::DISK_CACHE_DEDUP_COUNT;
+
 const FILE_SIZE_CACHE_CAP: usize = 1 << 18;
 const FILE_SIZE_CACHE_PARTITION_BITS: usize = 8;
 pub const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
@@ -603,7 +605,7 @@ impl DiskCacheStore {
         let mut rxs: Vec<oneshot::Receiver<Result<Bytes>>> =
             Vec::with_capacity(aligned_ranges.len());
         let mut need_fetch_block = vec![];
-        let mut need_fetch_block_filename = vec![];
+        let mut need_fetch_block_cache_key = vec![];
 
         for aligned_range in aligned_ranges {
             let (tx, rx) = oneshot::channel();
@@ -614,7 +616,9 @@ impl DiskCacheStore {
                 .insert_notifier(cache_key.to_owned(), tx)
             {
                 need_fetch_block.push(aligned_range);
-                need_fetch_block_filename.push(cache_key);
+                need_fetch_block_cache_key.push(cache_key);
+            } else {
+                DISK_CACHE_DEDUP_COUNT.inc();
             }
 
             rxs.push(rx);
@@ -625,10 +629,10 @@ impl DiskCacheStore {
             .await;
 
         if let Err(err) = need_fetch_blocks {
-            for filename in need_fetch_block_filename {
+            for cache_key in need_fetch_block_cache_key {
                 let notifiers = self
                     .request_notifiers
-                    .take_notifiers(&filename.to_owned())
+                    .take_notifiers(&cache_key.to_owned())
                     .unwrap();
                 for notifier in notifiers {
                     if let Err(e) = notifier.send(Err(ObjectStoreError::Generic {
@@ -646,16 +650,16 @@ impl DiskCacheStore {
 
         let need_fetch_blocks = need_fetch_blocks.unwrap();
 
-        for (bytes, filename) in need_fetch_blocks
+        for (bytes, cache_key) in need_fetch_blocks
             .iter()
-            .zip(need_fetch_block_filename.iter())
+            .zip(need_fetch_block_cache_key.iter())
         {
             let notifiers = self
                 .request_notifiers
-                .take_notifiers(&filename.to_owned())
+                .take_notifiers(&cache_key.to_owned())
                 .unwrap();
             self.cache
-                .insert_data(filename.to_owned(), bytes.clone())
+                .insert_data(cache_key.to_owned(), bytes.clone())
                 .await;
             for notifier in notifiers {
                 if let Err(e) = notifier.send(Ok(bytes.clone())) {

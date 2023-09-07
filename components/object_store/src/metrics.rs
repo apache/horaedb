@@ -19,7 +19,9 @@ use bytes::Bytes;
 use futures::stream::BoxStream;
 use lazy_static::lazy_static;
 use log::trace;
-use prometheus::{exponential_buckets, register_histogram_vec, HistogramVec};
+use prometheus::{
+    exponential_buckets, register_histogram_vec, register_int_counter, HistogramVec, IntCounter,
+};
 use prometheus_static_metric::make_static_metric;
 use runtime::Runtime;
 use tokio::io::AsyncWrite;
@@ -73,6 +75,14 @@ lazy_static! {
         &["op"],
         // The max bound value is 64 * 2^24 = 1GB
         exponential_buckets(64.0, 4.0, 12).unwrap()
+    )
+    .unwrap();
+}
+
+lazy_static! {
+    pub static ref DISK_CACHE_DEDUP_COUNT: IntCounter = register_int_counter!(
+        "disk_cache_dedup_counter",
+        "Dedup disk cache fetch request counts"
     )
     .unwrap();
 }
