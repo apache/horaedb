@@ -332,14 +332,8 @@ impl<'a> Parser<'a> {
         let table_name = self.parser.parse_object_name()?.into();
         let (columns, constraints) = self.parse_columns()?;
 
-        // Parse the simple partition rule, starting with `Partitions $Num`.
-        let partition = match self.maybe_parse_simple_partition()? {
-            Some(p) => Some(p),
-            None => {
-                // Parse the complex partition rule, starting with `PARTITION BY`
-                self.maybe_parse_complex_partition(Keyword::PARTITION, &columns)?
-            }
-        };
+        // Parse the partition clause, starting with `PARTITION BY ...`
+        let partition = self.maybe_parse_partition(Keyword::PARTITION, &columns)?;
 
         // ENGINE = ...
         let engine = self.parse_table_engine()?;
@@ -568,15 +562,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn maybe_parse_simple_partition(&mut self) -> Result<Option<Partition>> {
-        let partition = self
-            .parse_partition_num()?
-            .map(|partition_num| Partition::Random(RandomPartition { partition_num }));
-
-        Ok(partition)
-    }
-
-    fn maybe_parse_complex_partition(
+    fn maybe_parse_partition(
         &mut self,
         keyword: Keyword,
         columns: &[ColumnDef],
@@ -595,6 +581,10 @@ impl<'a> Parser<'a> {
         &mut self,
         columns: &[ColumnDef],
     ) -> Result<Option<Partition>> {
+        if let Some(key) = self.maybe_parse_and_check_random_partition()? {
+            return Ok(Some(Partition::Random(key)));
+        }
+
         if let Some(key) = self.maybe_parse_and_check_key_partition(columns)? {
             return Ok(Some(Partition::Key(key)));
         }
@@ -603,6 +593,16 @@ impl<'a> Parser<'a> {
         }
 
         Ok(None)
+    }
+
+    fn maybe_parse_and_check_random_partition(&mut self) -> Result<Option<RandomPartition>> {
+        if !self.consume_token("RANDOM") {
+            return Ok(None);
+        }
+
+        // Parse the clause `PARTITIONS ...`.
+        let partition_num = self.parse_partition_num()?.unwrap_or(1);
+        Ok(Some(RandomPartition { partition_num }))
     }
 
     fn maybe_parse_and_check_hash_partition(

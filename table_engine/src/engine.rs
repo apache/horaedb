@@ -313,7 +313,10 @@ pub trait TableEngine: Send + Sync {
     /// Close the engine gracefully.
     async fn close(&self) -> Result<()>;
 
-    /// Validate the request of create table.
+    /// Validate the params used to create a table.
+    ///
+    /// This validation can be used before doing real table creation to avoid
+    /// unnecessary works if the params is invalid.
     async fn validate_create_table(&self, request: &CreateTableParams) -> Result<()>;
 
     /// Create table

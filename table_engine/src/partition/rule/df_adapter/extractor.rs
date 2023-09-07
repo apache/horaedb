@@ -36,6 +36,14 @@ pub trait FilterExtractor: Send + Sync + 'static {
     fn extract(&self, filters: &[Expr], columns: &[String]) -> Vec<PartitionFilter>;
 }
 
+pub struct NoopExtractor;
+
+impl FilterExtractor for NoopExtractor {
+    fn extract(&self, _filters: &[Expr], _columns: &[String]) -> Vec<PartitionFilter> {
+        vec![]
+    }
+}
+
 pub struct KeyExtractor;
 
 impl FilterExtractor for KeyExtractor {

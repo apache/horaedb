@@ -52,7 +52,7 @@ CREATE TABLE `random_partition_table_t`(
                                     `value` double NOT NULL,
                                     `t` timestamp NOT NULL,
                                     TIMESTAMP KEY(t)
-) PARTITIONS 4 ENGINE = Analytic with (enable_ttl='false', update_mode="APPEND");
+) PARTITION BY RANDOM PARTITIONS 4 ENGINE = Analytic with (enable_ttl='false', update_mode="APPEND");
 
 SHOW CREATE TABLE random_partition_table_t;
 
@@ -85,4 +85,4 @@ CREATE TABLE `random_partition_table_t_overwrite`(
                                     `value` double NOT NULL,
                                     `t` timestamp NOT NULL,
                                     TIMESTAMP KEY(t)
-) PARTITIONS 4 ENGINE = Analytic with (enable_ttl='false', update_mode="OVERWRITE");
+) PARTITION BY RANDOM PARTITIONS 4 ENGINE = Analytic with (enable_ttl='false', update_mode="OVERWRITE");
