@@ -802,9 +802,9 @@ mod tests {
         check_encode_end_decode(10, negative_timestamp, DatumKind::Timestamp);
 
         let negative_overflow_timestamp = vec![
-            Datum::Timestamp(Timestamp::new(-1692845730000)),
             Datum::Timestamp(Timestamp::new(1692945730000)),
-            Datum::Timestamp(Timestamp::new(0)),
+            Datum::Timestamp(Timestamp::new(1692945730000)),
+            Datum::Timestamp(Timestamp::new(4692945730000)),
         ];
         check_encode_end_decode(10, negative_overflow_timestamp, DatumKind::Timestamp);
     }

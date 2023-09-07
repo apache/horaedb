@@ -96,7 +96,7 @@ impl BufferedWriter {
             num = 64;
         }
 
-        bits = bits << (64 - num);
+        bits <<= (64 - num);
         while num >= 8 {
             let byte = bits >> 56;
             self.write_byte(byte as u8);

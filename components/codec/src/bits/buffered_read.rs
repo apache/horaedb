@@ -90,7 +90,7 @@ impl<'a> BufferedReader<'a> {
             Some(b) => b,
         };
 
-        byte |= b >> 8 - self.bit_idx;
+        byte |= b >> (8 - self.bit_idx);
 
         Some(byte)
     }
