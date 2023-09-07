@@ -19,7 +19,7 @@ use std::{
     fs::File,
     process::{Child, Command},
     sync::Arc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -30,7 +30,6 @@ use ceresdb_client::{
 };
 use reqwest::{ClientBuilder, Url};
 use sqlness::{Database, QueryContext};
-use uuid::Timestamp;
 
 const SERVER_GRPC_ENDPOINT_ENV: &str = "CERESDB_SERVER_GRPC_ENDPOINT";
 const SERVER_HTTP_ENDPOINT_ENV: &str = "CERESDB_SERVER_HTTP_ENDPOINT";
@@ -83,7 +82,7 @@ pub struct CeresDBCluster {
 
     /// Used in meta health check
     db_client: Arc<dyn DbClient>,
-    health_check_sql: String,
+    meta_stable_check_sql: String,
 }
 
 impl CeresDBServer {
@@ -123,7 +122,7 @@ impl Backend for CeresDBServer {
 }
 
 impl CeresDBCluster {
-    async fn check_meta_health(&self) -> bool {
+    async fn check_meta_stable(&self) -> bool {
         let query_ctx = RpcContext {
             database: Some("public".to_string()),
             timeout: None,
@@ -131,7 +130,7 @@ impl CeresDBCluster {
 
         let query_req = Request {
             tables: vec![],
-            sql: self.health_check_sql.clone(),
+            sql: self.meta_stable_check_sql.clone(),
         };
 
         let result = self.db_client.sql_query(&query_ctx, &query_req).await;
@@ -175,16 +174,16 @@ impl Backend for CeresDBCluster {
         let server0 = CeresDBServer::spawn(ceresdb_bin.clone(), ceresdb_config_0, stdout0);
         let server1 = CeresDBServer::spawn(ceresdb_bin, ceresdb_config_1, stdout1);
 
-        // Health check context
+        // Meta stable check context
         let endpoint = env::var(SERVER_GRPC_ENDPOINT_ENV).unwrap_or_else(|_| {
             panic!("Cannot read server endpoint from env {SERVER_GRPC_ENDPOINT_ENV:?}")
         });
         let db_client = Builder::new(endpoint, Mode::Proxy).build();
 
-        let health_check_sql = format!(
-            r#"CREATE TABLE `health_check_{}`
+        let meta_stable_check_sql = format!(
+            r#"CREATE TABLE `stable_check_{}`
             (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t))"#,
-            "asfdasfadsfad"
+            uuid::Uuid::new_v4()
         );
 
         Self {
@@ -192,34 +191,33 @@ impl Backend for CeresDBCluster {
             server1,
             ceresmeta_process,
             db_client,
-            health_check_sql,
+            meta_stable_check_sql,
         }
     }
 
     async fn wait_for_ready(&self) {
-        println!("wait for cluster service initialized...\n");
-        tokio::time::sleep(Duration::from_secs(
-            20 as u64,
-        ))
-        .await;
-        
-        println!("wait for cluster service stable begin...\n");
+        println!("wait for cluster service initialized...");
+        tokio::time::sleep(Duration::from_secs(20_u64)).await;
+
+        println!("wait for cluster service stable begin...");
         let mut wait_cnt = 0;
         let wait_max = 6;
         loop {
             if wait_cnt >= wait_max {
-                println!("wait too long for cluster service stable, maybe somethings went wrong...");
+                println!(
+                    "wait too long for cluster service stable, maybe somethings went wrong..."
+                );
                 return;
             }
 
-            if self.check_meta_health().await {
-                println!("wait cluster service stable finished...\n");
+            if self.check_meta_stable().await {
+                println!("wait for cluster service stable finished...");
                 return;
             }
 
             wait_cnt += 1;
             let has_waited = wait_cnt * CLUSTER_CERESDB_HEALTH_CHECK_INTERVAL_SECONDS;
-            println!("waiting for cluster service stable, has_waited:{has_waited}s\n");
+            println!("waiting for cluster service stable, has_waited:{has_waited}s");
             tokio::time::sleep(Duration::from_secs(
                 CLUSTER_CERESDB_HEALTH_CHECK_INTERVAL_SECONDS as u64,
             ))
