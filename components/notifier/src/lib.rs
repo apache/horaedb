@@ -12,18 +12,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Rpc server
-
-// TODO(yingwen):
-// Borrow some ideas from tikv: https://github.com/tikv/tikv/blob/dc8ce2cf6a8904cb3dad556f71b11bac3531689b/src/server/service/kv.rs#L51
-
-pub mod config;
-mod consts;
-mod error_util;
-mod grpc;
-mod http;
-pub mod local_tables;
-mod metrics;
-mod mysql;
-mod postgresql;
-pub mod server;
+pub mod notifier;

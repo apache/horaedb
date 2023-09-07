@@ -48,6 +48,7 @@ log = { workspace = true }
 logger = { workspace = true }
 macros = { workspace = true }
 meta_client = { workspace = true }
+notifier = { workspace = true }
 opensrv-mysql = "0.1.0"
 partition_table_engine = { workspace = true }
 paste = { workspace = true }

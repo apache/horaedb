@@ -4257,6 +4257,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "notifier"
+version = "1.2.6-alpha"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4446,6 +4453,7 @@ dependencies = [
  "log",
  "lru 0.7.8",
  "macros",
+ "notifier",
  "object_store 0.5.6",
  "partitioned_lock",
  "prometheus 0.12.0",
@@ -6267,6 +6275,7 @@ dependencies = [
  "logger",
  "macros",
  "meta_client",
+ "notifier",
  "opensrv-mysql",
  "partition_table_engine",
  "paste 1.0.12",

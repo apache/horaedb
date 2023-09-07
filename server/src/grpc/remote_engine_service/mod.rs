@@ -31,6 +31,7 @@ use common_types::record_batch::RecordBatch;
 use futures::stream::{self, BoxStream, FuturesUnordered, StreamExt};
 use generic_error::BoxError;
 use log::{error, info};
+use notifier::notifier::{RequestNotifiers, RequestResult};
 use proxy::{
     hotspot::{HotspotRecorder, Message},
     instance::InstanceRef,
@@ -49,15 +50,11 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
 use super::metrics::REMOTE_ENGINE_WRITE_BATCH_NUM_ROWS_HISTOGRAM;
-use crate::{
-    dedup_requests::{RequestNotifiers, RequestResult},
-    grpc::{
-        metrics::{
-            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC,
-            REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
-        },
-        remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+use crate::grpc::{
+    metrics::{
+        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC, REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
     },
+    remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
 };
 
 pub mod error;
@@ -112,7 +109,8 @@ impl<F: FnMut()> Drop for ExecutionGuard<F> {
 pub struct RemoteEngineServiceImpl {
     pub instance: InstanceRef,
     pub runtimes: Arc<EngineRuntimes>,
-    pub request_notifiers: Option<Arc<RequestNotifiers<StreamReadReqKey, Result<RecordBatch>>>>,
+    pub request_notifiers:
+        Option<Arc<RequestNotifiers<StreamReadReqKey, mpsc::Sender<Result<RecordBatch>>>>>,
     pub hotspot_recorder: Arc<HotspotRecorder>,
 }
 
@@ -167,7 +165,9 @@ impl RemoteEngineServiceImpl {
 
     async fn deduped_stream_read_internal(
         &self,
-        request_notifiers: Arc<RequestNotifiers<StreamReadReqKey, Result<RecordBatch>>>,
+        request_notifiers: Arc<
+            RequestNotifiers<StreamReadReqKey, mpsc::Sender<Result<RecordBatch>>>,
+        >,
         request: Request<ReadRequest>,
     ) -> Result<ReceiverStream<Result<RecordBatch>>> {
         let instant = Instant::now();

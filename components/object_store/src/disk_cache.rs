@@ -19,7 +19,7 @@
 //! Page is used for reasons below:
 //! - reduce file size in case of there are too many request with small range.
 
-use std::{fmt::Display, ops::Range, sync::Arc};
+use std::{fmt::Display, ops::Range, result::Result as StdResult, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
@@ -27,8 +27,9 @@ use chrono::{DateTime, Utc};
 use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
 use hash_ext::SeaHasherBuilder;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use lru::LruCache;
+use notifier::notifier::RequestNotifiers;
 use partitioned_lock::PartitionedMutex;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
@@ -36,11 +37,14 @@ use time_ext;
 use tokio::{
     fs::{self, File, OpenOptions},
     io::{AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt},
+    sync::oneshot::{self, error::RecvError, Receiver},
 };
 use upstream::{
     path::Path, Error as ObjectStoreError, GetResult, ListResult, MultipartId, ObjectMeta,
     ObjectStore, Result,
 };
+
+use crate::metrics::DISK_CACHE_DEDUP_COUNT;
 
 const FILE_SIZE_CACHE_CAP: usize = 1 << 18;
 const FILE_SIZE_CACHE_PARTITION_BITS: usize = 8;
@@ -75,6 +79,20 @@ enum Error {
         source: serde_json::Error,
         backtrace: Backtrace,
     },
+
+    #[snafu(display(
+        "Failed to receive bytes from channel, source:{source}.\nbacktrace:\n{backtrace}"
+    ))]
+    ReceiveBytesFromChannel {
+        backtrace: Backtrace,
+        source: RecvError,
+    },
+
+    #[snafu(display("Fetch data failed, error.\nbacktrace:\n{backtrace}"))]
+    FetchDataFromObjectStore { backtrace: Backtrace },
+
+    #[snafu(display("Wait notifier failed, message:{message}."))]
+    WaitNotifier { message: String },
 
     #[snafu(display("Invalid manifest page size, old:{old}, new:{new}."))]
     InvalidManifest { old: usize, new: usize },
@@ -434,6 +452,7 @@ pub struct DiskCacheStore {
     page_size: usize,
     meta_cache: PartitionedMutex<LruCache<Path, FileMeta>, SeaHasherBuilder>,
     underlying_store: Arc<dyn ObjectStore>,
+    request_notifiers: Arc<RequestNotifiers<String, oneshot::Sender<StdResult<Bytes, Error>>>>,
 }
 
 impl DiskCacheStore {
@@ -466,12 +485,15 @@ impl DiskCacheStore {
             SeaHasherBuilder,
         )?;
 
+        let request_notifiers = Arc::new(RequestNotifiers::default());
+
         Ok(Self {
             cache,
             cap,
             page_size,
             meta_cache,
             underlying_store,
+            request_notifiers,
         })
     }
 
@@ -583,19 +605,86 @@ impl DiskCacheStore {
         )
     }
 
+    async fn deduped_fetch_data(
+        &self,
+        location: &Path,
+        aligned_ranges: impl IntoIterator<Item = Range<usize>>,
+    ) -> Result<Vec<Receiver<StdResult<Bytes, Error>>>> {
+        let aligned_ranges = aligned_ranges.into_iter();
+        let (size, _) = aligned_ranges.size_hint();
+        let mut rxs = Vec::with_capacity(size);
+        let mut need_fetch_block = Vec::new();
+        let mut need_fetch_block_cache_key = Vec::new();
+
+        for aligned_range in aligned_ranges {
+            let (tx, rx) = oneshot::channel();
+            let cache_key = Self::page_cache_name(location, &aligned_range);
+
+            if let notifier::notifier::RequestResult::First = self
+                .request_notifiers
+                .insert_notifier(cache_key.to_owned(), tx)
+            {
+                need_fetch_block.push(aligned_range);
+                need_fetch_block_cache_key.push(cache_key);
+            } else {
+                DISK_CACHE_DEDUP_COUNT.inc();
+            }
+
+            rxs.push(rx);
+        }
+
+        let fetched_bytes = self
+            .underlying_store
+            .get_ranges(location, &need_fetch_block[..])
+            .await;
+        let fetched_bytes = match fetched_bytes {
+            Err(err) => {
+                for cache_key in need_fetch_block_cache_key {
+                    let notifiers = self.request_notifiers.take_notifiers(&cache_key).unwrap();
+                    for notifier in notifiers {
+                        if let Err(e) = notifier.send(Err(Error::WaitNotifier {
+                            message: err.to_string(),
+                        })) {
+                            error!("Failed to send notifier error result, err:{:?}.", e);
+                        }
+                    }
+                }
+
+                return Err(err);
+            }
+            Ok(v) => v,
+        };
+
+        for (bytes, cache_key) in fetched_bytes
+            .into_iter()
+            .zip(need_fetch_block_cache_key.into_iter())
+        {
+            let notifiers = self.request_notifiers.take_notifiers(&cache_key).unwrap();
+            self.cache.insert_data(cache_key, bytes.clone()).await;
+            for notifier in notifiers {
+                if let Err(e) = notifier.send(Ok(bytes.clone())) {
+                    error!("Failed to send notifier success result, err:{:?}.", e);
+                }
+            }
+        }
+
+        Ok(rxs)
+    }
+
     /// Fetch the data from the underlying store and then cache it.
     async fn fetch_and_cache_data(
         &self,
         location: &Path,
         aligned_range: &Range<usize>,
     ) -> Result<Bytes> {
-        let bytes = self
-            .underlying_store
-            .get_range(location, aligned_range.clone())
+        let mut rxs = self
+            .deduped_fetch_data(location, [aligned_range.clone()])
             .await?;
 
-        let filename = Self::page_cache_name(location, aligned_range);
-        self.cache.insert_data(filename, bytes.clone()).await;
+        assert_eq!(rxs.len(), 1);
+
+        let rx = rxs.remove(0);
+        let bytes = rx.await.context(ReceiveBytesFromChannel)??;
         Ok(bytes)
     }
 
@@ -744,10 +833,15 @@ impl ObjectStore for DiskCacheStore {
             }
         }
 
-        let missing_ranged_bytes = self
-            .underlying_store
-            .get_ranges(location, &missing_ranges)
+        let mut missing_ranged_bytes = Vec::with_capacity(missing_ranges.len());
+        let rxs = self
+            .deduped_fetch_data(location, missing_ranges.clone())
             .await?;
+        for rx in rxs {
+            let bytes = rx.await.context(ReceiveBytesFromChannel)??;
+            missing_ranged_bytes.push(bytes);
+        }
+
         assert_eq!(missing_ranged_bytes.len(), missing_ranges.len());
 
         for ((missing_range, missing_range_idx), bytes) in missing_ranges
@@ -755,9 +849,6 @@ impl ObjectStore for DiskCacheStore {
             .zip(missing_range_idx.into_iter())
             .zip(missing_ranged_bytes.into_iter())
         {
-            let filename = Self::page_cache_name(location, &missing_range);
-            self.cache.insert_data(filename, bytes.clone()).await;
-
             let offset = missing_range.start;
             let truncated_range = (missing_range.start.max(range.start) - offset)
                 ..(missing_range.end.min(range.end) - offset);
@@ -905,6 +996,52 @@ mod test {
                 b"i j k l m n o p q r s t u v w x y za b c d e f g h i j k l m n o p q r s t u v w x y"
             )
         );
+    }
+
+    #[tokio::test]
+    async fn test_disk_cache_multi_thread_fetch_same_block() {
+        let page_size = 16;
+        // 51 byte
+        let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
+        let location = Path::from("1.sst");
+        let store = Arc::new(prepare_store(page_size, 32, 0).await);
+
+        let mut buf = BytesMut::with_capacity(data.len() * 4);
+        // extend 4 times, then location will contain 200 bytes
+        for _ in 0..4 {
+            buf.extend_from_slice(data);
+        }
+        store.inner.put(&location, buf.freeze()).await.unwrap();
+
+        let testcases = vec![
+            (0..6, "a b c "),
+            (0..16, "a b c d e f g h "),
+            (0..17, "a b c d e f g h i"),
+            (16..17, "i"),
+            (16..100, "i j k l m n o p q r s t u v w x y za b c d e f g h i j k l m n o p q r s t u v w x y"),
+        ];
+        let testcases = testcases
+            .iter()
+            .cycle()
+            .take(testcases.len() * 100)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let mut tasks = Vec::with_capacity(testcases.len());
+        for (input, _) in &testcases {
+            let store = store.clone();
+            let location = location.clone();
+            let input = input.clone();
+
+            tasks.push(tokio::spawn(async move {
+                store.inner.get_range(&location, input).await.unwrap()
+            }));
+        }
+
+        let actual = futures::future::join_all(tasks).await;
+        for (actual, (_, expected)) in actual.into_iter().zip(testcases.into_iter()) {
+            assert_eq!(actual.unwrap(), Bytes::from(expected))
+        }
     }
 
     #[tokio::test]

@@ -33,6 +33,7 @@ use futures::FutureExt;
 use generic_error::GenericError;
 use log::{info, warn};
 use macros::define_result;
+use notifier::notifier::RequestNotifiers;
 use proxy::{
     forward,
     hotspot::HotspotRecorder,
@@ -43,16 +44,16 @@ use proxy::{
 use runtime::{JoinHandle, Runtime};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
-use tokio::sync::oneshot::{self, Sender};
+use tokio::sync::{
+    mpsc,
+    oneshot::{self, Sender},
+};
 use tonic::transport::Server;
 
-use crate::{
-    dedup_requests::RequestNotifiers,
-    grpc::{
-        meta_event_service::MetaServiceImpl,
-        remote_engine_service::{error, RemoteEngineServiceImpl, StreamReadReqKey},
-        storage_service::StorageServiceImpl,
-    },
+use crate::grpc::{
+    meta_event_service::MetaServiceImpl,
+    remote_engine_service::{error, RemoteEngineServiceImpl, StreamReadReqKey},
+    storage_service::StorageServiceImpl,
 };
 
 mod meta_event_service;
@@ -215,7 +216,8 @@ pub struct Builder {
     cluster: Option<ClusterRef>,
     opened_wals: Option<OpenedWals>,
     proxy: Option<Arc<Proxy>>,
-    request_notifiers: Option<Arc<RequestNotifiers<StreamReadReqKey, error::Result<RecordBatch>>>>,
+    request_notifiers:
+        Option<Arc<RequestNotifiers<StreamReadReqKey, mpsc::Sender<error::Result<RecordBatch>>>>>,
     hotspot_recorder: Option<Arc<HotspotRecorder>>,
 }
 
