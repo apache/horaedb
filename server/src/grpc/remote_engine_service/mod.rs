@@ -16,7 +16,9 @@
 
 use std::{
     hash::Hash,
+    pin::Pin,
     sync::Arc,
+    task::{Context, Poll},
     time::{Duration, Instant},
 };
 
@@ -32,10 +34,10 @@ use ceresdbproto::{
     storage::{arrow_payload, ArrowPayload},
 };
 use common_types::record_batch::RecordBatch;
-use futures::stream::{self, BoxStream, FuturesUnordered, StreamExt};
+use futures::stream::{self, BoxStream, FuturesUnordered, Stream, StreamExt};
 use generic_error::BoxError;
 use log::{error, info};
-use notifier::notifier::{RequestNotifiers, RequestResult};
+use notifier::notifier::{ExecutionGuard, RequestNotifiers, RequestResult};
 use proxy::{
     hotspot::{HotspotRecorder, Message},
     instance::InstanceRef,
@@ -49,7 +51,7 @@ use table_engine::{
     table::TableRef,
 };
 use time_ext::InstantExt;
-use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
@@ -84,34 +86,39 @@ impl StreamReadReqKey {
     }
 }
 
-struct ExecutionGuard<F: FnMut()> {
-    f: F,
-    cancelled: bool,
-}
-
-impl<F: FnMut()> ExecutionGuard<F> {
-    fn new(f: F) -> Self {
-        Self {
-            f,
-            cancelled: false,
-        }
-    }
-
-    fn cancel(&mut self) {
-        self.cancelled = true;
-    }
-}
-
-impl<F: FnMut()> Drop for ExecutionGuard<F> {
-    fn drop(&mut self) {
-        if !self.cancelled {
-            (self.f)()
-        }
-    }
-}
-
 pub type StreamReadRequestNotifiers =
     Arc<RequestNotifiers<StreamReadReqKey, mpsc::Sender<Result<RecordBatch>>>>;
+pub type BoxedStream<T> = Box<dyn Stream<Item = T> + Send + Unpin>;
+
+struct ReceiverStreamWrapper {
+    inner: BoxedStream<Result<RecordBatch>>,
+    instant: Instant,
+}
+
+impl ReceiverStreamWrapper {
+    fn new(inner: Receiver<Result<RecordBatch>>, instant: Instant) -> Self {
+        Self {
+            inner: Box::new(ReceiverStream::new(inner)),
+            instant,
+        }
+    }
+}
+
+impl Stream for ReceiverStreamWrapper {
+    type Item = Result<RecordBatch>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.inner.poll_next_unpin(cx)
+    }
+}
+
+impl Drop for ReceiverStreamWrapper {
+    fn drop(&mut self) {
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .stream_read
+            .observe(self.instant.saturating_elapsed().as_secs_f64());
+    }
+}
 
 #[derive(Clone)]
 pub struct RemoteEngineServiceImpl {
@@ -125,7 +132,8 @@ impl RemoteEngineServiceImpl {
     async fn stream_read_internal(
         &self,
         request: Request<ReadRequest>,
-    ) -> Result<ReceiverStream<Result<RecordBatch>>> {
+    ) -> Result<ReceiverStreamWrapper> {
+        let instant = Instant::now();
         let ctx = self.handler_ctx();
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let handle = self.runtimes.read_runtime.spawn(async move {
@@ -162,15 +170,15 @@ impl RemoteEngineServiceImpl {
             });
         }
 
-        // TODO: add metrics to collect the time cost of the reading.
-        Ok(ReceiverStream::new(rx))
+        Ok(ReceiverStreamWrapper::new(rx, instant))
     }
 
     async fn dedup_stream_read_internal(
         &self,
         request_notifiers: StreamReadRequestNotifiers,
         request: Request<ReadRequest>,
-    ) -> Result<ReceiverStream<Result<RecordBatch>>> {
+    ) -> Result<ReceiverStreamWrapper> {
+        let instant = Instant::now();
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
 
         let request = request.into_inner();
@@ -200,7 +208,7 @@ impl RemoteEngineServiceImpl {
                 // read.
             }
         }
-        Ok(ReceiverStream::new(rx))
+        Ok(ReceiverStreamWrapper::new(rx, instant))
     }
 
     async fn read_and_send_dedupped_resps(
@@ -209,7 +217,6 @@ impl RemoteEngineServiceImpl {
         request_key: StreamReadReqKey,
         request_notifiers: StreamReadRequestNotifiers,
     ) -> Result<()> {
-        let instant = Instant::now();
         let ctx = self.handler_ctx();
 
         // This is used to remove key when future is cancelled.
@@ -263,10 +270,6 @@ impl RemoteEngineServiceImpl {
         // Do send in background to avoid blocking the rpc procedure.
         self.runtimes.read_runtime.spawn(async move {
             Self::send_dedupped_resps(resps, notifiers).await;
-
-            REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
-                .stream_read
-                .observe(instant.saturating_elapsed().as_secs_f64());
         });
 
         Ok(())
