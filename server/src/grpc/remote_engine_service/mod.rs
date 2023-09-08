@@ -52,7 +52,6 @@ use table_engine::{
 };
 use time_ext::InstantExt;
 use tokio::sync::mpsc::{self, Receiver, Sender};
-use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
 use super::metrics::REMOTE_ENGINE_WRITE_BATCH_NUM_ROWS_HISTOGRAM;
@@ -88,31 +87,27 @@ impl StreamReadReqKey {
 
 pub type StreamReadRequestNotifiers =
     Arc<RequestNotifiers<StreamReadReqKey, mpsc::Sender<Result<RecordBatch>>>>;
-pub type BoxedStream<T> = Box<dyn Stream<Item = T> + Send + Unpin>;
 
-struct ReceiverStreamWrapper {
-    inner: BoxedStream<Result<RecordBatch>>,
+struct StreamWithMetric {
+    inner: Receiver<Result<RecordBatch>>,
     instant: Instant,
 }
 
-impl ReceiverStreamWrapper {
+impl StreamWithMetric {
     fn new(inner: Receiver<Result<RecordBatch>>, instant: Instant) -> Self {
-        Self {
-            inner: Box::new(ReceiverStream::new(inner)),
-            instant,
-        }
+        Self { inner, instant }
     }
 }
 
-impl Stream for ReceiverStreamWrapper {
+impl Stream for StreamWithMetric {
     type Item = Result<RecordBatch>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.inner.poll_next_unpin(cx)
+        self.inner.poll_recv(cx)
     }
 }
 
-impl Drop for ReceiverStreamWrapper {
+impl Drop for StreamWithMetric {
     fn drop(&mut self) {
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .stream_read
@@ -132,7 +127,7 @@ impl RemoteEngineServiceImpl {
     async fn stream_read_internal(
         &self,
         request: Request<ReadRequest>,
-    ) -> Result<ReceiverStreamWrapper> {
+    ) -> Result<StreamWithMetric> {
         let instant = Instant::now();
         let ctx = self.handler_ctx();
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
@@ -170,14 +165,14 @@ impl RemoteEngineServiceImpl {
             });
         }
 
-        Ok(ReceiverStreamWrapper::new(rx, instant))
+        Ok(StreamWithMetric::new(rx, instant))
     }
 
     async fn dedup_stream_read_internal(
         &self,
         request_notifiers: StreamReadRequestNotifiers,
         request: Request<ReadRequest>,
-    ) -> Result<ReceiverStreamWrapper> {
+    ) -> Result<StreamWithMetric> {
         let instant = Instant::now();
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
 
@@ -208,7 +203,7 @@ impl RemoteEngineServiceImpl {
                 // read.
             }
         }
-        Ok(ReceiverStreamWrapper::new(rx, instant))
+        Ok(StreamWithMetric::new(rx, instant))
     }
 
     async fn read_and_send_dedupped_resps(
