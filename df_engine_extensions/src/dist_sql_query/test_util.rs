@@ -362,7 +362,7 @@ pub struct MockPartitionedScanStreamBuilder {
 
 #[derive(Clone, Copy)]
 pub enum PartitionedScanStreamCase {
-    InitFailed,
+    InitializeFailed,
     PollFailed,
     Success,
 }
@@ -376,7 +376,7 @@ impl MockPartitionedScanStreamBuilder {
     pub fn build(&self) -> PartitionedScanStream {
         let stream_future: BoxFuture<'static, DfResult<SendableRecordBatchStream>> = match self.case
         {
-            PartitionedScanStreamCase::InitFailed => {
+            PartitionedScanStreamCase::InitializeFailed => {
                 Box::pin(
                     async move { Err(DataFusionError::Internal("failed to init".to_string())) },
                 )
@@ -409,11 +409,14 @@ impl MockPartitionedScanStreamBuilder {
 pub struct ErrorRecordBatchStream {
     /// Schema wrapped by Arc
     schema: SchemaRef,
+    
+    /// Mark the stream is terminated.
+    done: bool,
 }
 
 impl ErrorRecordBatchStream {
     pub fn new(schema: SchemaRef) -> Self {
-        Self { schema }
+        Self { schema, done: false }
     }
 }
 
@@ -427,6 +430,11 @@ impl Stream for ErrorRecordBatchStream {
     type Item = DfResult<RecordBatch>;
 
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if self.done {
+            return Poll::Ready(None);
+        }
+        
+        self.get_mut().done = true;
         Poll::Ready(Some(Err(DataFusionError::Internal(
             "failed to poll".to_string(),
         ))))

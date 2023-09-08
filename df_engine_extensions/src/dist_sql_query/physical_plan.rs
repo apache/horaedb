@@ -265,27 +265,14 @@ impl Stream for PartitionedScanStream {
                             *stream_state = StreamState::Polling(stream);
                         }
                         Poll::Ready(Err(e)) => {
-                            *stream_state = StreamState::Failed(e.to_string());
+                            *stream_state = StreamState::InitializeFailed;
                             return Poll::Ready(Some(Err(e)));
                         }
                         Poll::Pending => return Poll::Pending,
                     }
-                }
-
-                StreamState::Polling(stream) => {
-                    let poll_res = stream.poll_next_unpin(cx);
-                    if let Poll::Ready(Some(Err(e))) = &poll_res {
-                        *stream_state = StreamState::Failed(e.to_string());
-                    }
-
-                    return poll_res;
-                }
-
-                StreamState::Failed(err_msg) => {
-                    return Poll::Ready(Some(Err(DataFusionError::Internal(format!(
-                        "failed to poll record stream, err:{err_msg}"
-                    )))));
-                }
+                },
+                StreamState::InitializeFailed => return Poll::Ready(None),
+                StreamState::Polling(stream) => return stream.poll_next_unpin(cx),
             }
         }
     }
@@ -296,30 +283,23 @@ impl Stream for PartitionedScanStream {
 /// stream first. The process of state changing is like:
 ///
 /// ```plaintext
-///         ┌────┐                                        
-///         │INIT│                                        
-///         └──┬─┘                                        
-///   _________▽_________                                 
-///  ╱                   ╲         ┌───────┐             
-/// ╱ Success to init the ╲________│POLLING│             
-/// ╲ record batch stream ╱yes     └────┬──┘             
-///  ╲___________________╱      ________▽_________        
-///            │no             ╱                  ╲       
-///        ┌───▽──┐           ╱ Success to poll    ╲___   
-///        │FAILED│           ╲ all record batches ╱yes│  
-///        └──────┘            ╲__________________╱    │  
-///                                     │no            │  
-///                                 ┌───▽──┐           │  
-///                                 │FAILED│           │  
-///                                 └──────┘           │  
-///                                                  ┌─▽─┐
-///                                                  │END│
-///                                                  └───┘
+///     ┌────────────┐                                        
+///     │Initializing│                                        
+///     └──────┬─────┘                                        
+///   _________▽_________     ┌──────────────────────────────┐
+///  ╱                   ╲    │Polling(we just return the    │
+/// ╱ Success to init the ╲___│inner stream's polling result)│
+/// ╲ record batch stream ╱yes└──────────────────────────────┘
+///  ╲___________________╱                                    
+///           │no                                            
+///  ┌────────▽───────┐                                      
+///  │InitializeFailed│                                      
+///  └────────────────┘                                      
 /// ```
 pub enum StreamState {
     Initializing,
+    InitializeFailed,
     Polling(DfSendableRecordBatchStream),
-    Failed(String),
 }
 
 // TODO: make display for the plan more pretty.
@@ -468,7 +448,7 @@ mod test {
 
     #[tokio::test]
     async fn test_stream_init_failed() {
-        let builder = MockPartitionedScanStreamBuilder::new(PartitionedScanStreamCase::InitFailed);
+        let builder = MockPartitionedScanStreamBuilder::new(PartitionedScanStreamCase::InitializeFailed);
         let stream = builder.build();
         test_stream_failed_state(stream, "failed to init").await
     }
@@ -481,19 +461,21 @@ mod test {
     }
 
     async fn test_stream_failed_state(mut stream: PartitionedScanStream, failed_msg: &str) {
-        // If error happened, it continue to return this error in later polling.
-        for _ in 0..2 {
-            let result_opt = stream.next().await;
-            assert!(result_opt.is_some());
-            let result = result_opt.unwrap();
-            assert!(result.is_err());
-            let err = result.unwrap_err();
-            match err {
-                DataFusionError::Internal(msg) => {
-                    assert!(msg.contains(failed_msg))
-                }
-                other => panic!("unexpected error:{other}"),
+        // Error happened, check error message.
+        let result_opt = stream.next().await;
+        assert!(result_opt.is_some());
+        let result = result_opt.unwrap();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match err {
+            DataFusionError::Internal(msg) => {
+                assert!(msg.contains(failed_msg))
             }
+            other => panic!("unexpected error:{other}"),
         }
+
+        // Should return `None` in next poll.
+        let result_opt = stream.next().await;
+        assert!(result_opt.is_none());
     }
 }
