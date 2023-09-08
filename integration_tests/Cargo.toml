@@ -28,3 +28,4 @@ reqwest = { workspace = true }
 serde = { workspace = true }
 sqlness = "0.4.3"
 tokio = { workspace = true }
+uuid = { version = "1.3", features = ["v4"] }
