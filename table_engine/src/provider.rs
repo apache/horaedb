@@ -53,6 +53,8 @@ const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_table";
 pub struct CeresdbOptions {
     pub request_id: u64,
     pub request_timeout: Option<u64>,
+    pub default_schema: String,
+    pub default_catalog: String,
 }
 
 impl ConfigExtension for CeresdbOptions {
@@ -341,7 +343,7 @@ impl ScanTable {
         }
     }
 
-    async fn maybe_init_stream(&mut self) -> Result<()> {
+    pub async fn maybe_init_stream(&mut self) -> Result<()> {
         let read_res = self.table.partitioned_read(self.request.clone()).await;
 
         let mut stream_state = self.stream_state.lock().unwrap();

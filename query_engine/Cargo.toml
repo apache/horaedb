@@ -25,10 +25,12 @@ workspace = true
 workspace = true
 
 [dependencies]
+arc-swap = "1.4.0"
 # In alphabetical order
 arrow = { workspace = true }
 async-trait = { workspace = true }
 bytes_ext = { workspace = true }
+catalog = { workspace = true }
 chrono = { workspace = true }
 common_types = { workspace = true }
 datafusion = { workspace = true }

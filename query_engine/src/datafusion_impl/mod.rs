@@ -14,23 +14,25 @@
 
 use std::{fmt, sync::Arc, time::Instant};
 
+use catalog::manager::ManagerRef as CatalogManager;
 use datafusion::{
     execution::{
         context::{QueryPlanner, SessionState},
         runtime_env::{RuntimeConfig, RuntimeEnv},
+        FunctionRegistry,
     },
     optimizer::analyzer::Analyzer,
     physical_optimizer::PhysicalOptimizerRule,
     prelude::{SessionConfig, SessionContext},
 };
-use table_engine::provider::CeresdbOptions;
+use table_engine::{provider::CeresdbOptions, remote::RemoteEngineRef};
 
 use crate::{
     context::Context,
     datafusion_impl::{
         executor::DatafusionExecutorImpl, logical_optimizer::type_conversion::TypeConversion,
         physical_planner::DatafusionPhysicalPlannerImpl,
-        physical_planner_extension::QueryPlannerAdapter,
+        physical_planner_extension::QueryPlannerAdapter, task_context::Preprocessor,
     },
     executor::ExecutorRef,
     physical_planner::PhysicalPlannerRef,
@@ -44,6 +46,7 @@ pub mod physical_plan;
 pub mod physical_plan_extension;
 pub mod physical_planner;
 pub mod physical_planner_extension;
+pub mod task_context;
 
 use crate::error::*;
 
@@ -54,13 +57,32 @@ pub struct DatafusionQueryEngineImpl {
 }
 
 impl DatafusionQueryEngineImpl {
-    pub fn new(config: Config, runtime_config: RuntimeConfig) -> Result<Self> {
+    pub fn new(
+        config: Config,
+        runtime_config: RuntimeConfig,
+        function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
+        remote_engine: RemoteEngineRef,
+        catalog_manager: CatalogManager,
+    ) -> Result<Self> {
         let runtime_env = Arc::new(RuntimeEnv::new(runtime_config).unwrap());
-        let physical_planner = Arc::new(QueryPlannerAdapter);
-        let df_ctx_builder = Arc::new(DfContextBuilder::new(config, runtime_env, physical_planner));
+        let df_physical_planner = Arc::new(QueryPlannerAdapter);
+        let df_ctx_builder = Arc::new(DfContextBuilder::new(
+            config,
+            runtime_env.clone(),
+            df_physical_planner,
+        ));
 
+        // Physical planner
         let physical_planner = Arc::new(DatafusionPhysicalPlannerImpl::new(df_ctx_builder.clone()));
-        let executor = Arc::new(DatafusionExecutorImpl::new(df_ctx_builder));
+
+        // Executor
+        let preprocessor = Arc::new(Preprocessor::new(
+            remote_engine,
+            catalog_manager,
+            runtime_env.clone(),
+            function_registry.clone(),
+        ));
+        let executor = Arc::new(DatafusionExecutorImpl::new(df_ctx_builder, preprocessor));
 
         Ok(Self {
             physical_planner,
@@ -117,6 +139,8 @@ impl DfContextBuilder {
         let ceresdb_options = CeresdbOptions {
             request_id: ctx.request_id.as_u64(),
             request_timeout: timeout,
+            default_catalog: ctx.default_catalog.clone(),
+            default_schema: ctx.default_schema.clone(),
         };
         let mut df_session_config = SessionConfig::new()
             .with_default_catalog_and_schema(

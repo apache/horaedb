@@ -25,7 +25,7 @@ use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOpe
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
 use datafusion::execution::runtime_env::RuntimeConfig as DfRuntimeConfig;
-use df_operator::registry::FunctionRegistryImpl;
+use df_operator::registry::{FunctionRegistry, FunctionRegistryImpl};
 use interpreters::table_manipulator::{catalog_based, meta_based};
 use log::info;
 use logger::RuntimeLevel;
@@ -36,12 +36,11 @@ use proxy::{
         cluster_based::ClusterBasedProvider, config_based::ConfigBasedProvider,
     },
 };
-use query_engine::datafusion_impl::DatafusionQueryEngineImpl;
 use router::{rule_based::ClusterView, ClusterBasedRouter, RuleBasedRouter};
 use server::{
     config::{StaticRouteConfig, StaticTopologyConfig},
     local_tables::LocalTablesRecoverer,
-    server::Builder,
+    server::{Builder, DatafusionContext},
 };
 use table_engine::{engine::EngineRuntimes, memory::MemoryTableEngine, proxy::TableEngineProxy};
 use tracing_util::{
@@ -125,13 +124,10 @@ async fn run_server_with_runtimes<T>(
         .load_functions()
         .expect("Failed to create function registry");
     let function_registry = Arc::new(function_registry);
-
-    // Create query engine
-    // TODO: use a builder to support different query engine?
-    let query_engine = Box::new(
-        DatafusionQueryEngineImpl::new(config.query_engine.clone(), DfRuntimeConfig::default())
-            .expect("Failed to init datafusion query engine"),
-    );
+    let datafusion_context = DatafusionContext {
+        function_registry: function_registry.clone().to_df_function_registry(),
+        runtime_config: DfRuntimeConfig::default(),
+    };
 
     // Config limiter
     let limiter = Limiter::new(config.limiter.clone());
@@ -142,9 +138,10 @@ async fn run_server_with_runtimes<T>(
         .config_content(config_content)
         .engine_runtimes(engine_runtimes.clone())
         .log_runtime(log_runtime.clone())
-        .query_engine(query_engine)
         .function_registry(function_registry)
-        .limiter(limiter);
+        .limiter(limiter)
+        .datafusion_context(datafusion_context)
+        .query_engine_config(config.query_engine.clone());
 
     let wal_builder = T::default();
     let builder = match &config.cluster_deployment {
