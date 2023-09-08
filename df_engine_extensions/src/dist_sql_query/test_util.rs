@@ -368,12 +368,12 @@ pub enum PartitionedScanStreamCase {
 }
 
 impl MockPartitionedScanStreamBuilder {
-    pub fn new(case: PartitionedScanStreamCase) -> Self {
+    pub(crate) fn new(case: PartitionedScanStreamCase) -> Self {
         let schema = Arc::new(Schema::empty());
         Self { schema, case }
     }
 
-    pub fn build(&self) -> PartitionedScanStream {
+    pub(crate) fn build(&self) -> PartitionedScanStream {
         let stream_future: BoxFuture<'static, DfResult<SendableRecordBatchStream>> = match self.case
         {
             PartitionedScanStreamCase::InitializeFailed => {
@@ -409,14 +409,17 @@ impl MockPartitionedScanStreamBuilder {
 pub struct ErrorRecordBatchStream {
     /// Schema wrapped by Arc
     schema: SchemaRef,
-    
+
     /// Mark the stream is terminated.
     done: bool,
 }
 
 impl ErrorRecordBatchStream {
     pub fn new(schema: SchemaRef) -> Self {
-        Self { schema, done: false }
+        Self {
+            schema,
+            done: false,
+        }
     }
 }
 
@@ -433,7 +436,7 @@ impl Stream for ErrorRecordBatchStream {
         if self.done {
             return Poll::Ready(None);
         }
-        
+
         self.get_mut().done = true;
         Poll::Ready(Some(Err(DataFusionError::Internal(
             "failed to poll".to_string(),

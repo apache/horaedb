@@ -218,7 +218,7 @@ impl ExecutionPlan for ResolvedPartitionedScan {
 }
 
 /// Partitioned scan stream
-pub struct PartitionedScanStream {
+pub(crate) struct PartitionedScanStream {
     /// Future to init the stream
     stream_future: BoxFuture<'static, DfResult<DfSendableRecordBatchStream>>,
 
@@ -270,7 +270,7 @@ impl Stream for PartitionedScanStream {
                         }
                         Poll::Pending => return Poll::Pending,
                     }
-                },
+                }
                 StreamState::InitializeFailed => return Poll::Ready(None),
                 StreamState::Polling(stream) => return stream.poll_next_unpin(cx),
             }
@@ -296,7 +296,7 @@ impl Stream for PartitionedScanStream {
 ///  │InitializeFailed│                                      
 ///  └────────────────┘                                      
 /// ```
-pub enum StreamState {
+pub(crate) enum StreamState {
     Initializing,
     InitializeFailed,
     Polling(DfSendableRecordBatchStream),
@@ -448,7 +448,8 @@ mod test {
 
     #[tokio::test]
     async fn test_stream_init_failed() {
-        let builder = MockPartitionedScanStreamBuilder::new(PartitionedScanStreamCase::InitializeFailed);
+        let builder =
+            MockPartitionedScanStreamBuilder::new(PartitionedScanStreamCase::InitializeFailed);
         let stream = builder.build();
         test_stream_failed_state(stream, "failed to init").await
     }
