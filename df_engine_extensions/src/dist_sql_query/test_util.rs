@@ -12,24 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::Arc;
+use std::{
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 
+use arrow::{
+    datatypes::{Schema, SchemaRef},
+    record_batch::RecordBatch,
+};
 use async_trait::async_trait;
 use catalog::{manager::ManagerRef, test_util::MockCatalogManagerBuilder};
 use common_types::{projected_schema::ProjectedSchema, tests::build_schema_for_cpu};
 use datafusion::{
-    error::Result as DfResult,
+    error::{DataFusionError, Result as DfResult},
     execution::{runtime_env::RuntimeEnv, FunctionRegistry, TaskContext},
     logical_expr::{expr_fn, Literal, Operator},
     physical_plan::{
         expressions::{binary, col, lit},
         filter::FilterExec,
         projection::ProjectionExec,
-        DisplayAs, ExecutionPlan, PhysicalExpr, SendableRecordBatchStream,
+        DisplayAs, EmptyRecordBatchStream, ExecutionPlan, PhysicalExpr, RecordBatchStream,
+        SendableRecordBatchStream,
     },
     scalar::ScalarValue,
 };
-use futures::future::BoxFuture;
+use futures::{future::BoxFuture, Stream};
 use table_engine::{
     memory::MemoryTable,
     predicate::PredicateBuilder,
@@ -40,7 +49,7 @@ use table_engine::{
 use trace_metric::MetricsCollector;
 
 use crate::dist_sql_query::{
-    physical_plan::{UnresolvedPartitionedScan, UnresolvedSubTableScan},
+    physical_plan::{PartitionedScanStream, UnresolvedPartitionedScan, UnresolvedSubTableScan},
     resolver::Resolver,
     EncodedPlan, ExecutableScanBuilder, RemotePhysicalPlanExecutor,
 };
@@ -342,5 +351,84 @@ impl RemotePhysicalPlanExecutor for MockRemotePhysicalPlanExecutor {
         _encoded_plan: EncodedPlan,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         unimplemented!()
+    }
+}
+
+/// Used in [PartitionedScanStream]'s testing
+pub struct MockPartitionedScanStreamBuilder {
+    schema: SchemaRef,
+    case: PartitionedScanStreamCase,
+}
+
+#[derive(Clone, Copy)]
+pub enum PartitionedScanStreamCase {
+    InitFailed,
+    PollFailed,
+    Success,
+}
+
+impl MockPartitionedScanStreamBuilder {
+    pub fn new(case: PartitionedScanStreamCase) -> Self {
+        let schema = Arc::new(Schema::empty());
+        Self { schema, case }
+    }
+
+    pub fn build(&self) -> PartitionedScanStream {
+        let stream_future: BoxFuture<'static, DfResult<SendableRecordBatchStream>> = match self.case
+        {
+            PartitionedScanStreamCase::InitFailed => {
+                Box::pin(
+                    async move { Err(DataFusionError::Internal("failed to init".to_string())) },
+                )
+            }
+            PartitionedScanStreamCase::PollFailed => {
+                let error_stream = self.build_error_record_stream();
+                Box::pin(async move { Ok(error_stream) })
+            }
+            PartitionedScanStreamCase::Success => {
+                let success_stream = self.build_success_record_stream();
+                Box::pin(async move { Ok(success_stream) })
+            }
+        };
+
+        PartitionedScanStream::new(stream_future, self.schema.clone())
+    }
+
+    #[inline]
+    fn build_error_record_stream(&self) -> SendableRecordBatchStream {
+        Box::pin(ErrorRecordBatchStream::new(self.schema.clone()))
+    }
+
+    #[inline]
+    fn build_success_record_stream(&self) -> SendableRecordBatchStream {
+        Box::pin(EmptyRecordBatchStream::new(self.schema.clone()))
+    }
+}
+
+/// ErrorRecordBatchStream which will produce error results
+pub struct ErrorRecordBatchStream {
+    /// Schema wrapped by Arc
+    schema: SchemaRef,
+}
+
+impl ErrorRecordBatchStream {
+    pub fn new(schema: SchemaRef) -> Self {
+        Self { schema }
+    }
+}
+
+impl RecordBatchStream for ErrorRecordBatchStream {
+    fn schema(&self) -> SchemaRef {
+        self.schema.clone()
+    }
+}
+
+impl Stream for ErrorRecordBatchStream {
+    type Item = DfResult<RecordBatch>;
+
+    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Poll::Ready(Some(Err(DataFusionError::Internal(
+            "failed to poll".to_string(),
+        ))))
     }
 }

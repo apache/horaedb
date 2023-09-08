@@ -218,7 +218,7 @@ impl ExecutionPlan for ResolvedPartitionedScan {
 }
 
 /// Partitioned scan stream
-struct PartitionedScanStream {
+pub struct PartitionedScanStream {
     /// Future to init the stream
     stream_future: BoxFuture<'static, DfResult<DfSendableRecordBatchStream>>,
 
@@ -445,5 +445,55 @@ impl TryFrom<UnresolvedSubTableScan> for ceresdbproto::remote_engine::Unresolved
             table: Some(table_ident),
             read_request: Some(read_request),
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use datafusion::error::DataFusionError;
+    use futures::StreamExt;
+
+    use crate::dist_sql_query::{
+        physical_plan::PartitionedScanStream,
+        test_util::{MockPartitionedScanStreamBuilder, PartitionedScanStreamCase},
+    };
+
+    #[tokio::test]
+    async fn test_stream_poll_success() {
+        let builder = MockPartitionedScanStreamBuilder::new(PartitionedScanStreamCase::Success);
+        let mut stream = builder.build();
+        let result_opt = stream.next().await;
+        assert!(result_opt.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_stream_init_failed() {
+        let builder = MockPartitionedScanStreamBuilder::new(PartitionedScanStreamCase::InitFailed);
+        let stream = builder.build();
+        test_stream_failed_state(stream, "failed to init").await
+    }
+
+    #[tokio::test]
+    async fn test_stream_poll_failed() {
+        let builder = MockPartitionedScanStreamBuilder::new(PartitionedScanStreamCase::PollFailed);
+        let stream = builder.build();
+        test_stream_failed_state(stream, "failed to poll").await
+    }
+
+    async fn test_stream_failed_state(mut stream: PartitionedScanStream, failed_msg: &str) {
+        // If error happened, it continue to return this error in later polling.
+        for _ in 0..2 {
+            let result_opt = stream.next().await;
+            assert!(result_opt.is_some());
+            let result = result_opt.unwrap();
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            match err {
+                DataFusionError::Internal(msg) => {
+                    assert!(msg.contains(failed_msg))
+                }
+                other => panic!("unexpected error:{other}"),
+            }
+        }
     }
 }
