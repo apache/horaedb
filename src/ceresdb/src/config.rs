@@ -63,7 +63,7 @@ pub struct Config {
     pub analytic: analytic_engine::Config,
 
     /// Query engine config.
-    pub query_engine: query_engine::Config,
+    pub query_engine: query_engine::config::Config,
 
     /// The deployment of the server.
     pub cluster_deployment: Option<ClusterDeployment>,
