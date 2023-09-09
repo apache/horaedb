@@ -25,6 +25,7 @@ use datafusion::{
     physical_optimizer::PhysicalOptimizerRule,
     prelude::{SessionConfig, SessionContext},
 };
+use df_engine_extensions::codec::PhysicalExtensionCodecImpl;
 use table_engine::{provider::CeresdbOptions, remote::RemoteEngineRef};
 
 use crate::{
@@ -76,11 +77,13 @@ impl DatafusionQueryEngineImpl {
         let physical_planner = Arc::new(DatafusionPhysicalPlannerImpl::new(df_ctx_builder.clone()));
 
         // Executor
+        let extension_codec = Arc::new(PhysicalExtensionCodecImpl::new());
         let preprocessor = Arc::new(Preprocessor::new(
             remote_engine,
             catalog_manager,
             runtime_env.clone(),
             function_registry.clone(),
+            extension_codec,
         ));
         let executor = Arc::new(DatafusionExecutorImpl::new(df_ctx_builder, preprocessor));
 

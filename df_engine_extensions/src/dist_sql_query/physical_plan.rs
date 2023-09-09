@@ -23,7 +23,7 @@ use std::{
 };
 
 use arrow::{datatypes::SchemaRef as ArrowSchemaRef, record_batch::RecordBatch};
-use common_types::schema::RecordSchema;
+
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     execution::TaskContext,
@@ -33,13 +33,10 @@ use datafusion::{
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
-use datafusion_proto::{
-    bytes::physical_plan_to_bytes_with_extension_codec, physical_plan::PhysicalExtensionCodec,
-};
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use table_engine::{remote::model::TableIdentifier, table::ReadRequest};
 
-use crate::dist_sql_query::{EncodedPlan, RemotePhysicalPlanExecutor};
+use crate::dist_sql_query::RemotePhysicalPlanExecutor;
 
 /// Placeholder of partitioned table's scan plan
 /// It is inexecutable actually and just for carrying the necessary information
@@ -117,7 +114,6 @@ impl DisplayAs for UnresolvedPartitionedScan {
 pub struct ResolvedPartitionedScan {
     pub remote_executor: Arc<dyn RemotePhysicalPlanExecutor>,
     pub remote_exec_plans: Vec<(TableIdentifier, Arc<dyn ExecutionPlan>)>,
-    pub extension_codec: Arc<dyn PhysicalExtensionCodec>,
 }
 
 impl ResolvedPartitionedScan {
@@ -139,7 +135,6 @@ impl ResolvedPartitionedScan {
         let plan = ResolvedPartitionedScan {
             remote_executor: self.remote_executor.clone(),
             remote_exec_plans: new_plans,
-            extension_codec: self.extension_codec.clone(),
         };
 
         Ok(Arc::new(plan))
@@ -187,26 +182,10 @@ impl ExecutionPlan for ResolvedPartitionedScan {
     ) -> DfResult<DfSendableRecordBatchStream> {
         let (sub_table, plan) = &self.remote_exec_plans[partition];
 
-        // Encode to build `EncodedPlan`.
-        let plan_bytes = physical_plan_to_bytes_with_extension_codec(
-            plan.clone(),
-            self.extension_codec.as_ref(),
-        )?;
-        let record_schema = RecordSchema::try_from(plan.schema()).map_err(|e| {
-            DataFusionError::Internal(format!(
-                "failed to convert arrow_schema to record_schema, arrow_schema:{}, err:{e}",
-                plan.schema()
-            ))
-        })?;
-        let encoded_plan = EncodedPlan {
-            plan: plan_bytes,
-            schema: record_schema,
-        };
-
         // Send plan for remote execution.
         let stream_future =
             self.remote_executor
-                .execute(sub_table.clone(), &context, encoded_plan)?;
+                .execute(sub_table.clone(), &context, plan.clone())?;
         let record_stream = PartitionedScanStream::new(stream_future, plan.schema());
 
         Ok(Box::pin(record_stream))

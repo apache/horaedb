@@ -20,17 +20,23 @@ use std::{
 
 use async_trait::async_trait;
 use catalog::manager::ManagerRef as CatalogManagerRef;
-use common_types::request_id::RequestId;
+use common_types::{request_id::RequestId, schema::RecordSchema};
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     execution::{runtime_env::RuntimeEnv, FunctionRegistry, TaskContext},
     physical_plan::{ExecutionPlan, SendableRecordBatchStream},
 };
-use df_engine_extensions::dist_sql_query::{
-    resolver::Resolver, EncodedPlan, ExecutableScanBuilder, RemotePhysicalPlanExecutor,
+use datafusion_proto::{
+    bytes::physical_plan_to_bytes_with_extension_codec,
+    physical_plan::{AsExecutionPlan, PhysicalExtensionCodec},
+    protobuf,
+};
+use df_engine_extensions::{
+    dist_sql_query::{resolver::Resolver, ExecutableScanBuilder, RemotePhysicalPlanExecutor},
 };
 use futures::future::BoxFuture;
 use generic_error::BoxError;
+use prost::Message;
 use snafu::ResultExt;
 use table_engine::{
     provider::{CeresdbOptions, ScanTable},
@@ -56,6 +62,9 @@ pub struct DatafusionTaskExecContext {
 #[allow(dead_code)]
 pub struct Preprocessor {
     dist_query_resolver: Resolver,
+    runtime_env: Arc<RuntimeEnv>,
+    function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
+    extension_codec: Arc<dyn PhysicalExtensionCodec>,
 }
 
 impl Preprocessor {
@@ -64,19 +73,20 @@ impl Preprocessor {
         catalog_manager: CatalogManagerRef,
         runtime_env: Arc<RuntimeEnv>,
         function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
+        extension_codec: Arc<dyn PhysicalExtensionCodec>,
     ) -> Self {
-        let remote_executor = Arc::new(RemotePhysicalPlanExecutorImpl { remote_engine });
+        let remote_executor = Arc::new(RemotePhysicalPlanExecutorImpl {
+            remote_engine,
+            extension_codec: extension_codec.clone(),
+        });
         let scan_builder = Box::new(ExecutableScanBuilderImpl);
-        let resolver = Resolver::new(
-            remote_executor,
-            catalog_manager,
-            scan_builder,
-            runtime_env,
-            function_registry,
-        );
+        let resolver = Resolver::new(remote_executor, catalog_manager, scan_builder);
 
         Self {
             dist_query_resolver: resolver,
+            runtime_env,
+            function_registry,
+            extension_codec,
         }
     }
 
@@ -89,8 +99,25 @@ impl Preprocessor {
     }
 
     async fn preprocess_remote_plan(&self, encoded_plan: &[u8]) -> Result<Arc<dyn ExecutionPlan>> {
+        // Decode to datafusion physical plan.
+        let protobuf = protobuf::PhysicalPlanNode::decode(encoded_plan)
+            .box_err()
+            .with_context(|| ExecutorWithCause {
+                msg: Some("failed to decode plan".to_string()),
+            })?;
+        let plan = protobuf
+            .try_into_physical_plan(
+                self.function_registry.as_ref(),
+                &self.runtime_env,
+                self.extension_codec.as_ref(),
+            )
+            .box_err()
+            .with_context(|| ExecutorWithCause {
+                msg: Some("failed to rebuild physical plan from the decoded plan".to_string()),
+            })?;
+
         self.dist_query_resolver
-            .resolve_sub_scan(encoded_plan)
+            .resolve_sub_scan(plan)
             .await
             .box_err()
             .with_context(|| ExecutorWithCause {
@@ -115,6 +142,7 @@ impl fmt::Debug for Preprocessor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Preprocessor")
             .field("dist_query_resolver", &"preprocess partitioned table plan")
+            .field("extension_codec", &self.extension_codec)
             .finish()
     }
 }
@@ -123,6 +151,7 @@ impl fmt::Debug for Preprocessor {
 #[derive(Debug)]
 struct RemotePhysicalPlanExecutorImpl {
     remote_engine: RemoteEngineRef,
+    extension_codec: Arc<dyn PhysicalExtensionCodec>,
 }
 
 impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
@@ -130,7 +159,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
         &self,
         table: TableIdentifier,
         task_context: &TaskContext,
-        encoded_plan: EncodedPlan,
+        plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         // Get the custom context to rebuild execution context.
         let ceresdb_options = task_context
@@ -154,17 +183,28 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
             default_schema,
         };
 
+        // Encode plan and schema
+        let plan_schema = RecordSchema::try_from(plan.schema()).map_err(|e| {
+            DataFusionError::Internal(format!(
+                "failed to convert arrow_schema to record_schema, arrow_schema:{}, err:{e}",
+                plan.schema()
+            ))
+        })?;
+
+        let encoded_plan =
+            physical_plan_to_bytes_with_extension_codec(plan, self.extension_codec.as_ref())?;
+
         // Build returned stream future.
         let remote_engine = self.remote_engine.clone();
         let future = Box::pin(async move {
             let remote_request = RemoteExecuteRequest {
                 context: exec_ctx,
-                physical_plan: PhysicalPlan::Datafusion(encoded_plan.plan),
+                physical_plan: PhysicalPlan::Datafusion(encoded_plan),
             };
 
             let request = ExecutePlanRequest {
                 table,
-                plan_schema: encoded_plan.schema,
+                plan_schema,
                 remote_request,
             };
 
