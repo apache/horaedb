@@ -100,7 +100,7 @@ pub struct ResolvedTable {
 // testing.
 fn enable_dedicated_partitioned_table_provider() -> bool {
     std::env::var("CERESDB_DEDICATED_PARTITIONED_TABLE_PROVIDER")
-        .unwrap_or_else(|_| "false".to_string())
+        .unwrap_or_else(|_| "true".to_string())
         == "true"
 }
 
@@ -114,7 +114,7 @@ impl ResolvedTable {
                 self.schema,
                 partition_info,
             );
-
+            
             Arc::new(TableProviderAdapter::new(self.table.clone(), builder))
         } else {
             let builder = NormalTableScanBuilder::new(self.table.clone());
