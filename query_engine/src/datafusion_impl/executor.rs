@@ -15,6 +15,7 @@
 use std::{sync::Arc, time::Instant};
 
 use async_trait::async_trait;
+
 use generic_error::BoxError;
 use log::{debug, info};
 use snafu::ResultExt;
@@ -38,7 +39,6 @@ pub struct DatafusionExecutorImpl {
     df_ctx_builder: Arc<DfContextBuilder>,
 
     /// Preprocessor for processing some physical plan before executing
-    #[allow(dead_code)]
     preprocessor: Arc<Preprocessor>,
 }
 
