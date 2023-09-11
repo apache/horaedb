@@ -17,21 +17,29 @@
 use common_types::row::RowGroup;
 use itertools::Itertools;
 
+use super::PartitionedRowGroup;
 use crate::partition::{rule::PartitionRule, Result};
 
 pub struct RandomRule {
     pub partition_num: usize,
 }
 
+impl RandomRule {
+    const INVOLVED_COLUMNS: [String; 0] = [];
+}
+
 impl PartitionRule for RandomRule {
-    fn columns(&self) -> Vec<String> {
-        vec![]
+    fn columns(&self) -> &[String] {
+        &Self::INVOLVED_COLUMNS
     }
 
-    fn locate_partitions_for_write(&self, row_group: &RowGroup) -> Result<Vec<usize>> {
+    fn locate_partitions_for_write(&self, row_group: RowGroup) -> Result<PartitionedRowGroup> {
         let value: usize = rand::random();
         let partition_idx = value % self.partition_num;
-        Ok(vec![partition_idx; row_group.num_rows()])
+        Ok(PartitionedRowGroup::One {
+            partition_idx,
+            row_group,
+        })
     }
 
     fn locate_partitions_for_read(

@@ -19,7 +19,7 @@ use std::{alloc::Layout, ptr::NonNull, sync::Arc};
 /// The trait itself provides and enforces no guarantee about alignment. It's
 /// implementation's responsibility to cover.
 ///
-/// All memory-relavent methods (`alloc()` etc.) are not "unsafe". Compare with
+/// All memory-relevant methods (`alloc()` etc.) are not "unsafe". Compare with
 /// "deallocate" which is not included in this trait, allocating is more safer
 /// and not likely to run into UB. However in fact, playing with raw pointer is
 /// always dangerous and needs to be careful for both who implements and uses
@@ -66,7 +66,7 @@ impl BasicStats {
     }
 }
 
-/// Collect memory usage from Arean
+/// Collect memory usage from Arena.
 pub trait Collector {
     /// Called when `bytes` bytes memory is allocated in arena.
     fn on_alloc(&self, bytes: usize);

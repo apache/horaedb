@@ -15,15 +15,16 @@
 //! Partition rule factory
 
 use common_types::schema::Schema;
-use snafu::{ensure, OptionExt};
+use snafu::ensure;
 
 use crate::partition::{
     rule::{
         key::{KeyRule, DEFAULT_PARTITION_VERSION},
         random::RandomRule,
-        ColumnWithType, PartitionRuleRef,
+        PartitionRuleRef,
     },
-    BuildPartitionRule, KeyPartitionInfo, PartitionInfo, RandomPartitionInfo, Result,
+    BuildPartitionRule, InvalidPartitionKey, KeyPartitionInfo, PartitionInfo, RandomPartitionInfo,
+    Result,
 };
 
 pub struct PartitionRuleFactory;
@@ -50,25 +51,16 @@ impl PartitionRuleFactory {
                 )
             }
         );
-        let typed_key_columns = key_info
+        let valid_partition_key = key_info
             .partition_key
-            .into_iter()
-            .map(|col| {
-                schema
-                    .column_with_name(col.as_str())
-                    .with_context(|| BuildPartitionRule {
-                        msg: format!(
-                            "column in key partition info not found in schema, column:{col}"
-                        ),
-                    })
-                    .map(|col_schema| ColumnWithType::new(col, col_schema.data_type))
-            })
-            .collect::<Result<Vec<_>>>()?;
+            .iter()
+            .all(|col| schema.column_with_name(col.as_str()).is_some());
+        ensure!(valid_partition_key, InvalidPartitionKey);
 
-        Ok(Box::new(KeyRule {
-            typed_key_columns,
-            partition_num: key_info.definitions.len(),
-        }))
+        Ok(Box::new(KeyRule::new(
+            key_info.definitions.len(),
+            key_info.partition_key,
+        )))
     }
 
     fn create_random_rule(random_info: RandomPartitionInfo) -> Result<PartitionRuleRef> {

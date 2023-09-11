@@ -18,6 +18,7 @@ use common_types::{row::RowGroup, schema::Schema};
 use datafusion::logical_expr::Expr;
 
 use self::extractor::{KeyExtractor, NoopExtractor};
+use super::PartitionedRowGroup;
 use crate::partition::{
     rule::{
         df_adapter::extractor::FilterExtractorRef, factory::PartitionRuleFactory, PartitionRuleRef,
@@ -44,18 +45,17 @@ impl DfPartitionRuleAdapter {
         Ok(Self { rule, extractor })
     }
 
-    pub fn columns(&self) -> Vec<String> {
+    pub fn columns(&self) -> &[String] {
         self.rule.columns()
     }
 
-    pub fn locate_partitions_for_write(&self, row_group: &RowGroup) -> Result<Vec<usize>> {
+    pub fn locate_partitions_for_write(&self, row_group: RowGroup) -> Result<PartitionedRowGroup> {
         self.rule.locate_partitions_for_write(row_group)
     }
 
     pub fn locate_partitions_for_read(&self, filters: &[Expr]) -> Result<Vec<usize>> {
         // Extract partition filters from datafusion filters.
-        let columns = self.columns();
-        let partition_filters = self.extractor.extract(filters, &columns);
+        let partition_filters = self.extractor.extract(filters, self.columns());
 
         // Locate partitions from filters.
         self.rule.locate_partitions_for_read(&partition_filters)
@@ -84,6 +84,7 @@ mod tests {
         time::Timestamp,
     };
     use datafusion::logical_expr::{col, lit};
+    use itertools::Itertools;
 
     use super::*;
     use crate::partition::{
@@ -232,9 +233,13 @@ mod tests {
         // Basic flow
         let key_rule_adapter =
             DfPartitionRuleAdapter::new(PartitionInfo::Key(ket_partition), &schema).unwrap();
-        let partitions = key_rule_adapter
-            .locate_partitions_for_write(&row_group)
+        let partitioned_rows = key_rule_adapter
+            .locate_partitions_for_write(row_group)
             .unwrap();
+        let partition_idxs = match partitioned_rows {
+            PartitionedRowGroup::Multiple(iter) => iter.map(|v| v.partition_idx).collect_vec(),
+            _ => panic!("invalid partitioned rows"),
+        };
 
         // Expected
         let partition_keys_1 = test_datums[0].clone();
@@ -245,7 +250,7 @@ mod tests {
         let expected_2 = compute_partition(partition_key_refs_2, partition_num);
         let expecteds = vec![expected_1, expected_2];
 
-        assert_eq!(partitions, expecteds);
+        assert_eq!(partition_idxs, expecteds);
     }
 
     fn build_schema() -> Schema {

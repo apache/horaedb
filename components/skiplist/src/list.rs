@@ -400,7 +400,7 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> Skiplist<C, A> {
         }
 
         // We always insert from the base level and up. After you add a node in base
-        // leve, we cannot create a node in the level above because it would
+        // level, we cannot create a node in the level above because it would
         // have discovered the node in the base level
         let x: &mut Node = unsafe { &mut *node_ptr };
         for i in 0..=height {
