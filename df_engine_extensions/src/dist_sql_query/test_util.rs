@@ -19,7 +19,7 @@ use std::{
 };
 
 use arrow::{
-    datatypes::{Schema, SchemaRef},
+    datatypes::{DataType, Schema, SchemaRef},
     record_batch::RecordBatch,
 };
 use async_trait::async_trait;
@@ -30,11 +30,14 @@ use datafusion::{
     execution::{FunctionRegistry, TaskContext},
     logical_expr::{expr_fn, Literal, Operator},
     physical_plan::{
-        expressions::{binary, col, lit},
+        aggregates::{AggregateExec, AggregateMode, PhysicalGroupBy},
+        coalesce_partitions::CoalescePartitionsExec,
+        expressions::{binary, col, lit, Count},
         filter::FilterExec,
         projection::ProjectionExec,
-        DisplayAs, EmptyRecordBatchStream, ExecutionPlan, PhysicalExpr, RecordBatchStream,
-        SendableRecordBatchStream,
+        union::UnionExec,
+        AggregateExpr, DisplayAs, EmptyRecordBatchStream, ExecutionPlan, PhysicalExpr,
+        RecordBatchStream, SendableRecordBatchStream,
     },
     scalar::ScalarValue,
 };
@@ -57,9 +60,11 @@ use crate::dist_sql_query::{
 // Test context
 pub struct TestContext {
     request: ReadRequest,
-    sub_tables: Vec<TableIdentifier>,
+    sub_table_groups: Vec<Vec<TableIdentifier>>,
     physical_filter: Arc<dyn PhysicalExpr>,
     physical_projection: Vec<(Arc<dyn PhysicalExpr>, String)>,
+    group_by: PhysicalGroupBy,
+    aggr_exprs: Vec<Arc<dyn AggregateExpr>>,
     catalog_manager: ManagerRef,
 }
 
@@ -72,7 +77,7 @@ impl Default for TestContext {
 impl TestContext {
     pub fn new() -> Self {
         let test_schema = build_schema_for_cpu();
-        let sub_tables = vec![
+        let sub_tables_0 = vec![
             "__test_1".to_string(),
             "__test_2".to_string(),
             "__test_3".to_string(),
@@ -84,6 +89,21 @@ impl TestContext {
             table,
         })
         .collect::<Vec<_>>();
+
+        let sub_tables_1 = vec![
+            "__test_new_1".to_string(),
+            "__test_new_2".to_string(),
+            "__test_new_3".to_string(),
+        ]
+        .into_iter()
+        .map(|table| TableIdentifier {
+            catalog: "test_catalog".to_string(),
+            schema: "test_schema".to_string(),
+            table,
+        })
+        .collect::<Vec<_>>();
+
+        let sub_table_groups = vec![sub_tables_0, sub_tables_1];
 
         // Logical exprs.
         // Projection: [time, tag1, tag2, value, field2]
@@ -99,6 +119,7 @@ impl TestContext {
 
         // Physical exprs.
         let arrow_projected_schema = projected_schema.to_projected_arrow_schema();
+        // Projection
         let physical_projection = vec![
             (
                 col("time", &arrow_projected_schema).unwrap(),
@@ -122,6 +143,7 @@ impl TestContext {
             ),
         ];
 
+        // Filter
         let physical_filter1: Arc<dyn PhysicalExpr> = binary(
             col("time", &arrow_projected_schema).unwrap(),
             Operator::Lt,
@@ -143,6 +165,31 @@ impl TestContext {
             &arrow_projected_schema,
         )
         .unwrap();
+
+        // Aggr and group by
+        let group_by = PhysicalGroupBy::new_single(vec![
+            (
+                col("tag1", &arrow_projected_schema).unwrap(),
+                "tag1".to_string(),
+            ),
+            (
+                col("tag2", &arrow_projected_schema).unwrap(),
+                "tag2".to_string(),
+            ),
+        ]);
+
+        let aggr_exprs: Vec<Arc<dyn AggregateExpr>> = vec![
+            Arc::new(Count::new(
+                col("value", &arrow_projected_schema).unwrap(),
+                "COUNT(value)".to_string(),
+                DataType::Int64,
+            )),
+            Arc::new(Count::new(
+                col("field2", &arrow_projected_schema).unwrap(),
+                "COUNT(field2)".to_string(),
+                DataType::Int64,
+            )),
+        ];
 
         // Build the physical plan.
         let predicate = PredicateBuilder::default()
@@ -174,9 +221,11 @@ impl TestContext {
 
         Self {
             request: read_request,
-            sub_tables,
+            sub_table_groups,
             physical_filter,
             physical_projection,
+            group_by,
+            aggr_exprs,
             catalog_manager,
         }
     }
@@ -195,13 +244,65 @@ impl TestContext {
         self.catalog_manager.clone()
     }
 
+    pub fn build_aggr_plan_with_input(
+        &self,
+        input: Arc<dyn ExecutionPlan>,
+    ) -> Arc<dyn ExecutionPlan> {
+        let input_schema = input.schema();
+        let partial_aggregate = Arc::new(
+            AggregateExec::try_new(
+                AggregateMode::Partial,
+                self.group_by.clone(),
+                self.aggr_exprs.clone(),
+                vec![None],
+                vec![None],
+                input,
+                input_schema.clone(),
+            )
+            .unwrap(),
+        );
+
+        // Aggr final
+        let groups = partial_aggregate.group_expr().expr().to_vec();
+
+        let merge = Arc::new(CoalescePartitionsExec::new(partial_aggregate));
+
+        let final_group: Vec<(Arc<dyn PhysicalExpr>, String)> = groups
+            .iter()
+            .map(|(_expr, name)| Ok((col(name, &input_schema)?, name.clone())))
+            .collect::<DfResult<_>>()
+            .unwrap();
+
+        let final_group_by = PhysicalGroupBy::new_single(final_group);
+
+        Arc::new(
+            AggregateExec::try_new(
+                AggregateMode::Final,
+                final_group_by,
+                self.aggr_exprs.clone(),
+                vec![None],
+                vec![None],
+                merge,
+                input_schema,
+            )
+            .unwrap(),
+        )
+    }
+
     // Basic plan includes:
     // Projection
     //      Filter
     //          Scan
     pub fn build_basic_partitioned_table_plan(&self) -> Arc<dyn ExecutionPlan> {
+        self.build_basic_partitioned_table_plan_with_sub_tables(self.sub_table_groups[0].clone())
+    }
+
+    pub fn build_basic_partitioned_table_plan_with_sub_tables(
+        &self,
+        sub_tables: Vec<TableIdentifier>,
+    ) -> Arc<dyn ExecutionPlan> {
         let unresolved_scan = Arc::new(UnresolvedPartitionedScan {
-            sub_tables: self.sub_tables.clone(),
+            sub_tables,
             read_request: self.request.clone(),
         });
 
@@ -217,7 +318,7 @@ impl TestContext {
     //          Scan
     pub fn build_basic_sub_table_plan(&self) -> Arc<dyn ExecutionPlan> {
         let unresolved_scan = Arc::new(UnresolvedSubTableScan {
-            table: self.sub_tables[0].clone(),
+            table: self.sub_table_groups[0][0].clone(),
             read_request: self.request.clone(),
         });
 
@@ -236,8 +337,46 @@ impl TestContext {
         Arc::new(ProjectionExec::try_new(self.physical_projection.clone(), mock_scan).unwrap())
     }
 
-    pub fn read_request(&self) -> ReadRequest {
-        self.request.clone()
+    // Aggregate push down plan includes:
+    // Aggr final
+    //      Coalesce partition
+    //          Aggr partial
+    //              Scan
+    pub fn build_aggr_push_down_plan(&self) -> Arc<dyn ExecutionPlan> {
+        // Scan
+        let unresolved_scan = Arc::new(UnresolvedPartitionedScan {
+            sub_tables: self.sub_table_groups[0].clone(),
+            read_request: self.request.clone(),
+        });
+
+        self.build_aggr_plan_with_input(unresolved_scan)
+    }
+
+    // Compunded aggregate push down plan includes:
+    // Aggr final
+    //      Coalesce partition
+    //          Aggr partial
+    //              Projection
+    //                  Filter
+    //                      Scan
+    pub fn build_compounded_aggr_push_down_plan(&self) -> Arc<dyn ExecutionPlan> {
+        let basic_plan = self.build_basic_partitioned_table_plan();
+        self.build_aggr_plan_with_input(basic_plan)
+    }
+
+    // Union plan includes:
+    // Union
+    //  Scan
+    //  Scan
+    pub fn build_union_plan(&self) -> Arc<dyn ExecutionPlan> {
+        // UnionExec
+        let partitioned_scan_0 = self
+            .build_basic_partitioned_table_plan_with_sub_tables(self.sub_table_groups[0].clone());
+        let partitioned_scan_1 = self
+            .build_basic_partitioned_table_plan_with_sub_tables(self.sub_table_groups[1].clone());
+        let union = UnionExec::new(vec![partitioned_scan_0, partitioned_scan_1]);
+
+        Arc::new(union)
     }
 }
 

@@ -28,6 +28,10 @@ use datafusion::{
     execution::TaskContext,
     physical_expr::PhysicalSortExpr,
     physical_plan::{
+        aggregates::{AggregateExec, AggregateMode},
+        displayable,
+        filter::FilterExec,
+        projection::ProjectionExec,
         DisplayAs, DisplayFormatType, ExecutionPlan, Partitioning, RecordBatchStream,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
@@ -111,32 +115,104 @@ impl DisplayAs for UnresolvedPartitionedScan {
 /// related nodes to execute.
 #[derive(Debug)]
 pub struct ResolvedPartitionedScan {
-    pub remote_executor: Arc<dyn RemotePhysicalPlanExecutor>,
-    pub remote_exec_plans: Vec<(TableIdentifier, Arc<dyn ExecutionPlan>)>,
+    pub remote_exec_ctx: Arc<RemoteExecContext>,
+    pub pushing_down: bool,
 }
 
 impl ResolvedPartitionedScan {
-    pub fn extend_remote_exec_plans(
+    pub fn try_to_push_down_more(
         &self,
-        extended_node: Arc<dyn ExecutionPlan>,
-    ) -> DfResult<Arc<ResolvedPartitionedScan>> {
+        cur_node: Arc<dyn ExecutionPlan>,
+    ) -> DfResult<Arc<dyn ExecutionPlan>> {
+        // Can not push more...
+        if !self.pushing_down {
+            return Ok(self.push_down_finished());
+        }
+
+        // Push down more, and when occur the terminated push down able node, we need to
+        // set `can_push_down_more` false.
+        let push_down_able_opt = PushDownAble::try_new(cur_node.clone());
+        let (node, can_push_down_more) = match push_down_able_opt {
+            Some(PushDownAble::Continue(node)) => (node, true),
+            Some(PushDownAble::Terminated(node)) => (node, false),
+            None => {
+                let partitioned_scan = self.push_down_finished();
+                return cur_node.with_new_children(vec![partitioned_scan]);
+            }
+        };
+
         let new_plans = self
-            .remote_exec_plans
+            .remote_exec_ctx
+            .plans
             .iter()
             .map(|(table, plan)| {
-                extended_node
-                    .clone()
+                node.clone()
                     .with_new_children(vec![plan.clone()])
                     .map(|extended_plan| (table.clone(), extended_plan))
             })
             .collect::<DfResult<Vec<_>>>()?;
 
+        let remote_exec_ctx = Arc::new(RemoteExecContext {
+            executor: self.remote_exec_ctx.executor.clone(),
+            plans: new_plans,
+        });
         let plan = ResolvedPartitionedScan {
-            remote_executor: self.remote_executor.clone(),
-            remote_exec_plans: new_plans,
+            remote_exec_ctx,
+            pushing_down: can_push_down_more,
         };
 
         Ok(Arc::new(plan))
+    }
+
+    pub fn new(
+        remote_executor: Arc<dyn RemotePhysicalPlanExecutor>,
+        remote_exec_plans: Vec<(TableIdentifier, Arc<dyn ExecutionPlan>)>,
+    ) -> Self {
+        let remote_exec_ctx = Arc::new(RemoteExecContext {
+            executor: remote_executor,
+            plans: remote_exec_plans,
+        });
+
+        Self {
+            remote_exec_ctx,
+            pushing_down: true,
+        }
+    }
+
+    pub fn push_down_finished(&self) -> Arc<dyn ExecutionPlan> {
+        Arc::new(Self {
+            remote_exec_ctx: self.remote_exec_ctx.clone(),
+            pushing_down: false,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct RemoteExecContext {
+    executor: Arc<dyn RemotePhysicalPlanExecutor>,
+    plans: Vec<(TableIdentifier, Arc<dyn ExecutionPlan>)>,
+}
+
+pub enum PushDownAble {
+    Continue(Arc<dyn ExecutionPlan>),
+    Terminated(Arc<dyn ExecutionPlan>),
+}
+
+impl PushDownAble {
+    pub fn try_new(plan: Arc<dyn ExecutionPlan>) -> Option<Self> {
+        if let Some(aggr) = plan.as_any().downcast_ref::<AggregateExec>() {
+            if *aggr.mode() == AggregateMode::Partial {
+                Some(Self::Terminated(plan))
+            } else {
+                None
+            }
+        } else if let Some(_) = plan.as_any().downcast_ref::<FilterExec>() {
+            Some(Self::Continue(plan))
+        } else if let Some(_) = plan.as_any().downcast_ref::<ProjectionExec>() {
+            Some(Self::Continue(plan))
+        } else {
+            None
+        }
     }
 }
 
@@ -146,7 +222,8 @@ impl ExecutionPlan for ResolvedPartitionedScan {
     }
 
     fn schema(&self) -> ArrowSchemaRef {
-        self.remote_exec_plans
+        self.remote_exec_ctx
+            .plans
             .first()
             .expect("remote_exec_plans should not be empty")
             .1
@@ -154,7 +231,7 @@ impl ExecutionPlan for ResolvedPartitionedScan {
     }
 
     fn output_partitioning(&self) -> Partitioning {
-        Partitioning::UnknownPartitioning(self.remote_exec_plans.len())
+        Partitioning::UnknownPartitioning(self.remote_exec_ctx.plans.len())
     }
 
     fn output_ordering(&self) -> Option<&[PhysicalSortExpr]> {
@@ -162,7 +239,11 @@ impl ExecutionPlan for ResolvedPartitionedScan {
     }
 
     fn children(&self) -> Vec<Arc<dyn ExecutionPlan>> {
-        vec![]
+        self.remote_exec_ctx
+            .plans
+            .iter()
+            .map(|(_, plan)| plan.clone())
+            .collect()
     }
 
     fn with_new_children(
@@ -170,7 +251,7 @@ impl ExecutionPlan for ResolvedPartitionedScan {
         _children: Vec<Arc<dyn ExecutionPlan>>,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
         Err(DataFusionError::Internal(
-            "UnresolvedPartitionedScan should not have children".to_string(),
+            "UnresolvedPartitionedScan can't be built directly from new children".to_string(),
         ))
     }
 
@@ -179,11 +260,19 @@ impl ExecutionPlan for ResolvedPartitionedScan {
         partition: usize,
         context: Arc<TaskContext>,
     ) -> DfResult<DfSendableRecordBatchStream> {
-        let (sub_table, plan) = &self.remote_exec_plans[partition];
+        if self.pushing_down {
+            return Err(DataFusionError::Internal(format!(
+                "partitioned scan can't be executed before pushing down finished, plan:{}",
+                displayable(self).indent(true).to_string()
+            )));
+        }
+
+        let (sub_table, plan) = &self.remote_exec_ctx.plans[partition];
 
         // Send plan for remote execution.
         let stream_future =
-            self.remote_executor
+            self.remote_exec_ctx
+                .executor
                 .execute(sub_table.clone(), &context, plan.clone())?;
         let record_stream = PartitionedScanStream::new(stream_future, plan.schema());
 
@@ -280,15 +369,18 @@ pub(crate) enum StreamState {
     Polling(DfSendableRecordBatchStream),
 }
 
-// TODO: make display for the plan more pretty.
 impl DisplayAs for ResolvedPartitionedScan {
-    fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "ResolvedPartitionedScan: remote_exec_plans:{:?}, partition_count={}",
-            self.remote_exec_plans,
-            self.output_partitioning().partition_count(),
-        )
+    fn fmt_as(&self, t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
+        match t {
+            DisplayFormatType::Default | DisplayFormatType::Verbose => {
+                write!(
+                    f,
+                    "ResolvedPartitionedScan: pushing_down:{}, partition_count:{}",
+                    self.pushing_down,
+                    self.remote_exec_ctx.plans.len()
+                )
+            }
+        }
     }
 }
 
@@ -352,7 +444,7 @@ impl DisplayAs for UnresolvedSubTableScan {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "UnresolvedSubTableScan: table={:?}, read_request:{:?}, partition_count={}",
+            "UnresolvedSubTableScan: table:{:?}, request:{:?}, partition_count:{}",
             self.table,
             self.read_request,
             self.output_partitioning().partition_count(),

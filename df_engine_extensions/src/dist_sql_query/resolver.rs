@@ -18,7 +18,10 @@ use async_recursion::async_recursion;
 use catalog::manager::ManagerRef as CatalogManagerRef;
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
-    physical_plan::ExecutionPlan,
+    physical_plan::{
+        aggregates::{AggregateExec, AggregateMode},
+        ExecutionPlan,
+    },
 };
 use table_engine::{remote::model::TableIdentifier, table::TableRef};
 
@@ -59,6 +62,22 @@ impl Resolver {
         &self,
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
+        let resolved_plan = self.resolve_partitioned_scan_internal(plan)?;
+
+        if let Some(plan) = resolved_plan
+            .as_any()
+            .downcast_ref::<ResolvedPartitionedScan>()
+        {
+            Ok(plan.push_down_finished())
+        } else {
+            Ok(resolved_plan)
+        }
+    }
+
+    pub fn resolve_partitioned_scan_internal(
+        &self,
+        plan: Arc<dyn ExecutionPlan>,
+    ) -> DfResult<Arc<dyn ExecutionPlan>> {
         // Leave node, let's resolve it and return.
         if let Some(unresolved) = plan.as_any().downcast_ref::<UnresolvedPartitionedScan>() {
             let sub_tables = unresolved.sub_tables.clone();
@@ -73,10 +92,10 @@ impl Resolver {
                 })
                 .collect::<Vec<_>>();
 
-            return Ok(Arc::new(ResolvedPartitionedScan {
-                remote_executor: self.remote_executor.clone(),
-                remote_exec_plans: remote_plans,
-            }));
+            return Ok(Arc::new(ResolvedPartitionedScan::new(
+                self.remote_executor.clone(),
+                remote_plans,
+            )));
         }
 
         let children = plan.children().clone();
@@ -88,12 +107,47 @@ impl Resolver {
         // Resolve children if exist.
         let mut new_children = Vec::with_capacity(children.len());
         for child in children {
-            let child = self.resolve_partitioned_scan(child)?;
+            let child = self.resolve_partitioned_scan_internal(child)?;
 
             new_children.push(child);
         }
 
-        plan.with_new_children(new_children)
+        Self::maybe_push_down_to_remote_plans(new_children, plan)
+    }
+
+    fn maybe_push_down_to_remote_plans(
+        mut new_children: Vec<Arc<dyn ExecutionPlan>>,
+        current_node: Arc<dyn ExecutionPlan>,
+    ) -> DfResult<Arc<dyn ExecutionPlan>> {
+        // No children, just return.
+        if new_children.is_empty() {
+            return Ok(current_node);
+        }
+
+        // This node Has multiple children, it can't be pushed down to remote.
+        // But it's possible that `ResolvedPartitionedScan`s exist among its children,
+        // we need to extract these children and mark them push down finished.
+        if new_children.len() > 1 {
+            new_children.iter_mut().for_each(|child| {
+                if let Some(plan) = child.as_any().downcast_ref::<ResolvedPartitionedScan>() {
+                    *child = plan.push_down_finished();
+                }
+            });
+            return current_node.with_new_children(new_children);
+        }
+
+        // Has ensured that this node has just child and it is just
+        // `ResolvedPartitionedScan`, try to push down it to remote plans in
+        // `ResolvedPartitionedScan`.
+        let child = new_children.first().unwrap();
+        let partitioned_scan =
+            if let Some(plan) = child.as_any().downcast_ref::<ResolvedPartitionedScan>() {
+                plan
+            } else {
+                return current_node.with_new_children(new_children);
+            };
+
+        partitioned_scan.try_to_push_down_more(current_node.clone())
     }
 
     #[async_recursion]
@@ -202,5 +256,38 @@ mod test {
         let new_plan_display = displayable(new_plan.as_ref()).indent(true).to_string();
 
         assert_eq!(original_plan_display, new_plan_display);
+    }
+
+    #[test]
+    fn test_aggr_push_down() {
+        let ctx = TestContext::new();
+        let plan = ctx.build_aggr_push_down_plan();
+        let resolver = ctx.resolver();
+        let new_plan = displayable(resolver.resolve_partitioned_scan(plan).unwrap().as_ref())
+            .indent(true)
+            .to_string();
+        insta::assert_snapshot!(new_plan);
+    }
+
+    #[test]
+    fn test_compounded_aggr_push_down() {
+        let ctx = TestContext::new();
+        let plan = ctx.build_compounded_aggr_push_down_plan();
+        let resolver = ctx.resolver();
+        let new_plan = displayable(resolver.resolve_partitioned_scan(plan).unwrap().as_ref())
+            .indent(true)
+            .to_string();
+        insta::assert_snapshot!(new_plan);
+    }
+
+    #[test]
+    fn test_node_with_multiple_partitioned_scan_children() {
+        let ctx = TestContext::new();
+        let plan = ctx.build_union_plan();
+        let resolver = ctx.resolver();
+        let new_plan = displayable(resolver.resolve_partitioned_scan(plan).unwrap().as_ref())
+            .indent(true)
+            .to_string();
+        insta::assert_snapshot!(new_plan);
     }
 }
