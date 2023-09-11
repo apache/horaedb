@@ -643,12 +643,12 @@ impl DiskCacheStore {
         }
 
         if need_fetch_block.is_empty() {
-            // All ranges are not first, return directly.
+            // All ranges are not first request, return directly.
             return Ok(rxs);
         }
 
         let fetched_bytes = {
-            // This guard will ensure notifiers being taken out when futures get cancelled
+            // This guard will ensure notifiers got released when futures get cancelled
             // during `get_ranges`.
             let mut guard = ExecutionGuard::new(|| {
                 for cache_key in &need_fetch_block_cache_key {
@@ -675,10 +675,13 @@ impl DiskCacheStore {
             Err(err) => {
                 for notifiers in notifiers_vec {
                     for notifier in notifiers {
-                        if let Err(e) = notifier.send(Err(Error::WaitNotifier {
-                            message: err.to_string(),
-                        })) {
-                            error!("Failed to send notifier error result, err:{:?}.", e);
+                        if let Err(e) = notifier.send(
+                            WaitNotifier {
+                                message: err.to_string(),
+                            }
+                            .fail(),
+                        ) {
+                            error!("Failed to send notifier error result, err:{e:?}.");
                         }
                     }
                 }
@@ -696,7 +699,7 @@ impl DiskCacheStore {
             self.cache.insert_data(cache_key, bytes.clone()).await;
             for notifier in notifiers {
                 if let Err(e) = notifier.send(Ok(bytes.clone())) {
-                    error!("Failed to send notifier success result, err:{:?}.", e);
+                    error!("Failed to send notifier success result, err:{e:?}.");
                 }
             }
         }
