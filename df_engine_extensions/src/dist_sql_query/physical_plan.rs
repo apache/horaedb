@@ -33,7 +33,7 @@ use datafusion::{
         filter::FilterExec,
         projection::ProjectionExec,
         DisplayAs, DisplayFormatType, ExecutionPlan, Partitioning, RecordBatchStream,
-        SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
+        SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics, repartition::RepartitionExec, coalesce_partitions::CoalescePartitionsExec, coalesce_batches::CoalesceBatchesExec,
     },
 };
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
@@ -209,6 +209,12 @@ impl PushDownAble {
         } else if let Some(_) = plan.as_any().downcast_ref::<FilterExec>() {
             Some(Self::Continue(plan))
         } else if let Some(_) = plan.as_any().downcast_ref::<ProjectionExec>() {
+            Some(Self::Continue(plan))
+        } else if let Some(_) = plan.as_any().downcast_ref::<RepartitionExec>() {
+            Some(Self::Continue(plan))
+        } else if let Some(_) = plan.as_any().downcast_ref::<CoalescePartitionsExec>() {
+            Some(Self::Continue(plan))
+        } else if let Some(_) = plan.as_any().downcast_ref::<CoalesceBatchesExec>() {
             Some(Self::Continue(plan))
         } else {
             None
