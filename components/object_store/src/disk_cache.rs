@@ -59,11 +59,12 @@ enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Access is out of range, range:{range:?}, file_size:{file_size}, file:{file}.\nbacktrace:\n{backtrace}",))]
+    #[snafu(display("Access is out of range, range:{range:?}, file_size:{file_size}, last_modified:{last_modified:?}, file:{file}.\nbacktrace:\n{backtrace}"))]
     OutOfRange {
         range: Range<usize>,
         file_size: usize,
         file: String,
+        last_modified: DateTime<Utc>,
         backtrace: Backtrace,
     },
 
@@ -753,12 +754,13 @@ impl ObjectStore for DiskCacheStore {
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
-        let file_size = self.fetch_file_meta(location).await?.size;
+        let file_meta = self.fetch_file_meta(location).await?;
         ensure!(
-            file_size >= range.end,
+            file_meta.size >= range.end,
             OutOfRange {
                 range,
-                file_size,
+                file_size: file_meta.size,
+                last_modified: file_meta.last_modified,
                 file: location.to_string()
             }
         );
@@ -776,7 +778,7 @@ impl ObjectStore for DiskCacheStore {
 
         // Fast path for only one page involved.
         if num_pages == 1 {
-            let aligned_end = (aligned_start + self.page_size).min(file_size);
+            let aligned_end = (aligned_start + self.page_size).min(file_meta.size);
             let aligned_range = aligned_start..aligned_end;
             let filename = Self::page_cache_name(location, &aligned_range);
             let range_in_file = (range.start - aligned_start)..(range.end - aligned_start);
@@ -806,7 +808,7 @@ impl ObjectStore for DiskCacheStore {
             let mut page_start = aligned_start;
             let mut page_idx = 0;
             while page_idx < num_pages {
-                let page_end = (page_start + self.page_size).min(file_size);
+                let page_end = (page_start + self.page_size).min(file_meta.size);
                 let range_in_file = {
                     let real_start = page_start.max(range.start);
                     let real_end = page_end.min(range.end);
@@ -843,7 +845,7 @@ impl ObjectStore for DiskCacheStore {
         for (idx, cache_miss) in paged_bytes.iter().map(|v| v.is_none()).enumerate() {
             if cache_miss {
                 let missing_range_start = aligned_start + idx * self.page_size;
-                let missing_range_end = (missing_range_start + self.page_size).min(file_size);
+                let missing_range_end = (missing_range_start + self.page_size).min(file_meta.size);
                 missing_ranges.push(missing_range_start..missing_range_end);
                 missing_range_idx.push(idx);
             }
@@ -956,32 +958,15 @@ mod test {
         let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
         let location = Path::from("out_of_range_test.sst");
         let store = prepare_store(page_size, 32, 0).await;
-        let mut buf = BytesMut::with_capacity(data.len() * 4);
-        // extend 4 times, then location will contain 200 bytes, but cache cap is 32
-        for _ in 0..4 {
-            buf.extend_from_slice(data);
-        }
-        let written_data = buf.freeze();
-        store
-            .inner
-            .put(&location, written_data.clone())
-            .await
-            .unwrap();
+        let buf = Bytes::from_static(data);
+        store.inner.put(&location, buf.clone()).await.unwrap();
 
         // Read one page out of range.
-        let start = written_data.len() / page_size * page_size + page_size / 2;
-        let range = start..start + page_size / 2;
-        let res = store.inner.get_range(&location, range).await;
+        let res = store.inner.get_range(&location, 48..54).await;
         assert!(res.is_err());
 
         // Read multiple pages out of range.
-        let res = store
-            .inner
-            .get_range(
-                &location,
-                (written_data.len() / 2)..(written_data.len() * 2),
-            )
-            .await;
+        let res = store.inner.get_range(&location, 24..54).await;
         assert!(res.is_err());
     }
 
