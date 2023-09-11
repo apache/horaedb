@@ -20,6 +20,7 @@
 
 pub mod ast;
 pub mod container;
+mod datafusion_util;
 pub mod frontend;
 pub mod influxql;
 pub mod opentsdb;

@@ -20,8 +20,10 @@ pub struct SubQuery {
     #[serde(default)]
     pub rate: bool,
     pub downsample: Option<String>,
-    pub tags: Option<HashMap<String, String>>,
-    pub filters: Option<Vec<Filter>>,
+    #[serde(default)]
+    pub tags: HashMap<String, String>,
+    #[serde(default)]
+    pub filters: Vec<Filter>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -33,8 +35,12 @@ pub struct QueryRequest {
     pub ms_resolution: bool,
 }
 
-pub struct OpentsdbQueryPlan {
-    pub plan: Vec<Plan>,
+pub struct OpentsdbSubPlan {
+    pub plan: Plan,
     pub field_col_name: String,
     pub timestamp_col_name: String,
+}
+
+pub struct OpentsdbQueryPlan {
+    pub plans: Vec<OpentsdbSubPlan>,
 }
