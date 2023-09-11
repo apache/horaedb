@@ -20,17 +20,11 @@ use datafusion::{
     error::{DataFusionError, Result as DfResult},
     physical_plan::ExecutionPlan,
 };
-
-
 use table_engine::{remote::model::TableIdentifier, table::TableRef};
 
-use crate::{
-    dist_sql_query::{
-        physical_plan::{
-            ResolvedPartitionedScan, UnresolvedPartitionedScan, UnresolvedSubTableScan,
-        },
-        ExecutableScanBuilderRef, RemotePhysicalPlanExecutorRef,
-    },
+use crate::dist_sql_query::{
+    physical_plan::{ResolvedPartitionedScan, UnresolvedPartitionedScan, UnresolvedSubTableScan},
+    ExecutableScanBuilderRef, RemotePhysicalPlanExecutorRef,
 };
 
 /// Resolver which makes datafuison dist query related plan executable.

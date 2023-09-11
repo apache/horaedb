@@ -31,8 +31,8 @@ use datafusion_proto::{
     physical_plan::{AsExecutionPlan, PhysicalExtensionCodec},
     protobuf,
 };
-use df_engine_extensions::{
-    dist_sql_query::{resolver::Resolver, ExecutableScanBuilder, RemotePhysicalPlanExecutor},
+use df_engine_extensions::dist_sql_query::{
+    resolver::Resolver, ExecutableScanBuilder, RemotePhysicalPlanExecutor,
 };
 use futures::future::BoxFuture;
 use generic_error::BoxError;
