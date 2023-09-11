@@ -140,12 +140,13 @@ impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
     }
 
     fn metrics_to_string(&self) -> String {
-        let executed_opt = &*self.executed_plan.read().unwrap();
+        let executed_opt = { self.executed_plan.read().unwrap().clone() };
+
         match executed_opt {
             Some(plan) => DisplayableExecutionPlan::with_metrics(plan.as_ref())
                 .indent(true)
                 .to_string(),
-            None => "Plan is not executed yet".to_string(),
+            None => "plan is not executed yet".to_string(),
         }
     }
 }
