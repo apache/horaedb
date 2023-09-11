@@ -126,7 +126,7 @@ impl ResolvedPartitionedScan {
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
         // Can not push more...
         if !self.pushing_down {
-            return Ok(self.push_down_finished());
+            return cur_node.with_new_children(vec![self.push_down_finished()]);
         }
 
         // Push down more, and when occur the terminated push down able node, we need to
