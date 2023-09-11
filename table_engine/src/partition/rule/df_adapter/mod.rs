@@ -18,10 +18,10 @@ use common_types::{row::RowGroup, schema::Schema};
 use datafusion::logical_expr::Expr;
 
 use self::extractor::{KeyExtractor, NoopExtractor};
-use super::PartitionedRowGroup;
 use crate::partition::{
     rule::{
-        df_adapter::extractor::FilterExtractorRef, factory::PartitionRuleFactory, PartitionRuleRef,
+        df_adapter::extractor::FilterExtractorRef, factory::PartitionRuleFactory, PartitionRulePtr,
+        PartitionedRows,
     },
     BuildPartitionRule, PartitionInfo, Result,
 };
@@ -31,7 +31,7 @@ mod extractor;
 /// Partition rule's adapter for datafusion
 pub struct DfPartitionRuleAdapter {
     /// Partition rule
-    rule: PartitionRuleRef,
+    rule: PartitionRulePtr,
 
     /// `PartitionFilter` extractor for datafusion `Expr`
     extractor: FilterExtractorRef,
@@ -46,11 +46,11 @@ impl DfPartitionRuleAdapter {
     }
 
     pub fn columns(&self) -> &[String] {
-        self.rule.columns()
+        self.rule.involved_columns()
     }
 
-    pub fn locate_partitions_for_write(&self, row_group: RowGroup) -> Result<PartitionedRowGroup> {
-        self.rule.locate_partitions_for_write(row_group)
+    pub fn locate_partitions_for_write(&self, row_group: RowGroup) -> Result<PartitionedRows> {
+        self.rule.location_partitions_for_write(row_group)
     }
 
     pub fn locate_partitions_for_read(&self, filters: &[Expr]) -> Result<Vec<usize>> {
@@ -236,8 +236,8 @@ mod tests {
         let partitioned_rows = key_rule_adapter
             .locate_partitions_for_write(row_group)
             .unwrap();
-        let partition_idxs = match partitioned_rows {
-            PartitionedRowGroup::Multiple(iter) => iter.map(|v| v.partition_idx).collect_vec(),
+        let partition_ids = match partitioned_rows {
+            PartitionedRows::Multiple(iter) => iter.map(|v| v.partition_id).collect_vec(),
             _ => panic!("invalid partitioned rows"),
         };
 
@@ -250,7 +250,7 @@ mod tests {
         let expected_2 = compute_partition(partition_key_refs_2, partition_num);
         let expecteds = vec![expected_1, expected_2];
 
-        assert_eq!(partition_idxs, expecteds);
+        assert_eq!(partition_ids, expecteds);
     }
 
     fn build_schema() -> Schema {

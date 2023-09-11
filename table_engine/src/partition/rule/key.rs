@@ -25,9 +25,10 @@ use itertools::Itertools;
 use log::{debug, error};
 use snafu::OptionExt;
 
-use super::{PartitionedRow, PartitionedRowGroup};
 use crate::partition::{
-    rule::{filter::PartitionCondition, PartitionFilter, PartitionRule},
+    rule::{
+        filter::PartitionCondition, PartitionFilter, PartitionRule, PartitionedRow, PartitionedRows,
+    },
     Internal, LocateWritePartition, Result,
 };
 
@@ -153,14 +154,12 @@ impl KeyRule {
 }
 
 impl PartitionRule for KeyRule {
-    fn columns(&self) -> &[String] {
+    fn involved_columns(&self) -> &[String] {
         &self.columns
     }
 
-    fn locate_partitions_for_write(&self, row_group: RowGroup) -> Result<PartitionedRowGroup> {
-        // Extract idxs.
-        // TODO: we should compare column's related data types in `typed_key_columns`
-        // and the ones in `row_group`'s schema.
+    fn location_partitions_for_write(&self, row_group: RowGroup) -> Result<PartitionedRows> {
+        // Determine the column index in the schema.
         let column_index_in_schema = self
             .columns
             .iter()
@@ -176,15 +175,15 @@ impl PartitionRule for KeyRule {
         // Compute partitions.
         let partition_num = self.partition_num;
         let iter = row_group.into_iter().map(move |row| {
-            let partition_idx = Self::compute_partition_for_inserted_row(
+            let partition_id = Self::compute_partition_for_inserted_row(
                 &row,
                 partition_num,
                 &column_index_in_schema,
             );
-            PartitionedRow { partition_idx, row }
+            PartitionedRow { partition_id, row }
         });
 
-        Ok(PartitionedRowGroup::Multiple(Box::new(iter)))
+        Ok(PartitionedRows::Multiple(Box::new(iter)))
     }
 
     fn locate_partitions_for_read(&self, filters: &[PartitionFilter]) -> Result<Vec<usize>> {

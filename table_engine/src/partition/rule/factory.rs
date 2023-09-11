@@ -21,7 +21,7 @@ use crate::partition::{
     rule::{
         key::{KeyRule, DEFAULT_PARTITION_VERSION},
         random::RandomRule,
-        PartitionRuleRef,
+        PartitionRulePtr,
     },
     BuildPartitionRule, InvalidPartitionKey, KeyPartitionInfo, PartitionInfo, RandomPartitionInfo,
     Result,
@@ -30,7 +30,7 @@ use crate::partition::{
 pub struct PartitionRuleFactory;
 
 impl PartitionRuleFactory {
-    pub fn create(partition_info: PartitionInfo, schema: &Schema) -> Result<PartitionRuleRef> {
+    pub fn create(partition_info: PartitionInfo, schema: &Schema) -> Result<PartitionRulePtr> {
         match partition_info {
             PartitionInfo::Key(key_info) => Self::create_key_rule(key_info, schema),
             PartitionInfo::Random(random_info) => Self::create_random_rule(random_info),
@@ -41,7 +41,7 @@ impl PartitionRuleFactory {
         }
     }
 
-    fn create_key_rule(key_info: KeyPartitionInfo, schema: &Schema) -> Result<PartitionRuleRef> {
+    fn create_key_rule(key_info: KeyPartitionInfo, schema: &Schema) -> Result<PartitionRulePtr> {
         ensure!(
             key_info.version == DEFAULT_PARTITION_VERSION,
             BuildPartitionRule {
@@ -63,7 +63,7 @@ impl PartitionRuleFactory {
         )))
     }
 
-    fn create_random_rule(random_info: RandomPartitionInfo) -> Result<PartitionRuleRef> {
+    fn create_random_rule(random_info: RandomPartitionInfo) -> Result<PartitionRulePtr> {
         Ok(Box::new(RandomRule {
             partition_num: random_info.definitions.len(),
         }))

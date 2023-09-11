@@ -29,7 +29,7 @@ use table_engine::{
     partition::{
         format_sub_partition_table_name,
         rule::{
-            df_adapter::DfPartitionRuleAdapter, PartitionedRow, PartitionedRowGroup,
+            df_adapter::DfPartitionRuleAdapter, PartitionedRow, PartitionedRows,
             PartitionedRowsIter,
         },
         PartitionInfo,
@@ -127,9 +127,9 @@ impl PartitionTableImpl {
         partitioned_rows: PartitionedRowsIter,
     ) -> Result<usize> {
         let mut split_rows = HashMap::new();
-        for PartitionedRow { partition_idx, row } in partitioned_rows {
+        for PartitionedRow { partition_id, row } in partitioned_rows {
             split_rows
-                .entry(partition_idx)
+                .entry(partition_id)
                 .or_insert_with(Vec::new)
                 .push(row);
         }
@@ -245,11 +245,11 @@ impl Table for PartitionTableImpl {
         };
 
         match partition_rows {
-            PartitionedRowGroup::One {
-                partition_idx,
+            PartitionedRows::One {
+                partition_id,
                 row_group,
-            } => self.write_single_row_group(partition_idx, row_group).await,
-            PartitionedRowGroup::Multiple(iter) => {
+            } => self.write_single_row_group(partition_id, row_group).await,
+            PartitionedRows::Multiple(iter) => {
                 self.write_partitioned_row_groups(schema, iter).await
             }
         }

@@ -17,8 +17,10 @@
 use common_types::row::RowGroup;
 use itertools::Itertools;
 
-use super::PartitionedRowGroup;
-use crate::partition::{rule::PartitionRule, Result};
+use crate::partition::{
+    rule::{PartitionRule, PartitionedRows},
+    Result,
+};
 
 pub struct RandomRule {
     pub partition_num: usize,
@@ -29,15 +31,15 @@ impl RandomRule {
 }
 
 impl PartitionRule for RandomRule {
-    fn columns(&self) -> &[String] {
+    fn involved_columns(&self) -> &[String] {
         &Self::INVOLVED_COLUMNS
     }
 
-    fn locate_partitions_for_write(&self, row_group: RowGroup) -> Result<PartitionedRowGroup> {
+    fn location_partitions_for_write(&self, row_group: RowGroup) -> Result<PartitionedRows> {
         let value: usize = rand::random();
-        let partition_idx = value % self.partition_num;
-        Ok(PartitionedRowGroup::One {
-            partition_idx,
+        let partition_id = value % self.partition_num;
+        Ok(PartitionedRows::One {
+            partition_id,
             row_group,
         })
     }
