@@ -59,6 +59,14 @@ enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display("Access is out of range, range:{range:?}, file_size:{file_size}, file:{file}.\nbacktrace:\n{backtrace}",))]
+    OutOfRange {
+        range: Range<usize>,
+        file_size: usize,
+        file: String,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display(
         "Partial write, expect bytes:{expect}, written:{written}.\nbacktrace:\n{backtrace}",
     ))]
@@ -745,6 +753,16 @@ impl ObjectStore for DiskCacheStore {
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
+        let file_size = self.fetch_file_meta(location).await?.size;
+        ensure!(
+            file_size >= range.end,
+            OutOfRange {
+                range,
+                file_size,
+                file: location.to_string()
+            }
+        );
+
         let PageRangeResult {
             aligned_start,
             num_pages,
@@ -755,8 +773,6 @@ impl ObjectStore for DiskCacheStore {
             paging.page_range(&range)
         };
         assert!(num_pages > 0);
-
-        let file_size = self.fetch_file_meta(location).await?.size;
 
         // Fast path for only one page involved.
         if num_pages == 1 {
@@ -931,6 +947,42 @@ mod test {
             .path()
             .join(DiskCacheStore::page_cache_name(location, range))
             .exists()
+    }
+
+    #[tokio::test]
+    async fn test_disk_cache_out_of_range() {
+        let page_size = 16;
+        // 51 byte
+        let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
+        let location = Path::from("out_of_range_test.sst");
+        let store = prepare_store(page_size, 32, 0).await;
+        let mut buf = BytesMut::with_capacity(data.len() * 4);
+        // extend 4 times, then location will contain 200 bytes, but cache cap is 32
+        for _ in 0..4 {
+            buf.extend_from_slice(data);
+        }
+        let written_data = buf.freeze();
+        store
+            .inner
+            .put(&location, written_data.clone())
+            .await
+            .unwrap();
+
+        // Read one page out of range.
+        let start = written_data.len() / page_size * page_size + page_size / 2;
+        let range = start..start + page_size / 2;
+        let res = store.inner.get_range(&location, range).await;
+        assert!(res.is_err());
+
+        // Read multiple pages out of range.
+        let res = store
+            .inner
+            .get_range(
+                &location,
+                (written_data.len() / 2)..(written_data.len() * 2),
+            )
+            .await;
+        assert!(res.is_err());
     }
 
     #[tokio::test]
