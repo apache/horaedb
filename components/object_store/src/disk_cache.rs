@@ -633,22 +633,30 @@ impl DiskCacheStore {
             rxs.push(rx);
         }
 
-        let mut guard = ExecutionGuard::new(|| {
-            for cache_key in &need_fetch_block_cache_key {
-                let _ = self.request_notifiers.take_notifiers(cache_key);
-            }
-        });
+        if need_fetch_block.is_empty() {
+            // All ranges are not first, return directly.
+            return Ok(rxs);
+        }
 
-        let fetched_bytes = self
-            .underlying_store
-            .get_ranges(location, &need_fetch_block[..])
-            .await;
+        let fetched_bytes = {
+            // This guard will ensure notifiers being taken out when futures get cancelled
+            // during `get_ranges`.
+            let mut guard = ExecutionGuard::new(|| {
+                for cache_key in &need_fetch_block_cache_key {
+                    let _ = self.request_notifiers.take_notifiers(cache_key);
+                }
+            });
 
-        guard.cancel();
-        drop(guard);
+            let bytes = self
+                .underlying_store
+                .get_ranges(location, &need_fetch_block)
+                .await;
 
-        // need take all correspond cache_key's notifiers from request_notifiers to
-        // prevent future cancelled
+            guard.cancel();
+            bytes
+        };
+
+        // Take all cache_key's notifiers out from request_notifiers immediately.
         let notifiers_vec: Vec<_> = need_fetch_block_cache_key
             .iter()
             .map(|cache_key| self.request_notifiers.take_notifiers(cache_key).unwrap())
