@@ -24,7 +24,6 @@ use async_trait::async_trait;
 use datafusion::physical_plan::{
     coalesce_partitions::CoalescePartitionsExec, display::DisplayableExecutionPlan, ExecutionPlan,
 };
-
 use generic_error::BoxError;
 use snafu::{OptionExt, ResultExt};
 use table_engine::stream::{FromDfStream, SendableRecordBatchStream};

@@ -114,7 +114,7 @@ impl ResolvedTable {
                 self.schema,
                 partition_info,
             );
-            
+
             Arc::new(TableProviderAdapter::new(self.table.clone(), builder))
         } else {
             let builder = NormalTableScanBuilder::new(self.table.clone());

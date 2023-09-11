@@ -23,7 +23,6 @@ use std::{
 };
 
 use arrow::{datatypes::SchemaRef as ArrowSchemaRef, record_batch::RecordBatch};
-
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     execution::TaskContext,

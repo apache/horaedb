@@ -15,14 +15,12 @@
 use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
-
 use datafusion::{
     error::Result as DfResult,
     execution::TaskContext,
     physical_plan::{ExecutionPlan, SendableRecordBatchStream},
 };
 use futures::future::BoxFuture;
-
 use table_engine::{
     remote::model::TableIdentifier,
     table::{ReadRequest, TableRef},
