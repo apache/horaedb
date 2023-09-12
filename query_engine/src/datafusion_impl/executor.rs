@@ -54,6 +54,7 @@ impl DatafusionExecutorImpl {
         let task_ctx = session_ctx.task_ctx();
 
         let df_ctx = DatafusionTaskExecContext {
+            request_id: ctx.request_id,
             task_ctx,
             preprocessor: self.preprocessor.clone(),
         };
@@ -69,7 +70,7 @@ impl Executor for DatafusionExecutorImpl {
         ctx: &Context,
         physical_plan: PhysicalPlanPtr,
     ) -> Result<SendableRecordBatchStream> {
-        debug!(
+        info!(
             "DatafusionExecutorImpl begin to execute plan, request_id:{}, physical_plan: {:?}",
             ctx.request_id, physical_plan
         );
