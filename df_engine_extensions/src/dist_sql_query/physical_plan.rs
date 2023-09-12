@@ -29,11 +29,14 @@ use datafusion::{
     physical_expr::PhysicalSortExpr,
     physical_plan::{
         aggregates::{AggregateExec, AggregateMode},
+        coalesce_batches::CoalesceBatchesExec,
+        coalesce_partitions::CoalescePartitionsExec,
         displayable,
         filter::FilterExec,
         projection::ProjectionExec,
+        repartition::RepartitionExec,
         DisplayAs, DisplayFormatType, ExecutionPlan, Partitioning, RecordBatchStream,
-        SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics, repartition::RepartitionExec, coalesce_partitions::CoalescePartitionsExec, coalesce_batches::CoalesceBatchesExec,
+        SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};

@@ -124,6 +124,43 @@ impl Drop for StreamWithMetric {
     }
 }
 
+struct RemotePlanStreamWithMetric {
+    inner: SendableRecordBatchStream,
+    instant: Instant,
+}
+
+impl RemotePlanStreamWithMetric {
+    fn new(inner: SendableRecordBatchStream, instant: Instant) -> Self {
+        Self { inner, instant }
+    }
+}
+
+impl Drop for RemotePlanStreamWithMetric {
+    fn drop(&mut self) {
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .execute_physical_plan
+            .observe(self.instant.saturating_elapsed().as_secs_f64());
+    }
+}
+
+impl Stream for RemotePlanStreamWithMetric {
+    type Item = Result<RecordBatch>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        match self.inner.poll_next_unpin(cx) {
+            Poll::Ready(Some(record_res)) => {
+                let record_res = record_res.box_err().context(ErrWithCause {
+                    code: StatusCode::Internal,
+                    msg: "failed to poll record batch for remote physical plan",
+                });
+                Poll::Ready(Some(record_res))
+            }
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
 macro_rules! record_stream_to_response_stream {
     ($record_stream_result:ident, $StreamType:ident) => {
         match $record_stream_result {
@@ -522,12 +559,12 @@ impl RemoteEngineServiceImpl {
     async fn execute_physical_plan_internal(
         &self,
         request: Request<ExecutePlanRequest>,
-    ) -> Result<SendableRecordBatchStream> {
+    ) -> Result<RemotePlanStreamWithMetric> {
         let instant = Instant::now();
         let request = request.into_inner();
         let query_engine = self.instance.query_engine.clone();
 
-        let stream_result = self
+        let stream = self
             .runtimes
             .read_runtime
             .spawn(async move { handle_execute_plan(request, query_engine).await })
@@ -536,13 +573,9 @@ impl RemoteEngineServiceImpl {
             .with_context(|| ErrWithCause {
                 code: StatusCode::Internal,
                 msg: "failed to run execute physical plan task",
-            })?;
+            })??;
 
-        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
-            .stream_read
-            .observe(instant.saturating_elapsed().as_secs_f64());
-
-        stream_result
+        Ok(RemotePlanStreamWithMetric::new(stream, instant))
     }
 
     fn handler_ctx(&self) -> HandlerContext {
