@@ -1,5 +1,4 @@
 DROP TABLE IF EXISTS `partition_table_t`;
-DROP TABLE IF EXISTS `__partition_table_t_0`;
 
 CREATE TABLE `partition_table_t`(
                                     `name`string TAG,
@@ -10,8 +9,6 @@ CREATE TABLE `partition_table_t`(
 ) PARTITION BY KEY(name) PARTITIONS 4 ENGINE = Analytic with (enable_ttl='false');
 
 SHOW CREATE TABLE partition_table_t;
-
-SHOW CREATE TABLE __partition_table_t_0;
 
 INSERT INTO partition_table_t (t, name, value)
 VALUES (1651737067000, "ceresdb0", 100),
@@ -25,8 +22,6 @@ VALUES (1651737067000, "ceresdb0", 100),
        (1651737067000, "ceresdb8", 108),
        (1651737067000, "ceresdb9", 109),
        (1651737067000, "ceresdb10", 110);
-
-SELECT * from __partition_table_t_0 where name = "ceresdb0";
 
 SELECT * from partition_table_t where name = "ceresdb0";
 

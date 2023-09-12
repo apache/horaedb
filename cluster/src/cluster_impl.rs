@@ -292,7 +292,11 @@ impl Inner {
 
         let shard_id = tables_of_shard.shard_info.id;
         let shard = Arc::new(Shard::new(tables_of_shard));
-        self.shard_set.insert(shard_id, shard.clone());
+
+        info!("Insert shard to shard_set, id:{shard_id}, shard:{shard:?}");
+        if let Some(old_shard) = self.shard_set.insert(shard_id, shard.clone()) {
+            info!("Remove old shard, id:{shard_id}, old:{old_shard:?}");
+        }
 
         Ok(shard)
     }
@@ -302,6 +306,7 @@ impl Inner {
     }
 
     fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef> {
+        info!("Remove shard from shard_set, id:{shard_id}");
         self.shard_set
             .remove(shard_id)
             .with_context(|| ShardNotFound {
