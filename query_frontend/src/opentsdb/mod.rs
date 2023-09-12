@@ -11,7 +11,7 @@ use datafusion::{
     error::DataFusionError,
     logical_expr::LogicalPlanBuilder,
     optimizer::utils::conjunction,
-    prelude::{avg, col, count, ident, lit, max, min, stddev, sum, Expr},
+    prelude::{avg, count, ident, lit, max, min, stddev, sum, Expr},
     sql::{planner::ContextProvider, TableReference},
 };
 use macros::define_result;
@@ -73,18 +73,19 @@ fn normalize_filters(
     let mut groupby_col_names = Vec::new();
     let mut exprs = Vec::with_capacity(tags.len() + filters.len());
     for (tagk, tagv) in tags {
-        exprs.push(ident(tagk).eq(lit(tagv)));
+        exprs.push(ident(&tagk).eq(lit(tagv)));
         groupby_col_names.push(tagk);
     }
 
     for filter in filters {
+        let col_name = ident(&filter.tagk);
+
         if filter.group_by {
             groupby_col_names.push(filter.tagk);
         }
 
-        let col_name = ident(filter.tagk);
         // http://opentsdb.net/docs/build/html/user_guide/query/filters.html
-        let value = match filter.r#type.as_str() {
+        let expr = match filter.r#type.as_str() {
             "literal_or" => {
                 let vs = filter.filter.split('|').map(lit).collect();
                 col_name.in_list(vs, false)
@@ -95,6 +96,7 @@ fn normalize_filters(
             }
             filter_type => return InvalidFilter { filter_type }.fail(),
         };
+        exprs.push(expr);
     }
 
     Ok((groupby_col_names, exprs))
@@ -106,9 +108,10 @@ fn build_projection(
     filters: &[Filter],
 ) -> Vec<Expr> {
     let mut projections = tags.keys().map(ident).collect::<HashSet<_>>();
-    projections.extend(filters.iter().map(|f| ident(f.tagk)));
+    projections.extend(filters.iter().map(|f| ident(&f.tagk)));
     projections.insert(ident(timestamp_col_name));
     projections.insert(ident(TSID_COLUMN));
+    projections.insert(ident(DEFAULT_FIELD));
 
     projections.into_iter().collect()
 }
@@ -116,21 +119,21 @@ fn build_projection(
 fn build_aggr_expr(aggr: &str) -> Result<Option<Expr>> {
     // http://opentsdb.net/docs/build/html/user_guide/query/aggregators.html
     let aggr = match aggr {
-        "sum" => sum(col(DEFAULT_FIELD)),
-        "count" => count(col(DEFAULT_FIELD)),
-        "avg" => avg(col(DEFAULT_FIELD)),
-        "min" => min(col(DEFAULT_FIELD)),
-        "max" => max(col(DEFAULT_FIELD)),
-        "dev" => stddev(col(DEFAULT_FIELD)),
+        "sum" => sum(ident(DEFAULT_FIELD)),
+        "count" => count(ident(DEFAULT_FIELD)),
+        "avg" => avg(ident(DEFAULT_FIELD)),
+        "min" => min(ident(DEFAULT_FIELD)),
+        "max" => max(ident(DEFAULT_FIELD)),
+        "dev" => stddev(ident(DEFAULT_FIELD)),
         "none" => return Ok(None),
-        v => return InvalidAggregator { aggr }.fail(),
+        _ => return InvalidAggregator { aggr }.fail(),
     };
 
     Ok(Some(aggr))
 }
 
 pub fn subquery_to_plan<P: MetaProvider>(
-    meta_provider: &ContextProviderAdapter<'_, P>,
+    meta_provider: ContextProviderAdapter<'_, P>,
     query_range: &TimeRange,
     sub_query: SubQuery,
 ) -> Result<OpentsdbSubPlan> {
@@ -178,7 +181,8 @@ pub fn subquery_to_plan<P: MetaProvider>(
 
 pub fn opentsdb_query_to_plan<P: MetaProvider>(
     query: QueryRequest,
-    meta_provider: ContextProviderAdapter<'_, P>,
+    provider: &P,
+    read_parallelism: usize,
 ) -> Result<OpentsdbQueryPlan> {
     let range = TimeRange::new(Timestamp::new(query.start), Timestamp::new(query.end + 1))
         .context(InvalidRange {
@@ -189,7 +193,13 @@ pub fn opentsdb_query_to_plan<P: MetaProvider>(
     let plans = query
         .queries
         .into_iter()
-        .map(|sub_query| subquery_to_plan(&meta_provider, &range, sub_query))
+        .map(|sub_query| {
+            subquery_to_plan(
+                ContextProviderAdapter::new(provider, read_parallelism),
+                &range,
+                sub_query,
+            )
+        })
         .collect::<Result<Vec<_>>>()?;
 
     Ok(OpentsdbQueryPlan { plans })

@@ -368,10 +368,8 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     }
 
     pub fn opentsdb_query_to_plan(&self, query: QueryRequest) -> Result<OpentsdbQueryPlan> {
-        let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
-        let planner = PlannerDelegate::new(adapter);
-
-        opentsdb_query_to_plan(query, planner.meta_provider).context(BuildOpentsdbPlanError)
+        opentsdb_query_to_plan(query, self.provider, self.read_parallelism)
+            .context(BuildOpentsdbPlanError)
     }
 
     pub fn write_req_to_plan(

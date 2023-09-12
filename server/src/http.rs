@@ -411,7 +411,7 @@ impl Service {
             .and_then(|ctx, req, proxy: Arc<Proxy>| async move {
                 let result = proxy.handle_opentsdb_query(ctx, req).await;
                 match result {
-                    Ok(_res) => Ok(reply::with_status(warp::reply(), StatusCode::NO_CONTENT)),
+                    Ok(res) => Ok(reply::json(&res)),
                     Err(e) => Err(reject::custom(e)),
                 }
             });

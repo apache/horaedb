@@ -210,3 +210,12 @@ pub(crate) fn validate(points: &[Point]) -> Result<()> {
 
     Ok(())
 }
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct QueryResponse {
+    metric: String,
+    tags: HashMap<String, String>,
+    #[serde(rename = "aggregatedTags")]
+    aggregated_tags: HashMap<String, String>,
+    dps: HashMap<String, f64>,
+}

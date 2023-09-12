@@ -16,16 +16,27 @@
 //! [1]: http://opentsdb.net/docs/build/html/api_http/put.html
 //! [2]: http://opentsdb.net/docs/build/html/api_http/query/index.html
 
+use std::time::Instant;
+
 use ceresdbproto::storage::{
     RequestContext as GrpcRequestContext, WriteRequest as GrpcWriteRequest,
 };
+use futures::{stream::FuturesOrdered, StreamExt};
+use generic_error::BoxError;
 use http::StatusCode;
-use log::debug;
-use query_frontend::opentsdb::types::QueryRequest;
+use interpreters::interpreter::Output;
+use log::{debug, info};
+use query_frontend::{
+    frontend::{Context as SqlContext, Frontend},
+    opentsdb::types::QueryRequest,
+    provider::CatalogMetaProvider,
+};
+use snafu::ResultExt;
 
+use self::types::QueryResponse;
 use crate::{
     context::RequestContext,
-    error::{ErrNoCause, Result},
+    error::{ErrNoCause, ErrWithCause, Result},
     metrics::HTTP_HANDLER_COUNTER_VEC,
     opentsdb::types::{convert_put_request, PutRequest, PutResponse},
     Context, Proxy,
@@ -96,9 +107,70 @@ impl Proxy {
         &self,
         ctx: RequestContext,
         req: QueryRequest,
-    ) -> Result<()> {
-        log::info!("get req: {req:?}");
+    ) -> Result<Vec<QueryResponse>> {
+        let request_id = ctx.request_id;
+        // log::info!("get req: {req:?}");
+        let begin_instant = Instant::now();
+        let deadline = ctx.timeout.map(|t| begin_instant + t);
 
-        Ok(())
+        info!(
+            "Opentsdb query handler try to process request, request_id:{}, request:{:?}",
+            request_id, req
+        );
+
+        let provider = CatalogMetaProvider {
+            manager: self.instance.catalog_manager.clone(),
+            default_catalog: &ctx.catalog,
+            default_schema: &ctx.schema,
+            function_registry: &*self.instance.function_registry,
+        };
+        let frontend = Frontend::new(provider);
+        let sql_ctx = SqlContext::new(request_id, deadline);
+
+        let opentsdb_plan = frontend
+            .opentsdb_query_to_plan(&sql_ctx, req)
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: "Failed to build plan",
+            })?;
+
+        for plan in &opentsdb_plan.plans {
+            self.instance
+                .limiter
+                .try_limit(&plan.plan)
+                .box_err()
+                .context(ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: "Query is blocked",
+                })?;
+        }
+
+        let mut futures = FuturesOrdered::new();
+        for plan in opentsdb_plan.plans {
+            let one_resp = async {
+                let output = self
+                    .execute_plan(request_id, &ctx.catalog, &ctx.schema, plan.plan, deadline)
+                    .await?;
+
+                convert_output_to_response(output, plan.field_col_name, plan.timestamp_col_name)
+            };
+
+            futures.push_back(one_resp);
+        }
+
+        let resp = futures.collect::<Vec<_>>().await;
+        let resp = resp.into_iter().collect::<Result<Vec<_>>>()?;
+
+        Ok(resp)
     }
+}
+
+fn convert_output_to_response(
+    output: Output,
+    field_col_name: String,
+    timestamp_col_name: String,
+) -> Result<QueryResponse> {
+    Ok(Default::default())
+    // todo!()
 }
