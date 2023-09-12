@@ -94,6 +94,7 @@ use crate::{
 const QUERY_EXPIRED_BUFFER: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default)]
 pub struct SubTableAccessPerm {
     pub enable_http: bool,
     pub enable_others: bool,
@@ -103,7 +104,7 @@ impl Default for SubTableAccessPerm {
     fn default() -> Self {
         Self {
             enable_http: true,
-            enable_others: false,
+            enable_others: true,
         }
     }
 }
