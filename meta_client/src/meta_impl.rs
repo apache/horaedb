@@ -176,7 +176,7 @@ impl MetaClient for MetaClientImpl {
         let mut pb_req = meta_service::GetTablesOfShardsRequest::from(req);
         pb_req.header = Some(self.request_header().into());
 
-        debug!("Meta client try to get tables, req:{:?}", pb_req);
+        info!("Meta client try to get tables, req:{:?}", pb_req);
 
         let pb_resp = self
             .client()
@@ -186,7 +186,7 @@ impl MetaClient for MetaClientImpl {
             .context(FailGetTables)?
             .into_inner();
 
-        debug!("Meta client finish getting tables, resp:{:?}", pb_resp);
+        info!("Meta client finish getting tables, resp:{:?}", pb_resp);
 
         check_response_header(&pb_resp.header)?;
 

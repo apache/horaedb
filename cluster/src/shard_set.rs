@@ -55,9 +55,9 @@ impl ShardSet {
     }
 
     /// Insert the tables of one shard.
-    pub fn insert(&self, shard_id: ShardId, shard: ShardRef) {
+    pub fn insert(&self, shard_id: ShardId, shard: ShardRef) -> Option<ShardRef> {
         let mut inner = self.inner.write().unwrap();
-        inner.insert(shard_id, shard);
+        inner.insert(shard_id, shard)
     }
 }
 
