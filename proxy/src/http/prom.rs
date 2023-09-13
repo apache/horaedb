@@ -132,7 +132,7 @@ impl Proxy {
             default_schema: &ctx.schema,
             function_registry: &*self.instance.function_registry,
         };
-        let frontend = Frontend::new(provider);
+        let frontend = Frontend::new(provider, self.instance.dyn_config.fronted.clone());
         let plan_ctx = Context::new(request_id, deadline);
 
         let RemoteQueryPlan {

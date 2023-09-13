@@ -28,7 +28,7 @@ use macros::define_result;
 use partition_table_engine::PartitionTableEngine;
 use proxy::{
     hotspot::HotspotRecorder,
-    instance::{Instance, InstanceRef},
+    instance::{DynamicConfig, Instance, InstanceRef},
     limiter::Limiter,
     schema_config_provider::SchemaConfigProviderRef,
     Proxy,
@@ -406,6 +406,8 @@ impl Builder {
             .build(QueryEngineType::Datafusion)
             .context(BuildQueryEngine)?;
 
+        // TODO: build dynamic config from server config.
+        let proxy_dyn_config = DynamicConfig::default();
         let instance = {
             let instance = Instance {
                 catalog_manager,
@@ -416,6 +418,7 @@ impl Builder {
                 limiter: self.limiter,
                 table_manipulator,
                 remote_engine_ref,
+                dyn_config: proxy_dyn_config,
             };
             InstanceRef::new(instance)
         };
