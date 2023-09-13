@@ -39,6 +39,7 @@ pub struct OpentsdbSubPlan {
     pub plan: Plan,
     pub field_col_name: String,
     pub timestamp_col_name: String,
+    pub aggregated_tags: Vec<String>,
 }
 
 pub struct OpentsdbQueryPlan {

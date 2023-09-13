@@ -176,6 +176,7 @@ pub fn subquery_to_plan<P: MetaProvider>(
         plan: Plan::Query(QueryPlan { df_plan, tables }),
         timestamp_col_name: timestamp_col_name.to_string(),
         field_col_name: DEFAULT_FIELD.to_string(),
+        aggregated_tags: groupby_col_names,
     })
 }
 
