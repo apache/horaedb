@@ -131,7 +131,7 @@ impl Preprocessor {
         plan: &Arc<dyn ExecutionPlan>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         self.dist_query_resolver
-            .resolve_partitioned_scan_internal(plan.clone())
+            .resolve_partitioned_scan(plan.clone())
             .box_err()
             .with_context(|| ExecutorWithCause {
                 msg: format!("failed to preprocess partitioned table plan, plan:{plan:?}"),

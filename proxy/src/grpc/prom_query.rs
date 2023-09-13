@@ -91,7 +91,7 @@ impl Proxy {
             default_schema: &schema,
             function_registry: &*self.instance.function_registry,
         };
-        let frontend = Frontend::new(provider);
+        let frontend = Frontend::new(provider, self.instance.dyn_config.fronted.clone());
 
         let mut sql_ctx = SqlContext::new(request_id, deadline);
         let expr = frontend

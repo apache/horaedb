@@ -14,7 +14,10 @@
 
 //! Server configs
 
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::{atomic::AtomicBool, Arc},
+};
 
 use cluster::config::SchemaConfig;
 use common_types::schema::TIMESTAMP_COLUMN;
@@ -182,6 +185,11 @@ impl Default for ServerConfig {
             sub_table_access_perm: SubTableAccessPerm::default(),
         }
     }
+}
+
+/// Config supporting modifying in runtime
+pub struct DynamicConfig {
+    pub enable_plan_level_dist_query: Arc<AtomicBool>,
 }
 
 #[cfg(test)]

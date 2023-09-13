@@ -233,13 +233,17 @@ impl Limiter {
 #[cfg(test)]
 mod tests {
     use common_types::request_id::RequestId;
-    use query_frontend::{parser::Parser, plan::Plan, planner::Planner, tests::MockMetaProvider};
+    use query_frontend::{
+        config::DynamicConfig, parser::Parser, plan::Plan, planner::Planner,
+        tests::MockMetaProvider,
+    };
 
     use super::{BlockRule, LimiterConfig};
     use crate::limiter::Limiter;
 
     fn sql_to_plan(meta_provider: &MockMetaProvider, sql: &str) -> Plan {
-        let planner = Planner::new(meta_provider, RequestId::next_id(), 1);
+        let dyn_config = DynamicConfig::default();
+        let planner = Planner::new(meta_provider, RequestId::next_id(), 1, &dyn_config);
         let mut statements = Parser::parse_sql(sql).unwrap();
         assert_eq!(statements.len(), 1);
         planner.statement_to_plan(statements.remove(0)).unwrap()

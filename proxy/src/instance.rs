@@ -20,6 +20,7 @@ use catalog::manager::ManagerRef;
 use df_operator::registry::FunctionRegistryRef;
 use interpreters::table_manipulator::TableManipulatorRef;
 use query_engine::QueryEngineRef;
+use query_frontend::config::DynamicConfig as FrontendDynamicConfig;
 use table_engine::{engine::TableEngineRef, remote::RemoteEngineRef};
 
 use crate::limiter::Limiter;
@@ -36,7 +37,13 @@ pub struct Instance {
     pub limiter: Limiter,
     pub table_manipulator: TableManipulatorRef,
     pub remote_engine_ref: RemoteEngineRef,
+    pub dyn_config: DynamicConfig,
 }
 
 /// A reference counted instance pointer
 pub type InstanceRef = Arc<Instance>;
+
+#[derive(Debug, Clone, Default)]
+pub struct DynamicConfig {
+    pub fronted: Arc<FrontendDynamicConfig>,
+}

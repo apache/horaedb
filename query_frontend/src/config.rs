@@ -12,22 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![feature(once_cell_try)]
+use std::sync::atomic::AtomicBool;
 
-//! SQL frontend
-//!
-//! Parse sql into logical plan that can be handled by interpreters
-
-pub mod ast;
-pub mod config;
-pub mod container;
-pub mod frontend;
-pub mod influxql;
-pub mod parser;
-mod partition;
-pub mod plan;
-pub mod planner;
-pub mod promql;
-pub mod provider;
-#[cfg(any(test, feature = "test"))]
-pub mod tests;
+#[derive(Debug, Default)]
+pub struct DynamicConfig {
+    pub enable_dist_query_push_down: AtomicBool,
+}
