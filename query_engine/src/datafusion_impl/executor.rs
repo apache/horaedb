@@ -70,11 +70,6 @@ impl Executor for DatafusionExecutorImpl {
         ctx: &Context,
         physical_plan: PhysicalPlanPtr,
     ) -> Result<SendableRecordBatchStream> {
-        info!(
-            "DatafusionExecutorImpl begin to execute plan, request_id:{}, physical_plan: {:?}",
-            ctx.request_id, physical_plan
-        );
-
         let begin_instant = Instant::now();
 
         // TODO: build the `TaskContext` directly rather than through `SessionContext`.
@@ -88,10 +83,10 @@ impl Executor for DatafusionExecutorImpl {
             })?;
 
         info!(
-            "DatafusionExecutorImpl finish to execute plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
+            "DatafusionExecutorImpl ready to execute plan, request_id:{}, prepare cost:{}ms, executable plan:{:?}",
             ctx.request_id,
             begin_instant.saturating_elapsed().as_millis(),
-            physical_plan.metrics_to_string()
+            physical_plan
         );
 
         Ok(stream)
