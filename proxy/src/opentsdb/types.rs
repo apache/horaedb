@@ -211,11 +211,18 @@ pub(crate) fn validate(points: &[Point]) -> Result<()> {
     Ok(())
 }
 
+// http://opentsdb.net/docs/build/html/api_http/query/index.html#response
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct QueryResponse {
     metric: String,
+    /// A list of tags only returned when the results are for a single time
+    /// series. If results are aggregated, this value may be null or an empty
+    /// map
     tags: HashMap<String, String>,
+    /// If more than one timeseries were included in the result set, i.e. they
+    /// were aggregated, this will display a list of tag names that were found
+    /// in common across all time series.
     #[serde(rename = "aggregatedTags")]
-    aggregated_tags: HashMap<String, String>,
+    aggregated_tags: Vec<String>,
     dps: HashMap<String, f64>,
 }

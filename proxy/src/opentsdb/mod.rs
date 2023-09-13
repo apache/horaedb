@@ -21,22 +21,27 @@ use std::time::Instant;
 use ceresdbproto::storage::{
     RequestContext as GrpcRequestContext, WriteRequest as GrpcWriteRequest,
 };
+use common_types::{
+    datum::DatumKind,
+    record_batch::RecordBatch,
+    schema::{RecordSchema, TSID_COLUMN},
+};
 use futures::{stream::FuturesOrdered, StreamExt};
 use generic_error::BoxError;
 use http::StatusCode;
-use interpreters::interpreter::Output;
+use interpreters::{interpreter::Output, RecordBatchVec};
 use log::{debug, info};
 use query_frontend::{
     frontend::{Context as SqlContext, Frontend},
     opentsdb::types::QueryRequest,
     provider::CatalogMetaProvider,
 };
-use snafu::ResultExt;
+use snafu::{ensure, OptionExt, ResultExt};
 
 use self::types::QueryResponse;
 use crate::{
     context::RequestContext,
-    error::{ErrNoCause, ErrWithCause, Result},
+    error::{ErrNoCause, ErrWithCause, InternalNoCause, Result},
     metrics::HTTP_HANDLER_COUNTER_VEC,
     opentsdb::types::{convert_put_request, PutRequest, PutResponse},
     Context, Proxy,
@@ -109,7 +114,6 @@ impl Proxy {
         req: QueryRequest,
     ) -> Result<Vec<QueryResponse>> {
         let request_id = ctx.request_id;
-        // log::info!("get req: {req:?}");
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
 
@@ -153,7 +157,12 @@ impl Proxy {
                     .execute_plan(request_id, &ctx.catalog, &ctx.schema, plan.plan, deadline)
                     .await?;
 
-                convert_output_to_response(output, plan.field_col_name, plan.timestamp_col_name)
+                convert_output_to_response(
+                    output,
+                    plan.field_col_name,
+                    plan.timestamp_col_name,
+                    plan.aggregated_tags,
+                )
             };
 
             futures.push_back(one_resp);
@@ -161,6 +170,7 @@ impl Proxy {
 
         let resp = futures.collect::<Vec<_>>().await;
         let resp = resp.into_iter().collect::<Result<Vec<_>>>()?;
+        let resp = resp.into_iter().flatten().collect();
 
         Ok(resp)
     }
@@ -170,7 +180,115 @@ fn convert_output_to_response(
     output: Output,
     field_col_name: String,
     timestamp_col_name: String,
-) -> Result<QueryResponse> {
-    Ok(Default::default())
-    // todo!()
+    aggregated_tags: Vec<String>,
+) -> Result<Vec<QueryResponse>> {
+    let records = match output {
+        Output::Records(records) => records,
+        Output::AffectedRows(_) => {
+            return InternalNoCause {
+                msg: "output in opentsdb query should not be affected rows",
+            }
+            .fail()
+        }
+    };
+
+    let converter = match records.first() {
+        None => {
+            return Ok(Vec::new());
+        }
+        Some(batch) => {
+            let record_schema = batch.schema();
+            QueryConverter::try_new(
+                record_schema,
+                &timestamp_col_name,
+                &field_col_name,
+                aggregated_tags,
+            )?
+        }
+    };
+
+    for record in records {
+        converter.add_batch(record)?;
+    }
+
+    Ok(converter.finish())
+}
+
+struct QueryConverter {
+    timestamp_idx: usize,
+    value_idx: usize,
+    // (column_name, index)
+    tags: Vec<(String, usize)>,
+    aggregated_tags: Vec<String>,
+
+    resp: Vec<QueryResponse>,
+}
+
+impl QueryConverter {
+    fn try_new(
+        schema: &RecordSchema,
+        timestamp_col_name: &str,
+        field_col_name: &str,
+        aggregated_tags: Vec<String>,
+    ) -> Result<Self> {
+        let timestamp_idx = schema
+            .index_of(timestamp_col_name)
+            .context(InternalNoCause {
+                msg: "Timestamp column is missing in query response",
+            })?;
+        let value_idx = schema.index_of(field_col_name).context(InternalNoCause {
+            msg: "Value column is missing in query response",
+        })?;
+        let tags = schema
+            .columns()
+            .iter()
+            .enumerate()
+            .filter(|(_, col)| col.is_tag)
+            .map(|(i, col)| {
+                ensure!(
+                    matches!(col.data_type, DatumKind::String),
+                    InternalNoCause {
+                        msg: format!("Tag must be string type, current:{}", col.data_type)
+                    }
+                );
+
+                Ok((col.name.to_string(), i))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        ensure!(
+            schema.column(timestamp_idx).data_type.is_timestamp(),
+            InternalNoCause {
+                msg: format!(
+                    "Timestamp wrong type, current:{}",
+                    schema.column(timestamp_idx).data_type
+                )
+            }
+        );
+        ensure!(
+            schema.column(value_idx).data_type.is_f64_castable(),
+            InternalNoCause {
+                msg: format!(
+                    "Value must be f64 compatible type, current:{}",
+                    schema.column(value_idx).data_type
+                )
+            }
+        );
+
+        Ok(QueryConverter {
+            timestamp_idx,
+            value_idx,
+            tags,
+            aggregated_tags,
+            resp: Vec::new(),
+        })
+    }
+
+    fn add_batch(&self, record_batch: RecordBatch) -> Result<()> {
+        todo!()
+    }
+
+    fn finish(self) -> Vec<QueryResponse> {
+        self.resp
+    }
 }
