@@ -252,6 +252,10 @@ impl<C, A: Arena<Stats = BasicStats> + Clone> Skiplist<C, A> {
     fn height(&self) -> usize {
         self.core.height.load(Ordering::SeqCst)
     }
+
+    pub fn arena_block_size(&self) -> usize {
+        self.core.arena.block_size()
+    }
 }
 
 impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> Skiplist<C, A> {

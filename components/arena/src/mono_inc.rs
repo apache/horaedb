@@ -38,21 +38,24 @@ const DEFAULT_ALIGN: usize = 8;
 #[derive(Clone)]
 pub struct MonoIncArena {
     core: Arc<RwLock<ArenaCore>>,
+    block_size: usize,
 }
 
 impl MonoIncArena {
-    pub fn new(regular_block_size: usize) -> Self {
+    pub fn new(block_size: usize) -> Self {
         Self {
             core: Arc::new(RwLock::new(ArenaCore::new(
-                regular_block_size,
+                block_size,
                 Arc::new(NoopCollector {}),
             ))),
+            block_size,
         }
     }
 
-    pub fn with_collector(regular_block_size: usize, collector: CollectorRef) -> Self {
+    pub fn with_collector(block_size: usize, collector: CollectorRef) -> Self {
         Self {
-            core: Arc::new(RwLock::new(ArenaCore::new(regular_block_size, collector))),
+            core: Arc::new(RwLock::new(ArenaCore::new(block_size, collector))),
+            block_size,
         }
     }
 }
@@ -70,6 +73,10 @@ impl Arena for MonoIncArena {
 
     fn alloc(&self, layout: Layout) -> NonNull<u8> {
         self.core.write().unwrap().alloc(layout)
+    }
+
+    fn block_size(&self) -> usize {
+        self.block_size
     }
 }
 

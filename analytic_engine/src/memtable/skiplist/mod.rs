@@ -17,10 +17,7 @@
 pub mod factory;
 pub mod iter;
 
-use std::{
-    convert::TryInto,
-    sync::atomic::{self, AtomicU64, AtomicUsize},
-};
+use std::sync::atomic::{self, AtomicU64, AtomicUsize};
 
 use arena::{Arena, BasicStats};
 use bytes_ext::Bytes;
@@ -153,12 +150,14 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
     }
 
     fn approximate_memory_usage(&self) -> usize {
-        // Mem size of skiplist is u32, need to cast to usize
-        match self.skiplist.mem_size().try_into() {
-            Ok(v) => v,
-            // The skiplist already use bytes larger than usize
-            Err(_) => usize::MAX,
-        }
+        let encoded_size = self
+            .metrics
+            .row_encoded_size
+            .load(atomic::Ordering::Relaxed);
+        let arena_block_size = self.skiplist.arena_block_size();
+
+        // Ceil to block_size
+        (encoded_size + arena_block_size - 1) / arena_block_size * arena_block_size
     }
 
     fn set_last_sequence(&self, sequence: SequenceNumber) -> Result<()> {
