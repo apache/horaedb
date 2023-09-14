@@ -125,9 +125,8 @@ mod hack {
     #[derive(PartialEq)]
     pub enum TableStatus {
         Ok = 0,
-        /// No background jobs are allowed if the table is closed.
         Closed,
-        /// No write/alter are allowed if the table is dropped.
+        /// No write/alter are allowed after table is dropped.
         Dropped,
     }
 }
@@ -417,8 +416,12 @@ impl TableData {
         self.status.store(TableStatus::Closed, Ordering::SeqCst)
     }
 
-    pub fn is_closed(&self) -> bool {
-        self.status.load(Ordering::SeqCst) == TableStatus::Closed
+    #[inline]
+    pub fn allow_compaction(&self) -> bool {
+        match self.status.load(Ordering::SeqCst) {
+            TableStatus::Ok => true,
+            TableStatus::Closed | TableStatus::Dropped => false,
+        }
     }
 
     /// Returns total memtable memory usage in bytes.

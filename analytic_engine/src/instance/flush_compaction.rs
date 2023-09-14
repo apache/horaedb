@@ -725,10 +725,10 @@ impl SpaceStore {
             .await?;
         }
 
-        if table_data.is_closed() {
+        if !table_data.allow_compaction() {
             return Other {
                 msg: format!(
-                    "Table is already closed, unable to do update manifest, table:{}, table_id:{}",
+                    "Table status is not ok, unable to update manifest, table:{}, table_id:{}",
                     table_data.name, table_data.id
                 ),
             }
