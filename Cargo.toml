@@ -94,6 +94,7 @@ analytic_engine = { path = "analytic_engine" }
 arena = { path = "components/arena" }
 async-stream = "0.3.4"
 async-trait = "0.1.72"
+atomic_enum = "0.2.0"
 base64 = "0.13"
 bytes = "1"
 bytes_ext = { path = "components/bytes_ext" }

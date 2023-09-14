@@ -725,6 +725,16 @@ impl SpaceStore {
             .await?;
         }
 
+        if !table_data.allow_compaction() {
+            return Other {
+                msg: format!(
+                    "Table status is not ok, unable to update manifest, table:{}, table_id:{}",
+                    table_data.name, table_data.id
+                ),
+            }
+            .fail();
+        }
+
         let edit_req = {
             let meta_update = MetaUpdate::VersionEdit(edit_meta.clone());
             MetaEditRequest {

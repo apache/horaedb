@@ -79,6 +79,10 @@ impl Closer {
         let removed_table = self.space.remove_table(&request.table_name);
         assert!(removed_table.is_some());
 
+        // Table is already moved out of space, we should close it to stop background
+        // jobs.
+        table_data.set_closed();
+
         info!(
             "table:{}-{} has been removed from the space_id:{}",
             table_data.name, table_data.id, self.space.id
