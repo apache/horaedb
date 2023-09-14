@@ -725,6 +725,16 @@ impl SpaceStore {
             .await?;
         }
 
+        if table_data.is_closed() {
+            return Other {
+                msg: format!(
+                    "Table is already closed, unable to do update manifest, table:{}, table_id:{}",
+                    table_data.name, table_data.id
+                ),
+            }
+            .fail();
+        }
+
         let edit_req = {
             let meta_update = MetaUpdate::VersionEdit(edit_meta.clone());
             MetaEditRequest {

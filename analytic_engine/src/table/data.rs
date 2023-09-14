@@ -21,7 +21,7 @@ use std::{
     fmt::Formatter,
     num::NonZeroUsize,
     sync::{
-        atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::Duration,
@@ -111,6 +111,29 @@ impl TableShardInfo {
     }
 }
 
+/// `atomic_enum` macro will expand method like
+/// ```
+/// compare_exchange(..) -> Result<TableStatus, TableStatus>
+/// ```
+/// The result type is conflict with outer
+/// Result, so add this hack
+// TODO: fix this in atomic_enum crate.
+mod hack {
+    use atomic_enum::atomic_enum;
+
+    #[atomic_enum]
+    #[derive(PartialEq)]
+    pub enum TableStatus {
+        Ok = 0,
+        /// No background jobs are allowed if the table is closed.
+        Closed,
+        /// No write/alter are allowed if the table is dropped.
+        Dropped,
+    }
+}
+
+use self::hack::{AtomicTableStatus, TableStatus};
+
 /// Data of a table
 pub struct TableData {
     /// Id of this table
@@ -161,10 +184,8 @@ pub struct TableData {
     /// Not persist, used to determine if this table should flush.
     last_flush_time_ms: AtomicU64,
 
-    /// Flag denoting whether the table is dropped
-    ///
-    /// No write/alter is allowed if the table is dropped.
-    dropped: AtomicBool,
+    /// Table Status
+    status: AtomicTableStatus,
 
     /// Manifest updates after last snapshot
     manifest_updates: AtomicUsize,
@@ -192,7 +213,7 @@ impl fmt::Debug for TableData {
             .field("opts", &self.opts)
             .field("last_sequence", &self.last_sequence)
             .field("last_memtable_id", &self.last_memtable_id)
-            .field("dropped", &self.dropped.load(Ordering::Relaxed))
+            .field("status", &self.status.load(Ordering::Relaxed))
             .field("shard_info", &self.shard_info)
             .finish()
     }
@@ -265,7 +286,7 @@ impl TableData {
             last_memtable_id: AtomicU64::new(0),
             allocator: IdAllocator::new(0, 0, DEFAULT_ALLOC_STEP),
             last_flush_time_ms: AtomicU64::new(0),
-            dropped: AtomicBool::new(false),
+            status: TableStatus::Ok.into(),
             metrics,
             shard_info: TableShardInfo::new(shard_id),
             serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(table_id)),
@@ -310,7 +331,7 @@ impl TableData {
             last_memtable_id: AtomicU64::new(0),
             allocator,
             last_flush_time_ms: AtomicU64::new(0),
-            dropped: AtomicBool::new(false),
+            status: TableStatus::Ok.into(),
             metrics,
             shard_info: TableShardInfo::new(shard_id),
             serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(add_meta.table_id)),
@@ -382,13 +403,22 @@ impl TableData {
 
     #[inline]
     pub fn is_dropped(&self) -> bool {
-        self.dropped.load(Ordering::SeqCst)
+        self.status.load(Ordering::SeqCst) == TableStatus::Dropped
     }
 
     /// Set the table is dropped and forbid any writes/alter on this table.
     #[inline]
     pub fn set_dropped(&self) {
-        self.dropped.store(true, Ordering::SeqCst);
+        self.status.store(TableStatus::Dropped, Ordering::SeqCst)
+    }
+
+    #[inline]
+    pub fn set_closed(&self) {
+        self.status.store(TableStatus::Closed, Ordering::SeqCst)
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.status.load(Ordering::SeqCst) == TableStatus::Closed
     }
 
     /// Returns total memtable memory usage in bytes.

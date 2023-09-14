@@ -569,6 +569,14 @@ impl ScheduleWorker {
 
     async fn handle_table_compaction_request(&self, compact_req: TableCompactionRequest) {
         let table_data = compact_req.table_data.clone();
+        if table_data.is_closed() {
+            error!(
+                "Table is already closed, unable to do compaction further, table:{}, table_id:{}",
+                table_data.name, table_data.id
+            );
+            return;
+        }
+
         let table_options = table_data.table_options();
         let compaction_strategy = table_options.compaction_strategy;
         let picker = self.picker_manager.get_picker(compaction_strategy);
