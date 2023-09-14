@@ -156,7 +156,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
             .load(atomic::Ordering::Relaxed);
 
         let arena_block_size = self.skiplist.arena_block_size();
-        encoded_size / arena_block_size * arena_block_size + arena_block_size
+        (encoded_size  + arena_block_size - 1)/ arena_block_size * arena_block_size
     }
 
     fn set_last_sequence(&self, sequence: SequenceNumber) -> Result<()> {
