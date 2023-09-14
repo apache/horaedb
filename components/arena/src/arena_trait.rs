@@ -36,6 +36,9 @@ pub trait Arena {
     /// Get arena's statistics.
     fn stats(&self) -> Self::Stats;
 
+    /// Get arena's block size.
+    fn block_size(&self) -> usize;
+
     // provided methods
 
     /// Allocate required memory. Panic if failed.
