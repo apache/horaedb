@@ -112,7 +112,7 @@ impl TableShardInfo {
 }
 
 /// `atomic_enum` macro will expand method like
-/// ```
+/// ```text
 /// compare_exchange(..) -> Result<TableStatus, TableStatus>
 /// ```
 /// The result type is conflict with outer
