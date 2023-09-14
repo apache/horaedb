@@ -90,25 +90,33 @@ pub fn file_drainer(path: &Option<String>) -> Option<CeresFormat<PlainDecorator<
 }
 
 /// Dispatcher for logs
-pub struct LogDispatcher<N: Drain> {
+pub struct LogDispatcher<N, S> {
     normal: N,
+    slow: Option<S>,
 }
 
-impl<N: Drain> LogDispatcher<N> {
-    pub fn new(normal: N) -> Self {
-        Self { normal }
+impl<N: Drain, S: Drain> LogDispatcher<N, S> {
+    pub fn new(normal: N, slow: Option<S>) -> Self {
+        Self { normal, slow }
     }
 }
 
-impl<N> Drain for LogDispatcher<N>
+impl<N, S> Drain for LogDispatcher<N, S>
 where
     N: Drain<Ok = (), Err = io::Error>,
+    S: Drain<Ok = (), Err = io::Error>,
 {
     type Err = io::Error;
     type Ok = ();
 
     fn log(&self, record: &Record, values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
-        self.normal.log(record, values)
+        let tag = record.tag();
+        // if slow_path not exists, print slow_log to terminal
+        if self.slow.is_some() && tag.starts_with("slow_log") {
+            self.slow.as_ref().unwrap().log(record, values)
+        } else {
+            self.normal.log(record, values)
+        }
     }
 }
 
@@ -119,6 +127,7 @@ pub struct Config {
     pub level: String,
     pub enable_async: bool,
     pub async_channel_len: i32,
+    pub slow_log_path: Option<String>,
 }
 
 impl Default for Config {
@@ -127,6 +136,7 @@ impl Default for Config {
             level: "info".to_string(),
             enable_async: true,
             async_channel_len: 102400,
+            slow_log_path: None,
         }
     }
 }
@@ -143,8 +153,9 @@ pub fn init_log(config: &Config) -> Result<RuntimeLevel, SetLoggerError> {
         }
     };
 
-    let term_drain = term_drainer();
-    let drain = LogDispatcher::new(term_drain);
+    let normal_drain = term_drainer();
+    let slow_drain = file_drainer(&config.slow_log_path);
+    let drain = LogDispatcher::new(normal_drain, slow_drain);
 
     // Use async and init stdlog
     init_log_from_drain(
@@ -433,7 +444,10 @@ pub fn init_test_logger() {
 
     // drain
     let term_drain = term_drainer();
-    let drain = LogDispatcher::new(term_drain);
+    let drain = LogDispatcher::new(
+        term_drain,
+        Option::<CeresFormat<PlainDecorator<File>>>::None,
+    );
 
     // Use async and init stdlog
     let _ = init_log_from_drain(drain, level, false, 12400, true);

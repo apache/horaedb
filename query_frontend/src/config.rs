@@ -14,7 +14,13 @@
 
 use std::sync::atomic::AtomicBool;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct DynamicConfig {
     pub enable_dist_query_push_down: AtomicBool,
+}
+
+impl Default for DynamicConfig {
+    fn default() -> Self {
+        Self { enable_dist_query_push_down: AtomicBool::new(true) }
+    }
 }

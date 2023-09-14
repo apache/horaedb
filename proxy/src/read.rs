@@ -37,6 +37,8 @@ use tonic::{transport::Channel, IntoRequest};
 use crate::{
     error::{ErrNoCause, ErrWithCause, Error, Internal, Result},
     forward::{ForwardRequest, ForwardResult},
+    maybe_slow_log,
+    slow_query::{SlowTimer},
     Context, Proxy,
 };
 
@@ -78,11 +80,11 @@ impl Proxy {
         enable_partition_table_access: bool,
     ) -> Result<Output> {
         let request_id = ctx.request_id;
-        let begin_instant = Instant::now();
-        let deadline = ctx.timeout.map(|t| begin_instant + t);
+        let slow_timer = SlowTimer::with_slow_threshold_s(0);
+        let deadline = ctx.timeout.map(|t| slow_timer.now() + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
-        info!("Handle sql query begin, catalog:{catalog}, schema:{schema}, deadline:{deadline:?}, ctx:{ctx:?}, sql:{sql}");
+        info!("Handle sql query begin, request_id:{request_id}, catalog:{catalog}, schema:{schema}, deadline:{deadline:?}, ctx:{ctx:?}, sql:{sql}");
 
         let instance = &self.instance;
         // TODO(yingwen): Privilege check, cannot access data of other tenant
@@ -159,8 +161,16 @@ impl Proxy {
             msg: format!("Failed to execute plan, sql:{sql}"),
         })?;
 
-        let cost = begin_instant.saturating_elapsed();
-        info!("Handle sql query successfully, catalog:{catalog}, schema:{schema}, cost:{cost:?}, ctx:{ctx:?}, sql:{sql}");
+        let cost = slow_timer.elapsed();
+        maybe_slow_log!(
+            slow_timer,
+            "Handle sql query finished, sql:{}, elapsed:{:?}, catalog:{}, schema:{}, ctx:{:?}",
+            sql,
+            cost,
+            catalog,
+            schema,
+            ctx
+        );
 
         match &output {
             Output::AffectedRows(_) => Ok(output),
