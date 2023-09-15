@@ -51,7 +51,7 @@ pub struct DynamicConfig {
 
 impl Default for DynamicConfig {
     fn default() -> Self {
-        Self { 
+        Self {
             fronted: Default::default(),
             slow_threshold: Duration::from_secs(60),
         }

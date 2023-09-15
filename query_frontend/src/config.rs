@@ -21,6 +21,8 @@ pub struct DynamicConfig {
 
 impl Default for DynamicConfig {
     fn default() -> Self {
-        Self { enable_dist_query_push_down: AtomicBool::new(true) }
+        Self {
+            enable_dist_query_push_down: AtomicBool::new(true),
+        }
     }
 }

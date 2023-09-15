@@ -14,7 +14,11 @@
 
 //! Contains common methods used by the read process.
 
-use std::time::Instant;
+use std::{
+    env,
+    str::FromStr,
+    time::{Duration, Instant},
+};
 
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, SqlQueryRequest, SqlQueryResponse,
@@ -31,16 +35,25 @@ use query_frontend::{
 };
 use router::endpoint::Endpoint;
 use snafu::{ensure, ResultExt};
-use time_ext::InstantExt;
+use time_ext::{InstantExt, ReadableDuration};
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
     error::{ErrNoCause, ErrWithCause, Error, Internal, Result},
     forward::{ForwardRequest, ForwardResult},
     maybe_slow_log,
-    slow_query::{SlowTimer},
+    slow_query::SlowTimer,
     Context, Proxy,
 };
+
+const CERESDB_SLOW_THRESHOLD: &str = "CERESDB_SLOW_THRESHOLD";
+
+fn slow_threshold() -> Duration {
+    let readable = env::var(CERESDB_SLOW_THRESHOLD).unwrap_or("60s".to_string());
+    let readable = ReadableDuration::from_str(&readable)
+        .unwrap_or(ReadableDuration::from(Duration::from_secs(60)));
+    readable.0
+}
 
 pub enum SqlResponse {
     Forwarded(SqlQueryResponse),
@@ -80,7 +93,7 @@ impl Proxy {
         enable_partition_table_access: bool,
     ) -> Result<Output> {
         let request_id = ctx.request_id;
-        let slow_timer = SlowTimer::with_slow_threshold_s(0);
+        let slow_timer = SlowTimer::new(slow_threshold());
         let deadline = ctx.timeout.map(|t| slow_timer.now() + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
