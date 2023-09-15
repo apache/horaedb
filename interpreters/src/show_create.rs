@@ -166,7 +166,7 @@ impl ShowCreateInterpreter {
                 }
             }
             PartitionInfo::Random(v) => {
-                format!(" PARTITIONS {}", v.definitions.len())
+                format!(" PARTITION BY RANDOM PARTITIONS {}", v.definitions.len())
             }
         }
     }
