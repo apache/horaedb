@@ -940,6 +940,7 @@ mod test {
     use upstream::local::LocalFileSystem;
 
     use super::*;
+    use crate::test_util::MemoryStore;
 
     struct StoreWithCacheDir {
         inner: DiskCacheStore,
@@ -951,8 +952,7 @@ mod test {
         cap: usize,
         partition_bits: usize,
     ) -> StoreWithCacheDir {
-        let local_path = tempdir().unwrap();
-        let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+        let local_store = Arc::new(MemoryStore::default());
 
         let cache_dir = tempdir().unwrap();
         let store = DiskCacheStore::try_new(
@@ -1103,6 +1103,7 @@ mod test {
         }
 
         let actual = futures::future::join_all(tasks).await;
+        println!("get_counts, {}", store.inner.underlying_store);
         for (actual, (_, expected)) in actual.into_iter().zip(testcases.into_iter()) {
             assert_eq!(actual.unwrap(), Bytes::from(expected))
         }
