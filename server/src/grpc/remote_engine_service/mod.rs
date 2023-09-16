@@ -122,21 +122,32 @@ impl Drop for StreamWithMetric {
 }
 
 struct RemotePlanStreamWithMetric {
+    request_id: RequestId,
     inner: SendableRecordBatchStream,
     instant: Instant,
 }
 
 impl RemotePlanStreamWithMetric {
-    fn new(inner: SendableRecordBatchStream, instant: Instant) -> Self {
-        Self { inner, instant }
+    fn new(inner: SendableRecordBatchStream, request_id: RequestId, instant: Instant) -> Self {
+        Self {
+            request_id,
+            inner,
+            instant,
+        }
     }
 }
 
 impl Drop for RemotePlanStreamWithMetric {
     fn drop(&mut self) {
+        let elapsed = self.instant.saturating_elapsed();
+        info!(
+            "Datafusion finished to execute remote physical plan, request_id:{}, elapsed:{:?}",
+            self.request_id, elapsed
+        );
+
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .execute_physical_plan
-            .observe(self.instant.saturating_elapsed().as_secs_f64());
+            .observe(elapsed.as_secs_f64());
     }
 }
 
@@ -541,7 +552,6 @@ impl RemoteEngineServiceImpl {
         &self,
         request: Request<ExecutePlanRequest>,
     ) -> Result<RemotePlanStreamWithMetric> {
-        let instant = Instant::now();
         let request = request.into_inner();
         let query_engine = self.instance.query_engine.clone();
 
@@ -556,7 +566,7 @@ impl RemoteEngineServiceImpl {
                 msg: "failed to run execute physical plan task",
             })??;
 
-        Ok(RemotePlanStreamWithMetric::new(stream, instant))
+        Ok(stream)
     }
 
     fn handler_ctx(&self) -> HandlerContext {
@@ -850,7 +860,9 @@ async fn handle_get_table_info(
 async fn handle_execute_plan(
     request: ExecutePlanRequest,
     query_engine: QueryEngineRef,
-) -> Result<SendableRecordBatchStream> {
+) -> Result<RemotePlanStreamWithMetric> {
+    let instant = Instant::now();
+
     // Build execution context.
     let ctx_in_req = request.context.with_context(|| ErrNoCause {
         code: StatusCode::Internal,
@@ -892,14 +904,16 @@ async fn handle_execute_plan(
 
     // Execute plan.
     let executor = query_engine.executor();
-    executor
+    let stream = executor
         .execute(&exec_ctx, physical_plan)
         .await
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
             msg: "failed to execute remote plan",
-        })
+        })?;
+
+    Ok(RemotePlanStreamWithMetric::new(stream, request_id, instant))
 }
 
 fn check_and_extract_plan(
