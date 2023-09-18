@@ -38,7 +38,7 @@ impl PartitionRule for RandomRule {
     fn location_partitions_for_write(&self, row_group: RowGroup) -> Result<PartitionedRows> {
         let value: usize = rand::random();
         let partition_id = value % self.partition_num;
-        Ok(PartitionedRows::One {
+        Ok(PartitionedRows::Single {
             partition_id,
             row_group,
         })

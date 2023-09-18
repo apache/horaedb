@@ -27,7 +27,7 @@ use crate::partition::Result;
 
 /// The partitioned rows of the written requests.
 pub enum PartitionedRows {
-    One {
+    Single {
         partition_id: usize,
         row_group: RowGroup,
     },

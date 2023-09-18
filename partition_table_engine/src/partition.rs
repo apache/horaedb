@@ -245,7 +245,7 @@ impl Table for PartitionTableImpl {
         };
 
         match partition_rows {
-            PartitionedRows::One {
+            PartitionedRows::Single {
                 partition_id,
                 row_group,
             } => self.write_single_row_group(partition_id, row_group).await,
