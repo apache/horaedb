@@ -72,8 +72,11 @@ pub enum Error {
     ))]
     InvalidPartitionInfoEncodingVersion { version: u8, backtrace: Backtrace },
 
-    #[snafu(display("Partition info could not be empty"))]
-    EmptyPartitionInfo {},
+    #[snafu(display("Partition info could not be empty.\nBacktrace:\n{backtrace}"))]
+    EmptyPartitionInfo { backtrace: Backtrace },
+
+    #[snafu(display("Column in the partition key is not found.\nBacktrace:\n{backtrace}"))]
+    InvalidPartitionKey { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -281,7 +284,7 @@ impl TryFrom<ceresdbproto::cluster::PartitionInfo> for PartitionInfo {
                     Ok(Self::Random(random_partition_info))
                 }
             },
-            None => Err(Error::EmptyPartitionInfo {}),
+            None => EmptyPartitionInfo {}.fail(),
         }
     }
 }

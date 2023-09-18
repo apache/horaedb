@@ -20,19 +20,38 @@ mod filter;
 mod key;
 mod random;
 
-use common_types::{datum::DatumKind, row::RowGroup};
+use common_types::row::{Row, RowGroup};
 
 use self::filter::PartitionFilter;
 use crate::partition::Result;
 
+/// The partitioned rows of the written requests.
+pub enum PartitionedRows {
+    Single {
+        partition_id: usize,
+        row_group: RowGroup,
+    },
+    Multiple(PartitionedRowsIter),
+}
+
+/// A row partitioned into a specific partition.
+#[derive(Debug, Clone)]
+pub struct PartitionedRow {
+    pub partition_id: usize,
+    pub row: Row,
+}
+
+pub type PartitionedRowsIter = Box<dyn Iterator<Item = PartitionedRow> + Send + 'static>;
+
 /// Partition rule locate partition
 pub trait PartitionRule: Send + Sync + 'static {
-    fn columns(&self) -> Vec<String>;
+    fn involved_columns(&self) -> &[String];
 
     /// Locate the partition for each row in `row_group`.
     ///
-    /// Len of returned value should be equal to the one of rows in `row group`.
-    fn locate_partitions_for_write(&self, row_group: &RowGroup) -> Result<Vec<usize>>;
+    /// The size of returned iterator should be equal to the one of rows in `row
+    /// group`.
+    fn location_partitions_for_write(&self, row_group: RowGroup) -> Result<PartitionedRows>;
 
     /// Locate partitions according to `filters`.
     ///
@@ -48,17 +67,4 @@ pub trait PartitionRule: Send + Sync + 'static {
     fn locate_partitions_for_read(&self, filters: &[PartitionFilter]) -> Result<Vec<usize>>;
 }
 
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct ColumnWithType {
-    column: String,
-    datum_type: DatumKind,
-}
-
-impl ColumnWithType {
-    pub fn new(column: String, datum_type: DatumKind) -> Self {
-        Self { column, datum_type }
-    }
-}
-
-pub type PartitionRuleRef = Box<dyn PartitionRule>;
+pub type PartitionRulePtr = Box<dyn PartitionRule>;

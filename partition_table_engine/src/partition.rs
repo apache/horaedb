@@ -19,7 +19,7 @@ use std::{collections::HashMap, fmt};
 use analytic_engine::{table::support_pushdown, TableOptions};
 use async_trait::async_trait;
 use common_types::{
-    row::{Row, RowGroupBuilder},
+    row::{Row, RowGroup, RowGroupBuilder},
     schema::Schema,
 };
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -27,7 +27,12 @@ use generic_error::BoxError;
 use snafu::ResultExt;
 use table_engine::{
     partition::{
-        format_sub_partition_table_name, rule::df_adapter::DfPartitionRuleAdapter, PartitionInfo,
+        format_sub_partition_table_name,
+        rule::{
+            df_adapter::DfPartitionRuleAdapter, PartitionedRow, PartitionedRows,
+            PartitionedRowsIter,
+        },
+        PartitionInfo,
     },
     remote::{
         model::{
@@ -64,13 +69,23 @@ pub struct TableData {
 pub struct PartitionTableImpl {
     table_data: TableData,
     remote_engine: RemoteEngineRef,
+    partition_rule: DfPartitionRuleAdapter,
 }
 
 impl PartitionTableImpl {
     pub fn new(table_data: TableData, remote_engine: RemoteEngineRef) -> Result<Self> {
+        // Build partition rule.
+        let partition_rule = DfPartitionRuleAdapter::new(
+            table_data.partition_info.clone(),
+            &table_data.table_schema,
+        )
+        .box_err()
+        .context(CreatePartitionRule)?;
+
         Ok(Self {
             table_data,
             remote_engine,
+            partition_rule,
         })
     }
 
@@ -83,6 +98,86 @@ impl PartitionTableImpl {
             schema: self.table_data.schema_name.clone(),
             table: format_sub_partition_table_name(&self.table_data.table_name, &partition_name),
         }
+    }
+
+    async fn write_single_row_group(
+        &self,
+        partition_id: usize,
+        row_group: RowGroup,
+    ) -> Result<usize> {
+        let sub_table_ident = self.get_sub_table_ident(partition_id);
+
+        let request = RemoteWriteRequest {
+            table: sub_table_ident,
+            write_request: WriteRequest { row_group },
+        };
+
+        self.remote_engine
+            .write(request)
+            .await
+            .box_err()
+            .with_context(|| WriteBatch {
+                tables: vec![self.table_data.table_name.clone()],
+            })
+    }
+
+    async fn write_partitioned_row_groups(
+        &self,
+        schema: Schema,
+        partitioned_rows: PartitionedRowsIter,
+    ) -> Result<usize> {
+        let mut split_rows = HashMap::new();
+        for PartitionedRow { partition_id, row } in partitioned_rows {
+            split_rows
+                .entry(partition_id)
+                .or_insert_with(Vec::new)
+                .push(row);
+        }
+
+        // Insert split write request through remote engine.
+        let mut request_batch = Vec::with_capacity(split_rows.len());
+        for (partition, rows) in split_rows {
+            let sub_table_ident = self.get_sub_table_ident(partition);
+            let row_group = RowGroupBuilder::with_rows(schema.clone(), rows)
+                .box_err()
+                .with_context(|| Write {
+                    table: sub_table_ident.table.clone(),
+                })?
+                .build();
+
+            let request = RemoteWriteRequest {
+                table: sub_table_ident,
+                write_request: WriteRequest { row_group },
+            };
+            request_batch.push(request);
+        }
+
+        let batch_results = self
+            .remote_engine
+            .write_batch(request_batch)
+            .await
+            .box_err()
+            .with_context(|| WriteBatch {
+                tables: vec![self.table_data.table_name.clone()],
+            })?;
+        let mut total_rows = 0;
+        for batch_result in batch_results {
+            let WriteBatchResult {
+                table_idents,
+                result,
+            } = batch_result;
+
+            let written_rows = result.with_context(|| {
+                let tables = table_idents
+                    .into_iter()
+                    .map(|ident| ident.table)
+                    .collect::<Vec<_>>();
+                WriteBatch { tables }
+            })?;
+            total_rows += written_rows;
+        }
+
+        Ok(total_rows as usize)
     }
 }
 
@@ -137,83 +232,27 @@ impl Table for PartitionTableImpl {
             .with_label_values(&["total"])
             .start_timer();
 
-        // Build partition rule.
-        let df_partition_rule = match self.partition_info() {
-            None => UnexpectedWithMsg {
-                msg: "partition table partition info can't be empty",
-            }
-            .fail()?,
-            Some(partition_info) => {
-                DfPartitionRuleAdapter::new(partition_info, &self.table_data.table_schema)
-                    .box_err()
-                    .context(CreatePartitionRule)?
-            }
-        };
-
         // Split write request.
-        let partitions = {
+        let schema = request.row_group.schema().clone();
+        let partition_rows = {
             let _locate_timer = PARTITION_TABLE_WRITE_DURATION_HISTOGRAM
                 .with_label_values(&["locate"])
                 .start_timer();
-            df_partition_rule
-                .locate_partitions_for_write(&request.row_group)
+            self.partition_rule
+                .locate_partitions_for_write(request.row_group)
                 .box_err()
                 .context(LocatePartitions)?
         };
 
-        let mut split_rows = HashMap::new();
-        let schema = request.row_group.schema().clone();
-        for (partition, row) in partitions.into_iter().zip(request.row_group.into_iter()) {
-            split_rows
-                .entry(partition)
-                .or_insert_with(Vec::new)
-                .push(row);
+        match partition_rows {
+            PartitionedRows::Single {
+                partition_id,
+                row_group,
+            } => self.write_single_row_group(partition_id, row_group).await,
+            PartitionedRows::Multiple(iter) => {
+                self.write_partitioned_row_groups(schema, iter).await
+            }
         }
-
-        // Insert split write request through remote engine.
-        let mut request_batch = Vec::with_capacity(split_rows.len());
-        for (partition, rows) in split_rows {
-            let sub_table_ident = self.get_sub_table_ident(partition);
-            let row_group = RowGroupBuilder::with_rows(schema.clone(), rows)
-                .box_err()
-                .with_context(|| Write {
-                    table: sub_table_ident.table.clone(),
-                })?
-                .build();
-
-            let request = RemoteWriteRequest {
-                table: sub_table_ident,
-                write_request: WriteRequest { row_group },
-            };
-            request_batch.push(request);
-        }
-
-        let batch_results = self
-            .remote_engine
-            .write_batch(request_batch)
-            .await
-            .box_err()
-            .context(WriteBatch {
-                tables: vec![self.table_data.table_name.clone()],
-            })?;
-        let mut total_rows = 0;
-        for batch_result in batch_results {
-            let WriteBatchResult {
-                table_idents,
-                result,
-            } = batch_result;
-
-            let written_rows = result.with_context(|| {
-                let tables = table_idents
-                    .into_iter()
-                    .map(|ident| ident.table)
-                    .collect::<Vec<_>>();
-                WriteBatch { tables }
-            })?;
-            total_rows += written_rows;
-        }
-
-        Ok(total_rows as usize)
     }
 
     async fn read(&self, _request: ReadRequest) -> Result<SendableRecordBatchStream> {

@@ -15,21 +15,22 @@
 //! Partition rule factory
 
 use common_types::schema::Schema;
-use snafu::{ensure, OptionExt};
+use snafu::ensure;
 
 use crate::partition::{
     rule::{
         key::{KeyRule, DEFAULT_PARTITION_VERSION},
         random::RandomRule,
-        ColumnWithType, PartitionRuleRef,
+        PartitionRulePtr,
     },
-    BuildPartitionRule, KeyPartitionInfo, PartitionInfo, RandomPartitionInfo, Result,
+    BuildPartitionRule, InvalidPartitionKey, KeyPartitionInfo, PartitionInfo, RandomPartitionInfo,
+    Result,
 };
 
 pub struct PartitionRuleFactory;
 
 impl PartitionRuleFactory {
-    pub fn create(partition_info: PartitionInfo, schema: &Schema) -> Result<PartitionRuleRef> {
+    pub fn create(partition_info: PartitionInfo, schema: &Schema) -> Result<PartitionRulePtr> {
         match partition_info {
             PartitionInfo::Key(key_info) => Self::create_key_rule(key_info, schema),
             PartitionInfo::Random(random_info) => Self::create_random_rule(random_info),
@@ -40,7 +41,7 @@ impl PartitionRuleFactory {
         }
     }
 
-    fn create_key_rule(key_info: KeyPartitionInfo, schema: &Schema) -> Result<PartitionRuleRef> {
+    fn create_key_rule(key_info: KeyPartitionInfo, schema: &Schema) -> Result<PartitionRulePtr> {
         ensure!(
             key_info.version == DEFAULT_PARTITION_VERSION,
             BuildPartitionRule {
@@ -50,28 +51,19 @@ impl PartitionRuleFactory {
                 )
             }
         );
-        let typed_key_columns = key_info
+        let valid_partition_key = key_info
             .partition_key
-            .into_iter()
-            .map(|col| {
-                schema
-                    .column_with_name(col.as_str())
-                    .with_context(|| BuildPartitionRule {
-                        msg: format!(
-                            "column in key partition info not found in schema, column:{col}"
-                        ),
-                    })
-                    .map(|col_schema| ColumnWithType::new(col, col_schema.data_type))
-            })
-            .collect::<Result<Vec<_>>>()?;
+            .iter()
+            .all(|col| schema.column_with_name(col.as_str()).is_some());
+        ensure!(valid_partition_key, InvalidPartitionKey);
 
-        Ok(Box::new(KeyRule {
-            typed_key_columns,
-            partition_num: key_info.definitions.len(),
-        }))
+        Ok(Box::new(KeyRule::new(
+            key_info.definitions.len(),
+            key_info.partition_key,
+        )))
     }
 
-    fn create_random_rule(random_info: RandomPartitionInfo) -> Result<PartitionRuleRef> {
+    fn create_random_rule(random_info: RandomPartitionInfo) -> Result<PartitionRulePtr> {
         Ok(Box::new(RandomRule {
             partition_num: random_info.definitions.len(),
         }))

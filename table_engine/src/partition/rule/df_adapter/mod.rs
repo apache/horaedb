@@ -20,7 +20,8 @@ use datafusion::logical_expr::Expr;
 use self::extractor::{KeyExtractor, NoopExtractor};
 use crate::partition::{
     rule::{
-        df_adapter::extractor::FilterExtractorRef, factory::PartitionRuleFactory, PartitionRuleRef,
+        df_adapter::extractor::FilterExtractorRef, factory::PartitionRuleFactory, PartitionRulePtr,
+        PartitionedRows,
     },
     BuildPartitionRule, PartitionInfo, Result,
 };
@@ -30,7 +31,7 @@ mod extractor;
 /// Partition rule's adapter for datafusion
 pub struct DfPartitionRuleAdapter {
     /// Partition rule
-    rule: PartitionRuleRef,
+    rule: PartitionRulePtr,
 
     /// `PartitionFilter` extractor for datafusion `Expr`
     extractor: FilterExtractorRef,
@@ -44,18 +45,17 @@ impl DfPartitionRuleAdapter {
         Ok(Self { rule, extractor })
     }
 
-    pub fn columns(&self) -> Vec<String> {
-        self.rule.columns()
+    pub fn columns(&self) -> &[String] {
+        self.rule.involved_columns()
     }
 
-    pub fn locate_partitions_for_write(&self, row_group: &RowGroup) -> Result<Vec<usize>> {
-        self.rule.locate_partitions_for_write(row_group)
+    pub fn locate_partitions_for_write(&self, row_group: RowGroup) -> Result<PartitionedRows> {
+        self.rule.location_partitions_for_write(row_group)
     }
 
     pub fn locate_partitions_for_read(&self, filters: &[Expr]) -> Result<Vec<usize>> {
         // Extract partition filters from datafusion filters.
-        let columns = self.columns();
-        let partition_filters = self.extractor.extract(filters, &columns);
+        let partition_filters = self.extractor.extract(filters, self.columns());
 
         // Locate partitions from filters.
         self.rule.locate_partitions_for_read(&partition_filters)
@@ -84,6 +84,7 @@ mod tests {
         time::Timestamp,
     };
     use datafusion::logical_expr::{col, lit};
+    use itertools::Itertools;
 
     use super::*;
     use crate::partition::{
@@ -232,9 +233,13 @@ mod tests {
         // Basic flow
         let key_rule_adapter =
             DfPartitionRuleAdapter::new(PartitionInfo::Key(ket_partition), &schema).unwrap();
-        let partitions = key_rule_adapter
-            .locate_partitions_for_write(&row_group)
+        let partitioned_rows = key_rule_adapter
+            .locate_partitions_for_write(row_group)
             .unwrap();
+        let partition_ids = match partitioned_rows {
+            PartitionedRows::Multiple(iter) => iter.map(|v| v.partition_id).collect_vec(),
+            _ => panic!("invalid partitioned rows"),
+        };
 
         // Expected
         let partition_keys_1 = test_datums[0].clone();
@@ -245,7 +250,7 @@ mod tests {
         let expected_2 = compute_partition(partition_key_refs_2, partition_num);
         let expecteds = vec![expected_1, expected_2];
 
-        assert_eq!(partitions, expecteds);
+        assert_eq!(partition_ids, expecteds);
     }
 
     fn build_schema() -> Schema {

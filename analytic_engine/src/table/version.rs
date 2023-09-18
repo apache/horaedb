@@ -256,7 +256,7 @@ pub type MemTableVec = Vec<MemTableState>;
 struct MemTableView {
     /// The memtable for sampling timestamp to suggest segment duration.
     ///
-    /// This memtable is special and may contains data in differnt segment, so
+    /// This memtable is special and may contains data in different segment, so
     /// can not be moved into immutable memtable set.
     sampling_mem: Option<SamplingMemTable>,
     /// Mutable memtables arranged by its time range.
@@ -399,7 +399,7 @@ impl MutableMemTableSet {
         Self(BTreeMap::new())
     }
 
-    /// Get memtale by timestamp for write
+    /// Get memtable by timestamp for write
     fn memtable_for_write(&self, timestamp: Timestamp) -> Option<&MemTableState> {
         // Find the first memtable whose end time (exclusive) > timestamp
         if let Some((_, memtable)) = self
@@ -607,8 +607,8 @@ impl TableVersion {
 
     /// Switch all mutable memtables
     ///
-    /// Returns the maxium `SequenceNumber` in the mutable memtables needs to be
-    /// freezed.
+    /// Returns the maximum `SequenceNumber` in the mutable memtables needs to
+    /// be freezed.
     pub fn switch_memtables(&self) -> Option<SequenceNumber> {
         self.inner.write().unwrap().memtable_view.switch_memtables()
     }
