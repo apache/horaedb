@@ -53,6 +53,7 @@ macros = { workspace = true }
 message_queue = { workspace = true }
 metric_ext = { workspace = true }
 object_store = { workspace = true }
+ordered-float = { version = "3.0", default-features = false }
 parquet = { workspace = true }
 parquet_ext = { workspace = true }
 prometheus = { workspace = true }

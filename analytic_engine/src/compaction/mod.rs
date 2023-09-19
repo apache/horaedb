@@ -16,7 +16,8 @@
 
 use std::{collections::HashMap, fmt, str::FromStr, sync::Arc};
 
-use common_types::COMPACTION_STRATEGY;
+use common_types::{table::TableId, COMPACTION_STRATEGY};
+use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
 use snafu::{ensure, Backtrace, GenerateBacktrace, ResultExt, Snafu};
@@ -516,25 +517,65 @@ impl Drop for WaiterNotifier {
 /// Request to compact single table.
 pub struct TableCompactionRequest {
     pub table_data: TableDataRef,
+    pub score: OrderedFloat<f32>,
     pub waiter: Option<oneshot::Sender<WaitResult<()>>>,
 }
 
 impl TableCompactionRequest {
-    pub fn new(table_data: TableDataRef) -> (Self, oneshot::Receiver<WaitResult<()>>) {
+    pub fn new(
+        table_data: TableDataRef,
+        score: OrderedFloat<f32>,
+    ) -> (Self, oneshot::Receiver<WaitResult<()>>) {
         let (tx, rx) = oneshot::channel::<WaitResult<()>>();
         let req = Self {
             table_data,
+            score,
             waiter: Some(tx),
         };
 
         (req, rx)
     }
 
-    pub fn no_waiter(table_data: TableDataRef) -> Self {
+    pub fn no_waiter(table_data: TableDataRef, score: OrderedFloat<f32>) -> Self {
         TableCompactionRequest {
             table_data,
+            score,
             waiter: None,
         }
+    }
+}
+
+pub struct TableCompactionKey {
+    table_id: TableId,
+    score: OrderedFloat<f32>,
+}
+
+impl TableCompactionKey {
+    pub fn new(table_id: TableId, score: f32) -> Self {
+        Self {
+            table_id,
+            score: OrderedFloat(score),
+        }
+    }
+}
+
+impl PartialEq for TableCompactionKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.table_id == other.table_id
+    }
+}
+
+impl Eq for TableCompactionKey {}
+
+impl PartialOrd for TableCompactionKey {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.score.partial_cmp(&other.score)
+    }
+}
+
+impl Ord for TableCompactionKey {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.score.cmp(&other.score)
     }
 }
 

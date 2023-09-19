@@ -37,6 +37,7 @@ use generic_error::{BoxError, GenericError};
 use log::{error, info};
 use macros::define_result;
 use mem_collector::MemUsageCollector;
+use ordered_float::OrderedFloat;
 use runtime::Runtime;
 use snafu::{ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
@@ -240,7 +241,7 @@ impl Instance {
 
     // This method will wait until compaction finished.
     pub async fn manual_compact_table(&self, table_data: &TableDataRef) -> Result<()> {
-        let (request, rx) = TableCompactionRequest::new(table_data.clone());
+        let (request, rx) = TableCompactionRequest::new(table_data.clone(), OrderedFloat(1.0));
         let succeed = self
             .compaction_scheduler
             .schedule_table_compaction(request)
