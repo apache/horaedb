@@ -126,7 +126,7 @@ impl ClusterBasedRouter {
 
     async fn route_internal(
         &self,
-        tables: &Vec<String>,
+        tables: &[String],
         database: String,
         route_with_cache: bool,
     ) -> Result<Vec<RouteData>> {
@@ -135,7 +135,7 @@ impl ClusterBasedRouter {
         let miss = if route_with_cache {
             self.route_from_cache(tables, &mut routes)
         } else {
-            tables.clone()
+            tables.to_owned()
         };
 
         trace!("Route from cache, miss:{miss:?}, routes:{routes:?}");
@@ -182,7 +182,7 @@ impl Router for ClusterBasedRouter {
 
     async fn fetch_table_info(&self, schema: &str, table: &str) -> Result<Option<TableInfo>> {
         let mut route_data_vec = self
-            .route_internal(&vec![table.to_string()], schema.to_string(), true)
+            .route_internal(&[table.to_string()], schema.to_string(), true)
             .await?;
         if route_data_vec.is_empty() {
             return Ok(None);
