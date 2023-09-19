@@ -291,6 +291,12 @@ impl TableId {
     }
 }
 
+impl PartialEq<u64> for TableId {
+    fn eq(&self, other: &u64) -> bool {
+        self.as_u64() == *other
+    }
+}
+
 impl From<u64> for TableId {
     fn from(id: u64) -> TableId {
         TableId::new(id)
