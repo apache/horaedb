@@ -70,7 +70,7 @@ type ProcedureParams struct {
 	OnFailed        func(error) error
 }
 
-func NewProcedure(params ProcedureParams) (*Procedure, error) {
+func NewProcedure(params ProcedureParams) (procedure.Procedure, error) {
 	relatedVersionInfo, err := buildRelatedVersionInfo(params)
 	if err != nil {
 		return nil, err

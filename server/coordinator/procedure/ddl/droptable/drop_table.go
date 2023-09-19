@@ -122,15 +122,25 @@ type ProcedureParams struct {
 	OnFailed    func(error) error
 }
 
-func NewDropTableProcedure(params ProcedureParams) (procedure.Procedure, error) {
-	shardID, err := validateTable(params)
+func NewDropTableProcedure(params ProcedureParams) (procedure.Procedure, bool, error) {
+	table, exists, err := params.ClusterMetadata.GetTable(params.SourceReq.GetSchemaName(), params.SourceReq.GetName())
 	if err != nil {
-		return nil, err
+		log.Error("get table", zap.Error(err))
+		return nil, false, err
+	}
+	if !exists {
+		log.Warn("drop non-existing table", zap.String("schema", params.SourceReq.GetSchemaName()), zap.String("table", params.SourceReq.GetName()))
+		return nil, false, nil
+	}
+
+	shardID, err := findShardID(table.ID, params)
+	if err != nil {
+		return nil, false, err
 	}
 
 	relatedVersionInfo, err := buildRelatedVersionInfo(params, shardID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	fsm := fsm.NewFSM(
@@ -145,7 +155,7 @@ func NewDropTableProcedure(params ProcedureParams) (procedure.Procedure, error) 
 		relatedVersionInfo: relatedVersionInfo,
 		params:             params,
 		state:              procedure.StateInit,
-	}, nil
+	}, true, nil
 }
 
 func buildRelatedVersionInfo(params ProcedureParams, shardID storage.ShardID) (procedure.RelatedVersionInfo, error) {
@@ -162,20 +172,10 @@ func buildRelatedVersionInfo(params ProcedureParams, shardID storage.ShardID) (p
 	}, nil
 }
 
-func validateTable(params ProcedureParams) (storage.ShardID, error) {
-	table, exists, err := params.ClusterMetadata.GetTable(params.SourceReq.GetSchemaName(), params.SourceReq.GetName())
-	if err != nil {
-		log.Error("get table", zap.Error(err))
-		return 0, err
-	}
-	if !exists {
-		log.Error("drop non-existing table", zap.String("schema", params.SourceReq.GetSchemaName()), zap.String("table", params.SourceReq.GetName()))
-		return 0, err
-	}
-
+func findShardID(tableID storage.TableID, params ProcedureParams) (storage.ShardID, error) {
 	for _, shardView := range params.ClusterSnapshot.Topology.ShardViewsMapping {
-		for _, tableID := range shardView.TableIDs {
-			if table.ID == tableID {
+		for _, id := range shardView.TableIDs {
+			if tableID == id {
 				return shardView.ShardID, nil
 			}
 		}

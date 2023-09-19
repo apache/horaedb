@@ -69,7 +69,7 @@ type ProcedureParams struct {
 	OnFailed        func(error) error
 }
 
-func NewProcedure(params ProcedureParams) (*Procedure, error) {
+func NewProcedure(params ProcedureParams) (*Procedure, bool, error) {
 	fsm := fsm.NewFSM(
 		stateBegin,
 		createDropPartitionTableEvents,
@@ -77,14 +77,14 @@ func NewProcedure(params ProcedureParams) (*Procedure, error) {
 	)
 	relatedVersionInfo, err := buildRelatedVersionInfo(params)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	return &Procedure{
 		fsm:                fsm,
 		params:             params,
 		relatedVersionInfo: relatedVersionInfo,
-	}, nil
+	}, true, nil
 }
 
 func buildRelatedVersionInfo(params ProcedureParams) (procedure.RelatedVersionInfo, error) {

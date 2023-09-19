@@ -144,8 +144,9 @@ func testDropPartitionTable(t *testing.T, dispatch eventdispatch.Dispatch, c *cl
 		}, Storage: s,
 	}
 
-	procedure, err := droppartitiontable.NewProcedure(req)
+	procedure, ok, err := droppartitiontable.NewProcedure(req)
 	re.NoError(err)
+	re.True(ok)
 	err = procedure.Start(context.Background())
 	re.NoError(err)
 }

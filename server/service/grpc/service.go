@@ -257,7 +257,7 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 		errorCh <- err
 		return nil
 	}
-	procedure, err := c.GetProcedureFactory().CreateDropTableProcedure(ctx, coordinator.DropTableRequest{
+	procedure, ok, err := c.GetProcedureFactory().CreateDropTableProcedure(ctx, coordinator.DropTableRequest{
 		ClusterMetadata: c.GetMetadata(),
 		ClusterSnapshot: c.GetMetadata().GetClusterSnapshot(),
 		SourceReq:       req,
@@ -268,6 +268,11 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 		log.Error("fail to drop table", zap.Error(err))
 		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table")}, nil
 	}
+	if !ok {
+		log.Warn("table may have been dropped already")
+		return &metaservicepb.DropTableResponse{Header: okResponseHeader()}, nil
+	}
+
 	err = c.GetProcedureManager().Submit(ctx, procedure)
 	if err != nil {
 		log.Error("fail to drop table, manager submit procedure", zap.Error(err))

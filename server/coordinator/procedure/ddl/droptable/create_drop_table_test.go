@@ -110,7 +110,7 @@ func testCreateTable(t *testing.T, dispatch eventdispatch.Dispatch, c *cluster.C
 func testDropTable(t *testing.T, dispatch eventdispatch.Dispatch, c *cluster.Cluster, nodeName, tableName string) {
 	re := require.New(t)
 	// New DropTableProcedure to drop table.
-	procedure, err := droptable.NewDropTableProcedure(droptable.ProcedureParams{
+	procedure, ok, err := droptable.NewDropTableProcedure(droptable.ProcedureParams{
 		ID:              0,
 		Dispatch:        dispatch,
 		ClusterMetadata: c.GetMetadata(),
@@ -131,6 +131,7 @@ func testDropTable(t *testing.T, dispatch eventdispatch.Dispatch, c *cluster.Clu
 		},
 	})
 	re.NoError(err)
+	re.True(ok)
 	err = procedure.Start(context.Background())
 	re.NoError(err)
 }
