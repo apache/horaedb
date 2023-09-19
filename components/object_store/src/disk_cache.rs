@@ -27,7 +27,7 @@ use chrono::{DateTime, Utc};
 use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
 use hash_ext::SeaHasherBuilder;
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use lru::LruCache;
 use notifier::notifier::{ExecutionGuard, RequestNotifiers};
 use partitioned_lock::PartitionedMutex;
@@ -706,7 +706,7 @@ impl DiskCacheStore {
                             }
                             .fail(),
                         ) {
-                            error!("Failed to send notifier error result, err:{e:?}.");
+                            warn!("Failed to send notifier error result, err:{e:?}.");
                         }
                     }
                 }
@@ -723,8 +723,10 @@ impl DiskCacheStore {
         {
             self.cache.insert_data(cache_key, bytes.clone()).await;
             for notifier in notifiers {
-                if let Err(e) = notifier.send(Ok(bytes.clone())) {
-                    error!("Failed to send notifier success result, err:{e:?}.");
+                if notifier.send(Ok(bytes.clone())).is_err() {
+                    // The error contains sent bytes, which maybe very large,
+                    // so we don't log error.
+                    warn!("Failed to send notifier success result");
                 }
             }
         }
