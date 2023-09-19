@@ -21,11 +21,11 @@ use std::{
 
 use async_trait::async_trait;
 use ceresdbproto::storage::{
-    storage_service_client::StorageServiceClient, RequestContext, RouteRequest,
+    storage_service_client::StorageServiceClient, RequestContext, RouteRequest as RouteRequestPb,
 };
 use log::{debug, error, warn};
 use macros::define_result;
-use router::{endpoint::Endpoint, RouterRef};
+use router::{endpoint::Endpoint, RouteRequest, RouterRef};
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, ResultExt, Snafu};
 use time_ext::ReadableDuration;
@@ -282,12 +282,13 @@ impl<B: ClientBuilder> Forwarder<B> {
             forwarded_from,
         } = forward_req;
 
-        let route_req = RouteRequest {
+        let req_pb = RouteRequestPb {
             context: Some(RequestContext { database: schema }),
             tables: vec![table],
         };
 
-        let endpoint = match self.router.route(route_req).await {
+        let request = RouteRequest::new(req_pb, true);
+        let endpoint = match self.router.route(request).await {
             Ok(mut routes) => {
                 if routes.len() != 1 || routes[0].endpoint.is_none() {
                     warn!(
@@ -420,11 +421,11 @@ mod tests {
     #[async_trait]
     impl Router for MockRouter {
         async fn route(&self, req: RouteRequest) -> router::Result<Vec<Route>> {
-            let endpoint = self.routing_tables.get(&req.tables[0]);
+            let endpoint = self.routing_tables.get(&req.inner.tables[0]);
             match endpoint {
                 None => Ok(vec![]),
                 Some(v) => Ok(vec![Route {
-                    table: req.tables[0].clone(),
+                    table: req.inner.tables[0].clone(),
                     endpoint: Some(v.clone().into()),
                 }]),
             }

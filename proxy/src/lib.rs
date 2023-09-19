@@ -53,7 +53,7 @@ use catalog::{
 };
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
-    PrometheusRemoteQueryResponse, Route, RouteRequest,
+    PrometheusRemoteQueryResponse, Route,
 };
 use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID, ENABLE_TTL, TTL};
 use datafusion::{
@@ -68,9 +68,9 @@ use interpreters::{
     factory::Factory,
     interpreter::{InterpreterPtr, Output},
 };
-use log::{error, info};
+use log::{error, info, warn};
 use query_frontend::plan::Plan;
-use router::{endpoint::Endpoint, Router};
+use router::{endpoint::Endpoint, RouteRequest, Router};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
@@ -320,10 +320,28 @@ impl Proxy {
         schema_name: &str,
         table_name: &str,
     ) -> Result<()> {
+        if let Err(e) = self
+            .open_partition_table_inner(catalog_name, schema_name, table_name)
+            .await
+        {
+            warn!("Open partition table failed, err:{e:?}");
+        }
+
+        // When open remote table failed, we currently don't return error outside.
+        // This is because when sub_table[0] is unhealthy, we can not drop the partition
+        // table.
+        // TODO: maybe we can find a more elegant way to deal with this issue.
+        Ok(())
+    }
+
+    async fn open_partition_table_inner(
+        &self,
+        catalog_name: &str,
+        schema_name: &str,
+        table_name: &str,
+    ) -> Result<()> {
         let catalog = self.get_catalog(catalog_name)?;
-
         let schema = self.get_schema(&catalog, schema_name)?;
-
         let table = self.get_table(&schema, table_name)?;
 
         let table_info_in_meta = self
@@ -340,12 +358,15 @@ impl Proxy {
 
         match (table, &table_info_in_meta) {
             (Some(table), Some(partition_table_info)) => {
+                let table_id = table.id();
                 // No need to create partition table when table_id match.
-                if table.id().as_u64() == partition_table_info.id {
+                if table_id == partition_table_info.id {
                     return Ok(());
                 }
-                info!("Drop partition table because the id of the table in ceresdb is different from the one in ceresmeta, catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, old_table_id:{}, new_table_id:{}",
-                             table.id().as_u64(), partition_table_info.id);
+
+                info!("Drop partition table because the id of the table in ceresdb is different from the one in ceresmeta,\
+                       catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, old_table_id:{table_id}, new_table_id:{}",
+                      partition_table_info.id);
                 // Drop partition table because the id of the table in ceresdb is different from
                 // the one in ceresmeta.
                 self.drop_partition_table(
@@ -360,7 +381,8 @@ impl Proxy {
                 // Drop partition table because it does not exist in ceresmeta but exists in
                 // ceresdb-server.
                 if table.partition_info().is_some() {
-                    info!("Drop partition table because it does not exist in ceresmeta but exists in ceresdb-server, catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, table_id:{}",table.id());
+                    info!("Drop partition table because it does not exist in ceresmeta but exists in ceresdb-server,\
+                           catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, table_id:{}", table.id());
                     self.drop_partition_table(
                         schema.clone(),
                         catalog_name.to_string(),
@@ -434,6 +456,7 @@ impl Proxy {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: format!("Failed to create table, request:{create_table_request:?}"),
             })?;
+
         Ok(())
     }
 

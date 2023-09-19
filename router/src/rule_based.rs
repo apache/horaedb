@@ -17,14 +17,16 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use ceresdbproto::storage::{self, Route, RouteRequest};
+use ceresdbproto::storage::{self, Route};
 use cluster::config::SchemaConfig;
 use log::info;
 use meta_client::types::ShardId;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt};
 
-use crate::{endpoint::Endpoint, hash, Result, RouteNotFound, Router, ShardNotFound, TableInfo};
+use crate::{
+    endpoint::Endpoint, hash, Result, RouteNotFound, RouteRequest, Router, ShardNotFound, TableInfo,
+};
 
 pub type ShardNodes = HashMap<ShardId, Endpoint>;
 
@@ -151,7 +153,7 @@ impl RuleBasedRouter {
 #[async_trait]
 impl Router for RuleBasedRouter {
     async fn route(&self, req: RouteRequest) -> Result<Vec<Route>> {
-        let req_ctx = req.context.unwrap();
+        let req_ctx = req.inner.context.unwrap();
         let schema = &req_ctx.database;
         if let Some(shard_nodes) = self.cluster_view.schema_shards.get(schema) {
             ensure!(!shard_nodes.is_empty(), RouteNotFound { schema });
@@ -161,8 +163,8 @@ impl Router for RuleBasedRouter {
 
             // TODO(yingwen): Better way to get total shard number
             let total_shards = shard_nodes.len();
-            let mut route_results = Vec::with_capacity(req.tables.len());
-            for table in req.tables {
+            let mut route_results = Vec::with_capacity(req.inner.tables.len());
+            for table in req.inner.tables {
                 let shard_id = Self::route_table(&table, rule_list_opt, total_shards);
 
                 let endpoint = shard_nodes.get(&shard_id).with_context(|| ShardNotFound {

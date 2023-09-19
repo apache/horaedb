@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ceresdbproto::storage::RouteRequest;
-use router::endpoint::Endpoint;
+use ceresdbproto::storage::RouteRequest as RouteRequestPb;
+use router::{endpoint::Endpoint, RouteRequest};
 use serde::Serialize;
 
 use crate::{context::RequestContext, error::Result, Proxy};
@@ -39,14 +39,19 @@ impl Proxy {
             return Ok(RouteResponse { routes: vec![] });
         }
 
-        let route_req = RouteRequest {
+        let req_pb = RouteRequestPb {
             context: Some(ceresdbproto::storage::RequestContext {
                 database: ctx.schema.clone(),
             }),
             tables: vec![table.to_string()],
         };
 
-        let routes = self.route(route_req).await?;
+        let request = RouteRequest {
+            route_with_cache: false,
+            inner: req_pb,
+        };
+
+        let routes = self.route(request).await?;
 
         let routes = routes
             .into_iter()
