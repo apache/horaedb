@@ -15,7 +15,7 @@
 // Compaction scheduler.
 
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     hash::Hash,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -75,6 +75,7 @@ pub struct SchedulerConfig {
     pub max_unflushed_duration: ReadableDuration,
     pub memory_limit: ReadableSize,
     pub max_pending_compaction_tasks: usize,
+    pub compaction_prefer_tables: Vec<String>,
 }
 
 impl Default for SchedulerConfig {
@@ -88,6 +89,7 @@ impl Default for SchedulerConfig {
             max_unflushed_duration: ReadableDuration(Duration::from_secs(60 * 60 * 5)),
             memory_limit: ReadableSize::gb(4),
             max_pending_compaction_tasks: 1024,
+            compaction_prefer_tables: vec![],
         }
     }
 }
@@ -123,7 +125,7 @@ impl<K: Eq + Hash + Clone, SK: Ord + Clone, V> Default for RequestQueue<K, SK, V
 }
 
 impl<K: Eq + Hash + Clone, SK: Ord + Clone, V> RequestQueue<K, SK, V> {
-    fn push_back(&mut self, sorted_key: SK, key: K, value: V) -> bool {
+    fn push(&mut self, sorted_key: SK, key: K, value: V) -> bool {
         if self.values.insert(key.clone(), value).is_none() {
             self.sorted_keys.insert(sorted_key, key);
             return true;
@@ -131,8 +133,15 @@ impl<K: Eq + Hash + Clone, SK: Ord + Clone, V> RequestQueue<K, SK, V> {
         false
     }
 
-    fn pop_front(&mut self) -> Option<V> {
-        if let Some((sk, k)) = self.sorted_keys.pop_last() {
+    fn pop_least_important(&mut self) -> Option<V> {
+        if let Some((_, k)) = self.sorted_keys.pop_first() {
+            return self.values.remove(&k);
+        }
+        None
+    }
+
+    fn pop_most_important(&mut self) -> Option<V> {
+        if let Some((_, k)) = self.sorted_keys.pop_last() {
             return self.values.remove(&k);
         }
         None
@@ -236,13 +245,13 @@ impl OngoingTaskLimit {
             // Remove older requests
             if req_buf.len() >= self.max_pending_compaction_tasks {
                 while req_buf.len() >= self.max_pending_compaction_tasks {
-                    req_buf.pop_front();
+                    req_buf.pop_least_important();
                     dropped += 1;
                 }
                 COMPACTION_PENDING_REQUEST_GAUGE.sub(dropped)
             }
 
-            if req_buf.push_back(request.score, request.table_data.id, request) {
+            if req_buf.push(request.score, request.table_data.id, request) {
                 COMPACTION_PENDING_REQUEST_GAUGE.add(1)
             }
         }
@@ -260,7 +269,7 @@ impl OngoingTaskLimit {
         let mut req_buf = self.request_buf.write().unwrap();
 
         while result.len() < max_num {
-            if let Some(req) = req_buf.pop_front() {
+            if let Some(req) = req_buf.pop_most_important() {
                 result.push(req);
             } else {
                 break;
@@ -306,6 +315,8 @@ impl SchedulerImpl {
         let (tx, rx) = mpsc::channel(config.schedule_channel_len);
         let running = Arc::new(AtomicBool::new(true));
 
+        let compaction_prefer_tables = config.compaction_prefer_tables.into_iter().collect();
+        dbg!(&compaction_prefer_tables);
         let mut worker = ScheduleWorker {
             sender: tx.clone(),
             receiver: rx,
@@ -324,6 +335,7 @@ impl SchedulerImpl {
             }),
             running: running.clone(),
             memory_limit: MemoryLimit::new(config.memory_limit.as_byte() as usize),
+            compaction_prefer_tables,
         };
 
         let handle = runtime.spawn(async move {
@@ -398,6 +410,7 @@ struct ScheduleWorker {
     limit: Arc<OngoingTaskLimit>,
     running: Arc<AtomicBool>,
     memory_limit: MemoryLimit,
+    compaction_prefer_tables: HashSet<String>,
 }
 
 #[inline]
@@ -455,6 +468,10 @@ impl ScheduleWorker {
             ScheduleTask::Schedule => {
                 if self.max_ongoing_tasks > ongoing {
                     let pending = self.limit.drain_requests(self.max_ongoing_tasks - ongoing);
+                    info!(
+                        "ScheduleWorker pick pending tasks to compact, tasks:{:?}",
+                        pending
+                    );
                     let mut futures: FuturesUnordered<_> = pending
                         .into_iter()
                         .map(|req| self.handle_table_compaction_request(req))
@@ -643,10 +660,14 @@ impl ScheduleWorker {
 
             // This will add a compaction request to queue and avoid schedule thread
             // blocked.
-            self.limit.add_request(TableCompactionRequest::no_waiter(
-                table_data,
-                OrderedFloat(1.0),
-            ));
+            let score = if self.compaction_prefer_tables.contains(&table_data.name) {
+                OrderedFloat(1.0)
+            } else {
+                OrderedFloat(0.0)
+            };
+
+            self.limit
+                .add_request(TableCompactionRequest::no_waiter(table_data, score));
         }
         if let Err(e) = self.sender.send(ScheduleTask::Schedule).await {
             error!("Fail to schedule table compaction request, err:{}", e);

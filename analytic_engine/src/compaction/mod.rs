@@ -545,6 +545,16 @@ impl TableCompactionRequest {
     }
 }
 
+impl fmt::Debug for TableCompactionRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TableCompactionRequest")
+            .field("table", &self.table_data.name)
+            .field("table_id", &self.table_data)
+            .field("score", &self.score)
+            .finish()
+    }
+}
+
 pub struct TableCompactionKey {
     table_id: TableId,
     score: OrderedFloat<f32>,
