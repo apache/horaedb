@@ -53,7 +53,7 @@ use catalog::{
 };
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
-    PrometheusRemoteQueryResponse, Route, RouteRequest,
+    PrometheusRemoteQueryResponse, Route,
 };
 use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID, ENABLE_TTL, TTL};
 use datafusion::{
@@ -70,7 +70,7 @@ use interpreters::{
 };
 use log::{error, info, warn};
 use query_frontend::plan::Plan;
-use router::{endpoint::Endpoint, Router};
+use router::{endpoint::Endpoint, RouteRequest, Router};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{

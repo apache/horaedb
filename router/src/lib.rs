@@ -19,7 +19,7 @@ pub mod rule_based;
 use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use ceresdbproto::storage::{Route, RouteRequest};
+use ceresdbproto::storage::{Route, RouteRequest as RouteRequestPb};
 pub use cluster_based::ClusterBasedRouter;
 use macros::define_result;
 use meta_client::types::TableInfo;
@@ -77,6 +77,20 @@ pub type RouterRef = Arc<dyn Router + Sync + Send>;
 pub trait Router {
     async fn route(&self, req: RouteRequest) -> Result<Vec<Route>>;
     async fn fetch_table_info(&self, schema: &str, table: &str) -> Result<Option<TableInfo>>;
+}
+
+pub struct RouteRequest {
+    pub route_with_cache: bool,
+    pub inner: RouteRequestPb,
+}
+
+impl RouteRequest {
+    pub fn new(request: RouteRequestPb, route_with_cache: bool) -> Self {
+        Self {
+            route_with_cache,
+            inner: request,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

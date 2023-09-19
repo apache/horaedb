@@ -18,7 +18,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use ceresdbproto::storage::{self, RequestContext};
 use log::debug;
-use router::{endpoint::Endpoint, RouterRef};
+use router::{endpoint::Endpoint, RouteRequest, RouterRef};
 use snafu::{OptionExt, ResultExt};
 use table_engine::remote::model::TableIdentifier;
 use tonic::transport::Channel as TonicChannel;
@@ -105,19 +105,16 @@ impl CachedRouter {
     async fn do_route(&self, table_ident: &TableIdentifier) -> Result<RouteContext> {
         let schema = &table_ident.schema;
         let table = table_ident.table.clone();
-        let route_request = storage::RouteRequest {
+        let request_pb = storage::RouteRequest {
             context: Some(RequestContext {
                 database: schema.to_string(),
             }),
             tables: vec![table],
         };
-        let route_infos = self
-            .router
-            .route(route_request)
-            .await
-            .context(RouteWithCause {
-                table_ident: table_ident.clone(),
-            })?;
+        let request = RouteRequest::new(request_pb, true);
+        let route_infos = self.router.route(request).await.context(RouteWithCause {
+            table_ident: table_ident.clone(),
+        })?;
 
         if route_infos.is_empty() {
             return RouteNoCause {
