@@ -57,6 +57,7 @@ use table_engine::{
 };
 use time_ext::InstantExt;
 use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio_stream::Stream;
 use tonic::{Request, Response, Status};
 
 use super::metrics::REMOTE_ENGINE_WRITE_BATCH_NUM_ROWS_HISTOGRAM;
@@ -122,9 +123,6 @@ impl Drop for StreamWithMetric {
             .observe(self.instant.saturating_elapsed().as_secs_f64());
     }
 }
-
-pub type StreamReadRequestNotifiers =
-    Arc<RequestNotifiers<StreamReadReqKey, mpsc::Sender<Result<RecordBatch>>>>;
 
 macro_rules! record_stream_to_response_stream {
     ($record_stream_result:ident, $StreamType:ident) => {
