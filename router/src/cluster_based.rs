@@ -15,7 +15,7 @@
 //! A router based on the [`cluster::Cluster`].
 
 use async_trait::async_trait;
-use ceresdbproto::storage::{Route, RouteRequest};
+use ceresdbproto::storage::Route;
 use cluster::ClusterRef;
 use generic_error::BoxError;
 use log::trace;
@@ -24,7 +24,8 @@ use moka::future::Cache;
 use snafu::ResultExt;
 
 use crate::{
-    endpoint::Endpoint, OtherWithCause, ParseEndpoint, Result, RouteCacheConfig, Router, TableInfo,
+    endpoint::Endpoint, OtherWithCause, ParseEndpoint, Result, RouteCacheConfig, RouteRequest,
+    Router, TableInfo,
 };
 
 #[derive(Clone, Debug)]
@@ -75,22 +76,15 @@ impl ClusterBasedRouter {
         miss
     }
 
-    async fn route_with_cache(
+    async fn route_from_meta(
         &self,
-        tables: &Vec<String>,
+        tables: &[String],
         database: String,
-    ) -> Result<Vec<RouteData>> {
-        // Firstly route table from local cache.
-        let mut routes = Vec::with_capacity(tables.len());
-        let miss = self.route_from_cache(tables, &mut routes);
-        trace!("Route from cache, miss:{miss:?}, routes:{routes:?}");
-
-        if miss.is_empty() {
-            return Ok(routes);
-        }
+        routes: &mut Vec<RouteData>,
+    ) -> Result<()> {
         let route_tables_req = RouteTablesRequest {
             schema_name: database,
-            table_names: miss,
+            table_names: tables.to_owned(),
         };
 
         let route_resp = self
@@ -126,6 +120,33 @@ impl ClusterBasedRouter {
                 routes.push(route);
             }
         }
+
+        Ok(())
+    }
+
+    async fn route_internal(
+        &self,
+        tables: &Vec<String>,
+        database: String,
+        route_with_cache: bool,
+    ) -> Result<Vec<RouteData>> {
+        // Firstly route table from local cache.
+        let mut routes = Vec::with_capacity(tables.len());
+        let miss = if route_with_cache {
+            self.route_from_cache(tables, &mut routes)
+        } else {
+            tables.clone()
+        };
+
+        trace!("Route from cache, miss:{miss:?}, routes:{routes:?}");
+
+        if miss.is_empty() {
+            return Ok(routes);
+        }
+
+        // If miss exists, route from meta.
+        self.route_from_meta(&miss, database, &mut routes).await?;
+
         Ok(routes)
     }
 }
@@ -145,9 +166,12 @@ fn make_route(table_info: TableInfo, endpoint: Option<&str>) -> Result<RouteData
 #[async_trait]
 impl Router for ClusterBasedRouter {
     async fn route(&self, req: RouteRequest) -> Result<Vec<Route>> {
-        let req_ctx = req.context.unwrap();
-        let route_data_vec = self.route_with_cache(&req.tables, req_ctx.database).await?;
-        Ok(route_data_vec
+        let req_ctx = req.inner.context.unwrap();
+        let route_datas = self
+            .route_internal(&req.inner.tables, req_ctx.database, req.route_with_cache)
+            .await?;
+
+        Ok(route_datas
             .into_iter()
             .map(|v| Route {
                 table: v.table_info.name,
@@ -158,7 +182,7 @@ impl Router for ClusterBasedRouter {
 
     async fn fetch_table_info(&self, schema: &str, table: &str) -> Result<Option<TableInfo>> {
         let mut route_data_vec = self
-            .route_with_cache(&vec![table.to_string()], schema.to_string())
+            .route_internal(&vec![table.to_string()], schema.to_string(), true)
             .await?;
         if route_data_vec.is_empty() {
             return Ok(None);
@@ -174,7 +198,7 @@ impl Router for ClusterBasedRouter {
 mod tests {
     use std::{collections::HashMap, sync::Arc, thread::sleep, time::Duration};
 
-    use ceresdbproto::storage::RequestContext;
+    use ceresdbproto::storage::{RequestContext, RouteRequest as RouteRequestPb};
     use cluster::{
         shard_lock_manager::ShardLockManagerRef, shard_set::ShardRef, Cluster, ClusterNodesResp,
     };
@@ -275,14 +299,15 @@ mod tests {
 
         // first case get two tables, no one miss
         let tables = vec![table1.to_string(), table2.to_string()];
-        let result = router
-            .route(RouteRequest {
-                context: Some(RequestContext {
-                    database: String::from("public"),
-                }),
-                tables: tables.clone(),
-            })
-            .await;
+        let request_pb = RouteRequestPb {
+            context: Some(RequestContext {
+                database: String::from("public"),
+            }),
+            tables: tables.clone(),
+        };
+        let request = RouteRequest::new(request_pb, true);
+
+        let result = router.route(request).await;
         assert_eq!(result.unwrap().len(), 2);
 
         let mut routes = Vec::with_capacity(tables.len());
