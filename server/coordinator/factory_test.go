@@ -112,9 +112,9 @@ func TestDropTable(t *testing.T) {
 		OnFailed:    nil,
 	})
 	// Drop non-existing partition table.
-	re.Error(err)
-	re.False(ok)
-	re.Nil(p)
+	re.NoError(err)
+	re.True(ok)
+	re.NotNil(p)
 }
 
 func TestTransferLeader(t *testing.T) {

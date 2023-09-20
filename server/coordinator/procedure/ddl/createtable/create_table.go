@@ -203,10 +203,12 @@ func (p *Procedure) Start(ctx context.Context) error {
 		if err1 != nil {
 			err = errors.WithMessagef(err, "send eventFailed, err:%v", err1)
 		}
+		_ = p.params.OnFailed(err)
 		return errors.WithMessage(err, "send eventPrepare")
 	}
 
 	if err := p.fsm.Event(eventSuccess, req); err != nil {
+		_ = p.params.OnFailed(err)
 		return errors.WithMessage(err, "send eventSuccess")
 	}
 

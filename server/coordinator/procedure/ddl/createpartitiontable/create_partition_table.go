@@ -139,6 +139,7 @@ func (p *Procedure) Start(ctx context.Context) error {
 			}
 			if err := p.fsm.Event(eventCreatePartitionTable, createPartitionTableRequest); err != nil {
 				p.updateStateWithLock(procedure.StateFailed)
+				_ = p.params.OnFailed(err)
 				return errors.WithMessage(err, "create partition table")
 			}
 		case stateCreatePartitionTable:
@@ -147,6 +148,7 @@ func (p *Procedure) Start(ctx context.Context) error {
 			}
 			if err := p.fsm.Event(eventCreateSubTables, createPartitionTableRequest); err != nil {
 				p.updateStateWithLock(procedure.StateFailed)
+				_ = p.params.OnFailed(err)
 				return errors.WithMessage(err, "create data tables")
 			}
 		case stateCreateSubTables:
@@ -155,12 +157,14 @@ func (p *Procedure) Start(ctx context.Context) error {
 			}
 			if err := p.fsm.Event(eventFinish, createPartitionTableRequest); err != nil {
 				p.updateStateWithLock(procedure.StateFailed)
+				_ = p.params.OnFailed(err)
 				return errors.WithMessage(err, "update table shard metadata")
 			}
 		case stateFinish:
 			// TODO: The state update sequence here is inconsistent with the previous one. Consider reconstructing the state update logic of the state machine.
 			p.updateStateWithLock(procedure.StateFinished)
 			if err := p.persist(ctx); err != nil {
+				_ = p.params.OnFailed(err)
 				return errors.WithMessage(err, "create partition table procedure persist")
 			}
 			return nil

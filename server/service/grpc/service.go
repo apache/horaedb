@@ -146,6 +146,7 @@ func (s *Service) GetTablesOfShards(ctx context.Context, req *metaservicepb.GetT
 
 // CreateTable implements gRPC CeresmetaServer.
 func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTableRequest) (*metaservicepb.CreateTableResponse, error) {
+	start := time.Now()
 	// Since there may be too many table creation requests, a flow limiter is added here.
 	if ok, err := s.allow(); !ok {
 		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table grpc request is rejected by flow limiter")}, nil
@@ -201,6 +202,7 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 
 	select {
 	case ret := <-resultCh:
+		log.Info("create table finish", zap.String("tableName", req.Name), zap.Int64("costTime", time.Since(start).Milliseconds()))
 		return &metaservicepb.CreateTableResponse{
 			Header: okResponseHeader(),
 			CreatedTable: &metaservicepb.TableInfo{
@@ -216,12 +218,14 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 			},
 		}, nil
 	case err = <-errorCh:
+		log.Warn("create table failed", zap.String("tableName", req.Name), zap.Int64("costTime", time.Since(start).Milliseconds()))
 		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
 	}
 }
 
 // DropTable implements gRPC CeresmetaServer.
 func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableRequest) (*metaservicepb.DropTableResponse, error) {
+	start := time.Now()
 	// Since there may be too many table dropping requests, a flow limiter is added here.
 	if ok, err := s.allow(); !ok {
 		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table grpc request is rejected by flow limiter")}, nil
@@ -275,17 +279,19 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 
 	err = c.GetProcedureManager().Submit(ctx, procedure)
 	if err != nil {
-		log.Error("fail to drop table, manager submit procedure", zap.Error(err))
+		log.Error("fail to drop table, manager submit procedure", zap.Error(err), zap.Int64("costTime", time.Since(start).Milliseconds()))
 		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table")}, nil
 	}
 
 	select {
 	case ret := <-resultCh:
+		log.Info("drop table finish", zap.String("tableName", req.Name), zap.Int64("costTime", time.Since(start).Milliseconds()))
 		return &metaservicepb.DropTableResponse{
 			Header:       okResponseHeader(),
 			DroppedTable: metadata.ConvertTableInfoToPB(ret),
 		}, nil
 	case err = <-errorCh:
+		log.Info("drop table failed", zap.String("tableName", req.Name), zap.Int64("costTime", time.Since(start).Milliseconds()))
 		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table")}, nil
 	}
 }

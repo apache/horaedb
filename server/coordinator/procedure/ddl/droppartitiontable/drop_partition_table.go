@@ -101,11 +101,11 @@ func buildRelatedVersionInfo(params ProcedureParams) (procedure.RelatedVersionIn
 			return procedure.RelatedVersionInfo{}, errors.WithMessagef(err, "get sub table, tableName:%s", subTableName)
 		}
 		if !exists {
-			return procedure.RelatedVersionInfo{}, errors.WithMessagef(procedure.ErrTableNotExists, "get sub table, tableName:%s", subTableName)
+			continue
 		}
 		shardID, exists := tableShardMapping[table.ID]
 		if !exists {
-			return procedure.RelatedVersionInfo{}, errors.WithMessagef(metadata.ErrShardNotFound, "get shard of sub table, tableID:%d", table.ID)
+			continue
 		}
 		shardView, exists := params.ClusterSnapshot.Topology.ShardViewsMapping[shardID]
 		if !exists {
@@ -154,6 +154,7 @@ func (p *Procedure) Start(ctx context.Context) error {
 			}
 			if err := p.fsm.Event(eventDropDataTable, dropPartitionTableRequest); err != nil {
 				p.updateStateWithLock(procedure.StateFailed)
+				_ = p.params.OnFailed(err)
 				return errors.WithMessage(err, "drop partition table procedure")
 			}
 		case stateDropDataTable:
@@ -162,6 +163,7 @@ func (p *Procedure) Start(ctx context.Context) error {
 			}
 			if err := p.fsm.Event(eventDropPartitionTable, dropPartitionTableRequest); err != nil {
 				p.updateStateWithLock(procedure.StateFailed)
+				_ = p.params.OnFailed(err)
 				return errors.WithMessage(err, "drop partition table procedure drop data table")
 			}
 		case stateDropPartitionTable:
@@ -170,11 +172,13 @@ func (p *Procedure) Start(ctx context.Context) error {
 			}
 			if err := p.fsm.Event(eventFinish, dropPartitionTableRequest); err != nil {
 				p.updateStateWithLock(procedure.StateFailed)
+				_ = p.params.OnFailed(err)
 				return errors.WithMessage(err, "drop partition table procedure drop partition table")
 			}
 		case stateFinish:
 			p.updateStateWithLock(procedure.StateFinished)
 			if err := p.persist(ctx); err != nil {
+				_ = p.params.OnFailed(err)
 				return errors.WithMessage(err, "drop partition table procedure persist")
 			}
 			return nil
@@ -278,10 +282,27 @@ func dropDataTablesCallback(event *fsm.Event) {
 
 	shardVersions := req.p.relatedVersionInfo.ShardWithVersion
 	for _, tableName := range params.SourceReq.PartitionTableInfo.SubTableNames {
-		table, shardVersionUpdate, err := ddl.GetShardVersionByTableName(params.ClusterMetadata, req.schemaName(), tableName, shardVersions)
+		table, err := ddl.GetTableMetadata(params.ClusterMetadata, req.schemaName(), tableName)
 		if err != nil {
-			procedure.CancelEventWithLog(event, err, fmt.Sprintf("get shard version by table, table:%s", tableName))
+			log.Warn("get table metadata failed", zap.String("tableName", tableName))
+			continue
+		}
+
+		shardVersionUpdate, shardExists, err := ddl.BuildShardVersionUpdate(table, params.ClusterMetadata, shardVersions)
+		if err != nil {
+			log.Error("get shard version by table", zap.String("tableName", tableName), zap.Error(err))
+			procedure.CancelEventWithLog(event, err, "build shard version update", zap.String("tableName", tableName))
 			return
+		}
+		// If the shard corresponding to this table does not exist, it means that the actual table creation failed.
+		// In order to ensure that the table can be deleted normally, we need to directly delete the metadata of the table.
+		if !shardExists {
+			_, err := params.ClusterMetadata.DropTableMetadata(req.ctx, req.schemaName(), tableName)
+			if err != nil {
+				procedure.CancelEventWithLog(event, err, "drop table metadata", zap.String("tableName", tableName))
+				return
+			}
+			continue
 		}
 
 		if err := ddl.DispatchDropTable(req.ctx, params.ClusterMetadata, params.Dispatch, params.SourceReq.GetSchemaName(), table, shardVersionUpdate); err != nil {

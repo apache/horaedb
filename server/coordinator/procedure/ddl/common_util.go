@@ -67,18 +67,25 @@ func BuildCreateTableRequest(table storage.Table, shardVersionUpdate metadata.Sh
 	}
 }
 
-func GetShardVersionByTableName(clusterMetadata *metadata.ClusterMetadata, schemaName, tableName string, shardVersions map[storage.ShardID]uint64) (storage.Table, metadata.ShardVersionUpdate, error) {
+func GetTableMetadata(clusterMetadata *metadata.ClusterMetadata, schemaName, tableName string) (storage.Table, error) {
 	table, exists, err := clusterMetadata.GetTable(schemaName, tableName)
 	if err != nil {
-		return storage.Table{}, metadata.ShardVersionUpdate{}, err
+		return storage.Table{}, err
 	}
 	if !exists {
-		return storage.Table{}, metadata.ShardVersionUpdate{}, errors.WithMessage(procedure.ErrTableNotExists, "table not exists")
+		return storage.Table{}, errors.WithMessagef(procedure.ErrTableNotExists, "table not exists, tableName:%s", tableName)
 	}
+	return table, nil
+}
 
+// BuildShardVersionUpdate builds metadata.ShardVersionUpdate to assist DDL on the shard.
+//
+// And if no error is thrown, the returned boolean value is used to tell whether this table is allocated to shard.
+// In some cases, we need to use this value to determine whether DDL can be executed normally。
+func BuildShardVersionUpdate(table storage.Table, clusterMetadata *metadata.ClusterMetadata, shardVersions map[storage.ShardID]uint64) (metadata.ShardVersionUpdate, bool, error) {
 	shardNodesResult, err := clusterMetadata.GetShardNodeByTableIDs([]storage.TableID{table.ID})
 	if err != nil {
-		return storage.Table{}, metadata.ShardVersionUpdate{}, err
+		return metadata.ShardVersionUpdate{}, false, err
 	}
 
 	leader := storage.ShardNode{}
@@ -92,21 +99,22 @@ func GetShardVersionByTableName(clusterMetadata *metadata.ClusterMetadata, schem
 	}
 
 	if !found {
-		return storage.Table{}, metadata.ShardVersionUpdate{}, errors.WithMessage(procedure.ErrShardLeaderNotFound, "can't find leader")
+		log.Warn("table can't find leader shard", zap.String("tableName", table.Name))
+		return metadata.ShardVersionUpdate{}, false, nil
 	}
 
 	prevVersion, exists := shardVersions[leader.ID]
 	if !exists {
-		return storage.Table{}, metadata.ShardVersionUpdate{}, errors.WithMessagef(metadata.ErrShardNotFound, "shard not found in shardVersions, shardID:%d", leader.ID)
+		return metadata.ShardVersionUpdate{}, false, errors.WithMessagef(metadata.ErrShardNotFound, "shard not found in shardVersions, shardID:%d", leader.ID)
 	}
 
 	currVersion := prevVersion + 1
 
-	return table, metadata.ShardVersionUpdate{
+	return metadata.ShardVersionUpdate{
 		ShardID:     leader.ID,
 		CurrVersion: currVersion,
 		PrevVersion: prevVersion,
-	}, nil
+	}, true, nil
 }
 
 func DispatchDropTable(ctx context.Context, clusterMetadata *metadata.ClusterMetadata, dispatch eventdispatch.Dispatch, schemaName string, table storage.Table, version metadata.ShardVersionUpdate) error {
