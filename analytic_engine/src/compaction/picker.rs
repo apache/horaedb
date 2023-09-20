@@ -660,8 +660,13 @@ impl LevelPicker for TimeWindowPicker {
         level: Level,
         expire_time: Option<Timestamp>,
     ) -> Option<Vec<FileHandle>> {
+        info!(
+            "TimeWindowPicker all files, all:{:?}, expire_time:{expire_time:?}",
+            levels_controller.levels
+        );
+
         let uncompact_files = find_uncompact_files(levels_controller, level, expire_time);
-        info!("TimeWindowPicker pick compaction files, candidate_files:{uncompact_files:?}, expire_time:{expire_time:?}");
+        info!("TimeWindowPicker pick candidate files, candidate_files:{uncompact_files:?}, expire_time:{expire_time:?}");
 
         if uncompact_files.is_empty() {
             return None;

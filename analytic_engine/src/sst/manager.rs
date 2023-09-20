@@ -26,7 +26,7 @@ pub type FileId = u64;
 
 /// A table level manager that manages all the sst files of the table
 pub struct LevelsController {
-    levels: Vec<LevelHandler>,
+    pub levels: Vec<LevelHandler>,
     purge_queue: FilePurgeQueue,
 }
 

@@ -101,6 +101,7 @@ impl fmt::Display for Level {
 // TODO(yingwen): Order or split file by time range to speed up filter (even in
 //  level 0).
 /// Manage files of single level
+#[derive(Debug)]
 pub struct LevelHandler {
     pub level: Level,
     /// All files in current level.
