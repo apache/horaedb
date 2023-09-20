@@ -555,40 +555,6 @@ impl fmt::Debug for TableCompactionRequest {
     }
 }
 
-pub struct TableCompactionKey {
-    table_id: TableId,
-    score: OrderedFloat<f32>,
-}
-
-impl TableCompactionKey {
-    pub fn new(table_id: TableId, score: f32) -> Self {
-        Self {
-            table_id,
-            score: OrderedFloat(score),
-        }
-    }
-}
-
-impl PartialEq for TableCompactionKey {
-    fn eq(&self, other: &Self) -> bool {
-        self.table_id == other.table_id
-    }
-}
-
-impl Eq for TableCompactionKey {}
-
-impl PartialOrd for TableCompactionKey {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.score.partial_cmp(&other.score)
-    }
-}
-
-impl Ord for TableCompactionKey {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.score.cmp(&other.score)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;

@@ -30,6 +30,7 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use log::{debug, error, info, warn};
 use macros::define_result;
 use ordered_float::OrderedFloat;
+use priority_queue::DoublePriorityQueue;
 use runtime::{JoinHandle, Runtime};
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
@@ -111,14 +112,14 @@ pub trait CompactionScheduler {
 
 // A FIFO queue that remove duplicate values by key.
 struct RequestQueue<K: Eq + Hash + Clone, SK: Ord + Clone, V> {
-    sorted_keys: BTreeMap<SK, K>,
+    sorted_keys: DoublePriorityQueue<K, SK>,
     values: HashMap<K, V>,
 }
 
 impl<K: Eq + Hash + Clone, SK: Ord + Clone, V> Default for RequestQueue<K, SK, V> {
     fn default() -> Self {
         Self {
-            sorted_keys: BTreeMap::default(),
+            sorted_keys: DoublePriorityQueue::default(),
             values: HashMap::default(),
         }
     }
@@ -127,21 +128,21 @@ impl<K: Eq + Hash + Clone, SK: Ord + Clone, V> Default for RequestQueue<K, SK, V
 impl<K: Eq + Hash + Clone, SK: Ord + Clone, V> RequestQueue<K, SK, V> {
     fn push(&mut self, sorted_key: SK, key: K, value: V) -> bool {
         if self.values.insert(key.clone(), value).is_none() {
-            self.sorted_keys.insert(sorted_key, key);
+            self.sorted_keys.push(key, sorted_key);
             return true;
         }
         false
     }
 
     fn pop_least_important(&mut self) -> Option<V> {
-        if let Some((_, k)) = self.sorted_keys.pop_first() {
+        if let Some((k, _)) = self.sorted_keys.pop_min() {
             return self.values.remove(&k);
         }
         None
     }
 
     fn pop_most_important(&mut self) -> Option<V> {
-        if let Some((_, k)) = self.sorted_keys.pop_last() {
+        if let Some((k, _)) = self.sorted_keys.pop_max() {
             return self.values.remove(&k);
         }
         None
@@ -523,6 +524,7 @@ impl ScheduleWorker {
         compaction_task: CompactionTask,
         waiter_notifier: WaiterNotifier,
         token: MemoryUsageToken,
+        score: OrderedFloat<f32>,
     ) {
         let keep_scheduling_compaction = compaction_task.contains_min_level();
 
@@ -554,7 +556,7 @@ impl ScheduleWorker {
             if keep_scheduling_compaction {
                 schedule_table_compaction(
                     sender,
-                    TableCompactionRequest::no_waiter(table_data.clone(), OrderedFloat(0.0)),
+                    TableCompactionRequest::no_waiter(table_data.clone(), score),
                 )
                 .await;
             }
@@ -665,7 +667,7 @@ impl ScheduleWorker {
 
         let waiter_notifier = WaiterNotifier::new(compact_req.waiter);
 
-        self.do_table_compaction_task(table_data, compaction_task, waiter_notifier, token);
+        self.do_table_compaction_task(table_data, compaction_task, waiter_notifier, token, compact_req.score);
     }
 
     async fn schedule(&mut self) {
