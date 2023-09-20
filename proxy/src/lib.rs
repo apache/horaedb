@@ -323,6 +323,7 @@ impl Proxy {
         part_info: &PartitionInfo,
     ) -> Result<TableInfo> {
         let get_inner = |i| async move {
+            // TODO: the remote engine should provide a method to get all sub table names.
             let sub_partition_table_name = util::get_sub_partition_name(base_name, part_info, i);
             let table = self
                 .instance
@@ -344,16 +345,12 @@ impl Proxy {
             Ok(table)
         };
 
-        let part_num = part_info.get_definition_num();
-        if part_num == 1 {
-            return get_inner(0).await;
-        }
-
-        // Loop get sub tables to get table info in case of some of them has problems.
-        for i in 0..part_info.get_definition_num() - 1 {
+        let part_num = part_info.get_partition_num();
+        // Loop all sub tables to get table info in case of some of them has problems.
+        for i in 0..part_num - 1 {
             let ret = get_inner(i).await;
-            if let Err(err) = ret {
-                warn!("Failed to get table info, err:{err:?}");
+            if let Err(e) = ret {
+                warn!("Failed to get table info, err:{e:?}");
             } else {
                 return ret;
             }
@@ -432,7 +429,7 @@ impl Proxy {
         let partition_table_info = table_info_in_meta.unwrap();
 
         // If table not exists, open it.
-        let table = self
+        let table_info = self
             .get_partition_table_info(
                 catalog_name,
                 schema_name,
@@ -447,9 +444,9 @@ impl Proxy {
             catalog_name: catalog_name.to_string(),
             schema_name: schema_name.to_string(),
             table_name: partition_table_info.name,
-            table_schema: table.table_schema,
-            engine: table.engine,
-            table_options: table.options,
+            table_schema: table_info.table_schema,
+            engine: table_info.engine,
+            table_options: table_info.options,
             partition_info: partition_table_info.partition_info,
         };
         let create_table_request = CreateTableRequest {

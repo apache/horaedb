@@ -100,7 +100,7 @@ impl PartitionInfo {
     }
 
     #[inline]
-    pub fn get_definition_num(&self) -> usize {
+    pub fn get_partition_num(&self) -> usize {
         match self {
             Self::Random(v) => v.definitions.len(),
             Self::Hash(v) => v.definitions.len(),
