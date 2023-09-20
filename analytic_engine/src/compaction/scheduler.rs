@@ -469,8 +469,8 @@ impl ScheduleWorker {
                 if self.max_ongoing_tasks > ongoing {
                     let pending = self.limit.drain_requests(self.max_ongoing_tasks - ongoing);
                     info!(
-                        "ScheduleWorker pick pending tasks to compact, tasks:{:?}",
-                        pending
+                        "ScheduleWorker pick pending tasks to compact, tasks:{pending:?}, ongoing:{ongoing}, max_ongoing:{}",
+                        self.max_ongoing_tasks,
                     );
                     let mut futures: FuturesUnordered<_> = pending
                         .into_iter()
