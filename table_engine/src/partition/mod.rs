@@ -90,11 +90,21 @@ pub enum PartitionInfo {
 }
 
 impl PartitionInfo {
+    #[inline]
     pub fn get_definitions(&self) -> Vec<PartitionDefinition> {
         match self {
             Self::Random(v) => v.definitions.clone(),
             Self::Hash(v) => v.definitions.clone(),
             Self::Key(v) => v.definitions.clone(),
+        }
+    }
+
+    #[inline]
+    pub fn get_definition_num(&self) -> usize {
+        match self {
+            Self::Random(v) => v.definitions.len(),
+            Self::Hash(v) => v.definitions.len(),
+            Self::Key(v) => v.definitions.len(),
         }
     }
 }
