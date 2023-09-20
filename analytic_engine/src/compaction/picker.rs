@@ -661,6 +661,7 @@ impl LevelPicker for TimeWindowPicker {
         expire_time: Option<Timestamp>,
     ) -> Option<Vec<FileHandle>> {
         let uncompact_files = find_uncompact_files(levels_controller, level, expire_time);
+        info!("TimeWindowPicker pick compaction files, candidate_files:{uncompact_files:?}, expire_time:{expire_time:?}");
 
         if uncompact_files.is_empty() {
             return None;
@@ -688,7 +689,13 @@ impl LevelPicker for TimeWindowPicker {
         );
         assert!(now >= max_bucket_ts);
 
-        self.newest_bucket(buckets, opts.size_tiered, now)
+        info!("TimeWindowPicker split files by time, buckets:{buckets:?}");
+
+        let res = self.newest_bucket(buckets, opts.size_tiered, now);
+
+        info!("TimeWindowPicker finally pick files, result_files:{res:?}");
+
+        res
     }
 }
 

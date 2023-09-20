@@ -667,7 +667,13 @@ impl ScheduleWorker {
 
         let waiter_notifier = WaiterNotifier::new(compact_req.waiter);
 
-        self.do_table_compaction_task(table_data, compaction_task, waiter_notifier, token, compact_req.score);
+        self.do_table_compaction_task(
+            table_data,
+            compaction_task,
+            waiter_notifier,
+            token,
+            compact_req.score,
+        );
     }
 
     async fn schedule(&mut self) {
