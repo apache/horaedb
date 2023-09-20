@@ -16,10 +16,10 @@ install-tools:
 	@grep '_' tools.go | sed 's/"//g' | awk '{print $$2}' | xargs go install
 
 META_PKG := github.com/CeresDB/ceresmeta
-PACKAGES := $(shell go list ./... | tail -n +2) 
+PACKAGES := $(shell go list ./... | tail -n +2)
 PACKAGE_DIRECTORIES := $(subst $(META_PKG)/,,$(PACKAGES))
 
-check: install-tools
+check:
 	@ echo "check license ..."
 	@ make check-license
 	@ echo "gofmt ..."
@@ -29,14 +29,14 @@ check: install-tools
 	@ echo "revive ..."
 	@ revive -formatter friendly -config revive.toml $(PACKAGES)
 
-test: install-tools
+test:
 	@ echo "go test ..."
 	@ go test -timeout 5m -coverprofile=coverage.txt -covermode=atomic $(PACKAGES)
 
 check-license:
 	@ sh ./scripts/check-license.sh
 
-build: check
+build:
 	@ go build -ldflags="-X main.commitID=$(COMMIT_ID) -X main.branchName=$(BRANCH_NAME) -X main.buildDate=$(BUILD_DATE)" -o ceresmeta ./cmd/meta/...
 
 integration_test: build
