@@ -160,6 +160,12 @@ impl<K: Eq + Hash + Clone, SK: Ord + Clone, V> RequestQueue<K, SK, V> {
 
 type RequestBuf = RwLock<RequestQueue<TableId, OrderedFloat<f32>, TableCompactionRequest>>;
 
+impl RequestQueue<TableId, OrderedFloat<f32>, TableCompactionRequest> {
+    fn list_tables(&self) -> Vec<TableDataRef> {
+        self.values.values().map(|v| v.table_data.clone()).collect()
+    }
+}
+
 /// Combined with [`MemoryUsageToken`], [`MemoryLimit`] provides a mechanism to
 /// impose limit on the memory usage.
 #[derive(Clone, Debug)]
@@ -262,6 +268,11 @@ impl OngoingTaskLimit {
                 self.max_pending_compaction_tasks, dropped,
             );
         }
+    }
+
+    fn list_tables(&self) -> Vec<TableDataRef> {
+        let buf = self.request_buf.read().unwrap();
+        buf.list_tables()
     }
 
     fn drain_requests(&self, max_num: usize) -> Vec<TableCompactionRequest> {
@@ -453,11 +464,16 @@ impl ScheduleWorker {
         let ongoing = self.limit.ongoing_tasks();
         match schedule_task {
             ScheduleTask::Request(compact_req) => {
+                info!(
+                    "ScheduleWorker directly run compaction task, table_name:{}, table_id:{}, ongoing:{ongoing}, max_ongoing:{}",
+                    compact_req.table_data.name, compact_req.table_data.id, self.max_ongoing_tasks,
+                );
+
                 debug!("Ongoing compaction tasks:{ongoing}");
                 if ongoing >= self.max_ongoing_tasks {
                     self.limit.add_request(compact_req);
                     warn!(
-                        "Too many compaction ongoing tasks:{ongoing}, max:{}, buf_len:{}",
+                        "ScheduleWorker too many compaction ongoing tasks:{ongoing}, max:{}, buf_len:{}",
                         self.max_ongoing_tasks,
                         self.limit.request_buf_len()
                     );
@@ -467,9 +483,19 @@ impl ScheduleWorker {
             }
             ScheduleTask::Schedule => {
                 if self.max_ongoing_tasks > ongoing {
+                    let tables = self
+                        .limit
+                        .list_tables()
+                        .into_iter()
+                        .map(|t| (t.name.clone(), t.id))
+                        .collect::<Vec<_>>();
                     let pending = self.limit.drain_requests(self.max_ongoing_tasks - ongoing);
+                    let picked_tables = pending
+                        .iter()
+                        .map(|req| (req.table_data.name.clone(), req.table_data.id))
+                        .collect::<Vec<_>>();
                     info!(
-                        "ScheduleWorker pick pending tasks to compact, tasks:{pending:?}, ongoing:{ongoing}, max_ongoing:{}",
+                        "ScheduleWorker schedule pending tasks to compact, total_tasks:{tables:?} tasks:{picked_tables:?}, ongoing:{ongoing}, max_ongoing:{}",
                         self.max_ongoing_tasks,
                     );
                     let mut futures: FuturesUnordered<_> = pending
@@ -653,8 +679,8 @@ impl ScheduleWorker {
 
         let request_id = RequestId::next_id();
         for table_data in tables_buf {
-            info!(
-                "Period purge, table:{}, table_id:{}, request_id:{}",
+            debug!(
+                "Period check, table:{}, table_id:{}, request_id:{}",
                 table_data.name, table_data.id, request_id
             );
 
@@ -669,6 +695,18 @@ impl ScheduleWorker {
             self.limit
                 .add_request(TableCompactionRequest::no_waiter(table_data, score));
         }
+
+        let tables = self
+            .limit
+            .list_tables()
+            .into_iter()
+            .map(|t| (t.name.clone(), t.id))
+            .collect::<Vec<_>>();
+        info!(
+            "ScheduleWorker tables in queue after periodic check, tables:{:?}",
+            tables
+        );
+
         if let Err(e) = self.sender.send(ScheduleTask::Schedule).await {
             error!("Fail to schedule table compaction request, err:{}", e);
         }
