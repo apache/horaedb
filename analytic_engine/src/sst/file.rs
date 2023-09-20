@@ -101,11 +101,19 @@ impl fmt::Display for Level {
 // TODO(yingwen): Order or split file by time range to speed up filter (even in
 //  level 0).
 /// Manage files of single level
-#[derive(Debug)]
 pub struct LevelHandler {
     pub level: Level,
     /// All files in current level.
     files: FileHandleSet,
+}
+
+impl fmt::Debug for LevelHandler {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LevelHandler")
+            .field("level", &self.level)
+            .field("files", &self.files.file_map)
+            .finish()
+    }
 }
 
 impl LevelHandler {
@@ -311,7 +319,7 @@ impl Drop for FileHandleInner {
 }
 
 /// Used to order [FileHandle] by (end_time, start_time, file_id)
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct FileOrdKey {
     exclusive_end: Timestamp,
     inclusive_start: Timestamp,
@@ -363,7 +371,7 @@ impl Borrow<FileId> for FileHandleHash {
 #[derive(Default)]
 struct FileHandleSet {
     /// Files ordered by time range and id.
-    file_map: BTreeMap<FileOrdKey, FileHandle>,
+    pub file_map: BTreeMap<FileOrdKey, FileHandle>,
     /// Files indexed by file id, used to speed up removal.
     id_to_files: HashSet<FileHandleHash>,
 }
