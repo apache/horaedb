@@ -747,6 +747,8 @@ impl SpaceStore {
             .await
             .context(StoreVersionEdit)?;
 
+        info!("SpaceStore success to compact table, table_name:{}, table_id:{}, edit_meta:{edit_meta:?}", table_data.name, table_data.id);
+
         Ok(())
     }
 

@@ -580,6 +580,7 @@ impl TimeWindowPicker {
                     // If we're in the newest bucket, we'll use STCS to prioritize sstables
                     let size_picker = SizeTieredPicker::default();
                     let files = size_picker.pick_ssts(bucket.to_vec(), &size_tiered_opts);
+                    info!("TimeWindowPicker try to compact the fresh files, files:{files:?}");
 
                     if files.is_some() {
                         return files;
@@ -587,6 +588,7 @@ impl TimeWindowPicker {
                 } else if bucket.len() >= 2 && *key < now {
                     debug!("Bucket size {} >= 2 and not in current bucket, compacting what's here: {:?}", bucket.len(), bucket);
                     let files = self.pick_sst_for_old_bucket(bucket.to_vec(), &size_tiered_opts);
+                    info!("TimeWindowPicker try to compact the stale files, files:{files:?}");
                     if files.is_some() {
                         return files;
                     }
