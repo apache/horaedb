@@ -146,6 +146,26 @@ define_numeric_column!(
 #[derive(Debug, Clone)]
 pub struct TimestampColumn(TimestampMillisecondArray);
 
+impl TimestampColumn {
+    pub fn min_max(&self) -> (i64, i64) {
+        if self.0.is_empty() {
+            return (i64::MIN, i64::MAX);
+        }
+
+        let (mut min, mut max) = (self.0.value(0), self.0.value(0));
+        for i in 1..self.0.len() {
+            let current = self.0.value(i);
+            if current < min {
+                min = current;
+            } else if current > max {
+                max = current;
+            }
+        }
+
+        (min, max)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct VarbinaryColumn(BinaryArray);
 

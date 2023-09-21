@@ -608,7 +608,7 @@ impl FlushTask {
         let sst_meta = MetaData {
             min_key,
             max_key,
-            time_range: memtable_state.time_range,
+            time_range: memtable_state.real_time_range,
             max_sequence,
             schema: self.table_data.schema(),
         };
@@ -661,7 +661,7 @@ impl FlushTask {
             id: file_id,
             row_num: sst_info.row_num as u64,
             size: sst_info.file_size as u64,
-            time_range: memtable_state.time_range,
+            time_range: memtable_state.real_time_range,
             max_seq: memtable_state.last_sequence(),
             storage_format: sst_info.storage_format,
             associated_files: vec![sst_info.meta_path],

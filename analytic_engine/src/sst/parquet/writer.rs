@@ -82,7 +82,7 @@ struct RecordBatchGroupWriter {
     request_id: RequestId,
     input: RecordBatchStream,
     input_exhausted: bool,
-    meta_data: MetaData,
+    // meta_data: MetaData,
     num_rows_per_row_group: usize,
     max_buffer_size: usize,
     compression: Compression,
@@ -181,6 +181,7 @@ impl RecordBatchGroupWriter {
         mut self,
         sink: W,
         meta_path: &Path,
+        meta_data: &MetaData,
     ) -> Result<(usize, ParquetMetaData)> {
         let mut prev_record_batch: Option<RecordBatchWithKey> = None;
         let mut arrow_row_group = Vec::new();
@@ -188,7 +189,7 @@ impl RecordBatchGroupWriter {
 
         let mut parquet_encoder = ParquetEncoder::try_new(
             sink,
-            &self.meta_data.schema,
+            &meta_data.schema,
             self.num_rows_per_row_group,
             self.max_buffer_size,
             self.compression,
@@ -200,6 +201,7 @@ impl RecordBatchGroupWriter {
         } else {
             None
         };
+        let timestamp_index = meta_data.schema.timestamp_index();
 
         loop {
             let row_group = self.fetch_next_row_group(&mut prev_record_batch).await?;
@@ -213,6 +215,9 @@ impl RecordBatchGroupWriter {
 
             let num_batches = row_group.len();
             for record_batch in row_group {
+                let column_block = record_batch.column(timestamp_index);
+                let ts_col = column_block.as_timestamp().unwrap();
+                ts_col
                 arrow_row_group.push(record_batch.into_record_batch().into_arrow_record_batch());
             }
             let num_rows = parquet_encoder
@@ -228,7 +233,7 @@ impl RecordBatchGroupWriter {
         }
 
         let parquet_meta_data = {
-            let mut parquet_meta_data = ParquetMetaData::from(self.meta_data);
+            let mut parquet_meta_data = ParquetMetaData::from(meta_data.clone());
             parquet_meta_data.parquet_filter = parquet_filter;
             parquet_meta_data
         };
@@ -333,7 +338,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             num_rows_per_row_group: self.num_rows_per_row_group,
             max_buffer_size: self.max_buffer_size,
             compression: self.compression,
-            meta_data: meta.clone(),
+            // meta_data: meta.clone(),
             level: self.level,
         };
 
@@ -343,7 +348,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
         let meta_path = Path::from(sst_util::new_metadata_path(self.path.as_ref()));
 
         let (total_num_rows, parquet_metadata) =
-            match group_writer.write_all(sink, &meta_path).await {
+            match group_writer.write_all(sink, &meta_path, meta).await {
                 Ok(v) => v,
                 Err(e) => {
                     multi_upload_abort(self.path, aborter).await;
