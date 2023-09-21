@@ -27,7 +27,7 @@ use chrono::{DateTime, Utc};
 use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
 use hash_ext::SeaHasherBuilder;
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use lru::LruCache;
 use notifier::notifier::{ExecutionGuard, RequestNotifiers};
 use partitioned_lock::PartitionedMutex;
@@ -167,34 +167,81 @@ impl Manifest {
     }
 }
 
-/// The encoder of the page file in the disk cache.
+/// The writer of the page file in the disk cache.
 ///
 /// Following the payload, a footer [`PageFileEncoder::MAGIC_FOOTER`] is
 /// appended.
-struct PageFileEncoder {
-    payload: Bytes,
+struct PageFileWriter {
+    output: String,
+    tmp_file: String,
+    need_clean_tmpfile: bool,
 }
 
-impl PageFileEncoder {
+impl Drop for PageFileWriter {
+    fn drop(&mut self) {
+        if self.need_clean_tmpfile {
+            if let Err(e) = std::fs::remove_file(&self.tmp_file) {
+                warn!(
+                    "Disk cache remove page tmp file failed, file:{}, err:{e}",
+                    &self.tmp_file
+                );
+            }
+        }
+    }
+}
+
+impl PageFileWriter {
     const MAGIC_FOOTER: [u8; 8] = [0, 0, 0, 0, b'c', b'e', b'r', b'e'];
 
-    async fn encode_and_persist<W>(&self, writer: &mut W, name: &str) -> Result<()>
-    where
-        W: AsyncWrite + std::marker::Unpin,
-    {
-        writer
-            .write_all(&self.payload[..])
+    fn new(output: String) -> Self {
+        let tmp_file = Self::tmp_file(&output);
+
+        Self {
+            output,
+            tmp_file,
+            need_clean_tmpfile: true,
+        }
+    }
+
+    fn tmp_file(input: &str) -> String {
+        format!("{}.tmp", input)
+    }
+
+    async fn write_inner(&self, bytes: Bytes) -> Result<()> {
+        let tmp_file = &self.tmp_file;
+        let mut writer = File::create(tmp_file)
             .await
-            .context(Io { file: name })?;
+            .context(Io { file: tmp_file })?;
+        writer
+            .write_all(&bytes)
+            .await
+            .context(Io { file: tmp_file })?;
 
         writer
             .write_all(&Self::MAGIC_FOOTER)
             .await
-            .context(Io { file: name })?;
+            .context(Io { file: tmp_file })?;
 
-        writer.flush().await.context(Io { file: name })?;
+        writer.flush().await.context(Io { file: tmp_file })?;
+
+        tokio::fs::rename(tmp_file, &self.output)
+            .await
+            .context(Io { file: &self.output })?;
 
         Ok(())
+    }
+
+    // When write bytes to file, the cache lock is released, so when one thread is
+    // reading, another thread may update it, so we write to tmp file first,
+    // then rename to expected filename to avoid other threads see partial
+    // content.
+    async fn write_and_flush(mut self, bytes: Bytes) -> Result<()> {
+        let write_result = self.write_inner(bytes).await;
+        if write_result.is_ok() {
+            self.need_clean_tmpfile = false;
+        }
+
+        write_result
     }
 
     #[inline]
@@ -262,7 +309,7 @@ impl DiskCache {
 
     async fn insert_data(&self, filename: String, value: Bytes) {
         let page_meta = {
-            let file_size = PageFileEncoder::encoded_size(value.len());
+            let file_size = PageFileWriter::encoded_size(value.len());
             PageMeta { file_size }
         };
         let evicted_file = self.insert_page_meta(filename.clone(), page_meta);
@@ -357,18 +404,16 @@ impl DiskCache {
     }
 
     async fn persist_bytes(&self, filename: &str, payload: Bytes) -> Result<()> {
-        let file_path = std::path::Path::new(&self.root_dir)
+        let dest_filepath = std::path::Path::new(&self.root_dir)
             .join(filename)
             .into_os_string()
             .into_string()
             .unwrap();
 
-        let mut file = File::create(&file_path)
-            .await
-            .context(Io { file: &file_path })?;
+        let writer = PageFileWriter::new(dest_filepath);
+        writer.write_and_flush(payload).await?;
 
-        let encoding = PageFileEncoder { payload };
-        encoding.encode_and_persist(&mut file, filename).await
+        Ok(())
     }
 
     /// Read the bytes from the cached file.
@@ -381,7 +426,7 @@ impl DiskCache {
         range: &Range<usize>,
         expect_file_size: usize,
     ) -> std::io::Result<ReadBytesResult> {
-        if PageFileEncoder::encoded_size(range.len()) > expect_file_size {
+        if PageFileWriter::encoded_size(range.len()) > expect_file_size {
             return Ok(ReadBytesResult::OutOfRange);
         }
 
@@ -681,7 +726,7 @@ impl DiskCacheStore {
                             }
                             .fail(),
                         ) {
-                            error!("Failed to send notifier error result, err:{e:?}.");
+                            warn!("Failed to send notifier error result, err:{e:?}.");
                         }
                     }
                 }
@@ -698,8 +743,10 @@ impl DiskCacheStore {
         {
             self.cache.insert_data(cache_key, bytes.clone()).await;
             for notifier in notifiers {
-                if let Err(e) = notifier.send(Ok(bytes.clone())) {
-                    error!("Failed to send notifier success result, err:{e:?}.");
+                if notifier.send(Ok(bytes.clone())).is_err() {
+                    // The error contains sent bytes, which maybe very large,
+                    // so we don't log error.
+                    warn!("Failed to send notifier success result");
                 }
             }
         }
@@ -940,6 +987,7 @@ mod test {
     use upstream::local::LocalFileSystem;
 
     use super::*;
+    use crate::test_util::MemoryStore;
 
     struct StoreWithCacheDir {
         inner: DiskCacheStore,
@@ -951,8 +999,7 @@ mod test {
         cap: usize,
         partition_bits: usize,
     ) -> StoreWithCacheDir {
-        let local_path = tempdir().unwrap();
-        let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+        let local_store = Arc::new(MemoryStore::default());
 
         let cache_dir = tempdir().unwrap();
         let store = DiskCacheStore::try_new(

@@ -30,5 +30,7 @@ pub mod multipart;
 pub mod obkv;
 pub mod prefix;
 pub mod s3;
+#[cfg(test)]
+pub mod test_util;
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
