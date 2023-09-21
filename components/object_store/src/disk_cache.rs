@@ -173,21 +173,43 @@ impl Manifest {
 /// appended.
 struct PageFileWriter {
     output: String,
+    tmp_file: String,
+    need_clean_tmpfile: bool,
+}
+
+impl Drop for PageFileWriter {
+    fn drop(&mut self) {
+        if self.need_clean_tmpfile {
+            if let Err(e) = std::fs::remove_file(&self.tmp_file) {
+                warn!(
+                    "Disk cache remove page tmp file failed, file:{}, err:{e}",
+                    &self.tmp_file
+                );
+            }
+        }
+    }
 }
 
 impl PageFileWriter {
     const MAGIC_FOOTER: [u8; 8] = [0, 0, 0, 0, b'c', b'e', b'r', b'e'];
 
     fn new(output: String) -> Self {
-        Self { output }
+        let tmp_file = Self::tmp_file(&output);
+
+        Self {
+            output,
+            tmp_file,
+            need_clean_tmpfile: true,
+        }
     }
 
     fn tmp_file(input: &str) -> String {
         format!("{}.tmp", input)
     }
 
-    async fn write_inner(&self, tmp_file: &str, bytes: Bytes) -> Result<()> {
-        let mut writer = File::create(&tmp_file)
+    async fn write_inner(&self, bytes: Bytes) -> Result<()> {
+        let tmp_file = &self.tmp_file;
+        let mut writer = File::create(tmp_file)
             .await
             .context(Io { file: tmp_file })?;
         writer
@@ -213,12 +235,10 @@ impl PageFileWriter {
     // reading, another thread may update it, so we write to tmp file first,
     // then rename to expected filename to avoid other threads see partial
     // content.
-    async fn write_and_flush(self, bytes: Bytes) -> Result<()> {
-        let tmp_file = Self::tmp_file(&self.output);
-        let write_result = self.write_inner(&tmp_file, bytes).await;
-        if write_result.is_err() {
-            // we don't care this result.
-            _ = tokio::fs::remove_file(&tmp_file).await;
+    async fn write_and_flush(mut self, bytes: Bytes) -> Result<()> {
+        let write_result = self.write_inner(bytes).await;
+        if write_result.is_ok() {
+            self.need_clean_tmpfile = false;
         }
 
         write_result
