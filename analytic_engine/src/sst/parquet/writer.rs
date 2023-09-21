@@ -15,7 +15,7 @@
 //! Sst writer implementation based on parquet.
 
 use async_trait::async_trait;
-use common_types::{record_batch::RecordBatchWithKey, request_id::RequestId};
+use common_types::{record_batch::RecordBatchWithKey, request_id::RequestId, time::TimeRange};
 use datafusion::parquet::basic::Compression;
 use futures::StreamExt;
 use generic_error::BoxError;
@@ -81,15 +81,37 @@ impl<'a> ParquetSstWriter<'a> {
 struct RecordBatchGroupWriter {
     request_id: RequestId,
     input: RecordBatchStream,
-    input_exhausted: bool,
-    // meta_data: MetaData,
+    meta_data: MetaData,
     num_rows_per_row_group: usize,
     max_buffer_size: usize,
     compression: Compression,
     level: Level,
+
+    input_exhausted: bool,
 }
 
 impl RecordBatchGroupWriter {
+    fn new(
+        request_id: RequestId,
+        input: RecordBatchStream,
+        meta_data: MetaData,
+        num_rows_per_row_group: usize,
+        max_buffer_size: usize,
+        compression: Compression,
+        level: Level,
+    ) -> Self {
+        Self {
+            request_id,
+            input,
+            meta_data,
+            num_rows_per_row_group,
+            max_buffer_size,
+            compression,
+            level,
+            input_exhausted: false,
+        }
+    }
+
     /// Fetch an integral row group from the `self.input`.
     ///
     /// Except the last one, every row group is ensured to contains exactly
@@ -181,7 +203,6 @@ impl RecordBatchGroupWriter {
         mut self,
         sink: W,
         meta_path: &Path,
-        meta_data: &MetaData,
     ) -> Result<(usize, ParquetMetaData)> {
         let mut prev_record_batch: Option<RecordBatchWithKey> = None;
         let mut arrow_row_group = Vec::new();
@@ -189,7 +210,7 @@ impl RecordBatchGroupWriter {
 
         let mut parquet_encoder = ParquetEncoder::try_new(
             sink,
-            &meta_data.schema,
+            &self.meta_data.schema,
             self.num_rows_per_row_group,
             self.max_buffer_size,
             self.compression,
@@ -201,7 +222,8 @@ impl RecordBatchGroupWriter {
         } else {
             None
         };
-        let timestamp_index = meta_data.schema.timestamp_index();
+        let timestamp_index = self.meta_data.schema.timestamp_index();
+        let mut real_time_range: Option<TimeRange> = None;
 
         loop {
             let row_group = self.fetch_next_row_group(&mut prev_record_batch).await?;
@@ -217,7 +239,21 @@ impl RecordBatchGroupWriter {
             for record_batch in row_group {
                 let column_block = record_batch.column(timestamp_index);
                 let ts_col = column_block.as_timestamp().unwrap();
-                ts_col
+                if let Some(current_range) = ts_col.min_max() {
+                    if let Some(real_range) = real_time_range {
+                        // Use current range to update real_range
+                        real_time_range = Some(TimeRange::new_unchecked(
+                            current_range
+                                .inclusive_start()
+                                .min(real_range.inclusive_start()),
+                            current_range
+                                .exclusive_end()
+                                .min(real_range.exclusive_end()),
+                        ));
+                    } else {
+                        real_time_range = Some(current_range);
+                    }
+                }
                 arrow_row_group.push(record_batch.into_record_batch().into_arrow_record_batch());
             }
             let num_rows = parquet_encoder
@@ -233,11 +269,19 @@ impl RecordBatchGroupWriter {
         }
 
         let parquet_meta_data = {
-            let mut parquet_meta_data = ParquetMetaData::from(meta_data.clone());
+            let mut parquet_meta_data = ParquetMetaData::from(self.meta_data.clone());
             parquet_meta_data.parquet_filter = parquet_filter;
+            if let Some(range) = real_time_range {
+                parquet_meta_data.time_range = range;
+            }
             parquet_meta_data
         };
 
+        log::info!(
+            "Parquet sst path:{} range:{:?}",
+            &meta_path,
+            parquet_meta_data.time_range
+        );
         parquet_encoder
             .set_meta_data_path(Some(meta_path.to_string()))
             .box_err()
@@ -331,16 +375,15 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             request_id, meta, self.num_rows_per_row_group
         );
 
-        let group_writer = RecordBatchGroupWriter {
+        let group_writer = RecordBatchGroupWriter::new(
             request_id,
             input,
-            input_exhausted: false,
-            num_rows_per_row_group: self.num_rows_per_row_group,
-            max_buffer_size: self.max_buffer_size,
-            compression: self.compression,
-            // meta_data: meta.clone(),
-            level: self.level,
-        };
+            meta.clone(),
+            self.num_rows_per_row_group,
+            self.max_buffer_size,
+            self.compression,
+            self.level,
+        );
 
         let (aborter, sink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, self.path).await?;
@@ -348,7 +391,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
         let meta_path = Path::from(sst_util::new_metadata_path(self.path.as_ref()));
 
         let (total_num_rows, parquet_metadata) =
-            match group_writer.write_all(sink, &meta_path, meta).await {
+            match group_writer.write_all(sink, &meta_path).await {
                 Ok(v) => v,
                 Err(e) => {
                     multi_upload_abort(self.path, aborter).await;
@@ -656,22 +699,21 @@ mod tests {
             Poll::Ready(Some(Ok(batch)))
         }));
 
-        let mut group_writer = RecordBatchGroupWriter {
-            request_id: RequestId::next_id(),
-            input: record_batch_stream,
-            input_exhausted: false,
-            num_rows_per_row_group,
-            compression: Compression::UNCOMPRESSED,
-            meta_data: MetaData {
+        let mut group_writer = RecordBatchGroupWriter::new(
+            RequestId::next_id(),
+            record_batch_stream,
+            MetaData {
                 min_key: Default::default(),
                 max_key: Default::default(),
                 time_range: Default::default(),
                 max_sequence: 1,
                 schema,
             },
-            max_buffer_size: 0,
-            level: Level::default(),
-        };
+            num_rows_per_row_group,
+            0,
+            Compression::UNCOMPRESSED,
+            Level::default(),
+        );
 
         let mut prev_record_batch = None;
         for expect_num_row in expected_num_rows {
