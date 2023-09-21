@@ -226,6 +226,12 @@ impl OngoingTaskLimit {
     }
 
     #[inline]
+    fn pending_task_size(&self) -> usize {
+        let buf = self.request_buf.read().unwrap();
+        buf.len()
+    }
+
+    #[inline]
     fn add_request(&self, request: TableCompactionRequest) {
         let mut dropped = 0;
 
@@ -480,7 +486,8 @@ impl ScheduleWorker {
         waiter_notifier: WaiterNotifier,
         token: MemoryUsageToken,
     ) {
-        let keep_scheduling_compaction = compaction_task.contains_min_level();
+        let keep_scheduling_compaction =
+            self.is_pending_queue_hungry() && compaction_task.contains_min_level();
 
         let runtime = self.runtime.clone();
         let space_store = self.space_store.clone();
@@ -681,6 +688,13 @@ impl ScheduleWorker {
                 }
             }
         }
+    }
+
+    fn is_pending_queue_hungry(&self) -> bool {
+        // TODO: Currently we consider pending queue is hungry when number of pending
+        // tasks is less than `max_ongoing_tasks`, maybe we can add a new option
+        // to configure it.
+        self.limit.pending_task_size() < self.max_ongoing_tasks
     }
 }
 
