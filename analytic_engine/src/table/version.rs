@@ -126,7 +126,6 @@ pub struct MemTableState {
     /// The `time_range` is estimated via the time range of the first row group
     /// write to this memtable and is aligned to segment size
     pub time_range: TimeRange,
-    pub real_time_range: TimeRange,
     /// Id of the memtable, newer memtable has greater id
     pub id: MemTableId,
 }

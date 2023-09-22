@@ -377,7 +377,10 @@ impl FileHandleSet {
 
     fn files_by_time_range(&self, time_range: TimeRange) -> Vec<FileHandle> {
         // Seek to first sst whose end time >= time_range.inclusive_start().
-        trace!("files_by_time_range: {:?}--{:?}", time_range, self.file_map);
+        trace!(
+            "Pick sst file by range for query, time_range:{time_range:?}, file_map:{:?}",
+            self.file_map
+        );
         let seek_key = FileOrdKey::for_seek(time_range.inclusive_start());
         self.file_map
             .range(seek_key..)

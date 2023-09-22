@@ -480,7 +480,6 @@ impl TableData {
                 let mem_state = MemTableState {
                     mem,
                     time_range,
-                    real_time_range: time_range,
                     id: self.alloc_memtable_id(),
                 };
 
