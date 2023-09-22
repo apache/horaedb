@@ -28,6 +28,7 @@ use generic_error::GenericError;
 use crate::table_options::StorageFormat;
 
 pub mod error {
+    use common_types::datum::DatumKind;
     use generic_error::GenericError;
     use macros::define_result;
     use snafu::{Backtrace, Snafu};
@@ -67,6 +68,14 @@ pub mod error {
         ))]
         EncodeRecordBatch {
             source: GenericError,
+            backtrace: Backtrace,
+        },
+
+        #[snafu(display(
+            "Require column to be timestamp, actual:{datum_kind}.\nBacktrace:\n{backtrace}"
+        ))]
+        RequireTimestampColumn {
+            datum_kind: DatumKind,
             backtrace: Backtrace,
         },
 

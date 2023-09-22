@@ -22,7 +22,7 @@ use generic_error::BoxError;
 use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::meta_data::RowGroupFilter;
@@ -36,7 +36,8 @@ use crate::{
         },
         writer::{
             self, BuildParquetFilter, EncodePbData, EncodeRecordBatch, Io, MetaData,
-            PollRecordBatch, RecordBatchStream, Result, SstInfo, SstWriter, Storage,
+            PollRecordBatch, RecordBatchStream, RequireTimestampColumn, Result, SstInfo, SstWriter,
+            Storage,
         },
     },
     table::sst_util,
@@ -87,7 +88,10 @@ struct RecordBatchGroupWriter {
     compression: Compression,
     level: Level,
 
+    // inner status
     input_exhausted: bool,
+    // Time range of rows, not aligned to segment.
+    real_time_range: Option<TimeRange>,
 }
 
 impl RecordBatchGroupWriter {
@@ -109,6 +113,7 @@ impl RecordBatchGroupWriter {
             compression,
             level,
             input_exhausted: false,
+            real_time_range: None,
         }
     }
 
@@ -199,6 +204,25 @@ impl RecordBatchGroupWriter {
         !self.level.is_min()
     }
 
+    fn update_time_range(&mut self, current_range: Option<TimeRange>) {
+        if let Some(current_range) = current_range {
+            if let Some(real_range) = self.real_time_range {
+                // Use current range to update real range,
+                // We should expand range as possible as we can.
+                self.real_time_range = Some(TimeRange::new_unchecked(
+                    current_range
+                        .inclusive_start()
+                        .min(real_range.inclusive_start()),
+                    current_range
+                        .exclusive_end()
+                        .max(real_range.exclusive_end()),
+                ));
+            } else {
+                self.real_time_range = Some(current_range);
+            }
+        }
+    }
+
     async fn write_all<W: AsyncWrite + Send + Unpin + 'static>(
         mut self,
         sink: W,
@@ -223,7 +247,6 @@ impl RecordBatchGroupWriter {
             None
         };
         let timestamp_index = self.meta_data.schema.timestamp_index();
-        let mut real_time_range: Option<TimeRange> = None;
 
         loop {
             let row_group = self.fetch_next_row_group(&mut prev_record_batch).await?;
@@ -238,22 +261,13 @@ impl RecordBatchGroupWriter {
             let num_batches = row_group.len();
             for record_batch in row_group {
                 let column_block = record_batch.column(timestamp_index);
-                let ts_col = column_block.as_timestamp().unwrap();
-                if let Some(current_range) = ts_col.min_max() {
-                    if let Some(real_range) = real_time_range {
-                        // Use current range to update real_range
-                        real_time_range = Some(TimeRange::new_unchecked(
-                            current_range
-                                .inclusive_start()
-                                .min(real_range.inclusive_start()),
-                            current_range
-                                .exclusive_end()
-                                .min(real_range.exclusive_end()),
-                        ));
-                    } else {
-                        real_time_range = Some(current_range);
-                    }
-                }
+                let ts_col = column_block
+                    .as_timestamp()
+                    .context(RequireTimestampColumn {
+                        datum_kind: column_block.datum_kind(),
+                    })?;
+                self.update_time_range(ts_col.min_max());
+
                 arrow_row_group.push(record_batch.into_record_batch().into_arrow_record_batch());
             }
             let num_rows = parquet_encoder
@@ -269,19 +283,14 @@ impl RecordBatchGroupWriter {
         }
 
         let parquet_meta_data = {
-            let mut parquet_meta_data = ParquetMetaData::from(self.meta_data.clone());
+            let mut parquet_meta_data = ParquetMetaData::from(self.meta_data);
             parquet_meta_data.parquet_filter = parquet_filter;
-            if let Some(range) = real_time_range {
+            if let Some(range) = self.real_time_range {
                 parquet_meta_data.time_range = range;
             }
             parquet_meta_data
         };
 
-        log::info!(
-            "Parquet sst path:{} range:{:?}",
-            &meta_path,
-            parquet_meta_data.time_range
-        );
         parquet_encoder
             .set_meta_data_path(Some(meta_path.to_string()))
             .box_err()
@@ -487,7 +496,7 @@ mod tests {
 
             let schema = build_schema_with_dictionary();
             let reader_projected_schema = ProjectedSchema::no_projection(schema.clone());
-            let sst_meta = MetaData {
+            let mut sst_meta = MetaData {
                 min_key: Bytes::from_static(b"100"),
                 max_key: Bytes::from_static(b"200"),
                 time_range: TimeRange::new_unchecked(Timestamp::new(1), Timestamp::new(2)),
@@ -502,7 +511,6 @@ mod tests {
                 }
                 counter -= 1;
 
-                // reach here when counter is 9 7 5 3 1
                 let ts = 100 + counter;
                 let rows = vec![
                     build_row_for_dictionary(
@@ -592,6 +600,13 @@ mod tests {
                 // sst filter is built insider sst writer, so overwrite to default for
                 // comparison.
                 sst_meta_readback.parquet_filter = Default::default();
+                // time_range is built insider sst writer, so overwrite it for
+                // comparison.
+                sst_meta.time_range = sst_info.time_range;
+                assert_eq!(
+                    sst_meta.time_range,
+                    TimeRange::new_unchecked(100.into(), 105.into())
+                );
                 assert_eq!(&sst_meta_readback, &ParquetMetaData::from(sst_meta));
                 assert_eq!(
                     expected_num_rows,
