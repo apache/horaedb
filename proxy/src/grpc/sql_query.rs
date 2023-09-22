@@ -29,13 +29,14 @@ use futures::{stream, stream::BoxStream, FutureExt, StreamExt};
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
-use log::{error, warn};
+use log::{error, info, warn};
 use router::endpoint::Endpoint;
 use snafu::ResultExt;
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
     error::{self, ErrNoCause, ErrWithCause, Error, Result},
+    failed_query,
     forward::{ForwardRequest, ForwardResult},
     metrics::GRPC_HANDLER_COUNTER_VEC,
     read::SqlResponse,
@@ -53,7 +54,6 @@ impl Proxy {
         match self.handle_sql_query_internal(&ctx, &req).await {
             Err(e) => {
                 error!("Failed to handle sql query, ctx:{ctx:?}, err:{e}");
-
                 GRPC_HANDLER_COUNTER_VEC.query_failed.inc();
                 SqlQueryResponse {
                     header: Some(error::build_err_header(e)),

@@ -20,6 +20,7 @@ postgresql_port = 5433
 
 [logger]
 level = "info"
+failed_query_path = "/tmp/failed_query.log"
 
 [tracing]
 dir = "/tmp/ceresdb"

@@ -32,9 +32,9 @@ pub mod instance;
 pub mod limiter;
 mod metrics;
 pub mod opentsdb;
+mod query_log;
 mod read;
 pub mod schema_config_provider;
-mod slow_query;
 mod util;
 mod write;
 

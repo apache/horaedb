@@ -90,21 +90,27 @@ pub fn file_drainer(path: &Option<String>) -> Option<CeresFormat<PlainDecorator<
 }
 
 /// Dispatcher for logs
-pub struct LogDispatcher<N, S> {
+pub struct LogDispatcher<N, S, F> {
     normal: N,
     slow: Option<S>,
+    failed: Option<F>,
 }
 
-impl<N: Drain, S: Drain> LogDispatcher<N, S> {
-    pub fn new(normal: N, slow: Option<S>) -> Self {
-        Self { normal, slow }
+impl<N: Drain, S: Drain, F: Drain> LogDispatcher<N, S, F> {
+    pub fn new(normal: N, slow: Option<S>, failed: Option<F>) -> Self {
+        Self {
+            normal,
+            slow,
+            failed,
+        }
     }
 }
 
-impl<N, S> Drain for LogDispatcher<N, S>
+impl<N, S, F> Drain for LogDispatcher<N, S, F>
 where
     N: Drain<Ok = (), Err = io::Error>,
     S: Drain<Ok = (), Err = io::Error>,
+    F: Drain<Ok = (), Err = io::Error>,
 {
     type Err = io::Error;
     type Ok = ();
@@ -112,8 +118,10 @@ where
     fn log(&self, record: &Record, values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
         let tag = record.tag();
         // if slow_path not exists, print slow_log to terminal
-        if self.slow.is_some() && tag.starts_with("slow_log") {
+        if self.slow.is_some() && tag.starts_with("slow") {
             self.slow.as_ref().unwrap().log(record, values)
+        } else if self.failed.is_some() && tag.starts_with("failed") {
+            self.failed.as_ref().unwrap().log(record, values)
         } else {
             self.normal.log(record, values)
         }
@@ -127,7 +135,8 @@ pub struct Config {
     pub level: String,
     pub enable_async: bool,
     pub async_channel_len: i32,
-    pub slow_log_path: Option<String>,
+    pub slow_query_path: Option<String>,
+    pub failed_query_path: Option<String>,
 }
 
 impl Default for Config {
@@ -136,7 +145,8 @@ impl Default for Config {
             level: "info".to_string(),
             enable_async: true,
             async_channel_len: 102400,
-            slow_log_path: None,
+            slow_query_path: None,
+            failed_query_path: None,
         }
     }
 }
@@ -154,8 +164,9 @@ pub fn init_log(config: &Config) -> Result<RuntimeLevel, SetLoggerError> {
     };
 
     let normal_drain = term_drainer();
-    let slow_drain = file_drainer(&config.slow_log_path);
-    let drain = LogDispatcher::new(normal_drain, slow_drain);
+    let slow_drain = file_drainer(&config.slow_query_path);
+    let failed_drain = file_drainer(&config.failed_query_path);
+    let drain = LogDispatcher::new(normal_drain, slow_drain, failed_drain);
 
     // Use async and init stdlog
     init_log_from_drain(
@@ -446,6 +457,7 @@ pub fn init_test_logger() {
     let term_drain = term_drainer();
     let drain = LogDispatcher::new(
         term_drain,
+        Option::<CeresFormat<PlainDecorator<File>>>::None,
         Option::<CeresFormat<PlainDecorator<File>>>::None,
     );
 

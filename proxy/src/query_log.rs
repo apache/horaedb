@@ -56,11 +56,17 @@ impl SlowTimer {
 }
 
 #[macro_export]
-macro_rules! maybe_slow_log {
+macro_rules! maybe_slow_query {
     ($t:expr, $($args:tt)*) => {{
-        info!($($args)*);
         if $t.is_slow() {
-            info!(target: "slow_log", $($args)*);
+            info!(target: "slow", $($args)*);
         }
+    }}
+}
+
+#[macro_export]
+macro_rules! failed_query {
+    ($($args:tt)*) => {{
+        info!(target: "failed", $($args)*);
     }}
 }
