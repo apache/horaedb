@@ -107,29 +107,6 @@ where
     }
 }
 
-pub struct FutureCancelledGuard<F: FnMut()> {
-    f: F,
-    cancelled: bool,
-}
-
-impl<F: FnMut()> FutureCancelledGuard<F> {
-    pub fn new(f: F) -> Self {
-        Self { f, cancelled: true }
-    }
-
-    pub fn uncancelled(&mut self) {
-        self.cancelled = false;
-    }
-}
-
-impl<F: FnMut()> Drop for FutureCancelledGuard<F> {
-    fn drop(&mut self) {
-        if self.cancelled {
-            (self.f)();
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::{

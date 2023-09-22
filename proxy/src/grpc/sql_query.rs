@@ -85,7 +85,7 @@ impl Proxy {
 
         let result = match self.request_notifiers.clone() {
             Some(request_notifiers) => {
-                self.deduped_handle_sql(
+                self.dedup_handle_sql(
                     ctx,
                     schema,
                     &req.sql,

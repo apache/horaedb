@@ -5349,7 +5349,6 @@ dependencies = [
  "common_types",
  "datafusion",
  "df_operator",
- "future_ext",
  "futures 0.3.28",
  "generic_error",
  "http",

@@ -19,7 +19,6 @@ use std::{sync::Arc, time::Instant};
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, SqlQueryRequest, SqlQueryResponse,
 };
-use future_ext::FutureCancelledGuard;
 use futures::FutureExt;
 use generic_error::BoxError;
 use http::StatusCode;
@@ -33,11 +32,11 @@ use query_frontend::{
 use router::endpoint::Endpoint;
 use snafu::{ensure, ResultExt};
 use time_ext::InstantExt;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, Sender};
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
-    dedup_requests::{RequestNotifiers, RequestResult},
+    dedup_requests::{ExecutionGuard, RequestNotifiers, RequestResult},
     error::{ErrNoCause, ErrWithCause, Error, Internal, Result},
     forward::{ForwardRequest, ForwardResult},
     metrics::GRPC_HANDLER_COUNTER_VEC,
@@ -73,17 +72,17 @@ impl Proxy {
         ))
     }
 
-    pub(crate) async fn deduped_handle_sql(
+    pub(crate) async fn dedup_handle_sql(
         &self,
         ctx: &Context,
         schema: &str,
         sql: &str,
-        request_notifiers: Arc<RequestNotifiers<String, Result<SqlResponse>>>,
+        request_notifiers: Arc<RequestNotifiers<String, Sender<Result<SqlResponse>>>>,
         enable_partition_table_access: bool,
     ) -> Result<SqlResponse> {
         let (tx, mut rx) = mpsc::channel(1);
         let mut guard = match request_notifiers.insert_notifier(sql.to_string(), tx) {
-            RequestResult::First => FutureCancelledGuard::new(|| {
+            RequestResult::First => ExecutionGuard::new(|| {
                 request_notifiers.take_notifiers(&sql.to_string());
             }),
             RequestResult::Wait => {
@@ -98,7 +97,7 @@ impl Proxy {
             match resp {
                 ForwardResult::Forwarded(resp) => {
                     let resp = resp?;
-                    guard.uncancelled();
+                    guard.cancel();
                     let notifiers = request_notifiers.take_notifiers(&sql.to_string()).unwrap();
                     for notifier in &notifiers {
                         if let Err(e) = notifier
@@ -121,7 +120,7 @@ impl Proxy {
             .fetch_sql_query_output(ctx, schema, sql, enable_partition_table_access)
             .await?;
 
-        guard.uncancelled();
+        guard.cancel();
         let notifiers = request_notifiers.take_notifiers(&sql.to_string()).unwrap();
         for notifier in &notifiers {
             if let Err(e) = notifier.send(Ok(SqlResponse::Local(result.clone()))).await {
@@ -231,10 +230,10 @@ impl Proxy {
             Output::AffectedRows(_) => Ok(output),
             Output::Records(v) => {
                 if plan_maybe_expired {
-                    let row_nums = v
+                    let num_rows = v
                         .iter()
                         .fold(0_usize, |acc, record_batch| acc + record_batch.num_rows());
-                    if row_nums == 0 {
+                    if num_rows == 0 {
                         warn!("Query time range maybe exceed TTL, sql:{sql}");
 
                         // TODO: Cannot return this error directly, empty query
