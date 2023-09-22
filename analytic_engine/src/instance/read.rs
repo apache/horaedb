@@ -29,7 +29,7 @@ use common_types::{
 };
 use futures::stream::Stream;
 use generic_error::BoxError;
-use log::debug;
+use log::{debug, info};
 use macros::define_result;
 use snafu::{ResultExt, Snafu};
 use table_engine::{
