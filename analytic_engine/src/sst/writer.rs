@@ -98,6 +98,8 @@ pub struct SstInfo {
     pub row_num: usize,
     pub storage_format: StorageFormat,
     pub meta_path: String,
+    /// Real time range, not aligned to segment.
+    pub time_range: TimeRange,
 }
 
 #[derive(Debug, Clone)]

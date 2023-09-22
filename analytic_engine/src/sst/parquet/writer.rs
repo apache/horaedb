@@ -398,6 +398,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
                     return Err(e);
                 }
             };
+        let time_range = parquet_metadata.time_range;
 
         let (meta_aborter, meta_sink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, &meta_path).await?;
@@ -416,6 +417,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             row_num: total_num_rows,
             storage_format: StorageFormat::Columnar,
             meta_path: meta_path.to_string(),
+            time_range,
         })
     }
 }
