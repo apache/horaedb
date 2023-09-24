@@ -50,4 +50,4 @@ vergen = { version = "8", default-features = false, features = ["build", "cargo"
 
 [[bin]]
 name = "ceresdb-server"
-path = "src/bin/ceresdb-server.rs"
+path = "bin/ceresdb-server.rs"
