@@ -69,7 +69,7 @@ members = [
     "remote_engine_client",
     "router",
     "server",
-    "src/server",
+    "src/ceresdb",
     "system_catalog",
     "table_engine",
     "tools",
