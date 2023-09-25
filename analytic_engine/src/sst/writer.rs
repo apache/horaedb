@@ -28,6 +28,7 @@ use generic_error::GenericError;
 use crate::table_options::StorageFormat;
 
 pub mod error {
+    use common_types::datum::DatumKind;
     use generic_error::GenericError;
     use macros::define_result;
     use snafu::{Backtrace, Snafu};
@@ -70,6 +71,14 @@ pub mod error {
             backtrace: Backtrace,
         },
 
+        #[snafu(display(
+            "Expect column to be timestamp, actual:{datum_kind}.\nBacktrace:\n{backtrace}"
+        ))]
+        ExpectTimestampColumn {
+            datum_kind: DatumKind,
+            backtrace: Backtrace,
+        },
+
         #[snafu(display("Failed to build parquet filter, err:{}", source))]
         BuildParquetFilter { source: GenericError },
 
@@ -98,6 +107,8 @@ pub struct SstInfo {
     pub row_num: usize,
     pub storage_format: StorageFormat,
     pub meta_path: String,
+    /// Real time range, not aligned to segment.
+    pub time_range: TimeRange,
 }
 
 #[derive(Debug, Clone)]
