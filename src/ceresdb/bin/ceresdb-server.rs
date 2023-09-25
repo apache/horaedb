@@ -103,3 +103,16 @@ fn main() {
 
     setup::run_server(config, runtime_level);
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_env_reader() {
+        assert!(option_env!("CARGO_PKG_VERSION").is_some());
+        assert!(option_env!("VERGEN_GIT_SHA").is_some());
+        assert!(option_env!("VERGEN_BUILD_TIMESTAMP").is_some());
+        assert!(option_env!("VERGEN_RUSTC_SEMVER").is_some());
+        assert!(option_env!("VERGEN_CARGO_OPT_LEVEL").is_some());
+        assert!(option_env!("VERGEN_CARGO_TARGET_TRIPLE").is_some());
+    }
+}
