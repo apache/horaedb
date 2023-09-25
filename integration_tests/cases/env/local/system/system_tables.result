@@ -12,6 +12,7 @@ CREATE TABLE `01_system_table1` (
 
 affected_rows: 0
 
+-- FIXME
 SELECT
     `timestamp`,
     `catalog`,
@@ -27,6 +28,7 @@ timestamp,catalog,schema,table_name,engine,
 Timestamp(0),String("ceresdb"),String("public"),String("01_system_table1"),String("Analytic"),
 
 
+-- FIXME
 SHOW TABLES LIKE '01%';
 
 Tables,

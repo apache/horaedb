@@ -78,6 +78,7 @@ MIN(02_function_aggregate_table1.uvalue) - MAX(02_function_aggregate_table1.uval
 UInt64(18446744073709551606),
 
 
+-- duplicate with last insert
 INSERT INTO `02_function_aggregate_table1`
     (`timestamp`, `arch`, `datacenter`, `value`)
 VALUES
