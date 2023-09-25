@@ -18,6 +18,7 @@ authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
 
 [workspace]
+resolver = "2"
 # In alphabetical order
 members = [
     "analytic_engine",
