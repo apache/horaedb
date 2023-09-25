@@ -35,9 +35,8 @@ use crate::{
             meta_data::{ParquetFilter, ParquetMetaData, RowGroupFilterBuilder},
         },
         writer::{
-            self, BuildParquetFilter, EncodePbData, EncodeRecordBatch, Io, MetaData,
-            PollRecordBatch, RecordBatchStream, RequireTimestampColumn, Result, SstInfo, SstWriter,
-            Storage,
+            self, BuildParquetFilter, EncodePbData, EncodeRecordBatch, ExpectTimestampColumn, Io,
+            MetaData, PollRecordBatch, RecordBatchStream, Result, SstInfo, SstWriter, Storage,
         },
     },
     table::sst_util,
@@ -261,12 +260,10 @@ impl RecordBatchGroupWriter {
             let num_batches = row_group.len();
             for record_batch in row_group {
                 let column_block = record_batch.column(timestamp_index);
-                let ts_col = column_block
-                    .as_timestamp()
-                    .context(RequireTimestampColumn {
-                        datum_kind: column_block.datum_kind(),
-                    })?;
-                self.update_time_range(ts_col.min_max());
+                let ts_col = column_block.as_timestamp().context(ExpectTimestampColumn {
+                    datum_kind: column_block.datum_kind(),
+                })?;
+                self.update_time_range(ts_col.time_range());
 
                 arrow_row_group.push(record_batch.into_record_batch().into_arrow_record_batch());
             }

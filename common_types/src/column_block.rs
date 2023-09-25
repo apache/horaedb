@@ -147,7 +147,7 @@ define_numeric_column!(
 pub struct TimestampColumn(TimestampMillisecondArray);
 
 impl TimestampColumn {
-    pub fn min_max(&self) -> Option<TimeRange> {
+    pub fn time_range(&self) -> Option<TimeRange> {
         if self.0.is_empty() {
             return None;
         }
