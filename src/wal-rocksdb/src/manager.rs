@@ -37,8 +37,7 @@ use rocksdb::{
 use runtime::Runtime;
 use snafu::ResultExt;
 use tokio::sync::Mutex;
-
-use crate::{
+use wal::{
     kv_encoder::{CommonLogEncoding, CommonLogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{

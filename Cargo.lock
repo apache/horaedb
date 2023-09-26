@@ -7640,11 +7640,9 @@ dependencies = [
  "prometheus 0.12.0",
  "prost",
  "rand 0.8.5",
- "rocksdb",
  "runtime",
  "serde",
  "serde_json",
- "size_ext",
  "smallvec",
  "snafu 0.6.10",
  "table_kv",
@@ -7653,6 +7651,33 @@ dependencies = [
  "timed_task",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "wal-kafka"
+version = "1.2.6-alpha"
+
+[[package]]
+name = "wal-obkv"
+version = "1.2.6-alpha"
+
+[[package]]
+name = "wal-rocksdb"
+version = "1.2.6-alpha"
+dependencies = [
+ "async-trait",
+ "bytes_ext",
+ "common_types",
+ "generic_error",
+ "log",
+ "rocksdb",
+ "runtime",
+ "serde",
+ "serde_json",
+ "size_ext",
+ "snafu 0.6.10",
+ "tokio",
+ "wal",
 ]
 
 [[package]]
