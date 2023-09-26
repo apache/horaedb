@@ -391,7 +391,7 @@ impl Builder {
             timeout: self.server_config.timeout.map(|v| v.0),
         };
 
-        let request_notifiers = if self.server_config.enable_query_dedup {
+        let request_notifiers = if self.server_config.query_dedup.enable {
             Some(Arc::new(RequestNotifiers::default()))
         } else {
             None
@@ -453,7 +453,7 @@ impl Builder {
             .timeout(self.server_config.timeout.map(|v| v.0))
             .proxy(proxy)
             .hotspot_recorder(hotspot_recorder)
-            .request_notifiers(self.server_config.enable_query_dedup)
+            .query_dedup(self.server_config.query_dedup)
             .build()
             .context(BuildGrpcService)?;
 
