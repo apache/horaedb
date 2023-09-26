@@ -414,18 +414,10 @@ impl ExecutionPlan for ScanTable {
         let mut format_visitor = FormatCollectorVisitor::default();
         self.request.metrics_collector.visit(&mut format_visitor);
         let metrics_desc = format_visitor.into_string();
-        metric_set.push(Arc::new(Metric::new(
-            MetricValue::Count {
-                name: format!("\n{metrics_desc}").into(),
-                count: Count::new(),
-            },
-            None,
-        )));
-
         let pushdown_filters = &self.request.predicate;
         metric_set.push(Arc::new(Metric::new(
             MetricValue::Count {
-                name: format!("\n{pushdown_filters:?}").into(),
+                name: format!("\n{metrics_desc}\n\n{pushdown_filters:?}").into(),
                 count: Count::new(),
             },
             None,

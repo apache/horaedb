@@ -29,6 +29,7 @@ tsid,t,str_tag,int_tag,var_tag,str_field,int_field,bin_field,
 UInt64(15527369105987057363),Timestamp(1651737067000),String("t1"),Int32(1),Varbinary([118, 49]),String("s1"),Int32(1),String("b1"),
 
 
+-- Test all data types mentioned in our user document.
 CREATE TABLE IF NOT EXISTS `issue637_1`
 (
     t timestamp NOT NULL,

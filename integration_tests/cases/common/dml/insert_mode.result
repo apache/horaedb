@@ -1,3 +1,4 @@
+-- overwrite
 DROP TABLE IF EXISTS `03_dml_insert_mode_table1`;
 
 affected_rows: 0
@@ -54,6 +55,7 @@ DROP TABLE `03_dml_insert_mode_table1`;
 
 affected_rows: 0
 
+-- append
 DROP TABLE IF EXISTS `03_dml_insert_mode_table2`;
 
 affected_rows: 0
@@ -113,6 +115,7 @@ DROP TABLE `03_dml_insert_mode_table2`;
 
 affected_rows: 0
 
+-- default(overwrite)
 DROP TABLE IF EXISTS `03_dml_insert_mode_table3`;
 
 affected_rows: 0
@@ -133,6 +136,8 @@ INSERT INTO `03_dml_insert_mode_table3` (`timestamp`, `value`, `dic`)
 
 affected_rows: 3
 
+-- TODO support insert Null
+-- INSERT INTO `03_dml_insert_mode_table3` (`timestamp`, `value`, `dic`) VALUES (1, 100, "d2"), (2, 200, "d1"), (3, 300, Null);
 SELECT
     *
 FROM
@@ -168,6 +173,7 @@ DROP TABLE `03_dml_insert_mode_table3`;
 
 affected_rows: 0
 
+-- insert with missing columns
 DROP TABLE IF EXISTS `03_dml_insert_mode_table4`;
 
 affected_rows: 0

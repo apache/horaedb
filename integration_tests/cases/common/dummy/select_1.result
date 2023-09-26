@@ -6,7 +6,7 @@ Int64(1),
 
 SELECT x;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SELECT x;. Caused by: Failed to create plan, err:Failed to generate datafusion plan, err:Schema error: No field named x." })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query:SELECT x;. Caused by: Failed to create plan, err:Failed to generate datafusion plan, err:Schema error: No field named x." })
 
 SELECT 'a';
 
@@ -50,6 +50,7 @@ Int64(10) - Int64(2) * Int64(3),
 Int64(24),
 
 
+-- FIXME
 SELECT "That is not good.";
 
 Utf8("That is not good."),
@@ -58,5 +59,5 @@ String("That is not good."),
 
 SELECT *;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SELECT *;. Caused by: Failed to create plan, err:Failed to generate datafusion plan, err:Error during planning: SELECT * with no tables specified is not valid" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query:SELECT *;. Caused by: Failed to create plan, err:Failed to generate datafusion plan, err:Error during planning: SELECT * with no tables specified is not valid" })
 

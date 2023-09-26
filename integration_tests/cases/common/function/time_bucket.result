@@ -24,6 +24,7 @@ VALUES
 
 affected_rows: 6
 
+-- Test all time granularity.
 SELECT time_bucket(`timestamp`, 'P1Y') FROM `02_function_time_bucket_table`;
 
 time_bucket(02_function_time_bucket_table.timestamp,Utf8("P1Y")),
@@ -101,6 +102,8 @@ Timestamp(1659577422000),
 Timestamp(1659577423000),
 
 
+-- Test various parameters.
+-- NOTICE: customizing format is not supported now.
 SELECT time_bucket(`timestamp`, 'PT1H', 'yyyy-MM-dd HH:mm:ss') FROM `02_function_time_bucket_table`;
 
 time_bucket(02_function_time_bucket_table.timestamp,Utf8("PT1H"),Utf8("yyyy-MM-dd HH:mm:ss")),
