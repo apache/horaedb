@@ -37,7 +37,7 @@ use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
     dedup_requests::{ExecutionGuard, RequestNotifiers, RequestResult},
-    error::{ErrNoCause, ErrWithCause, Error, Internal, Result},
+    error::{ErrNoCause, ErrWithCause, Error, Internal, InternalNoCause, Result},
     forward::{ForwardRequest, ForwardResult},
     metrics::GRPC_HANDLER_COUNTER_VEC,
     Context, Proxy,
@@ -86,7 +86,15 @@ impl Proxy {
                 request_notifiers.take_notifiers(&sql.to_string());
             }),
             RequestResult::Wait => {
-                return rx.recv().await.unwrap();
+                match rx.recv().await {
+                    Some(v) => return v,
+                    None => {
+                        return InternalNoCause {
+                            msg: format!("notifier by query dedup has been dropped, sql:{sql}"),
+                        }
+                        .fail()
+                    }
+                };
             }
         };
 
@@ -118,19 +126,27 @@ impl Proxy {
 
         let result = self
             .fetch_sql_query_output(ctx, schema, sql, enable_partition_table_access)
-            .await?;
+            .await;
 
         guard.cancel();
         let notifiers = request_notifiers.take_notifiers(&sql.to_string()).unwrap();
         for notifier in &notifiers {
-            if let Err(e) = notifier.send(Ok(SqlResponse::Local(result.clone()))).await {
+            let item = match &result {
+                Ok(v) => Ok(SqlResponse::Local(v.clone())),
+                Err(e) => ErrNoCause {
+                    code: e.code(),
+                    msg: e.to_string(),
+                }
+                .fail(),
+            };
+            if let Err(e) = notifier.send(item).await {
                 error!("Failed to send handler result, err:{}.", e);
             }
         }
         GRPC_HANDLER_COUNTER_VEC
             .dedupped_stream_query
             .inc_by((notifiers.len() - 1) as u64);
-        Ok(SqlResponse::Local(result))
+        Ok(SqlResponse::Local(result?))
     }
 
     pub(crate) async fn fetch_sql_query_output(
