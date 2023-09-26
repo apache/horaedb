@@ -26,10 +26,10 @@ workspace = true
 
 [features]
 test = ["tempfile"]
-wal-rocksdb = [ "dep:wal-rocksdb" ]
+wal-rocksdb = ["dep:wal-rocksdb"]
 
 [profile.test]
-default = [ "wal-rocksdb" ]
+default = ["wal-rocksdb"]
 
 [dependencies]
 # In alphabetical order

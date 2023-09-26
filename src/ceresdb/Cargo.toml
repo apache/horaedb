@@ -25,7 +25,7 @@ workspace = true
 workspace = true
 
 [features]
-wal-rocksdb = [ "analytic_engine/wal-rocksdb" ]
+wal-rocksdb = ["analytic_engine/wal-rocksdb"]
 
 [dependencies]
 analytic_engine = { workspace = true }

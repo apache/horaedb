@@ -25,7 +25,7 @@ workspace = true
 workspace = true
 
 [features]
-test = [ "wal/test" ]
+test = ["wal/test"]
 
 [dependencies.rocksdb]
 git = "https://github.com/tikv/rust-rocksdb.git"

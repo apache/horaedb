@@ -25,7 +25,7 @@ workspace = true
 workspace = true
 
 [features]
-test = [ "tempfile", "futures", "uuid" ]
+test = ["tempfile", "futures", "uuid"]
 
 [dependencies]
 async-trait = { workspace = true }
