@@ -25,19 +25,12 @@ use common_types::{
 use crate::{
     manager::{ReadBoundary, ReadRequest, ScanRequest, WalLocation, WalManagerRef},
     tests::util::{
-        KafkaWalBuilder, MemoryTableWalBuilder, RocksTestEnv, RocksWalBuilder, TableKvTestEnv,
-        TestEnv, TestPayload, TestTableData, WalBuilder,
+        test_all, KafkaWalBuilder, MemoryTableWalBuilder, TestEnv, TestPayload, TestTableData,
+        WalBuilder,
     },
 };
 
 static INIT_LOG: Once = Once::new();
-
-#[test]
-fn test_rocksdb_wal() {
-    let builder = RocksWalBuilder;
-
-    test_all(builder, false);
-}
 
 #[test]
 fn test_memory_table_wal_default() {
@@ -61,39 +54,7 @@ fn test_kafka_wal() {
     test_all(builder, true);
 }
 
-fn test_all<B: WalBuilder>(builder: B, is_distributed: bool) {
-    test_simple_read_write_default_batch(builder.clone());
-
-    test_simple_read_write_different_batch_size(builder.clone());
-
-    test_read_with_boundary(builder.clone());
-
-    test_write_multiple_regions(builder.clone());
-
-    test_reopen(builder.clone());
-
-    test_complex_read_write(builder.clone());
-
-    test_simple_write_delete(builder.clone());
-
-    test_write_delete_half(builder.clone());
-
-    test_write_delete_multiple_regions(builder.clone());
-
-    test_sequence_increase_monotonically_multiple_writes(builder.clone());
-
-    test_sequence_increase_monotonically_delete_write(builder.clone());
-
-    test_sequence_increase_monotonically_delete_reopen_write(builder.clone());
-
-    test_write_scan(builder.clone());
-
-    if is_distributed {
-        test_move_from_nodes(builder);
-    }
-}
-
-fn test_simple_read_write_default_batch<B: WalBuilder>(builder: B) {
+pub(crate) fn test_simple_read_write_default_batch<B: WalBuilder>(builder: B) {
     let table_id = 0;
     let env = TestEnv::new(2, builder);
     env.runtime.block_on(simple_read_write(
@@ -102,7 +63,7 @@ fn test_simple_read_write_default_batch<B: WalBuilder>(builder: B) {
     ));
 }
 
-fn test_simple_read_write_different_batch_size<B: WalBuilder>(builder: B) {
+pub(crate) fn test_simple_read_write_different_batch_size<B: WalBuilder>(builder: B) {
     let table_id = 0;
     let batch_sizes = [1, 2, 4, 10, 100];
 
@@ -116,66 +77,66 @@ fn test_simple_read_write_different_batch_size<B: WalBuilder>(builder: B) {
     }
 }
 
-fn test_read_with_boundary<B: WalBuilder>(builder: B) {
+pub(crate) fn test_read_with_boundary<B: WalBuilder>(builder: B) {
     let env = TestEnv::new(2, builder);
     env.runtime.block_on(read_with_boundary(&env));
 }
 
-fn test_write_multiple_regions<B: WalBuilder>(builder: B) {
+pub(crate) fn test_write_multiple_regions<B: WalBuilder>(builder: B) {
     let env = Arc::new(TestEnv::new(4, builder));
     env.runtime
         .block_on(write_multiple_regions_parallelly(env.clone()));
 }
 
-fn test_reopen<B: WalBuilder>(builder: B) {
+pub(crate) fn test_reopen<B: WalBuilder>(builder: B) {
     let env = TestEnv::new(2, builder);
     env.runtime.block_on(reopen(&env, 5));
 }
 
-fn test_complex_read_write<B: WalBuilder>(builder: B) {
+pub(crate) fn test_complex_read_write<B: WalBuilder>(builder: B) {
     let env = TestEnv::new(2, builder);
     env.runtime.block_on(complex_read_write(&env));
 }
 
-fn test_simple_write_delete<B: WalBuilder>(builder: B) {
+pub(crate) fn test_simple_write_delete<B: WalBuilder>(builder: B) {
     let env = TestEnv::new(2, builder);
     env.runtime.block_on(simple_write_delete(&env));
 }
 
-fn test_write_delete_half<B: WalBuilder>(builder: B) {
+pub(crate) fn test_write_delete_half<B: WalBuilder>(builder: B) {
     let env = TestEnv::new(2, builder);
     env.runtime.block_on(write_delete_half(&env));
 }
 
-fn test_write_delete_multiple_regions<B: WalBuilder>(builder: B) {
+pub(crate) fn test_write_delete_multiple_regions<B: WalBuilder>(builder: B) {
     let env = TestEnv::new(2, builder);
     env.runtime.block_on(write_delete_multiple_regions(&env));
 }
 
-fn test_sequence_increase_monotonically_multiple_writes<B: WalBuilder>(builder: B) {
+pub(crate) fn test_sequence_increase_monotonically_multiple_writes<B: WalBuilder>(builder: B) {
     let env = TestEnv::new(2, builder);
     env.runtime
         .block_on(sequence_increase_monotonically_multiple_writes(&env));
 }
 
-fn test_sequence_increase_monotonically_delete_write<B: WalBuilder>(builder: B) {
+pub(crate) fn test_sequence_increase_monotonically_delete_write<B: WalBuilder>(builder: B) {
     let env = TestEnv::new(2, builder);
     env.runtime
         .block_on(sequence_increase_monotonically_delete_write(&env));
 }
 
-fn test_sequence_increase_monotonically_delete_reopen_write<B: WalBuilder>(builder: B) {
+pub(crate) fn test_sequence_increase_monotonically_delete_reopen_write<B: WalBuilder>(builder: B) {
     let env = TestEnv::new(2, builder);
     env.runtime
         .block_on(sequence_increase_monotonically_delete_reopen_write(&env));
 }
 
-fn test_write_scan<B: WalBuilder>(builder: B) {
+pub(crate) fn test_write_scan<B: WalBuilder>(builder: B) {
     let env = TestEnv::new(2, builder);
     env.runtime.block_on(write_scan(&env));
 }
 
-fn test_move_from_nodes<B: WalBuilder>(builder: B) {
+pub(crate) fn test_move_from_nodes<B: WalBuilder>(builder: B) {
     let env = TestEnv::new(2, builder);
     let region_id = 1;
     let table_id = 0;

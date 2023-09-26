@@ -45,7 +45,7 @@ use table_kv::config::ObkvConfig;
 use time_ext::ReadableDuration;
 use wal::{
     message_queue_impl::config::Config as MessageQueueWalConfig,
-    rocks_impl::config::Config as RocksDBWalConfig, table_kv_impl::model::NamespaceConfig,
+    table_kv_impl::model::NamespaceConfig,
 };
 
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
@@ -155,7 +155,7 @@ impl Default for Config {
             write_sst_max_buffer_size: ReadableSize::mb(10),
             max_retry_flush_limit: 0,
             max_bytes_per_write_batch: None,
-            wal: WalStorageConfig::RocksDB(Box::default()),
+            wal: WalStorageConfig::Obkv(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
             recover_mode: RecoverMode::TableBased,
         }
@@ -288,30 +288,41 @@ pub struct KafkaWalConfig {
     pub meta_namespace: MessageQueueWalConfig,
 }
 
-/// Config for wal based on RocksDB
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
-pub struct RocksDBConfig {
-    /// Data directory used by RocksDB.
-    pub data_dir: String,
+#[cfg(feature = "wal-rocksdb")]
+pub use rocksdb::*;
 
-    pub data_namespace: RocksDBWalConfig,
-    pub meta_namespace: RocksDBWalConfig,
-}
+#[cfg(feature = "wal-rocksdb")]
+mod rocksdb {
+    use serde::{Deserialize, Serialize};
+    use wal_rocksdb::config::Config as RocksDBWalConfig;
 
-impl Default for RocksDBConfig {
-    fn default() -> Self {
-        Self {
-            data_dir: "/tmp/ceresdb".to_string(),
-            data_namespace: Default::default(),
-            meta_namespace: Default::default(),
+    /// Config for wal based on RocksDB
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    #[serde(default)]
+    pub struct RocksDBConfig {
+        /// Data directory used by RocksDB.
+        pub data_dir: String,
+
+        pub data_namespace: RocksDBWalConfig,
+        pub meta_namespace: RocksDBWalConfig,
+    }
+
+    impl Default for RocksDBConfig {
+        fn default() -> Self {
+            Self {
+                data_dir: "/tmp/ceresdb".to_string(),
+                data_namespace: Default::default(),
+                meta_namespace: Default::default(),
+            }
         }
     }
 }
+
 /// Options for wal storage backend
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum WalStorageConfig {
+    #[cfg(feature = "wal-rocksdb")]
     RocksDB(Box<RocksDBConfig>),
     Obkv(Box<ObkvWalConfig>),
     Kafka(Box<KafkaWalConfig>),

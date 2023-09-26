@@ -12,17 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+//! integration tests for wal
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+#[cfg_attr(feature = "test", allow(dead_code, unused_imports))]
+mod read_write;
+pub mod util;

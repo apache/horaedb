@@ -16,3 +16,6 @@
 
 pub mod config;
 pub mod manager;
+
+#[cfg(any(test, feature = "test"))]
+pub mod tests;

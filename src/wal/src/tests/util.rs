@@ -38,9 +38,36 @@ use crate::{
         BatchLogIteratorAdapter, ReadContext, WalLocation, WalManager, WalManagerRef, WriteContext,
     },
     message_queue_impl::{config::Config, wal::MessageQueueImpl},
-    rocks_impl::{self, manager::RocksImpl},
     table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl, WalRuntimes},
+    tests::read_write::{
+        test_complex_read_write, test_move_from_nodes, test_read_with_boundary, test_reopen,
+        test_sequence_increase_monotonically_delete_reopen_write,
+        test_sequence_increase_monotonically_delete_write,
+        test_sequence_increase_monotonically_multiple_writes, test_simple_read_write_default_batch,
+        test_simple_read_write_different_batch_size, test_simple_write_delete,
+        test_write_delete_half, test_write_delete_multiple_regions, test_write_multiple_regions,
+        test_write_scan,
+    },
 };
+
+pub fn test_all<B: WalBuilder>(builder: B, is_distributed: bool) {
+    test_simple_read_write_default_batch(builder.clone());
+    test_simple_read_write_different_batch_size(builder.clone());
+    test_read_with_boundary(builder.clone());
+    test_write_multiple_regions(builder.clone());
+    test_reopen(builder.clone());
+    test_complex_read_write(builder.clone());
+    test_simple_write_delete(builder.clone());
+    test_write_delete_half(builder.clone());
+    test_write_delete_multiple_regions(builder.clone());
+    test_sequence_increase_monotonically_multiple_writes(builder.clone());
+    test_sequence_increase_monotonically_delete_write(builder.clone());
+    test_sequence_increase_monotonically_delete_reopen_write(builder.clone());
+    test_write_scan(builder.clone());
+    if is_distributed {
+        test_move_from_nodes(builder);
+    }
+}
 
 #[derive(Debug, Snafu)]
 pub enum Error {}
@@ -51,26 +78,6 @@ pub trait WalBuilder: Clone + Send + Sync + 'static {
 
     async fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal>;
 }
-
-#[derive(Clone, Default)]
-pub struct RocksWalBuilder;
-
-#[async_trait]
-impl WalBuilder for RocksWalBuilder {
-    type Wal = RocksImpl;
-
-    async fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
-        let wal_builder = rocks_impl::manager::Builder::new(data_path, runtime);
-
-        Arc::new(
-            wal_builder
-                .build()
-                .expect("should succeed to build rocksimpl wal"),
-        )
-    }
-}
-
-pub type RocksTestEnv = TestEnv<RocksWalBuilder>;
 
 const WAL_NAMESPACE: &str = "wal";
 

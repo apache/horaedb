@@ -135,6 +135,7 @@ dependencies = [
  "tokio",
  "trace_metric",
  "wal",
+ "wal-rocksdb",
  "xorfilter-rs",
 ]
 

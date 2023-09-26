@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use analytic_engine::{
     self,
-    setup::{EngineBuilder, KafkaWalsOpener, ObkvWalsOpener, RocksDBWalsOpener, WalsOpener},
+    setup::{EngineBuilder, KafkaWalsOpener, ObkvWalsOpener, WalsOpener},
     WalStorageConfig,
 };
 use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator};
@@ -94,7 +94,9 @@ pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
 
     runtimes.default_runtime.block_on(async {
         match config.analytic.wal {
+            #[cfg(feature = "wal-rocksdb")]
             WalStorageConfig::RocksDB(_) => {
+                use analytic_engine::setup::RocksDBWalsOpener;
                 run_server_with_runtimes::<RocksDBWalsOpener>(config, engine_runtimes, log_runtime)
                     .await
             }

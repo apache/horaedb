@@ -12,17 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+use wal::tests::util::test_all;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+use crate::tests::util::RocksWalBuilder;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+#[test]
+fn test_rocksdb_wal() {
+    let builder = RocksWalBuilder;
+
+    test_all(builder, false);
 }

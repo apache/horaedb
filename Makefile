@@ -52,7 +52,7 @@ test-ut:
 	echo $(RUSTDOCFLAGS)
 	#cd $(DIR); cargo test --workspace -- -Z unstable-options --format json | tee results.json; \
 	#cat results.json | cargo2junit > ${WORKSPACE}/testresult/TEST-all.xml
-	cargo test --workspace
+	cargo test --workspace --features wal-rocksdb
 
 fmt:
 	cd $(DIR); cargo fmt -- --check

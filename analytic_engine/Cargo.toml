@@ -26,6 +26,10 @@ workspace = true
 
 [features]
 test = ["tempfile"]
+wal-rocksdb = [ "dep:wal-rocksdb" ]
+
+[profile.test]
+default = [ "wal-rocksdb" ]
 
 [dependencies]
 # In alphabetical order
@@ -72,6 +76,7 @@ time_ext = { workspace = true }
 tokio = { workspace = true }
 trace_metric = { workspace = true }
 wal = { workspace = true }
+wal-rocksdb = { workspace = true, optional = true }
 xorfilter-rs = { workspace = true }
 
 [dev-dependencies]
