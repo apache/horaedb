@@ -103,6 +103,24 @@ impl From<&StaticTopologyConfig> for ClusterView {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
+pub struct QueryDedupConfig {
+    pub enable: bool,
+    pub notify_timeout: ReadableDuration,
+    pub notify_queue_cap: usize,
+}
+
+impl Default for QueryDedupConfig {
+    fn default() -> Self {
+        Self {
+            enable: false,
+            notify_timeout: ReadableDuration::secs(1),
+            notify_queue_cap: 1000,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default)]
 pub struct ServerConfig {
     /// The address to listen.
     pub bind_addr: String,
@@ -135,8 +153,8 @@ pub struct ServerConfig {
     /// Config of remote engine client
     pub remote_client: remote_engine_client::Config,
 
-    /// Whether to deduplicate requests
-    pub enable_query_dedup: bool,
+    /// Config of dedup query
+    pub query_dedup: QueryDedupConfig,
 
     /// Whether enable to access partition table
     pub sub_table_access_perm: SubTableAccessPerm,
@@ -160,7 +178,7 @@ impl Default for ServerConfig {
             route_cache: router::RouteCacheConfig::default(),
             hotspot: hotspot::Config::default(),
             remote_client: remote_engine_client::Config::default(),
-            enable_query_dedup: false,
+            query_dedup: QueryDedupConfig::default(),
             sub_table_access_perm: SubTableAccessPerm::default(),
         }
     }

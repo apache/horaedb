@@ -26,6 +26,7 @@ use logger::RuntimeLevel;
 use macros::define_result;
 use partition_table_engine::PartitionTableEngine;
 use proxy::{
+    dedup_requests::RequestNotifiers,
     hotspot::HotspotRecorder,
     instance::{Instance, InstanceRef},
     limiter::Limiter,
@@ -390,6 +391,12 @@ impl Builder {
             timeout: self.server_config.timeout.map(|v| v.0),
         };
 
+        let request_notifiers = if self.server_config.query_dedup.enable {
+            Some(Arc::new(RequestNotifiers::default()))
+        } else {
+            None
+        };
+
         let proxy = Arc::new(Proxy::new(
             router.clone(),
             instance.clone(),
@@ -402,6 +409,7 @@ impl Builder {
             engine_runtimes.clone(),
             self.cluster.is_some(),
             self.server_config.sub_table_access_perm,
+            request_notifiers,
         ));
 
         let http_service = http::Builder::new(http_config)
@@ -445,7 +453,7 @@ impl Builder {
             .timeout(self.server_config.timeout.map(|v| v.0))
             .proxy(proxy)
             .hotspot_recorder(hotspot_recorder)
-            .request_notifiers(self.server_config.enable_query_dedup)
+            .query_dedup(self.server_config.query_dedup)
             .build()
             .context(BuildGrpcService)?;
 

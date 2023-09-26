@@ -72,9 +72,9 @@ pub mod error {
         },
 
         #[snafu(display(
-            "Require column to be timestamp, actual:{datum_kind}.\nBacktrace:\n{backtrace}"
+            "Expect column to be timestamp, actual:{datum_kind}.\nBacktrace:\n{backtrace}"
         ))]
-        RequireTimestampColumn {
+        ExpectTimestampColumn {
             datum_kind: DatumKind,
             backtrace: Backtrace,
         },

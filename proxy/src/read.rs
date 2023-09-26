@@ -14,7 +14,7 @@
 
 //! Contains common methods used by the read process.
 
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, SqlQueryRequest, SqlQueryResponse,
@@ -32,11 +32,14 @@ use query_frontend::{
 use router::endpoint::Endpoint;
 use snafu::{ensure, ResultExt};
 use time_ext::InstantExt;
+use tokio::sync::mpsc::{self, Sender};
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
+    dedup_requests::{ExecutionGuard, RequestNotifiers, RequestResult},
     error::{ErrNoCause, ErrWithCause, Error, Internal, Result},
     forward::{ForwardRequest, ForwardResult},
+    metrics::GRPC_HANDLER_COUNTER_VEC,
     Context, Proxy,
 };
 
@@ -67,6 +70,67 @@ impl Proxy {
             self.fetch_sql_query_output(ctx, schema, sql, enable_partition_table_access)
                 .await?,
         ))
+    }
+
+    pub(crate) async fn dedup_handle_sql(
+        &self,
+        ctx: &Context,
+        schema: &str,
+        sql: &str,
+        request_notifiers: Arc<RequestNotifiers<String, Sender<Result<SqlResponse>>>>,
+        enable_partition_table_access: bool,
+    ) -> Result<SqlResponse> {
+        let (tx, mut rx) = mpsc::channel(1);
+        let mut guard = match request_notifiers.insert_notifier(sql.to_string(), tx) {
+            RequestResult::First => ExecutionGuard::new(|| {
+                request_notifiers.take_notifiers(&sql.to_string());
+            }),
+            RequestResult::Wait => {
+                return rx.recv().await.unwrap();
+            }
+        };
+
+        if let Some(resp) = self
+            .maybe_forward_sql_query(ctx.clone(), schema, sql)
+            .await?
+        {
+            match resp {
+                ForwardResult::Forwarded(resp) => {
+                    let resp = resp?;
+                    guard.cancel();
+                    let notifiers = request_notifiers.take_notifiers(&sql.to_string()).unwrap();
+                    for notifier in &notifiers {
+                        if let Err(e) = notifier
+                            .send(Ok(SqlResponse::Forwarded(resp.clone())))
+                            .await
+                        {
+                            error!("Failed to send handler result, err:{}.", e);
+                        }
+                    }
+                    GRPC_HANDLER_COUNTER_VEC
+                        .dedupped_stream_query
+                        .inc_by((notifiers.len() - 1) as u64);
+                    return Ok(SqlResponse::Forwarded(resp));
+                }
+                ForwardResult::Local => (),
+            }
+        };
+
+        let result = self
+            .fetch_sql_query_output(ctx, schema, sql, enable_partition_table_access)
+            .await?;
+
+        guard.cancel();
+        let notifiers = request_notifiers.take_notifiers(&sql.to_string()).unwrap();
+        for notifier in &notifiers {
+            if let Err(e) = notifier.send(Ok(SqlResponse::Local(result.clone()))).await {
+                error!("Failed to send handler result, err:{}.", e);
+            }
+        }
+        GRPC_HANDLER_COUNTER_VEC
+            .dedupped_stream_query
+            .inc_by((notifiers.len() - 1) as u64);
+        Ok(SqlResponse::Local(result))
     }
 
     pub(crate) async fn fetch_sql_query_output(
@@ -166,10 +230,10 @@ impl Proxy {
             Output::AffectedRows(_) => Ok(output),
             Output::Records(v) => {
                 if plan_maybe_expired {
-                    let row_nums = v
+                    let num_rows = v
                         .iter()
                         .fold(0_usize, |acc, record_batch| acc + record_batch.num_rows());
-                    if row_nums == 0 {
+                    if num_rows == 0 {
                         warn!("Query time range maybe exceed TTL, sql:{sql}");
 
                         // TODO: Cannot return this error directly, empty query
