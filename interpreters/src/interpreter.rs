@@ -65,6 +65,7 @@ define_result!(Error);
 
 // TODO(yingwen): Maybe add a stream variant for streaming result
 /// The interpreter output
+#[derive(Clone)]
 pub enum Output {
     /// Affected rows number
     AffectedRows(usize),

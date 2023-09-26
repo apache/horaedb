@@ -34,6 +34,7 @@ make_auto_flush_static_metric! {
         write_failed_row,
         query_succeeded_row,
         query_affected_row,
+        dedupped_stream_query,
     }
 
     pub struct GrpcHandlerCounterVec: LocalIntCounter {

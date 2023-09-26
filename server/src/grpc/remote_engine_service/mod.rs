@@ -55,16 +55,19 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 use tonic::{Request, Response, Status};
 
 use super::metrics::REMOTE_ENGINE_WRITE_BATCH_NUM_ROWS_HISTOGRAM;
-use crate::grpc::{
-    metrics::{
-        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC, REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+use crate::{
+    config::QueryDedupConfig,
+    grpc::{
+        metrics::{
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC,
+            REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+        },
+        remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
     },
-    remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
 };
 
 pub mod error;
 
-const DEDUP_RESP_NOTIFY_TIMEOUT_MS: u64 = 500;
 const STREAM_QUERY_CHANNEL_LEN: usize = 200;
 const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
 
@@ -116,10 +119,16 @@ impl Drop for StreamWithMetric {
 }
 
 #[derive(Clone)]
+pub struct QueryDedup {
+    pub config: QueryDedupConfig,
+    pub request_notifiers: StreamReadRequestNotifiers,
+}
+
+#[derive(Clone)]
 pub struct RemoteEngineServiceImpl {
     pub instance: InstanceRef,
     pub runtimes: Arc<EngineRuntimes>,
-    pub request_notifiers: Option<StreamReadRequestNotifiers>,
+    pub query_dedup: Option<QueryDedup>,
     pub hotspot_recorder: Arc<HotspotRecorder>,
 }
 
@@ -170,11 +179,11 @@ impl RemoteEngineServiceImpl {
 
     async fn dedup_stream_read_internal(
         &self,
-        request_notifiers: StreamReadRequestNotifiers,
+        query_dedup: QueryDedup,
         request: Request<ReadRequest>,
     ) -> Result<StreamWithMetric> {
         let instant = Instant::now();
-        let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
+        let (tx, rx) = mpsc::channel(query_dedup.config.notify_queue_cap);
 
         let request = request.into_inner();
         let table_engine::remote::model::ReadRequest {
@@ -191,10 +200,13 @@ impl RemoteEngineServiceImpl {
             read_request.projected_schema.projection(),
         );
 
-        match request_notifiers.insert_notifier(request_key.clone(), tx) {
+        match query_dedup
+            .request_notifiers
+            .insert_notifier(request_key.clone(), tx)
+        {
             // The first request, need to handle it, and then notify the other requests.
             RequestResult::First => {
-                self.read_and_send_dedupped_resps(request, request_key, request_notifiers)
+                self.read_and_send_dedupped_resps(request, request_key, query_dedup)
                     .await?;
             }
             // The request is waiting for the result of first request.
@@ -210,13 +222,13 @@ impl RemoteEngineServiceImpl {
         &self,
         request: ReadRequest,
         request_key: StreamReadReqKey,
-        request_notifiers: StreamReadRequestNotifiers,
+        query_dedup: QueryDedup,
     ) -> Result<()> {
         let ctx = self.handler_ctx();
 
         // This is used to remove key when future is cancelled.
         let mut guard = ExecutionGuard::new(|| {
-            request_notifiers.take_notifiers(&request_key);
+            query_dedup.request_notifiers.take_notifiers(&request_key);
         });
         let handle = self
             .runtimes
@@ -260,11 +272,15 @@ impl RemoteEngineServiceImpl {
 
         // We should set cancel to guard, otherwise the key will be removed twice.
         guard.cancel();
-        let notifiers = request_notifiers.take_notifiers(&request_key).unwrap();
+        let notifiers = query_dedup
+            .request_notifiers
+            .take_notifiers(&request_key)
+            .unwrap();
 
         // Do send in background to avoid blocking the rpc procedure.
+        let timeout = query_dedup.config.notify_timeout.0;
         self.runtimes.read_runtime.spawn(async move {
-            Self::send_dedupped_resps(resps, notifiers).await;
+            Self::send_dedupped_resps(resps, notifiers, timeout).await;
         });
 
         Ok(())
@@ -274,15 +290,18 @@ impl RemoteEngineServiceImpl {
     async fn send_dedupped_resps(
         resps: Vec<Result<RecordBatch>>,
         notifiers: Vec<Sender<Result<RecordBatch>>>,
+        notify_timeout: Duration,
     ) {
         let mut num_rows = 0;
-        let timeout = Duration::from_millis(DEDUP_RESP_NOTIFY_TIMEOUT_MS);
         for resp in resps {
             match resp {
                 Ok(batch) => {
                     num_rows += batch.num_rows();
                     for notifier in &notifiers {
-                        if let Err(e) = notifier.send_timeout(Ok(batch.clone()), timeout).await {
+                        if let Err(e) = notifier
+                            .send_timeout(Ok(batch.clone()), notify_timeout)
+                            .await
+                        {
                             error!("Failed to send handler result, err:{}.", e);
                         }
                     }
@@ -295,7 +314,7 @@ impl RemoteEngineServiceImpl {
                         }
                         .fail();
 
-                        if let Err(e) = notifier.send_timeout(err, timeout).await {
+                        if let Err(e) = notifier.send_timeout(err, notify_timeout).await {
                             error!("Failed to send handler result, err:{}.", e);
                         }
                     }
@@ -465,11 +484,8 @@ impl RemoteEngineService for RemoteEngineServiceImpl {
         }
 
         REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC.stream_query.inc();
-        let result = match self.request_notifiers.clone() {
-            Some(request_notifiers) => {
-                self.dedup_stream_read_internal(request_notifiers, request)
-                    .await
-            }
+        let result = match self.query_dedup.clone() {
+            Some(query_dedup) => self.dedup_stream_read_internal(query_dedup, request).await,
             None => self.stream_read_internal(request).await,
         };
 
