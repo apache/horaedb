@@ -12,8 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+use lazy_static::lazy_static;
+use prometheus::{register_int_counter_vec, IntCounterVec};
 
-pub mod codec;
-pub mod dist_sql_query;
-pub mod metrics;
+lazy_static! {
+    pub static ref PUSH_DOWN_PLAN_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "push_down_plan",
+        "partitioned table push down type",
+        &["type"]
+    )
+    .unwrap();
+}

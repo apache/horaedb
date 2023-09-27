@@ -22,12 +22,15 @@ use datafusion::{
 };
 use table_engine::{remote::model::TableIdentifier, table::TableRef};
 
-use crate::dist_sql_query::{
-    physical_plan::{
-        ResolvedPartitionedScan, SubTablePlanContext, UnresolvedPartitionedScan,
-        UnresolvedSubTableScan,
+use crate::{
+    dist_sql_query::{
+        physical_plan::{
+            ResolvedPartitionedScan, SubTablePlanContext, UnresolvedPartitionedScan,
+            UnresolvedSubTableScan,
+        },
+        ExecutableScanBuilderRef, RemotePhysicalPlanExecutorRef,
     },
-    ExecutableScanBuilderRef, RemotePhysicalPlanExecutorRef,
+    metrics::PUSH_DOWN_PLAN_COUNTER,
 };
 
 /// Resolver which makes datafuison dist query related plan executable.
@@ -97,6 +100,9 @@ impl Resolver {
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
         let resolved_plan = self.resolve_partitioned_scan_internal(plan)?;
+        PUSH_DOWN_PLAN_COUNTER
+            .with_label_values(&["remote_scan"])
+            .inc();
 
         if let Some(plan) = resolved_plan
             .as_any()

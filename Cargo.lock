@@ -2351,6 +2351,8 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "insta",
+ "lazy_static",
+ "prometheus 0.12.0",
  "prost",
  "snafu 0.6.10",
  "table_engine",
