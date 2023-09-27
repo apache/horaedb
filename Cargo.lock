@@ -5437,7 +5437,6 @@ dependencies = [
 name = "query_engine"
 version = "1.2.6-alpha"
 dependencies = [
- "arc-swap 1.6.0",
  "arrow 43.0.0",
  "async-trait",
  "bytes_ext",
