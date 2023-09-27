@@ -209,15 +209,18 @@ impl PushDownAble {
             } else {
                 None
             }
-        } else if let Some(_) = plan.as_any().downcast_ref::<FilterExec>() {
-            Some(Self::Continue(plan))
-        } else if let Some(_) = plan.as_any().downcast_ref::<ProjectionExec>() {
-            Some(Self::Continue(plan))
-        } else if let Some(_) = plan.as_any().downcast_ref::<RepartitionExec>() {
-            Some(Self::Continue(plan))
-        } else if let Some(_) = plan.as_any().downcast_ref::<CoalescePartitionsExec>() {
-            Some(Self::Continue(plan))
-        } else if let Some(_) = plan.as_any().downcast_ref::<CoalesceBatchesExec>() {
+        } else if plan.as_any().downcast_ref::<FilterExec>().is_some()
+            || plan.as_any().downcast_ref::<ProjectionExec>().is_some()
+            || plan.as_any().downcast_ref::<RepartitionExec>().is_some()
+            || plan
+                .as_any()
+                .downcast_ref::<CoalescePartitionsExec>()
+                .is_some()
+            || plan
+                .as_any()
+                .downcast_ref::<CoalesceBatchesExec>()
+                .is_some()
+        {
             Some(Self::Continue(plan))
         } else {
             None
@@ -272,7 +275,7 @@ impl ExecutionPlan for ResolvedPartitionedScan {
         if self.pushing_down {
             return Err(DataFusionError::Internal(format!(
                 "partitioned scan can't be executed before pushing down finished, plan:{}",
-                displayable(self).indent(true).to_string()
+                displayable(self).indent(true)
             )));
         }
 

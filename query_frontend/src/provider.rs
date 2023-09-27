@@ -29,17 +29,12 @@ use datafusion::{
 };
 use df_operator::{registry::FunctionRegistry, scalar::ScalarUdf, udaf::AggregateUdf};
 use macros::define_result;
-use partition_table_engine::scan_builder::PartitionedTableScanBuilder;
 use snafu::{OptionExt, ResultExt, Snafu};
-use table_engine::{
-    provider::{NormalTableScanBuilder, TableProviderAdapter},
-    table::TableRef,
-};
+use table_engine::table::TableRef;
 
 use crate::{
     config::DynamicConfig,
     container::{PlannedTable, TableContainer, TableReference},
-    planner::PlannerHint,
 };
 
 #[derive(Debug, Snafu)]

@@ -56,7 +56,7 @@ use table_engine::{
     table::TableRef,
 };
 use time_ext::InstantExt;
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::mpsc::{self, Sender};
 use tokio_stream::{wrappers::ReceiverStream, Stream};
 use tonic::{Request, Response, Status};
 

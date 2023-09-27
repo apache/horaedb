@@ -18,10 +18,7 @@ use async_recursion::async_recursion;
 use catalog::manager::ManagerRef as CatalogManagerRef;
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
-    physical_plan::{
-        aggregates::{AggregateExec, AggregateMode},
-        ExecutionPlan,
-    },
+    physical_plan::ExecutionPlan,
 };
 use table_engine::{remote::model::TableIdentifier, table::TableRef};
 

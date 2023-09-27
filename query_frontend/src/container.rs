@@ -24,8 +24,6 @@ use table_engine::{
     table::TableRef,
 };
 
-use crate::provider::ResolvedTable;
-
 #[derive(Debug, Clone)]
 pub struct PlannedTable {
     pub catalog: String,
