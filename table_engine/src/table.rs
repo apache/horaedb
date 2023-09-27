@@ -164,7 +164,7 @@ define_result!(Error);
 
 /// Default partition num to scan in parallelism.
 pub const DEFAULT_READ_PARALLELISM: usize = 8;
-const NO_TIMEOUT: i64 = -1;
+pub const NO_TIMEOUT: i64 = -1;
 
 /// Schema id (24 bits)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

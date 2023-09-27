@@ -14,16 +14,17 @@
 
 //! Model for remote table engine
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Instant};
 
-use bytes_ext::ByteVec;
-use ceresdbproto::remote_engine::{self, row_group::Rows::Contiguous};
+use bytes_ext::{ByteVec, Bytes};
+use ceresdbproto::remote_engine::{self, execute_plan_request, row_group::Rows::Contiguous};
 use common_types::{
+    request_id::RequestId,
     row::{
         contiguous::{ContiguousRow, ContiguousRowReader, ContiguousRowWriter},
         Row, RowGroup, RowGroupBuilder,
     },
-    schema::{IndexInWriterSchema, Schema},
+    schema::{IndexInWriterSchema, RecordSchema, Schema},
 };
 use generic_error::{BoxError, GenericError, GenericResult};
 use macros::define_result;
@@ -33,6 +34,7 @@ use crate::{
     partition::PartitionInfo,
     table::{
         ReadRequest as TableReadRequest, SchemaId, TableId, WriteRequest as TableWriteRequest,
+        NO_TIMEOUT,
     },
 };
 
@@ -276,4 +278,83 @@ pub struct TableInfo {
     pub options: HashMap<String, String>,
     /// Partition Info
     pub partition_info: Option<PartitionInfo>,
+}
+
+/// Request for remote executing physical plan
+pub struct ExecutePlanRequest {
+    /// Table information for routing
+    pub table: TableIdentifier,
+
+    /// Schema of the encoded physical plan
+    pub plan_schema: RecordSchema,
+
+    /// Remote plan execution request
+    pub remote_request: RemoteExecuteRequest,
+}
+
+impl ExecutePlanRequest {
+    pub fn new(
+        table: TableIdentifier,
+        plan_schema: RecordSchema,
+        context: ExecContext,
+        physical_plan: PhysicalPlan,
+    ) -> Self {
+        let remote_request = RemoteExecuteRequest {
+            context,
+            physical_plan,
+        };
+
+        Self {
+            table,
+            plan_schema,
+            remote_request,
+        }
+    }
+}
+
+pub struct RemoteExecuteRequest {
+    /// Execution Context
+    pub context: ExecContext,
+
+    /// Physical plan for remote execution
+    pub physical_plan: PhysicalPlan,
+}
+
+pub struct ExecContext {
+    pub request_id: RequestId,
+    pub deadline: Option<Instant>,
+    pub default_catalog: String,
+    pub default_schema: String,
+}
+
+pub enum PhysicalPlan {
+    Datafusion(Bytes),
+}
+
+impl From<RemoteExecuteRequest> for ceresdbproto::remote_engine::ExecutePlanRequest {
+    fn from(value: RemoteExecuteRequest) -> Self {
+        let rest_duration_ms = if let Some(deadline) = value.context.deadline {
+            deadline.duration_since(Instant::now()).as_millis() as i64
+        } else {
+            NO_TIMEOUT
+        };
+
+        let pb_context = ceresdbproto::remote_engine::ExecContext {
+            request_id: value.context.request_id.as_u64(),
+            default_catalog: value.context.default_catalog,
+            default_schema: value.context.default_schema,
+            timeout_ms: rest_duration_ms,
+        };
+
+        let pb_plan = match value.physical_plan {
+            PhysicalPlan::Datafusion(plan) => {
+                execute_plan_request::PhysicalPlan::Datafusion(plan.to_vec())
+            }
+        };
+
+        Self {
+            context: Some(pb_context),
+            physical_plan: Some(pb_plan),
+        }
+    }
 }

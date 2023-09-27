@@ -5394,6 +5394,7 @@ dependencies = [
  "arrow 43.0.0",
  "async-trait",
  "bytes_ext",
+ "catalog",
  "chrono",
  "common_types",
  "datafusion",

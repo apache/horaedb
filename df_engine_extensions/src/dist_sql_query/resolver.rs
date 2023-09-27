@@ -18,24 +18,13 @@ use async_recursion::async_recursion;
 use catalog::manager::ManagerRef as CatalogManagerRef;
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
-    execution::{runtime_env::RuntimeEnv, FunctionRegistry},
     physical_plan::ExecutionPlan,
 };
-use datafusion_proto::{
-    physical_plan::{AsExecutionPlan, PhysicalExtensionCodec},
-    protobuf,
-};
-use prost::Message;
 use table_engine::{remote::model::TableIdentifier, table::TableRef};
 
-use crate::{
-    codec::PhysicalExtensionCodecImpl,
-    dist_sql_query::{
-        physical_plan::{
-            ResolvedPartitionedScan, UnresolvedPartitionedScan, UnresolvedSubTableScan,
-        },
-        ExecutableScanBuilderRef, RemotePhysicalPlanExecutorRef,
-    },
+use crate::dist_sql_query::{
+    physical_plan::{ResolvedPartitionedScan, UnresolvedPartitionedScan, UnresolvedSubTableScan},
+    ExecutableScanBuilderRef, RemotePhysicalPlanExecutorRef,
 };
 
 /// Resolver which makes datafuison dist query related plan executable.
@@ -50,12 +39,6 @@ pub struct Resolver {
     remote_executor: RemotePhysicalPlanExecutorRef,
     catalog_manager: CatalogManagerRef,
     scan_builder: ExecutableScanBuilderRef,
-
-    // TODO: hold `SessionContext` here rather than these two parts.
-    runtime_env: Arc<RuntimeEnv>,
-    function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
-
-    extension_codec: Arc<dyn PhysicalExtensionCodec>,
 }
 
 impl Resolver {
@@ -63,16 +46,11 @@ impl Resolver {
         remote_executor: RemotePhysicalPlanExecutorRef,
         catalog_manager: CatalogManagerRef,
         scan_builder: ExecutableScanBuilderRef,
-        runtime_env: Arc<RuntimeEnv>,
-        function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
     ) -> Self {
         Self {
             remote_executor,
             catalog_manager,
             scan_builder,
-            runtime_env,
-            function_registry,
-            extension_codec: Arc::new(PhysicalExtensionCodecImpl::new()),
         }
     }
 
@@ -98,7 +76,6 @@ impl Resolver {
             return Ok(Arc::new(ResolvedPartitionedScan {
                 remote_executor: self.remote_executor.clone(),
                 remote_exec_plans: remote_plans,
-                extension_codec: self.extension_codec.clone(),
             }));
         }
 
@@ -119,25 +96,8 @@ impl Resolver {
         plan.with_new_children(new_children)
     }
 
-    /// Resolve encoded sub table scanning plan.
-    // TODO: because we need to async init the `ScanTable` plan before executing,
-    // so sub scan plan's resolving can just be async now...
-    pub async fn resolve_sub_scan(&self, encoded_plan: &[u8]) -> DfResult<Arc<dyn ExecutionPlan>> {
-        // Decode to datafusion physical plan.
-        let protobuf = protobuf::PhysicalPlanNode::decode(encoded_plan).map_err(|e| {
-            DataFusionError::Plan(format!("failed to decode bytes to physical plan, err:{e}"))
-        })?;
-        let plan = protobuf.try_into_physical_plan(
-            self.function_registry.as_ref(),
-            &self.runtime_env,
-            self.extension_codec.as_ref(),
-        )?;
-
-        self.resolve_sub_scan_internal(plan).await
-    }
-
     #[async_recursion]
-    async fn resolve_sub_scan_internal(
+    pub async fn resolve_sub_scan(
         &self,
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
@@ -165,7 +125,7 @@ impl Resolver {
         // Resolve children if exist.
         let mut new_children = Vec::with_capacity(children.len());
         for child in children {
-            let child = self.resolve_sub_scan_internal(child).await?;
+            let child = self.resolve_sub_scan(child).await?;
 
             new_children.push(child);
         }
@@ -215,15 +175,9 @@ mod test {
         let ctx = TestContext::new();
         let plan = ctx.build_basic_sub_table_plan();
         let resolver = ctx.resolver();
-        let new_plan = displayable(
-            resolver
-                .resolve_sub_scan_internal(plan)
-                .await
-                .unwrap()
-                .as_ref(),
-        )
-        .indent(true)
-        .to_string();
+        let new_plan = displayable(resolver.resolve_sub_scan(plan).await.unwrap().as_ref())
+            .indent(true)
+            .to_string();
         insta::assert_snapshot!(new_plan);
     }
 
@@ -243,10 +197,7 @@ mod test {
         assert_eq!(original_plan_display, new_plan_display);
 
         // It should not be processed by `resolve_sub_scan_internal`.
-        let new_plan = resolver
-            .resolve_sub_scan_internal(plan.clone())
-            .await
-            .unwrap();
+        let new_plan = resolver.resolve_sub_scan(plan.clone()).await.unwrap();
 
         let new_plan_display = displayable(new_plan.as_ref()).indent(true).to_string();
 

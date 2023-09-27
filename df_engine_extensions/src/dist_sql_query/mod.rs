@@ -15,14 +15,12 @@
 use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::schema::RecordSchema;
 use datafusion::{
     error::Result as DfResult,
     execution::TaskContext,
     physical_plan::{ExecutionPlan, SendableRecordBatchStream},
 };
 use futures::future::BoxFuture;
-use prost::bytes::Bytes;
 use table_engine::{
     remote::model::TableIdentifier,
     table::{ReadRequest, TableRef},
@@ -40,13 +38,8 @@ pub trait RemotePhysicalPlanExecutor: fmt::Debug + Send + Sync + 'static {
         &self,
         table: TableIdentifier,
         task_context: &TaskContext,
-        encoded_plan: EncodedPlan,
+        plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>>;
-}
-
-pub struct EncodedPlan {
-    pub plan: Bytes,
-    pub schema: RecordSchema,
 }
 
 type RemotePhysicalPlanExecutorRef = Arc<dyn RemotePhysicalPlanExecutor>;

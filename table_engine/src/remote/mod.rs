@@ -25,7 +25,7 @@ use model::{ReadRequest, WriteRequest};
 use snafu::Snafu;
 
 use crate::{
-    remote::model::{GetTableInfoRequest, TableInfo, WriteBatchResult},
+    remote::model::{ExecutePlanRequest, GetTableInfoRequest, TableInfo, WriteBatchResult},
     stream::SendableRecordBatchStream,
 };
 
@@ -40,6 +40,9 @@ pub enum Error {
 
     #[snafu(display("Failed to get table info from remote, err:{}", source))]
     GetTableInfo { source: GenericError },
+
+    #[snafu(display("Failed to execute physical plan from remote, err:{}", source))]
+    ExecutePhysicalPlan { source: GenericError },
 }
 
 define_result!(Error);
@@ -56,6 +59,11 @@ pub trait RemoteEngine: fmt::Debug + Send + Sync {
     async fn write_batch(&self, requests: Vec<WriteRequest>) -> Result<Vec<WriteBatchResult>>;
 
     async fn get_table_info(&self, request: GetTableInfoRequest) -> Result<TableInfo>;
+
+    async fn execute_physical_plan(
+        &self,
+        request: ExecutePlanRequest,
+    ) -> Result<SendableRecordBatchStream>;
 }
 
 /// Remote engine reference

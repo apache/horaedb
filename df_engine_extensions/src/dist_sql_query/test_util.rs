@@ -27,7 +27,7 @@ use catalog::{manager::ManagerRef, test_util::MockCatalogManagerBuilder};
 use common_types::{projected_schema::ProjectedSchema, tests::build_schema_for_cpu};
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
-    execution::{runtime_env::RuntimeEnv, FunctionRegistry, TaskContext},
+    execution::{FunctionRegistry, TaskContext},
     logical_expr::{expr_fn, Literal, Operator},
     physical_plan::{
         expressions::{binary, col, lit},
@@ -51,7 +51,7 @@ use trace_metric::MetricsCollector;
 use crate::dist_sql_query::{
     physical_plan::{PartitionedScanStream, UnresolvedPartitionedScan, UnresolvedSubTableScan},
     resolver::Resolver,
-    EncodedPlan, ExecutableScanBuilder, RemotePhysicalPlanExecutor,
+    ExecutableScanBuilder, RemotePhysicalPlanExecutor,
 };
 
 // Test context
@@ -187,8 +187,6 @@ impl TestContext {
             Arc::new(MockRemotePhysicalPlanExecutor),
             self.catalog_manager.clone(),
             Box::new(MockScanBuilder),
-            Arc::new(RuntimeEnv::default()),
-            Arc::new(MockFunctionRegistry),
         )
     }
 
@@ -348,7 +346,7 @@ impl RemotePhysicalPlanExecutor for MockRemotePhysicalPlanExecutor {
         &self,
         _table: TableIdentifier,
         _task_context: &TaskContext,
-        _encoded_plan: EncodedPlan,
+        _plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         unimplemented!()
     }
