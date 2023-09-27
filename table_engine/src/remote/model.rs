@@ -34,6 +34,7 @@ use crate::{
     partition::PartitionInfo,
     table::{
         ReadRequest as TableReadRequest, SchemaId, TableId, WriteRequest as TableWriteRequest,
+        NO_TIMEOUT,
     },
 };
 
@@ -335,8 +336,7 @@ impl From<RemoteExecuteRequest> for ceresdbproto::remote_engine::ExecutePlanRequ
         let rest_duration_ms = if let Some(deadline) = value.context.deadline {
             deadline.duration_since(Instant::now()).as_millis() as i64
         } else {
-            // -1 means no deadline at all
-            -1
+            NO_TIMEOUT
         };
 
         let pb_context = ceresdbproto::remote_engine::ExecContext {

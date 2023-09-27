@@ -90,23 +90,23 @@ impl QueryEngineBuilder {
     fn build_datafusion_query_engine(self) -> Result<QueryEngineRef> {
         // Check if necessary component exists.
         let config = self.config.with_context(|| InitNoCause {
-            msg: "config not found".to_string(),
+            msg: "config not found",
         })?;
 
         let df_function_registry = self.df_function_registry.with_context(|| InitNoCause {
-            msg: "df_function_registry not found".to_string(),
+            msg: "df_function_registry not found",
         })?;
 
         let df_runtime_config = self.df_runtime_config.with_context(|| InitNoCause {
-            msg: "df_runtime_config not found".to_string(),
+            msg: "df_runtime_config not found",
         })?;
 
         let catalog_manager = self.catalog_manager.with_context(|| InitNoCause {
-            msg: "catalog_manager not found".to_string(),
+            msg: "catalog_manager not found",
         })?;
 
         let remote_engine = self.remote_engine.with_context(|| InitNoCause {
-            msg: "remote_engine not found".to_string(),
+            msg: "remote_engine not found",
         })?;
 
         // Build engine.
