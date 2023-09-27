@@ -38,8 +38,8 @@ generic_error = { workspace = true }
 prost = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
+trace_metric = { workspace = true }
 
 [dev-dependencies]
 insta = { version = "1.31.0" }
 tokio = { workspace = true }
-trace_metric = { workspace = true }

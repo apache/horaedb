@@ -38,8 +38,8 @@ use tonic::{transport::Channel, IntoRequest};
 use crate::{
     dedup_requests::{ExecutionGuard, RequestNotifiers, RequestResult},
     error::{ErrNoCause, ErrWithCause, Error, Internal, InternalNoCause, Result},
-    forward::{ForwardRequest, ForwardResult},
     failed_query,
+    forward::{ForwardRequest, ForwardResult},
     maybe_slow_query,
     metrics::GRPC_HANDLER_COUNTER_VEC,
     query_log::SlowTimer,

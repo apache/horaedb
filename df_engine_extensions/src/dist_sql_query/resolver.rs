@@ -23,7 +23,10 @@ use datafusion::{
 use table_engine::{remote::model::TableIdentifier, table::TableRef};
 
 use crate::dist_sql_query::{
-    physical_plan::{ResolvedPartitionedScan, UnresolvedPartitionedScan, UnresolvedSubTableScan},
+    physical_plan::{
+        ResolvedPartitionedScan, SubTablePlanContext, UnresolvedPartitionedScan,
+        UnresolvedSubTableScan,
+    },
     ExecutableScanBuilderRef, RemotePhysicalPlanExecutorRef,
 };
 
@@ -111,6 +114,7 @@ impl Resolver {
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
         // Leave node, let's resolve it and return.
         if let Some(unresolved) = plan.as_any().downcast_ref::<UnresolvedPartitionedScan>() {
+            let metrics_collector = unresolved.metrics_collector.clone();
             let sub_tables = unresolved.sub_tables.clone();
             let remote_plans = sub_tables
                 .into_iter()
@@ -119,13 +123,16 @@ impl Resolver {
                         table: table.clone(),
                         read_request: unresolved.read_request.clone(),
                     });
-                    (table, plan as _)
+                    let sub_metrics_collect = metrics_collector.span(table.table.clone());
+
+                    SubTablePlanContext::new(table, plan, sub_metrics_collect)
                 })
                 .collect::<Vec<_>>();
 
             return Ok(Arc::new(ResolvedPartitionedScan::new(
                 self.remote_executor.clone(),
                 remote_plans,
+                metrics_collector,
             )));
         }
 
