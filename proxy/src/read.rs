@@ -227,7 +227,7 @@ impl Proxy {
 
         let mut plan_maybe_expired = false;
         if let Some(table_name) = &table_name {
-            match self.check_plan_time_range(&plan, catalog, schema, table_name) {
+            match self.is_plan_expired(&plan, catalog, schema, table_name) {
                 Ok(v) => plan_maybe_expired = v,
                 Err(err) => {
                     warn!("Plan expire check failed, err:{err}");
