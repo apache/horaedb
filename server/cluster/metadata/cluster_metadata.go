@@ -64,6 +64,46 @@ func NewClusterMetadata(logger *zap.Logger, meta storage.Cluster, storage storag
 	return cluster
 }
 
+// Initialize the cluster view and shard view of the cluster.
+// It will be used when we create the cluster.
+func (c *ClusterMetadata) Init(ctx context.Context) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	createShardViews := make([]CreateShardView, 0, c.metaData.ShardTotal)
+	for i := uint32(0); i < c.metaData.ShardTotal; i++ {
+		shardID, err := c.AllocShardID(ctx)
+		if err != nil {
+			return errors.WithMessage(err, "alloc shard id failed")
+		}
+		createShardViews = append(createShardViews, CreateShardView{
+			ShardID: storage.ShardID(shardID),
+			Tables:  []storage.TableID{},
+		})
+	}
+	if err := c.topologyManager.CreateShardViews(ctx, createShardViews); err != nil {
+		return errors.WithMessage(err, "create shard view")
+	}
+
+	return c.topologyManager.InitClusterView(ctx)
+}
+
+// Load cluster NodeName from storage into memory.
+func (c *ClusterMetadata) Load(ctx context.Context) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	if err := c.tableManager.Load(ctx); err != nil {
+		return errors.WithMessage(err, "load table manager")
+	}
+
+	if err := c.topologyManager.Load(ctx); err != nil {
+		return errors.WithMessage(err, "load topology manager")
+	}
+
+	return nil
+}
+
 func (c *ClusterMetadata) GetClusterID() storage.ClusterID {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -392,58 +432,6 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 	return nil
 }
 
-func needUpdate(oldCache RegisteredNode, registeredNode RegisteredNode) bool {
-	if len(oldCache.ShardInfos) >= 50 {
-		return !sortCompare(oldCache.ShardInfos, registeredNode.ShardInfos)
-	}
-	return !simpleCompare(oldCache.ShardInfos, registeredNode.ShardInfos)
-}
-
-// sortCompare compare if they are the same by sorted slice, return true when they are the same.
-func sortCompare(oldShardInfos, newShardInfos []ShardInfo) bool {
-	if len(oldShardInfos) != len(newShardInfos) {
-		return false
-	}
-	oldShardIDs := make([]storage.ShardID, 0, len(oldShardInfos))
-	for i := 0; i < len(oldShardInfos); i++ {
-		oldShardIDs = append(oldShardIDs, oldShardInfos[i].ID)
-	}
-	sort.Slice(oldShardIDs, func(i, j int) bool {
-		return oldShardIDs[i] < oldShardIDs[j]
-	})
-	curShardIDs := make([]storage.ShardID, 0, len(newShardInfos))
-	for i := 0; i < len(newShardInfos); i++ {
-		curShardIDs = append(curShardIDs, newShardInfos[i].ID)
-	}
-	sort.Slice(curShardIDs, func(i, j int) bool {
-		return curShardIDs[i] < curShardIDs[j]
-	})
-	for i := 0; i < len(curShardIDs); i++ {
-		if curShardIDs[i] != oldShardIDs[i] {
-			return false
-		}
-	}
-	return true
-}
-
-// simpleCompare compare if they are the same by simple loop, return true when they are the same.
-func simpleCompare(oldShardInfos, newShardInfos []ShardInfo) bool {
-	if len(oldShardInfos) != len(newShardInfos) {
-		return false
-	}
-L1:
-	for i := 0; i < len(newShardInfos); i++ {
-		for j := 0; j < len(newShardInfos); j++ {
-			if oldShardInfos[i].ID == newShardInfos[j].ID {
-				continue L1
-			}
-		}
-		return false
-	}
-
-	return true
-}
-
 func (c *ClusterMetadata) GetRegisteredNodes() []RegisteredNode {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -548,14 +536,14 @@ func (c *ClusterMetadata) RouteTables(_ context.Context, schemaName string, tabl
 func (c *ClusterMetadata) GetNodeShards(_ context.Context) (GetNodeShardsResult, error) {
 	getNodeShardsResult := c.topologyManager.GetShardNodes()
 
-	shardNodesWithVersion := make([]ShardNodeWithVersion, 0, len(getNodeShardsResult.shardNodes))
+	shardNodesWithVersion := make([]ShardNodeWithVersion, 0, len(getNodeShardsResult.ShardNodes))
 
-	for _, shardNode := range getNodeShardsResult.shardNodes {
+	for _, shardNode := range getNodeShardsResult.ShardNodes {
 		shardNodesWithVersion = append(shardNodesWithVersion, ShardNodeWithVersion{
 			ShardInfo: ShardInfo{
 				ID:      shardNode.ID,
 				Role:    shardNode.ShardRole,
-				Version: getNodeShardsResult.versions[shardNode.ID],
+				Version: getNodeShardsResult.Versions[shardNode.ID],
 			},
 			ShardNode: shardNode,
 		})
@@ -687,42 +675,58 @@ func (c *ClusterMetadata) LoadMetadata(ctx context.Context) error {
 	return nil
 }
 
-// Initialize the cluster view and shard view of the cluster.
-// It will be used when we create the cluster.
-func (c *ClusterMetadata) Init(ctx context.Context) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	createShardViews := make([]CreateShardView, 0, c.metaData.ShardTotal)
-	for i := uint32(0); i < c.metaData.ShardTotal; i++ {
-		shardID, err := c.AllocShardID(ctx)
-		if err != nil {
-			return errors.WithMessage(err, "alloc shard id failed")
-		}
-		createShardViews = append(createShardViews, CreateShardView{
-			ShardID: storage.ShardID(shardID),
-			Tables:  []storage.TableID{},
-		})
-	}
-	if err := c.topologyManager.CreateShardViews(ctx, createShardViews); err != nil {
-		return errors.WithMessage(err, "create shard view")
-	}
-
-	return c.topologyManager.InitClusterView(ctx)
+func (c *ClusterMetadata) GetShardNodes() GetShardNodesResult {
+	return c.topologyManager.GetShardNodes()
 }
 
-// Load cluster NodeName from storage into memory.
-func (c *ClusterMetadata) Load(ctx context.Context) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+func needUpdate(oldCache RegisteredNode, registeredNode RegisteredNode) bool {
+	if len(oldCache.ShardInfos) >= 50 {
+		return !sortCompare(oldCache.ShardInfos, registeredNode.ShardInfos)
+	}
+	return !simpleCompare(oldCache.ShardInfos, registeredNode.ShardInfos)
+}
 
-	if err := c.tableManager.Load(ctx); err != nil {
-		return errors.WithMessage(err, "load table manager")
+// sortCompare compare if they are the same by sorted slice, return true when they are the same.
+func sortCompare(oldShardInfos, newShardInfos []ShardInfo) bool {
+	if len(oldShardInfos) != len(newShardInfos) {
+		return false
+	}
+	oldShardIDs := make([]storage.ShardID, 0, len(oldShardInfos))
+	for i := 0; i < len(oldShardInfos); i++ {
+		oldShardIDs = append(oldShardIDs, oldShardInfos[i].ID)
+	}
+	sort.Slice(oldShardIDs, func(i, j int) bool {
+		return oldShardIDs[i] < oldShardIDs[j]
+	})
+	curShardIDs := make([]storage.ShardID, 0, len(newShardInfos))
+	for i := 0; i < len(newShardInfos); i++ {
+		curShardIDs = append(curShardIDs, newShardInfos[i].ID)
+	}
+	sort.Slice(curShardIDs, func(i, j int) bool {
+		return curShardIDs[i] < curShardIDs[j]
+	})
+	for i := 0; i < len(curShardIDs); i++ {
+		if curShardIDs[i] != oldShardIDs[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// simpleCompare compare if they are the same by simple loop, return true when they are the same.
+func simpleCompare(oldShardInfos, newShardInfos []ShardInfo) bool {
+	if len(oldShardInfos) != len(newShardInfos) {
+		return false
+	}
+L1:
+	for i := 0; i < len(newShardInfos); i++ {
+		for j := 0; j < len(newShardInfos); j++ {
+			if oldShardInfos[i].ID == newShardInfos[j].ID {
+				continue L1
+			}
+		}
+		return false
 	}
 
-	if err := c.topologyManager.Load(ctx); err != nil {
-		return errors.WithMessage(err, "load topology manager")
-	}
-
-	return nil
+	return true
 }

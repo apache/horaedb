@@ -47,7 +47,7 @@ const (
 	defaultMinScanLimit    int  = 20
 	defaultIDAllocatorStep uint = 20
 
-	defaultClusterName              = "defaultCluster"
+	DefaultClusterName              = "defaultCluster"
 	defaultClusterNodeCount         = 2
 	defaultClusterReplicationFactor = 1
 	defaultClusterShardTotal        = 8
@@ -299,7 +299,7 @@ func MakeConfigParser() (*Parser, error) {
 		MinScanLimit:            defaultMinScanLimit,
 		IDAllocatorStep:         defaultIDAllocatorStep,
 
-		DefaultClusterName:              defaultClusterName,
+		DefaultClusterName:              DefaultClusterName,
 		DefaultClusterNodeCount:         defaultClusterNodeCount,
 		DefaultClusterReplicationFactor: defaultClusterReplicationFactor,
 		DefaultClusterShardTotal:        defaultClusterShardTotal,

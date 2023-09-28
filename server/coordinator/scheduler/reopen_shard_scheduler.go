@@ -83,5 +83,5 @@ func (r ReopenShardScheduler) Schedule(ctx context.Context, clusterSnapshot meta
 }
 
 func needReopen(shardInfo metadata.ShardInfo) bool {
-	return shardInfo.Status == storage.ShardStatusPartitionOpen
+	return shardInfo.Status == storage.ShardStatusPartialOpen
 }

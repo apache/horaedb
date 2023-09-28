@@ -66,8 +66,8 @@ type GetShardNodesByTableIDsResult struct {
 }
 
 type GetShardNodesResult struct {
-	shardNodes []storage.ShardNode
-	versions   map[storage.ShardID]uint64
+	ShardNodes []storage.ShardNode
+	Versions   map[storage.ShardID]uint64
 }
 
 type CreateShardView struct {
@@ -412,8 +412,8 @@ func (m *TopologyManagerImpl) GetShardNodes() GetShardNodesResult {
 	}
 
 	return GetShardNodesResult{
-		shardNodes: shardNodes,
-		versions:   shardViewVersions,
+		ShardNodes: shardNodes,
+		Versions:   shardViewVersions,
 	}
 }
 

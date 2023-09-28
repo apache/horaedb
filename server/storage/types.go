@@ -34,9 +34,11 @@ const (
 const (
 	ShardRoleLeader ShardRole = iota + 1
 	ShardRoleFollower
+)
 
-	ShardStatusPartitionOpen ShardStatus = iota + 1
-	ShardStatusReady
+const (
+	ShardStatusReady ShardStatus = iota + 1
+	ShardStatusPartialOpen
 )
 
 const (
@@ -354,7 +356,7 @@ func ConvertShardStatusPB(status *metaservicepb.ShardInfo_Status) ShardStatus {
 	}
 	switch *status {
 	case metaservicepb.ShardInfo_PartialOpen:
-		return ShardStatusPartitionOpen
+		return ShardStatusPartialOpen
 	case metaservicepb.ShardInfo_Ready:
 		return ShardStatusReady
 	}
@@ -363,7 +365,7 @@ func ConvertShardStatusPB(status *metaservicepb.ShardInfo_Status) ShardStatus {
 
 func ConvertShardStatusToPB(status ShardStatus) metaservicepb.ShardInfo_Status {
 	switch status {
-	case ShardStatusPartitionOpen:
+	case ShardStatusPartialOpen:
 		return metaservicepb.ShardInfo_PartialOpen
 	case ShardStatusReady:
 		return metaservicepb.ShardInfo_Ready
@@ -533,4 +535,14 @@ func convertNodePB(node *clusterpb.Node) Node {
 		LastTouchTime: node.LastTouchTime,
 		State:         convertNodeStatePB(node.State),
 	}
+}
+
+func ConvertShardStatusToString(status ShardStatus) string {
+	switch status {
+	case ShardStatusReady:
+		return "ready"
+	case ShardStatusPartialOpen:
+		return "partialOpen"
+	}
+	return "unknown"
 }

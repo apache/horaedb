@@ -50,22 +50,6 @@ func NewCluster(logger *zap.Logger, metadata *metadata.ClusterMetadata, client *
 	}, nil
 }
 
-func (c *Cluster) GetMetadata() *metadata.ClusterMetadata {
-	return c.metadata
-}
-
-func (c *Cluster) GetProcedureManager() procedure.Manager {
-	return c.procedureManager
-}
-
-func (c *Cluster) GetProcedureFactory() *coordinator.Factory {
-	return c.procedureFactory
-}
-
-func (c *Cluster) GetSchedulerManager() scheduler.Manager {
-	return c.schedulerManager
-}
-
 func (c *Cluster) Start(ctx context.Context) error {
 	if err := c.procedureManager.Start(ctx); err != nil {
 		return errors.WithMessage(err, "start procedure manager")
@@ -84,4 +68,24 @@ func (c *Cluster) Stop(ctx context.Context) error {
 		return errors.WithMessage(err, "stop scheduler manager")
 	}
 	return nil
+}
+
+func (c *Cluster) GetMetadata() *metadata.ClusterMetadata {
+	return c.metadata
+}
+
+func (c *Cluster) GetProcedureManager() procedure.Manager {
+	return c.procedureManager
+}
+
+func (c *Cluster) GetProcedureFactory() *coordinator.Factory {
+	return c.procedureFactory
+}
+
+func (c *Cluster) GetSchedulerManager() scheduler.Manager {
+	return c.schedulerManager
+}
+
+func (c *Cluster) GetShardNodes() metadata.GetShardNodesResult {
+	return c.metadata.GetShardNodes()
 }

@@ -46,7 +46,7 @@ func TestReopenShardScheduler(t *testing.T) {
 		ID:      1,
 		Role:    storage.ShardRoleLeader,
 		Version: 0,
-		Status:  storage.ShardStatusPartitionOpen,
+		Status:  storage.ShardStatusPartialOpen,
 	})
 	result, err = s.Schedule(ctx, snapshot)
 	re.NoError(err)

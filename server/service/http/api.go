@@ -27,8 +27,9 @@ import (
 )
 
 const (
-	statusSuccess string = "success"
-	statusError   string = "error"
+	statusSuccess    string = "success"
+	statusError      string = "error"
+	clusterNameParam string = "cluster"
 
 	apiPrefix string = "/api/v1"
 )
@@ -68,6 +69,17 @@ type API struct {
 	etcdAPI EtcdAPI
 }
 
+type DiagnoseShardStatus struct {
+	NodeName string `json:"node_name"`
+	Status   string `json:"status"`
+}
+
+type DiagnoseShardResult struct {
+	// shardID -> nodeName
+	UnregisteredShards map[storage.ShardID]string              `json:"unregistered_shards"`
+	UnreadyShards      map[storage.ShardID]DiagnoseShardStatus `json:"unready_shards"`
+}
+
 func NewAPI(clusterManager cluster.Manager, serverStatus *status.ServerStatus, forwardClient *ForwardClient, flowLimiter *limiter.FlowLimiter, etcdClient *clientv3.Client) *API {
 	return &API{
 		clusterManager: clusterManager,
@@ -99,7 +111,7 @@ func (a *API) NewAPIRouter() *Router {
 	router.Post("/clusters", wrap(a.createCluster, true, a.forwardClient))
 	router.Put("/clusters/:name", wrap(a.updateCluster, true, a.forwardClient))
 
-	// Register pprof API.
+	// Register debug API.
 	router.Get("/debug/pprof/profile", pprof.Profile)
 	router.Get("/debug/pprof/symbol", pprof.Symbol)
 	router.Get("/debug/pprof/trace", pprof.Trace)
@@ -108,6 +120,7 @@ func (a *API) NewAPIRouter() *Router {
 	router.Get("/debug/pprof/block", a.pprofBlock)
 	router.Get("/debug/pprof/goroutine", a.pprofGoroutine)
 	router.Get("/debug/pprof/threadCreate", a.pprofThreadcreate)
+	router.Get("/debug/diagnose/:"+clusterNameParam+"/shards", wrap(a.diagnoseShards, true, a.forwardClient))
 
 	// Register ETCD API.
 	router.Post("/etcd/promoteLearner", wrap(a.etcdAPI.promoteLearner, false, a.forwardClient))
@@ -584,6 +597,60 @@ func (a *API) listProcedures(req *http.Request) apiFuncResult {
 	}
 
 	return okResult(infos)
+}
+
+func (a *API) diagnoseShards(req *http.Request) apiFuncResult {
+	ctx := req.Context()
+	clusterName := Param(ctx, clusterNameParam)
+	if len(clusterName) == 0 {
+		clusterName = config.DefaultClusterName
+	}
+
+	c, err := a.clusterManager.GetCluster(ctx, clusterName)
+	if err != nil {
+		log.Error("get cluster failed", zap.Error(err))
+		return errResult(ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", clusterName, err.Error()))
+	}
+
+	registerNodes, err := a.clusterManager.ListRegisterNodes(ctx, clusterName)
+	if err != nil {
+		log.Error("get cluster failed", zap.Error(err))
+		return errResult(ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", clusterName, err.Error()))
+	}
+
+	expectedShardNodes := c.GetShardNodes()
+	// shardName -> shardInfo
+	registerNodesMap := make(map[string][]metadata.ShardInfo, len(registerNodes))
+	for _, node := range registerNodes {
+		registerNodesMap[node.Node.Name] = node.ShardInfos
+	}
+
+	ret := DiagnoseShardResult{
+		UnregisteredShards: make(map[storage.ShardID]string),
+		UnreadyShards:      make(map[storage.ShardID]DiagnoseShardStatus),
+	}
+	// Check shard not register and not ready.
+	for _, shardNode := range expectedShardNodes.ShardNodes {
+		shardID := shardNode.ID
+		nodeName := shardNode.NodeName
+		shardInfo, ok := registerNodesMap[nodeName]
+		if !ok {
+			ret.UnregisteredShards[shardID] = nodeName
+			continue
+		}
+		for _, info := range shardInfo {
+			if info.ID == shardID {
+				if info.Status != storage.ShardStatusReady {
+					ret.UnreadyShards[shardID] = DiagnoseShardStatus{
+						NodeName: nodeName,
+						Status:   storage.ConvertShardStatusToString(info.Status),
+					}
+				}
+				break
+			}
+		}
+	}
+	return okResult(ret)
 }
 
 func (a *API) healthCheck(_ *http.Request) apiFuncResult {
