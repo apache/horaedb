@@ -39,14 +39,17 @@ futures = { workspace = true }
 generic_error = { workspace = true }
 hash_ext = { workspace = true }
 itertools = { workspace = true }
+lazy_static = { workspace = true }
 log = { workspace = true }
 macros = { workspace = true }
+prometheus = { workspace = true }
 prost = { workspace = true }
 rand = { workspace = true }
 runtime = { workspace = true }
 serde = { workspace = true }
 smallvec = { workspace = true }
 snafu = { workspace = true }
+time_ext = { workspace = true }
 tokio = { workspace = true }
 trace_metric = { workspace = true }
 
