@@ -71,7 +71,7 @@ use interpreters::{
     interpreter::{InterpreterPtr, Output},
 };
 use log::{error, info, warn};
-use query_frontend::plan::Plan;
+use query_frontend::plan::{Plan, QueryPlan};
 use router::{endpoint::Endpoint, RouteRequest, Router};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};
@@ -92,6 +92,7 @@ use crate::{
     forward::{ForwardRequest, ForwardResult, Forwarder, ForwarderRef},
     hotspot::HotspotRecorder,
     instance::InstanceRef,
+    metrics::{DURATION_SINCE_QUERY_START_TIME, QUERY_TIME_RANGE},
     read::SqlResponse,
     schema_config_provider::SchemaConfigProviderRef,
 };
@@ -219,7 +220,7 @@ impl Proxy {
     /// Note: False positive is possible
     // TODO(tanruixiang): Add integration testing when supported by the testing
     // framework
-    fn is_plan_expired(
+    fn check_plan_time_range(
         &self,
         plan: &Plan,
         catalog_name: &str,
@@ -227,17 +228,39 @@ impl Proxy {
         table_name: &str,
     ) -> Result<bool> {
         if let Plan::Query(query) = &plan {
+            // Extract time range represented in timestamp(ms).
             let catalog = self.get_catalog(catalog_name)?;
             let schema = self.get_schema(&catalog, schema_name)?;
             let table_ref = match self.get_table(&schema, table_name) {
                 Ok(Some(v)) => v,
                 _ => return Ok(false),
             };
+            let (start_time, end_time) = extract_start_and_end_time_from_plan(&table_ref, query)?;
+
+            // Stats time infos of queries.
+            if let Some(start_time) = &start_time {
+                let now = current_time_millis() as f64;
+                let start_time = *start_time as f64;
+                DURATION_SINCE_QUERY_START_TIME
+                    .with_label_values(&[table_ref.name()])
+                    .observe(now - start_time);
+            }
+
+            if let (Some(start_time), Some(end_time)) = (&start_time, &end_time) {
+                let start_time = *start_time as f64;
+                let end_time = *end_time as f64;
+                QUERY_TIME_RANGE
+                    .with_label_values(&[table_ref.name()])
+                    .observe(end_time - start_time);
+            }
+
+            // Judge whether plan is expired in time.
             if let Some(value) = table_ref.options().get(ENABLE_TTL) {
                 if value == "false" {
                     return Ok(false);
                 }
             }
+
             let ttl_duration = if let Some(ttl) = table_ref.options().get(TTL) {
                 if let Ok(ttl) = parse_duration(ttl) {
                     ttl
@@ -248,31 +271,14 @@ impl Proxy {
                 return Ok(false);
             };
 
-            let timestamp_name = &table_ref
-                .schema()
-                .column(table_ref.schema().timestamp_index())
-                .name
-                .clone();
-            let ts_col = Column::from_name(timestamp_name);
-            let range = find_time_range(&query.df_plan, &ts_col)
-                .box_err()
-                .context(Internal {
-                    msg: "Failed to find time range",
-                })?;
-            match range.end {
-                Bound::Included(x) | Bound::Excluded(x) => {
-                    if let Expr::Literal(ScalarValue::Int64(Some(x))) = x {
-                        let now = current_time_millis() as i64;
-                        let deadline = now
-                            - ttl_duration.as_millis() as i64
-                            - QUERY_EXPIRED_BUFFER.as_millis() as i64;
+            if let Some(end_time) = &end_time {
+                let now = current_time_millis() as i64;
+                let deadline =
+                    now - ttl_duration.as_millis() as i64 - QUERY_EXPIRED_BUFFER.as_millis() as i64;
 
-                        if x * 1_000 <= deadline {
-                            return Ok(true);
-                        }
-                    }
+                if *end_time <= deadline {
+                    return Ok(true);
                 }
-                Bound::Unbounded => (),
             }
         }
 
@@ -614,6 +620,44 @@ impl Proxy {
                 msg: "Failed to execute interpreter",
             })
         }
+    }
+}
+
+/// Just extract the start and end timestamp(ms) from plan without care about
+/// somethings like `Included` and `Excluded`. It can only extract time defined
+/// by scalar currently, and `None` will be returned when other exprs found.
+fn extract_start_and_end_time_from_plan(
+    table_ref: &TableRef,
+    query: &QueryPlan,
+) -> Result<(Option<i64>, Option<i64>)> {
+    let timestamp_name = table_ref
+        .schema()
+        .column(table_ref.schema().timestamp_index())
+        .name
+        .clone();
+    let ts_col = Column::from_name(timestamp_name);
+    let time_range = find_time_range(&query.df_plan, &ts_col)
+        .box_err()
+        .context(Internal {
+            msg: "Failed to find time range",
+        })?;
+
+    let start_time = time_expr_to_timestamp(time_range.start, i64::MIN);
+    let end_time = time_expr_to_timestamp(time_range.end, i64::MAX);
+
+    Ok((start_time, end_time))
+}
+
+fn time_expr_to_timestamp(time_bound_expr: Bound<Expr>, unbounded_val: i64) -> Option<i64> {
+    match time_bound_expr {
+        Bound::Included(x) | Bound::Excluded(x) => {
+            if let Expr::Literal(ScalarValue::Int64(Some(x))) = x {
+                Some(x * 1000)
+            } else {
+                None
+            }
+        }
+        Bound::Unbounded => Some(unbounded_val),
     }
 }
 

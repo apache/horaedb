@@ -15,9 +15,15 @@
 // Grpc proxy metrics
 
 use lazy_static::lazy_static;
-use prometheus::{register_int_counter_vec, IntCounterVec};
+use prometheus::{
+    exponential_buckets,
+    local::{LocalHistogram, LocalHistogramTimer},
+    register_histogram, register_histogram_vec, register_int_counter_vec, Histogram, HistogramVec,
+    IntCounterVec,
+};
 use prometheus_static_metric::{auto_flush_from, make_auto_flush_static_metric};
 
+// Proxy counters
 make_auto_flush_static_metric! {
     pub label_enum GrpcTypeKind {
         write_succeeded,
@@ -68,4 +74,22 @@ lazy_static! {
         auto_flush_from!(GRPC_HANDLER_COUNTER_VEC_GLOBAL, GrpcHandlerCounterVec);
     pub static ref HTTP_HANDLER_COUNTER_VEC: HttpHandlerCounterVec =
         auto_flush_from!(HTTP_HANDLER_COUNTER_VEC_GLOBAL, HttpHandlerCounterVec);
+}
+
+// Histograms of proxy
+lazy_static! {
+    pub static ref DURATION_SINCE_QUERY_START_TIME: HistogramVec = register_histogram_vec!(
+        "duration_since_query_start_time",
+        "Duration since query start time, range:1h,2h,...,30d",
+        &["table"],
+        exponential_buckets(3600.0, 2.0, 10).unwrap()
+    )
+    .unwrap();
+    pub static ref QUERY_TIME_RANGE: HistogramVec = register_histogram_vec!(
+        "query_time_range",
+        "Query time range, range:1h,2h,...,30d",
+        &["table"],
+        exponential_buckets(3600.0, 2.0, 10).unwrap()
+    )
+    .unwrap();
 }
