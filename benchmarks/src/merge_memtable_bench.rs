@@ -214,6 +214,8 @@ fn mock_sst_read_options(
         num_streams_to_prefetch: 0,
     };
     SstReadOptions {
+        scanned_table: "bench_table".to_string(),
+        scan_for_compaction: false,
         frequency: ReadFrequency::Frequent,
         num_rows_per_row_group: 500,
         projected_schema,

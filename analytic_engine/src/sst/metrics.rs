@@ -13,7 +13,10 @@
 // limitations under the License.
 
 use lazy_static::lazy_static;
-use prometheus::{exponential_buckets, register_counter, register_histogram, Counter, Histogram};
+use prometheus::{
+    exponential_buckets, register_counter, register_histogram, register_int_counter_vec, Counter,
+    Histogram, IntCounter, IntCounterVec,
+};
 
 lazy_static! {
     // Histogram:
@@ -32,5 +35,17 @@ lazy_static! {
     pub static ref META_DATA_CACHE_MISS_COUNTER: Counter = register_counter!(
         "META_DATA_CACHE_MISS",
         "The counter for meta data cache miss"
+    ).unwrap();
+
+    pub static ref SST_BEFORE_PRUNE_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "sst_before_prune",
+        "The counter for sst before prune",
+        &["table"]
+    ).unwrap();
+
+    pub static ref SST_AFTER_PRUNE_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "sst_after_prune",
+        "The counter for sst after prune",
+        &["table"]
     ).unwrap();
 }

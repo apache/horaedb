@@ -63,6 +63,7 @@ use crate::{
             cache::{MetaCacheRef, MetaData},
             SstMetaData,
         },
+        metrics::{SST_AFTER_PRUNE_COUNTER, SST_BEFORE_PRUNE_COUNTER},
         parquet::{
             encoding::ParquetDecoder, meta_data::ParquetFilter, row_group_pruner::RowGroupPruner,
         },
@@ -94,6 +95,9 @@ pub struct Reader<'a> {
     /// Options for `read_parallelly`
     metrics: Metrics,
     df_plan_metrics: ExecutionPlanMetricsSet,
+
+    scanned_table: String,
+    scan_for_compaction: bool,
 }
 
 #[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
@@ -136,6 +140,8 @@ impl<'a> Reader<'a> {
             row_projector: None,
             metrics,
             df_plan_metrics,
+            scanned_table: options.scanned_table.clone(),
+            scan_for_compaction: options.scan_for_compaction,
         }
     }
 
@@ -253,11 +259,21 @@ impl<'a> Reader<'a> {
             )?
         };
 
+        let num_sst_before_prune = meta_data.parquet().num_row_groups();
+        let num_sst_after_prune = target_row_groups.len();
+
+        if !self.scan_for_compaction {
+            SST_BEFORE_PRUNE_COUNTER
+                .with_label_values(&[self.scanned_table.as_str()])
+                .inc_by(num_sst_before_prune as u64);
+            SST_AFTER_PRUNE_COUNTER
+                .with_label_values(&[self.scanned_table.as_str()])
+                .inc_by(num_sst_after_prune as u64);
+        }
+
         debug!(
             "Reader fetch record batches, path:{}, row_groups total:{}, after prune:{}",
-            self.path,
-            meta_data.parquet().num_row_groups(),
-            target_row_groups.len(),
+            self.path, num_sst_before_prune, num_sst_after_prune,
         );
 
         if target_row_groups.is_empty() {

@@ -131,6 +131,9 @@ impl Default for ScanOptions {
 
 #[derive(Debug, Clone)]
 pub struct SstReadOptions {
+    pub scanned_table: String,
+    pub scan_for_compaction: bool,
+
     pub frequency: ReadFrequency,
     pub num_rows_per_row_group: usize,
     pub projected_schema: ProjectedSchema,
