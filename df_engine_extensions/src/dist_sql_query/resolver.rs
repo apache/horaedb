@@ -54,7 +54,39 @@ impl Resolver {
         }
     }
 
-    /// Resolve partitioned scan
+    /// Resolve partitioned scan, including:
+    ///   + Convert `UnresolvedPartitionedScan`(inexecutable) to
+    ///     `ResolvedPartitionedScan`(executable).
+    ///   + Push nodes(e.g. filter, projection, partial aggregation,...) to
+    ///     `ResolvedPartitionedScan`.
+    ///
+    /// Example for the process:
+    ///   + Initial plan:
+    ///
+    ///     ```plaintext
+    ///     Final Aggregation Partial Aggregation
+    ///         Filter UnresolvedPartitionedScan
+    ///     ```
+    ///
+    ///    + After converting partitioned scan from unresolved to resolved:
+    ///
+    ///     ```plaintext
+    ///     Final Aggregation
+    ///         Partial Aggregation
+    ///             Filter
+    ///                 ResolvedPartitionedScan
+    ///                     UnresolvedSubTableScan (send to remote node)
+    ///     ```
+    ///
+    ///    + After pushing down nodes:
+    ///
+    ///     ```plaintext
+    ///     Final Aggregation
+    ///         ResolvedPartitionedScan
+    ///             Partial Aggregation (send to remote node)
+    ///                 Filter (send to remote node)
+    ///                      UnresolvedSubTableScan (send to remote node)
+    ///     ```
     pub fn resolve_partitioned_scan(
         &self,
         plan: Arc<dyn ExecutionPlan>,
@@ -121,9 +153,7 @@ impl Resolver {
             return Ok(current_node);
         }
 
-        // This node Has multiple children, it can't be pushed down to remote.
-        // But it's possible that `ResolvedPartitionedScan`s exist among its children,
-        // we need to extract these children and mark them push down finished.
+        // When this node has multiple children, it can't be pushed down to remote.
         if new_children.len() > 1 {
             new_children.iter_mut().for_each(|child| {
                 if let Some(plan) = child.as_any().downcast_ref::<ResolvedPartitionedScan>() {
