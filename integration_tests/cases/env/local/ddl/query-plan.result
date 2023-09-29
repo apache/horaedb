@@ -7,7 +7,8 @@ CREATE TABLE `03_dml_select_real_time_range` (
     value double NOT NULL,
     t timestamp NOT NULL,
     timestamp KEY (t)) ENGINE = Analytic WITH (
-    enable_ttl = 'false'
+    enable_ttl = 'false',
+    segment_duration='2h'
 );
 
 affected_rows: 0
@@ -19,6 +20,24 @@ INSERT INTO `03_dml_select_real_time_range` (t, name, value)
     (1695348002000, "ceresdb", 300);
 
 affected_rows: 3
+
+-- This query should include memtable
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+explain analyze select t from `03_dml_select_real_time_range`
+where t > 1695348001000;
+
+plan_type,plan,
+String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, metrics=[\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=1\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_1:\n\n\nPredicate { exprs: [BinaryExpr(BinaryExpr { left: Column(Column { relation: None, name: \"t\" }), op: Gt, right: Literal(TimestampMillisecond(1695348001000, None)) })], time_range: TimeRange { inclusive_start: Timestamp(1695348001001), exclusive_end: Timestamp(9223372036854775807) } }=0]\n"),
+
+
+-- This query should not include memtable
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+explain analyze select t from `03_dml_select_real_time_range`
+where t > 1695348002000;
+
+plan_type,plan,
+String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, metrics=[\nscan_table:\n    do_merge_sort=true\n    iter_num=0\n\n\nPredicate { exprs: [BinaryExpr(BinaryExpr { left: Column(Column { relation: None, name: \"t\" }), op: Gt, right: Literal(TimestampMillisecond(1695348002000, None)) })], time_range: TimeRange { inclusive_start: Timestamp(1695348002001), exclusive_end: Timestamp(9223372036854775807) } }=0]\n"),
+
 
 -- SQLNESS ARG pre_cmd=flush
 -- SQLNESS REPLACE duration=\d+.\d*(µ|m) duration=xx
