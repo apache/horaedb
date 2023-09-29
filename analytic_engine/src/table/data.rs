@@ -479,7 +479,7 @@ impl TableData {
                 )?;
                 let mem_state = MemTableState {
                     mem,
-                    time_range,
+                    aligned_time_range: time_range,
                     id: self.alloc_memtable_id(),
                 };
 
@@ -931,7 +931,7 @@ pub mod tests {
         assert_eq!(2, mem_state.id);
         let time_range =
             TimeRange::bucket_of(now_ts, table_options::DEFAULT_SEGMENT_DURATION).unwrap();
-        assert_eq!(time_range, mem_state.time_range);
+        assert_eq!(time_range, mem_state.aligned_time_range);
     }
 
     #[test]

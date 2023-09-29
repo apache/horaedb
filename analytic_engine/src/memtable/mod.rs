@@ -28,6 +28,7 @@ use common_types::{
     record_batch::RecordBatchWithKey,
     row::Row,
     schema::{IndexInWriterSchema, Schema},
+    time::TimeRange,
     SequenceNumber,
 };
 use generic_error::GenericError;
@@ -254,6 +255,9 @@ pub trait MemTable {
     ///
     /// If the memtable is empty, then the last sequence is 0.
     fn last_sequence(&self) -> SequenceNumber;
+
+    /// Time range of written rows.
+    fn time_range(&self) -> Option<TimeRange>;
 
     /// Metrics of inner state.
     fn metrics(&self) -> Metrics;

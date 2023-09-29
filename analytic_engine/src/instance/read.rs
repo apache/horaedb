@@ -315,7 +315,7 @@ impl Instance {
 
         for memtable in read_view.memtables {
             let aligned_ts = memtable
-                .time_range
+                .aligned_time_range
                 .inclusive_start()
                 .truncate_by(segment_duration);
             let entry = read_view_by_time

@@ -108,7 +108,7 @@ impl MergeMemTableBench {
 
             memtables.push(MemTableState {
                 mem: memtable,
-                time_range: TimeRange::min_to_max(),
+                aligned_time_range: TimeRange::min_to_max(),
                 id: *id,
             });
         }

@@ -33,12 +33,11 @@ impl Factory for SkiplistMemTableFactory {
     fn create_memtable(&self, opts: Options) -> Result<MemTableRef> {
         let arena = MonoIncArena::with_collector(opts.arena_block_size as usize, opts.collector);
         let skiplist = Skiplist::with_arena(BytewiseComparator, arena);
-        let memtable = Arc::new(SkiplistMemTable {
-            schema: opts.schema,
+        let memtable = Arc::new(SkiplistMemTable::new(
+            opts.schema,
             skiplist,
-            last_sequence: AtomicU64::new(opts.creation_sequence),
-            metrics: Default::default(),
-        });
+            AtomicU64::new(opts.creation_sequence),
+        ));
 
         Ok(memtable)
     }

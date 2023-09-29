@@ -125,7 +125,7 @@ pub struct MemTableState {
     pub mem: MemTableRef,
     /// The `time_range` is estimated via the time range of the first row group
     /// write to this memtable and is aligned to segment size
-    pub time_range: TimeRange,
+    pub aligned_time_range: TimeRange,
     /// Id of the memtable, newer memtable has greater id
     pub id: MemTableId,
 }
@@ -135,12 +135,16 @@ impl MemTableState {
     pub fn last_sequence(&self) -> SequenceNumber {
         self.mem.last_sequence()
     }
+
+    pub fn real_time_range(&self) -> TimeRange {
+        self.mem.time_range().unwrap_or(self.aligned_time_range)
+    }
 }
 
 impl fmt::Debug for MemTableState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MemTableState")
-            .field("time_range", &self.time_range)
+            .field("time_range", &self.aligned_time_range)
             .field("id", &self.id)
             .field("mem", &self.mem.approximate_memory_usage())
             .field("metrics", &self.mem.metrics())
@@ -166,7 +170,7 @@ impl MemTableForWrite {
     pub fn accept_timestamp(&self, timestamp: Timestamp) -> bool {
         match self {
             MemTableForWrite::Sampling(_) => true,
-            MemTableForWrite::Normal(v) => v.time_range.contains(timestamp),
+            MemTableForWrite::Normal(v) => v.aligned_time_range.contains(timestamp),
         }
     }
 
@@ -407,7 +411,7 @@ impl MutableMemTableSet {
             .range((Bound::Excluded(timestamp), Bound::Unbounded))
             .next()
         {
-            if memtable.time_range.contains(timestamp) {
+            if memtable.aligned_time_range.contains(timestamp) {
                 return Some(memtable);
             }
         }
@@ -419,7 +423,7 @@ impl MutableMemTableSet {
     /// present.
     fn insert(&mut self, memtable: MemTableState) -> Option<MemTableState> {
         // Use end time of time range as key
-        let end = memtable.time_range.exclusive_end();
+        let end = memtable.aligned_time_range.exclusive_end();
         self.0.insert(end, memtable)
     }
 
@@ -453,10 +457,11 @@ impl MutableMemTableSet {
         let iter = self
             .0
             .range((Bound::Excluded(inclusive_start), Bound::Unbounded));
-        for (_end_ts, mem) in iter {
+        for (_end_ts, mem_state) in iter {
             // We need to iterate all candidate memtables as their start time is unspecific
-            if mem.time_range.intersect_with(time_range) {
-                mems.push(mem.clone());
+            let memtable_time_range = mem_state.real_time_range();
+            if memtable_time_range.intersect_with(time_range) {
+                mems.push(mem_state.clone());
             }
         }
     }
@@ -482,9 +487,10 @@ impl ImmutableMemTableSet {
     }
 
     fn memtables_for_read(&self, time_range: TimeRange, mems: &mut MemTableVec) {
-        for mem in self.0.values() {
-            if mem.time_range.intersect_with(time_range) {
-                mems.push(mem.clone());
+        for mem_state in self.0.values() {
+            let memtable_time_range = mem_state.real_time_range();
+            if memtable_time_range.intersect_with(time_range) {
+                mems.push(mem_state.clone());
             }
         }
     }
@@ -1067,7 +1073,7 @@ mod tests {
         let memtable_id2 = 2;
         let mem_state = MemTableState {
             mem: memtable,
-            time_range,
+            aligned_time_range: time_range,
             id: memtable_id2,
         };
         // Insert a mutable memtable.
@@ -1079,7 +1085,7 @@ mod tests {
             .unwrap()
             .unwrap();
         let mutable = mutable.as_normal();
-        assert_eq!(time_range, mutable.time_range);
+        assert_eq!(time_range, mutable.aligned_time_range);
         assert_eq!(memtable_id2, mutable.id);
 
         // Need to read sampling memtable and mutable memtable.
@@ -1128,7 +1134,7 @@ mod tests {
         let memtable_id2 = 2;
         let mem_state = MemTableState {
             mem: memtable,
-            time_range,
+            aligned_time_range: time_range,
             id: memtable_id2,
         };
         // Insert a mutable memtable.
