@@ -119,7 +119,7 @@ impl DisplayAs for UnresolvedPartitionedScan {
 #[derive(Debug)]
 pub struct ResolvedPartitionedScan {
     pub remote_exec_ctx: Arc<RemoteExecContext>,
-    pub pushing_down: bool,
+    pub pushdown_continue: bool,
 }
 
 impl ResolvedPartitionedScan {
@@ -134,14 +134,14 @@ impl ResolvedPartitionedScan {
 
         Self {
             remote_exec_ctx,
-            pushing_down: true,
+            pushdown_continue: true,
         }
     }
 
-    pub fn push_down_finished(&self) -> Arc<dyn ExecutionPlan> {
+    pub fn pushdown_finished(&self) -> Arc<dyn ExecutionPlan> {
         Arc::new(Self {
             remote_exec_ctx: self.remote_exec_ctx.clone(),
-            pushing_down: false,
+            pushdown_continue: false,
         })
     }
 
@@ -150,8 +150,8 @@ impl ResolvedPartitionedScan {
         cur_node: Arc<dyn ExecutionPlan>,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
         // Can not push more...
-        if !self.pushing_down {
-            return cur_node.with_new_children(vec![self.push_down_finished()]);
+        if !self.pushdown_continue {
+            return cur_node.with_new_children(vec![self.pushdown_finished()]);
         }
 
         // Push down more, and when occur the terminated push down able node, we need to
@@ -161,7 +161,7 @@ impl ResolvedPartitionedScan {
             PushDownStatus::Continue(node) => (node, true),
             PushDownStatus::Terminated(node) => (node, false),
             PushDownStatus::Unable => {
-                let partitioned_scan = self.push_down_finished();
+                let partitioned_scan = self.pushdown_finished();
                 return cur_node.with_new_children(vec![partitioned_scan]);
             }
         };
@@ -183,7 +183,7 @@ impl ResolvedPartitionedScan {
         });
         let plan = ResolvedPartitionedScan {
             remote_exec_ctx,
-            pushing_down: can_push_down_more,
+            pushdown_continue: can_push_down_more,
         };
 
         Ok(Arc::new(plan))
@@ -192,6 +192,13 @@ impl ResolvedPartitionedScan {
     #[inline]
     pub fn maybe_a_pushdown_node(plan: Arc<dyn ExecutionPlan>) -> PushDownStatus {
         PushDownStatus::new(plan)
+    }
+
+    /// `ResolvedPartitionedScan` can be executable after satisfying followings:
+    ///    + The pushdown searching process is finished.
+    #[inline]
+    fn is_executable(&self) -> bool {
+        !self.pushdown_continue
     }
 }
 
@@ -245,9 +252,9 @@ impl ExecutionPlan for ResolvedPartitionedScan {
         partition: usize,
         context: Arc<TaskContext>,
     ) -> DfResult<DfSendableRecordBatchStream> {
-        if self.pushing_down {
+        if !self.is_executable() {
             return Err(DataFusionError::Internal(format!(
-                "partitioned scan can't be executed before pushing down finished, plan:{}",
+                "partitioned scan is still inexecutable, plan:{}",
                 displayable(self).indent(true)
             )));
         }
@@ -361,7 +368,7 @@ impl DisplayAs for ResolvedPartitionedScan {
                 write!(
                     f,
                     "ResolvedPartitionedScan: pushing_down:{}, partition_count:{}",
-                    self.pushing_down,
+                    self.pushdown_continue,
                     self.remote_exec_ctx.plans.len()
                 )
             }

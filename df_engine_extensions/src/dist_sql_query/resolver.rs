@@ -97,7 +97,7 @@ impl Resolver {
             .as_any()
             .downcast_ref::<ResolvedPartitionedScan>()
         {
-            Ok(plan.push_down_finished())
+            Ok(plan.pushdown_finished())
         } else {
             Ok(resolved_plan)
         }
@@ -157,7 +157,7 @@ impl Resolver {
         if new_children.len() > 1 {
             new_children.iter_mut().for_each(|child| {
                 if let Some(plan) = child.as_any().downcast_ref::<ResolvedPartitionedScan>() {
-                    *child = plan.push_down_finished();
+                    *child = plan.pushdown_finished();
                 }
             });
             return current_node.with_new_children(new_children);
