@@ -19,6 +19,7 @@ pub mod rule;
 use bytes_ext::Bytes;
 use ceresdbproto::cluster::partition_info::Info;
 use macros::define_result;
+use regex::Regex;
 use snafu::{Backtrace, Snafu};
 
 const PARTITION_TABLE_PREFIX: &str = "__";
@@ -307,4 +308,38 @@ pub fn format_sub_partition_table_name(table_name: &str, partition_name: &str) -
 #[inline]
 pub fn is_sub_partition_table(table_name: &str) -> bool {
     table_name.starts_with(PARTITION_TABLE_PREFIX)
+}
+
+pub fn maybe_extract_partitioned_table_name(sub_table_name: &str) -> Option<String> {
+    let re = Regex::new(r"__(?P<partitioned_table>\w{1,})_\d{1,}").unwrap();
+    let caps = re.captures(sub_table_name)?;
+    caps.name("partitioned_table")
+        .map(|word| word.as_str().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::partition::maybe_extract_partitioned_table_name;
+
+    #[test]
+    fn test_extract_partitioned_table_name() {
+        let valid_sub_table_name = "__test_0";
+        let partitioned_table_name =
+            maybe_extract_partitioned_table_name(valid_sub_table_name).unwrap();
+        assert_eq!(&partitioned_table_name, "test");
+
+        let valid_sub_table_name = "__test_table_123";
+        let partitioned_table_name =
+            maybe_extract_partitioned_table_name(valid_sub_table_name).unwrap();
+        assert_eq!(&partitioned_table_name, "test_table");
+
+        let normal_table_name = "test";
+        let result = maybe_extract_partitioned_table_name(normal_table_name);
+        assert!(result.is_none());
+
+        // Just return `None` now.
+        let invalid_sub_table_name = "__test1";
+        let result = maybe_extract_partitioned_table_name(invalid_sub_table_name);
+        assert!(result.is_none());
+    }
 }

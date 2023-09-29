@@ -42,7 +42,7 @@ macros = { workspace = true }
 meta_client = { workspace = true }
 query_engine = { workspace = true }
 query_frontend = { workspace = true }
-regex = "1"
+regex = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
 

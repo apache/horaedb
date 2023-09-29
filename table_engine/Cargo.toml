@@ -45,6 +45,7 @@ macros = { workspace = true }
 prometheus = { workspace = true }
 prost = { workspace = true }
 rand = { workspace = true }
+regex = { workspace = true }
 runtime = { workspace = true }
 serde = { workspace = true }
 smallvec = { workspace = true }

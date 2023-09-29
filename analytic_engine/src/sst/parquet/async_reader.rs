@@ -46,7 +46,7 @@ use parquet::{
 use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader};
 use runtime::{AbortOnDropMany, JoinHandle, Runtime};
 use snafu::ResultExt;
-use table_engine::predicate::PredicateRef;
+use table_engine::{partition::maybe_extract_partitioned_table_name, predicate::PredicateRef};
 use time_ext::InstantExt;
 use tokio::sync::{
     mpsc::{self, Receiver, Sender},
@@ -261,13 +261,20 @@ impl<'a> Reader<'a> {
 
         let num_sst_before_prune = meta_data.parquet().num_row_groups();
         let num_sst_after_prune = target_row_groups.len();
-
+        // Maybe it is a sub table of partitioned table, try to extract its parent
+        // table.
         if !self.scan_for_compaction {
+            let extract_res = maybe_extract_partitioned_table_name(&self.scanned_table);
+            let table_name = match &extract_res {
+                Some(table) => table.as_str(),
+                None => self.scanned_table.as_str(),
+            };
+
             SST_BEFORE_PRUNE_COUNTER
-                .with_label_values(&[self.scanned_table.as_str()])
+                .with_label_values(&[table_name])
                 .inc_by(num_sst_before_prune as u64);
             SST_AFTER_PRUNE_COUNTER
-                .with_label_values(&[self.scanned_table.as_str()])
+                .with_label_values(&[table_name])
                 .inc_by(num_sst_after_prune as u64);
         }
 

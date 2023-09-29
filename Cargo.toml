@@ -177,6 +177,7 @@ tokio = { version = "1.29", features = ["full"] }
 wal = { path = "wal" }
 xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
 zstd = { version = "0.12", default-features = false }
+regex = "1"
 
 # This profile optimizes for good runtime performance.
 [profile.release]
