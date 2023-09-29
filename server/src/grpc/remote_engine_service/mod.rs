@@ -98,24 +98,24 @@ pub type StreamReadRequestNotifiers =
     Arc<RequestNotifiers<StreamReadReqKey, mpsc::Sender<Result<RecordBatch>>>>;
 
 /// Stream metric
-trait StreamMetric: 'static + Send + Unpin {
-    fn finish(&self);
+trait MetricCollector: 'static + Send + Unpin {
+    fn collect(self);
 }
 
-struct StreamReadMetric(Instant);
+struct StreamReadMetricCollector(Instant);
 
-impl StreamMetric for StreamReadMetric {
-    fn finish(&self) {
+impl MetricCollector for StreamReadMetricCollector {
+    fn collect(self) {
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .stream_read
             .observe(self.0.saturating_elapsed().as_secs_f64());
     }
 }
 
-struct ExecutePlanMetric(Instant);
+struct ExecutePlanMetricCollect(Instant);
 
-impl StreamMetric for ExecutePlanMetric {
-    fn finish(&self) {
+impl MetricCollector for ExecutePlanMetricCollect {
+    fn collect(self) {
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .execute_physical_plan
             .observe(self.0.saturating_elapsed().as_secs_f64());
@@ -123,18 +123,21 @@ impl StreamMetric for ExecutePlanMetric {
 }
 
 /// Stream with metric
-struct StreamWithMetric<M: StreamMetric> {
+struct StreamWithMetric<M: MetricCollector> {
     inner: BoxStream<'static, Result<RecordBatch>>,
-    metric: M,
+    metric: Option<M>,
 }
 
-impl<M: StreamMetric> StreamWithMetric<M> {
+impl<M: MetricCollector> StreamWithMetric<M> {
     fn new(inner: BoxStream<'static, Result<RecordBatch>>, metric: M) -> Self {
-        Self { inner, metric }
+        Self {
+            inner,
+            metric: Some(metric),
+        }
     }
 }
 
-impl<M: StreamMetric> Stream for StreamWithMetric<M> {
+impl<M: MetricCollector> Stream for StreamWithMetric<M> {
     type Item = Result<RecordBatch>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -142,9 +145,12 @@ impl<M: StreamMetric> Stream for StreamWithMetric<M> {
     }
 }
 
-impl<M: StreamMetric> Drop for StreamWithMetric<M> {
+impl<M: MetricCollector> Drop for StreamWithMetric<M> {
     fn drop(&mut self) {
-        self.metric.finish();
+        let metric = self.metric.take();
+        if let Some(metric) = metric {
+            metric.collect();
+        }
     }
 }
 
@@ -229,8 +235,8 @@ impl RemoteEngineServiceImpl {
     async fn stream_read_internal(
         &self,
         request: Request<ReadRequest>,
-    ) -> Result<StreamWithMetric<StreamReadMetric>> {
-        let metric = StreamReadMetric(Instant::now());
+    ) -> Result<StreamWithMetric<StreamReadMetricCollector>> {
+        let metric = StreamReadMetricCollector(Instant::now());
 
         let ctx = self.handler_ctx();
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
@@ -278,8 +284,8 @@ impl RemoteEngineServiceImpl {
         &self,
         query_dedup: QueryDedup,
         request: Request<ReadRequest>,
-    ) -> Result<StreamWithMetric<StreamReadMetric>> {
-        let metric = StreamReadMetric(Instant::now());
+    ) -> Result<StreamWithMetric<StreamReadMetricCollector>> {
+        let metric = StreamReadMetricCollector(Instant::now());
         let (tx, rx) = mpsc::channel(query_dedup.config.notify_queue_cap);
 
         let request = request.into_inner();
@@ -554,8 +560,8 @@ impl RemoteEngineServiceImpl {
     async fn execute_physical_plan_internal(
         &self,
         request: Request<ExecutePlanRequest>,
-    ) -> Result<StreamWithMetric<ExecutePlanMetric>> {
-        let metric = ExecutePlanMetric(Instant::now());
+    ) -> Result<StreamWithMetric<ExecutePlanMetricCollect>> {
+        let metric = ExecutePlanMetricCollect(Instant::now());
         let request = request.into_inner();
         let query_engine = self.instance.query_engine.clone();
 
