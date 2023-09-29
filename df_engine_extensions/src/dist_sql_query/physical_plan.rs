@@ -123,6 +123,28 @@ pub struct ResolvedPartitionedScan {
 }
 
 impl ResolvedPartitionedScan {
+    pub fn new(
+        remote_executor: Arc<dyn RemotePhysicalPlanExecutor>,
+        remote_exec_plans: Vec<(TableIdentifier, Arc<dyn ExecutionPlan>)>,
+    ) -> Self {
+        let remote_exec_ctx = Arc::new(RemoteExecContext {
+            executor: remote_executor,
+            plans: remote_exec_plans,
+        });
+
+        Self {
+            remote_exec_ctx,
+            pushing_down: true,
+        }
+    }
+
+    pub fn push_down_finished(&self) -> Arc<dyn ExecutionPlan> {
+        Arc::new(Self {
+            remote_exec_ctx: self.remote_exec_ctx.clone(),
+            pushing_down: false,
+        })
+    }
+
     pub fn try_to_push_down_more(
         &self,
         cur_node: Arc<dyn ExecutionPlan>,
@@ -134,11 +156,11 @@ impl ResolvedPartitionedScan {
 
         // Push down more, and when occur the terminated push down able node, we need to
         // set `can_push_down_more` false.
-        let push_down_able_opt = PushDownAble::try_new(cur_node.clone());
-        let (node, can_push_down_more) = match push_down_able_opt {
-            Some(PushDownAble::Continue(node)) => (node, true),
-            Some(PushDownAble::Terminated(node)) => (node, false),
-            None => {
+        let pushdown_status = Self::maybe_a_pushdown_node(cur_node.clone());
+        let (node, can_push_down_more) = match pushdown_status {
+            PushDownStatus::Continue(node) => (node, true),
+            PushDownStatus::Terminated(node) => (node, false),
+            PushDownStatus::Unable => {
                 let partitioned_scan = self.push_down_finished();
                 return cur_node.with_new_children(vec![partitioned_scan]);
             }
@@ -167,26 +189,9 @@ impl ResolvedPartitionedScan {
         Ok(Arc::new(plan))
     }
 
-    pub fn new(
-        remote_executor: Arc<dyn RemotePhysicalPlanExecutor>,
-        remote_exec_plans: Vec<(TableIdentifier, Arc<dyn ExecutionPlan>)>,
-    ) -> Self {
-        let remote_exec_ctx = Arc::new(RemoteExecContext {
-            executor: remote_executor,
-            plans: remote_exec_plans,
-        });
-
-        Self {
-            remote_exec_ctx,
-            pushing_down: true,
-        }
-    }
-
-    pub fn push_down_finished(&self) -> Arc<dyn ExecutionPlan> {
-        Arc::new(Self {
-            remote_exec_ctx: self.remote_exec_ctx.clone(),
-            pushing_down: false,
-        })
+    #[inline]
+    pub fn maybe_a_pushdown_node(plan: Arc<dyn ExecutionPlan>) -> PushDownStatus {
+        PushDownStatus::new(plan)
     }
 }
 
@@ -194,38 +199,6 @@ impl ResolvedPartitionedScan {
 pub struct RemoteExecContext {
     executor: Arc<dyn RemotePhysicalPlanExecutor>,
     plans: Vec<(TableIdentifier, Arc<dyn ExecutionPlan>)>,
-}
-
-pub enum PushDownAble {
-    Continue(Arc<dyn ExecutionPlan>),
-    Terminated(Arc<dyn ExecutionPlan>),
-}
-
-impl PushDownAble {
-    pub fn try_new(plan: Arc<dyn ExecutionPlan>) -> Option<Self> {
-        if let Some(aggr) = plan.as_any().downcast_ref::<AggregateExec>() {
-            if *aggr.mode() == AggregateMode::Partial {
-                Some(Self::Terminated(plan))
-            } else {
-                None
-            }
-        } else if plan.as_any().downcast_ref::<FilterExec>().is_some()
-            || plan.as_any().downcast_ref::<ProjectionExec>().is_some()
-            || plan.as_any().downcast_ref::<RepartitionExec>().is_some()
-            || plan
-                .as_any()
-                .downcast_ref::<CoalescePartitionsExec>()
-                .is_some()
-            || plan
-                .as_any()
-                .downcast_ref::<CoalesceBatchesExec>()
-                .is_some()
-        {
-            Some(Self::Continue(plan))
-        } else {
-            None
-        }
-    }
 }
 
 impl ExecutionPlan for ResolvedPartitionedScan {
@@ -507,6 +480,48 @@ impl TryFrom<UnresolvedSubTableScan> for ceresdbproto::remote_engine::Unresolved
             table: Some(table_ident),
             read_request: Some(read_request),
         })
+    }
+}
+
+/// Pushdown status, including:
+///   + Unable, plan node which can't be pushed down to
+///     `ResolvedPartitionedScan` node.
+///   + Continue, node able to be pushed down to `ResolvedPartitionedScan`, and
+///     the newly generated `ResolvedPartitionedScan` can continue to accept
+///     more pushdown nodes after.
+///   + Terminated, node able to be pushed down to `ResolvedPartitionedScan`,
+///     but the newly generated `ResolvedPartitionedScan` can't accept more
+///     pushdown nodes after.
+pub enum PushDownStatus {
+    Unable,
+    Continue(Arc<dyn ExecutionPlan>),
+    Terminated(Arc<dyn ExecutionPlan>),
+}
+
+impl PushDownStatus {
+    pub fn new(plan: Arc<dyn ExecutionPlan>) -> Self {
+        if let Some(aggr) = plan.as_any().downcast_ref::<AggregateExec>() {
+            if *aggr.mode() == AggregateMode::Partial {
+                Self::Terminated(plan)
+            } else {
+                Self::Unable
+            }
+        } else if plan.as_any().downcast_ref::<FilterExec>().is_some()
+            || plan.as_any().downcast_ref::<ProjectionExec>().is_some()
+            || plan.as_any().downcast_ref::<RepartitionExec>().is_some()
+            || plan
+                .as_any()
+                .downcast_ref::<CoalescePartitionsExec>()
+                .is_some()
+            || plan
+                .as_any()
+                .downcast_ref::<CoalesceBatchesExec>()
+                .is_some()
+        {
+            Self::Continue(plan)
+        } else {
+            Self::Unable
+        }
     }
 }
 
