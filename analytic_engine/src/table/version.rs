@@ -144,7 +144,8 @@ impl MemTableState {
 impl fmt::Debug for MemTableState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MemTableState")
-            .field("time_range", &self.aligned_time_range)
+            .field("aligned_time_range", &self.aligned_time_range)
+            .field("real_time_range", &self.real_time_range())
             .field("id", &self.id)
             .field("mem", &self.mem.approximate_memory_usage())
             .field("metrics", &self.mem.metrics())
@@ -1060,11 +1061,11 @@ mod tests {
         let flushable_mems = version.pick_memtables_to_flush(last_sequence);
         assert!(flushable_mems.sampling_mem.unwrap().freezed);
 
-        let time_range =
+        let aligned_time_range =
             TimeRange::bucket_of(now, table_options::DEFAULT_SEGMENT_DURATION).unwrap();
 
         // Sampling memtable still readable after freezed.
-        let read_view = version.pick_read_view(time_range);
+        let read_view = version.pick_read_view(aligned_time_range);
         assert!(read_view.contains_sampling());
         assert_eq!(memtable_id1, read_view.sampling_mem.as_ref().unwrap().id);
         assert!(read_view.sampling_mem.unwrap().freezed);
@@ -1073,7 +1074,7 @@ mod tests {
         let memtable_id2 = 2;
         let mem_state = MemTableState {
             mem: memtable,
-            aligned_time_range: time_range,
+            aligned_time_range,
             id: memtable_id2,
         };
         // Insert a mutable memtable.
@@ -1085,11 +1086,11 @@ mod tests {
             .unwrap()
             .unwrap();
         let mutable = mutable.as_normal();
-        assert_eq!(time_range, mutable.aligned_time_range);
+        assert_eq!(aligned_time_range, mutable.aligned_time_range);
         assert_eq!(memtable_id2, mutable.id);
 
         // Need to read sampling memtable and mutable memtable.
-        let read_view = version.pick_read_view(time_range);
+        let read_view = version.pick_read_view(aligned_time_range);
         assert_eq!(memtable_id1, read_view.sampling_mem.as_ref().unwrap().id);
         assert_eq!(1, read_view.memtables.len());
         assert_eq!(memtable_id2, read_view.memtables[0].id);
@@ -1126,7 +1127,7 @@ mod tests {
         version.freeze_sampling_memtable();
 
         let now = Timestamp::now();
-        let time_range =
+        let aligned_time_range =
             TimeRange::bucket_of(now, table_options::DEFAULT_SEGMENT_DURATION).unwrap();
 
         // Prepare mutable memtable.
@@ -1134,7 +1135,7 @@ mod tests {
         let memtable_id2 = 2;
         let mem_state = MemTableState {
             mem: memtable,
-            aligned_time_range: time_range,
+            aligned_time_range,
             id: memtable_id2,
         };
         // Insert a mutable memtable.
@@ -1146,7 +1147,7 @@ mod tests {
         let max_sequence = 120;
         let file_id = 13;
         let add_file = AddFileMocker::new(file_id)
-            .time_range(time_range)
+            .time_range(aligned_time_range)
             .max_seq(max_sequence)
             .build();
         let edit = VersionEdit {
@@ -1159,7 +1160,7 @@ mod tests {
         version.apply_edit(edit);
 
         // Only pick ssts after flushed.
-        let read_view = version.pick_read_view(time_range);
+        let read_view = version.pick_read_view(aligned_time_range);
         assert!(!read_view.contains_sampling());
         assert!(read_view.sampling_mem.is_none());
         assert!(read_view.memtables.is_empty());
