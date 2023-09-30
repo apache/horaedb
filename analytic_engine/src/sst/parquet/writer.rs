@@ -103,6 +103,12 @@ impl RecordBatchGroupWriter {
         compression: Compression,
         level: Level,
     ) -> Self {
+        let column_values: Vec<Option<i64>> = meta_data
+            .schema
+            .columns()
+            .iter()
+            .map(|col| if col.is_dictionary { Some(1) } else { None })
+            .collect();
         Self {
             request_id,
             input,
