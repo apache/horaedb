@@ -135,6 +135,9 @@ pub enum Error {
 
     #[snafu(display("msg:{msg}"))]
     InternalNoCause { msg: String },
+
+    #[snafu(display("Timestamp is not found in row.\nBacktrace:\n{backtrace}"))]
+    TimestampNotFound { backtrace: Backtrace },
 }
 
 define_result!(Error);

@@ -31,14 +31,14 @@ use common_types::{
 use generic_error::BoxError;
 use log::{debug, trace};
 use skiplist::{BytewiseComparator, Skiplist};
-use snafu::{ensure, ResultExt};
+use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::memtable::{
     key::{ComparableInternalKey, KeySequence},
     reversed_iter::ReversedColumnarIterator,
     skiplist::iter::ColumnarIterImpl,
     ColumnarIterPtr, EncodeInternalKey, InvalidPutSequence, InvalidRow, MemTable,
-    Metrics as MemtableMetrics, PutContext, Result, ScanContext, ScanRequest,
+    Metrics as MemtableMetrics, PutContext, Result, ScanContext, ScanRequest, TimestampNotFound,
 };
 
 #[derive(Default, Debug)]
@@ -140,7 +140,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
         self.skiplist.put(internal_key, row_value);
 
         // Update min/max time
-        let timestamp = row.timestamp(schema).unwrap().as_i64();
+        let timestamp = row.timestamp(schema).context(TimestampNotFound)?.as_i64();
         _ = self
             .min_time
             .fetch_update(atomic::Ordering::Relaxed, atomic::Ordering::Relaxed, |v| {
