@@ -77,11 +77,7 @@ impl Proxy {
 
         let output = self
             .fetch_sql_query_output(ctx, schema, sql, enable_partition_table_access)
-            .await
-            .map_err(|e| {
-                failed_query!("Failed query, request_id:{}, sql:{}", ctx.request_id, sql);
-                e
-            })?;
+            .await?;
 
         Ok(SqlResponse::Local(output))
     }
@@ -163,7 +159,24 @@ impl Proxy {
         Ok(SqlResponse::Local(result?))
     }
 
+    #[inline]
     pub(crate) async fn fetch_sql_query_output(
+        &self,
+        ctx: &Context,
+        // TODO: maybe we can put params below input a new ReadRequest struct.
+        schema: &str,
+        sql: &str,
+        enable_partition_table_access: bool,
+    ) -> Result<Output> {
+        self.fetch_sql_query_output_internal(ctx, schema, sql, enable_partition_table_access)
+            .await
+            .map_err(|e| {
+                failed_query!("Failed query, request_id:{}, sql:{}", ctx.request_id, sql);
+                e
+            })
+    }
+
+    async fn fetch_sql_query_output_internal(
         &self,
         ctx: &Context,
         // TODO: maybe we can put params below input a new ReadRequest struct.
