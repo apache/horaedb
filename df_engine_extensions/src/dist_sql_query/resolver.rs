@@ -55,38 +55,40 @@ impl Resolver {
     }
 
     /// Resolve partitioned scan, including:
-    ///   + Convert `UnresolvedPartitionedScan`(inexecutable) to
+    ///   - Convert `UnresolvedPartitionedScan`(inexecutable) to
     ///     `ResolvedPartitionedScan`(executable).
-    ///   + Push nodes(e.g. filter, projection, partial aggregation,...) to
+    ///   - Push nodes(e.g. filter, projection, partial aggregation,...) to
     ///     `ResolvedPartitionedScan`.
     ///
     /// Example for the process:
-    ///   + Initial plan:
+    ///   - Initial plan:
     ///
-    ///     ```plaintext
-    ///     Final Aggregation Partial Aggregation
-    ///         Filter UnresolvedPartitionedScan
-    ///     ```
+    /// ```plaintext
+    ///     Final Aggregation
+    ///         Partial Aggregation
+    ///             Filter
+    ///                 UnresolvedPartitionedScan
+    /// ```
     ///
-    ///    + After converting partitioned scan from unresolved to resolved:
+    ///    - After converting partitioned scan from unresolved to resolved:
     ///
-    ///     ```plaintext
+    /// ```plaintext
     ///     Final Aggregation
     ///         Partial Aggregation
     ///             Filter
     ///                 ResolvedPartitionedScan
     ///                     UnresolvedSubTableScan (send to remote node)
-    ///     ```
+    /// ```
     ///
-    ///    + After pushing down nodes:
+    ///    - After pushing down nodes:
     ///
-    ///     ```plaintext
+    /// ```plaintext
     ///     Final Aggregation
     ///         ResolvedPartitionedScan
     ///             Partial Aggregation (send to remote node)
     ///                 Filter (send to remote node)
     ///                      UnresolvedSubTableScan (send to remote node)
-    ///     ```
+    /// ```
     pub fn resolve_partitioned_scan(
         &self,
         plan: Arc<dyn ExecutionPlan>,
