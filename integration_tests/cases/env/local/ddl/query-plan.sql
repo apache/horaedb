@@ -5,7 +5,8 @@ CREATE TABLE `03_dml_select_real_time_range` (
     value double NOT NULL,
     t timestamp NOT NULL,
     timestamp KEY (t)) ENGINE = Analytic WITH (
-    enable_ttl = 'false'
+    enable_ttl = 'false',
+    segment_duration='2h'
 );
 
 INSERT INTO `03_dml_select_real_time_range` (t, name, value)
@@ -13,6 +14,16 @@ INSERT INTO `03_dml_select_real_time_range` (t, name, value)
     (1695348000000, "ceresdb", 100),
     (1695348001000, "ceresdb", 200),
     (1695348002000, "ceresdb", 300);
+
+-- This query should include memtable
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+explain analyze select t from `03_dml_select_real_time_range`
+where t > 1695348001000;
+
+-- This query should not include memtable
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+explain analyze select t from `03_dml_select_real_time_range`
+where t > 1695348002000;
 
 -- SQLNESS ARG pre_cmd=flush
 -- SQLNESS REPLACE duration=\d+.\d*(µ|m) duration=xx

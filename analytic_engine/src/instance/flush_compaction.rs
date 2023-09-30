@@ -608,7 +608,7 @@ impl FlushTask {
         let sst_meta = MetaData {
             min_key,
             max_key,
-            time_range: memtable_state.time_range,
+            time_range: memtable_state.aligned_time_range,
             max_sequence,
             schema: self.table_data.schema(),
         };

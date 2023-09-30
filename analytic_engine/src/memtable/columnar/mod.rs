@@ -23,7 +23,8 @@ use std::{
 use arena::MonoIncArena;
 use bytes_ext::Bytes;
 use common_types::{
-    column::Column, column_schema::ColumnId, datum::Datum, row::Row, schema::Schema, SequenceNumber,
+    column::Column, column_schema::ColumnId, datum::Datum, row::Row, schema::Schema,
+    time::TimeRange, SequenceNumber,
 };
 use generic_error::BoxError;
 use log::debug;
@@ -228,6 +229,11 @@ impl MemTable for ColumnarMemTable {
 
     fn last_sequence(&self) -> SequenceNumber {
         self.last_sequence.load(Ordering::Relaxed)
+    }
+
+    // TODO: implement this.
+    fn time_range(&self) -> Option<TimeRange> {
+        None
     }
 
     fn metrics(&self) -> MemtableMetrics {
