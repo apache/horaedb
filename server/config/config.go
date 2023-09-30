@@ -64,7 +64,6 @@ const (
 	defaultWalDir      = "/wal"
 
 	defaultEtcdLogFile = "/etcd.log"
-	defaultLogFile     = "/ceresmeta.log"
 )
 
 type LimiterConfig struct {
@@ -202,13 +201,6 @@ func (c *Config) GenEtcdConfig() (*embed.Config, error) {
 	cfg.LogLevel = c.EtcdLog.Level
 
 	return cfg, nil
-}
-
-func (c *Config) GenLogConfigConfig() log.Config {
-	return log.Config{
-		Level: c.Log.Level,
-		File:  defaultLogFile,
-	}
 }
 
 // Parser builds the config from the flags.
