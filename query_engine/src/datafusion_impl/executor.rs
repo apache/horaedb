@@ -16,7 +16,7 @@ use std::{sync::Arc, time::Instant};
 
 use async_trait::async_trait;
 use generic_error::BoxError;
-use log::{debug, info};
+use log::info;
 use snafu::ResultExt;
 use table_engine::stream::SendableRecordBatchStream;
 use time_ext::InstantExt;
@@ -54,6 +54,7 @@ impl DatafusionExecutorImpl {
         let task_ctx = session_ctx.task_ctx();
 
         let df_ctx = DatafusionTaskExecContext {
+            request_id: ctx.request_id,
             task_ctx,
             preprocessor: self.preprocessor.clone(),
         };
@@ -69,7 +70,7 @@ impl Executor for DatafusionExecutorImpl {
         ctx: &Context,
         physical_plan: PhysicalPlanPtr,
     ) -> Result<SendableRecordBatchStream> {
-        debug!(
+        info!(
             "DatafusionExecutorImpl begin to execute plan, request_id:{}, physical_plan: {:?}",
             ctx.request_id, physical_plan
         );

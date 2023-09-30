@@ -1,0 +1,15 @@
+---
+source: df_engine_extensions/src/dist_sql_query/resolver.rs
+assertion_line: 269
+expression: new_plan
+---
+AggregateExec: mode=Final, gby=[tag1@1 as tag1, tag2@2 as tag2], aggr=[COUNT(value), COUNT(field2)]
+  CoalescePartitionsExec
+    ResolvedPartitionedScan: pushing_down:false, partition_count:3
+      AggregateExec: mode=Partial, gby=[tag1@1 as tag1, tag2@2 as tag2], aggr=[COUNT(value), COUNT(field2)]
+        UnresolvedSubTableScan: table:TableIdentifier { catalog: "test_catalog", schema: "test_schema", table: "__test_1" }, request:ReadRequest { request_id: RequestId(42), opts: ReadOptions { batch_size: 10000, read_parallelism: 8, deadline: None }, projected: "[time,tag1,tag2,value,field2]", predicate: "[time < TimestampMillisecond(1691974518000, None) AND tag1 = Utf8(\"test_tag\")]" }, partition_count:8
+      AggregateExec: mode=Partial, gby=[tag1@1 as tag1, tag2@2 as tag2], aggr=[COUNT(value), COUNT(field2)]
+        UnresolvedSubTableScan: table:TableIdentifier { catalog: "test_catalog", schema: "test_schema", table: "__test_2" }, request:ReadRequest { request_id: RequestId(42), opts: ReadOptions { batch_size: 10000, read_parallelism: 8, deadline: None }, projected: "[time,tag1,tag2,value,field2]", predicate: "[time < TimestampMillisecond(1691974518000, None) AND tag1 = Utf8(\"test_tag\")]" }, partition_count:8
+      AggregateExec: mode=Partial, gby=[tag1@1 as tag1, tag2@2 as tag2], aggr=[COUNT(value), COUNT(field2)]
+        UnresolvedSubTableScan: table:TableIdentifier { catalog: "test_catalog", schema: "test_schema", table: "__test_3" }, request:ReadRequest { request_id: RequestId(42), opts: ReadOptions { batch_size: 10000, read_parallelism: 8, deadline: None }, projected: "[time,tag1,tag2,value,field2]", predicate: "[time < TimestampMillisecond(1691974518000, None) AND tag1 = Utf8(\"test_tag\")]" }, partition_count:8
+

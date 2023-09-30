@@ -374,7 +374,7 @@ pub struct GetRequest {
     pub primary_key: Vec<Datum>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ReadRequest {
     /// Read request id.
     pub request_id: RequestId,
@@ -387,6 +387,36 @@ pub struct ReadRequest {
     pub predicate: PredicateRef,
     /// Collector for metrics of this read request.
     pub metrics_collector: MetricsCollector,
+}
+
+impl fmt::Debug for ReadRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let exprs = self
+            .predicate
+            .exprs()
+            .iter()
+            .map(|expr| expr.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let predicate = format!("[{}]", exprs);
+
+        let all_fields = self
+            .projected_schema
+            .to_projected_arrow_schema()
+            .all_fields()
+            .iter()
+            .map(|f| f.name().clone())
+            .collect::<Vec<_>>()
+            .join(",");
+        let projected = format!("[{}]", all_fields);
+
+        f.debug_struct("ReadRequest")
+            .field("request_id", &self.request_id)
+            .field("opts", &self.opts)
+            .field("projected", &projected)
+            .field("predicate", &predicate)
+            .finish()
+    }
 }
 
 impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {

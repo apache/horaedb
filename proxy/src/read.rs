@@ -173,7 +173,7 @@ impl Proxy {
             default_schema: schema,
             function_registry: &*instance.function_registry,
         };
-        let frontend = Frontend::new(provider);
+        let frontend = Frontend::new(provider, instance.dyn_config.fronted.clone());
 
         let mut sql_ctx = SqlContext::new(request_id, deadline);
         // Parse sql, frontend error of invalid sql already contains sql

@@ -54,6 +54,7 @@ use crate::{datafusion_impl::physical_plan::TypedPlan, error::*};
 
 #[allow(dead_code)]
 pub struct DatafusionTaskExecContext {
+    pub request_id: RequestId,
     pub task_ctx: Arc<TaskContext>,
     pub preprocessor: Arc<Preprocessor>,
 }

@@ -29,14 +29,13 @@ use datafusion::{
 };
 use df_operator::{registry::FunctionRegistry, scalar::ScalarUdf, udaf::AggregateUdf};
 use macros::define_result;
-use partition_table_engine::scan_builder::PartitionedTableScanBuilder;
 use snafu::{OptionExt, ResultExt, Snafu};
-use table_engine::{
-    provider::{NormalTableScanBuilder, TableProviderAdapter},
-    table::TableRef,
-};
+use table_engine::table::TableRef;
 
-use crate::container::{TableContainer, TableReference};
+use crate::{
+    config::DynamicConfig,
+    container::{PlannedTable, TableContainer, TableReference},
+};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -93,35 +92,6 @@ pub struct ResolvedTable {
     pub catalog: String,
     pub schema: String,
     pub table: TableRef,
-}
-
-// FIXME: the new partitioned table scan logic is incomplete now, we can't
-// enable it when normal running. So we left a button here to enable it just for
-// testing.
-fn enable_dedicated_partitioned_table_provider() -> bool {
-    std::env::var("CERESDB_DEDICATED_PARTITIONED_TABLE_PROVIDER")
-        .unwrap_or_else(|_| "true".to_string())
-        == "true"
-}
-
-impl ResolvedTable {
-    fn into_table_provider(self) -> Arc<dyn TableProvider> {
-        if self.table.partition_info().is_some() && enable_dedicated_partitioned_table_provider() {
-            let partition_info = self.table.partition_info().unwrap();
-            let builder = PartitionedTableScanBuilder::new(
-                self.table.name().to_string(),
-                self.catalog,
-                self.schema,
-                partition_info,
-            );
-
-            Arc::new(TableProviderAdapter::new(self.table.clone(), builder))
-        } else {
-            let builder = NormalTableScanBuilder::new(self.table.clone());
-
-            Arc::new(TableProviderAdapter::new(self.table.clone(), builder))
-        }
-    }
 }
 
 /// MetaProvider provides meta info needed by Frontend
@@ -263,6 +233,8 @@ pub struct ContextProviderAdapter<'a, P> {
     meta_provider: &'a P,
     /// Read config for each table.
     config: ConfigOptions,
+    /// Hint for logical plan creation.
+    dyn_config: &'a DynamicConfig,
 }
 
 impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
@@ -270,7 +242,11 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     // TODO: `read_parallelism` here seems useless, `ContextProviderAdapter` is only
     // used during creating `LogicalPlan`, and `read_parallelism` is used when
     // creating `PhysicalPlan`.
-    pub fn new(meta_provider: &'a P, read_parallelism: usize) -> Self {
+    pub fn new(
+        meta_provider: &'a P,
+        read_parallelism: usize,
+        dyn_config: &'a DynamicConfig,
+    ) -> Self {
         let default_catalog = meta_provider.default_catalog_name().to_string();
         let default_schema = meta_provider.default_schema_name().to_string();
         let mut config = ConfigOptions::default();
@@ -281,6 +257,7 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
             err: RefCell::new(None),
             meta_provider,
             config,
+            dyn_config,
         }
     }
 
@@ -306,8 +283,8 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
         }
     }
 
-    pub fn table_source(&self, resolved_table: ResolvedTable) -> Arc<(dyn TableSource + 'static)> {
-        let table_provider = resolved_table.into_table_provider();
+    pub fn table_source(&self, planned_table: PlannedTable) -> Arc<(dyn TableSource + 'static)> {
+        let table_provider = planned_table.into_table_provider();
 
         Arc::new(DefaultTableSource { table_provider })
     }
@@ -345,16 +322,36 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
         name: TableReference,
     ) -> std::result::Result<Arc<(dyn TableSource + 'static)>, DataFusionError> {
         // Find in local cache
-        if let Some(resolved) = self.table_cache.borrow().get(name.clone()) {
-            return Ok(self.table_source(resolved));
+        if let Some(planned) = self.table_cache.borrow().get(name.clone()) {
+            return Ok(self.table_source(planned));
         }
 
         // Find in meta provider
         // TODO: possible to remove this clone?
         match self.meta_provider.table(name.clone()) {
             Ok(Some(resolved)) => {
-                self.table_cache.borrow_mut().insert(name, resolved.clone());
-                Ok(self.table_source(resolved))
+                let ResolvedTable {
+                    catalog,
+                    schema,
+                    table,
+                } = resolved;
+
+                let enable_dist_query_push_down = self
+                    .dyn_config
+                    .enable_dist_query_push_down
+                    .load(std::sync::atomic::Ordering::Relaxed);
+
+                let planned_table = PlannedTable {
+                    catalog,
+                    schema,
+                    table,
+                    enable_dist_query_push_down,
+                };
+
+                self.table_cache
+                    .borrow_mut()
+                    .insert(name, planned_table.clone());
+                Ok(self.table_source(planned_table))
             }
             Ok(None) => Err(DataFusionError::Execution(format!(
                 "Table is not found, {:?}",
@@ -523,13 +520,14 @@ fn format_table_reference(table_ref: TableReference) -> String {
 
 #[cfg(test)]
 mod test {
-    use crate::{provider::ContextProviderAdapter, tests::MockMetaProvider};
+    use crate::{config::DynamicConfig, provider::ContextProviderAdapter, tests::MockMetaProvider};
 
     #[test]
     fn test_config_options_setting() {
         let provider = MockMetaProvider::default();
         let read_parallelism = 100;
-        let context = ContextProviderAdapter::new(&provider, read_parallelism);
+        let dyn_config = DynamicConfig::default();
+        let context = ContextProviderAdapter::new(&provider, read_parallelism, &dyn_config);
         assert_eq!(context.config.execution.target_partitions, read_parallelism);
     }
 }

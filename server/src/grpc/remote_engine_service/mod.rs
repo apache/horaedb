@@ -56,8 +56,8 @@ use table_engine::{
     table::TableRef,
 };
 use time_ext::InstantExt;
-use tokio::sync::mpsc::{self, Receiver, Sender};
-use tokio_stream::Stream;
+use tokio::sync::mpsc::{self, Sender};
+use tokio_stream::{wrappers::ReceiverStream, Stream};
 use tonic::{Request, Response, Status};
 
 use super::metrics::REMOTE_ENGINE_WRITE_BATCH_NUM_ROWS_HISTOGRAM;
@@ -97,30 +97,60 @@ impl StreamReadReqKey {
 pub type StreamReadRequestNotifiers =
     Arc<RequestNotifiers<StreamReadReqKey, mpsc::Sender<Result<RecordBatch>>>>;
 
-struct StreamWithMetric {
-    inner: Receiver<Result<RecordBatch>>,
-    instant: Instant,
+/// Stream metric
+trait MetricCollector: 'static + Send + Unpin {
+    fn collect(self);
 }
 
-impl StreamWithMetric {
-    fn new(inner: Receiver<Result<RecordBatch>>, instant: Instant) -> Self {
-        Self { inner, instant }
-    }
-}
+struct StreamReadMetricCollector(Instant);
 
-impl Stream for StreamWithMetric {
-    type Item = Result<RecordBatch>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.inner.poll_recv(cx)
-    }
-}
-
-impl Drop for StreamWithMetric {
-    fn drop(&mut self) {
+impl MetricCollector for StreamReadMetricCollector {
+    fn collect(self) {
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .stream_read
-            .observe(self.instant.saturating_elapsed().as_secs_f64());
+            .observe(self.0.saturating_elapsed().as_secs_f64());
+    }
+}
+
+struct ExecutePlanMetricCollect(Instant);
+
+impl MetricCollector for ExecutePlanMetricCollect {
+    fn collect(self) {
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .execute_physical_plan
+            .observe(self.0.saturating_elapsed().as_secs_f64());
+    }
+}
+
+/// Stream with metric
+struct StreamWithMetric<M: MetricCollector> {
+    inner: BoxStream<'static, Result<RecordBatch>>,
+    metric: Option<M>,
+}
+
+impl<M: MetricCollector> StreamWithMetric<M> {
+    fn new(inner: BoxStream<'static, Result<RecordBatch>>, metric: M) -> Self {
+        Self {
+            inner,
+            metric: Some(metric),
+        }
+    }
+}
+
+impl<M: MetricCollector> Stream for StreamWithMetric<M> {
+    type Item = Result<RecordBatch>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.get_mut().inner.poll_next_unpin(cx)
+    }
+}
+
+impl<M: MetricCollector> Drop for StreamWithMetric<M> {
+    fn drop(&mut self) {
+        let metric = self.metric.take();
+        if let Some(metric) = metric {
+            metric.collect();
+        }
     }
 }
 
@@ -205,8 +235,9 @@ impl RemoteEngineServiceImpl {
     async fn stream_read_internal(
         &self,
         request: Request<ReadRequest>,
-    ) -> Result<StreamWithMetric> {
-        let instant = Instant::now();
+    ) -> Result<StreamWithMetric<StreamReadMetricCollector>> {
+        let metric = StreamReadMetricCollector(Instant::now());
+
         let ctx = self.handler_ctx();
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let handle = self.runtimes.read_runtime.spawn(async move {
@@ -243,15 +274,18 @@ impl RemoteEngineServiceImpl {
             });
         }
 
-        Ok(StreamWithMetric::new(rx, instant))
+        Ok(StreamWithMetric::new(
+            Box::pin(ReceiverStream::new(rx)),
+            metric,
+        ))
     }
 
     async fn dedup_stream_read_internal(
         &self,
         query_dedup: QueryDedup,
         request: Request<ReadRequest>,
-    ) -> Result<StreamWithMetric> {
-        let instant = Instant::now();
+    ) -> Result<StreamWithMetric<StreamReadMetricCollector>> {
+        let metric = StreamReadMetricCollector(Instant::now());
         let (tx, rx) = mpsc::channel(query_dedup.config.notify_queue_cap);
 
         let request = request.into_inner();
@@ -284,7 +318,11 @@ impl RemoteEngineServiceImpl {
                 // read.
             }
         }
-        Ok(StreamWithMetric::new(rx, instant))
+
+        Ok(StreamWithMetric::new(
+            Box::pin(ReceiverStream::new(rx)),
+            metric,
+        ))
     }
 
     async fn read_and_send_dedupped_resps(
@@ -522,12 +560,12 @@ impl RemoteEngineServiceImpl {
     async fn execute_physical_plan_internal(
         &self,
         request: Request<ExecutePlanRequest>,
-    ) -> Result<SendableRecordBatchStream> {
-        let instant = Instant::now();
+    ) -> Result<StreamWithMetric<ExecutePlanMetricCollect>> {
+        let metric = ExecutePlanMetricCollect(Instant::now());
         let request = request.into_inner();
         let query_engine = self.instance.query_engine.clone();
 
-        let stream_result = self
+        let stream = self
             .runtimes
             .read_runtime
             .spawn(async move { handle_execute_plan(request, query_engine).await })
@@ -536,13 +574,15 @@ impl RemoteEngineServiceImpl {
             .with_context(|| ErrWithCause {
                 code: StatusCode::Internal,
                 msg: "failed to run execute physical plan task",
-            })?;
+            })??
+            .map(|result| {
+                result.box_err().context(ErrWithCause {
+                    code: StatusCode::Internal,
+                    msg: "failed to poll record batch for remote physical plan",
+                })
+            });
 
-        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
-            .stream_read
-            .observe(instant.saturating_elapsed().as_secs_f64());
-
-        stream_result
+        Ok(StreamWithMetric::new(Box::pin(stream), metric))
     }
 
     fn handler_ctx(&self) -> HandlerContext {

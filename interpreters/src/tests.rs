@@ -26,7 +26,8 @@ use datafusion::execution::runtime_env::RuntimeConfig;
 use df_operator::registry::{FunctionRegistry, FunctionRegistryImpl};
 use query_engine::{datafusion_impl::DatafusionQueryEngineImpl, QueryEngineRef};
 use query_frontend::{
-    parser::Parser, plan::Plan, planner::Planner, provider::MetaProvider, tests::MockMetaProvider,
+    config::DynamicConfig, parser::Parser, plan::Plan, planner::Planner, provider::MetaProvider,
+    tests::MockMetaProvider,
 };
 use table_engine::{engine::TableEngineRef, memory::MockRemoteEngine};
 
@@ -45,7 +46,8 @@ async fn build_catalog_manager(analytic: TableEngineRef) -> TableBasedManager {
 }
 
 fn sql_to_plan<M: MetaProvider>(meta_provider: &M, sql: &str) -> Plan {
-    let planner = Planner::new(meta_provider, RequestId::next_id(), 1);
+    let dyn_config = DynamicConfig::default();
+    let planner = Planner::new(meta_provider, RequestId::next_id(), 1, &dyn_config);
     let mut statements = Parser::parse_sql(sql).unwrap();
     assert_eq!(statements.len(), 1);
     planner.statement_to_plan(statements.remove(0)).unwrap()

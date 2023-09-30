@@ -22,9 +22,11 @@ use std::{
 
 use async_trait::async_trait;
 use datafusion::physical_plan::{
-    coalesce_partitions::CoalescePartitionsExec, display::DisplayableExecutionPlan, ExecutionPlan,
+    coalesce_partitions::CoalescePartitionsExec, display::DisplayableExecutionPlan, displayable,
+    ExecutionPlan,
 };
 use generic_error::BoxError;
+use log::info;
 use snafu::{OptionExt, ResultExt};
 use table_engine::stream::{FromDfStream, SendableRecordBatchStream};
 
@@ -116,6 +118,12 @@ impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
         } else {
             Arc::new(CoalescePartitionsExec::new(executable))
         };
+
+        info!(
+            "DatafusionExecutorImpl get the executable plan, request_id:{}, physical_plan:{}",
+            df_task_ctx.request_id,
+            displayable(executable.as_ref()).indent(true).to_string()
+        );
 
         // Kept the executed plan.
         {

@@ -20,7 +20,7 @@ use std::{
     convert::TryFrom,
     mem,
     ops::ControlFlow,
-    sync::Arc,
+    sync::{atomic::AtomicBool, Arc},
 };
 
 use arrow::{
@@ -65,6 +65,7 @@ use crate::{
         AlterAddColumn, AlterModifySetting, CreateTable, DescribeTable, DropTable, ExistsTable,
         ShowCreate, ShowTables, Statement, TableName,
     },
+    config::DynamicConfig,
     container::TableReference,
     parser,
     partition::PartitionParser,
@@ -283,21 +284,32 @@ const DEFAULT_PARSER_OPTS: ParserOptions = ParserOptions {
     enable_ident_normalization: false,
 };
 
+pub struct PlannerHint {
+    pub enable_push_down_able_dist_query: AtomicBool,
+}
+
 /// Planner produces logical plans from SQL AST
 // TODO(yingwen): Rewrite Planner instead of using datafusion's planner
 pub struct Planner<'a, P: MetaProvider> {
     provider: &'a P,
     request_id: RequestId,
     read_parallelism: usize,
+    dyn_config: &'a DynamicConfig,
 }
 
 impl<'a, P: MetaProvider> Planner<'a, P> {
     /// Create a new logical planner
-    pub fn new(provider: &'a P, request_id: RequestId, read_parallelism: usize) -> Self {
+    pub fn new(
+        provider: &'a P,
+        request_id: RequestId,
+        read_parallelism: usize,
+        dyn_config: &'a DynamicConfig,
+    ) -> Self {
         Self {
             provider,
             request_id,
             read_parallelism,
+            dyn_config,
         }
     }
 
@@ -312,7 +324,8 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
             statement
         );
 
-        let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
+        let adapter =
+            ContextProviderAdapter::new(self.provider, self.read_parallelism, self.dyn_config);
         // SqlToRel needs to hold the reference to adapter, thus we can't both holds the
         // adapter and the SqlToRel in Planner, which is a self-referential
         // case. We wrap a PlannerDelegate to workaround this and avoid the usage of
@@ -334,7 +347,8 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     }
 
     pub fn promql_expr_to_plan(&self, expr: PromExpr) -> Result<(Plan, Arc<ColumnNames>)> {
-        let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
+        let adapter =
+            ContextProviderAdapter::new(self.provider, self.read_parallelism, self.dyn_config);
         // SqlToRel needs to hold the reference to adapter, thus we can't both holds the
         // adapter and the SqlToRel in Planner, which is a self-referential
         // case. We wrap a PlannerDelegate to workaround this and avoid the usage of
@@ -346,14 +360,16 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     }
 
     pub fn remote_prom_req_to_plan(&self, query: PromRemoteQuery) -> Result<RemoteQueryPlan> {
-        let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
+        let adapter =
+            ContextProviderAdapter::new(self.provider, self.read_parallelism, self.dyn_config);
         let planner = PlannerDelegate::new(adapter);
 
         remote_query_to_plan(query, planner.meta_provider).context(BuildPromPlanError)
     }
 
     pub fn influxql_stmt_to_plan(&self, statement: InfluxqlStatement) -> Result<Plan> {
-        let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
+        let adapter =
+            ContextProviderAdapter::new(self.provider, self.read_parallelism, self.dyn_config);
         let planner = crate::influxql::planner::Planner::new(adapter);
         planner
             .statement_to_plan(statement)
@@ -1393,15 +1409,23 @@ mod tests {
     }
 
     fn sql_to_logical_plan(sql: &str) -> Result<Plan> {
+        let dyn_config = DynamicConfig::default();
+        sql_to_logical_plan_with_config(sql, &dyn_config)
+    }
+
+    fn sql_to_logical_plan_with_config(sql: &str, dyn_config: &DynamicConfig) -> Result<Plan> {
         let mock = MockMetaProvider::default();
-        let planner = build_planner(&mock);
+        let planner = build_planner(&mock, dyn_config);
         let mut statements = Parser::parse_sql(sql).unwrap();
         assert_eq!(statements.len(), 1);
         planner.statement_to_plan(statements.remove(0))
     }
 
-    fn build_planner(provider: &MockMetaProvider) -> Planner<MockMetaProvider> {
-        Planner::new(provider, RequestId::next_id(), 1)
+    fn build_planner<'a>(
+        provider: &'a MockMetaProvider,
+        dyn_config: &'a DynamicConfig,
+    ) -> Planner<'a, MockMetaProvider> {
+        Planner::new(provider, RequestId::next_id(), 1, dyn_config)
     }
 
     #[test]
@@ -1624,11 +1648,11 @@ mod tests {
 
     #[test]
     fn test_partitioned_table_query_statement_to_plan() {
-        // enable dedicated partitioned table provider in this test.
-        std::env::set_var("CERESDB_DEDICATED_PARTITIONED_TABLE_PROVIDER", "true");
-
         let sql = "select * from test_partitioned_table;";
-        let plan = sql_to_logical_plan(sql).unwrap();
+        let dyn_config = DynamicConfig {
+            enable_dist_query_push_down: AtomicBool::new(true),
+        };
+        let plan = sql_to_logical_plan_with_config(sql, &dyn_config).unwrap();
         let df_plan = if let Plan::Query(query_plan) = plan {
             query_plan.df_plan
         } else {
@@ -1662,9 +1686,6 @@ mod tests {
 
         let mut visitor = CheckVisitor;
         df_plan.visit(&mut visitor).unwrap();
-
-        // Rollback
-        std::env::set_var("CERESDB_DEDICATED_PARTITIONED_TABLE_PROVIDER", "false");
     }
 
     #[test]

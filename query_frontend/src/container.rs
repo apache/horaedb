@@ -14,19 +14,50 @@
 
 //! Table container
 
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
 pub use datafusion::catalog::{ResolvedTableReference, TableReference};
-use table_engine::table::TableRef;
+use datafusion::datasource::TableProvider;
+use partition_table_engine::scan_builder::PartitionedTableScanBuilder;
+use table_engine::{
+    provider::{NormalTableScanBuilder, TableProviderAdapter},
+    table::TableRef,
+};
 
-use crate::provider::ResolvedTable;
+#[derive(Debug, Clone)]
+pub struct PlannedTable {
+    pub catalog: String,
+    pub schema: String,
+    pub table: TableRef,
+    pub enable_dist_query_push_down: bool,
+}
+
+impl PlannedTable {
+    pub fn into_table_provider(self) -> Arc<dyn TableProvider> {
+        if self.table.partition_info().is_some() && self.enable_dist_query_push_down {
+            let partition_info = self.table.partition_info().unwrap();
+            let builder = PartitionedTableScanBuilder::new(
+                self.table.name().to_string(),
+                self.catalog,
+                self.schema,
+                partition_info,
+            );
+
+            Arc::new(TableProviderAdapter::new(self.table.clone(), builder))
+        } else {
+            let builder = NormalTableScanBuilder::new(self.table.clone());
+
+            Arc::new(TableProviderAdapter::new(self.table.clone(), builder))
+        }
+    }
+}
 
 // Rust has poor support of using tuple as map key, so we use a 3 level
 // map to store catalog -> schema -> table mapping
 type CatalogMap = HashMap<String, SchemaMap>;
 type SchemaMap = HashMap<String, TableMap>;
 // TODO(chenxiang): change to LRU to evict deleted/migrated tables
-type TableMap = HashMap<String, ResolvedTable>;
+type TableMap = HashMap<String, PlannedTable>;
 
 /// Container to hold table adapters
 ///
@@ -58,7 +89,7 @@ impl TableContainer {
         }
     }
 
-    pub fn get(&self, name: TableReference) -> Option<ResolvedTable> {
+    pub fn get(&self, name: TableReference) -> Option<PlannedTable> {
         match name {
             TableReference::Bare { table } => self.get_default(table.as_ref()),
             TableReference::Partial { schema, table } => {
@@ -82,11 +113,11 @@ impl TableContainer {
         }
     }
 
-    fn get_default(&self, table: &str) -> Option<ResolvedTable> {
+    fn get_default(&self, table: &str) -> Option<PlannedTable> {
         self.default_tables.get(table).cloned()
     }
 
-    fn get_other(&self, catalog: &str, schema: &str, table: &str) -> Option<ResolvedTable> {
+    fn get_other(&self, catalog: &str, schema: &str, table: &str) -> Option<PlannedTable> {
         self.other_tables
             .get(catalog)
             .and_then(|schemas| schemas.get(schema))
@@ -94,18 +125,18 @@ impl TableContainer {
             .cloned()
     }
 
-    pub fn insert(&mut self, name: TableReference, resolved_table: ResolvedTable) {
+    pub fn insert(&mut self, name: TableReference, planned_table: PlannedTable) {
         match name {
-            TableReference::Bare { table } => self.insert_default(table.as_ref(), resolved_table),
+            TableReference::Bare { table } => self.insert_default(table.as_ref(), planned_table),
             TableReference::Partial { schema, table } => {
                 if schema == self.default_schema {
-                    self.insert_default(table.as_ref(), resolved_table)
+                    self.insert_default(table.as_ref(), planned_table)
                 } else {
                     self.insert_other(
                         self.default_catalog.clone(),
                         schema.to_string(),
                         table.to_string(),
-                        resolved_table,
+                        planned_table,
                     )
                 }
             }
@@ -115,22 +146,21 @@ impl TableContainer {
                 table,
             } => {
                 if catalog == self.default_catalog && schema == self.default_schema {
-                    self.insert_default(table.as_ref(), resolved_table)
+                    self.insert_default(table.as_ref(), planned_table)
                 } else {
                     self.insert_other(
                         catalog.to_string(),
                         schema.to_string(),
                         table.to_string(),
-                        resolved_table,
+                        planned_table,
                     )
                 }
             }
         }
     }
 
-    fn insert_default(&mut self, table: &str, resolved_table: ResolvedTable) {
-        self.default_tables
-            .insert(table.to_string(), resolved_table);
+    fn insert_default(&mut self, table: &str, planned_table: PlannedTable) {
+        self.default_tables.insert(table.to_string(), planned_table);
     }
 
     fn insert_other(
@@ -138,14 +168,14 @@ impl TableContainer {
         catalog: String,
         schema: String,
         table: String,
-        resolved_table: ResolvedTable,
+        planned_table: PlannedTable,
     ) {
         self.other_tables
             .entry(catalog)
             .or_default()
             .entry(schema)
             .or_default()
-            .insert(table, resolved_table);
+            .insert(table, planned_table);
     }
 
     /// Visit all tables
