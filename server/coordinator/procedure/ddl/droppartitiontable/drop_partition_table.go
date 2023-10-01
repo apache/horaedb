@@ -18,6 +18,7 @@ import (
 	"github.com/looplab/fsm"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 // fsm state change:
@@ -281,7 +282,11 @@ func dropDataTablesCallback(event *fsm.Event) {
 	}
 
 	shardVersions := req.p.relatedVersionInfo.ShardWithVersion
-	for _, tableName := range params.SourceReq.PartitionTableInfo.SubTableNames {
+	g, _ := errgroup.WithContext(req.ctx)
+
+	// shardID -> tableNames
+	shardTables := make(map[storage.ShardID][]string)
+	for _, tableName := range params.SourceReq.PartitionTableInfo.GetSubTableNames() {
 		table, err := ddl.GetTableMetadata(params.ClusterMetadata, req.schemaName(), tableName)
 		if err != nil {
 			log.Warn("get table metadata failed", zap.String("tableName", tableName))
@@ -305,18 +310,22 @@ func dropDataTablesCallback(event *fsm.Event) {
 			continue
 		}
 
-		if err := ddl.DispatchDropTable(req.ctx, params.ClusterMetadata, params.Dispatch, params.SourceReq.GetSchemaName(), table, shardVersionUpdate); err != nil {
-			procedure.CancelEventWithLog(event, err, fmt.Sprintf("drop table, table:%s", tableName))
-			return
-		}
+		shardTables[shardVersionUpdate.ShardID] = append(shardTables[shardVersionUpdate.ShardID], tableName)
+	}
 
-		_, err = params.ClusterMetadata.DropTable(req.ctx, req.schemaName(), tableName)
-		if err != nil {
-			procedure.CancelEventWithLog(event, err, "drop table metadata", zap.String("tableName", tableName))
-			return
-		}
+	for shardID, tableNames := range shardTables {
+		shardID := shardID
+		tableNames := tableNames
+		shardVersion := shardVersions[shardID]
+		g.Go(func() error {
+			return dispatchDropDataTable(req, params.Dispatch, params.ClusterMetadata, shardID, params.SourceReq.GetSchemaName(), tableNames, shardVersion)
+		})
+	}
 
-		shardVersions[shardVersionUpdate.ShardID]++
+	err = g.Wait()
+	if err != nil {
+		procedure.CancelEventWithLog(event, err, "")
+		return
 	}
 }
 
@@ -356,4 +365,31 @@ func finishCallback(event *fsm.Event) {
 		procedure.CancelEventWithLog(event, err, "drop partition table on succeeded")
 		return
 	}
+}
+
+func dispatchDropDataTable(req *callbackRequest, dispatch eventdispatch.Dispatch, clusterMetadata *metadata.ClusterMetadata, shardID storage.ShardID, schema string, tableNames []string, shardVersion uint64) error {
+	for _, tableName := range tableNames {
+		table, err := ddl.GetTableMetadata(clusterMetadata, req.schemaName(), tableName)
+		if err != nil {
+			return errors.WithMessagef(err, "get table metadata, table:%s", tableName)
+		}
+
+		shardVersionUpdate := metadata.ShardVersionUpdate{
+			ShardID:     shardID,
+			CurrVersion: shardVersion + 1,
+			PrevVersion: shardVersion,
+		}
+
+		if err := ddl.DispatchDropTable(req.ctx, clusterMetadata, dispatch, schema, table, shardVersionUpdate); err != nil {
+			return errors.WithMessagef(err, "drop table, table:%s", tableName)
+		}
+
+		_, err = clusterMetadata.DropTable(req.ctx, req.schemaName(), tableName)
+		if err != nil {
+			return errors.WithMessagef(err, "drop table, table:%s", tableName)
+		}
+
+		shardVersion++
+	}
+	return nil
 }

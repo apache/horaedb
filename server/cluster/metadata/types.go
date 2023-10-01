@@ -11,9 +11,8 @@ import (
 )
 
 const (
-	expiredThreshold                     = time.Second * 10
-	MinShardID                           = 0
-	HeartbeatKeepAliveIntervalSec uint64 = 15
+	expiredThreshold = time.Second * 10
+	MinShardID       = 0
 )
 
 type Snapshot struct {
