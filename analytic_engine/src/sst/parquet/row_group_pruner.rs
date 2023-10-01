@@ -14,11 +14,17 @@
 
 // Row group pruner.
 
-use std::cmp::Ordering;
+use std::{
+    cmp::Ordering,
+    collections::{HashMap, HashSet},
+};
 
 use arrow::datatypes::SchemaRef;
 use common_types::datum::Datum;
-use datafusion::{prelude::Expr, scalar::ScalarValue};
+use datafusion::{
+    prelude::{lit, Expr},
+    scalar::ScalarValue,
+};
 use log::debug;
 use parquet::file::metadata::RowGroupMetaData;
 use parquet_ext::prune::{
@@ -28,6 +34,7 @@ use parquet_ext::prune::{
 use snafu::ensure;
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
+use super::meta_data::ColumnValue;
 use crate::sst::{
     parquet::meta_data::ParquetFilter,
     reader::error::{OtherNoCause, Result},
@@ -58,10 +65,58 @@ pub struct RowGroupPruner<'a> {
     schema: &'a SchemaRef,
     row_groups: &'a [RowGroupMetaData],
     parquet_filter: Option<&'a ParquetFilter>,
-    predicates: &'a [Expr],
+    predicates: Vec<Expr>,
     metrics: Metrics,
 }
 
+fn rewrite_expr(expr: Expr, column_values: &HashMap<String, Option<ColumnValue>>) -> Expr {
+    let expr = match expr {
+        Expr::InList(in_list) => {
+            if !in_list.negated {
+                return Expr::InList(in_list);
+            }
+
+            let column_name = match *in_list.expr.clone() {
+                Expr::Column(column) => column.name.to_string(),
+                _ => return Expr::InList(in_list),
+            };
+
+            let all_possible_values = if let Some(v) = column_values.get(&column_name) {
+                v
+            } else {
+                return Expr::InList(in_list);
+            };
+            let all_possible_values = if let Some(v) = all_possible_values {
+                match v {
+                    ColumnValue::StringValue(sv) => sv,
+                }
+            } else {
+                return Expr::InList(in_list);
+            };
+
+            let mut not_values = HashSet::new();
+            for item in &in_list.list {
+                match item {
+                    Expr::Literal(scalar_value) => match scalar_value {
+                        ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => {
+                            if let Some(v) = v {
+                                not_values.insert(v.to_string());
+                            }
+                        }
+                        _ => return Expr::InList(in_list),
+                    },
+                    _ => return Expr::InList(in_list),
+                }
+            }
+            let values = all_possible_values.difference(&not_values);
+            let list = values.into_iter().map(lit).collect();
+            datafusion::logical_expr::in_list(*in_list.expr, list, false)
+        }
+        _ => expr,
+    };
+
+    expr
+}
 impl<'a> RowGroupPruner<'a> {
     // TODO: DataFusion already change predicates to PhyscialExpr, we should keep up
     // with upstream.
@@ -72,12 +127,23 @@ impl<'a> RowGroupPruner<'a> {
         parquet_filter: Option<&'a ParquetFilter>,
         predicates: &'a [Expr],
         metrics_collector: Option<MetricsCollector>,
+        column_values: &'a [Option<ColumnValue>],
     ) -> Result<Self> {
         if let Some(f) = parquet_filter {
             ensure!(f.len() == row_groups.len(), OtherNoCause {
                 msg: format!("expect sst_filters.len() == row_groups.len(), num_sst_filters:{}, num_row_groups:{}", f.len(), row_groups.len()),
             });
         }
+        let column_values = schema
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(i, f)| (f.name().to_string(), column_values[i].clone()))
+            .collect();
+        let predicates = predicates
+            .iter()
+            .map(|expr| rewrite_expr(expr.clone(), &column_values))
+            .collect();
 
         let metrics = Metrics {
             use_custom_filter: parquet_filter.is_some(),
@@ -139,7 +205,7 @@ impl<'a> RowGroupPruner<'a> {
     }
 
     fn prune_by_min_max(&self) -> Vec<usize> {
-        min_max::prune_row_groups(self.schema.clone(), self.predicates, self.row_groups)
+        min_max::prune_row_groups(self.schema.clone(), &self.predicates, self.row_groups)
     }
 
     /// Prune row groups according to the filter.
@@ -161,7 +227,7 @@ impl<'a> RowGroupPruner<'a> {
 
         equal::prune_row_groups(
             self.schema.clone(),
-            self.predicates,
+            &self.predicates,
             self.row_groups.len(),
             is_equal,
         )

@@ -47,6 +47,8 @@ use crate::{
     table_options::StorageFormat,
 };
 
+const KEEP_COLUMN_VALUE_THRESHOLD: usize = 100;
+
 /// The implementation of sst based on parquet and object storage.
 #[derive(Debug)]
 pub struct ParquetSstWriter<'a> {
@@ -113,7 +115,8 @@ impl RecordBatchGroupWriter {
             .columns()
             .iter()
             .map(|col| {
-                if col.is_dictionary && matches!(col.data_type, DatumKind::String) {
+                // Only keep string values now.
+                if matches!(col.data_type, DatumKind::String) {
                     Some(ColumnValue::StringValue(HashSet::new()))
                 } else {
                     None
@@ -224,6 +227,17 @@ impl RecordBatchGroupWriter {
 
     fn update_column_values(&mut self, record_batch: &RecordBatchWithKey) {
         for (col_idx, col_values) in self.column_values.iter_mut().enumerate() {
+            if let Some(values) = col_values {
+                match values {
+                    ColumnValue::StringValue(sv) => {
+                        // when there are too many values, don't keep this column values any more.
+                        if sv.len() > KEEP_COLUMN_VALUE_THRESHOLD {
+                            *col_values = None;
+                        }
+                    }
+                }
+            }
+
             let col_values = match col_values {
                 None => continue,
                 Some(v) => v,
