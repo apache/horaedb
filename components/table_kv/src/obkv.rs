@@ -403,6 +403,17 @@ impl ObkvImpl {
             table_name, drop_sql
         );
 
+        let exists = self
+            .client
+            .check_table_exists(table_name)
+            .context(CheckTable { table_name })?;
+        // TODO: currently `check_table_exists` will return false when pick active
+        // server failed, which is to say, we may leak table in this case.
+        if !exists {
+            info!("Drop non-exist table, table_name:{}", table_name);
+            return Ok(());
+        }
+
         self.client
             .execute_sql(&drop_sql)
             .context(ExecuteSql { sql: &drop_sql })?;
@@ -413,6 +424,7 @@ impl ObkvImpl {
             .context(CheckTable { table_name })?;
 
         ensure!(!exists, TableNotDropped { table_name });
+        info!("Drop table success, table_name:{}", table_name);
 
         Ok(())
     }
