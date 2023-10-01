@@ -15,7 +15,7 @@
 use lazy_static::lazy_static;
 use prometheus::{
     exponential_buckets, register_counter, register_histogram, register_int_counter_vec, Counter,
-    Histogram, IntCounter, IntCounterVec,
+    Histogram, IntCounterVec,
 };
 
 lazy_static! {

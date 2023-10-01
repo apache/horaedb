@@ -14,10 +14,7 @@
 
 //! Instance contains shared states of service
 
-use std::{
-    sync::{atomic::AtomicU64, Arc},
-    time::Duration,
-};
+use std::sync::{atomic::AtomicU64, Arc};
 
 use catalog::manager::ManagerRef;
 use df_operator::registry::FunctionRegistryRef;

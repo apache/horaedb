@@ -29,14 +29,13 @@ use futures::{stream, stream::BoxStream, FutureExt, StreamExt};
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
-use log::{error, info, warn};
+use log::{error, warn};
 use router::endpoint::Endpoint;
 use snafu::ResultExt;
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
     error::{self, ErrNoCause, ErrWithCause, Error, Result},
-    failed_query,
     forward::{ForwardRequest, ForwardResult},
     metrics::GRPC_HANDLER_COUNTER_VEC,
     read::SqlResponse,

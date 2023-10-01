@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use lazy_static::lazy_static;
-use prometheus::{exponential_buckets, register_histogram_vec, Histogram, HistogramVec};
+use prometheus::{exponential_buckets, register_histogram_vec, HistogramVec};
 
 lazy_static! {
     pub static ref QUERY_TIME_RANGE: HistogramVec = register_histogram_vec!(

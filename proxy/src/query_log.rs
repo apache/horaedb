@@ -12,34 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{
-    fmt,
-    time::{Duration, Instant},
-};
-
-use crate::Context;
+use std::time::{Duration, Instant};
 
 /// Timer for collecting slow query
 #[derive(Debug)]
-pub struct SlowTimer {
+pub(crate) struct SlowTimer {
     slow_threshold: Duration,
     timer: Instant,
 }
 
 impl SlowTimer {
-    pub fn new(slow_time: Duration) -> SlowTimer {
+    pub fn new(threshold: Duration) -> SlowTimer {
         SlowTimer {
-            slow_threshold: slow_time,
+            slow_threshold: threshold,
             timer: Instant::now(),
         }
-    }
-
-    pub fn with_slow_threshold_s(secs: u64) -> SlowTimer {
-        SlowTimer::new(Duration::from_secs(secs))
-    }
-
-    pub fn with_slow_threshold_ms(millis: u64) -> SlowTimer {
-        SlowTimer::new(Duration::from_millis(millis))
     }
 
     pub fn elapsed(&self) -> Duration {
@@ -51,7 +38,7 @@ impl SlowTimer {
     }
 
     pub fn now(&self) -> Instant {
-        self.timer.clone()
+        self.timer
     }
 }
 

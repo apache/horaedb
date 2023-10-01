@@ -14,13 +14,7 @@
 
 //! Contains common methods used by the read process.
 
-use std::{
-    cmp::Ordering,
-    env,
-    str::FromStr,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Duration};
 
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, SqlQueryRequest, SqlQueryResponse,
@@ -37,7 +31,6 @@ use query_frontend::{
 };
 use router::endpoint::Endpoint;
 use snafu::{ensure, ResultExt};
-use time_ext::InstantExt;
 use tokio::sync::mpsc::{self, Sender};
 use tonic::{transport::Channel, IntoRequest};
 
@@ -185,12 +178,13 @@ impl Proxy {
         enable_partition_table_access: bool,
     ) -> Result<Output> {
         let request_id = ctx.request_id;
-        let slow_threshold_duration = self
+        let slow_threshold_secs = self
             .instance()
             .dyn_config
             .slow_threshold
             .load(std::sync::atomic::Ordering::Relaxed);
-        let slow_timer: SlowTimer = SlowTimer::with_slow_threshold_s(slow_threshold_duration);
+        let slow_threshold = Duration::from_secs(slow_threshold_secs);
+        let slow_timer = SlowTimer::new(slow_threshold);
         let deadline = ctx.timeout.map(|t| slow_timer.now() + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
