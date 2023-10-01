@@ -46,7 +46,7 @@ use parquet::{
 use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader};
 use runtime::{AbortOnDropMany, JoinHandle, Runtime};
 use snafu::ResultExt;
-use table_engine::{partition::maybe_extract_partitioned_table_name, predicate::PredicateRef};
+use table_engine::{predicate::PredicateRef};
 use time_ext::InstantExt;
 use tokio::sync::{
     mpsc::{self, Receiver, Sender},
