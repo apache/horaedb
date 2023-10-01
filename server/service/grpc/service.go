@@ -135,7 +135,7 @@ func (s *Service) GetTablesOfShards(ctx context.Context, req *metaservicepb.GetT
 		shardIDs = append(shardIDs, storage.ShardID(shardID))
 	}
 
-	tables, err := s.h.GetClusterManager().GetTables(req.GetHeader().GetClusterName(), req.GetHeader().GetNode(), shardIDs)
+	tables, err := s.h.GetClusterManager().GetTablesByShardIDs(req.GetHeader().GetClusterName(), req.GetHeader().GetNode(), shardIDs)
 	if err != nil {
 		return &metaservicepb.GetTablesOfShardsResponse{Header: responseHeader(err, "grpc get tables of shards")}, nil
 	}

@@ -59,6 +59,7 @@ func BuildCreateTableRequest(table storage.Table, shardVersionUpdate metadata.Sh
 			SchemaID:      table.SchemaID,
 			SchemaName:    req.GetSchemaName(),
 			PartitionInfo: table.PartitionInfo,
+			CreatedAt:     table.CreatedAt,
 		},
 		EncodedSchema:    req.EncodedSchema,
 		Engine:           req.Engine,

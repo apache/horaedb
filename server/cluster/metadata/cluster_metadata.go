@@ -143,6 +143,7 @@ func (c *ClusterMetadata) GetShardTables(shardIDs []storage.ShardID) map[storage
 				SchemaID:      table.SchemaID,
 				SchemaName:    schema.Name,
 				PartitionInfo: table.PartitionInfo,
+				CreatedAt:     table.CreatedAt,
 			})
 		}
 		result[shardID] = ShardTables{
@@ -484,6 +485,7 @@ func (c *ClusterMetadata) RouteTables(_ context.Context, schemaName string, tabl
 					SchemaID:      table.SchemaID,
 					SchemaName:    schemaName,
 					PartitionInfo: table.PartitionInfo,
+					CreatedAt:     table.CreatedAt,
 				},
 				NodeShards: nil,
 			}
@@ -523,6 +525,7 @@ func (c *ClusterMetadata) RouteTables(_ context.Context, schemaName string, tabl
 				SchemaID:      table.SchemaID,
 				SchemaName:    schemaName,
 				PartitionInfo: table.PartitionInfo,
+				CreatedAt:     table.CreatedAt,
 			},
 			NodeShards: nodeShardsResult,
 		}
@@ -677,6 +680,14 @@ func (c *ClusterMetadata) LoadMetadata(ctx context.Context) error {
 
 func (c *ClusterMetadata) GetShardNodes() GetShardNodesResult {
 	return c.topologyManager.GetShardNodes()
+}
+
+func (c *ClusterMetadata) GetTables(schemaName string, tableNames []string) ([]storage.Table, error) {
+	return c.tableManager.GetTables(schemaName, tableNames)
+}
+
+func (c *ClusterMetadata) GetTablesByIDs(tableIDs []storage.TableID) []storage.Table {
+	return c.tableManager.GetTablesByIDs(tableIDs)
 }
 
 func needUpdate(oldCache RegisteredNode, registeredNode RegisteredNode) bool {

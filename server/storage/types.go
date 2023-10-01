@@ -200,7 +200,7 @@ type Schema struct {
 }
 
 type PartitionInfo struct {
-	Info *clusterpb.PartitionInfo
+	Info *clusterpb.PartitionInfo `json:"info,omitempty"`
 }
 
 type Table struct {

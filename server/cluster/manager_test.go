@@ -172,7 +172,7 @@ func testGetTables(re *require.Assertions, manager cluster.Manager, node, cluste
 	for i := 0; i < defaultShardTotal; i++ {
 		shardIDs = append(shardIDs, storage.ShardID(i))
 	}
-	shardTables, err := manager.GetTables(cluster, node, shardIDs)
+	shardTables, err := manager.GetTablesByShardIDs(cluster, node, shardIDs)
 	re.NoError(err)
 	re.Equal(defaultShardTotal, len(shardTables))
 

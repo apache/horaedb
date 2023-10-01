@@ -53,6 +53,11 @@ func (r *Router) Get(path string, h http.HandlerFunc) {
 	r.rtr.GET(r.prefix+path, r.handle(path, h))
 }
 
+// GetWithoutPrefix registers a new GET route without prefix.
+func (r *Router) GetWithoutPrefix(path string, h http.HandlerFunc) {
+	r.rtr.GET(path, r.handle(path, h))
+}
+
 // Options registers a new OPTIONS route.
 func (r *Router) Options(path string, h http.HandlerFunc) {
 	r.rtr.OPTIONS(r.prefix+path, r.handle(path, h))

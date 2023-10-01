@@ -46,7 +46,7 @@ func TestTableManager(t *testing.T) {
 }
 
 func testSchema(ctx context.Context, re *require.Assertions, manager metadata.TableManager) {
-	_, exists := manager.GetSchemaByName(TestSchemaName)
+	_, exists := manager.GetSchema(TestSchemaName)
 	re.False(exists)
 	schema, exists, err := manager.GetOrCreateSchema(ctx, TestSchemaName)
 	re.NoError(err)

@@ -20,14 +20,18 @@ type TableManager interface {
 	Load(ctx context.Context) error
 	// GetTable get table with schemaName and tableName, the second output parameter bool: returns true if the table exists.
 	GetTable(schemaName string, tableName string) (storage.Table, bool, error)
+	// GetTables get tables with schemaName and tableNames.
+	GetTables(schemaName string, tableNames []string) ([]storage.Table, error)
 	// GetTablesByIDs get tables with tableIDs.
 	GetTablesByIDs(tableIDs []storage.TableID) []storage.Table
 	// CreateTable create table with schemaName and tableName.
 	CreateTable(ctx context.Context, schemaName string, tableName string, partitionInfo storage.PartitionInfo) (storage.Table, error)
 	// DropTable drop table with schemaName and tableName.
 	DropTable(ctx context.Context, schemaName string, tableName string) error
-	// GetSchemaByName get schema with schemaName.
-	GetSchemaByName(schemaName string) (storage.Schema, bool)
+	// GetSchema get schema with schemaName.
+	GetSchema(schemaName string) (storage.Schema, bool)
+	// GetSchemaByID get schema with schemaName.
+	GetSchemaByID(schemaID storage.SchemaID) (storage.Schema, bool)
 	// GetSchemas get all schemas in cluster.
 	GetSchemas() []storage.Schema
 	// GetOrCreateSchema get or create schema with schemaName.
@@ -82,6 +86,13 @@ func (m *TableManagerImpl) GetTable(schemaName, tableName string) (storage.Table
 	defer m.lock.RUnlock()
 
 	return m.getTable(schemaName, tableName)
+}
+
+func (m *TableManagerImpl) GetTables(schemaName string, tableNames []string) ([]storage.Table, error) {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+
+	return m.getTables(schemaName, tableNames)
 }
 
 func (m *TableManagerImpl) GetTablesByIDs(tableIDs []storage.TableID) []storage.Table {
@@ -188,9 +199,24 @@ func (m *TableManagerImpl) DropTable(ctx context.Context, schemaName string, tab
 	return nil
 }
 
-func (m *TableManagerImpl) GetSchemaByName(schemaName string) (storage.Schema, bool) {
+func (m *TableManagerImpl) GetSchema(schemaName string) (storage.Schema, bool) {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+
 	schema, ok := m.schemas[schemaName]
 	return schema, ok
+}
+
+func (m *TableManagerImpl) GetSchemaByID(schemaID storage.SchemaID) (storage.Schema, bool) {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+
+	for _, schema := range m.schemas {
+		if schema.ID == schemaID {
+			return schema, true
+		}
+	}
+	return storage.Schema{}, false
 }
 
 func (m *TableManagerImpl) GetSchemas() []storage.Schema {
@@ -290,6 +316,7 @@ func (m *TableManagerImpl) getTable(schemaName, tableName string) (storage.Table
 	if !ok {
 		return storage.Table{}, false, ErrSchemaNotFound.WithCausef("schema name", schemaName)
 	}
+
 	tables, ok := m.schemaTables[schema.ID]
 	if !ok {
 		return storage.Table{}, false, nil
@@ -297,4 +324,25 @@ func (m *TableManagerImpl) getTable(schemaName, tableName string) (storage.Table
 
 	table, ok := tables.tables[tableName]
 	return table, ok, nil
+}
+
+func (m *TableManagerImpl) getTables(schemaName string, tableNames []string) ([]storage.Table, error) {
+	schema, ok := m.schemas[schemaName]
+	if !ok {
+		return []storage.Table{}, ErrSchemaNotFound.WithCausef("schema name", schemaName)
+	}
+
+	schemaTables, ok := m.schemaTables[schema.ID]
+	if !ok {
+		return []storage.Table{}, nil
+	}
+
+	tables := make([]storage.Table, 0, len(tableNames))
+	for _, tableName := range tableNames {
+		if table, ok := schemaTables.tables[tableName]; ok {
+			tables = append(tables, table)
+		}
+	}
+
+	return tables, nil
 }

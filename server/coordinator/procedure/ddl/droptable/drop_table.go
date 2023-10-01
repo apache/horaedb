@@ -62,6 +62,7 @@ func prepareCallback(event *fsm.Event) {
 		SchemaID:      table.SchemaID,
 		SchemaName:    params.SourceReq.GetSchemaName(),
 		PartitionInfo: table.PartitionInfo,
+		CreatedAt:     table.CreatedAt,
 	}
 
 	shardVersionUpdate, shardExists, err := ddl.BuildShardVersionUpdate(table, params.ClusterMetadata, req.p.relatedVersionInfo.ShardWithVersion)
