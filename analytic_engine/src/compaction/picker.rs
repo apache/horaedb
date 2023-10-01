@@ -724,6 +724,7 @@ mod tests {
             max_sequence: 200,
             schema: build_schema(),
             parquet_filter: Default::default(),
+            column_values: Vec::new(),
         };
 
         SstMetaData::Parquet(Arc::new(parquet_meta_data))

@@ -317,6 +317,7 @@ mod tests {
             max_sequence: 1001,
             schema,
             parquet_filter: None,
+            column_values: Vec::new(),
         };
         let store = Arc::new(LocalFileSystem::new_with_prefix(temp_dir.path()).unwrap());
         write_parquet_file_with_metadata(

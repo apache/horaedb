@@ -14,8 +14,12 @@
 
 //! Sst writer implementation based on parquet.
 
+use std::collections::HashSet;
+
 use async_trait::async_trait;
-use common_types::{record_batch::RecordBatchWithKey, request_id::RequestId, time::TimeRange};
+use common_types::{
+    datum::DatumKind, record_batch::RecordBatchWithKey, request_id::RequestId, time::TimeRange,
+};
 use datafusion::parquet::basic::Compression;
 use futures::StreamExt;
 use generic_error::BoxError;
@@ -25,7 +29,7 @@ use parquet::data_type::AsBytes;
 use snafu::{OptionExt, ResultExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use super::meta_data::RowGroupFilter;
+use super::meta_data::{ColumnValue, RowGroupFilter};
 use crate::{
     sst::{
         factory::{ObjectStorePickerRef, SstWriteOptions},
@@ -91,6 +95,7 @@ struct RecordBatchGroupWriter {
     input_exhausted: bool,
     // Time range of rows, not aligned to segment.
     real_time_range: Option<TimeRange>,
+    column_values: Vec<Option<ColumnValue>>,
 }
 
 impl RecordBatchGroupWriter {
@@ -103,12 +108,19 @@ impl RecordBatchGroupWriter {
         compression: Compression,
         level: Level,
     ) -> Self {
-        let column_values: Vec<Option<i64>> = meta_data
+        let column_values: Vec<Option<ColumnValue>> = meta_data
             .schema
             .columns()
             .iter()
-            .map(|col| if col.is_dictionary { Some(1) } else { None })
+            .map(|col| {
+                if col.is_dictionary && matches!(col.data_type, DatumKind::String) {
+                    Some(ColumnValue::StringValue(HashSet::new()))
+                } else {
+                    None
+                }
+            })
             .collect();
+
         Self {
             request_id,
             input,
@@ -119,6 +131,7 @@ impl RecordBatchGroupWriter {
             level,
             input_exhausted: false,
             real_time_range: None,
+            column_values,
         }
     }
 
@@ -209,6 +222,26 @@ impl RecordBatchGroupWriter {
         !self.level.is_min()
     }
 
+    fn update_column_values(&mut self, record_batch: &RecordBatchWithKey) {
+        for (col_idx, col_values) in self.column_values.iter_mut().enumerate() {
+            let col_values = match col_values {
+                None => continue,
+                Some(v) => v,
+            };
+            let rows_num = record_batch.num_rows();
+            let column_block = record_batch.column(col_idx);
+            for row_idx in 0..rows_num {
+                match col_values {
+                    ColumnValue::StringValue(ss) => {
+                        let datum = column_block.datum(row_idx);
+                        let v = datum.as_str().unwrap();
+                        ss.insert(v.to_string());
+                    }
+                }
+            }
+        }
+    }
+
     fn update_time_range(&mut self, current_range: Option<TimeRange>) {
         if let Some(current_range) = current_range {
             if let Some(real_range) = self.real_time_range {
@@ -270,6 +303,7 @@ impl RecordBatchGroupWriter {
                     datum_kind: column_block.datum_kind(),
                 })?;
                 self.update_time_range(ts_col.time_range());
+                self.update_column_values(&record_batch);
 
                 arrow_row_group.push(record_batch.into_record_batch().into_arrow_record_batch());
             }

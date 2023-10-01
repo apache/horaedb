@@ -353,6 +353,7 @@ impl From<RemoteExecuteRequest> for ceresdbproto::remote_engine::ExecutePlanRequ
         };
 
         Self {
+            table: None,
             context: Some(pb_context),
             physical_plan: Some(pb_plan),
         }
