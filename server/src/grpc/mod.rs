@@ -307,6 +307,7 @@ impl Builder {
                     v.enable.then(|| QueryDedup {
                         config: v.clone(),
                         request_notifiers: Arc::new(RequestNotifiers::default()),
+                        physical_plan_notifiers: Arc::new(RequestNotifiers::default()),
                     })
                 })
                 .unwrap_or_default();
