@@ -31,6 +31,7 @@ use crate::{
         header,
         header::HeaderParser,
         meta_data::cache::MetaCacheRef,
+        metrics::TableLevelMetrics as SstTableLevelMetrics,
         parquet::{writer::ParquetSstWriter, AsyncParquetReader, ThreadedReader},
         reader::SstReader,
         writer::SstWriter,
@@ -131,8 +132,8 @@ impl Default for ScanOptions {
 
 #[derive(Debug, Clone)]
 pub struct SstReadOptions {
-    pub scanned_table: String,
     pub scan_for_compaction: bool,
+    pub table_level_sst_metrics: Option<Arc<SstTableLevelMetrics>>,
 
     pub frequency: ReadFrequency,
     pub num_rows_per_row_group: usize,

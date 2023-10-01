@@ -638,8 +638,8 @@ mod tests {
             let scan_options = ScanOptions::default();
             // read sst back to test
             let sst_read_options = SstReadOptions {
-                scanned_table: "test_table".to_owned(),
                 scan_for_compaction: false,
+                table_level_sst_metrics: None,
                 frequency: ReadFrequency::Frequent,
                 num_rows_per_row_group: 5,
                 projected_schema: reader_projected_schema,

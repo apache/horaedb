@@ -29,7 +29,9 @@ use prometheus::{
     register_histogram, register_histogram_vec, register_int_counter, Histogram, HistogramTimer,
     HistogramVec, IntCounter,
 };
-use table_engine::table::TableStats;
+use table_engine::{partition::maybe_extract_partitioned_table_name, table::TableStats};
+
+use crate::{sst::metrics::TableLevelMetrics as SstTableLevelMetrics, MetricsOptions};
 
 const KB: f64 = 1024.0;
 
@@ -149,6 +151,9 @@ pub struct Metrics {
     // Stats of a single table.
     stats: Arc<AtomicTableStats>,
 
+    // Table level sst metrics
+    table_level_sst_metrics: Option<Arc<SstTableLevelMetrics>>,
+
     compaction_input_sst_size_histogram: Histogram,
     compaction_output_sst_size_histogram: Histogram,
     compaction_input_sst_row_num_histogram: Histogram,
@@ -170,6 +175,7 @@ impl Default for Metrics {
     fn default() -> Self {
         Self {
             stats: Arc::new(AtomicTableStats::default()),
+            table_level_sst_metrics: None,
             compaction_input_sst_size_histogram: TABLE_COMPACTION_SST_SIZE_HISTOGRAM
                 .with_label_values(&["input"]),
             compaction_output_sst_size_histogram: TABLE_COMPACTION_SST_SIZE_HISTOGRAM
@@ -203,6 +209,31 @@ impl Default for Metrics {
 }
 
 impl Metrics {
+    pub fn new(table: &str, metric_opt: MetricsOptions) -> Self {
+        let table_level_sst_metrics = if metric_opt.enable_table_level_sst_metrics {
+            // There are too many sub tables of partitioned table, we just aggregate the sst
+            // metrics to partitioned table.
+            let maybe_partition_table = maybe_extract_partitioned_table_name(table);
+            let table = match &maybe_partition_table {
+                Some(partitioned) => partitioned,
+                None => table,
+            };
+
+            Some(Arc::new(SstTableLevelMetrics::new(table)))
+        } else {
+            None
+        };
+
+        Self {
+            table_level_sst_metrics,
+            ..Default::default()
+        }
+    }
+
+    pub fn table_level_sst_metrics(&self) -> Option<Arc<SstTableLevelMetrics>> {
+        self.table_level_sst_metrics.clone()
+    }
+
     pub fn table_stats(&self) -> TableStats {
         TableStats::from(&*self.stats)
     }

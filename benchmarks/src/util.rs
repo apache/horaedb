@@ -123,8 +123,8 @@ pub async fn load_sst_to_memtable(
         num_streams_to_prefetch: 0,
     };
     let sst_read_options = SstReadOptions {
-        scanned_table: "bench_table".to_string(),
         scan_for_compaction: false,
+        table_level_sst_metrics: None,
         frequency: ReadFrequency::Frequent,
         num_rows_per_row_group: 8192,
         projected_schema: ProjectedSchema::no_projection(schema.clone()),

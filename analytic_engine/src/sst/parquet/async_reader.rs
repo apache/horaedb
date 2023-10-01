@@ -63,7 +63,7 @@ use crate::{
             cache::{MetaCacheRef, MetaData},
             SstMetaData,
         },
-        metrics::{SST_AFTER_PRUNE_COUNTER, SST_BEFORE_PRUNE_COUNTER},
+        metrics::TableLevelMetrics,
         parquet::{
             encoding::ParquetDecoder, meta_data::ParquetFilter, row_group_pruner::RowGroupPruner,
         },
@@ -96,8 +96,8 @@ pub struct Reader<'a> {
     metrics: Metrics,
     df_plan_metrics: ExecutionPlanMetricsSet,
 
-    scanned_table: String,
     scan_for_compaction: bool,
+    table_level_sst_metrics: Option<Arc<TableLevelMetrics>>,
 }
 
 #[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
@@ -140,8 +140,8 @@ impl<'a> Reader<'a> {
             row_projector: None,
             metrics,
             df_plan_metrics,
-            scanned_table: options.scanned_table.clone(),
             scan_for_compaction: options.scan_for_compaction,
+            table_level_sst_metrics: options.table_level_sst_metrics.clone(),
         }
     }
 
@@ -262,19 +262,13 @@ impl<'a> Reader<'a> {
         let num_sst_before_prune = meta_data.parquet().num_row_groups();
         let num_sst_after_prune = target_row_groups.len();
         // Maybe it is a sub table of partitioned table, try to extract its parent
-        // table.
-        if !self.scan_for_compaction {
-            let extract_res = maybe_extract_partitioned_table_name(&self.scanned_table);
-            let table_name = match &extract_res {
-                Some(table) => table.as_str(),
-                None => self.scanned_table.as_str(),
-            };
-
-            SST_BEFORE_PRUNE_COUNTER
-                .with_label_values(&[table_name])
+        // table.)
+        if let (false, Some(metrics)) = (self.scan_for_compaction, &self.table_level_sst_metrics) {
+            metrics
+                .sst_before_prune_counter
                 .inc_by(num_sst_before_prune as u64);
-            SST_AFTER_PRUNE_COUNTER
-                .with_label_values(&[table_name])
+            metrics
+                .sst_before_prune_counter
                 .inc_by(num_sst_after_prune as u64);
         }
 
