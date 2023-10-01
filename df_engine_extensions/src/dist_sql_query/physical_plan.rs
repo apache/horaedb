@@ -190,9 +190,9 @@ impl ResolvedPartitionedScan {
         // set `can_push_down_more` false.
         let pushdown_status = Self::maybe_a_pushdown_node(cur_node.clone());
         let (node, can_push_down_more) = match pushdown_status {
-            PushDownStatus::Continue(node) => (node, true),
-            PushDownStatus::Terminated(node) => (node, false),
-            PushDownStatus::Unable => {
+            PushDownEvent::Continue(node) => (node, true),
+            PushDownEvent::Terminated(node) => (node, false),
+            PushDownEvent::Unable => {
                 let partitioned_scan = self.pushdown_finished();
                 return cur_node.with_new_children(vec![partitioned_scan]);
             }
@@ -227,8 +227,8 @@ impl ResolvedPartitionedScan {
     }
 
     #[inline]
-    pub fn maybe_a_pushdown_node(plan: Arc<dyn ExecutionPlan>) -> PushDownStatus {
-        PushDownStatus::new(plan)
+    pub fn maybe_a_pushdown_node(plan: Arc<dyn ExecutionPlan>) -> PushDownEvent {
+        PushDownEvent::new(plan)
     }
 
     /// `ResolvedPartitionedScan` can be executable after satisfying followings:
@@ -607,13 +607,13 @@ impl TryFrom<UnresolvedSubTableScan> for ceresdbproto::remote_engine::Unresolved
 ///   + Terminated, node able to be pushed down to `ResolvedPartitionedScan`,
 ///     but the newly generated `ResolvedPartitionedScan` can't accept more
 ///     pushdown nodes after.
-pub enum PushDownStatus {
+pub enum PushDownEvent {
     Unable,
     Continue(Arc<dyn ExecutionPlan>),
     Terminated(Arc<dyn ExecutionPlan>),
 }
 
-impl PushDownStatus {
+impl PushDownEvent {
     pub fn new(plan: Arc<dyn ExecutionPlan>) -> Self {
         if let Some(aggr) = plan.as_any().downcast_ref::<AggregateExec>() {
             if *aggr.mode() == AggregateMode::Partial {
