@@ -214,12 +214,12 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
         let end_time = time_range.exclusive_end().as_i64();
         let now = current_time_millis() as i64;
 
-        let query_time_range = (end_time - start_time) as f64 / 1000.0;
+        let query_time_range = (end_time as f64 - start_time as f64) / 1000.0;
         QUERY_TIME_RANGE
             .with_label_values(&[self.table.name()])
             .observe(query_time_range);
 
-        let since_start = (now - start_time) as f64 / 1000.0;
+        let since_start = (now as f64 - start_time as f64) / 1000.0;
         DURATION_SINCE_QUERY_START_TIME
             .with_label_values(&[self.table.name()])
             .observe(since_start);
