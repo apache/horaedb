@@ -122,7 +122,7 @@ impl Preprocessor {
             .await
             .box_err()
             .with_context(|| ExecutorWithCause {
-                msg: format!("failed to preprocess remote plan"),
+                msg: Some("failed to preprocess remote plan".to_string()),
             })
     }
 
