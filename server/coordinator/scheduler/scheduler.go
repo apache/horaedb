@@ -11,7 +11,7 @@ import (
 
 type ScheduleResult struct {
 	Procedure procedure.Procedure
-	// Scheduler will give the reason than why the procedure is generated.
+	// The reason that the procedure is generated for.
 	Reason string
 }
 

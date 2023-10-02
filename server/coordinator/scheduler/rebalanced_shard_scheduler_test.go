@@ -19,7 +19,7 @@ func TestRebalancedScheduler(t *testing.T) {
 
 	procedureFactory := coordinator.NewFactory(test.MockIDAllocator{}, test.MockDispatch{}, test.NewTestStorage(t))
 
-	s := scheduler.NewRebalancedShardScheduler(zap.NewNop(), procedureFactory, coordinator.NewUniformityConsistentHashNodePicker(zap.NewNop()), 1)
+	s := scheduler.NewRebalancedShardScheduler(zap.NewNop(), procedureFactory, coordinator.NewConsistentUniformHashNodePicker(zap.NewNop()), 1)
 
 	// EmptyCluster would be scheduled an empty procedure.
 	emptyCluster := test.InitEmptyCluster(ctx, t)

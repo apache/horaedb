@@ -22,10 +22,10 @@ type StaticTopologyShardScheduler struct {
 }
 
 func NewStaticTopologyShardScheduler(factory *coordinator.Factory, nodePicker coordinator.NodePicker, procedureExecutingBatchSize uint32) Scheduler {
-	return &StaticTopologyShardScheduler{factory: factory, nodePicker: nodePicker, procedureExecutingBatchSize: procedureExecutingBatchSize}
+	return StaticTopologyShardScheduler{factory: factory, nodePicker: nodePicker, procedureExecutingBatchSize: procedureExecutingBatchSize}
 }
 
-func (s *StaticTopologyShardScheduler) Schedule(ctx context.Context, clusterSnapshot metadata.Snapshot) (ScheduleResult, error) {
+func (s StaticTopologyShardScheduler) Schedule(ctx context.Context, clusterSnapshot metadata.Snapshot) (ScheduleResult, error) {
 	var procedures []procedure.Procedure
 	var reasons strings.Builder
 
@@ -70,7 +70,7 @@ func (s *StaticTopologyShardScheduler) Schedule(ctx context.Context, clusterSnap
 			if err != nil {
 				return ScheduleResult{}, err
 			}
-			if !contains(shardNode.ID, node.ShardInfos) {
+			if !containsShard(node.ShardInfos, shardNode.ID) {
 				// Shard need to be reopened
 				p, err := s.factory.CreateTransferLeaderProcedure(ctx, coordinator.TransferLeaderRequest{
 					Snapshot:          clusterSnapshot,
@@ -120,11 +120,20 @@ func findOnlineNodeByName(nodeName string, nodes []metadata.RegisteredNode) (met
 	return metadata.RegisteredNode{}, errors.WithMessagef(metadata.ErrNodeNotFound, "node:%s not found in topology", nodeName)
 }
 
-func contains(shardID storage.ShardID, shardInfos []metadata.ShardInfo) bool {
+func containsShard(shardInfos []metadata.ShardInfo, shardID storage.ShardID) bool {
 	for i := 0; i < len(shardInfos); i++ {
 		if shardInfos[i].ID == shardID {
 			return true
 		}
 	}
 	return false
+}
+
+func findNodeByShard(shardID storage.ShardID, shardNodes []storage.ShardNode) (storage.ShardNode, bool) {
+	for i := 0; i < len(shardNodes); i++ {
+		if shardID == shardNodes[i].ID {
+			return shardNodes[i], true
+		}
+	}
+	return storage.ShardNode{}, false
 }

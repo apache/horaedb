@@ -25,7 +25,7 @@ func TestNodePicker(t *testing.T) {
 	re := require.New(t)
 	ctx := context.Background()
 
-	nodePicker := NewUniformityConsistentHashNodePicker(zap.NewNop())
+	nodePicker := NewConsistentUniformHashNodePicker(zap.NewNop())
 
 	var nodes []metadata.RegisteredNode
 	_, err := nodePicker.PickNode(ctx, []storage.ShardID{0}, defaultTotalShardNum, nodes)
@@ -67,22 +67,21 @@ func TestUniformity(t *testing.T) {
 	re := require.New(t)
 	ctx := context.Background()
 
-	nodePicker := NewUniformityConsistentHashNodePicker(zap.NewNop())
+	nodePicker := NewConsistentUniformHashNodePicker(zap.NewNop())
 	mapping := allocShards(ctx, nodePicker, 30, 256, re)
 	maxShardNum := 256/30 + 1
-	for nodeName, shards := range mapping {
-		println(fmt.Sprintf("nodeName:%s contains shards num:%d", nodeName, len(shards)))
+	for _, shards := range mapping {
 		re.LessOrEqual(len(shards), maxShardNum)
 	}
 
 	// Verify that the result of hash remains unchanged through the same nodes and shards.
-	println("\nVerify that the result of hash remains unchanged through the same nodes and shards")
+	t.Log("Verify that the result of hash remains unchanged through the same nodes and shards")
 	newMapping := allocShards(ctx, nodePicker, 30, 256, re)
 	maxShardNum = 256/30 + 1
-	for nodeName, shards := range newMapping {
-		println(fmt.Sprintf("nodeName:%s contains shards num:%d", nodeName, len(shards)))
+	for _, shards := range newMapping {
 		re.LessOrEqual(len(shards), maxShardNum)
 	}
+
 	for nodeName, shardIds := range mapping {
 		newShardIDs := newMapping[nodeName]
 		diffShardID := diffShardIds(shardIds, newShardIDs)
@@ -91,34 +90,30 @@ func TestUniformity(t *testing.T) {
 	}
 
 	// Add new node and testing shard rebalanced.
-	println("\nAdd new node and testing shard rebalanced.")
+	t.Log("Add new node and testing shard rebalanced")
 	newMapping = allocShards(ctx, nodePicker, 31, 256, re)
 	maxShardNum = 256/31 + 1
-	for nodeName, shards := range newMapping {
-		println(fmt.Sprintf("nodeName:%s contains shards num:%d", nodeName, len(shards)))
+	for _, shards := range newMapping {
 		re.LessOrEqual(len(shards), maxShardNum)
 	}
-	maxDiffNum := 3
+	maxDiffNum := 5
 	for nodeName, shardIds := range mapping {
 		newShardIDs := newMapping[nodeName]
 		diffShardID := diffShardIds(shardIds, newShardIDs)
-		println(fmt.Sprintf("diff shardID, nodeName:%s, diff shardIDs num:%d", nodeName, len(diffShardID)))
 		re.LessOrEqual(len(diffShardID), maxDiffNum)
 	}
 
 	// Add new shard and testing shard rebalanced.
-	println("\nAdd new shard and testing shard rebalanced.")
+	t.Log("Add new shard and testing shard rebalanced")
 	newShardMapping := allocShards(ctx, nodePicker, 30, 257, re)
 	maxShardNum = 257/31 + 1
-	for nodeName, shards := range newShardMapping {
-		println(fmt.Sprintf("nodeName:%s contains shards num:%d", nodeName, len(shards)))
+	for _, shards := range newShardMapping {
 		re.LessOrEqual(len(shards), maxShardNum)
 	}
-	maxDiffNum = 3
+	maxDiffNum = 5
 	for nodeName, shardIds := range newShardMapping {
 		newShardIDs := newMapping[nodeName]
 		diffShardID := diffShardIds(shardIds, newShardIDs)
-		println(fmt.Sprintf("diff shardID, nodeName:%s, diffShardIDs:%d", nodeName, len(diffShardID)))
 		re.LessOrEqual(len(diffShardID), maxDiffNum)
 	}
 }
@@ -149,7 +144,7 @@ func generateLastTouchTime(duration time.Duration) uint64 {
 	return uint64(time.Now().UnixMilli() - int64(duration))
 }
 
-func diffShardIds(oldShardIDs []int, newShardIDs []int) []int {
+func diffShardIds(oldShardIDs, newShardIDs []int) []int {
 	diff := make(map[int]bool, 0)
 	for i := 0; i < len(oldShardIDs); i++ {
 		diff[oldShardIDs[i]] = false

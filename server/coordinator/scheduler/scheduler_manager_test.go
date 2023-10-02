@@ -51,7 +51,7 @@ func TestSchedulerManager(t *testing.T) {
 	err = schedulerManager.Start(ctx)
 	re.NoError(err)
 	schedulers = schedulerManager.ListScheduler()
-	re.Equal(3, len(schedulers))
+	re.Equal(2, len(schedulers))
 	err = schedulerManager.Stop(ctx)
 	re.NoError(err)
 }

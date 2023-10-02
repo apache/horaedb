@@ -75,7 +75,7 @@ func NewManager(logger *zap.Logger, procedureManager procedure.Manager, factory 
 		procedureManager:            procedureManager,
 		registerSchedulers:          []Scheduler{},
 		factory:                     factory,
-		nodePicker:                  coordinator.NewUniformityConsistentHashNodePicker(logger),
+		nodePicker:                  coordinator.NewConsistentUniformHashNodePicker(logger),
 		clusterMetadata:             clusterMetadata,
 		client:                      client,
 		shardWatch:                  shardWatch,
@@ -198,10 +198,9 @@ func (m *ManagerImpl) createStaticTopologySchedulers() []Scheduler {
 }
 
 func (m *ManagerImpl) createDynamicTopologySchedulers() []Scheduler {
-	assignShardScheduler := NewAssignShardScheduler(m.factory, m.nodePicker, m.procedureExecutingBatchSize)
 	rebalancedShardScheduler := NewRebalancedShardScheduler(m.logger, m.factory, m.nodePicker, m.procedureExecutingBatchSize)
 	reopenShardScheduler := NewReopenShardScheduler(m.factory, m.procedureExecutingBatchSize)
-	return []Scheduler{assignShardScheduler, rebalancedShardScheduler, reopenShardScheduler}
+	return []Scheduler{rebalancedShardScheduler, reopenShardScheduler}
 }
 
 func (m *ManagerImpl) registerScheduler(scheduler Scheduler) {

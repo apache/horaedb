@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/CeresDB/ceresmeta/pkg/assert"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
@@ -22,7 +23,7 @@ type RebalancedShardScheduler struct {
 }
 
 func NewRebalancedShardScheduler(logger *zap.Logger, factory *coordinator.Factory, nodePicker coordinator.NodePicker, procedureExecutingBatchSize uint32) Scheduler {
-	return &RebalancedShardScheduler{
+	return RebalancedShardScheduler{
 		logger:                      logger,
 		factory:                     factory,
 		nodePicker:                  nodePicker,
@@ -43,15 +44,21 @@ func (r RebalancedShardScheduler) Schedule(ctx context.Context, clusterSnapshot 
 	for shardID := range clusterSnapshot.Topology.ShardViewsMapping {
 		shardIDs = append(shardIDs, shardID)
 	}
-	shardNodeMapping, err := r.nodePicker.PickNode(ctx, shardIDs, uint32(len(clusterSnapshot.Topology.ShardViewsMapping)), clusterSnapshot.RegisteredNodes)
+	numShards := uint32(len(clusterSnapshot.Topology.ShardViewsMapping))
+	shardNodeMapping, err := r.nodePicker.PickNode(ctx, shardIDs, numShards, clusterSnapshot.RegisteredNodes)
 	if err != nil {
 		return ScheduleResult{}, err
 	}
 
+	assignedShardIDs := make(map[storage.ShardID]struct{}, numShards)
 	for _, shardNode := range clusterSnapshot.Topology.ClusterView.ShardNodes {
-		newLeaderNode := shardNodeMapping[shardNode.ID]
+		// Mark the shard assigned.
+		assignedShardIDs[shardNode.ID] = struct{}{}
+
+		newLeaderNode, ok := shardNodeMapping[shardNode.ID]
+		assert.Assert(ok)
 		if newLeaderNode.Node.Name != shardNode.NodeName {
-			r.logger.Info("rebalanced shard scheduler generate new procedure", zap.Uint64("shardID", uint64(shardNode.ID)), zap.String("originNode", shardNode.NodeName), zap.String("newNode", newLeaderNode.Node.Name))
+			r.logger.Info("rebalanced shard scheduler generates transfer leader procedure", zap.Uint64("shardID", uint64(shardNode.ID)), zap.String("originNode", shardNode.NodeName), zap.String("newNode", newLeaderNode.Node.Name))
 			p, err := r.factory.CreateTransferLeaderProcedure(ctx, coordinator.TransferLeaderRequest{
 				Snapshot:          clusterSnapshot,
 				ShardID:           shardNode.ID,
@@ -62,7 +69,32 @@ func (r RebalancedShardScheduler) Schedule(ctx context.Context, clusterSnapshot 
 				return ScheduleResult{}, err
 			}
 			procedures = append(procedures, p)
-			reasons.WriteString(fmt.Sprintf("the shard does not meet the balance requirements,it should be assigned to node, shardID:%d, oldNode:%s, newNode:%s.", shardNode.ID, shardNode.NodeName, newLeaderNode.Node.Name))
+			reasons.WriteString(fmt.Sprintf("shard is transferred to another node, shardID:%d, oldNode:%s, newNode:%s\n", shardNode.ID, shardNode.NodeName, newLeaderNode.Node.Name))
+			if len(procedures) >= int(r.procedureExecutingBatchSize) {
+				break
+			}
+		}
+	}
+
+	for id := uint32(0); id < numShards; id++ {
+		shardID := storage.ShardID(id)
+		if _, assigned := assignedShardIDs[shardID]; !assigned {
+			node, ok := shardNodeMapping[shardID]
+			assert.Assert(ok)
+
+			r.logger.Info("rebalanced shard scheduler generates transfer leader procedure (assign to node)", zap.Uint32("shardID", id), zap.String("node", node.Node.Name))
+			p, err := r.factory.CreateTransferLeaderProcedure(ctx, coordinator.TransferLeaderRequest{
+				Snapshot:          clusterSnapshot,
+				ShardID:           shardID,
+				OldLeaderNodeName: "",
+				NewLeaderNodeName: node.Node.Name,
+			})
+			if err != nil {
+				return ScheduleResult{}, err
+			}
+
+			procedures = append(procedures, p)
+			reasons.WriteString(fmt.Sprintf("shard is assigned to a node, shardID:%d, node:%s\n", shardID, node.Node.Name))
 			if len(procedures) >= int(r.procedureExecutingBatchSize) {
 				break
 			}
