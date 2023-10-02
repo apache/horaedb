@@ -27,8 +27,8 @@ use catalog::{
     manager::{self, Manager},
     schema::{
         self, CatalogMismatch, CreateOptions, CreateTableRequest, CreateTableWithCause,
-        DropOptions, DropTableRequest, DropTableWithCause, NameRef, Schema, SchemaMismatch,
-        SchemaRef,
+        DifferentTableId, DropOptions, DropTableRequest, DropTableWithCause, NameRef, Schema,
+        SchemaMismatch, SchemaRef,
     },
     Catalog, CatalogRef, CreateSchemaWithCause,
 };
@@ -298,6 +298,17 @@ impl Schema for SchemaImpl {
             &request.params.schema_name,
             &request.params.table_name,
         )? {
+            if let Some(given_table_id) = request.table_id {
+                let expected_table_id = table.id();
+                ensure!(
+                    expected_table_id == given_table_id,
+                    DifferentTableId {
+                        table_name: table.name().to_string(),
+                        expected_table_id,
+                        given_table_id,
+                    }
+                );
+            }
             return Ok(table);
         }
 
