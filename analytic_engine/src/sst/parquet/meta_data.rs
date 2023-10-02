@@ -446,6 +446,15 @@ impl TryFrom<sst_pb::ParquetMetaData> for ParquetMetaData {
             Schema::try_from(schema).context(ConvertTableSchema)?
         };
         let parquet_filter = src.filter.map(ParquetFilter::try_from).transpose()?;
+        let column_values = if src.column_values.is_empty() {
+            // For old version sst, reset None to all columns.
+            vec![None; schema.num_columns()]
+        } else {
+            src.column_values
+                .into_iter()
+                .map(|v| v.value.map(|v| v.into()))
+                .collect()
+        };
 
         Ok(Self {
             min_key: src.min_key.into(),
@@ -454,11 +463,7 @@ impl TryFrom<sst_pb::ParquetMetaData> for ParquetMetaData {
             max_sequence: src.max_sequence,
             schema,
             parquet_filter,
-            column_values: src
-                .column_values
-                .into_iter()
-                .map(|v| v.value.map(|v| v.into()))
-                .collect(),
+            column_values,
         })
     }
 }

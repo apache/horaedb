@@ -22,6 +22,7 @@ use std::{
 use arrow::datatypes::SchemaRef;
 use common_types::datum::Datum;
 use datafusion::{
+    logical_expr::Operator,
     prelude::{lit, Expr},
     scalar::ScalarValue,
 };
@@ -71,6 +72,12 @@ pub struct RowGroupPruner<'a> {
 
 fn rewrite_expr(expr: Expr, column_values: &HashMap<String, Option<ColumnValue>>) -> Expr {
     let expr = match expr {
+        // column not in (v1,v2,v3)
+        // ```plaintext
+        // [InList(InList { expr: Column(Column { relation: None, name: "name" }),
+        //                  list: [Literal(Utf8("v1")), Literal(Utf8("v2")), Literal(Utf8("v3"))],
+        //                  negated: true })]
+        // ```
         Expr::InList(in_list) => {
             if !in_list.negated {
                 return Expr::InList(in_list);
@@ -108,9 +115,61 @@ fn rewrite_expr(expr: Expr, column_values: &HashMap<String, Option<ColumnValue>>
                     _ => return Expr::InList(in_list),
                 }
             }
-            let values = all_possible_values.difference(&not_values);
-            let list = values.into_iter().map(lit).collect();
-            datafusion::logical_expr::in_list(*in_list.expr, list, false)
+            let wanted_values = all_possible_values.difference(&not_values);
+            let wanted_values = wanted_values.into_iter().map(lit).collect();
+            datafusion::logical_expr::in_list(*in_list.expr, wanted_values, false)
+        }
+        // column != value
+        // ```plaintext
+        // [BinaryExpr(BinaryExpr { left: Column(Column { relation: None, name: "name" }),
+        //                          op: NotEq,
+        //                          right: Literal(Utf8("value")) })]
+        // ```
+        Expr::BinaryExpr(binary_expr) => {
+            if binary_expr.op != Operator::NotEq {
+                return Expr::BinaryExpr(binary_expr);
+            }
+
+            let column_name = match *binary_expr.left.clone() {
+                Expr::Column(column) => column.name.to_string(),
+                _ => return Expr::BinaryExpr(binary_expr),
+            };
+            let all_possible_values = if let Some(v) = column_values.get(&column_name) {
+                v
+            } else {
+                return Expr::BinaryExpr(binary_expr);
+            };
+            let all_possible_values = if let Some(v) = all_possible_values {
+                match v {
+                    ColumnValue::StringValue(sv) => sv,
+                }
+            } else {
+                return Expr::BinaryExpr(binary_expr);
+            };
+            let not_value = match *binary_expr.right.clone() {
+                Expr::Literal(scalar_value) => match scalar_value {
+                    ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => {
+                        if let Some(v) = v {
+                            v.to_string()
+                        } else {
+                            return Expr::BinaryExpr(binary_expr);
+                        }
+                    }
+                    _ => return Expr::BinaryExpr(binary_expr),
+                },
+                _ => return Expr::BinaryExpr(binary_expr),
+            };
+            let wanted_values = all_possible_values
+                .iter()
+                .filter_map(|value| {
+                    if value == &not_value {
+                        None
+                    } else {
+                        Some(lit(value))
+                    }
+                })
+                .collect();
+            datafusion::logical_expr::in_list(*binary_expr.left, wanted_values, false)
         }
         _ => expr,
     };
@@ -134,6 +193,11 @@ impl<'a> RowGroupPruner<'a> {
                 msg: format!("expect sst_filters.len() == row_groups.len(), num_sst_filters:{}, num_row_groups:{}", f.len(), row_groups.len()),
             });
         }
+
+        ensure!(column_values.len() == schema.fields.len(), OtherNoCause {
+            msg: format!("expect column_value.len() == schema_fields.len(), num_sst_filters:{}, num_row_groups:{}", column_values.len(), schema.fields.len()),
+        });
+
         let column_values = schema
             .fields
             .iter()
