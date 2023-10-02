@@ -32,19 +32,6 @@ func NewForwardClient(member *member.Member, port int) *ForwardClient {
 	}
 }
 
-func getForwardedHTTPClient() *http.Client {
-	return &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-			TLSHandshakeTimeout: 10 * time.Second,
-		},
-	}
-}
-
 func (s *ForwardClient) GetLeaderAddr(ctx context.Context) (string, error) {
 	resp, err := s.member.GetLeaderAddr(ctx)
 	if err != nil {
@@ -97,6 +84,19 @@ func (s *ForwardClient) forwardToLeader(req *http.Request) (*http.Response, bool
 	}
 
 	return resp, false, nil
+}
+
+func getForwardedHTTPClient() *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			TLSHandshakeTimeout: 10 * time.Second,
+		},
+	}
 }
 
 // formatHttpAddr convert grpcAddr(http://127.0.0.1:8831) httpPort(5000) to httpAddr(127.0.0.1:5000).
