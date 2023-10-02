@@ -168,11 +168,11 @@ func (srv *Server) initEtcdClient() error {
 	}
 	srv.etcdCli = client
 
-	endpoint := fmt.Sprintf("%s:%d", srv.cfg.Addr, srv.cfg.GrpcPort)
 	if srv.etcdSrv != nil {
 		etcdLeaderGetter := &etcdutil.LeaderGetterWrapper{Server: srv.etcdSrv.Server}
 		srv.member = member.NewMember(srv.cfg.StorageRootPath, uint64(srv.etcdSrv.Server.ID()), srv.cfg.NodeName, srv.etcdCfg.ACUrls[0].String(), client, etcdLeaderGetter, srv.cfg.EtcdCallTimeout())
 	} else {
+		endpoint := fmt.Sprintf("http://%s:%d", srv.cfg.Addr, srv.cfg.GrpcPort)
 		srv.member = member.NewMember(srv.cfg.StorageRootPath, 0, srv.cfg.NodeName, endpoint, client, nil, srv.cfg.EtcdCallTimeout())
 	}
 	return nil

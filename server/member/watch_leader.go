@@ -93,7 +93,7 @@ func NewLeaderWatcher(ctx WatchContext, self *Member, leaseTTLSec int64, embedEt
 	}
 }
 
-// watchWithCheckEtcdLeader watches the leader changes:
+// Watch watches the leader changes:
 //  1. Check whether the leader is valid if leader exists.
 //     - Leader is valid: wait for the leader changes.
 //     - Leader is not valid: reset the leader by the current leader.
