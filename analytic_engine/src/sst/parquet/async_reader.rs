@@ -54,7 +54,7 @@ use tokio::sync::{
 };
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
-use super::meta_data::ColumnValue;
+use super::meta_data::ColumnValueSet;
 use crate::{
     prefetchable_stream::{NoopPrefetcher, PrefetchableStream},
     sst::{
@@ -175,7 +175,7 @@ impl<'a> Reader<'a> {
         schema: SchemaRef,
         row_groups: &[RowGroupMetaData],
         parquet_filter: Option<&ParquetFilter>,
-        column_values: &[Option<ColumnValue>],
+        column_values: Option<&Vec<Option<ColumnValueSet>>>,
     ) -> Result<Vec<usize>> {
         let metrics_collector = self
             .metrics
@@ -249,7 +249,7 @@ impl<'a> Reader<'a> {
                 arrow_schema.clone(),
                 meta_data.parquet().row_groups(),
                 custom.parquet_filter.as_ref(),
-                &custom.column_values,
+                custom.column_values.as_ref(),
             )?
         };
 

@@ -81,7 +81,7 @@ impl Predicate {
         }
     }
 
-    pub fn exprs(&self) -> &[Expr] {
+    pub fn exprs(&self) -> &Vec<Expr> {
         &self.exprs
     }
 

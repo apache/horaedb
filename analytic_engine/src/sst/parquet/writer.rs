@@ -29,7 +29,7 @@ use parquet::data_type::AsBytes;
 use snafu::{OptionExt, ResultExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use super::meta_data::{ColumnValue, RowGroupFilter};
+use super::meta_data::{ColumnValueSet, RowGroupFilter};
 use crate::{
     sst::{
         factory::{ObjectStorePickerRef, SstWriteOptions},
@@ -97,7 +97,7 @@ struct RecordBatchGroupWriter {
     input_exhausted: bool,
     // Time range of rows, not aligned to segment.
     real_time_range: Option<TimeRange>,
-    column_values: Vec<Option<ColumnValue>>,
+    column_values: Vec<Option<ColumnValueSet>>,
 }
 
 impl RecordBatchGroupWriter {
@@ -110,14 +110,14 @@ impl RecordBatchGroupWriter {
         compression: Compression,
         level: Level,
     ) -> Self {
-        let column_values: Vec<Option<ColumnValue>> = meta_data
+        let column_values: Vec<Option<ColumnValueSet>> = meta_data
             .schema
             .columns()
             .iter()
             .map(|col| {
                 // Only keep string values now.
                 if matches!(col.data_type, DatumKind::String) {
-                    Some(ColumnValue::StringValue(HashSet::new()))
+                    Some(ColumnValueSet::StringValue(HashSet::new()))
                 } else {
                     None
                 }
@@ -229,7 +229,7 @@ impl RecordBatchGroupWriter {
         for (col_idx, col_values) in self.column_values.iter_mut().enumerate() {
             if let Some(values) = col_values {
                 match values {
-                    ColumnValue::StringValue(sv) => {
+                    ColumnValueSet::StringValue(sv) => {
                         // when there are too many values, don't keep this column values any more.
                         if sv.len() > KEEP_COLUMN_VALUE_THRESHOLD {
                             *col_values = None;
@@ -246,7 +246,7 @@ impl RecordBatchGroupWriter {
             let column_block = record_batch.column(col_idx);
             for row_idx in 0..rows_num {
                 match col_values {
-                    ColumnValue::StringValue(ss) => {
+                    ColumnValueSet::StringValue(ss) => {
                         let datum = column_block.datum(row_idx);
                         if let Some(v) = datum.as_str() {
                             ss.insert(v.to_string());
@@ -343,7 +343,7 @@ impl RecordBatchGroupWriter {
             // TODO: when all compaction input SST files already have column_values, we can
             // merge them from meta_data directly, calculate them here waste CPU
             // cycles.
-            parquet_meta_data.column_values = self.column_values;
+            parquet_meta_data.column_values = Some(self.column_values);
             parquet_meta_data
         };
 
@@ -551,7 +551,6 @@ mod tests {
             let sst_file_path = Path::from("data.par");
 
             let schema = build_schema_with_dictionary();
-            let num_column = schema.num_columns();
             let reader_projected_schema = ProjectedSchema::no_projection(schema.clone());
             let mut sst_meta = MetaData {
                 min_key: Bytes::from_static(b"100"),
@@ -657,7 +656,7 @@ mod tests {
                 // sst filter is built insider sst writer, so overwrite to default for
                 // comparison.
                 sst_meta_readback.parquet_filter = Default::default();
-                sst_meta_readback.column_values = vec![None; num_column];
+                sst_meta_readback.column_values = None;
                 // time_range is built insider sst writer, so overwrite it for
                 // comparison.
                 sst_meta.time_range = sst_info.time_range;

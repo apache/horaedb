@@ -15,6 +15,7 @@
 // Row group pruner.
 
 use std::{
+    borrow::Cow,
     cmp::Ordering,
     collections::{HashMap, HashSet},
 };
@@ -35,7 +36,7 @@ use parquet_ext::prune::{
 use snafu::ensure;
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
-use super::meta_data::ColumnValue;
+use super::meta_data::ColumnValueSet;
 use crate::sst::{
     parquet::meta_data::ParquetFilter,
     reader::error::{OtherNoCause, Result},
@@ -66,13 +67,33 @@ pub struct RowGroupPruner<'a> {
     schema: &'a SchemaRef,
     row_groups: &'a [RowGroupMetaData],
     parquet_filter: Option<&'a ParquetFilter>,
-    predicates: Vec<Expr>,
+    predicates: Cow<'a, Vec<Expr>>,
     metrics: Metrics,
 }
 
-fn rewrite_expr(expr: Expr, column_values: &HashMap<String, Option<ColumnValue>>) -> Expr {
+/// This functions will rewrite not related expr to its oppsite.
+/// Current filter is based on bloom-filter like structure, it can give accurate
+/// answer if an item doesn't exist in one collection, so by convert `col !=
+/// value` to `col == value2`, we can fully utilize this feature.
+fn rewrite_not_expr(expr: Expr, column_values: &HashMap<String, Option<ColumnValueSet>>) -> Expr {
+    let get_all_values = |column_name| {
+        column_values.get(column_name).and_then(|all_values| {
+            all_values.as_ref().map(|all| match all {
+                ColumnValueSet::StringValue(sv) => sv,
+            })
+        })
+    };
+    let get_utf8_string = |expr| match expr {
+        Expr::Literal(scalar_value) => match scalar_value {
+            ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => v,
+            _ => None,
+        },
+        _ => None,
+    };
+
     let expr = match expr {
-        // column not in (v1,v2,v3)
+        // Case1: not in
+        //
         // ```plaintext
         // [InList(InList { expr: Column(Column { relation: None, name: "name" }),
         //                  list: [Literal(Utf8("v1")), Literal(Utf8("v2")), Literal(Utf8("v3"))],
@@ -88,38 +109,27 @@ fn rewrite_expr(expr: Expr, column_values: &HashMap<String, Option<ColumnValue>>
                 _ => return Expr::InList(in_list),
             };
 
-            let all_possible_values = if let Some(v) = column_values.get(&column_name) {
+            let all_values = if let Some(v) = get_all_values(&column_name) {
                 v
-            } else {
-                return Expr::InList(in_list);
-            };
-            let all_possible_values = if let Some(v) = all_possible_values {
-                match v {
-                    ColumnValue::StringValue(sv) => sv,
-                }
             } else {
                 return Expr::InList(in_list);
             };
 
             let mut not_values = HashSet::new();
             for item in &in_list.list {
-                match item {
-                    Expr::Literal(scalar_value) => match scalar_value {
-                        ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => {
-                            if let Some(v) = v {
-                                not_values.insert(v.to_string());
-                            }
-                        }
-                        _ => return Expr::InList(in_list),
-                    },
-                    _ => return Expr::InList(in_list),
+                if let Some(v) = get_utf8_string(item.clone()) {
+                    not_values.insert(v);
+                } else {
+                    return Expr::InList(in_list);
                 }
             }
-            let wanted_values = all_possible_values.difference(&not_values);
+
+            let wanted_values = all_values.difference(&not_values);
             let wanted_values = wanted_values.into_iter().map(lit).collect();
             datafusion::logical_expr::in_list(*in_list.expr, wanted_values, false)
         }
-        // column != value
+        // Case2: !=
+        //
         // ```plaintext
         // [BinaryExpr(BinaryExpr { left: Column(Column { relation: None, name: "name" }),
         //                          op: NotEq,
@@ -134,32 +144,19 @@ fn rewrite_expr(expr: Expr, column_values: &HashMap<String, Option<ColumnValue>>
                 Expr::Column(column) => column.name.to_string(),
                 _ => return Expr::BinaryExpr(binary_expr),
             };
-            let all_possible_values = if let Some(v) = column_values.get(&column_name) {
+            let all_values = if let Some(v) = get_all_values(&column_name) {
                 v
             } else {
                 return Expr::BinaryExpr(binary_expr);
             };
-            let all_possible_values = if let Some(v) = all_possible_values {
-                match v {
-                    ColumnValue::StringValue(sv) => sv,
-                }
+
+            let not_value = if let Some(v) = get_utf8_string(*binary_expr.right.clone()) {
+                v
             } else {
                 return Expr::BinaryExpr(binary_expr);
             };
-            let not_value = match *binary_expr.right.clone() {
-                Expr::Literal(scalar_value) => match scalar_value {
-                    ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => {
-                        if let Some(v) = v {
-                            v.to_string()
-                        } else {
-                            return Expr::BinaryExpr(binary_expr);
-                        }
-                    }
-                    _ => return Expr::BinaryExpr(binary_expr),
-                },
-                _ => return Expr::BinaryExpr(binary_expr),
-            };
-            let wanted_values = all_possible_values
+
+            let wanted_values = all_values
                 .iter()
                 .filter_map(|value| {
                     if value == &not_value {
@@ -169,6 +166,7 @@ fn rewrite_expr(expr: Expr, column_values: &HashMap<String, Option<ColumnValue>>
                     }
                 })
                 .collect();
+
             datafusion::logical_expr::in_list(*binary_expr.left, wanted_values, false)
         }
         _ => expr,
@@ -184,9 +182,9 @@ impl<'a> RowGroupPruner<'a> {
         schema: &'a SchemaRef,
         row_groups: &'a [RowGroupMetaData],
         parquet_filter: Option<&'a ParquetFilter>,
-        predicates: &'a [Expr],
+        predicates: &'a Vec<Expr>,
         metrics_collector: Option<MetricsCollector>,
-        column_values: &'a [Option<ColumnValue>],
+        column_values: Option<&'a Vec<Option<ColumnValueSet>>>,
     ) -> Result<Self> {
         if let Some(f) = parquet_filter {
             ensure!(f.len() == row_groups.len(), OtherNoCause {
@@ -194,22 +192,32 @@ impl<'a> RowGroupPruner<'a> {
             });
         }
 
-        ensure!(column_values.len() == schema.fields.len(), OtherNoCause {
-            msg: format!("expect column_value.len() == schema_fields.len(), num_sst_filters:{}, num_row_groups:{}", column_values.len(), schema.fields.len()),
+        if let Some(values) = column_values {
+            ensure!(values.len() == schema.fields.len(), OtherNoCause {
+            msg: format!("expect column_value.len() == schema_fields.len(), num_sst_filters:{}, num_row_groups:{}", values.len(), schema.fields.len()),
         });
+        }
+        let predicates = if let Some(column_values) = column_values {
+            let column_values = schema
+                .fields
+                .iter()
+                .enumerate()
+                .map(|(i, f)| (f.name().to_string(), column_values[i].clone()))
+                .collect();
 
-        let column_values = schema
-            .fields
-            .iter()
-            .enumerate()
-            .map(|(i, f)| (f.name().to_string(), column_values[i].clone()))
-            .collect();
-        debug!("Pruner origin predicates:{predicates:?}");
-        let predicates = predicates
-            .iter()
-            .map(|expr| rewrite_expr(expr.clone(), &column_values))
-            .collect();
-        debug!("Pruner predicates after rewrite:{predicates:?}, column_values:{column_values:?}");
+            debug!("Pruner rewrite predicates, before:{predicates:?}");
+            let predicates = predicates
+                .iter()
+                .map(|expr| rewrite_not_expr(expr.clone(), &column_values))
+                .collect();
+            debug!(
+                "Pruner rewrite predicates, after:{predicates:?}, column_values:{column_values:?}"
+            );
+
+            Cow::Owned(predicates)
+        } else {
+            Cow::Borrowed(predicates)
+        };
 
         let metrics = Metrics {
             use_custom_filter: parquet_filter.is_some(),
@@ -326,6 +334,8 @@ impl<'a> RowGroupPruner<'a> {
 
 #[cfg(test)]
 mod tests {
+    use datafusion::prelude::col;
+
     use super::*;
 
     #[test]
@@ -342,6 +352,56 @@ mod tests {
             let real_row_groups =
                 RowGroupPruner::intersect_pruned_row_groups(&row_groups0, &row_groups1);
             assert_eq!(real_row_groups, expect_row_groups)
+        }
+    }
+    #[test]
+    fn test_rewrite_not_expr() {
+        let column_values = [("host", Some(["web1", "web2"])), ("ip", None)]
+            .into_iter()
+            .map(|(column_name, values)| {
+                (
+                    column_name.to_string(),
+                    values.map(|vs| {
+                        ColumnValueSet::StringValue(HashSet::from_iter(
+                            vs.into_iter().map(|v| v.to_string()),
+                        ))
+                    }),
+                )
+            })
+            .collect();
+
+        let testcases = [
+            (col("host").eq(lit("web1")), col("host").eq(lit("web1"))),
+            // Rewrite ok
+            (
+                // host != web1
+                col("host").not_eq(lit("web1")),
+                col("host").in_list(vec![lit("web2")], false),
+            ),
+            (
+                // host not in (web1, web3) --> host in (web2)
+                col("host").in_list(vec![lit("web1"), lit("web3")], true),
+                col("host").in_list(vec![lit("web2")], false),
+            ),
+            (
+                // host not in (web1, web2) --> host in ()
+                col("host").in_list(vec![lit("web1"), lit("web2")], true),
+                col("host").in_list(vec![], false),
+            ),
+            // Can't rewrite since ip in column_values is None.
+            (
+                // ip != 127.0.0.1
+                col("ip").not_eq(lit("127.0.0.1")),
+                col("ip").not_eq(lit("127.0.0.1")),
+            ),
+            (
+                // ip = 127.0.0.1
+                col("ip").eq(lit("127.0.0.1")),
+                col("ip").eq(lit("127.0.0.1")),
+            ),
+        ];
+        for (input, expected) in testcases {
+            assert_eq!(expected, rewrite_not_expr(input, &column_values));
         }
     }
 }
