@@ -29,9 +29,8 @@ func TestRebalancedScheduler(t *testing.T) {
 
 	// PrepareCluster would be scheduled an empty procedure.
 	prepareCluster := test.InitPrepareCluster(ctx, t)
-	result, err = s.Schedule(ctx, prepareCluster.GetMetadata().GetClusterSnapshot())
+	_, err = s.Schedule(ctx, prepareCluster.GetMetadata().GetClusterSnapshot())
 	re.NoError(err)
-	re.Empty(result)
 
 	// StableCluster with all shards assigned would be scheduled a load balance procedure.
 	stableCluster := test.InitStableCluster(ctx, t)

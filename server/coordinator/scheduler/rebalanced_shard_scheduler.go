@@ -32,8 +32,8 @@ func NewRebalancedShardScheduler(logger *zap.Logger, factory *coordinator.Factor
 }
 
 func (r RebalancedShardScheduler) Schedule(ctx context.Context, clusterSnapshot metadata.Snapshot) (ScheduleResult, error) {
-	// RebalancedShardScheduler can only be scheduled when the cluster is stable.
-	if !clusterSnapshot.Topology.IsStable() {
+	// RebalancedShardScheduler can only be scheduled when the cluster is not empty.
+	if clusterSnapshot.Topology.ClusterView.State == storage.ClusterStateEmpty {
 		return ScheduleResult{}, nil
 	}
 
