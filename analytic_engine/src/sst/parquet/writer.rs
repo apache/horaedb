@@ -339,6 +339,10 @@ impl RecordBatchGroupWriter {
             if let Some(range) = self.real_time_range {
                 parquet_meta_data.time_range = range;
             }
+            // TODO: when all compaction input SST files already have column_values, we can
+            // merge them from meta_data directly, calculate them here waste CPU
+            // cycles.
+            parquet_meta_data.column_values = self.column_values;
             parquet_meta_data
         };
 

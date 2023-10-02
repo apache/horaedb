@@ -468,7 +468,7 @@ impl TryFrom<sst_pb::ParquetMetaData> for ParquetMetaData {
     }
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ColumnValue {
     StringValue(HashSet<String>),
 }

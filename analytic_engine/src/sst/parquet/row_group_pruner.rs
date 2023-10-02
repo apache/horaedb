@@ -204,10 +204,12 @@ impl<'a> RowGroupPruner<'a> {
             .enumerate()
             .map(|(i, f)| (f.name().to_string(), column_values[i].clone()))
             .collect();
+        debug!("Pruner origin predicates:{predicates:?}");
         let predicates = predicates
             .iter()
             .map(|expr| rewrite_expr(expr.clone(), &column_values))
             .collect();
+        debug!("Pruner predicates after rewrite:{predicates:?}, column_values:{column_values:?}");
 
         let metrics = Metrics {
             use_custom_filter: parquet_filter.is_some(),
