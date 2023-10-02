@@ -77,7 +77,7 @@ func (m *Member) getLeader(ctx context.Context) (*getLeaderResp, error) {
 		return nil, ErrInvalidLeaderValue.WithCause(err)
 	}
 
-	return &getLeaderResp{Leader: leader, Revision: leaderKv.ModRevision, IsLocal: leader.GetId() == m.ID}, nil
+	return &getLeaderResp{Leader: leader, Revision: leaderKv.ModRevision, IsLocal: leader.GetEndpoint() == m.Endpoint}, nil
 }
 
 // GetLeaderAddr gets the leader address of the cluster with memory cache.
@@ -91,7 +91,7 @@ func (m *Member) GetLeaderAddr(_ context.Context) (GetLeaderAddrResp, error) {
 	}
 	return GetLeaderAddrResp{
 		LeaderEndpoint: m.leader.Endpoint,
-		IsLocal:        m.leader.GetId() == m.ID,
+		IsLocal:        m.leader.Endpoint == m.Endpoint,
 	}, nil
 }
 
@@ -148,7 +148,7 @@ func (m *Member) WaitForLeaderChange(ctx context.Context, revision int64) {
 	}
 }
 
-func (m *Member) CampaignAndKeepLeader(ctx context.Context, leaseTTLSec int64, callbacks LeadershipEventCallbacks) error {
+func (m *Member) CampaignAndKeepLeader(ctx context.Context, leaseTTLSec int64, leadershipChecker LeadershipChecker, callbacks LeadershipEventCallbacks) error {
 	leaderVal, err := m.Marshal()
 	if err != nil {
 		return err
@@ -226,9 +226,9 @@ func (m *Member) CampaignAndKeepLeader(ctx context.Context, leaseTTLSec int64, c
 				m.logger.Info("no longer a leader because lease has expired")
 				return nil
 			}
-			etcdLeader := m.etcdLeaderGetter.EtcdLeaderID()
-			if etcdLeader != m.ID {
-				m.logger.Info("etcd leader changed and should re-assign the leadership", zap.String("old-leader", m.Name), zap.Uint64("new-leader", etcdLeader))
+
+			if !leadershipChecker.ShouldCampaign(m) {
+				m.logger.Info("etcd leader changed and should re-assign the leadership", zap.String("old-leader", m.Name))
 				return nil
 			}
 		case <-ctx.Done():

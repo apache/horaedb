@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	defaultGrpcHandleTimeoutMs    int64 = 60 * 1000
+	defaultEnableEmbedEtcd        bool  = true
 	defaultInitialLimiterCapacity int   = 100 * 1000
 	defaultInitialLimiterRate     int   = 10 * 1000
 	defaultEnableLimiter          bool  = false
@@ -28,7 +28,16 @@ const (
 	defaultMaxTxnOps                    = 128
 	defaultEtcdLeaseTTLSec              = 10
 
+	defaultGrpcHandleTimeoutMs int = 60 * 1000
+	// GrpcServiceMaxSendMsgSize controls the max size of the sent message(200MB by default).
+	defaultGrpcServiceMaxSendMsgSize int = 200 * 1024 * 1024
+	// GrpcServiceMaxRecvMsgSize controls the max size of the received message(100MB by default).
+	defaultGrpcServiceMaxRecvMsgSize int = 100 * 1024 * 1024
+	// GrpcServiceKeepAlivePingMinIntervalSec controls the min interval for one keepalive ping.
+	defaultGrpcServiceKeepAlivePingMinIntervalSec int = 20
+
 	defaultNodeNamePrefix          = "ceresmeta"
+	defaultEndpoint                = "127.0.0.1"
 	defaultRootPath                = "/ceresdb"
 	defaultClientUrls              = "http://0.0.0.0:2379"
 	defaultPeerUrls                = "http://0.0.0.0:2380"
@@ -57,6 +66,7 @@ const (
 	defaultProcedureExecutingBatchSize = math.MaxUint32
 
 	defaultHTTPPort = 8080
+	defaultGrpcPort = 2379
 
 	defaultDataDir = "/tmp/ceresmeta"
 
@@ -85,14 +95,20 @@ type Config struct {
 	EtcdLog     log.Config    `toml:"etcd-log" env:"ETCD_LOG"`
 	FlowLimiter LimiterConfig `toml:"flow-limiter" env:"FLOW_LIMITER"`
 
-	GrpcHandleTimeoutMs int64 `toml:"grpc-handle-timeout-ms" env:"GRPC_HANDLER_TIMEOUT_MS"`
-	EtcdStartTimeoutMs  int64 `toml:"etcd-start-timeout-ms" env:"ETCD_START_TIMEOUT_MS"`
-	EtcdCallTimeoutMs   int64 `toml:"etcd-call-timeout-ms" env:"ETCD_CALL_TIMEOUT_MS"`
-	EtcdMaxTxnOps       int64 `toml:"etcd-max-txn-ops" env:"ETCD_MAX_TXN_OPS"`
+	EnableEmbedEtcd    bool  `toml:"enable-embed-etcd" env:"ENABLE_EMBED_ETCD"`
+	EtcdStartTimeoutMs int64 `toml:"etcd-start-timeout-ms" env:"ETCD_START_TIMEOUT_MS"`
+	EtcdCallTimeoutMs  int64 `toml:"etcd-call-timeout-ms" env:"ETCD_CALL_TIMEOUT_MS"`
+	EtcdMaxTxnOps      int64 `toml:"etcd-max-txn-ops" env:"ETCD_MAX_TXN_OPS"`
+
+	GrpcHandleTimeoutMs                    int `toml:"grpc-handle-timeout-ms" env:"GRPC_HANDLER_TIMEOUT_MS"`
+	GrpcServiceMaxSendMsgSize              int `toml:"grpc-service-max-send-msg-size" env:"GRPC_SERVICE_MAX_SEND_MSG_SIZE"`
+	GrpcServiceMaxRecvMsgSize              int `toml:"grpc-service-max-recv-msg-size" env:"GRPC_SERVICE_MAX_RECV_MSG_SIZE"`
+	GrpcServiceKeepAlivePingMinIntervalSec int `toml:"grpc-service-keep-alive-ping-min-interval-sec" env:"GRPC_SERVICE_KEEP_ALIVE_PING_MIN_INTERVAL_SEC"`
 
 	LeaseTTLSec int64 `toml:"lease-sec" env:"LEASE_SEC"`
 
 	NodeName            string `toml:"node-name" env:"NODE_NAME"`
+	Addr                string `toml:"addr" env:"ADDR"`
 	DataDir             string `toml:"data-dir" env:"DATA_DIR"`
 	StorageRootPath     string `toml:"storage-root-path" env:"STORAGE_ROOT_PATH"`
 	InitialCluster      string `toml:"initial-cluster" env:"INITIAL_CLUSTER"`
@@ -136,7 +152,8 @@ type Config struct {
 	AdvertiseClientUrls string `toml:"advertise-client-urls" env:"ADVERTISE_CLIENT_URLS"`
 	AdvertisePeerUrls   string `toml:"advertise-peer-urls" env:"ADVERTISE_PEER_URLS"`
 
-	HTTPPort int `toml:"default-http-port" env:"DEFAULT_HTTP_PORT"`
+	HTTPPort int `toml:"http-port" env:"HTTP_PORT"`
+	GrpcPort int `toml:"grpc-port" env:"GRPC_PORT"`
 }
 
 func (c *Config) GrpcHandleTimeout() time.Duration {
@@ -260,14 +277,20 @@ func MakeConfigParser() (*Parser, error) {
 			Enable: defaultEnableLimiter,
 		},
 
-		GrpcHandleTimeoutMs: defaultGrpcHandleTimeoutMs,
-		EtcdStartTimeoutMs:  defaultEtcdStartTimeoutMs,
-		EtcdCallTimeoutMs:   defaultCallTimeoutMs,
-		EtcdMaxTxnOps:       defaultMaxTxnOps,
+		EnableEmbedEtcd:    defaultEnableEmbedEtcd,
+		EtcdStartTimeoutMs: defaultEtcdStartTimeoutMs,
+		EtcdCallTimeoutMs:  defaultCallTimeoutMs,
+		EtcdMaxTxnOps:      defaultMaxTxnOps,
+
+		GrpcHandleTimeoutMs:                    defaultGrpcHandleTimeoutMs,
+		GrpcServiceMaxSendMsgSize:              defaultGrpcServiceMaxSendMsgSize,
+		GrpcServiceMaxRecvMsgSize:              defaultGrpcServiceMaxRecvMsgSize,
+		GrpcServiceKeepAlivePingMinIntervalSec: defaultGrpcServiceKeepAlivePingMinIntervalSec,
 
 		LeaseTTLSec: defaultEtcdLeaseTTLSec,
 
 		NodeName:        defaultNodeName,
+		Addr:            defaultEndpoint,
 		DataDir:         defaultDataDir,
 		StorageRootPath: defaultRootPath,
 
@@ -300,6 +323,7 @@ func MakeConfigParser() (*Parser, error) {
 		ProcedureExecutingBatchSize:     defaultProcedureExecutingBatchSize,
 
 		HTTPPort: defaultHTTPPort,
+		GrpcPort: defaultGrpcPort,
 	}
 
 	version := fs.Bool("version", false, "print version information")

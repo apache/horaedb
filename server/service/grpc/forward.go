@@ -21,7 +21,6 @@ func (s *Service) getForwardedCeresmetaClient(ctx context.Context) (metaservicep
 	}
 
 	if forwardedAddr != "" {
-		log.Info("try to create ceresmeta client", zap.String("addr", forwardedAddr))
 		ceresmetaClient, err := s.getCeresmetaClient(ctx, forwardedAddr)
 		if err != nil {
 			return nil, errors.WithMessagef(err, "get forwarded ceresmeta client, addr:%s", forwardedAddr)
@@ -42,6 +41,7 @@ func (s *Service) getCeresmetaClient(ctx context.Context, addr string) (metaserv
 func (s *Service) getForwardedGrpcClient(ctx context.Context, forwardedAddr string) (*grpc.ClientConn, error) {
 	client, ok := s.conns.Load(forwardedAddr)
 	if !ok {
+		log.Info("try to create ceresmeta client", zap.String("addr", forwardedAddr))
 		cc, err := service.GetClientConn(ctx, forwardedAddr)
 		if err != nil {
 			return nil, err

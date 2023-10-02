@@ -7,13 +7,13 @@ import (
 )
 
 type EtcdLeaderGetter interface {
-	EtcdLeaderID() uint64
+	EtcdLeaderID() (uint64, error)
 }
 
 type LeaderGetterWrapper struct {
 	Server *etcdserver.EtcdServer
 }
 
-func (w *LeaderGetterWrapper) EtcdLeaderID() uint64 {
-	return w.Server.Lead()
+func (w *LeaderGetterWrapper) EtcdLeaderID() (uint64, error) {
+	return w.Server.Lead(), nil
 }

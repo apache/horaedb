@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,6 +28,7 @@ import (
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 )
 
 type Server struct {
@@ -79,7 +81,22 @@ func CreateServer(cfg *config.Config) (*Server, error) {
 
 // Run runs the services and background jobs.
 func (srv *Server) Run(ctx context.Context) error {
-	if err := srv.startEtcd(ctx); err != nil {
+	// If enableEmbedEtcd is true, the grpc server is started in the same process as the etcd server.
+	if srv.cfg.EnableEmbedEtcd {
+		if err := srv.startEmbedEtcd(ctx); err != nil {
+			srv.status.Set(status.Terminated)
+			return err
+		}
+	} else {
+		// If enableEmbedEtcd is false, the grpc server is started in a separate process.
+		go func() {
+			if err := srv.startGrpcServer(ctx); err != nil {
+				srv.status.Set(status.Terminated)
+				log.Fatal("Grpc serve failed", zap.Error(err))
+			}
+		}()
+	}
+	if err := srv.initEtcdClient(); err != nil {
 		srv.status.Set(status.Terminated)
 		return err
 	}
@@ -91,7 +108,6 @@ func (srv *Server) Run(ctx context.Context) error {
 
 	srv.startBgJobs(ctx)
 	srv.status.Set(status.StatusRunning)
-
 	return nil
 }
 
@@ -117,7 +133,7 @@ func (srv *Server) IsClosed() bool {
 	return atomic.LoadInt32(&srv.isClosed) == 1
 }
 
-func (srv *Server) startEtcd(ctx context.Context) error {
+func (srv *Server) startEmbedEtcd(ctx context.Context) error {
 	etcdSrv, err := embed.StartEtcd(srv.etcdCfg)
 	if err != nil {
 		return ErrStartEtcd.WithCause(err)
@@ -131,23 +147,53 @@ func (srv *Server) startEtcd(ctx context.Context) error {
 	case <-newCtx.Done():
 		return ErrStartEtcdTimeout.WithCausef("timeout is:%v", srv.cfg.EtcdStartTimeout())
 	}
+	srv.etcdSrv = etcdSrv
 
-	endpoints := []string{srv.etcdCfg.ACUrls[0].String()}
+	return nil
+}
+
+func (srv *Server) initEtcdClient() error {
+	etcdEndpoints := make([]string, 0, len(srv.etcdCfg.ACUrls))
+	for _, url := range srv.etcdCfg.ACUrls {
+		etcdEndpoints = append(etcdEndpoints, url.String())
+	}
 	lgc := log.GetLoggerConfig()
 	client, err := clientv3.New(clientv3.Config{
-		Endpoints:   endpoints,
+		Endpoints:   etcdEndpoints,
 		DialTimeout: srv.cfg.EtcdCallTimeout(),
 		LogConfig:   lgc,
 	})
 	if err != nil {
 		return ErrCreateEtcdClient.WithCause(err)
 	}
-
 	srv.etcdCli = client
-	etcdLeaderGetter := &etcdutil.LeaderGetterWrapper{Server: etcdSrv.Server}
 
-	srv.member = member.NewMember("", uint64(etcdSrv.Server.ID()), srv.cfg.NodeName, endpoints[0], client, etcdLeaderGetter, srv.cfg.EtcdCallTimeout())
-	srv.etcdSrv = etcdSrv
+	endpoint := fmt.Sprintf("%s:%d", srv.cfg.Addr, srv.cfg.GrpcPort)
+	if srv.etcdSrv != nil {
+		etcdLeaderGetter := &etcdutil.LeaderGetterWrapper{Server: srv.etcdSrv.Server}
+		srv.member = member.NewMember(srv.cfg.StorageRootPath, uint64(srv.etcdSrv.Server.ID()), srv.cfg.NodeName, srv.etcdCfg.ACUrls[0].String(), client, etcdLeaderGetter, srv.cfg.EtcdCallTimeout())
+	} else {
+		srv.member = member.NewMember(srv.cfg.StorageRootPath, 0, srv.cfg.NodeName, endpoint, client, nil, srv.cfg.EtcdCallTimeout())
+	}
+	return nil
+}
+
+func (srv *Server) startGrpcServer(_ context.Context) error {
+	opts := srv.buildGrpcOptions()
+	server := grpc.NewServer(opts...)
+
+	grpcService := metagrpc.NewService(srv.cfg.GrpcHandleTimeout(), srv)
+	server.RegisterService(&metaservicepb.CeresmetaRpcService_ServiceDesc, grpcService)
+	addr := fmt.Sprintf(":%d", srv.cfg.GrpcPort)
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		return errors.Wrapf(err, "listen on %s failed", addr)
+	}
+
+	if err = server.Serve(lis); err != nil {
+		return errors.Wrap(err, "serve failed")
+	}
+
 	return nil
 }
 
@@ -210,7 +256,8 @@ func (srv *Server) watchLeader(ctx context.Context) {
 	watchCtx := &leaderWatchContext{
 		srv,
 	}
-	watcher := member.NewLeaderWatcher(watchCtx, srv.member, srv.cfg.LeaseTTLSec)
+	// If enable embed etcd, we should watch the leader of the etcd cluster.
+	watcher := member.NewLeaderWatcher(watchCtx, srv.member, srv.cfg.LeaseTTLSec, srv.cfg.EnableEmbedEtcd)
 
 	callbacks := &leadershipEventCallbacks{
 		srv: srv,
@@ -259,6 +306,19 @@ func (srv *Server) createDefaultCluster(ctx context.Context) error {
 	return nil
 }
 
+func (srv *Server) buildGrpcOptions() []grpc.ServerOption {
+	keepalivePolicy := keepalive.EnforcementPolicy{
+		MinTime:             time.Duration(srv.cfg.GrpcServiceKeepAlivePingMinIntervalSec) * time.Second,
+		PermitWithoutStream: true,
+	}
+	opts := []grpc.ServerOption{
+		grpc.MaxSendMsgSize(srv.cfg.GrpcServiceMaxSendMsgSize),
+		grpc.MaxRecvMsgSize(srv.cfg.GrpcServiceMaxSendMsgSize),
+		grpc.KeepaliveEnforcementPolicy(keepalivePolicy),
+	}
+	return opts
+}
+
 type leaderWatchContext struct {
 	srv *Server
 }
@@ -267,8 +327,11 @@ func (ctx *leaderWatchContext) ShouldStop() bool {
 	return ctx.srv.IsClosed()
 }
 
-func (ctx *leaderWatchContext) EtcdLeaderID() uint64 {
-	return ctx.srv.etcdSrv.Server.Lead()
+func (ctx *leaderWatchContext) EtcdLeaderID() (uint64, error) {
+	if ctx.srv.etcdSrv != nil {
+		return ctx.srv.etcdSrv.Server.Lead(), nil
+	}
+	return 0, errors.WithMessage(member.ErrGetLeader, "no leader found")
 }
 
 func (srv *Server) GetClusterManager() cluster.Manager {

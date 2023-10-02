@@ -23,8 +23,8 @@ func (ctx *mockWatchCtx) ShouldStop() bool {
 	return ctx.stopped
 }
 
-func (ctx *mockWatchCtx) EtcdLeaderID() uint64 {
-	return ctx.srv.Lead()
+func (ctx *mockWatchCtx) EtcdLeaderID() (uint64, error) {
+	return ctx.srv.Lead(), nil
 }
 
 func TestWatchLeaderSingle(t *testing.T) {
@@ -40,7 +40,7 @@ func TestWatchLeaderSingle(t *testing.T) {
 	rpcTimeout := time.Duration(10) * time.Second
 	leaseTTLSec := int64(1)
 	mem := NewMember("", uint64(etcd.Server.ID()), "mem0", "", client, leaderGetter, rpcTimeout)
-	leaderWatcher := NewLeaderWatcher(watchCtx, mem, leaseTTLSec)
+	leaderWatcher := NewLeaderWatcher(watchCtx, mem, leaseTTLSec, true)
 
 	ctx, cancelWatch := context.WithCancel(context.Background())
 	watchedDone := make(chan struct{}, 1)

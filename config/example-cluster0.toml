@@ -7,7 +7,8 @@ data-dir = "/tmp/ceresmeta0"
 node-name = "meta0"
 initial-cluster = "meta0=http://127.0.0.1:2380,meta1=http://127.0.0.1:12380,meta2=http://127.0.0.1:22380"
 default-cluster-node-count = 2
-default-http-port = 8080
+http-port = 8080
+grpc-port = 2379
 
 [log]
 level = "info"
