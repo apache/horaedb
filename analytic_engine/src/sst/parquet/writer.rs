@@ -248,8 +248,9 @@ impl RecordBatchGroupWriter {
                 match col_values {
                     ColumnValue::StringValue(ss) => {
                         let datum = column_block.datum(row_idx);
-                        let v = datum.as_str().unwrap();
-                        ss.insert(v.to_string());
+                        if let Some(v) = datum.as_str() {
+                            ss.insert(v.to_string());
+                        }
                     }
                 }
             }
@@ -550,6 +551,7 @@ mod tests {
             let sst_file_path = Path::from("data.par");
 
             let schema = build_schema_with_dictionary();
+            let num_column = schema.num_columns();
             let reader_projected_schema = ProjectedSchema::no_projection(schema.clone());
             let mut sst_meta = MetaData {
                 min_key: Bytes::from_static(b"100"),
@@ -655,6 +657,7 @@ mod tests {
                 // sst filter is built insider sst writer, so overwrite to default for
                 // comparison.
                 sst_meta_readback.parquet_filter = Default::default();
+                sst_meta_readback.column_values = vec![None; num_column];
                 // time_range is built insider sst writer, so overwrite it for
                 // comparison.
                 sst_meta.time_range = sst_info.time_range;

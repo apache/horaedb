@@ -355,6 +355,7 @@ pub type ParquetMetaDataRef = Arc<ParquetMetaData>;
 
 impl From<MetaData> for ParquetMetaData {
     fn from(meta: MetaData) -> Self {
+        let num_columns = meta.schema.num_columns();
         Self {
             min_key: meta.min_key,
             max_key: meta.max_key,
@@ -362,7 +363,7 @@ impl From<MetaData> for ParquetMetaData {
             max_sequence: meta.max_sequence,
             schema: meta.schema,
             parquet_filter: None,
-            column_values: Vec::new(),
+            column_values: vec![None; num_columns],
         }
     }
 }
@@ -399,6 +400,7 @@ impl fmt::Debug for ParquetMetaData {
             .field("time_range", &self.time_range)
             .field("max_sequence", &self.max_sequence)
             .field("schema", &self.schema)
+            .field("column_values", &self.column_values)
             .field(
                 "filter_size",
                 &self
