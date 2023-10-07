@@ -34,7 +34,7 @@ use table_engine::{partition::maybe_extract_partitioned_table_name, table::Table
 use crate::{sst::metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics, MetricsOptions};
 
 const KB: f64 = 1024.0;
-const DEFAULT_METRICS_KEY: &str = "all";
+const DEFAULT_METRICS_KEY: &str = "total";
 
 lazy_static! {
     // Counters:
@@ -244,33 +244,44 @@ impl MaybeTableLevelMetrics {
     }
 }
 
-pub struct MetricsContext {
+pub struct MetricsContext<'a> {
     /// If enable table level metrics, it should be a table name,
     /// Otherwise it should be `DEFAULT_METRICS_KEY`.
-    maybe_table_name: String,
+    table_name: &'a str,
+    metric_opt: MetricsOptions,
+    maybe_partitioned_table_name: Option<String>,
 }
 
-impl MetricsContext {
-    pub fn new(table_name: &str, metric_opt: MetricsOptions) -> Self {
-        let maybe_table_name = if metric_opt.enable_table_level_metrics {
-            DEFAULT_METRICS_KEY.to_string()
-        } else {
-            let maybe_partition_table = maybe_extract_partitioned_table_name(table_name);
-            match &maybe_partition_table {
-                Some(partitioned) => partitioned.clone(),
-                None => table_name.to_string(),
-            }
-        };
+impl<'a> MetricsContext<'a> {
+    pub fn new(table_name: &'a str, metric_opt: MetricsOptions) -> Self {
+        Self {
+            table_name,
+            metric_opt,
+            maybe_partitioned_table_name: None,
+        }
+    }
 
-        Self { maybe_table_name }
+    fn maybe_table_name(&mut self) -> &str {
+        if self.metric_opt.enable_table_level_metrics {
+            DEFAULT_METRICS_KEY
+        } else {
+            let maybe_partition_table = maybe_extract_partitioned_table_name(self.table_name);
+            match maybe_partition_table {
+                Some(partitioned) => {
+                    self.maybe_partitioned_table_name = Some(partitioned);
+                    self.maybe_partitioned_table_name.as_ref().unwrap()
+                }
+                None => self.table_name,
+            }
+        }
     }
 }
 
 impl Metrics {
-    pub fn new(metric_ctx: MetricsContext) -> Self {
+    pub fn new(mut metric_ctx: MetricsContext) -> Self {
         Self {
             maybe_table_level_metrics: Arc::new(MaybeTableLevelMetrics::new(
-                &metric_ctx.maybe_table_name,
+                metric_ctx.maybe_table_name(),
             )),
             ..Default::default()
         }

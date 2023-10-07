@@ -39,7 +39,6 @@ use datafusion::{
 };
 use df_operator::visitor;
 use log::debug;
-use time_ext::current_time_millis;
 use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector};
 
 use crate::{

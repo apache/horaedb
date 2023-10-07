@@ -332,6 +332,7 @@ fn create_sst_read_option(
     }
 }
 
+/// Scan type which mapped to the low level `ReadFrequency` in sst.
 enum ScanType {
     Query,
     Compaction,
