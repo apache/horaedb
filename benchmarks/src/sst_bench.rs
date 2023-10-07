@@ -22,6 +22,7 @@ use analytic_engine::sst::{
         SstReadOptions,
     },
     meta_data::cache::{MetaCache, MetaCacheRef},
+    metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
 };
 use common_types::{projected_schema::ProjectedSchema, schema::Schema};
 use log::info;
@@ -57,8 +58,7 @@ impl SstBench {
             num_streams_to_prefetch: 0,
         };
         let sst_read_options = SstReadOptions {
-            scan_for_compaction: false,
-            table_level_sst_metrics: None,
+            maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench")),
             frequency: ReadFrequency::Frequent,
             num_rows_per_row_group: config.num_rows_per_row_group,
             projected_schema,

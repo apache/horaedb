@@ -27,6 +27,7 @@ use analytic_engine::{
         file::{FileHandle, FileMeta, FilePurgeQueue},
         manager::FileId,
         meta_data::cache::{self, MetaCacheRef},
+        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
         writer::MetaData,
     },
     table::sst_util,
@@ -123,8 +124,7 @@ pub async fn load_sst_to_memtable(
         num_streams_to_prefetch: 0,
     };
     let sst_read_options = SstReadOptions {
-        scan_for_compaction: false,
-        table_level_sst_metrics: None,
+        maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench")),
         frequency: ReadFrequency::Frequent,
         num_rows_per_row_group: 8192,
         projected_schema: ProjectedSchema::no_projection(schema.clone()),

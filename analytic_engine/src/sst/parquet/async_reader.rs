@@ -46,7 +46,7 @@ use parquet::{
 use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader};
 use runtime::{AbortOnDropMany, JoinHandle, Runtime};
 use snafu::ResultExt;
-use table_engine::{predicate::PredicateRef};
+use table_engine::predicate::PredicateRef;
 use time_ext::InstantExt;
 use tokio::sync::{
     mpsc::{self, Receiver, Sender},
@@ -63,7 +63,7 @@ use crate::{
             cache::{MetaCacheRef, MetaData},
             SstMetaData,
         },
-        metrics::TableLevelMetrics,
+        metrics::MaybeTableLevelMetrics,
         parquet::{
             encoding::ParquetDecoder, meta_data::ParquetFilter, row_group_pruner::RowGroupPruner,
         },
@@ -96,8 +96,7 @@ pub struct Reader<'a> {
     metrics: Metrics,
     df_plan_metrics: ExecutionPlanMetricsSet,
 
-    scan_for_compaction: bool,
-    table_level_sst_metrics: Option<Arc<TableLevelMetrics>>,
+    table_level_sst_metrics: Arc<MaybeTableLevelMetrics>,
 }
 
 #[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
@@ -140,8 +139,7 @@ impl<'a> Reader<'a> {
             row_projector: None,
             metrics,
             df_plan_metrics,
-            scan_for_compaction: options.scan_for_compaction,
-            table_level_sst_metrics: options.table_level_sst_metrics.clone(),
+            table_level_sst_metrics: options.maybe_table_level_metrics.clone(),
         }
     }
 
@@ -262,13 +260,13 @@ impl<'a> Reader<'a> {
         let num_sst_before_prune = meta_data.parquet().num_row_groups();
         let num_sst_after_prune = target_row_groups.len();
         // Maybe it is a sub table of partitioned table, try to extract its parent
-        // table.)
-        if let (false, Some(metrics)) = (self.scan_for_compaction, &self.table_level_sst_metrics) {
-            metrics
+        // table.
+        if let ReadFrequency::Frequent = self.frequency {
+            self.table_level_sst_metrics
                 .sst_before_prune_counter
                 .inc_by(num_sst_before_prune as u64);
-            metrics
-                .sst_before_prune_counter
+            self.table_level_sst_metrics
+                .sst_after_prune_counter
                 .inc_by(num_sst_after_prune as u64);
         }
 

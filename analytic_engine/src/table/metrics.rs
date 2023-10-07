@@ -31,9 +31,10 @@ use prometheus::{
 };
 use table_engine::{partition::maybe_extract_partitioned_table_name, table::TableStats};
 
-use crate::{sst::metrics::TableLevelMetrics as SstTableLevelMetrics, MetricsOptions};
+use crate::{sst::metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics, MetricsOptions};
 
 const KB: f64 = 1024.0;
+const DEFAULT_METRICS_KEY: &str = "all";
 
 lazy_static! {
     // Counters:
@@ -123,6 +124,22 @@ lazy_static! {
         exponential_buckets(0.01, 2.0, 13).unwrap()
     ).unwrap();
 
+    static ref QUERY_TIME_RANGE: HistogramVec = register_histogram_vec!(
+        "query_time_range",
+        "Histogram for query time range((15m,30m,...,7d)",
+        &["table"],
+        exponential_buckets(900.0, 2.0, 10).unwrap()
+    )
+    .unwrap();
+
+    static ref DURATION_SINCE_QUERY_START_TIME: HistogramVec = register_histogram_vec!(
+        "duration_since_query_start_time",
+        "Histogram for duration since query start time(15m,30m,...,7d)",
+        &["table"],
+        exponential_buckets(900.0, 2.0, 10).unwrap()
+    )
+    .unwrap();
+
     // End of histograms.
 }
 
@@ -151,8 +168,8 @@ pub struct Metrics {
     // Stats of a single table.
     stats: Arc<AtomicTableStats>,
 
-    // Table level sst metrics
-    table_level_sst_metrics: Option<Arc<SstTableLevelMetrics>>,
+    // Maybe table level sst metrics
+    maybe_table_level_metrics: Arc<MaybeTableLevelMetrics>,
 
     compaction_input_sst_size_histogram: Histogram,
     compaction_output_sst_size_histogram: Histogram,
@@ -175,7 +192,7 @@ impl Default for Metrics {
     fn default() -> Self {
         Self {
             stats: Arc::new(AtomicTableStats::default()),
-            table_level_sst_metrics: None,
+            maybe_table_level_metrics: Arc::new(MaybeTableLevelMetrics::new(DEFAULT_METRICS_KEY)),
             compaction_input_sst_size_histogram: TABLE_COMPACTION_SST_SIZE_HISTOGRAM
                 .with_label_values(&["input"]),
             compaction_output_sst_size_histogram: TABLE_COMPACTION_SST_SIZE_HISTOGRAM
@@ -208,32 +225,63 @@ impl Default for Metrics {
     }
 }
 
-impl Metrics {
-    pub fn new(table: &str, metric_opt: MetricsOptions) -> Self {
-        let table_level_sst_metrics = if metric_opt.enable_table_level_sst_metrics {
-            // There are too many sub tables of partitioned table, we just aggregate the sst
-            // metrics to partitioned table.
-            let maybe_partition_table = maybe_extract_partitioned_table_name(table);
-            let table = match &maybe_partition_table {
-                Some(partitioned) => partitioned,
-                None => table,
-            };
+pub struct MaybeTableLevelMetrics {
+    pub query_time_range: Histogram,
+    pub duration_since_query_query_start_time: Histogram,
+    pub sst_metrics: Arc<SstMaybeTableLevelMetrics>,
+}
 
-            Some(Arc::new(SstTableLevelMetrics::new(table)))
-        } else {
-            None
-        };
+impl MaybeTableLevelMetrics {
+    pub fn new(maybe_table_name: &str) -> Self {
+        let sst_metrics = Arc::new(SstMaybeTableLevelMetrics::new(maybe_table_name));
 
         Self {
-            table_level_sst_metrics,
+            query_time_range: QUERY_TIME_RANGE.with_label_values(&[maybe_table_name]),
+            duration_since_query_query_start_time: DURATION_SINCE_QUERY_START_TIME
+                .with_label_values(&[maybe_table_name]),
+            sst_metrics,
+        }
+    }
+}
+
+pub struct MetricsContext {
+    /// If enable table level metrics, it should be a table name,
+    /// Otherwise it should be `DEFAULT_METRICS_KEY`.
+    maybe_table_name: String,
+}
+
+impl MetricsContext {
+    pub fn new(table_name: &str, metric_opt: MetricsOptions) -> Self {
+        let maybe_table_name = if metric_opt.enable_table_level_metrics {
+            DEFAULT_METRICS_KEY.to_string()
+        } else {
+            let maybe_partition_table = maybe_extract_partitioned_table_name(table_name);
+            match &maybe_partition_table {
+                Some(partitioned) => partitioned.clone(),
+                None => table_name.to_string(),
+            }
+        };
+
+        Self { maybe_table_name }
+    }
+}
+
+impl Metrics {
+    pub fn new(metric_ctx: MetricsContext) -> Self {
+        Self {
+            maybe_table_level_metrics: Arc::new(MaybeTableLevelMetrics::new(
+                &metric_ctx.maybe_table_name,
+            )),
             ..Default::default()
         }
     }
 
-    pub fn table_level_sst_metrics(&self) -> Option<Arc<SstTableLevelMetrics>> {
-        self.table_level_sst_metrics.clone()
+    #[inline]
+    pub fn maybe_table_level_metrics(&self) -> Arc<MaybeTableLevelMetrics> {
+        self.maybe_table_level_metrics.clone()
     }
 
+    #[inline]
     pub fn table_stats(&self) -> TableStats {
         TableStats::from(&*self.stats)
     }

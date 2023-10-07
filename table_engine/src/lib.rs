@@ -16,7 +16,6 @@
 
 pub mod engine;
 pub mod memory;
-pub mod metrics;
 pub mod partition;
 pub mod predicate;
 pub mod provider;

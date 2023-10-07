@@ -43,7 +43,6 @@ use time_ext::current_time_millis;
 use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector};
 
 use crate::{
-    metrics::{DURATION_SINCE_QUERY_START_TIME, QUERY_TIME_RANGE},
     predicate::{PredicateBuilder, PredicateRef},
     stream::{ScanStreamState, ToDfStream},
     table::{ReadOptions, ReadRequest, TableRef},
@@ -208,23 +207,6 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
                 ))
             })?;
 
-        // Stats query time range information of table.
-        let time_range = predicate.time_range();
-        let start_time = time_range.inclusive_start().as_i64();
-        let end_time = time_range.exclusive_end().as_i64();
-        let now = current_time_millis() as i64;
-
-        let query_time_range = (end_time as f64 - start_time as f64) / 1000.0;
-        QUERY_TIME_RANGE
-            .with_label_values(&[self.table.name()])
-            .observe(query_time_range);
-
-        let since_start = (now as f64 - start_time as f64) / 1000.0;
-        DURATION_SINCE_QUERY_START_TIME
-            .with_label_values(&[self.table.name()])
-            .observe(since_start);
-
-        // Build scan.
         let opts = ReadOptions {
             deadline,
             read_parallelism,

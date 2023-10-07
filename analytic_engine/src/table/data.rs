@@ -59,7 +59,7 @@ use crate::{
     space::SpaceId,
     sst::{file::FilePurger, manager::FileId},
     table::{
-        metrics::Metrics,
+        metrics::{Metrics, MetricsContext},
         sst_util,
         version::{MemTableForWrite, MemTableState, SamplingMemTable, TableVersion},
     },
@@ -265,7 +265,8 @@ impl TableData {
 
         let purge_queue = purger.create_purge_queue(space_id, table_id);
         let current_version = TableVersion::new(purge_queue);
-        let metrics = Metrics::new(&table_name, metrics_opt);
+        let metrics_ctx = MetricsContext::new(&table_name, metrics_opt);
+        let metrics = Metrics::new(metrics_ctx);
         let mutable_limit = AtomicU32::new(compute_mutable_limit(
             table_opts.write_buffer_size,
             preflush_write_buffer_size_ratio,
@@ -312,7 +313,8 @@ impl TableData {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
         let current_version = TableVersion::new(purge_queue);
-        let metrics = Metrics::new(&add_meta.table_name, metrics_opt);
+        let metrics_ctx = MetricsContext::new(&add_meta.table_name, metrics_opt);
+        let metrics = Metrics::new(metrics_ctx);
         let mutable_limit = AtomicU32::new(compute_mutable_limit(
             add_meta.opts.write_buffer_size,
             preflush_write_buffer_size_ratio,

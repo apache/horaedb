@@ -40,7 +40,10 @@ use wal::manager::WalLocation;
 
 use crate::{
     compaction::{CompactionInputFiles, CompactionTask, ExpiredFiles},
-    instance::{self, serial_executor::TableFlushScheduler, SpaceStore, SpaceStoreRef},
+    instance::{
+        self, create_sst_read_option, serial_executor::TableFlushScheduler, ScanType, SpaceStore,
+        SpaceStoreRef,
+    },
     manifest::meta_edit::{
         AlterOptionsMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
     },
@@ -52,7 +55,7 @@ use crate::{
         IterOptions,
     },
     sst::{
-        factory::{self, ReadFrequency, ScanOptions, SstReadOptions, SstWriteOptions},
+        factory::{self, ScanOptions, SstWriteOptions},
         file::{FileMeta, Level},
         meta_data::SstMetaReader,
         writer::{MetaData, RecordBatchStream},
@@ -797,17 +800,22 @@ impl SpaceStore {
         let schema = table_data.schema();
         let table_options = table_data.table_options();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
-        let sst_read_options = SstReadOptions {
-            scan_for_compaction: true,
-            table_level_sst_metrics: table_data.metrics.table_level_sst_metrics(),
-            num_rows_per_row_group: table_options.num_rows_per_row_group,
-            frequency: ReadFrequency::Once,
-            projected_schema: projected_schema.clone(),
-            predicate: Arc::new(Predicate::empty()),
-            meta_cache: self.meta_cache.clone(),
+        let predicate = Arc::new(Predicate::empty());
+        let sst_read_options = create_sst_read_option(
+            ScanType::Compaction,
             scan_options,
-            runtime: runtime.clone(),
-        };
+            table_data
+                .metrics
+                .maybe_table_level_metrics()
+                .sst_metrics
+                .clone(),
+            table_options.num_rows_per_row_group,
+            projected_schema.clone(),
+            predicate,
+            self.meta_cache.clone(),
+            runtime,
+        );
+
         let iter_options = IterOptions {
             batch_size: table_options.num_rows_per_row_group,
         };

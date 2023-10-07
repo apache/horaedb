@@ -125,18 +125,10 @@ pub struct Config {
     pub metrics: MetricsOptions,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct MetricsOptions {
-    enable_table_level_sst_metrics: bool,
-}
-
-impl Default for MetricsOptions {
-    fn default() -> Self {
-        Self {
-            enable_table_level_sst_metrics: true,
-        }
-    }
+    enable_table_level_metrics: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]

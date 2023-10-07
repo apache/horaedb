@@ -51,12 +51,12 @@ lazy_static! {
 }
 
 #[derive(Debug)]
-pub struct TableLevelMetrics {
+pub struct MaybeTableLevelMetrics {
     pub sst_before_prune_counter: IntCounter,
     pub sst_after_prune_counter: IntCounter,
 }
 
-impl TableLevelMetrics {
+impl MaybeTableLevelMetrics {
     pub fn new(table: &str) -> Self {
         Self {
             sst_before_prune_counter: SST_BEFORE_PRUNE_COUNTER.with_label_values(&[table]),
