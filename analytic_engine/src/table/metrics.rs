@@ -226,8 +226,12 @@ impl Default for Metrics {
 }
 
 pub struct MaybeTableLevelMetrics {
+    // TODO: maybe `query_time_range` and `duration_since_query_query_start_time`
+    // should place on a higher level such `TableEngine`.
+    // I do so originally, but I found no reasonable place to keep related contexts...
     pub query_time_range: Histogram,
     pub duration_since_query_query_start_time: Histogram,
+
     pub sst_metrics: Arc<SstMaybeTableLevelMetrics>,
 }
 
