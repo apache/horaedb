@@ -25,6 +25,10 @@ func NewStaticTopologyShardScheduler(factory *coordinator.Factory, nodePicker co
 	return StaticTopologyShardScheduler{factory: factory, nodePicker: nodePicker, procedureExecutingBatchSize: procedureExecutingBatchSize}
 }
 
+func (s StaticTopologyShardScheduler) UpdateDeployMode(_ context.Context, _ bool) {
+	// StaticTopologyShardScheduler do not need deployMode.
+}
+
 func (s StaticTopologyShardScheduler) Schedule(ctx context.Context, clusterSnapshot metadata.Snapshot) (ScheduleResult, error) {
 	var procedures []procedure.Procedure
 	var reasons strings.Builder

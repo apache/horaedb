@@ -137,3 +137,7 @@ type UpdateFlowLimiterRequest struct {
 	Burst  int  `json:"burst"`
 	Enable bool `json:"enable"`
 }
+
+type UpdateDeployModeRequest struct {
+	Enable bool `json:"enable"`
+}

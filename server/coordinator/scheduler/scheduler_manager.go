@@ -21,8 +21,7 @@ import (
 )
 
 const (
-	schedulerInterval   = time.Second * 5
-	defaultHashReplicas = 50
+	schedulerInterval = time.Second * 5
 )
 
 // Manager used to manage schedulers, it will register all schedulers when it starts.
@@ -36,6 +35,13 @@ type Manager interface {
 	Stop(ctx context.Context) error
 
 	UpdateEnableSchedule(ctx context.Context, enableSchedule bool)
+
+	// UpdateDeployMode can only be used in dynamic mode, it will throw error when topology type is static.
+	// when deploy mode is true, shard topology will not be updated, it is usually used in scenarios such as cluster deploy.
+	UpdateDeployMode(ctx context.Context, enable bool) error
+
+	// GetDeployMode can only be used in dynamic mode, it will throw error when topology type is static.
+	GetDeployMode(ctx context.Context) (bool, error)
 
 	// Scheduler will be called when received new heartbeat, every scheduler registered in schedulerManager will be called to generate procedures.
 	// Scheduler cloud be schedule with fix time interval or heartbeat.
@@ -59,6 +65,7 @@ type ManagerImpl struct {
 	enableSchedule              bool
 	topologyType                storage.TopologyType
 	procedureExecutingBatchSize uint32
+	deployMode                  bool
 }
 
 func NewManager(logger *zap.Logger, procedureManager procedure.Manager, factory *coordinator.Factory, clusterMetadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string, enableSchedule bool, topologyType storage.TopologyType, procedureExecutingBatchSize uint32) Manager {
@@ -235,4 +242,31 @@ func (m *ManagerImpl) UpdateEnableSchedule(_ context.Context, enableSchedule boo
 	m.lock.Unlock()
 
 	m.logger.Info("scheduler manager update enableSchedule", zap.Bool("enableSchedule", enableSchedule))
+}
+
+func (m *ManagerImpl) UpdateDeployMode(ctx context.Context, enable bool) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	if m.topologyType != storage.TopologyTypeDynamic {
+		return errors.WithMessage(ErrInvalidTopologyType, "deploy mode could only update when topology type is dynamic")
+	}
+
+	m.deployMode = enable
+	for _, scheduler := range m.registerSchedulers {
+		scheduler.UpdateDeployMode(ctx, enable)
+	}
+
+	return nil
+}
+
+func (m *ManagerImpl) GetDeployMode(_ context.Context) (bool, error) {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+
+	if m.topologyType != storage.TopologyTypeDynamic {
+		return false, errors.WithMessage(ErrInvalidTopologyType, "deploy mode could only get when topology type is dynamic")
+	}
+
+	return m.deployMode, nil
 }

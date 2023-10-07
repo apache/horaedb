@@ -27,6 +27,10 @@ func NewReopenShardScheduler(factory *coordinator.Factory, procedureExecutingBat
 	}
 }
 
+func (r ReopenShardScheduler) UpdateDeployMode(_ context.Context, _ bool) {
+	// ReopenShardScheduler do not need deployMode.
+}
+
 func (r ReopenShardScheduler) Schedule(ctx context.Context, clusterSnapshot metadata.Snapshot) (ScheduleResult, error) {
 	// ReopenShardScheduler can only be scheduled when the cluster is stable.
 	if !clusterSnapshot.Topology.IsStable() {

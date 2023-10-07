@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/CeresDB/ceresmeta/pkg/assert"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
@@ -20,10 +21,17 @@ type RebalancedShardScheduler struct {
 	factory                     *coordinator.Factory
 	nodePicker                  coordinator.NodePicker
 	procedureExecutingBatchSize uint32
+
+	// Mutex is used to protect following fields.
+	lock sync.Mutex
+	// latestShardNodeMapping is used to record last stable shard topology,
+	// when deployMode is true, rebalancedShardScheduler will recover cluster according to the topology.
+	latestShardNodeMapping map[storage.ShardID]metadata.RegisteredNode
+	deployMode             bool
 }
 
 func NewRebalancedShardScheduler(logger *zap.Logger, factory *coordinator.Factory, nodePicker coordinator.NodePicker, procedureExecutingBatchSize uint32) Scheduler {
-	return RebalancedShardScheduler{
+	return &RebalancedShardScheduler{
 		logger:                      logger,
 		factory:                     factory,
 		nodePicker:                  nodePicker,
@@ -31,7 +39,11 @@ func NewRebalancedShardScheduler(logger *zap.Logger, factory *coordinator.Factor
 	}
 }
 
-func (r RebalancedShardScheduler) Schedule(ctx context.Context, clusterSnapshot metadata.Snapshot) (ScheduleResult, error) {
+func (r *RebalancedShardScheduler) UpdateDeployMode(_ context.Context, enable bool) {
+	r.updateDeployMode(enable)
+}
+
+func (r *RebalancedShardScheduler) Schedule(ctx context.Context, clusterSnapshot metadata.Snapshot) (ScheduleResult, error) {
 	// RebalancedShardScheduler can only be scheduled when the cluster is not empty.
 	if clusterSnapshot.Topology.ClusterView.State == storage.ClusterStateEmpty {
 		return ScheduleResult{}, nil
@@ -45,20 +57,30 @@ func (r RebalancedShardScheduler) Schedule(ctx context.Context, clusterSnapshot 
 		shardIDs = append(shardIDs, shardID)
 	}
 	numShards := uint32(len(clusterSnapshot.Topology.ShardViewsMapping))
-	shardNodeMapping, err := r.nodePicker.PickNode(ctx, shardIDs, numShards, clusterSnapshot.RegisteredNodes)
-	if err != nil {
-		return ScheduleResult{}, err
+
+	// ShardNodeMapping only update when deployMode is false.
+	if !r.deployMode {
+		newShardNodeMapping, err := r.nodePicker.PickNode(ctx, shardIDs, numShards, clusterSnapshot.RegisteredNodes)
+		if err != nil {
+			return ScheduleResult{}, err
+		}
+		r.updateShardNodeMapping(newShardNodeMapping)
 	}
 
+	// Generate assigned shards mapping and transfer leader if node is changed.
 	assignedShardIDs := make(map[storage.ShardID]struct{}, numShards)
 	for _, shardNode := range clusterSnapshot.Topology.ClusterView.ShardNodes {
+		if len(procedures) >= int(r.procedureExecutingBatchSize) {
+			r.logger.Warn("procedure length reached procedure executing batch size", zap.Uint32("procedureExecutingBatchSize", r.procedureExecutingBatchSize))
+			break
+		}
+
 		// Mark the shard assigned.
 		assignedShardIDs[shardNode.ID] = struct{}{}
-
-		newLeaderNode, ok := shardNodeMapping[shardNode.ID]
+		newLeaderNode, ok := r.latestShardNodeMapping[shardNode.ID]
 		assert.Assert(ok)
 		if newLeaderNode.Node.Name != shardNode.NodeName {
-			r.logger.Info("rebalanced shard scheduler generates transfer leader procedure", zap.Uint64("shardID", uint64(shardNode.ID)), zap.String("originNode", shardNode.NodeName), zap.String("newNode", newLeaderNode.Node.Name))
+			r.logger.Info("rebalanced shard scheduler try to assign shard to another node", zap.Uint64("shardID", uint64(shardNode.ID)), zap.String("originNode", shardNode.NodeName), zap.String("newNode", newLeaderNode.Node.Name))
 			p, err := r.factory.CreateTransferLeaderProcedure(ctx, coordinator.TransferLeaderRequest{
 				Snapshot:          clusterSnapshot,
 				ShardID:           shardNode.ID,
@@ -68,21 +90,25 @@ func (r RebalancedShardScheduler) Schedule(ctx context.Context, clusterSnapshot 
 			if err != nil {
 				return ScheduleResult{}, err
 			}
+
 			procedures = append(procedures, p)
 			reasons.WriteString(fmt.Sprintf("shard is transferred to another node, shardID:%d, oldNode:%s, newNode:%s\n", shardNode.ID, shardNode.NodeName, newLeaderNode.Node.Name))
-			if len(procedures) >= int(r.procedureExecutingBatchSize) {
-				break
-			}
 		}
 	}
 
+	// Check whether the assigned shard needs to be reopened.
 	for id := uint32(0); id < numShards; id++ {
+		if len(procedures) >= int(r.procedureExecutingBatchSize) {
+			r.logger.Warn("procedure length reached procedure executing batch size", zap.Uint32("procedureExecutingBatchSize", r.procedureExecutingBatchSize))
+			break
+		}
+
 		shardID := storage.ShardID(id)
 		if _, assigned := assignedShardIDs[shardID]; !assigned {
-			node, ok := shardNodeMapping[shardID]
+			node, ok := r.latestShardNodeMapping[shardID]
 			assert.Assert(ok)
 
-			r.logger.Info("rebalanced shard scheduler generates transfer leader procedure (assign to node)", zap.Uint32("shardID", id), zap.String("node", node.Node.Name))
+			r.logger.Info("rebalanced shard scheduler try to assign unassigned shard to node", zap.Uint32("shardID", id), zap.String("node", node.Node.Name))
 			p, err := r.factory.CreateTransferLeaderProcedure(ctx, coordinator.TransferLeaderRequest{
 				Snapshot:          clusterSnapshot,
 				ShardID:           shardID,
@@ -95,9 +121,6 @@ func (r RebalancedShardScheduler) Schedule(ctx context.Context, clusterSnapshot 
 
 			procedures = append(procedures, p)
 			reasons.WriteString(fmt.Sprintf("shard is assigned to a node, shardID:%d, node:%s\n", shardID, node.Node.Name))
-			if len(procedures) >= int(r.procedureExecutingBatchSize) {
-				break
-			}
 		}
 	}
 
@@ -114,4 +137,18 @@ func (r RebalancedShardScheduler) Schedule(ctx context.Context, clusterSnapshot 
 	}
 
 	return ScheduleResult{batchProcedure, reasons.String()}, nil
+}
+
+func (r *RebalancedShardScheduler) updateShardNodeMapping(newShardNodeMapping map[storage.ShardID]metadata.RegisteredNode) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	r.latestShardNodeMapping = newShardNodeMapping
+}
+
+func (r *RebalancedShardScheduler) updateDeployMode(deployMode bool) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	r.deployMode = deployMode
 }

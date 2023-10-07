@@ -56,6 +56,8 @@ func (a *API) NewAPIRouter() *Router {
 	router.Put(fmt.Sprintf("/cluster/:%s", clusterNameParam), wrap(a.updateCluster, true, a.forwardClient))
 	router.Get(fmt.Sprintf("/cluster/:%s/procedure", clusterNameParam), wrap(a.listProcedures, true, a.forwardClient))
 	router.Post("/table/query", wrap(a.queryTable, true, a.forwardClient))
+	router.Get(fmt.Sprintf("/cluster/:%s/deployMode", clusterNameParam), wrap(a.getDeployMode, true, a.forwardClient))
+	router.Put(fmt.Sprintf("/cluster/:%s/deployMode", clusterNameParam), wrap(a.updateDeployMode, true, a.forwardClient))
 
 	// Register debug API.
 	router.GetWithoutPrefix("/debug/pprof/profile", pprof.Profile)
@@ -406,6 +408,52 @@ func (a *API) queryTable(r *http.Request) apiFuncResult {
 		return errResult(ErrTable, err.Error())
 	}
 	return okResult(tables)
+}
+
+func (a *API) getDeployMode(r *http.Request) apiFuncResult {
+	ctx := r.Context()
+	clusterName := Param(ctx, clusterNameParam)
+	if len(clusterName) == 0 {
+		clusterName = config.DefaultClusterName
+	}
+
+	c, err := a.clusterManager.GetCluster(ctx, clusterName)
+	if err != nil {
+		return errResult(ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", clusterName, err.Error()))
+	}
+
+	deployMode, err := c.GetSchedulerManager().GetDeployMode(r.Context())
+	if err != nil {
+		return errResult(ErrGetDeployMode, err.Error())
+	}
+
+	return okResult(deployMode)
+}
+
+func (a *API) updateDeployMode(r *http.Request) apiFuncResult {
+	ctx := r.Context()
+	clusterName := Param(ctx, clusterNameParam)
+	if len(clusterName) == 0 {
+		clusterName = config.DefaultClusterName
+	}
+
+	c, err := a.clusterManager.GetCluster(ctx, clusterName)
+	if err != nil {
+		return errResult(ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", clusterName, err.Error()))
+	}
+
+	var req UpdateDeployModeRequest
+	err = json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		return errResult(ErrParseRequest, err.Error())
+	}
+
+	err = c.GetSchedulerManager().UpdateDeployMode(r.Context(), req.Enable)
+	if err != nil {
+		return errResult(ErrUpdateDeployMode, err.Error())
+	}
+
+	return okResult(req.Enable)
 }
 
 func (a *API) diagnoseShards(req *http.Request) apiFuncResult {
