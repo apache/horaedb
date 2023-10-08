@@ -38,11 +38,13 @@ use runtime::Runtime;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
     remote::model::{
-        ExecutePlanRequest, GetTableInfoRequest, ReadRequest, TableIdentifier, TableInfo,
-        WriteBatchRequest, WriteBatchResult, WriteRequest,
+        AlterTableOptionsRequest, AlterTableSchemaRequest, ExecutePlanRequest, GetTableInfoRequest,
+        ReadRequest, TableIdentifier, TableInfo, WriteBatchRequest, WriteBatchResult, WriteRequest,
     },
     table::{SchemaId, TableId},
 };
+use time_ext::ReadableDuration;
+use tokio::time::sleep;
 use tonic::{transport::Channel, Request, Streaming};
 
 use crate::{cached_router::CachedRouter, config::Config, error::*, status_code};
@@ -57,17 +59,23 @@ pub struct Client {
     cached_router: Arc<CachedRouter>,
     io_runtime: Arc<Runtime>,
     pub compression: CompressOptions,
+    max_retry: usize,
+    retry_interval: ReadableDuration,
 }
 
 impl Client {
     pub fn new(config: Config, router: RouterRef, io_runtime: Arc<Runtime>) -> Self {
         let compression = config.compression;
+        let max_retry = config.max_retry;
+        let retry_interval = config.retry_interval;
         let cached_router = CachedRouter::new(router, config);
 
         Self {
             cached_router: Arc::new(cached_router),
             io_runtime,
             compression,
+            max_retry,
+            retry_interval,
         }
     }
 
@@ -239,6 +247,101 @@ impl Client {
         Ok(results)
     }
 
+    pub async fn alter_table_schema(&self, request: AlterTableSchemaRequest) -> Result<()> {
+        // Find the channel from router firstly.
+        let route_context = self.cached_router.route(&request.table_ident).await?;
+
+        let table_ident = request.table_ident.clone();
+        let request_pb: ceresdbproto::remote_engine::AlterTableSchemaRequest = request.into();
+        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
+
+        let mut result = Ok(());
+        for i in 0..(self.max_retry + 1) {
+            let resp = rpc_client
+                .alter_table_schema(Request::new(request_pb.clone()))
+                .await
+                .with_context(|| Rpc {
+                    table_idents: vec![table_ident.clone()],
+                    msg: "Failed to alter schema to remote engine",
+                });
+
+            let resp = resp.and_then(|response| {
+                let response = response.into_inner();
+                if let Some(header) = &response.header && !status_code::is_ok(header.code) {
+                    Server {
+                        table_idents: vec![table_ident.clone()],
+                        code: header.code,
+                        msg: header.error.clone(),
+                    }.fail()
+                } else {
+                    Ok(())
+                }
+            });
+
+            if resp.is_err() {
+                result = resp;
+
+                // If occurred error, we simply evict the corresponding channel now.
+                // TODO: evict according to the type of error.
+                self.evict_route_from_cache(&[table_ident.clone()]).await;
+                if i == self.max_retry {
+                    break;
+                }
+                sleep(self.retry_interval.0).await;
+                continue;
+            }
+            return Ok(());
+        }
+        result
+    }
+
+    pub async fn alter_table_options(&self, request: AlterTableOptionsRequest) -> Result<()> {
+        // Find the channel from router firstly.
+        let route_context = self.cached_router.route(&request.table_ident).await?;
+
+        let table_ident = request.table_ident.clone();
+        let request_pb: ceresdbproto::remote_engine::AlterTableOptionsRequest = request.into();
+        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
+        let mut result = Ok(());
+        for i in 0..(self.max_retry + 1) {
+            let resp = rpc_client
+                .alter_table_options(Request::new(request_pb.clone()))
+                .await
+                .with_context(|| Rpc {
+                    table_idents: vec![table_ident.clone()],
+                    msg: "Failed to alter options to remote engine",
+                });
+
+            let resp = resp.and_then(|response| {
+                let response = response.into_inner();
+                if let Some(header) = &response.header && !status_code::is_ok(header.code) {
+                    Server {
+                        table_idents: vec![table_ident.clone()],
+                        code: header.code,
+                        msg: header.error.clone(),
+                    }.fail()
+                } else {
+                    Ok(())
+                }
+            });
+
+            if resp.is_err() {
+                result = resp;
+
+                // If occurred error, we simply evict the corresponding channel now.
+                // TODO: evict according to the type of error.
+                self.evict_route_from_cache(&[table_ident.clone()]).await;
+                if i == self.max_retry {
+                    break;
+                }
+                sleep(self.retry_interval.0).await;
+                continue;
+            }
+            return Ok(());
+        }
+        result
+    }
+
     pub async fn get_table_info(&self, request: GetTableInfoRequest) -> Result<TableInfo> {
         // Find the channel from router firstly.
         let route_context = self.cached_router.route(&request.table).await?;
@@ -262,14 +365,14 @@ impl Client {
         let result = result.and_then(|response| {
             let response = response.into_inner();
             if let Some(header) = &response.header && !status_code::is_ok(header.code) {
-                    Server {
-                        table_idents: vec![table_ident.clone()],
-                        code: header.code,
-                        msg: header.error.clone(),
-                    }.fail()
-                } else {
-                    Ok(response)
-                }
+                Server {
+                    table_idents: vec![table_ident.clone()],
+                    code: header.code,
+                    msg: header.error.clone(),
+                }.fail()
+            } else {
+                Ok(response)
+            }
         });
 
         match result {

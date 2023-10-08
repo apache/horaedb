@@ -41,7 +41,10 @@ use crate::{
     },
     remote::{
         self,
-        model::{self, ExecutePlanRequest, GetTableInfoRequest, WriteBatchResult},
+        model::{
+            self, AlterTableOptionsRequest, AlterTableSchemaRequest, ExecutePlanRequest,
+            GetTableInfoRequest, WriteBatchResult,
+        },
         RemoteEngine,
     },
     stream::{
@@ -358,6 +361,14 @@ impl RemoteEngine for MockRemoteEngine {
         &self,
         _requests: Vec<remote::model::WriteRequest>,
     ) -> remote::Result<Vec<WriteBatchResult>> {
+        unimplemented!()
+    }
+
+    async fn alter_table_schema(&self, _requests: AlterTableSchemaRequest) -> remote::Result<()> {
+        unimplemented!()
+    }
+
+    async fn alter_table_options(&self, _requests: AlterTableOptionsRequest) -> remote::Result<()> {
         unimplemented!()
     }
 

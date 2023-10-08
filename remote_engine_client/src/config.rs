@@ -32,6 +32,8 @@ pub struct Config {
     pub route_cache_max_size_per_partition: usize,
     pub route_cache_partition_num: usize,
     pub compression: CompressOptions,
+    pub max_retry: usize,
+    pub retry_interval: ReadableDuration,
 }
 
 impl Default for Config {
@@ -46,6 +48,8 @@ impl Default for Config {
             route_cache_max_size_per_partition: 16,
             route_cache_partition_num: 16,
             compression: CompressOptions::default(),
+            max_retry: 5,
+            retry_interval: ReadableDuration::from_str("5s").unwrap(),
         }
     }
 }

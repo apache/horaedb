@@ -474,7 +474,7 @@ impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AlterSchemaRequest {
     /// The new schema.
     pub schema: Schema,
