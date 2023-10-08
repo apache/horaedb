@@ -5316,6 +5316,7 @@ dependencies = [
  "logger",
  "macros",
  "meta_client",
+ "notifier",
  "paste 1.0.12",
  "prom-remote-api",
  "prometheus 0.12.0",
