@@ -20,7 +20,10 @@ use std::{
     time::Duration,
 };
 
-use common_types::time::{TimeRange, Timestamp};
+use common_types::{
+    row::Row,
+    time::{TimeRange, Timestamp},
+};
 use macros::define_result;
 use snafu::{ensure, Backtrace, Snafu};
 
@@ -234,6 +237,51 @@ fn pick_duration(interval: u64) -> Duration {
     let du_ms = AVAILABLE_DURATIONS[AVAILABLE_DURATIONS.len() - 1];
 
     Duration::from_millis(du_ms)
+}
+
+#[derive(Clone, Default)]
+struct DistinctValue {
+    set: Arc<Mutex<HashSet<Vec<u8>>>>,
+}
+
+#[derive(Clone)]
+pub struct PrimaryKeySampler {
+    column_values: Vec<DistinctValue>,
+}
+
+impl PrimaryKeySampler {
+    pub fn new(num_columns: usize) -> Self {
+        Self {
+            column_values: vec![DistinctValue::default(); num_columns],
+        }
+    }
+
+    pub fn collect(&self, row: &Row) {
+        assert_eq!(row.num_columns(), self.column_values.len());
+
+        for (datum, values) in row.iter().zip(&self.column_values) {
+            datum.do_with_bytes(|bs| {
+                let mut values = values.set.lock().unwrap();
+                values.insert(bs.to_vec());
+            })
+        }
+    }
+
+    pub fn suggest(&self) -> Vec<usize> {
+        let mut col_idx_and_counts = self
+            .column_values
+            .iter()
+            .enumerate()
+            .map(|(col_idx, col_values)| {
+                let values = col_values.set.lock().unwrap();
+                (col_idx, values.len())
+            })
+            .collect::<Vec<_>>();
+
+        col_idx_and_counts.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+
+        col_idx_and_counts.iter().take(5).map(|v| v.0).collect()
+    }
 }
 
 #[cfg(test)]

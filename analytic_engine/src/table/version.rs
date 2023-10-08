@@ -38,7 +38,7 @@ use crate::{
         CompactionTask, ExpiredFiles,
     },
     memtable::{self, key::KeySequence, MemTableRef, PutContext},
-    sampler::{DefaultSampler, SamplerRef},
+    sampler::{DefaultSampler, PrimaryKeySampler, SamplerRef},
     sst::{
         file::{FileHandle, FilePurgeQueue, SST_LEVEL_NUM},
         manager::{FileId, LevelsController},
@@ -82,6 +82,7 @@ pub struct SamplingMemTable {
     /// data should ONLY write to this memtable instead of mutable memtable.
     pub freezed: bool,
     pub sampler: SamplerRef,
+    pub pk_sampler: Option<PrimaryKeySampler>,
 }
 
 impl SamplingMemTable {
@@ -91,7 +92,13 @@ impl SamplingMemTable {
             id,
             freezed: false,
             sampler: Arc::new(DefaultSampler::default()),
+            pk_sampler: None,
         }
+    }
+
+    // TODO: add a builder for SamplingMemTable
+    pub fn set_pk_sampler(&mut self, num_columns: usize) {
+        self.pk_sampler = Some(PrimaryKeySampler::new(num_columns));
     }
 
     pub fn last_sequence(&self) -> SequenceNumber {
@@ -106,6 +113,10 @@ impl SamplingMemTable {
     /// default segment duration.
     fn suggest_segment_duration(&self) -> Duration {
         self.sampler.suggest_duration()
+    }
+
+    fn suggest_primary_key(&self) -> Option<Vec<usize>> {
+        self.pk_sampler.as_ref().map(|sampler| sampler.suggest())
     }
 }
 
@@ -190,6 +201,10 @@ impl MemTableForWrite {
 
                 // Collect the timestamp of this row.
                 v.sampler.collect(timestamp).context(CollectTimestamp)?;
+
+                if let Some(sampler) = &v.pk_sampler {
+                    sampler.collect(row);
+                }
 
                 Ok(())
             }
@@ -323,6 +338,20 @@ impl MemTableView {
                 // But we cannot freeze the sampling memtable now, because the
                 // segment duration may not yet been persisted.
                 return Some(segment_duration);
+            }
+        }
+
+        None
+    }
+
+    fn suggest_primary_key(&mut self) -> Option<Vec<usize>> {
+        if let Some(v) = &mut self.sampling_mem {
+            if !v.freezed {
+                // Other memtable should be empty during sampling phase.
+                assert!(self.mutables.is_empty());
+                assert!(self.immutables.is_empty());
+
+                return v.suggest_primary_key();
             }
         }
 
@@ -610,6 +639,14 @@ impl TableVersion {
     /// active.
     pub fn suggest_duration(&self) -> Option<Duration> {
         self.inner.write().unwrap().memtable_view.suggest_duration()
+    }
+
+    pub fn suggest_primary_key(&self) -> Option<Vec<usize>> {
+        self.inner
+            .write()
+            .unwrap()
+            .memtable_view
+            .suggest_primary_key()
     }
 
     /// Switch all mutable memtables

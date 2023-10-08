@@ -474,6 +474,9 @@ impl TableData {
             .create_memtable(memtable_opts)
             .context(CreateMemTable)?;
 
+        // Currently only do sample when segment duration is none.
+        // TODO: add a new flag to represent this since we may need to sample other
+        // info, such as primary keys.
         match table_options.segment_duration() {
             Some(segment_duration) => {
                 let time_range = TimeRange::bucket_of(timestamp, segment_duration).context(
@@ -494,7 +497,11 @@ impl TableData {
                 Ok(MemTableForWrite::Normal(mem_state))
             }
             None => {
-                let sampling_mem = SamplingMemTable::new(mem, self.alloc_memtable_id());
+                let mut sampling_mem = SamplingMemTable::new(mem, self.alloc_memtable_id());
+                if table_options.support_sample_pk() {
+                    sampling_mem.set_pk_sampler(table_schema.num_columns());
+                }
+
                 debug!(
                     "create sampling mem table:{}, schema:{:#?}",
                     sampling_mem.id, table_schema

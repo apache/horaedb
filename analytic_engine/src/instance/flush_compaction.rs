@@ -45,7 +45,7 @@ use crate::{
         SpaceStoreRef,
     },
     manifest::meta_edit::{
-        AlterOptionsMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
+        AlterOptionsMeta, AlterSchemaMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
     },
     memtable::{ColumnarIterPtr, MemTableRef, ScanContext, ScanRequest},
     row_iter::{
@@ -75,6 +75,9 @@ const DEFAULT_CHANNEL_SIZE: usize = 5;
 pub enum Error {
     #[snafu(display("Failed to store version edit, err:{}", source))]
     StoreVersionEdit { source: GenericError },
+
+    #[snafu(display("Failed to store schema edit, err:{}", source))]
+    StoreSchemaEdit { source: GenericError },
 
     #[snafu(display(
         "Failed to purge wal, wal_location:{:?}, sequence:{}",
@@ -314,6 +317,27 @@ impl FlushTask {
                 table_data.name, table_data.id, suggest_segment_duration
             );
             assert!(!suggest_segment_duration.is_zero());
+
+            if let Some(pk_idx) = current_version.suggest_primary_key() {
+                let mut new_schema = table_data.schema();
+                new_schema.reset_primary_key_indexes(pk_idx);
+                let pre_schema_version = new_schema.version();
+                let meta_update = MetaUpdate::AlterSchema(AlterSchemaMeta {
+                    space_id: table_data.space_id,
+                    table_id: table_data.id,
+                    schema: new_schema,
+                    pre_schema_version,
+                });
+                let edit_req = MetaEditRequest {
+                    shard_info: table_data.shard_info,
+                    meta_edit: MetaEdit::Update(meta_update),
+                };
+                self.space_store
+                    .manifest
+                    .apply_edit(edit_req)
+                    .await
+                    .context(StoreSchemaEdit)?;
+            }
 
             let mut new_table_opts = (*table_data.table_options()).clone();
             new_table_opts.segment_duration = Some(ReadableDuration(suggest_segment_duration));

@@ -759,6 +759,10 @@ impl Schema {
         &self.primary_key_indexes
     }
 
+    pub fn reset_primary_key_indexes(&mut self, idx: Vec<usize>) {
+        self.primary_key_indexes = idx
+    }
+
     /// Return the number of columns index in primary key
     pub fn num_primary_key_columns(&self) -> usize {
         self.primary_key_indexes.len()
@@ -1045,7 +1049,7 @@ impl Builder {
         self.may_alloc_column_id(&mut column);
         self.validate_column(&column, true)?;
 
-        ensure!(!column.is_nullable, NullKeyColumn { name: column.name });
+        // ensure!(!column.is_nullable, NullKeyColumn { name: column.name });
 
         // FIXME(xikai): it seems not reasonable to decide the timestamp column in this
         // way.
@@ -1221,12 +1225,12 @@ impl Builder {
         assert!(!self.primary_key_indexes.is_empty());
 
         let tsid_index = Self::find_tsid_index(&self.columns);
-        if tsid_index.is_some() {
-            ensure!(
-                self.primary_key_indexes.len() == 2,
-                InvalidPrimaryKeyWithTsid
-            );
-        }
+        // if tsid_index.is_some() {
+        //     ensure!(
+        //         self.primary_key_indexes.len() == 2,
+        //         InvalidPrimaryKeyWithTsid
+        //     );
+        // }
 
         let fields = self
             .columns
