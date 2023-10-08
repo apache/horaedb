@@ -117,13 +117,14 @@ where
 
     fn log(&self, record: &Record, values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
         let tag = record.tag();
-        // if slow_path not exists, print slow_log to terminal
-        if self.slow.is_some() && tag.starts_with("slow") {
+        if tag.is_empty() {
+            self.normal.log(record, values)
+        } else if self.slow.is_some() && tag.starts_with("slow") {
             self.slow.as_ref().unwrap().log(record, values)
         } else if self.failed.is_some() && tag.starts_with("failed") {
             self.failed.as_ref().unwrap().log(record, values)
         } else {
-            self.normal.log(record, values)
+            Ok(())
         }
     }
 }
