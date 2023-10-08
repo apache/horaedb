@@ -47,7 +47,7 @@ use crate::{
     table_options::StorageFormat,
 };
 
-const KEEP_COLUMN_VALUE_THRESHOLD: usize = 100;
+const KEEP_COLUMN_VALUE_THRESHOLD: usize = 20;
 
 /// The implementation of sst based on parquet and object storage.
 #[derive(Debug)]
