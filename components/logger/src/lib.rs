@@ -32,6 +32,8 @@ use slog_term::{Decorator, PlainDecorator, RecordDecorator, TermDecorator};
 
 const ASYNC_CHAN_SIZE: usize = 102400;
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.3f";
+const SLOW_QUERY_TAG: &str = "slow";
+const FAILED_QUERY_TAG: &str = "failed";
 
 // Thanks to tikv
 // https://github.com/tikv/tikv/blob/eaeb39a2c85684de08c48cf4b9426b3faf4defe6/components/tikv_util/src/logger/mod.rs
@@ -119,9 +121,9 @@ where
         let tag = record.tag();
         if tag.is_empty() {
             self.normal.log(record, values)
-        } else if self.slow.is_some() && tag.starts_with("slow") {
+        } else if self.slow.is_some() && tag == SLOW_QUERY_TAG {
             self.slow.as_ref().unwrap().log(record, values)
-        } else if self.failed.is_some() && tag.starts_with("failed") {
+        } else if self.failed.is_some() && tag == FAILED_QUERY_TAG {
             self.failed.as_ref().unwrap().log(record, values)
         } else {
             Ok(())
