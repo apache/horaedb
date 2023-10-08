@@ -521,6 +521,7 @@ mod tests {
             factory::{
                 Factory, FactoryImpl, ReadFrequency, ScanOptions, SstReadOptions, SstWriteOptions,
             },
+            metrics::MaybeTableLevelMetrics,
             parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
         },
@@ -638,6 +639,7 @@ mod tests {
             let scan_options = ScanOptions::default();
             // read sst back to test
             let sst_read_options = SstReadOptions {
+                maybe_table_level_metrics: Arc::new(MaybeTableLevelMetrics::new("test")),
                 frequency: ReadFrequency::Frequent,
                 num_rows_per_row_group: 5,
                 projected_schema: reader_projected_schema,

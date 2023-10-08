@@ -63,6 +63,7 @@ use crate::{
             cache::{MetaCacheRef, MetaData},
             SstMetaData,
         },
+        metrics::MaybeTableLevelMetrics,
         parquet::{
             encoding::ParquetDecoder, meta_data::ParquetFilter, row_group_pruner::RowGroupPruner,
         },
@@ -94,6 +95,8 @@ pub struct Reader<'a> {
     /// Options for `read_parallelly`
     metrics: Metrics,
     df_plan_metrics: ExecutionPlanMetricsSet,
+
+    table_level_sst_metrics: Arc<MaybeTableLevelMetrics>,
 }
 
 #[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
@@ -136,6 +139,7 @@ impl<'a> Reader<'a> {
             row_projector: None,
             metrics,
             df_plan_metrics,
+            table_level_sst_metrics: options.maybe_table_level_metrics.clone(),
         }
     }
 
@@ -253,11 +257,22 @@ impl<'a> Reader<'a> {
             )?
         };
 
+        let num_row_group_before_prune = meta_data.parquet().num_row_groups();
+        let num_row_group_after_prune = target_row_groups.len();
+        // Maybe it is a sub table of partitioned table, try to extract its parent
+        // table.
+        if let ReadFrequency::Frequent = self.frequency {
+            self.table_level_sst_metrics
+                .row_group_before_prune_counter
+                .inc_by(num_row_group_before_prune as u64);
+            self.table_level_sst_metrics
+                .row_group_after_prune_counter
+                .inc_by(num_row_group_after_prune as u64);
+        }
+
         debug!(
-            "Reader fetch record batches, path:{}, row_groups total:{}, after prune:{}",
-            self.path,
-            meta_data.parquet().num_row_groups(),
-            target_row_groups.len(),
+            "Reader fetch record batches, path:{}, row_groups total:{num_row_group_before_prune}, after prune:{num_row_group_after_prune}",
+            self.path
         );
 
         if target_row_groups.is_empty() {

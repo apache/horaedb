@@ -2351,6 +2351,8 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "insta",
+ "lazy_static",
+ "prometheus 0.12.0",
  "prost",
  "snafu 0.6.10",
  "table_engine",
@@ -5313,6 +5315,7 @@ dependencies = [
  "json_pretty",
  "lazy_static",
  "log",
+ "logger",
  "macros",
  "meta_client",
  "paste 1.0.12",
@@ -6787,14 +6790,17 @@ dependencies = [
  "generic_error",
  "hash_ext",
  "itertools 0.10.5",
+ "lazy_static",
  "log",
  "macros",
  "prost",
  "rand 0.7.3",
+ "regex",
  "runtime",
  "serde",
  "smallvec",
  "snafu 0.6.10",
+ "time_ext",
  "tokio",
  "trace_metric",
 ]
@@ -7488,7 +7494,7 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 0.1.10",
+ "cfg-if 1.0.0",
  "rand 0.8.5",
  "static_assertions",
 ]

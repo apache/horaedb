@@ -53,7 +53,6 @@ impl Proxy {
         match self.handle_sql_query_internal(&ctx, &req).await {
             Err(e) => {
                 error!("Failed to handle sql query, ctx:{ctx:?}, err:{e}");
-
                 GRPC_HANDLER_COUNTER_VEC.query_failed.inc();
                 SqlQueryResponse {
                     header: Some(error::build_err_header(e)),

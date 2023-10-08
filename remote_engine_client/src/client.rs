@@ -326,10 +326,10 @@ impl Client {
         request: ExecutePlanRequest,
     ) -> Result<ClientReadRecordBatchStream> {
         // Find the channel from router firstly.
-        let route_context = self.cached_router.route(&request.table).await?;
+        let table_ident = request.remote_request.table.clone();
+        let route_context = self.cached_router.route(&table_ident).await?;
 
         // Execute plan from remote.
-        let table_ident = request.table;
         let plan_schema = request.plan_schema;
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
         let request_pb =

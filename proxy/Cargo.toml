@@ -45,6 +45,7 @@ interpreters = { workspace = true }
 itertools = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
+logger = { workspace = true }
 macros = { workspace = true }
 meta_client = { workspace = true }
 paste = { workspace = true }

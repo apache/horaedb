@@ -32,14 +32,14 @@ pub(crate) mod write;
 
 use std::sync::Arc;
 
-use common_types::table::TableId;
+use common_types::{projected_schema::ProjectedSchema, table::TableId};
 use generic_error::{BoxError, GenericError};
 use log::{error, info};
 use macros::define_result;
 use mem_collector::MemUsageCollector;
 use runtime::Runtime;
 use snafu::{ResultExt, Snafu};
-use table_engine::{engine::EngineRuntimes, table::FlushRequest};
+use table_engine::{engine::EngineRuntimes, predicate::PredicateRef, table::FlushRequest};
 use tokio::sync::oneshot::{self, error::RecvError};
 use wal::manager::{WalLocation, WalManagerRef};
 
@@ -50,9 +50,13 @@ use crate::{
     row_iter::IterOptions,
     space::{SpaceId, SpaceRef, SpacesRef},
     sst::{
-        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
+        factory::{
+            FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency, ScanOptions,
+            SstReadOptions,
+        },
         file::FilePurgerRef,
         meta_data::cache::MetaCacheRef,
+        metrics::MaybeTableLevelMetrics,
     },
     table::data::{TableDataRef, TableShardInfo},
     RecoverMode, TableOptions,
@@ -301,6 +305,45 @@ impl Instance {
     #[inline]
     fn max_retry_flush_limit(&self) -> usize {
         self.max_retry_flush_limit
+    }
+}
+
+// TODO: make it a builder
+#[allow(clippy::too_many_arguments)]
+fn create_sst_read_option(
+    scan_type: ScanType,
+    scan_options: ScanOptions,
+    maybe_table_level_metrics: Arc<MaybeTableLevelMetrics>,
+    num_rows_per_row_group: usize,
+    projected_schema: ProjectedSchema,
+    predicate: PredicateRef,
+    meta_cache: Option<MetaCacheRef>,
+    runtime: Arc<Runtime>,
+) -> SstReadOptions {
+    SstReadOptions {
+        maybe_table_level_metrics,
+        num_rows_per_row_group,
+        frequency: scan_type.into(),
+        projected_schema,
+        predicate,
+        meta_cache,
+        scan_options,
+        runtime,
+    }
+}
+
+/// Scan type which mapped to the low level `ReadFrequency` in sst reader.
+enum ScanType {
+    Query,
+    Compaction,
+}
+
+impl From<ScanType> for ReadFrequency {
+    fn from(value: ScanType) -> Self {
+        match value {
+            ScanType::Query => ReadFrequency::Frequent,
+            ScanType::Compaction => ReadFrequency::Once,
+        }
     }
 }
 

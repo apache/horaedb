@@ -13,7 +13,10 @@
 // limitations under the License.
 
 use lazy_static::lazy_static;
-use prometheus::{exponential_buckets, register_counter, register_histogram, Counter, Histogram};
+use prometheus::{
+    exponential_buckets, register_counter, register_histogram, register_int_counter_vec, Counter,
+    Histogram, IntCounter, IntCounterVec,
+};
 
 lazy_static! {
     // Histogram:
@@ -33,4 +36,33 @@ lazy_static! {
         "META_DATA_CACHE_MISS",
         "The counter for meta data cache miss"
     ).unwrap();
+
+    static ref ROW_GROUP_BEFORE_PRUNE_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "row_group_before_prune",
+        "The counter for row group before prune",
+        &["table"]
+    ).unwrap();
+
+    static ref ROW_GROUP_AFTER_PRUNE_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "row_group_after_prune",
+        "The counter for row group after prune",
+        &["table"]
+    ).unwrap();
+}
+
+#[derive(Debug)]
+pub struct MaybeTableLevelMetrics {
+    pub row_group_before_prune_counter: IntCounter,
+    pub row_group_after_prune_counter: IntCounter,
+}
+
+impl MaybeTableLevelMetrics {
+    pub fn new(table: &str) -> Self {
+        Self {
+            row_group_before_prune_counter: ROW_GROUP_BEFORE_PRUNE_COUNTER
+                .with_label_values(&[table]),
+            row_group_after_prune_counter: ROW_GROUP_AFTER_PRUNE_COUNTER
+                .with_label_values(&[table]),
+        }
+    }
 }
