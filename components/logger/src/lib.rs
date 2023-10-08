@@ -501,8 +501,7 @@ impl SlowTimer {
 macro_rules! maybe_slow_query {
     ($t:expr, $($args:tt)*) => {{
         if $t.is_slow() {
-            use logger::SLOW_QUERY_TAG;
-            info!(target: SLOW_QUERY_TAG, $($args)*);
+            info!(target: logger::SLOW_QUERY_TAG, $($args)*);
         }
     }}
 }
@@ -510,8 +509,7 @@ macro_rules! maybe_slow_query {
 #[macro_export]
 macro_rules! failed_query {
     ($($args:tt)*) => {{
-        use logger::FAILED_QUERY_TAG;
-        info!(target: FAILED_QUERY_TAG, $($args)*);
+        info!(target: logger::FAILED_QUERY_TAG, $($args)*);
     }}
 }
 
