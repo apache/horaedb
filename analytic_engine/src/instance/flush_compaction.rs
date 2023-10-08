@@ -24,6 +24,7 @@ use common_types::{
     time::TimeRange,
     SequenceNumber,
 };
+use datafusion::error::DataFusionError;
 use futures::{
     channel::{mpsc, mpsc::channel},
     stream, SinkExt, TryStreamExt,
