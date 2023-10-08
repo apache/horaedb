@@ -266,7 +266,7 @@ impl<'a> MetricsContext<'a> {
     }
 
     fn maybe_table_name(&mut self) -> &str {
-        if self.metric_opt.enable_table_level_metrics {
+        if !self.metric_opt.enable_table_level_metrics {
             DEFAULT_METRICS_KEY
         } else {
             let maybe_partition_table = maybe_extract_partitioned_table_name(self.table_name);
