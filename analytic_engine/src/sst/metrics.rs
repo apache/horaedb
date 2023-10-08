@@ -37,30 +37,30 @@ lazy_static! {
         "The counter for meta data cache miss"
     ).unwrap();
 
-    static ref SST_BEFORE_PRUNE_COUNTER: IntCounterVec = register_int_counter_vec!(
-        "sst_before_prune",
-        "The counter for sst before prune",
+    static ref ROW_GROUP_BEFORE_PRUNE_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "row_group_before_prune",
+        "The counter for row group before prune",
         &["table"]
     ).unwrap();
 
-    static ref SST_AFTER_PRUNE_COUNTER: IntCounterVec = register_int_counter_vec!(
-        "sst_after_prune",
-        "The counter for sst after prune",
+    static ref ROW_GROUP_AFTER_PRUNE_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "row_group_after_prune",
+        "The counter for row group after prune",
         &["table"]
     ).unwrap();
 }
 
 #[derive(Debug)]
 pub struct MaybeTableLevelMetrics {
-    pub sst_before_prune_counter: IntCounter,
-    pub sst_after_prune_counter: IntCounter,
+    pub row_group_before_prune_counter: IntCounter,
+    pub row_group_after_prune_counter: IntCounter,
 }
 
 impl MaybeTableLevelMetrics {
     pub fn new(table: &str) -> Self {
         Self {
-            sst_before_prune_counter: SST_BEFORE_PRUNE_COUNTER.with_label_values(&[table]),
-            sst_after_prune_counter: SST_AFTER_PRUNE_COUNTER.with_label_values(&[table]),
+            row_group_before_prune_counter: ROW_GROUP_BEFORE_PRUNE_COUNTER.with_label_values(&[table]),
+            row_group_after_prune_counter: ROW_GROUP_AFTER_PRUNE_COUNTER.with_label_values(&[table]),
         }
     }
 }

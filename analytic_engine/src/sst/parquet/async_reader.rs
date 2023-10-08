@@ -257,22 +257,22 @@ impl<'a> Reader<'a> {
             )?
         };
 
-        let num_sst_before_prune = meta_data.parquet().num_row_groups();
-        let num_sst_after_prune = target_row_groups.len();
+        let num_row_group_before_prune = meta_data.parquet().num_row_groups();
+        let num_row_group_after_prune = target_row_groups.len();
         // Maybe it is a sub table of partitioned table, try to extract its parent
         // table.
         if let ReadFrequency::Frequent = self.frequency {
             self.table_level_sst_metrics
-                .sst_before_prune_counter
-                .inc_by(num_sst_before_prune as u64);
+                .row_group_before_prune_counter
+                .inc_by(num_row_group_before_prune as u64);
             self.table_level_sst_metrics
-                .sst_after_prune_counter
-                .inc_by(num_sst_after_prune as u64);
+                .row_group_after_prune_counter
+                .inc_by(num_row_group_after_prune as u64);
         }
 
         debug!(
-            "Reader fetch record batches, path:{}, row_groups total:{}, after prune:{}",
-            self.path, num_sst_before_prune, num_sst_after_prune,
+            "Reader fetch record batches, path:{}, row_groups total:{num_row_group_before_prune}, after prune:{num_row_group_after_prune}",
+            self.path
         );
 
         if target_row_groups.is_empty() {
