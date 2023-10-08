@@ -54,6 +54,7 @@ use tokio::sync::{
 };
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
+use super::meta_data::ColumnValueSet;
 use crate::{
     prefetchable_stream::{NoopPrefetcher, PrefetchableStream},
     sst::{
@@ -174,6 +175,7 @@ impl<'a> Reader<'a> {
         schema: SchemaRef,
         row_groups: &[RowGroupMetaData],
         parquet_filter: Option<&ParquetFilter>,
+        column_values: Option<&Vec<Option<ColumnValueSet>>>,
     ) -> Result<Vec<usize>> {
         let metrics_collector = self
             .metrics
@@ -186,6 +188,7 @@ impl<'a> Reader<'a> {
             parquet_filter,
             self.predicate.exprs(),
             metrics_collector,
+            column_values,
         )?;
 
         Ok(pruner.prune())
@@ -239,11 +242,16 @@ impl<'a> Reader<'a> {
         let row_projector = self.row_projector.as_ref().unwrap();
         let arrow_schema = meta_data.custom().schema.to_arrow_schema_ref();
         // Get target row groups.
-        let target_row_groups = self.prune_row_groups(
-            arrow_schema.clone(),
-            meta_data.parquet().row_groups(),
-            meta_data.custom().parquet_filter.as_ref(),
-        )?;
+        let target_row_groups = {
+            let custom = meta_data.custom();
+
+            self.prune_row_groups(
+                arrow_schema.clone(),
+                meta_data.parquet().row_groups(),
+                custom.parquet_filter.as_ref(),
+                custom.column_values.as_ref(),
+            )?
+        };
 
         debug!(
             "Reader fetch record batches, path:{}, row_groups total:{}, after prune:{}",
