@@ -227,32 +227,42 @@ impl RecordBatchGroupWriter {
 
     fn update_column_values(&mut self, record_batch: &RecordBatchWithKey) {
         for (col_idx, col_values) in self.column_values.iter_mut().enumerate() {
-            if let Some(values) = col_values {
-                match values {
-                    ColumnValueSet::StringValue(sv) => {
-                        // when there are too many values, don't keep this column values any more.
-                        if sv.len() > KEEP_COLUMN_VALUE_THRESHOLD {
-                            *col_values = None;
+            let mut too_many_values = false;
+            {
+                let col_values = match col_values {
+                    None => continue,
+                    Some(v) => v,
+                };
+                let rows_num = record_batch.num_rows();
+                let column_block = record_batch.column(col_idx);
+                for row_idx in 0..rows_num {
+                    match col_values {
+                        ColumnValueSet::StringValue(ss) => {
+                            let datum = column_block.datum(row_idx);
+                            if let Some(v) = datum.as_str() {
+                                ss.insert(v.to_string());
+                            }
                         }
                     }
+
+                    if row_idx % KEEP_COLUMN_VALUE_THRESHOLD == 0
+                        && col_values.len() > KEEP_COLUMN_VALUE_THRESHOLD
+                    {
+                        too_many_values = true;
+                        break;
+                    }
+                }
+
+                // Do one last check.
+                if col_values.len() > KEEP_COLUMN_VALUE_THRESHOLD {
+                    too_many_values = true;
                 }
             }
 
-            let col_values = match col_values {
-                None => continue,
-                Some(v) => v,
-            };
-            let rows_num = record_batch.num_rows();
-            let column_block = record_batch.column(col_idx);
-            for row_idx in 0..rows_num {
-                match col_values {
-                    ColumnValueSet::StringValue(ss) => {
-                        let datum = column_block.datum(row_idx);
-                        if let Some(v) = datum.as_str() {
-                            ss.insert(v.to_string());
-                        }
-                    }
-                }
+            // When there are too many values, don't keep this column values
+            // any more.
+            if too_many_values {
+                *col_values = None;
             }
         }
     }

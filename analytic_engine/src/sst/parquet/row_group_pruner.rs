@@ -67,7 +67,7 @@ pub struct RowGroupPruner<'a> {
     schema: &'a SchemaRef,
     row_groups: &'a [RowGroupMetaData],
     parquet_filter: Option<&'a ParquetFilter>,
-    predicates: Cow<'a, Vec<Expr>>,
+    predicates: Cow<'a, [Expr]>,
     metrics: Metrics,
 }
 
@@ -182,7 +182,7 @@ impl<'a> RowGroupPruner<'a> {
         schema: &'a SchemaRef,
         row_groups: &'a [RowGroupMetaData],
         parquet_filter: Option<&'a ParquetFilter>,
-        predicates: &'a Vec<Expr>,
+        predicates: &'a [Expr],
         metrics_collector: Option<MetricsCollector>,
         column_values: Option<&'a Vec<Option<ColumnValueSet>>>,
     ) -> Result<Self> {
@@ -398,6 +398,12 @@ mod tests {
                 // ip = 127.0.0.1
                 col("ip").eq(lit("127.0.0.1")),
                 col("ip").eq(lit("127.0.0.1")),
+            ),
+            // Can't rewrite since host-not-exists is not  in column_values.
+            (
+                // ip != 127.0.0.1
+                col("host-not-exists").not_eq(lit("web1")),
+                col("host-not-exists").not_eq(lit("web1")),
             ),
         ];
         for (input, expected) in testcases {

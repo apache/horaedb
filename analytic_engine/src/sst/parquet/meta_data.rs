@@ -479,6 +479,20 @@ pub enum ColumnValueSet {
     StringValue(HashSet<String>),
 }
 
+impl ColumnValueSet {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::StringValue(sv) => sv.is_empty(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Self::StringValue(sv) => sv.len(),
+        }
+    }
+}
+
 impl From<ColumnValueSet> for sst_pb::column_value_set::Value {
     fn from(value: ColumnValueSet) -> Self {
         match value {
