@@ -5315,6 +5315,7 @@ dependencies = [
  "json_pretty",
  "lazy_static",
  "log",
+ "logger",
  "macros",
  "meta_client",
  "paste 1.0.12",

@@ -24,6 +24,7 @@ use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{error, info, warn};
+use logger::{failed_query, maybe_slow_query, SlowTimer};
 use query_frontend::{
     frontend,
     frontend::{Context as SqlContext, Frontend},
@@ -37,11 +38,8 @@ use tonic::{transport::Channel, IntoRequest};
 use crate::{
     dedup_requests::{ExecutionGuard, RequestNotifiers, RequestResult},
     error::{ErrNoCause, ErrWithCause, Error, Internal, InternalNoCause, Result},
-    failed_query,
     forward::{ForwardRequest, ForwardResult},
-    maybe_slow_query,
     metrics::GRPC_HANDLER_COUNTER_VEC,
-    query_log::SlowTimer,
     Context, Proxy,
 };
 

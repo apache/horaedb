@@ -59,8 +59,10 @@ pub struct MaybeTableLevelMetrics {
 impl MaybeTableLevelMetrics {
     pub fn new(table: &str) -> Self {
         Self {
-            row_group_before_prune_counter: ROW_GROUP_BEFORE_PRUNE_COUNTER.with_label_values(&[table]),
-            row_group_after_prune_counter: ROW_GROUP_AFTER_PRUNE_COUNTER.with_label_values(&[table]),
+            row_group_before_prune_counter: ROW_GROUP_BEFORE_PRUNE_COUNTER
+                .with_label_values(&[table]),
+            row_group_after_prune_counter: ROW_GROUP_AFTER_PRUNE_COUNTER
+                .with_label_values(&[table]),
         }
     }
 }

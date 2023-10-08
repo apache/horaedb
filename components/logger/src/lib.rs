@@ -21,6 +21,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
     },
+    time::{Duration, Instant},
 };
 
 use log::{info, SetLoggerError};
@@ -32,8 +33,8 @@ use slog_term::{Decorator, PlainDecorator, RecordDecorator, TermDecorator};
 
 const ASYNC_CHAN_SIZE: usize = 102400;
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.3f";
-const SLOW_QUERY_TAG: &str = "slow";
-const FAILED_QUERY_TAG: &str = "failed";
+pub const SLOW_QUERY_TAG: &str = "slow";
+pub const FAILED_QUERY_TAG: &str = "failed";
 
 // Thanks to tikv
 // https://github.com/tikv/tikv/blob/eaeb39a2c85684de08c48cf4b9426b3faf4defe6/components/tikv_util/src/logger/mod.rs
@@ -466,6 +467,52 @@ pub fn init_test_logger() {
 
     // Use async and init stdlog
     let _ = init_log_from_drain(drain, level, false, 12400, true);
+}
+
+/// Timer for collecting slow query
+#[derive(Debug)]
+pub struct SlowTimer {
+    slow_threshold: Duration,
+    timer: Instant,
+}
+
+impl SlowTimer {
+    pub fn new(threshold: Duration) -> SlowTimer {
+        SlowTimer {
+            slow_threshold: threshold,
+            timer: Instant::now(),
+        }
+    }
+
+    pub fn elapsed(&self) -> Duration {
+        self.timer.elapsed()
+    }
+
+    pub fn is_slow(&self) -> bool {
+        self.elapsed() >= self.slow_threshold
+    }
+
+    pub fn now(&self) -> Instant {
+        self.timer
+    }
+}
+
+#[macro_export]
+macro_rules! maybe_slow_query {
+    ($t:expr, $($args:tt)*) => {{
+        if $t.is_slow() {
+            use logger::SLOW_QUERY_TAG;
+            info!(target: SLOW_QUERY_TAG, $($args)*);
+        }
+    }}
+}
+
+#[macro_export]
+macro_rules! failed_query {
+    ($($args:tt)*) => {{
+        use logger::FAILED_QUERY_TAG;
+        info!(target: FAILED_QUERY_TAG, $($args)*);
+    }}
 }
 
 #[cfg(test)]
