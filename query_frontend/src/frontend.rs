@@ -29,6 +29,7 @@ use table_engine::table;
 
 use crate::{
     ast::{Statement, TableName},
+    config::DynamicConfig,
     opentsdb::types::{OpentsdbQueryPlan, QueryRequest},
     parser::Parser,
     plan::Plan,
@@ -105,11 +106,15 @@ impl Context {
 #[derive(Debug)]
 pub struct Frontend<P> {
     provider: P,
+    dyn_config: Arc<DynamicConfig>,
 }
 
 impl<P> Frontend<P> {
-    pub fn new(provider: P) -> Self {
-        Self { provider }
+    pub fn new(provider: P, dyn_config: Arc<DynamicConfig>) -> Self {
+        Self {
+            provider,
+            dyn_config,
+        }
     }
 
     /// Parse the sql and returns the statements
@@ -138,7 +143,12 @@ impl<P> Frontend<P> {
 impl<P: MetaProvider> Frontend<P> {
     /// Create logical plan for the statement
     pub fn statement_to_plan(&self, ctx: &Context, stmt: Statement) -> Result<Plan> {
-        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+        let planner = Planner::new(
+            &self.provider,
+            ctx.request_id,
+            ctx.read_parallelism,
+            self.dyn_config.as_ref(),
+        );
 
         planner.statement_to_plan(stmt).context(CreatePlan)
     }
@@ -149,7 +159,12 @@ impl<P: MetaProvider> Frontend<P> {
         ctx: &Context,
         expr: Expr,
     ) -> Result<(Plan, Arc<ColumnNames>)> {
-        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+        let planner = Planner::new(
+            &self.provider,
+            ctx.request_id,
+            ctx.read_parallelism,
+            self.dyn_config.as_ref(),
+        );
 
         planner.promql_expr_to_plan(expr).context(CreatePlan)
     }
@@ -160,12 +175,22 @@ impl<P: MetaProvider> Frontend<P> {
         ctx: &Context,
         query: PromRemoteQuery,
     ) -> Result<RemoteQueryPlan> {
-        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+        let planner = Planner::new(
+            &self.provider,
+            ctx.request_id,
+            ctx.read_parallelism,
+            self.dyn_config.as_ref(),
+        );
         planner.remote_prom_req_to_plan(query).context(CreatePlan)
     }
 
     pub fn influxql_stmt_to_plan(&self, ctx: &Context, stmt: InfluxqlStatement) -> Result<Plan> {
-        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+        let planner = Planner::new(
+            &self.provider,
+            ctx.request_id,
+            ctx.read_parallelism,
+            self.dyn_config.as_ref(),
+        );
         planner.influxql_stmt_to_plan(stmt).context(CreatePlan)
     }
 
@@ -174,7 +199,12 @@ impl<P: MetaProvider> Frontend<P> {
         ctx: &Context,
         query: QueryRequest,
     ) -> Result<OpentsdbQueryPlan> {
-        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+        let planner = Planner::new(
+            &self.provider,
+            ctx.request_id,
+            ctx.read_parallelism,
+            self.dyn_config.as_ref(),
+        );
         planner.opentsdb_query_to_plan(query).context(CreatePlan)
     }
 
@@ -184,7 +214,12 @@ impl<P: MetaProvider> Frontend<P> {
         schema_config: &SchemaConfig,
         write_table: &WriteTableRequest,
     ) -> Result<Plan> {
-        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+        let planner = Planner::new(
+            &self.provider,
+            ctx.request_id,
+            ctx.read_parallelism,
+            self.dyn_config.as_ref(),
+        );
 
         planner
             .write_req_to_plan(schema_config, write_table)

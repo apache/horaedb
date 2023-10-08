@@ -2,10 +2,6 @@ DROP TABLE IF EXISTS `partition_table_t`;
 
 affected_rows: 0
 
-DROP TABLE IF EXISTS `__partition_table_t_0`;
-
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql: DROP TABLE IF EXISTS `__partition_table_t_0`;. Caused by: Internal error, msg:Failed to create interpreter, err:Failed to check permission, msg:only can process sub tables in table partition directly when enable partition table access" })
-
 CREATE TABLE `partition_table_t`(
                                     `name`string TAG,
                                     `id` int TAG,
@@ -22,10 +18,6 @@ Table,Create Table,
 String("partition_table_t"),String("CREATE TABLE `partition_table_t` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `name` string TAG, `id` int TAG, `value` double NOT NULL, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) PARTITION BY KEY(name) PARTITIONS 4 ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='false', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
 
 
-SHOW CREATE TABLE __partition_table_t_0;
-
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql: SHOW CREATE TABLE __partition_table_t_0;. Caused by: Internal error, msg:Failed to create interpreter, err:Failed to check permission, msg:only can process sub tables in table partition directly when enable partition table access" })
-
 INSERT INTO partition_table_t (t, name, value)
 VALUES (1651737067000, "ceresdb0", 100),
        (1651737067000, "ceresdb1", 101),
@@ -40,10 +32,6 @@ VALUES (1651737067000, "ceresdb0", 100),
        (1651737067000, "ceresdb10", 110);
 
 affected_rows: 11
-
-SELECT * from __partition_table_t_0 where name = "ceresdb0";
-
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql: SELECT * from __partition_table_t_0 where name = \"ceresdb0\";. Caused by: Internal error, msg:Failed to create interpreter, err:Failed to check permission, msg:only can process sub tables in table partition directly when enable partition table access" })
 
 SELECT * from partition_table_t where name = "ceresdb0";
 
@@ -96,7 +84,7 @@ affected_rows: 0
 
 SHOW CREATE TABLE partition_table_t;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SHOW CREATE TABLE partition_table_t;. Caused by: Failed to create plan, err:Table not found, table:partition_table_t" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query:SHOW CREATE TABLE partition_table_t;. Caused by: Failed to create plan, err:Table not found, table:partition_table_t" })
 
 DROP TABLE IF EXISTS `random_partition_table_t`;
 
@@ -115,7 +103,7 @@ affected_rows: 0
 SHOW CREATE TABLE random_partition_table_t;
 
 Table,Create Table,
-String("random_partition_table_t"),String("CREATE TABLE `random_partition_table_t` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `name` string TAG, `id` int TAG, `value` double NOT NULL, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) PARTITIONS 4 ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='false', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='APPEND', write_buffer_size='33554432')"),
+String("random_partition_table_t"),String("CREATE TABLE `random_partition_table_t` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `name` string TAG, `id` int TAG, `value` double NOT NULL, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) PARTITION BY RANDOM PARTITIONS 4 ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='false', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='APPEND', write_buffer_size='33554432')"),
 
 
 INSERT INTO random_partition_table_t (t, name, value)
@@ -151,7 +139,7 @@ affected_rows: 0
 
 SHOW CREATE TABLE random_partition_table_t;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SHOW CREATE TABLE random_partition_table_t;. Caused by: Failed to create plan, err:Table not found, table:random_partition_table_t" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query:SHOW CREATE TABLE random_partition_table_t;. Caused by: Failed to create plan, err:Table not found, table:random_partition_table_t" })
 
 DROP TABLE IF EXISTS `random_partition_table_t_overwrite`;
 
@@ -165,5 +153,5 @@ CREATE TABLE `random_partition_table_t_overwrite`(
                                     TIMESTAMP KEY(t)
 ) PARTITION BY RANDOM PARTITIONS 4 ENGINE = Analytic with (enable_ttl='false', update_mode="OVERWRITE");
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql: CREATE TABLE `random_partition_table_t_overwrite`( \n                                     `name`string TAG, \n                                     `id` int TAG, \n                                     `value` double NOT NULL, \n                                     `t` timestamp NOT NULL, \n                                     TIMESTAMP KEY(t) \n ) PARTITION BY RANDOM PARTITIONS 4 ENGINE = Analytic with (enable_ttl='false', update_mode=\"OVERWRITE\");. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute create table, err:Failed to create table by table manipulator, err:Failed to create table, msg:invalid parameters to create table, plan:CreateTablePlan { engine: \"Analytic\", if_not_exists: false, table: \"random_partition_table_t_overwrite\", table_schema: Schema { timestamp_index: 1, tsid_index: Some(0), column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: \"tsid\", data_type: UInt64, is_nullable: false, is_tag: false, is_dictionary: false, comment: \"\", escaped_name: \"tsid\", default_value: None }, ColumnSchema { id: 2, name: \"t\", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: \"\", escaped_name: \"t\", default_value: None }, ColumnSchema { id: 3, name: \"name\", data_type: String, is_nullable: true, is_tag: true, is_dictionary: false, comment: \"\", escaped_name: \"name\", default_value: None }, ColumnSchema { id: 4, name: \"id\", data_type: Int32, is_nullable: true, is_tag: true, is_dictionary: false, comment: \"\", escaped_name: \"id\", default_value: None }, ColumnSchema { id: 5, name: \"value\", data_type: Double, is_nullable: false, is_tag: false, is_dictionary: false, comment: \"\", escaped_name: \"value\", default_value: None }] }, version: 1, primary_key_indexes: [0, 1] }, options: {\"enable_ttl\": \"false\", \"update_mode\": \"OVERWRITE\"} }, err:Invalid arguments, table:random_partition_table_t_overwrite, err:Try to create a random partition table in overwrite mode, table:random_partition_table_t_overwrite." })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql:CREATE TABLE `random_partition_table_t_overwrite`(\n                                    `name`string TAG,\n                                    `id` int TAG,\n                                    `value` double NOT NULL,\n                                    `t` timestamp NOT NULL,\n                                    TIMESTAMP KEY(t)\n) PARTITION BY RANDOM PARTITIONS 4 ENGINE = Analytic with (enable_ttl='false', update_mode=\"OVERWRITE\");. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute create table, err:Failed to create table by table manipulator, err:Failed to create table, msg:invalid parameters to create table, plan:CreateTablePlan { engine: \"Analytic\", if_not_exists: false, table: \"random_partition_table_t_overwrite\", table_schema: Schema { timestamp_index: 1, tsid_index: Some(0), column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: \"tsid\", data_type: UInt64, is_nullable: false, is_tag: false, is_dictionary: false, comment: \"\", escaped_name: \"tsid\", default_value: None }, ColumnSchema { id: 2, name: \"t\", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: \"\", escaped_name: \"t\", default_value: None }, ColumnSchema { id: 3, name: \"name\", data_type: String, is_nullable: true, is_tag: true, is_dictionary: false, comment: \"\", escaped_name: \"name\", default_value: None }, ColumnSchema { id: 4, name: \"id\", data_type: Int32, is_nullable: true, is_tag: true, is_dictionary: false, comment: \"\", escaped_name: \"id\", default_value: None }, ColumnSchema { id: 5, name: \"value\", data_type: Double, is_nullable: false, is_tag: false, is_dictionary: false, comment: \"\", escaped_name: \"value\", default_value: None }] }, version: 1, primary_key_indexes: [0, 1] }, options: {\"enable_ttl\": \"false\", \"update_mode\": \"OVERWRITE\"} }, err:Invalid arguments, table:random_partition_table_t_overwrite, err:Try to create a random partition table in overwrite mode, table:random_partition_table_t_overwrite." })
 

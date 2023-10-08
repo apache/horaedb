@@ -55,9 +55,9 @@ impl ShardSet {
     }
 
     /// Insert the tables of one shard.
-    pub fn insert(&self, shard_id: ShardId, shard: ShardRef) {
+    pub fn insert(&self, shard_id: ShardId, shard: ShardRef) -> Option<ShardRef> {
         let mut inner = self.inner.write().unwrap();
-        inner.insert(shard_id, shard);
+        inner.insert(shard_id, shard)
     }
 }
 
@@ -221,6 +221,14 @@ impl ShardData {
         matches!(self.shard_info.status, ShardStatus::Frozen)
     }
 
+    #[inline]
+    fn update_shard_info(&mut self, new_info: ShardInfo) {
+        // TODO: refactor to move status out of ShardInfo
+        self.shard_info.id = new_info.id;
+        self.shard_info.version = new_info.version;
+        self.shard_info.role = new_info.role;
+    }
+
     pub fn try_insert_table(&mut self, updated_info: UpdatedTableInfo) -> Result<()> {
         let UpdatedTableInfo {
             prev_version: prev_shard_version,
@@ -252,7 +260,7 @@ impl ShardData {
         );
 
         // Update tables of shard.
-        self.shard_info = curr_shard;
+        self.update_shard_info(curr_shard);
         self.tables.push(new_table);
 
         Ok(())
@@ -289,7 +297,7 @@ impl ShardData {
             })?;
 
         // Update tables of shard.
-        self.shard_info = curr_shard;
+        self.update_shard_info(curr_shard);
         self.tables.swap_remove(table_idx);
 
         Ok(())

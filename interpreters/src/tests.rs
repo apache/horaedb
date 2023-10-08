@@ -23,11 +23,13 @@ use catalog::{
 use catalog_impls::table_based::TableBasedManager;
 use common_types::request_id::RequestId;
 use datafusion::execution::runtime_env::RuntimeConfig;
+use df_operator::registry::{FunctionRegistry, FunctionRegistryImpl};
 use query_engine::{datafusion_impl::DatafusionQueryEngineImpl, QueryEngineRef};
 use query_frontend::{
-    parser::Parser, plan::Plan, planner::Planner, provider::MetaProvider, tests::MockMetaProvider,
+    config::DynamicConfig, parser::Parser, plan::Plan, planner::Planner, provider::MetaProvider,
+    tests::MockMetaProvider,
 };
-use table_engine::engine::TableEngineRef;
+use table_engine::{engine::TableEngineRef, memory::MockRemoteEngine};
 
 use crate::{
     context::Context,
@@ -44,7 +46,8 @@ async fn build_catalog_manager(analytic: TableEngineRef) -> TableBasedManager {
 }
 
 fn sql_to_plan<M: MetaProvider>(meta_provider: &M, sql: &str) -> Plan {
-    let planner = Planner::new(meta_provider, RequestId::next_id(), 1);
+    let dyn_config = DynamicConfig::default();
+    let planner = Planner::new(meta_provider, RequestId::next_id(), 1, &dyn_config);
     let mut statements = Parser::parse_sql(sql).unwrap();
     assert_eq!(statements.len(), 1);
     planner.statement_to_plan(statements.remove(0)).unwrap()
@@ -369,9 +372,17 @@ async fn test_interpreters<T: EngineBuildContext>(engine_context: T) {
     let catalog_manager = Arc::new(build_catalog_manager(engine.clone()).await);
     let table_operator = TableOperator::new(catalog_manager.clone());
     let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
-    let query_engine = Box::new(
-        DatafusionQueryEngineImpl::new(query_engine::Config::default(), RuntimeConfig::default())
-            .unwrap(),
+    let function_registry = Arc::new(FunctionRegistryImpl::default());
+    let remote_engine = Arc::new(MockRemoteEngine);
+    let query_engine = Arc::new(
+        DatafusionQueryEngineImpl::new(
+            query_engine::config::Config::default(),
+            RuntimeConfig::default(),
+            function_registry.to_df_function_registry(),
+            remote_engine,
+            catalog_manager.clone(),
+        )
+        .unwrap(),
     );
 
     let env = Env {

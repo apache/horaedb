@@ -15,7 +15,11 @@
 //! Http service
 
 use std::{
-    collections::HashMap, convert::Infallible, error::Error as StdError, net::IpAddr, sync::Arc,
+    collections::HashMap,
+    convert::Infallible,
+    error::Error as StdError,
+    net::IpAddr,
+    sync::{atomic::Ordering, Arc},
     time::Duration,
 };
 
@@ -216,6 +220,8 @@ impl Service {
             .or(self.server_config())
             .or(self.shards())
             .or(self.wal_stats())
+            .or(self.query_push_down())
+            .or(self.slow_threshold())
             .with(warp::log("http_requests"))
             .with(warp::log::custom(|info| {
                 let path = info.path();
@@ -617,6 +623,45 @@ impl Service {
                     Ok(res) => Ok(reply::json(&res)),
                     Err(e) => Err(reject::custom(e)),
                 }
+            })
+    }
+
+    // POST /debug/query_push_down/{true/false}
+    fn query_push_down(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("debug" / "query_push_down" / ..)
+            .and(warp::path::param::<bool>())
+            .and(warp::post())
+            .and(self.with_proxy())
+            .and_then(|enable: bool, proxy: Arc<Proxy>| async move {
+                proxy
+                    .instance()
+                    .dyn_config
+                    .fronted
+                    .enable_dist_query_push_down
+                    .store(enable, Ordering::Relaxed);
+                std::result::Result::<_, Rejection>::Ok(format!("{enable}").into_response())
+            })
+    }
+
+    // PUT /debug/slow_threshold/{seconds}
+    fn slow_threshold(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("debug" / "slow_threshold" / ..)
+            .and(warp::path::param::<u64>())
+            .and(warp::put())
+            .and(self.with_proxy())
+            .and_then(|slow_threshold_secs: u64, proxy: Arc<Proxy>| async move {
+                proxy
+                    .instance()
+                    .dyn_config
+                    .slow_threshold
+                    .store(slow_threshold_secs, Ordering::Relaxed);
+                std::result::Result::<_, Rejection>::Ok(
+                    format!("current_slow_threshold:{slow_threshold_secs}s").into_response(),
+                )
             })
     }
 

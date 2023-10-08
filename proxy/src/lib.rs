@@ -18,6 +18,7 @@
 #![feature(trait_alias)]
 
 pub mod context;
+pub mod dedup_requests;
 pub mod error;
 mod error_util;
 pub mod forward;
@@ -53,7 +54,7 @@ use catalog::{
 };
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
-    PrometheusRemoteQueryResponse, Route, RouteRequest,
+    PrometheusRemoteQueryResponse, Route,
 };
 use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID, ENABLE_TTL, TTL};
 use datafusion::{
@@ -68,25 +69,29 @@ use interpreters::{
     factory::Factory,
     interpreter::{InterpreterPtr, Output},
 };
-use log::{error, info};
+use log::{error, info, warn};
 use query_frontend::plan::Plan;
-use router::{endpoint::Endpoint, Router};
+use router::{endpoint::Endpoint, RouteRequest, Router};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{CreateTableParams, EngineRuntimes, TableState},
-    remote::model::{GetTableInfoRequest, TableIdentifier},
+    partition::PartitionInfo,
+    remote::model::{GetTableInfoRequest, TableIdentifier, TableInfo},
     table::{TableId, TableRef},
     PARTITION_TABLE_ENGINE_TYPE,
 };
 use time_ext::{current_time_millis, parse_duration};
+use tokio::sync::mpsc::Sender;
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
+    dedup_requests::RequestNotifiers,
     error::{ErrNoCause, ErrWithCause, Error, Internal, Result},
     forward::{ForwardRequest, ForwardResult, Forwarder, ForwarderRef},
     hotspot::HotspotRecorder,
     instance::InstanceRef,
+    read::SqlResponse,
     schema_config_provider::SchemaConfigProviderRef,
 };
 
@@ -94,6 +99,7 @@ use crate::{
 const QUERY_EXPIRED_BUFFER: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default)]
 pub struct SubTableAccessPerm {
     pub enable_http: bool,
     pub enable_others: bool,
@@ -103,7 +109,7 @@ impl Default for SubTableAccessPerm {
     fn default() -> Self {
         Self {
             enable_http: true,
-            enable_others: false,
+            enable_others: true,
         }
     }
 }
@@ -119,6 +125,7 @@ pub struct Proxy {
     engine_runtimes: Arc<EngineRuntimes>,
     cluster_with_meta: bool,
     sub_table_access_perm: SubTableAccessPerm,
+    request_notifiers: Option<Arc<RequestNotifiers<String, Sender<Result<SqlResponse>>>>>,
 }
 
 impl Proxy {
@@ -135,6 +142,7 @@ impl Proxy {
         engine_runtimes: Arc<EngineRuntimes>,
         cluster_with_meta: bool,
         sub_table_access_perm: SubTableAccessPerm,
+        request_notifiers: Option<Arc<RequestNotifiers<String, Sender<Result<SqlResponse>>>>>,
     ) -> Self {
         let forwarder = Arc::new(Forwarder::new(
             forward_config,
@@ -153,6 +161,7 @@ impl Proxy {
             engine_runtimes,
             cluster_with_meta,
             sub_table_access_perm,
+            request_notifiers,
         }
     }
 
@@ -313,6 +322,51 @@ impl Proxy {
         Ok(table)
     }
 
+    async fn get_partition_table_info(
+        &self,
+        catalog_name: &str,
+        schema_name: &str,
+        base_name: &str,
+        part_info: &PartitionInfo,
+    ) -> Result<TableInfo> {
+        let get_inner = |i| async move {
+            // TODO: the remote engine should provide a method to get all sub table names.
+            let sub_partition_table_name = util::get_sub_partition_name(base_name, part_info, i);
+            let table = self
+                .instance
+                .remote_engine_ref
+                .get_table_info(GetTableInfoRequest {
+                    table: TableIdentifier {
+                        catalog: catalog_name.to_string(),
+                        schema: schema_name.to_string(),
+                        table: sub_partition_table_name,
+                    },
+                })
+                .await
+                .box_err()
+                .with_context(|| ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: "Failed to get table",
+                })?;
+
+            Ok(table)
+        };
+
+        let part_num = part_info.get_partition_num();
+        // Loop all sub tables to get table info in case of some of them has problems.
+        for i in 0..part_num - 1 {
+            let ret = get_inner(i).await;
+            if let Err(e) = ret {
+                warn!("Failed to get table info, err:{e:?}");
+            } else {
+                return ret;
+            }
+        }
+
+        // return the last sub table's get result to outside
+        get_inner(part_num - 1).await
+    }
+
     async fn maybe_open_partition_table_if_not_exist(
         &self,
         catalog_name: &str,
@@ -320,9 +374,7 @@ impl Proxy {
         table_name: &str,
     ) -> Result<()> {
         let catalog = self.get_catalog(catalog_name)?;
-
         let schema = self.get_schema(&catalog, schema_name)?;
-
         let table = self.get_table(&schema, table_name)?;
 
         let table_info_in_meta = self
@@ -339,12 +391,15 @@ impl Proxy {
 
         match (table, &table_info_in_meta) {
             (Some(table), Some(partition_table_info)) => {
+                let table_id = table.id();
                 // No need to create partition table when table_id match.
-                if table.id().as_u64() == partition_table_info.id {
+                if table_id == partition_table_info.id {
                     return Ok(());
                 }
-                info!("Drop partition table because the id of the table in ceresdb is different from the one in ceresmeta, catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, old_table_id:{}, new_table_id:{}",
-                             table.id().as_u64(), partition_table_info.id);
+
+                info!("Drop partition table because the id of the table in ceresdb is different from the one in ceresmeta,\
+                       catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, old_table_id:{table_id}, new_table_id:{}",
+                      partition_table_info.id);
                 // Drop partition table because the id of the table in ceresdb is different from
                 // the one in ceresmeta.
                 self.drop_partition_table(
@@ -359,7 +414,8 @@ impl Proxy {
                 // Drop partition table because it does not exist in ceresmeta but exists in
                 // ceresdb-server.
                 if table.partition_info().is_some() {
-                    info!("Drop partition table because it does not exist in ceresmeta but exists in ceresdb-server, catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, table_id:{}",table.id());
+                    info!("Drop partition table because it does not exist in ceresmeta but exists in ceresdb-server,\
+                           catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, table_id:{}", table.id());
                     self.drop_partition_table(
                         schema.clone(),
                         catalog_name.to_string(),
@@ -380,29 +436,14 @@ impl Proxy {
         let partition_table_info = table_info_in_meta.unwrap();
 
         // If table not exists, open it.
-        // Get table_schema from first sub partition table.
-        let first_sub_partition_table_name = util::get_sub_partition_name(
-            &partition_table_info.name,
-            partition_table_info.partition_info.as_ref().unwrap(),
-            0usize,
-        );
-        let table = self
-            .instance
-            .remote_engine_ref
-            .get_table_info(GetTableInfoRequest {
-                table: TableIdentifier {
-                    catalog: catalog_name.to_string(),
-                    schema: schema_name.to_string(),
-                    table: first_sub_partition_table_name,
-                },
-            })
-            .await
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to get table",
-            })?;
-
+        let table_info = self
+            .get_partition_table_info(
+                catalog_name,
+                schema_name,
+                &partition_table_info.name,
+                partition_table_info.partition_info.as_ref().unwrap(),
+            )
+            .await?;
         // Partition table is a virtual table, so we need to create it manually.
         // Partition info is stored in ceresmeta, so we need to use create_table_request
         // to create it.
@@ -410,9 +451,9 @@ impl Proxy {
             catalog_name: catalog_name.to_string(),
             schema_name: schema_name.to_string(),
             table_name: partition_table_info.name,
-            table_schema: table.table_schema,
-            engine: table.engine,
-            table_options: table.options,
+            table_schema: table_info.table_schema,
+            engine: table_info.engine,
+            table_options: table_info.options,
             partition_info: partition_table_info.partition_info,
         };
         let create_table_request = CreateTableRequest {
@@ -433,6 +474,7 @@ impl Proxy {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: format!("Failed to create table, request:{create_table_request:?}"),
             })?;
+
         Ok(())
     }
 

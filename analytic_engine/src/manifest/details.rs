@@ -758,7 +758,7 @@ mod tests {
         },
         sst::file::tests::FilePurgerMocker,
         table::data::{tests::default_schema, TableData, TableShardInfo},
-        TableOptions,
+        MetricsOptions, TableOptions,
     };
 
     fn build_altered_schema(schema: &Schema) -> Schema {
@@ -843,6 +843,7 @@ mod tests {
                 0.75,
                 collector,
                 NonZeroUsize::new(usize::MAX).unwrap(),
+                MetricsOptions::default(),
             )
             .unwrap();
 

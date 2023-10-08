@@ -157,14 +157,12 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid table id, msg:{}, table_id:{}.\nBacktrace:\n{}",
-        msg,
-        table_id,
-        backtrace
+        "Different table ids are used for the same table, table_name:{table_name}, expected_table_id:{expected_table_id}, given_table_id:{given_table_id}.\nBacktrace:\n{backtrace}",
     ))]
-    InvalidTableId {
-        msg: &'static str,
-        table_id: TableId,
+    DifferentTableId {
+        table_name: String,
+        expected_table_id: TableId,
+        given_table_id: TableId,
         backtrace: Backtrace,
     },
 

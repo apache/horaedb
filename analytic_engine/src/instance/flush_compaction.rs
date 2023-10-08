@@ -40,7 +40,10 @@ use wal::manager::WalLocation;
 
 use crate::{
     compaction::{CompactionInputFiles, CompactionTask, ExpiredFiles},
-    instance::{self, serial_executor::TableFlushScheduler, SpaceStore, SpaceStoreRef},
+    instance::{
+        self, create_sst_read_option, serial_executor::TableFlushScheduler, ScanType, SpaceStore,
+        SpaceStoreRef,
+    },
     manifest::meta_edit::{
         AlterOptionsMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
     },
@@ -52,7 +55,7 @@ use crate::{
         IterOptions,
     },
     sst::{
-        factory::{self, ReadFrequency, ScanOptions, SstReadOptions, SstWriteOptions},
+        factory::{self, ScanOptions, SstWriteOptions},
         file::{FileMeta, Level},
         meta_data::SstMetaReader,
         writer::{MetaData, RecordBatchStream},
@@ -579,7 +582,7 @@ impl FlushTask {
                     id: file_ids[idx],
                     size: sst_info.file_size as u64,
                     row_num: sst_info.row_num as u64,
-                    time_range: sst_meta.time_range,
+                    time_range: sst_info.time_range,
                     max_seq: sst_meta.max_sequence,
                     storage_format: sst_info.storage_format,
                     associated_files: vec![sst_info.meta_path],
@@ -608,7 +611,7 @@ impl FlushTask {
         let sst_meta = MetaData {
             min_key,
             max_key,
-            time_range: memtable_state.time_range,
+            time_range: memtable_state.aligned_time_range,
             max_sequence,
             schema: self.table_data.schema(),
         };
@@ -661,7 +664,7 @@ impl FlushTask {
             id: file_id,
             row_num: sst_info.row_num as u64,
             size: sst_info.file_size as u64,
-            time_range: memtable_state.time_range,
+            time_range: sst_info.time_range,
             max_seq: memtable_state.last_sequence(),
             storage_format: sst_info.storage_format,
             associated_files: vec![sst_info.meta_path],
@@ -723,6 +726,16 @@ impl SpaceStore {
                 &mut edit_meta,
             )
             .await?;
+        }
+
+        if !table_data.allow_compaction() {
+            return Other {
+                msg: format!(
+                    "Table status is not ok, unable to update manifest, table:{}, table_id:{}",
+                    table_data.name, table_data.id
+                ),
+            }
+            .fail();
         }
 
         let edit_req = {
@@ -787,15 +800,22 @@ impl SpaceStore {
         let schema = table_data.schema();
         let table_options = table_data.table_options();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
-        let sst_read_options = SstReadOptions {
-            num_rows_per_row_group: table_options.num_rows_per_row_group,
-            frequency: ReadFrequency::Once,
-            projected_schema: projected_schema.clone(),
-            predicate: Arc::new(Predicate::empty()),
-            meta_cache: self.meta_cache.clone(),
+        let predicate = Arc::new(Predicate::empty());
+        let sst_read_options = create_sst_read_option(
+            ScanType::Compaction,
             scan_options,
-            runtime: runtime.clone(),
-        };
+            table_data
+                .metrics
+                .maybe_table_level_metrics()
+                .sst_metrics
+                .clone(),
+            table_options.num_rows_per_row_group,
+            projected_schema.clone(),
+            predicate,
+            self.meta_cache.clone(),
+            runtime,
+        );
+
         let iter_options = IterOptions {
             batch_size: table_options.num_rows_per_row_group,
         };

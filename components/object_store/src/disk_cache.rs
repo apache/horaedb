@@ -27,9 +27,9 @@ use chrono::{DateTime, Utc};
 use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
 use hash_ext::SeaHasherBuilder;
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use lru::LruCache;
-use notifier::notifier::RequestNotifiers;
+use notifier::notifier::{ExecutionGuard, RequestNotifiers};
 use partitioned_lock::PartitionedMutex;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
@@ -44,7 +44,9 @@ use upstream::{
     ObjectStore, Result,
 };
 
-use crate::metrics::DISK_CACHE_DEDUP_COUNT;
+use crate::metrics::{
+    DISK_CACHE_DEDUP_COUNT, OBJECT_STORE_DISK_CACHE_HIT, OBJECT_STORE_DISK_CACHE_MISS,
+};
 
 const FILE_SIZE_CACHE_CAP: usize = 1 << 18;
 const FILE_SIZE_CACHE_PARTITION_BITS: usize = 8;
@@ -56,6 +58,15 @@ enum Error {
     Io {
         file: String,
         source: std::io::Error,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Access is out of range, range:{range:?}, file_size:{file_size}, last_modified:{last_modified:?}, file:{file}.\nbacktrace:\n{backtrace}"))]
+    OutOfRange {
+        range: Range<usize>,
+        file_size: usize,
+        file: String,
+        last_modified: DateTime<Utc>,
         backtrace: Backtrace,
     },
 
@@ -158,34 +169,81 @@ impl Manifest {
     }
 }
 
-/// The encoder of the page file in the disk cache.
+/// The writer of the page file in the disk cache.
 ///
 /// Following the payload, a footer [`PageFileEncoder::MAGIC_FOOTER`] is
 /// appended.
-struct PageFileEncoder {
-    payload: Bytes,
+struct PageFileWriter {
+    output: String,
+    tmp_file: String,
+    need_clean_tmpfile: bool,
 }
 
-impl PageFileEncoder {
+impl Drop for PageFileWriter {
+    fn drop(&mut self) {
+        if self.need_clean_tmpfile {
+            if let Err(e) = std::fs::remove_file(&self.tmp_file) {
+                warn!(
+                    "Disk cache remove page tmp file failed, file:{}, err:{e}",
+                    &self.tmp_file
+                );
+            }
+        }
+    }
+}
+
+impl PageFileWriter {
     const MAGIC_FOOTER: [u8; 8] = [0, 0, 0, 0, b'c', b'e', b'r', b'e'];
 
-    async fn encode_and_persist<W>(&self, writer: &mut W, name: &str) -> Result<()>
-    where
-        W: AsyncWrite + std::marker::Unpin,
-    {
-        writer
-            .write_all(&self.payload[..])
+    fn new(output: String) -> Self {
+        let tmp_file = Self::tmp_file(&output);
+
+        Self {
+            output,
+            tmp_file,
+            need_clean_tmpfile: true,
+        }
+    }
+
+    fn tmp_file(input: &str) -> String {
+        format!("{}.tmp", input)
+    }
+
+    async fn write_inner(&self, bytes: Bytes) -> Result<()> {
+        let tmp_file = &self.tmp_file;
+        let mut writer = File::create(tmp_file)
             .await
-            .context(Io { file: name })?;
+            .context(Io { file: tmp_file })?;
+        writer
+            .write_all(&bytes)
+            .await
+            .context(Io { file: tmp_file })?;
 
         writer
             .write_all(&Self::MAGIC_FOOTER)
             .await
-            .context(Io { file: name })?;
+            .context(Io { file: tmp_file })?;
 
-        writer.flush().await.context(Io { file: name })?;
+        writer.flush().await.context(Io { file: tmp_file })?;
+
+        tokio::fs::rename(tmp_file, &self.output)
+            .await
+            .context(Io { file: &self.output })?;
 
         Ok(())
+    }
+
+    // When write bytes to file, the cache lock is released, so when one thread is
+    // reading, another thread may update it, so we write to tmp file first,
+    // then rename to expected filename to avoid other threads see partial
+    // content.
+    async fn write_and_flush(mut self, bytes: Bytes) -> Result<()> {
+        let write_result = self.write_inner(bytes).await;
+        if write_result.is_ok() {
+            self.need_clean_tmpfile = false;
+        }
+
+        write_result
     }
 
     #[inline]
@@ -253,7 +311,7 @@ impl DiskCache {
 
     async fn insert_data(&self, filename: String, value: Bytes) {
         let page_meta = {
-            let file_size = PageFileEncoder::encoded_size(value.len());
+            let file_size = PageFileWriter::encoded_size(value.len());
             PageMeta { file_size }
         };
         let evicted_file = self.insert_page_meta(filename.clone(), page_meta);
@@ -348,18 +406,16 @@ impl DiskCache {
     }
 
     async fn persist_bytes(&self, filename: &str, payload: Bytes) -> Result<()> {
-        let file_path = std::path::Path::new(&self.root_dir)
+        let dest_filepath = std::path::Path::new(&self.root_dir)
             .join(filename)
             .into_os_string()
             .into_string()
             .unwrap();
 
-        let mut file = File::create(&file_path)
-            .await
-            .context(Io { file: &file_path })?;
+        let writer = PageFileWriter::new(dest_filepath);
+        writer.write_and_flush(payload).await?;
 
-        let encoding = PageFileEncoder { payload };
-        encoding.encode_and_persist(&mut file, filename).await
+        Ok(())
     }
 
     /// Read the bytes from the cached file.
@@ -372,7 +428,7 @@ impl DiskCache {
         range: &Range<usize>,
         expect_file_size: usize,
     ) -> std::io::Result<ReadBytesResult> {
-        if PageFileEncoder::encoded_size(range.len()) > expect_file_size {
+        if PageFileWriter::encoded_size(range.len()) > expect_file_size {
             return Ok(ReadBytesResult::OutOfRange);
         }
 
@@ -633,19 +689,46 @@ impl DiskCacheStore {
             rxs.push(rx);
         }
 
-        let fetched_bytes = self
-            .underlying_store
-            .get_ranges(location, &need_fetch_block[..])
-            .await;
+        if need_fetch_block.is_empty() {
+            // All ranges are not first request, return directly.
+            return Ok(rxs);
+        }
+
+        let fetched_bytes = {
+            // This guard will ensure notifiers got released when futures get cancelled
+            // during `get_ranges`.
+            let mut guard = ExecutionGuard::new(|| {
+                for cache_key in &need_fetch_block_cache_key {
+                    let _ = self.request_notifiers.take_notifiers(cache_key);
+                }
+            });
+
+            let bytes = self
+                .underlying_store
+                .get_ranges(location, &need_fetch_block)
+                .await;
+
+            guard.cancel();
+            bytes
+        };
+
+        // Take all cache_key's notifiers out from request_notifiers immediately.
+        let notifiers_vec: Vec<_> = need_fetch_block_cache_key
+            .iter()
+            .map(|cache_key| self.request_notifiers.take_notifiers(cache_key).unwrap())
+            .collect();
+
         let fetched_bytes = match fetched_bytes {
             Err(err) => {
-                for cache_key in need_fetch_block_cache_key {
-                    let notifiers = self.request_notifiers.take_notifiers(&cache_key).unwrap();
+                for notifiers in notifiers_vec {
                     for notifier in notifiers {
-                        if let Err(e) = notifier.send(Err(Error::WaitNotifier {
-                            message: err.to_string(),
-                        })) {
-                            error!("Failed to send notifier error result, err:{:?}.", e);
+                        if let Err(e) = notifier.send(
+                            WaitNotifier {
+                                message: err.to_string(),
+                            }
+                            .fail(),
+                        ) {
+                            warn!("Failed to send notifier error result, err:{e:?}.");
                         }
                     }
                 }
@@ -655,15 +738,17 @@ impl DiskCacheStore {
             Ok(v) => v,
         };
 
-        for (bytes, cache_key) in fetched_bytes
+        for ((bytes, notifiers), cache_key) in fetched_bytes
             .into_iter()
+            .zip(notifiers_vec.into_iter())
             .zip(need_fetch_block_cache_key.into_iter())
         {
-            let notifiers = self.request_notifiers.take_notifiers(&cache_key).unwrap();
             self.cache.insert_data(cache_key, bytes.clone()).await;
             for notifier in notifiers {
-                if let Err(e) = notifier.send(Ok(bytes.clone())) {
-                    error!("Failed to send notifier success result, err:{:?}.", e);
+                if notifier.send(Ok(bytes.clone())).is_err() {
+                    // The error contains sent bytes, which maybe very large,
+                    // so we don't log error.
+                    warn!("Failed to send notifier success result");
                 }
             }
         }
@@ -745,6 +830,17 @@ impl ObjectStore for DiskCacheStore {
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
+        let file_meta = self.fetch_file_meta(location).await?;
+        ensure!(
+            file_meta.size >= range.end,
+            OutOfRange {
+                range,
+                file_size: file_meta.size,
+                last_modified: file_meta.last_modified,
+                file: location.to_string()
+            }
+        );
+
         let PageRangeResult {
             aligned_start,
             num_pages,
@@ -756,19 +852,20 @@ impl ObjectStore for DiskCacheStore {
         };
         assert!(num_pages > 0);
 
-        let file_size = self.fetch_file_meta(location).await?.size;
-
         // Fast path for only one page involved.
         if num_pages == 1 {
-            let aligned_end = (aligned_start + self.page_size).min(file_size);
+            let aligned_end = (aligned_start + self.page_size).min(file_meta.size);
             let aligned_range = aligned_start..aligned_end;
             let filename = Self::page_cache_name(location, &aligned_range);
             let range_in_file = (range.start - aligned_start)..(range.end - aligned_start);
             if let Some(bytes) = self.cache.get_data(&filename, &range_in_file).await {
+                OBJECT_STORE_DISK_CACHE_HIT.inc();
                 return Ok(bytes);
             }
+
             // This page is missing from the disk cache, let's fetch it from the
             // underlying store and insert it to the disk cache.
+            OBJECT_STORE_DISK_CACHE_MISS.inc();
             let aligned_bytes = self.fetch_and_cache_data(location, &aligned_range).await?;
 
             // Allocate a new buffer instead of the `aligned_bytes` to avoid memory
@@ -790,7 +887,7 @@ impl ObjectStore for DiskCacheStore {
             let mut page_start = aligned_start;
             let mut page_idx = 0;
             while page_idx < num_pages {
-                let page_end = (page_start + self.page_size).min(file_size);
+                let page_end = (page_start + self.page_size).min(file_meta.size);
                 let range_in_file = {
                     let real_start = page_start.max(range.start);
                     let real_end = page_end.min(range.end);
@@ -807,6 +904,9 @@ impl ObjectStore for DiskCacheStore {
                 page_idx += 1;
             }
         }
+        let num_hitting_pages = num_pages - num_missing_pages;
+        OBJECT_STORE_DISK_CACHE_HIT.inc_by(num_hitting_pages as u64);
+        OBJECT_STORE_DISK_CACHE_MISS.inc_by(num_missing_pages as u64);
 
         let concat_paged_bytes = |paged_bytes: Vec<Option<Bytes>>| {
             // Concat the paged bytes.
@@ -827,7 +927,7 @@ impl ObjectStore for DiskCacheStore {
         for (idx, cache_miss) in paged_bytes.iter().map(|v| v.is_none()).enumerate() {
             if cache_miss {
                 let missing_range_start = aligned_start + idx * self.page_size;
-                let missing_range_end = (missing_range_start + self.page_size).min(file_size);
+                let missing_range_end = (missing_range_start + self.page_size).min(file_meta.size);
                 missing_ranges.push(missing_range_start..missing_range_end);
                 missing_range_idx.push(idx);
             }
@@ -895,6 +995,7 @@ mod test {
     use upstream::local::LocalFileSystem;
 
     use super::*;
+    use crate::test_util::MemoryStore;
 
     struct StoreWithCacheDir {
         inner: DiskCacheStore,
@@ -906,8 +1007,7 @@ mod test {
         cap: usize,
         partition_bits: usize,
     ) -> StoreWithCacheDir {
-        let local_path = tempdir().unwrap();
-        let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+        let local_store = Arc::new(MemoryStore::default());
 
         let cache_dir = tempdir().unwrap();
         let store = DiskCacheStore::try_new(
@@ -931,6 +1031,25 @@ mod test {
             .path()
             .join(DiskCacheStore::page_cache_name(location, range))
             .exists()
+    }
+
+    #[tokio::test]
+    async fn test_disk_cache_out_of_range() {
+        let page_size = 16;
+        // 51 byte
+        let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
+        let location = Path::from("out_of_range_test.sst");
+        let store = prepare_store(page_size, 32, 0).await;
+        let buf = Bytes::from_static(data);
+        store.inner.put(&location, buf.clone()).await.unwrap();
+
+        // Read one page out of range.
+        let res = store.inner.get_range(&location, 48..54).await;
+        assert!(res.is_err());
+
+        // Read multiple pages out of range.
+        let res = store.inner.get_range(&location, 24..54).await;
+        assert!(res.is_err());
     }
 
     #[tokio::test]

@@ -31,6 +31,7 @@ use crate::{
         header,
         header::HeaderParser,
         meta_data::cache::MetaCacheRef,
+        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
         parquet::{writer::ParquetSstWriter, AsyncParquetReader, ThreadedReader},
         reader::SstReader,
         writer::SstWriter,
@@ -131,6 +132,8 @@ impl Default for ScanOptions {
 
 #[derive(Debug, Clone)]
 pub struct SstReadOptions {
+    pub maybe_table_level_metrics: Arc<SstMaybeTableLevelMetrics>,
+
     pub frequency: ReadFrequency,
     pub num_rows_per_row_group: usize,
     pub projected_schema: ProjectedSchema,

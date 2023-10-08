@@ -12,13 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ceresdbproto::storage::{RouteRequest, RouteResponse};
+use ceresdbproto::storage::{RouteRequest as RouteRequestPb, RouteResponse};
+use router::RouteRequest;
 
 use crate::{error, metrics::GRPC_HANDLER_COUNTER_VEC, Context, Proxy};
 
 impl Proxy {
-    pub async fn handle_route(&self, _ctx: Context, req: RouteRequest) -> RouteResponse {
-        let routes = self.route(req).await;
+    pub async fn handle_route(&self, _ctx: Context, req: RouteRequestPb) -> RouteResponse {
+        let request = RouteRequest::new(req, true);
+        let routes = self.route(request).await;
 
         let mut resp = RouteResponse::default();
         match routes {

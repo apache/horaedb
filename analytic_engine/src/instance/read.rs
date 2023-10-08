@@ -38,10 +38,11 @@ use table_engine::{
     },
     table::ReadRequest,
 };
+use time_ext::current_time_millis;
 use trace_metric::Metric;
 
 use crate::{
-    instance::Instance,
+    instance::{create_sst_read_option, Instance, ScanType},
     row_iter::{
         chain,
         chain::{ChainConfig, ChainIterator},
@@ -49,7 +50,7 @@ use crate::{
         merge::{MergeBuilder, MergeConfig, MergeIterator},
         IterOptions, RecordBatchWithKeyIterator,
     },
-    sst::factory::{ReadFrequency, SstReadOptions},
+    sst::factory::SstReadOptions,
     table::{
         data::TableData,
         version::{ReadView, TableVersion},
@@ -98,8 +99,28 @@ impl Instance {
             table_data.space_id, table_data.name, table_data.id, request
         );
 
+        // Stats query time range information of table.
+        let time_range = request.predicate.time_range();
+        let start_time = time_range.inclusive_start().as_i64();
+        let end_time = time_range.exclusive_end().as_i64();
+        let now = current_time_millis() as i64;
+
+        let query_time_range = (end_time as f64 - start_time as f64) / 1000.0;
+        table_data
+            .metrics
+            .maybe_table_level_metrics()
+            .query_time_range
+            .observe(query_time_range);
+
+        let since_start = (now as f64 - start_time as f64) / 1000.0;
+        table_data
+            .metrics
+            .maybe_table_level_metrics()
+            .duration_since_query_query_start_time
+            .observe(since_start);
+
+        // Collect trace metrics.
         let table_options = table_data.table_options();
-        // Collect metrics.
         table_data.metrics.on_read_request_begin();
         let need_merge_sort = table_options.need_dedup();
         request.metrics_collector.collect(Metric::boolean(
@@ -108,14 +129,29 @@ impl Instance {
             None,
         ));
 
+        let sst_read_options = create_sst_read_option(
+            ScanType::Query,
+            self.scan_options.clone(),
+            table_data
+                .metrics
+                .maybe_table_level_metrics()
+                .sst_metrics
+                .clone(),
+            table_options.num_rows_per_row_group,
+            request.projected_schema.clone(),
+            request.predicate.clone(),
+            self.meta_cache.clone(),
+            self.read_runtime().clone(),
+        );
+
         if need_merge_sort {
             let merge_iters = self
-                .build_merge_iters(table_data, &request, &table_options)
+                .build_merge_iters(table_data, &request, &table_options, sst_read_options)
                 .await?;
             self.build_partitioned_streams(&request, merge_iters)
         } else {
             let chain_iters = self
-                .build_chain_iters(table_data, &request, &table_options)
+                .build_chain_iters(table_data, &request, &table_options, sst_read_options)
                 .await?;
             self.build_partitioned_streams(&request, chain_iters)
         }
@@ -153,20 +189,10 @@ impl Instance {
         table_data: &TableData,
         request: &ReadRequest,
         table_options: &TableOptions,
+        sst_read_options: SstReadOptions,
     ) -> Result<Vec<DedupIterator<MergeIterator>>> {
         // Current visible sequence
         let sequence = table_data.last_sequence();
-        let projected_schema = request.projected_schema.clone();
-        let sst_read_options = SstReadOptions {
-            frequency: ReadFrequency::Frequent,
-            projected_schema: projected_schema.clone(),
-            predicate: request.predicate.clone(),
-            meta_cache: self.meta_cache.clone(),
-            runtime: self.read_runtime().clone(),
-            num_rows_per_row_group: table_options.num_rows_per_row_group,
-            scan_options: self.scan_options.clone(),
-        };
-
         let time_range = request.predicate.time_range();
         let version = table_data.current_version();
         let read_views = self.partition_ssts_and_memtables(time_range, version, table_options);
@@ -184,7 +210,7 @@ impl Instance {
                 space_id: table_data.space_id,
                 table_id: table_data.id,
                 sequence,
-                projected_schema: projected_schema.clone(),
+                projected_schema: request.projected_schema.clone(),
                 predicate: request.predicate.clone(),
                 sst_factory: &self.space_store.sst_factory,
                 sst_read_options: sst_read_options.clone(),
@@ -223,18 +249,9 @@ impl Instance {
         table_data: &TableData,
         request: &ReadRequest,
         table_options: &TableOptions,
+        sst_read_options: SstReadOptions,
     ) -> Result<Vec<ChainIterator>> {
         let projected_schema = request.projected_schema.clone();
-
-        let sst_read_options = SstReadOptions {
-            frequency: ReadFrequency::Frequent,
-            projected_schema: projected_schema.clone(),
-            predicate: request.predicate.clone(),
-            meta_cache: self.meta_cache.clone(),
-            runtime: self.read_runtime().clone(),
-            num_rows_per_row_group: table_options.num_rows_per_row_group,
-            scan_options: self.scan_options.clone(),
-        };
 
         let time_range = request.predicate.time_range();
         let version = table_data.current_version();
@@ -315,7 +332,7 @@ impl Instance {
 
         for memtable in read_view.memtables {
             let aligned_ts = memtable
-                .time_range
+                .aligned_time_range
                 .inclusive_start()
                 .truncate_by(segment_duration);
             let entry = read_view_by_time

@@ -38,7 +38,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use crate::{
     datum::{Datum, DatumKind, DatumView},
     string::StringBytes,
-    time::Timestamp,
+    time::{TimeRange, Timestamp},
 };
 
 #[derive(Debug, Snafu)]
@@ -145,6 +145,27 @@ define_numeric_column!(
 
 #[derive(Debug, Clone)]
 pub struct TimestampColumn(TimestampMillisecondArray);
+
+impl TimestampColumn {
+    pub fn time_range(&self) -> Option<TimeRange> {
+        if self.0.is_empty() {
+            return None;
+        }
+
+        let first_value = self.0.value(0);
+        let (mut min, mut max) = (first_value, first_value);
+        for i in 1..self.0.len() {
+            let current = self.0.value(i);
+            if current < min {
+                min = current;
+            } else if current > max {
+                max = current;
+            }
+        }
+
+        TimeRange::new(min.into(), (max + 1).into())
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct VarbinaryColumn(BinaryArray);

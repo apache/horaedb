@@ -144,6 +144,14 @@ impl Timestamp {
         self.checked_sub_duration(duration)
             .unwrap_or(Timestamp::MIN)
     }
+
+    pub fn min(&self, rhs: Timestamp) -> Timestamp {
+        self.0.min(rhs.0).into()
+    }
+
+    pub fn max(&self, rhs: Timestamp) -> Timestamp {
+        self.0.max(rhs.0).into()
+    }
 }
 
 impl From<Timestamp> for i64 {

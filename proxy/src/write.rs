@@ -22,8 +22,8 @@ use std::{
 
 use bytes::Bytes;
 use ceresdbproto::storage::{
-    storage_service_client::StorageServiceClient, value, RouteRequest, Value, WriteRequest,
-    WriteResponse as WriteResponsePB, WriteSeriesEntry, WriteTableRequest,
+    storage_service_client::StorageServiceClient, value, RouteRequest as RouteRequestPb, Value,
+    WriteRequest, WriteResponse as WriteResponsePB, WriteSeriesEntry, WriteTableRequest,
 };
 use cluster::config::SchemaConfig;
 use common_types::{
@@ -45,7 +45,7 @@ use query_frontend::{
     planner::{build_column_schema, try_get_data_type_from_value},
     provider::CatalogMetaProvider,
 };
-use router::endpoint::Endpoint;
+use router::{endpoint::Endpoint, RouteRequest};
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::table::TableRef;
 use tonic::transport::Channel;
@@ -267,7 +267,7 @@ impl Proxy {
             default_schema: schema,
             function_registry: &*self.instance.function_registry,
         };
-        let frontend = Frontend::new(provider);
+        let frontend = Frontend::new(provider, self.instance.dyn_config.fronted.clone());
         let ctx = FrontendContext::new(request_id, deadline);
         let plan = frontend
             .write_req_to_plan(&ctx, schema_config, write_table_req)
@@ -310,13 +310,13 @@ impl Proxy {
 
         // TODO: Make the router can accept an iterator over the tables to avoid the
         // memory allocation here.
-        let route_data = self
-            .router
-            .route(RouteRequest {
-                context: req.context.clone(),
-                tables,
-            })
-            .await?;
+        let req_pb = RouteRequestPb {
+            context: req.context.clone(),
+            tables,
+        };
+        let request = RouteRequest::new(req_pb, true);
+        let route_data = self.router.route(request).await?;
+
         let forwarded_table_routes = route_data
             .into_iter()
             .filter_map(|router| {

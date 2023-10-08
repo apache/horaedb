@@ -17,8 +17,10 @@ use std::{fmt, sync::Arc};
 use async_trait::async_trait;
 use datafusion::{
     error::Result as DfResult,
+    execution::TaskContext,
     physical_plan::{ExecutionPlan, SendableRecordBatchStream},
 };
+use futures::future::BoxFuture;
 use table_engine::{
     remote::model::TableIdentifier,
     table::{ReadRequest, TableRef},
@@ -31,20 +33,28 @@ pub mod resolver;
 pub mod test_util;
 
 /// Remote datafusion physical plan executor
-#[async_trait]
-pub trait RemotePhysicalPlanExecutor: Clone + fmt::Debug + Send + Sync + 'static {
-    async fn execute(
+pub trait RemotePhysicalPlanExecutor: fmt::Debug + Send + Sync + 'static {
+    fn execute(
         &self,
         table: TableIdentifier,
-        physical_plan: Arc<dyn ExecutionPlan>,
-    ) -> DfResult<SendableRecordBatchStream>;
+        task_context: &TaskContext,
+        plan: Arc<dyn ExecutionPlan>,
+    ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>>;
 }
+
+type RemotePhysicalPlanExecutorRef = Arc<dyn RemotePhysicalPlanExecutor>;
 
 /// Executable scan's builder
 ///
 /// It is not suitable to restrict the detailed implementation of executable
 /// scan, so we define a builder here which return the general `ExecutionPlan`.
+#[async_trait]
 pub trait ExecutableScanBuilder: fmt::Debug + Send + Sync + 'static {
-    fn build(&self, table: TableRef, read_request: ReadRequest)
-        -> DfResult<Arc<dyn ExecutionPlan>>;
+    async fn build(
+        &self,
+        table: TableRef,
+        read_request: ReadRequest,
+    ) -> DfResult<Arc<dyn ExecutionPlan>>;
 }
+
+type ExecutableScanBuilderRef = Box<dyn ExecutableScanBuilder>;

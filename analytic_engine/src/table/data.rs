@@ -21,7 +21,7 @@ use std::{
     fmt::Formatter,
     num::NonZeroUsize,
     sync::{
-        atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::Duration,
@@ -59,11 +59,11 @@ use crate::{
     space::SpaceId,
     sst::{file::FilePurger, manager::FileId},
     table::{
-        metrics::Metrics,
+        metrics::{Metrics, MetricsContext},
         sst_util,
         version::{MemTableForWrite, MemTableState, SamplingMemTable, TableVersion},
     },
-    TableOptions,
+    MetricsOptions, TableOptions,
 };
 
 #[derive(Debug, Snafu)]
@@ -110,6 +110,28 @@ impl TableShardInfo {
         Self { shard_id }
     }
 }
+
+/// `atomic_enum` macro will expand method like
+/// ```text
+/// compare_exchange(..) -> Result<TableStatus, TableStatus>
+/// ```
+/// The result type is conflict with outer
+/// Result, so add this hack
+// TODO: fix this in atomic_enum crate.
+mod hack {
+    use atomic_enum::atomic_enum;
+
+    #[atomic_enum]
+    #[derive(PartialEq)]
+    pub enum TableStatus {
+        Ok = 0,
+        Closed,
+        /// No write/alter are allowed after table is dropped.
+        Dropped,
+    }
+}
+
+use self::hack::{AtomicTableStatus, TableStatus};
 
 /// Data of a table
 pub struct TableData {
@@ -161,10 +183,8 @@ pub struct TableData {
     /// Not persist, used to determine if this table should flush.
     last_flush_time_ms: AtomicU64,
 
-    /// Flag denoting whether the table is dropped
-    ///
-    /// No write/alter is allowed if the table is dropped.
-    dropped: AtomicBool,
+    /// Table Status
+    status: AtomicTableStatus,
 
     /// Manifest updates after last snapshot
     manifest_updates: AtomicUsize,
@@ -192,7 +212,7 @@ impl fmt::Debug for TableData {
             .field("opts", &self.opts)
             .field("last_sequence", &self.last_sequence)
             .field("last_memtable_id", &self.last_memtable_id)
-            .field("dropped", &self.dropped.load(Ordering::Relaxed))
+            .field("status", &self.status.load(Ordering::Relaxed))
             .field("shard_info", &self.shard_info)
             .finish()
     }
@@ -233,6 +253,7 @@ impl TableData {
         preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
         manifest_snapshot_every_n_updates: NonZeroUsize,
+        metrics_opt: MetricsOptions,
     ) -> Result<Self> {
         // FIXME(yingwen): Validate TableOptions, such as bucket_duration >=
         // segment_duration and bucket_duration is aligned to segment_duration
@@ -244,7 +265,8 @@ impl TableData {
 
         let purge_queue = purger.create_purge_queue(space_id, table_id);
         let current_version = TableVersion::new(purge_queue);
-        let metrics = Metrics::default();
+        let metrics_ctx = MetricsContext::new(&table_name, metrics_opt);
+        let metrics = Metrics::new(metrics_ctx);
         let mutable_limit = AtomicU32::new(compute_mutable_limit(
             table_opts.write_buffer_size,
             preflush_write_buffer_size_ratio,
@@ -265,7 +287,7 @@ impl TableData {
             last_memtable_id: AtomicU64::new(0),
             allocator: IdAllocator::new(0, 0, DEFAULT_ALLOC_STEP),
             last_flush_time_ms: AtomicU64::new(0),
-            dropped: AtomicBool::new(false),
+            status: TableStatus::Ok.into(),
             metrics,
             shard_info: TableShardInfo::new(shard_id),
             serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(table_id)),
@@ -277,6 +299,7 @@ impl TableData {
     /// Recover table from add table meta
     ///
     /// This wont recover sequence number, which will be set after wal replayed
+    #[allow(clippy::too_many_arguments)]
     pub fn recover_from_add(
         add_meta: AddTableMeta,
         purger: &FilePurger,
@@ -285,11 +308,13 @@ impl TableData {
         mem_usage_collector: CollectorRef,
         allocator: IdAllocator,
         manifest_snapshot_every_n_updates: NonZeroUsize,
+        metrics_opt: MetricsOptions,
     ) -> Result<Self> {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
         let current_version = TableVersion::new(purge_queue);
-        let metrics = Metrics::default();
+        let metrics_ctx = MetricsContext::new(&add_meta.table_name, metrics_opt);
+        let metrics = Metrics::new(metrics_ctx);
         let mutable_limit = AtomicU32::new(compute_mutable_limit(
             add_meta.opts.write_buffer_size,
             preflush_write_buffer_size_ratio,
@@ -310,7 +335,7 @@ impl TableData {
             last_memtable_id: AtomicU64::new(0),
             allocator,
             last_flush_time_ms: AtomicU64::new(0),
-            dropped: AtomicBool::new(false),
+            status: TableStatus::Ok.into(),
             metrics,
             shard_info: TableShardInfo::new(shard_id),
             serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(add_meta.table_id)),
@@ -382,13 +407,26 @@ impl TableData {
 
     #[inline]
     pub fn is_dropped(&self) -> bool {
-        self.dropped.load(Ordering::SeqCst)
+        self.status.load(Ordering::SeqCst) == TableStatus::Dropped
     }
 
     /// Set the table is dropped and forbid any writes/alter on this table.
     #[inline]
     pub fn set_dropped(&self) {
-        self.dropped.store(true, Ordering::SeqCst);
+        self.status.store(TableStatus::Dropped, Ordering::SeqCst)
+    }
+
+    #[inline]
+    pub fn set_closed(&self) {
+        self.status.store(TableStatus::Closed, Ordering::SeqCst)
+    }
+
+    #[inline]
+    pub fn allow_compaction(&self) -> bool {
+        match self.status.load(Ordering::SeqCst) {
+            TableStatus::Ok => true,
+            TableStatus::Closed | TableStatus::Dropped => false,
+        }
     }
 
     /// Returns total memtable memory usage in bytes.
@@ -446,7 +484,7 @@ impl TableData {
                 )?;
                 let mem_state = MemTableState {
                     mem,
-                    time_range,
+                    aligned_time_range: time_range,
                     id: self.alloc_memtable_id(),
                 };
 
@@ -825,6 +863,7 @@ pub mod tests {
                 0.75,
                 collector,
                 self.manifest_snapshot_every_n_updates,
+                MetricsOptions::default(),
             )
             .unwrap()
         }
@@ -898,7 +937,7 @@ pub mod tests {
         assert_eq!(2, mem_state.id);
         let time_range =
             TimeRange::bucket_of(now_ts, table_options::DEFAULT_SEGMENT_DURATION).unwrap();
-        assert_eq!(time_range, mem_state.time_range);
+        assert_eq!(time_range, mem_state.aligned_time_range);
     }
 
     #[test]

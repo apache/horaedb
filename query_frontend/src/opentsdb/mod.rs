@@ -19,6 +19,7 @@ use snafu::{OptionExt, ResultExt, Snafu};
 
 use self::types::{Filter, OpentsdbQueryPlan, OpentsdbSubPlan, QueryRequest, SubQuery};
 use crate::{
+    config::DynamicConfig,
     datafusion_util::{default_sort_exprs, timerange_to_expr},
     plan::{Plan, QueryPlan},
     provider::{ContextProviderAdapter, MetaProvider},
@@ -184,6 +185,7 @@ pub fn opentsdb_query_to_plan<P: MetaProvider>(
     query: QueryRequest,
     provider: &P,
     read_parallelism: usize,
+    dyn_config: &DynamicConfig,
 ) -> Result<OpentsdbQueryPlan> {
     let range = TimeRange::new(Timestamp::new(query.start), Timestamp::new(query.end + 1))
         .context(InvalidRange {
@@ -196,7 +198,7 @@ pub fn opentsdb_query_to_plan<P: MetaProvider>(
         .into_iter()
         .map(|sub_query| {
             subquery_to_plan(
-                ContextProviderAdapter::new(provider, read_parallelism),
+                ContextProviderAdapter::new(provider, read_parallelism, dyn_config),
                 &range,
                 sub_query,
             )

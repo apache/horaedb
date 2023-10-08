@@ -29,9 +29,7 @@ use ceresdbproto::{
     remote_engine::{self, read_response::Output::Arrow, remote_engine_service_client::*},
     storage::arrow_payload,
 };
-use common_types::{
-    projected_schema::ProjectedSchema, record_batch::RecordBatch, schema::RecordSchema,
-};
+use common_types::{record_batch::RecordBatch, schema::RecordSchema};
 use futures::{Stream, StreamExt};
 use generic_error::BoxError;
 use log::info;
@@ -40,8 +38,8 @@ use runtime::Runtime;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
     remote::model::{
-        GetTableInfoRequest, ReadRequest, TableIdentifier, TableInfo, WriteBatchRequest,
-        WriteBatchResult, WriteRequest,
+        ExecutePlanRequest, GetTableInfoRequest, ReadRequest, TableIdentifier, TableInfo,
+        WriteBatchRequest, WriteBatchResult, WriteRequest,
     },
     table::{SchemaId, TableId},
 };
@@ -79,7 +77,7 @@ impl Client {
 
         // Read from remote.
         let table_ident = request.table.clone();
-        let projected_schema = request.read_request.projected_schema.clone();
+        let record_schema = request.read_request.projected_schema.to_record_schema();
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
         let request_pb = ceresdbproto::remote_engine::ReadRequest::try_from(request)
             .box_err()
@@ -110,7 +108,7 @@ impl Client {
         // evict cache entry.
         let response = response.into_inner();
         let remote_read_record_batch_stream =
-            ClientReadRecordBatchStream::new(table_ident, response, projected_schema);
+            ClientReadRecordBatchStream::new(table_ident, response, record_schema);
 
         Ok(remote_read_record_batch_stream)
     }
@@ -323,6 +321,52 @@ impl Client {
         }
     }
 
+    pub async fn execute_physical_plan(
+        &self,
+        request: ExecutePlanRequest,
+    ) -> Result<ClientReadRecordBatchStream> {
+        // Find the channel from router firstly.
+        let table_ident = request.remote_request.table.clone();
+        let route_context = self.cached_router.route(&table_ident).await?;
+
+        // Execute plan from remote.
+        let plan_schema = request.plan_schema;
+        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
+        let request_pb =
+            ceresdbproto::remote_engine::ExecutePlanRequest::try_from(request.remote_request)
+                .box_err()
+                .context(Convert {
+                    msg: "Failed to convert RemoteExecuteRequest to pb",
+                })?;
+
+        let result = rpc_client
+            .execute_physical_plan(Request::new(request_pb))
+            .await
+            .with_context(|| Rpc {
+                table_idents: vec![table_ident.clone()],
+                msg: "Failed to read from remote engine",
+            });
+
+        let response = match result {
+            Ok(response) => response,
+
+            Err(e) => {
+                // If occurred error, we simply evict the corresponding channel now.
+                // TODO: evict according to the type of error.
+                self.evict_route_from_cache(&[table_ident]).await;
+                return Err(e);
+            }
+        };
+
+        // When success to get the stream, table has been found in remote, not need to
+        // evict cache entry.
+        let response = response.into_inner();
+        let remote_execute_plan_stream =
+            ClientReadRecordBatchStream::new(table_ident, response, plan_schema);
+
+        Ok(remote_execute_plan_stream)
+    }
+
     async fn evict_route_from_cache(&self, table_idents: &[TableIdentifier]) {
         info!(
             "Remote engine client evict route from cache, table_ident:{:?}",
@@ -335,22 +379,19 @@ impl Client {
 pub struct ClientReadRecordBatchStream {
     pub table_ident: TableIdentifier,
     pub response_stream: Streaming<remote_engine::ReadResponse>,
-    pub projected_schema: ProjectedSchema,
-    pub projected_record_schema: RecordSchema,
+    pub record_schema: RecordSchema,
 }
 
 impl ClientReadRecordBatchStream {
     pub fn new(
         table_ident: TableIdentifier,
         response_stream: Streaming<remote_engine::ReadResponse>,
-        projected_schema: ProjectedSchema,
+        record_schema: RecordSchema,
     ) -> Self {
-        let projected_record_schema = projected_schema.to_record_schema();
         Self {
             table_ident,
             response_stream,
-            projected_schema,
-            projected_record_schema,
+            record_schema,
         }
     }
 }

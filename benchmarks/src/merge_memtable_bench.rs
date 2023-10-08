@@ -33,6 +33,7 @@ use analytic_engine::{
             ScanOptions, SstReadOptions,
         },
         meta_data::cache::MetaCacheRef,
+        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
     },
     table::{
         sst_util,
@@ -108,7 +109,7 @@ impl MergeMemTableBench {
 
             memtables.push(MemTableState {
                 mem: memtable,
-                time_range: TimeRange::min_to_max(),
+                aligned_time_range: TimeRange::min_to_max(),
                 id: *id,
             });
         }
@@ -214,6 +215,7 @@ fn mock_sst_read_options(
         num_streams_to_prefetch: 0,
     };
     SstReadOptions {
+        maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench")),
         frequency: ReadFrequency::Frequent,
         num_rows_per_row_group: 500,
         projected_schema,

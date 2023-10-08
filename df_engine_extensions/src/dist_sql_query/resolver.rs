@@ -14,6 +14,7 @@
 
 use std::sync::Arc;
 
+use async_recursion::async_recursion;
 use catalog::manager::ManagerRef as CatalogManagerRef;
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
@@ -21,9 +22,15 @@ use datafusion::{
 };
 use table_engine::{remote::model::TableIdentifier, table::TableRef};
 
-use crate::dist_sql_query::{
-    physical_plan::{ResolvedPartitionedScan, UnresolvedPartitionedScan, UnresolvedSubTableScan},
-    ExecutableScanBuilder, RemotePhysicalPlanExecutor,
+use crate::{
+    dist_sql_query::{
+        physical_plan::{
+            ResolvedPartitionedScan, SubTablePlanContext, UnresolvedPartitionedScan,
+            UnresolvedSubTableScan,
+        },
+        ExecutableScanBuilderRef, RemotePhysicalPlanExecutorRef,
+    },
+    metrics::PUSH_DOWN_PLAN_COUNTER,
 };
 
 /// Resolver which makes datafuison dist query related plan executable.
@@ -34,24 +41,86 @@ use crate::dist_sql_query::{
 /// So we define `Resolver` to make it, it may be somthing similar to task
 /// generator responsible for generating task for executor to run based on
 /// physical plan.
-pub trait Resolver {
-    fn resolve(&self, plan: Arc<dyn ExecutionPlan>) -> DfResult<Arc<dyn ExecutionPlan>>;
+pub struct Resolver {
+    remote_executor: RemotePhysicalPlanExecutorRef,
+    catalog_manager: CatalogManagerRef,
+    scan_builder: ExecutableScanBuilderRef,
 }
 
-/// Resolver which makes the partitioned table scan plan executable
-struct PartitionedScanResolver<R> {
-    remote_executor: R,
-}
-
-impl<R: RemotePhysicalPlanExecutor> PartitionedScanResolver<R> {
-    #[allow(dead_code)]
-    pub fn new(remote_executor: R) -> Self {
-        Self { remote_executor }
+impl Resolver {
+    pub fn new(
+        remote_executor: RemotePhysicalPlanExecutorRef,
+        catalog_manager: CatalogManagerRef,
+        scan_builder: ExecutableScanBuilderRef,
+    ) -> Self {
+        Self {
+            remote_executor,
+            catalog_manager,
+            scan_builder,
+        }
     }
 
-    fn resolve_plan(&self, plan: Arc<dyn ExecutionPlan>) -> DfResult<Arc<dyn ExecutionPlan>> {
+    /// Resolve partitioned scan, including:
+    ///   - Convert `UnresolvedPartitionedScan`(inexecutable) to
+    ///     `ResolvedPartitionedScan`(executable).
+    ///   - Push nodes(e.g. filter, projection, partial aggregation,...) to
+    ///     `ResolvedPartitionedScan`.
+    ///
+    /// Example for the process:
+    ///   - Initial plan:
+    ///
+    /// ```plaintext
+    ///     Final Aggregation
+    ///         Partial Aggregation
+    ///             Filter
+    ///                 UnresolvedPartitionedScan
+    /// ```
+    ///
+    ///    - After converting partitioned scan from unresolved to resolved:
+    ///
+    /// ```plaintext
+    ///     Final Aggregation
+    ///         Partial Aggregation
+    ///             Filter
+    ///                 ResolvedPartitionedScan
+    ///                     UnresolvedSubTableScan (send to remote node)
+    /// ```
+    ///
+    ///    - After pushing down nodes:
+    ///
+    /// ```plaintext
+    ///     Final Aggregation
+    ///         ResolvedPartitionedScan
+    ///             Partial Aggregation (send to remote node)
+    ///                 Filter (send to remote node)
+    ///                      UnresolvedSubTableScan (send to remote node)
+    /// ```
+    pub fn resolve_partitioned_scan(
+        &self,
+        plan: Arc<dyn ExecutionPlan>,
+    ) -> DfResult<Arc<dyn ExecutionPlan>> {
+        let resolved_plan = self.resolve_partitioned_scan_internal(plan)?;
+        PUSH_DOWN_PLAN_COUNTER
+            .with_label_values(&["remote_scan"])
+            .inc();
+
+        if let Some(plan) = resolved_plan
+            .as_any()
+            .downcast_ref::<ResolvedPartitionedScan>()
+        {
+            Ok(plan.pushdown_finished())
+        } else {
+            Ok(resolved_plan)
+        }
+    }
+
+    pub fn resolve_partitioned_scan_internal(
+        &self,
+        plan: Arc<dyn ExecutionPlan>,
+    ) -> DfResult<Arc<dyn ExecutionPlan>> {
         // Leave node, let's resolve it and return.
         if let Some(unresolved) = plan.as_any().downcast_ref::<UnresolvedPartitionedScan>() {
+            let metrics_collector = unresolved.metrics_collector.clone();
             let sub_tables = unresolved.sub_tables.clone();
             let remote_plans = sub_tables
                 .into_iter()
@@ -60,14 +129,17 @@ impl<R: RemotePhysicalPlanExecutor> PartitionedScanResolver<R> {
                         table: table.clone(),
                         read_request: unresolved.read_request.clone(),
                     });
-                    (table, plan as _)
+                    let sub_metrics_collect = metrics_collector.span(table.table.clone());
+
+                    SubTablePlanContext::new(table, plan, sub_metrics_collect)
                 })
                 .collect::<Vec<_>>();
 
-            return Ok(Arc::new(ResolvedPartitionedScan {
-                remote_executor: self.remote_executor.clone(),
-                remote_exec_plans: remote_plans,
-            }));
+            return Ok(Arc::new(ResolvedPartitionedScan::new(
+                self.remote_executor.clone(),
+                remote_plans,
+                metrics_collector,
+            )));
         }
 
         let children = plan.children().clone();
@@ -79,45 +151,65 @@ impl<R: RemotePhysicalPlanExecutor> PartitionedScanResolver<R> {
         // Resolve children if exist.
         let mut new_children = Vec::with_capacity(children.len());
         for child in children {
-            let child = self.resolve_plan(child)?;
+            let child = self.resolve_partitioned_scan_internal(child)?;
 
             new_children.push(child);
         }
 
-        // TODO: Push down the computation physical node here rather than simply
-        // rebuild.
-        plan.with_new_children(new_children)
+        Self::maybe_push_down_to_remote_plans(new_children, plan)
     }
-}
 
-impl<R: RemotePhysicalPlanExecutor> Resolver for PartitionedScanResolver<R> {
-    fn resolve(&self, plan: Arc<dyn ExecutionPlan>) -> DfResult<Arc<dyn ExecutionPlan>> {
-        self.resolve_plan(plan)
-    }
-}
-
-/// Resolver which makes the sub table scan plan executable
-struct SubScanResolver<B> {
-    catalog_manager: CatalogManagerRef,
-    scan_builder: B,
-}
-
-impl<B: ExecutableScanBuilder> SubScanResolver<B> {
-    #[allow(dead_code)]
-    pub fn new(catalog_manager: CatalogManagerRef, scan_builder: B) -> Self {
-        Self {
-            catalog_manager,
-            scan_builder,
+    fn maybe_push_down_to_remote_plans(
+        mut new_children: Vec<Arc<dyn ExecutionPlan>>,
+        current_node: Arc<dyn ExecutionPlan>,
+    ) -> DfResult<Arc<dyn ExecutionPlan>> {
+        // No children, just return.
+        if new_children.is_empty() {
+            return Ok(current_node);
         }
+
+        // When this node has multiple children, it can't be pushed down to remote.
+        if new_children.len() > 1 {
+            new_children.iter_mut().for_each(|child| {
+                if let Some(plan) = child.as_any().downcast_ref::<ResolvedPartitionedScan>() {
+                    *child = plan.pushdown_finished();
+                }
+            });
+            return current_node.with_new_children(new_children);
+        }
+
+        // Has ensured that this node has just child and it is just
+        // `ResolvedPartitionedScan`, try to push down it to remote plans in
+        // `ResolvedPartitionedScan`.
+        let child = new_children.first().unwrap();
+        let partitioned_scan =
+            if let Some(plan) = child.as_any().downcast_ref::<ResolvedPartitionedScan>() {
+                plan
+            } else {
+                return current_node.with_new_children(new_children);
+            };
+
+        partitioned_scan.try_to_push_down_more(current_node.clone())
     }
 
-    fn resolve_plan(&self, plan: Arc<dyn ExecutionPlan>) -> DfResult<Arc<dyn ExecutionPlan>> {
+    #[async_recursion]
+    pub async fn resolve_sub_scan(
+        &self,
+        plan: Arc<dyn ExecutionPlan>,
+    ) -> DfResult<Arc<dyn ExecutionPlan>> {
         // Leave node, let's resolve it and return.
-        if let Some(unresolved) = plan.as_any().downcast_ref::<UnresolvedSubTableScan>() {
-            let table = self.find_table(&unresolved.table)?;
-            return self
-                .scan_builder
-                .build(table, unresolved.read_request.clone());
+        let build_scan_opt =
+            if let Some(unresolved) = plan.as_any().downcast_ref::<UnresolvedSubTableScan>() {
+                let table = self.find_table(&unresolved.table)?;
+                let read_request = unresolved.read_request.clone();
+
+                Some((table, read_request))
+            } else {
+                None
+            };
+
+        if let Some((table, request)) = build_scan_opt {
+            return self.scan_builder.build(table, request).await;
         }
 
         let children = plan.children().clone();
@@ -129,7 +221,7 @@ impl<B: ExecutableScanBuilder> SubScanResolver<B> {
         // Resolve children if exist.
         let mut new_children = Vec::with_capacity(children.len());
         for child in children {
-            let child = self.resolve_plan(child)?;
+            let child = self.resolve_sub_scan(child).await?;
 
             new_children.push(child);
         }
@@ -156,146 +248,88 @@ impl<B: ExecutableScanBuilder> SubScanResolver<B> {
     }
 }
 
-impl<B: ExecutableScanBuilder> Resolver for SubScanResolver<B> {
-    fn resolve(&self, plan: Arc<dyn ExecutionPlan>) -> DfResult<Arc<dyn ExecutionPlan>> {
-        self.resolve_plan(plan)
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
 
-    use async_trait::async_trait;
-    use datafusion::{
-        error::Result as DfResult,
-        physical_plan::{displayable, DisplayAs, ExecutionPlan, SendableRecordBatchStream},
-    };
-    use table_engine::{
-        remote::model::TableIdentifier,
-        table::{ReadRequest, TableRef},
-    };
+    use datafusion::physical_plan::displayable;
 
-    use crate::dist_sql_query::{
-        resolver::{PartitionedScanResolver, RemotePhysicalPlanExecutor, SubScanResolver},
-        test_util::TestContext,
-        ExecutableScanBuilder,
-    };
+    use crate::dist_sql_query::test_util::TestContext;
 
     #[test]
-    fn test_resolve_simple_partitioned_scan() {
+    fn test_basic_partitioned_scan() {
         let ctx = TestContext::new();
         let plan = ctx.build_basic_partitioned_table_plan();
-        let resolver = PartitionedScanResolver {
-            remote_executor: MockRemotePhysicalPlanExecutor,
-        };
-        let new_plan = displayable(resolver.resolve_plan(plan).unwrap().as_ref())
+        let resolver = ctx.resolver();
+        let new_plan = displayable(resolver.resolve_partitioned_scan(plan).unwrap().as_ref())
+            .indent(true)
+            .to_string();
+        insta::assert_snapshot!(new_plan);
+    }
+
+    #[tokio::test]
+    async fn test_basic_sub_scan() {
+        let ctx = TestContext::new();
+        let plan = ctx.build_basic_sub_table_plan();
+        let resolver = ctx.resolver();
+        let new_plan = displayable(resolver.resolve_sub_scan(plan).await.unwrap().as_ref())
+            .indent(true)
+            .to_string();
+        insta::assert_snapshot!(new_plan);
+    }
+
+    #[tokio::test]
+    async fn test_unprocessed_plan() {
+        let ctx = TestContext::new();
+        let plan = ctx.build_unprocessed_plan();
+        let resolver = ctx.resolver();
+
+        let original_plan_display = displayable(plan.as_ref()).indent(true).to_string();
+
+        // It should not be processed by `resolve_partitioned_scan`.
+        let new_plan = resolver.resolve_partitioned_scan(plan.clone()).unwrap();
+
+        let new_plan_display = displayable(new_plan.as_ref()).indent(true).to_string();
+
+        assert_eq!(original_plan_display, new_plan_display);
+
+        // It should not be processed by `resolve_sub_scan_internal`.
+        let new_plan = resolver.resolve_sub_scan(plan.clone()).await.unwrap();
+
+        let new_plan_display = displayable(new_plan.as_ref()).indent(true).to_string();
+
+        assert_eq!(original_plan_display, new_plan_display);
+    }
+
+    #[test]
+    fn test_aggr_push_down() {
+        let ctx = TestContext::new();
+        let plan = ctx.build_aggr_push_down_plan();
+        let resolver = ctx.resolver();
+        let new_plan = displayable(resolver.resolve_partitioned_scan(plan).unwrap().as_ref())
             .indent(true)
             .to_string();
         insta::assert_snapshot!(new_plan);
     }
 
     #[test]
-    fn test_resolve_simple_sub_scan() {
+    fn test_compounded_aggr_push_down() {
         let ctx = TestContext::new();
-        let plan = ctx.build_basic_sub_table_plan();
-        let resolver = SubScanResolver {
-            catalog_manager: ctx.catalog_manager(),
-            scan_builder: MockScanBuilder,
-        };
-        let new_plan = displayable(resolver.resolve_plan(plan).unwrap().as_ref())
+        let plan = ctx.build_compounded_aggr_push_down_plan();
+        let resolver = ctx.resolver();
+        let new_plan = displayable(resolver.resolve_partitioned_scan(plan).unwrap().as_ref())
             .indent(true)
             .to_string();
         insta::assert_snapshot!(new_plan);
     }
 
-    // Mock scan and its builder
-    #[derive(Debug)]
-    struct MockScanBuilder;
-
-    impl ExecutableScanBuilder for MockScanBuilder {
-        fn build(
-            &self,
-            _table: TableRef,
-            read_request: ReadRequest,
-        ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
-            Ok(Arc::new(MockScan {
-                request: read_request,
-            }))
-        }
-    }
-
-    #[derive(Debug)]
-    struct MockScan {
-        request: ReadRequest,
-    }
-
-    impl ExecutionPlan for MockScan {
-        fn as_any(&self) -> &dyn std::any::Any {
-            unimplemented!()
-        }
-
-        fn schema(&self) -> arrow::datatypes::SchemaRef {
-            self.request.projected_schema.to_projected_arrow_schema()
-        }
-
-        fn output_partitioning(&self) -> datafusion::physical_plan::Partitioning {
-            datafusion::physical_plan::Partitioning::UnknownPartitioning(
-                self.request.opts.read_parallelism,
-            )
-        }
-
-        fn output_ordering(&self) -> Option<&[datafusion::physical_expr::PhysicalSortExpr]> {
-            None
-        }
-
-        fn children(&self) -> Vec<Arc<dyn ExecutionPlan>> {
-            vec![]
-        }
-
-        fn with_new_children(
-            self: Arc<Self>,
-            _children: Vec<Arc<dyn ExecutionPlan>>,
-        ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
-            unimplemented!()
-        }
-
-        fn execute(
-            &self,
-            _partition: usize,
-            _context: Arc<datafusion::execution::TaskContext>,
-        ) -> datafusion::error::Result<datafusion::physical_plan::SendableRecordBatchStream>
-        {
-            unimplemented!()
-        }
-
-        fn statistics(&self) -> datafusion::physical_plan::Statistics {
-            unimplemented!()
-        }
-    }
-
-    impl DisplayAs for MockScan {
-        fn fmt_as(
-            &self,
-            _t: datafusion::physical_plan::DisplayFormatType,
-            f: &mut std::fmt::Formatter,
-        ) -> std::fmt::Result {
-            write!(f, "MockScan")
-        }
-    }
-
-    // Mock remote executor
-    #[derive(Debug, Clone)]
-    struct MockRemotePhysicalPlanExecutor;
-
-    #[async_trait]
-    impl RemotePhysicalPlanExecutor for MockRemotePhysicalPlanExecutor {
-        async fn execute(
-            &self,
-            _table: TableIdentifier,
-            _physical_plan: Arc<dyn ExecutionPlan>,
-        ) -> DfResult<SendableRecordBatchStream> {
-            unimplemented!()
-        }
+    #[test]
+    fn test_node_with_multiple_partitioned_scan_children() {
+        let ctx = TestContext::new();
+        let plan = ctx.build_union_plan();
+        let resolver = ctx.resolver();
+        let new_plan = displayable(resolver.resolve_partitioned_scan(plan).unwrap().as_ref())
+            .indent(true)
+            .to_string();
+        insta::assert_snapshot!(new_plan);
     }
 }

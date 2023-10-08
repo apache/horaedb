@@ -28,7 +28,7 @@ test = ["tempfile", "futures", "uuid"]
 
 [dependencies.rocksdb]
 git = "https://github.com/tikv/rust-rocksdb.git"
-rev = "a9fbe325939c166ffc5f80e63066f5d8594a1fff"
+rev = "f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f"
 features = ["portable"]
 
 [dependencies]

@@ -26,15 +26,33 @@ use log::{debug, error};
 use snafu::OptionExt;
 
 use crate::partition::{
-    rule::{filter::PartitionCondition, ColumnWithType, PartitionFilter, PartitionRule},
+    rule::{
+        filter::PartitionCondition, PartitionFilter, PartitionRule, PartitionedRow, PartitionedRows,
+    },
     Internal, LocateWritePartition, Result,
 };
 
 pub const DEFAULT_PARTITION_VERSION: i32 = 0;
 
 pub struct KeyRule {
-    pub typed_key_columns: Vec<ColumnWithType>,
-    pub partition_num: usize,
+    columns: Vec<String>,
+    name_to_idx: HashMap<String, usize>,
+    partition_num: usize,
+}
+
+impl KeyRule {
+    pub fn new(partition_num: usize, columns: Vec<String>) -> Self {
+        let name_to_idx = columns
+            .iter()
+            .enumerate()
+            .map(|(idx, name)| (name.clone(), idx))
+            .collect();
+        Self {
+            columns,
+            name_to_idx,
+            partition_num,
+        }
+    }
 }
 
 impl KeyRule {
@@ -61,22 +79,17 @@ impl KeyRule {
         &self,
         filters: &[PartitionFilter],
     ) -> Result<Vec<Vec<usize>>> {
-        let column_name_to_idxs = self
-            .typed_key_columns
-            .iter()
-            .enumerate()
-            .map(|(col_idx, typed_col)| (typed_col.column.clone(), col_idx))
-            .collect::<HashMap<_, _>>();
-        let mut filter_by_columns = vec![Vec::new(); self.typed_key_columns.len()];
+        let mut filter_by_columns = vec![Vec::new(); self.columns.len()];
 
         // Group the filters by their columns.
         for (filter_idx, filter) in filters.iter().enumerate() {
-            let col_idx = column_name_to_idxs
+            let col_idx = self
+                .name_to_idx
                 .get(filter.column.as_str())
                 .context(Internal {
                     msg: format!(
                         "column in filters but not in target, column:{}, targets:{:?}",
-                        filter.column, self.typed_key_columns
+                        filter.column, self.columns,
                     ),
                 })?;
 
@@ -90,8 +103,8 @@ impl KeyRule {
             filter_by_columns
         );
 
-        let empty_filter = filter_by_columns.iter().find(|filter| filter.is_empty());
-        if empty_filter.is_some() {
+        let contains_empty_filter = filter_by_columns.iter().any(|filter| filter.is_empty());
+        if contains_empty_filter {
             return Ok(Vec::default());
         }
 
@@ -108,11 +121,15 @@ impl KeyRule {
         Ok(groups)
     }
 
-    fn compute_partition_for_inserted_row(&self, row: &Row, target_column_idxs: &[usize]) -> usize {
+    fn compute_partition_for_inserted_row(
+        row: &Row,
+        partition_num: usize,
+        target_column_idxs: &[usize],
+    ) -> usize {
         let partition_keys = target_column_idxs
             .iter()
             .map(|col_idx| row[*col_idx].as_view());
-        compute_partition(partition_keys, self.partition_num)
+        compute_partition(partition_keys, partition_num)
     }
 
     fn compute_partition_for_keys_group(
@@ -137,35 +154,36 @@ impl KeyRule {
 }
 
 impl PartitionRule for KeyRule {
-    fn columns(&self) -> Vec<String> {
-        self.typed_key_columns
-            .iter()
-            .map(|typed_col| typed_col.column.clone())
-            .collect()
+    fn involved_columns(&self) -> &[String] {
+        &self.columns
     }
 
-    fn locate_partitions_for_write(&self, row_group: &RowGroup) -> Result<Vec<usize>> {
-        // Extract idxs.
-        // TODO: we should compare column's related data types in `typed_key_columns`
-        // and the ones in `row_group`'s schema.
-        let typed_idxs = self
-            .typed_key_columns
+    fn location_partitions_for_write(&self, row_group: RowGroup) -> Result<PartitionedRows> {
+        // Determine the column index in the schema.
+        let column_index_in_schema = self
+            .columns
             .iter()
-            .map(|typed_col| row_group.schema().index_of(typed_col.column.as_str()))
+            .map(|column| row_group.schema().index_of(column))
             .collect::<Option<Vec<_>>>()
             .context(LocateWritePartition {
                 msg: format!(
                     "not all key columns found in schema when locate partition by key strategy, key columns:{:?}",
-                    self.typed_key_columns
+                    self.columns,
                 ),
             })?;
 
         // Compute partitions.
-        let partitions = row_group
-            .iter()
-            .map(|row| self.compute_partition_for_inserted_row(row, &typed_idxs))
-            .collect();
-        Ok(partitions)
+        let partition_num = self.partition_num;
+        let iter = row_group.into_iter().map(move |row| {
+            let partition_id = Self::compute_partition_for_inserted_row(
+                &row,
+                partition_num,
+                &column_index_in_schema,
+            );
+            PartitionedRow { partition_id, row }
+        });
+
+        Ok(PartitionedRows::Multiple(Box::new(iter)))
     }
 
     fn locate_partitions_for_read(&self, filters: &[PartitionFilter]) -> Result<Vec<usize>> {
@@ -357,10 +375,7 @@ pub(crate) fn compute_partition<'a>(
 mod tests {
     use std::{collections::BTreeSet, io::Read};
 
-    use common_types::{
-        datum::{Datum, DatumKind},
-        string::StringBytes,
-    };
+    use common_types::{datum::Datum, string::StringBytes};
 
     use super::*;
 
@@ -402,10 +417,6 @@ mod tests {
     #[test]
     fn test_compute_partition_for_inserted_row_with_empty_string() {
         let partition_num = 161709;
-        let key_rule = KeyRule {
-            typed_key_columns: vec![ColumnWithType::new("col1".to_string(), DatumKind::String)],
-            partition_num,
-        };
 
         let datums = vec![
             Datum::Int32(1),
@@ -417,17 +428,14 @@ mod tests {
         let row = Row::from_datums(datums);
         let defined_idxs = vec![1, 2, 3, 4];
 
-        let partition_id = key_rule.compute_partition_for_inserted_row(&row, &defined_idxs);
+        let partition_id =
+            KeyRule::compute_partition_for_inserted_row(&row, partition_num, &defined_idxs);
         assert_eq!(partition_id, 104979);
     }
 
     #[test]
     fn test_compute_partition_for_inserted_row() {
         let partition_num = 16;
-        let key_rule = KeyRule {
-            typed_key_columns: vec![ColumnWithType::new("col1".to_string(), DatumKind::UInt32)],
-            partition_num,
-        };
 
         let datums = vec![
             Datum::Int32(1),
@@ -440,7 +448,8 @@ mod tests {
         let defined_idxs = vec![1, 2, 3, 4];
 
         // Actual
-        let partition_id = key_rule.compute_partition_for_inserted_row(&row, &defined_idxs);
+        let partition_id =
+            KeyRule::compute_partition_for_inserted_row(&row, partition_num, &defined_idxs);
         assert_eq!(partition_id, 6);
     }
 
@@ -448,14 +457,10 @@ mod tests {
     fn test_get_candidate_partition_keys_groups() {
         // Key rule of keys:[col1, col2, col3]
         let partition_num = 16;
-        let key_rule = KeyRule {
-            typed_key_columns: vec![
-                ColumnWithType::new("col1".to_string(), DatumKind::UInt32),
-                ColumnWithType::new("col2".to_string(), DatumKind::UInt32),
-                ColumnWithType::new("col3".to_string(), DatumKind::UInt32),
-            ],
+        let key_rule = KeyRule::new(
             partition_num,
-        };
+            vec!["col1".to_string(), "col2".to_string(), "col3".to_string()],
+        );
 
         // Filters(related columns: col1, col2, col3, col1, col2)
         let filter1 = PartitionFilter {

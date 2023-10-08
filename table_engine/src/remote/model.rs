@@ -14,16 +14,20 @@
 
 //! Model for remote table engine
 
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
-use bytes_ext::ByteVec;
-use ceresdbproto::remote_engine::{self, row_group::Rows::Contiguous};
+use bytes_ext::{ByteVec, Bytes};
+use ceresdbproto::remote_engine::{self, execute_plan_request, row_group::Rows::Contiguous};
 use common_types::{
+    request_id::RequestId,
     row::{
         contiguous::{ContiguousRow, ContiguousRowReader, ContiguousRowWriter},
         Row, RowGroup, RowGroupBuilder,
     },
-    schema::{IndexInWriterSchema, Schema},
+    schema::{IndexInWriterSchema, RecordSchema, Schema},
 };
 use generic_error::{BoxError, GenericError, GenericResult};
 use macros::define_result;
@@ -33,6 +37,7 @@ use crate::{
     partition::PartitionInfo,
     table::{
         ReadRequest as TableReadRequest, SchemaId, TableId, WriteRequest as TableWriteRequest,
+        NO_TIMEOUT,
     },
 };
 
@@ -72,6 +77,13 @@ pub enum Error {
 
     #[snafu(display("Record batches can't be empty.\nBacktrace:\n{}", backtrace,))]
     EmptyRecordBatch { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Failed to convert remote execute request, msg:{}.\nBacktrace:\n{}",
+        msg,
+        backtrace,
+    ))]
+    ConvertRemoteExecuteRequest { msg: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -276,4 +288,141 @@ pub struct TableInfo {
     pub options: HashMap<String, String>,
     /// Partition Info
     pub partition_info: Option<PartitionInfo>,
+}
+
+/// Request for remote executing physical plan
+pub struct ExecutePlanRequest {
+    /// Schema of the encoded physical plan
+    pub plan_schema: RecordSchema,
+
+    /// Remote plan execution request
+    pub remote_request: RemoteExecuteRequest,
+}
+
+impl ExecutePlanRequest {
+    pub fn new(
+        table: TableIdentifier,
+        plan_schema: RecordSchema,
+        context: ExecContext,
+        physical_plan: PhysicalPlan,
+    ) -> Self {
+        let remote_request = RemoteExecuteRequest {
+            table,
+            context,
+            physical_plan,
+        };
+
+        Self {
+            plan_schema,
+            remote_request,
+        }
+    }
+}
+
+pub struct RemoteExecuteRequest {
+    /// Table information for routing
+    pub table: TableIdentifier,
+
+    /// Execution Context
+    pub context: ExecContext,
+
+    /// Physical plan for remote execution
+    pub physical_plan: PhysicalPlan,
+}
+
+pub struct ExecContext {
+    pub request_id: RequestId,
+    pub deadline: Option<Instant>,
+    pub default_catalog: String,
+    pub default_schema: String,
+}
+
+pub enum PhysicalPlan {
+    Datafusion(Bytes),
+}
+
+impl From<RemoteExecuteRequest> for ceresdbproto::remote_engine::ExecutePlanRequest {
+    fn from(value: RemoteExecuteRequest) -> Self {
+        let rest_duration_ms = if let Some(deadline) = value.context.deadline {
+            deadline.duration_since(Instant::now()).as_millis() as i64
+        } else {
+            NO_TIMEOUT
+        };
+
+        let pb_context = ceresdbproto::remote_engine::ExecContext {
+            request_id: value.context.request_id.as_u64(),
+            default_catalog: value.context.default_catalog,
+            default_schema: value.context.default_schema,
+            timeout_ms: rest_duration_ms,
+        };
+
+        let pb_plan = match value.physical_plan {
+            PhysicalPlan::Datafusion(plan) => {
+                execute_plan_request::PhysicalPlan::Datafusion(plan.to_vec())
+            }
+        };
+
+        let pb_table = ceresdbproto::remote_engine::TableIdentifier::from(value.table);
+
+        Self {
+            table: Some(pb_table),
+            context: Some(pb_context),
+            physical_plan: Some(pb_plan),
+        }
+    }
+}
+
+impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteRequest {
+    type Error = crate::remote::model::Error;
+
+    fn try_from(
+        value: ceresdbproto::remote_engine::ExecutePlanRequest,
+    ) -> std::result::Result<Self, Self::Error> {
+        // Table ident
+        let pb_table = value.table.context(ConvertRemoteExecuteRequest {
+            msg: "missing table ident",
+        })?;
+        let table = TableIdentifier::from(pb_table);
+
+        // Execution context
+        let pb_exec_ctx = value.context.context(ConvertRemoteExecuteRequest {
+            msg: "missing exec ctx",
+        })?;
+        let ceresdbproto::remote_engine::ExecContext {
+            request_id,
+            default_catalog,
+            default_schema,
+            timeout_ms,
+        } = pb_exec_ctx;
+
+        let request_id = RequestId::from(request_id);
+        let deadline = if timeout_ms >= 0 {
+            Some(Instant::now() + Duration::from_millis(timeout_ms as u64))
+        } else {
+            None
+        };
+
+        let exec_ctx = ExecContext {
+            request_id,
+            deadline,
+            default_catalog,
+            default_schema,
+        };
+
+        // Plan
+        let pb_plan = value.physical_plan.context(ConvertRemoteExecuteRequest {
+            msg: "missing physical plan",
+        })?;
+        let plan = match pb_plan {
+            ceresdbproto::remote_engine::execute_plan_request::PhysicalPlan::Datafusion(plan) => {
+                PhysicalPlan::Datafusion(Bytes::from(plan))
+            }
+        };
+
+        Ok(Self {
+            context: exec_ctx,
+            physical_plan: plan,
+            table,
+        })
+    }
 }

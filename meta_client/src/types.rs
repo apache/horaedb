@@ -302,7 +302,7 @@ impl From<&meta_service_pb::ShardInfo> for ShardInfo {
             id: pb_shard_info.id,
             role: pb_shard_info.role().into(),
             version: pb_shard_info.version,
-            status: Default::default(),
+            status: ShardStatus::Init,
         }
     }
 }

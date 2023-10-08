@@ -47,9 +47,13 @@ use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
-use crate::grpc::{
-    meta_event_service::MetaServiceImpl, remote_engine_service::RemoteEngineServiceImpl,
-    storage_service::StorageServiceImpl,
+use self::remote_engine_service::QueryDedup;
+use crate::{
+    config::QueryDedupConfig,
+    grpc::{
+        meta_event_service::MetaServiceImpl, remote_engine_service::RemoteEngineServiceImpl,
+        storage_service::StorageServiceImpl,
+    },
 };
 
 mod meta_event_service;
@@ -212,7 +216,7 @@ pub struct Builder {
     cluster: Option<ClusterRef>,
     opened_wals: Option<OpenedWals>,
     proxy: Option<Arc<Proxy>>,
-    enable_dedup_stream_read: bool,
+    query_dedup_config: Option<QueryDedupConfig>,
     hotspot_recorder: Option<Arc<HotspotRecorder>>,
 }
 
@@ -226,7 +230,7 @@ impl Builder {
             cluster: None,
             opened_wals: None,
             proxy: None,
-            enable_dedup_stream_read: false,
+            query_dedup_config: None,
             hotspot_recorder: None,
         }
     }
@@ -272,8 +276,8 @@ impl Builder {
         self
     }
 
-    pub fn request_notifiers(mut self, v: bool) -> Self {
-        self.enable_dedup_stream_read = v;
+    pub fn query_dedup(mut self, config: QueryDedupConfig) -> Self {
+        self.query_dedup_config = Some(config);
         self
     }
 }
@@ -297,13 +301,20 @@ impl Builder {
         });
 
         let remote_engine_server = {
-            let request_notifiers = self
-                .enable_dedup_stream_read
-                .then(|| Arc::new(RequestNotifiers::default()));
+            let query_dedup = self
+                .query_dedup_config
+                .map(|v| {
+                    v.enable.then(|| QueryDedup {
+                        config: v.clone(),
+                        request_notifiers: Arc::new(RequestNotifiers::default()),
+                        physical_plan_notifiers: Arc::new(RequestNotifiers::default()),
+                    })
+                })
+                .unwrap_or_default();
             let service = RemoteEngineServiceImpl {
                 instance,
                 runtimes: runtimes.clone(),
-                request_notifiers,
+                query_dedup,
                 hotspot_recorder,
             };
             RemoteEngineServiceServer::new(service)

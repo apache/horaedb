@@ -19,6 +19,7 @@
 //! Parse sql into logical plan that can be handled by interpreters
 
 pub mod ast;
+pub mod config;
 pub mod container;
 mod datafusion_util;
 pub mod frontend;

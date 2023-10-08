@@ -14,7 +14,7 @@
 
 //! Contains common methods used by the read process.
 
-use std::time::Instant;
+use std::{sync::Arc, time::Duration};
 
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, SqlQueryRequest, SqlQueryResponse,
@@ -24,6 +24,7 @@ use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{error, info, warn};
+use logger::{failed_query, maybe_slow_query, SlowTimer};
 use query_frontend::{
     frontend,
     frontend::{Context as SqlContext, Frontend},
@@ -31,12 +32,14 @@ use query_frontend::{
 };
 use router::endpoint::Endpoint;
 use snafu::{ensure, ResultExt};
-use time_ext::InstantExt;
+use tokio::sync::mpsc::{self, Sender};
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
-    error::{ErrNoCause, ErrWithCause, Error, Internal, Result},
+    dedup_requests::{ExecutionGuard, RequestNotifiers, RequestResult},
+    error::{ErrNoCause, ErrWithCause, Error, Internal, InternalNoCause, Result},
     forward::{ForwardRequest, ForwardResult},
+    metrics::GRPC_HANDLER_COUNTER_VEC,
     Context, Proxy,
 };
 
@@ -63,12 +66,91 @@ impl Proxy {
             }
         };
 
-        Ok(SqlResponse::Local(
-            self.fetch_sql_query_output(ctx, schema, sql, enable_partition_table_access)
-                .await?,
-        ))
+        let output = self
+            .fetch_sql_query_output(ctx, schema, sql, enable_partition_table_access)
+            .await?;
+
+        Ok(SqlResponse::Local(output))
     }
 
+    pub(crate) async fn dedup_handle_sql(
+        &self,
+        ctx: &Context,
+        schema: &str,
+        sql: &str,
+        request_notifiers: Arc<RequestNotifiers<String, Sender<Result<SqlResponse>>>>,
+        enable_partition_table_access: bool,
+    ) -> Result<SqlResponse> {
+        let (tx, mut rx) = mpsc::channel(1);
+        let mut guard = match request_notifiers.insert_notifier(sql.to_string(), tx) {
+            RequestResult::First => ExecutionGuard::new(|| {
+                request_notifiers.take_notifiers(&sql.to_string());
+            }),
+            RequestResult::Wait => {
+                match rx.recv().await {
+                    Some(v) => return v,
+                    None => {
+                        return InternalNoCause {
+                            msg: format!("notifier by query dedup has been dropped, sql:{sql}"),
+                        }
+                        .fail()
+                    }
+                };
+            }
+        };
+
+        if let Some(resp) = self
+            .maybe_forward_sql_query(ctx.clone(), schema, sql)
+            .await?
+        {
+            match resp {
+                ForwardResult::Forwarded(resp) => {
+                    let resp = resp?;
+                    guard.cancel();
+                    let notifiers = request_notifiers.take_notifiers(&sql.to_string()).unwrap();
+                    for notifier in &notifiers {
+                        if let Err(e) = notifier
+                            .send(Ok(SqlResponse::Forwarded(resp.clone())))
+                            .await
+                        {
+                            error!("Failed to send handler result, err:{}.", e);
+                        }
+                    }
+                    GRPC_HANDLER_COUNTER_VEC
+                        .dedupped_stream_query
+                        .inc_by((notifiers.len() - 1) as u64);
+                    return Ok(SqlResponse::Forwarded(resp));
+                }
+                ForwardResult::Local => (),
+            }
+        };
+
+        let result = self
+            .fetch_sql_query_output(ctx, schema, sql, enable_partition_table_access)
+            .await;
+
+        guard.cancel();
+        let notifiers = request_notifiers.take_notifiers(&sql.to_string()).unwrap();
+        for notifier in &notifiers {
+            let item = match &result {
+                Ok(v) => Ok(SqlResponse::Local(v.clone())),
+                Err(e) => ErrNoCause {
+                    code: e.code(),
+                    msg: e.to_string(),
+                }
+                .fail(),
+            };
+            if let Err(e) = notifier.send(item).await {
+                error!("Failed to send handler result, err:{}.", e);
+            }
+        }
+        GRPC_HANDLER_COUNTER_VEC
+            .dedupped_stream_query
+            .inc_by((notifiers.len() - 1) as u64);
+        Ok(SqlResponse::Local(result?))
+    }
+
+    #[inline]
     pub(crate) async fn fetch_sql_query_output(
         &self,
         ctx: &Context,
@@ -77,12 +159,34 @@ impl Proxy {
         sql: &str,
         enable_partition_table_access: bool,
     ) -> Result<Output> {
+        self.fetch_sql_query_output_internal(ctx, schema, sql, enable_partition_table_access)
+            .await
+            .map_err(|e| {
+                failed_query!("Failed query, request_id:{}, sql:{}", ctx.request_id, sql);
+                e
+            })
+    }
+
+    async fn fetch_sql_query_output_internal(
+        &self,
+        ctx: &Context,
+        // TODO: maybe we can put params below input a new ReadRequest struct.
+        schema: &str,
+        sql: &str,
+        enable_partition_table_access: bool,
+    ) -> Result<Output> {
         let request_id = ctx.request_id;
-        let begin_instant = Instant::now();
-        let deadline = ctx.timeout.map(|t| begin_instant + t);
+        let slow_threshold_secs = self
+            .instance()
+            .dyn_config
+            .slow_threshold
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let slow_threshold = Duration::from_secs(slow_threshold_secs);
+        let slow_timer = SlowTimer::new(slow_threshold);
+        let deadline = ctx.timeout.map(|t| slow_timer.now() + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
-        info!("Handle sql query begin, catalog:{catalog}, schema:{schema}, deadline:{deadline:?}, ctx:{ctx:?}, sql:{sql}");
+        info!("Handle sql query begin, request_id:{request_id}, catalog:{catalog}, schema:{schema}, deadline:{deadline:?}, ctx:{ctx:?}, sql:{sql}");
 
         let instance = &self.instance;
         // TODO(yingwen): Privilege check, cannot access data of other tenant
@@ -93,7 +197,7 @@ impl Proxy {
             default_schema: schema,
             function_registry: &*instance.function_registry,
         };
-        let frontend = Frontend::new(provider);
+        let frontend = Frontend::new(provider, instance.dyn_config.fronted.clone());
 
         let mut sql_ctx = SqlContext::new(request_id, deadline);
         // Parse sql, frontend error of invalid sql already contains sql
@@ -159,17 +263,28 @@ impl Proxy {
             msg: format!("Failed to execute plan, sql:{sql}"),
         })?;
 
-        let cost = begin_instant.saturating_elapsed();
-        info!("Handle sql query successfully, catalog:{catalog}, schema:{schema}, cost:{cost:?}, ctx:{ctx:?}, sql:{sql}");
+        let cost = slow_timer.elapsed();
+        info!(
+            "Handle sql query finished, sql:{}, elapsed:{:?}, catalog:{}, schema:{}, ctx:{:?}",
+            sql, cost, catalog, schema, ctx
+        );
+
+        maybe_slow_query!(
+            slow_timer,
+            "Slow query, request_id:{}, elapsed:{:?}, sql:{}",
+            ctx.request_id,
+            cost,
+            sql,
+        );
 
         match &output {
             Output::AffectedRows(_) => Ok(output),
             Output::Records(v) => {
                 if plan_maybe_expired {
-                    let row_nums = v
+                    let num_rows = v
                         .iter()
                         .fold(0_usize, |acc, record_batch| acc + record_batch.num_rows());
-                    if row_nums == 0 {
+                    if num_rows == 0 {
                         warn!("Query time range maybe exceed TTL, sql:{sql}");
 
                         // TODO: Cannot return this error directly, empty query

@@ -32,6 +32,7 @@ use analytic_engine::{
         },
         file::{FileHandle, FilePurgeQueue, Level, Request},
         meta_data::cache::MetaCacheRef,
+        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
     },
     table::sst_util,
 };
@@ -79,6 +80,7 @@ impl MergeSstBench {
             num_streams_to_prefetch: 0,
         };
         let sst_read_options = SstReadOptions {
+            maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench")),
             frequency: ReadFrequency::Frequent,
             num_rows_per_row_group: config.num_rows_per_row_group,
             projected_schema,

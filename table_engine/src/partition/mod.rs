@@ -19,6 +19,7 @@ pub mod rule;
 use bytes_ext::Bytes;
 use ceresdbproto::cluster::partition_info::Info;
 use macros::define_result;
+use regex::Regex;
 use snafu::{Backtrace, Snafu};
 
 const PARTITION_TABLE_PREFIX: &str = "__";
@@ -72,8 +73,11 @@ pub enum Error {
     ))]
     InvalidPartitionInfoEncodingVersion { version: u8, backtrace: Backtrace },
 
-    #[snafu(display("Partition info could not be empty"))]
-    EmptyPartitionInfo {},
+    #[snafu(display("Partition info could not be empty.\nBacktrace:\n{backtrace}"))]
+    EmptyPartitionInfo { backtrace: Backtrace },
+
+    #[snafu(display("Column in the partition key is not found.\nBacktrace:\n{backtrace}"))]
+    InvalidPartitionKey { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -87,11 +91,21 @@ pub enum PartitionInfo {
 }
 
 impl PartitionInfo {
+    #[inline]
     pub fn get_definitions(&self) -> Vec<PartitionDefinition> {
         match self {
             Self::Random(v) => v.definitions.clone(),
             Self::Hash(v) => v.definitions.clone(),
             Self::Key(v) => v.definitions.clone(),
+        }
+    }
+
+    #[inline]
+    pub fn get_partition_num(&self) -> usize {
+        match self {
+            Self::Random(v) => v.definitions.len(),
+            Self::Hash(v) => v.definitions.len(),
+            Self::Key(v) => v.definitions.len(),
         }
     }
 }
@@ -281,7 +295,7 @@ impl TryFrom<ceresdbproto::cluster::PartitionInfo> for PartitionInfo {
                     Ok(Self::Random(random_partition_info))
                 }
             },
-            None => Err(Error::EmptyPartitionInfo {}),
+            None => EmptyPartitionInfo {}.fail(),
         }
     }
 }
@@ -294,4 +308,38 @@ pub fn format_sub_partition_table_name(table_name: &str, partition_name: &str) -
 #[inline]
 pub fn is_sub_partition_table(table_name: &str) -> bool {
     table_name.starts_with(PARTITION_TABLE_PREFIX)
+}
+
+pub fn maybe_extract_partitioned_table_name(sub_table_name: &str) -> Option<String> {
+    let re = Regex::new(r"__(?P<partitioned_table>\w{1,})_\d{1,}").unwrap();
+    let caps = re.captures(sub_table_name)?;
+    caps.name("partitioned_table")
+        .map(|word| word.as_str().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::partition::maybe_extract_partitioned_table_name;
+
+    #[test]
+    fn test_extract_partitioned_table_name() {
+        let valid_sub_table_name = "__test_0";
+        let partitioned_table_name =
+            maybe_extract_partitioned_table_name(valid_sub_table_name).unwrap();
+        assert_eq!(&partitioned_table_name, "test");
+
+        let valid_sub_table_name = "__test_table_123";
+        let partitioned_table_name =
+            maybe_extract_partitioned_table_name(valid_sub_table_name).unwrap();
+        assert_eq!(&partitioned_table_name, "test_table");
+
+        let normal_table_name = "test";
+        let result = maybe_extract_partitioned_table_name(normal_table_name);
+        assert!(result.is_none());
+
+        // Just return `None` now.
+        let invalid_sub_table_name = "__test1";
+        let result = maybe_extract_partitioned_table_name(invalid_sub_table_name);
+        assert!(result.is_none());
+    }
 }

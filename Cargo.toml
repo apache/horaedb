@@ -12,18 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-[package]
-name = "ceresdb"
-version = "1.2.6-alpha"
-authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
-edition = "2021"
-
 [workspace.package]
 version = "1.2.6-alpha"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
 
 [workspace]
+resolver = "2"
 # In alphabetical order
 members = [
     "analytic_engine",
@@ -75,15 +70,12 @@ members = [
     "remote_engine_client",
     "router",
     "server",
+    "src/ceresdb",
     "system_catalog",
     "table_engine",
     "tools",
     "wal",
 ]
-
-[[bin]]
-name = "ceresdb-server"
-path = "src/bin/ceresdb-server.rs"
 
 [workspace.dependencies]
 alloc_tracker = { path = "components/alloc_tracker" }
@@ -94,12 +86,13 @@ analytic_engine = { path = "analytic_engine" }
 arena = { path = "components/arena" }
 async-stream = "0.3.4"
 async-trait = "0.1.72"
+atomic_enum = "0.2.0"
 base64 = "0.13"
 bytes = "1"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-ceresdbproto = "1.0.14"
+ceresdbproto = "1.0.16"
 codec = { path = "components/codec" }
 notifier = { path = "components/notifier" }
 chrono = "0.4"
@@ -184,36 +177,7 @@ tokio = { version = "1.29", features = ["full"] }
 wal = { path = "wal" }
 xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
 zstd = { version = "0.12", default-features = false }
-
-[dependencies]
-analytic_engine = { workspace = true }
-catalog = { workspace = true }
-catalog_impls = { workspace = true }
-clap = { workspace = true }
-cluster = { workspace = true }
-datafusion = { workspace = true }
-df_operator = { workspace = true }
-etcd-client = { workspace = true }
-interpreters = { workspace = true }
-log = { workspace = true }
-logger = { workspace = true }
-meta_client = { workspace = true }
-moka = { version = "0.10", features = ["future"] }
-panic_ext = { workspace = true }
-proxy = { workspace = true }
-query_engine = { workspace = true }
-router = { workspace = true }
-runtime = { workspace = true }
-serde = { workspace = true }
-server = { workspace = true }
-signal-hook = "0.3"
-table_engine = { workspace = true }
-toml = { workspace = true }
-toml_ext = { workspace = true }
-tracing_util = { workspace = true }
-
-[build-dependencies]
-vergen = { version = "8", default-features = false, features = ["build", "cargo", "git", "gitcl", "rustc"] }
+regex = "1"
 
 # This profile optimizes for good runtime performance.
 [profile.release]

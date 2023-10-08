@@ -13,13 +13,7 @@
 // limitations under the License.
 
 use std::{
-    collections::HashMap,
-    env,
-    fmt::Display,
-    fs::File,
-    process::{Child, Command},
-    sync::Arc,
-    time::Duration,
+    collections::HashMap, env, fmt::Display, fs::File, process::Child, sync::Arc, time::Duration,
 };
 
 use async_trait::async_trait;
@@ -28,7 +22,7 @@ use ceresdb_client::{
     model::sql_query::{display::CsvFormatter, Request},
     RpcContext,
 };
-use reqwest::{ClientBuilder, Url};
+use reqwest::{ClientBuilder, StatusCode, Url};
 use sqlness::{Database, QueryContext};
 
 const SERVER_GRPC_ENDPOINT_ENV: &str = "CERESDB_SERVER_GRPC_ENDPOINT";
@@ -44,6 +38,7 @@ const CERESDB_CONFIG_FILE_0_ENV: &str = "CERESDB_CONFIG_FILE_0";
 const CERESDB_CONFIG_FILE_1_ENV: &str = "CERESDB_CONFIG_FILE_1";
 const CLUSTER_CERESDB_STDOUT_FILE_0_ENV: &str = "CLUSTER_CERESDB_STDOUT_FILE_0";
 const CLUSTER_CERESDB_STDOUT_FILE_1_ENV: &str = "CLUSTER_CERESDB_STDOUT_FILE_1";
+const CLUSTER_CERESDB_HEALTH_CHECK_INTERVAL_SECONDS: usize = 5;
 
 const CERESDB_SERVER_ADDR: &str = "CERESDB_SERVER_ADDR";
 
@@ -63,9 +58,10 @@ impl HttpClient {
     }
 }
 
+#[async_trait]
 pub trait Backend {
     fn start() -> Self;
-    fn wait_for_ready(&self);
+    async fn wait_for_ready(&self);
     fn stop(&mut self);
 }
 
@@ -77,6 +73,10 @@ pub struct CeresDBCluster {
     server0: CeresDBServer,
     server1: CeresDBServer,
     ceresmeta_process: Child,
+
+    /// Used in meta health check
+    db_client: Arc<dyn DbClient>,
+    meta_stable_check_sql: String,
 }
 
 impl CeresDBServer {
@@ -87,7 +87,7 @@ impl CeresDBServer {
         println!("Start server at {bin} with config {config} and stdout {stdout}, with local ip:{local_ip}");
 
         let stdout = File::create(stdout).expect("Failed to create stdout file");
-        let server_process = Command::new(&bin)
+        let server_process = std::process::Command::new(&bin)
             .env(CERESDB_SERVER_ADDR, local_ip)
             .args(["--config", &config])
             .stdout(stdout)
@@ -97,6 +97,7 @@ impl CeresDBServer {
     }
 }
 
+#[async_trait]
 impl Backend for CeresDBServer {
     fn start() -> Self {
         let config = env::var(CERESDB_CONFIG_FILE_ENV).expect("Cannot parse ceresdb config env");
@@ -105,8 +106,8 @@ impl Backend for CeresDBServer {
         Self::spawn(bin, config, stdout)
     }
 
-    fn wait_for_ready(&self) {
-        std::thread::sleep(Duration::from_secs(5));
+    async fn wait_for_ready(&self) {
+        tokio::time::sleep(Duration::from_secs(10)).await
     }
 
     fn stop(&mut self) {
@@ -114,6 +115,24 @@ impl Backend for CeresDBServer {
     }
 }
 
+impl CeresDBCluster {
+    async fn check_meta_stable(&self) -> bool {
+        let query_ctx = RpcContext {
+            database: Some("public".to_string()),
+            timeout: None,
+        };
+
+        let query_req = Request {
+            tables: vec![],
+            sql: self.meta_stable_check_sql.clone(),
+        };
+
+        let result = self.db_client.sql_query(&query_ctx, &query_req).await;
+        result.is_ok()
+    }
+}
+
+#[async_trait]
 impl Backend for CeresDBCluster {
     fn start() -> Self {
         let ceresmeta_bin =
@@ -126,7 +145,7 @@ impl Backend for CeresDBCluster {
 
         let ceresmeta_stdout =
             File::create(ceresmeta_stdout).expect("Cannot create ceresmeta stdout");
-        let ceresmeta_process = Command::new(&ceresmeta_bin)
+        let ceresmeta_process = std::process::Command::new(&ceresmeta_bin)
             .args(["--config", &ceresmeta_config])
             .stdout(ceresmeta_stdout)
             .spawn()
@@ -149,16 +168,55 @@ impl Backend for CeresDBCluster {
         let server0 = CeresDBServer::spawn(ceresdb_bin.clone(), ceresdb_config_0, stdout0);
         let server1 = CeresDBServer::spawn(ceresdb_bin, ceresdb_config_1, stdout1);
 
+        // Meta stable check context
+        let endpoint = env::var(SERVER_GRPC_ENDPOINT_ENV).unwrap_or_else(|_| {
+            panic!("Cannot read server endpoint from env {SERVER_GRPC_ENDPOINT_ENV:?}")
+        });
+        let db_client = Builder::new(endpoint, Mode::Proxy).build();
+
+        let meta_stable_check_sql = format!(
+            r#"CREATE TABLE `stable_check_{}`
+            (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t))"#,
+            uuid::Uuid::new_v4()
+        );
+
         Self {
             server0,
             server1,
             ceresmeta_process,
+            db_client,
+            meta_stable_check_sql,
         }
     }
 
-    fn wait_for_ready(&self) {
-        println!("wait for cluster service ready...\n");
-        std::thread::sleep(Duration::from_secs(20));
+    async fn wait_for_ready(&self) {
+        println!("wait for cluster service initialized...");
+        tokio::time::sleep(Duration::from_secs(20_u64)).await;
+
+        println!("wait for cluster service stable begin...");
+        let mut wait_cnt = 0;
+        let wait_max = 6;
+        loop {
+            if wait_cnt >= wait_max {
+                println!(
+                    "wait too long for cluster service stable, maybe somethings went wrong..."
+                );
+                return;
+            }
+
+            if self.check_meta_stable().await {
+                println!("wait for cluster service stable finished...");
+                return;
+            }
+
+            wait_cnt += 1;
+            let has_waited = wait_cnt * CLUSTER_CERESDB_HEALTH_CHECK_INTERVAL_SECONDS;
+            println!("waiting for cluster service stable, has_waited:{has_waited}s");
+            tokio::time::sleep(Duration::from_secs(
+                CLUSTER_CERESDB_HEALTH_CHECK_INTERVAL_SECONDS as u64,
+            ))
+            .await;
+        }
     }
 
     fn stop(&mut self) {
@@ -198,6 +256,24 @@ impl TryFrom<&str> for Protocol {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Command {
+    Flush,
+}
+
+impl TryFrom<&str> for Command {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        let cmd = match s {
+            "flush" => Self::Flush,
+            _ => return Err(format!("Unknown command:{s}")),
+        };
+
+        Ok(cmd)
+    }
+}
+
 struct ProtocolParser;
 
 impl ProtocolParser {
@@ -215,6 +291,18 @@ impl<T: Send + Sync> Database for CeresDB<T> {
             .parse_from_ctx(&context.context)
             .expect("parse protocol");
 
+        if let Some(pre_cmd) = Self::parse_pre_cmd(&context.context) {
+            let cmd = pre_cmd.expect("parse command");
+            match cmd {
+                Command::Flush => {
+                    println!("Flush memtable...");
+                    if let Err(e) = self.execute_flush().await {
+                        panic!("Execute flush command failed, err:{e}");
+                    }
+                }
+            }
+        }
+
         match protocol {
             Protocol::Sql => Self::execute_sql(query, self.db_client.clone()).await,
             Protocol::InfluxQL => {
@@ -226,9 +314,9 @@ impl<T: Send + Sync> Database for CeresDB<T> {
 }
 
 impl<T: Backend> CeresDB<T> {
-    pub fn create() -> CeresDB<T> {
+    pub async fn create() -> CeresDB<T> {
         let backend = T::start();
-        backend.wait_for_ready();
+        backend.wait_for_ready().await;
 
         let endpoint = env::var(SERVER_GRPC_ENDPOINT_ENV).unwrap_or_else(|_| {
             panic!("Cannot read server endpoint from env {SERVER_GRPC_ENDPOINT_ENV:?}")
@@ -251,6 +339,21 @@ impl<T: Backend> CeresDB<T> {
 }
 
 impl<T> CeresDB<T> {
+    fn parse_pre_cmd(ctx: &HashMap<String, String>) -> Option<Result<Command, String>> {
+        ctx.get("pre_cmd").map(|s| Command::try_from(s.as_str()))
+    }
+
+    async fn execute_flush(&self) -> Result<(), String> {
+        let url = format!("http://{}/debug/flush_memtable", self.http_client.endpoint);
+        let resp = self.http_client.client.post(url).send().await.unwrap();
+
+        if resp.status() == StatusCode::OK {
+            return Ok(());
+        }
+
+        Err(resp.text().await.unwrap_or_else(|e| format!("{e:?}")))
+    }
+
     async fn execute_influxql(
         query: String,
         http_client: HttpClient,

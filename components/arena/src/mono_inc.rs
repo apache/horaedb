@@ -15,10 +15,8 @@
 use std::{
     alloc::{alloc, dealloc, Layout},
     ptr::NonNull,
-    sync::Arc,
+    sync::{Arc, RwLock},
 };
-
-use parking_lot::Mutex;
 
 use crate::arena_trait::{Arena, BasicStats, Collector, CollectorRef};
 
@@ -39,22 +37,25 @@ const DEFAULT_ALIGN: usize = 8;
 /// allocated memory as blocks.
 #[derive(Clone)]
 pub struct MonoIncArena {
-    core: Arc<Mutex<ArenaCore>>,
+    core: Arc<RwLock<ArenaCore>>,
+    block_size: usize,
 }
 
 impl MonoIncArena {
-    pub fn new(regular_block_size: usize) -> Self {
+    pub fn new(block_size: usize) -> Self {
         Self {
-            core: Arc::new(Mutex::new(ArenaCore::new(
-                regular_block_size,
+            core: Arc::new(RwLock::new(ArenaCore::new(
+                block_size,
                 Arc::new(NoopCollector {}),
             ))),
+            block_size,
         }
     }
 
-    pub fn with_collector(regular_block_size: usize, collector: CollectorRef) -> Self {
+    pub fn with_collector(block_size: usize, collector: CollectorRef) -> Self {
         Self {
-            core: Arc::new(Mutex::new(ArenaCore::new(regular_block_size, collector))),
+            core: Arc::new(RwLock::new(ArenaCore::new(block_size, collector))),
+            block_size,
         }
     }
 }
@@ -63,15 +64,19 @@ impl Arena for MonoIncArena {
     type Stats = BasicStats;
 
     fn try_alloc(&self, layout: Layout) -> Option<NonNull<u8>> {
-        Some(self.core.lock().alloc(layout))
+        Some(self.core.write().unwrap().alloc(layout))
     }
 
     fn stats(&self) -> Self::Stats {
-        self.core.lock().stats
+        self.core.read().unwrap().stats
     }
 
     fn alloc(&self, layout: Layout) -> NonNull<u8> {
-        self.core.lock().alloc(layout)
+        self.core.write().unwrap().alloc(layout)
+    }
+
+    fn block_size(&self) -> usize {
+        self.block_size
     }
 }
 

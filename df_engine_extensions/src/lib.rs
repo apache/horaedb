@@ -16,3 +16,4 @@
 
 pub mod codec;
 pub mod dist_sql_query;
+pub mod metrics;

@@ -121,6 +121,14 @@ pub struct Config {
     pub recover_mode: RecoverMode,
 
     pub remote_engine_client: remote_engine_client::config::Config,
+
+    pub metrics: MetricsOptions,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct MetricsOptions {
+    enable_table_level_metrics: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -158,6 +166,7 @@ impl Default for Config {
             wal: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
             recover_mode: RecoverMode::TableBased,
+            metrics: MetricsOptions::default(),
         }
     }
 }

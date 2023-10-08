@@ -16,7 +16,9 @@
 
 use std::{
     hash::Hash,
+    pin::Pin,
     sync::Arc,
+    task::{Context, Poll},
     time::{Duration, Instant},
 };
 
@@ -25,45 +27,56 @@ use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::SchemaRef};
 use ceresdbproto::{
     remote_engine::{
-        read_response::Output::Arrow, remote_engine_service_server::RemoteEngineService, row_group,
+        execute_plan_request, read_response::Output::Arrow,
+        remote_engine_service_server::RemoteEngineService, row_group, ExecContext,
         ExecutePlanRequest, GetTableInfoRequest, GetTableInfoResponse, ReadRequest, ReadResponse,
         WriteBatchRequest, WriteRequest, WriteResponse,
     },
     storage::{arrow_payload, ArrowPayload},
 };
-use common_types::record_batch::RecordBatch;
-use futures::stream::{self, BoxStream, FuturesUnordered, StreamExt};
+use common_types::{record_batch::RecordBatch, request_id::RequestId};
+use futures::{
+    stream::{self, BoxStream, FuturesUnordered, StreamExt},
+    Future,
+};
 use generic_error::BoxError;
 use log::{error, info};
-use notifier::notifier::{RequestNotifiers, RequestResult};
+use notifier::notifier::{ExecutionGuard, RequestNotifiers, RequestResult};
 use proxy::{
     hotspot::{HotspotRecorder, Message},
     instance::InstanceRef,
+};
+use query_engine::{
+    datafusion_impl::physical_plan::{DataFusionPhysicalPlanAdapter, TypedPlan},
+    QueryEngineRef, QueryEngineType,
 };
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::EngineRuntimes,
     predicate::PredicateRef,
     remote::model::{self, TableIdentifier},
-    stream::PartitionedStreams,
+    stream::{PartitionedStreams, SendableRecordBatchStream},
     table::TableRef,
 };
 use time_ext::InstantExt;
 use tokio::sync::mpsc::{self, Sender};
-use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::{wrappers::ReceiverStream, Stream};
 use tonic::{Request, Response, Status};
 
 use super::metrics::REMOTE_ENGINE_WRITE_BATCH_NUM_ROWS_HISTOGRAM;
-use crate::grpc::{
-    metrics::{
-        REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC, REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+use crate::{
+    config::QueryDedupConfig,
+    grpc::{
+        metrics::{
+            REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC,
+            REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+        },
+        remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
     },
-    remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
 };
 
 pub mod error;
 
-const DEDUP_RESP_NOTIFY_TIMEOUT_MS: u64 = 500;
 const STREAM_QUERY_CHANNEL_LEN: usize = 200;
 const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
 
@@ -84,40 +97,149 @@ impl StreamReadReqKey {
     }
 }
 
-struct ExecutionGuard<F: FnMut()> {
-    f: F,
-    cancelled: bool,
-}
-
-impl<F: FnMut()> ExecutionGuard<F> {
-    fn new(f: F) -> Self {
-        Self {
-            f,
-            cancelled: false,
-        }
-    }
-
-    fn cancel(&mut self) {
-        self.cancelled = true;
-    }
-}
-
-impl<F: FnMut()> Drop for ExecutionGuard<F> {
-    fn drop(&mut self) {
-        if !self.cancelled {
-            (self.f)()
-        }
-    }
-}
-
 pub type StreamReadRequestNotifiers =
     Arc<RequestNotifiers<StreamReadReqKey, mpsc::Sender<Result<RecordBatch>>>>;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PhysicalPlanKey {
+    encoded_plan: Vec<u8>,
+}
+
+pub type PhysicalPlanNotifiers =
+    Arc<RequestNotifiers<PhysicalPlanKey, mpsc::Sender<Result<RecordBatch>>>>;
+
+/// Stream metric
+trait MetricCollector: 'static + Send + Unpin {
+    fn collect(self);
+}
+
+struct StreamReadMetricCollector(Instant);
+
+impl MetricCollector for StreamReadMetricCollector {
+    fn collect(self) {
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .stream_read
+            .observe(self.0.saturating_elapsed().as_secs_f64());
+    }
+}
+
+struct ExecutePlanMetricCollector(Instant);
+
+impl MetricCollector for ExecutePlanMetricCollector {
+    fn collect(self) {
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .execute_physical_plan
+            .observe(self.0.saturating_elapsed().as_secs_f64());
+    }
+}
+
+/// Stream with metric
+struct StreamWithMetric<M: MetricCollector> {
+    inner: BoxStream<'static, Result<RecordBatch>>,
+    metric: Option<M>,
+}
+
+impl<M: MetricCollector> StreamWithMetric<M> {
+    fn new(inner: BoxStream<'static, Result<RecordBatch>>, metric: M) -> Self {
+        Self {
+            inner,
+            metric: Some(metric),
+        }
+    }
+}
+
+impl<M: MetricCollector> Stream for StreamWithMetric<M> {
+    type Item = Result<RecordBatch>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.get_mut().inner.poll_next_unpin(cx)
+    }
+}
+
+impl<M: MetricCollector> Drop for StreamWithMetric<M> {
+    fn drop(&mut self) {
+        let metric = self.metric.take();
+        if let Some(metric) = metric {
+            metric.collect();
+        }
+    }
+}
+
+macro_rules! record_stream_to_response_stream {
+    ($record_stream_result:ident, $StreamType:ident) => {
+        match $record_stream_result {
+            Ok(stream) => {
+                let new_stream: Self::$StreamType = Box::pin(stream.map(|res| match res {
+                    Ok(record_batch) => {
+                        let resp = match ipc::encode_record_batch(
+                            &record_batch.into_arrow_record_batch(),
+                            CompressOptions {
+                                compress_min_length: DEFAULT_COMPRESS_MIN_LENGTH,
+                                method: CompressionMethod::Zstd,
+                            },
+                        )
+                        .box_err()
+                        .context(ErrWithCause {
+                            code: StatusCode::Internal,
+                            msg: "encode record batch failed",
+                        }) {
+                            Err(e) => ReadResponse {
+                                header: Some(error::build_err_header(e)),
+                                ..Default::default()
+                            },
+                            Ok(CompressOutput { payload, method }) => {
+                                let compression = match method {
+                                    CompressionMethod::None => arrow_payload::Compression::None,
+                                    CompressionMethod::Zstd => arrow_payload::Compression::Zstd,
+                                };
+
+                                ReadResponse {
+                                    header: Some(error::build_ok_header()),
+                                    output: Some(Arrow(ArrowPayload {
+                                        record_batches: vec![payload],
+                                        compression: compression as i32,
+                                    })),
+                                }
+                            }
+                        };
+
+                        Ok(resp)
+                    }
+                    Err(e) => {
+                        let resp = ReadResponse {
+                            header: Some(error::build_err_header(e)),
+                            ..Default::default()
+                        };
+                        Ok(resp)
+                    }
+                }));
+
+                Ok(Response::new(new_stream))
+            }
+            Err(e) => {
+                let resp = ReadResponse {
+                    header: Some(error::build_err_header(e)),
+                    ..Default::default()
+                };
+                let stream = stream::once(async { Ok(resp) });
+                Ok(Response::new(Box::pin(stream)))
+            }
+        }
+    };
+}
+
+#[derive(Clone)]
+pub struct QueryDedup {
+    pub config: QueryDedupConfig,
+    pub request_notifiers: StreamReadRequestNotifiers,
+    pub physical_plan_notifiers: PhysicalPlanNotifiers,
+}
 
 #[derive(Clone)]
 pub struct RemoteEngineServiceImpl {
     pub instance: InstanceRef,
     pub runtimes: Arc<EngineRuntimes>,
-    pub request_notifiers: Option<StreamReadRequestNotifiers>,
+    pub query_dedup: Option<QueryDedup>,
     pub hotspot_recorder: Arc<HotspotRecorder>,
 }
 
@@ -125,7 +247,9 @@ impl RemoteEngineServiceImpl {
     async fn stream_read_internal(
         &self,
         request: Request<ReadRequest>,
-    ) -> Result<ReceiverStream<Result<RecordBatch>>> {
+    ) -> Result<StreamWithMetric<StreamReadMetricCollector>> {
+        let metric = StreamReadMetricCollector(Instant::now());
+
         let ctx = self.handler_ctx();
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let handle = self.runtimes.read_runtime.spawn(async move {
@@ -162,16 +286,18 @@ impl RemoteEngineServiceImpl {
             });
         }
 
-        // TODO: add metrics to collect the time cost of the reading.
-        Ok(ReceiverStream::new(rx))
+        Ok(StreamWithMetric::new(
+            Box::pin(ReceiverStream::new(rx)),
+            metric,
+        ))
     }
 
     async fn dedup_stream_read_internal(
         &self,
-        request_notifiers: StreamReadRequestNotifiers,
+        query_dedup: QueryDedup,
         request: Request<ReadRequest>,
-    ) -> Result<ReceiverStream<Result<RecordBatch>>> {
-        let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
+    ) -> Result<StreamWithMetric<StreamReadMetricCollector>> {
+        let metric = StreamReadMetricCollector(Instant::now());
 
         let request = request.into_inner();
         let table_engine::remote::model::ReadRequest {
@@ -188,11 +314,25 @@ impl RemoteEngineServiceImpl {
             read_request.projected_schema.projection(),
         );
 
+        let QueryDedup {
+            config,
+            request_notifiers,
+            ..
+        } = query_dedup;
+
+        let (tx, rx) = mpsc::channel(config.notify_queue_cap);
         match request_notifiers.insert_notifier(request_key.clone(), tx) {
             // The first request, need to handle it, and then notify the other requests.
             RequestResult::First => {
-                self.read_and_send_dedupped_resps(request, request_key, request_notifiers)
-                    .await?;
+                let ctx = self.handler_ctx();
+                let query = async move { handle_stream_read(ctx, request).await };
+                self.read_and_send_dedupped_resps(
+                    request_key,
+                    query,
+                    request_notifiers.clone(),
+                    config.notify_timeout.0,
+                )
+                .await?;
             }
             // The request is waiting for the result of first request.
             RequestResult::Wait => {
@@ -200,26 +340,29 @@ impl RemoteEngineServiceImpl {
                 // read.
             }
         }
-        Ok(ReceiverStream::new(rx))
+
+        Ok(StreamWithMetric::new(
+            Box::pin(ReceiverStream::new(rx)),
+            metric,
+        ))
     }
 
-    async fn read_and_send_dedupped_resps(
+    async fn read_and_send_dedupped_resps<K, F>(
         &self,
-        request: ReadRequest,
-        request_key: StreamReadReqKey,
-        request_notifiers: StreamReadRequestNotifiers,
-    ) -> Result<()> {
-        let instant = Instant::now();
-        let ctx = self.handler_ctx();
-
+        request_key: K,
+        query: F,
+        notifiers: Arc<RequestNotifiers<K, mpsc::Sender<Result<RecordBatch>>>>,
+        notify_timeout: Duration,
+    ) -> Result<()>
+    where
+        K: Hash + PartialEq + Eq,
+        F: Future<Output = Result<PartitionedStreams>> + Send + 'static,
+    {
         // This is used to remove key when future is cancelled.
         let mut guard = ExecutionGuard::new(|| {
-            request_notifiers.take_notifiers(&request_key);
+            notifiers.take_notifiers(&request_key);
         });
-        let handle = self
-            .runtimes
-            .read_runtime
-            .spawn(async move { handle_stream_read(ctx, request).await });
+        let handle = self.runtimes.read_runtime.spawn(query);
         let streams = handle.await.box_err().context(ErrWithCause {
             code: StatusCode::Internal,
             msg: "fail to join task",
@@ -258,15 +401,11 @@ impl RemoteEngineServiceImpl {
 
         // We should set cancel to guard, otherwise the key will be removed twice.
         guard.cancel();
-        let notifiers = request_notifiers.take_notifiers(&request_key).unwrap();
+        let notifiers = notifiers.take_notifiers(&request_key).unwrap();
 
         // Do send in background to avoid blocking the rpc procedure.
         self.runtimes.read_runtime.spawn(async move {
-            Self::send_dedupped_resps(resps, notifiers).await;
-
-            REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
-                .stream_read
-                .observe(instant.saturating_elapsed().as_secs_f64());
+            Self::send_dedupped_resps(resps, notifiers, notify_timeout).await;
         });
 
         Ok(())
@@ -276,15 +415,18 @@ impl RemoteEngineServiceImpl {
     async fn send_dedupped_resps(
         resps: Vec<Result<RecordBatch>>,
         notifiers: Vec<Sender<Result<RecordBatch>>>,
+        notify_timeout: Duration,
     ) {
         let mut num_rows = 0;
-        let timeout = Duration::from_millis(DEDUP_RESP_NOTIFY_TIMEOUT_MS);
         for resp in resps {
             match resp {
                 Ok(batch) => {
                     num_rows += batch.num_rows();
                     for notifier in &notifiers {
-                        if let Err(e) = notifier.send_timeout(Ok(batch.clone()), timeout).await {
+                        if let Err(e) = notifier
+                            .send_timeout(Ok(batch.clone()), notify_timeout)
+                            .await
+                        {
                             error!("Failed to send handler result, err:{}.", e);
                         }
                     }
@@ -297,7 +439,7 @@ impl RemoteEngineServiceImpl {
                         }
                         .fail();
 
-                        if let Err(e) = notifier.send_timeout(err, timeout).await {
+                        if let Err(e) = notifier.send_timeout(err, notify_timeout).await {
                             error!("Failed to send handler result, err:{}.", e);
                         }
                     }
@@ -433,6 +575,85 @@ impl RemoteEngineServiceImpl {
         Ok(Response::new(batch_resp))
     }
 
+    async fn execute_physical_plan_internal(
+        &self,
+        request: Request<ExecutePlanRequest>,
+    ) -> Result<StreamWithMetric<ExecutePlanMetricCollector>> {
+        let metric = ExecutePlanMetricCollector(Instant::now());
+        let request = request.into_inner();
+        let query_engine = self.instance.query_engine.clone();
+        let (ctx, encoded_plan) = extract_plan_from_req(request)?;
+
+        let stream = self
+            .runtimes
+            .read_runtime
+            .spawn(async move { handle_execute_plan(ctx, encoded_plan, query_engine).await })
+            .await
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::Internal,
+                msg: "failed to run execute physical plan task",
+            })??
+            .map(|result| {
+                result.box_err().context(ErrWithCause {
+                    code: StatusCode::Internal,
+                    msg: "failed to poll record batch for remote physical plan",
+                })
+            });
+
+        Ok(StreamWithMetric::new(Box::pin(stream), metric))
+    }
+
+    async fn dedup_execute_physical_plan_internal(
+        &self,
+        query_dedup: QueryDedup,
+        request: Request<ExecutePlanRequest>,
+    ) -> Result<StreamWithMetric<ExecutePlanMetricCollector>> {
+        let metric = ExecutePlanMetricCollector(Instant::now());
+        let request = request.into_inner();
+
+        let query_engine = self.instance.query_engine.clone();
+        let (ctx, encoded_plan) = extract_plan_from_req(request)?;
+        let key = PhysicalPlanKey {
+            encoded_plan: encoded_plan.clone(),
+        };
+
+        let QueryDedup {
+            config,
+            physical_plan_notifiers,
+            ..
+        } = query_dedup;
+
+        let (tx, rx) = mpsc::channel(config.notify_queue_cap);
+        match physical_plan_notifiers.insert_notifier(key.clone(), tx) {
+            // The first request, need to handle it, and then notify the other requests.
+            RequestResult::First => {
+                let query = async move {
+                    handle_execute_plan(ctx, encoded_plan, query_engine)
+                        .await
+                        .map(PartitionedStreams::one_stream)
+                };
+                self.read_and_send_dedupped_resps(
+                    key,
+                    query,
+                    physical_plan_notifiers,
+                    config.notify_timeout.0,
+                )
+                .await?;
+            }
+            // The request is waiting for the result of first request.
+            RequestResult::Wait => {
+                // TODO: add metrics to collect the time cost of waited stream
+                // read.
+            }
+        }
+
+        Ok(StreamWithMetric::new(
+            Box::pin(ReceiverStream::new(rx)),
+            metric,
+        ))
+    }
+
     fn handler_ctx(&self) -> HandlerContext {
         HandlerContext {
             catalog_manager: self.instance.catalog_manager.clone(),
@@ -467,72 +688,12 @@ impl RemoteEngineService for RemoteEngineServiceImpl {
         }
 
         REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC.stream_query.inc();
-        let result = match self.request_notifiers.clone() {
-            Some(request_notifiers) => {
-                self.dedup_stream_read_internal(request_notifiers, request)
-                    .await
-            }
+        let result = match self.query_dedup.clone() {
+            Some(query_dedup) => self.dedup_stream_read_internal(query_dedup, request).await,
             None => self.stream_read_internal(request).await,
         };
 
-        match result {
-            Ok(stream) => {
-                let new_stream: Self::ReadStream = Box::pin(stream.map(|res| match res {
-                    Ok(record_batch) => {
-                        let resp = match ipc::encode_record_batch(
-                            &record_batch.into_arrow_record_batch(),
-                            CompressOptions {
-                                compress_min_length: DEFAULT_COMPRESS_MIN_LENGTH,
-                                method: CompressionMethod::Zstd,
-                            },
-                        )
-                        .box_err()
-                        .context(ErrWithCause {
-                            code: StatusCode::Internal,
-                            msg: "encode record batch failed",
-                        }) {
-                            Err(e) => ReadResponse {
-                                header: Some(error::build_err_header(e)),
-                                ..Default::default()
-                            },
-                            Ok(CompressOutput { payload, method }) => {
-                                let compression = match method {
-                                    CompressionMethod::None => arrow_payload::Compression::None,
-                                    CompressionMethod::Zstd => arrow_payload::Compression::Zstd,
-                                };
-
-                                ReadResponse {
-                                    header: Some(error::build_ok_header()),
-                                    output: Some(Arrow(ArrowPayload {
-                                        record_batches: vec![payload],
-                                        compression: compression as i32,
-                                    })),
-                                }
-                            }
-                        };
-
-                        Ok(resp)
-                    }
-                    Err(e) => {
-                        let resp = ReadResponse {
-                            header: Some(error::build_err_header(e)),
-                            ..Default::default()
-                        };
-                        Ok(resp)
-                    }
-                }));
-
-                Ok(Response::new(new_stream))
-            }
-            Err(e) => {
-                let resp = ReadResponse {
-                    header: Some(error::build_err_header(e)),
-                    ..Default::default()
-                };
-                let stream = stream::once(async { Ok(resp) });
-                Ok(Response::new(Box::pin(stream)))
-            }
-        }
+        record_stream_to_response_stream!(result, ReadStream)
     }
 
     async fn write(
@@ -558,9 +719,26 @@ impl RemoteEngineService for RemoteEngineServiceImpl {
 
     async fn execute_physical_plan(
         &self,
-        _request: Request<ExecutePlanRequest>,
+        request: Request<ExecutePlanRequest>,
     ) -> std::result::Result<Response<Self::ExecutePhysicalPlanStream>, Status> {
-        todo!()
+        if let Some(table) = &request.get_ref().table {
+            self.hotspot_recorder
+                .send_msg_or_log(
+                    "inc_remote_plan_reqs",
+                    Message::Query(format_hot_key(&table.schema, &table.table)),
+                )
+                .await
+        }
+
+        let record_stream_result = match self.query_dedup.clone() {
+            Some(query_dedup) => {
+                self.dedup_execute_physical_plan_internal(query_dedup, request)
+                    .await
+            }
+            None => self.execute_physical_plan_internal(request).await,
+        };
+
+        record_stream_to_response_stream!(record_stream_result, ExecutePhysicalPlanStream)
     }
 }
 
@@ -764,6 +942,76 @@ async fn handle_get_table_info(
             partition_info: table.partition_info().map(Into::into),
         }),
     })
+}
+
+fn extract_plan_from_req(request: ExecutePlanRequest) -> Result<(ExecContext, Vec<u8>)> {
+    // Build execution context.
+    let ctx_in_req = request.context.with_context(|| ErrNoCause {
+        code: StatusCode::Internal,
+        msg: "execution context not found in physical plan request",
+    })?;
+    let typed_plan_in_req = request.physical_plan.with_context(|| ErrNoCause {
+        code: StatusCode::Internal,
+        msg: "plan not found in physical plan request",
+    })?;
+    // FIXME: return the type from query engine.
+    let valid_plan = check_and_extract_plan(typed_plan_in_req, QueryEngineType::Datafusion)?;
+
+    Ok((ctx_in_req, valid_plan))
+}
+
+async fn handle_execute_plan(
+    ctx: ExecContext,
+    encoded_plan: Vec<u8>,
+    query_engine: QueryEngineRef,
+) -> Result<SendableRecordBatchStream> {
+    let ExecContext {
+        request_id,
+        default_catalog,
+        default_schema,
+        timeout_ms,
+    } = ctx;
+
+    let request_id = RequestId::from(request_id);
+    let deadline = if timeout_ms >= 0 {
+        Some(Instant::now() + Duration::from_millis(timeout_ms as u64))
+    } else {
+        None
+    };
+
+    let exec_ctx = query_engine::context::Context {
+        request_id,
+        deadline,
+        default_catalog,
+        default_schema,
+    };
+
+    // TODO: Build remote plan in physical planner.
+    let physical_plan = Box::new(DataFusionPhysicalPlanAdapter::new(TypedPlan::Remote(
+        encoded_plan,
+    )));
+
+    // Execute plan.
+    let executor = query_engine.executor();
+    executor
+        .execute(&exec_ctx, physical_plan)
+        .await
+        .box_err()
+        .with_context(|| ErrWithCause {
+            code: StatusCode::Internal,
+            msg: "failed to execute remote plan",
+        })
+}
+
+fn check_and_extract_plan(
+    typed_plan: execute_plan_request::PhysicalPlan,
+    engine_type: QueryEngineType,
+) -> Result<Vec<u8>> {
+    match (typed_plan, engine_type) {
+        (execute_plan_request::PhysicalPlan::Datafusion(plan), QueryEngineType::Datafusion) => {
+            Ok(plan)
+        }
+    }
 }
 
 fn find_table_by_identifier(

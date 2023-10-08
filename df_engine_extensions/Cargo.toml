@@ -26,17 +26,22 @@ workspace = true
 
 [dependencies]
 arrow = { workspace = true }
+async-recursion = "1.0.4"
 async-trait = { workspace = true }
 catalog = { workspace = true, features = ["test"] }
 ceresdbproto = { workspace = true }
+common_types = { workspace = true, features = ["test"] }
 datafusion = { workspace = true }
 datafusion-proto = { workspace = true }
+futures =   { workspace = true }
 generic_error = { workspace = true }
+lazy_static = { workspace = true }
+prometheus = { workspace = true }
 prost = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
+trace_metric = { workspace = true }
 
 [dev-dependencies]
-common_types = { workspace = true, features = ["test"] }
 insta = { version = "1.31.0" }
-trace_metric = { workspace = true }
+tokio = { workspace = true }

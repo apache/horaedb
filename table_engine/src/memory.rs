@@ -41,7 +41,7 @@ use crate::{
     },
     remote::{
         self,
-        model::{self, GetTableInfoRequest, WriteBatchResult},
+        model::{self, ExecutePlanRequest, GetTableInfoRequest, WriteBatchResult},
         RemoteEngine,
     },
     stream::{
@@ -347,24 +347,31 @@ impl RemoteEngine for MockRemoteEngine {
         &self,
         _request: remote::model::ReadRequest,
     ) -> remote::Result<SendableRecordBatchStream> {
-        todo!()
+        unimplemented!()
     }
 
     async fn write(&self, _request: remote::model::WriteRequest) -> remote::Result<usize> {
-        todo!()
+        unimplemented!()
     }
 
     async fn write_batch(
         &self,
         _requests: Vec<remote::model::WriteRequest>,
     ) -> remote::Result<Vec<WriteBatchResult>> {
-        todo!()
+        unimplemented!()
     }
 
     async fn get_table_info(
         &self,
         _request: GetTableInfoRequest,
     ) -> remote::Result<model::TableInfo> {
-        todo!()
+        unimplemented!()
+    }
+
+    async fn execute_physical_plan(
+        &self,
+        _request: ExecutePlanRequest,
+    ) -> remote::Result<SendableRecordBatchStream> {
+        unimplemented!()
     }
 }

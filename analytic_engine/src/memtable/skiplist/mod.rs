@@ -17,10 +17,7 @@
 pub mod factory;
 pub mod iter;
 
-use std::{
-    convert::TryInto,
-    sync::atomic::{self, AtomicU64, AtomicUsize},
-};
+use std::sync::atomic::{self, AtomicI64, AtomicU64, AtomicUsize};
 
 use arena::{Arena, BasicStats};
 use bytes_ext::Bytes;
@@ -28,19 +25,20 @@ use codec::Encoder;
 use common_types::{
     row::{contiguous::ContiguousRowWriter, Row},
     schema::Schema,
+    time::TimeRange,
     SequenceNumber,
 };
 use generic_error::BoxError;
 use log::{debug, trace};
 use skiplist::{BytewiseComparator, Skiplist};
-use snafu::{ensure, ResultExt};
+use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::memtable::{
     key::{ComparableInternalKey, KeySequence},
     reversed_iter::ReversedColumnarIterator,
     skiplist::iter::ColumnarIterImpl,
     ColumnarIterPtr, EncodeInternalKey, InvalidPutSequence, InvalidRow, MemTable,
-    Metrics as MemtableMetrics, PutContext, Result, ScanContext, ScanRequest,
+    Metrics as MemtableMetrics, PutContext, Result, ScanContext, ScanRequest, TimestampNotFound,
 };
 
 #[derive(Default, Debug)]
@@ -51,7 +49,7 @@ struct Metrics {
 }
 
 /// MemTable implementation based on skiplist
-pub struct SkiplistMemTable<A: Arena<Stats = BasicStats> + Clone + Sync + Send> {
+pub struct SkiplistMemTable<A: Arena<Stats = BasicStats> + Clone> {
     /// Schema of this memtable, is immutable.
     schema: Schema,
     skiplist: Skiplist<BytewiseComparator, A>,
@@ -60,6 +58,27 @@ pub struct SkiplistMemTable<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
     last_sequence: AtomicU64,
 
     metrics: Metrics,
+    min_time: AtomicI64,
+    max_time: AtomicI64,
+}
+
+impl<A: Arena<Stats = BasicStats> + Clone> SkiplistMemTable<A> {
+    fn new(
+        schema: Schema,
+        skiplist: Skiplist<BytewiseComparator, A>,
+        last_sequence: AtomicU64,
+    ) -> Self {
+        Self {
+            schema,
+            skiplist,
+            last_sequence,
+            metrics: Metrics::default(),
+            // Init to max value first, so we can use `min(min_time, row.time)` to get real min
+            // time.
+            min_time: AtomicI64::new(i64::MAX),
+            max_time: AtomicI64::new(i64::MIN),
+        }
+    }
 }
 
 impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
@@ -120,6 +139,27 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
         let encoded_size = internal_key.len() + row_value.len();
         self.skiplist.put(internal_key, row_value);
 
+        // Update min/max time
+        let timestamp = row.timestamp(schema).context(TimestampNotFound)?.as_i64();
+        _ = self
+            .min_time
+            .fetch_update(atomic::Ordering::Relaxed, atomic::Ordering::Relaxed, |v| {
+                if timestamp < v {
+                    Some(timestamp)
+                } else {
+                    None
+                }
+            });
+        _ = self
+            .max_time
+            .fetch_update(atomic::Ordering::Relaxed, atomic::Ordering::Relaxed, |v| {
+                if timestamp > v {
+                    Some(timestamp)
+                } else {
+                    None
+                }
+            });
+
         // Update metrics
         self.metrics
             .row_raw_size
@@ -153,12 +193,14 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
     }
 
     fn approximate_memory_usage(&self) -> usize {
-        // Mem size of skiplist is u32, need to cast to usize
-        match self.skiplist.mem_size().try_into() {
-            Ok(v) => v,
-            // The skiplist already use bytes larger than usize
-            Err(_) => usize::MAX,
-        }
+        let encoded_size = self
+            .metrics
+            .row_encoded_size
+            .load(atomic::Ordering::Relaxed);
+        let arena_block_size = self.skiplist.arena_block_size();
+
+        // Ceil to block_size
+        (encoded_size + arena_block_size - 1) / arena_block_size * arena_block_size
     }
 
     fn set_last_sequence(&self, sequence: SequenceNumber) -> Result<()> {
@@ -179,6 +221,12 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
 
     fn last_sequence(&self) -> SequenceNumber {
         self.last_sequence.load(atomic::Ordering::Relaxed)
+    }
+
+    fn time_range(&self) -> Option<TimeRange> {
+        let min_time = self.min_time.load(atomic::Ordering::Relaxed);
+        let max_time = self.max_time.load(atomic::Ordering::Relaxed);
+        TimeRange::new(min_time.into(), (max_time + 1).into())
     }
 
     fn metrics(&self) -> MemtableMetrics {

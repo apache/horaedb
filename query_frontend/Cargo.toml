@@ -51,7 +51,7 @@ macros = { workspace = true }
 partition_table_engine = { workspace = true }
 paste = { workspace = true }
 prom-remote-api = { workspace = true }
-regex = "1"
+regex = { workspace = true }
 regex-syntax = "0.6.28"
 serde = { workspace = true }
 serde_json = { workspace = true }

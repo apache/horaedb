@@ -60,8 +60,8 @@ impl EnvController for CeresDBController {
     async fn start(&self, env: &str, _config: Option<&Path>) -> Self::DB {
         println!("start with env {env}");
         let db = match env {
-            "local" => Box::new(CeresDB::<CeresDBServer>::create()) as DbRef,
-            "cluster" => Box::new(CeresDB::<CeresDBCluster>::create()) as DbRef,
+            "local" => Box::new(CeresDB::<CeresDBServer>::create().await) as DbRef,
+            "cluster" => Box::new(CeresDB::<CeresDBCluster>::create().await) as DbRef,
             _ => panic!("invalid env {env}"),
         };
 
@@ -89,7 +89,7 @@ async fn main() -> Result<()> {
                 .env_filter(env_filter)
                 .follow_links(true)
                 .build()?;
-            let runner = Runner::new_with_config(config, controller).await?;
+            let runner = Runner::new(config, controller);
             runner.run().await?;
         }
         // Just build the cluster testing env.

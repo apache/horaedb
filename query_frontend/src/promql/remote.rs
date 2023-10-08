@@ -146,7 +146,7 @@ mod tests {
     use prom_remote_api::types::{label_matcher::Type, LabelMatcher};
 
     use super::*;
-    use crate::{promql::remote::NAME_LABEL, tests::MockMetaProvider};
+    use crate::{config::DynamicConfig, promql::remote::NAME_LABEL, tests::MockMetaProvider};
 
     fn make_matchers(tuples: Vec<(&str, &str, Type)>) -> Vec<LabelMatcher> {
         tuples
@@ -164,7 +164,8 @@ mod tests {
         let meta_provider = MockMetaProvider::default();
         // default value
         {
-            let ctx_provider = ContextProviderAdapter::new(&meta_provider, 1);
+            let dyn_config = DynamicConfig::default();
+            let ctx_provider = ContextProviderAdapter::new(&meta_provider, 1, &dyn_config);
             let query = Query {
                 start_timestamp_ms: 1000,
                 end_timestamp_ms: 2000,
@@ -194,7 +195,8 @@ Query(QueryPlan { df_plan: Sort: cpu.tsid ASC NULLS FIRST, cpu.time ASC NULLS FI
 
         // field2 value
         {
-            let ctx_provider = ContextProviderAdapter::new(&meta_provider, 1);
+            let dyn_config = DynamicConfig::default();
+            let ctx_provider = ContextProviderAdapter::new(&meta_provider, 1, &dyn_config);
             let query = Query {
                 start_timestamp_ms: 1000,
                 end_timestamp_ms: 2000,

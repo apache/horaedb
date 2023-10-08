@@ -32,7 +32,7 @@ use common_types::{
     SequenceNumber,
 };
 use future_ext::{retry_async, RetryConfig};
-use log::{error, info, warn};
+use log::{error, info, trace, warn};
 use macros::define_result;
 use metric_ext::Meter;
 use object_store::{ObjectStoreRef, Path};
@@ -310,7 +310,7 @@ impl Drop for FileHandleInner {
 }
 
 /// Used to order [FileHandle] by (end_time, start_time, file_id)
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct FileOrdKey {
     exclusive_end: Timestamp,
     inclusive_start: Timestamp,
@@ -377,6 +377,10 @@ impl FileHandleSet {
 
     fn files_by_time_range(&self, time_range: TimeRange) -> Vec<FileHandle> {
         // Seek to first sst whose end time >= time_range.inclusive_start().
+        trace!(
+            "Pick sst file by range for query, time_range:{time_range:?}, file_map:{:?}",
+            self.file_map
+        );
         let seek_key = FileOrdKey::for_seek(time_range.inclusive_start());
         self.file_map
             .range(seek_key..)

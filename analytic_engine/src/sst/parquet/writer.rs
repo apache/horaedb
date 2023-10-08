@@ -14,18 +14,22 @@
 
 //! Sst writer implementation based on parquet.
 
+use std::collections::HashSet;
+
 use async_trait::async_trait;
-use common_types::{record_batch::RecordBatchWithKey, request_id::RequestId};
+use common_types::{
+    datum::DatumKind, record_batch::RecordBatchWithKey, request_id::RequestId, time::TimeRange,
+};
 use datafusion::parquet::basic::Compression;
 use futures::StreamExt;
 use generic_error::BoxError;
 use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use super::meta_data::RowGroupFilter;
+use super::meta_data::{ColumnValueSet, RowGroupFilter};
 use crate::{
     sst::{
         factory::{ObjectStorePickerRef, SstWriteOptions},
@@ -35,13 +39,15 @@ use crate::{
             meta_data::{ParquetFilter, ParquetMetaData, RowGroupFilterBuilder},
         },
         writer::{
-            self, BuildParquetFilter, EncodePbData, EncodeRecordBatch, Io, MetaData,
-            PollRecordBatch, RecordBatchStream, Result, SstInfo, SstWriter, Storage,
+            self, BuildParquetFilter, EncodePbData, EncodeRecordBatch, ExpectTimestampColumn, Io,
+            MetaData, PollRecordBatch, RecordBatchStream, Result, SstInfo, SstWriter, Storage,
         },
     },
     table::sst_util,
     table_options::StorageFormat,
 };
+
+const KEEP_COLUMN_VALUE_THRESHOLD: usize = 20;
 
 /// The implementation of sst based on parquet and object storage.
 #[derive(Debug)]
@@ -81,15 +87,57 @@ impl<'a> ParquetSstWriter<'a> {
 struct RecordBatchGroupWriter {
     request_id: RequestId,
     input: RecordBatchStream,
-    input_exhausted: bool,
     meta_data: MetaData,
     num_rows_per_row_group: usize,
     max_buffer_size: usize,
     compression: Compression,
     level: Level,
+
+    // inner status
+    input_exhausted: bool,
+    // Time range of rows, not aligned to segment.
+    real_time_range: Option<TimeRange>,
+    column_values: Vec<Option<ColumnValueSet>>,
 }
 
 impl RecordBatchGroupWriter {
+    fn new(
+        request_id: RequestId,
+        input: RecordBatchStream,
+        meta_data: MetaData,
+        num_rows_per_row_group: usize,
+        max_buffer_size: usize,
+        compression: Compression,
+        level: Level,
+    ) -> Self {
+        let column_values: Vec<Option<ColumnValueSet>> = meta_data
+            .schema
+            .columns()
+            .iter()
+            .map(|col| {
+                // Only keep string values now.
+                if matches!(col.data_type, DatumKind::String) {
+                    Some(ColumnValueSet::StringValue(HashSet::new()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Self {
+            request_id,
+            input,
+            meta_data,
+            num_rows_per_row_group,
+            max_buffer_size,
+            compression,
+            level,
+            input_exhausted: false,
+            real_time_range: None,
+            column_values,
+        }
+    }
+
     /// Fetch an integral row group from the `self.input`.
     ///
     /// Except the last one, every row group is ensured to contains exactly
@@ -177,6 +225,67 @@ impl RecordBatchGroupWriter {
         !self.level.is_min()
     }
 
+    fn update_column_values(&mut self, record_batch: &RecordBatchWithKey) {
+        for (col_idx, col_values) in self.column_values.iter_mut().enumerate() {
+            let mut too_many_values = false;
+            {
+                let col_values = match col_values {
+                    None => continue,
+                    Some(v) => v,
+                };
+                let rows_num = record_batch.num_rows();
+                let column_block = record_batch.column(col_idx);
+                for row_idx in 0..rows_num {
+                    match col_values {
+                        ColumnValueSet::StringValue(ss) => {
+                            let datum = column_block.datum(row_idx);
+                            if let Some(v) = datum.as_str() {
+                                ss.insert(v.to_string());
+                            }
+                        }
+                    }
+
+                    if row_idx % KEEP_COLUMN_VALUE_THRESHOLD == 0
+                        && col_values.len() > KEEP_COLUMN_VALUE_THRESHOLD
+                    {
+                        too_many_values = true;
+                        break;
+                    }
+                }
+
+                // Do one last check.
+                if col_values.len() > KEEP_COLUMN_VALUE_THRESHOLD {
+                    too_many_values = true;
+                }
+            }
+
+            // When there are too many values, don't keep this column values
+            // any more.
+            if too_many_values {
+                *col_values = None;
+            }
+        }
+    }
+
+    fn update_time_range(&mut self, current_range: Option<TimeRange>) {
+        if let Some(current_range) = current_range {
+            if let Some(real_range) = self.real_time_range {
+                // Use current range to update real range,
+                // We should expand range as possible as we can.
+                self.real_time_range = Some(TimeRange::new_unchecked(
+                    current_range
+                        .inclusive_start()
+                        .min(real_range.inclusive_start()),
+                    current_range
+                        .exclusive_end()
+                        .max(real_range.exclusive_end()),
+                ));
+            } else {
+                self.real_time_range = Some(current_range);
+            }
+        }
+    }
+
     async fn write_all<W: AsyncWrite + Send + Unpin + 'static>(
         mut self,
         sink: W,
@@ -200,6 +309,7 @@ impl RecordBatchGroupWriter {
         } else {
             None
         };
+        let timestamp_index = self.meta_data.schema.timestamp_index();
 
         loop {
             let row_group = self.fetch_next_row_group(&mut prev_record_batch).await?;
@@ -213,6 +323,13 @@ impl RecordBatchGroupWriter {
 
             let num_batches = row_group.len();
             for record_batch in row_group {
+                let column_block = record_batch.column(timestamp_index);
+                let ts_col = column_block.as_timestamp().context(ExpectTimestampColumn {
+                    datum_kind: column_block.datum_kind(),
+                })?;
+                self.update_time_range(ts_col.time_range());
+                self.update_column_values(&record_batch);
+
                 arrow_row_group.push(record_batch.into_record_batch().into_arrow_record_batch());
             }
             let num_rows = parquet_encoder
@@ -230,6 +347,13 @@ impl RecordBatchGroupWriter {
         let parquet_meta_data = {
             let mut parquet_meta_data = ParquetMetaData::from(self.meta_data);
             parquet_meta_data.parquet_filter = parquet_filter;
+            if let Some(range) = self.real_time_range {
+                parquet_meta_data.time_range = range;
+            }
+            // TODO: when all compaction input SST files already have column_values, we can
+            // merge them from meta_data directly, calculate them here waste CPU
+            // cycles.
+            parquet_meta_data.column_values = Some(self.column_values);
             parquet_meta_data
         };
 
@@ -326,16 +450,15 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             request_id, meta, self.num_rows_per_row_group
         );
 
-        let group_writer = RecordBatchGroupWriter {
+        let group_writer = RecordBatchGroupWriter::new(
             request_id,
             input,
-            input_exhausted: false,
-            num_rows_per_row_group: self.num_rows_per_row_group,
-            max_buffer_size: self.max_buffer_size,
-            compression: self.compression,
-            meta_data: meta.clone(),
-            level: self.level,
-        };
+            meta.clone(),
+            self.num_rows_per_row_group,
+            self.max_buffer_size,
+            self.compression,
+            self.level,
+        );
 
         let (aborter, sink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, self.path).await?;
@@ -350,6 +473,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
                     return Err(e);
                 }
             };
+        let time_range = parquet_metadata.time_range;
 
         let (meta_aborter, meta_sink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, &meta_path).await?;
@@ -368,6 +492,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             row_num: total_num_rows,
             storage_format: StorageFormat::Columnar,
             meta_path: meta_path.to_string(),
+            time_range,
         })
     }
 }
@@ -396,6 +521,7 @@ mod tests {
             factory::{
                 Factory, FactoryImpl, ReadFrequency, ScanOptions, SstReadOptions, SstWriteOptions,
             },
+            metrics::MaybeTableLevelMetrics,
             parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
         },
@@ -437,7 +563,7 @@ mod tests {
 
             let schema = build_schema_with_dictionary();
             let reader_projected_schema = ProjectedSchema::no_projection(schema.clone());
-            let sst_meta = MetaData {
+            let mut sst_meta = MetaData {
                 min_key: Bytes::from_static(b"100"),
                 max_key: Bytes::from_static(b"200"),
                 time_range: TimeRange::new_unchecked(Timestamp::new(1), Timestamp::new(2)),
@@ -452,7 +578,6 @@ mod tests {
                 }
                 counter -= 1;
 
-                // reach here when counter is 9 7 5 3 1
                 let ts = 100 + counter;
                 let rows = vec![
                     build_row_for_dictionary(
@@ -514,6 +639,7 @@ mod tests {
             let scan_options = ScanOptions::default();
             // read sst back to test
             let sst_read_options = SstReadOptions {
+                maybe_table_level_metrics: Arc::new(MaybeTableLevelMetrics::new("test")),
                 frequency: ReadFrequency::Frequent,
                 num_rows_per_row_group: 5,
                 projected_schema: reader_projected_schema,
@@ -542,6 +668,14 @@ mod tests {
                 // sst filter is built insider sst writer, so overwrite to default for
                 // comparison.
                 sst_meta_readback.parquet_filter = Default::default();
+                sst_meta_readback.column_values = None;
+                // time_range is built insider sst writer, so overwrite it for
+                // comparison.
+                sst_meta.time_range = sst_info.time_range;
+                assert_eq!(
+                    sst_meta.time_range,
+                    TimeRange::new_unchecked(100.into(), 105.into())
+                );
                 assert_eq!(&sst_meta_readback, &ParquetMetaData::from(sst_meta));
                 assert_eq!(
                     expected_num_rows,
@@ -651,22 +785,21 @@ mod tests {
             Poll::Ready(Some(Ok(batch)))
         }));
 
-        let mut group_writer = RecordBatchGroupWriter {
-            request_id: RequestId::next_id(),
-            input: record_batch_stream,
-            input_exhausted: false,
-            num_rows_per_row_group,
-            compression: Compression::UNCOMPRESSED,
-            meta_data: MetaData {
+        let mut group_writer = RecordBatchGroupWriter::new(
+            RequestId::next_id(),
+            record_batch_stream,
+            MetaData {
                 min_key: Default::default(),
                 max_key: Default::default(),
                 time_range: Default::default(),
                 max_sequence: 1,
                 schema,
             },
-            max_buffer_size: 0,
-            level: Level::default(),
-        };
+            num_rows_per_row_group,
+            0,
+            Compression::UNCOMPRESSED,
+            Level::default(),
+        );
 
         let mut prev_record_batch = None;
         for expect_num_row in expected_num_rows {
