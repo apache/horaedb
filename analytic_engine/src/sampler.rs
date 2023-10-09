@@ -22,6 +22,7 @@ use std::{
 
 use common_types::{
     row::Row,
+    schema::{Schema, TSID_COLUMN},
     time::{TimeRange, Timestamp},
 };
 use macros::define_result;
@@ -241,29 +242,54 @@ fn pick_duration(interval: u64) -> Duration {
 
 #[derive(Clone, Default)]
 struct DistinctValue {
-    set: Arc<Mutex<HashSet<Vec<u8>>>>,
+    values: Arc<Mutex<HashSet<Vec<u8>>>>,
+}
+
+impl DistinctValue {
+    fn insert(&self, bs: Vec<u8>) -> bool {
+        let mut values = self.values.lock().unwrap();
+        values.insert(bs.to_vec())
+    }
+
+    fn len(&self) -> usize {
+        let values = self.values.lock().unwrap();
+        values.len()
+    }
 }
 
 #[derive(Clone)]
 pub struct PrimaryKeySampler {
-    column_values: Vec<DistinctValue>,
+    column_values: Vec<Option<DistinctValue>>,
 }
 
 impl PrimaryKeySampler {
-    pub fn new(num_columns: usize) -> Self {
-        Self {
-            column_values: vec![DistinctValue::default(); num_columns],
-        }
+    pub fn new(schema: &Schema) -> Self {
+        let column_values = schema
+            .columns()
+            .iter()
+            .map(|col| {
+                // Exclude tsid.
+                // TODO: maybe we can remove tsid column in some case.
+                if col.data_type.is_key_kind() && col.name != TSID_COLUMN {
+                    Some(DistinctValue::default())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Self { column_values }
     }
 
     pub fn collect(&self, row: &Row) {
         assert_eq!(row.num_columns(), self.column_values.len());
 
         for (datum, values) in row.iter().zip(&self.column_values) {
-            datum.do_with_bytes(|bs| {
-                let mut values = values.set.lock().unwrap();
-                values.insert(bs.to_vec());
-            })
+            if let Some(values) = values {
+                datum.do_with_bytes(|bs| {
+                    values.insert(bs.to_vec());
+                })
+            }
         }
     }
 
@@ -272,14 +298,11 @@ impl PrimaryKeySampler {
             .column_values
             .iter()
             .enumerate()
-            .map(|(col_idx, col_values)| {
-                let values = col_values.set.lock().unwrap();
-                (col_idx, values.len())
-            })
+            .filter_map(|(col_idx, values)| values.as_ref().map(|values| (col_idx, values.len())))
             .collect::<Vec<_>>();
 
-        col_idx_and_counts.sort_unstable_by(|a, b| b.1.cmp(&a.1));
-
+        // sort asc and take first 5 column as primary keys
+        col_idx_and_counts.sort_by(|a, b| a.1.cmp(&b.1));
         col_idx_and_counts.iter().take(5).map(|v| v.0).collect()
     }
 }

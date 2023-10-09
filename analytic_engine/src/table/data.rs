@@ -499,7 +499,7 @@ impl TableData {
             None => {
                 let mut sampling_mem = SamplingMemTable::new(mem, self.alloc_memtable_id());
                 if table_options.support_sample_pk() {
-                    sampling_mem.set_pk_sampler(table_schema.num_columns());
+                    sampling_mem.set_pk_sampler(table_schema);
                 }
 
                 debug!(

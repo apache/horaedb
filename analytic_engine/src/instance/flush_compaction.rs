@@ -24,7 +24,6 @@ use common_types::{
     time::TimeRange,
     SequenceNumber,
 };
-use datafusion::error::DataFusionError;
 use futures::{
     channel::{mpsc, mpsc::channel},
     stream, SinkExt, TryStreamExt,
@@ -42,8 +41,8 @@ use wal::manager::WalLocation;
 use crate::{
     compaction::{CompactionInputFiles, CompactionTask, ExpiredFiles},
     instance::{
-        self, create_sst_read_option, serial_executor::TableFlushScheduler, ScanType, SpaceStore,
-        SpaceStoreRef,
+        self, create_sst_read_option, reorder_memtable::Reorder,
+        serial_executor::TableFlushScheduler, ScanType, SpaceStore, SpaceStoreRef,
     },
     manifest::meta_edit::{
         AlterOptionsMeta, AlterSchemaMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
@@ -576,26 +575,51 @@ impl FlushTask {
         }
 
         let iter = build_mem_table_iter(sampling_mem.mem.clone(), &self.table_data)?;
-
         let timestamp_idx = self.table_data.schema().timestamp_index();
-
-        for data in iter {
-            for (idx, record_batch) in split_record_batch_with_time_ranges(
-                data.box_err().context(InvalidMemIter)?,
-                &time_ranges,
-                timestamp_idx,
-            )?
-            .into_iter()
-            .enumerate()
-            {
-                if !record_batch.is_empty() {
-                    batch_record_senders[idx]
-                        .send(Ok(record_batch))
-                        .await
-                        .context(ChannelSend)?;
+        if let Some(pk_idx) = self.table_data.current_version().suggest_primary_key() {
+            let reorder = Reorder {
+                iter,
+                schema: self.table_data.schema(),
+                order_by_col_indexes: pk_idx,
+            };
+            let batches = reorder.reorder().await.unwrap();
+            for data in batches {
+                for (idx, record_batch) in split_record_batch_with_time_ranges(
+                    data.box_err().context(InvalidMemIter)?,
+                    &time_ranges,
+                    timestamp_idx,
+                )?
+                .into_iter()
+                .enumerate()
+                {
+                    if !record_batch.is_empty() {
+                        batch_record_senders[idx]
+                            .send(Ok(record_batch))
+                            .await
+                            .context(ChannelSend)?;
+                    }
+                }
+            }
+        } else {
+            for data in iter {
+                for (idx, record_batch) in split_record_batch_with_time_ranges(
+                    data.box_err().context(InvalidMemIter)?,
+                    &time_ranges,
+                    timestamp_idx,
+                )?
+                .into_iter()
+                .enumerate()
+                {
+                    if !record_batch.is_empty() {
+                        batch_record_senders[idx]
+                            .send(Ok(record_batch))
+                            .await
+                            .context(ChannelSend)?;
+                    }
                 }
             }
         }
+
         batch_record_senders.clear();
 
         for (idx, sst_handler) in sst_handlers.into_iter().enumerate() {

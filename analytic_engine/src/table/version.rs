@@ -97,8 +97,8 @@ impl SamplingMemTable {
     }
 
     // TODO: add a builder for SamplingMemTable
-    pub fn set_pk_sampler(&mut self, num_columns: usize) {
-        self.pk_sampler = Some(PrimaryKeySampler::new(num_columns));
+    pub fn set_pk_sampler(&mut self, schema: &Schema) {
+        self.pk_sampler = Some(PrimaryKeySampler::new(schema));
     }
 
     pub fn last_sequence(&self) -> SequenceNumber {
@@ -116,7 +116,17 @@ impl SamplingMemTable {
     }
 
     fn suggest_primary_key(&self) -> Option<Vec<usize>> {
-        self.pk_sampler.as_ref().map(|sampler| sampler.suggest())
+        self.pk_sampler.as_ref().and_then(|sampler| {
+            let new_pk_idx = sampler.suggest();
+            let old_pk_idx = self.mem.schema().primary_key_indexes();
+            // If new suggested idx is the same with old, return None to avoid unnecessary
+            // meta update.
+            if new_pk_idx == old_pk_idx {
+                None
+            } else {
+                Some(new_pk_idx)
+            }
+        })
     }
 }
 

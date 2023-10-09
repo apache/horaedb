@@ -665,19 +665,10 @@ impl Schema {
 
     /// Returns an immutable reference of the key column vector.
     pub fn key_columns(&self) -> Vec<ColumnSchema> {
-        let columns = self.column_schemas.columns();
-        let mut result = vec![];
-        for (idx, col) in columns.iter().enumerate() {
-            if idx == self.timestamp_index {
-                result.push(col.clone());
-                continue;
-            }
-
-            if self.primary_key_indexes.contains(&idx) {
-                result.push(col.clone());
-            }
-        }
-        result
+        self.primary_key_indexes
+            .iter()
+            .map(|i| self.column(*i).clone())
+            .collect()
     }
 
     /// Returns an immutable reference of the normal column vector.
