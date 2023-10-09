@@ -256,6 +256,7 @@ impl Client {
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
 
         let mut result = Ok(());
+        // Alter schema to remote engine with retry.
         for i in 0..(self.max_retry + 1) {
             let resp = rpc_client
                 .alter_table_schema(Request::new(request_pb.clone()))
@@ -279,19 +280,19 @@ impl Client {
             });
 
             if let Err(e) = resp {
-                error!(
-                    "Failed to alter schema to remote engine, table:{:?}, err:{}",
-                    table_ident, e
-                );
+                error!("Failed to alter schema to remote engine, table:{table_ident:?}, err:{e}");
 
                 result = Err(e);
 
                 // If occurred error, we simply evict the corresponding channel now.
                 // TODO: evict according to the type of error.
                 self.evict_route_from_cache(&[table_ident.clone()]).await;
+
+                // Break if it's the last retry.
                 if i == self.max_retry {
                     break;
                 }
+
                 sleep(self.retry_interval.0).await;
                 continue;
             }
@@ -307,7 +308,9 @@ impl Client {
         let table_ident = request.table_ident.clone();
         let request_pb: ceresdbproto::remote_engine::AlterTableOptionsRequest = request.into();
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
+
         let mut result = Ok(());
+        // Alter options to remote engine with retry.
         for i in 0..(self.max_retry + 1) {
             let resp = rpc_client
                 .alter_table_options(Request::new(request_pb.clone()))
@@ -331,19 +334,19 @@ impl Client {
             });
 
             if let Err(e) = resp {
-                error!(
-                    "Failed to alter options to remote engine, table:{:?}, err:{}",
-                    table_ident, e
-                );
+                error!("Failed to alter options to remote engine, table:{table_ident:?}, err:{e}");
 
                 result = Err(e);
 
                 // If occurred error, we simply evict the corresponding channel now.
                 // TODO: evict according to the type of error.
                 self.evict_route_from_cache(&[table_ident.clone()]).await;
+
+                // Break if it's the last retry.
                 if i == self.max_retry {
                     break;
                 }
+
                 sleep(self.retry_interval.0).await;
                 continue;
             }
@@ -375,11 +378,11 @@ impl Client {
         let result = result.and_then(|response| {
             let response = response.into_inner();
             if let Some(header) = &response.header && !status_code::is_ok(header.code) {
-                Server {
-                    table_idents: vec![table_ident.clone()],
-                    code: header.code,
-                    msg: header.error.clone(),
-                }.fail()
+                    Server {
+                        table_idents: vec![table_ident.clone()],
+                        code: header.code,
+                        msg: header.error.clone(),
+                    }.fail()
             } else {
                 Ok(response)
             }

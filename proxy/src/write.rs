@@ -525,6 +525,8 @@ impl Proxy {
                     success += n;
                 }
                 Err(e) => {
+                    // TODO: remove this logic.
+                    // Refer to https://github.com/CeresDB/ceresdb/issues/1248.
                     if e.error_message().contains("No field named") {
                         self.evict_partition_table(table, catalog_name, &schema_name)
                             .await;

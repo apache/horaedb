@@ -352,15 +352,19 @@ impl Table for PartitionTableImpl {
             futures.push(partition);
         }
 
-        let mut rets = Vec::with_capacity(futures.len());
+        let mut result = None;
         while let Some(ret) = futures.next().await {
             if ret.is_err() {
-                error!("alter schema failed, err:{:?}", ret);
-                rets.push(ret.box_err().context(AlterSchema { table: self.name() }));
+                error!("Alter schema failed, err:{:?}", ret);
+                if result.is_none() {
+                    result = Some(ret.box_err().context(AlterSchema { table: self.name() }));
+                }
             }
         }
-        if !rets.is_empty() {
-            rets.remove(0)?;
+
+        // Remove the first error.
+        if let Some(ret) = result {
+            ret?;
         }
 
         // Alter schema of the first partition.
@@ -399,15 +403,19 @@ impl Table for PartitionTableImpl {
             futures.push(partition);
         }
 
-        let mut rets = Vec::with_capacity(futures.len());
+        let mut result = None;
         while let Some(ret) = futures.next().await {
             if ret.is_err() {
-                error!("alter options failed, err:{:?}", ret);
-                rets.push(ret.box_err().context(AlterOptions { table: self.name() }));
+                error!("Alter options failed, err:{:?}", ret);
+                if result.is_none() {
+                    result = Some(ret.box_err().context(AlterOptions { table: self.name() }));
+                }
             }
         }
-        if !rets.is_empty() {
-            rets.remove(0)?;
+
+        // Remove the first error.
+        if let Some(ret) = result {
+            ret?;
         }
 
         // Alter options of the first partition.

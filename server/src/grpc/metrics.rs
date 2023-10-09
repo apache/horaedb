@@ -42,6 +42,8 @@ make_auto_flush_static_metric! {
         get_table_info,
         write_batch,
         execute_physical_plan,
+        alter_table_schema,
+        alter_table_options,
     }
 
     pub struct RemoteEngineGrpcHandlerDurationHistogramVec: LocalHistogram {

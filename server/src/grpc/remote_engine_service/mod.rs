@@ -682,7 +682,7 @@ impl RemoteEngineServiceImpl {
         };
 
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
-            .get_table_info
+            .alter_table_schema
             .observe(begin_instant.saturating_elapsed().as_secs_f64());
         Ok(Response::new(resp))
     }
@@ -714,7 +714,7 @@ impl RemoteEngineServiceImpl {
         };
 
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
-            .get_table_info
+            .alter_table_options
             .observe(begin_instant.saturating_elapsed().as_secs_f64());
         Ok(Response::new(resp))
     }
@@ -1129,7 +1129,7 @@ async fn handle_alter_table_options(
     let request: table_engine::remote::model::AlterTableOptionsRequest =
         request.try_into().box_err().context(ErrWithCause {
             code: StatusCode::BadRequest,
-            msg: "fail to convert alter table schema",
+            msg: "fail to convert alter table options",
         })?;
 
     let schema = find_schema_by_identifier(&ctx, &request.table_ident)?;
