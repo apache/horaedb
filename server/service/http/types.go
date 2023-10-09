@@ -141,3 +141,7 @@ type UpdateFlowLimiterRequest struct {
 type UpdateDeployModeRequest struct {
 	Enable bool `json:"enable"`
 }
+
+type RemoveShardAffinitiesRequest struct {
+	ShardIDs []storage.ShardID `json:"shardIDs"`
+}

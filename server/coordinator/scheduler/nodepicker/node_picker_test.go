@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package coordinator
+package nodepicker_test
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
+	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/nodepicker"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -25,10 +26,13 @@ func TestNodePicker(t *testing.T) {
 	re := require.New(t)
 	ctx := context.Background()
 
-	nodePicker := NewConsistentUniformHashNodePicker(zap.NewNop())
+	nodePicker := nodepicker.NewConsistentUniformHashNodePicker(zap.NewNop())
 
 	var nodes []metadata.RegisteredNode
-	_, err := nodePicker.PickNode(ctx, []storage.ShardID{0}, defaultTotalShardNum, nodes)
+	config := nodepicker.Config{
+		NumTotalShards: defaultTotalShardNum,
+	}
+	_, err := nodePicker.PickNode(ctx, config, []storage.ShardID{0}, nodes)
 	re.Error(err)
 
 	for i := 0; i < nodeLength; i++ {
@@ -37,7 +41,7 @@ func TestNodePicker(t *testing.T) {
 			ShardInfos: nil,
 		})
 	}
-	_, err = nodePicker.PickNode(ctx, []storage.ShardID{0}, defaultTotalShardNum, nodes)
+	_, err = nodePicker.PickNode(ctx, config, []storage.ShardID{0}, nodes)
 	re.Error(err)
 
 	nodes = nodes[:0]
@@ -47,7 +51,7 @@ func TestNodePicker(t *testing.T) {
 			ShardInfos: nil,
 		})
 	}
-	_, err = nodePicker.PickNode(ctx, []storage.ShardID{0}, defaultTotalShardNum, nodes)
+	_, err = nodePicker.PickNode(ctx, config, []storage.ShardID{0}, nodes)
 	re.NoError(err)
 
 	nodes = nodes[:0]
@@ -58,7 +62,7 @@ func TestNodePicker(t *testing.T) {
 		})
 	}
 	nodes[selectOnlineNodeIndex].Node.LastTouchTime = uint64(time.Now().UnixMilli())
-	shardNodeMapping, err := nodePicker.PickNode(ctx, []storage.ShardID{0}, defaultTotalShardNum, nodes)
+	shardNodeMapping, err := nodePicker.PickNode(ctx, config, []storage.ShardID{0}, nodes)
 	re.NoError(err)
 	re.Equal(strconv.Itoa(selectOnlineNodeIndex), shardNodeMapping[0].Node.Name)
 }
@@ -67,7 +71,7 @@ func TestUniformity(t *testing.T) {
 	re := require.New(t)
 	ctx := context.Background()
 
-	nodePicker := NewConsistentUniformHashNodePicker(zap.NewNop())
+	nodePicker := nodepicker.NewConsistentUniformHashNodePicker(zap.NewNop())
 	mapping := allocShards(ctx, nodePicker, 30, 256, re)
 	maxShardNum := 256/30 + 1
 	for _, shards := range mapping {
@@ -118,7 +122,7 @@ func TestUniformity(t *testing.T) {
 	}
 }
 
-func allocShards(ctx context.Context, nodePicker NodePicker, nodeNum int, shardNum int, re *require.Assertions) map[string][]int {
+func allocShards(ctx context.Context, nodePicker nodepicker.NodePicker, nodeNum int, shardNum int, re *require.Assertions) map[string][]int {
 	var nodes []metadata.RegisteredNode
 	for i := 0; i < nodeNum; i++ {
 		nodes = append(nodes, metadata.RegisteredNode{
@@ -131,7 +135,8 @@ func allocShards(ctx context.Context, nodePicker NodePicker, nodeNum int, shardN
 	for i := 0; i < shardNum; i++ {
 		shardIDs = append(shardIDs, storage.ShardID(i))
 	}
-	shardNodeMapping, err := nodePicker.PickNode(ctx, shardIDs, uint32(shardNum), nodes)
+	config := nodepicker.Config{NumTotalShards: uint32(shardNum)}
+	shardNodeMapping, err := nodePicker.PickNode(ctx, config, shardIDs, nodes)
 	re.NoError(err)
 	for shardID, node := range shardNodeMapping {
 		mapping[node.Node.Name] = append(mapping[node.Node.Name], int(shardID))

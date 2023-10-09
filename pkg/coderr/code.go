@@ -7,13 +7,14 @@ import "net/http"
 type Code int
 
 const (
-	Invalid         Code = -1
-	Ok                   = 0
-	InvalidParams        = http.StatusBadRequest
-	BadRequest           = http.StatusBadRequest
-	NotFound             = http.StatusNotFound
-	TooManyRequests      = http.StatusTooManyRequests
-	Internal             = http.StatusInternalServerError
+	Invalid           Code = -1
+	Ok                     = 0
+	InvalidParams          = http.StatusBadRequest
+	BadRequest             = http.StatusBadRequest
+	NotFound               = http.StatusNotFound
+	TooManyRequests        = http.StatusTooManyRequests
+	Internal               = http.StatusInternalServerError
+	ErrNotImplemented      = http.StatusNotImplemented
 
 	// HTTPCodeUpperBound is a bound under which any Code should have the same meaning with the http status code.
 	HTTPCodeUpperBound   = Code(1000)

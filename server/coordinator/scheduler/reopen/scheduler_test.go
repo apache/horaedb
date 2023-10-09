@@ -1,6 +1,6 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package scheduler_test
+package reopen_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/test"
-	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler"
+	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/reopen"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +20,7 @@ func TestReopenShardScheduler(t *testing.T) {
 
 	procedureFactory := coordinator.NewFactory(test.MockIDAllocator{}, test.MockDispatch{}, test.NewTestStorage(t))
 
-	s := scheduler.NewReopenShardScheduler(procedureFactory, 1)
+	s := reopen.NewShardScheduler(procedureFactory, 1)
 
 	emptyCluster := test.InitEmptyCluster(ctx, t)
 	// ReopenShardScheduler should not schedule when cluster is not stable.

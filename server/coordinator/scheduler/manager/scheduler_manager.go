@@ -1,6 +1,6 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package scheduler
+package manager
 
 import (
 	"context"
@@ -10,9 +10,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
+	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler"
+	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/nodepicker"
+	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/rebalanced"
+	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/reopen"
+	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/static"
 	"github.com/CeresDB/ceresmeta/server/coordinator/watch"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
@@ -24,11 +30,11 @@ const (
 	schedulerInterval = time.Second * 5
 )
 
-// Manager used to manage schedulers, it will register all schedulers when it starts.
+// SchedulerManager used to manage schedulers, it will register all schedulers when it starts.
 //
 // Each registered scheduler will generate procedures if the cluster topology matches the scheduling condition.
-type Manager interface {
-	ListScheduler() []Scheduler
+type SchedulerManager interface {
+	ListScheduler() []scheduler.Scheduler
 
 	Start(ctx context.Context) error
 
@@ -43,32 +49,42 @@ type Manager interface {
 	// GetDeployMode can only be used in dynamic mode, it will throw error when topology type is static.
 	GetDeployMode(ctx context.Context) (bool, error)
 
+	// AddShardAffinityRule adds a shard affinity rule to the manager, and then apply it to the underlying schedulers.
+	AddShardAffinityRule(ctx context.Context, rule scheduler.ShardAffinityRule) error
+
+	// Remove the shard rules applied to some specific rule.
+	RemoveShardAffinityRule(ctx context.Context, shardID storage.ShardID) error
+
+	// ListShardAffinityRules lists all the rules about shard affinity of all the registered schedulers.
+	ListShardAffinityRules(ctx context.Context) (map[string]scheduler.ShardAffinityRule, error)
+
 	// Scheduler will be called when received new heartbeat, every scheduler registered in schedulerManager will be called to generate procedures.
 	// Scheduler cloud be schedule with fix time interval or heartbeat.
-	Scheduler(ctx context.Context, clusterSnapshot metadata.Snapshot) []ScheduleResult
+	Scheduler(ctx context.Context, clusterSnapshot metadata.Snapshot) []scheduler.ScheduleResult
 }
 
-type ManagerImpl struct {
+type schedulerManagerImpl struct {
 	logger           *zap.Logger
 	procedureManager procedure.Manager
 	factory          *coordinator.Factory
-	nodePicker       coordinator.NodePicker
+	nodePicker       nodepicker.NodePicker
 	client           *clientv3.Client
 	clusterMetadata  *metadata.ClusterMetadata
 	rootPath         string
 
 	// This lock is used to protect the following field.
 	lock                        sync.RWMutex
-	registerSchedulers          []Scheduler
+	registerSchedulers          []scheduler.Scheduler
 	shardWatch                  watch.ShardWatch
 	isRunning                   atomic.Bool
 	enableSchedule              bool
 	topologyType                storage.TopologyType
 	procedureExecutingBatchSize uint32
 	deployMode                  bool
+	shardAffinities             map[storage.ShardID]scheduler.ShardAffinityRule
 }
 
-func NewManager(logger *zap.Logger, procedureManager procedure.Manager, factory *coordinator.Factory, clusterMetadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string, enableSchedule bool, topologyType storage.TopologyType, procedureExecutingBatchSize uint32) Manager {
+func NewManager(logger *zap.Logger, procedureManager procedure.Manager, factory *coordinator.Factory, clusterMetadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string, enableSchedule bool, topologyType storage.TopologyType, procedureExecutingBatchSize uint32) SchedulerManager {
 	var shardWatch watch.ShardWatch
 	switch topologyType {
 	case storage.TopologyTypeDynamic:
@@ -78,11 +94,11 @@ func NewManager(logger *zap.Logger, procedureManager procedure.Manager, factory 
 		shardWatch = watch.NewNoopShardWatch()
 	}
 
-	return &ManagerImpl{
+	return &schedulerManagerImpl{
 		procedureManager:            procedureManager,
-		registerSchedulers:          []Scheduler{},
+		registerSchedulers:          []scheduler.Scheduler{},
 		factory:                     factory,
-		nodePicker:                  coordinator.NewConsistentUniformHashNodePicker(logger),
+		nodePicker:                  nodepicker.NewConsistentUniformHashNodePicker(logger),
 		clusterMetadata:             clusterMetadata,
 		client:                      client,
 		shardWatch:                  shardWatch,
@@ -91,10 +107,11 @@ func NewManager(logger *zap.Logger, procedureManager procedure.Manager, factory 
 		topologyType:                topologyType,
 		procedureExecutingBatchSize: procedureExecutingBatchSize,
 		logger:                      logger,
+		shardAffinities:             make(map[storage.ShardID]scheduler.ShardAffinityRule),
 	}
 }
 
-func (m *ManagerImpl) Stop(ctx context.Context) error {
+func (m *schedulerManagerImpl) Stop(ctx context.Context) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
@@ -109,7 +126,7 @@ func (m *ManagerImpl) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (m *ManagerImpl) Start(ctx context.Context) error {
+func (m *schedulerManagerImpl) Start(ctx context.Context) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
@@ -185,8 +202,8 @@ func (callback *schedulerWatchCallback) OnShardExpired(ctx context.Context, even
 }
 
 // Schedulers should to be initialized and registered here.
-func (m *ManagerImpl) initRegister() {
-	var schedulers []Scheduler
+func (m *schedulerManagerImpl) initRegister() {
+	var schedulers []scheduler.Scheduler
 	switch m.topologyType {
 	case storage.TopologyTypeDynamic:
 		schedulers = m.createDynamicTopologySchedulers()
@@ -198,33 +215,33 @@ func (m *ManagerImpl) initRegister() {
 	}
 }
 
-func (m *ManagerImpl) createStaticTopologySchedulers() []Scheduler {
-	staticTopologyShardScheduler := NewStaticTopologyShardScheduler(m.factory, m.nodePicker, m.procedureExecutingBatchSize)
-	reopenShardScheduler := NewReopenShardScheduler(m.factory, m.procedureExecutingBatchSize)
-	return []Scheduler{staticTopologyShardScheduler, reopenShardScheduler}
+func (m *schedulerManagerImpl) createStaticTopologySchedulers() []scheduler.Scheduler {
+	staticTopologyShardScheduler := static.NewShardScheduler(m.factory, m.nodePicker, m.procedureExecutingBatchSize)
+	reopenShardScheduler := reopen.NewShardScheduler(m.factory, m.procedureExecutingBatchSize)
+	return []scheduler.Scheduler{staticTopologyShardScheduler, reopenShardScheduler}
 }
 
-func (m *ManagerImpl) createDynamicTopologySchedulers() []Scheduler {
-	rebalancedShardScheduler := NewRebalancedShardScheduler(m.logger, m.factory, m.nodePicker, m.procedureExecutingBatchSize)
-	reopenShardScheduler := NewReopenShardScheduler(m.factory, m.procedureExecutingBatchSize)
-	return []Scheduler{rebalancedShardScheduler, reopenShardScheduler}
+func (m *schedulerManagerImpl) createDynamicTopologySchedulers() []scheduler.Scheduler {
+	rebalancedShardScheduler := rebalanced.NewShardScheduler(m.logger, m.factory, m.nodePicker, m.procedureExecutingBatchSize)
+	reopenShardScheduler := reopen.NewShardScheduler(m.factory, m.procedureExecutingBatchSize)
+	return []scheduler.Scheduler{rebalancedShardScheduler, reopenShardScheduler}
 }
 
-func (m *ManagerImpl) registerScheduler(scheduler Scheduler) {
+func (m *schedulerManagerImpl) registerScheduler(scheduler scheduler.Scheduler) {
 	m.logger.Info("register new scheduler", zap.String("schedulerName", reflect.TypeOf(scheduler).String()), zap.Int("totalSchedulerLen", len(m.registerSchedulers)))
 	m.registerSchedulers = append(m.registerSchedulers, scheduler)
 }
 
-func (m *ManagerImpl) ListScheduler() []Scheduler {
+func (m *schedulerManagerImpl) ListScheduler() []scheduler.Scheduler {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
 	return m.registerSchedulers
 }
 
-func (m *ManagerImpl) Scheduler(ctx context.Context, clusterSnapshot metadata.Snapshot) []ScheduleResult {
+func (m *schedulerManagerImpl) Scheduler(ctx context.Context, clusterSnapshot metadata.Snapshot) []scheduler.ScheduleResult {
 	// TODO: Every scheduler should run in an independent goroutine.
-	results := make([]ScheduleResult, 0, len(m.registerSchedulers))
+	results := make([]scheduler.ScheduleResult, 0, len(m.registerSchedulers))
 	for _, scheduler := range m.registerSchedulers {
 		result, err := scheduler.Schedule(ctx, clusterSnapshot)
 		if err != nil {
@@ -236,7 +253,7 @@ func (m *ManagerImpl) Scheduler(ctx context.Context, clusterSnapshot metadata.Sn
 	return results
 }
 
-func (m *ManagerImpl) UpdateEnableSchedule(_ context.Context, enableSchedule bool) {
+func (m *schedulerManagerImpl) UpdateEnableSchedule(_ context.Context, enableSchedule bool) {
 	m.lock.Lock()
 	m.enableSchedule = enableSchedule
 	m.lock.Unlock()
@@ -244,12 +261,12 @@ func (m *ManagerImpl) UpdateEnableSchedule(_ context.Context, enableSchedule boo
 	m.logger.Info("scheduler manager update enableSchedule", zap.Bool("enableSchedule", enableSchedule))
 }
 
-func (m *ManagerImpl) UpdateDeployMode(ctx context.Context, enable bool) error {
+func (m *schedulerManagerImpl) UpdateDeployMode(ctx context.Context, enable bool) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
 	if m.topologyType != storage.TopologyTypeDynamic {
-		return errors.WithMessage(ErrInvalidTopologyType, "deploy mode could only update when topology type is dynamic")
+		return ErrInvalidTopologyType.WithCausef("deploy mode could only update when topology type is dynamic")
 	}
 
 	m.deployMode = enable
@@ -260,13 +277,54 @@ func (m *ManagerImpl) UpdateDeployMode(ctx context.Context, enable bool) error {
 	return nil
 }
 
-func (m *ManagerImpl) GetDeployMode(_ context.Context) (bool, error) {
+func (m *schedulerManagerImpl) GetDeployMode(_ context.Context) (bool, error) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
 	if m.topologyType != storage.TopologyTypeDynamic {
-		return false, errors.WithMessage(ErrInvalidTopologyType, "deploy mode could only get when topology type is dynamic")
+		return false, ErrInvalidTopologyType.WithCausef("deploy mode could only get when topology type is dynamic")
 	}
 
 	return m.deployMode, nil
+}
+
+func (m *schedulerManagerImpl) AddShardAffinityRule(ctx context.Context, rule scheduler.ShardAffinityRule) error {
+	var lastErr error
+	for _, scheduler := range m.registerSchedulers {
+		if err := scheduler.AddShardAffinityRule(ctx, rule); err != nil {
+			log.Error("failed to add shard affinity rule of a scheduler", zap.String("scheduler", scheduler.Name()), zap.Error(err))
+			lastErr = err
+		}
+	}
+
+	return lastErr
+}
+
+func (m *schedulerManagerImpl) RemoveShardAffinityRule(ctx context.Context, shardID storage.ShardID) error {
+	var lastErr error
+	for _, scheduler := range m.registerSchedulers {
+		if err := scheduler.RemoveShardAffinityRule(ctx, shardID); err != nil {
+			log.Error("failed to remove shard affinity rule of a scheduler", zap.String("scheduler", scheduler.Name()), zap.Error(err))
+			lastErr = err
+		}
+	}
+
+	return lastErr
+}
+
+func (m *schedulerManagerImpl) ListShardAffinityRules(ctx context.Context) (map[string]scheduler.ShardAffinityRule, error) {
+	rules := make(map[string]scheduler.ShardAffinityRule, len(m.registerSchedulers))
+	var lastErr error
+
+	for _, scheduler := range m.registerSchedulers {
+		rule, err := scheduler.ListShardAffinityRule(ctx)
+		if err != nil {
+			log.Error("failed to list shard affinity rule of a scheduler", zap.String("scheduler", scheduler.Name()), zap.Error(err))
+			lastErr = err
+		}
+
+		rules[scheduler.Name()] = rule
+	}
+
+	return rules, lastErr
 }

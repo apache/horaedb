@@ -1,6 +1,6 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package scheduler_test
+package manager_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/coordinator"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/test"
-	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler"
+	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/manager"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
@@ -31,14 +31,14 @@ func TestSchedulerManager(t *testing.T) {
 	_, client, _ := etcdutil.PrepareEtcdServerAndClient(t)
 
 	// Create scheduler manager with enableScheduler equal to false.
-	schedulerManager := scheduler.NewManager(zap.NewNop(), procedureManager, f, c.GetMetadata(), client, "/rootPath", false, storage.TopologyTypeStatic, 1)
+	schedulerManager := manager.NewManager(zap.NewNop(), procedureManager, f, c.GetMetadata(), client, "/rootPath", false, storage.TopologyTypeStatic, 1)
 	err = schedulerManager.Start(ctx)
 	re.NoError(err)
 	err = schedulerManager.Stop(ctx)
 	re.NoError(err)
 
 	// Create scheduler manager with static topology.
-	schedulerManager = scheduler.NewManager(zap.NewNop(), procedureManager, f, c.GetMetadata(), client, "/rootPath", true, storage.TopologyTypeStatic, 1)
+	schedulerManager = manager.NewManager(zap.NewNop(), procedureManager, f, c.GetMetadata(), client, "/rootPath", true, storage.TopologyTypeStatic, 1)
 	err = schedulerManager.Start(ctx)
 	re.NoError(err)
 	schedulers := schedulerManager.ListScheduler()
@@ -47,7 +47,7 @@ func TestSchedulerManager(t *testing.T) {
 	re.NoError(err)
 
 	// Create scheduler manager with dynamic topology.
-	schedulerManager = scheduler.NewManager(zap.NewNop(), procedureManager, f, c.GetMetadata(), client, "/rootPath", true, storage.TopologyTypeDynamic, 1)
+	schedulerManager = manager.NewManager(zap.NewNop(), procedureManager, f, c.GetMetadata(), client, "/rootPath", true, storage.TopologyTypeDynamic, 1)
 	err = schedulerManager.Start(ctx)
 	re.NoError(err)
 	schedulers = schedulerManager.ListScheduler()

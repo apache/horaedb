@@ -19,9 +19,10 @@ require (
 	go.etcd.io/etcd/client/v3 v3.5.4
 	go.etcd.io/etcd/server/v3 v3.5.4
 	go.uber.org/zap v1.21.0
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
+	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
+	golang.org/x/sync v0.4.0
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba
-	golang.org/x/tools v0.1.10
+	golang.org/x/tools v0.14.0
 	google.golang.org/grpc v1.47.0
 	google.golang.org/protobuf v1.28.0
 	gotest.tools/gotestsum v1.8.1
@@ -89,13 +90,12 @@ require (
 	go.opentelemetry.io/proto/otlp v0.7.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.7.0 // indirect
-	golang.org/x/crypto v0.0.0-20220131195533-30dcbda58838 // indirect
-	golang.org/x/mod v0.6.0-dev.0.20220106191415-9b9b3d81d5e3 // indirect
-	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2 // indirect
-	golang.org/x/sys v0.0.0-20211019181941-9d821ace8654 // indirect
-	golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1 // indirect
-	golang.org/x/text v0.3.7 // indirect
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
+	golang.org/x/crypto v0.14.0 // indirect
+	golang.org/x/mod v0.13.0 // indirect
+	golang.org/x/net v0.16.0 // indirect
+	golang.org/x/sys v0.13.0 // indirect
+	golang.org/x/term v0.13.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 	google.golang.org/genproto v0.0.0-20210602131652-f16073e35f0c // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

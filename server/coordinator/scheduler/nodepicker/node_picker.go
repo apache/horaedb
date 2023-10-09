@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package coordinator
+package nodepicker
 
 import (
 	"context"
@@ -8,14 +8,33 @@ import (
 
 	"github.com/CeresDB/ceresmeta/pkg/assert"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
-	"github.com/CeresDB/ceresmeta/server/hash"
+	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler"
+	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/nodepicker/hash"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/spaolacci/murmur3"
 	"go.uber.org/zap"
 )
 
+type Config struct {
+	NumTotalShards    uint32
+	ShardAffinityRule map[storage.ShardID]scheduler.ShardAffinity
+}
+
+func (c Config) genPartitionAffinities() []hash.PartitionAffinity {
+	affinities := make([]hash.PartitionAffinity, 0, len(c.ShardAffinityRule))
+	for shardID, affinity := range c.ShardAffinityRule {
+		partitionID := int(shardID)
+		affinities = append(affinities, hash.PartitionAffinity{
+			PartitionID:               partitionID,
+			NumAllowedOtherPartitions: affinity.NumAllowedOtherShards,
+		})
+	}
+
+	return affinities
+}
+
 type NodePicker interface {
-	PickNode(ctx context.Context, shardIDs []storage.ShardID, shardTotalNum uint32, registerNodes []metadata.RegisteredNode) (map[storage.ShardID]metadata.RegisteredNode, error)
+	PickNode(ctx context.Context, config Config, shardIDs []storage.ShardID, registerNodes []metadata.RegisteredNode) (map[storage.ShardID]metadata.RegisteredNode, error)
 }
 
 type ConsistentUniformHashNodePicker struct {
@@ -56,10 +75,10 @@ func filterExpiredNodes(nodes []metadata.RegisteredNode) map[string]metadata.Reg
 	return aliveNodes
 }
 
-func (p *ConsistentUniformHashNodePicker) PickNode(_ context.Context, shardIDs []storage.ShardID, shardTotalNum uint32, registerNodes []metadata.RegisteredNode) (map[storage.ShardID]metadata.RegisteredNode, error) {
+func (p *ConsistentUniformHashNodePicker) PickNode(_ context.Context, config Config, shardIDs []storage.ShardID, registerNodes []metadata.RegisteredNode) (map[storage.ShardID]metadata.RegisteredNode, error) {
 	aliveNodes := filterExpiredNodes(registerNodes)
 	if len(aliveNodes) == 0 {
-		return nil, ErrPickNode.WithCausef("no alive node in cluster")
+		return nil, ErrNoAliveNodes.WithCausef("registerNodes:%+v", registerNodes)
 	}
 
 	mems := make([]hash.Member, 0, len(aliveNodes))
@@ -69,18 +88,19 @@ func (p *ConsistentUniformHashNodePicker) PickNode(_ context.Context, shardIDs [
 		}
 	}
 
-	conf := hash.Config{
-		ReplicationFactor: uniformHashReplicationFactor,
-		Hasher:            hasher{},
+	hashConf := hash.Config{
+		ReplicationFactor:   uniformHashReplicationFactor,
+		Hasher:              hasher{},
+		PartitionAffinities: config.genPartitionAffinities(),
 	}
-	h, err := hash.BuildConsistentUniformHash(int(shardTotalNum), mems, conf)
+	h, err := hash.BuildConsistentUniformHash(int(config.NumTotalShards), mems, hashConf)
 	if err != nil {
-		return nil, ErrPickNode.WithCause(err)
+		return nil, err
 	}
 
 	shardNodes := make(map[storage.ShardID]metadata.RegisteredNode, len(registerNodes))
 	for _, shardID := range shardIDs {
-		assert.Assert(shardID < storage.ShardID(shardTotalNum))
+		assert.Assert(shardID < storage.ShardID(config.NumTotalShards))
 		partID := int(shardID)
 		nodeName := h.GetPartitionOwner(partID).String()
 		node, ok := aliveNodes[nodeName]

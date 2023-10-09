@@ -18,6 +18,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/config"
 	"github.com/CeresDB/ceresmeta/server/coordinator"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
+	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler"
 	"github.com/CeresDB/ceresmeta/server/limiter"
 	"github.com/CeresDB/ceresmeta/server/member"
 	"github.com/CeresDB/ceresmeta/server/status"
@@ -55,6 +56,9 @@ func (a *API) NewAPIRouter() *Router {
 	router.Post("/cluster", wrap(a.createCluster, true, a.forwardClient))
 	router.Put(fmt.Sprintf("/cluster/:%s", clusterNameParam), wrap(a.updateCluster, true, a.forwardClient))
 	router.Get(fmt.Sprintf("/cluster/:%s/procedure", clusterNameParam), wrap(a.listProcedures, true, a.forwardClient))
+	router.Get(fmt.Sprintf("/cluster/:%s/shardAffinities", clusterNameParam), wrap(a.listShardAffinities, true, a.forwardClient))
+	router.Post(fmt.Sprintf("/cluster/:%s/shardAffinities", clusterNameParam), wrap(a.addShardAffinities, true, a.forwardClient))
+	router.Del(fmt.Sprintf("/cluster/:%s/shardAffinities", clusterNameParam), wrap(a.removeShardAffinities, true, a.forwardClient))
 	router.Post("/table/query", wrap(a.queryTable, true, a.forwardClient))
 	router.Get(fmt.Sprintf("/cluster/:%s/deployMode", clusterNameParam), wrap(a.getDeployMode, true, a.forwardClient))
 	router.Put(fmt.Sprintf("/cluster/:%s/deployMode", clusterNameParam), wrap(a.updateDeployMode, true, a.forwardClient))
@@ -298,7 +302,7 @@ func (a *API) createCluster(req *http.Request) apiFuncResult {
 func (a *API) updateCluster(req *http.Request) apiFuncResult {
 	clusterName := Param(req.Context(), clusterNameParam)
 	if len(clusterName) == 0 {
-		return errResult(ErrParseRequest, "clusterName cloud not be empty")
+		return errResult(ErrParseRequest, "clusterName could not be empty")
 	}
 
 	var updateClusterRequest UpdateClusterRequest
@@ -366,7 +370,7 @@ func (a *API) listProcedures(req *http.Request) apiFuncResult {
 	ctx := req.Context()
 	clusterName := Param(ctx, clusterNameParam)
 	if len(clusterName) == 0 {
-		return errResult(ErrParseRequest, "clusterName cloud not be empty")
+		return errResult(ErrParseRequest, "clusterName could not be empty")
 	}
 
 	c, err := a.clusterManager.GetCluster(ctx, clusterName)
@@ -381,6 +385,89 @@ func (a *API) listProcedures(req *http.Request) apiFuncResult {
 	}
 
 	return okResult(infos)
+}
+
+func (a *API) listShardAffinities(req *http.Request) apiFuncResult {
+	ctx := req.Context()
+	clusterName := Param(ctx, clusterNameParam)
+	if len(clusterName) == 0 {
+		return errResult(ErrParseRequest, "clusterName could not be empty")
+	}
+
+	c, err := a.clusterManager.GetCluster(ctx, clusterName)
+	if err != nil {
+		return errResult(ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", clusterName, err.Error()))
+	}
+
+	affinityRules, err := c.GetSchedulerManager().ListShardAffinityRules(ctx)
+	if err != nil {
+		return errResult(ErrListAffinityRules, fmt.Sprintf("err: %v", err))
+	}
+
+	return okResult(affinityRules)
+}
+
+func (a *API) addShardAffinities(req *http.Request) apiFuncResult {
+	ctx := req.Context()
+	clusterName := Param(ctx, clusterNameParam)
+	if len(clusterName) == 0 {
+		return errResult(ErrParseRequest, "clusterName could not be empty")
+	}
+
+	var affinities []scheduler.ShardAffinity
+	err := json.NewDecoder(req.Body).Decode(&affinities)
+	if err != nil {
+		log.Error("decode request body failed", zap.Error(err))
+		return errResult(ErrParseRequest, err.Error())
+	}
+
+	log.Info("try to apply shard affinity rule", zap.String("cluster", clusterName), zap.String("affinity", fmt.Sprintf("%+v", affinities)))
+
+	c, err := a.clusterManager.GetCluster(ctx, clusterName)
+	if err != nil {
+		return errResult(ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", clusterName, err.Error()))
+	}
+
+	err = c.GetSchedulerManager().AddShardAffinityRule(ctx, scheduler.ShardAffinityRule{Affinities: affinities})
+	if err != nil {
+		log.Error("failed to apply shard affinity rule", zap.String("cluster", clusterName), zap.String("affinity", fmt.Sprintf("%+v", affinities)))
+		return errResult(ErrAddAffinityRule, fmt.Sprintf("err: %v", err))
+	}
+
+	log.Info("finish applying shard affinity rule", zap.String("cluster", clusterName), zap.String("rules", fmt.Sprintf("%+v", affinities)))
+
+	return okResult(nil)
+}
+
+func (a *API) removeShardAffinities(req *http.Request) apiFuncResult {
+	ctx := req.Context()
+	clusterName := Param(ctx, clusterNameParam)
+	if len(clusterName) == 0 {
+		return errResult(ErrParseRequest, "clusterName could not be empty")
+	}
+
+	var decodedReq RemoveShardAffinitiesRequest
+	err := json.NewDecoder(req.Body).Decode(&decodedReq)
+	if err != nil {
+		log.Error("decode request body failed", zap.Error(err))
+		return errResult(ErrParseRequest, err.Error())
+	}
+
+	c, err := a.clusterManager.GetCluster(ctx, clusterName)
+	if err != nil {
+		return errResult(ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", clusterName, err.Error()))
+	}
+
+	for _, shardID := range decodedReq.ShardIDs {
+		log.Info("try to remove shard affinity rule", zap.String("cluster", clusterName), zap.Int("shardID", int(shardID)))
+		err := c.GetSchedulerManager().RemoveShardAffinityRule(ctx, shardID)
+		if err != nil {
+			log.Error("failed to remove shard affinity rule", zap.String("cluster", clusterName), zap.Int("shardID", int(shardID)), zap.Error(err))
+			return errResult(ErrRemoveAffinityRule, fmt.Sprintf("err: %s", err))
+		}
+	}
+
+	return okResult(nil)
 }
 
 func (a *API) queryTable(r *http.Request) apiFuncResult {

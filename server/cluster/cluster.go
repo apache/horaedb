@@ -9,7 +9,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/coordinator"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
-	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler"
+	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/manager"
 	"github.com/CeresDB/ceresmeta/server/id"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -27,7 +27,7 @@ type Cluster struct {
 
 	procedureFactory *coordinator.Factory
 	procedureManager procedure.Manager
-	schedulerManager scheduler.Manager
+	schedulerManager manager.SchedulerManager
 }
 
 func NewCluster(logger *zap.Logger, metadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string) (*Cluster, error) {
@@ -39,7 +39,7 @@ func NewCluster(logger *zap.Logger, metadata *metadata.ClusterMetadata, client *
 	dispatch := eventdispatch.NewDispatchImpl()
 	procedureFactory := coordinator.NewFactory(id.NewAllocatorImpl(logger, client, defaultProcedurePrefixKey, defaultAllocStep), dispatch, procedureStorage)
 
-	schedulerManager := scheduler.NewManager(logger, procedureManager, procedureFactory, metadata, client, rootPath, metadata.GetEnableSchedule(), metadata.GetTopologyType(), metadata.GetProcedureExecutingBatchSize())
+	schedulerManager := manager.NewManager(logger, procedureManager, procedureFactory, metadata, client, rootPath, metadata.GetEnableSchedule(), metadata.GetTopologyType(), metadata.GetProcedureExecutingBatchSize())
 
 	return &Cluster{
 		logger:           logger,
@@ -82,7 +82,7 @@ func (c *Cluster) GetProcedureFactory() *coordinator.Factory {
 	return c.procedureFactory
 }
 
-func (c *Cluster) GetSchedulerManager() scheduler.Manager {
+func (c *Cluster) GetSchedulerManager() manager.SchedulerManager {
 	return c.schedulerManager
 }
 
