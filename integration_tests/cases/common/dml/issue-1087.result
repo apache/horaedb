@@ -77,15 +77,16 @@ String("logical_plan after influx_regex_to_datafusion_regex"),String("SAME TEXT 
 String("logical_plan after handle_gap_fill"),String("SAME TEXT AS ABOVE"),
 String("logical_plan"),String("TableScan: issue_1087 projection=[tsid, t, name, value]"),
 String("initial_physical_plan"),String("ScanTable: table=issue_1087, parallelism=8\n"),
+String("physical_plan after OutputRequirements"),String("OutputRequirementExec\n  ScanTable: table=issue_1087, parallelism=8\n"),
 String("physical_plan after aggregate_statistics"),String("SAME TEXT AS ABOVE"),
 String("physical_plan after join_selection"),String("SAME TEXT AS ABOVE"),
-String("physical_plan after PipelineFixer"),String("SAME TEXT AS ABOVE"),
-String("physical_plan after repartition"),String("SAME TEXT AS ABOVE"),
 String("physical_plan after EnforceDistribution"),String("SAME TEXT AS ABOVE"),
 String("physical_plan after CombinePartialFinalAggregate"),String("SAME TEXT AS ABOVE"),
 String("physical_plan after EnforceSorting"),String("SAME TEXT AS ABOVE"),
 String("physical_plan after coalesce_batches"),String("SAME TEXT AS ABOVE"),
+String("physical_plan after OutputRequirements"),String("ScanTable: table=issue_1087, parallelism=8\n"),
 String("physical_plan after PipelineChecker"),String("SAME TEXT AS ABOVE"),
+String("physical_plan after LimitAggregation"),String("SAME TEXT AS ABOVE"),
 String("physical_plan"),String("ScanTable: table=issue_1087, parallelism=8\n"),
 
 

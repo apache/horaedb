@@ -71,8 +71,8 @@ WHERE
     tag1 = "t3";
 
 plan_type,plan,
-String("logical_plan"),String("Projection: issue341_t1.timestamp, issue341_t1.value\n  TableScan: issue341_t1 projection=[timestamp, value, tag1], full_filters=[issue341_t1.tag1 = Utf8(\"t3\")]"),
-String("physical_plan"),String("ProjectionExec: expr=[timestamp@0 as timestamp, value@1 as value]\n  ScanTable: table=issue341_t1, parallelism=8\n"),
+String("logical_plan"),String("TableScan: issue341_t1 projection=[timestamp, value], full_filters=[issue341_t1.tag1 = Utf8(\"t3\")]"),
+String("physical_plan"),String("ScanTable: table=issue341_t1, parallelism=8\n"),
 
 
 -- Repeat operations above, but with overwrite table
@@ -129,8 +129,8 @@ WHERE
     tag1 = "t3";
 
 plan_type,plan,
-String("logical_plan"),String("Projection: issue341_t2.timestamp, issue341_t2.value\n  TableScan: issue341_t2 projection=[timestamp, value, tag1], full_filters=[issue341_t2.tag1 = Utf8(\"t3\")]"),
-String("physical_plan"),String("ProjectionExec: expr=[timestamp@0 as timestamp, value@1 as value]\n  ScanTable: table=issue341_t2, parallelism=8\n"),
+String("logical_plan"),String("TableScan: issue341_t2 projection=[timestamp, value], full_filters=[issue341_t2.tag1 = Utf8(\"t3\")]"),
+String("physical_plan"),String("ScanTable: table=issue341_t2, parallelism=8\n"),
 
 
 DROP TABLE IF EXISTS `issue341_t1`;

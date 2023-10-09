@@ -295,7 +295,6 @@ impl<T: Send + Sync> Database for CeresDB<T> {
             let cmd = pre_cmd.expect("parse command");
             match cmd {
                 Command::Flush => {
-                    println!("Flush memtable...");
                     if let Err(e) = self.execute_flush().await {
                         panic!("Execute flush command failed, err:{e}");
                     }

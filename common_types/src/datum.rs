@@ -291,6 +291,7 @@ impl TryFrom<&SqlDataType> for DatumKind {
             SqlDataType::BigInt(_) => Ok(Self::Int64),
             SqlDataType::Int(_) => Ok(Self::Int32),
             SqlDataType::SmallInt(_) => Ok(Self::Int16),
+            SqlDataType::Int8(_) => Ok(Self::Int8),
             SqlDataType::String => Ok(Self::String),
             SqlDataType::Varbinary(_) => Ok(Self::Varbinary),
             SqlDataType::Date => Ok(Self::Date),
