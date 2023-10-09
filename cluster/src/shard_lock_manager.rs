@@ -373,6 +373,7 @@ pub struct ShardLock {
     lease_keepalive_stopper: Option<oneshot::Sender<()>>,
 }
 
+/// The information about an etcd lease.
 #[derive(Debug, Clone)]
 struct LeaseInfo {
     id: i64,

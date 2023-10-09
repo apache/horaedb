@@ -643,6 +643,7 @@ impl DiskCacheStore {
                     continue;
                 }
             };
+
             debug!("Disk cache recover_cache, filename:{file_name}, size:{file_size}");
             let page_meta = PageMeta { file_size };
             cache.insert_page_meta(file_name, page_meta);
