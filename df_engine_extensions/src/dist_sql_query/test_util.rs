@@ -464,7 +464,7 @@ impl ExecutionPlan for MockScan {
     }
 
     fn statistics(&self) -> datafusion::physical_plan::Statistics {
-        unimplemented!()
+        datafusion::physical_plan::Statistics::default()
     }
 }
 
