@@ -86,4 +86,4 @@ run-recovery: clean build-ceresdb kill-old-process
 
 run-dist-query: prepare build-meta
 	CERESDB_INTEGRATION_TEST_BIN_RUN_MODE=build_cluster $(CERESDB_TEST_BINARY)
-	# cd dist_query && ./run.sh
+	cd dist_query && ./run.sh
