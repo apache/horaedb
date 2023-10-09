@@ -25,7 +25,7 @@ use catalog::{
     },
     Catalog,
 };
-use log::warn;
+use logger::warn;
 use system_catalog::SystemTableAdapter;
 use table_engine::{
     self,

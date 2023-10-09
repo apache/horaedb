@@ -21,7 +21,7 @@ use async_trait::async_trait;
 use common_types::table::ShardId;
 use etcd_client::ConnectOptions;
 use generic_error::BoxError;
-use log::{error, info, warn};
+use logger::{error, info, warn};
 use meta_client::{
     types::{
         GetNodesRequest, GetTablesOfShardsRequest, RouteTablesRequest, RouteTablesResponse,

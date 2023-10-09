@@ -23,7 +23,7 @@ use async_trait::async_trait;
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, RouteRequest as RouteRequestPb,
 };
-use log::{debug, error, warn};
+use logger::{debug, error, warn};
 use macros::define_result;
 use router::{endpoint::Endpoint, RouteRequest, RouterRef};
 use serde::{Deserialize, Serialize};

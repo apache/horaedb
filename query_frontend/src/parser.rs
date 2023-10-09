@@ -16,7 +16,7 @@
 //!
 //! Some codes are copied from datafusion: <https://github.com/apache/arrow/blob/9d86440946b8b07e03abb94fad2da278affae08f/rust/datafusion/src/sql/parser.rs#L74>
 
-use log::debug;
+use logger::debug;
 use macros::define_result;
 use paste::paste;
 use sqlparser::{

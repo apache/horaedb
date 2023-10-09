@@ -26,7 +26,7 @@ use common_types::{
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::{interpreter::Output, RecordBatchVec};
-use log::error;
+use logger::error;
 use serde::{
     ser::{SerializeMap, SerializeSeq},
     Deserialize, Serialize,

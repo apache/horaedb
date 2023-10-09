@@ -22,7 +22,7 @@ use common_types::{
 };
 use hash_ext::hash64;
 use itertools::Itertools;
-use log::{debug, error};
+use logger::{debug, error};
 use snafu::OptionExt;
 
 use crate::partition::{

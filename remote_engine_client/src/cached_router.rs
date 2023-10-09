@@ -17,7 +17,7 @@
 use std::{collections::HashMap, sync::RwLock};
 
 use ceresdbproto::storage::{self, RequestContext};
-use log::debug;
+use logger::debug;
 use router::{endpoint::Endpoint, RouteRequest, RouterRef};
 use snafu::{OptionExt, ResultExt};
 use table_engine::remote::model::TableIdentifier;

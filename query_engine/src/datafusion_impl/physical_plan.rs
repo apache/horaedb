@@ -26,7 +26,7 @@ use datafusion::physical_plan::{
     ExecutionPlan,
 };
 use generic_error::BoxError;
-use log::info;
+use logger::info;
 use snafu::{OptionExt, ResultExt};
 use table_engine::stream::{FromDfStream, SendableRecordBatchStream};
 

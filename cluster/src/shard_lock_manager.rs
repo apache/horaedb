@@ -25,7 +25,7 @@ use common_types::table::ShardId;
 use etcd_client::{
     Client, Compare, CompareOp, LeaseKeepAliveStream, LeaseKeeper, PutOptions, Txn, TxnOp,
 };
-use log::{debug, error, info, warn};
+use logger::{debug, error, info, warn};
 use macros::define_result;
 use prost::Message;
 use runtime::{JoinHandle, RuntimeRef};

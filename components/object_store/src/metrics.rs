@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::BoxStream;
 use lazy_static::lazy_static;
-use log::trace;
+use logger::trace;
 use prometheus::{
     exponential_buckets, register_histogram_vec, register_int_counter, HistogramVec, IntCounter,
 };

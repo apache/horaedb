@@ -24,7 +24,7 @@ use common_types::{
     time::Timestamp,
 };
 use futures::stream::StreamExt;
-use log::info;
+use logger::info;
 use object_store::config::{LocalOptions, ObjectStoreOptions, StorageOptions};
 use size_ext::ReadableSize;
 use table_engine::{

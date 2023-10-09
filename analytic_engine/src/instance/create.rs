@@ -15,7 +15,7 @@
 //! Create table logic of instance
 
 use generic_error::BoxError;
-use log::info;
+use logger::info;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
     engine::{CreateTableParams, CreateTableRequest},

@@ -20,7 +20,7 @@ use ceresdbproto::{
     meta_service::{self, ceresmeta_rpc_service_client::CeresmetaRpcServiceClient},
 };
 use generic_error::BoxError;
-use log::{debug, info};
+use logger::{debug, info};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};
 use time_ext::ReadableDuration;

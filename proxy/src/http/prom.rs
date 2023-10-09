@@ -36,7 +36,7 @@ use common_types::{
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::{interpreter::Output, RecordBatchVec};
-use log::{error, info};
+use logger::{error, info};
 use prom_remote_api::types::{
     Label, LabelMatcher, Query, QueryResult, RemoteStorage, Sample, TimeSeries, WriteRequest,
 };

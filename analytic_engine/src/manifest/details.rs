@@ -28,7 +28,7 @@ use async_trait::async_trait;
 use ceresdbproto::manifest as manifest_pb;
 use generic_error::{BoxError, GenericError, GenericResult};
 use lazy_static::lazy_static;
-use log::{debug, info, warn};
+use logger::{debug, info, warn};
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;

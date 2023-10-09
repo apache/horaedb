@@ -41,7 +41,7 @@ use analytic_engine::{
 };
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId};
 use generic_error::BoxError;
-use log::info;
+use logger::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
 use runtime::Runtime;
 use serde::Deserialize;

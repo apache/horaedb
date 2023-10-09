@@ -18,7 +18,7 @@ use std::{fmt, num::NonZeroUsize, sync::Arc};
 
 use generic_error::BoxError;
 use id_allocator::IdAllocator;
-use log::debug;
+use logger::debug;
 use snafu::{OptionExt, ResultExt};
 use table_engine::table::TableId;
 

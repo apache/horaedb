@@ -30,7 +30,7 @@ use datafusion::{
 };
 use datafusion_proto::bytes::Serializeable;
 use generic_error::{BoxError, GenericError};
-use log::debug;
+use logger::debug;
 use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 

@@ -40,7 +40,7 @@ use futures::{
     Future,
 };
 use generic_error::BoxError;
-use log::{error, info};
+use logger::{error, info};
 use notifier::notifier::{ExecutionGuard, RequestNotifiers, RequestResult};
 use proxy::{
     hotspot::{HotspotRecorder, Message},

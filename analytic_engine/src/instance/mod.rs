@@ -34,7 +34,7 @@ use std::sync::Arc;
 
 use common_types::{projected_schema::ProjectedSchema, table::TableId};
 use generic_error::{BoxError, GenericError};
-use log::{error, info};
+use logger::{error, info};
 use macros::define_result;
 use mem_collector::MemUsageCollector;
 use runtime::Runtime;

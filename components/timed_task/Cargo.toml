@@ -25,6 +25,6 @@ workspace = true
 workspace = true
 
 [dependencies]
-log = { workspace = true }
+logger = { workspace = true }
 runtime = { workspace = true }
 tokio = { workspace = true }

@@ -16,7 +16,7 @@
 
 use std::{future::Future, time::Duration};
 
-use log::info;
+use logger::info;
 use runtime::{self, JoinHandle, Runtime};
 use tokio::{
     sync::{

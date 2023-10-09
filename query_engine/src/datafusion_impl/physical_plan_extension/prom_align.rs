@@ -45,7 +45,7 @@ use datafusion::{
 };
 use futures::{Stream, StreamExt};
 use generic_error::BoxError;
-use log::debug;
+use logger::debug;
 use query_frontend::promql::{AlignParameter, ColumnNames, Func as PromFunc};
 use snafu::{OptionExt, ResultExt};
 

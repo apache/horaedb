@@ -29,7 +29,7 @@ use futures::{stream, stream::BoxStream, FutureExt, StreamExt};
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
-use log::{error, warn};
+use logger::{error, warn};
 use router::endpoint::Endpoint;
 use snafu::ResultExt;
 use tonic::{transport::Channel, IntoRequest};

@@ -18,7 +18,7 @@ use std::{fmt::Write, sync::Arc};
 use ceresdbproto::storage::{
     PrometheusQueryRequest, RequestContext, SqlQueryRequest, WriteRequest,
 };
-use log::{info, warn};
+use logger::{info, warn};
 use runtime::Runtime;
 use serde::{Deserialize, Serialize};
 use spin::Mutex as SpinMutex;

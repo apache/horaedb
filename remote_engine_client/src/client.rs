@@ -32,7 +32,7 @@ use ceresdbproto::{
 use common_types::{record_batch::RecordBatch, schema::RecordSchema};
 use futures::{Stream, StreamExt};
 use generic_error::BoxError;
-use log::info;
+use logger::info;
 use router::RouterRef;
 use runtime::Runtime;
 use snafu::{ensure, OptionExt, ResultExt};

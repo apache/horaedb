@@ -32,7 +32,7 @@ use common_types::{
 };
 use futures::{stream::FuturesUnordered, StreamExt};
 use generic_error::GenericError;
-use log::{debug, trace};
+use logger::{debug, trace};
 use macros::define_result;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};

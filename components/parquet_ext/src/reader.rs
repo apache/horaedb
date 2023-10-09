@@ -19,7 +19,7 @@ use futures::{
     future::{BoxFuture, FutureExt},
     TryFutureExt,
 };
-use log::debug;
+use logger::debug;
 use object_store::{ObjectStoreRef, Path};
 use parquet::{arrow::async_reader::AsyncFileReader, file::metadata::ParquetMetaData};
 
