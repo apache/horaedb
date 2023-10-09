@@ -21,7 +21,7 @@ use arrow::{
 };
 use datafusion::logical_expr::Expr;
 use datafusion_proto::bytes::Serializeable;
-use log::error;
+use logger::error;
 use query_frontend::{ast::ShowCreateObject, plan::ShowCreatePlan};
 use snafu::ensure;
 use table_engine::{partition::PartitionInfo, table::TableRef};

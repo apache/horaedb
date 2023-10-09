@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use ceresdbproto::storage::Route;
 use cluster::ClusterRef;
 use generic_error::BoxError;
-use log::trace;
+use logger::trace;
 use meta_client::types::RouteTablesRequest;
 use moka::future::Cache;
 use snafu::ResultExt;

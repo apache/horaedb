@@ -26,7 +26,7 @@ use ceresdbproto::storage::{
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
-use log::{debug, info};
+use logger::{debug, info};
 use query_frontend::{
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,

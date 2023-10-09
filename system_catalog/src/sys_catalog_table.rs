@@ -33,7 +33,7 @@ use common_types::{
     time::Timestamp,
 };
 use futures::TryStreamExt;
-use log::{debug, info, warn};
+use logger::{debug, info, warn};
 use macros::define_result;
 use prost::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};

@@ -27,7 +27,7 @@ use std::{
 use async_trait::async_trait;
 use common_types::request_id::RequestId;
 use futures::{stream::FuturesUnordered, StreamExt};
-use log::{debug, error, info, warn};
+use logger::{debug, error, info, warn};
 use macros::define_result;
 use runtime::{JoinHandle, Runtime};
 use serde::{Deserialize, Serialize};

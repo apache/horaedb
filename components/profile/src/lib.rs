@@ -25,7 +25,7 @@ use std::{
 };
 
 use jemalloc_ctl::{Access, AsName};
-use log::{error, info};
+use logger::{error, info};
 
 #[derive(Debug)]
 pub enum Error {

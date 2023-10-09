@@ -29,7 +29,7 @@ use async_trait::async_trait;
 use bytes_ext::BytesMut;
 use common_types::{table::TableId, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
 use generic_error::BoxError;
-use log::{debug, info, warn};
+use logger::{debug, info, warn};
 use rocksdb::{
     rocksdb_options::ColumnFamilyDescriptor, ColumnFamilyOptions, DBCompactionStyle, DBIterator,
     DBOptions, FifoCompactionOptions, ReadOptions, SeekKey, Statistics, Writable, WriteBatch, DB,

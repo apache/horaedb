@@ -21,7 +21,7 @@ use std::{
 };
 
 use common_types::time::Timestamp;
-use log::{debug, info};
+use logger::{debug, info};
 use macros::define_result;
 use snafu::Snafu;
 use time_ext::TimeUnit;

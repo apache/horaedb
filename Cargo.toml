@@ -114,7 +114,6 @@ hash_ext = { path = "components/hash_ext" }
 hex = "0.4.3"
 lz4_flex = { version = "0.11", default-features = false, features = ["frame"] }
 lazy_static = "1.4.0"
-log = "0.4"
 logger = { path = "components/logger" }
 lru = "0.7.6"
 id_allocator = { path = "components/id_allocator" }

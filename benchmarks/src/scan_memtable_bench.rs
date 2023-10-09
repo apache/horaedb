@@ -26,7 +26,7 @@ use analytic_engine::{
 };
 use arena::NoopCollector;
 use common_types::projected_schema::ProjectedSchema;
-use log::info;
+use logger::info;
 use object_store::{LocalFileSystem, Path};
 
 use crate::{config::ScanMemTableBenchConfig, util};

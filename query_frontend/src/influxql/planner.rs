@@ -31,7 +31,7 @@ use influxql_parser::{
     statement::Statement as InfluxqlStatement,
 };
 use influxql_schema::Schema;
-use log::error;
+use logger::error;
 use snafu::{ensure, ResultExt};
 use table_engine::table::TableRef;
 

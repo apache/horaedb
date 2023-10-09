@@ -31,7 +31,7 @@ rev = "d592f88e4dbba5eb439998463054f1a44fbf17b9"
 
 [dependencies]
 chrono = { workspace = true }
-log = { workspace = true }
+log = "0.4"
 serde = { workspace = true }
 slog = { workspace = true }
 slog-async = "2.6"

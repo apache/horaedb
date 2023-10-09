@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use generic_error::BoxError;
-use log::{error, info};
+use logger::{error, info};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{

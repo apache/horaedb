@@ -38,7 +38,7 @@ use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt}
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
-use log::{debug, error, info};
+use logger::{debug, error, info};
 use query_frontend::{
     frontend::{Context as FrontendContext, Frontend},
     plan::{AlterTableOperation, AlterTablePlan, InsertPlan, Plan},

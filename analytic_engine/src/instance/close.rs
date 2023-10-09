@@ -14,7 +14,7 @@
 
 //! Close table logic of instance
 
-use log::{info, warn};
+use logger::{info, warn};
 use snafu::ResultExt;
 use table_engine::engine::CloseTableRequest;
 

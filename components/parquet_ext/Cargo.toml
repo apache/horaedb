@@ -32,7 +32,7 @@ bytes = { workspace = true }
 datafusion = { workspace = true }
 futures = { workspace = true }
 generic_error = { workspace = true }
-log = { workspace = true }
+logger = { workspace = true }
 object_store = { workspace = true }
 parquet = { workspace = true }
 tokio = { workspace = true }

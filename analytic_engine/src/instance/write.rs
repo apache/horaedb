@@ -21,7 +21,7 @@ use common_types::{
     row::{RowGroup, RowGroupSlicer},
     schema::{IndexInWriterSchema, Schema},
 };
-use log::{debug, error, info, trace, warn};
+use logger::{debug, error, info, trace, warn};
 use macros::define_result;
 use smallvec::SmallVec;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};

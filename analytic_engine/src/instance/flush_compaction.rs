@@ -29,7 +29,7 @@ use futures::{
     stream, SinkExt, TryStreamExt,
 };
 use generic_error::{BoxError, GenericError};
-use log::{debug, error, info};
+use logger::{debug, error, info};
 use macros::define_result;
 use runtime::{Runtime, RuntimeRef};
 use snafu::{Backtrace, ResultExt, Snafu};

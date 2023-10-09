@@ -21,7 +21,7 @@ use datafusion::{
     physical_optimizer::{optimizer::PhysicalOptimizerRule, repartition::Repartition},
     physical_plan::ExecutionPlan,
 };
-use log::debug;
+use logger::debug;
 
 use crate::datafusion_impl::physical_optimizer::{Adapter, OptimizeRuleRef};
 

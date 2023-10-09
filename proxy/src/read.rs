@@ -23,8 +23,7 @@ use futures::FutureExt;
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
-use log::{error, info, warn};
-use logger::{failed_query, maybe_slow_query, SlowTimer};
+use logger::{error, failed_query, info, maybe_slow_query, warn, SlowTimer};
 use query_frontend::{
     frontend,
     frontend::{Context as SqlContext, Frontend},

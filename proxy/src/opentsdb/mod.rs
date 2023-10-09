@@ -19,7 +19,7 @@ use ceresdbproto::storage::{
     RequestContext as GrpcRequestContext, WriteRequest as GrpcWriteRequest,
 };
 use http::StatusCode;
-use log::debug;
+use logger::debug;
 
 use crate::{
     context::RequestContext,

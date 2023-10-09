@@ -37,7 +37,7 @@ use datafusion::{
 };
 use futures::{Stream, StreamExt};
 use generic_error::{BoxError, GenericResult};
-use log::{debug, error};
+use logger::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{arrow_reader::RowSelection, ParquetRecordBatchStreamBuilder, ProjectionMask},

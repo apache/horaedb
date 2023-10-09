@@ -25,7 +25,7 @@ use analytic_engine::sst::{
     metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
 };
 use common_types::{projected_schema::ProjectedSchema, schema::Schema};
-use log::info;
+use logger::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
 use runtime::Runtime;
 

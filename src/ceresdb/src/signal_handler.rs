@@ -20,7 +20,7 @@ pub use self::details::wait_for_signal;
 
 #[cfg(unix)]
 mod details {
-    use log::info;
+    use logger::info;
     use signal_hook::{consts::TERM_SIGNALS, iterator::Signals};
 
     pub fn wait_for_signal() {

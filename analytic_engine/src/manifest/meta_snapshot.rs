@@ -14,7 +14,7 @@
 
 //! Meta data of manifest.
 
-use log::debug;
+use logger::debug;
 use macros::define_result;
 use snafu::{ensure, Backtrace, Snafu};
 

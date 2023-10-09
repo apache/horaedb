@@ -16,7 +16,7 @@
 
 use std::{collections::HashMap, error::Error as StdError, fmt};
 
-use log::{error, info};
+use logger::{error, info};
 use macros::define_result;
 use obkv::{
     payloads::ObTableBatchOperation, Builder, ObTableClient, QueryResultSet, RunningMode, Table,

@@ -27,8 +27,7 @@ use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::Shard
 use datafusion::execution::runtime_env::RuntimeConfig as DfRuntimeConfig;
 use df_operator::registry::{FunctionRegistry, FunctionRegistryImpl};
 use interpreters::table_manipulator::{catalog_based, meta_based};
-use log::info;
-use logger::RuntimeLevel;
+use logger::{info, RuntimeLevel};
 use meta_client::{meta_impl, types::NodeMetaInfo};
 use proxy::{
     limiter::Limiter,

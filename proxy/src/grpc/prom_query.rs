@@ -31,7 +31,7 @@ use common_types::{
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::{interpreter::Output, RecordBatchVec};
-use log::info;
+use logger::info;
 use query_frontend::{
     frontend::{Context as SqlContext, Error as FrontendError, Frontend},
     promql::ColumnNames,

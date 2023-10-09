@@ -22,7 +22,7 @@ use catalog::{
     table_operator::TableOperator,
 };
 use generic_error::BoxError;
-use log::info;
+use logger::info;
 use snafu::ResultExt;
 use table_engine::{
     engine::{CreateTableParams, TableEngineRef, TableState},

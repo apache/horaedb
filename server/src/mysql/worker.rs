@@ -16,7 +16,7 @@ use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use generic_error::BoxError;
 use interpreters::interpreter::Output;
-use log::{error, info};
+use logger::{error, info};
 use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaWriter};
 use proxy::{context::RequestContext, http::sql::Request, Proxy};
 use snafu::ResultExt;

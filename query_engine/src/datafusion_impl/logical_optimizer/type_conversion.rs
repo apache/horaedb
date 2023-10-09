@@ -32,7 +32,7 @@ use datafusion::{
     optimizer::analyzer::AnalyzerRule,
     scalar::ScalarValue,
 };
-use log::debug;
+use logger::debug;
 
 /// Optimizer that cast literal value to target column's type
 ///

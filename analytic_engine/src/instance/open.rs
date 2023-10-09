@@ -20,7 +20,7 @@ use std::{
 };
 
 use common_types::table::ShardId;
-use log::{error, info};
+use logger::{error, info};
 use object_store::ObjectStoreRef;
 use snafu::ResultExt;
 use table_engine::{engine::TableDef, table::TableId};

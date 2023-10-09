@@ -15,7 +15,7 @@
 //! Metrics util for server.
 
 use lazy_static::lazy_static;
-use log::warn;
+use logger::warn;
 use prometheus::{exponential_buckets, register_histogram_vec, Encoder, HistogramVec, TextEncoder};
 
 lazy_static! {

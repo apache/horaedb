@@ -14,7 +14,7 @@
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
-use log::{error, info};
+use logger::{error, info};
 use opensrv_mysql::AsyncMysqlIntermediary;
 use proxy::Proxy;
 use runtime::JoinHandle;

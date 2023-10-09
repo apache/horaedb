@@ -27,7 +27,7 @@ use chrono::{DateTime, Utc};
 use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
 use hash_ext::SeaHasherBuilder;
-use log::{debug, info, warn};
+use logger::{debug, info, warn};
 use lru::LruCache;
 use notifier::notifier::{ExecutionGuard, RequestNotifiers};
 use partitioned_lock::PartitionedMutex;

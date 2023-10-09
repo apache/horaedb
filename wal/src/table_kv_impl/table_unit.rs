@@ -28,7 +28,7 @@ use std::{
 use bytes_ext::BytesMut;
 use common_types::table::TableId;
 use generic_error::{BoxError, GenericError};
-use log::{debug, warn};
+use logger::{debug, warn};
 use macros::define_result;
 use runtime::{self, Runtime};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};

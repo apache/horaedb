@@ -23,7 +23,7 @@ use common_types::{
 use datafusion::parquet::basic::Compression;
 use futures::StreamExt;
 use generic_error::BoxError;
-use log::{debug, error};
+use logger::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
 use snafu::{OptionExt, ResultExt};

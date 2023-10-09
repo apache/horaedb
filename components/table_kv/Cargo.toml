@@ -26,7 +26,7 @@ workspace = true
 
 [dependencies]
 lazy_static = { workspace = true }
-log = { workspace = true }
+logger = { workspace = true }
 macros = { workspace = true }
 obkv-table-client-rs = { git = "https://github.com/oceanbase/obkv-table-client-rs.git", rev = "eb958b29df93cac5f3a08f51dd9a962540cb67f9" }
 prometheus = { workspace = true }

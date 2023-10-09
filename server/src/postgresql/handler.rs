@@ -19,7 +19,7 @@ use common_types::datum::{Datum, DatumKind};
 use datafusion::parquet::data_type::AsBytes;
 use futures::stream;
 use interpreters::interpreter::Output;
-use log::error;
+use logger::error;
 use pgwire::{
     api::{
         query::SimpleQueryHandler,

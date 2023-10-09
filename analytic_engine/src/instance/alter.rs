@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 
 use generic_error::BoxError;
-use log::info;
+use logger::info;
 use snafu::{ensure, ResultExt};
 use table_engine::table::AlterSchemaRequest;
 use wal::{kv_encoder::LogBatchEncoder, manager::WriteContext};

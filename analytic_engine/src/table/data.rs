@@ -38,7 +38,7 @@ use common_types::{
 };
 use generic_error::{GenericError, GenericResult};
 use id_allocator::IdAllocator;
-use log::{debug, info};
+use logger::{debug, info};
 use macros::define_result;
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};

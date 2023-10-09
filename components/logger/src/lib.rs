@@ -24,7 +24,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use log::{info, SetLoggerError};
+pub use log::{
+    debug as log_debug, error as log_error, info as log_info, max_level, trace as log_trace,
+    warn as log_warn, SetLoggerError,
+};
 use serde::{Deserialize, Serialize};
 pub use slog::Level;
 use slog::{slog_o, Drain, Key, OwnedKVList, Record, KV};
@@ -35,6 +38,7 @@ const ASYNC_CHAN_SIZE: usize = 102400;
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.3f";
 pub const SLOW_QUERY_TAG: &str = "slow";
 pub const FAILED_QUERY_TAG: &str = "failed";
+pub const DEFAULT_TAG: &str = "";
 
 // Thanks to tikv
 // https://github.com/tikv/tikv/blob/eaeb39a2c85684de08c48cf4b9426b3faf4defe6/components/tikv_util/src/logger/mod.rs
@@ -288,7 +292,8 @@ impl RuntimeLevel {
         // Log level of std log is not changed unless we call `log::set_max_level`
         log::set_max_level(convert_slog_level_to_log_level(level).to_level_filter());
 
-        info!(
+        // We should not print things about logger use the logger...
+        println!(
             "RuntimeLevel::set_level log level changed to {}",
             get_string_by_level(level)
         );
@@ -497,7 +502,62 @@ impl SlowTimer {
     }
 }
 
-#[macro_export]
+#[macro_export(local_inner_macros)]
+macro_rules! error {
+    (target: $target:expr, $($arg:tt)+) => {{
+        log_error!(target: $target, $($arg)+);
+    }};
+
+    ($($arg:tt)+) => {{
+        log_error!(target: logger::DEFAULT_TAG, $($arg)+);
+    }}
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! warn {
+    (target: $target:expr, $($arg:tt)+) => {{
+        log_warn!(target: $target, $($arg)+);
+    }};
+
+    ($($arg:tt)+) => {{
+        log_warn!(target: logger::DEFAULT_TAG, $($arg)+);
+    }}
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! info {
+    (target: $target:expr, $($arg:tt)+) => {{
+        log_info!(target: $target, $($arg)+);
+    }};
+
+    ($($arg:tt)+) => {{
+        log_info!(target: logger::DEFAULT_TAG, $($arg)+);
+    }}
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! debug {
+    (target: $target:expr, $($arg:tt)+) => {{
+        log_debug!(target: $target, $($arg)+);
+    }};
+
+    ($($arg:tt)+) => {{
+        log_debug!(target: logger::DEFAULT_TAG, $($arg)+);
+    }}
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! trace {
+    (target: $target:expr, $($arg:tt)+) => {{
+        log_trace!(target: $target, $($arg)+);
+    }};
+
+    ($($arg:tt)+) => {{
+        log_trace!(target: logger::DEFAULT_TAG, $($arg)+);
+    }}
+}
+
+#[macro_export(local_inner_macros)]
 macro_rules! maybe_slow_query {
     ($t:expr, $($args:tt)*) => {{
         if $t.is_slow() {
@@ -506,7 +566,7 @@ macro_rules! maybe_slow_query {
     }}
 }
 
-#[macro_export]
+#[macro_export(local_inner_macros)]
 macro_rules! failed_query {
     ($($args:tt)*) => {{
         info!(target: logger::FAILED_QUERY_TAG, $($args)*);
