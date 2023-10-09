@@ -91,7 +91,7 @@ func NewFactory(allocator id.Allocator, dispatch eventdispatch.Dispatch, storage
 		idAllocator: allocator,
 		dispatch:    dispatch,
 		storage:     storage,
-		shardPicker: NewRandomBalancedShardPicker(),
+		shardPicker: NewLeastTableShardPicker(),
 	}
 }
 

@@ -35,7 +35,7 @@ func TestCreatePartitionTable(t *testing.T) {
 		Name:       test.TestTableName0,
 	}
 
-	shardPicker := coordinator.NewRandomBalancedShardPicker()
+	shardPicker := coordinator.NewLeastTableShardPicker()
 	subTableShards, err := shardPicker.PickShards(ctx, c.GetMetadata().GetClusterSnapshot(), len(request.GetPartitionTableInfo().SubTableNames))
 
 	shardNodesWithVersion := make([]metadata.ShardNodeWithVersion, 0, len(subTableShards))

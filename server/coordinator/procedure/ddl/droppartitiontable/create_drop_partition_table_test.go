@@ -30,7 +30,7 @@ func TestCreateAndDropPartitionTable(t *testing.T) {
 
 	shardNode := c.GetMetadata().GetClusterSnapshot().Topology.ClusterView.ShardNodes[0]
 
-	shardPicker := coordinator.NewRandomBalancedShardPicker()
+	shardPicker := coordinator.NewLeastTableShardPicker()
 
 	testTableNum := 8
 	testSubTableNum := 4
