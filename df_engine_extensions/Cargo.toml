@@ -35,11 +35,13 @@ datafusion = { workspace = true }
 datafusion-proto = { workspace = true }
 futures =   { workspace = true }
 generic_error = { workspace = true }
+lazy_static = { workspace = true }
+prometheus = { workspace = true }
 prost = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
+trace_metric = { workspace = true }
 
 [dev-dependencies]
 insta = { version = "1.31.0" }
 tokio = { workspace = true }
-trace_metric = { workspace = true }

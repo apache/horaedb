@@ -96,10 +96,7 @@ impl TableScanBuilder for PartitionedTableScanBuilder {
             self.get_sub_table_idents(&self.table_name, &self.partition_info, partitions);
 
         // Build plan.
-        let plan = UnresolvedPartitionedScan {
-            sub_tables,
-            read_request: request,
-        };
+        let plan = UnresolvedPartitionedScan::new(&self.table_name, sub_tables, request);
 
         Ok(Arc::new(plan))
     }

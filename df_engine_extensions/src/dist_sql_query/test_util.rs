@@ -301,10 +301,11 @@ impl TestContext {
         &self,
         sub_tables: Vec<TableIdentifier>,
     ) -> Arc<dyn ExecutionPlan> {
-        let unresolved_scan = Arc::new(UnresolvedPartitionedScan {
+        let unresolved_scan = Arc::new(UnresolvedPartitionedScan::new(
+            "test",
             sub_tables,
-            read_request: self.request.clone(),
-        });
+            self.request.clone(),
+        ));
 
         let filter: Arc<dyn ExecutionPlan> =
             Arc::new(FilterExec::try_new(self.physical_filter.clone(), unresolved_scan).unwrap());
@@ -344,10 +345,11 @@ impl TestContext {
     //              Scan
     pub fn build_aggr_push_down_plan(&self) -> Arc<dyn ExecutionPlan> {
         // Scan
-        let unresolved_scan = Arc::new(UnresolvedPartitionedScan {
-            sub_tables: self.sub_table_groups[0].clone(),
-            read_request: self.request.clone(),
-        });
+        let unresolved_scan = Arc::new(UnresolvedPartitionedScan::new(
+            "test",
+            self.sub_table_groups[0].clone(),
+            self.request.clone(),
+        ));
 
         self.build_aggr_plan_with_input(unresolved_scan)
     }
@@ -528,7 +530,11 @@ impl MockPartitionedScanStreamBuilder {
             }
         };
 
-        PartitionedScanStream::new(stream_future, self.schema.clone())
+        PartitionedScanStream::new(
+            stream_future,
+            self.schema.clone(),
+            MetricsCollector::default(),
+        )
     }
 
     #[inline]

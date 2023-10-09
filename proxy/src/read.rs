@@ -14,7 +14,7 @@
 
 //! Contains common methods used by the read process.
 
-use std::{sync::Arc, time::Instant};
+use std::{sync::Arc, time::Duration};
 
 use ceresdbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, SqlQueryRequest, SqlQueryResponse,
@@ -24,6 +24,7 @@ use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{error, info, warn};
+use logger::{failed_query, maybe_slow_query, SlowTimer};
 use query_frontend::{
     frontend,
     frontend::{Context as SqlContext, Frontend},
@@ -31,7 +32,6 @@ use query_frontend::{
 };
 use router::endpoint::Endpoint;
 use snafu::{ensure, ResultExt};
-use time_ext::InstantExt;
 use tokio::sync::mpsc::{self, Sender};
 use tonic::{transport::Channel, IntoRequest};
 
@@ -66,10 +66,11 @@ impl Proxy {
             }
         };
 
-        Ok(SqlResponse::Local(
-            self.fetch_sql_query_output(ctx, schema, sql, enable_partition_table_access)
-                .await?,
-        ))
+        let output = self
+            .fetch_sql_query_output(ctx, schema, sql, enable_partition_table_access)
+            .await?;
+
+        Ok(SqlResponse::Local(output))
     }
 
     pub(crate) async fn dedup_handle_sql(
@@ -149,6 +150,7 @@ impl Proxy {
         Ok(SqlResponse::Local(result?))
     }
 
+    #[inline]
     pub(crate) async fn fetch_sql_query_output(
         &self,
         ctx: &Context,
@@ -157,12 +159,34 @@ impl Proxy {
         sql: &str,
         enable_partition_table_access: bool,
     ) -> Result<Output> {
+        self.fetch_sql_query_output_internal(ctx, schema, sql, enable_partition_table_access)
+            .await
+            .map_err(|e| {
+                failed_query!("Failed query, request_id:{}, sql:{}", ctx.request_id, sql);
+                e
+            })
+    }
+
+    async fn fetch_sql_query_output_internal(
+        &self,
+        ctx: &Context,
+        // TODO: maybe we can put params below input a new ReadRequest struct.
+        schema: &str,
+        sql: &str,
+        enable_partition_table_access: bool,
+    ) -> Result<Output> {
         let request_id = ctx.request_id;
-        let begin_instant = Instant::now();
-        let deadline = ctx.timeout.map(|t| begin_instant + t);
+        let slow_threshold_secs = self
+            .instance()
+            .dyn_config
+            .slow_threshold
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let slow_threshold = Duration::from_secs(slow_threshold_secs);
+        let slow_timer = SlowTimer::new(slow_threshold);
+        let deadline = ctx.timeout.map(|t| slow_timer.now() + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
-        info!("Handle sql query begin, catalog:{catalog}, schema:{schema}, deadline:{deadline:?}, ctx:{ctx:?}, sql:{sql}");
+        info!("Handle sql query begin, request_id:{request_id}, catalog:{catalog}, schema:{schema}, deadline:{deadline:?}, ctx:{ctx:?}, sql:{sql}");
 
         let instance = &self.instance;
         // TODO(yingwen): Privilege check, cannot access data of other tenant
@@ -239,8 +263,19 @@ impl Proxy {
             msg: format!("Failed to execute plan, sql:{sql}"),
         })?;
 
-        let cost = begin_instant.saturating_elapsed();
-        info!("Handle sql query successfully, catalog:{catalog}, schema:{schema}, cost:{cost:?}, ctx:{ctx:?}, sql:{sql}");
+        let cost = slow_timer.elapsed();
+        info!(
+            "Handle sql query finished, sql:{}, elapsed:{:?}, catalog:{}, schema:{}, ctx:{:?}",
+            sql, cost, catalog, schema, ctx
+        );
+
+        maybe_slow_query!(
+            slow_timer,
+            "Slow query, request_id:{}, elapsed:{:?}, sql:{}",
+            ctx.request_id,
+            cost,
+            sql,
+        );
 
         match &output {
             Output::AffectedRows(_) => Ok(output),

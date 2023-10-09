@@ -33,6 +33,7 @@ use analytic_engine::{
         file::{FilePurgeQueue, Level},
         manager::FileId,
         meta_data::SstMetaReader,
+        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
         writer::{MetaData, RecordBatchStream},
     },
     table::sst_util,
@@ -120,6 +121,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
         num_streams_to_prefetch: 2,
     };
     let sst_read_options = SstReadOptions {
+        maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench")),
         frequency: ReadFrequency::Once,
         num_rows_per_row_group: config.num_rows_per_row_group,
         projected_schema,
@@ -232,6 +234,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     let store_picker: ObjectStorePickerRef = Arc::new(store);
     let projected_schema = ProjectedSchema::no_projection(schema.clone());
     let sst_read_options = SstReadOptions {
+        maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench")),
         frequency: ReadFrequency::Once,
         num_rows_per_row_group: config.num_rows_per_row_group,
         projected_schema: projected_schema.clone(),

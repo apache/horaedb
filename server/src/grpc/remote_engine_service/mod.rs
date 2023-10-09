@@ -123,9 +123,9 @@ impl MetricCollector for StreamReadMetricCollector {
     }
 }
 
-struct ExecutePlanMetricCollect(Instant);
+struct ExecutePlanMetricCollector(Instant);
 
-impl MetricCollector for ExecutePlanMetricCollect {
+impl MetricCollector for ExecutePlanMetricCollector {
     fn collect(self) {
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .execute_physical_plan
@@ -578,8 +578,8 @@ impl RemoteEngineServiceImpl {
     async fn execute_physical_plan_internal(
         &self,
         request: Request<ExecutePlanRequest>,
-    ) -> Result<StreamWithMetric<ExecutePlanMetricCollect>> {
-        let metric = ExecutePlanMetricCollect(Instant::now());
+    ) -> Result<StreamWithMetric<ExecutePlanMetricCollector>> {
+        let metric = ExecutePlanMetricCollector(Instant::now());
         let request = request.into_inner();
         let query_engine = self.instance.query_engine.clone();
         let (ctx, encoded_plan) = extract_plan_from_req(request)?;
@@ -608,8 +608,8 @@ impl RemoteEngineServiceImpl {
         &self,
         query_dedup: QueryDedup,
         request: Request<ExecutePlanRequest>,
-    ) -> Result<StreamWithMetric<ExecutePlanMetricCollect>> {
-        let metric = ExecutePlanMetricCollect(Instant::now());
+    ) -> Result<StreamWithMetric<ExecutePlanMetricCollector>> {
+        let metric = ExecutePlanMetricCollector(Instant::now());
         let request = request.into_inner();
 
         let query_engine = self.instance.query_engine.clone();
@@ -721,6 +721,15 @@ impl RemoteEngineService for RemoteEngineServiceImpl {
         &self,
         request: Request<ExecutePlanRequest>,
     ) -> std::result::Result<Response<Self::ExecutePhysicalPlanStream>, Status> {
+        if let Some(table) = &request.get_ref().table {
+            self.hotspot_recorder
+                .send_msg_or_log(
+                    "inc_remote_plan_reqs",
+                    Message::Query(format_hot_key(&table.schema, &table.table)),
+                )
+                .await
+        }
+
         let record_stream_result = match self.query_dedup.clone() {
             Some(query_dedup) => {
                 self.dedup_execute_physical_plan_internal(query_dedup, request)

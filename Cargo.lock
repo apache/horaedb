@@ -1328,9 +1328,9 @@ dependencies = [
 
 [[package]]
 name = "ceresdbproto"
-version = "1.0.14"
+version = "1.0.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "393f9c4d1afbe096c772e59b169e7932cda7a9da8d2b5c8ca5a8aa40b219569d"
+checksum = "39fca0a20131625263de118b8d09be05ffcc0d0ed6392f75d29e277f36b0d32c"
 dependencies = [
  "prost 0.11.8",
  "protoc-bin-vendored",
@@ -2375,7 +2375,9 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "insta",
- "prost 0.11.8",
+ "lazy_static",
+ "prometheus 0.12.0",
+ "prost",
  "snafu 0.6.10",
  "table_engine",
  "tokio",
@@ -4477,7 +4479,7 @@ dependencies = [
 [[package]]
 name = "obkv-table-client-rs"
 version = "0.1.0"
-source = "git+https://github.com/oceanbase/obkv-table-client-rs.git?rev=a11cc604eb6345095ada4a8155ec22a0d758c752#a11cc604eb6345095ada4a8155ec22a0d758c752"
+source = "git+https://github.com/oceanbase/obkv-table-client-rs.git?rev=eb958b29df93cac5f3a08f51dd9a962540cb67f9#eb958b29df93cac5f3a08f51dd9a962540cb67f9"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -5360,6 +5362,7 @@ dependencies = [
  "json_pretty",
  "lazy_static",
  "log",
+ "logger",
  "macros",
  "meta_client",
  "paste 1.0.12",
@@ -6834,14 +6837,17 @@ dependencies = [
  "generic_error",
  "hash_ext",
  "itertools 0.10.5",
+ "lazy_static",
  "log",
  "macros",
  "prost 0.11.8",
  "rand 0.7.3",
+ "regex",
  "runtime",
  "serde",
  "smallvec",
  "snafu 0.6.10",
+ "time_ext",
  "tokio",
  "trace_metric",
 ]
