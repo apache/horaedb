@@ -247,6 +247,7 @@ pub struct WriteBatchResult {
     pub result: GenericResult<u64>,
 }
 
+#[derive(Debug)]
 pub struct AlterTableSchemaRequest {
     pub table_ident: TableIdentifier,
     pub table_schema: Schema,
@@ -285,6 +286,7 @@ impl From<AlterTableSchemaRequest> for ceresdbproto::remote_engine::AlterTableSc
     }
 }
 
+#[derive(Debug)]
 pub struct AlterTableOptionsRequest {
     pub table_ident: TableIdentifier,
     pub options: HashMap<String, String>,

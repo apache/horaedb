@@ -168,7 +168,7 @@ impl RemoteEngine for RemoteEngineImpl {
             .alter_table_schema(request)
             .await
             .box_err()
-            .context(remote::Write)
+            .context(remote::AlterSchema)
     }
 
     async fn alter_table_options(&self, request: AlterTableOptionsRequest) -> remote::Result<()> {
@@ -176,7 +176,7 @@ impl RemoteEngine for RemoteEngineImpl {
             .alter_table_options(request)
             .await
             .box_err()
-            .context(remote::Write)
+            .context(remote::AlterOptions)
     }
 
     async fn get_table_info(&self, request: GetTableInfoRequest) -> remote::Result<TableInfo> {

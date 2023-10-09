@@ -32,7 +32,7 @@ use ceresdbproto::{
 use common_types::{record_batch::RecordBatch, schema::RecordSchema};
 use futures::{Stream, StreamExt};
 use generic_error::BoxError;
-use logger::info;
+use logger::{error, info};
 use router::RouterRef;
 use runtime::Runtime;
 use snafu::{ensure, OptionExt, ResultExt};
@@ -278,8 +278,13 @@ impl Client {
                 }
             });
 
-            if resp.is_err() {
-                result = resp;
+            if let Err(e) = resp {
+                error!(
+                    "Failed to alter schema to remote engine, table:{:?}, err:{}",
+                    table_ident, e
+                );
+
+                result = Err(e);
 
                 // If occurred error, we simply evict the corresponding channel now.
                 // TODO: evict according to the type of error.
@@ -325,8 +330,13 @@ impl Client {
                 }
             });
 
-            if resp.is_err() {
-                result = resp;
+            if let Err(e) = resp {
+                error!(
+                    "Failed to alter options to remote engine, table:{:?}, err:{}",
+                    table_ident, e
+                );
+
+                result = Err(e);
 
                 // If occurred error, we simply evict the corresponding channel now.
                 // TODO: evict according to the type of error.
