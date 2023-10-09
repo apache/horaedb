@@ -1040,8 +1040,6 @@ impl Builder {
         self.may_alloc_column_id(&mut column);
         self.validate_column(&column, true)?;
 
-        // ensure!(!column.is_nullable, NullKeyColumn { name: column.name });
-
         // FIXME(xikai): it seems not reasonable to decide the timestamp column in this
         // way.
         let is_timestamp = DatumKind::Timestamp == column.data_type;
@@ -1541,7 +1539,11 @@ mod tests {
         assert!(builder.build().is_err());
     }
 
+    // Currently we allow null key column, maybe we can rename it to sorted column.
+    // Since we primary key in ceresdb isn't same with MySQL, and it only served for
+    // sort.
     #[test]
+    #[ignore]
     fn test_null_key() {
         assert!(Builder::new()
             .add_key_column(

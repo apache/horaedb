@@ -287,6 +287,9 @@ impl ProjectedSchemaInner {
     // TODO(yingwen): We can fill missing not null column with default value instead
     //  of returning error.
     fn try_project_with_key(&self, source_schema: &Schema) -> Result<RowProjector> {
+        // When do primary key sample, this will assert will fail.
+        // TODO: maybe we can add a flag to only skip this assert when sampling.
+        //
         // debug_assert_eq!(
         //     self.schema_with_key.key_columns(),
         //     source_schema.key_columns()
