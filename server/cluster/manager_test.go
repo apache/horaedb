@@ -91,7 +91,7 @@ func testGetNodeAndShard(ctx context.Context, re *require.Assertions, manager cl
 	c, err := manager.GetCluster(ctx, clusterName)
 	re.NoError(err)
 
-	nodes, err := manager.ListRegisterNodes(ctx, cluster1)
+	nodes, err := manager.ListRegisteredNodes(ctx, cluster1)
 	re.NoError(err)
 	re.Equal(2, len(nodes))
 

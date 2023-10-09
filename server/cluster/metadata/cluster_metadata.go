@@ -375,6 +375,10 @@ func (c *ClusterMetadata) CreateTable(ctx context.Context, request CreateTableRe
 	return ret, nil
 }
 
+func (c *ClusterMetadata) GetShards() []storage.ShardID {
+	return c.topologyManager.GetShards()
+}
+
 func (c *ClusterMetadata) GetShardNodesByShardID(id storage.ShardID) ([]storage.ShardNode, error) {
 	return c.topologyManager.GetShardNodesByID(id)
 }

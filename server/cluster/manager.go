@@ -44,7 +44,7 @@ type Manager interface {
 
 	RegisterNode(ctx context.Context, clusterName string, registeredNode metadata.RegisteredNode) error
 	GetRegisteredNode(ctx context.Context, clusterName string, node string) (metadata.RegisteredNode, error)
-	ListRegisterNodes(ctx context.Context, clusterName string) ([]metadata.RegisteredNode, error)
+	ListRegisteredNodes(ctx context.Context, clusterName string) ([]metadata.RegisteredNode, error)
 }
 
 type managerImpl struct {
@@ -322,7 +322,7 @@ func (m *managerImpl) GetRegisteredNode(_ context.Context, clusterName string, n
 	return registeredNode, nil
 }
 
-func (m *managerImpl) ListRegisterNodes(_ context.Context, clusterName string) ([]metadata.RegisteredNode, error) {
+func (m *managerImpl) ListRegisteredNodes(_ context.Context, clusterName string) ([]metadata.RegisteredNode, error) {
 	cluster, err := m.getCluster(clusterName)
 	if err != nil {
 		return []metadata.RegisteredNode{}, errors.WithMessage(err, "get cluster")

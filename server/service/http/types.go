@@ -69,7 +69,7 @@ type DiagnoseShardStatus struct {
 
 type DiagnoseShardResult struct {
 	// shardID -> nodeName
-	UnregisteredShards map[storage.ShardID]string              `json:"unregistered_shards"`
+	UnregisteredShards []storage.ShardID                       `json:"unregistered_shards"`
 	UnreadyShards      map[storage.ShardID]DiagnoseShardStatus `json:"unready_shards"`
 }
 

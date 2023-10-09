@@ -555,44 +555,38 @@ func (a *API) diagnoseShards(req *http.Request) apiFuncResult {
 		return errResult(ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", clusterName, err.Error()))
 	}
 
-	registerNodes, err := a.clusterManager.ListRegisterNodes(ctx, clusterName)
+	registeredNodes, err := a.clusterManager.ListRegisteredNodes(ctx, clusterName)
 	if err != nil {
-		log.Error("get cluster failed", zap.Error(err))
 		return errResult(ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", clusterName, err.Error()))
 	}
 
-	expectedShardNodes := c.GetShardNodes()
-	// shardName -> shardInfo
-	registerNodesMap := make(map[string][]metadata.ShardInfo, len(registerNodes))
-	for _, node := range registerNodes {
-		registerNodesMap[node.Node.Name] = node.ShardInfos
-	}
-
 	ret := DiagnoseShardResult{
-		UnregisteredShards: make(map[storage.ShardID]string),
+		UnregisteredShards: []storage.ShardID{},
 		UnreadyShards:      make(map[storage.ShardID]DiagnoseShardStatus),
 	}
-	// Check shard not register and not ready.
-	for _, shardNode := range expectedShardNodes.ShardNodes {
-		shardID := shardNode.ID
-		nodeName := shardNode.NodeName
-		shardInfo, ok := registerNodesMap[nodeName]
-		if !ok {
-			ret.UnregisteredShards[shardID] = nodeName
-			continue
-		}
-		for _, info := range shardInfo {
-			if info.ID == shardID {
-				if info.Status != storage.ShardStatusReady {
-					ret.UnreadyShards[shardID] = DiagnoseShardStatus{
-						NodeName: nodeName,
-						Status:   storage.ConvertShardStatusToString(info.Status),
-					}
+	shards := c.GetShards()
+
+	registeredShards := make(map[storage.ShardID]struct{}, len(shards))
+	// Check if there are unready shards.
+	for _, node := range registeredNodes {
+		for _, shardInfo := range node.ShardInfos {
+			if shardInfo.Status != storage.ShardStatusReady {
+				ret.UnreadyShards[shardInfo.ID] = DiagnoseShardStatus{
+					NodeName: node.Node.Name,
+					Status:   storage.ConvertShardStatusToString(shardInfo.Status),
 				}
-				break
 			}
+			registeredShards[shardInfo.ID] = struct{}{}
 		}
 	}
+
+	// Check if there are unregistered shards.
+	for _, shard := range shards {
+		if _, ok := registeredShards[shard]; !ok {
+			ret.UnregisteredShards = append(ret.UnregisteredShards, shard)
+		}
+	}
+
 	return okResult(ret)
 }
 

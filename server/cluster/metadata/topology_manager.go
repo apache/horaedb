@@ -29,6 +29,8 @@ type TopologyManager interface {
 	RemoveTable(ctx context.Context, shardID storage.ShardID, tableIDs []storage.TableID) (ShardVersionUpdate, error)
 	// EvictTable evict table from cluster topology.
 	EvictTable(ctx context.Context, tableID storage.TableID) ([]ShardVersionUpdate, error)
+	// GetShards get all shards in cluster topology.
+	GetShards() []storage.ShardID
 	// GetShardNodesByID get shardNodes with shardID.
 	GetShardNodesByID(shardID storage.ShardID) ([]storage.ShardNode, error)
 	// GetShardNodesByTableIDs get shardNodes with tableIDs.
@@ -343,6 +345,18 @@ func (m *TopologyManagerImpl) EvictTable(ctx context.Context, tableID storage.Ta
 	}
 
 	return result, nil
+}
+
+func (m *TopologyManagerImpl) GetShards() []storage.ShardID {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+
+	shards := make([]storage.ShardID, 0, len(m.shardViews))
+	for _, shardView := range m.shardViews {
+		shards = append(shards, shardView.ShardID)
+	}
+
+	return shards
 }
 
 func (m *TopologyManagerImpl) GetShardNodesByID(shardID storage.ShardID) ([]storage.ShardNode, error) {
