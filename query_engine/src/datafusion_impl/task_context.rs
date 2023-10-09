@@ -36,7 +36,6 @@ use df_engine_extensions::dist_sql_query::{
 };
 use futures::future::BoxFuture;
 use generic_error::BoxError;
-use prost::Message;
 use snafu::ResultExt;
 use table_engine::{
     provider::{CeresdbOptions, ScanTable},
@@ -101,7 +100,8 @@ impl Preprocessor {
 
     async fn preprocess_remote_plan(&self, encoded_plan: &[u8]) -> Result<Arc<dyn ExecutionPlan>> {
         // Decode to datafusion physical plan.
-        let protobuf = protobuf::PhysicalPlanNode::decode(encoded_plan)
+
+        let protobuf = protobuf::PhysicalPlanNode::try_decode(encoded_plan)
             .box_err()
             .with_context(|| ExecutorWithCause {
                 msg: Some("failed to decode plan".to_string()),

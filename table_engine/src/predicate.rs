@@ -324,6 +324,8 @@ impl<'a> TimeRangeExtractor<'a> {
             | Operator::BitwiseXor
             | Operator::BitwiseShiftRight
             | Operator::BitwiseShiftLeft
+            | Operator::AtArrow
+            | Operator::ArrowAt
             | Operator::StringConcat => TimeRange::min_to_max(),
         }
     }

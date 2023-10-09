@@ -16,9 +16,10 @@ use std::{ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use datafusion::parquet::arrow::ParquetRecordBatchStreamBuilder;
 use generic_error::GenericResult;
 use parquet::{
-    arrow::{arrow_reader::ArrowReaderOptions, ParquetRecordBatchStreamBuilder},
+    arrow::arrow_reader::ArrowReaderOptions,
     errors::{ParquetError, Result},
     file::{footer, metadata::ParquetMetaData},
 };

@@ -27,7 +27,7 @@ use datafusion::{
     logical_expr::{
         expr::{Expr, InList},
         logical_plan::{Filter, LogicalPlan, TableScan},
-        utils, Between, BinaryExpr, ExprSchemable, Operator,
+        Between, BinaryExpr, ExprSchemable, Operator,
     },
     optimizer::analyzer::AnalyzerRule,
     scalar::ScalarValue,
@@ -116,12 +116,13 @@ impl AnalyzerRule for TypeConversion {
                     .map(|e| e.rewrite(&mut rewriter))
                     .collect::<Result<Vec<_>>>()?;
 
-                Ok(utils::from_plan(&plan, &expr, &new_inputs)?)
+                Ok(plan.with_new_exprs(expr, &new_inputs)?)
             }
             LogicalPlan::Subquery(_)
             | LogicalPlan::Statement { .. }
             | LogicalPlan::SubqueryAlias(_)
             | LogicalPlan::Unnest(_)
+            | LogicalPlan::Copy(_)
             | LogicalPlan::EmptyRelation { .. } => Ok(plan.clone()),
         }
     }
@@ -331,13 +332,17 @@ fn naive_datetime_to_timestamp(s: &str, datetime: NaiveDateTime) -> Result<i64, 
         LocalResult::None => Err(ArrowError::CastError(format!(
             "Error parsing '{s}' as timestamp: local time representation is invalid"
         ))),
-        LocalResult::Single(local_datetime) => {
-            Ok(local_datetime.with_timezone(&Utc).timestamp_nanos() / 1_000_000)
-        }
+        LocalResult::Single(local_datetime) => Ok(local_datetime
+            .with_timezone(&Utc)
+            .timestamp_nanos_opt()
+            .unwrap()
+            / 1_000_000),
 
-        LocalResult::Ambiguous(local_datetime, _) => {
-            Ok(local_datetime.with_timezone(&Utc).timestamp_nanos() / 1_000_000)
-        }
+        LocalResult::Ambiguous(local_datetime, _) => Ok(local_datetime
+            .with_timezone(&Utc)
+            .timestamp_nanos_opt()
+            .unwrap()
+            / 1_000_000),
     }
 }
 

@@ -90,7 +90,7 @@ version = "1.2.6-alpha"
 dependencies = [
  "arc-swap 1.6.0",
  "arena",
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "async-stream",
  "async-trait",
  "atomic_enum",
@@ -117,7 +117,7 @@ dependencies = [
  "parquet_ext",
  "pin-project-lite",
  "prometheus 0.12.0",
- "prost",
+ "prost 0.11.8",
  "rand 0.7.3",
  "remote_engine_client",
  "router",
@@ -235,24 +235,24 @@ dependencies = [
 
 [[package]]
 name = "arrow"
-version = "43.0.0"
+version = "47.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2feeebd77b34b0bc88f224e06d01c27da4733997cc4789a4e056196656cdc59a"
+checksum = "7fab9e93ba8ce88a37d5a30dce4b9913b75413dc1ac56cb5d72e5a840543f829"
 dependencies = [
  "ahash 0.8.3",
- "arrow-arith 43.0.0",
- "arrow-array 43.0.0",
- "arrow-buffer 43.0.0",
- "arrow-cast 43.0.0",
- "arrow-csv 43.0.0",
- "arrow-data 43.0.0",
- "arrow-ipc 43.0.0",
- "arrow-json 43.0.0",
- "arrow-ord 43.0.0",
- "arrow-row 43.0.0",
- "arrow-schema 43.0.0",
- "arrow-select 43.0.0",
- "arrow-string 43.0.0",
+ "arrow-arith 47.0.0",
+ "arrow-array 47.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-cast 47.0.0",
+ "arrow-csv 47.0.0",
+ "arrow-data 47.0.0",
+ "arrow-ipc 47.0.0",
+ "arrow-json 47.0.0",
+ "arrow-ord 47.0.0",
+ "arrow-row 47.0.0",
+ "arrow-schema 47.0.0",
+ "arrow-select 47.0.0",
+ "arrow-string 47.0.0",
 ]
 
 [[package]]
@@ -272,14 +272,14 @@ dependencies = [
 
 [[package]]
 name = "arrow-arith"
-version = "43.0.0"
+version = "47.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7173f5dc49c0ecb5135f52565af33afd3fdc9a12d13bd6f9973e8b96305e4b2e"
+checksum = "bc1d4e368e87ad9ee64f28b9577a3834ce10fe2703a26b28417d485bbbdff956"
 dependencies = [
- "arrow-array 43.0.0",
- "arrow-buffer 43.0.0",
- "arrow-data 43.0.0",
- "arrow-schema 43.0.0",
+ "arrow-array 47.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-data 47.0.0",
+ "arrow-schema 47.0.0",
  "chrono",
  "half 2.2.1",
  "num",
@@ -303,14 +303,14 @@ dependencies = [
 
 [[package]]
 name = "arrow-array"
-version = "43.0.0"
+version = "47.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63d7ea725f7d1f8bb2cffc53ef538557e95fc802e217d5be25122d402e22f3d0"
+checksum = "d02efa7253ede102d45a4e802a129e83bcc3f49884cab795b1ac223918e4318d"
 dependencies = [
  "ahash 0.8.3",
- "arrow-buffer 43.0.0",
- "arrow-data 43.0.0",
- "arrow-schema 43.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-data 47.0.0",
+ "arrow-schema 47.0.0",
  "chrono",
  "chrono-tz",
  "half 2.2.1",
@@ -330,10 +330,11 @@ dependencies = [
 
 [[package]]
 name = "arrow-buffer"
-version = "43.0.0"
+version = "47.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdbe439e077f484e5000b9e1d47b5e4c0d15f2b311a8f5bcc682553d5d67a722"
+checksum = "fda119225204141138cb0541c692fbfef0e875ba01bfdeaed09e9d354f9d6195"
 dependencies = [
+ "bytes",
  "half 2.2.1",
  "num",
 ]
@@ -356,15 +357,15 @@ dependencies = [
 
 [[package]]
 name = "arrow-cast"
-version = "43.0.0"
+version = "47.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93913cc14875770aa1eef5e310765e855effa352c094cb1c7c00607d0f37b4e1"
+checksum = "1d825d51b9968868d50bc5af92388754056796dbc62a4e25307d588a1fc84dee"
 dependencies = [
- "arrow-array 43.0.0",
- "arrow-buffer 43.0.0",
- "arrow-data 43.0.0",
- "arrow-schema 43.0.0",
- "arrow-select 43.0.0",
+ "arrow-array 47.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-data 47.0.0",
+ "arrow-schema 47.0.0",
+ "arrow-select 47.0.0",
  "chrono",
  "comfy-table 7.0.1",
  "half 2.2.1",
@@ -393,15 +394,15 @@ dependencies = [
 
 [[package]]
 name = "arrow-csv"
-version = "43.0.0"
+version = "47.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef55b67c55ed877e6fe7b923121c19dae5e31ca70249ea2779a17b58fb0fbd9a"
+checksum = "43ef855dc6b126dc197f43e061d4de46b9d4c033aa51c2587657f7508242cef1"
 dependencies = [
- "arrow-array 43.0.0",
- "arrow-buffer 43.0.0",
- "arrow-cast 43.0.0",
- "arrow-data 43.0.0",
- "arrow-schema 43.0.0",
+ "arrow-array 47.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-cast 47.0.0",
+ "arrow-data 47.0.0",
+ "arrow-schema 47.0.0",
  "chrono",
  "csv",
  "csv-core",
@@ -424,12 +425,12 @@ dependencies = [
 
 [[package]]
 name = "arrow-data"
-version = "43.0.0"
+version = "47.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4f4f4a3c54614126a71ab91f6631c9743eb4643d6e9318b74191da9dc6e028b"
+checksum = "475a4c3699c8b4095ca61cecf15da6f67841847a5f5aac983ccb9a377d02f73a"
 dependencies = [
- "arrow-buffer 43.0.0",
- "arrow-schema 43.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-schema 47.0.0",
  "half 2.2.1",
  "num",
 ]
@@ -450,15 +451,15 @@ dependencies = [
 
 [[package]]
 name = "arrow-ipc"
-version = "43.0.0"
+version = "47.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d41a3659f984a524ef1c2981d43747b24d8eec78e2425267fcd0ef34ce71cd18"
+checksum = "1248005c8ac549f869b7a840859d942bf62471479c1a2d82659d453eebcd166a"
 dependencies = [
- "arrow-array 43.0.0",
- "arrow-buffer 43.0.0",
- "arrow-cast 43.0.0",
- "arrow-data 43.0.0",
- "arrow-schema 43.0.0",
+ "arrow-array 47.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-cast 47.0.0",
+ "arrow-data 47.0.0",
+ "arrow-schema 47.0.0",
  "flatbuffers",
 ]
 
@@ -484,15 +485,15 @@ dependencies = [
 
 [[package]]
 name = "arrow-json"
-version = "43.0.0"
+version = "47.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10b95faa95a378f56ef32d84cc0104ea998c39ef7cd1faaa6b4cebf8ea92846d"
+checksum = "f03d7e3b04dd688ccec354fe449aed56b831679f03e44ee2c1cfc4045067b69c"
 dependencies = [
- "arrow-array 43.0.0",
- "arrow-buffer 43.0.0",
- "arrow-cast 43.0.0",
- "arrow-data 43.0.0",
- "arrow-schema 43.0.0",
+ "arrow-array 47.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-cast 47.0.0",
+ "arrow-data 47.0.0",
+ "arrow-schema 47.0.0",
  "chrono",
  "half 2.2.1",
  "indexmap 2.0.0",
@@ -519,15 +520,15 @@ dependencies = [
 
 [[package]]
 name = "arrow-ord"
-version = "43.0.0"
+version = "47.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c68549a4284d9f8b39586afb8d5ff8158b8f0286353a4844deb1d11cf1ba1f26"
+checksum = "03b87aa408ea6a6300e49eb2eba0c032c88ed9dc19e0a9948489c55efdca71f4"
 dependencies = [
- "arrow-array 43.0.0",
- "arrow-buffer 43.0.0",
- "arrow-data 43.0.0",
- "arrow-schema 43.0.0",
- "arrow-select 43.0.0",
+ "arrow-array 47.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-data 47.0.0",
+ "arrow-schema 47.0.0",
+ "arrow-select 47.0.0",
  "half 2.2.1",
  "num",
 ]
@@ -549,15 +550,15 @@ dependencies = [
 
 [[package]]
 name = "arrow-row"
-version = "43.0.0"
+version = "47.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a75a4a757afc301ce010adadff54d79d66140c4282ed3de565f6ccb716a5cf3"
+checksum = "114a348ab581e7c9b6908fcab23cb39ff9f060eb19e72b13f8fb8eaa37f65d22"
 dependencies = [
  "ahash 0.8.3",
- "arrow-array 43.0.0",
- "arrow-buffer 43.0.0",
- "arrow-data 43.0.0",
- "arrow-schema 43.0.0",
+ "arrow-array 47.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-data 47.0.0",
+ "arrow-schema 47.0.0",
  "half 2.2.1",
  "hashbrown 0.14.0",
 ]
@@ -570,9 +571,9 @@ checksum = "bc85923d8d6662cc66ac6602c7d1876872e671002d60993dfdf492a6badeae92"
 
 [[package]]
 name = "arrow-schema"
-version = "43.0.0"
+version = "47.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bebcb57eef570b15afbcf2d07d813eb476fde9f6dd69c81004d6476c197e87e"
+checksum = "5d1d179c117b158853e0101bfbed5615e86fe97ee356b4af901f1c5001e1ce4b"
 
 [[package]]
 name = "arrow-select"
@@ -589,14 +590,15 @@ dependencies = [
 
 [[package]]
 name = "arrow-select"
-version = "43.0.0"
+version = "47.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6e2943fa433a48921e914417173816af64eef61c0a3d448280e6c40a62df221"
+checksum = "d5c71e003202e67e9db139e5278c79f5520bb79922261dfe140e4637ee8b6108"
 dependencies = [
- "arrow-array 43.0.0",
- "arrow-buffer 43.0.0",
- "arrow-data 43.0.0",
- "arrow-schema 43.0.0",
+ "ahash 0.8.3",
+ "arrow-array 47.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-data 47.0.0",
+ "arrow-schema 47.0.0",
  "num",
 ]
 
@@ -617,15 +619,15 @@ dependencies = [
 
 [[package]]
 name = "arrow-string"
-version = "43.0.0"
+version = "47.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbc92ed638851774f6d7af1ad900b92bc1486746497511868b4298fcbcfa35af"
+checksum = "c4cebbb282d6b9244895f4a9a912e55e57bce112554c7fa91fcec5459cb421ab"
 dependencies = [
- "arrow-array 43.0.0",
- "arrow-buffer 43.0.0",
- "arrow-data 43.0.0",
- "arrow-schema 43.0.0",
- "arrow-select 43.0.0",
+ "arrow-array 47.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-data 47.0.0",
+ "arrow-schema 47.0.0",
+ "arrow-select 47.0.0",
  "num",
  "regex",
  "regex-syntax 0.7.1",
@@ -635,7 +637,7 @@ dependencies = [
 name = "arrow_ext"
 version = "1.2.6-alpha"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "serde",
  "snafu 0.6.10",
  "zstd",
@@ -644,10 +646,10 @@ dependencies = [
 [[package]]
 name = "arrow_util"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=acbd3ad7651f2deb74857155bea892f88926da57#acbd3ad7651f2deb74857155bea892f88926da57"
+source = "git+https://github.com/CeresDB/influxql.git?rev=2d8060c09d7bc6ceefc7fd41492821f179ae40a8#2d8060c09d7bc6ceefc7fd41492821f179ae40a8"
 dependencies = [
  "ahash 0.8.3",
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "chrono",
  "comfy-table 6.1.4",
  "hashbrown 0.13.2",
@@ -740,9 +742,9 @@ dependencies = [
 
 [[package]]
 name = "async-trait"
-version = "0.1.72"
+version = "0.1.73"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc6dde6e4ed435a4c1ee4e73592f5ba9da2151af10076cc04858746af9352d09"
+checksum = "bc00ceb34980c03614e35a3a4e218276a0a824e911d07651cd0d858a51e8c0f0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -871,7 +873,7 @@ version = "1.2.6-alpha"
 dependencies = [
  "analytic_engine",
  "arena",
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "base64 0.13.1",
  "bytes_ext",
  "clap 3.2.23",
@@ -1330,7 +1332,7 @@ version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "393f9c4d1afbe096c772e59b169e7932cda7a9da8d2b5c8ca5a8aa40b219569d"
 dependencies = [
- "prost",
+ "prost 0.11.8",
  "protoc-bin-vendored",
  "tonic 0.8.3",
  "tonic-build",
@@ -1360,18 +1362,17 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "chrono"
-version = "0.4.26"
+version = "0.4.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec837a71355b28f6556dbd569b37b3f363091c0bd4b2e735674521b4c5fd9bc5"
+checksum = "7f2c685bad3eb3d45a01354cedb7d5faa66194d1d58ba6e267a8de788f79db38"
 dependencies = [
  "android-tzdata",
  "iana-time-zone",
  "js-sys",
  "num-traits",
  "serde",
- "time 0.1.43",
  "wasm-bindgen",
- "winapi",
+ "windows-targets 0.48.1",
 ]
 
 [[package]]
@@ -1519,7 +1520,7 @@ dependencies = [
  "log",
  "macros",
  "meta_client",
- "prost",
+ "prost 0.11.8",
  "runtime",
  "serde",
  "serde_json",
@@ -1586,7 +1587,7 @@ dependencies = [
 name = "common_types"
 version = "1.2.6-alpha"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "arrow_ext",
  "bytes_ext",
  "ceresdbproto",
@@ -1595,7 +1596,7 @@ dependencies = [
  "hash_ext",
  "macros",
  "paste 1.0.12",
- "prost",
+ "prost 0.11.8",
  "rand 0.7.3",
  "seahash",
  "serde",
@@ -1631,7 +1632,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2895653b4d9f1538a83970077cb01dfc77a4810524e51a110944688e916b18e"
 dependencies = [
- "prost",
+ "prost 0.11.8",
  "prost-types",
  "tonic 0.9.2",
  "tracing-core",
@@ -2069,13 +2070,13 @@ dependencies = [
 
 [[package]]
 name = "datafusion"
-version = "27.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=9c3a537e25e5ab3299922864034f67fb2f79805d#9c3a537e25e5ab3299922864034f67fb2f79805d"
+version = "32.0.0"
+source = "git+https://github.com/apache/arrow-datafusion.git?rev=219cfb4ccb36045c73409127db51377d66ca0f33#219cfb4ccb36045c73409127db51377d66ca0f33"
 dependencies = [
  "ahash 0.8.3",
- "arrow 43.0.0",
- "arrow-array 43.0.0",
- "arrow-schema 43.0.0",
+ "arrow 47.0.0",
+ "arrow-array 47.0.0",
+ "arrow-schema 47.0.0",
  "async-compression",
  "async-trait",
  "bytes",
@@ -2087,24 +2088,23 @@ dependencies = [
  "datafusion-expr",
  "datafusion-optimizer",
  "datafusion-physical-expr",
- "datafusion-row",
+ "datafusion-physical-plan",
  "datafusion-sql",
  "flate2",
  "futures 0.3.28",
  "glob",
+ "half 2.2.1",
  "hashbrown 0.14.0",
  "indexmap 2.0.0",
  "itertools 0.11.0",
- "lazy_static",
  "log",
  "num_cpus",
- "object_store 0.6.1",
+ "object_store 0.7.1",
  "parking_lot 0.12.1",
  "parquet",
  "percent-encoding",
  "pin-project-lite",
  "rand 0.8.5",
- "smallvec",
  "sqlparser",
  "tempfile",
  "tokio",
@@ -2117,29 +2117,36 @@ dependencies = [
 
 [[package]]
 name = "datafusion-common"
-version = "27.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=9c3a537e25e5ab3299922864034f67fb2f79805d#9c3a537e25e5ab3299922864034f67fb2f79805d"
+version = "32.0.0"
+source = "git+https://github.com/apache/arrow-datafusion.git?rev=219cfb4ccb36045c73409127db51377d66ca0f33#219cfb4ccb36045c73409127db51377d66ca0f33"
 dependencies = [
- "arrow 43.0.0",
- "arrow-array 43.0.0",
+ "ahash 0.8.3",
+ "arrow 47.0.0",
+ "arrow-array 47.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-schema 47.0.0",
  "chrono",
+ "half 2.2.1",
  "num_cpus",
- "object_store 0.6.1",
+ "object_store 0.7.1",
  "parquet",
  "sqlparser",
 ]
 
 [[package]]
 name = "datafusion-execution"
-version = "27.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=9c3a537e25e5ab3299922864034f67fb2f79805d#9c3a537e25e5ab3299922864034f67fb2f79805d"
+version = "32.0.0"
+source = "git+https://github.com/apache/arrow-datafusion.git?rev=219cfb4ccb36045c73409127db51377d66ca0f33#219cfb4ccb36045c73409127db51377d66ca0f33"
 dependencies = [
+ "arrow 47.0.0",
+ "chrono",
  "dashmap 5.4.0",
  "datafusion-common",
  "datafusion-expr",
+ "futures 0.3.28",
  "hashbrown 0.14.0",
  "log",
- "object_store 0.6.1",
+ "object_store 0.7.1",
  "parking_lot 0.12.1",
  "rand 0.8.5",
  "tempfile",
@@ -2148,13 +2155,13 @@ dependencies = [
 
 [[package]]
 name = "datafusion-expr"
-version = "27.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=9c3a537e25e5ab3299922864034f67fb2f79805d#9c3a537e25e5ab3299922864034f67fb2f79805d"
+version = "32.0.0"
+source = "git+https://github.com/apache/arrow-datafusion.git?rev=219cfb4ccb36045c73409127db51377d66ca0f33#219cfb4ccb36045c73409127db51377d66ca0f33"
 dependencies = [
  "ahash 0.8.3",
- "arrow 43.0.0",
+ "arrow 47.0.0",
+ "arrow-array 47.0.0",
  "datafusion-common",
- "lazy_static",
  "sqlparser",
  "strum 0.25.0",
  "strum_macros 0.25.1",
@@ -2162,10 +2169,10 @@ dependencies = [
 
 [[package]]
 name = "datafusion-optimizer"
-version = "27.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=9c3a537e25e5ab3299922864034f67fb2f79805d#9c3a537e25e5ab3299922864034f67fb2f79805d"
+version = "32.0.0"
+source = "git+https://github.com/apache/arrow-datafusion.git?rev=219cfb4ccb36045c73409127db51377d66ca0f33#219cfb4ccb36045c73409127db51377d66ca0f33"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "async-trait",
  "chrono",
  "datafusion-common",
@@ -2179,27 +2186,25 @@ dependencies = [
 
 [[package]]
 name = "datafusion-physical-expr"
-version = "27.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=9c3a537e25e5ab3299922864034f67fb2f79805d#9c3a537e25e5ab3299922864034f67fb2f79805d"
+version = "32.0.0"
+source = "git+https://github.com/apache/arrow-datafusion.git?rev=219cfb4ccb36045c73409127db51377d66ca0f33#219cfb4ccb36045c73409127db51377d66ca0f33"
 dependencies = [
  "ahash 0.8.3",
- "arrow 43.0.0",
- "arrow-array 43.0.0",
- "arrow-buffer 43.0.0",
- "arrow-schema 43.0.0",
+ "arrow 47.0.0",
+ "arrow-array 47.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-schema 47.0.0",
  "base64 0.21.0",
  "blake2",
  "blake3",
  "chrono",
  "datafusion-common",
  "datafusion-expr",
- "datafusion-row",
  "half 2.2.1",
  "hashbrown 0.14.0",
  "hex",
  "indexmap 2.0.0",
  "itertools 0.11.0",
- "lazy_static",
  "libc",
  "log",
  "md-5",
@@ -2213,37 +2218,56 @@ dependencies = [
 ]
 
 [[package]]
-name = "datafusion-proto"
-version = "27.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=9c3a537e25e5ab3299922864034f67fb2f79805d#9c3a537e25e5ab3299922864034f67fb2f79805d"
+name = "datafusion-physical-plan"
+version = "32.0.0"
+source = "git+https://github.com/apache/arrow-datafusion.git?rev=219cfb4ccb36045c73409127db51377d66ca0f33#219cfb4ccb36045c73409127db51377d66ca0f33"
 dependencies = [
- "arrow 43.0.0",
+ "ahash 0.8.3",
+ "arrow 47.0.0",
+ "arrow-array 47.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-schema 47.0.0",
+ "async-trait",
+ "chrono",
+ "datafusion-common",
+ "datafusion-execution",
+ "datafusion-expr",
+ "datafusion-physical-expr",
+ "futures 0.3.28",
+ "half 2.2.1",
+ "hashbrown 0.14.0",
+ "indexmap 2.0.0",
+ "itertools 0.11.0",
+ "log",
+ "once_cell",
+ "parking_lot 0.12.1",
+ "pin-project-lite",
+ "rand 0.8.5",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "datafusion-proto"
+version = "32.0.0"
+source = "git+https://github.com/apache/arrow-datafusion.git?rev=219cfb4ccb36045c73409127db51377d66ca0f33#219cfb4ccb36045c73409127db51377d66ca0f33"
+dependencies = [
+ "arrow 47.0.0",
  "chrono",
  "datafusion",
  "datafusion-common",
  "datafusion-expr",
- "object_store 0.6.1",
- "prost",
-]
-
-[[package]]
-name = "datafusion-row"
-version = "27.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=9c3a537e25e5ab3299922864034f67fb2f79805d#9c3a537e25e5ab3299922864034f67fb2f79805d"
-dependencies = [
- "arrow 43.0.0",
- "datafusion-common",
- "paste 1.0.12",
- "rand 0.8.5",
+ "object_store 0.7.1",
+ "prost 0.12.1",
 ]
 
 [[package]]
 name = "datafusion-sql"
-version = "27.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=9c3a537e25e5ab3299922864034f67fb2f79805d#9c3a537e25e5ab3299922864034f67fb2f79805d"
+version = "32.0.0"
+source = "git+https://github.com/apache/arrow-datafusion.git?rev=219cfb4ccb36045c73409127db51377d66ca0f33#219cfb4ccb36045c73409127db51377d66ca0f33"
 dependencies = [
- "arrow 43.0.0",
- "arrow-schema 43.0.0",
+ "arrow 47.0.0",
+ "arrow-schema 47.0.0",
  "datafusion-common",
  "datafusion-expr",
  "log",
@@ -2253,7 +2277,7 @@ dependencies = [
 [[package]]
 name = "datafusion_util"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=acbd3ad7651f2deb74857155bea892f88926da57#acbd3ad7651f2deb74857155bea892f88926da57"
+source = "git+https://github.com/CeresDB/influxql.git?rev=2d8060c09d7bc6ceefc7fd41492821f179ae40a8#2d8060c09d7bc6ceefc7fd41492821f179ae40a8"
 dependencies = [
  "async-trait",
  "datafusion",
@@ -2340,7 +2364,7 @@ dependencies = [
 name = "df_engine_extensions"
 version = "1.2.6-alpha"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "async-recursion",
  "async-trait",
  "catalog",
@@ -2351,7 +2375,7 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "insta",
- "prost",
+ "prost 0.11.8",
  "snafu 0.6.10",
  "table_engine",
  "tokio",
@@ -2362,7 +2386,7 @@ dependencies = [
 name = "df_operator"
 version = "1.2.6-alpha"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "base64 0.13.1",
  "bincode",
  "chrono",
@@ -2502,7 +2526,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4319dc0fb739a6e84cb8678b8cf50c9bcfa4712ae826b33ecf00cc0850550a58"
 dependencies = [
  "http",
- "prost",
+ "prost 0.11.8",
  "tokio",
  "tokio-stream",
  "tonic 0.8.3",
@@ -2838,12 +2862,12 @@ checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
 [[package]]
 name = "generated_types"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=acbd3ad7651f2deb74857155bea892f88926da57#acbd3ad7651f2deb74857155bea892f88926da57"
+source = "git+https://github.com/CeresDB/influxql.git?rev=2d8060c09d7bc6ceefc7fd41492821f179ae40a8#2d8060c09d7bc6ceefc7fd41492821f179ae40a8"
 dependencies = [
  "pbjson",
  "pbjson-build",
  "pbjson-types",
- "prost",
+ "prost 0.11.8",
  "prost-build",
  "serde",
  "tonic-build",
@@ -3276,7 +3300,7 @@ dependencies = [
 [[package]]
 name = "influxdb_influxql_parser"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=acbd3ad7651f2deb74857155bea892f88926da57#acbd3ad7651f2deb74857155bea892f88926da57"
+source = "git+https://github.com/CeresDB/influxql.git?rev=2d8060c09d7bc6ceefc7fd41492821f179ae40a8#2d8060c09d7bc6ceefc7fd41492821f179ae40a8"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -3318,7 +3342,7 @@ name = "interpreters"
 version = "1.2.6-alpha"
 dependencies = [
  "analytic_engine",
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "async-trait",
  "catalog",
  "catalog_impls",
@@ -3366,9 +3390,9 @@ dependencies = [
 [[package]]
 name = "iox_query"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=acbd3ad7651f2deb74857155bea892f88926da57#acbd3ad7651f2deb74857155bea892f88926da57"
+source = "git+https://github.com/CeresDB/influxql.git?rev=2d8060c09d7bc6ceefc7fd41492821f179ae40a8#2d8060c09d7bc6ceefc7fd41492821f179ae40a8"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "arrow_util",
  "async-trait",
  "chrono",
@@ -3390,9 +3414,9 @@ dependencies = [
 [[package]]
 name = "iox_query_influxql"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=acbd3ad7651f2deb74857155bea892f88926da57#acbd3ad7651f2deb74857155bea892f88926da57"
+source = "git+https://github.com/CeresDB/influxql.git?rev=2d8060c09d7bc6ceefc7fd41492821f179ae40a8#2d8060c09d7bc6ceefc7fd41492821f179ae40a8"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "chrono",
  "chrono-tz",
  "datafusion",
@@ -3900,7 +3924,7 @@ dependencies = [
  "generic_error",
  "log",
  "macros",
- "prost",
+ "prost 0.11.8",
  "reqwest",
  "serde",
  "serde_json",
@@ -4252,9 +4276,9 @@ dependencies = [
 
 [[package]]
 name = "num"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43db66d1170d347f9a065114077f7dccb00c1b9478c89384490a3425279a4606"
+checksum = "b05180d69e3da0e530ba2a1dae5110317e49e3b7f3d41be227dc5f92e49ee7af"
 dependencies = [
  "num-bigint",
  "num-complex",
@@ -4394,16 +4418,16 @@ dependencies = [
 
 [[package]]
 name = "object_store"
-version = "0.6.1"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27c776db4f332b571958444982ff641d2531417a326ca368995073b639205d58"
+checksum = "f930c88a43b1c3f6e776dfe495b4afab89882dbc81530c632db2ed65451ebcb4"
 dependencies = [
  "async-trait",
  "bytes",
  "chrono",
  "futures 0.3.28",
  "humantime 2.1.0",
- "itertools 0.10.5",
+ "itertools 0.11.0",
  "parking_lot 0.12.1",
  "percent-encoding",
  "snafu 0.7.4",
@@ -4435,7 +4459,7 @@ dependencies = [
  "partitioned_lock",
  "prometheus 0.12.0",
  "prometheus-static-metric",
- "prost",
+ "prost 0.11.8",
  "rand 0.7.3",
  "runtime",
  "serde",
@@ -4489,16 +4513,16 @@ dependencies = [
 [[package]]
 name = "observability_deps"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=acbd3ad7651f2deb74857155bea892f88926da57#acbd3ad7651f2deb74857155bea892f88926da57"
+source = "git+https://github.com/CeresDB/influxql.git?rev=2d8060c09d7bc6ceefc7fd41492821f179ae40a8#2d8060c09d7bc6ceefc7fd41492821f179ae40a8"
 dependencies = [
  "tracing",
 ]
 
 [[package]]
 name = "once_cell"
-version = "1.17.1"
+version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
+checksum = "dd8b5dd2ae5ed71462c540258bedcb51965123ad7e7ccf4b9a8cafaa4a63576d"
 dependencies = [
  "parking_lot_core 0.9.7",
 ]
@@ -4614,18 +4638,18 @@ dependencies = [
 
 [[package]]
 name = "parquet"
-version = "43.0.0"
+version = "47.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec7267a9607c3f955d4d0ac41b88a67cecc0d8d009173ad3da390699a6cb3750"
+checksum = "0463cc3b256d5f50408c49a4be3a16674f4c8ceef60941709620a062b1f6bf4d"
 dependencies = [
  "ahash 0.8.3",
- "arrow-array 43.0.0",
- "arrow-buffer 43.0.0",
- "arrow-cast 43.0.0",
- "arrow-data 43.0.0",
- "arrow-ipc 43.0.0",
- "arrow-schema 43.0.0",
- "arrow-select 43.0.0",
+ "arrow-array 47.0.0",
+ "arrow-buffer 47.0.0",
+ "arrow-cast 47.0.0",
+ "arrow-data 47.0.0",
+ "arrow-ipc 47.0.0",
+ "arrow-schema 47.0.0",
+ "arrow-select 47.0.0",
  "base64 0.21.0",
  "brotli",
  "bytes",
@@ -4636,7 +4660,7 @@ dependencies = [
  "lz4",
  "num",
  "num-bigint",
- "object_store 0.6.1",
+ "object_store 0.7.1",
  "paste 1.0.12",
  "seq-macro",
  "snap",
@@ -4650,7 +4674,7 @@ dependencies = [
 name = "parquet_ext"
 version = "1.2.6-alpha"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "arrow_ext",
  "async-trait",
  "bytes",
@@ -4677,7 +4701,7 @@ name = "partition_table_engine"
 version = "1.2.6-alpha"
 dependencies = [
  "analytic_engine",
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "async-trait",
  "common_types",
  "datafusion",
@@ -4744,7 +4768,7 @@ checksum = "bdbb7b706f2afc610f3853550cdbbf6372fd324824a087806bd4480ea4996e24"
 dependencies = [
  "heck",
  "itertools 0.10.5",
- "prost",
+ "prost 0.11.8",
  "prost-types",
 ]
 
@@ -4758,7 +4782,7 @@ dependencies = [
  "chrono",
  "pbjson",
  "pbjson-build",
- "prost",
+ "prost 0.11.8",
  "prost-build",
  "serde",
 ]
@@ -5108,7 +5132,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "futures 0.3.28",
- "prost",
+ "prost 0.11.8",
  "prost-build",
  "snap",
  "warp",
@@ -5185,7 +5209,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e48e50df39172a3e7eb17e14642445da64996989bc212b583015435d39a58537"
 dependencies = [
  "bytes",
- "prost-derive",
+ "prost-derive 0.11.8",
+]
+
+[[package]]
+name = "prost"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4fdd22f3b9c31b53c060df4a0613a1c7f062d4115a2b984dd15b1858f7e340d"
+dependencies = [
+ "bytes",
+ "prost-derive 0.12.1",
 ]
 
 [[package]]
@@ -5202,7 +5236,7 @@ dependencies = [
  "multimap",
  "petgraph",
  "prettyplease 0.1.25",
- "prost",
+ "prost 0.11.8",
  "prost-types",
  "regex",
  "syn 1.0.109",
@@ -5224,12 +5258,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "prost-derive"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "265baba7fabd416cf5078179f7d2cbeca4ce7a9041111900675ea7c4cb8a4c32"
+dependencies = [
+ "anyhow",
+ "itertools 0.11.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.28",
+]
+
+[[package]]
 name = "prost-types"
 version = "0.11.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "379119666929a1afd7a043aa6cf96fa67a6dce9af60c88095a4686dbce4c9c88"
 dependencies = [
- "prost",
+ "prost 0.11.8",
 ]
 
 [[package]]
@@ -5292,7 +5339,7 @@ checksum = "9653c3ed92974e34c5a6e0a510864dab979760481714c172e0a34e437cb98804"
 name = "proxy"
 version = "1.2.6-alpha"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "arrow_ext",
  "async-trait",
  "bytes",
@@ -5319,7 +5366,7 @@ dependencies = [
  "prom-remote-api",
  "prometheus 0.12.0",
  "prometheus-static-metric",
- "prost",
+ "prost 0.11.8",
  "query_engine",
  "query_frontend",
  "router",
@@ -5391,7 +5438,7 @@ dependencies = [
 name = "query_engine"
 version = "1.2.6-alpha"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "async-trait",
  "bytes_ext",
  "catalog",
@@ -5406,7 +5453,7 @@ dependencies = [
  "iox_query",
  "log",
  "macros",
- "prost",
+ "prost 0.11.8",
  "query_frontend",
  "serde",
  "snafu 0.6.10",
@@ -5419,7 +5466,7 @@ dependencies = [
 name = "query_frontend"
 version = "1.2.6-alpha"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "async-trait",
  "catalog",
  "ceresdbproto",
@@ -5452,9 +5499,9 @@ dependencies = [
 [[package]]
 name = "query_functions"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=acbd3ad7651f2deb74857155bea892f88926da57#acbd3ad7651f2deb74857155bea892f88926da57"
+source = "git+https://github.com/CeresDB/influxql.git?rev=2d8060c09d7bc6ceefc7fd41492821f179ae40a8#2d8060c09d7bc6ceefc7fd41492821f179ae40a8"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "chrono",
  "datafusion",
  "itertools 0.10.5",
@@ -6100,9 +6147,9 @@ dependencies = [
 [[package]]
 name = "schema"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=acbd3ad7651f2deb74857155bea892f88926da57#acbd3ad7651f2deb74857155bea892f88926da57"
+source = "git+https://github.com/CeresDB/influxql.git?rev=2d8060c09d7bc6ceefc7fd41492821f179ae40a8#2d8060c09d7bc6ceefc7fd41492821f179ae40a8"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "hashbrown 0.13.2",
  "indexmap 1.9.3",
  "itertools 0.10.5",
@@ -6225,7 +6272,7 @@ name = "server"
 version = "1.2.6-alpha"
 dependencies = [
  "analytic_engine",
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "arrow_ext",
  "async-trait",
  "bytes_ext",
@@ -6256,7 +6303,7 @@ dependencies = [
  "prom-remote-api",
  "prometheus 0.12.0",
  "prometheus-static-metric",
- "prost",
+ "prost 0.11.8",
  "proxy",
  "query_engine",
  "query_frontend",
@@ -6586,9 +6633,9 @@ dependencies = [
 
 [[package]]
 name = "sqlparser"
-version = "0.35.0"
+version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca597d77c98894be1f965f2e4e2d2a61575d4998088e655476c73715c54b2b43"
+checksum = "0272b7bb0a225320170c99901b4b5fb3a4384e255a7f2cc228f61e2ba3893e75"
 dependencies = [
  "log",
  "serde",
@@ -6752,7 +6799,7 @@ checksum = "2047c6ded9c721764247e62cd3b03c09ffc529b2ba5b10ec482ae507a4a70160"
 name = "system_catalog"
 version = "1.2.6-alpha"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "async-trait",
  "bytes_ext",
  "catalog",
@@ -6763,7 +6810,7 @@ dependencies = [
  "generic_error",
  "log",
  "macros",
- "prost",
+ "prost 0.11.8",
  "snafu 0.6.10",
  "table_engine",
  "tokio",
@@ -6774,7 +6821,7 @@ dependencies = [
 name = "table_engine"
 version = "1.2.6-alpha"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "arrow_ext",
  "async-trait",
  "bytes_ext",
@@ -6789,7 +6836,7 @@ dependencies = [
  "itertools 0.10.5",
  "log",
  "macros",
- "prost",
+ "prost 0.11.8",
  "rand 0.7.3",
  "runtime",
  "serde",
@@ -6868,7 +6915,7 @@ dependencies = [
 [[package]]
 name = "test_helpers"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=acbd3ad7651f2deb74857155bea892f88926da57#acbd3ad7651f2deb74857155bea892f88926da57"
+source = "git+https://github.com/CeresDB/influxql.git?rev=2d8060c09d7bc6ceefc7fd41492821f179ae40a8#2d8060c09d7bc6ceefc7fd41492821f179ae40a8"
 dependencies = [
  "dotenvy",
  "observability_deps",
@@ -6882,7 +6929,7 @@ dependencies = [
 name = "test_util"
 version = "1.2.6-alpha"
 dependencies = [
- "arrow 43.0.0",
+ "arrow 47.0.0",
  "chrono",
  "common_types",
  "env_logger",
@@ -7218,8 +7265,8 @@ dependencies = [
  "hyper-timeout",
  "percent-encoding",
  "pin-project",
- "prost",
- "prost-derive",
+ "prost 0.11.8",
+ "prost-derive 0.11.8",
  "tokio",
  "tokio-stream",
  "tokio-util",
@@ -7249,7 +7296,7 @@ dependencies = [
  "hyper-timeout",
  "percent-encoding",
  "pin-project",
- "prost",
+ "prost 0.11.8",
  "tokio",
  "tokio-stream",
  "tower",
@@ -7488,7 +7535,7 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 0.1.10",
+ "cfg-if 1.0.0",
  "rand 0.8.5",
  "static_assertions",
 ]
@@ -7639,7 +7686,7 @@ dependencies = [
  "macros",
  "message_queue",
  "prometheus 0.12.0",
- "prost",
+ "prost 0.11.8",
  "rand 0.8.5",
  "rocksdb",
  "runtime",

@@ -1466,6 +1466,7 @@ impl Datum {
             | ScalarValue::DurationSecond(_)
             | ScalarValue::DurationMillisecond(_)
             | ScalarValue::DurationMicrosecond(_)
+            | ScalarValue::Decimal256(_, _, _)
             | ScalarValue::DurationNanosecond(_) => None,
         }
     }
@@ -1515,6 +1516,7 @@ impl<'a> DatumView<'a> {
             | ScalarValue::DurationSecond(_)
             | ScalarValue::DurationMillisecond(_)
             | ScalarValue::DurationMicrosecond(_)
+            | ScalarValue::Decimal256(_, _, _)
             | ScalarValue::DurationNanosecond(_) => None,
         }
     }

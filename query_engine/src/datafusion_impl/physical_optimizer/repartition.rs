@@ -18,7 +18,9 @@ use std::sync::Arc;
 
 use datafusion::{
     config::ConfigOptions,
-    physical_optimizer::{optimizer::PhysicalOptimizerRule, repartition::Repartition},
+    physical_optimizer::{
+        enforce_distribution::EnforceDistribution, optimizer::PhysicalOptimizerRule,
+    },
     physical_plan::ExecutionPlan,
 };
 use log::debug;
@@ -31,7 +33,7 @@ pub struct RepartitionAdapter {
 
 impl Adapter for RepartitionAdapter {
     fn may_adapt(original_rule: OptimizeRuleRef) -> OptimizeRuleRef {
-        if original_rule.name() == Repartition::new().name() {
+        if original_rule.name() == EnforceDistribution::new().name() {
             Arc::new(Self { original_rule })
         } else {
             original_rule

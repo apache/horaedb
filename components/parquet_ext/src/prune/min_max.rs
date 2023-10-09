@@ -227,7 +227,7 @@ mod test {
     }
 
     fn prepare_parquet_schema_descr(schema: &ArrowSchema) -> SchemaDescPtr {
-        let mut fields = schema
+        let fields = schema
             .fields()
             .iter()
             .map(|field| {
@@ -242,7 +242,7 @@ mod test {
             })
             .collect();
         let schema = SchemaType::group_type_builder("schema")
-            .with_fields(&mut fields)
+            .with_fields(fields)
             .build()
             .unwrap();
 
