@@ -21,10 +21,12 @@ use std::{
 };
 
 use common_types::{
+    datum::DatumView,
     row::Row,
     schema::{Schema, TSID_COLUMN},
     time::{TimeRange, Timestamp},
 };
+use hyperloglog::HyperLogLog;
 use macros::define_result;
 use snafu::{ensure, Backtrace, Snafu};
 
@@ -53,6 +55,8 @@ const MAX_TIMESTAMP_MS_FOR_DURATION: i64 =
     i64::MAX - 2 * AVAILABLE_DURATIONS[AVAILABLE_DURATIONS.len() - 1] as i64;
 /// Minimun sample timestamps to compute duration.
 const MIN_SAMPLES: usize = 2;
+const HLL_ERROR_RATE: f64 = 0.01;
+const MAX_SUGGEST_PRIMARY_KEY_NUM: usize = 5;
 
 #[derive(Debug, Snafu)]
 #[snafu(display(
@@ -240,20 +244,26 @@ fn pick_duration(interval: u64) -> Duration {
     Duration::from_millis(du_ms)
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct DistinctValue {
-    values: Arc<Mutex<HashSet<Vec<u8>>>>,
+    hll: Arc<Mutex<HyperLogLog>>,
 }
 
 impl DistinctValue {
-    fn insert(&self, bs: Vec<u8>) -> bool {
-        let mut values = self.values.lock().unwrap();
-        values.insert(bs.to_vec())
+    fn new() -> Self {
+        Self {
+            hll: Arc::new(Mutex::new(HyperLogLog::new(HLL_ERROR_RATE))),
+        }
     }
 
-    fn len(&self) -> usize {
-        let values = self.values.lock().unwrap();
-        values.len()
+    fn insert(&self, bs: &DatumView) {
+        let mut hll = self.hll.lock().unwrap();
+        hll.insert(bs);
+    }
+
+    fn len(&self) -> f64 {
+        let hll = self.hll.lock().unwrap();
+        hll.len()
     }
 }
 
@@ -271,7 +281,7 @@ impl PrimaryKeySampler {
                 // Exclude tsid.
                 // TODO: maybe we can remove tsid column in some case.
                 if col.data_type.is_key_kind() && col.name != TSID_COLUMN {
-                    Some(DistinctValue::default())
+                    Some(DistinctValue::new())
                 } else {
                     None
                 }
@@ -286,9 +296,8 @@ impl PrimaryKeySampler {
 
         for (datum, values) in row.iter().zip(&self.column_values) {
             if let Some(values) = values {
-                datum.do_with_bytes(|bs| {
-                    values.insert(bs.to_vec());
-                })
+                let view = datum.as_view();
+                values.insert(&view);
             }
         }
     }
@@ -301,9 +310,13 @@ impl PrimaryKeySampler {
             .filter_map(|(col_idx, values)| values.as_ref().map(|values| (col_idx, values.len())))
             .collect::<Vec<_>>();
 
-        // sort asc and take first 5 column as primary keys
-        col_idx_and_counts.sort_by(|a, b| a.1.cmp(&b.1));
-        col_idx_and_counts.iter().take(5).map(|v| v.0).collect()
+        // sort asc and take first N columns as primary keys
+        col_idx_and_counts.sort_by(|a, b| a.1.total_cmp(&b.1));
+        col_idx_and_counts
+            .iter()
+            .take(MAX_SUGGEST_PRIMARY_KEY_NUM)
+            .map(|v| v.0)
+            .collect()
     }
 }
 

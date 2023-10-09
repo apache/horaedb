@@ -269,7 +269,7 @@ impl Reorder {
             Self::build_logical_plan(&self.schema, &self.order_by_col_indexes, table_provider)?;
         let physical_plan = ctx.state().create_physical_plan(&logical_plan).await?;
 
-        // 3. Execute stream
+        // 3. Execute plan and transform stream
         let stream = execute_stream(physical_plan, ctx.task_ctx())?;
         let batches = stream
             .map(|batch| {
