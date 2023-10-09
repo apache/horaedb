@@ -1,0 +1,46 @@
+DROP TABLE IF EXISTS `sampling_primary_key_table`;
+
+affected_rows: 0
+
+CREATE TABLE `sampling_primary_key_table` (
+    v1 double,
+    v2 double,
+    v3 double,
+    v5 double,
+    name string TAG,
+    value int64 NOT NULL,
+    t timestamp NOT NULL,
+    timestamp KEY (t)) ENGINE = Analytic WITH (
+    update_mode='append',
+    enable_ttl = 'false'
+);
+
+affected_rows: 0
+
+show create table `sampling_primary_key_table`;
+
+Table,Create Table,
+String("sampling_primary_key_table"),String("CREATE TABLE `sampling_primary_key_table` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `v1` double, `v2` double, `v3` double, `v5` double, `name` string TAG, `value` bigint NOT NULL, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='false', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='APPEND', write_buffer_size='33554432')"),
+
+
+INSERT INTO `sampling_primary_key_table` (t, name, value)
+    VALUES
+    (1695348000000, "ceresdb2", 200),
+    (1695348000005, "ceresdb2", 100),
+    (1695348000001, "ceresdb1", 100),
+    (1695348000003, "ceresdb3", 200);
+
+affected_rows: 4
+
+-- After flush, its primary key should changed.
+-- SQLNESS ARG pre_cmd=flush
+show create table `sampling_primary_key_table`;
+
+Table,Create Table,
+String("sampling_primary_key_table"),String("CREATE TABLE `sampling_primary_key_table` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `v1` double, `v2` double, `v3` double, `v5` double, `name` string TAG, `value` bigint NOT NULL, PRIMARY KEY(value,name,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='false', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='2h', storage_format='AUTO', ttl='7d', update_mode='APPEND', write_buffer_size='33554432')"),
+
+
+DROP TABLE IF EXISTS `sampling_primary_key_table`;
+
+affected_rows: 0
+

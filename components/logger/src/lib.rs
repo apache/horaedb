@@ -131,7 +131,7 @@ where
         } else if self.failed.is_some() && tag == FAILED_QUERY_TAG {
             self.failed.as_ref().unwrap().log(record, values)
         } else {
-            self.normal.log(record, values)
+            Ok(())
         }
     }
 }
