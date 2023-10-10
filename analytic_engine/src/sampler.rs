@@ -270,10 +270,12 @@ impl DistinctValue {
 #[derive(Clone)]
 pub struct PrimaryKeySampler {
     column_values: Vec<Option<DistinctValue>>,
+    timestamp_index: usize,
 }
 
 impl PrimaryKeySampler {
     pub fn new(schema: &Schema) -> Self {
+        let timestamp_index = schema.timestamp_index();
         let column_values = schema
             .columns()
             .iter()
@@ -288,7 +290,10 @@ impl PrimaryKeySampler {
             })
             .collect();
 
-        Self { column_values }
+        Self {
+            column_values,
+            timestamp_index,
+        }
     }
 
     pub fn collect(&self, row: &Row) {
@@ -312,11 +317,17 @@ impl PrimaryKeySampler {
 
         // sort asc and take first N columns as primary keys
         col_idx_and_counts.sort_by(|a, b| a.1.total_cmp(&b.1));
-        col_idx_and_counts
+        let mut pk_indexes = col_idx_and_counts
             .iter()
             .take(MAX_SUGGEST_PRIMARY_KEY_NUM)
             .map(|v| v.0)
-            .collect()
+            .collect::<Vec<_>>();
+
+        if !pk_indexes.contains(&self.timestamp_index) {
+            pk_indexes.push(self.timestamp_index);
+        }
+
+        pk_indexes
     }
 }
 
