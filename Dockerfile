@@ -35,3 +35,5 @@ RUN chmod +x /tini
 ARG USER ceres
 
 ENTRYPOINT ["/tini", "--", "/entrypoint.sh"]
+
+RUN echo 0 >> /sys/fs/cgroup/memory/memory.wmark_ratio
