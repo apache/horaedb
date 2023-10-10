@@ -44,7 +44,7 @@ const MIN_SHARD_LOCK_LEASE_TTL_SEC: u64 = 15;
 #[serde(default)]
 pub struct TlsConfig {
     pub enable: bool,
-    pub domain: String,
+    pub domain: Option<String>,
     pub ca_cert_path: String,
     pub client_key_path: String,
     pub client_cert_path: String,
@@ -118,7 +118,7 @@ impl Default for TlsConfig {
     fn default() -> Self {
         Self {
             enable: false,
-            domain: "".to_string(),
+            domain: None,
             ca_cert_path: "".to_string(),
             client_key_path: "".to_string(),
             client_cert_path: "".to_string(),

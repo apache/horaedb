@@ -403,10 +403,13 @@ async fn build_etcd_connect_options(config: &EtcdClientConfig) -> io::Result<Con
 
         let ca_cert = Certificate::from_pem(server_ca_cert);
         let client_ident = Identity::from_pem(client_cert, client_key);
-        let tls_options = TlsOptions::new()
-            .domain_name(&tls.domain)
+        let mut tls_options = TlsOptions::new()
             .ca_certificate(ca_cert)
             .identity(client_ident);
+
+        if let Some(domain) = &tls.domain {
+            tls_options = tls_options.domain_name(domain);
+        }
 
         Ok(connect_options.with_tls(tls_options))
     } else {
