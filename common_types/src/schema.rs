@@ -1214,12 +1214,6 @@ impl Builder {
         assert!(!self.primary_key_indexes.is_empty());
 
         let tsid_index = Self::find_tsid_index(&self.columns);
-        if tsid_index.is_some() {
-            ensure!(
-                self.primary_key_indexes.len() == 2,
-                InvalidPrimaryKeyWithTsid
-            );
-        }
         let fields = self
             .columns
             .iter()
