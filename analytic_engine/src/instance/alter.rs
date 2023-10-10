@@ -75,7 +75,7 @@ impl<'a> Alterer<'a> {
         // if the alter schema request is idempotent, we can skip the alter operation.
         if self.validate_before_alter(&request)? {
             info!(
-                "Instance alter schema, idempotent, skip alter, table:{:?}",
+                "Skip alter because of the altered schema is the same as the current, table:{}",
                 self.table_data.name
             );
             return Ok(());
@@ -164,9 +164,8 @@ impl<'a> Alterer<'a> {
 
     // Most validation should be done by catalog module, so we don't do too much
     // duplicate check here, especially the schema compatibility.
-    // Boolean return value indicates whether the alter operation is idempotent.
-    // If it is idempotent, we can skip the alter operation.
-    // true: idempotent, false: not idempotent.
+    // The returned value denotes whether the altered schema is same as the current
+    // one.
     fn validate_before_alter(&self, request: &AlterSchemaRequest) -> Result<bool> {
         ensure!(
             !self.table_data.is_dropped(),

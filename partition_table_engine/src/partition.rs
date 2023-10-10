@@ -24,7 +24,7 @@ use common_types::{
 };
 use futures::{stream::FuturesUnordered, StreamExt};
 use generic_error::BoxError;
-use log::error;
+use logger::error;
 use snafu::ResultExt;
 use table_engine::{
     partition::{
@@ -352,18 +352,20 @@ impl Table for PartitionTableImpl {
             futures.push(partition);
         }
 
-        let mut result = None;
-        while let Some(ret) = futures.next().await {
-            if ret.is_err() {
-                error!("Alter schema failed, err:{:?}", ret);
-                if result.is_none() {
-                    result = Some(ret.box_err().context(AlterSchema { table: self.name() }));
-                }
+        let mut alter_err = None;
+        while let Some(alter_ret) = futures.next().await {
+            if let Err(e) = &alter_ret {
+                error!("Alter schema failed, table_name:{}, err:{e}", self.name());
+                alter_err.get_or_insert(
+                    alter_ret
+                        .box_err()
+                        .context(AlterSchema { table: self.name() }),
+                );
             }
         }
 
         // Remove the first error.
-        if let Some(ret) = result {
+        if let Some(ret) = alter_err {
             ret?;
         }
 
@@ -376,7 +378,9 @@ impl Table for PartitionTableImpl {
             })
             .await
             .box_err()
-            .context(AlterSchema { table: self.name() })?;
+            .with_context(|| AlterSchema {
+                table: self.get_sub_table_ident(0).table,
+            })?;
 
         Ok(0)
     }
@@ -403,18 +407,20 @@ impl Table for PartitionTableImpl {
             futures.push(partition);
         }
 
-        let mut result = None;
-        while let Some(ret) = futures.next().await {
-            if ret.is_err() {
-                error!("Alter options failed, err:{:?}", ret);
-                if result.is_none() {
-                    result = Some(ret.box_err().context(AlterOptions { table: self.name() }));
-                }
+        let mut alter_err = None;
+        while let Some(alter_ret) = futures.next().await {
+            if let Err(e) = &alter_ret {
+                error!("Alter options failed, table_name:{}, err:{e}", self.name());
+                alter_err.get_or_insert(
+                    alter_ret
+                        .box_err()
+                        .context(AlterOptions { table: self.name() }),
+                );
             }
         }
 
         // Remove the first error.
-        if let Some(ret) = result {
+        if let Some(ret) = alter_err {
             ret?;
         }
 
@@ -426,7 +432,9 @@ impl Table for PartitionTableImpl {
             })
             .await
             .box_err()
-            .context(AlterOptions { table: self.name() })?;
+            .with_context(|| AlterOptions {
+                table: self.get_sub_table_ident(0).table,
+            })?;
 
         Ok(0)
     }

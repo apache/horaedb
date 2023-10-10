@@ -14,8 +14,6 @@
 
 //! Config for [Client]
 
-use std::str::FromStr;
-
 use arrow_ext::ipc::CompressOptions;
 use serde::{Deserialize, Serialize};
 use time_ext::ReadableDuration;
@@ -39,17 +37,17 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            connect_timeout: ReadableDuration::from_str("3s").unwrap(),
+            connect_timeout: ReadableDuration::secs(3),
             channel_pool_max_size_per_partition: 16,
             channel_pool_partition_num: 16,
-            channel_keep_alive_interval: ReadableDuration::from_str("600s").unwrap(),
-            channel_keep_alive_timeout: ReadableDuration::from_str("3s").unwrap(),
+            channel_keep_alive_interval: ReadableDuration::secs(600),
+            channel_keep_alive_timeout: ReadableDuration::secs(3),
             channel_keep_alive_while_idle: true,
             route_cache_max_size_per_partition: 16,
             route_cache_partition_num: 16,
             compression: CompressOptions::default(),
             max_retry: 5,
-            retry_interval: ReadableDuration::from_str("5s").unwrap(),
+            retry_interval: ReadableDuration::secs(5),
         }
     }
 }

@@ -257,6 +257,7 @@ impl Client {
 
         let mut result = Ok(());
         // Alter schema to remote engine with retry.
+        // TODO: Define a macro to reuse the retry logic.
         for i in 0..(self.max_retry + 1) {
             let resp = rpc_client
                 .alter_table_schema(Request::new(request_pb.clone()))
@@ -280,7 +281,10 @@ impl Client {
             });
 
             if let Err(e) = resp {
-                error!("Failed to alter schema to remote engine, table:{table_ident:?}, err:{e}");
+                error!(
+                    "Failed to alter schema to remote engine,
+        table:{table_ident:?}, err:{e}"
+                );
 
                 result = Err(e);
 
