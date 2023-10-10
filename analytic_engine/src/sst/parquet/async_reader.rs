@@ -65,7 +65,10 @@ use crate::{
         },
         metrics::MaybeTableLevelMetrics,
         parquet::{
-            encoding::ParquetDecoder, meta_data::ParquetFilter, row_group_pruner::RowGroupPruner,
+            encoding::ParquetDecoder,
+            lazy_row_filter::{self, LazyRowFilterBuilder},
+            meta_data::ParquetFilter,
+            row_group_pruner::RowGroupPruner,
         },
         reader::{error::*, Result, SstReader},
     },
@@ -306,6 +309,12 @@ impl<'a> Reader<'a> {
             suggested_parallelism, parallelism, chunk_size, proj_mask
         );
 
+        let lazy_row_filter_builder = LazyRowFilterBuilder::try_new(
+            self.predicate.exprs(),
+            arrow_schema.as_ref(),
+            parquet_metadata.as_ref(),
+        )?;
+
         let mut streams = Vec::with_capacity(target_row_group_chunks.len());
         for chunk in target_row_group_chunks {
             let object_store_reader = ObjectStoreReader::new(
@@ -317,6 +326,7 @@ impl<'a> Reader<'a> {
                 .await
                 .with_context(|| ParquetError)?;
 
+            // Page filter
             let row_selection =
                 self.build_row_selection(arrow_schema.clone(), &chunk, parquet_metadata)?;
 
@@ -328,6 +338,12 @@ impl<'a> Reader<'a> {
             if let Some(selection) = row_selection {
                 builder = builder.with_row_selection(selection);
             };
+
+            // Lazy row filter(late materialization)
+            if let Some(row_filter_builder) = &lazy_row_filter_builder {
+                let row_filter = row_filter_builder.build();
+                builder = builder.with_row_filter(row_filter);
+            }
 
             let stream = builder
                 .with_batch_size(self.num_rows_per_row_group)
