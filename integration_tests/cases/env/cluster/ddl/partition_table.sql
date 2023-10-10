@@ -37,6 +37,8 @@ SELECT * from partition_table_t where name in ("ceresdb5", "ceresdb6", "ceresdb7
 
 ALTER TABLE partition_table_t ADD COLUMN (b string);
 
+INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, "ceresdb0", 100);
+
 ALTER TABLE partition_table_t MODIFY SETTING enable_ttl='true';
 
 SHOW CREATE TABLE __partition_table_t_0;
