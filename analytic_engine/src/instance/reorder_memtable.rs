@@ -48,7 +48,7 @@ use snafu::{ResultExt, Snafu};
 
 use crate::memtable::ColumnarIterPtr;
 
-const DUMMY_TABLE_NAME: &str = "memtable";
+const DUMMY_TABLE_NAME: &str = "memtable_iter";
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -70,6 +70,8 @@ pub enum Error {
 define_result!(Error);
 
 pub type DfResult<T> = std::result::Result<T, DataFusionError>;
+type SendableRecordBatchWithkeyStream =
+    Pin<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send>>;
 
 impl From<DataFusionError> for Error {
     fn from(df_err: DataFusionError) -> Self {
@@ -92,12 +94,12 @@ pub struct Reorder {
     pub(crate) order_by_col_indexes: Vec<usize>,
 }
 
-struct MemtableExecutionPlan {
+struct ScanMemIter {
     arrow_schema: ArrowSchemaRef,
     iter: Mutex<Option<ColumnarIterPtr>>,
 }
 
-impl ExecutionPlan for MemtableExecutionPlan {
+impl ExecutionPlan for ScanMemIter {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -136,7 +138,7 @@ impl ExecutionPlan for MemtableExecutionPlan {
         let mut iter = self.iter.lock().unwrap();
         let iter = iter.take().expect("only can execute once");
 
-        Ok(Box::pin(MemtableStream {
+        Ok(Box::pin(MemIterStream {
             iter,
             arrow_schema: self.arrow_schema.clone(),
         }))
@@ -147,18 +149,18 @@ impl ExecutionPlan for MemtableExecutionPlan {
     }
 }
 
-struct MemtableStream {
+struct MemIterStream {
     iter: ColumnarIterPtr,
     arrow_schema: ArrowSchemaRef,
 }
 
-impl DfRecordBatchStream for MemtableStream {
+impl DfRecordBatchStream for MemIterStream {
     fn schema(&self) -> ArrowSchemaRef {
         self.arrow_schema.clone()
     }
 }
 
-impl Stream for MemtableStream {
+impl Stream for MemIterStream {
     type Item = DfResult<ArrowRecordBatch>;
 
     fn poll_next(mut self: Pin<&mut Self>, _ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -171,27 +173,27 @@ impl Stream for MemtableStream {
     }
 }
 
-impl DisplayAs for MemtableExecutionPlan {
+impl DisplayAs for ScanMemIter {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "MemtableExecutionPlan: table={}", DUMMY_TABLE_NAME)
+        write!(f, "ScanMemIter: table={}", DUMMY_TABLE_NAME)
     }
 }
 
-impl fmt::Debug for MemtableExecutionPlan {
+impl fmt::Debug for ScanMemIter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("MemtableExecutionPlan")
+        f.debug_struct("ScanMemIter")
             .field("schema", &self.arrow_schema)
             .finish()
     }
 }
 
-struct MemtableProvider {
+struct MemIterProvider {
     arrow_schema: ArrowSchemaRef,
     iter: Mutex<Option<ColumnarIterPtr>>,
 }
 
 #[async_trait]
-impl TableProvider for MemtableProvider {
+impl TableProvider for MemIterProvider {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -220,7 +222,7 @@ impl TableProvider for MemtableProvider {
         let mut iter = self.iter.lock().unwrap();
         let iter = iter.take().expect("only can scan once");
 
-        let plan = MemtableExecutionPlan {
+        let plan = ScanMemIter {
             arrow_schema: self.arrow_schema.clone(),
             iter: Mutex::new(Some(iter)),
         };
@@ -249,12 +251,12 @@ impl Reorder {
         Ok(df_plan)
     }
 
-    pub async fn reorder(self) -> Result<Vec<Result<RecordBatchWithKey>>> {
+    pub async fn into_stream(self) -> Result<SendableRecordBatchWithkeyStream> {
         // 1. Init datafusion context
         let runtime = Arc::new(RuntimeEnv::default());
         let state = SessionState::with_config_rt(SessionConfig::new(), runtime);
         let ctx = SessionContext::with_state(state);
-        let table_provider = Arc::new(MemtableProvider {
+        let table_provider = Arc::new(MemIterProvider {
             arrow_schema: self.schema.to_arrow_schema_ref(),
             iter: Mutex::new(Some(self.iter)),
         });
@@ -271,17 +273,14 @@ impl Reorder {
 
         // 3. Execute plan and transform stream
         let stream = execute_stream(physical_plan, ctx.task_ctx())?;
-        let batches = stream
-            .map(|batch| {
-                let batch = batch.context(FetchRecordBatch)?;
-                let data = RecordBatchData::try_from(batch).context(ConvertRecordBatchData)?;
-                let schema_with_key = self.schema.to_record_schema_with_key();
+        let schema_with_key = self.schema.to_record_schema_with_key();
+        let stream = stream.map(move |batch| {
+            let batch = batch.context(FetchRecordBatch)?;
+            let data = RecordBatchData::try_from(batch).context(ConvertRecordBatchData)?;
 
-                Ok(RecordBatchWithKey::new(schema_with_key, data))
-            })
-            .collect::<Vec<_>>()
-            .await;
+            Ok(RecordBatchWithKey::new(schema_with_key.clone(), data))
+        });
 
-        Ok(batches)
+        Ok(Box::pin(stream))
     }
 }

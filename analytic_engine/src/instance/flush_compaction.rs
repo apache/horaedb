@@ -26,7 +26,7 @@ use common_types::{
 };
 use futures::{
     channel::{mpsc, mpsc::channel},
-    stream, SinkExt, TryStreamExt,
+    stream, SinkExt, StreamExt, TryStreamExt,
 };
 use generic_error::{BoxError, GenericError};
 use logger::{debug, error, info};
@@ -92,6 +92,11 @@ pub enum Error {
 
     #[snafu(display("Failed to build mem table iterator, source:{}", source))]
     InvalidMemIter { source: GenericError },
+
+    #[snafu(display("Failed to reorder mem table iterator, source:{}", source))]
+    ReorderMemIter {
+        source: crate::instance::reorder_memtable::Error,
+    },
 
     #[snafu(display(
         "Failed to create sst writer, storage_format_hint:{:?}, err:{}",
@@ -582,8 +587,8 @@ impl FlushTask {
                 schema: self.table_data.schema(),
                 order_by_col_indexes: pk_idx,
             };
-            let batches = reorder.reorder().await.unwrap();
-            for data in batches {
+            let mut stream = reorder.into_stream().await.context(ReorderMemIter)?;
+            while let Some(data) = stream.next().await {
                 for (idx, record_batch) in split_record_batch_with_time_ranges(
                     data.box_err().context(InvalidMemIter)?,
                     &time_ranges,
