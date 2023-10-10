@@ -324,13 +324,21 @@ impl FlushTask {
             assert!(!suggest_segment_duration.is_zero());
 
             if let Some(pk_idx) = current_version.suggest_primary_key() {
-                let mut new_schema = table_data.schema();
-                new_schema.reset_primary_key_indexes(pk_idx);
-                let pre_schema_version = new_schema.version();
+                let mut schema = table_data.schema();
+                info!(
+                    "Update primary key, table:{}, table_id:{}, old:{:?}, new:{:?}",
+                    table_data.name,
+                    table_data.id,
+                    schema.primary_key_indexes(),
+                    pk_idx,
+                );
+
+                schema.reset_primary_key_indexes(pk_idx);
+                let pre_schema_version = schema.version();
                 let meta_update = MetaUpdate::AlterSchema(AlterSchemaMeta {
                     space_id: table_data.space_id,
                     table_id: table_data.id,
-                    schema: new_schema,
+                    schema,
                     pre_schema_version,
                 });
                 let edit_req = MetaEditRequest {

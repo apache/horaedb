@@ -56,7 +56,7 @@ const MAX_TIMESTAMP_MS_FOR_DURATION: i64 =
 /// Minimun sample timestamps to compute duration.
 const MIN_SAMPLES: usize = 2;
 const HLL_ERROR_RATE: f64 = 0.01;
-const MAX_SUGGEST_PRIMARY_KEY_NUM: usize = 5;
+pub const MAX_SUGGEST_PRIMARY_KEY_NUM: usize = 5;
 
 #[derive(Debug, Snafu)]
 #[snafu(display(
@@ -271,10 +271,11 @@ impl DistinctValue {
 pub struct PrimaryKeySampler {
     column_values: Vec<Option<DistinctValue>>,
     timestamp_index: usize,
+    max_suggest_num: usize,
 }
 
 impl PrimaryKeySampler {
-    pub fn new(schema: &Schema) -> Self {
+    pub fn new(schema: &Schema, max_suggest_num: usize) -> Self {
         let timestamp_index = schema.timestamp_index();
         let column_values = schema
             .columns()
@@ -293,6 +294,7 @@ impl PrimaryKeySampler {
         Self {
             column_values,
             timestamp_index,
+            max_suggest_num,
         }
     }
 
@@ -319,7 +321,7 @@ impl PrimaryKeySampler {
         col_idx_and_counts.sort_by(|a, b| a.1.total_cmp(&b.1));
         let mut pk_indexes = col_idx_and_counts
             .iter()
-            .take(MAX_SUGGEST_PRIMARY_KEY_NUM)
+            .take(self.max_suggest_num)
             .map(|v| v.0)
             .collect::<Vec<_>>();
 
@@ -333,6 +335,8 @@ impl PrimaryKeySampler {
 
 #[cfg(test)]
 mod tests {
+    use common_types::tests::{build_row_for_cpu, build_schema_for_cpu};
+
     use super::*;
 
     const SEC_MS: u64 = 1000;
@@ -550,5 +554,37 @@ mod tests {
                 ),
             ],
         );
+    }
+
+    #[test]
+    fn test_suggest_primary_keys() {
+        let schema = build_schema_for_cpu();
+        // By default, primary keys are first two columns.
+        assert_eq!(&[0, 1], schema.primary_key_indexes());
+
+        let collect_and_suggest = |rows: Vec<(u64, i64, &str, &str, i8, f32)>, expected| {
+            let sampler = PrimaryKeySampler::new(&schema, 2);
+            for row in rows {
+                let row = build_row_for_cpu(row.0, row.1, row.2, row.3, row.4, row.5);
+                sampler.collect(&row);
+            }
+            assert_eq!(expected, sampler.suggest());
+        };
+
+        let rows = vec![
+            (1, 100, "ceresdb", "a", 1, 1.0),
+            (2, 101, "ceresdb", "a", 2, 1.0),
+            (3, 102, "ceresdb", "a", 3, 1.0),
+            (4, 102, "ceresdb", "b", 4, 1.0),
+        ];
+        collect_and_suggest(rows, vec![2, 3, 1]);
+
+        let rows = vec![
+            (1, 100, "ceresdb", "a", 1, 1.0),
+            (1, 100, "ceresdb", "a", 2, 1.0),
+            (1, 100, "ceresdb", "a", 3, 1.0),
+            (1, 100, "ceresdb", "b", 4, 1.0),
+        ];
+        collect_and_suggest(rows, vec![1, 2]);
     }
 }

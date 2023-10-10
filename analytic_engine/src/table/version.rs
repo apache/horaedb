@@ -38,7 +38,7 @@ use crate::{
         CompactionTask, ExpiredFiles,
     },
     memtable::{self, key::KeySequence, MemTableRef, PutContext},
-    sampler::{DefaultSampler, PrimaryKeySampler, SamplerRef},
+    sampler::{DefaultSampler, PrimaryKeySampler, SamplerRef, MAX_SUGGEST_PRIMARY_KEY_NUM},
     sst::{
         file::{FileHandle, FilePurgeQueue, SST_LEVEL_NUM},
         manager::{FileId, LevelsController},
@@ -98,7 +98,11 @@ impl SamplingMemTable {
 
     // TODO: add a builder for SamplingMemTable
     pub fn set_pk_sampler(&mut self, schema: &Schema) {
-        self.pk_sampler = Some(PrimaryKeySampler::new(schema));
+        self.pk_sampler = Some(PrimaryKeySampler::new(
+            schema,
+            // Make this configurable
+            MAX_SUGGEST_PRIMARY_KEY_NUM,
+        ));
     }
 
     pub fn last_sequence(&self) -> SequenceNumber {
