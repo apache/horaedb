@@ -160,9 +160,9 @@ func (srv *Server) initEtcdClient(enableEmbedEtcd bool) error {
 	var tlsConfig *tls.Config
 	if !enableEmbedEtcd {
 		tlsInfo := transport.TLSInfo{
-			TrustedCAFile:  srv.cfg.EtcdCaCertPath,
-			ClientCertFile: srv.cfg.EtcdClientCertPath,
-			ClientKeyFile:  srv.cfg.EtcdClientKeyPath,
+			TrustedCAFile: srv.cfg.EtcdCaCertPath,
+			CertFile:      srv.cfg.EtcdCertPath,
+			KeyFile:       srv.cfg.EtcdKeyPath,
 		}
 		clientConfig, err := tlsInfo.ClientConfig()
 		if err != nil {
