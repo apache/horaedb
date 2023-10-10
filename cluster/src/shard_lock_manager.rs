@@ -428,6 +428,9 @@ impl ShardLock {
             .context(GetLockKey {
                 shard_id: self.shard_id,
             })?;
+
+        // Only one or zero key-value will be fetched, and it can continue only if one
+        // key-value is returned.
         if resp.kvs().len() != 1 {
             warn!(
                 "Expect exactly one key value pair, but found {} kv pairs, shard_id:{}",
@@ -436,14 +439,15 @@ impl ShardLock {
             );
             return Ok(None);
         }
-        let lease_id = resp.kvs()[0].lease();
+        let kv = &resp.kvs()[0];
+        let lease_id = kv.lease();
         if lease_id == 0 {
             // There is no lease attached to the lock key.
             return Ok(None);
         }
 
         // FIXME: A better way is to compare the specific field of the decoded values.
-        if resp.kvs()[0].value() != self.value {
+        if kv.value() != self.value {
             warn!(
                 "Try to acquire a lock held by others, shard_id:{}",
                 self.shard_id
