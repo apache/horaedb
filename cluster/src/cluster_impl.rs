@@ -38,7 +38,7 @@ use tokio::{
 
 use crate::{
     config::ClusterConfig,
-    shard_lock_manager::{ShardLockManager, ShardLockManagerRef},
+    shard_lock_manager::{self, ShardLockManager, ShardLockManagerRef},
     shard_set::{Shard, ShardRef, ShardSet},
     topology::ClusterTopology,
     Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause, InvalidArguments,
@@ -85,15 +85,16 @@ impl ClusterImpl {
             &config.etcd_client.root_path,
             &config.meta_client.cluster_name,
         )?;
-        let shard_lock_manager = ShardLockManager::new(
-            shard_lock_key_prefix,
+        let shard_lock_mgr_config = shard_lock_manager::Config {
             node_name,
-            etcd_client,
-            config.etcd_client.shard_lock_lease_ttl_sec,
-            config.etcd_client.shard_lock_lease_check_interval.0,
-            config.etcd_client.rpc_timeout(),
-            runtime.clone(),
-        );
+            lock_key_prefix: shard_lock_key_prefix,
+            lock_lease_ttl_sec: config.etcd_client.shard_lock_lease_ttl_sec,
+            lock_lease_check_interval: config.etcd_client.shard_lock_lease_check_interval.0,
+            enable_fast_reacquire_lock: config.etcd_client.enable_shard_lock_fast_reacquire,
+            rpc_timeout: config.etcd_client.rpc_timeout(),
+            runtime: runtime.clone(),
+        };
+        let shard_lock_manager = ShardLockManager::new(shard_lock_mgr_config, etcd_client);
         Ok(Self {
             inner,
             runtime,

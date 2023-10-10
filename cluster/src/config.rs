@@ -59,6 +59,8 @@ pub struct EtcdClientConfig {
     pub shard_lock_lease_ttl_sec: u64,
     /// The interval of checking whether the shard lock lease is expired
     pub shard_lock_lease_check_interval: ReadableDuration,
+    /// The shard lock can be reacquired in a fast way if set.
+    pub enable_shard_lock_fast_reacquire: bool,
 }
 
 impl EtcdClientConfig {
@@ -102,6 +104,7 @@ impl Default for EtcdClientConfig {
             connect_timeout: ReadableDuration::secs(5),
             shard_lock_lease_ttl_sec: 30,
             shard_lock_lease_check_interval: ReadableDuration::millis(200),
+            enable_shard_lock_fast_reacquire: false,
         }
     }
 }

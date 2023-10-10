@@ -27,7 +27,7 @@ use chrono::{DateTime, Utc};
 use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
 use hash_ext::SeaHasherBuilder;
-use logger::{debug, info, warn};
+use logger::{debug, warn};
 use lru::LruCache;
 use notifier::notifier::{ExecutionGuard, RequestNotifiers};
 use partitioned_lock::PartitionedMutex;
@@ -643,7 +643,8 @@ impl DiskCacheStore {
                     continue;
                 }
             };
-            info!("Disk cache recover_cache, filename:{file_name}, size:{file_size}");
+
+            debug!("Disk cache recover_cache, filename:{file_name}, size:{file_size}");
             let page_meta = PageMeta { file_size };
             cache.insert_page_meta(file_name, page_meta);
         }
