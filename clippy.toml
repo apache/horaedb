@@ -13,3 +13,4 @@
 # limitations under the License.
 
 large-error-threshold = 1024
+enum-variant-size-threshold = 1024
