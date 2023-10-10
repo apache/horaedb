@@ -73,6 +73,11 @@ func (r *Router) Put(path string, h http.HandlerFunc) {
 	r.rtr.PUT(r.prefix+path, r.handle(path, h))
 }
 
+// PutWithoutPrefix registers a new PUT route without prefix.
+func (r *Router) PutWithoutPrefix(path string, h http.HandlerFunc) {
+	r.rtr.PUT(path, r.handle(path, h))
+}
+
 // Post registers a new POST route.
 func (r *Router) Post(path string, h http.HandlerFunc) {
 	r.rtr.POST(r.prefix+path, r.handle(path, h))
