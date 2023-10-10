@@ -4,6 +4,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"sync"
@@ -24,6 +25,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/status"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
+	"go.etcd.io/etcd/client/pkg/v3/transport"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.uber.org/zap"
@@ -35,7 +37,8 @@ type Server struct {
 	isClosed int32
 	status   *status.ServerStatus
 
-	cfg     *config.Config
+	cfg *config.Config
+
 	etcdCfg *embed.Config
 
 	// The fields below are initialized after Run of server is called.
@@ -96,7 +99,7 @@ func (srv *Server) Run(ctx context.Context) error {
 			}
 		}()
 	}
-	if err := srv.initEtcdClient(); err != nil {
+	if err := srv.initEtcdClient(srv.cfg.EnableEmbedEtcd); err != nil {
 		srv.status.Set(status.Terminated)
 		return err
 	}
@@ -152,7 +155,22 @@ func (srv *Server) startEmbedEtcd(ctx context.Context) error {
 	return nil
 }
 
-func (srv *Server) initEtcdClient() error {
+func (srv *Server) initEtcdClient(enableEmbedEtcd bool) error {
+	// If enableEmbedEtcd is false, we should add tls config to connect remote Etcd server.
+	var tlsConfig *tls.Config
+	if !enableEmbedEtcd {
+		tlsInfo := transport.TLSInfo{
+			TrustedCAFile:  srv.cfg.EtcdCaCertPath,
+			ClientCertFile: srv.cfg.EtcdClientCertPath,
+			ClientKeyFile:  srv.cfg.EtcdClientKeyPath,
+		}
+		clientConfig, err := tlsInfo.ClientConfig()
+		if err != nil {
+			return ErrCreateEtcdClient.WithCause(err)
+		}
+		tlsConfig = clientConfig
+	}
+
 	etcdEndpoints := make([]string, 0, len(srv.etcdCfg.ACUrls))
 	for _, url := range srv.etcdCfg.ACUrls {
 		etcdEndpoints = append(etcdEndpoints, url.String())
@@ -162,6 +180,7 @@ func (srv *Server) initEtcdClient() error {
 		Endpoints:   etcdEndpoints,
 		DialTimeout: srv.cfg.EtcdCallTimeout(),
 		LogConfig:   lgc,
+		TLS:         tlsConfig,
 	})
 	if err != nil {
 		return ErrCreateEtcdClient.WithCause(err)

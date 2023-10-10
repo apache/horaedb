@@ -19,7 +19,11 @@ import (
 )
 
 const (
-	defaultEnableEmbedEtcd        bool  = true
+	defaultEnableEmbedEtcd    bool = true
+	defaultEtcdCaCertPath          = ""
+	defaultEtcdClientKeyPath       = ""
+	defaultEtcdClientCertPath      = ""
+
 	defaultInitialLimiterCapacity int   = 100 * 1000
 	defaultInitialLimiterRate     int   = 10 * 1000
 	defaultEnableLimiter          bool  = false
@@ -95,7 +99,11 @@ type Config struct {
 	EtcdLog     log.Config    `toml:"etcd-log" env:"ETCD_LOG"`
 	FlowLimiter LimiterConfig `toml:"flow-limiter" env:"FLOW_LIMITER"`
 
-	EnableEmbedEtcd    bool  `toml:"enable-embed-etcd" env:"ENABLE_EMBED_ETCD"`
+	EnableEmbedEtcd    bool   `toml:"enable-embed-etcd" env:"ENABLE_EMBED_ETCD"`
+	EtcdCaCertPath     string `toml:"etcd-ca-cert-path" env:"ETCD_CA_CERT_PATH"`
+	EtcdClientKeyPath  string `toml:"etcd-client-key-path" env:"ETCD_CLIENT_KEY_PATH"`
+	EtcdClientCertPath string `toml:"etcd-client-cert-path" env:"ETCD_CLIENT_CERT_PATH"`
+
 	EtcdStartTimeoutMs int64 `toml:"etcd-start-timeout-ms" env:"ETCD_START_TIMEOUT_MS"`
 	EtcdCallTimeoutMs  int64 `toml:"etcd-call-timeout-ms" env:"ETCD_CALL_TIMEOUT_MS"`
 	EtcdMaxTxnOps      int64 `toml:"etcd-max-txn-ops" env:"ETCD_MAX_TXN_OPS"`
@@ -278,6 +286,10 @@ func MakeConfigParser() (*Parser, error) {
 		},
 
 		EnableEmbedEtcd:    defaultEnableEmbedEtcd,
+		EtcdCaCertPath:     defaultEtcdCaCertPath,
+		EtcdClientCertPath: defaultEtcdClientCertPath,
+		EtcdClientKeyPath:  defaultEtcdClientKeyPath,
+
 		EtcdStartTimeoutMs: defaultEtcdStartTimeoutMs,
 		EtcdCallTimeoutMs:  defaultCallTimeoutMs,
 		EtcdMaxTxnOps:      defaultMaxTxnOps,
