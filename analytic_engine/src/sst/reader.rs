@@ -87,6 +87,12 @@ pub mod error {
             backtrace: Backtrace,
         },
 
+        #[snafu(display("Meet a arrow error, err:{source}\nBacktrace:\n{backtrace}"))]
+        ArrowError {
+            source: arrow::error::ArrowError,
+            backtrace: Backtrace,
+        },
+
         #[snafu(display("Other kind of error:{source}"))]
         Other { source: GenericError },
 
