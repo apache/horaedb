@@ -35,6 +35,18 @@ SELECT * from partition_table_t where name in ("ceresdb0", "ceresdb1", "ceresdb2
 
 SELECT * from partition_table_t where name in ("ceresdb5", "ceresdb6", "ceresdb7","ceresdb8", "ceresdb9", "ceresdb10") order by name;
 
+ALTER TABLE partition_table_t ADD COLUMN (b string);
+
+ALTER TABLE partition_table_t MODIFY SETTING enable_ttl='true';
+
+SHOW CREATE TABLE __partition_table_t_0;
+
+SHOW CREATE TABLE __partition_table_t_1;
+
+SHOW CREATE TABLE __partition_table_t_2;
+
+SHOW CREATE TABLE __partition_table_t_3;
+
 DROP TABLE IF EXISTS `partition_table_t`;
 
 SHOW CREATE TABLE partition_table_t;

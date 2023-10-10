@@ -27,7 +27,7 @@ use common_types::{
         contiguous::{ContiguousRow, ContiguousRowReader, ContiguousRowWriter},
         Row, RowGroup, RowGroupBuilder,
     },
-    schema::{IndexInWriterSchema, RecordSchema, Schema},
+    schema::{IndexInWriterSchema, RecordSchema, Schema, Version},
 };
 use generic_error::{BoxError, GenericError, GenericResult};
 use macros::define_result;
@@ -245,6 +245,75 @@ impl WriteRequest {
 pub struct WriteBatchResult {
     pub table_idents: Vec<TableIdentifier>,
     pub result: GenericResult<u64>,
+}
+
+#[derive(Debug)]
+pub struct AlterTableSchemaRequest {
+    pub table_ident: TableIdentifier,
+    pub table_schema: Schema,
+    /// Previous schema version before alteration.
+    pub pre_schema_version: Version,
+}
+
+impl TryFrom<ceresdbproto::remote_engine::AlterTableSchemaRequest> for AlterTableSchemaRequest {
+    type Error = Error;
+
+    fn try_from(value: remote_engine::AlterTableSchemaRequest) -> Result<Self> {
+        let table = value.table.context(EmptyTableIdentifier)?.into();
+        let table_schema = value
+            .table_schema
+            .context(EmptyTableSchema)?
+            .try_into()
+            .box_err()
+            .context(ConvertTableSchema)?;
+        Ok(Self {
+            table_ident: table,
+            table_schema,
+            pre_schema_version: value.pre_schema_version,
+        })
+    }
+}
+
+impl From<AlterTableSchemaRequest> for ceresdbproto::remote_engine::AlterTableSchemaRequest {
+    fn from(value: AlterTableSchemaRequest) -> Self {
+        let table = value.table_ident.into();
+        let table_schema = (&value.table_schema).into();
+        Self {
+            table: Some(table),
+            table_schema: Some(table_schema),
+            pre_schema_version: value.pre_schema_version,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct AlterTableOptionsRequest {
+    pub table_ident: TableIdentifier,
+    pub options: HashMap<String, String>,
+}
+
+impl TryFrom<ceresdbproto::remote_engine::AlterTableOptionsRequest> for AlterTableOptionsRequest {
+    type Error = Error;
+
+    fn try_from(value: remote_engine::AlterTableOptionsRequest) -> Result<Self> {
+        let table = value.table.context(EmptyTableIdentifier)?.into();
+        let options = value.options;
+        Ok(Self {
+            table_ident: table,
+            options,
+        })
+    }
+}
+
+impl From<AlterTableOptionsRequest> for ceresdbproto::remote_engine::AlterTableOptionsRequest {
+    fn from(value: AlterTableOptionsRequest) -> Self {
+        let table = value.table_ident.into();
+        let options = value.options;
+        Self {
+            table: Some(table),
+            options,
+        }
+    }
 }
 
 pub struct GetTableInfoRequest {

@@ -38,7 +38,7 @@ use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt}
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
-use logger::{debug, error, info};
+use logger::{debug, error, info, warn};
 use query_frontend::{
     frontend::{Context as FrontendContext, Frontend},
     plan::{AlterTableOperation, AlterTablePlan, InsertPlan, Plan},
@@ -481,15 +481,15 @@ impl Proxy {
     ) -> Result<WriteResponse> {
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
-        let catalog = self.instance.catalog_manager.default_catalog_name();
+        let catalog_name = self.instance.catalog_manager.default_catalog_name();
         let req_ctx = req.context.context(ErrNoCause {
             msg: "Missing context",
             code: StatusCode::BAD_REQUEST,
         })?;
-        let schema = req_ctx.database;
+        let schema_name = req_ctx.database;
 
         debug!(
-            "Local write begin, catalog:{catalog}, schema:{schema}, request_id:{request_id}, first_table:{:?}, num_tables:{}",
+            "Local write begin, catalog:{catalog_name}, schema:{schema_name}, request_id:{request_id}, first_table:{:?}, num_tables:{}",
             req.table_requests
                 .first()
                 .map(|m| (&m.table, &m.tag_names, &m.field_names)),
@@ -499,8 +499,8 @@ impl Proxy {
         let write_context = WriteContext {
             request_id,
             deadline,
-            catalog: catalog.to_string(),
-            schema: schema.clone(),
+            catalog: catalog_name.to_string(),
+            schema: schema_name.clone(),
             auto_create_table: self.auto_create_table,
         };
 
@@ -510,9 +510,30 @@ impl Proxy {
 
         let mut success = 0;
         for insert_plan in plan_vec {
-            success += self
-                .execute_insert_plan(request_id, catalog, &schema, insert_plan, deadline)
-                .await?;
+            let table = insert_plan.table.clone();
+            match self
+                .execute_insert_plan(
+                    request_id,
+                    catalog_name,
+                    &schema_name,
+                    insert_plan,
+                    deadline,
+                )
+                .await
+            {
+                Ok(n) => {
+                    success += n;
+                }
+                Err(e) => {
+                    // TODO: remove this logic.
+                    // Refer to https://github.com/CeresDB/ceresdb/issues/1248.
+                    if e.error_message().contains("No field named") {
+                        self.evict_partition_table(table, catalog_name, &schema_name)
+                            .await;
+                    }
+                    return Err(e);
+                }
+            }
         }
 
         Ok(WriteResponse {
@@ -579,8 +600,8 @@ impl Proxy {
     async fn execute_insert_plan(
         &self,
         request_id: RequestId,
-        catalog: &str,
-        schema: &str,
+        catalog_name: &str,
+        schema_name: &str,
         insert_plan: InsertPlan,
         deadline: Option<Instant>,
     ) -> Result<usize> {
@@ -591,7 +612,7 @@ impl Proxy {
         );
         let plan = Plan::Insert(insert_plan);
         let output = self
-            .execute_plan(request_id, catalog, schema, plan, deadline)
+            .execute_plan(request_id, catalog_name, schema_name, plan, deadline)
             .await;
         output.and_then(|output| match output {
             Output::AffectedRows(n) => Ok(n),
@@ -663,6 +684,31 @@ impl Proxy {
 
         info!("Add columns success, request_id:{request_id}, table:{table_name}");
         Ok(())
+    }
+
+    async fn evict_partition_table(&self, table: TableRef, catalog_name: &str, schema_name: &str) {
+        if table.partition_info().is_some() {
+            let catalog = self.get_catalog(catalog_name);
+            if catalog.is_err() {
+                return;
+            }
+            let schema = self.get_schema(&catalog.unwrap(), schema_name);
+            if schema.is_err() {
+                return;
+            }
+            let _ = self
+                .drop_partition_table(
+                    schema.unwrap(),
+                    catalog_name.to_string(),
+                    schema_name.to_string(),
+                    table.name().to_string(),
+                )
+                .await
+                .map_err(|e| {
+                    warn!("Failed to drop partition table, err:{:?}", e);
+                    e
+                });
+        }
     }
 }
 

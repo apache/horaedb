@@ -28,7 +28,8 @@ use catalog::{manager::ManagerRef, schema::SchemaRef};
 use ceresdbproto::{
     remote_engine::{
         execute_plan_request, read_response::Output::Arrow,
-        remote_engine_service_server::RemoteEngineService, row_group, ExecContext,
+        remote_engine_service_server::RemoteEngineService, row_group, AlterTableOptionsRequest,
+        AlterTableOptionsResponse, AlterTableSchemaRequest, AlterTableSchemaResponse, ExecContext,
         ExecutePlanRequest, GetTableInfoRequest, GetTableInfoResponse, ReadRequest, ReadResponse,
         WriteBatchRequest, WriteRequest, WriteResponse,
     },
@@ -56,7 +57,7 @@ use table_engine::{
     predicate::PredicateRef,
     remote::model::{self, TableIdentifier},
     stream::{PartitionedStreams, SendableRecordBatchStream},
-    table::TableRef,
+    table::{AlterSchemaRequest, TableRef},
 };
 use time_ext::InstantExt;
 use tokio::sync::mpsc::{self, Sender};
@@ -654,6 +655,70 @@ impl RemoteEngineServiceImpl {
         ))
     }
 
+    async fn alter_table_schema_internal(
+        &self,
+        request: Request<AlterTableSchemaRequest>,
+    ) -> std::result::Result<Response<AlterTableSchemaResponse>, Status> {
+        let begin_instant = Instant::now();
+        let ctx = self.handler_ctx();
+        let handle = self.runtimes.read_runtime.spawn(async move {
+            let request = request.into_inner();
+            handle_alter_table_schema(ctx, request).await
+        });
+
+        let res = handle.await.box_err().context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: "fail to join task",
+        });
+
+        let mut resp = AlterTableSchemaResponse::default();
+        match res {
+            Ok(Ok(_)) => {
+                resp.header = Some(error::build_ok_header());
+            }
+            Ok(Err(e)) | Err(e) => {
+                resp.header = Some(error::build_err_header(e));
+            }
+        };
+
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .alter_table_schema
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
+        Ok(Response::new(resp))
+    }
+
+    async fn alter_table_options_internal(
+        &self,
+        request: Request<AlterTableOptionsRequest>,
+    ) -> std::result::Result<Response<AlterTableOptionsResponse>, Status> {
+        let begin_instant = Instant::now();
+        let ctx = self.handler_ctx();
+        let handle = self.runtimes.read_runtime.spawn(async move {
+            let request = request.into_inner();
+            handle_alter_table_options(ctx, request).await
+        });
+
+        let res = handle.await.box_err().context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: "fail to join task",
+        });
+
+        let mut resp = AlterTableOptionsResponse::default();
+        match res {
+            Ok(Ok(_)) => {
+                resp.header = Some(error::build_ok_header());
+            }
+            Ok(Err(e)) | Err(e) => {
+                resp.header = Some(error::build_err_header(e));
+            }
+        };
+
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .alter_table_options
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
+        Ok(Response::new(resp))
+    }
+
     fn handler_ctx(&self) -> HandlerContext {
         HandlerContext {
             catalog_manager: self.instance.catalog_manager.clone(),
@@ -739,6 +804,20 @@ impl RemoteEngineService for RemoteEngineServiceImpl {
         };
 
         record_stream_to_response_stream!(record_stream_result, ExecutePhysicalPlanStream)
+    }
+
+    async fn alter_table_schema(
+        &self,
+        request: Request<AlterTableSchemaRequest>,
+    ) -> std::result::Result<Response<AlterTableSchemaResponse>, Status> {
+        self.alter_table_schema_internal(request).await
+    }
+
+    async fn alter_table_options(
+        &self,
+        request: Request<AlterTableOptionsRequest>,
+    ) -> std::result::Result<Response<AlterTableOptionsResponse>, Status> {
+        self.alter_table_options_internal(request).await
     }
 }
 
@@ -1001,6 +1080,83 @@ async fn handle_execute_plan(
             code: StatusCode::Internal,
             msg: "failed to execute remote plan",
         })
+}
+
+async fn handle_alter_table_schema(
+    ctx: HandlerContext,
+    request: AlterTableSchemaRequest,
+) -> Result<()> {
+    let request: table_engine::remote::model::AlterTableSchemaRequest =
+        request.try_into().box_err().context(ErrWithCause {
+            code: StatusCode::BadRequest,
+            msg: "fail to convert alter table schema",
+        })?;
+
+    let schema = find_schema_by_identifier(&ctx, &request.table_ident)?;
+    let table = schema
+        .table_by_name(&request.table_ident.table)
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: format!("fail to get table, table:{}", request.table_ident.table),
+        })?
+        .context(ErrNoCause {
+            code: StatusCode::NotFound,
+            msg: format!("table is not found, table:{}", request.table_ident.table),
+        })?;
+
+    table
+        .alter_schema(AlterSchemaRequest {
+            schema: request.table_schema,
+            pre_schema_version: request.pre_schema_version,
+        })
+        .await
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: format!(
+                "fail to alter table schema, table:{}",
+                request.table_ident.table
+            ),
+        })?;
+    Ok(())
+}
+
+async fn handle_alter_table_options(
+    ctx: HandlerContext,
+    request: AlterTableOptionsRequest,
+) -> Result<()> {
+    let request: table_engine::remote::model::AlterTableOptionsRequest =
+        request.try_into().box_err().context(ErrWithCause {
+            code: StatusCode::BadRequest,
+            msg: "fail to convert alter table options",
+        })?;
+
+    let schema = find_schema_by_identifier(&ctx, &request.table_ident)?;
+    let table = schema
+        .table_by_name(&request.table_ident.table)
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: format!("fail to get table, table:{}", request.table_ident.table),
+        })?
+        .context(ErrNoCause {
+            code: StatusCode::NotFound,
+            msg: format!("table is not found, table:{}", request.table_ident.table),
+        })?;
+
+    table
+        .alter_options(request.options)
+        .await
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: format!(
+                "fail to alter table options, table:{}",
+                request.table_ident.table
+            ),
+        })?;
+    Ok(())
 }
 
 fn check_and_extract_plan(

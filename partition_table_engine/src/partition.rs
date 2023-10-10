@@ -24,6 +24,7 @@ use common_types::{
 };
 use futures::{stream::FuturesUnordered, StreamExt};
 use generic_error::BoxError;
+use logger::error;
 use snafu::ResultExt;
 use table_engine::{
     partition::{
@@ -36,16 +37,16 @@ use table_engine::{
     },
     remote::{
         model::{
-            ReadRequest as RemoteReadRequest, TableIdentifier, WriteBatchResult,
-            WriteRequest as RemoteWriteRequest,
+            AlterTableOptionsRequest, AlterTableSchemaRequest, ReadRequest as RemoteReadRequest,
+            TableIdentifier, WriteBatchResult, WriteRequest as RemoteWriteRequest,
         },
         RemoteEngineRef,
     },
     stream::{PartitionedStreams, SendableRecordBatchStream},
     table::{
-        AlterSchemaRequest, CreatePartitionRule, FlushRequest, GetRequest, LocatePartitions,
-        ReadRequest, Result, Scan, Table, TableId, TableStats, UnexpectedWithMsg,
-        UnsupportedMethod, Write, WriteBatch, WriteRequest,
+        AlterOptions, AlterSchema, AlterSchemaRequest, CreatePartitionRule, FlushRequest,
+        GetRequest, LocatePartitions, ReadRequest, Result, Scan, Table, TableId, TableStats,
+        UnexpectedWithMsg, UnsupportedMethod, Write, WriteBatch, WriteRequest,
     },
 };
 
@@ -328,20 +329,114 @@ impl Table for PartitionTableImpl {
         Ok(PartitionedStreams { streams })
     }
 
-    async fn alter_schema(&self, _request: AlterSchemaRequest) -> Result<usize> {
-        UnsupportedMethod {
-            table: self.name(),
-            method: "alter_schema",
+    async fn alter_schema(&self, request: AlterSchemaRequest) -> Result<usize> {
+        let partition_num = match self.partition_info() {
+            None => UnexpectedWithMsg {
+                msg: "partition table partition info can't be empty",
+            }
+            .fail()?,
+            Some(partition_info) => partition_info.get_partition_num(),
+        };
+
+        // Alter schema of partitions except the first one.
+        // Because the schema of partition table is stored in the first partition.
+        let mut futures = FuturesUnordered::new();
+        for id in 1..partition_num {
+            let partition = self
+                .remote_engine
+                .alter_table_schema(AlterTableSchemaRequest {
+                    table_ident: self.get_sub_table_ident(id),
+                    table_schema: request.schema.clone(),
+                    pre_schema_version: request.pre_schema_version,
+                });
+            futures.push(partition);
         }
-        .fail()
+
+        let mut alter_err = None;
+        while let Some(alter_ret) = futures.next().await {
+            if let Err(e) = &alter_ret {
+                error!("Alter schema failed, table_name:{}, err:{e}", self.name());
+                alter_err.get_or_insert(
+                    alter_ret
+                        .box_err()
+                        .context(AlterSchema { table: self.name() }),
+                );
+            }
+        }
+
+        // Remove the first error.
+        if let Some(ret) = alter_err {
+            ret?;
+        }
+
+        // Alter schema of the first partition.
+        self.remote_engine
+            .alter_table_schema(AlterTableSchemaRequest {
+                table_ident: self.get_sub_table_ident(0),
+                table_schema: request.schema.clone(),
+                pre_schema_version: request.pre_schema_version,
+            })
+            .await
+            .box_err()
+            .with_context(|| AlterSchema {
+                table: self.get_sub_table_ident(0).table,
+            })?;
+
+        Ok(0)
     }
 
-    async fn alter_options(&self, _options: HashMap<String, String>) -> Result<usize> {
-        UnsupportedMethod {
-            table: self.name(),
-            method: "alter_options",
+    async fn alter_options(&self, options: HashMap<String, String>) -> Result<usize> {
+        let partition_num = match self.partition_info() {
+            None => UnexpectedWithMsg {
+                msg: "partition table partition info can't be empty",
+            }
+            .fail()?,
+            Some(partition_info) => partition_info.get_partition_num(),
+        };
+
+        // Alter options of partitions except the first one.
+        // Because the schema of partition table is stored in the first partition.
+        let mut futures = FuturesUnordered::new();
+        for id in 1..partition_num {
+            let partition = self
+                .remote_engine
+                .alter_table_options(AlterTableOptionsRequest {
+                    table_ident: self.get_sub_table_ident(id),
+                    options: options.clone(),
+                });
+            futures.push(partition);
         }
-        .fail()
+
+        let mut alter_err = None;
+        while let Some(alter_ret) = futures.next().await {
+            if let Err(e) = &alter_ret {
+                error!("Alter options failed, table_name:{}, err:{e}", self.name());
+                alter_err.get_or_insert(
+                    alter_ret
+                        .box_err()
+                        .context(AlterOptions { table: self.name() }),
+                );
+            }
+        }
+
+        // Remove the first error.
+        if let Some(ret) = alter_err {
+            ret?;
+        }
+
+        // Alter options of the first partition.
+        self.remote_engine
+            .alter_table_options(AlterTableOptionsRequest {
+                table_ident: self.get_sub_table_ident(0),
+                options: options.clone(),
+            })
+            .await
+            .box_err()
+            .with_context(|| AlterOptions {
+                table: self.get_sub_table_ident(0).table,
+            })?;
+
+        Ok(0)
     }
 
     // Partition table is a virtual table, so it don't need to flush.
