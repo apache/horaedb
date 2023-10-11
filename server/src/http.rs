@@ -253,6 +253,8 @@ impl Service {
             .or(self.wal_stats())
             .or(self.query_push_down())
             .or(self.slow_threshold())
+            .or(self.parquet_page_filter())
+            .or(self.parquet_lazy_filter())
             .with(warp::log("http_requests"))
             .with(warp::log::custom(|info| {
                 let path = info.path();
@@ -665,16 +667,17 @@ impl Service {
         warp::path!("debug" / "query_push_down" / ..)
             .and(warp::path::param::<bool>())
             .and(warp::post())
-            .and(self.with_proxy())
-            .and_then(|enable: bool, proxy: Arc<Proxy>| async move {
-                proxy
-                    .instance()
-                    .dyn_config
-                    .fronted
-                    .enable_dist_query_push_down
-                    .store(enable, Ordering::Relaxed);
-                std::result::Result::<_, Rejection>::Ok(format!("{enable}").into_response())
-            })
+            .and(self.with_dynamic_config())
+            .and_then(
+                |enable: bool, dynamic_config: Arc<DynamicConfig>| async move {
+                    dynamic_config
+                        .proxy
+                        .fronted
+                        .enable_dist_query_push_down
+                        .store(enable, Ordering::Relaxed);
+                    std::result::Result::<_, Rejection>::Ok(format!("{enable}").into_response())
+                },
+            )
     }
 
     // PUT /debug/slow_threshold/{seconds}
@@ -694,6 +697,46 @@ impl Service {
                     std::result::Result::<_, Rejection>::Ok(
                         format!("current_slow_threshold:{slow_threshold_secs}s").into_response(),
                     )
+                },
+            )
+    }
+
+    // POST /debug/parquet_page_filter/{true/false}
+    fn parquet_page_filter(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("debug" / "parquet_page_filter" / ..)
+            .and(warp::path::param::<bool>())
+            .and(warp::post())
+            .and(self.with_dynamic_config())
+            .and_then(
+                |enable: bool, dynamic_config: Arc<DynamicConfig>| async move {
+                    dynamic_config
+                        .engine
+                        .sst
+                        .parquet_enable_page_filter
+                        .store(enable, Ordering::Relaxed);
+                    std::result::Result::<_, Rejection>::Ok(format!("{enable}").into_response())
+                },
+            )
+    }
+
+    // POST /debug/parquet_lazy_filter/{true/false}
+    fn parquet_lazy_filter(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("debug" / "parquet_lazy_filter" / ..)
+            .and(warp::path::param::<bool>())
+            .and(warp::post())
+            .and(self.with_dynamic_config())
+            .and_then(
+                |enable: bool, dynamic_config: Arc<DynamicConfig>| async move {
+                    dynamic_config
+                        .engine
+                        .sst
+                        .parquet_enable_lazy_row_filter
+                        .store(enable, Ordering::Relaxed);
+                    std::result::Result::<_, Rejection>::Ok(format!("{enable}").into_response())
                 },
             )
     }
