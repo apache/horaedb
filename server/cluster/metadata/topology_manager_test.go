@@ -31,7 +31,7 @@ func TestTopologyManager(t *testing.T) {
 
 	_, client, _ := etcdutil.PrepareEtcdServerAndClient(t)
 	clusterStorage := storage.NewStorageWithEtcdBackend(client, TestRootPath, storage.Options{
-		MaxScanLimit: 100, MinScanLimit: 10,
+		MaxScanLimit: 100, MinScanLimit: 10, MaxOpsPerTxn: 32,
 	})
 	shardIDAlloc := id.NewReusableAllocatorImpl([]uint64{}, TestMinShardID)
 

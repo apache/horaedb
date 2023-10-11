@@ -32,7 +32,7 @@ func TestTableManager(t *testing.T) {
 
 	_, client, _ := etcdutil.PrepareEtcdServerAndClient(t)
 	clusterStorage := storage.NewStorageWithEtcdBackend(client, TestRootPath, storage.Options{
-		MaxScanLimit: 100, MinScanLimit: 10,
+		MaxScanLimit: 100, MinScanLimit: 10, MaxOpsPerTxn: 10,
 	})
 
 	schemaIDAlloc := id.NewAllocatorImpl(zap.NewNop(), client, path.Join(TestRootPath, TestClusterName, TestSchemaIDPrefix), TestIDAllocatorStep)

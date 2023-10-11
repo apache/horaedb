@@ -329,7 +329,7 @@ func newTestStorage(t *testing.T) Storage {
 	})
 	assert.NoError(t, err)
 
-	ops := Options{MaxScanLimit: 100, MinScanLimit: 10}
+	ops := Options{MaxScanLimit: 100, MinScanLimit: 10, MaxOpsPerTxn: 32}
 
 	return newEtcdStorage(client, defaultRootPath, ops)
 }

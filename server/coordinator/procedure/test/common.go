@@ -95,7 +95,7 @@ func InitEmptyCluster(ctx context.Context, t *testing.T) *cluster.Cluster {
 
 	_, client, _ := etcdutil.PrepareEtcdServerAndClient(t)
 	clusterStorage := storage.NewStorageWithEtcdBackend(client, TestRootPath, storage.Options{
-		MaxScanLimit: 100, MinScanLimit: 10,
+		MaxScanLimit: 100, MinScanLimit: 10, MaxOpsPerTxn: 10,
 	})
 
 	logger := zap.NewNop()

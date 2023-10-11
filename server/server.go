@@ -222,9 +222,12 @@ func (srv *Server) startServer(_ context.Context) error {
 		return ErrStartServer.WithCausef("scan limit must be greater than 1")
 	}
 
-	storage := storage.NewStorageWithEtcdBackend(srv.etcdCli, srv.cfg.StorageRootPath, storage.Options{
-		MaxScanLimit: srv.cfg.MaxScanLimit, MinScanLimit: srv.cfg.MinScanLimit,
-	})
+	storage := storage.NewStorageWithEtcdBackend(srv.etcdCli, srv.cfg.StorageRootPath,
+		storage.Options{
+			MaxScanLimit: srv.cfg.MaxScanLimit,
+			MinScanLimit: srv.cfg.MinScanLimit,
+			MaxOpsPerTxn: srv.cfg.MaxOpsPerTxn,
+		})
 
 	topologyType, err := metadata.ParseTopologyType(srv.cfg.TopologyType)
 	if err != nil {

@@ -36,7 +36,7 @@ const (
 func newTestStorage(t *testing.T) (storage.Storage, clientv3.KV, *clientv3.Client, etcdutil.CloseFn) {
 	_, client, closeSrv := etcdutil.PrepareEtcdServerAndClient(t)
 	storage := storage.NewStorageWithEtcdBackend(client, testRootPath, storage.Options{
-		MaxScanLimit: 100, MinScanLimit: 10,
+		MaxScanLimit: 100, MinScanLimit: 10, MaxOpsPerTxn: 32,
 	})
 	return storage, client, client, closeSrv
 }
