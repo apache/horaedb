@@ -48,12 +48,26 @@ lazy_static! {
         "The counter for row group after prune",
         &["table"]
     ).unwrap();
+
+    static ref RECORD_BATCH_BEFORE_FILTER_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "record_batch_before_filter",
+        "The counter for record batch before filter",
+        &["table"]
+    ).unwrap();
+
+    static ref RECORD_BATCH_AFTER_FILTER_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "record_batch_after_filter",
+        "The counter for record batch after filter",
+        &["table"]
+    ).unwrap();
 }
 
 #[derive(Debug)]
 pub struct MaybeTableLevelMetrics {
     pub row_group_before_prune_counter: IntCounter,
     pub row_group_after_prune_counter: IntCounter,
+    pub record_batch_before_filter_counter: IntCounter,
+    pub record_batch_after_filter_counter: IntCounter,
 }
 
 impl MaybeTableLevelMetrics {
@@ -62,6 +76,10 @@ impl MaybeTableLevelMetrics {
             row_group_before_prune_counter: ROW_GROUP_BEFORE_PRUNE_COUNTER
                 .with_label_values(&[table]),
             row_group_after_prune_counter: ROW_GROUP_AFTER_PRUNE_COUNTER
+                .with_label_values(&[table]),
+            record_batch_before_filter_counter: RECORD_BATCH_BEFORE_FILTER_COUNTER
+                .with_label_values(&[table]),
+            record_batch_after_filter_counter: RECORD_BATCH_AFTER_FILTER_COUNTER
                 .with_label_values(&[table]),
         }
     }

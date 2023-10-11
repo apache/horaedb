@@ -326,6 +326,7 @@ impl<'a> Reader<'a> {
                 self.predicate.exprs(),
                 arrow_schema.as_ref(),
                 parquet_metadata.as_ref(),
+                &self.table_level_sst_metrics,
             )?
         } else {
             None

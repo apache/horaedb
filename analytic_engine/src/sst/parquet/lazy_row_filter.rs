@@ -35,7 +35,10 @@ use parquet::arrow::{
 use parquet_ext::ParquetMetaData;
 use snafu::ResultExt;
 
-use crate::sst::reader::{error::Result, ArrowError, DataFusionError};
+use crate::sst::{
+    metrics::MaybeTableLevelMetrics,
+    reader::{error::Result, ArrowError, DataFusionError},
+};
 
 // Inspired by datafusion:
 // https://github.com/apache/arrow-datafusion/blob/9f25634414a2650ee8dd2b263f0e29900b13a370/datafusion/core/src/datasource/physical_plan/parquet/row_filter.rs
@@ -55,6 +58,7 @@ impl LazyRowFilterBuilder {
         exprs: &[Expr],
         schema: &Schema,
         meta_data: &ParquetMetaData,
+        maybe_table_level_metrics: &Arc<MaybeTableLevelMetrics>,
     ) -> Result<Option<Self>> {
         let filter_candidates = FilterCandidatesSelector::new(exprs, schema, meta_data).select()?;
         if filter_candidates.is_empty() {
@@ -65,7 +69,14 @@ impl LazyRowFilterBuilder {
 
         let arrow_predicates = sorted_candidates
             .into_iter()
-            .map(|candidate| DatafusionArrowPredicate::try_new(candidate, schema, meta_data))
+            .map(|candidate| {
+                DatafusionArrowPredicate::try_new(
+                    candidate,
+                    schema,
+                    meta_data,
+                    maybe_table_level_metrics.clone(),
+                )
+            })
             .collect::<Result<Vec<_>>>()?;
 
         Ok(Some(Self { arrow_predicates }))
@@ -258,6 +269,7 @@ impl<'a> TreeNodeVisitor for FilterStatsBuilder<'a> {
 struct DatafusionArrowPredicate {
     physical_expr: Arc<dyn PhysicalExpr>,
     projection_mask: ProjectionMask,
+    maybe_table_level_metrics: Arc<MaybeTableLevelMetrics>,
 }
 
 impl DatafusionArrowPredicate {
@@ -265,6 +277,7 @@ impl DatafusionArrowPredicate {
         candidate: FilterCandidate,
         schema: &Schema,
         metadata: &ParquetMetaData,
+        maybe_table_level_metrics: Arc<MaybeTableLevelMetrics>,
     ) -> Result<Self> {
         let projection = candidate.projection.iter().cloned().collect::<Vec<_>>();
         let schema = schema.project(&projection).context(ArrowError)?;
@@ -284,6 +297,7 @@ impl DatafusionArrowPredicate {
                 metadata.file_metadata().schema_descr(),
                 projection,
             ),
+            maybe_table_level_metrics,
         })
     }
 }
@@ -301,7 +315,12 @@ impl ArrowPredicate for DatafusionArrowPredicate {
         {
             Ok(array) => {
                 let bool_arr = as_boolean_array(&array)?.clone();
-                let _num_filtered = bool_arr.len() - bool_arr.true_count();
+                self.maybe_table_level_metrics
+                    .record_batch_before_filter_counter
+                    .inc_by(bool_arr.len() as u64);
+                self.maybe_table_level_metrics
+                    .record_batch_after_filter_counter
+                    .inc_by(bool_arr.true_count() as u64);
                 Ok(bool_arr)
             }
             Err(e) => Err(arrow::error::ArrowError::ComputeError(format!(
