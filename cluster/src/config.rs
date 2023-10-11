@@ -15,7 +15,6 @@
 use std::time::Duration;
 
 use common_types::schema::TIMESTAMP_COLUMN;
-use etcd_client::ConnectOptions;
 use meta_client::meta_impl::MetaClientConfig;
 use serde::{Deserialize, Serialize};
 use table_engine::ANALYTIC_ENGINE_TYPE;
@@ -43,6 +42,16 @@ const MIN_SHARD_LOCK_LEASE_TTL_SEC: u64 = 15;
 
 #[derive(Clone, Deserialize, Debug, Serialize)]
 #[serde(default)]
+pub struct TlsConfig {
+    pub enable: bool,
+    pub domain: Option<String>,
+    pub ca_cert_path: String,
+    pub client_key_path: String,
+    pub client_cert_path: String,
+}
+
+#[derive(Clone, Deserialize, Debug, Serialize)]
+#[serde(default)]
 pub struct EtcdClientConfig {
     /// The etcd server addresses
     pub server_addrs: Vec<String>,
@@ -51,6 +60,9 @@ pub struct EtcdClientConfig {
 
     /// Timeout to connect to etcd cluster
     pub connect_timeout: ReadableDuration,
+
+    /// Tls config to access etcd cluster.
+    pub tls: TlsConfig,
 
     /// The lease of the shard lock in seconds.
     ///
@@ -88,23 +100,28 @@ impl EtcdClientConfig {
     }
 }
 
-impl From<&EtcdClientConfig> for ConnectOptions {
-    fn from(config: &EtcdClientConfig) -> Self {
-        ConnectOptions::default()
-            .with_connect_timeout(config.connect_timeout.0)
-            .with_timeout(config.rpc_timeout())
-    }
-}
-
 impl Default for EtcdClientConfig {
     fn default() -> Self {
         Self {
             server_addrs: vec!["127.0.0.1:2379".to_string()],
             root_path: DEFAULT_ETCD_ROOT_PATH.to_string(),
+            tls: TlsConfig::default(),
             connect_timeout: ReadableDuration::secs(5),
             shard_lock_lease_ttl_sec: 30,
             shard_lock_lease_check_interval: ReadableDuration::millis(200),
             enable_shard_lock_fast_reacquire: false,
+        }
+    }
+}
+
+impl Default for TlsConfig {
+    fn default() -> Self {
+        Self {
+            enable: false,
+            domain: None,
+            ca_cert_path: "".to_string(),
+            client_key_path: "".to_string(),
+            client_cert_path: "".to_string(),
         }
     }
 }

@@ -106,7 +106,7 @@ datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", re
 df_operator = { path = "df_operator" }
 df_engine_extensions = { path = "df_engine_extensions" }
 future_ext = { path = "components/future_ext" }
-etcd-client = "0.10.3"
+etcd-client = { version = "0.10.3", features = ["tls"] }
 env_logger = "0.6"
 futures = "0.3"
 generic_error = { path = "components/generic_error" }

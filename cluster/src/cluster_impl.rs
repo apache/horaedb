@@ -19,7 +19,7 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::table::ShardId;
-use etcd_client::ConnectOptions;
+use etcd_client::{Certificate, ConnectOptions, Identity, TlsOptions};
 use generic_error::BoxError;
 use logger::{error, info, warn};
 use meta_client::{
@@ -32,17 +32,19 @@ use meta_client::{
 use runtime::{JoinHandle, Runtime};
 use snafu::{ensure, OptionExt, ResultExt};
 use tokio::{
+    fs, io,
     sync::mpsc::{self, Sender},
     time,
 };
 
 use crate::{
-    config::ClusterConfig,
+    config::{ClusterConfig, EtcdClientConfig},
     shard_lock_manager::{self, ShardLockManager, ShardLockManagerRef},
     shard_set::{Shard, ShardRef, ShardSet},
     topology::ClusterTopology,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause, InvalidArguments,
-    MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause,
+    InitEtcdClientConfig, InvalidArguments, MetaClientFailure, OpenShard, OpenShardWithCause,
+    Result, ShardNotFound,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -72,8 +74,9 @@ impl ClusterImpl {
             return InvalidArguments { msg: e }.fail();
         }
 
-        let inner = Arc::new(Inner::new(shard_set, meta_client)?);
-        let connect_options = ConnectOptions::from(&config.etcd_client);
+        let connect_options = build_etcd_connect_options(&config.etcd_client)
+            .await
+            .context(InitEtcdClientConfig)?;
         let etcd_client =
             etcd_client::Client::connect(&config.etcd_client.server_addrs, Some(connect_options))
                 .await
@@ -95,6 +98,8 @@ impl ClusterImpl {
             runtime: runtime.clone(),
         };
         let shard_lock_manager = ShardLockManager::new(shard_lock_mgr_config, etcd_client);
+
+        let inner = Arc::new(Inner::new(shard_set, meta_client)?);
         Ok(Self {
             inner,
             runtime,
@@ -381,6 +386,34 @@ impl Cluster for ClusterImpl {
 
     fn shard_lock_manager(&self) -> ShardLockManagerRef {
         self.shard_lock_manager.clone()
+    }
+}
+
+/// Build the connect options for accessing etcd cluster.
+async fn build_etcd_connect_options(config: &EtcdClientConfig) -> io::Result<ConnectOptions> {
+    let connect_options = ConnectOptions::default()
+        .with_connect_timeout(config.connect_timeout.0)
+        .with_timeout(config.rpc_timeout());
+
+    let tls = &config.tls;
+    if tls.enable {
+        let server_ca_cert = fs::read(&tls.ca_cert_path).await?;
+        let client_cert = fs::read(&tls.client_cert_path).await?;
+        let client_key = fs::read(&tls.client_key_path).await?;
+
+        let ca_cert = Certificate::from_pem(server_ca_cert);
+        let client_ident = Identity::from_pem(client_cert, client_key);
+        let mut tls_options = TlsOptions::new()
+            .ca_certificate(ca_cert)
+            .identity(client_ident);
+
+        if let Some(domain) = &tls.domain {
+            tls_options = tls_options.domain_name(domain);
+        }
+
+        Ok(connect_options.with_tls(tls_options))
+    } else {
+        Ok(connect_options)
     }
 }
 
