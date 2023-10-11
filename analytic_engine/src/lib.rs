@@ -133,6 +133,7 @@ pub struct ParquetReaderOptions {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "type")]
 pub enum ReaderOptions {
     Parquet(ParquetReaderOptions),
 }
