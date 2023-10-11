@@ -93,7 +93,7 @@ func (s schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.Sn
 			shardNode := clusterSnapshot.Topology.ClusterView.ShardNodes[i]
 			node, err := findOnlineNodeByName(shardNode.NodeName, clusterSnapshot.RegisteredNodes)
 			if err != nil {
-				return scheduler.ScheduleResult{}, err
+				continue
 			}
 			if !containsShard(node.ShardInfos, shardNode.ID) {
 				// Shard need to be reopened
@@ -107,7 +107,7 @@ func (s schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.Sn
 					return scheduler.ScheduleResult{}, err
 				}
 				procedures = append(procedures, p)
-				reasons.WriteString(fmt.Sprintf("Cluster initialization, assign shard to node, shardID:%d, nodeName:%s. ", shardNode.ID, node.Node.Name))
+				reasons.WriteString(fmt.Sprintf("Cluster recover, assign shard to node, shardID:%d, nodeName:%s. ", shardNode.ID, node.Node.Name))
 				if len(procedures) >= int(s.procedureExecutingBatchSize) {
 					break
 				}
