@@ -16,7 +16,7 @@
 
 use std::{
     collections::HashMap,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc},
 };
 
 use analytic_engine::DynamicConfig as EngineDynamicConfig;

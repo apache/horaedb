@@ -65,10 +65,8 @@ use crate::{
         },
         metrics::MaybeTableLevelMetrics,
         parquet::{
-            encoding::ParquetDecoder,
-            lazy_row_filter::{self, LazyRowFilterBuilder},
-            meta_data::ParquetFilter,
-            row_group_pruner::RowGroupPruner,
+            encoding::ParquetDecoder, lazy_row_filter::LazyRowFilterBuilder,
+            meta_data::ParquetFilter, row_group_pruner::RowGroupPruner,
         },
         reader::{error::*, Result, SstReader},
         DynamicConfig,
