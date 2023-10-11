@@ -231,7 +231,7 @@ func (c *ClusterMetadata) MigrateTable(ctx context.Context, request MigrateTable
 
 		if !exists {
 			c.logger.Error("the table to be closed does not exist", zap.String("schemaName", request.SchemaName), zap.String("tableName", tableName))
-			return errors.WithMessagef(ErrTableNotFound, "table not exists, shcemaName:%s,tableName:%s", request.SchemaName, tableName)
+			return errors.WithMessagef(ErrTableNotFound, "table not exists, schemaName:%s, tableName:%s", request.SchemaName, tableName)
 		}
 
 		tables = append(tables, table)

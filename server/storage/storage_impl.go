@@ -21,6 +21,8 @@ type Options struct {
 	MaxScanLimit int
 	// MinScanLimit is the min limit of the number of keys in a scan.
 	MinScanLimit int
+	// MaxOpsPerTxn is th max number of the operations allowed in a txn.
+	MaxOpsPerTxn int
 }
 
 // metaStorageImpl is the base underlying storage endpoint for all other upper
@@ -390,34 +392,53 @@ func (s *metaStorageImpl) DeleteTable(ctx context.Context, req DeleteTableReques
 	return nil
 }
 
-func (s *metaStorageImpl) CreateShardViews(ctx context.Context, req CreateShardViewsRequest) error {
-	keysMissing := make([]clientv3.Cmp, 0)
-	opCreateShardTopologiesAndLatestVersion := make([]clientv3.Op, 0)
-
-	for _, shardView := range req.ShardViews {
+func (s *metaStorageImpl) createNShardViews(ctx context.Context, clusterID ClusterID, shardViews []ShardView, ifConds []clientv3.Cmp, opCreates []clientv3.Op) error {
+	for _, shardView := range shardViews {
 		shardViewPB := convertShardViewToPB(shardView)
 		value, err := proto.Marshal(&shardViewPB)
 		if err != nil {
-			return ErrEncode.WithCausef("encode shard clusterView, clusterID:%d, shardID:%d, err:%v", req.ClusterID, shardView.ShardID, err)
+			return ErrEncode.WithCausef("encode shard clusterView, clusterID:%d, shardID:%d, err:%v", clusterID, shardView.ShardID, err)
 		}
 
-		key := makeShardViewKey(s.rootPath, uint32(req.ClusterID), uint32(shardView.ShardID), fmtID(shardView.Version))
-		latestVersionKey := makeShardViewLatestVersionKey(s.rootPath, uint32(req.ClusterID), uint32(shardView.ShardID))
+		key := makeShardViewKey(s.rootPath, uint32(clusterID), uint32(shardView.ShardID), fmtID(shardView.Version))
+		latestVersionKey := makeShardViewLatestVersionKey(s.rootPath, uint32(clusterID), uint32(shardView.ShardID))
 
 		// Check if the key and latest version key exists, if not，create shard clusterView and latest version; Otherwise, the shard clusterView already exists and return an error.
-		keysMissing = append(keysMissing, clientv3util.KeyMissing(key), clientv3util.KeyMissing(latestVersionKey))
-		opCreateShardTopologiesAndLatestVersion = append(opCreateShardTopologiesAndLatestVersion, clientv3.OpPut(key, string(value)), clientv3.OpPut(latestVersionKey, fmtID(shardView.Version)))
+		ifConds = append(ifConds, clientv3util.KeyMissing(key), clientv3util.KeyMissing(latestVersionKey))
+		opCreates = append(opCreates, clientv3.OpPut(key, string(value)), clientv3.OpPut(latestVersionKey, fmtID(shardView.Version)))
 	}
+
 	resp, err := s.client.Txn(ctx).
-		If(keysMissing...).
-		Then(opCreateShardTopologiesAndLatestVersion...).
+		If(ifConds...).
+		Then(opCreates...).
 		Commit()
 	if err != nil {
-		return errors.WithMessagef(err, "create shard view, clusterID:%d", req.ClusterID)
+		return errors.WithMessagef(err, "create shard view, clusterID:%d", clusterID)
 	}
 	if !resp.Succeeded {
-		return ErrCreateShardViewAgain.WithCausef("shard view may already exist, clusterID:%d, resp:%v", req.ClusterID, resp)
+		return ErrCreateShardViewAgain.WithCausef("shard view may already exist, clusterID:%d, resp:%v", clusterID, resp)
 	}
+
+	return nil
+}
+
+func (s *metaStorageImpl) CreateShardViews(ctx context.Context, req CreateShardViewsRequest) error {
+	ifConds := make([]clientv3.Cmp, 0, s.opts.MaxOpsPerTxn)
+	opCreates := make([]clientv3.Op, 0, s.opts.MaxOpsPerTxn)
+	numShardViews := len(req.ShardViews)
+	for start := 0; start < numShardViews; start += s.opts.MaxOpsPerTxn {
+		end := start + s.opts.MaxOpsPerTxn
+		if end > numShardViews {
+			end = numShardViews
+		}
+
+		if err := s.createNShardViews(ctx, req.ClusterID, req.ShardViews[start:end], ifConds, opCreates); err != nil {
+			return err
+		}
+		ifConds = ifConds[:0]
+		opCreates = opCreates[:0]
+	}
+
 	return nil
 }
 

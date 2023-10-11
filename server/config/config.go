@@ -29,7 +29,7 @@ const (
 	defaultEnableLimiter          bool  = false
 	defaultEtcdStartTimeoutMs     int64 = 60 * 1000
 	defaultCallTimeoutMs                = 5 * 1000
-	defaultMaxTxnOps                    = 128
+	defaultEtcdMaxTxnOps                = 128
 	defaultEtcdLeaseTTLSec              = 10
 
 	defaultGrpcHandleTimeoutMs int = 60 * 1000
@@ -58,6 +58,7 @@ const (
 
 	defaultMaxScanLimit    int  = 100
 	defaultMinScanLimit    int  = 20
+	defaultMaxOpsPerTxn    int  = 32
 	defaultIDAllocatorStep uint = 20
 
 	DefaultClusterName              = "defaultCluster"
@@ -140,6 +141,7 @@ type Config struct {
 	MaxRequestBytes         uint   `toml:"max-request-bytes" env:"MAX_REQUEST_BYTES"`
 	MaxScanLimit            int    `toml:"max-scan-limit" env:"MAX_SCAN_LIMIT"`
 	MinScanLimit            int    `toml:"min-scan-limit" env:"MIN_SCAN_LIMIT"`
+	MaxOpsPerTxn            int    `toml:"max-ops-per-txn" env:"MAX_OPS_PER_TXN"`
 	IDAllocatorStep         uint   `toml:"id-allocator-step" env:"ID_ALLOCATOR_STEP"`
 
 	// Following fields are the settings for the default cluster.
@@ -292,7 +294,7 @@ func MakeConfigParser() (*Parser, error) {
 
 		EtcdStartTimeoutMs: defaultEtcdStartTimeoutMs,
 		EtcdCallTimeoutMs:  defaultCallTimeoutMs,
-		EtcdMaxTxnOps:      defaultMaxTxnOps,
+		EtcdMaxTxnOps:      defaultEtcdMaxTxnOps,
 
 		GrpcHandleTimeoutMs:                    defaultGrpcHandleTimeoutMs,
 		GrpcServiceMaxSendMsgSize:              defaultGrpcServiceMaxSendMsgSize,
@@ -324,6 +326,7 @@ func MakeConfigParser() (*Parser, error) {
 		MaxRequestBytes:         defaultMaxRequestBytes,
 		MaxScanLimit:            defaultMaxScanLimit,
 		MinScanLimit:            defaultMinScanLimit,
+		MaxOpsPerTxn:            defaultMaxOpsPerTxn,
 		IDAllocatorStep:         defaultIDAllocatorStep,
 
 		DefaultClusterName:              DefaultClusterName,
