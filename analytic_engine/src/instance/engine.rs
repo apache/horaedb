@@ -368,7 +368,6 @@ impl Instance {
         let dropper = Dropper {
             space,
             space_store: self.space_store.clone(),
-            flusher: self.make_flusher(),
         };
 
         dropper.drop(request).await

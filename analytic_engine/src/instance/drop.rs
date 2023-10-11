@@ -14,14 +14,14 @@
 
 //! Drop table logic of instance
 
+use common_types::SequenceNumber;
 use logger::{info, warn};
 use snafu::ResultExt;
 use table_engine::engine::DropTableRequest;
 
 use crate::{
     instance::{
-        engine::{FlushTable, Result, WriteManifest},
-        flush_compaction::{Flusher, TableFlushOptions},
+        engine::{Result, WriteManifest},
         SpaceStoreRef,
     },
     manifest::meta_edit::{DropTableMeta, MetaEdit, MetaEditRequest, MetaUpdate},
@@ -31,8 +31,6 @@ use crate::{
 pub(crate) struct Dropper {
     pub space: SpaceRef,
     pub space_store: SpaceStoreRef,
-
-    pub flusher: Flusher,
 }
 
 impl Dropper {
@@ -48,8 +46,6 @@ impl Dropper {
             }
         };
 
-        let mut serial_exec = table_data.serial_exec.lock().await;
-
         if table_data.is_dropped() {
             warn!(
                 "Process drop table command tries to drop a dropped table, table:{:?}",
@@ -58,20 +54,16 @@ impl Dropper {
             return Ok(false);
         }
 
-        // Fixme(xikai): Trigger a force flush so that the data of the table in the wal
-        //  is marked for deletable. However, the overhead of the flushing can
-        //  be avoided.
-
-        let opts = TableFlushOptions::default();
-        let flush_scheduler = serial_exec.flush_scheduler();
-        self.flusher
-            .do_flush(flush_scheduler, &table_data, opts)
+        // Mark table's WAL for deletable, memtable will also get freed automatically
+        // when table_data is dropped.
+        let table_location = table_data.table_location();
+        let wal_location =
+            crate::instance::create_wal_location(table_location.id, table_location.shard_info);
+        self.space_store
+            .wal_manager
+            .mark_delete_entries_up_to(wal_location, SequenceNumber::MAX)
             .await
-            .context(FlushTable {
-                space_id: self.space.id,
-                table: &table_data.name,
-                table_id: table_data.id,
-            })?;
+            .unwrap();
 
         // Store the dropping information into meta
         let edit_req = {
