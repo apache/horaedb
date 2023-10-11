@@ -280,6 +280,7 @@ fn validate_contiguous_payload_schema(schema: &Schema, column_descs: &[ColumnDes
             }
         );
     }
+
     Ok(())
 }
 
