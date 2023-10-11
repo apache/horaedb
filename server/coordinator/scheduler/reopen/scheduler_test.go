@@ -12,13 +12,14 @@ import (
 	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/reopen"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestReopenShardScheduler(t *testing.T) {
 	re := require.New(t)
 	ctx := context.Background()
 
-	procedureFactory := coordinator.NewFactory(test.MockIDAllocator{}, test.MockDispatch{}, test.NewTestStorage(t))
+	procedureFactory := coordinator.NewFactory(zap.NewNop(), test.MockIDAllocator{}, test.MockDispatch{}, test.NewTestStorage(t))
 
 	s := reopen.NewShardScheduler(procedureFactory, 1)
 

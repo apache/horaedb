@@ -22,7 +22,7 @@ import (
 )
 
 type Factory struct {
-	logger      zap.Logger
+	logger      *zap.Logger
 	idAllocator id.Allocator
 	dispatch    eventdispatch.Dispatch
 	storage     procedure.Storage
@@ -86,11 +86,12 @@ type BatchRequest struct {
 	BatchType procedure.Typ
 }
 
-func NewFactory(allocator id.Allocator, dispatch eventdispatch.Dispatch, storage procedure.Storage) *Factory {
+func NewFactory(logger *zap.Logger, allocator id.Allocator, dispatch eventdispatch.Dispatch, storage procedure.Storage) *Factory {
 	return &Factory{
 		idAllocator: allocator,
 		dispatch:    dispatch,
 		storage:     storage,
+		logger:      logger,
 		shardPicker: NewLeastTableShardPicker(),
 	}
 }

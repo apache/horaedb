@@ -12,6 +12,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/test"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func setupFactory(t *testing.T) (*coordinator.Factory, *metadata.ClusterMetadata) {
@@ -21,7 +22,7 @@ func setupFactory(t *testing.T) (*coordinator.Factory, *metadata.ClusterMetadata
 	dispatch := test.MockDispatch{}
 	allocator := test.MockIDAllocator{}
 	storage := test.NewTestStorage(t)
-	f := coordinator.NewFactory(allocator, dispatch, storage)
+	f := coordinator.NewFactory(zap.NewNop(), allocator, dispatch, storage)
 
 	return f, c.GetMetadata()
 }

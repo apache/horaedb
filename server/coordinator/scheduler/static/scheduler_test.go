@@ -18,7 +18,7 @@ func TestStaticTopologyScheduler(t *testing.T) {
 	re := require.New(t)
 	ctx := context.Background()
 
-	procedureFactory := coordinator.NewFactory(test.MockIDAllocator{}, test.MockDispatch{}, test.NewTestStorage(t))
+	procedureFactory := coordinator.NewFactory(zap.NewNop(), test.MockIDAllocator{}, test.MockDispatch{}, test.NewTestStorage(t))
 
 	s := static.NewShardScheduler(procedureFactory, nodepicker.NewConsistentUniformHashNodePicker(zap.NewNop()), 1)
 
