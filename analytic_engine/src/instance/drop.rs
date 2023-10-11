@@ -21,7 +21,7 @@ use table_engine::engine::DropTableRequest;
 
 use crate::{
     instance::{
-        engine::{Result, WriteManifest},
+        engine::{PurgeWal, Result, WriteManifest},
         SpaceStoreRef,
     },
     manifest::meta_edit::{DropTableMeta, MetaEdit, MetaEditRequest, MetaUpdate},
@@ -59,11 +59,16 @@ impl Dropper {
         let table_location = table_data.table_location();
         let wal_location =
             crate::instance::create_wal_location(table_location.id, table_location.shard_info);
+        // Use max to represet delete all WAL.
+        let sequence = SequenceNumber::MAX;
         self.space_store
             .wal_manager
-            .mark_delete_entries_up_to(wal_location, SequenceNumber::MAX)
+            .mark_delete_entries_up_to(wal_location, sequence)
             .await
-            .unwrap();
+            .context(PurgeWal {
+                wal_location,
+                sequence,
+            })?;
 
         // Store the dropping information into meta
         let edit_req = {

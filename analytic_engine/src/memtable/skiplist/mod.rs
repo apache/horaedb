@@ -65,7 +65,7 @@ pub struct SkiplistMemTable<A> {
 impl<A> Drop for SkiplistMemTable<A> {
     fn drop(&mut self) {
         logger::debug!(
-            "Drop memtable, last_seq:{}, schema:{:?}",
+            "Drop skiplist memtable, last_seq:{}, schema:{:?}",
             self.last_sequence.load(atomic::Ordering::Relaxed),
             self.schema
         );

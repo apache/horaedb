@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-use common_types::schema::Version;
+use common_types::{schema::Version, SequenceNumber};
 use generic_error::GenericError;
 use macros::define_result;
 use snafu::{Backtrace, OptionExt, Snafu};
@@ -237,6 +237,17 @@ pub enum Error {
         "Try to create a random partition table in overwrite mode, table:{table}.\nBacktrace:\n{backtrace}",
     ))]
     TryCreateRandomPartitionTableInOverwriteMode { table: String, backtrace: Backtrace },
+
+    #[snafu(display(
+        "Failed to purge wal, wal_location:{:?}, sequence:{}",
+        wal_location,
+        sequence
+    ))]
+    PurgeWal {
+        wal_location: WalLocation,
+        sequence: SequenceNumber,
+        source: wal::manager::Error,
+    },
 }
 
 define_result!(Error);
@@ -273,6 +284,7 @@ impl From<Error> for table_engine::engine::Error {
             | Error::TableNotExist { .. }
             | Error::OpenTablesOfShard { .. }
             | Error::ReplayWalNoCause { .. }
+            | Error::PurgeWal { .. }
             | Error::ReplayWalWithCause { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
