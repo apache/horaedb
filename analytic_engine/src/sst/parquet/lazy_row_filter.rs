@@ -282,7 +282,7 @@ impl DatafusionArrowPredicate {
             physical_expr,
             projection_mask: ProjectionMask::roots(
                 metadata.file_metadata().schema_descr(),
-                candidate.projection,
+                projection,
             ),
         })
     }
@@ -309,5 +309,118 @@ impl ArrowPredicate for DatafusionArrowPredicate {
                 e
             ))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::BTreeSet, sync::Arc};
+
+    use arrow::datatypes::{DataType, Field, Fields, Schema};
+    use datafusion::{
+        prelude::{col, lit, Expr},
+        scalar::ScalarValue,
+    };
+
+    use crate::sst::parquet::lazy_row_filter::{
+        FilterCandidate, FilterCandidatesSorter, FilterStatsBuilder,
+    };
+
+    struct TestUtil {
+        schema: Schema,
+        filters: Vec<Expr>,
+    }
+
+    impl TestUtil {
+        fn new() -> Self {
+            Self {
+                schema: Self::test_schema(),
+                filters: Self::test_filters(),
+            }
+        }
+
+        fn test_schema() -> Schema {
+            Schema::new(vec![
+                Field::new("a", DataType::Int32, true),
+                Field::new("b", DataType::Utf8, true),
+                Field::new(
+                    "c",
+                    DataType::List(Arc::new(Field::new("field", DataType::Int32, true))),
+                    true,
+                ),
+            ])
+        }
+
+        fn test_filters() -> Vec<Expr> {
+            // Single column + eq
+            let good_1 = col("a").eq(lit(42));
+            // Single column + in
+            let good_2 = col("b").in_list(vec![lit("a"), lit("b"), lit("c")], false);
+
+            // multiple columns
+            let bad_1 = (col("a").eq(lit(42))).or(col("b").eq(lit("d")));
+            // Single column + compound data type
+            let bad_2 = col("c").eq(lit(ScalarValue::Struct(
+                Some(vec![
+                    ScalarValue::Int32(Some(1)),
+                    ScalarValue::Int32(Some(2)),
+                ]),
+                Fields::from(vec![
+                    Field::new("ca", DataType::Int32, true),
+                    Field::new("cb", DataType::Int32, true),
+                ]),
+            )));
+            // Single column but not so selective
+            let bad_3 = col("a").lt(lit(42));
+
+            vec![good_1, good_2, bad_1, bad_2, bad_3]
+        }
+    }
+
+    fn check_filter(expr: &Expr, schema: &Schema, expected: bool) {
+        let stats = FilterStatsBuilder::new(expr, schema).build().unwrap();
+        assert_eq!(stats.selected(), expected, "filter:{}", expr);
+    }
+
+    #[test]
+    fn test_select_filter_candidates() {
+        let test_util = TestUtil::new();
+        let expecteds = [true, true, false, false, false];
+        let cases_and_expecteds = test_util
+            .filters
+            .clone()
+            .into_iter()
+            .zip(expecteds.into_iter())
+            .collect::<Vec<_>>();
+
+        // Check them.
+        for (case, expected) in cases_and_expecteds {
+            check_filter(&case, &test_util.schema, expected)
+        }
+    }
+
+    #[test]
+    fn test_sort_filter_candidates() {
+        let test_util = TestUtil::new();
+        let candidates = vec![
+            FilterCandidate {
+                expr: test_util.filters[0].clone(),
+                projection: BTreeSet::from([0]),
+                required_bytes: 3,
+            },
+            FilterCandidate {
+                expr: test_util.filters[1].clone(),
+                projection: BTreeSet::from([1]),
+                required_bytes: 1,
+            },
+        ];
+
+        let sorted_candidates = FilterCandidatesSorter(candidates).sort();
+        let sorted_exprs = sorted_candidates
+            .iter()
+            .map(|candidate| candidate.expr.clone())
+            .collect::<Vec<_>>();
+        let expected = vec![test_util.filters[1].clone(), test_util.filters[0].clone()];
+        assert_eq!(sorted_exprs, expected);
     }
 }
