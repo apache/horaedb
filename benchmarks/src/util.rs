@@ -29,6 +29,7 @@ use analytic_engine::{
         meta_data::cache::{self, MetaCacheRef},
         metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
         writer::MetaData,
+        DynamicConfig,
     },
     table::sst_util,
     table_options::StorageFormat,
@@ -132,6 +133,7 @@ pub async fn load_sst_to_memtable(
         meta_cache: None,
         scan_options,
         runtime,
+        sst_dynamic_config: Arc::new(DynamicConfig::default()),
     };
     let sst_factory = FactoryImpl;
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());

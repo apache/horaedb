@@ -25,6 +25,7 @@ use analytic_engine::{
         },
         file::Level,
         metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
+        DynamicConfig,
     },
     table_options::{Compression, StorageFormatHint},
 };
@@ -101,6 +102,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         meta_cache: None,
         scan_options,
         runtime,
+        sst_dynamic_config: Arc::new(DynamicConfig::default()),
     };
     let store_picker: ObjectStorePickerRef = Arc::new(store);
     let mut reader = factory

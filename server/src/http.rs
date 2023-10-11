@@ -58,6 +58,7 @@ use warp::{
 };
 
 use crate::{
+    config::DynamicConfig,
     consts::{self, CONTENT_ENCODING_HEADER, GZIP_ENCODING},
     error_util,
     metrics::{self, HTTP_HANDLER_DURATION_HISTOGRAM_VEC},
@@ -140,6 +141,9 @@ pub enum Error {
     #[snafu(display("Missing wal.\nBacktrace:\n{}", backtrace))]
     MissingWal { backtrace: Backtrace },
 
+    #[snafu(display("Missing dynamic config.\nBacktrace:\n{}", backtrace))]
+    MissingDynamicConfig { backtrace: Backtrace },
+
     #[snafu(display("{msg}"))]
     QueryMaybeExceedTTL { msg: String },
 
@@ -184,6 +188,7 @@ pub struct Service {
     config: HttpConfig,
     config_content: String,
     opened_wals: OpenedWals,
+    dynamic_config: Arc<DynamicConfig>,
 }
 
 impl Service {
@@ -679,17 +684,18 @@ impl Service {
         warp::path!("debug" / "slow_threshold" / ..)
             .and(warp::path::param::<u64>())
             .and(warp::put())
-            .and(self.with_proxy())
-            .and_then(|slow_threshold_secs: u64, proxy: Arc<Proxy>| async move {
-                proxy
-                    .instance()
-                    .dyn_config
-                    .slow_threshold
-                    .store(slow_threshold_secs, Ordering::Relaxed);
-                std::result::Result::<_, Rejection>::Ok(
-                    format!("current_slow_threshold:{slow_threshold_secs}s").into_response(),
-                )
-            })
+            .and(self.with_dynamic_config())
+            .and_then(
+                |slow_threshold_secs: u64, dynamic_config: Arc<DynamicConfig>| async move {
+                    dynamic_config
+                        .proxy
+                        .slow_threshold
+                        .store(slow_threshold_secs, Ordering::Relaxed);
+                    std::result::Result::<_, Rejection>::Ok(
+                        format!("current_slow_threshold:{slow_threshold_secs}s").into_response(),
+                    )
+                },
+            )
     }
 
     fn with_context(
@@ -775,6 +781,13 @@ impl Service {
         let runtime = self.engine_runtimes.read_runtime.clone();
         warp::any().map(move || runtime.clone())
     }
+
+    fn with_dynamic_config(
+        &self,
+    ) -> impl Filter<Extract = (Arc<DynamicConfig>,), Error = Infallible> + Clone {
+        let dynamic_config = self.dynamic_config.clone();
+        warp::any().map(move || dynamic_config.clone())
+    }
 }
 
 /// Service builder
@@ -786,6 +799,7 @@ pub struct Builder {
     cluster: Option<ClusterRef>,
     proxy: Option<Arc<Proxy>>,
     opened_wals: Option<OpenedWals>,
+    dynamic_config: Option<Arc<DynamicConfig>>,
 }
 
 impl Builder {
@@ -798,6 +812,7 @@ impl Builder {
             cluster: None,
             proxy: None,
             opened_wals: None,
+            dynamic_config: None,
         }
     }
 
@@ -830,6 +845,11 @@ impl Builder {
         self.opened_wals = Some(opened_wals);
         self
     }
+
+    pub fn dynamic_config(mut self, dynamic_config: Arc<DynamicConfig>) -> Self {
+        self.dynamic_config = Some(dynamic_config);
+        self
+    }
 }
 
 impl Builder {
@@ -841,6 +861,7 @@ impl Builder {
         let proxy = self.proxy.context(MissingProxy)?;
         let cluster = self.cluster;
         let opened_wals = self.opened_wals.context(MissingWal)?;
+        let dynamic_config = self.dynamic_config.context(MissingDynamicConfig)?;
 
         let (tx, rx) = oneshot::channel();
 
@@ -855,6 +876,7 @@ impl Builder {
             config: self.config,
             config_content,
             opened_wals,
+            dynamic_config,
         };
 
         Ok(service)
@@ -887,6 +909,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::MissingInstance { .. }
         | Error::MissingSchemaConfigProvider { .. }
         | Error::MissingProxy { .. }
+        | Error::MissingDynamicConfig { .. }
         | Error::ParseIpAddr { .. }
         | Error::ProfileHeap { .. }
         | Error::ProfileCPU { .. }

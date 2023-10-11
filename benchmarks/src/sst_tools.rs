@@ -35,6 +35,7 @@ use analytic_engine::{
         meta_data::SstMetaReader,
         metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
         writer::{MetaData, RecordBatchStream},
+        DynamicConfig,
     },
     table::sst_util,
     table_options::{Compression, StorageFormatHint},
@@ -129,6 +130,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
         meta_cache: None,
         scan_options,
         runtime,
+        sst_dynamic_config: Arc::new(DynamicConfig::default()),
     };
 
     let record_batch_stream =
@@ -242,6 +244,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
         meta_cache: None,
         scan_options,
         runtime: runtime.clone(),
+        sst_dynamic_config: Arc::new(DynamicConfig::default()),
     };
     let iter = {
         let space_id = config.space_id;

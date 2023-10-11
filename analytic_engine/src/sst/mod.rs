@@ -14,6 +14,8 @@
 
 //! SST (Sorted String Table) file
 
+use std::sync::atomic::AtomicBool;
+
 pub mod factory;
 pub mod file;
 pub mod header;
@@ -23,3 +25,10 @@ pub mod metrics;
 pub mod parquet;
 pub mod reader;
 pub mod writer;
+
+// TODO: define a
+#[derive(Debug, Default)]
+pub struct DynamicConfig {
+    pub parquet_enable_page_filter: AtomicBool,
+    pub parquet_enable_lazy_row_filter: AtomicBool,
+}

@@ -524,6 +524,7 @@ mod tests {
             metrics::MaybeTableLevelMetrics,
             parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
+            DynamicConfig as SstDynamicConfig,
         },
         table_options::{self, StorageFormatHint},
     };
@@ -646,6 +647,7 @@ mod tests {
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: None,
                 scan_options,
+                sst_dynamic_config: Arc::new(SstDynamicConfig::default()),
                 runtime: runtime.clone(),
             };
 

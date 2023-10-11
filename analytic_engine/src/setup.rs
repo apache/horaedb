@@ -41,7 +41,7 @@ use crate::{
         factory::{FactoryImpl, ObjectStorePicker, ObjectStorePickerRef, ReadFrequency},
         meta_data::cache::{MetaCache, MetaCacheRef},
     },
-    Config,
+    Config, DynamicConfig,
 };
 
 #[derive(Debug, Snafu)]
@@ -85,6 +85,7 @@ const DISK_CACHE_DIR_NAME: &str = "sst_cache";
 #[derive(Clone)]
 pub struct EngineBuilder<'a> {
     pub config: &'a Config,
+    pub dynamic_config: &'a Arc<DynamicConfig>,
     pub engine_runtimes: Arc<EngineRuntimes>,
     pub opened_wals: OpenedWals,
 }
@@ -100,6 +101,7 @@ impl<'a> EngineBuilder<'a> {
 
         let instance = open_instance(
             self.config.clone(),
+            self.dynamic_config.clone(),
             self.engine_runtimes,
             self.opened_wals.data_wal,
             manifest_storages,
@@ -112,6 +114,7 @@ impl<'a> EngineBuilder<'a> {
 
 async fn open_instance(
     config: Config,
+    dynamic_config: Arc<DynamicConfig>,
     engine_runtimes: Arc<EngineRuntimes>,
     wal_manager: WalManagerRef,
     manifest_storages: ManifestStorages,
@@ -123,6 +126,7 @@ async fn open_instance(
 
     let open_ctx = OpenContext {
         config,
+        dynamic_config,
         runtimes: engine_runtimes,
         meta_cache,
     };

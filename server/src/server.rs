@@ -27,7 +27,7 @@ use notifier::notifier::RequestNotifiers;
 use partition_table_engine::PartitionTableEngine;
 use proxy::{
     hotspot::HotspotRecorder,
-    instance::{DynamicConfig, Instance, InstanceRef},
+    instance::{Instance, InstanceRef},
     limiter::Limiter,
     schema_config_provider::SchemaConfigProviderRef,
     Proxy,
@@ -43,7 +43,7 @@ use table_engine::{
 use wal::manager::OpenedWals;
 
 use crate::{
-    config::ServerConfig,
+    config::{DynamicConfig, ServerConfig},
     grpc::{self, RpcServices},
     http::{self, HttpConfig, Service},
     local_tables::{self, LocalTablesRecoverer},
@@ -96,6 +96,9 @@ pub enum Error {
 
     #[snafu(display("Missing config content.\nBacktrace:\n{}", backtrace))]
     MissingConfigContent { backtrace: Backtrace },
+
+    #[snafu(display("Missing dynamic config.\nBacktrace:\n{}", backtrace))]
+    MissingDynamicConfig { backtrace: Backtrace },
 
     #[snafu(display("Http service failed, msg:{}, err:{}", msg, source))]
     HttpService {
@@ -244,6 +247,7 @@ pub struct Builder {
     opened_wals: Option<OpenedWals>,
     remote_engine: Option<RemoteEngineRef>,
     datatfusion_context: Option<DatafusionContext>,
+    dynamic_config: Option<Arc<DynamicConfig>>,
 }
 
 impl Builder {
@@ -267,6 +271,7 @@ impl Builder {
             opened_wals: None,
             remote_engine: None,
             datatfusion_context: None,
+            dynamic_config: None,
         }
     }
 
@@ -361,6 +366,11 @@ impl Builder {
         self
     }
 
+    pub fn dynamic_config(mut self, dynamic_config: Arc<DynamicConfig>) -> Self {
+        self.dynamic_config = Some(dynamic_config);
+        self
+    }
+
     /// Build and run the server
     pub fn build(self) -> Result<Server> {
         // Build instance
@@ -378,6 +388,7 @@ impl Builder {
         let config_content = self.config_content.context(MissingConfigContent)?;
         let query_engine_config = self.query_engine_config.context(MissingQueryEngineConfig)?;
         let datafusion_context = self.datatfusion_context.context(MissingDatafusionContext)?;
+        let dynamic_config = self.dynamic_config.context(MissingDynamicConfig)?;
 
         let hotspot_recorder = Arc::new(HotspotRecorder::new(
             self.server_config.hotspot,
@@ -407,7 +418,6 @@ impl Builder {
             .context(BuildQueryEngine)?;
 
         // TODO: build dynamic config from server config.
-        let proxy_dyn_config = DynamicConfig::default();
         let instance = {
             let instance = Instance {
                 catalog_manager,
@@ -418,7 +428,7 @@ impl Builder {
                 limiter: self.limiter,
                 table_manipulator,
                 remote_engine_ref,
-                dyn_config: proxy_dyn_config,
+                dyn_config: dynamic_config.proxy.clone(),
             };
             InstanceRef::new(instance)
         };
@@ -468,6 +478,7 @@ impl Builder {
             .cluster(self.cluster.clone())
             .proxy(proxy.clone())
             .opened_wals(opened_wals.clone())
+            .dynamic_config(dynamic_config)
             .build()
             .context(HttpService {
                 msg: "build failed",

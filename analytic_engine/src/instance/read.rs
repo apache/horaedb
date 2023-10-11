@@ -132,6 +132,7 @@ impl Instance {
         let sst_read_options = create_sst_read_option(
             ScanType::Query,
             self.scan_options.clone(),
+            self.dynamic_config.sst.clone(),
             table_data
                 .metrics
                 .maybe_table_level_metrics()

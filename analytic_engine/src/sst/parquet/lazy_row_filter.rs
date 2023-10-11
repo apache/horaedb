@@ -390,7 +390,7 @@ mod tests {
             .filters
             .clone()
             .into_iter()
-            .zip(expecteds.into_iter())
+            .zip(expecteds)
             .collect::<Vec<_>>();
 
         // Check them.

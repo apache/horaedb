@@ -19,10 +19,11 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
 };
 
+use analytic_engine::DynamicConfig as EngineDynamicConfig;
 use cluster::config::SchemaConfig;
 use common_types::schema::TIMESTAMP_COLUMN;
 use meta_client::types::ShardId;
-use proxy::{forward, hotspot, SubTableAccessPerm};
+use proxy::{forward, hotspot, DynamicConfig as ProxyDynamicConfig, SubTableAccessPerm};
 use router::{
     endpoint::Endpoint,
     rule_based::{ClusterView, RuleList},
@@ -187,9 +188,23 @@ impl Default for ServerConfig {
     }
 }
 
-/// Config supporting modifying in runtime
+/// Total dynamic config in server
+#[derive(Debug, Clone)]
 pub struct DynamicConfig {
-    pub enable_plan_level_dist_query: Arc<AtomicBool>,
+    /// Dynamic config for frontend module
+    pub proxy: Arc<ProxyDynamicConfig>,
+
+    /// Dynamic config for engine module
+    pub engine: Arc<EngineDynamicConfig>,
+}
+
+impl DynamicConfig {
+    pub fn new(engine_config: &analytic_engine::Config) -> Self {
+        let proxy = Arc::new(ProxyDynamicConfig::default());
+        let engine = Arc::new(EngineDynamicConfig::new(engine_config));
+
+        Self { proxy, engine }
+    }
 }
 
 #[cfg(test)]

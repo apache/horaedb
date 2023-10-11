@@ -59,6 +59,7 @@ use crate::{
         file::{FileMeta, Level},
         meta_data::SstMetaReader,
         writer::{MetaData, RecordBatchStream},
+        DynamicConfig as SstDynamicConfig,
     },
     table::{
         data::{self, TableData, TableDataRef},
@@ -866,6 +867,7 @@ impl SpaceStore {
         let sst_read_options = create_sst_read_option(
             ScanType::Compaction,
             scan_options,
+            Arc::new(SstDynamicConfig::default()),
             table_data
                 .metrics
                 .maybe_table_level_metrics()

@@ -14,7 +14,10 @@
 
 //! Factory for different kinds sst writer and reader.
 
-use std::{fmt::Debug, sync::Arc};
+use std::{
+    fmt::Debug,
+    sync::{atomic::AtomicBool, Arc},
+};
 
 use async_trait::async_trait;
 use common_types::projected_schema::ProjectedSchema;
@@ -35,6 +38,7 @@ use crate::{
         parquet::{writer::ParquetSstWriter, AsyncParquetReader, ThreadedReader},
         reader::SstReader,
         writer::SstWriter,
+        DynamicConfig as SstDynamicConfig,
     },
     table_options::{Compression, StorageFormat, StorageFormatHint},
 };
@@ -140,6 +144,7 @@ pub struct SstReadOptions {
     pub predicate: PredicateRef,
     pub meta_cache: Option<MetaCacheRef>,
     pub scan_options: ScanOptions,
+    pub sst_dynamic_config: Arc<SstDynamicConfig>,
 
     pub runtime: Arc<Runtime>,
 }

@@ -145,6 +145,8 @@ impl Instance {
             iter_options,
             scan_options,
             recover_mode: ctx.config.recover_mode,
+
+            dynamic_config: ctx.dynamic_config,
         });
 
         Ok(instance)

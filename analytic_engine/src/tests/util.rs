@@ -49,7 +49,7 @@ use wal::{
 use crate::{
     setup::EngineBuilder,
     tests::table::{self, FixedSchemaTable, RowTuple},
-    Config, RecoverMode,
+    Config, DynamicConfig, RecoverMode,
 };
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
@@ -132,9 +132,10 @@ impl<T: WalsOpener> TestContext<T> {
                 .await
                 .unwrap()
         };
-
+        let dynamic_config = Arc::new(DynamicConfig::default());
         let engine_builder = EngineBuilder {
             config: &self.config,
+            dynamic_config: &dynamic_config,
             engine_runtimes: self.runtimes.clone(),
             opened_wals: opened_wals.clone(),
         };

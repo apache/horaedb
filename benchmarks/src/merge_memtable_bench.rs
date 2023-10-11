@@ -34,6 +34,7 @@ use analytic_engine::{
         },
         meta_data::cache::MetaCacheRef,
         metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
+        DynamicConfig,
     },
     table::{
         sst_util,
@@ -223,5 +224,6 @@ fn mock_sst_read_options(
         meta_cache: None,
         scan_options,
         runtime,
+        sst_dynamic_config: Arc::new(DynamicConfig::default()),
     }
 }

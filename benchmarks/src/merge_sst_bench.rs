@@ -33,6 +33,7 @@ use analytic_engine::{
         file::{FileHandle, FilePurgeQueue, Level, Request},
         meta_data::cache::MetaCacheRef,
         metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
+        DynamicConfig,
     },
     table::sst_util,
 };
@@ -88,6 +89,7 @@ impl MergeSstBench {
             meta_cache: meta_cache.clone(),
             scan_options,
             runtime: runtime.clone(),
+            sst_dynamic_config: Arc::new(DynamicConfig::default()),
         };
         let max_projections = cmp::min(config.max_projections, schema.num_columns());
 

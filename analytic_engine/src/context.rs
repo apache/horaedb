@@ -18,12 +18,15 @@ use std::{fmt, sync::Arc};
 
 use table_engine::engine::EngineRuntimes;
 
-use crate::{sst::meta_data::cache::MetaCacheRef, Config};
+use crate::{sst::meta_data::cache::MetaCacheRef, Config, DynamicConfig};
 
 /// Context for instance open
 pub struct OpenContext {
     /// Engine config
     pub config: Config,
+
+    /// Engine dynamic config
+    pub dynamic_config: Arc<DynamicConfig>,
 
     /// Background job runtime
     pub runtimes: Arc<EngineRuntimes>,
