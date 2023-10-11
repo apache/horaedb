@@ -17,7 +17,7 @@
 use std::{
     ops::Range,
     pin::Pin,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
     task::{Context, Poll},
     time::{Duration, Instant},
 };
@@ -71,6 +71,7 @@ use crate::{
             row_group_pruner::RowGroupPruner,
         },
         reader::{error::*, Result, SstReader},
+        DynamicConfig,
     },
 };
 
@@ -100,6 +101,8 @@ pub struct Reader<'a> {
     df_plan_metrics: ExecutionPlanMetricsSet,
 
     table_level_sst_metrics: Arc<MaybeTableLevelMetrics>,
+
+    dynamic_config: Arc<DynamicConfig>,
 }
 
 #[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
@@ -143,6 +146,7 @@ impl<'a> Reader<'a> {
             metrics,
             df_plan_metrics,
             table_level_sst_metrics: options.maybe_table_level_metrics.clone(),
+            dynamic_config: options.sst_dynamic_config.clone(),
         }
     }
 
@@ -309,11 +313,23 @@ impl<'a> Reader<'a> {
             suggested_parallelism, parallelism, chunk_size, proj_mask
         );
 
-        let lazy_row_filter_builder = LazyRowFilterBuilder::try_new(
-            self.predicate.exprs(),
-            arrow_schema.as_ref(),
-            parquet_metadata.as_ref(),
-        )?;
+        let enable_page_filter = self
+            .dynamic_config
+            .parquet_enable_page_filter
+            .load(Ordering::Relaxed);
+        let enable_lazy_row_filter = self
+            .dynamic_config
+            .parquet_enable_lazy_row_filter
+            .load(Ordering::Relaxed);
+        let lazy_row_filter_builder = if enable_lazy_row_filter {
+            LazyRowFilterBuilder::try_new(
+                self.predicate.exprs(),
+                arrow_schema.as_ref(),
+                parquet_metadata.as_ref(),
+            )?
+        } else {
+            None
+        };
 
         let mut streams = Vec::with_capacity(target_row_group_chunks.len());
         for chunk in target_row_group_chunks {
@@ -327,8 +343,11 @@ impl<'a> Reader<'a> {
                 .with_context(|| ParquetError)?;
 
             // Page filter
-            let row_selection =
-                self.build_row_selection(arrow_schema.clone(), &chunk, parquet_metadata)?;
+            let row_selection = if enable_page_filter {
+                self.build_row_selection(arrow_schema.clone(), &chunk, parquet_metadata)?
+            } else {
+                None
+            };
 
             debug!(
                 "Build row selection for file path:{}, result:{row_selection:?}, page indexes:{}",
