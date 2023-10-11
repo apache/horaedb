@@ -26,7 +26,7 @@ pub mod parquet;
 pub mod reader;
 pub mod writer;
 
-// TODO: define a
+// TODO: make it a enum rather than plaining all file format options.
 #[derive(Debug, Default)]
 pub struct DynamicConfig {
     pub parquet_enable_page_filter: AtomicBool,
