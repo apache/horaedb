@@ -20,7 +20,9 @@ use std::{
 };
 
 use bytes_ext::{ByteVec, Bytes};
-use ceresdbproto::remote_engine::{self, execute_plan_request, row_group::Rows::Contiguous};
+use ceresdbproto::remote_engine::{
+    self, execute_plan_request, row_group::Rows::Contiguous, ColumnDesc,
+};
 use common_types::{
     request_id::RequestId,
     row::{
@@ -30,8 +32,9 @@ use common_types::{
     schema::{IndexInWriterSchema, RecordSchema, Schema, Version},
 };
 use generic_error::{BoxError, GenericError, GenericResult};
+use itertools::Itertools;
 use macros::define_result;
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
     partition::PartitionInfo,
@@ -62,6 +65,12 @@ pub enum Error {
 
     #[snafu(display("Empty table schema.\nBacktrace:\n{}", backtrace))]
     EmptyTableSchema { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Schema mismatch with the write request, msg:{msg}.\nBacktrace:\n{}",
+        backtrace
+    ))]
+    SchemaMismatch { msg: String, backtrace: Backtrace },
 
     #[snafu(display("Empty row group.\nBacktrace:\n{}", backtrace))]
     EmptyRowGroup { backtrace: Backtrace },
@@ -184,6 +193,8 @@ impl WriteRequest {
         payload: ceresdbproto::remote_engine::ContiguousRows,
         schema: &Schema,
     ) -> Result<RowGroup> {
+        validate_contiguous_payload_schema(schema, &payload.column_descs)?;
+
         let mut row_group_builder =
             RowGroupBuilder::with_capacity(schema.clone(), payload.encoded_rows.len());
         for encoded_row in payload.encoded_rows {
@@ -222,9 +233,15 @@ impl WriteRequest {
             encoded_rows.push(buf);
         }
 
+        let column_descs = table_schema
+            .columns()
+            .iter()
+            .map(ColumnDesc::from)
+            .collect_vec();
         let contiguous_rows = ceresdbproto::remote_engine::ContiguousRows {
             schema_version: table_schema.version(),
             encoded_rows,
+            column_descs,
         };
         let row_group_pb = ceresdbproto::remote_engine::RowGroup {
             min_timestamp,
@@ -240,6 +257,31 @@ impl WriteRequest {
             row_group: Some(row_group_pb),
         })
     }
+}
+
+/// Validate the provided column descriptions with schema.
+fn validate_contiguous_payload_schema(schema: &Schema, column_descs: &[ColumnDesc]) -> Result<()> {
+    ensure!(
+        schema.num_columns() == column_descs.len(),
+        SchemaMismatch {
+            msg: format!(
+                "expect {} columns, but got {}",
+                schema.num_columns(),
+                column_descs.len(),
+            )
+        }
+    );
+
+    for (expect_column_schema, desc) in schema.columns().iter().zip(column_descs.iter()) {
+        ensure!(
+            expect_column_schema.is_correct_desc(desc),
+            SchemaMismatch {
+                msg: format!("expect column schema:{expect_column_schema:?}, but got {desc:?}")
+            }
+        );
+    }
+
+    Ok(())
 }
 
 pub struct WriteBatchResult {

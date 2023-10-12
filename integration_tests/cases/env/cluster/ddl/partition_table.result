@@ -82,6 +82,10 @@ ALTER TABLE partition_table_t ADD COLUMN (b string);
 
 affected_rows: 0
 
+INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, "ceresdb0", 100);
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql:INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, \"ceresdb0\", 100);. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute insert, err:Failed to write table, err:Failed to write tables in batch, tables:[\"__partition_table_t_1\"], err:Failed to query from table in server, table_idents:[TableIdentifier { catalog: \"ceresdb\", schema: \"public\", table: \"__partition_table_t_1\" }], code:401, msg:failed to decode row group payload. Caused by: Schema mismatch with the write request, msg:expect 6 columns, but got 5." })
+
 ALTER TABLE partition_table_t MODIFY SETTING enable_ttl='true';
 
 affected_rows: 0

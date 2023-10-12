@@ -17,7 +17,7 @@
 use std::{collections::HashMap, convert::TryFrom, str::FromStr, sync::Arc};
 
 use arrow::datatypes::{DataType, Field};
-use ceresdbproto::schema as schema_pb;
+use ceresdbproto::{remote_engine::ColumnDesc, schema as schema_pb};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::Expr;
 
@@ -281,6 +281,25 @@ impl ColumnSchema {
             );
 
             Ok(ReadOp::Exact)
+        }
+    }
+
+    /// Check whether the given `desc` is correct with self.
+    pub fn is_correct_desc(&self, desc: &ColumnDesc) -> bool {
+        if self.id != desc.id {
+            return false;
+        }
+
+        let desc_datum_kind = DatumKind::from(desc.typ());
+        desc_datum_kind == self.data_type
+    }
+}
+
+impl From<&ColumnSchema> for ColumnDesc {
+    fn from(column_schema: &ColumnSchema) -> Self {
+        Self {
+            id: column_schema.id,
+            typ: schema_pb::DataType::from(column_schema.data_type).into(),
         }
     }
 }
