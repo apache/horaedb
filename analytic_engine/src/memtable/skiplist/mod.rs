@@ -37,7 +37,7 @@ use crate::memtable::{
     key::{ComparableInternalKey, KeySequence},
     reversed_iter::ReversedColumnarIterator,
     skiplist::iter::ColumnarIterImpl,
-    ColumnarIterPtr, EncodeInternalKey, InvalidPutSequence, InvalidRow, MemTable,
+    ColumnarIterPtr, EncodeInternalKey, InvalidPutSequence, InvalidRow, KeyTooLarge, MemTable,
     Metrics as MemtableMetrics, PutContext, Result, ScanContext, ScanRequest, TimestampNotFound,
 };
 
@@ -131,6 +131,14 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
         key_encoder
             .encode(internal_key, row)
             .context(EncodeInternalKey)?;
+
+        ensure!(
+            internal_key.len() <= skiplist::MAX_KEY_SIZE as usize,
+            KeyTooLarge {
+                current: internal_key.len(),
+                max: skiplist::MAX_KEY_SIZE,
+            }
+        );
 
         // Encode row value. The ContiguousRowWriter will clear the buf.
         let row_value = &mut ctx.value_buf;

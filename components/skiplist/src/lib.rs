@@ -29,5 +29,5 @@ mod slice;
 const MAX_HEIGHT: usize = 20;
 
 pub use key::{BytewiseComparator, FixedLengthSuffixComparator, KeyComparator};
-pub use list::{IterRef, Skiplist};
+pub use list::{IterRef, Skiplist, MAX_KEY_SIZE};
 pub use slice::ArenaSlice;

@@ -138,6 +138,15 @@ pub enum Error {
 
     #[snafu(display("Timestamp is not found in row.\nBacktrace:\n{backtrace}"))]
     TimestampNotFound { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Memtable key length is too large, current:{current}, max:{max}.\nBacktrace:\n{backtrace}"
+    ))]
+    KeyTooLarge {
+        current: usize,
+        max: usize,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);

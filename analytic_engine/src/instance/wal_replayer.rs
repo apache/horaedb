@@ -24,7 +24,7 @@ use async_trait::async_trait;
 use common_types::{schema::IndexInWriterSchema, table::ShardId};
 use generic_error::BoxError;
 use lazy_static::lazy_static;
-use logger::{debug, error, info, trace};
+use logger::{debug, error, info, trace, warn};
 use prometheus::{exponential_buckets, register_histogram, Histogram};
 use snafu::ResultExt;
 use table_engine::table::TableId;
@@ -489,7 +489,7 @@ async fn replay_table_log_entries(
                 let index_in_writer =
                     IndexInWriterSchema::for_same_schema(row_group.schema().num_columns());
                 let memtable_writer = MemTableWriter::new(table_data.clone(), serial_exec);
-                memtable_writer
+                let memtable_write_ret = memtable_writer
                     .write(sequence, &row_group.into(), index_in_writer)
                     .box_err()
                     .context(ReplayWalWithCause {
@@ -497,7 +497,15 @@ async fn replay_table_log_entries(
                             "table_id:{}, table_name:{}, space_id:{}",
                             table_data.space_id, table_data.name, table_data.id
                         )),
-                    })?;
+                    });
+                if let Err(e) = memtable_write_ret {
+                    if e.to_string().contains("Memtable key length is too large") {
+                        // ignore this error
+                        warn!("Write memtable failed, err:{e}");
+                    } else {
+                        return Err(e);
+                    }
+                }
 
                 // Flush the table if necessary.
                 if table_data.should_flush_table(serial_exec) {

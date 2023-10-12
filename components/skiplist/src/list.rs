@@ -34,6 +34,8 @@ const HEIGHT_INCREASE: u32 = u32::MAX / 3;
 type KeySize = u16;
 type ValueSize = u32;
 
+pub const MAX_KEY_SIZE: u16 = u16::MAX;
+
 /// The layout of Node
 /// 1. height: usize
 /// 2. tower: AtomicPtr<Node> x (height + 1)
