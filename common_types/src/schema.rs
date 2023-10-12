@@ -200,6 +200,15 @@ pub enum Error {
         source: ParseIntError,
         backtrace: Backtrace,
     },
+
+    #[snafu(display(
+        "Primary key not found in schema, id:{id}, schema:{schema:?}\nBacktrace:\n{backtrace}",
+    ))]
+    PrimaryKeyIdNotFound {
+        id: u32,
+        schema: schema_pb::TableSchema,
+        backtrace: Backtrace,
+    },
 }
 
 pub type CatalogName = String;
@@ -950,20 +959,58 @@ impl TryFrom<schema_pb::TableSchema> for Schema {
     type Error = Error;
 
     fn try_from(schema: schema_pb::TableSchema) -> Result<Self> {
-        let mut builder = Builder::with_capacity(schema.columns.len()).version(schema.version);
         let primary_key_ids = schema.primary_key_ids;
+        let column_schemas = schema
+            .columns
+            .into_iter()
+            .map(|column_schema_pb| {
+                ColumnSchema::try_from(column_schema_pb).context(ColumnSchemaDeserializeFailed)
+            })
+            .collect::<Result<Vec<_>>>()?;
 
-        for column_schema_pb in schema.columns.into_iter() {
-            let column =
-                ColumnSchema::try_from(column_schema_pb).context(ColumnSchemaDeserializeFailed)?;
-            if primary_key_ids.contains(&column.id) {
-                builder = builder.add_key_column(column)?;
-            } else {
-                builder = builder.add_normal_column(column)?;
+        let mut primary_key_indexes = Vec::with_capacity(primary_key_ids.len());
+        let mut timestamp_index = None;
+        for pk_id in &primary_key_ids {
+            for (idx, col) in column_schemas.iter().enumerate() {
+                if col.id == *pk_id {
+                    primary_key_indexes.push(idx);
+                    timestamp_index = Some(idx);
+                }
             }
         }
 
-        builder.build()
+        let timestamp_index = timestamp_index.context(TimestampNotInPrimaryKey)?;
+        let tsid_index = Builder::find_tsid_index(&column_schemas);
+        let fields = column_schemas
+            .iter()
+            .map(|c| c.to_arrow_field())
+            .collect::<Vec<_>>();
+        let meta = [
+            (
+                ArrowSchemaMetaKey::PrimaryKeyIndexes.to_string(),
+                // TODO: change primary_key_indexes to `Indexes` type
+                Indexes(primary_key_indexes.clone()).to_string(),
+            ),
+            (
+                ArrowSchemaMetaKey::TimestampIndex.to_string(),
+                timestamp_index.to_string(),
+            ),
+            (
+                ArrowSchemaMetaKey::Version.to_string(),
+                schema.version.to_string(),
+            ),
+        ]
+        .into_iter()
+        .collect();
+
+        Ok(Schema {
+            arrow_schema: Arc::new(ArrowSchema::new_with_metadata(fields, meta)),
+            primary_key_indexes,
+            column_schemas: Arc::new(ColumnSchemas::new(column_schemas)),
+            version: schema.version,
+            tsid_index,
+            timestamp_index,
+        })
     }
 }
 
