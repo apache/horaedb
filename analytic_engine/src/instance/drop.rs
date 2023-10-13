@@ -35,6 +35,9 @@ pub(crate) struct Dropper {
 
 impl Dropper {
     /// Drop a table under given space
+    // TODO: Currently we first delete WAL then manifest, if wal is deleted but
+    // manifest failed to delete, it could cause the table in a unknown state, we
+    // should find a better way to deal with this.
     pub async fn drop(&self, request: DropTableRequest) -> Result<bool> {
         info!("Try to drop table, request:{:?}", request);
 
