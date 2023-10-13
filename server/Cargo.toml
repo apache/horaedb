@@ -37,6 +37,7 @@ cluster = { workspace = true }
 common_types = { workspace = true }
 datafusion = { workspace = true }
 df_operator = { workspace = true }
+flate2 = "1.0"
 future_ext = { workspace = true }
 futures = { workspace = true }
 generic_error = { workspace = true }
@@ -74,7 +75,6 @@ table_engine = { workspace = true }
 time_ext = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["net"] }
-flate2 = "1.0"
 tonic = { workspace = true }
 wal = { workspace = true }
 warp = "0.3"

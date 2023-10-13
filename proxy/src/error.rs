@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::io;
+
 
 use ceresdbproto::common::ResponseHeader;
 use generic_error::GenericError;
