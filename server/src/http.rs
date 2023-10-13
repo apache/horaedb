@@ -18,6 +18,7 @@ use std::{
     collections::HashMap,
     convert::Infallible,
     error::Error as StdError,
+    io::Read,
     net::IpAddr,
     sync::{atomic::Ordering, Arc},
     time::Duration,
@@ -26,6 +27,8 @@ use std::{
 use analytic_engine::setup::OpenedWals;
 use bytes_ext::Bytes;
 use cluster::ClusterRef;
+use datafusion::parquet::data_type::AsBytes;
+use flate2::read::GzDecoder;
 use generic_error::{BoxError, GenericError};
 use log::{error, info};
 use logger::RuntimeLevel;
@@ -56,7 +59,8 @@ use warp::{
 };
 
 use crate::{
-    consts, error_util,
+    consts::{self, CONTENT_ENCODING_HEADER, GZIP_ENCODING},
+    error_util,
     metrics::{self, HTTP_HANDLER_DURATION_HISTOGRAM_VEC},
 };
 
@@ -121,6 +125,12 @@ pub enum Error {
     Internal {
         source: Box<dyn StdError + Send + Sync>,
     },
+
+    #[snafu(display("Fail to decode gzip body, err:{}.", source))]
+    Ungzip { source: std::io::Error },
+
+    #[snafu(display("Unsupported encoding type {}.", msg))]
+    UnspportedEncodingType { msg: String },
 
     #[snafu(display("Server already started.\nBacktrace:\n{}", backtrace))]
     AlreadyStarted { backtrace: Backtrace },
@@ -397,7 +407,21 @@ impl Service {
             .and(warp::query::<PutParams>())
             .and(warp::body::bytes())
             .and(self.with_proxy())
-            .and_then(|ctx, params, points, proxy: Arc<Proxy>| async move {
+            .and(header::optional::<String>(CONTENT_ENCODING_HEADER))
+            .and_then(|ctx, params, points: Bytes, proxy: Arc<Proxy>, encoding: Option<String>| async move {
+                let points = match encoding {
+                    Some(encoding) => {
+                        if encoding == GZIP_ENCODING {
+                            let mut d = GzDecoder::new(points.as_bytes());
+                            let mut decompressed_data = Vec::new();
+                            d.read_to_end(&mut decompressed_data).context(Ungzip)?;
+                            decompressed_data.into()
+                        } else {
+                            return Err(reject::custom(Error::UnspportedEncodingType{msg:encoding}));
+                        }
+                    },
+                    None => points,
+                };
                 let request = PutRequest::new(points, params);
                 let result = proxy.handle_opentsdb_put(ctx, request).await;
                 match result {
@@ -814,7 +838,9 @@ struct ErrorResponse {
 
 fn error_to_status_code(err: &Error) -> StatusCode {
     match err {
-        Error::CreateContext { .. } => StatusCode::BAD_REQUEST,
+        Error::Ungzip { .. }
+        | Error::UnspportedEncodingType { .. }
+        | Error::CreateContext { .. } => StatusCode::BAD_REQUEST,
         // TODO(yingwen): Map handle request error to more accurate status code
         Error::HandleRequest { .. }
         | Error::MissingEngineRuntimes { .. }

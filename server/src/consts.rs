@@ -20,3 +20,7 @@ pub const CATALOG_HEADER: &str = "x-ceresdb-catalog";
 pub const SCHEMA_HEADER: &str = "x-ceresdb-schema";
 /// Header of tenant name
 pub const TENANT_HEADER: &str = "x-ceresdb-access-tenant";
+/// Header of content encoding type
+pub const CONTENT_ENCODING_HEADER: &str = "content-encoding";
+
+pub const GZIP_ENCODING: &str = "gzip";
