@@ -499,9 +499,10 @@ async fn replay_table_log_entries(
                         )),
                     });
                 if let Err(e) = memtable_write_ret {
-                    if e.to_string().contains("Memtable key length is too large") {
+                    // TODO: find a better way to match this.
+                    if e.to_string().contains(crate::memtable::TOO_LARGE_MESSAGE) {
                         // ignore this error
-                        warn!("Write memtable failed, err:{e}");
+                        warn!("Unable to insert memtable, err:{e}");
                     } else {
                         return Err(e);
                     }

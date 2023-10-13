@@ -132,6 +132,8 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
             .encode(internal_key, row)
             .context(EncodeInternalKey)?;
 
+        // TODO: we should check row's primary key size at the beginning of write
+        // process, so WAL and memtable can keep in sync.
         ensure!(
             internal_key.len() <= skiplist::MAX_KEY_SIZE as usize,
             KeyTooLarge {

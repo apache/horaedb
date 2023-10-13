@@ -140,7 +140,7 @@ pub enum Error {
     TimestampNotFound { backtrace: Backtrace },
 
     #[snafu(display(
-        "Memtable key length is too large, current:{current}, max:{max}.\nBacktrace:\n{backtrace}"
+        "{TOO_LARGE_MESSAGE}, current:{current}, max:{max}.\nBacktrace:\n{backtrace}"
     ))]
     KeyTooLarge {
         current: usize,
@@ -148,6 +148,8 @@ pub enum Error {
         backtrace: Backtrace,
     },
 }
+
+pub const TOO_LARGE_MESSAGE: &str = "Memtable key length is too large";
 
 define_result!(Error);
 
