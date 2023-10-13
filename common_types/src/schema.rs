@@ -682,18 +682,18 @@ impl Schema {
 
     /// Returns an immutable reference of the normal column vector.
     pub fn normal_columns(&self) -> Vec<ColumnSchema> {
-        let columns = self.column_schemas.columns();
-        let mut result = vec![];
-        for (idx, col) in columns.iter().enumerate() {
-            if idx == self.timestamp_index {
-                continue;
-            }
-
-            if !self.primary_key_indexes.contains(&idx) {
-                result.push(col.clone());
-            }
-        }
-        result
+        self.column_schemas
+            .columns()
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, col)| {
+                if self.primary_key_indexes.contains(&idx) {
+                    None
+                } else {
+                    Some(col.clone())
+                }
+            })
+            .collect()
     }
 
     /// Returns index of the tsid column.
@@ -974,7 +974,19 @@ impl TryFrom<schema_pb::TableSchema> for Schema {
             for (idx, col) in column_schemas.iter().enumerate() {
                 if col.id == *pk_id {
                     primary_key_indexes.push(idx);
-                    timestamp_index = Some(idx);
+                    if DatumKind::Timestamp == col.data_type {
+                        if timestamp_index.is_some() {
+                            // TODO: add a timestamp_id in schema_pb, so we can have two timestamp
+                            // columns in primary keys.
+                            panic!(
+                                "There should only exist one timestamp column, column_schema:{:?}",
+                                &column_schemas
+                            );
+                        }
+
+                        timestamp_index = Some(idx);
+                    }
+                    break;
                 }
             }
         }
@@ -985,23 +997,11 @@ impl TryFrom<schema_pb::TableSchema> for Schema {
             .iter()
             .map(|c| c.to_arrow_field())
             .collect::<Vec<_>>();
-        let meta = [
-            (
-                ArrowSchemaMetaKey::PrimaryKeyIndexes.to_string(),
-                // TODO: change primary_key_indexes to `Indexes` type
-                Indexes(primary_key_indexes.clone()).to_string(),
-            ),
-            (
-                ArrowSchemaMetaKey::TimestampIndex.to_string(),
-                timestamp_index.to_string(),
-            ),
-            (
-                ArrowSchemaMetaKey::Version.to_string(),
-                schema.version.to_string(),
-            ),
-        ]
-        .into_iter()
-        .collect();
+        let meta = Builder::build_arrow_schema_meta(
+            primary_key_indexes.clone(),
+            timestamp_index,
+            schema.version,
+        );
 
         Ok(Schema {
             arrow_schema: Arc::new(ArrowSchema::new_with_metadata(fields, meta)),
@@ -1223,21 +1223,22 @@ impl Builder {
     /// Build arrow schema meta data.
     ///
     /// Requires: the timestamp index is not None.
-    fn build_arrow_schema_meta(&self) -> HashMap<String, String> {
+    fn build_arrow_schema_meta(
+        primary_key_indexes: Vec<usize>,
+        timestamp_index: usize,
+        version: u32,
+    ) -> HashMap<String, String> {
         [
             (
                 ArrowSchemaMetaKey::PrimaryKeyIndexes.to_string(),
                 // TODO: change primary_key_indexes to `Indexes` type
-                Indexes(self.primary_key_indexes.clone()).to_string(),
+                Indexes(primary_key_indexes).to_string(),
             ),
             (
                 ArrowSchemaMetaKey::TimestampIndex.to_string(),
-                self.timestamp_index.unwrap().to_string(),
+                timestamp_index.to_string(),
             ),
-            (
-                ArrowSchemaMetaKey::Version.to_string(),
-                self.version.to_string(),
-            ),
+            (ArrowSchemaMetaKey::Version.to_string(), version.to_string()),
         ]
         .into_iter()
         .collect()
@@ -1266,7 +1267,11 @@ impl Builder {
             .iter()
             .map(|c| c.to_arrow_field())
             .collect::<Vec<_>>();
-        let meta = self.build_arrow_schema_meta();
+        let meta = Self::build_arrow_schema_meta(
+            self.primary_key_indexes.clone(),
+            timestamp_index,
+            self.version,
+        );
 
         Ok(Schema {
             arrow_schema: Arc::new(ArrowSchema::new_with_metadata(fields, meta)),
