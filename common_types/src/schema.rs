@@ -958,6 +958,7 @@ impl Schema {
 impl TryFrom<schema_pb::TableSchema> for Schema {
     type Error = Error;
 
+    // We can't use Builder directly here, since it will disorder columns.
     fn try_from(schema: schema_pb::TableSchema) -> Result<Self> {
         let primary_key_ids = schema.primary_key_ids;
         let column_schemas = schema
@@ -975,13 +976,15 @@ impl TryFrom<schema_pb::TableSchema> for Schema {
                 if col.id == *pk_id {
                     primary_key_indexes.push(idx);
                     if DatumKind::Timestamp == col.data_type {
-                        if timestamp_index.is_some() {
-                            // TODO: add a timestamp_id in schema_pb, so we can have two timestamp
-                            // columns in primary keys.
-                            panic!(
-                                "There should only exist one timestamp column, column_schema:{:?}",
-                                &column_schemas
-                            );
+                        // TODO: add a timestamp_id in schema_pb, so we can have two timestamp
+                        // columns in primary keys.
+                        if let Some(idx) = timestamp_index {
+                            let column_schema: &ColumnSchema = &column_schemas[idx];
+                            return TimestampKeyExists {
+                                timestamp_column: column_schema.name.to_string(),
+                                given_column: col.name.clone(),
+                            }
+                            .fail();
                         }
 
                         timestamp_index = Some(idx);

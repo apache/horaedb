@@ -84,6 +84,7 @@ pub struct Config {
     /// The ratio of table's write buffer size to trigger preflush, and it
     /// should be in the range (0, 1].
     pub preflush_write_buffer_size_ratio: f32,
+    pub enable_primary_key_sampling: bool,
 
     // Iterator scanning options
     /// Batch size for iterator.
@@ -156,6 +157,7 @@ impl Default for Config {
             /// it.
             db_write_buffer_size: 0,
             preflush_write_buffer_size_ratio: 0.75,
+            enable_primary_key_sampling: false,
             scan_batch_size: None,
             sst_background_read_parallelism: 8,
             num_streams_to_prefetch: 2,

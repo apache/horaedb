@@ -77,6 +77,7 @@ impl Instance {
             file_purger: file_purger.clone(),
             preflush_write_buffer_size_ratio: ctx.config.preflush_write_buffer_size_ratio,
             manifest_snapshot_every_n_updates: ctx.config.manifest.snapshot_every_n_updates,
+            enable_primary_key_sampling: ctx.config.enable_primary_key_sampling,
             metrics_opt: ctx.config.metrics.clone(),
         });
         let manifest = ManifestImpl::open(
