@@ -1815,4 +1815,49 @@ mod tests {
         assert_eq!("", idx.to_string());
         assert_eq!(idx, Indexes::from_str("").unwrap());
     }
+
+    #[test]
+    fn test_recovery_schema_from_pb() {
+        let columns = [
+            ("tsid", schema_pb::DataType::Double, 1, false, false, false),
+            ("ts", schema_pb::DataType::Timestamp, 2, false, false, false),
+            ("t1", schema_pb::DataType::String, 3, false, false, false),
+            ("t2", schema_pb::DataType::String, 4, false, false, false),
+            ("t3", schema_pb::DataType::String, 5, false, false, false),
+        ];
+        let columns = columns
+            .into_iter()
+            .map(|column_schema| schema_pb::ColumnSchema {
+                name: column_schema.0.to_string(),
+                data_type: column_schema.1 as i32,
+                id: column_schema.2,
+                is_nullable: column_schema.3,
+                is_tag: column_schema.4,
+                is_dictionary: column_schema.5,
+                comment: "".to_string(),
+                default_value: None,
+            })
+            .collect();
+        let pb_schema = schema_pb::TableSchema {
+            columns,
+            version: 123,
+            timestamp_id: 1,
+            primary_key_ids: vec![5, 4, 2],
+        };
+
+        let schema = Schema::try_from(pb_schema).unwrap();
+        assert_eq!(schema.primary_key_indexes, vec![4, 3, 1]);
+        assert_eq!(schema.timestamp_index, 1);
+        assert_eq!(schema.tsid_index, Some(0));
+        assert_eq!(schema.version, 123);
+        assert_eq!(
+            vec!["tsid", "ts", "t1", "t2", "t3"],
+            schema
+                .column_schemas
+                .columns
+                .iter()
+                .map(|col| col.name.as_str())
+                .collect::<Vec<_>>(),
+        );
+    }
 }
