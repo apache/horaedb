@@ -14,7 +14,7 @@
 
 //! Drop table logic of instance
 
-use common_types::SequenceNumber;
+use common_types::MAX_SEQUENCE_NUMBER;
 use logger::{info, warn};
 use snafu::ResultExt;
 use table_engine::engine::DropTableRequest;
@@ -59,8 +59,9 @@ impl Dropper {
         let table_location = table_data.table_location();
         let wal_location =
             crate::instance::create_wal_location(table_location.id, table_location.shard_info);
-        // Use max to represet delete all WAL.
-        let sequence = SequenceNumber::MAX;
+        // Use max to represent delete all WAL.
+        // TODO: add a method in wal_manager to delete all WAL with same prefix.
+        let sequence = MAX_SEQUENCE_NUMBER;
         self.space_store
             .wal_manager
             .mark_delete_entries_up_to(wal_location, sequence)
