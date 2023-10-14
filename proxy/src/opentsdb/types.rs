@@ -83,8 +83,7 @@ pub struct Point {
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum Value {
-    // TODO: telegraf parse 0.0 as 0, which will confuse int and double type
-    // IntegerValue(i64),
+    IntegerValue(i64),
     F64Value(f64),
 }
 
@@ -163,7 +162,7 @@ pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableReque
             }
 
             let value = match point.value {
-                // Value::IntegerValue(v) => value::Value::Int64Value(v),
+                Value::IntegerValue(v) => value::Value::Int64Value(v),
                 Value::F64Value(v) => value::Value::Float64Value(v),
             };
             let fields = vec![Field {

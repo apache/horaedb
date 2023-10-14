@@ -154,8 +154,7 @@ def test_put_single_point_with_int_value():
     assert r.text.__contains__('`dc` string TAG')
     assert r.text.__contains__('`host` string TAG')
     # value is a bigint column
-    # TODO telegraf parse 0.0 as 0, which will confuse int and double type
-    assert r.text.__contains__('`value` double')
+    assert r.text.__contains__('`value` bitint')
 
     r = execute_sql_query("""
 SELECT timestamp, dc, host, value FROM {metric}
