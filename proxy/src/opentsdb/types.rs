@@ -80,6 +80,7 @@ pub struct Point {
     pub value: Value,
     pub tags: HashMap<String, String>,
 }
+
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum Value {
