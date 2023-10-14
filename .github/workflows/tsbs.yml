@@ -31,6 +31,23 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
+      - name: Release Disk Quota
+        run: |
+          sudo rm -rf /usr/local/lib/android # release about 10 GB
+          sudo rm -rf /usr/share/dotnet # release about 20GB
+      - name: Cache Rust Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo
+            ./target
+          key: release-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            release-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
+            release-${{ runner.os }}-
+      - name: Ensure Disk Quota
+        run: |
+          make ensure-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update
