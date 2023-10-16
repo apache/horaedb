@@ -759,8 +759,8 @@ impl Schema {
         &self.primary_key_indexes
     }
 
-    pub fn reset_primary_key_indexes(&mut self, idx: Vec<usize>) {
-        self.primary_key_indexes = idx
+    pub fn reset_primary_key_indexes(&mut self, indexes: Vec<usize>) {
+        self.primary_key_indexes = indexes
     }
 
     /// Return the number of columns index in primary key

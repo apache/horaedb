@@ -23,7 +23,7 @@ use std::{
 use common_types::{
     datum::DatumView,
     row::Row,
-    schema::{Schema, TSID_COLUMN},
+    schema::Schema,
     time::{TimeRange, Timestamp},
 };
 use hyperloglog::HyperLogLog;
@@ -245,73 +245,97 @@ fn pick_duration(interval: u64) -> Duration {
 }
 
 #[derive(Clone)]
-struct DistinctValue {
-    hll: Arc<Mutex<HyperLogLog>>,
+struct DistinctCounter {
+    hll: HyperLogLog,
 }
 
-impl DistinctValue {
+impl DistinctCounter {
     fn new() -> Self {
         Self {
-            hll: Arc::new(Mutex::new(HyperLogLog::new(HLL_ERROR_RATE))),
+            hll: HyperLogLog::new(HLL_ERROR_RATE),
         }
     }
 
-    fn insert(&self, bs: &DatumView) {
-        let mut hll = self.hll.lock().unwrap();
-        hll.insert(bs);
+    fn insert(&mut self, bs: &DatumView) {
+        self.hll.insert(bs);
     }
 
     fn len(&self) -> f64 {
-        let hll = self.hll.lock().unwrap();
-        hll.len()
+        self.hll.len()
     }
 }
 
+/// PrimaryKeySampler will sample written rows, and suggest new primary keys
+/// based on column cardinality, column with lower cardinality should come first
+/// since they are beneficial for sst prune.
+///
+/// For special columns like tsid/timestmap, we ignore sampling them to save
+/// CPU, and append to primary keys directly at last.
 #[derive(Clone)]
 pub struct PrimaryKeySampler {
-    column_values: Vec<Option<DistinctValue>>,
+    // Currently all columns will share one big lock, which means decrease perf when we
+    // remove lock at the beginning of write process.
+    // This maybe acceptable, since this is only used in sampling memtable.
+    column_counters: Arc<Mutex<Vec<Option<DistinctCounter>>>>,
     timestamp_index: usize,
+    tsid_index: Option<usize>,
     max_suggest_num: usize,
+    num_columns: usize,
 }
 
 impl PrimaryKeySampler {
     pub fn new(schema: &Schema, max_suggest_num: usize) -> Self {
         let timestamp_index = schema.timestamp_index();
-        let column_values = schema
+        let tsid_index = schema.index_of_tsid();
+        let column_counters = schema
             .columns()
             .iter()
-            .map(|col| {
-                // Exclude tsid.
-                // TODO: maybe we can remove tsid column in some case.
-                if col.data_type.is_key_kind() && col.name != TSID_COLUMN {
-                    Some(DistinctValue::new())
+            .enumerate()
+            .map(|(idx, col)| {
+                if idx == timestamp_index {
+                    return None;
+                }
+
+                if let Some(tsid_idx) = tsid_index {
+                    if idx == tsid_idx {
+                        return None;
+                    }
+                }
+
+                if col.data_type.is_key_kind() {
+                    Some(DistinctCounter::new())
                 } else {
                     None
                 }
             })
-            .collect();
+            .collect::<Vec<_>>();
+        let num_columns = column_counters.len();
+        let column_counters = Arc::new(Mutex::new(column_counters));
 
         Self {
-            column_values,
+            column_counters,
+            tsid_index,
             timestamp_index,
             max_suggest_num,
+            num_columns,
         }
     }
 
     pub fn collect(&self, row: &Row) {
-        assert_eq!(row.num_columns(), self.column_values.len());
+        assert_eq!(row.num_columns(), self.num_columns);
 
-        for (datum, values) in row.iter().zip(&self.column_values) {
-            if let Some(values) = values {
+        let mut column_counters = self.column_counters.lock().unwrap();
+        for (datum, counter) in row.iter().zip(column_counters.iter_mut()) {
+            if let Some(counter) = counter {
                 let view = datum.as_view();
-                values.insert(&view);
+                counter.insert(&view);
             }
         }
     }
 
     pub fn suggest(&self) -> Vec<usize> {
-        let mut col_idx_and_counts = self
-            .column_values
+        let column_counters = self.column_counters.lock().unwrap();
+        let mut col_idx_and_counts = column_counters
             .iter()
             .enumerate()
             .filter_map(|(col_idx, values)| values.as_ref().map(|values| (col_idx, values.len())))
@@ -325,9 +349,10 @@ impl PrimaryKeySampler {
             .map(|v| v.0)
             .collect::<Vec<_>>();
 
-        if !pk_indexes.contains(&self.timestamp_index) {
-            pk_indexes.push(self.timestamp_index);
+        if let Some(tsid_idx) = self.tsid_index {
+            pk_indexes.push(tsid_idx);
         }
+        pk_indexes.push(self.timestamp_index);
 
         pk_indexes
     }
@@ -577,14 +602,14 @@ mod tests {
             (3, 102, "ceresdb", "a", 3, 1.0),
             (4, 102, "ceresdb", "b", 4, 1.0),
         ];
-        collect_and_suggest(rows, vec![2, 3, 1]);
+        collect_and_suggest(rows, vec![2, 3, 0, 1]);
 
         let rows = vec![
             (1, 100, "ceresdb", "a", 1, 1.0),
-            (1, 100, "ceresdb", "a", 2, 1.0),
-            (1, 100, "ceresdb", "a", 3, 1.0),
-            (1, 100, "ceresdb", "b", 4, 1.0),
+            (2, 100, "ceresdb", "a", 2, 1.0),
+            (3, 100, "ceresdb", "a", 3, 1.0),
+            (4, 100, "ceresdb", "b", 4, 1.0),
         ];
-        collect_and_suggest(rows, vec![1, 2]);
+        collect_and_suggest(rows, vec![2, 3, 0, 1]);
     }
 }

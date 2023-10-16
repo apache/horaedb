@@ -251,6 +251,8 @@ impl Reorder {
         Ok(df_plan)
     }
 
+    // TODO: In theory we can construct a physical plan directly, here we choose
+    // logical because it has a convenient builder API for use.
     pub async fn into_stream(self) -> Result<SendableRecordBatchWithkeyStream> {
         // 1. Init datafusion context
         let runtime = Arc::new(RuntimeEnv::default());
