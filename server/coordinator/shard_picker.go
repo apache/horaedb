@@ -40,10 +40,16 @@ func (l leastTableShardPicker) PickShards(_ context.Context, snapshot metadata.S
 		sortedShardsByTableCount = append(sortedShardsByTableCount, shardNode.ID)
 	}
 
-	// sort shard by table number,
+	// Sort shard by table number,
 	// the shard with the smallest number of tables is at the front of the array.
 	sort.SliceStable(sortedShardsByTableCount, func(i, j int) bool {
-		return len(snapshot.Topology.ShardViewsMapping[sortedShardsByTableCount[i]].TableIDs) < len(snapshot.Topology.ShardViewsMapping[sortedShardsByTableCount[j]].TableIDs)
+		shardView1 := snapshot.Topology.ShardViewsMapping[sortedShardsByTableCount[i]]
+		shardView2 := snapshot.Topology.ShardViewsMapping[sortedShardsByTableCount[j]]
+		// When the number of tables is the same, sort according to the size of ShardID.
+		if len(shardView1.TableIDs) == len(shardView2.TableIDs) {
+			return shardView1.ShardID < shardView2.ShardID
+		}
+		return len(shardView1.TableIDs) < len(shardView2.TableIDs)
 	})
 
 	result := make([]storage.ShardNode, 0, expectShardNum)

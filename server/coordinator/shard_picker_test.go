@@ -4,6 +4,7 @@ package coordinator_test
 
 import (
 	"context"
+	"sort"
 	"testing"
 
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
@@ -71,4 +72,34 @@ func TestLeastTableShardPicker(t *testing.T) {
 	for _, shardNode := range shardNodes {
 		re.NotEqual(shardNode.ID, 1)
 	}
+
+	checkPartitionTable(ctx, shardPicker, t, 50, 256, 20, 2)
+	checkPartitionTable(ctx, shardPicker, t, 50, 256, 30, 2)
+	checkPartitionTable(ctx, shardPicker, t, 50, 256, 40, 2)
+	checkPartitionTable(ctx, shardPicker, t, 50, 256, 50, 2)
+}
+
+func checkPartitionTable(ctx context.Context, shardPicker coordinator.ShardPicker, t *testing.T, nodeNumber int, shardNumber int, subTableNumber int, maxDifference int) {
+	re := require.New(t)
+
+	var shardNodes []storage.ShardNode
+
+	c := test.InitStableClusterWithConfig(ctx, t, nodeNumber, shardNumber)
+	shardNodes, err := shardPicker.PickShards(ctx, c.GetMetadata().GetClusterSnapshot(), subTableNumber)
+	re.NoError(err)
+
+	nodeTableCountMapping := make(map[string]int, 0)
+	for _, shardNode := range shardNodes {
+		nodeTableCountMapping[shardNode.NodeName]++
+	}
+
+	// Ensure the difference in the number of tables is no greater than maxDifference
+	var nodeTableNumberSlice []int
+	for _, tableNumber := range nodeTableCountMapping {
+		nodeTableNumberSlice = append(nodeTableNumberSlice, tableNumber)
+	}
+	sort.Ints(nodeTableNumberSlice)
+	minTableNumber := nodeTableNumberSlice[0]
+	maxTableNumber := nodeTableNumberSlice[len(nodeTableNumberSlice)-1]
+	re.LessOrEqual(maxTableNumber-minTableNumber, maxDifference)
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
+	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/nodepicker"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
@@ -135,6 +136,51 @@ func InitEmptyCluster(ctx context.Context, t *testing.T) *cluster.Cluster {
 	return c
 }
 
+func InitEmptyClusterWithConfig(ctx context.Context, t *testing.T, shardNumber int, nodeNumber int) *cluster.Cluster {
+	re := require.New(t)
+
+	_, client, _ := etcdutil.PrepareEtcdServerAndClient(t)
+	clusterStorage := storage.NewStorageWithEtcdBackend(client, TestRootPath, storage.Options{
+		MaxScanLimit: 100, MinScanLimit: 10, MaxOpsPerTxn: 32,
+	})
+
+	logger := zap.NewNop()
+
+	clusterMetadata := metadata.NewClusterMetadata(logger, storage.Cluster{
+		ID:                          0,
+		Name:                        ClusterName,
+		MinNodeCount:                uint32(nodeNumber),
+		ShardTotal:                  uint32(shardNumber),
+		EnableSchedule:              DefaultSchedulerOperator,
+		TopologyType:                DefaultTopologyType,
+		ProcedureExecutingBatchSize: DefaultProcedureExecutingBatchSize,
+		CreatedAt:                   0,
+	}, clusterStorage, client, TestRootPath, DefaultIDAllocatorStep)
+
+	err := clusterMetadata.Init(ctx)
+	re.NoError(err)
+
+	err = clusterMetadata.Load(ctx)
+	re.NoError(err)
+
+	c, err := cluster.NewCluster(logger, clusterMetadata, client, TestRootPath)
+	re.NoError(err)
+
+	_, _, err = c.GetMetadata().GetOrCreateSchema(ctx, TestSchemaName)
+	re.NoError(err)
+
+	lastTouchTime := time.Now().UnixMilli()
+	for i := 0; i < nodeNumber; i++ {
+		err = c.GetMetadata().RegisterNode(ctx, metadata.RegisteredNode{
+			Node:       storage.Node{Name: fmt.Sprintf("node%d", i), LastTouchTime: uint64(lastTouchTime)},
+			ShardInfos: nil,
+		})
+		re.NoError(err)
+	}
+
+	return c
+}
+
 // InitPrepareCluster will return a cluster that has created shards and nodes, and cluster state is prepare.
 func InitPrepareCluster(ctx context.Context, t *testing.T) *cluster.Cluster {
 	re := require.New(t)
@@ -163,6 +209,33 @@ func InitStableCluster(ctx context.Context, t *testing.T) *cluster.Cluster {
 	}
 
 	err := c.GetMetadata().UpdateClusterView(ctx, storage.ClusterStateStable, shardNodes)
+	re.NoError(err)
+
+	return c
+}
+
+func InitStableClusterWithConfig(ctx context.Context, t *testing.T, nodeNumber int, shardNumber int) *cluster.Cluster {
+	re := require.New(t)
+	c := InitEmptyClusterWithConfig(ctx, t, shardNumber, nodeNumber)
+	snapshot := c.GetMetadata().GetClusterSnapshot()
+	shardNodes := make([]storage.ShardNode, 0, DefaultShardTotal)
+	nodePicker := nodepicker.NewConsistentUniformHashNodePicker(zap.NewNop())
+	var unAssignedShardIDs []storage.ShardID
+	for i := 0; i < shardNumber; i++ {
+		unAssignedShardIDs = append(unAssignedShardIDs, storage.ShardID(i))
+	}
+	shardNodeMapping, err := nodePicker.PickNode(ctx, nodepicker.Config{NumTotalShards: uint32(shardNumber)}, unAssignedShardIDs, snapshot.RegisteredNodes)
+	re.NoError(err)
+
+	for shardID, node := range shardNodeMapping {
+		shardNodes = append(shardNodes, storage.ShardNode{
+			ID:        shardID,
+			ShardRole: storage.ShardRoleLeader,
+			NodeName:  node.Node.Name,
+		})
+	}
+
+	err = c.GetMetadata().UpdateClusterView(ctx, storage.ClusterStateStable, shardNodes)
 	re.NoError(err)
 
 	return c
