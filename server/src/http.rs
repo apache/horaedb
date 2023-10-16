@@ -159,7 +159,7 @@ impl TryFrom<&str> for EncodingType {
 
     fn try_from(value: &str) -> Result<Self> {
         match value {
-            GZIP_ENCODING => Ok(EncodingType::GZIP),
+            GZIP_ENCODING => Ok(EncodingType::Gzip),
             // _ =>  Err(reject::custom(Error::UnspportedEncodingType{msg:value.to_string()})),
             _ => Err(Error::UnspportedEncodingType {
                 msg: value.to_string(),
