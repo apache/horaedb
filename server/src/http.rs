@@ -152,7 +152,7 @@ define_result!(Error);
 impl reject::Reject for Error {}
 
 enum EncodingType {
-    GZIP,
+    Gzip,
 }
 impl TryFrom<&str> for EncodingType {
     type Error = Error;
@@ -430,7 +430,7 @@ impl Service {
                     Some(encoding) => {
                         let encode_type = EncodingType::try_from(&encoding[..])?;
                         match encode_type {
-                            EncodingType::GZIP => {
+                            EncodingType::Gzip => {
                                 let mut d = GzDecoder::new(points.as_bytes());
                                 let mut decompressed_data = Vec::new();
                                 d.read_to_end(&mut decompressed_data).context(Ungzip)?;
