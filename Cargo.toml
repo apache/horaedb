@@ -92,7 +92,7 @@ bytes = "1"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-ceresdbproto = "1.0.14"
+ceresdbproto = "1.0.18"
 codec = { path = "components/codec" }
 notifier = { path = "components/notifier" }
 chrono = "0.4"
@@ -106,7 +106,7 @@ datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", re
 df_operator = { path = "df_operator" }
 df_engine_extensions = { path = "df_engine_extensions" }
 future_ext = { path = "components/future_ext" }
-etcd-client = "0.10.3"
+etcd-client = { version = "0.10.3", features = ["tls"] }
 env_logger = "0.6"
 futures = "0.3"
 generic_error = { path = "components/generic_error" }
@@ -114,7 +114,6 @@ hash_ext = { path = "components/hash_ext" }
 hex = "0.4.3"
 lz4_flex = { version = "0.11", default-features = false, features = ["frame"] }
 lazy_static = "1.4.0"
-log = "0.4"
 logger = { path = "components/logger" }
 lru = "0.7.6"
 id_allocator = { path = "components/id_allocator" }
@@ -177,6 +176,7 @@ tokio = { version = "1.29", features = ["full"] }
 wal = { path = "wal" }
 xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
 zstd = { version = "0.12", default-features = false }
+regex = "1"
 
 # This profile optimizes for good runtime performance.
 [profile.release]

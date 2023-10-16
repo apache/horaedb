@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use log::warn;
+use logger::warn;
 use tonic::metadata::{KeyAndValueRef, MetadataMap};
 
 /// Rpc request header

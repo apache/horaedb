@@ -199,12 +199,12 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
         let remote_engine = self.remote_engine.clone();
         let future = Box::pin(async move {
             let remote_request = RemoteExecuteRequest {
+                table,
                 context: exec_ctx,
                 physical_plan: PhysicalPlan::Datafusion(encoded_plan),
             };
 
             let request = ExecutePlanRequest {
-                table,
                 plan_schema,
                 remote_request,
             };

@@ -14,7 +14,7 @@
 
 //! Instance contains shared states of service
 
-use std::sync::Arc;
+use std::sync::{atomic::AtomicU64, Arc};
 
 use catalog::manager::ManagerRef;
 use df_operator::registry::FunctionRegistryRef;
@@ -43,7 +43,18 @@ pub struct Instance {
 /// A reference counted instance pointer
 pub type InstanceRef = Arc<Instance>;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct DynamicConfig {
     pub fronted: Arc<FrontendDynamicConfig>,
+    /// Slow threshold(seconds)
+    pub slow_threshold: Arc<AtomicU64>,
+}
+
+impl Default for DynamicConfig {
+    fn default() -> Self {
+        Self {
+            fronted: Default::default(),
+            slow_threshold: Arc::new(AtomicU64::new(5)),
+        }
+    }
 }

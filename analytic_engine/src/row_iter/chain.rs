@@ -23,7 +23,7 @@ use common_types::{
     schema::RecordSchemaWithKey,
 };
 use generic_error::GenericError;
-use log::debug;
+use logger::debug;
 use macros::define_result;
 use snafu::{ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};

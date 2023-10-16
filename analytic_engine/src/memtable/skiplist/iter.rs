@@ -26,7 +26,7 @@ use common_types::{
     schema::Schema,
     SequenceNumber,
 };
-use log::trace;
+use logger::trace;
 use skiplist::{ArenaSlice, BytewiseComparator, IterRef, Skiplist};
 use snafu::ResultExt;
 

@@ -1,11 +1,11 @@
 ---
 source: df_engine_extensions/src/dist_sql_query/resolver.rs
-assertion_line: 280
+assertion_line: 322
 expression: new_plan
 ---
 AggregateExec: mode=Final, gby=[tag1@1 as tag1, tag2@2 as tag2], aggr=[COUNT(value), COUNT(field2)]
   CoalescePartitionsExec
-    ResolvedPartitionedScan: pushing_down:false, partition_count:3
+    ResolvedPartitionedScan: pushdown_continue:false, partition_count:3
       AggregateExec: mode=Partial, gby=[tag1@1 as tag1, tag2@2 as tag2], aggr=[COUNT(value), COUNT(field2)]
         ProjectionExec: expr=[time@0 as time, tag1@1 as tag1, tag2@2 as tag2, value@3 as value, field2@4 as field2]
           FilterExec: time@0 < 1691974518000 AND tag1@1 = test_tag

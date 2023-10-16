@@ -27,7 +27,7 @@ use common_types::{
     time::TimeRange, SequenceNumber,
 };
 use generic_error::BoxError;
-use log::debug;
+use logger::debug;
 use skiplist::{BytewiseComparator, Skiplist};
 use snafu::{ensure, OptionExt, ResultExt};
 

@@ -20,6 +20,7 @@ use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
+    time::{Duration, Instant},
 };
 
 use arrow::{datatypes::SchemaRef as ArrowSchemaRef, record_batch::RecordBatch};
@@ -33,14 +34,16 @@ use datafusion::{
         coalesce_partitions::CoalescePartitionsExec,
         displayable,
         filter::FilterExec,
+        metrics::{Count, MetricValue, MetricsSet},
         projection::ProjectionExec,
         repartition::RepartitionExec,
-        DisplayAs, DisplayFormatType, ExecutionPlan, Partitioning, RecordBatchStream,
+        DisplayAs, DisplayFormatType, ExecutionPlan, Metric, Partitioning, RecordBatchStream,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use table_engine::{remote::model::TableIdentifier, table::ReadRequest};
+use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector, TraceMetricWhenDrop};
 
 use crate::dist_sql_query::RemotePhysicalPlanExecutor;
 
@@ -52,6 +55,23 @@ use crate::dist_sql_query::RemotePhysicalPlanExecutor;
 pub struct UnresolvedPartitionedScan {
     pub sub_tables: Vec<TableIdentifier>,
     pub read_request: ReadRequest,
+    pub metrics_collector: MetricsCollector,
+}
+
+impl UnresolvedPartitionedScan {
+    pub fn new(
+        table_name: &str,
+        sub_tables: Vec<TableIdentifier>,
+        read_request: ReadRequest,
+    ) -> Self {
+        let metrics_collector = MetricsCollector::new(table_name.to_string());
+
+        Self {
+            sub_tables,
+            read_request,
+            metrics_collector,
+        }
+    }
 }
 
 impl ExecutionPlan for UnresolvedPartitionedScan {
@@ -117,24 +137,35 @@ impl DisplayAs for UnresolvedPartitionedScan {
 /// It includes remote execution plans of sub tables, and will send them to
 /// related nodes to execute.
 #[derive(Debug)]
-pub struct ResolvedPartitionedScan {
+pub(crate) struct ResolvedPartitionedScan {
     pub remote_exec_ctx: Arc<RemoteExecContext>,
     pub pushdown_continue: bool,
+    pub metrics_collector: MetricsCollector,
 }
 
 impl ResolvedPartitionedScan {
     pub fn new(
         remote_executor: Arc<dyn RemotePhysicalPlanExecutor>,
-        remote_exec_plans: Vec<(TableIdentifier, Arc<dyn ExecutionPlan>)>,
+        sut_table_plan_ctxs: Vec<SubTablePlanContext>,
+        metrics_collector: MetricsCollector,
     ) -> Self {
         let remote_exec_ctx = Arc::new(RemoteExecContext {
             executor: remote_executor,
-            plans: remote_exec_plans,
+            plan_ctxs: sut_table_plan_ctxs,
         });
 
+        Self::new_with_details(remote_exec_ctx, true, metrics_collector)
+    }
+
+    pub fn new_with_details(
+        remote_exec_ctx: Arc<RemoteExecContext>,
+        pushdown_continue: bool,
+        metrics_collector: MetricsCollector,
+    ) -> Self {
         Self {
             remote_exec_ctx,
-            pushdown_continue: true,
+            pushdown_continue,
+            metrics_collector,
         }
     }
 
@@ -142,6 +173,7 @@ impl ResolvedPartitionedScan {
         Arc::new(Self {
             remote_exec_ctx: self.remote_exec_ctx.clone(),
             pushdown_continue: false,
+            metrics_collector: self.metrics_collector.clone(),
         })
     }
 
@@ -158,40 +190,45 @@ impl ResolvedPartitionedScan {
         // set `can_push_down_more` false.
         let pushdown_status = Self::maybe_a_pushdown_node(cur_node.clone());
         let (node, can_push_down_more) = match pushdown_status {
-            PushDownStatus::Continue(node) => (node, true),
-            PushDownStatus::Terminated(node) => (node, false),
-            PushDownStatus::Unable => {
+            PushDownEvent::Continue(node) => (node, true),
+            PushDownEvent::Terminated(node) => (node, false),
+            PushDownEvent::Unable => {
                 let partitioned_scan = self.pushdown_finished();
                 return cur_node.with_new_children(vec![partitioned_scan]);
             }
         };
 
-        let new_plans = self
+        let new_plan_ctxs = self
             .remote_exec_ctx
-            .plans
+            .plan_ctxs
             .iter()
-            .map(|(table, plan)| {
+            .map(|plan_ctx| {
                 node.clone()
-                    .with_new_children(vec![plan.clone()])
-                    .map(|extended_plan| (table.clone(), extended_plan))
+                    .with_new_children(vec![plan_ctx.plan.clone()])
+                    .map(|extended_plan| SubTablePlanContext {
+                        table: plan_ctx.table.clone(),
+                        plan: extended_plan,
+                        metrics_collector: plan_ctx.metrics_collector.clone(),
+                    })
             })
             .collect::<DfResult<Vec<_>>>()?;
 
         let remote_exec_ctx = Arc::new(RemoteExecContext {
             executor: self.remote_exec_ctx.executor.clone(),
-            plans: new_plans,
+            plan_ctxs: new_plan_ctxs,
         });
-        let plan = ResolvedPartitionedScan {
+        let plan = ResolvedPartitionedScan::new_with_details(
             remote_exec_ctx,
-            pushdown_continue: can_push_down_more,
-        };
+            can_push_down_more,
+            self.metrics_collector.clone(),
+        );
 
         Ok(Arc::new(plan))
     }
 
     #[inline]
-    pub fn maybe_a_pushdown_node(plan: Arc<dyn ExecutionPlan>) -> PushDownStatus {
-        PushDownStatus::new(plan)
+    pub fn maybe_a_pushdown_node(plan: Arc<dyn ExecutionPlan>) -> PushDownEvent {
+        PushDownEvent::new(plan)
     }
 
     /// `ResolvedPartitionedScan` can be executable after satisfying followings:
@@ -205,7 +242,28 @@ impl ResolvedPartitionedScan {
 #[derive(Debug)]
 pub struct RemoteExecContext {
     executor: Arc<dyn RemotePhysicalPlanExecutor>,
-    plans: Vec<(TableIdentifier, Arc<dyn ExecutionPlan>)>,
+    plan_ctxs: Vec<SubTablePlanContext>,
+}
+
+#[derive(Debug)]
+pub(crate) struct SubTablePlanContext {
+    table: TableIdentifier,
+    plan: Arc<dyn ExecutionPlan>,
+    metrics_collector: MetricsCollector,
+}
+
+impl SubTablePlanContext {
+    pub fn new(
+        table: TableIdentifier,
+        plan: Arc<dyn ExecutionPlan>,
+        metrics_collector: MetricsCollector,
+    ) -> Self {
+        Self {
+            table,
+            plan,
+            metrics_collector,
+        }
+    }
 }
 
 impl ExecutionPlan for ResolvedPartitionedScan {
@@ -215,15 +273,15 @@ impl ExecutionPlan for ResolvedPartitionedScan {
 
     fn schema(&self) -> ArrowSchemaRef {
         self.remote_exec_ctx
-            .plans
+            .plan_ctxs
             .first()
             .expect("remote_exec_plans should not be empty")
-            .1
+            .plan
             .schema()
     }
 
     fn output_partitioning(&self) -> Partitioning {
-        Partitioning::UnknownPartitioning(self.remote_exec_ctx.plans.len())
+        Partitioning::UnknownPartitioning(self.remote_exec_ctx.plan_ctxs.len())
     }
 
     fn output_ordering(&self) -> Option<&[PhysicalSortExpr]> {
@@ -232,9 +290,9 @@ impl ExecutionPlan for ResolvedPartitionedScan {
 
     fn children(&self) -> Vec<Arc<dyn ExecutionPlan>> {
         self.remote_exec_ctx
-            .plans
+            .plan_ctxs
             .iter()
-            .map(|(_, plan)| plan.clone())
+            .map(|plan_ctx| plan_ctx.plan.clone())
             .collect()
     }
 
@@ -259,20 +317,42 @@ impl ExecutionPlan for ResolvedPartitionedScan {
             )));
         }
 
-        let (sub_table, plan) = &self.remote_exec_ctx.plans[partition];
+        let SubTablePlanContext {
+            table: sub_table,
+            plan,
+            metrics_collector,
+        } = &self.remote_exec_ctx.plan_ctxs[partition];
 
         // Send plan for remote execution.
         let stream_future =
             self.remote_exec_ctx
                 .executor
                 .execute(sub_table.clone(), &context, plan.clone())?;
-        let record_stream = PartitionedScanStream::new(stream_future, plan.schema());
+        let record_stream =
+            PartitionedScanStream::new(stream_future, plan.schema(), metrics_collector.clone());
 
         Ok(Box::pin(record_stream))
     }
 
     fn statistics(&self) -> Statistics {
         Statistics::default()
+    }
+
+    fn metrics(&self) -> Option<MetricsSet> {
+        let mut metric_set = MetricsSet::new();
+
+        let mut format_visitor = FormatCollectorVisitor::default();
+        self.metrics_collector.visit(&mut format_visitor);
+        let metrics_desc = format_visitor.into_string();
+        metric_set.push(Arc::new(Metric::new(
+            MetricValue::Count {
+                name: format!("\n{metrics_desc}").into(),
+                count: Count::new(),
+            },
+            None,
+        )));
+
+        Some(metric_set)
     }
 }
 
@@ -286,6 +366,12 @@ pub(crate) struct PartitionedScanStream {
 
     /// Record schema
     arrow_record_schema: ArrowSchemaRef,
+
+    /// Last time left due to `Pending`
+    last_time_left: Option<Instant>,
+
+    /// Metrics collected for analyze
+    metrics: Metrics,
 }
 
 impl PartitionedScanStream {
@@ -293,11 +379,18 @@ impl PartitionedScanStream {
     pub fn new(
         stream_future: BoxFuture<'static, DfResult<DfSendableRecordBatchStream>>,
         arrow_record_schema: ArrowSchemaRef,
+        metrics_collector: MetricsCollector,
     ) -> Self {
+        let metrics = Metrics {
+            metrics_collector,
+            ..Default::default()
+        };
         Self {
             stream_future,
             stream_state: StreamState::Initializing,
             arrow_record_schema,
+            last_time_left: None,
+            metrics,
         }
     }
 }
@@ -313,8 +406,15 @@ impl Stream for PartitionedScanStream {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
+        let this_time_polled = Instant::now();
+        let wait_cost = match this.last_time_left {
+            Some(last_left) => this_time_polled.saturating_duration_since(last_left),
+            None => Duration::default(),
+        };
+        this.metrics.wait_duration += wait_cost;
+        this.metrics.total_duration += wait_cost;
 
-        loop {
+        let poll_result = loop {
             let stream_state = &mut this.stream_state;
             match stream_state {
                 StreamState::Initializing => {
@@ -325,15 +425,23 @@ impl Stream for PartitionedScanStream {
                         }
                         Poll::Ready(Err(e)) => {
                             *stream_state = StreamState::InitializeFailed;
-                            return Poll::Ready(Some(Err(e)));
+                            break Poll::Ready(Some(Err(e)));
                         }
-                        Poll::Pending => return Poll::Pending,
+                        Poll::Pending => break Poll::Pending,
                     }
                 }
                 StreamState::InitializeFailed => return Poll::Ready(None),
-                StreamState::Polling(stream) => return stream.poll_next_unpin(cx),
+                StreamState::Polling(stream) => break stream.poll_next_unpin(cx),
             }
-        }
+        };
+
+        let this_time_left = Instant::now();
+        let poll_cost = this_time_left.saturating_duration_since(this_time_polled);
+        this.metrics.poll_duration += poll_cost;
+        this.metrics.total_duration += poll_cost;
+        this.last_time_left = Some(this_time_left);
+
+        poll_result
     }
 }
 
@@ -367,9 +475,9 @@ impl DisplayAs for ResolvedPartitionedScan {
             DisplayFormatType::Default | DisplayFormatType::Verbose => {
                 write!(
                     f,
-                    "ResolvedPartitionedScan: pushing_down:{}, partition_count:{}",
+                    "ResolvedPartitionedScan: pushdown_continue:{}, partition_count:{}",
                     self.pushdown_continue,
-                    self.remote_exec_ctx.plans.len()
+                    self.remote_exec_ctx.plan_ctxs.len()
                 )
             }
         }
@@ -499,13 +607,13 @@ impl TryFrom<UnresolvedSubTableScan> for ceresdbproto::remote_engine::Unresolved
 ///   + Terminated, node able to be pushed down to `ResolvedPartitionedScan`,
 ///     but the newly generated `ResolvedPartitionedScan` can't accept more
 ///     pushdown nodes after.
-pub enum PushDownStatus {
+pub enum PushDownEvent {
     Unable,
     Continue(Arc<dyn ExecutionPlan>),
     Terminated(Arc<dyn ExecutionPlan>),
 }
 
-impl PushDownStatus {
+impl PushDownEvent {
     pub fn new(plan: Arc<dyn ExecutionPlan>) -> Self {
         if let Some(aggr) = plan.as_any().downcast_ref::<AggregateExec>() {
             if *aggr.mode() == AggregateMode::Partial {
@@ -530,6 +638,18 @@ impl PushDownStatus {
             Self::Unable
         }
     }
+}
+/// Metrics for [ChainIterator].
+#[derive(TraceMetricWhenDrop, Default)]
+struct Metrics {
+    #[metric(duration)]
+    wait_duration: Duration,
+    #[metric(duration)]
+    poll_duration: Duration,
+    #[metric(duration)]
+    total_duration: Duration,
+    #[metric(collector)]
+    metrics_collector: MetricsCollector,
 }
 
 #[cfg(test)]

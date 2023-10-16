@@ -27,7 +27,7 @@ use std::{
 
 use common_types::{table::TableId, time::Timestamp};
 use generic_error::{BoxError, GenericError, GenericResult};
-use log::{debug, error, info, trace, warn};
+use logger::{debug, error, info, trace, warn};
 use macros::define_result;
 use runtime::Runtime;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};

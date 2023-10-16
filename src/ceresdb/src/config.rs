@@ -81,6 +81,7 @@ pub struct Config {
 /// instance(s) under the control of CeresMeta.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "mode")]
+#[allow(clippy::large_enum_variant)]
 pub enum ClusterDeployment {
     NoMeta(StaticRouteConfig),
     WithMeta(ClusterConfig),

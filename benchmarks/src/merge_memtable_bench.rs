@@ -33,6 +33,7 @@ use analytic_engine::{
             ScanOptions, SstReadOptions,
         },
         meta_data::cache::MetaCacheRef,
+        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
     },
     table::{
         sst_util,
@@ -43,7 +44,7 @@ use arena::NoopCollector;
 use common_types::{
     projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema, time::TimeRange,
 };
-use log::info;
+use logger::info;
 use object_store::{LocalFileSystem, ObjectStoreRef};
 use runtime::Runtime;
 use table_engine::{predicate::Predicate, table::TableId};
@@ -214,6 +215,7 @@ fn mock_sst_read_options(
         num_streams_to_prefetch: 0,
     };
     SstReadOptions {
+        maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench")),
         frequency: ReadFrequency::Frequent,
         num_rows_per_row_group: 500,
         projected_schema,

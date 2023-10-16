@@ -19,7 +19,7 @@ use std::{fmt, str, sync::Arc};
 use async_trait::async_trait;
 use common_types::SequenceNumber;
 use generic_error::BoxError;
-use log::info;
+use logger::info;
 use snafu::ResultExt;
 use table_kv::TableKv;
 

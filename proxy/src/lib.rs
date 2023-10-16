@@ -69,7 +69,7 @@ use interpreters::{
     factory::Factory,
     interpreter::{InterpreterPtr, Output},
 };
-use log::{error, info, warn};
+use logger::{error, info, warn};
 use query_frontend::plan::Plan;
 use router::{endpoint::Endpoint, RouteRequest, Router};
 use serde::{Deserialize, Serialize};

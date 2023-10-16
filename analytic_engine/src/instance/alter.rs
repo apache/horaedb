@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 
 use generic_error::BoxError;
-use log::info;
+use logger::info;
 use snafu::{ensure, ResultExt};
 use table_engine::table::AlterSchemaRequest;
 use wal::{kv_encoder::LogBatchEncoder, manager::WriteContext};
@@ -72,7 +72,14 @@ impl<'a> Alterer<'a> {
         );
 
         // Validate alter schema request.
-        self.validate_before_alter(&request)?;
+        // if the alter schema request is idempotent, we can skip the alter operation.
+        if self.validate_before_alter(&request)? {
+            info!(
+                "Skip alter because of the altered schema is the same as the current, table:{}",
+                self.table_data.name
+            );
+            return Ok(());
+        }
 
         // Now we can persist and update the schema, since this function is called by
         // write worker, so there is no other concurrent writer altering the
@@ -157,13 +164,19 @@ impl<'a> Alterer<'a> {
 
     // Most validation should be done by catalog module, so we don't do too much
     // duplicate check here, especially the schema compatibility.
-    fn validate_before_alter(&self, request: &AlterSchemaRequest) -> Result<()> {
+    // The returned value denotes whether the altered schema is same as the current
+    // one.
+    fn validate_before_alter(&self, request: &AlterSchemaRequest) -> Result<bool> {
         ensure!(
             !self.table_data.is_dropped(),
             AlterDroppedTable {
                 table: &self.table_data.name,
             }
         );
+
+        if self.table_data.schema().columns() == request.schema.columns() {
+            return Ok(true);
+        }
 
         let current_version = self.table_data.schema_version();
         ensure!(
@@ -184,7 +197,7 @@ impl<'a> Alterer<'a> {
             }
         );
 
-        Ok(())
+        Ok(false)
     }
 
     pub async fn alter_options_of_table(

@@ -17,7 +17,7 @@
 use async_trait::async_trait;
 use futures::TryStreamExt;
 use generic_error::{BoxError, GenericError};
-use log::debug;
+use logger::debug;
 use macros::define_result;
 use query_engine::{executor::ExecutorRef, physical_planner::PhysicalPlannerRef};
 use query_frontend::plan::QueryPlan;

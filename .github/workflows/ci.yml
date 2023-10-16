@@ -62,20 +62,6 @@ jobs:
           sudo rm -rf /usr/share/dotnet # release about 20GB
       - name: Check License Header
         uses: korandoru/hawkeye@v3
-      - name: Cache Rust Dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo
-            ./target
-          key: debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
-            debug-${{ runner.os }}-
-            debug-
-      - name: Ensure Disk Quota
-        run: |
-          make ensure-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update
@@ -111,17 +97,6 @@ jobs:
         run: |
           sudo rm -rf /usr/local/lib/android # release about 10 GB
           sudo rm -rf /usr/share/dotnet # release about 20GB
-      - name: Cache Rust Dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo
-            ./target
-          key: debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
-            debug-${{ runner.os }}-
-            debug-
       - name: Setup Build Environment
         run: |
           sudo apt update
@@ -145,17 +120,6 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
-      - name: Cache Rust Dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo
-            ./target
-          key: debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
-            debug-${{ runner.os }}-
-            debug-
       - run: |
           rustup set auto-self-update disable
           rustup toolchain install ${RUST_VERSION} --profile minimal
@@ -191,17 +155,6 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
-      - name: Cache Rust Dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo
-            ./target
-          key: debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
-            debug-${{ runner.os }}-
-            debug-
       - run: |
           rustup set auto-self-update disable
           rustup toolchain install ${RUST_VERSION} --profile minimal
@@ -262,17 +215,6 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
-      - name: Cache Rust Dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo
-            ./target
-          key: debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
-            debug-${{ runner.os }}-
-            debug-
       - run: |
           rustup set auto-self-update disable
           rustup toolchain install ${RUST_VERSION} --profile minimal
@@ -304,17 +246,6 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
-      - name: Cache Rust Dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo
-            ./target
-          key: debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
-            debug-${{ runner.os }}-
-            debug-
       - run: |
           rustup set auto-self-update disable
           rustup toolchain install ${RUST_VERSION} --profile minimal

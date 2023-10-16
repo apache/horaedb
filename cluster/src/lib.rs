@@ -63,6 +63,12 @@ pub enum Error {
     #[snafu(display("Meta client execute failed, err:{source}."))]
     MetaClientFailure { source: meta_client::Error },
 
+    #[snafu(display("Failed to init etcd client config, err:{source}.\nBacktrace:\n{backtrace}"))]
+    InitEtcdClientConfig {
+        source: std::io::Error,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display("Etcd client failure, msg:{msg}, err:{source}.\nBacktrace:\n{backtrace}"))]
     EtcdClientFailureWithCause {
         msg: String,

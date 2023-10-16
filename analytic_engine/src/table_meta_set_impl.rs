@@ -18,7 +18,7 @@ use std::{fmt, num::NonZeroUsize, sync::Arc};
 
 use generic_error::BoxError;
 use id_allocator::IdAllocator;
-use log::debug;
+use logger::debug;
 use snafu::{OptionExt, ResultExt};
 use table_engine::table::TableId;
 
@@ -41,6 +41,7 @@ use crate::{
         version::{TableVersionMeta, TableVersionSnapshot},
         version_edit::VersionEdit,
     },
+    MetricsOptions,
 };
 
 #[derive(Clone)]
@@ -50,6 +51,7 @@ pub(crate) struct TableMetaSetImpl {
     // TODO: maybe not suitable to place this parameter here?
     pub(crate) preflush_write_buffer_size_ratio: f32,
     pub(crate) manifest_snapshot_every_n_updates: NonZeroUsize,
+    pub(crate) metrics_opt: MetricsOptions,
 }
 
 impl fmt::Debug for TableMetaSetImpl {
@@ -135,6 +137,7 @@ impl TableMetaSetImpl {
                         self.preflush_write_buffer_size_ratio,
                         space.mem_usage_collector.clone(),
                         self.manifest_snapshot_every_n_updates,
+                        self.metrics_opt.clone(),
                     )
                     .box_err()
                     .with_context(|| ApplyUpdateToTableWithCause {
@@ -262,6 +265,7 @@ impl TableMetaSetImpl {
                 space.mem_usage_collector.clone(),
                 allocator,
                 self.manifest_snapshot_every_n_updates,
+                self.metrics_opt.clone(),
             )
             .box_err()
             .with_context(|| ApplySnapshotToTableWithCause {

@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use bytes_ext::BytesMut;
 use generic_error::{BoxError, GenericError};
-use log::debug;
+use logger::debug;
 use macros::define_result;
 use message_queue::MessageQueue;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};

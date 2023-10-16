@@ -28,7 +28,7 @@ use async_trait::async_trait;
 use ceresdbproto::manifest as manifest_pb;
 use generic_error::{BoxError, GenericError, GenericResult};
 use lazy_static::lazy_static;
-use log::{debug, info, warn};
+use logger::{debug, info, warn};
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
@@ -758,7 +758,7 @@ mod tests {
         },
         sst::file::tests::FilePurgerMocker,
         table::data::{tests::default_schema, TableData, TableShardInfo},
-        TableOptions,
+        MetricsOptions, TableOptions,
     };
 
     fn build_altered_schema(schema: &Schema) -> Schema {
@@ -843,6 +843,7 @@ mod tests {
                 0.75,
                 collector,
                 NonZeroUsize::new(usize::MAX).unwrap(),
+                MetricsOptions::default(),
             )
             .unwrap();
 

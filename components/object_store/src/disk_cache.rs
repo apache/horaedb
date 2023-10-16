@@ -27,7 +27,7 @@ use chrono::{DateTime, Utc};
 use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
 use hash_ext::SeaHasherBuilder;
-use log::{debug, info, warn};
+use logger::{debug, warn};
 use lru::LruCache;
 use notifier::notifier::{ExecutionGuard, RequestNotifiers};
 use partitioned_lock::PartitionedMutex;
@@ -44,7 +44,9 @@ use upstream::{
     ObjectStore, Result,
 };
 
-use crate::metrics::DISK_CACHE_DEDUP_COUNT;
+use crate::metrics::{
+    DISK_CACHE_DEDUP_COUNT, OBJECT_STORE_DISK_CACHE_HIT, OBJECT_STORE_DISK_CACHE_MISS,
+};
 
 const FILE_SIZE_CACHE_CAP: usize = 1 << 18;
 const FILE_SIZE_CACHE_PARTITION_BITS: usize = 8;
@@ -641,7 +643,8 @@ impl DiskCacheStore {
                     continue;
                 }
             };
-            info!("Disk cache recover_cache, filename:{file_name}, size:{file_size}");
+
+            debug!("Disk cache recover_cache, filename:{file_name}, size:{file_size}");
             let page_meta = PageMeta { file_size };
             cache.insert_page_meta(file_name, page_meta);
         }
@@ -857,10 +860,13 @@ impl ObjectStore for DiskCacheStore {
             let filename = Self::page_cache_name(location, &aligned_range);
             let range_in_file = (range.start - aligned_start)..(range.end - aligned_start);
             if let Some(bytes) = self.cache.get_data(&filename, &range_in_file).await {
+                OBJECT_STORE_DISK_CACHE_HIT.inc();
                 return Ok(bytes);
             }
+
             // This page is missing from the disk cache, let's fetch it from the
             // underlying store and insert it to the disk cache.
+            OBJECT_STORE_DISK_CACHE_MISS.inc();
             let aligned_bytes = self.fetch_and_cache_data(location, &aligned_range).await?;
 
             // Allocate a new buffer instead of the `aligned_bytes` to avoid memory
@@ -899,6 +905,9 @@ impl ObjectStore for DiskCacheStore {
                 page_idx += 1;
             }
         }
+        let num_hitting_pages = num_pages - num_missing_pages;
+        OBJECT_STORE_DISK_CACHE_HIT.inc_by(num_hitting_pages as u64);
+        OBJECT_STORE_DISK_CACHE_MISS.inc_by(num_missing_pages as u64);
 
         let concat_paged_bytes = |paged_bytes: Vec<Option<Bytes>>| {
             // Concat the paged bytes.

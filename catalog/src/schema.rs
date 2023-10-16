@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_types::{column_schema::ColumnSchema, table::ShardId};
+use common_types::table::ShardId;
 use generic_error::GenericError;
 use macros::define_result;
 use snafu::{Backtrace, Snafu};
@@ -336,22 +336,6 @@ impl CloseTableRequest {
 pub struct CloseOptions {
     /// Table engine
     pub table_engine: TableEngineRef,
-}
-
-/// Alter table operations.
-#[derive(Debug)]
-pub enum AlterTableOperation {
-    /// Add column operation, the column id in [ColumnSchema] will be ignored.
-    /// Primary key column is not allowed to be added, so all columns will
-    /// be added as normal columns.
-    AddColumn(ColumnSchema),
-}
-
-/// Alter table request.
-#[derive(Debug)]
-pub struct AlterTableRequest {
-    pub table_name: String,
-    pub operations: Vec<AlterTableOperation>,
 }
 
 #[derive(Debug, Clone)]

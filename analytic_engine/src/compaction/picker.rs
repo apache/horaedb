@@ -21,7 +21,7 @@ use std::{
 };
 
 use common_types::time::Timestamp;
-use log::{debug, info};
+use logger::{debug, info};
 use macros::define_result;
 use snafu::Snafu;
 use time_ext::TimeUnit;
@@ -724,6 +724,7 @@ mod tests {
             max_sequence: 200,
             schema: build_schema(),
             parquet_filter: Default::default(),
+            column_values: None,
         };
 
         SstMetaData::Parquet(Arc::new(parquet_meta_data))

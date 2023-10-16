@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::BoxStream;
 use lazy_static::lazy_static;
-use log::trace;
+use logger::trace;
 use prometheus::{
     exponential_buckets, register_histogram_vec, register_int_counter, HistogramVec, IntCounter,
 };
@@ -75,6 +75,26 @@ lazy_static! {
         &["op"],
         // The max bound value is 64 * 2^24 = 1GB
         exponential_buckets(64.0, 4.0, 12).unwrap()
+    )
+    .unwrap();
+    pub static ref OBJECT_STORE_MEMORY_CACHE_HIT: IntCounter = register_int_counter!(
+        "object_store_memory_cache_hit",
+        "object store memory cache hit"
+    )
+    .unwrap();
+    pub static ref OBJECT_STORE_MEMORY_CACHE_MISS: IntCounter = register_int_counter!(
+        "object_store_memory_cache_miss",
+        "object store memory cache miss"
+    )
+    .unwrap();
+    pub static ref OBJECT_STORE_DISK_CACHE_HIT: IntCounter = register_int_counter!(
+        "object_store_disk_cache_hit",
+        "object store disk cache hit"
+    )
+    .unwrap();
+    pub static ref OBJECT_STORE_DISK_CACHE_MISS: IntCounter = register_int_counter!(
+        "object_store_disk_cache_miss",
+        "object store disk cache miss"
     )
     .unwrap();
 }

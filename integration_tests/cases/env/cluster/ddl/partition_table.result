@@ -78,6 +78,42 @@ UInt64(9923681778193615344),Timestamp(1651737067000),String("ceresdb8"),Int32(0)
 UInt64(4860320137932382618),Timestamp(1651737067000),String("ceresdb9"),Int32(0),Double(109.0),
 
 
+ALTER TABLE partition_table_t ADD COLUMN (b string);
+
+affected_rows: 0
+
+INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, "ceresdb0", 100);
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql:INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, \"ceresdb0\", 100);. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute insert, err:Failed to write table, err:Failed to write tables in batch, tables:[\"__partition_table_t_1\"], err:Failed to query from table in server, table_idents:[TableIdentifier { catalog: \"ceresdb\", schema: \"public\", table: \"__partition_table_t_1\" }], code:401, msg:failed to decode row group payload. Caused by: Schema mismatch with the write request, msg:expect 6 columns, but got 5." })
+
+ALTER TABLE partition_table_t MODIFY SETTING enable_ttl='true';
+
+affected_rows: 0
+
+SHOW CREATE TABLE __partition_table_t_0;
+
+Table,Create Table,
+String("__partition_table_t_0"),String("CREATE TABLE `__partition_table_t_0` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `name` string TAG, `id` int TAG, `value` double NOT NULL, `b` string, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='2h', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
+
+SHOW CREATE TABLE __partition_table_t_1;
+
+Table,Create Table,
+String("__partition_table_t_1"),String("CREATE TABLE `__partition_table_t_1` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `name` string TAG, `id` int TAG, `value` double NOT NULL, `b` string, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='2h', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
+
+SHOW CREATE TABLE __partition_table_t_2;
+
+Table,Create Table,
+String("__partition_table_t_2"),String("CREATE TABLE `__partition_table_t_2` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `name` string TAG, `id` int TAG, `value` double NOT NULL, `b` string, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
+
+SHOW CREATE TABLE __partition_table_t_3;
+
+Table,Create Table,
+String("__partition_table_t_3"),String("CREATE TABLE `__partition_table_t_3` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `name` string TAG, `id` int TAG, `value` double NOT NULL, `b` string, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='2h', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
+
 DROP TABLE IF EXISTS `partition_table_t`;
 
 affected_rows: 0

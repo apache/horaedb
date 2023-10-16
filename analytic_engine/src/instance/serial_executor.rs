@@ -21,7 +21,7 @@ use std::{
 };
 
 use futures::Future;
-use log::{error, warn};
+use logger::{error, warn};
 use runtime::Runtime;
 use table_engine::table::TableId;
 use time_ext::InstantExt;

@@ -22,7 +22,7 @@ use common_types::{
     schema::RecordSchemaWithKey,
 };
 use generic_error::{BoxError, GenericError};
-use log::{info, trace};
+use logger::{info, trace};
 use macros::define_result;
 use snafu::{ResultExt, Snafu};
 

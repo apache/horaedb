@@ -17,7 +17,7 @@
 use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 
 use common_types::SequenceNumber;
-use log::{debug, error, info};
+use logger::{debug, error, info};
 use macros::define_result;
 use message_queue::{ConsumeIterator, MessageQueue};
 use runtime::Runtime;

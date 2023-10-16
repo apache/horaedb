@@ -29,7 +29,7 @@ use common_types::{
     SequenceNumber,
 };
 use generic_error::BoxError;
-use log::{debug, trace};
+use logger::{debug, trace};
 use skiplist::{BytewiseComparator, Skiplist};
 use snafu::{ensure, OptionExt, ResultExt};
 

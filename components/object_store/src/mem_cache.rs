@@ -37,7 +37,10 @@ use upstream::{
     Result as ObjectStoreResult,
 };
 
-use crate::ObjectStoreRef;
+use crate::{
+    metrics::{OBJECT_STORE_MEMORY_CACHE_HIT, OBJECT_STORE_MEMORY_CACHE_MISS},
+    ObjectStoreRef,
+};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -170,9 +173,11 @@ impl MemCacheStore {
         // A request with range [5, 10) can also use [0, 20) cache
         let cache_key = Self::cache_key(location, &range);
         if let Some(bytes) = self.cache.get(&cache_key) {
+            OBJECT_STORE_MEMORY_CACHE_HIT.inc();
             return Ok(bytes);
         }
 
+        OBJECT_STORE_MEMORY_CACHE_MISS.inc();
         // TODO(chenxiang): What if two threads reach here? It's better to
         // pend one thread, and only let one to fetch data from underlying store.
         let bytes = self.underlying_store.get_range(location, range).await?;

@@ -26,8 +26,8 @@ explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348002000;
 
 -- SQLNESS ARG pre_cmd=flush
--- SQLNESS REPLACE duration=\d+.\d*(µ|m) duration=xx
--- SQLNESS REPLACE project_record_batch=\d+.\d*(µ|m) project_record_batch=xx
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE project_record_batch=\d+.?\d*(µ|m|n) project_record_batch=xx
 -- This query should include SST
 explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348001000;

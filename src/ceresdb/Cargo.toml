@@ -34,7 +34,6 @@ datafusion = { workspace = true }
 df_operator = { workspace = true }
 etcd-client = { workspace = true }
 interpreters = { workspace = true }
-log = { workspace = true }
 logger = { workspace = true }
 meta_client = { workspace = true }
 moka = { version = "0.10", features = ["future"] }

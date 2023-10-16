@@ -33,4 +33,5 @@ CeresDB is under [Apache License 2.0](./LICENSE).
 - Join the user group on [Slack](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1dcbv8yq8-Fv8aVUb6ODTL7kxbzs9fnA)
 - Contact us via Email: ceresdbservice@gmail.com
 - WeChat Official Account [QR code](https://github.com/CeresDB/community/blob/main/communication/wechat/official-account-qrcode.jpg)
+- WeChat group [QR code](https://github.com/CeresDB/community/blob/main/communication/wechat/group_qrcode.png)
 - Join the user group on DingTalk: 44602802

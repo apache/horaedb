@@ -15,7 +15,7 @@
 use async_trait::async_trait;
 use common_types::schema::SchemaEncoder;
 use generic_error::BoxError;
-use log::info;
+use logger::info;
 use meta_client::{
     types::{CreateTableRequest, DropTableRequest, PartitionTableInfo},
     MetaClientRef,

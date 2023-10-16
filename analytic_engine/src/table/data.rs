@@ -38,7 +38,7 @@ use common_types::{
 };
 use generic_error::{GenericError, GenericResult};
 use id_allocator::IdAllocator;
-use log::{debug, info};
+use logger::{debug, info};
 use macros::define_result;
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -59,11 +59,11 @@ use crate::{
     space::SpaceId,
     sst::{file::FilePurger, manager::FileId},
     table::{
-        metrics::Metrics,
+        metrics::{Metrics, MetricsContext},
         sst_util,
         version::{MemTableForWrite, MemTableState, SamplingMemTable, TableVersion},
     },
-    TableOptions,
+    MetricsOptions, TableOptions,
 };
 
 #[derive(Debug, Snafu)]
@@ -253,6 +253,7 @@ impl TableData {
         preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
         manifest_snapshot_every_n_updates: NonZeroUsize,
+        metrics_opt: MetricsOptions,
     ) -> Result<Self> {
         // FIXME(yingwen): Validate TableOptions, such as bucket_duration >=
         // segment_duration and bucket_duration is aligned to segment_duration
@@ -264,7 +265,8 @@ impl TableData {
 
         let purge_queue = purger.create_purge_queue(space_id, table_id);
         let current_version = TableVersion::new(purge_queue);
-        let metrics = Metrics::default();
+        let metrics_ctx = MetricsContext::new(&table_name, metrics_opt);
+        let metrics = Metrics::new(metrics_ctx);
         let mutable_limit = AtomicU32::new(compute_mutable_limit(
             table_opts.write_buffer_size,
             preflush_write_buffer_size_ratio,
@@ -297,6 +299,7 @@ impl TableData {
     /// Recover table from add table meta
     ///
     /// This wont recover sequence number, which will be set after wal replayed
+    #[allow(clippy::too_many_arguments)]
     pub fn recover_from_add(
         add_meta: AddTableMeta,
         purger: &FilePurger,
@@ -305,11 +308,13 @@ impl TableData {
         mem_usage_collector: CollectorRef,
         allocator: IdAllocator,
         manifest_snapshot_every_n_updates: NonZeroUsize,
+        metrics_opt: MetricsOptions,
     ) -> Result<Self> {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
         let current_version = TableVersion::new(purge_queue);
-        let metrics = Metrics::default();
+        let metrics_ctx = MetricsContext::new(&add_meta.table_name, metrics_opt);
+        let metrics = Metrics::new(metrics_ctx);
         let mutable_limit = AtomicU32::new(compute_mutable_limit(
             add_meta.opts.write_buffer_size,
             preflush_write_buffer_size_ratio,
@@ -858,6 +863,7 @@ pub mod tests {
                 0.75,
                 collector,
                 self.manifest_snapshot_every_n_updates,
+                MetricsOptions::default(),
             )
             .unwrap()
         }

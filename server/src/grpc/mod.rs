@@ -31,7 +31,7 @@ use cluster::ClusterRef;
 use common_types::column_schema;
 use futures::FutureExt;
 use generic_error::GenericError;
-use log::{info, warn};
+use logger::{info, warn};
 use macros::define_result;
 use notifier::notifier::RequestNotifiers;
 use proxy::{

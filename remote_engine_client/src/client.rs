@@ -32,17 +32,19 @@ use ceresdbproto::{
 use common_types::{record_batch::RecordBatch, schema::RecordSchema};
 use futures::{Stream, StreamExt};
 use generic_error::BoxError;
-use log::info;
+use logger::{error, info};
 use router::RouterRef;
 use runtime::Runtime;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
     remote::model::{
-        ExecutePlanRequest, GetTableInfoRequest, ReadRequest, TableIdentifier, TableInfo,
-        WriteBatchRequest, WriteBatchResult, WriteRequest,
+        AlterTableOptionsRequest, AlterTableSchemaRequest, ExecutePlanRequest, GetTableInfoRequest,
+        ReadRequest, TableIdentifier, TableInfo, WriteBatchRequest, WriteBatchResult, WriteRequest,
     },
     table::{SchemaId, TableId},
 };
+use time_ext::ReadableDuration;
+use tokio::time::sleep;
 use tonic::{transport::Channel, Request, Streaming};
 
 use crate::{cached_router::CachedRouter, config::Config, error::*, status_code};
@@ -57,17 +59,23 @@ pub struct Client {
     cached_router: Arc<CachedRouter>,
     io_runtime: Arc<Runtime>,
     pub compression: CompressOptions,
+    max_retry: usize,
+    retry_interval: ReadableDuration,
 }
 
 impl Client {
     pub fn new(config: Config, router: RouterRef, io_runtime: Arc<Runtime>) -> Self {
         let compression = config.compression;
+        let max_retry = config.max_retry;
+        let retry_interval = config.retry_interval;
         let cached_router = CachedRouter::new(router, config);
 
         Self {
             cached_router: Arc::new(cached_router),
             io_runtime,
             compression,
+            max_retry,
+            retry_interval,
         }
     }
 
@@ -239,6 +247,118 @@ impl Client {
         Ok(results)
     }
 
+    pub async fn alter_table_schema(&self, request: AlterTableSchemaRequest) -> Result<()> {
+        // Find the channel from router firstly.
+        let route_context = self.cached_router.route(&request.table_ident).await?;
+
+        let table_ident = request.table_ident.clone();
+        let request_pb: ceresdbproto::remote_engine::AlterTableSchemaRequest = request.into();
+        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
+
+        let mut result = Ok(());
+        // Alter schema to remote engine with retry.
+        // TODO: Define a macro to reuse the retry logic.
+        for i in 0..(self.max_retry + 1) {
+            let resp = rpc_client
+                .alter_table_schema(Request::new(request_pb.clone()))
+                .await
+                .with_context(|| Rpc {
+                    table_idents: vec![table_ident.clone()],
+                    msg: "Failed to alter schema to remote engine",
+                });
+
+            let resp = resp.and_then(|response| {
+                let response = response.into_inner();
+                if let Some(header) = &response.header && !status_code::is_ok(header.code) {
+                    Server {
+                        table_idents: vec![table_ident.clone()],
+                        code: header.code,
+                        msg: header.error.clone(),
+                    }.fail()
+                } else {
+                    Ok(())
+                }
+            });
+
+            if let Err(e) = resp {
+                error!(
+                    "Failed to alter schema to remote engine,
+        table:{table_ident:?}, err:{e}"
+                );
+
+                result = Err(e);
+
+                // If occurred error, we simply evict the corresponding channel now.
+                // TODO: evict according to the type of error.
+                self.evict_route_from_cache(&[table_ident.clone()]).await;
+
+                // Break if it's the last retry.
+                if i == self.max_retry {
+                    break;
+                }
+
+                sleep(self.retry_interval.0).await;
+                continue;
+            }
+            return Ok(());
+        }
+        result
+    }
+
+    pub async fn alter_table_options(&self, request: AlterTableOptionsRequest) -> Result<()> {
+        // Find the channel from router firstly.
+        let route_context = self.cached_router.route(&request.table_ident).await?;
+
+        let table_ident = request.table_ident.clone();
+        let request_pb: ceresdbproto::remote_engine::AlterTableOptionsRequest = request.into();
+        let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
+
+        let mut result = Ok(());
+        // Alter options to remote engine with retry.
+        for i in 0..(self.max_retry + 1) {
+            let resp = rpc_client
+                .alter_table_options(Request::new(request_pb.clone()))
+                .await
+                .with_context(|| Rpc {
+                    table_idents: vec![table_ident.clone()],
+                    msg: "Failed to alter options to remote engine",
+                });
+
+            let resp = resp.and_then(|response| {
+                let response = response.into_inner();
+                if let Some(header) = &response.header && !status_code::is_ok(header.code) {
+                    Server {
+                        table_idents: vec![table_ident.clone()],
+                        code: header.code,
+                        msg: header.error.clone(),
+                    }.fail()
+                } else {
+                    Ok(())
+                }
+            });
+
+            if let Err(e) = resp {
+                error!("Failed to alter options to remote engine, table:{table_ident:?}, err:{e}");
+
+                result = Err(e);
+
+                // If occurred error, we simply evict the corresponding channel now.
+                // TODO: evict according to the type of error.
+                self.evict_route_from_cache(&[table_ident.clone()]).await;
+
+                // Break if it's the last retry.
+                if i == self.max_retry {
+                    break;
+                }
+
+                sleep(self.retry_interval.0).await;
+                continue;
+            }
+            return Ok(());
+        }
+        result
+    }
+
     pub async fn get_table_info(&self, request: GetTableInfoRequest) -> Result<TableInfo> {
         // Find the channel from router firstly.
         let route_context = self.cached_router.route(&request.table).await?;
@@ -267,9 +387,9 @@ impl Client {
                         code: header.code,
                         msg: header.error.clone(),
                     }.fail()
-                } else {
-                    Ok(response)
-                }
+            } else {
+                Ok(response)
+            }
         });
 
         match result {
@@ -326,10 +446,10 @@ impl Client {
         request: ExecutePlanRequest,
     ) -> Result<ClientReadRecordBatchStream> {
         // Find the channel from router firstly.
-        let route_context = self.cached_router.route(&request.table).await?;
+        let table_ident = request.remote_request.table.clone();
+        let route_context = self.cached_router.route(&table_ident).await?;
 
         // Execute plan from remote.
-        let table_ident = request.table;
         let plan_schema = request.plan_schema;
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
         let request_pb =

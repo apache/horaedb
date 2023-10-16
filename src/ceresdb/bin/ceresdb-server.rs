@@ -21,7 +21,7 @@ use ceresdb::{
     setup,
 };
 use clap::{App, Arg};
-use log::info;
+use logger::info;
 
 /// By this environment variable, the address of current node can be overridden.
 /// And it could be domain name or ip address, but no port follows it.

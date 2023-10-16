@@ -46,12 +46,12 @@ influxql-parser = { workspace = true }
 influxql-schema = { workspace = true }
 itertools = { workspace = true }
 lazy_static = { workspace = true }
-log = { workspace = true }
+logger = { workspace = true }
 macros = { workspace = true }
 partition_table_engine = { workspace = true }
 paste = { workspace = true }
 prom-remote-api = { workspace = true }
-regex = "1"
+regex = { workspace = true }
 regex-syntax = "0.6.28"
 snafu = { workspace = true }
 sqlparser = { workspace = true }

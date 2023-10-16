@@ -16,7 +16,7 @@
 
 use std::{collections::HashSet, time::Duration};
 
-use log::{error, info};
+use logger::{error, info};
 use rand::prelude::*;
 
 use super::*;

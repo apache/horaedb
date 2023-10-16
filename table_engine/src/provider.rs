@@ -38,7 +38,7 @@ use datafusion::{
     },
 };
 use df_operator::visitor;
-use log::debug;
+use logger::debug;
 use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector};
 
 use crate::{
