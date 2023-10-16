@@ -434,7 +434,7 @@ impl Service {
                                 let bytes = points.as_bytes();
                                 let mut decoder = GzDecoder::new(bytes);
                                 let mut decompressed_data = Vec::with_capacity(bytes.len()* 2);
-                                decoder.read_to_end(&mut decompressed_data).context(Ungzip)?;
+                                decoder.read_to_end(&mut decompressed_data).context(UnGzip)?;
                                 decompressed_data.into()
                             },
                         }
