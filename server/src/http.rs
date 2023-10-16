@@ -128,7 +128,7 @@ pub enum Error {
     #[snafu(display("Fail to decompress gzip body, err:{}.", source))]
     UnGzip { source: std::io::Error },
 
-    #[snafu(display("Unsupported content encoding type, value: {}.", encoding_type))]
+    #[snafu(display("Unsupported content encoding type, value:{}.", encoding_type))]
     UnspportedContentEncodingType { encoding_type: String },
 
     #[snafu(display("Server already started.\nBacktrace:\n{}", backtrace))]
@@ -428,11 +428,12 @@ impl Service {
             .and_then(|ctx, params, points: Bytes, proxy: Arc<Proxy>, encoding: Option<String>| async move {
                 let points = match encoding {
                     Some(encoding) => {
-                        let encode_type = ContentEncodingType::try_from(&encoding[..])?;
+                        let encode_type = ContentEncodingType::try_from(encoding.as_str())?;
                         match encode_type {
                             ContentEncodingType::Gzip => {
-                                let mut decoder = GzDecoder::new(points.as_bytes());
-                                let mut decompressed_data = Vec::with_capacity(points.as_bytes().len() * 2);
+                                let bytes = points.as_bytes();
+                                let mut decoder = GzDecoder::new(bytes);
+                                let mut decompressed_data = Vec::with_capacity(bytes.len()* 2);
                                 decoder.read_to_end(&mut decompressed_data).context(Ungzip)?;
                                 decompressed_data.into()
                             },
