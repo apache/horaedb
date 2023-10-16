@@ -125,11 +125,11 @@ pub enum Error {
         source: Box<dyn StdError + Send + Sync>,
     },
 
-    #[snafu(display("Fail to decode gzip body, err:{}.", source))]
-    Ungzip { source: std::io::Error },
+    #[snafu(display("Fail to decompress gzip body, err:{}.", source))]
+    UnGzip { source: std::io::Error },
 
-    #[snafu(display("Unsupported encoding type, value: {}.", encoding_type))]
-    UnspportedEncodingType { encoding_type: String },
+    #[snafu(display("Unsupported content encoding type, value: {}.", encoding_type))]
+    UnspportedContentEncodingType { encoding_type: String },
 
     #[snafu(display("Server already started.\nBacktrace:\n{}", backtrace))]
     AlreadyStarted { backtrace: Backtrace },
@@ -151,17 +151,17 @@ define_result!(Error);
 
 impl reject::Reject for Error {}
 
-enum EncodingType {
+enum ContentEncodingType {
     Gzip,
 }
 
-impl TryFrom<&str> for EncodingType {
+impl TryFrom<&str> for ContentEncodingType {
     type Error = Error;
 
     fn try_from(value: &str) -> Result<Self> {
         match value {
-            GZIP_ENCODING => Ok(EncodingType::Gzip),
-            _ => Err(Error::UnspportedEncodingType {
+            GZIP_ENCODING => Ok(ContentEncodingType::Gzip),
+            _ => Err(Error::UnspportedContentEncodingType {
                 encoding_type: value.to_string(),
             }),
         }
@@ -428,9 +428,9 @@ impl Service {
             .and_then(|ctx, params, points: Bytes, proxy: Arc<Proxy>, encoding: Option<String>| async move {
                 let points = match encoding {
                     Some(encoding) => {
-                        let encode_type = EncodingType::try_from(&encoding[..])?;
+                        let encode_type = ContentEncodingType::try_from(&encoding[..])?;
                         match encode_type {
-                            EncodingType::Gzip => {
+                            ContentEncodingType::Gzip => {
                                 let mut decoder = GzDecoder::new(points.as_bytes());
                                 let mut decompressed_data = Vec::with_capacity(points.as_bytes().len() * 2);
                                 decoder.read_to_end(&mut decompressed_data).context(Ungzip)?;
@@ -876,8 +876,8 @@ struct ErrorResponse {
 
 fn error_to_status_code(err: &Error) -> StatusCode {
     match err {
-        Error::Ungzip { .. }
-        | Error::UnspportedEncodingType { .. }
+        Error::UnGzip { .. }
+        | Error::UnspportedContentEncodingType { .. }
         | Error::CreateContext { .. } => StatusCode::BAD_REQUEST,
         // TODO(yingwen): Map handle request error to more accurate status code
         Error::HandleRequest { .. }
