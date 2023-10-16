@@ -49,7 +49,7 @@ struct Metrics {
 }
 
 /// MemTable implementation based on skiplist
-pub struct SkiplistMemTable<A: Arena<Stats = BasicStats> + Clone> {
+pub struct SkiplistMemTable<A> {
     /// Schema of this memtable, is immutable.
     schema: Schema,
     skiplist: Skiplist<BytewiseComparator, A>,
@@ -60,6 +60,16 @@ pub struct SkiplistMemTable<A: Arena<Stats = BasicStats> + Clone> {
     metrics: Metrics,
     min_time: AtomicI64,
     max_time: AtomicI64,
+}
+
+impl<A> Drop for SkiplistMemTable<A> {
+    fn drop(&mut self) {
+        logger::debug!(
+            "Drop skiplist memtable, last_seq:{}, schema:{:?}",
+            self.last_sequence.load(atomic::Ordering::Relaxed),
+            self.schema
+        );
+    }
 }
 
 impl<A: Arena<Stats = BasicStats> + Clone> SkiplistMemTable<A> {
