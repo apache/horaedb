@@ -151,6 +151,23 @@ define_result!(Error);
 
 impl reject::Reject for Error {}
 
+enum EncodingType {
+    GZIP,
+}
+impl TryFrom<&str> for EncodingType {
+    type Error = Error;
+
+    fn try_from(value: &str) -> Result<Self> {
+        match value {
+            GZIP_ENCODING => Ok(EncodingType::GZIP),
+            // _ =>  Err(reject::custom(Error::UnspportedEncodingType{msg:value.to_string()})),
+            _ => Err(Error::UnspportedEncodingType {
+                msg: value.to_string(),
+            }),
+        }
+    }
+}
+
 /// Http service
 ///
 /// Endpoints beginning with /debug are for internal use, and may subject to
@@ -411,13 +428,14 @@ impl Service {
             .and_then(|ctx, params, points: Bytes, proxy: Arc<Proxy>, encoding: Option<String>| async move {
                 let points = match encoding {
                     Some(encoding) => {
-                        if encoding == GZIP_ENCODING {
-                            let mut d = GzDecoder::new(points.as_bytes());
-                            let mut decompressed_data = Vec::new();
-                            d.read_to_end(&mut decompressed_data).context(Ungzip)?;
-                            decompressed_data.into()
-                        } else {
-                            return Err(reject::custom(Error::UnspportedEncodingType{msg:encoding}));
+                        let encode_type = EncodingType::try_from(&encoding[..])?;
+                        match encode_type {
+                            EncodingType::GZIP => {
+                                let mut d = GzDecoder::new(points.as_bytes());
+                                let mut decompressed_data = Vec::new();
+                                d.read_to_end(&mut decompressed_data).context(Ungzip)?;
+                                decompressed_data.into()
+                            },
                         }
                     },
                     None => points,
