@@ -153,8 +153,7 @@ def test_put_single_point_with_int_value():
     assert r.text.__contains__('`timestamp` timestamp NOT NULL')
     assert r.text.__contains__('`dc` string TAG')
     assert r.text.__contains__('`host` string TAG')
-    # value is a bigint column
-    # TODO telegraf parse 0.0 as 0, which will confuse int and double type
+    # value is a double column
     assert r.text.__contains__('`value` double')
 
     r = execute_sql_query("""

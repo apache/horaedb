@@ -128,8 +128,8 @@ pub enum Error {
     #[snafu(display("Fail to decode gzip body, err:{}.", source))]
     Ungzip { source: std::io::Error },
 
-    #[snafu(display("Unsupported encoding type {}.", msg))]
-    UnspportedEncodingType { msg: String },
+    #[snafu(display("Unsupported encoding type, value: {}.", encoding_type))]
+    UnspportedEncodingType { encoding_type: String },
 
     #[snafu(display("Server already started.\nBacktrace:\n{}", backtrace))]
     AlreadyStarted { backtrace: Backtrace },
@@ -154,15 +154,15 @@ impl reject::Reject for Error {}
 enum EncodingType {
     Gzip,
 }
+
 impl TryFrom<&str> for EncodingType {
     type Error = Error;
 
     fn try_from(value: &str) -> Result<Self> {
         match value {
             GZIP_ENCODING => Ok(EncodingType::Gzip),
-            // _ =>  Err(reject::custom(Error::UnspportedEncodingType{msg:value.to_string()})),
             _ => Err(Error::UnspportedEncodingType {
-                msg: value.to_string(),
+                encoding_type: value.to_string(),
             }),
         }
     }
@@ -431,9 +431,9 @@ impl Service {
                         let encode_type = EncodingType::try_from(&encoding[..])?;
                         match encode_type {
                             EncodingType::Gzip => {
-                                let mut d = GzDecoder::new(points.as_bytes());
-                                let mut decompressed_data = Vec::new();
-                                d.read_to_end(&mut decompressed_data).context(Ungzip)?;
+                                let mut decoder = GzDecoder::new(points.as_bytes());
+                                let mut decompressed_data = Vec::with_capacity(points.as_bytes().len() * 2);
+                                decoder.read_to_end(&mut decompressed_data).context(Ungzip)?;
                                 decompressed_data.into()
                             },
                         }

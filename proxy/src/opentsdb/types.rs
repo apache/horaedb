@@ -164,7 +164,6 @@ pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableReque
             }
 
             let value = match point.value {
-                // Value::IntegerValue(v) => value::Value::Int64Value(v),
                 Value::F64Value(v) => value::Value::Float64Value(v),
             };
             let fields = vec![Field {
