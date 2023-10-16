@@ -14,14 +14,14 @@
 
 //! Drop table logic of instance
 
+use common_types::MAX_SEQUENCE_NUMBER;
 use logger::{info, warn};
 use snafu::ResultExt;
 use table_engine::engine::DropTableRequest;
 
 use crate::{
     instance::{
-        engine::{FlushTable, Result, WriteManifest},
-        flush_compaction::{Flusher, TableFlushOptions},
+        engine::{PurgeWal, Result, WriteManifest},
         SpaceStoreRef,
     },
     manifest::meta_edit::{DropTableMeta, MetaEdit, MetaEditRequest, MetaUpdate},
@@ -31,12 +31,13 @@ use crate::{
 pub(crate) struct Dropper {
     pub space: SpaceRef,
     pub space_store: SpaceStoreRef,
-
-    pub flusher: Flusher,
 }
 
 impl Dropper {
     /// Drop a table under given space
+    // TODO: Currently we first delete WAL then manifest, if wal is deleted but
+    // manifest failed to delete, it could cause the table in a unknown state, we
+    // should find a better way to deal with this.
     pub async fn drop(&self, request: DropTableRequest) -> Result<bool> {
         info!("Try to drop table, request:{:?}", request);
 
@@ -48,8 +49,6 @@ impl Dropper {
             }
         };
 
-        let mut serial_exec = table_data.serial_exec.lock().await;
-
         if table_data.is_dropped() {
             warn!(
                 "Process drop table command tries to drop a dropped table, table:{:?}",
@@ -58,19 +57,21 @@ impl Dropper {
             return Ok(false);
         }
 
-        // Fixme(xikai): Trigger a force flush so that the data of the table in the wal
-        //  is marked for deletable. However, the overhead of the flushing can
-        //  be avoided.
-
-        let opts = TableFlushOptions::default();
-        let flush_scheduler = serial_exec.flush_scheduler();
-        self.flusher
-            .do_flush(flush_scheduler, &table_data, opts)
+        // Mark table's WAL for deletable, memtable will also get freed automatically
+        // when table_data is dropped.
+        let table_location = table_data.table_location();
+        let wal_location =
+            crate::instance::create_wal_location(table_location.id, table_location.shard_info);
+        // Use max to represent delete all WAL.
+        // TODO: add a method in wal_manager to delete all WAL with same prefix.
+        let sequence = MAX_SEQUENCE_NUMBER;
+        self.space_store
+            .wal_manager
+            .mark_delete_entries_up_to(wal_location, sequence)
             .await
-            .context(FlushTable {
-                space_id: self.space.id,
-                table: &table_data.name,
-                table_id: table_data.id,
+            .context(PurgeWal {
+                wal_location,
+                sequence,
             })?;
 
         // Store the dropping information into meta

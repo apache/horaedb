@@ -479,12 +479,12 @@ impl TableUnit {
                 // may be greater than the `actual last sequence of written logs`.
                 //
                 // Such as following case:
-                //  + Write wal logs failed(last sequence stored in memory will increase when write failed). 
-                //  + Get last sequence from memory(greater then actual last sequence now). 
+                //  + Write wal logs failed(last sequence stored in memory will increase when write failed).
+                //  + Get last sequence from memory(greater then actual last sequence now).
                 //  + Mark the got last sequence as flushed sequence.
                 let actual_next_sequence = sequence + 1;
                 if actual_next_sequence < start_sequence {
-                    warn!("TableKv WAL found start_sequence greater than actual_next_sequence, 
+                    warn!("TableKv WAL found start_sequence greater than actual_next_sequence,
                     start_sequence:{start_sequence}, actual_next_sequence:{actual_next_sequence}, table_id:{table_id}, region_id:{region_id}");
 
                     break;
@@ -994,13 +994,6 @@ impl TableUnitWriter {
         debug!(
             "Try to delete entries, table_id:{}, sequence_num:{}, meta table:{}",
             table_unit_state.table_id, sequence_num, table_unit_meta_table
-        );
-
-        ensure!(
-            sequence_num < common_types::MAX_SEQUENCE_NUMBER,
-            SequenceOverflow {
-                table_id: table_unit_state.table_id,
-            }
         );
 
         let last_sequence = table_unit_state.last_sequence();
