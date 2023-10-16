@@ -154,12 +154,13 @@ def test_put_single_point_with_int_value():
     assert r.text.__contains__('`dc` string TAG')
     assert r.text.__contains__('`host` string TAG')
     # value is a bigint column
-    assert r.text.__contains__('`value` bigint')
+    # TODO telegraf parse 0.0 as 0, which will confuse int and double type
+    assert r.text.__contains__('`value` double')
 
     r = execute_sql_query("""
 SELECT timestamp, dc, host, value FROM {metric}
     """.replace('{metric}', table_name))
-    assert r.text == """{"rows":[{"timestamp":{ts},"dc":"lga","host":"web01","value":9527}]}""".strip().replace('{ts}', str(ts))
+    assert r.text == """{"rows":[{"timestamp":{ts},"dc":"lga","host":"web01","value":9527.0}]}""".strip().replace('{ts}', str(ts))
 
 
 def test_put_single_point_with_float_value():
@@ -251,7 +252,7 @@ def test_put_multi_points_with_different_tags_in_one_table():
 SELECT timestamp, dc, host, value FROM {metric} ORDER BY value desc
     """.replace('{metric}', table_name))
     assert r.text == """
-{"rows":[{"timestamp":{ts},"dc":null,"host":"web01","value":18},{"timestamp":{ts},"dc":"lga","host":null,"value":9}]}
+{"rows":[{"timestamp":{ts},"dc":null,"host":"web01","value":18.0},{"timestamp":{ts},"dc":"lga","host":null,"value":9.0}]}
     """.strip().replace('{ts}', str(ts))
 
 
@@ -261,7 +262,7 @@ def test_put_multi_points_with_different_datatype_in_one_table():
     table_name = table_prefix + str(ts)
     drop_table(table_name)
 
-    execute_put_then_assert_fail("""
+    execute_put_then_assert_success("""
 [
     {
         "metric": "{metric}",
@@ -319,14 +320,14 @@ def test_put_multi_points_in_multi_table():
 SELECT timestamp, dc, host, value FROM {metric}
     """.replace('{metric}', table_name))
     assert r.text == """
-{"rows":[{"timestamp":{ts},"dc":"lga","host":"web01","value":18}]}
+{"rows":[{"timestamp":{ts},"dc":"lga","host":"web01","value":18.0}]}
     """.strip().replace('{ts}', str(ts))
 
     r = execute_sql_query("""
 SELECT timestamp, dc, host, value FROM {metric}
     """.replace('{metric}', table2_name))
     assert r.text == """
-{"rows":[{"timestamp":{ts},"dc":"lga","host":"web02","value":9}]}
+{"rows":[{"timestamp":{ts},"dc":"lga","host":"web02","value":9.0}]}
     """.strip().replace('{ts}', str(ts))
 
 
