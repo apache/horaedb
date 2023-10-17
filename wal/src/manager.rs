@@ -477,6 +477,12 @@ impl BatchLogIteratorAdapter {
 
 pub type WalManagerRef = Arc<dyn WalManager>;
 
+#[derive(Debug, Clone)]
+pub struct OpenedWals {
+    pub data_wal: WalManagerRef,
+    pub manifest_wal: WalManagerRef,
+}
+
 #[cfg(test)]
 mod tests {
     use std::{collections::VecDeque, sync::Arc};

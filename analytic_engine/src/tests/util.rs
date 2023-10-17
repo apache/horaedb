@@ -39,9 +39,10 @@ use table_engine::{
 };
 use tempfile::TempDir;
 use time_ext::ReadableDuration;
+use wal::manager::OpenedWals;
 
 use crate::{
-    setup::{EngineBuilder, MemWalsOpener, OpenedWals, RocksDBWalsOpener, WalsOpener},
+    setup::{EngineBuilder, MemWalsOpener, RocksDBWalsOpener, WalsOpener},
     tests::table::{self, FixedSchemaTable, RowTuple},
     Config, RecoverMode, RocksDBConfig, WalStorageConfig,
 };

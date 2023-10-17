@@ -34,7 +34,7 @@ use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 use wal::{
-    manager::{self, WalManagerRef},
+    manager::{self, OpenedWals, WalManagerRef},
     message_queue_impl::wal::MessageQueueImpl,
     rocks_impl::manager::Builder as RocksWalBuilder,
     table_kv_impl::{wal::WalNamespaceImpl, WalRuntimes},
@@ -140,12 +140,6 @@ impl<'a> EngineBuilder<'a> {
         .await?;
         Ok(Arc::new(TableEngineImpl::new(instance)))
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct OpenedWals {
-    pub data_wal: WalManagerRef,
-    pub manifest_wal: WalManagerRef,
 }
 
 /// Analytic engine builder.

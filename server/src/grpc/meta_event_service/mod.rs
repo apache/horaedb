@@ -19,7 +19,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use analytic_engine::setup::OpenedWals;
 use async_trait::async_trait;
 use catalog::table_operator::TableOperator;
 use ceresdbproto::meta_event::{
@@ -51,6 +50,7 @@ use snafu::{OptionExt, ResultExt};
 use table_engine::{engine::TableEngineRef, ANALYTIC_ENGINE_TYPE};
 use time_ext::InstantExt;
 use tonic::Response;
+use wal::manager::OpenedWals;
 
 use crate::grpc::{
     meta_event_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
