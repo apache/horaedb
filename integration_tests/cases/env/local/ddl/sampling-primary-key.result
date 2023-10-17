@@ -37,7 +37,7 @@ affected_rows: 4
 show create table `sampling_primary_key_table`;
 
 Table,Create Table,
-String("sampling_primary_key_table"),String("CREATE TABLE `sampling_primary_key_table` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `v1` double, `v2` double, `v3` double, `v5` double, `name` string TAG, `value` bigint NOT NULL, PRIMARY KEY(value,name,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='false', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='2h', storage_format='AUTO', ttl='7d', update_mode='APPEND', write_buffer_size='33554432')"),
+String("sampling_primary_key_table"),String("CREATE TABLE `sampling_primary_key_table` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `v1` double, `v2` double, `v3` double, `v5` double, `name` string TAG, `value` bigint NOT NULL, PRIMARY KEY(value,name,tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='false', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='2h', storage_format='AUTO', ttl='7d', update_mode='APPEND', write_buffer_size='33554432')"),
 
 
 DROP TABLE IF EXISTS `sampling_primary_key_table`;
