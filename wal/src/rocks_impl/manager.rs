@@ -18,7 +18,7 @@ use std::{
     collections::HashMap,
     fmt,
     fmt::Formatter,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, RwLock,
@@ -39,11 +39,13 @@ use snafu::ResultExt;
 use tokio::sync::Mutex;
 
 use crate::{
+    config::WalStorageConfig,
     kv_encoder::{CommonLogEncoding, CommonLogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
-        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
-        ScanRequest, SyncLogIterator, WalLocation, WalManager, WriteContext,
+        self, error::*, BatchLogIteratorAdapter, OpenedWals, ReadContext, ReadRequest, RegionId,
+        ScanContext, ScanRequest, SyncLogIterator, WalLocation, WalManager, WalRuntimes,
+        WalsOpener, WriteContext, MANIFEST_DIR_NAME, WAL_DIR_NAME,
     },
 };
 
@@ -961,5 +963,96 @@ impl fmt::Debug for RocksImpl {
         f.debug_struct("RocksImpl")
             .field("wal_path", &self.wal_path)
             .finish()
+    }
+}
+
+#[derive(Default)]
+pub struct RocksDBWalsOpener;
+
+#[async_trait]
+impl WalsOpener for RocksDBWalsOpener {
+    async fn open_wals(
+        &self,
+        config: &WalStorageConfig,
+        runtimes: WalRuntimes,
+    ) -> Result<OpenedWals> {
+        let rocksdb_wal_config = match &config {
+            WalStorageConfig::RocksDB(config) => config.clone(),
+            _ => {
+                return InvalidWalConfig {
+                    msg: format!(
+                        "invalid wal storage config while opening rocksDB wal, config:{config:?}"
+                    ),
+                }
+                .fail();
+            }
+        };
+
+        let write_runtime = runtimes.write_runtime.clone();
+        let data_path = Path::new(&rocksdb_wal_config.data_dir);
+        let wal_path = data_path.join(WAL_DIR_NAME);
+        let data_wal = Builder::new(wal_path, write_runtime.clone())
+            .max_subcompactions(rocksdb_wal_config.data_namespace.max_subcompactions)
+            .max_background_jobs(rocksdb_wal_config.data_namespace.max_background_jobs)
+            .enable_statistics(rocksdb_wal_config.data_namespace.enable_statistics)
+            .write_buffer_size(rocksdb_wal_config.data_namespace.write_buffer_size.0)
+            .max_write_buffer_number(rocksdb_wal_config.data_namespace.max_write_buffer_number)
+            .level_zero_file_num_compaction_trigger(
+                rocksdb_wal_config
+                    .data_namespace
+                    .level_zero_file_num_compaction_trigger,
+            )
+            .level_zero_slowdown_writes_trigger(
+                rocksdb_wal_config
+                    .data_namespace
+                    .level_zero_slowdown_writes_trigger,
+            )
+            .level_zero_stop_writes_trigger(
+                rocksdb_wal_config
+                    .data_namespace
+                    .level_zero_stop_writes_trigger,
+            )
+            .fifo_compaction_max_table_files_size(
+                rocksdb_wal_config
+                    .data_namespace
+                    .fifo_compaction_max_table_files_size
+                    .0,
+            )
+            .build()?;
+
+        let manifest_path = data_path.join(MANIFEST_DIR_NAME);
+        let manifest_wal = Builder::new(manifest_path, write_runtime)
+            .max_subcompactions(rocksdb_wal_config.meta_namespace.max_subcompactions)
+            .max_background_jobs(rocksdb_wal_config.meta_namespace.max_background_jobs)
+            .enable_statistics(rocksdb_wal_config.meta_namespace.enable_statistics)
+            .write_buffer_size(rocksdb_wal_config.meta_namespace.write_buffer_size.0)
+            .max_write_buffer_number(rocksdb_wal_config.meta_namespace.max_write_buffer_number)
+            .level_zero_file_num_compaction_trigger(
+                rocksdb_wal_config
+                    .meta_namespace
+                    .level_zero_file_num_compaction_trigger,
+            )
+            .level_zero_slowdown_writes_trigger(
+                rocksdb_wal_config
+                    .meta_namespace
+                    .level_zero_slowdown_writes_trigger,
+            )
+            .level_zero_stop_writes_trigger(
+                rocksdb_wal_config
+                    .meta_namespace
+                    .level_zero_stop_writes_trigger,
+            )
+            .fifo_compaction_max_table_files_size(
+                rocksdb_wal_config
+                    .meta_namespace
+                    .fifo_compaction_max_table_files_size
+                    .0,
+            )
+            .build()?;
+        let opened_wals = OpenedWals {
+            data_wal: Arc::new(data_wal),
+            manifest_wal: Arc::new(manifest_wal),
+        };
+        Ok(opened_wals)
     }
 }

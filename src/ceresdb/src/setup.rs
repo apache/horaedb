@@ -16,10 +16,7 @@
 
 use std::sync::Arc;
 
-use analytic_engine::{
-    self,
-    setup::{EngineBuilder, KafkaWalsOpener, ObkvWalsOpener, RocksDBWalsOpener, WalsOpener},
-};
+use analytic_engine::{self, setup::EngineBuilder};
 use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
@@ -45,7 +42,13 @@ use tracing_util::{
     self,
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
 };
-use wal::{config::WalStorageConfig, manager::WalRuntimes};
+use wal::{
+    config::WalStorageConfig,
+    manager::{WalRuntimes, WalsOpener},
+    message_queue_impl::wal::KafkaWalsOpener,
+    rocks_impl::manager::RocksDBWalsOpener,
+    table_kv_impl::wal::ObkvWalsOpener,
+};
 
 use crate::{
     config::{ClusterDeployment, Config, RuntimeConfig},

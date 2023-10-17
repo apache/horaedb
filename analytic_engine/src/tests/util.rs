@@ -41,12 +41,13 @@ use tempfile::TempDir;
 use time_ext::ReadableDuration;
 use wal::{
     config::WalStorageConfig,
-    manager::{OpenedWals, WalRuntimes},
-    rocks_impl::config::RocksDBWalStorageConfig,
+    manager::{OpenedWals, WalRuntimes, WalsOpener},
+    rocks_impl::{config::RocksDBWalStorageConfig, manager::RocksDBWalsOpener},
+    table_kv_impl::wal::MemWalsOpener,
 };
 
 use crate::{
-    setup::{EngineBuilder, MemWalsOpener, RocksDBWalsOpener, WalsOpener},
+    setup::EngineBuilder,
     tests::table::{self, FixedSchemaTable, RowTuple},
     Config, RecoverMode,
 };

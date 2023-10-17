@@ -25,9 +25,9 @@ use common_types::{
 };
 use logger::info;
 use table_engine::table::AlterSchemaRequest;
+use wal::manager::WalsOpener;
 
 use crate::{
-    setup::WalsOpener,
     table_options::TableOptions,
     tests::{
         row_util,

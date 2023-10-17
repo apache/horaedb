@@ -28,6 +28,7 @@ use runtime::Runtime;
 use snafu::ResultExt;
 
 use crate::{
+    config::WalStorageConfig,
     log_batch::{LogEntry, LogWriteBatch, PayloadDecoder},
     metrics::WAL_WRITE_BYTES_HISTOGRAM,
 };
@@ -55,6 +56,13 @@ pub mod error {
             source: GenericError,
             backtrace: Backtrace,
         },
+
+        #[snafu(display(
+            "Failed to open with the invalid config, msg:{}.\nBacktrace:\n{}",
+            msg,
+            backtrace
+        ))]
+        InvalidWalConfig { msg: String, backtrace: Backtrace },
 
         #[snafu(display("Failed to initialize wal, err:{}.\nBacktrace:\n{}", source, backtrace))]
         Initialization {
@@ -140,6 +148,14 @@ pub mod error {
         Close {
             source: GenericError,
             backtrace: Backtrace,
+        },
+
+        #[snafu(display("Failed to open obkv, err:{}", source))]
+        OpenObkv { source: table_kv::obkv::Error },
+
+        #[snafu(display("Failed to open kafka, err:{}", source))]
+        OpenKafka {
+            source: message_queue::kafka::kafka_impl::Error,
         },
 
         #[snafu(display("Failed to execute in runtime, err:{}", source))]
@@ -489,6 +505,18 @@ pub struct WalRuntimes {
     pub read_runtime: Arc<Runtime>,
     pub write_runtime: Arc<Runtime>,
     pub default_runtime: Arc<Runtime>,
+}
+
+pub(crate) const WAL_DIR_NAME: &str = "wal";
+pub(crate) const MANIFEST_DIR_NAME: &str = "manifest";
+
+#[async_trait]
+pub trait WalsOpener: Send + Sync + Default {
+    async fn open_wals(
+        &self,
+        config: &WalStorageConfig,
+        runtimes: WalRuntimes,
+    ) -> Result<OpenedWals>;
 }
 
 #[cfg(test)]
