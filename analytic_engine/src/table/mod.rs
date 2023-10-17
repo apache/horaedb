@@ -321,9 +321,8 @@ impl TableImpl {
                     .start_table_write_queue_waiter_timer();
                 // The request is successfully pushed into the queue, and just wait for the
                 // write result.
-                let waiter_fut = async move { rx.await };
                 match CancellationSafeFuture::new(
-                    waiter_fut,
+                    rx,
                     "pending_queue_waiter".to_string(),
                     self.instance.write_runtime().clone(),
                 )
