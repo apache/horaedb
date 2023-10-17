@@ -71,10 +71,10 @@ members = [
     "router",
     "server",
     "src/ceresdb",
+    "src/wal",
     "system_catalog",
     "table_engine",
     "tools",
-    "wal",
 ]
 
 [workspace.dependencies]
@@ -173,7 +173,7 @@ trace_metric_derive = { path = "components/trace_metric_derive" }
 trace_metric_derive_tests = { path = "components/trace_metric_derive_tests" }
 tonic = "0.8.1"
 tokio = { version = "1.29", features = ["full"] }
-wal = { path = "wal" }
+wal = { path = "src/wal" }
 xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
 zstd = { version = "0.12", default-features = false }
 regex = "1"
