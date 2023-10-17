@@ -25,7 +25,18 @@ use std::{
 };
 
 use futures::future::BoxFuture;
+use lazy_static::lazy_static;
+use prometheus::{register_int_counter_vec, IntCounterVec};
 use runtime::RuntimeRef;
+
+lazy_static! {
+    static ref FUTURE_CANCEL_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "future_cancel_counter",
+        "Counter of future cancel",
+        &["token"]
+    )
+    .unwrap();
+}
 
 /// Wrapper around a future that cannot be cancelled.
 ///
@@ -36,6 +47,9 @@ where
     F: Future + Send + 'static,
     F::Output: Send,
 {
+    /// Token for metrics
+    token: String,
+
     /// Mark if the inner future finished. If not, we must spawn a helper task
     /// on drop.
     done: bool,
@@ -61,6 +75,10 @@ where
 {
     fn drop(&mut self) {
         if !self.done {
+            FUTURE_CANCEL_COUNTER
+                .with_label_values(&[self.token.as_str()])
+                .inc();
+
             let inner = self.inner.take().unwrap();
             let handle = self.runtime.spawn(inner);
             drop(handle);
@@ -78,8 +96,9 @@ where
     /// If [`CancellationSafeFuture`] is cancelled (i.e. dropped) and there is
     /// still some external receiver of the state left, than we will drive
     /// the payload (`f`) to completion. Otherwise `f` will be cancelled.
-    pub fn new(fut: F, runtime: RuntimeRef) -> Self {
+    pub fn new(fut: F, token: String, runtime: RuntimeRef) -> Self {
         Self {
+            token,
             done: false,
             inner: Some(Box::pin(fut)),
             runtime,
@@ -144,6 +163,7 @@ mod tests {
                 async move {
                     done_captured.store(true, Ordering::SeqCst);
                 },
+                "test".to_string(),
                 runtime_clone,
             );
 
@@ -166,6 +186,7 @@ mod tests {
                 async move {
                     done_captured.wait().await;
                 },
+                "test".to_string(),
                 runtime_clone,
             );
 

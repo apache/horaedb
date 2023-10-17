@@ -288,8 +288,11 @@ impl TableImpl {
 
         match queue_res {
             QueueResult::First => {
-                let _timer = self.table_data.metrics.start_table_write_queue_writer_timer();
-                
+                let _timer = self
+                    .table_data
+                    .metrics
+                    .start_table_write_queue_writer_timer();
+
                 // This is the first request in the queue, and we should
                 // take responsibilities for merging and writing the
                 // requests in the queue.
@@ -302,6 +305,7 @@ impl TableImpl {
 
                 match CancellationSafeFuture::new(
                     Self::write_requests(write_requests),
+                    "pending_queue_writer".to_string(),
                     self.instance.write_runtime().clone(),
                 )
                 .await
@@ -311,10 +315,20 @@ impl TableImpl {
                 }
             }
             QueueResult::Waiter(rx) => {
-                let _timer = self.table_data.metrics.start_table_write_queue_waiter_timer();
+                let _timer = self
+                    .table_data
+                    .metrics
+                    .start_table_write_queue_waiter_timer();
                 // The request is successfully pushed into the queue, and just wait for the
                 // write result.
-                match rx.await {
+                let waiter_fut = async move { rx.await };
+                match CancellationSafeFuture::new(
+                    waiter_fut,
+                    "pending_queue_waiter".to_string(),
+                    self.instance.write_runtime().clone(),
+                )
+                .await
+                {
                     Ok(res) => {
                         res.box_err().context(Write { table: self.name() })?;
                         Ok(num_rows)
