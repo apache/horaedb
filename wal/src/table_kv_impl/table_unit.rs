@@ -40,8 +40,8 @@ use tokio::sync::Mutex;
 use crate::{
     kv_encoder::{CommonLogEncoding, CommonLogKey},
     log_batch::{LogEntry, LogWriteBatch},
-    manager::{self, ReadContext, ReadRequest, SequenceNumber, SyncLogIterator},
-    table_kv_impl::{encoding, model::TableUnitEntry, namespace::BucketRef, WalRuntimes},
+    manager::{self, ReadContext, ReadRequest, SequenceNumber, SyncLogIterator, WalRuntimes},
+    table_kv_impl::{encoding, model::TableUnitEntry, namespace::BucketRef},
 };
 
 #[derive(Debug, Snafu)]

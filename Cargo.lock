@@ -1288,6 +1288,7 @@ dependencies = [
  "toml_ext",
  "tracing_util",
  "vergen",
+ "wal",
 ]
 
 [[package]]

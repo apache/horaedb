@@ -35,11 +35,12 @@ use crate::{
     kv_encoder::LogBatchEncoder,
     log_batch::{LogWriteBatch, Payload, PayloadDecoder},
     manager::{
-        BatchLogIteratorAdapter, ReadContext, WalLocation, WalManager, WalManagerRef, WriteContext,
+        BatchLogIteratorAdapter, ReadContext, WalLocation, WalManager, WalManagerRef, WalRuntimes,
+        WriteContext,
     },
     message_queue_impl::{config::Config, wal::MessageQueueImpl},
     rocks_impl::{self, manager::RocksImpl},
-    table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl, WalRuntimes},
+    table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl},
 };
 
 #[derive(Debug, Snafu)]

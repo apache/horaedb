@@ -39,7 +39,7 @@ use table_engine::{
 };
 use tempfile::TempDir;
 use time_ext::ReadableDuration;
-use wal::manager::OpenedWals;
+use wal::manager::{OpenedWals, WalRuntimes};
 
 use crate::{
     setup::{EngineBuilder, MemWalsOpener, RocksDBWalsOpener, WalsOpener},
@@ -116,7 +116,14 @@ impl<T: WalsOpener> TestContext<T> {
             opened_wals
         } else {
             self.wals_opener
-                .open_wals(&self.config.wal, self.runtimes.clone())
+                .open_wals(
+                    &self.config.wal,
+                    WalRuntimes {
+                        read_runtime: self.runtimes.read_runtime.clone(),
+                        write_runtime: self.runtimes.write_runtime.clone(),
+                        default_runtime: self.runtimes.default_runtime.clone(),
+                    },
+                )
                 .await
                 .unwrap()
         };

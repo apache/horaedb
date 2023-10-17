@@ -14,10 +14,6 @@
 
 //! Wal implementation based on TableKv.
 
-use std::sync::Arc;
-
-use runtime::Runtime;
-
 pub mod encoding;
 pub mod model;
 mod namespace;
@@ -31,12 +27,4 @@ mod consts {
     pub const META_TABLE_NAME: &str = "meta";
     /// Milliseconds of one day.
     pub(crate) const DAY_MS: u64 = 1000 * 3600 * 24;
-}
-
-/// Runtimes of wal.
-#[derive(Clone)]
-pub struct WalRuntimes {
-    pub read_runtime: Arc<Runtime>,
-    pub write_runtime: Arc<Runtime>,
-    pub default_runtime: Arc<Runtime>,
 }

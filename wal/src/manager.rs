@@ -483,6 +483,14 @@ pub struct OpenedWals {
     pub manifest_wal: WalManagerRef,
 }
 
+/// Runtimes of wal.
+#[derive(Clone)]
+pub struct WalRuntimes {
+    pub read_runtime: Arc<Runtime>,
+    pub write_runtime: Arc<Runtime>,
+    pub default_runtime: Arc<Runtime>,
+}
+
 #[cfg(test)]
 mod tests {
     use std::{collections::VecDeque, sync::Arc};

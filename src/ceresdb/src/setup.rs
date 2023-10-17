@@ -46,6 +46,7 @@ use tracing_util::{
     self,
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
 };
+use wal::manager::WalRuntimes;
 
 use crate::{
     config::{ClusterDeployment, Config, RuntimeConfig},
@@ -197,6 +198,14 @@ async fn build_table_engine_proxy(engine_builder: EngineBuilder<'_>) -> Arc<Tabl
     })
 }
 
+fn make_wal_runtime(runtimes: Arc<EngineRuntimes>) -> WalRuntimes {
+    WalRuntimes {
+        write_runtime: runtimes.write_runtime.clone(),
+        read_runtime: runtimes.read_runtime.clone(),
+        default_runtime: runtimes.default_runtime.clone(),
+    }
+}
+
 async fn build_with_meta<T: WalsOpener>(
     config: &Config,
     cluster_config: &ClusterConfig,
@@ -240,7 +249,7 @@ async fn build_with_meta<T: WalsOpener>(
     ));
 
     let opened_wals = wal_opener
-        .open_wals(&config.analytic.wal, runtimes.clone())
+        .open_wals(&config.analytic.wal, make_wal_runtime(runtimes.clone()))
         .await
         .expect("Failed to setup analytic engine");
     let engine_builder = EngineBuilder {
@@ -277,7 +286,7 @@ async fn build_without_meta<T: WalsOpener>(
     wal_builder: T,
 ) -> Builder {
     let opened_wals = wal_builder
-        .open_wals(&config.analytic.wal, runtimes.clone())
+        .open_wals(&config.analytic.wal, make_wal_runtime(runtimes.clone()))
         .await
         .expect("Failed to setup analytic engine");
     let engine_builder = EngineBuilder {

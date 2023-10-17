@@ -27,12 +27,11 @@ use crate::{
     log_batch::LogWriteBatch,
     manager::{
         self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
-        ScanRequest, WalLocation, WalManager,
+        ScanRequest, WalLocation, WalManager, WalRuntimes,
     },
     table_kv_impl::{
         model::NamespaceConfig,
         namespace::{Namespace, NamespaceRef},
-        WalRuntimes,
     },
 };
 

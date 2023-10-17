@@ -21,8 +21,8 @@ use runtime::Runtime;
 use table_kv::memory::MemoryImpl;
 use wal::{
     kv_encoder::LogBatchEncoder,
-    manager::{WalLocation, WalManager, WriteContext},
-    table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl, WalRuntimes},
+    manager::{WalLocation, WalManager, WalRuntimes, WriteContext},
+    table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl},
 };
 
 use crate::{

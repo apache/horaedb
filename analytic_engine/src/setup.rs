@@ -34,10 +34,10 @@ use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 use wal::{
-    manager::{self, OpenedWals, WalManagerRef},
+    manager::{self, OpenedWals, WalManagerRef, WalRuntimes},
     message_queue_impl::wal::MessageQueueImpl,
     rocks_impl::manager::Builder as RocksWalBuilder,
-    table_kv_impl::{wal::WalNamespaceImpl, WalRuntimes},
+    table_kv_impl::wal::WalNamespaceImpl,
 };
 
 use crate::{
@@ -148,7 +148,7 @@ pub trait WalsOpener: Send + Sync + Default {
     async fn open_wals(
         &self,
         config: &WalStorageConfig,
-        engine_runtimes: Arc<EngineRuntimes>,
+        runtimes: WalRuntimes,
     ) -> Result<OpenedWals>;
 }
 
@@ -161,7 +161,7 @@ impl WalsOpener for RocksDBWalsOpener {
     async fn open_wals(
         &self,
         config: &WalStorageConfig,
-        engine_runtimes: Arc<EngineRuntimes>,
+        runtimes: WalRuntimes,
     ) -> Result<OpenedWals> {
         let rocksdb_wal_config = match &config {
             WalStorageConfig::RocksDB(config) => config.clone(),
@@ -175,7 +175,7 @@ impl WalsOpener for RocksDBWalsOpener {
             }
         };
 
-        let write_runtime = engine_runtimes.write_runtime.clone();
+        let write_runtime = runtimes.write_runtime.clone();
         let data_path = Path::new(&rocksdb_wal_config.data_dir);
         let wal_path = data_path.join(WAL_DIR_NAME);
         let data_wal = RocksWalBuilder::new(wal_path, write_runtime.clone())
@@ -255,7 +255,7 @@ impl WalsOpener for ObkvWalsOpener {
     async fn open_wals(
         &self,
         config: &WalStorageConfig,
-        engine_runtimes: Arc<EngineRuntimes>,
+        runtimes: WalRuntimes,
     ) -> Result<OpenedWals> {
         let obkv_wal_config = match config {
             WalStorageConfig::Obkv(config) => config.clone(),
@@ -271,13 +271,13 @@ impl WalsOpener for ObkvWalsOpener {
 
         // Notice the creation of obkv client may block current thread.
         let obkv_config = obkv_wal_config.obkv.clone();
-        let obkv = engine_runtimes
+        let obkv = runtimes
             .write_runtime
             .spawn_blocking(move || ObkvImpl::new(obkv_config).context(OpenObkv))
             .await
             .context(RuntimeExec)??;
 
-        open_wal_and_manifest_with_table_kv(*obkv_wal_config, engine_runtimes, obkv).await
+        open_wal_and_manifest_with_table_kv(*obkv_wal_config, runtimes, obkv).await
     }
 }
 
@@ -295,7 +295,7 @@ impl WalsOpener for MemWalsOpener {
     async fn open_wals(
         &self,
         config: &WalStorageConfig,
-        engine_runtimes: Arc<EngineRuntimes>,
+        runtimes: WalRuntimes,
     ) -> Result<OpenedWals> {
         let obkv_wal_config = match config {
             WalStorageConfig::Obkv(config) => config.clone(),
@@ -309,12 +309,7 @@ impl WalsOpener for MemWalsOpener {
             }
         };
 
-        open_wal_and_manifest_with_table_kv(
-            *obkv_wal_config,
-            engine_runtimes,
-            self.table_kv.clone(),
-        )
-        .await
+        open_wal_and_manifest_with_table_kv(*obkv_wal_config, runtimes, self.table_kv.clone()).await
     }
 }
 
@@ -326,7 +321,7 @@ impl WalsOpener for KafkaWalsOpener {
     async fn open_wals(
         &self,
         config: &WalStorageConfig,
-        engine_runtimes: Arc<EngineRuntimes>,
+        runtimes: WalRuntimes,
     ) -> Result<OpenedWals> {
         let kafka_wal_config = match config {
             WalStorageConfig::Kafka(config) => config.clone(),
@@ -340,7 +335,7 @@ impl WalsOpener for KafkaWalsOpener {
             }
         };
 
-        let default_runtime = &engine_runtimes.default_runtime;
+        let default_runtime = &runtimes.default_runtime;
 
         let kafka = KafkaImpl::new(kafka_wal_config.kafka.clone())
             .await
@@ -368,15 +363,9 @@ impl WalsOpener for KafkaWalsOpener {
 
 async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
     config: ObkvWalConfig,
-    engine_runtimes: Arc<EngineRuntimes>,
+    runtimes: WalRuntimes,
     table_kv: T,
 ) -> Result<OpenedWals> {
-    let runtimes = WalRuntimes {
-        read_runtime: engine_runtimes.read_runtime.clone(),
-        write_runtime: engine_runtimes.write_runtime.clone(),
-        default_runtime: engine_runtimes.default_runtime.clone(),
-    };
-
     let data_wal = WalNamespaceImpl::open(
         table_kv.clone(),
         runtimes.clone(),
