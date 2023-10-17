@@ -39,12 +39,16 @@ use table_engine::{
 };
 use tempfile::TempDir;
 use time_ext::ReadableDuration;
-use wal::manager::{OpenedWals, WalRuntimes};
+use wal::{
+    config::WalStorageConfig,
+    manager::{OpenedWals, WalRuntimes},
+    rocks_impl::config::RocksDBWalStorageConfig,
+};
 
 use crate::{
     setup::{EngineBuilder, MemWalsOpener, RocksDBWalsOpener, WalsOpener},
     tests::table::{self, FixedSchemaTable, RowTuple},
-    Config, RecoverMode, RocksDBConfig, WalStorageConfig,
+    Config, RecoverMode,
 };
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
@@ -501,7 +505,7 @@ impl Builder {
                     data_dir: dir.path().to_str().unwrap().to_string(),
                 }),
             },
-            wal: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
+            wal: WalStorageConfig::RocksDB(Box::new(RocksDBWalStorageConfig {
                 data_dir: dir.path().to_str().unwrap().to_string(),
                 ..Default::default()
             })),
@@ -577,7 +581,7 @@ impl Default for RocksDBEngineBuildContext {
                 }),
             },
 
-            wal: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
+            wal: WalStorageConfig::RocksDB(Box::new(RocksDBWalStorageConfig {
                 data_dir: dir.path().to_str().unwrap().to_string(),
                 ..Default::default()
             })),
@@ -609,7 +613,7 @@ impl Clone for RocksDBEngineBuildContext {
         };
 
         config.storage = storage;
-        config.wal = WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
+        config.wal = WalStorageConfig::RocksDB(Box::new(RocksDBWalStorageConfig {
             data_dir: dir.path().to_str().unwrap().to_string(),
             ..Default::default()
         }));

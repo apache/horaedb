@@ -38,7 +38,7 @@ use crate::{
         BatchLogIteratorAdapter, ReadContext, WalLocation, WalManager, WalManagerRef, WalRuntimes,
         WriteContext,
     },
-    message_queue_impl::{config::Config, wal::MessageQueueImpl},
+    message_queue_impl::{config::KafkaWalConfig, wal::MessageQueueImpl},
     rocks_impl::{self, manager::RocksImpl},
     table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl},
 };
@@ -157,7 +157,7 @@ impl WalBuilder for KafkaWalBuilder {
             self.namespace.clone(),
             kafka_impl,
             runtime.clone(),
-            Config::default(),
+            KafkaWalConfig::default(),
         );
 
         Arc::new(message_queue_impl)

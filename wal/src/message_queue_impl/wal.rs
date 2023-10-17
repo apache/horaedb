@@ -30,7 +30,7 @@ use crate::{
         RegionId, ScanContext, ScanRequest, WalLocation, WalManager, WriteContext,
     },
     message_queue_impl::{
-        config::Config,
+        config::KafkaWalConfig,
         namespace::{Namespace, ReadTableIterator, ScanRegionIterator},
     },
 };
@@ -43,7 +43,7 @@ impl<M: MessageQueue> MessageQueueImpl<M> {
         namespace: String,
         message_queue: M,
         default_runtime: Arc<Runtime>,
-        config: Config,
+        config: KafkaWalConfig,
     ) -> Self {
         MessageQueueImpl(Namespace::open(
             namespace,

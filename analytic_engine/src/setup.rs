@@ -34,10 +34,11 @@ use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 use wal::{
+    config::WalStorageConfig,
     manager::{self, OpenedWals, WalManagerRef, WalRuntimes},
     message_queue_impl::wal::MessageQueueImpl,
     rocks_impl::manager::Builder as RocksWalBuilder,
-    table_kv_impl::wal::WalNamespaceImpl,
+    table_kv_impl::{config::ObkvWalStorageConfig, wal::WalNamespaceImpl},
 };
 
 use crate::{
@@ -48,7 +49,7 @@ use crate::{
         factory::{FactoryImpl, ObjectStorePicker, ObjectStorePickerRef, ReadFrequency},
         meta_data::cache::{MetaCache, MetaCacheRef},
     },
-    Config, ObkvWalConfig, WalStorageConfig,
+    Config,
 };
 
 #[derive(Debug, Snafu)]
@@ -362,7 +363,7 @@ impl WalsOpener for KafkaWalsOpener {
 }
 
 async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
-    config: ObkvWalConfig,
+    config: ObkvWalStorageConfig,
     runtimes: WalRuntimes,
     table_kv: T,
 ) -> Result<OpenedWals> {

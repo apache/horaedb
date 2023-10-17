@@ -14,6 +14,7 @@
 
 //! Wal implementation based on TableKv.
 
+pub mod config;
 pub mod encoding;
 pub mod model;
 mod namespace;
