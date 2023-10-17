@@ -19,7 +19,7 @@ UInt64(0),Timestamp(1),Int32(1),String("d1"),
 -- doesn't support rename
 ALTER TABLE `05_alter_table_t0` RENAME TO `t1`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query:ALTER TABLE `05_alter_table_t0` RENAME TO `t1`;. Caused by: Failed to create plan, err:Unsupported SQL statement" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Unsupported SQL statement sql:ALTER TABLE `05_alter_table_t0` RENAME TO `t1`;" })
 
 ALTER TABLE `05_alter_table_t0` add COLUMN (b string);
 
@@ -49,7 +49,7 @@ UInt64(0),Timestamp(2),Int32(2),String("d2"),String("2"),
 -- doesn't support drop column
 ALTER TABLE `05_alter_table_t0` DROP COLUMN b;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query:ALTER TABLE `05_alter_table_t0` DROP COLUMN b;. Caused by: Failed to create plan, err:Unsupported SQL statement" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Unsupported SQL statement sql:ALTER TABLE `05_alter_table_t0` DROP COLUMN b;" })
 
 DESCRIBE TABLE `05_alter_table_t0`;
 

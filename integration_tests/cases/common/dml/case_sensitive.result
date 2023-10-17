@@ -33,7 +33,7 @@ SELECT
 FROM
     CASE_SENSITIVE_TABLE1;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query:SELECT\n    *\nFROM\n    CASE_SENSITIVE_TABLE1;. Caused by: Failed to create plan, err:Failed to generate datafusion plan, err:Execution error: Table is not found, \"table:CASE_SENSITIVE_TABLE1\"" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Failed to generate datafusion plan, err:Execution error: Table is not found, \"table:CASE_SENSITIVE_TABLE1\" sql:SELECT\n    *\nFROM\n    CASE_SENSITIVE_TABLE1;" })
 
 SELECT
     *
@@ -51,7 +51,7 @@ SELECT
 FROM
     `CASE_SENSITIVE_TABLE1`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query:SELECT\n    *\nFROM\n    `CASE_SENSITIVE_TABLE1`;. Caused by: Failed to create plan, err:Failed to generate datafusion plan, err:Execution error: Table is not found, \"table:CASE_SENSITIVE_TABLE1\"" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Failed to generate datafusion plan, err:Execution error: Table is not found, \"table:CASE_SENSITIVE_TABLE1\" sql:SELECT\n    *\nFROM\n    `CASE_SENSITIVE_TABLE1`;" })
 
 SHOW CREATE TABLE case_SENSITIVE_table1;
 
@@ -61,7 +61,7 @@ String("case_SENSITIVE_table1"),String("CREATE TABLE `case_SENSITIVE_table1` (`t
 
 SHOW CREATE TABLE CASE_SENSITIVE_TABLE1;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query:SHOW CREATE TABLE CASE_SENSITIVE_TABLE1;. Caused by: Failed to create plan, err:Table not found, table:CASE_SENSITIVE_TABLE1" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Table not found, table:CASE_SENSITIVE_TABLE1 sql:SHOW CREATE TABLE CASE_SENSITIVE_TABLE1;" })
 
 SHOW CREATE TABLE `case_SENSITIVE_table1`;
 
@@ -71,7 +71,7 @@ String("case_SENSITIVE_table1"),String("CREATE TABLE `case_SENSITIVE_table1` (`t
 
 SHOW CREATE TABLE `CASE_SENSITIVE_TABLE1`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query:SHOW CREATE TABLE `CASE_SENSITIVE_TABLE1`;. Caused by: Failed to create plan, err:Table not found, table:CASE_SENSITIVE_TABLE1" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Table not found, table:CASE_SENSITIVE_TABLE1 sql:SHOW CREATE TABLE `CASE_SENSITIVE_TABLE1`;" })
 
 DESC case_SENSITIVE_table1;
 
@@ -83,7 +83,7 @@ String("VALUE1"),String("double"),Boolean(false),Boolean(true),Boolean(false),Bo
 
 DESC CASE_SENSITIVE_TABLE1;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query:DESC CASE_SENSITIVE_TABLE1;. Caused by: Failed to create plan, err:Table not found, table:CASE_SENSITIVE_TABLE1" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Table not found, table:CASE_SENSITIVE_TABLE1 sql:DESC CASE_SENSITIVE_TABLE1;" })
 
 DESC `case_SENSITIVE_table1`;
 
@@ -95,7 +95,7 @@ String("VALUE1"),String("double"),Boolean(false),Boolean(true),Boolean(false),Bo
 
 DESC `CASE_SENSITIVE_TABLE1`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query:DESC `CASE_SENSITIVE_TABLE1`;. Caused by: Failed to create plan, err:Table not found, table:CASE_SENSITIVE_TABLE1" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Table not found, table:CASE_SENSITIVE_TABLE1 sql:DESC `CASE_SENSITIVE_TABLE1`;" })
 
 DROP TABLE IF EXISTS case_SENSITIVE_table1;
 
