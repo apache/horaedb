@@ -81,4 +81,4 @@ pin-project-lite = { workspace = true }
 rand = { workspace = true }
 tempfile = { workspace = true }
 test_util = { workspace = true }
-wal = { workspace = true, features = ["test"] }
+wal = { workspace = true }
