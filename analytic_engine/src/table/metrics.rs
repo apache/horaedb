@@ -62,6 +62,11 @@ lazy_static! {
         "Read request counter of table"
     )
     .unwrap();
+
+    static ref TABLE_QUEUE_WRITER_CANCEL_COUNTER: IntCounter = register_int_counter!(
+        "table_queue_writer_cancel_counter",
+        "Counter for table queue writer cancel"
+    ).unwrap();
     // End of counters.
 
     // Histograms:
@@ -185,6 +190,8 @@ pub struct Metrics {
     table_write_instance_flush_wait_duration: Histogram,
     table_write_flush_wait_duration: Histogram,
     table_write_execute_duration: Histogram,
+    table_write_queue_waiter_duration: Histogram,
+    table_write_queue_writer_duration: Histogram,
     table_write_total_duration: Histogram,
 }
 
@@ -219,6 +226,10 @@ impl Default for Metrics {
                 .with_label_values(&["wait_flush"]),
             table_write_execute_duration: TABLE_WRITE_DURATION_HISTOGRAM
                 .with_label_values(&["execute"]),
+            table_write_queue_waiter_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["queue_waiter"]),
+            table_write_queue_writer_duration: TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["queue_writer"]),
             table_write_total_duration: TABLE_WRITE_DURATION_HISTOGRAM
                 .with_label_values(&["total"]),
         }
@@ -338,6 +349,16 @@ impl Metrics {
     #[inline]
     pub fn start_table_write_encode_timer(&self) -> HistogramTimer {
         self.table_write_encode_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_queue_waiter_timer(&self) -> HistogramTimer {
+        self.table_write_queue_waiter_duration.start_timer()
+    }
+
+    #[inline]
+    pub fn start_table_write_queue_writer_timer(&self) -> HistogramTimer {
+        self.table_write_queue_writer_duration.start_timer()
     }
 
     #[inline]
