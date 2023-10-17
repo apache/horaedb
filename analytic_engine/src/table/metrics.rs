@@ -62,11 +62,6 @@ lazy_static! {
         "Read request counter of table"
     )
     .unwrap();
-
-    static ref TABLE_QUEUE_WRITER_CANCEL_COUNTER: IntCounter = register_int_counter!(
-        "table_queue_writer_cancel_counter",
-        "Counter for table queue writer cancel"
-    ).unwrap();
     // End of counters.
 
     // Histograms:
