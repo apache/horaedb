@@ -418,7 +418,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        build_and_check_timestamp_key_constraint(&columns, &mut constraints);
+        build_or_infer_timestamp_key_constraint(&columns, &mut constraints);
 
         Ok((columns, constraints))
     }
@@ -791,11 +791,11 @@ fn check_column_expr_validity_in_hash(column: &Ident, columns: &[ColumnDef]) -> 
     valid_column.is_some()
 }
 
-/// Builds and checks for the existence of a timestamp key constraint named
-/// __ts_key within the given list of table constraints. If such a constraint
-/// does not exist, the function searches for a unique timestamp column and
-/// creates a new constraint for it.
-fn build_and_check_timestamp_key_constraint(
+/// Builds for the existence of a timestamp key constraint named
+/// __ts_key within the given list of table constraints first. If such a
+/// constraint does not exist, the function will try to search for a unique
+/// timestamp column and create a new constraint for it.
+fn build_or_infer_timestamp_key_constraint(
     col_defs: &[ColumnDef],
     constraints: &mut Vec<TableConstraint>,
 ) {
