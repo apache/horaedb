@@ -995,34 +995,52 @@ mod tests {
         expect_parse_ok(sql, expected).unwrap();
 
         // positive case, multiple columns
+        let columns = vec![
+            make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
+            make_column_def("c2", DataType::Double),
+            make_column_def("c3", DataType::String),
+        ];
+
         let sql = "CREATE TABLE mytbl(c1 timestamp, c2 double, c3 string,) ENGINE = XX";
         let expected = Statement::Create(Box::new(CreateTable {
             if_not_exists: false,
             table_name: make_table_name("mytbl"),
-            columns: vec![
-                make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
-                make_column_def("c2", DataType::Double),
-                make_column_def("c3", DataType::String),
-            ],
+            columns: columns.clone(),
             engine: "XX".to_string(),
-            constraints: vec![],
+            constraints: vec![TableConstraint::Unique {
+                name: Some(Ident {
+                    value: TS_KEY.to_owned(),
+                    quote_style: None,
+                }),
+                columns: vec![columns[0].name.clone()],
+                is_primary: false,
+            }],
             options: vec![],
             partition: None,
         }));
         expect_parse_ok(sql, expected).unwrap();
 
         // positive case, multiple columns with comment
+        let columns = vec![
+            make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
+            make_comment_column_def("c2", DataType::Double, "id".to_string()),
+            make_comment_column_def("c3", DataType::String, "name".to_string()),
+        ];
+
         let sql = "CREATE TABLE mytbl(c1 timestamp, c2 double comment 'id', c3 string comment 'name',) ENGINE = XX";
         let expected = Statement::Create(Box::new(CreateTable {
             if_not_exists: false,
             table_name: make_table_name("mytbl"),
-            columns: vec![
-                make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
-                make_comment_column_def("c2", DataType::Double, "id".to_string()),
-                make_comment_column_def("c3", DataType::String, "name".to_string()),
-            ],
+            columns: columns.clone(),
             engine: "XX".to_string(),
-            constraints: vec![],
+            constraints: vec![TableConstraint::Unique {
+                name: Some(Ident {
+                    value: TS_KEY.to_owned(),
+                    quote_style: None,
+                }),
+                columns: vec![columns[0].name.clone()],
+                is_primary: false,
+            }],
             options: vec![],
             partition: None,
         }));
