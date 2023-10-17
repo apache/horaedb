@@ -1046,6 +1046,34 @@ mod tests {
         }));
         expect_parse_ok(sql, expected).unwrap();
 
+        // Explicitly declare `c2` as timestamp key column
+        let columns = vec![
+            make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
+            make_column_def("c2", DataType::Timestamp(None, TimezoneInfo::None)),
+            make_column_def("c3", DataType::String),
+            make_column_def("c4", DataType::Double),
+        ];
+
+        let sql =
+            "CREATE TABLE mytbl(c1 timestamp, c2 timestamp, c3 string, c4 double, timestamp key(c2),) ENGINE = XX";
+        let expected = Statement::Create(Box::new(CreateTable {
+            if_not_exists: false,
+            table_name: make_table_name("mytbl"),
+            columns: columns.clone(),
+            engine: "XX".to_string(),
+            constraints: vec![TableConstraint::Unique {
+                name: Some(Ident {
+                    value: TS_KEY.to_owned(),
+                    quote_style: None,
+                }),
+                columns: vec![columns[1].name.clone()],
+                is_primary: false,
+            }],
+            options: vec![],
+            partition: None,
+        }));
+        expect_parse_ok(sql, expected).unwrap();
+
         // Error cases: Invalid sql
         let sql = "CREATE TABLE t(c1 timestamp) AS";
         expect_parse_error(
