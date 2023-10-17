@@ -418,7 +418,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        build_timestamp_key_constraint(&columns, &mut constraints);
+        build_and_check_timestamp_key_constraint(&columns, &mut constraints);
 
         Ok((columns, constraints))
     }
@@ -789,6 +789,47 @@ fn check_column_expr_validity_in_hash(column: &Ident, columns: &[ColumnDef]) -> 
     });
 
     valid_column.is_some()
+}
+
+/// Builds and checks for the existence of a timestamp key constraint named
+/// __ts_key within the given list of table constraints. If such a constraint
+/// does not exist, the function searches for a unique timestamp column and
+/// creates a new constraint for it.
+fn build_and_check_timestamp_key_constraint(
+    col_defs: &[ColumnDef],
+    constraints: &mut Vec<TableConstraint>,
+) {
+    // try to create timestamp key constraint from ColumnOption::DialectSpecific
+    // tokens
+    build_timestamp_key_constraint(col_defs, constraints);
+
+    // Now check if there's a __ts_key constraint
+    let no_timestamp_constraint = constraints
+        .iter()
+        .all(|constraint| !is_timestamp_key_constraint(constraint));
+
+    if no_timestamp_constraint {
+        // If a timestamp constraint doesn't exist, start looking for a unique timestamp
+        // column
+        let mut ts_column_iterator = col_defs
+            .iter()
+            .filter(|col_def| matches!(col_def.data_type, DataType::Timestamp(_, _)));
+
+        if let Some(ts_column) = ts_column_iterator.next() {
+            if ts_column_iterator.next().is_none() {
+                // Create a timestamp constraint if the column is unique
+                let constraint = TableConstraint::Unique {
+                    name: Some(Ident {
+                        value: TS_KEY.to_owned(),
+                        quote_style: None,
+                    }),
+                    columns: vec![ts_column.name.clone()],
+                    is_primary: false,
+                };
+                constraints.push(constraint);
+            }
+        }
+    }
 }
 
 // Build the tskey constraint from the column definitions if any.
