@@ -14,17 +14,28 @@
 
 //! Config for wal on message queue
 
+use message_queue::kafka::config::Config as KafkaConfig;
 use serde::{Deserialize, Serialize};
 use time_ext::ReadableDuration;
 
-// TODO: add more needed config items.
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct KafkaStorageConfig {
+    /// Kafka client config
+    pub kafka: KafkaConfig,
+    /// Namespace config for data.
+    pub data_namespace: KafkaWalConfig,
+    /// Namespace config for meta data
+    pub meta_namespace: KafkaWalConfig,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
-pub struct Config {
+pub struct KafkaWalConfig {
     pub clean_period: ReadableDuration,
 }
 
-impl Default for Config {
+impl Default for KafkaWalConfig {
     fn default() -> Self {
         Self {
             clean_period: ReadableDuration::millis(3600 * 1000),

@@ -19,18 +19,20 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use common_types::SequenceNumber;
 use generic_error::BoxError;
-use message_queue::{ConsumeIterator, MessageQueue};
+use message_queue::{kafka::kafka_impl::KafkaImpl, ConsumeIterator, MessageQueue};
 use runtime::Runtime;
 use snafu::ResultExt;
 
 use crate::{
+    config::StorageConfig,
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
-        self, error::*, AsyncLogIterator, BatchLogIteratorAdapter, ReadContext, ReadRequest,
-        RegionId, ScanContext, ScanRequest, WalLocation, WalManager, WriteContext,
+        self, error::*, AsyncLogIterator, BatchLogIteratorAdapter, OpenedWals, ReadContext,
+        ReadRequest, RegionId, ScanContext, ScanRequest, WalLocation, WalManager, WalRuntimes,
+        WalsOpener, WriteContext, MANIFEST_DIR_NAME, WAL_DIR_NAME,
     },
     message_queue_impl::{
-        config::Config,
+        config::KafkaWalConfig,
         namespace::{Namespace, ReadTableIterator, ScanRegionIterator},
     },
 };
@@ -43,7 +45,7 @@ impl<M: MessageQueue> MessageQueueImpl<M> {
         namespace: String,
         message_queue: M,
         default_runtime: Arc<Runtime>,
-        config: Config,
+        config: KafkaWalConfig,
     ) -> Self {
         MessageQueueImpl(Namespace::open(
             namespace,
@@ -128,5 +130,49 @@ impl<C: ConsumeIterator> AsyncLogIterator for ScanRegionIterator<C> {
 impl<C: ConsumeIterator> AsyncLogIterator for ReadTableIterator<C> {
     async fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
         self.next_log_entry().await.box_err().context(Read)
+    }
+}
+
+#[derive(Default)]
+pub struct KafkaWalsOpener;
+
+#[async_trait]
+impl WalsOpener for KafkaWalsOpener {
+    async fn open_wals(&self, config: &StorageConfig, runtimes: WalRuntimes) -> Result<OpenedWals> {
+        let kafka_wal_config = match config {
+            StorageConfig::Kafka(config) => config.clone(),
+            _ => {
+                return InvalidWalConfig {
+                    msg: format!(
+                        "invalid wal storage config while opening kafka wal, config:{config:?}"
+                    ),
+                }
+                .fail();
+            }
+        };
+
+        let default_runtime = &runtimes.default_runtime;
+
+        let kafka = KafkaImpl::new(kafka_wal_config.kafka.clone())
+            .await
+            .context(OpenKafka)?;
+        let data_wal = MessageQueueImpl::new(
+            WAL_DIR_NAME.to_string(),
+            kafka.clone(),
+            default_runtime.clone(),
+            kafka_wal_config.data_namespace,
+        );
+
+        let manifest_wal = MessageQueueImpl::new(
+            MANIFEST_DIR_NAME.to_string(),
+            kafka,
+            default_runtime.clone(),
+            kafka_wal_config.meta_namespace,
+        );
+
+        Ok(OpenedWals {
+            data_wal: Arc::new(data_wal),
+            manifest_wal: Arc::new(manifest_wal),
+        })
     }
 }

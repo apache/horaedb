@@ -24,7 +24,6 @@ use std::{
     time::Duration,
 };
 
-use analytic_engine::setup::OpenedWals;
 use bytes_ext::Bytes;
 use cluster::ClusterRef;
 use datafusion::parquet::data_type::AsBytes;
@@ -49,6 +48,7 @@ use serde::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
 use tokio::sync::oneshot::{self, Receiver, Sender};
+use wal::manager::OpenedWals;
 use warp::{
     header,
     http::StatusCode,

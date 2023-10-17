@@ -12,16 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Write Ahead Log
+use serde::{Deserialize, Serialize};
 
-pub mod config;
-pub mod kv_encoder;
-pub mod log_batch;
-pub mod manager;
-pub mod message_queue_impl;
-pub(crate) mod metrics;
-pub mod rocks_impl;
-pub mod table_kv_impl;
+use crate::{
+    message_queue_impl::config::KafkaStorageConfig, rocks_impl::config::RocksDBStorageConfig,
+    table_kv_impl::config::ObkvStorageConfig,
+};
 
-#[cfg(any(test, feature = "test"))]
-pub mod tests;
+/// Options for wal storage backend
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "type")]
+pub enum StorageConfig {
+    RocksDB(Box<RocksDBStorageConfig>),
+    Obkv(Box<ObkvStorageConfig>),
+    Kafka(Box<KafkaStorageConfig>),
+}

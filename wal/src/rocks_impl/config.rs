@@ -17,9 +17,30 @@
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct RocksDBStorageConfig {
+    /// Data directory used by RocksDB.
+    pub data_dir: String,
+    /// Namespace config for data.
+    pub data_namespace: RocksDBConfig,
+    /// Namespace config for meta.
+    pub meta_namespace: RocksDBConfig,
+}
+
+impl Default for RocksDBStorageConfig {
+    fn default() -> Self {
+        Self {
+            data_dir: "/tmp/ceresdb".to_string(),
+            data_namespace: Default::default(),
+            meta_namespace: Default::default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
-pub struct Config {
+pub struct RocksDBConfig {
     pub max_subcompactions: u32,
     pub max_background_jobs: i32,
     pub enable_statistics: bool,
@@ -36,7 +57,7 @@ pub struct Config {
     pub fifo_compaction_max_table_files_size: ReadableSize,
 }
 
-impl Default for Config {
+impl Default for RocksDBConfig {
     fn default() -> Self {
         Self {
             // Same with rocksdb
