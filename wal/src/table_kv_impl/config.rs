@@ -21,7 +21,7 @@ use crate::table_kv_impl::model::NamespaceConfig;
 /// Config of wal based on obkv
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct ObkvWalStorageConfig {
+pub struct ObkvStorageConfig {
     /// Obkv client config
     pub obkv: ObkvConfig,
     /// Namespace config for data.

@@ -24,7 +24,7 @@ use runtime::Runtime;
 use snafu::ResultExt;
 
 use crate::{
-    config::WalStorageConfig,
+    config::StorageConfig,
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
         self, error::*, AsyncLogIterator, BatchLogIteratorAdapter, OpenedWals, ReadContext,
@@ -138,13 +138,9 @@ pub struct KafkaWalsOpener;
 
 #[async_trait]
 impl WalsOpener for KafkaWalsOpener {
-    async fn open_wals(
-        &self,
-        config: &WalStorageConfig,
-        runtimes: WalRuntimes,
-    ) -> Result<OpenedWals> {
+    async fn open_wals(&self, config: &StorageConfig, runtimes: WalRuntimes) -> Result<OpenedWals> {
         let kafka_wal_config = match config {
-            WalStorageConfig::Kafka(config) => config.clone(),
+            StorageConfig::Kafka(config) => config.clone(),
             _ => {
                 return InvalidWalConfig {
                     msg: format!(

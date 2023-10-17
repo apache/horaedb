@@ -24,7 +24,7 @@ use snafu::ResultExt;
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 
 use crate::{
-    config::WalStorageConfig,
+    config::StorageConfig,
     log_batch::LogWriteBatch,
     manager::{
         self, error::*, BatchLogIteratorAdapter, OpenedWals, ReadContext, ReadRequest, RegionId,
@@ -32,7 +32,7 @@ use crate::{
         MANIFEST_DIR_NAME, WAL_DIR_NAME,
     },
     table_kv_impl::{
-        config::ObkvWalStorageConfig,
+        config::ObkvStorageConfig,
         model::NamespaceConfig,
         namespace::{Namespace, NamespaceRef},
     },
@@ -211,13 +211,9 @@ pub struct ObkvWalsOpener;
 
 #[async_trait]
 impl WalsOpener for ObkvWalsOpener {
-    async fn open_wals(
-        &self,
-        config: &WalStorageConfig,
-        runtimes: WalRuntimes,
-    ) -> Result<OpenedWals> {
+    async fn open_wals(&self, config: &StorageConfig, runtimes: WalRuntimes) -> Result<OpenedWals> {
         let obkv_wal_config = match config {
-            WalStorageConfig::Obkv(config) => config.clone(),
+            StorageConfig::Obkv(config) => config.clone(),
             _ => {
                 return InvalidWalConfig {
                     msg: format!(
@@ -249,13 +245,9 @@ pub struct MemWalsOpener {
 
 #[async_trait]
 impl WalsOpener for MemWalsOpener {
-    async fn open_wals(
-        &self,
-        config: &WalStorageConfig,
-        runtimes: WalRuntimes,
-    ) -> Result<OpenedWals> {
+    async fn open_wals(&self, config: &StorageConfig, runtimes: WalRuntimes) -> Result<OpenedWals> {
         let obkv_wal_config = match config {
-            WalStorageConfig::Obkv(config) => config.clone(),
+            StorageConfig::Obkv(config) => config.clone(),
             _ => {
                 return InvalidWalConfig {
                     msg: format!(
@@ -271,7 +263,7 @@ impl WalsOpener for MemWalsOpener {
 }
 
 async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
-    config: ObkvWalStorageConfig,
+    config: ObkvStorageConfig,
     runtimes: WalRuntimes,
     table_kv: T,
 ) -> Result<OpenedWals> {

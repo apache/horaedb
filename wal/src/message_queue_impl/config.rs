@@ -20,7 +20,7 @@ use time_ext::ReadableDuration;
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct KafkaWalStorageConfig {
+pub struct KafkaStorageConfig {
     /// Kafka client config
     pub kafka: KafkaConfig,
     /// Namespace config for data.

@@ -15,15 +15,15 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    message_queue_impl::config::KafkaWalStorageConfig, rocks_impl::config::RocksDBWalStorageConfig,
-    table_kv_impl::config::ObkvWalStorageConfig,
+    message_queue_impl::config::KafkaStorageConfig, rocks_impl::config::RocksDBStorageConfig,
+    table_kv_impl::config::ObkvStorageConfig,
 };
 
 /// Options for wal storage backend
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
-pub enum WalStorageConfig {
-    RocksDB(Box<RocksDBWalStorageConfig>),
-    Obkv(Box<ObkvWalStorageConfig>),
-    Kafka(Box<KafkaWalStorageConfig>),
+pub enum StorageConfig {
+    RocksDB(Box<RocksDBStorageConfig>),
+    Obkv(Box<ObkvStorageConfig>),
+    Kafka(Box<KafkaStorageConfig>),
 }

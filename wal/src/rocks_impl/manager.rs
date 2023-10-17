@@ -39,7 +39,7 @@ use snafu::ResultExt;
 use tokio::sync::Mutex;
 
 use crate::{
-    config::WalStorageConfig,
+    config::StorageConfig,
     kv_encoder::{CommonLogEncoding, CommonLogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
@@ -971,13 +971,9 @@ pub struct RocksDBWalsOpener;
 
 #[async_trait]
 impl WalsOpener for RocksDBWalsOpener {
-    async fn open_wals(
-        &self,
-        config: &WalStorageConfig,
-        runtimes: WalRuntimes,
-    ) -> Result<OpenedWals> {
+    async fn open_wals(&self, config: &StorageConfig, runtimes: WalRuntimes) -> Result<OpenedWals> {
         let rocksdb_wal_config = match &config {
-            WalStorageConfig::RocksDB(config) => config.clone(),
+            StorageConfig::RocksDB(config) => config.clone(),
             _ => {
                 return InvalidWalConfig {
                     msg: format!(

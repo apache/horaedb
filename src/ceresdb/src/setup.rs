@@ -43,7 +43,7 @@ use tracing_util::{
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
 };
 use wal::{
-    config::WalStorageConfig,
+    config::StorageConfig,
     manager::{WalRuntimes, WalsOpener},
     message_queue_impl::wal::KafkaWalsOpener,
     rocks_impl::manager::RocksDBWalsOpener,
@@ -95,17 +95,17 @@ pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
 
     runtimes.default_runtime.block_on(async {
         match config.analytic.wal {
-            WalStorageConfig::RocksDB(_) => {
+            StorageConfig::RocksDB(_) => {
                 run_server_with_runtimes::<RocksDBWalsOpener>(config, engine_runtimes, log_runtime)
                     .await
             }
 
-            WalStorageConfig::Obkv(_) => {
+            StorageConfig::Obkv(_) => {
                 run_server_with_runtimes::<ObkvWalsOpener>(config, engine_runtimes, log_runtime)
                     .await;
             }
 
-            WalStorageConfig::Kafka(_) => {
+            StorageConfig::Kafka(_) => {
                 run_server_with_runtimes::<KafkaWalsOpener>(config, engine_runtimes, log_runtime)
                     .await;
             }

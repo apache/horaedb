@@ -40,7 +40,7 @@ use manifest::details::Options as ManifestOptions;
 use object_store::config::StorageOptions;
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
-use wal::config::WalStorageConfig;
+use wal::config::StorageConfig;
 
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
 
@@ -106,7 +106,7 @@ pub struct Config {
     /// + RocksDB
     /// + OBKV
     /// + Kafka
-    pub wal: WalStorageConfig,
+    pub wal: StorageConfig,
 
     /// Recover mode
     ///
@@ -157,7 +157,7 @@ impl Default for Config {
             write_sst_max_buffer_size: ReadableSize::mb(10),
             max_retry_flush_limit: 0,
             max_bytes_per_write_batch: None,
-            wal: WalStorageConfig::RocksDB(Box::default()),
+            wal: StorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
             recover_mode: RecoverMode::TableBased,
             metrics: MetricsOptions::default(),
