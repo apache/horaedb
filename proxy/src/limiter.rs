@@ -18,23 +18,16 @@ use datafusion::logical_expr::logical_plan::LogicalPlan;
 use macros::define_result;
 use query_frontend::plan::Plan;
 use serde::{Deserialize, Serialize};
-use snafu::{Backtrace, Snafu};
+use snafu::Snafu;
 
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub))]
 pub enum Error {
-    #[snafu(display(
-        "Queried table is blocked, table:{}.\nBacktrace:\n{}",
-        table,
-        backtrace
-    ))]
-    BlockedTable { table: String, backtrace: Backtrace },
+    #[snafu(display("Queried table is blocked, table:{}", table,))]
+    BlockedTable { table: String },
 
-    #[snafu(display("Query is blocked by rule:{:?}.\nBacktrace:\n{}", rule, backtrace))]
-    BlockedByRule {
-        rule: BlockRule,
-        backtrace: Backtrace,
-    },
+    #[snafu(display("Query is blocked by rule:{:?}", rule))]
+    BlockedByRule { rule: BlockRule },
 }
 
 define_result!(Error);
