@@ -9,10 +9,12 @@ import (
 	"strings"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
+	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/clientv3util"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -492,6 +494,7 @@ func (s *metaStorageImpl) UpdateShardView(ctx context.Context, req UpdateShardVi
 	}
 
 	key := makeShardViewKey(s.rootPath, uint32(req.ClusterID), shardViewPB.ShardId, fmtID(shardViewPB.GetVersion()))
+	oldTopologyKey := makeShardViewKey(s.rootPath, uint32(req.ClusterID), shardViewPB.ShardId, fmtID(req.LatestVersion))
 	latestVersionKey := makeShardViewLatestVersionKey(s.rootPath, uint32(req.ClusterID), shardViewPB.ShardId)
 
 	// Check whether the latest version is equal to that in etcd. If it is equal，update shard clusterView and latest version; Otherwise, return an error.
@@ -508,6 +511,12 @@ func (s *metaStorageImpl) UpdateShardView(ctx context.Context, req UpdateShardVi
 	}
 	if !resp.Succeeded {
 		return ErrUpdateShardViewConflict.WithCausef("shard view may have been modified, clusterID:%d, shardID:%d, key:%s, resp:%v", req.ClusterID, shardViewPB.ShardId, key, resp)
+	}
+
+	// Try to remove expired shard view.
+	opDelShardTopology := clientv3.OpDelete(oldTopologyKey)
+	if _, err := s.client.Do(ctx, opDelShardTopology); err != nil {
+		log.Warn("remove expired shard view failed", zap.Error(err), zap.String("oldTopologyKey", oldTopologyKey))
 	}
 
 	return nil

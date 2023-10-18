@@ -247,7 +247,7 @@ func closeOldLeaderCallback(event *fsm.Event) {
 		return
 	}
 
-	log.Info("try to close shard", zap.Uint64("procedureID", req.p.ID()), zap.Uint64("shardID", req.p.params.ID), zap.String("oldLeader", req.p.params.OldLeaderNodeName))
+	log.Info("try to close shard", zap.Uint64("procedureID", req.p.ID()), zap.Uint64("shardID", uint64(req.p.params.ShardID)), zap.String("oldLeader", req.p.params.OldLeaderNodeName))
 
 	closeShardRequest := eventdispatch.CloseShardRequest{
 		ShardID: uint32(req.p.params.ShardID),
