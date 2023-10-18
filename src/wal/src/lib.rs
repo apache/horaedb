@@ -23,5 +23,5 @@ pub(crate) mod metrics;
 pub mod rocks_impl;
 pub mod table_kv_impl;
 
-#[cfg(any(test, feature = "test"))]
-pub mod tests;
+#[cfg(test)]
+mod tests;

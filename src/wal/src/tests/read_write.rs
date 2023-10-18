@@ -12,10 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{
-    ops::Deref,
-    sync::{Arc, Once},
-};
+use std::{ops::Deref, sync::Arc};
 
 use common_types::{
     table::{TableId, DEFAULT_SHARD_ID},
@@ -25,31 +22,26 @@ use common_types::{
 use crate::{
     manager::{ReadBoundary, ReadRequest, ScanRequest, WalLocation, WalManagerRef},
     tests::util::{
-        KafkaWalBuilder, MemoryTableWalBuilder, RocksTestEnv, RocksWalBuilder, TableKvTestEnv,
-        TestEnv, TestPayload, TestTableData, WalBuilder,
+        KafkaWalBuilder, MemoryTableWalBuilder, RocksWalBuilder, TestEnv, TestPayload,
+        TestTableData, WalBuilder,
     },
 };
-
-static INIT_LOG: Once = Once::new();
 
 #[test]
 fn test_rocksdb_wal() {
     let builder = RocksWalBuilder;
-
     test_all(builder, false);
 }
 
 #[test]
 fn test_memory_table_wal_default() {
     let builder = MemoryTableWalBuilder::default();
-
     test_all(builder, true);
 }
 
 #[test]
 fn test_memory_table_wal_with_ttl() {
     let builder = MemoryTableWalBuilder::with_ttl("1d");
-
     test_all(builder, true);
 }
 
@@ -57,37 +49,23 @@ fn test_memory_table_wal_with_ttl() {
 #[ignore = "this test needs a kafka cluster"]
 fn test_kafka_wal() {
     let builder = KafkaWalBuilder::new();
-
     test_all(builder, true);
 }
 
 fn test_all<B: WalBuilder>(builder: B, is_distributed: bool) {
     test_simple_read_write_default_batch(builder.clone());
-
     test_simple_read_write_different_batch_size(builder.clone());
-
     test_read_with_boundary(builder.clone());
-
     test_write_multiple_regions(builder.clone());
-
     test_reopen(builder.clone());
-
     test_complex_read_write(builder.clone());
-
     test_simple_write_delete(builder.clone());
-
     test_write_delete_half(builder.clone());
-
     test_write_delete_multiple_regions(builder.clone());
-
     test_sequence_increase_monotonically_multiple_writes(builder.clone());
-
     test_sequence_increase_monotonically_delete_write(builder.clone());
-
     test_sequence_increase_monotonically_delete_reopen_write(builder.clone());
-
     test_write_scan(builder.clone());
-
     if is_distributed {
         test_move_from_nodes(builder);
     }

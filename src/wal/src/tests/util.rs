@@ -71,8 +71,6 @@ impl WalBuilder for RocksWalBuilder {
     }
 }
 
-pub type RocksTestEnv = TestEnv<RocksWalBuilder>;
-
 const WAL_NAMESPACE: &str = "wal";
 
 #[derive(Default)]
@@ -124,8 +122,6 @@ impl MemoryTableWalBuilder {
         }
     }
 }
-
-pub type TableKvTestEnv = TestEnv<MemoryTableWalBuilder>;
 
 pub struct KafkaWalBuilder {
     namespace: String,
