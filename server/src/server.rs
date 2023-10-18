@@ -16,7 +16,6 @@
 
 use std::sync::Arc;
 
-use analytic_engine::setup::OpenedWals;
 use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
 use datafusion::execution::{runtime_env::RuntimeConfig, FunctionRegistry};
@@ -41,6 +40,7 @@ use table_engine::{
     engine::{EngineRuntimes, TableEngineRef},
     remote::RemoteEngineRef,
 };
+use wal::manager::OpenedWals;
 
 use crate::{
     config::ServerConfig,

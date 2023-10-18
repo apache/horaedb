@@ -21,18 +21,20 @@ use common_types::SequenceNumber;
 use generic_error::BoxError;
 use logger::info;
 use snafu::ResultExt;
-use table_kv::TableKv;
+use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 
 use crate::{
+    config::StorageConfig,
     log_batch::LogWriteBatch,
     manager::{
-        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
-        ScanRequest, WalLocation, WalManager,
+        self, error::*, BatchLogIteratorAdapter, OpenedWals, ReadContext, ReadRequest, RegionId,
+        ScanContext, ScanRequest, WalLocation, WalManager, WalRuntimes, WalsOpener,
+        MANIFEST_DIR_NAME, WAL_DIR_NAME,
     },
     table_kv_impl::{
+        config::ObkvStorageConfig,
         model::NamespaceConfig,
         namespace::{Namespace, NamespaceRef},
-        WalRuntimes,
     },
 };
 
@@ -202,4 +204,87 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
 
         Some(stats)
     }
+}
+
+#[derive(Default)]
+pub struct ObkvWalsOpener;
+
+#[async_trait]
+impl WalsOpener for ObkvWalsOpener {
+    async fn open_wals(&self, config: &StorageConfig, runtimes: WalRuntimes) -> Result<OpenedWals> {
+        let obkv_wal_config = match config {
+            StorageConfig::Obkv(config) => config.clone(),
+            _ => {
+                return InvalidWalConfig {
+                    msg: format!(
+                        "invalid wal storage config while opening obkv wal, config:{config:?}"
+                    ),
+                }
+                .fail();
+            }
+        };
+
+        // Notice the creation of obkv client may block current thread.
+        let obkv_config = obkv_wal_config.obkv.clone();
+        let obkv = runtimes
+            .write_runtime
+            .spawn_blocking(move || ObkvImpl::new(obkv_config).context(OpenObkv))
+            .await
+            .context(RuntimeExec)??;
+
+        open_wal_and_manifest_with_table_kv(*obkv_wal_config, runtimes, obkv).await
+    }
+}
+
+/// All engine built by this builder share same [MemoryImpl] instance, so the
+/// data wrote by the engine still remains after the engine dropped.
+#[derive(Default)]
+pub struct MemWalsOpener {
+    table_kv: MemoryImpl,
+}
+
+#[async_trait]
+impl WalsOpener for MemWalsOpener {
+    async fn open_wals(&self, config: &StorageConfig, runtimes: WalRuntimes) -> Result<OpenedWals> {
+        let obkv_wal_config = match config {
+            StorageConfig::Obkv(config) => config.clone(),
+            _ => {
+                return InvalidWalConfig {
+                    msg: format!(
+                        "invalid wal storage config while opening memory wal, config:{config:?}"
+                    ),
+                }
+                .fail();
+            }
+        };
+
+        open_wal_and_manifest_with_table_kv(*obkv_wal_config, runtimes, self.table_kv.clone()).await
+    }
+}
+
+async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
+    config: ObkvStorageConfig,
+    runtimes: WalRuntimes,
+    table_kv: T,
+) -> Result<OpenedWals> {
+    let data_wal = WalNamespaceImpl::open(
+        table_kv.clone(),
+        runtimes.clone(),
+        WAL_DIR_NAME,
+        config.data_namespace.clone().into(),
+    )
+    .await?;
+
+    let manifest_wal = WalNamespaceImpl::open(
+        table_kv,
+        runtimes,
+        MANIFEST_DIR_NAME,
+        config.meta_namespace.clone().into(),
+    )
+    .await?;
+
+    Ok(OpenedWals {
+        data_wal: Arc::new(data_wal),
+        manifest_wal: Arc::new(manifest_wal),
+    })
 }

@@ -1289,6 +1289,7 @@ dependencies = [
  "toml_ext",
  "tracing_util",
  "vergen",
+ "wal",
 ]
 
 [[package]]
@@ -6237,6 +6238,7 @@ dependencies = [
  "common_types",
  "datafusion",
  "df_operator",
+ "flate2",
  "future_ext",
  "futures 0.3.28",
  "generic_error",

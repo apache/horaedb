@@ -49,6 +49,7 @@ table_engine = { workspace = true }
 toml = { workspace = true }
 toml_ext = { workspace = true }
 tracing_util = { workspace = true }
+wal = { workspace = true }
 
 [build-dependencies]
 vergen = { version = "8", default-features = false, features = ["build", "cargo", "git", "gitcl", "rustc"] }

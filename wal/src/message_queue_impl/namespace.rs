@@ -32,7 +32,7 @@ use crate::{
         ReadContext, ReadRequest, RegionId, ScanContext, ScanRequest, WalLocation, WriteContext,
     },
     message_queue_impl::{
-        config::Config,
+        config::KafkaWalConfig,
         encoding::MetaEncoding,
         region::{self, MessageQueueLogIterator, Region},
     },
@@ -140,7 +140,7 @@ impl<M: MessageQueue> Namespace<M> {
         namespace: String,
         message_queue: Arc<M>,
         default_runtime: Arc<Runtime>,
-        config: Config,
+        config: KafkaWalConfig,
     ) -> Self {
         let inner = Arc::new(NamespaceInner::new(namespace, message_queue));
         let cleaner_handle = start_log_cleaner(

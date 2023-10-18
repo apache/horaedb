@@ -51,11 +51,16 @@ impl Proxy {
 
         self.hotspot_recorder.inc_sql_query_reqs(&req).await;
         match self.handle_sql_query_internal(&ctx, &req).await {
-            Err(e) => {
-                error!("Failed to handle sql query, ctx:{ctx:?}, err:{e}");
+            Err(err) => {
+                error!("Failed to handle sql query, ctx:{ctx:?}, err:{err}");
                 GRPC_HANDLER_COUNTER_VEC.query_failed.inc();
+                let header = ResponseHeader {
+                    code: err.code().as_u16() as u32,
+                    error: format!("{} sql:{}", err.error_message(), req.sql),
+                };
+
                 SqlQueryResponse {
-                    header: Some(error::build_err_header(e)),
+                    header: Some(header),
                     ..Default::default()
                 }
             }

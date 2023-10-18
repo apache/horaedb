@@ -16,11 +16,7 @@
 
 use std::sync::Arc;
 
-use analytic_engine::{
-    self,
-    setup::{EngineBuilder, KafkaWalsOpener, ObkvWalsOpener, RocksDBWalsOpener, WalsOpener},
-    WalStorageConfig,
-};
+use analytic_engine::{self, setup::EngineBuilder};
 use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
@@ -45,6 +41,13 @@ use table_engine::{engine::EngineRuntimes, memory::MemoryTableEngine, proxy::Tab
 use tracing_util::{
     self,
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
+};
+use wal::{
+    config::StorageConfig,
+    manager::{WalRuntimes, WalsOpener},
+    message_queue_impl::wal::KafkaWalsOpener,
+    rocks_impl::manager::RocksDBWalsOpener,
+    table_kv_impl::wal::ObkvWalsOpener,
 };
 
 use crate::{
@@ -92,17 +95,17 @@ pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
 
     runtimes.default_runtime.block_on(async {
         match config.analytic.wal {
-            WalStorageConfig::RocksDB(_) => {
+            StorageConfig::RocksDB(_) => {
                 run_server_with_runtimes::<RocksDBWalsOpener>(config, engine_runtimes, log_runtime)
                     .await
             }
 
-            WalStorageConfig::Obkv(_) => {
+            StorageConfig::Obkv(_) => {
                 run_server_with_runtimes::<ObkvWalsOpener>(config, engine_runtimes, log_runtime)
                     .await;
             }
 
-            WalStorageConfig::Kafka(_) => {
+            StorageConfig::Kafka(_) => {
                 run_server_with_runtimes::<KafkaWalsOpener>(config, engine_runtimes, log_runtime)
                     .await;
             }
@@ -197,6 +200,14 @@ async fn build_table_engine_proxy(engine_builder: EngineBuilder<'_>) -> Arc<Tabl
     })
 }
 
+fn make_wal_runtime(runtimes: Arc<EngineRuntimes>) -> WalRuntimes {
+    WalRuntimes {
+        write_runtime: runtimes.write_runtime.clone(),
+        read_runtime: runtimes.read_runtime.clone(),
+        default_runtime: runtimes.default_runtime.clone(),
+    }
+}
+
 async fn build_with_meta<T: WalsOpener>(
     config: &Config,
     cluster_config: &ClusterConfig,
@@ -240,7 +251,7 @@ async fn build_with_meta<T: WalsOpener>(
     ));
 
     let opened_wals = wal_opener
-        .open_wals(&config.analytic.wal, runtimes.clone())
+        .open_wals(&config.analytic.wal, make_wal_runtime(runtimes.clone()))
         .await
         .expect("Failed to setup analytic engine");
     let engine_builder = EngineBuilder {
@@ -277,7 +288,7 @@ async fn build_without_meta<T: WalsOpener>(
     wal_builder: T,
 ) -> Builder {
     let opened_wals = wal_builder
-        .open_wals(&config.analytic.wal, runtimes.clone())
+        .open_wals(&config.analytic.wal, make_wal_runtime(runtimes.clone()))
         .await
         .expect("Failed to setup analytic engine");
     let engine_builder = EngineBuilder {

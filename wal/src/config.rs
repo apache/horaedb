@@ -12,15 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Common constants
+use serde::{Deserialize, Serialize};
 
-/// Header of catalog name
-pub const CATALOG_HEADER: &str = "x-ceresdb-catalog";
-/// Header of schema name
-pub const SCHEMA_HEADER: &str = "x-ceresdb-schema";
-/// Header of tenant name
-pub const TENANT_HEADER: &str = "x-ceresdb-access-tenant";
-/// Header of content encoding type
-pub const CONTENT_ENCODING_HEADER: &str = "content-encoding";
+use crate::{
+    message_queue_impl::config::KafkaStorageConfig, rocks_impl::config::RocksDBStorageConfig,
+    table_kv_impl::config::ObkvStorageConfig,
+};
 
-pub const GZIP_ENCODING: &str = "gzip";
+/// Options for wal storage backend
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "type")]
+pub enum StorageConfig {
+    RocksDB(Box<RocksDBStorageConfig>),
+    Obkv(Box<ObkvStorageConfig>),
+    Kafka(Box<KafkaStorageConfig>),
+}

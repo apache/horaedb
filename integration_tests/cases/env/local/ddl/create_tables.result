@@ -37,8 +37,16 @@ affected_rows: 0
 -- no TIMESTAMP column
 CREATE TABLE `05_create_tables_t`(c1 int) ENGINE = Analytic;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query:CREATE TABLE `05_create_tables_t`(c1 int) ENGINE = Analytic;. Caused by: Failed to create plan, err:Table must contain timestamp constraint" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Table must contain timestamp constraint sql:CREATE TABLE `05_create_tables_t`(c1 int) ENGINE = Analytic;" })
 
+<<<<<<< HEAD
+=======
+-- TIMESTAMP column doesn't have NOT NULL constrain
+CREATE TABLE `05_create_tables_t`(c1 int, t timestamp, TIMESTAMP KEY(t)) ENGINE = Analytic;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Failed to build schema, err:Key column cannot be nullable, name:t. sql:CREATE TABLE `05_create_tables_t`(c1 int, t timestamp, TIMESTAMP KEY(t)) ENGINE = Analytic;" })
+
+>>>>>>> main
 CREATE TABLE `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
 affected_rows: 0
@@ -50,7 +58,7 @@ affected_rows: 0
 -- table already exist
 CREATE TABLE `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql:CREATE TABLE `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute create table, err:Failed to create table by table manipulator, err:Failed to operate table, err:Failed to operate table, msg:Some(\"failed to create table on shard, request:CreateTableRequest { params: CreateTableParams { catalog_name: \\\"ceresdb\\\", schema_name: \\\"public\\\", table_name: \\\"05_create_tables_t\\\", table_options: {}, table_schema: Schema { timestamp_index: 1, tsid_index: Some(0), column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: \\\"tsid\\\", data_type: UInt64, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"tsid\\\", default_value: None }, ColumnSchema { id: 2, name: \\\"t\\\", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"t\\\", default_value: None }, ColumnSchema { id: 3, name: \\\"c1\\\", data_type: Int32, is_nullable: true, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"c1\\\", default_value: None }] }, version: 1, primary_key_indexes: [0, 1] }, partition_info: None, engine: \\\"Analytic\\\" }, table_id: None, state: Stable, shard_id: 0 }\"), err:Failed to create table, table already exists, table:05_create_tables_t." })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute create table, err:Failed to create table by table manipulator, err:Failed to operate table, err:Failed to operate table, msg:Some(\"failed to create table on shard, request:CreateTableRequest { params: CreateTableParams { catalog_name: \\\"ceresdb\\\", schema_name: \\\"public\\\", table_name: \\\"05_create_tables_t\\\", table_options: {}, table_schema: Schema { timestamp_index: 1, tsid_index: Some(0), column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: \\\"tsid\\\", data_type: UInt64, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"tsid\\\", default_value: None }, ColumnSchema { id: 2, name: \\\"t\\\", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"t\\\", default_value: None }, ColumnSchema { id: 3, name: \\\"c1\\\", data_type: Int32, is_nullable: true, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"c1\\\", default_value: None }] }, version: 1, primary_key_indexes: [0, 1] }, partition_info: None, engine: \\\"Analytic\\\" }, table_id: None, state: Stable, shard_id: 0 }\"), err:Failed to create table, table already exists, table:05_create_tables_t. sql:CREATE TABLE `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;" })
 
 create table `05_create_tables_t2`(a int, b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic with (enable_ttl='false');
 
@@ -70,12 +78,12 @@ Int32(4),
 -- table already exist
 create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql:create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute create table, err:Failed to create table by table manipulator, err:Failed to operate table, err:Failed to operate table, msg:Some(\"failed to create table on shard, request:CreateTableRequest { params: CreateTableParams { catalog_name: \\\"ceresdb\\\", schema_name: \\\"public\\\", table_name: \\\"05_create_tables_t2\\\", table_options: {}, table_schema: Schema { timestamp_index: 1, tsid_index: Some(0), column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: \\\"tsid\\\", data_type: UInt64, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"tsid\\\", default_value: None }, ColumnSchema { id: 2, name: \\\"t\\\", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"t\\\", default_value: None }, ColumnSchema { id: 3, name: \\\"a\\\", data_type: Int32, is_nullable: true, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"a\\\", default_value: None }, ColumnSchema { id: 4, name: \\\"b\\\", data_type: Int32, is_nullable: true, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"b\\\", default_value: None }] }, version: 1, primary_key_indexes: [0, 1] }, partition_info: None, engine: \\\"Analytic\\\" }, table_id: None, state: Stable, shard_id: 0 }\"), err:Failed to create table, table already exists, table:05_create_tables_t2." })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute create table, err:Failed to create table by table manipulator, err:Failed to operate table, err:Failed to operate table, msg:Some(\"failed to create table on shard, request:CreateTableRequest { params: CreateTableParams { catalog_name: \\\"ceresdb\\\", schema_name: \\\"public\\\", table_name: \\\"05_create_tables_t2\\\", table_options: {}, table_schema: Schema { timestamp_index: 1, tsid_index: Some(0), column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: \\\"tsid\\\", data_type: UInt64, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"tsid\\\", default_value: None }, ColumnSchema { id: 2, name: \\\"t\\\", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"t\\\", default_value: None }, ColumnSchema { id: 3, name: \\\"a\\\", data_type: Int32, is_nullable: true, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"a\\\", default_value: None }, ColumnSchema { id: 4, name: \\\"b\\\", data_type: Int32, is_nullable: true, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"b\\\", default_value: None }] }, version: 1, primary_key_indexes: [0, 1] }, partition_info: None, engine: \\\"Analytic\\\" }, table_id: None, state: Stable, shard_id: 0 }\"), err:Failed to create table, table already exists, table:05_create_tables_t2. sql:create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;" })
 
 -- table already exist
 create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan, sql:create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute create table, err:Failed to create table by table manipulator, err:Failed to operate table, err:Failed to operate table, msg:Some(\"failed to create table on shard, request:CreateTableRequest { params: CreateTableParams { catalog_name: \\\"ceresdb\\\", schema_name: \\\"public\\\", table_name: \\\"05_create_tables_t2\\\", table_options: {}, table_schema: Schema { timestamp_index: 1, tsid_index: Some(0), column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: \\\"tsid\\\", data_type: UInt64, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"tsid\\\", default_value: None }, ColumnSchema { id: 2, name: \\\"t\\\", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"t\\\", default_value: None }, ColumnSchema { id: 3, name: \\\"a\\\", data_type: Int32, is_nullable: true, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"a\\\", default_value: None }, ColumnSchema { id: 4, name: \\\"b\\\", data_type: Int32, is_nullable: true, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"b\\\", default_value: None }] }, version: 1, primary_key_indexes: [0, 1] }, partition_info: None, engine: \\\"Analytic\\\" }, table_id: None, state: Stable, shard_id: 0 }\"), err:Failed to create table, table already exists, table:05_create_tables_t2." })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute create table, err:Failed to create table by table manipulator, err:Failed to operate table, err:Failed to operate table, msg:Some(\"failed to create table on shard, request:CreateTableRequest { params: CreateTableParams { catalog_name: \\\"ceresdb\\\", schema_name: \\\"public\\\", table_name: \\\"05_create_tables_t2\\\", table_options: {}, table_schema: Schema { timestamp_index: 1, tsid_index: Some(0), column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: \\\"tsid\\\", data_type: UInt64, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"tsid\\\", default_value: None }, ColumnSchema { id: 2, name: \\\"t\\\", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"t\\\", default_value: None }, ColumnSchema { id: 3, name: \\\"a\\\", data_type: Int32, is_nullable: true, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"a\\\", default_value: None }, ColumnSchema { id: 4, name: \\\"b\\\", data_type: Int32, is_nullable: true, is_tag: false, is_dictionary: false, comment: \\\"\\\", escaped_name: \\\"b\\\", default_value: None }] }, version: 1, primary_key_indexes: [0, 1] }, partition_info: None, engine: \\\"Analytic\\\" }, table_id: None, state: Stable, shard_id: 0 }\"), err:Failed to create table, table already exists, table:05_create_tables_t2. sql:create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;" })
 
 create table `05_create_tables_t3`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
@@ -121,7 +129,7 @@ String("05_create_tables_t5"),String("CREATE TABLE `05_create_tables_t5` (`tsid`
 -- Multiple TIMESTAMP KEYs
 CREATE TABLE `05_create_tables_t6`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY, t2 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query:CREATE TABLE `05_create_tables_t6`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY, t2 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;. Caused by: Failed to create plan, err:Table must contain only one timestamp key and it's data type must be TIMESTAMP" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Table must contain only one timestamp key and it's data type must be TIMESTAMP sql:CREATE TABLE `05_create_tables_t6`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY, t2 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;" })
 
 -- Column with comment
 CREATE TABLE `05_create_tables_t7`(c1 int COMMENT 'id', t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
@@ -202,7 +210,7 @@ affected_rows: 0
 -- Error: dictionary must be string type
 CREATE TABLE `05_create_tables_t9`(c1 int, d double dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to parse table name with sql, sql:CREATE TABLE `05_create_tables_t9`(c1 int, d double dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;. Caused by: Invalid sql, sql:CREATE TABLE `05_create_tables_t9`(c1 int, d double dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;, err:sql parser error: Only string column can be dictionary encoded: \"d DOUBLE DICTIONARY\"" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "parse table name. Caused by: Invalid sql, sql:CREATE TABLE `05_create_tables_t9`(c1 int, d double dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;, err:sql parser error: Only string column can be dictionary encoded: \"d DOUBLE DICTIONARY\" sql:CREATE TABLE `05_create_tables_t9`(c1 int, d double dictionary, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;" })
 
 -- Ignore now, table_id is not stable now
 -- CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'unknown');
@@ -251,10 +259,25 @@ drop table `05_create_tables_t11`;
 
 affected_rows: 0
 
+<<<<<<< HEAD
+=======
+CREATE TABLE `05_create_tables_t12`(c1 int not null, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(tsid, t1, c1)) ENGINE = Analytic;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Failed to build schema, err:Primary key with tsid should only contains tsid and timestamp key. sql:CREATE TABLE `05_create_tables_t12`(c1 int not null, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(tsid, t1, c1)) ENGINE = Analytic;" })
+
+show create table `05_create_tables_t12`;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Table not found, table:05_create_tables_t12 sql:show create table `05_create_tables_t12`;" })
+
+drop table `05_create_tables_t12`;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Table not found, table:05_create_tables_t12 sql:drop table `05_create_tables_t12`;" })
+
+>>>>>>> main
 -- Timestamp not in primary key
 CREATE TABLE `05_timestamp_not_in_primary_key`(c1 int NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t), PRIMARY KEY(c1)) ENGINE = Analytic;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query:CREATE TABLE `05_timestamp_not_in_primary_key`(c1 int NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t), PRIMARY KEY(c1)) ENGINE = Analytic;. Caused by: Failed to create plan, err:Failed to build schema, err:Timestamp not in primary key." })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Failed to build schema, err:Timestamp not in primary key. sql:CREATE TABLE `05_timestamp_not_in_primary_key`(c1 int NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t), PRIMARY KEY(c1)) ENGINE = Analytic;" })
 
 DROP TABLE IF EXISTS `05_create_tables_t`;
 

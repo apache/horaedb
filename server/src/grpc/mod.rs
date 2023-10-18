@@ -21,7 +21,6 @@ use std::{
     time::Duration,
 };
 
-use analytic_engine::setup::OpenedWals;
 use ceresdbproto::{
     meta_event::meta_event_service_server::MetaEventServiceServer,
     remote_engine::remote_engine_service_server::RemoteEngineServiceServer,
@@ -46,6 +45,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
+use wal::manager::OpenedWals;
 
 use self::remote_engine_service::QueryDedup;
 use crate::{

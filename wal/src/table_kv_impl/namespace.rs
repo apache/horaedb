@@ -42,13 +42,12 @@ use crate::{
     log_batch::LogWriteBatch,
     manager::{
         self, ReadContext, ReadRequest, RegionId, ScanContext, ScanRequest, SequenceNumber,
-        WalLocation,
+        WalLocation, WalRuntimes,
     },
     table_kv_impl::{
         consts, encoding,
         model::{BucketEntry, NamespaceConfig, NamespaceEntry},
         table_unit::{TableLogIterator, TableUnit, TableUnitRef},
-        WalRuntimes,
     },
 };
 
