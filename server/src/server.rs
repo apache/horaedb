@@ -440,6 +440,12 @@ impl Builder {
             timeout: self.server_config.timeout.map(|v| v.0),
         };
 
+        let request_notifiers = self
+            .server_config
+            .query_dedup
+            .enable
+            .then(|| Arc::new(RequestNotifiers::default()));
+
         let proxy = Arc::new(Proxy::new(
             router.clone(),
             instance.clone(),
@@ -452,10 +458,7 @@ impl Builder {
             engine_runtimes.clone(),
             self.cluster.is_some(),
             self.server_config.sub_table_access_perm,
-            self.server_config
-                .query_dedup
-                .enable
-                .then(|| Arc::new(RequestNotifiers::default())),
+            request_notifiers,
         ));
 
         let http_service = http::Builder::new(http_config)
