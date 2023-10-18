@@ -23,7 +23,7 @@ use futures::FutureExt;
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
-use logger::{error, failed_query, info, maybe_slow_query, warn, SlowTimer};
+use logger::{error, info, warn, SlowTimer};
 use query_frontend::{
     frontend,
     frontend::{Context as SqlContext, Frontend},
@@ -158,22 +158,6 @@ impl Proxy {
         sql: &str,
         enable_partition_table_access: bool,
     ) -> Result<Output> {
-        self.fetch_sql_query_output_internal(ctx, schema, sql, enable_partition_table_access)
-            .await
-            .map_err(|e| {
-                failed_query!("Failed query, request_id:{}, sql:{}", ctx.request_id, sql);
-                e
-            })
-    }
-
-    async fn fetch_sql_query_output_internal(
-        &self,
-        ctx: &Context,
-        // TODO: maybe we can put params below input a new ReadRequest struct.
-        schema: &str,
-        sql: &str,
-        enable_partition_table_access: bool,
-    ) -> Result<Output> {
         let request_id = ctx.request_id;
         let slow_threshold_secs = self
             .instance()
@@ -181,11 +165,11 @@ impl Proxy {
             .slow_threshold
             .load(std::sync::atomic::Ordering::Relaxed);
         let slow_threshold = Duration::from_secs(slow_threshold_secs);
-        let slow_timer = SlowTimer::new(slow_threshold);
-        let deadline = ctx.timeout.map(|t| slow_timer.now() + t);
+        let slow_timer = SlowTimer::new(ctx.request_id.as_u64(), sql, slow_threshold);
+        let deadline = ctx.timeout.map(|t| slow_timer.start_time() + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
-        info!("Handle sql query begin, request_id:{request_id}, catalog:{catalog}, schema:{schema}, deadline:{deadline:?}, ctx:{ctx:?}, sql:{sql}");
+        info!("Handle sql query begin, request_id:{request_id}, catalog:{catalog}, schema:{schema}, ctx:{ctx:?}, sql:{sql}");
 
         let instance = &self.instance;
         // TODO(yingwen): Privilege check, cannot access data of other tenant
@@ -215,9 +199,7 @@ impl Proxy {
             stmts_len == 1,
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!(
-                    "Only support execute one statement now, current num:{stmts_len}, sql:{sql}"
-                ),
+                msg: format!("Only support execute one statement now, current num:{stmts_len}"),
             }
         );
 
@@ -237,7 +219,7 @@ impl Proxy {
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to create plan, query:{sql}"),
+                msg: format!("Failed to create plan"),
             })?;
 
         let mut plan_maybe_expired = false;
@@ -259,21 +241,12 @@ impl Proxy {
         };
         let output = output.box_err().with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to execute plan, sql:{sql}"),
+            msg: format!("Failed to execute plan"),
         })?;
 
         let cost = slow_timer.elapsed();
         info!(
-            "Handle sql query finished, sql:{}, elapsed:{:?}, catalog:{}, schema:{}, ctx:{:?}",
-            sql, cost, catalog, schema, ctx
-        );
-
-        maybe_slow_query!(
-            slow_timer,
-            "Slow query, request_id:{}, elapsed:{:?}, sql:{}",
-            ctx.request_id,
-            cost,
-            sql,
+            "Handle sql query finished, sql:{sql}, elapsed:{cost:?}, catalog:{catalog}, schema:{schema}, ctx:{ctx:?}",
         );
 
         match &output {
@@ -308,7 +281,7 @@ impl Proxy {
         let table_name = frontend::parse_table_name_with_sql(sql)
             .box_err()
             .with_context(|| Internal {
-                msg: format!("Failed to parse table name with sql, sql:{sql}"),
+                msg: "parse table name",
             })?;
         if table_name.is_none() {
             warn!("Unable to forward sql query without table name, sql:{sql}",);
