@@ -42,7 +42,7 @@ pub trait RemotePhysicalPlanExecutor: fmt::Debug + Send + Sync + 'static {
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>>;
 }
 
-type RemotePhysicalPlanExecutorRef = Arc<dyn RemotePhysicalPlanExecutor>;
+pub type RemotePhysicalPlanExecutorRef = Arc<dyn RemotePhysicalPlanExecutor>;
 
 /// Executable scan's builder
 ///

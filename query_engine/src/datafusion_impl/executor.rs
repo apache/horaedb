@@ -54,7 +54,7 @@ impl DatafusionExecutorImpl {
         let task_ctx = session_ctx.task_ctx();
 
         let df_ctx = DatafusionTaskExecContext {
-            request_id: ctx.request_id,
+            ctx: ctx.clone(),
             task_ctx,
             preprocessor: self.preprocessor.clone(),
         };

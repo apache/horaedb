@@ -33,6 +33,7 @@ use datafusion_proto::{
 };
 use df_engine_extensions::dist_sql_query::{
     resolver::Resolver, ExecutableScanBuilder, RemotePhysicalPlanExecutor,
+    RemotePhysicalPlanExecutorRef,
 };
 use futures::future::BoxFuture;
 use generic_error::BoxError;
@@ -50,19 +51,17 @@ use table_engine::{
     table::{ReadRequest, TableRef},
 };
 
-use crate::{datafusion_impl::physical_plan::TypedPlan, error::*};
+use crate::{context::Context, datafusion_impl::physical_plan::TypedPlan, error::*};
 
-#[allow(dead_code)]
 pub struct DatafusionTaskExecContext {
-    pub request_id: RequestId,
+    pub ctx: Context,
     pub task_ctx: Arc<TaskContext>,
     pub preprocessor: Arc<Preprocessor>,
 }
 
 /// Preprocessor for datafusion physical plan
-#[allow(dead_code)]
 pub struct Preprocessor {
-    dist_query_resolver: Resolver,
+    dist_query_resolver_builder: DistQueryResolverBuilder,
     runtime_env: Arc<RuntimeEnv>,
     function_registry: Arc<dyn FunctionRegistry + Send + Sync>,
     extension_codec: Arc<dyn PhysicalExtensionCodec>,
@@ -80,26 +79,37 @@ impl Preprocessor {
             remote_engine,
             extension_codec: extension_codec.clone(),
         });
-        let scan_builder = Box::new(ExecutableScanBuilderImpl);
-        let resolver = Resolver::new(remote_executor, catalog_manager, scan_builder);
+
+        let dist_query_resolver_builder = DistQueryResolverBuilder {
+            remote_executor,
+            catalog_manager,
+        };
 
         Self {
-            dist_query_resolver: resolver,
+            dist_query_resolver_builder,
             runtime_env,
             function_registry,
             extension_codec,
         }
     }
 
-    pub async fn process(&self, typed_plan: &TypedPlan) -> Result<Arc<dyn ExecutionPlan>> {
+    pub async fn process(
+        &self,
+        typed_plan: &TypedPlan,
+        ctx: &Context,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
         match typed_plan {
             TypedPlan::Normal(plan) => Ok(plan.clone()),
-            TypedPlan::Partitioned(plan) => self.preprocess_partitioned_table_plan(plan).await,
-            TypedPlan::Remote(plan) => self.preprocess_remote_plan(plan).await,
+            TypedPlan::Partitioned(plan) => self.preprocess_partitioned_table_plan(plan, ctx).await,
+            TypedPlan::Remote(plan) => self.preprocess_remote_plan(plan, ctx).await,
         }
     }
 
-    async fn preprocess_remote_plan(&self, encoded_plan: &[u8]) -> Result<Arc<dyn ExecutionPlan>> {
+    async fn preprocess_remote_plan(
+        &self,
+        encoded_plan: &[u8],
+        ctx: &Context,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
         // Decode to datafusion physical plan.
         let protobuf = protobuf::PhysicalPlanNode::decode(encoded_plan)
             .box_err()
@@ -117,7 +127,8 @@ impl Preprocessor {
                 msg: Some("failed to rebuild physical plan from the decoded plan".to_string()),
             })?;
 
-        self.dist_query_resolver
+        let resolver = self.dist_query_resolver_builder.build(ctx);
+        resolver
             .resolve_sub_scan(plan)
             .await
             .box_err()
@@ -129,8 +140,10 @@ impl Preprocessor {
     async fn preprocess_partitioned_table_plan(
         &self,
         plan: &Arc<dyn ExecutionPlan>,
+        ctx: &Context,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        self.dist_query_resolver
+        let resolver = self.dist_query_resolver_builder.build(ctx);
+        resolver
             .resolve_partitioned_scan(plan.clone())
             .box_err()
             .with_context(|| ExecutorWithCause {
@@ -226,9 +239,33 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
     }
 }
 
+/// Used to build dist query resolver dynamically
+struct DistQueryResolverBuilder {
+    remote_executor: RemotePhysicalPlanExecutorRef,
+    catalog_manager: CatalogManagerRef,
+}
+
+impl DistQueryResolverBuilder {
+    fn build(&self, ctx: &Context) -> Resolver {
+        let scan_builder = Box::new(ExecutableScanBuilderImpl {
+            request_id: ctx.request_id,
+            deadline: ctx.deadline,
+        });
+
+        Resolver::new(
+            self.remote_executor.clone(),
+            self.catalog_manager.clone(),
+            scan_builder,
+        )
+    }
+}
+
 /// Executable scan build impl
 #[derive(Debug)]
-struct ExecutableScanBuilderImpl;
+struct ExecutableScanBuilderImpl {
+    request_id: RequestId,
+    deadline: Option<Instant>,
+}
 
 #[async_trait]
 impl ExecutableScanBuilder for ExecutableScanBuilderImpl {
