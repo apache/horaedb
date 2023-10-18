@@ -43,7 +43,10 @@ use datafusion::{
     },
 };
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
-use table_engine::{remote::model::TableIdentifier, table::{ReadRequest, ReadOptions}};
+use table_engine::{
+    remote::model::TableIdentifier,
+    table::{ReadOptions, ReadRequest},
+};
 use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector, TraceMetricWhenDrop};
 
 use crate::dist_sql_query::RemotePhysicalPlanExecutor;
@@ -69,10 +72,11 @@ impl UnresolvedPartitionedScan {
     ) -> Self {
         let metrics_collector = MetricsCollector::new(table_name.to_string());
 
-        // We must keep the same plans have the same encoded bytes, so dynamic fields such as
-        // `deadline`, `request_id` should be rewritten to concrete values.
-        // FIXME: just send the useful fields for `ReadRequest` in dist query, 
-        // rather than overwriting useless ones and send the whole `ReadRequest`...
+        // We must keep the same plans have the same encoded bytes, so dynamic fields
+        // such as `deadline`, `request_id` should be rewritten to concrete
+        // values. FIXME: just send the useful fields for `ReadRequest` in dist
+        // query, rather than overwriting useless ones and send the whole
+        // `ReadRequest`...
         let read_opts = ReadOptions {
             batch_size: read_request.opts.batch_size,
             read_parallelism: read_request.opts.read_parallelism,
@@ -80,13 +84,13 @@ impl UnresolvedPartitionedScan {
             deadline: None,
         };
 
-        let read_request = ReadRequest { 
+        let read_request = ReadRequest {
             // Overwrite it to `DEFAULT_REQUEST_ID`.
-            request_id: RequestId::from(DEFAULT_REQUEST_ID), 
-            opts: read_opts, 
-            projected_schema: read_request.projected_schema, 
-            predicate: read_request.predicate, 
-            metrics_collector: read_request.metrics_collector, 
+            request_id: RequestId::from(DEFAULT_REQUEST_ID),
+            opts: read_opts,
+            projected_schema: read_request.projected_schema,
+            predicate: read_request.predicate,
+            metrics_collector: read_request.metrics_collector,
         };
 
         Self {

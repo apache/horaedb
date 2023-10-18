@@ -48,7 +48,7 @@ use table_engine::{
         RemoteEngineRef,
     },
     stream::ToDfStream,
-    table::{ReadRequest, TableRef, ReadOptions},
+    table::{ReadOptions, ReadRequest, TableRef},
 };
 
 use crate::{context::Context, datafusion_impl::physical_plan::TypedPlan, error::*};
@@ -274,18 +274,18 @@ impl ExecutableScanBuilder for ExecutableScanBuilderImpl {
         table: TableRef,
         read_request: ReadRequest,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
-        // FIXME: just send the useful fields for `ReadRequest` in dist query, 
+        // FIXME: just send the useful fields for `ReadRequest` in dist query,
         // rather than overwriting the useless ones and refill them here...
-        let read_opts =  ReadOptions { 
+        let read_opts = ReadOptions {
             batch_size: read_request.opts.batch_size,
             read_parallelism: read_request.opts.read_parallelism,
             deadline: self.deadline,
-        }; 
+        };
 
-        let read_request = ReadRequest { 
-            request_id: self.request_id, 
+        let read_request = ReadRequest {
+            request_id: self.request_id,
             opts: read_opts,
-            projected_schema: read_request.projected_schema, 
+            projected_schema: read_request.projected_schema,
             predicate: read_request.predicate,
             metrics_collector: read_request.metrics_collector,
         };
