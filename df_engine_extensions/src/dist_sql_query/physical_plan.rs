@@ -24,6 +24,7 @@ use std::{
 };
 
 use arrow::{datatypes::SchemaRef as ArrowSchemaRef, record_batch::RecordBatch};
+use common_types::request_id::RequestId;
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     execution::TaskContext,
@@ -42,10 +43,12 @@ use datafusion::{
     },
 };
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
-use table_engine::{remote::model::TableIdentifier, table::ReadRequest};
+use table_engine::{remote::model::TableIdentifier, table::{ReadRequest, ReadOptions}};
 use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector, TraceMetricWhenDrop};
 
 use crate::dist_sql_query::RemotePhysicalPlanExecutor;
+
+const DEFAULT_REQUEST_ID: u64 = u64::MIN;
 
 /// Placeholder of partitioned table's scan plan
 /// It is inexecutable actually and just for carrying the necessary information
@@ -65,6 +68,26 @@ impl UnresolvedPartitionedScan {
         read_request: ReadRequest,
     ) -> Self {
         let metrics_collector = MetricsCollector::new(table_name.to_string());
+
+        // We must keep the same plans have the same encoded bytes, so dynamic fields such as
+        // `deadline`, `request_id` should be rewritten to concrete values.
+        // FIXME: just send the useful fields for `ReadRequest` in dist query, 
+        // rather than overwriting useless ones and send the whole `ReadRequest`...
+        let read_opts = ReadOptions {
+            batch_size: read_request.opts.batch_size,
+            read_parallelism: read_request.opts.read_parallelism,
+            // Overwrite it to `None`.
+            deadline: None,
+        };
+
+        let read_request = ReadRequest { 
+            // Overwrite it to `DEFAULT_REQUEST_ID`.
+            request_id: RequestId::from(DEFAULT_REQUEST_ID), 
+            opts: read_opts, 
+            projected_schema: read_request.projected_schema, 
+            predicate: read_request.predicate, 
+            metrics_collector: read_request.metrics_collector, 
+        };
 
         Self {
             sub_tables,
