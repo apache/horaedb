@@ -37,7 +37,7 @@ build-meta:
 	./build_meta.sh
 
 build-ceresdb:
-	cd .. && cargo build --bin ceresdb-server
+	cd .. && cargo build --bin ceresdb-server --features wal-table-kv,wal-message-queue,wal-rocksdb
 
 build-test:
 	cargo build
