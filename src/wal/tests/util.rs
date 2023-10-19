@@ -36,7 +36,7 @@ use wal::{
         WriteContext,
     },
     message_queue_impl::{config::KafkaWalConfig, wal::MessageQueueImpl},
-    rocks_impl::manager::RocksImpl,
+    rocksdb_impl::manager::RocksImpl,
     table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl},
 };
 
@@ -55,7 +55,7 @@ impl WalBuilder for RocksWalBuilder {
     type Wal = RocksImpl;
 
     async fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
-        let wal_builder = wal::rocks_impl::manager::Builder::new(data_path, runtime);
+        let wal_builder = wal::rocksdb_impl::manager::Builder::new(data_path, runtime);
 
         Arc::new(
             wal_builder

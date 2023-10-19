@@ -15,7 +15,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    message_queue_impl::config::KafkaStorageConfig, rocks_impl::config::RocksDBStorageConfig,
+    message_queue_impl::config::KafkaStorageConfig, rocksdb_impl::config::RocksDBStorageConfig,
     table_kv_impl::config::ObkvStorageConfig,
 };
 

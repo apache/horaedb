@@ -42,7 +42,7 @@ use time_ext::ReadableDuration;
 use wal::{
     config::StorageConfig,
     manager::{OpenedWals, WalRuntimes, WalsOpener},
-    rocks_impl::{config::RocksDBStorageConfig, manager::RocksDBWalsOpener},
+    rocksdb_impl::{config::RocksDBStorageConfig, manager::RocksDBWalsOpener},
     table_kv_impl::wal::MemWalsOpener,
 };
 

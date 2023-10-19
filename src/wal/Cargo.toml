@@ -25,14 +25,14 @@ workspace = true
 workspace = true
 
 [features]
-default = ["wal-obkv"]
-wal-kafka = []
-wal-obkv = []
+default = ["wal-table-kv"]
+wal-message-queue = []
+wal-table-kv = []
 wal-rocksdb = []
 
 [[test]]
 name = "read_write"
-required-features = ["wal-kafka", "wal-obkv", "wal-rocksdb"]
+required-features = ["wal-message-queue", "wal-table-kv", "wal-rocksdb"]
 
 [dependencies.rocksdb]
 git = "https://github.com/tikv/rust-rocksdb.git"

@@ -46,7 +46,7 @@ use wal::{
     config::StorageConfig,
     manager::{WalRuntimes, WalsOpener},
     message_queue_impl::wal::KafkaWalsOpener,
-    rocks_impl::manager::RocksDBWalsOpener,
+    rocksdb_impl::manager::RocksDBWalsOpener,
     table_kv_impl::wal::ObkvWalsOpener,
 };
 

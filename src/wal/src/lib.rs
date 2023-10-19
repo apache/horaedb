@@ -18,7 +18,10 @@ pub mod config;
 pub mod kv_encoder;
 pub mod log_batch;
 pub mod manager;
+#[cfg(feature = "wal-message-queue")]
 pub mod message_queue_impl;
 pub(crate) mod metrics;
-pub mod rocks_impl;
+#[cfg(feature = "wal-rocksdb")]
+pub mod rocksdb_impl;
+#[cfg(feature = "wal-table-kv")]
 pub mod table_kv_impl;
