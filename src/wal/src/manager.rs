@@ -150,9 +150,11 @@ pub mod error {
             backtrace: Backtrace,
         },
 
+        #[cfg(feature = "wal-table-kv")]
         #[snafu(display("Failed to open obkv, err:{}", source))]
         OpenObkv { source: table_kv::obkv::Error },
 
+        #[cfg(feature = "wal-message-queue")]
         #[snafu(display("Failed to open kafka, err:{}", source))]
         OpenKafka {
             source: message_queue::kafka::kafka_impl::Error,
