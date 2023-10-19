@@ -523,7 +523,7 @@ mod tests {
     use runtime::{self, Runtime};
 
     use super::*;
-    use crate::{log_batch::LogEntry, tests::util::TestPayloadDecoder};
+    use crate::log_batch::{LogEntry, MemoryPayloadDecoder};
 
     #[derive(Debug, Clone)]
     struct TestIterator {
@@ -605,7 +605,7 @@ mod tests {
 
         loop {
             buffer = iter
-                .next_log_entries(TestPayloadDecoder, buffer)
+                .next_log_entries(MemoryPayloadDecoder, buffer)
                 .await
                 .unwrap();
             for entry in buffer.iter() {
@@ -629,7 +629,7 @@ mod tests {
         let mut buffer = VecDeque::with_capacity(3);
         loop {
             buffer = iter
-                .next_log_entries(TestPayloadDecoder, buffer)
+                .next_log_entries(MemoryPayloadDecoder, buffer)
                 .await
                 .unwrap();
             for entry in buffer.iter() {

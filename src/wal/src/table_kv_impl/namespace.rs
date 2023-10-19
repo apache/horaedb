@@ -1640,9 +1640,8 @@ mod tests {
     use super::*;
     use crate::{
         kv_encoder::{LogBatchEncoder, LogEncoding},
-        log_batch::PayloadDecoder,
+        log_batch::{MemoryPayload, MemoryPayloadDecoder, PayloadDecoder},
         table_kv_impl::consts,
-        tests::util::{TestPayload, TestPayloadDecoder},
     };
 
     fn new_runtime() -> Arc<Runtime> {
@@ -1970,7 +1969,7 @@ mod tests {
         table_kv: &T,
         table_name: &str,
         region_id: u64,
-    ) -> Vec<(SequenceNumber, TestPayload)> {
+    ) -> Vec<(SequenceNumber, MemoryPayload)> {
         let log_encoding = LogEncoding::newest();
 
         let mut start_key = BytesMut::new();
@@ -1997,7 +1996,7 @@ mod tests {
             .scan(ScanContext::default(), table_name, scan_req)
             .unwrap();
 
-        let decoder = TestPayloadDecoder;
+        let decoder = MemoryPayloadDecoder;
         let mut key_values = Vec::new();
         while iter.valid() {
             let decoded_key = log_encoding.decode_key(iter.key()).unwrap();
@@ -2019,14 +2018,14 @@ mod tests {
     ) -> SequenceNumber {
         let mut payload_batch = Vec::with_capacity((end_sequence - start_sequence) as usize);
         for val in start_sequence..end_sequence {
-            let payload = TestPayload { val };
+            let payload = MemoryPayload { val };
             payload_batch.push(payload);
         }
 
         let log_entries = (start_sequence..end_sequence).collect::<Vec<_>>();
         let wal_encoder = LogBatchEncoder::create(location);
         let log_batch = wal_encoder
-            .encode_batch::<TestPayload, u32>(&log_entries)
+            .encode_batch::<MemoryPayload, u32>(&log_entries)
             .expect("should succeed to encode payload batch");
         let write_ctx = manager::WriteContext::default();
         namespace

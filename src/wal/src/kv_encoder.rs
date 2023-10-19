@@ -750,8 +750,7 @@ mod tests {
     use super::*;
     use crate::{
         kv_encoder::CommonLogKey,
-        log_batch::PayloadDecoder,
-        tests::util::{TestPayload, TestPayloadDecoder},
+        log_batch::{MemoryPayload, MemoryPayloadDecoder, PayloadDecoder},
     };
 
     #[test]
@@ -771,9 +770,9 @@ mod tests {
             assert_eq!(log_key, decoded_key);
         }
 
-        let decoder = TestPayloadDecoder;
+        let decoder = MemoryPayloadDecoder;
         for val in 0..8 {
-            let payload = TestPayload { val };
+            let payload = MemoryPayload { val };
 
             encoding.encode_value(&mut buf, &payload).unwrap();
 

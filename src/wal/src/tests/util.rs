@@ -22,18 +22,16 @@ use std::{
 };
 
 use async_trait::async_trait;
-use bytes_ext::{BufMut, SafeBuf, SafeBufMut};
 use common_types::{table::TableId, SequenceNumber};
 use message_queue::kafka::{config::Config as KafkaConfig, kafka_impl::KafkaImpl};
 use runtime::{self, Runtime};
-use snafu::Snafu;
 use table_kv::memory::MemoryImpl;
 use tempfile::TempDir;
 use time_ext::ReadableDuration;
 
 use crate::{
     kv_encoder::LogBatchEncoder,
-    log_batch::{LogWriteBatch, Payload, PayloadDecoder},
+    log_batch::{LogWriteBatch, MemoryPayload, MemoryPayloadDecoder, Payload, PayloadDecoder},
     manager::{
         BatchLogIteratorAdapter, ReadContext, WalLocation, WalManager, WalManagerRef, WalRuntimes,
         WriteContext,
@@ -42,9 +40,6 @@ use crate::{
     rocks_impl::{self, manager::RocksImpl},
     table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl},
 };
-
-#[derive(Debug, Snafu)]
-pub enum Error {}
 
 #[async_trait]
 pub trait WalBuilder: Clone + Send + Sync + 'static {
@@ -201,22 +196,22 @@ impl<B: WalBuilder> TestEnv<B> {
             .await
     }
 
-    pub fn build_payload_batch(&self, start: u32, end: u32) -> Vec<TestPayload> {
-        (start..end).map(|val| TestPayload { val }).collect()
+    pub fn build_payload_batch(&self, start: u32, end: u32) -> Vec<MemoryPayload> {
+        (start..end).map(|val| MemoryPayload { val }).collect()
     }
 
-    /// Build the log batch with [TestPayload].val range [start, end).
+    /// Build the log batch with [MemoryPayload].val range [start, end).
     pub async fn build_log_batch(
         &self,
         location: WalLocation,
         start: u32,
         end: u32,
-    ) -> (Vec<TestPayload>, LogWriteBatch) {
+    ) -> (Vec<MemoryPayload>, LogWriteBatch) {
         let log_entries = (start..end).collect::<Vec<_>>();
 
         let log_batch_encoder = LogBatchEncoder::create(location);
         let log_batch = log_batch_encoder
-            .encode_batch::<TestPayload, u32>(&log_entries)
+            .encode_batch::<MemoryPayload, u32>(&log_entries)
             .expect("should succeed to encode payloads");
 
         let payload_batch = self.build_payload_batch(start, end);
@@ -236,7 +231,7 @@ impl<B: WalBuilder> TestEnv<B> {
             HashMap::with_capacity(test_table_datas.len());
 
         loop {
-            let dec = TestPayloadDecoder;
+            let dec = MemoryPayloadDecoder;
             let log_entries = iter
                 .next_log_entries(dec, VecDeque::new())
                 .await
@@ -277,53 +272,16 @@ impl<B: WalBuilder> TestEnv<B> {
     }
 }
 
-/// The payload for Wal log entry for testing.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TestPayload {
-    pub val: u32,
-}
-
-impl Payload for TestPayload {
-    type Error = Error;
-
-    fn encode_size(&self) -> usize {
-        4
-    }
-
-    fn encode_to<B: BufMut>(&self, buf: &mut B) -> Result<(), Self::Error> {
-        buf.try_put_u32(self.val).expect("must write");
-        Ok(())
-    }
-}
-
-impl From<&u32> for TestPayload {
-    fn from(v: &u32) -> Self {
-        Self { val: *v }
-    }
-}
-
-pub struct TestPayloadDecoder;
-
-impl PayloadDecoder for TestPayloadDecoder {
-    type Error = Error;
-    type Target = TestPayload;
-
-    fn decode<B: SafeBuf>(&self, buf: &mut B) -> Result<Self::Target, Self::Error> {
-        let val = buf.try_get_u32().expect("should succeed to read u32");
-        Ok(TestPayload { val })
-    }
-}
-
 pub struct TestTableData {
     table_id: TableId,
-    payload_batch: Vec<TestPayload>,
+    payload_batch: Vec<MemoryPayload>,
     max_seq: SequenceNumber,
 }
 
 impl TestTableData {
     pub fn new(
         table_id: TableId,
-        payload_batch: Vec<TestPayload>,
+        payload_batch: Vec<MemoryPayload>,
         max_seq: SequenceNumber,
     ) -> Self {
         Self {

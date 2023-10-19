@@ -20,10 +20,10 @@ use common_types::{
 };
 
 use crate::{
+    log_batch::MemoryPayload,
     manager::{ReadBoundary, ReadRequest, ScanRequest, WalLocation, WalManagerRef},
     tests::util::{
-        KafkaWalBuilder, MemoryTableWalBuilder, RocksWalBuilder, TestEnv, TestPayload,
-        TestTableData, WalBuilder,
+        KafkaWalBuilder, MemoryTableWalBuilder, RocksWalBuilder, TestEnv, TestTableData, WalBuilder,
     },
 };
 
@@ -202,7 +202,7 @@ async fn check_write_batch_with_read_request<B: WalBuilder>(
     wal: WalManagerRef,
     read_req: ReadRequest,
     max_seq: SequenceNumber,
-    payload_batch: &[TestPayload],
+    payload_batch: &[MemoryPayload],
 ) {
     let iter = wal
         .read_batch(&env.read_ctx, &read_req)
@@ -219,7 +219,7 @@ async fn check_write_batch<B: WalBuilder>(
     wal: WalManagerRef,
     location: WalLocation,
     max_seq: SequenceNumber,
-    payload_batch: &[TestPayload],
+    payload_batch: &[MemoryPayload],
 ) {
     let read_req = ReadRequest {
         location,

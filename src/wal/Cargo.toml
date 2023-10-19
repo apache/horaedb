@@ -29,9 +29,6 @@ wal-kafka = []
 wal-obkv = []
 wal-rocksdb = []
 
-[profile.test]
-default = ["wal-kafka", "wal-obkv", "wal-rocksdb"]
-
 [dependencies.rocksdb]
 git = "https://github.com/tikv/rust-rocksdb.git"
 rev = "f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f"
