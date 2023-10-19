@@ -124,8 +124,14 @@ impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
 
     fn encode<B: BufMut>(&self, buf: &mut B, value: &Row) -> Result<()> {
         let encoder = MemComparable;
+        let ts_index = self.schema.timestamp_index();
+        encoder
+            .encode(buf, &value[ts_index])
+            .context(EncodeKeyDatum)?;
         for idx in self.schema.primary_key_indexes() {
-            encoder.encode(buf, &value[*idx]).context(EncodeKeyDatum)?;
+            if *idx != ts_index {
+                encoder.encode(buf, &value[*idx]).context(EncodeKeyDatum)?;
+            }
         }
         SequenceCodec.encode(buf, &self.sequence)?;
 

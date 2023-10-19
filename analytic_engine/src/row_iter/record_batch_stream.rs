@@ -22,8 +22,14 @@ use arrow::{
     array::BooleanArray,
     datatypes::{DataType as ArrowDataType, SchemaRef as ArrowSchemaRef},
 };
+use bytes_ext::{ByteVec, Bytes};
+use codec::{memcomparable::MemComparable, Encoder};
 use common_types::{
-    projected_schema::ProjectedSchema, record_batch::RecordBatchWithKey, SequenceNumber,
+    datum::Datum,
+    projected_schema::ProjectedSchema,
+    record_batch::RecordBatchWithKey,
+    time::{TimeRange, Timestamp},
+    SequenceNumber,
 };
 use datafusion::{
     common::ToDFSchema,
@@ -227,6 +233,7 @@ pub fn filtered_stream_from_memtable(
         reverse,
         deadline,
         metrics_collector,
+        predicate.time_range(),
     )
     .and_then(|origin_stream| {
         filter_stream(
@@ -239,6 +246,16 @@ pub fn filtered_stream_from_memtable(
     })
 }
 
+fn build_scan_key(ts: Timestamp) -> Bytes {
+    let mut buf = ByteVec::new();
+    let encoder = MemComparable;
+    encoder
+        .encode(&mut buf, &Datum::from(ts))
+        .expect("write mem");
+
+    Bytes::from(buf)
+}
+
 /// Build [SequencedRecordBatchStream] from a memtable.
 pub fn stream_from_memtable(
     projected_schema: ProjectedSchema,
@@ -247,6 +264,7 @@ pub fn stream_from_memtable(
     reverse: bool,
     deadline: Option<Instant>,
     metrics_collector: Option<MetricsCollector>,
+    time_range: TimeRange,
 ) -> Result<BoxedPrefetchableRecordBatchStream> {
     let scan_ctx = ScanContext {
         deadline,
@@ -256,8 +274,8 @@ pub fn stream_from_memtable(
     let scan_memtable_desc = format!("scan_memtable_{max_seq}");
     let metrics_collector = metrics_collector.map(|v| v.span(scan_memtable_desc));
     let scan_req = ScanRequest {
-        start_user_key: Bound::Unbounded,
-        end_user_key: Bound::Unbounded,
+        start_user_key: Bound::Included(build_scan_key(time_range.inclusive_start())),
+        end_user_key: Bound::Excluded(build_scan_key(time_range.exclusive_end())),
         sequence: max_seq,
         projected_schema,
         need_dedup,
