@@ -9,6 +9,7 @@ RUN apt update && apt install --yes git gcc g++ libssl-dev pkg-config cmake prot
 
 COPY . /ceresdb
 WORKDIR /ceresdb
+ENV CARGO_FEATURE_FLAGS="--features wal-table-kv,wal-message-queue,wal-rocksdb"
 
 RUN make build
 
