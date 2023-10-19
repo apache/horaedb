@@ -75,8 +75,6 @@ type CreatePartitionTableRequest struct {
 	ClusterMetadata *metadata.ClusterMetadata
 	SourceReq       *metaservicepb.CreateTableRequest
 
-	PartitionTableRatioOfNodes float32
-
 	OnSucceeded func(metadata.CreateTableResult) error
 	OnFailed    func(error) error
 }
@@ -100,12 +98,7 @@ func (f *Factory) MakeCreateTableProcedure(ctx context.Context, request CreateTa
 	isPartitionTable := request.isPartitionTable()
 
 	if isPartitionTable {
-		req := CreatePartitionTableRequest{
-			ClusterMetadata: request.ClusterMetadata,
-			SourceReq:       request.SourceReq,
-			OnSucceeded:     request.OnSucceeded,
-			OnFailed:        request.OnFailed,
-		}
+		req := CreatePartitionTableRequest(request)
 		return f.makeCreatePartitionTableProcedure(ctx, req)
 	}
 
@@ -170,6 +163,7 @@ func (f *Factory) makeCreatePartitionTableProcedure(ctx context.Context, request
 				ID:      shardView.ShardID,
 				Role:    subTableShard.ShardRole,
 				Version: shardView.Version,
+				Status:  storage.ShardStatusUnknown,
 			},
 			ShardNode: subTableShard,
 		})

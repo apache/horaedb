@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
+	"github.com/CeresDB/ceresmeta/pkg/assert"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
@@ -56,7 +57,7 @@ func prepareCallback(event *fsm.Event) {
 		procedure.CancelEventWithLog(event, err, "get table metadata", zap.String("tableName", params.SourceReq.GetName()), zap.Error(err))
 		return
 	}
-	req.ret = metadata.TableInfo{
+	req.droppedTable = &metadata.TableInfo{
 		ID:            table.ID,
 		Name:          table.Name,
 		SchemaID:      table.SchemaID,
@@ -99,7 +100,7 @@ func prepareCallback(event *fsm.Event) {
 	log.Debug("drop table finish", zap.String("tableName", params.SourceReq.GetName()), zap.Uint64("procedureID", params.ID))
 
 	if len(result.ShardVersionUpdate) != 1 {
-		procedure.CancelEventWithLog(event, procedure.ErrDropTableResult, fmt.Sprintf("legnth of shardVersionResult is %d", len(result.ShardVersionUpdate)))
+		procedure.CancelEventWithLog(event, procedure.ErrDropTableResult, fmt.Sprintf("length of shardVersionResult is %d", len(result.ShardVersionUpdate)))
 		return
 	}
 }
@@ -107,7 +108,8 @@ func prepareCallback(event *fsm.Event) {
 func successCallback(event *fsm.Event) {
 	req := event.Args[0].(*callbackRequest)
 
-	if err := req.p.params.OnSucceeded(req.ret); err != nil {
+	assert.Assert(req.droppedTable != nil)
+	if err := req.p.params.OnSucceeded(*req.droppedTable); err != nil {
 		log.Error("exec success callback failed")
 	}
 }
@@ -125,7 +127,7 @@ type callbackRequest struct {
 	ctx context.Context
 	p   *Procedure
 
-	ret metadata.TableInfo
+	droppedTable *metadata.TableInfo
 }
 
 type ProcedureParams struct {
@@ -171,6 +173,7 @@ func NewDropTableProcedure(params ProcedureParams) (procedure.Procedure, bool, e
 		shardID:            shardID,
 		relatedVersionInfo: relatedVersionInfo,
 		params:             params,
+		lock:               sync.RWMutex{},
 		state:              procedure.StateInit,
 	}, true, nil
 }
@@ -231,8 +234,9 @@ func (p *Procedure) Start(ctx context.Context) error {
 	p.updateState(procedure.StateRunning)
 
 	req := &callbackRequest{
-		ctx: ctx,
-		p:   p,
+		ctx:          ctx,
+		p:            p,
+		droppedTable: nil,
 	}
 
 	if err := p.fsm.Event(eventPrepare, req); err != nil {

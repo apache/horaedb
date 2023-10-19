@@ -35,12 +35,12 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 
 	"github.com/CeresDB/ceresmeta/pkg/assert"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"go.uber.org/zap"
-	"golang.org/x/exp/slices"
 )
 
 // TODO: Modify these error definitions to coderr.

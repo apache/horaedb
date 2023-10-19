@@ -59,7 +59,7 @@ func testCreateAndDropTable(ctx context.Context, re *require.Assertions, manager
 	re.NoError(err)
 	re.False(exists)
 
-	t, err := manager.CreateTable(ctx, TestSchemaName, TestTableName, storage.PartitionInfo{})
+	t, err := manager.CreateTable(ctx, TestSchemaName, TestTableName, storage.PartitionInfo{Info: nil})
 	re.NoError(err)
 	re.Equal(TestTableName, t.Name)
 

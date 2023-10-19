@@ -109,11 +109,14 @@ func (m *ManagerImpl) ListRunningProcedure(_ context.Context) ([]*Info, error) {
 func NewManagerImpl(logger *zap.Logger, metadata *metadata.ClusterMetadata) (Manager, error) {
 	entryLock := lock.NewEntryLock(10)
 	manager := &ManagerImpl{
-		logger:             logger,
-		metadata:           metadata,
-		runningProcedures:  map[storage.ShardID]Procedure{},
-		procedureShardLock: &entryLock,
-		waitingProcedures:  NewProcedureDelayQueue(defaultWaitingQueueLen),
+		logger:              logger,
+		metadata:            metadata,
+		procedureShardLock:  &entryLock,
+		waitingProcedures:   NewProcedureDelayQueue(defaultWaitingQueueLen),
+		procedureWorkerChan: make(chan struct{}),
+		lock:                sync.RWMutex{},
+		running:             false,
+		runningProcedures:   map[storage.ShardID]Procedure{},
 	}
 	return manager, nil
 }

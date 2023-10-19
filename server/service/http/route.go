@@ -22,10 +22,11 @@ type Router struct {
 	instrh func(handlerName string, handler http.HandlerFunc) http.HandlerFunc
 }
 
-// New returns a new Router.
 func New() *Router {
 	return &Router{
-		rtr: httprouter.New(),
+		rtr:    httprouter.New(),
+		prefix: "",
+		instrh: nil,
 	}
 }
 

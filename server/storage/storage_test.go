@@ -35,11 +35,15 @@ func TestStorage_CreateAndListCluster(t *testing.T) {
 	expectClusters := make([]Cluster, 0, defaultCount)
 	for i := 0; i < defaultCount; i++ {
 		cluster := Cluster{
-			ID:           ClusterID(i),
-			Name:         fmt.Sprintf(nameFormat, i),
-			MinNodeCount: uint32(i),
-			ShardTotal:   uint32(i),
-			CreatedAt:    uint64(time.Now().UnixMilli()),
+			ID:                          ClusterID(i),
+			Name:                        fmt.Sprintf(nameFormat, i),
+			MinNodeCount:                uint32(i),
+			ShardTotal:                  uint32(i),
+			EnableSchedule:              false,
+			TopologyType:                TopologyTypeStatic,
+			ProcedureExecutingBatchSize: 100,
+			CreatedAt:                   uint64(time.Now().UnixMilli()),
+			ModifiedAt:                  0,
 		}
 		req := CreateClusterRequest{
 			Cluster: cluster,
@@ -160,9 +164,11 @@ func TestStorage_CreateAndGetAndListTable(t *testing.T) {
 	expectTables := make([]Table, 0, defaultCount)
 	for i := 0; i < defaultCount; i++ {
 		table := Table{
-			ID:       TableID(i),
-			Name:     fmt.Sprintf(nameFormat, i),
-			SchemaID: defaultSchemaID,
+			ID:            TableID(i),
+			Name:          fmt.Sprintf(nameFormat, i),
+			SchemaID:      defaultSchemaID,
+			CreatedAt:     0,
+			PartitionInfo: PartitionInfo{Info: nil},
 		}
 		req := CreateTableRequest{
 			ClusterID: defaultClusterID,
@@ -290,10 +296,12 @@ func TestStorage_CreateOrUpdateNode(t *testing.T) {
 	// Test to create nodes.
 	expectNodes := make([]Node, 0, defaultCount)
 	for i := 0; i < defaultCount; i++ {
+		var nodeStats NodeStats
 		node := Node{
 			Name:          fmt.Sprintf(nameFormat, i),
-			NodeStats:     NodeStats{},
+			NodeStats:     nodeStats,
 			LastTouchTime: uint64(time.Now().UnixMilli()),
+			State:         NodeStateOnline,
 		}
 		err := s.CreateOrUpdateNode(ctx, CreateOrUpdateNodeRequest{
 			ClusterID: defaultClusterID,

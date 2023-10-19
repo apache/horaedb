@@ -22,7 +22,7 @@ func CreateTableOnShard(ctx context.Context, c *metadata.ClusterMetadata, dispat
 		return errors.WithMessage(err, "cluster get shardNode by id")
 	}
 	// TODO: consider followers
-	leader := storage.ShardNode{}
+	var leader storage.ShardNode
 	found := false
 	for _, shardNode := range shardNodes {
 		if shardNode.ShardRole == storage.ShardRoleLeader {
@@ -50,6 +50,8 @@ func BuildCreateTableRequest(table storage.Table, shardVersionUpdate metadata.Sh
 				// TODO: dispatch CreateTableOnShard to followers?
 				Role:    storage.ShardRoleLeader,
 				Version: shardVersionUpdate.CurrVersion,
+				// FIXME: There is no need to update status here, but it must be set. Shall we provide another struct without status field?
+				Status: storage.ShardStatusUnknown,
 			},
 			PrevVersion: shardVersionUpdate.PrevVersion,
 		},
@@ -84,12 +86,13 @@ func GetTableMetadata(clusterMetadata *metadata.ClusterMetadata, schemaName, tab
 // And if no error is thrown, the returned boolean value is used to tell whether this table is allocated to shard.
 // In some cases, we need to use this value to determine whether DDL can be executed normally。
 func BuildShardVersionUpdate(table storage.Table, clusterMetadata *metadata.ClusterMetadata, shardVersions map[storage.ShardID]uint64) (metadata.ShardVersionUpdate, bool, error) {
+	var versionUpdate metadata.ShardVersionUpdate
 	shardNodesResult, err := clusterMetadata.GetShardNodeByTableIDs([]storage.TableID{table.ID})
 	if err != nil {
-		return metadata.ShardVersionUpdate{}, false, err
+		return versionUpdate, false, err
 	}
 
-	leader := storage.ShardNode{}
+	var leader storage.ShardNode
 	found := false
 	for _, shardNode := range shardNodesResult.ShardNodes[table.ID] {
 		if shardNode.ShardRole == storage.ShardRoleLeader {
@@ -101,21 +104,21 @@ func BuildShardVersionUpdate(table storage.Table, clusterMetadata *metadata.Clus
 
 	if !found {
 		log.Warn("table can't find leader shard", zap.String("tableName", table.Name))
-		return metadata.ShardVersionUpdate{}, false, nil
+		return versionUpdate, false, nil
 	}
 
 	prevVersion, exists := shardVersions[leader.ID]
 	if !exists {
-		return metadata.ShardVersionUpdate{}, false, errors.WithMessagef(metadata.ErrShardNotFound, "shard not found in shardVersions, shardID:%d", leader.ID)
+		return versionUpdate, false, errors.WithMessagef(metadata.ErrShardNotFound, "shard not found in shardVersions, shardID:%d", leader.ID)
 	}
 
 	currVersion := prevVersion + 1
-
-	return metadata.ShardVersionUpdate{
+	versionUpdate = metadata.ShardVersionUpdate{
 		ShardID:     leader.ID,
 		CurrVersion: currVersion,
 		PrevVersion: prevVersion,
-	}, true, nil
+	}
+	return versionUpdate, true, nil
 }
 
 func DispatchDropTable(ctx context.Context, clusterMetadata *metadata.ClusterMetadata, dispatch eventdispatch.Dispatch, schemaName string, table storage.Table, version metadata.ShardVersionUpdate) error {
@@ -125,10 +128,12 @@ func DispatchDropTable(ctx context.Context, clusterMetadata *metadata.ClusterMet
 	}
 
 	tableInfo := metadata.TableInfo{
-		ID:         table.ID,
-		Name:       table.Name,
-		SchemaID:   table.SchemaID,
-		SchemaName: schemaName,
+		ID:            table.ID,
+		Name:          table.Name,
+		SchemaID:      table.SchemaID,
+		SchemaName:    schemaName,
+		PartitionInfo: storage.PartitionInfo{Info: nil},
+		CreatedAt:     0,
 	}
 
 	for _, shardNode := range shardNodes {
@@ -138,6 +143,8 @@ func DispatchDropTable(ctx context.Context, clusterMetadata *metadata.ClusterMet
 					ID:      version.ShardID,
 					Role:    storage.ShardRoleLeader,
 					Version: version.CurrVersion,
+					// FIXME: We have no need to update the status, but it must be set. Maybe we should provide another struct without status field.
+					Status: storage.ShardStatusUnknown,
 				},
 				PrevVersion: version.PrevVersion,
 			},

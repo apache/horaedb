@@ -57,7 +57,7 @@ func testTableTopology(ctx context.Context, re *require.Assertions, manager meta
 		Name:          TestTableName,
 		SchemaID:      TestSchemaID,
 		CreatedAt:     0,
-		PartitionInfo: storage.PartitionInfo{},
+		PartitionInfo: storage.PartitionInfo{Info: nil},
 	}})
 	re.NoError(err)
 	re.Equal(updateVersionResult.PrevVersion, updateVersionResult.CurrVersion-1)
@@ -81,7 +81,7 @@ func testTableTopology(ctx context.Context, re *require.Assertions, manager meta
 		Name:          TestTableName,
 		SchemaID:      TestSchemaID,
 		CreatedAt:     0,
-		PartitionInfo: storage.PartitionInfo{},
+		PartitionInfo: storage.PartitionInfo{Info: nil},
 	}})
 	re.NoError(err)
 	re.Equal(updateVersionResult.PrevVersion, updateVersionResult.CurrVersion-1)

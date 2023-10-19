@@ -49,9 +49,10 @@ func (r schedulerImpl) ListShardAffinityRule(_ context.Context) (scheduler.Shard
 }
 
 func (r schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.Snapshot) (scheduler.ScheduleResult, error) {
+	var scheduleRes scheduler.ScheduleResult
 	// ReopenShardScheduler can only be scheduled when the cluster is stable.
 	if !clusterSnapshot.Topology.IsStable() {
-		return scheduler.ScheduleResult{}, nil
+		return scheduleRes, nil
 	}
 	now := time.Now()
 
@@ -74,7 +75,7 @@ func (r schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.Sn
 				NewLeaderNodeName: registeredNode.Node.Name,
 			})
 			if err != nil {
-				return scheduler.ScheduleResult{}, err
+				return scheduleRes, err
 			}
 
 			procedures = append(procedures, p)
@@ -86,7 +87,7 @@ func (r schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.Sn
 	}
 
 	if len(procedures) == 0 {
-		return scheduler.ScheduleResult{}, nil
+		return scheduleRes, nil
 	}
 
 	batchProcedure, err := r.factory.CreateBatchTransferLeaderProcedure(ctx, coordinator.BatchRequest{
@@ -94,13 +95,14 @@ func (r schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.Sn
 		BatchType: procedure.TransferLeader,
 	})
 	if err != nil {
-		return scheduler.ScheduleResult{}, err
+		return scheduleRes, err
 	}
 
-	return scheduler.ScheduleResult{
+	scheduleRes = scheduler.ScheduleResult{
 		Procedure: batchProcedure,
 		Reason:    reasons.String(),
-	}, nil
+	}
+	return scheduleRes, nil
 }
 
 func needReopen(shardInfo metadata.ShardInfo) bool {

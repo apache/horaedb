@@ -35,6 +35,10 @@ func newLease(rawLease clientv3.Lease, ttlSec int64) *lease {
 		timeout:  time.Duration(ttlSec) * time.Second,
 		ttlSec:   ttlSec,
 		logger:   log.GetLogger(),
+
+		ID:          0,
+		expireTimeL: sync.RWMutex{},
+		expireTime:  time.Time{},
 	}
 }
 

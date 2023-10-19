@@ -85,6 +85,8 @@ func NewProcedure(params ProcedureParams) (*Procedure, bool, error) {
 		fsm:                fsm,
 		params:             params,
 		relatedVersionInfo: relatedVersionInfo,
+		lock:               sync.RWMutex{},
+		state:              stateBegin,
 	}, true, nil
 }
 
@@ -145,6 +147,8 @@ func (p *Procedure) Start(ctx context.Context) error {
 	dropPartitionTableRequest := &callbackRequest{
 		ctx: ctx,
 		p:   p,
+		// FIXME: shall we initialize the table at the first?
+		table: nil,
 	}
 
 	for {
@@ -230,7 +234,8 @@ func (p *Procedure) convertToMeta() (procedure.Meta, error) {
 	}
 	rawDataBytes, err := json.Marshal(rawData)
 	if err != nil {
-		return procedure.Meta{}, procedure.ErrEncodeRawData.WithCausef("marshal raw data, procedureID:%d, err:%v", p.params.ID, err)
+		var emptyMeta procedure.Meta
+		return emptyMeta, procedure.ErrEncodeRawData.WithCausef("marshal raw data, procedureID:%d, err:%v", p.params.ID, err)
 	}
 
 	meta := procedure.Meta{
@@ -256,7 +261,7 @@ type callbackRequest struct {
 	ctx context.Context
 	p   *Procedure
 
-	table storage.Table
+	table *storage.Table
 }
 
 func (d *callbackRequest) schemaName() string {
@@ -343,7 +348,7 @@ func dropPartitionTableCallback(event *fsm.Event) {
 		return
 	}
 
-	req.table = dropTableMetadataResult.Table
+	req.table = &dropTableMetadataResult.Table
 }
 
 func finishCallback(event *fsm.Event) {
@@ -355,10 +360,12 @@ func finishCallback(event *fsm.Event) {
 	log.Info("drop partition table finish")
 
 	tableInfo := metadata.TableInfo{
-		ID:         request.table.ID,
-		Name:       request.table.Name,
-		SchemaID:   request.table.SchemaID,
-		SchemaName: request.p.params.SourceReq.GetSchemaName(),
+		ID:            request.table.ID,
+		Name:          request.table.Name,
+		SchemaID:      request.table.SchemaID,
+		SchemaName:    request.p.params.SourceReq.GetSchemaName(),
+		PartitionInfo: storage.PartitionInfo{Info: nil},
+		CreatedAt:     0,
 	}
 
 	if err = request.p.params.OnSucceeded(tableInfo); err != nil {

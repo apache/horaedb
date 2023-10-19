@@ -73,9 +73,11 @@ func (q *heapPriorityQueue) Peek() any {
 
 func NewProcedureDelayQueue(maxLen int) *DelayQueue {
 	return &DelayQueue{
+		maxLen: maxLen,
+
+		lock:          sync.RWMutex{},
 		heapQueue:     &heapPriorityQueue{procedures: []*procedureScheduleEntry{}},
 		existingProcs: map[uint64]struct{}{},
-		maxLen:        maxLen,
 	}
 }
 

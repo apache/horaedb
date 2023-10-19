@@ -38,7 +38,7 @@ func NewAPI(clusterManager cluster.Manager, serverStatus *status.ServerStatus, f
 }
 
 func (a *API) NewAPIRouter() *Router {
-	router := New().WithPrefix(apiPrefix).WithInstrumentation(printRequestInsmt)
+	router := New().WithPrefix(apiPrefix).WithInstrumentation(printRequestInfo)
 
 	// Register API.
 	router.Post("/getShardTables", wrap(a.getShardTables, true, a.forwardClient))
@@ -69,7 +69,7 @@ func (a *API) NewAPIRouter() *Router {
 	router.DebugGet("/pprof/allocs", a.pprofAllocs)
 	router.DebugGet("/pprof/block", a.pprofBlock)
 	router.DebugGet("/pprof/goroutine", a.pprofGoroutine)
-	router.DebugGet("/pprof/threadCreate", a.pprofThreadcreate)
+	router.DebugGet("/pprof/threadCreate", a.pprofThreadCreate)
 	router.DebugGet(fmt.Sprintf("/diagnose/:%s/shards", clusterNameParam), wrap(a.diagnoseShards, true, a.forwardClient))
 	router.DebugGet("/leader", wrap(a.getLeader, false, a.forwardClient))
 	router.DebugGet(fmt.Sprintf("/clusters/:%s/deployMode", clusterNameParam), wrap(a.getDeployMode, true, a.forwardClient))
@@ -195,7 +195,7 @@ func (a *API) dropTable(req *http.Request) apiFuncResult {
 	if err != nil {
 		return errResult(ErrParseRequest, err.Error())
 	}
-	log.Info("drop table reqeust", zap.String("request", fmt.Sprintf("%+v", dropTableRequest)))
+	log.Info("drop table request", zap.String("request", fmt.Sprintf("%+v", dropTableRequest)))
 
 	if err := a.clusterManager.DropTable(context.Background(), dropTableRequest.ClusterName, dropTableRequest.SchemaName, dropTableRequest.Table); err != nil {
 		log.Error("drop table failed", zap.Error(err))
@@ -274,6 +274,10 @@ func (a *API) createCluster(req *http.Request) apiFuncResult {
 
 	log.Info("create cluster request", zap.String("request", fmt.Sprintf("%+v", createClusterRequest)))
 
+	if createClusterRequest.ProcedureExecutingBatchSize == 0 {
+		return errResult(ErrInvalidParamsForCreateCluster, "expect positive procedureExecutingBatchSize")
+	}
+
 	if _, err := a.clusterManager.GetCluster(req.Context(), createClusterRequest.Name); err == nil {
 		log.Error("cluster already exists", zap.String("clusterName", createClusterRequest.Name))
 		return errResult(ErrGetCluster, fmt.Sprintf("cluster: %s already exists", createClusterRequest.Name))
@@ -285,11 +289,11 @@ func (a *API) createCluster(req *http.Request) apiFuncResult {
 		return errResult(ErrParseRequest, err.Error())
 	}
 	c, err := a.clusterManager.CreateCluster(req.Context(), createClusterRequest.Name, metadata.CreateClusterOpts{
-		NodeCount:         createClusterRequest.NodeCount,
-		ReplicationFactor: 1,
-		ShardTotal:        createClusterRequest.ShardTotal,
-		EnableSchedule:    createClusterRequest.EnableSchedule,
-		TopologyType:      topologyType,
+		NodeCount:                   createClusterRequest.NodeCount,
+		ShardTotal:                  createClusterRequest.ShardTotal,
+		EnableSchedule:              createClusterRequest.EnableSchedule,
+		TopologyType:                topologyType,
+		ProcedureExecutingBatchSize: createClusterRequest.ProcedureExecutingBatchSize,
 	})
 	if err != nil {
 		log.Error("create cluster failed", zap.Error(err))
@@ -614,12 +618,12 @@ func (a *API) pprofGoroutine(writer http.ResponseWriter, req *http.Request) {
 	pprof.Handler("goroutine").ServeHTTP(writer, req)
 }
 
-func (a *API) pprofThreadcreate(writer http.ResponseWriter, req *http.Request) {
+func (a *API) pprofThreadCreate(writer http.ResponseWriter, req *http.Request) {
 	pprof.Handler("threadcreate").ServeHTTP(writer, req)
 }
 
-// printRequestInsmt used for printing every request information.
-func printRequestInsmt(handlerName string, handler http.HandlerFunc) http.HandlerFunc {
+// printRequestInfo used for printing every request information.
+func printRequestInfo(handlerName string, handler http.HandlerFunc) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
 		body := ""
 		bodyByte, err := io.ReadAll(request.Body)
@@ -659,6 +663,8 @@ func respond(w http.ResponseWriter, data interface{}) {
 	b, err := json.Marshal(&response{
 		Status: statusMessage,
 		Data:   data,
+		Error:  "",
+		Msg:    "",
 	})
 	if err != nil {
 		log.Error("marshal json response failed", zap.Error(err))
@@ -676,6 +682,7 @@ func respond(w http.ResponseWriter, data interface{}) {
 func respondError(w http.ResponseWriter, apiErr coderr.CodeError, msg string) {
 	b, err := json.Marshal(&response{
 		Status: statusError,
+		Data:   nil,
 		Error:  apiErr.Error(),
 		Msg:    msg,
 	})
@@ -696,6 +703,8 @@ func wrap(f apiFunc, needForward bool, forwardClient *ForwardClient) http.Handle
 	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if needForward {
 			resp, isLeader, err := forwardClient.forwardToLeader(r)
+			// nolint:staticcheck
+			defer resp.Body.Close()
 			if err != nil {
 				log.Error("forward to leader failed", zap.Error(err))
 				respondError(w, ErrForwardToLeader, err.Error())

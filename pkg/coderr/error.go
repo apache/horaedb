@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-var _ CodeError = &codeError{}
+var _ CodeError = &codeError{code: 0, desc: "", cause: nil}
 
 // CodeError is an error with code.
 type CodeError interface {
@@ -48,8 +48,9 @@ func GetCauseCode(err error) (Code, bool) {
 // The provided code should be defined in the code.go in this package.
 func NewCodeError(code Code, desc string) CodeError {
 	return &codeError{
-		code: code,
-		desc: desc,
+		code:  code,
+		desc:  desc,
+		cause: nil,
 	}
 }
 

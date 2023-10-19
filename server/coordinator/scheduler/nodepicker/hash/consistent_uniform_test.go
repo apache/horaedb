@@ -59,8 +59,9 @@ func buildTestMembers(n int) []Member {
 func checkUniform(t *testing.T, numPartitions, numMembers int) {
 	members := buildTestMembers(numMembers)
 	cfg := Config{
-		ReplicationFactor: 127,
-		Hasher:            testHasher{},
+		ReplicationFactor:   127,
+		Hasher:              testHasher{},
+		PartitionAffinities: []PartitionAffinity{},
 	}
 	c, err := BuildConsistentUniformHash(numPartitions, members, cfg)
 	assert.NoError(t, err)
@@ -81,8 +82,9 @@ func checkUniform(t *testing.T, numPartitions, numMembers int) {
 
 func TestZeroReplicationFactor(t *testing.T) {
 	cfg := Config{
-		ReplicationFactor: 0,
-		Hasher:            testHasher{},
+		ReplicationFactor:   0,
+		Hasher:              testHasher{},
+		PartitionAffinities: []PartitionAffinity{},
 	}
 	_, err := BuildConsistentUniformHash(0, []Member{testMember("")}, cfg)
 	assert.Error(t, err)
@@ -90,8 +92,9 @@ func TestZeroReplicationFactor(t *testing.T) {
 
 func TestEmptyHasher(t *testing.T) {
 	cfg := Config{
-		ReplicationFactor: 127,
-		Hasher:            nil,
+		Hasher:              nil,
+		ReplicationFactor:   127,
+		PartitionAffinities: []PartitionAffinity{},
 	}
 	_, err := BuildConsistentUniformHash(0, []Member{testMember("")}, cfg)
 	assert.Error(t, err)
@@ -99,8 +102,9 @@ func TestEmptyHasher(t *testing.T) {
 
 func TestEmptyMembers(t *testing.T) {
 	cfg := Config{
-		ReplicationFactor: 127,
-		Hasher:            testHasher{},
+		Hasher:              testHasher{},
+		ReplicationFactor:   127,
+		PartitionAffinities: []PartitionAffinity{},
 	}
 	_, err := BuildConsistentUniformHash(0, []Member{}, cfg)
 	assert.Error(t, err)
@@ -108,8 +112,9 @@ func TestEmptyMembers(t *testing.T) {
 
 func TestNegativeNumPartitions(t *testing.T) {
 	cfg := Config{
-		ReplicationFactor: 127,
-		Hasher:            testHasher{},
+		Hasher:              testHasher{},
+		ReplicationFactor:   127,
+		PartitionAffinities: []PartitionAffinity{},
 	}
 	_, err := BuildConsistentUniformHash(-1, []Member{testMember("")}, cfg)
 	assert.Error(t, err)
@@ -141,8 +146,9 @@ func computeDiffBetweenDist(t *testing.T, oldDist, newDist map[int]string) int {
 func checkConsistent(t *testing.T, numPartitions, numMembers, maxDiff int) {
 	members := buildTestMembers(numMembers)
 	cfg := Config{
-		ReplicationFactor: 127,
-		Hasher:            testHasher{},
+		Hasher:              testHasher{},
+		ReplicationFactor:   127,
+		PartitionAffinities: []PartitionAffinity{},
 	}
 	c, err := BuildConsistentUniformHash(numPartitions, members, cfg)
 	assert.NoError(t, err)

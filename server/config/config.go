@@ -61,11 +61,10 @@ const (
 	defaultMaxOpsPerTxn    int  = 32
 	defaultIDAllocatorStep uint = 20
 
-	DefaultClusterName              = "defaultCluster"
-	defaultClusterNodeCount         = 2
-	defaultClusterReplicationFactor = 1
-	defaultClusterShardTotal        = 8
-	enableSchedule                  = true
+	DefaultClusterName       = "defaultCluster"
+	defaultClusterNodeCount  = 2
+	defaultClusterShardTotal = 8
+	enableSchedule           = true
 	// topologyType is used to determine the scheduling cluster strategy of CeresMeta. It should be determined according to the storage method of CeresDB. The default is static to support local storage.
 	defaultTopologyType                = "static"
 	defaultProcedureExecutingBatchSize = math.MaxUint32
@@ -145,10 +144,9 @@ type Config struct {
 	IDAllocatorStep         uint   `toml:"id-allocator-step" env:"ID_ALLOCATOR_STEP"`
 
 	// Following fields are the settings for the default cluster.
-	DefaultClusterName              string `toml:"default-cluster-name" env:"DEFAULT_CLUSTER_NAME"`
-	DefaultClusterNodeCount         int    `toml:"default-cluster-node-count" env:"DEFAULT_CLUSTER_NODE_COUNT"`
-	DefaultClusterReplicationFactor int    `toml:"default-cluster-replication-factor" env:"DEFAULT_CLUSTER_REPLICATION_FACTOR"`
-	DefaultClusterShardTotal        int    `toml:"default-cluster-shard-total" env:"DEFAULT_CLUSTER_SHARD_TOTAL"`
+	DefaultClusterName       string `toml:"default-cluster-name" env:"DEFAULT_CLUSTER_NAME"`
+	DefaultClusterNodeCount  int    `toml:"default-cluster-node-count" env:"DEFAULT_CLUSTER_NODE_COUNT"`
+	DefaultClusterShardTotal int    `toml:"default-cluster-shard-total" env:"DEFAULT_CLUSTER_SHARD_TOTAL"`
 
 	// When the EnableSchedule is turned on, the failover scheduling will be turned on, which is used for CeresDB cluster publishing and using local storage.
 	EnableSchedule bool `toml:"enable-schedule" env:"ENABLE_SCHEDULE"`
@@ -240,7 +238,7 @@ type Parser struct {
 
 func (p *Parser) Parse(arguments []string) (*Config, error) {
 	if err := p.flagSet.Parse(arguments); err != nil {
-		if err == flag.ErrHelp {
+		if errors.Is(err, flag.ErrHelp) {
 			return nil, ErrHelpRequested.WithCause(err)
 		}
 		return nil, ErrInvalidCommandArgs.WithCausef("fail to parse flag arguments:%v, err:%v", arguments, err)
@@ -329,13 +327,12 @@ func MakeConfigParser() (*Parser, error) {
 		MaxOpsPerTxn:            defaultMaxOpsPerTxn,
 		IDAllocatorStep:         defaultIDAllocatorStep,
 
-		DefaultClusterName:              DefaultClusterName,
-		DefaultClusterNodeCount:         defaultClusterNodeCount,
-		DefaultClusterReplicationFactor: defaultClusterReplicationFactor,
-		DefaultClusterShardTotal:        defaultClusterShardTotal,
-		EnableSchedule:                  enableSchedule,
-		TopologyType:                    defaultTopologyType,
-		ProcedureExecutingBatchSize:     defaultProcedureExecutingBatchSize,
+		DefaultClusterName:          DefaultClusterName,
+		DefaultClusterNodeCount:     defaultClusterNodeCount,
+		DefaultClusterShardTotal:    defaultClusterShardTotal,
+		EnableSchedule:              enableSchedule,
+		TopologyType:                defaultTopologyType,
+		ProcedureExecutingBatchSize: defaultProcedureExecutingBatchSize,
 
 		HTTPPort: defaultHTTPPort,
 		GrpcPort: defaultGrpcPort,
@@ -344,9 +341,10 @@ func MakeConfigParser() (*Parser, error) {
 	version := fs.Bool("version", false, "print version information")
 
 	builder := &Parser{
-		flagSet: fs,
-		cfg:     cfg,
-		version: version,
+		flagSet:        fs,
+		cfg:            cfg,
+		version:        version,
+		configFilePath: "",
 	}
 
 	fs.StringVar(&builder.configFilePath, "config", "", "config file path")

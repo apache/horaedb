@@ -74,6 +74,9 @@ func TestCreateAndDropPartitionTable(t *testing.T) {
 func testCreatePartitionTable(ctx context.Context, t *testing.T, dispatch eventdispatch.Dispatch, c *cluster.Cluster, s procedure.Storage, shardPicker coordinator.ShardPicker, nodeName string, tableName string, subTableNames []string) {
 	re := require.New(t)
 
+	partitionInfo := clusterpb.PartitionInfo{
+		Info: nil,
+	}
 	request := &metaservicepb.CreateTableRequest{
 		Header: &metaservicepb.RequestHeader{
 			Node:        nodeName,
@@ -81,7 +84,7 @@ func testCreatePartitionTable(ctx context.Context, t *testing.T, dispatch eventd
 		},
 		PartitionTableInfo: &metaservicepb.PartitionTableInfo{
 			SubTableNames: subTableNames,
-			PartitionInfo: &clusterpb.PartitionInfo{},
+			PartitionInfo: &partitionInfo,
 		},
 		SchemaName: test.TestSchemaName,
 		Name:       tableName,
@@ -99,6 +102,7 @@ func testCreatePartitionTable(ctx context.Context, t *testing.T, dispatch eventd
 				ID:      shardView.ShardID,
 				Role:    subTableShard.ShardRole,
 				Version: shardView.Version,
+				Status:  storage.ShardStatusUnknown,
 			},
 			ShardNode: subTableShard,
 		})
@@ -127,7 +131,11 @@ func testCreatePartitionTable(ctx context.Context, t *testing.T, dispatch eventd
 
 func testDropPartitionTable(t *testing.T, dispatch eventdispatch.Dispatch, c *cluster.Cluster, s procedure.Storage, nodeName string, tableName string, subTableNames []string) {
 	re := require.New(t)
-	// New DropPartitionTableProcedure to drop table.
+	// Create DropPartitionTableProcedure to drop table.
+	partitionTableInfo := &metaservicepb.PartitionTableInfo{
+		PartitionInfo: nil,
+		SubTableNames: subTableNames,
+	}
 	req := droppartitiontable.ProcedureParams{
 		ID: uint64(1), Dispatch: dispatch, ClusterMetadata: c.GetMetadata(), ClusterSnapshot: c.GetMetadata().GetClusterSnapshot(), SourceReq: &metaservicepb.DropTableRequest{
 			Header: &metaservicepb.RequestHeader{
@@ -136,7 +144,7 @@ func testDropPartitionTable(t *testing.T, dispatch eventdispatch.Dispatch, c *cl
 			},
 			SchemaName:         test.TestSchemaName,
 			Name:               tableName,
-			PartitionTableInfo: &metaservicepb.PartitionTableInfo{SubTableNames: subTableNames},
+			PartitionTableInfo: partitionTableInfo,
 		}, OnSucceeded: func(_ metadata.TableInfo) error {
 			return nil
 		}, OnFailed: func(_ error) error {

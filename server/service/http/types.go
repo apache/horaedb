@@ -117,11 +117,12 @@ type SplitRequest struct {
 }
 
 type CreateClusterRequest struct {
-	Name           string `json:"Name"`
-	NodeCount      uint32 `json:"NodeCount"`
-	ShardTotal     uint32 `json:"ShardTotal"`
-	EnableSchedule bool   `json:"enableSchedule"`
-	TopologyType   string `json:"topologyType"`
+	Name                        string `json:"Name"`
+	NodeCount                   uint32 `json:"NodeCount"`
+	ShardTotal                  uint32 `json:"ShardTotal"`
+	EnableSchedule              bool   `json:"enableSchedule"`
+	TopologyType                string `json:"topologyType"`
+	ProcedureExecutingBatchSize uint32 `json:"procedureExecutingBatchSize"`
 }
 
 type UpdateClusterRequest struct {

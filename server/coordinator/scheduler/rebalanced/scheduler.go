@@ -5,6 +5,7 @@ package rebalanced
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 
@@ -16,7 +17,6 @@ import (
 	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/nodepicker"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"go.uber.org/zap"
-	"golang.org/x/exp/maps"
 )
 
 type schedulerImpl struct {
@@ -43,8 +43,9 @@ func NewShardScheduler(logger *zap.Logger, factory *coordinator.Factory, nodePic
 		nodePicker:                  nodePicker,
 		procedureExecutingBatchSize: procedureExecutingBatchSize,
 		lock:                        sync.Mutex{},
-		shardAffinityRule:           make(map[storage.ShardID]scheduler.ShardAffinity),
-		latestShardNodeMapping:      make(map[storage.ShardID]metadata.RegisteredNode),
+		latestShardNodeMapping:      map[storage.ShardID]metadata.RegisteredNode{},
+		deployMode:                  false,
+		shardAffinityRule:           map[storage.ShardID]scheduler.ShardAffinity{},
 	}
 }
 
@@ -89,9 +90,10 @@ func (r *schedulerImpl) ListShardAffinityRule(_ context.Context) (scheduler.Shar
 }
 
 func (r *schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.Snapshot) (scheduler.ScheduleResult, error) {
+	var emptySchedulerRes scheduler.ScheduleResult
 	// RebalancedShardScheduler can only be scheduled when the cluster is not empty.
 	if clusterSnapshot.Topology.ClusterView.State == storage.ClusterStateEmpty {
-		return scheduler.ScheduleResult{}, nil
+		return emptySchedulerRes, nil
 	}
 
 	var procedures []procedure.Procedure
@@ -100,7 +102,7 @@ func (r *schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.S
 	// ShardNodeMapping only update when deployMode is false.
 	shardNodeMapping, err := r.generateLatestShardNodeMapping(ctx, clusterSnapshot)
 	if err != nil {
-		return scheduler.ScheduleResult{}, nil
+		return emptySchedulerRes, nil
 	}
 
 	numShards := uint32(len(clusterSnapshot.Topology.ShardViewsMapping))
@@ -125,7 +127,7 @@ func (r *schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.S
 				NewLeaderNodeName: newLeaderNode.Node.Name,
 			})
 			if err != nil {
-				return scheduler.ScheduleResult{}, err
+				return emptySchedulerRes, err
 			}
 
 			procedures = append(procedures, p)
@@ -153,7 +155,7 @@ func (r *schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.S
 				NewLeaderNodeName: node.Node.Name,
 			})
 			if err != nil {
-				return scheduler.ScheduleResult{}, err
+				return emptySchedulerRes, err
 			}
 
 			procedures = append(procedures, p)
@@ -162,7 +164,7 @@ func (r *schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.S
 	}
 
 	if len(procedures) == 0 {
-		return scheduler.ScheduleResult{}, nil
+		return emptySchedulerRes, nil
 	}
 
 	batchProcedure, err := r.factory.CreateBatchTransferLeaderProcedure(ctx, coordinator.BatchRequest{
@@ -170,7 +172,7 @@ func (r *schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.S
 		BatchType: procedure.TransferLeader,
 	})
 	if err != nil {
-		return scheduler.ScheduleResult{}, err
+		return emptySchedulerRes, err
 	}
 
 	return scheduler.ScheduleResult{Procedure: batchProcedure, Reason: reasons.String()}, nil

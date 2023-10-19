@@ -82,7 +82,7 @@ func testDelete(t *testing.T, storage Storage) {
 
 func NewTestStorage(t *testing.T) Storage {
 	_, client, _ := etcdutil.PrepareEtcdServerAndClient(t)
-	storage := NewEtcdStorageImpl(client, TestRootPath)
+	storage := NewEtcdStorageImpl(client, TestRootPath, TestClusterID)
 	return storage
 }
 

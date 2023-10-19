@@ -69,7 +69,12 @@ func NewReusableAllocatorImpl(existIDs []uint64, minID uint64) Allocator {
 	sort.Slice(existIDs, func(i, j int) bool {
 		return existIDs[i] < existIDs[j]
 	})
-	return &ReusableAllocatorImpl{minID: minID, existIDs: &OrderedList{sorted: existIDs}}
+	return &ReusableAllocatorImpl{
+		lock: sync.Mutex{},
+
+		minID:    minID,
+		existIDs: &OrderedList{sorted: existIDs},
+	}
 }
 
 func (a *ReusableAllocatorImpl) Alloc(_ context.Context) (uint64, error) {

@@ -14,6 +14,7 @@ type EntryLock struct {
 
 func NewEntryLock(initCapacity int) EntryLock {
 	return EntryLock{
+		lock:       sync.Mutex{},
 		entryLocks: make(map[uint64]struct{}, initCapacity),
 	}
 }

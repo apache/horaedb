@@ -26,10 +26,11 @@ type EtcdStorageImpl struct {
 	rootPath  string
 }
 
-func NewEtcdStorageImpl(client *clientv3.Client, rootPath string) Storage {
+func NewEtcdStorageImpl(client *clientv3.Client, rootPath string, clusterID uint32) Storage {
 	return &EtcdStorageImpl{
-		client:   client,
-		rootPath: rootPath,
+		client:    client,
+		clusterID: clusterID,
+		rootPath:  rootPath,
 	}
 }
 
@@ -70,8 +71,8 @@ func (e EtcdStorageImpl) MarkDeleted(ctx context.Context, id uint64) error {
 func (e EtcdStorageImpl) List(ctx context.Context, batchSize int) ([]*Meta, error) {
 	var metas []*Meta
 	do := func(key string, value []byte) error {
-		meta := &Meta{}
-		if err := decode(meta, string(value)); err != nil {
+		meta, err := decodeMeta(string(value))
+		if err != nil {
 			return errors.WithMessagef(err, "decode meta failed, key:%s, value:%v", key, value)
 		}
 
@@ -121,7 +122,8 @@ func encode(meta *Meta) (string, error) {
 }
 
 // TODO: Use proto.Unmarshal replace json.unmarshal
-func decode(m *Meta, meta string) error {
+func decodeMeta(meta string) (*Meta, error) {
+	var m Meta
 	err := json.Unmarshal([]byte(meta), &m)
-	return err
+	return &m, err
 }

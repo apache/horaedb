@@ -68,8 +68,13 @@ func (m *Member) getLeader(ctx context.Context) (*getLeaderResp, error) {
 		return nil, ErrMultipleLeader
 	}
 	if len(resp.Kvs) == 0 {
-		return &getLeaderResp{}, nil
+		return &getLeaderResp{
+			Leader:   nil,
+			Revision: 0,
+			IsLocal:  false,
+		}, nil
 	}
+
 	leaderKv := resp.Kvs[0]
 	leader := &metastoragepb.Member{}
 	err = proto.Unmarshal(leaderKv.Value, leader)

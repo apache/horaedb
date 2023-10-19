@@ -94,8 +94,9 @@ func NewProcedure(params ProcedureParams) (procedure.Procedure, error) {
 
 	return &Procedure{
 		fsm:                splitFsm,
-		relatedVersionInfo: relatedVersionInfo,
 		params:             params,
+		relatedVersionInfo: relatedVersionInfo,
+		lock:               sync.RWMutex{},
 		state:              procedure.StateInit,
 	}, nil
 }
@@ -286,6 +287,7 @@ func openShardCallback(event *fsm.Event) {
 			ID:      request.p.params.NewShardID,
 			Role:    storage.ShardRoleLeader,
 			Version: 0,
+			Status:  storage.ShardStatusUnknown,
 		},
 	}); err != nil {
 		procedure.CancelEventWithLog(event, err, "open shard failed")
@@ -335,7 +337,8 @@ func (p *Procedure) convertToMeta() (procedure.Meta, error) {
 	}
 	rawDataBytes, err := json.Marshal(rawData)
 	if err != nil {
-		return procedure.Meta{}, procedure.ErrEncodeRawData.WithCausef("marshal raw data, procedureID:%v, err:%v", p.params.ShardID, err)
+		var emptyMeta procedure.Meta
+		return emptyMeta, procedure.ErrEncodeRawData.WithCausef("marshal raw data, procedureID:%v, err:%v", p.params.ShardID, err)
 	}
 
 	meta := procedure.Meta{

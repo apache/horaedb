@@ -1,5 +1,5 @@
 ## Builder
-ARG GOLANG_VERSION=1.19.5
+ARG GOLANG_VERSION=1.21.3
 FROM golang:${GOLANG_VERSION}-bullseye as build
 
 # cache mounts below may already exist and owned by root

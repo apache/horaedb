@@ -92,6 +92,7 @@ func getForwardedHTTPClient() *http.Client {
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
 				Timeout:   30 * time.Second,
+				Deadline:  time.Time{},
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
 			TLSHandshakeTimeout: 10 * time.Second,

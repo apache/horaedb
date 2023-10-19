@@ -50,7 +50,6 @@ type ShardNodeWithVersion struct {
 
 type CreateClusterOpts struct {
 	NodeCount                   uint32
-	ReplicationFactor           uint32
 	ShardTotal                  uint32
 	EnableSchedule              bool
 	TopologyType                storage.TopologyType

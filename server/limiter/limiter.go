@@ -26,6 +26,7 @@ func NewFlowLimiter(config config.LimiterConfig) *FlowLimiter {
 
 	return &FlowLimiter{
 		l:      newLimiter,
+		lock:   sync.RWMutex{},
 		limit:  config.Limit,
 		burst:  config.Burst,
 		enable: config.Enable,

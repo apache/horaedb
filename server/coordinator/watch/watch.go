@@ -82,6 +82,10 @@ func NewEtcdShardWatch(logger *zap.Logger, clusterName string, rootPath string, 
 		rootPath:       rootPath,
 		etcdClient:     client,
 		eventCallbacks: []ShardEventCallback{},
+
+		lock:      sync.RWMutex{},
+		isRunning: false,
+		cancel:    nil,
 	}
 }
 

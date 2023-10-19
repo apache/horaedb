@@ -37,12 +37,19 @@ func NewBatchTransferLeaderProcedure(id uint64, batch []procedure.Procedure) (pr
 		return nil, err
 	}
 
-	return &BatchTransferLeaderProcedure{id: id, batch: batch, state: procedure.StateInit, relatedVersionInfo: relateVersionInfo}, nil
+	return &BatchTransferLeaderProcedure{
+		id:                 id,
+		batch:              batch,
+		relatedVersionInfo: relateVersionInfo,
+		lock:               sync.RWMutex{},
+		state:              procedure.StateInit,
+	}, nil
 }
 
 func buildBatchRelatedVersionInfo(batch []procedure.Procedure) (procedure.RelatedVersionInfo, error) {
+	var emptyInfo procedure.RelatedVersionInfo
 	if len(batch) == 0 {
-		return procedure.RelatedVersionInfo{}, nil
+		return emptyInfo, nil
 	}
 
 	result := procedure.RelatedVersionInfo{
@@ -54,16 +61,16 @@ func buildBatchRelatedVersionInfo(batch []procedure.Procedure) (procedure.Relate
 	// The version of this batch of procedures must be the same.
 	for _, p := range batch {
 		if p.RelatedVersionInfo().ClusterID != result.ClusterID {
-			return procedure.RelatedVersionInfo{}, errors.WithMessage(procedure.ErrMergeBatchProcedure, "procedure clusterID in the same batch is inconsistent")
+			return emptyInfo, errors.WithMessage(procedure.ErrMergeBatchProcedure, "procedure clusterID in the same batch is inconsistent")
 		}
 		if p.RelatedVersionInfo().ClusterVersion != result.ClusterVersion {
-			return procedure.RelatedVersionInfo{}, errors.WithMessage(procedure.ErrMergeBatchProcedure, "procedure clusterVersion in the same batch is inconsistent")
+			return emptyInfo, errors.WithMessage(procedure.ErrMergeBatchProcedure, "procedure clusterVersion in the same batch is inconsistent")
 		}
 		// The ShardVersion of the same shard must be consistent.
 		for shardID, version := range p.RelatedVersionInfo().ShardWithVersion {
 			if resultVersion, exists := result.ShardWithVersion[shardID]; exists {
 				if version != resultVersion {
-					return procedure.RelatedVersionInfo{}, errors.WithMessage(procedure.ErrMergeBatchProcedure, fmt.Sprintf("procedure shardVersion in the same batch is inconsistent, shardID:%d, expetcdShardVersion:%d, shardVersion:%d", shardID, version, resultVersion))
+					return emptyInfo, errors.WithMessage(procedure.ErrMergeBatchProcedure, fmt.Sprintf("procedure shardVersion in the same batch is inconsistent, shardID:%d, expectedShardVersion:%d, shardVersion:%d", shardID, version, resultVersion))
 				}
 			} else {
 				result.ShardWithVersion[shardID] = version

@@ -30,14 +30,21 @@ func TestNodePicker(t *testing.T) {
 
 	var nodes []metadata.RegisteredNode
 	config := nodepicker.Config{
-		NumTotalShards: defaultTotalShardNum,
+		NumTotalShards:    defaultTotalShardNum,
+		ShardAffinityRule: nil,
 	}
 	_, err := nodePicker.PickNode(ctx, config, []storage.ShardID{0}, nodes)
 	re.Error(err)
 
 	for i := 0; i < nodeLength; i++ {
+		node := storage.Node{
+			Name:          strconv.Itoa(i),
+			NodeStats:     storage.NewEmptyNodeStats(),
+			LastTouchTime: generateLastTouchTime(time.Minute),
+			State:         storage.NodeStateUnknown,
+		}
 		nodes = append(nodes, metadata.RegisteredNode{
-			Node:       storage.Node{Name: strconv.Itoa(i), LastTouchTime: generateLastTouchTime(time.Minute)},
+			Node:       node,
 			ShardInfos: nil,
 		})
 	}
@@ -46,8 +53,14 @@ func TestNodePicker(t *testing.T) {
 
 	nodes = nodes[:0]
 	for i := 0; i < nodeLength; i++ {
+		node := storage.Node{
+			Name:          strconv.Itoa(i),
+			NodeStats:     storage.NewEmptyNodeStats(),
+			LastTouchTime: generateLastTouchTime(0),
+			State:         storage.NodeStateUnknown,
+		}
 		nodes = append(nodes, metadata.RegisteredNode{
-			Node:       storage.Node{Name: strconv.Itoa(i), LastTouchTime: generateLastTouchTime(0)},
+			Node:       node,
 			ShardInfos: nil,
 		})
 	}
@@ -56,8 +69,14 @@ func TestNodePicker(t *testing.T) {
 
 	nodes = nodes[:0]
 	for i := 0; i < nodeLength; i++ {
+		node := storage.Node{
+			Name:          strconv.Itoa(i),
+			NodeStats:     storage.NewEmptyNodeStats(),
+			LastTouchTime: generateLastTouchTime(time.Minute),
+			State:         storage.NodeStateUnknown,
+		}
 		nodes = append(nodes, metadata.RegisteredNode{
-			Node:       storage.Node{Name: strconv.Itoa(i), LastTouchTime: generateLastTouchTime(time.Minute)},
+			Node:       node,
 			ShardInfos: nil,
 		})
 	}
@@ -125,8 +144,14 @@ func TestUniformity(t *testing.T) {
 func allocShards(ctx context.Context, nodePicker nodepicker.NodePicker, nodeNum int, shardNum int, re *require.Assertions) map[string][]int {
 	var nodes []metadata.RegisteredNode
 	for i := 0; i < nodeNum; i++ {
+		node := storage.Node{
+			Name:          strconv.Itoa(i),
+			NodeStats:     storage.NewEmptyNodeStats(),
+			LastTouchTime: generateLastTouchTime(0),
+			State:         storage.NodeStateUnknown,
+		}
 		nodes = append(nodes, metadata.RegisteredNode{
-			Node:       storage.Node{Name: strconv.Itoa(i), LastTouchTime: generateLastTouchTime(0)},
+			Node:       node,
 			ShardInfos: nil,
 		})
 	}
@@ -135,7 +160,10 @@ func allocShards(ctx context.Context, nodePicker nodepicker.NodePicker, nodeNum 
 	for i := 0; i < shardNum; i++ {
 		shardIDs = append(shardIDs, storage.ShardID(i))
 	}
-	config := nodepicker.Config{NumTotalShards: uint32(shardNum)}
+	config := nodepicker.Config{
+		NumTotalShards:    uint32(shardNum),
+		ShardAffinityRule: nil,
+	}
 	shardNodeMapping, err := nodePicker.PickNode(ctx, config, shardIDs, nodes)
 	re.NoError(err)
 	for shardID, node := range shardNodeMapping {

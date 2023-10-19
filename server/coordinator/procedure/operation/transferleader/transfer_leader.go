@@ -50,6 +50,7 @@ type Procedure struct {
 	relatedVersionInfo procedure.RelatedVersionInfo
 
 	// Protect the state.
+	// FIXME: the procedure should be executed sequentially, so any need to use a lock to protect it?
 	lock  sync.RWMutex
 	state procedure.State
 }
@@ -103,8 +104,9 @@ func NewProcedure(params ProcedureParams) (procedure.Procedure, error) {
 
 	return &Procedure{
 		fsm:                transferLeaderOperationFsm,
-		relatedVersionInfo: relatedVersionInfo,
 		params:             params,
+		relatedVersionInfo: relatedVersionInfo,
+		lock:               sync.RWMutex{},
 		state:              procedure.StateInit,
 	}, nil
 }
@@ -276,7 +278,12 @@ func openNewShardCallback(event *fsm.Event) {
 	preVersion := shardView.Version
 
 	openShardRequest := eventdispatch.OpenShardRequest{
-		Shard: metadata.ShardInfo{ID: req.p.params.ShardID, Role: storage.ShardRoleLeader, Version: preVersion + 1},
+		Shard: metadata.ShardInfo{
+			ID:      req.p.params.ShardID,
+			Role:    storage.ShardRoleLeader,
+			Version: preVersion + 1,
+			Status:  storage.ShardStatusUnknown,
+		},
 	}
 
 	log.Info("try to open shard", zap.Uint64("procedureID", req.p.ID()), zap.Uint64("shardID", uint64(req.p.params.ShardID)), zap.String("newLeader", req.p.params.NewLeaderNodeName))
@@ -322,7 +329,8 @@ func (p *Procedure) convertToMeta() (procedure.Meta, error) {
 	}
 	rawDataBytes, err := json.Marshal(rawData)
 	if err != nil {
-		return procedure.Meta{}, procedure.ErrEncodeRawData.WithCausef("marshal raw data, procedureID:%v, err:%v", p.params.ShardID, err)
+		var emptyMeta procedure.Meta
+		return emptyMeta, procedure.ErrEncodeRawData.WithCausef("marshal raw data, procedureID:%v, err:%v", p.params.ShardID, err)
 	}
 
 	meta := procedure.Meta{

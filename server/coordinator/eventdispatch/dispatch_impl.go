@@ -21,7 +21,9 @@ type DispatchImpl struct {
 }
 
 func NewDispatchImpl() *DispatchImpl {
-	return &DispatchImpl{}
+	return &DispatchImpl{
+		conns: sync.Map{},
+	}
 }
 
 func (d *DispatchImpl) OpenShard(ctx context.Context, addr string, request OpenShardRequest) error {

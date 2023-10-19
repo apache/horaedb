@@ -65,7 +65,7 @@ func testRegisterNode(ctx context.Context, re *require.Assertions, m *metadata.C
 	err := m.RegisterNode(ctx, metadata.RegisteredNode{
 		Node: storage.Node{
 			Name:          newNodeName,
-			NodeStats:     storage.NodeStats{},
+			NodeStats:     storage.NewEmptyNodeStats(),
 			LastTouchTime: lastTouchTime,
 			State:         0,
 		},
@@ -105,7 +105,7 @@ func testTableOperation(ctx context.Context, re *require.Assertions, m *metadata
 	createMetadataResult, err := m.CreateTableMetadata(ctx, metadata.CreateTableMetadataRequest{
 		SchemaName:    testSchema,
 		TableName:     testTableName,
-		PartitionInfo: storage.PartitionInfo{},
+		PartitionInfo: storage.PartitionInfo{Info: nil},
 	})
 	re.NoError(err)
 	re.Equal(createMetadataResult.Table.Name, testTableName)
@@ -137,7 +137,7 @@ func testTableOperation(ctx context.Context, re *require.Assertions, m *metadata
 		ShardID:       0,
 		SchemaName:    testSchema,
 		TableName:     testTableName,
-		PartitionInfo: storage.PartitionInfo{},
+		PartitionInfo: storage.PartitionInfo{Info: nil},
 	})
 	re.NoError(err)
 	re.Equal(testTableName, createResult.Table.Name)

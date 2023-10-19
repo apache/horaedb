@@ -69,9 +69,17 @@ func CreateServer(cfg *config.Config) (*Server, error) {
 	srv := &Server{
 		isClosed: 0,
 		status:   status.NewServerStatus(),
+		cfg:      cfg,
+		etcdCfg:  etcdCfg,
 
-		cfg:     cfg,
-		etcdCfg: etcdCfg,
+		clusterManager: nil,
+		flowLimiter:    nil,
+		member:         nil,
+		etcdCli:        nil,
+		etcdSrv:        nil,
+		httpService:    nil,
+		bgJobWg:        sync.WaitGroup{},
+		bgJobCancel:    nil,
 	}
 
 	grpcService := metagrpc.NewService(cfg.GrpcHandleTimeout(), srv)
@@ -307,7 +315,6 @@ func (srv *Server) createDefaultCluster(ctx context.Context) error {
 		defaultCluster, err := srv.clusterManager.CreateCluster(ctx, srv.cfg.DefaultClusterName,
 			metadata.CreateClusterOpts{
 				NodeCount:                   uint32(srv.cfg.DefaultClusterNodeCount),
-				ReplicationFactor:           uint32(srv.cfg.DefaultClusterReplicationFactor),
 				ShardTotal:                  uint32(srv.cfg.DefaultClusterShardTotal),
 				EnableSchedule:              srv.cfg.EnableSchedule,
 				TopologyType:                topologyType,

@@ -3,6 +3,7 @@
 package storage
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
@@ -37,12 +38,14 @@ const (
 )
 
 const (
-	ShardStatusReady ShardStatus = iota + 1
+	ShardStatusUnknown ShardStatus = iota
+	ShardStatusReady
 	ShardStatusPartialOpen
 )
 
 const (
-	NodeStateOnline NodeState = iota + 1
+	NodeStateUnknown NodeState = iota
+	NodeStateOnline
 	NodeStateOffline
 )
 
@@ -155,11 +158,9 @@ type CreateOrUpdateNodeRequest struct {
 }
 
 type Cluster struct {
-	ID           ClusterID
-	Name         string
-	MinNodeCount uint32
-	// Deprecated: ReplicationFactor is deprecated after CeresMeta v1.2.0
-	ReplicationFactor           uint32
+	ID                          ClusterID
+	Name                        string
+	MinNodeCount                uint32
 	ShardTotal                  uint32
 	EnableSchedule              bool
 	TopologyType                TopologyType
@@ -235,6 +236,11 @@ type NodeStats struct {
 	Lease       uint32
 	Zone        string
 	NodeVersion string
+}
+
+func NewEmptyNodeStats() NodeStats {
+	var stats NodeStats
+	return stats
 }
 
 type Node struct {
@@ -330,14 +336,15 @@ func convertClusterStateToPB(state ClusterState) clusterpb.ClusterView_ClusterSt
 
 func convertClusterStatePB(state clusterpb.ClusterView_ClusterState) ClusterState {
 	switch state {
-	case clusterpb.ClusterView_EMPTY:
+	case clusterpb.ClusterView_EMPTY, clusterpb.ClusterView_AWAITING_OPEN, clusterpb.ClusterView_AWAITING_CLOSE:
 		return ClusterStateEmpty
-	case clusterpb.ClusterView_STABLE:
-		return ClusterStateStable
 	case clusterpb.ClusterView_PREPARE_REBALANCE:
 		return ClusterStatePrepare
+	case clusterpb.ClusterView_STABLE:
+		return ClusterStateStable
 	}
-	return ClusterStateEmpty
+
+	panic(fmt.Sprintf("invalid state:%v", state))
 }
 
 func ConvertShardRoleToPB(role ShardRole) clusterpb.ShardRole {
@@ -368,6 +375,9 @@ func ConvertShardStatusToPB(status ShardStatus) metaservicepb.ShardInfo_Status {
 	case ShardStatusPartialOpen:
 		return metaservicepb.ShardInfo_PartialOpen
 	case ShardStatusReady:
+		return metaservicepb.ShardInfo_Ready
+	case ShardStatusUnknown:
+		// FIXME: shall we introduce unknown state to the pb definitions.
 		return metaservicepb.ShardInfo_Ready
 	}
 	return metaservicepb.ShardInfo_Ready
@@ -509,6 +519,8 @@ func convertNodeStatsPB(stats *clusterpb.NodeStats) NodeStats {
 
 func convertNodeStateToPB(state NodeState) clusterpb.NodeState {
 	switch state {
+	case NodeStateUnknown:
+		return clusterpb.NodeState_OFFLINE
 	case NodeStateOnline:
 		return clusterpb.NodeState_ONLINE
 	case NodeStateOffline:
@@ -539,6 +551,8 @@ func convertNodePB(node *clusterpb.Node) Node {
 
 func ConvertShardStatusToString(status ShardStatus) string {
 	switch status {
+	case ShardStatusUnknown:
+		return "unknown"
 	case ShardStatusReady:
 		return "ready"
 	case ShardStatusPartialOpen:

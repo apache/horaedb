@@ -95,18 +95,21 @@ func NewManager(logger *zap.Logger, procedureManager procedure.Manager, factory 
 	}
 
 	return &schedulerManagerImpl{
+		logger:                      logger,
 		procedureManager:            procedureManager,
-		registerSchedulers:          []scheduler.Scheduler{},
 		factory:                     factory,
 		nodePicker:                  nodepicker.NewConsistentUniformHashNodePicker(logger),
-		clusterMetadata:             clusterMetadata,
 		client:                      client,
-		shardWatch:                  shardWatch,
+		clusterMetadata:             clusterMetadata,
 		rootPath:                    rootPath,
+		lock:                        sync.RWMutex{},
+		registerSchedulers:          []scheduler.Scheduler{},
+		shardWatch:                  shardWatch,
+		isRunning:                   atomic.Bool{},
 		enableSchedule:              enableSchedule,
 		topologyType:                topologyType,
 		procedureExecutingBatchSize: procedureExecutingBatchSize,
-		logger:                      logger,
+		deployMode:                  false,
 		shardAffinities:             make(map[storage.ShardID]scheduler.ShardAffinityRule),
 	}
 }

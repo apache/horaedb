@@ -3,8 +3,10 @@
 package static
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -44,16 +46,18 @@ func (s schedulerImpl) RemoveShardAffinityRule(_ context.Context, _ storage.Shar
 }
 
 func (s schedulerImpl) ListShardAffinityRule(_ context.Context) (scheduler.ShardAffinityRule, error) {
-	return scheduler.ShardAffinityRule{}, ErrNotImplemented.WithCausef("static topology scheduler doesn't support shard affinity")
+	var emptyRule scheduler.ShardAffinityRule
+	return emptyRule, ErrNotImplemented.WithCausef("static topology scheduler doesn't support shard affinity")
 }
 
 func (s schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.Snapshot) (scheduler.ScheduleResult, error) {
 	var procedures []procedure.Procedure
 	var reasons strings.Builder
+	var emptyScheduleRes scheduler.ScheduleResult
 
 	switch clusterSnapshot.Topology.ClusterView.State {
 	case storage.ClusterStateEmpty:
-		return scheduler.ScheduleResult{}, nil
+		return emptyScheduleRes, nil
 	case storage.ClusterStatePrepare:
 		unassignedShardIds := make([]storage.ShardID, 0, len(clusterSnapshot.Topology.ShardViewsMapping))
 		for _, shardView := range clusterSnapshot.Topology.ShardViewsMapping {
@@ -64,12 +68,13 @@ func (s schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.Sn
 			unassignedShardIds = append(unassignedShardIds, shardView.ShardID)
 		}
 		pickConfig := nodepicker.Config{
-			NumTotalShards: uint32(len(clusterSnapshot.Topology.ShardViewsMapping)),
+			NumTotalShards:    uint32(len(clusterSnapshot.Topology.ShardViewsMapping)),
+			ShardAffinityRule: map[storage.ShardID]scheduler.ShardAffinity{},
 		}
 		// Assign shards
 		shardNodeMapping, err := s.nodePicker.PickNode(ctx, pickConfig, unassignedShardIds, clusterSnapshot.RegisteredNodes)
 		if err != nil {
-			return scheduler.ScheduleResult{}, err
+			return emptyScheduleRes, err
 		}
 		for shardID, node := range shardNodeMapping {
 			// Shard exists and ShardNode not exists.
@@ -80,7 +85,7 @@ func (s schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.Sn
 				NewLeaderNodeName: node.Node.Name,
 			})
 			if err != nil {
-				return scheduler.ScheduleResult{}, err
+				return emptyScheduleRes, err
 			}
 			procedures = append(procedures, p)
 			reasons.WriteString(fmt.Sprintf("Cluster initialization, assign shard to node, shardID:%d, nodeName:%s. ", shardID, node.Node.Name))
@@ -104,7 +109,7 @@ func (s schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.Sn
 					NewLeaderNodeName: node.Node.Name,
 				})
 				if err != nil {
-					return scheduler.ScheduleResult{}, err
+					return emptyScheduleRes, err
 				}
 				procedures = append(procedures, p)
 				reasons.WriteString(fmt.Sprintf("Cluster recover, assign shard to node, shardID:%d, nodeName:%s. ", shardNode.ID, node.Node.Name))
@@ -116,7 +121,7 @@ func (s schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.Sn
 	}
 
 	if len(procedures) == 0 {
-		return scheduler.ScheduleResult{}, nil
+		return emptyScheduleRes, nil
 	}
 
 	batchProcedure, err := s.factory.CreateBatchTransferLeaderProcedure(ctx, coordinator.BatchRequest{
@@ -124,7 +129,7 @@ func (s schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.Sn
 		BatchType: procedure.TransferLeader,
 	})
 	if err != nil {
-		return scheduler.ScheduleResult{}, err
+		return emptyScheduleRes, err
 	}
 
 	return scheduler.ScheduleResult{Procedure: batchProcedure, Reason: reasons.String()}, nil
@@ -155,10 +160,12 @@ func containsShard(shardInfos []metadata.ShardInfo, shardID storage.ShardID) boo
 }
 
 func findNodeByShard(shardID storage.ShardID, shardNodes []storage.ShardNode) (storage.ShardNode, bool) {
-	for i := 0; i < len(shardNodes); i++ {
-		if shardID == shardNodes[i].ID {
-			return shardNodes[i], true
-		}
+	n, found := slices.BinarySearchFunc(shardNodes, shardID, func(node storage.ShardNode, id storage.ShardID) int {
+		return cmp.Compare(node.ID, id)
+	})
+	if !found {
+		var emptyShardNode storage.ShardNode
+		return emptyShardNode, false
 	}
-	return storage.ShardNode{}, false
+	return shardNodes[n], true
 }

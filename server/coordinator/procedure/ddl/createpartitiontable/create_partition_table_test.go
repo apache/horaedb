@@ -11,6 +11,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/coordinator"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/ddl/createpartitiontable"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/test"
+	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,6 +48,7 @@ func TestCreatePartitionTable(t *testing.T) {
 				ID:      shardView.ShardID,
 				Role:    subTableShard.ShardRole,
 				Version: shardView.Version,
+				Status:  storage.ShardStatusUnknown,
 			},
 			ShardNode: subTableShard,
 		})

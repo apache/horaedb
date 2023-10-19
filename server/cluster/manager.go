@@ -68,11 +68,14 @@ func NewManagerImpl(storage storage.Storage, kv clientv3.KV, client *clientv3.Cl
 	alloc := id.NewAllocatorImpl(log.GetLogger(), kv, path.Join(rootPath, AllocClusterIDPrefix), idAllocatorStep)
 
 	manager := &managerImpl{
-		storage:         storage,
+		lock:     sync.RWMutex{},
+		running:  false,
+		clusters: map[string]*Cluster{},
+
 		kv:              kv,
+		storage:         storage,
 		client:          client,
 		alloc:           alloc,
-		clusters:        make(map[string]*Cluster, 0),
 		rootPath:        rootPath,
 		idAllocatorStep: idAllocatorStep,
 		topologyType:    topologyType,
@@ -251,11 +254,13 @@ func (m *managerImpl) GetTablesByIDs(clusterName string, tableIDs []storage.Tabl
 	tableInfos := make([]metadata.TableInfo, 0, len(tables))
 	for _, table := range tables {
 		tableInfos = append(tableInfos, metadata.TableInfo{
-			ID:            table.ID,
-			Name:          table.Name,
-			SchemaID:      table.SchemaID,
-			CreatedAt:     table.CreatedAt,
+			ID:       table.ID,
+			Name:     table.Name,
+			SchemaID: table.SchemaID,
+			// FIXME: We need the schema name here.
+			SchemaName:    "",
 			PartitionInfo: table.PartitionInfo,
+			CreatedAt:     table.CreatedAt,
 		})
 	}
 	return tableInfos, nil
@@ -308,15 +313,16 @@ func (m *managerImpl) RegisterNode(ctx context.Context, clusterName string, regi
 }
 
 func (m *managerImpl) GetRegisteredNode(_ context.Context, clusterName string, nodeName string) (metadata.RegisteredNode, error) {
+	var registeredNode metadata.RegisteredNode
 	cluster, err := m.getCluster(clusterName)
 	if err != nil {
 		log.Error("get cluster", zap.Error(err), zap.String("clusterName", clusterName))
-		return metadata.RegisteredNode{}, errors.WithMessage(err, "get cluster")
+		return registeredNode, errors.WithMessage(err, "get cluster")
 	}
 
 	registeredNode, ok := cluster.metadata.GetRegisteredNodeByName(nodeName)
 	if !ok {
-		return metadata.RegisteredNode{}, metadata.ErrNodeNotFound.WithCausef("registeredNode is not found, registeredNode:%s, cluster:%s", nodeName, clusterName)
+		return registeredNode, metadata.ErrNodeNotFound.WithCausef("registeredNode is not found, registeredNode:%s, cluster:%s", nodeName, clusterName)
 	}
 
 	return registeredNode, nil

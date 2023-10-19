@@ -110,7 +110,7 @@ type TopologyManagerImpl struct {
 
 	// RWMutex is used to protect following fields.
 	lock              sync.RWMutex
-	clusterView       storage.ClusterView                     // ClusterView in memory.
+	clusterView       *storage.ClusterView                    // ClusterView in memory.
 	shardNodesMapping map[storage.ShardID][]storage.ShardNode // ShardID -> nodes of the shard
 	nodeShardsMapping map[string][]storage.ShardNode          // nodeName -> shards of the NodeName
 	// ShardView in memory.
@@ -127,6 +127,15 @@ func NewTopologyManagerImpl(logger *zap.Logger, storage storage.Storage, cluster
 		storage:      storage,
 		clusterID:    clusterID,
 		shardIDAlloc: shardIDAlloc,
+		lock:         sync.RWMutex{},
+		// The following fields will be initialized in the Load method.
+		clusterView:        nil,
+		shardNodesMapping:  nil,
+		nodeShardsMapping:  nil,
+		shardViews:         nil,
+		shardTablesMapping: nil,
+		tableShardMapping:  nil,
+		nodes:              nil,
 	}
 }
 
@@ -183,8 +192,9 @@ func (m *TopologyManagerImpl) AddTable(ctx context.Context, shardID storage.Shar
 	defer m.lock.Unlock()
 
 	shardView, ok := m.shardTablesMapping[shardID]
+	var emptyUpdate ShardVersionUpdate
 	if !ok {
-		return ShardVersionUpdate{}, ErrShardNotFound.WithCausef("shard id:%d", shardID)
+		return emptyUpdate, ErrShardNotFound.WithCausef("shard id:%d", shardID)
 	}
 
 	prevVersion := shardView.Version
@@ -207,7 +217,7 @@ func (m *TopologyManagerImpl) AddTable(ctx context.Context, shardID storage.Shar
 		LatestVersion: prevVersion,
 	})
 	if err != nil {
-		return ShardVersionUpdate{}, errors.WithMessage(err, "storage update shard view")
+		return emptyUpdate, errors.WithMessage(err, "storage update shard view")
 	}
 
 	// Update shard view in memory.
@@ -244,8 +254,9 @@ func (m *TopologyManagerImpl) RemoveTable(ctx context.Context, shardID storage.S
 	defer m.lock.Unlock()
 
 	shardView, ok := m.shardTablesMapping[shardID]
+	var emptyUpdate ShardVersionUpdate
 	if !ok {
-		return ShardVersionUpdate{}, ErrShardNotFound.WithCausef("shard id:%d", shardID)
+		return emptyUpdate, ErrShardNotFound.WithCausef("shard id:%d", shardID)
 	}
 	prevVersion := shardView.Version
 
@@ -265,7 +276,7 @@ func (m *TopologyManagerImpl) RemoveTable(ctx context.Context, shardID storage.S
 		ShardView:     newShardView,
 		LatestVersion: prevVersion,
 	}); err != nil {
-		return ShardVersionUpdate{}, errors.WithMessage(err, "storage update shard view")
+		return emptyUpdate, errors.WithMessage(err, "storage update shard view")
 	}
 
 	// Update shardView in memory.
@@ -462,6 +473,13 @@ func (m *TopologyManagerImpl) InitClusterView(ctx context.Context) error {
 	if err != nil {
 		return errors.WithMessage(err, "storage create cluster view")
 	}
+
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	// Load cluster view into memory.
+	if err := m.loadClusterView(ctx); err != nil {
+		return errors.WithMessage(err, "load cluster view")
+	}
 	return nil
 }
 
@@ -513,7 +531,7 @@ func (m *TopologyManagerImpl) GetClusterView() storage.ClusterView {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
-	return m.clusterView
+	return *m.clusterView
 }
 
 func (m *TopologyManagerImpl) CreateShardViews(ctx context.Context, createShardViews []CreateShardView) error {
@@ -550,7 +568,7 @@ func (m *TopologyManagerImpl) GetTopology() Topology {
 
 	return Topology{
 		ShardViewsMapping: shardViewsMapping,
-		ClusterView:       m.clusterView,
+		ClusterView:       *m.clusterView,
 	}
 }
 
@@ -569,7 +587,7 @@ func (m *TopologyManagerImpl) loadClusterView(ctx context.Context) error {
 		m.shardNodesMapping[shardNode.ID] = append(m.shardNodesMapping[shardNode.ID], shardNode)
 		m.nodeShardsMapping[shardNode.NodeName] = append(m.nodeShardsMapping[shardNode.NodeName], shardNode)
 	}
-	m.clusterView = clusterViewResult.ClusterView
+	m.clusterView = &clusterViewResult.ClusterView
 
 	return nil
 }
@@ -577,6 +595,7 @@ func (m *TopologyManagerImpl) loadClusterView(ctx context.Context) error {
 func (m *TopologyManagerImpl) loadShardViews(ctx context.Context) error {
 	shardViewsResult, err := m.storage.ListShardViews(ctx, storage.ListShardViewsRequest{
 		ClusterID: m.clusterID,
+		ShardIDs:  []storage.ShardID{},
 	})
 	if err != nil {
 		return errors.WithMessage(err, "storage list shard views")

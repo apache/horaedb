@@ -36,8 +36,10 @@ type Service struct {
 
 func NewService(opTimeout time.Duration, h Handler) *Service {
 	return &Service{
-		opTimeout: opTimeout,
-		h:         h,
+		UnimplementedCeresmetaRpcServiceServer: metaservicepb.UnimplementedCeresmetaRpcServiceServer{},
+		opTimeout:                              opTimeout,
+		h:                                      h,
+		conns:                                  sync.Map{},
 	}
 }
 
@@ -75,6 +77,7 @@ func (s *Service) NodeHeartbeat(ctx context.Context, req *metaservicepb.NodeHear
 				NodeVersion: req.GetInfo().BinaryVersion,
 			},
 			LastTouchTime: uint64(time.Now().UnixMilli()),
+			State:         storage.NodeStateOnline,
 		}, ShardInfos: shardInfos,
 	}
 

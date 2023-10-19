@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
+	"github.com/CeresDB/ceresmeta/pkg/assert"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
@@ -85,7 +86,7 @@ func prepareCallback(event *fsm.Event) {
 
 	log.Debug("add table topology finish", zap.String("tableName", createTableMetadataRequest.TableName))
 
-	req.createTableResult = createTableResult
+	req.createTableResult = &createTableResult
 }
 
 func successCallback(event *fsm.Event) {
@@ -95,7 +96,8 @@ func successCallback(event *fsm.Event) {
 		return
 	}
 
-	if err := req.p.params.OnSucceeded(req.createTableResult); err != nil {
+	assert.Assert(req.createTableResult != nil)
+	if err := req.p.params.OnSucceeded(*req.createTableResult); err != nil {
 		log.Error("exec success callback failed")
 	}
 }
@@ -114,9 +116,10 @@ func failedCallback(event *fsm.Event) {
 
 // callbackRequest is fsm callbacks param.
 type callbackRequest struct {
-	ctx               context.Context
-	p                 *Procedure
-	createTableResult metadata.CreateTableResult
+	ctx context.Context
+	p   *Procedure
+
+	createTableResult *metadata.CreateTableResult
 }
 
 type ProcedureParams struct {
@@ -147,6 +150,7 @@ func NewProcedure(params ProcedureParams) (procedure.Procedure, error) {
 		params:             params,
 		relatedVersionInfo: relatedVersionInfo,
 		state:              procedure.StateInit,
+		lock:               sync.RWMutex{},
 	}, nil
 }
 
@@ -193,8 +197,9 @@ func (p *Procedure) Start(ctx context.Context) error {
 	p.updateState(procedure.StateRunning)
 
 	req := &callbackRequest{
-		ctx: ctx,
-		p:   p,
+		ctx:               ctx,
+		p:                 p,
+		createTableResult: nil,
 	}
 
 	if err := p.fsm.Event(eventPrepare, req); err != nil {

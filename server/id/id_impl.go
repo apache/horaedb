@@ -29,7 +29,16 @@ type AllocatorImpl struct {
 }
 
 func NewAllocatorImpl(logger *zap.Logger, kv clientv3.KV, key string, allocStep uint) Allocator {
-	return &AllocatorImpl{logger: logger, kv: kv, key: key, allocStep: allocStep}
+	return &AllocatorImpl{
+		logger:        logger,
+		lock:          sync.Mutex{},
+		base:          0,
+		end:           0,
+		kv:            kv,
+		key:           key,
+		allocStep:     allocStep,
+		isInitialized: false,
+	}
 }
 
 func (a *AllocatorImpl) isExhausted() bool {

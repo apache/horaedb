@@ -7,13 +7,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
 )
 
 type TestProcedure struct{ ProcedureID uint64 }
 
 func (t TestProcedure) RelatedVersionInfo() RelatedVersionInfo {
-	return RelatedVersionInfo{}
+	return RelatedVersionInfo{
+		ClusterID:        0,
+		ShardWithVersion: map[storage.ShardID]uint64{},
+		ClusterVersion:   0,
+	}
 }
 
 func (t TestProcedure) Priority() Priority {

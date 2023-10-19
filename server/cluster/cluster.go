@@ -32,7 +32,7 @@ type Cluster struct {
 }
 
 func NewCluster(logger *zap.Logger, metadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string) (*Cluster, error) {
-	procedureStorage := procedure.NewEtcdStorageImpl(client, rootPath)
+	procedureStorage := procedure.NewEtcdStorageImpl(client, rootPath, uint32(metadata.GetClusterID()))
 	procedureManager, err := procedure.NewManagerImpl(logger, metadata)
 	if err != nil {
 		return nil, errors.WithMessage(err, "create procedure manager")

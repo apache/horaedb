@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
+	"github.com/CeresDB/ceresmeta/pkg/assert"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
@@ -52,7 +53,7 @@ type Procedure struct {
 	fsm                        *fsm.FSM
 	params                     ProcedureParams
 	relatedVersionInfo         procedure.RelatedVersionInfo
-	createPartitionTableResult metadata.CreateTableMetadataResult
+	createPartitionTableResult *metadata.CreateTableMetadataResult
 
 	lock  sync.RWMutex
 	state procedure.State
@@ -83,10 +84,12 @@ func NewProcedure(params ProcedureParams) (procedure.Procedure, error) {
 	)
 
 	return &Procedure{
-		fsm:                fsm,
-		relatedVersionInfo: relatedVersionInfo,
-		params:             params,
-		state:              procedure.StateInit,
+		fsm:                        fsm,
+		params:                     params,
+		relatedVersionInfo:         relatedVersionInfo,
+		createPartitionTableResult: nil,
+		lock:                       sync.RWMutex{},
+		state:                      procedure.StateInit,
 	}, nil
 }
 
@@ -198,7 +201,7 @@ func createPartitionTableCallback(event *fsm.Event) {
 	}
 	params := req.p.params
 
-	createTableMetadaResult, err := params.ClusterMetadata.CreateTableMetadata(req.ctx, metadata.CreateTableMetadataRequest{
+	createTableMetadataResult, err := params.ClusterMetadata.CreateTableMetadata(req.ctx, metadata.CreateTableMetadataRequest{
 		SchemaName:    params.SourceReq.GetSchemaName(),
 		TableName:     params.SourceReq.GetName(),
 		PartitionInfo: storage.PartitionInfo{Info: params.SourceReq.PartitionTableInfo.GetPartitionInfo()},
@@ -207,7 +210,7 @@ func createPartitionTableCallback(event *fsm.Event) {
 		procedure.CancelEventWithLog(event, err, "create table metadata")
 		return
 	}
-	req.p.createPartitionTableResult = createTableMetadaResult
+	req.p.createPartitionTableResult = &createTableMetadataResult
 }
 
 // 2. Create data tables in target nodes.
@@ -228,7 +231,7 @@ func createDataTablesCallback(event *fsm.Event) {
 		tableMetaData := metadata.CreateTableMetadataRequest{
 			SchemaName:    params.SourceReq.GetSchemaName(),
 			TableName:     params.SourceReq.GetPartitionTableInfo().SubTableNames[i],
-			PartitionInfo: storage.PartitionInfo{},
+			PartitionInfo: storage.PartitionInfo{Info: nil},
 		}
 		shardTableMetaDatas[subTableShard.ShardInfo.ID] = append(shardTableMetaDatas[subTableShard.ShardInfo.ID], tableMetaData)
 	}
@@ -293,9 +296,11 @@ func finishCallback(event *fsm.Event) {
 	}
 	log.Info("create partition table finish", zap.String("tableName", req.p.params.SourceReq.GetName()))
 
+	assert.Assert(req.p.createPartitionTableResult != nil)
+	var versionUpdate metadata.ShardVersionUpdate
 	if err := req.p.params.OnSucceeded(metadata.CreateTableResult{
 		Table:              req.p.createPartitionTableResult.Table,
-		ShardVersionUpdate: metadata.ShardVersionUpdate{},
+		ShardVersionUpdate: versionUpdate,
 	}); err != nil {
 		procedure.CancelEventWithLog(event, err, "create partition table on succeeded")
 		return
@@ -327,7 +332,7 @@ type rawData struct {
 	FsmState string
 	State    procedure.State
 
-	CreateTableResult    metadata.CreateTableResult
+	CreateTableResult    *metadata.CreateTableResult
 	PartitionTableShards []metadata.ShardNodeWithVersion
 	SubTablesShards      []metadata.ShardNodeWithVersion
 }
@@ -337,14 +342,17 @@ func (p *Procedure) convertToMeta() (procedure.Meta, error) {
 	defer p.lock.RUnlock()
 
 	rawData := rawData{
-		ID:              p.params.ID,
-		FsmState:        p.fsm.Current(),
-		State:           p.state,
-		SubTablesShards: p.params.SubTablesShards,
+		ID:                   p.params.ID,
+		FsmState:             p.fsm.Current(),
+		State:                p.state,
+		CreateTableResult:    nil,
+		PartitionTableShards: []metadata.ShardNodeWithVersion{},
+		SubTablesShards:      p.params.SubTablesShards,
 	}
 	rawDataBytes, err := json.Marshal(rawData)
 	if err != nil {
-		return procedure.Meta{}, procedure.ErrEncodeRawData.WithCausef("marshal raw data, procedureID:%v, err:%v", p.params.ID, err)
+		var emptyMeta procedure.Meta
+		return emptyMeta, procedure.ErrEncodeRawData.WithCausef("marshal raw data, procedureID:%v, err:%v", p.params.ID, err)
 	}
 
 	meta := procedure.Meta{

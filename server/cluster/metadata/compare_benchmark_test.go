@@ -15,9 +15,18 @@ func buildRegisterNode(shardNumber int) RegisteredNode {
 			ID:      storage.ShardID(i),
 			Role:    0,
 			Version: 0,
+			Status:  storage.ShardStatusUnknown,
 		})
 	}
-	return RegisteredNode{ShardInfos: shardInfos}
+	return RegisteredNode{
+		Node: storage.Node{
+			Name:          "",
+			NodeStats:     storage.NewEmptyNodeStats(),
+			LastTouchTime: 0,
+			State:         storage.NodeStateUnknown,
+		},
+		ShardInfos: shardInfos,
+	}
 }
 
 func BenchmarkSortWith10Shards(b *testing.B) {

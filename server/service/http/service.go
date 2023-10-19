@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+const defaultReadHeaderTimeout time.Duration = time.Duration(5) * time.Second
+
 // Service is wrapper for http.Server
 type Service struct {
 	port         int
@@ -24,6 +26,9 @@ func NewHTTPService(port int, readTimeout time.Duration, writeTimeout time.Durat
 		readTimeout:  readTimeout,
 		writeTimeout: writeTimeout,
 		router:       router,
+		server: http.Server{
+			ReadHeaderTimeout: defaultReadHeaderTimeout,
+		},
 	}
 }
 
