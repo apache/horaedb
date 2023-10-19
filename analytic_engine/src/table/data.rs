@@ -70,9 +70,7 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to create memtable, err:{}", source))]
-    CreateMemTable {
-        source: crate::memtable::factory::Error,
-    },
+    CreateMemTable { source: crate::memtable::Error },
 
     #[snafu(display(
         "Failed to find or create memtable, timestamp overflow, timestamp:{:?}, duration:{:?}.\nBacktrace:\n{}",

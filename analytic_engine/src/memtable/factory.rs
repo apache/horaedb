@@ -21,12 +21,7 @@ use common_types::{schema::Schema, SequenceNumber};
 use macros::define_result;
 use snafu::Snafu;
 
-use crate::memtable::MemTableRef;
-
-#[derive(Debug, Snafu)]
-pub enum Error {}
-
-define_result!(Error);
+use crate::memtable::{MemTableRef, Result};
 
 /// MemTable options
 #[derive(Clone)]

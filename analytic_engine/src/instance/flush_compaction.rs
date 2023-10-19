@@ -1231,6 +1231,7 @@ fn build_mem_table_iter(
         need_dedup: table_data.dedup(),
         reverse: false,
         metrics_collector: None,
+        time_range: TimeRange::min_to_max(),
     };
     memtable
         .scan(scan_ctx, scan_req)

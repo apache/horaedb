@@ -1,4 +1,4 @@
-// Copyright 2023 The HoraeDB Authors
+// Copyright 2023 The CeresDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,25 +20,26 @@ use arena::MonoIncArena;
 use skiplist::{BytewiseComparator, Skiplist};
 
 use crate::memtable::{
-    factory::{Factory, Options},
+    factory::{Factory, FactoryRef, Options},
+    layered::LayeredMemTable,
     skiplist::SkiplistMemTable,
     MemTableRef, Result,
 };
-
 /// Factory to create memtable
 #[derive(Debug)]
-pub struct SkiplistMemTableFactory;
+pub struct LayeredMemtableFactory {
+    inner_memtable_factory: FactoryRef,
+    mutable_switch_threshold: usize,
+}
 
-impl Factory for SkiplistMemTableFactory {
+impl Factory for LayeredMemtableFactory {
     fn create_memtable(&self, opts: Options) -> Result<MemTableRef> {
-        let arena = MonoIncArena::with_collector(opts.arena_block_size as usize, opts.collector);
-        let skiplist = Skiplist::with_arena(BytewiseComparator, arena);
-        let memtable = Arc::new(SkiplistMemTable::new(
-            opts.schema,
-            skiplist,
-            AtomicU64::new(opts.creation_sequence),
-        ));
+        let memtable = LayeredMemTable::new(
+            &opts,
+            self.inner_memtable_factory.clone(),
+            self.mutable_switch_threshold,
+        )?;
 
-        Ok(memtable)
+        Ok(Arc::new(memtable))
     }
 }

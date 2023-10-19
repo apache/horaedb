@@ -309,6 +309,7 @@ mod tests {
                     need_dedup: true,
                     reverse: false,
                     metrics_collector: None,
+                    time_range: TimeRange::min_to_max(),
                 },
                 vec![
                     build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -329,6 +330,7 @@ mod tests {
                     need_dedup: true,
                     reverse: false,
                     metrics_collector: None,
+                    time_range: TimeRange::min_to_max(),
                 },
                 vec![
                     build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -348,6 +350,7 @@ mod tests {
                     need_dedup: true,
                     reverse: false,
                     metrics_collector: None,
+                    time_range: TimeRange::min_to_max(),
                 },
                 vec![
                     build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -383,6 +386,7 @@ mod tests {
                 need_dedup: true,
                 reverse: false,
                 metrics_collector: None,
+                time_range: TimeRange::min_to_max(),
             },
             vec![
                 build_row_for_two_column(b"a", 1),
