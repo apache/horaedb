@@ -703,14 +703,14 @@ func wrap(f apiFunc, needForward bool, forwardClient *ForwardClient) http.Handle
 	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if needForward {
 			resp, isLeader, err := forwardClient.forwardToLeader(r)
-			// nolint:staticcheck
-			defer resp.Body.Close()
 			if err != nil {
 				log.Error("forward to leader failed", zap.Error(err))
 				respondError(w, ErrForwardToLeader, err.Error())
 				return
 			}
 			if !isLeader {
+				// nolint:staticcheck
+				defer resp.Body.Close()
 				respondForward(w, resp)
 				return
 			}
