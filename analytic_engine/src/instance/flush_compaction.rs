@@ -26,7 +26,7 @@ use common_types::{
 };
 use futures::{
     channel::{mpsc, mpsc::channel},
-    stream, SinkExt, StreamExt, TryStreamExt,
+    SinkExt, StreamExt, TryStreamExt,
 };
 use generic_error::{BoxError, GenericError};
 use logger::{debug, error, info};
@@ -58,7 +58,7 @@ use crate::{
         factory::{self, ScanOptions, SstWriteOptions},
         file::{FileMeta, Level},
         meta_data::SstMetaReader,
-        writer::{MetaData, RecordBatchStream},
+        writer::MetaData,
     },
     table::{
         data::{self, TableData, TableDataRef},
@@ -598,7 +598,7 @@ impl FlushTask {
             let mut stream = reorder.into_stream().await.context(ReorderMemIter)?;
             while let Some(data) = stream.next().await {
                 for (idx, record_batch) in split_record_batch_with_time_ranges(
-                    data.box_err().context(InvalidMemIter)?,
+                    data.context(InvalidMemIter)?,
                     &time_ranges,
                     timestamp_idx,
                 )?
@@ -708,12 +708,14 @@ impl FlushTask {
             })?;
 
         let iter = build_mem_table_iter(memtable_state.mem.clone(), &self.table_data)?;
-
-        let record_batch_stream: RecordBatchStream =
-            Box::new(stream::iter(iter).map_err(|e| Box::new(e) as _));
-
+        let reorder = Reorder {
+            iter,
+            schema: self.table_data.schema(),
+            order_by_col_indexes: self.table_data.schema().primary_key_indexes().to_vec(),
+        };
+        let stream = reorder.into_stream().await.context(ReorderMemIter)?;
         let sst_info = writer
-            .write(request_id, &sst_meta, record_batch_stream)
+            .write(request_id, &sst_meta, stream)
             .await
             .box_err()
             .with_context(|| WriteSst {

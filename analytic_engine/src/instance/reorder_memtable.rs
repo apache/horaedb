@@ -43,6 +43,7 @@ use datafusion::{
     sql::TableReference,
 };
 use futures::{Stream, StreamExt};
+use generic_error::GenericError;
 use macros::define_result;
 use snafu::{ResultExt, Snafu};
 
@@ -70,8 +71,10 @@ pub enum Error {
 define_result!(Error);
 
 pub type DfResult<T> = std::result::Result<T, DataFusionError>;
+
+pub type RecordBatchStreamItem = std::result::Result<RecordBatchWithKey, GenericError>;
 type SendableRecordBatchWithkeyStream =
-    Pin<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send>>;
+    Box<dyn Stream<Item = RecordBatchStreamItem> + Send + Unpin>;
 
 impl From<DataFusionError> for Error {
     fn from(df_err: DataFusionError) -> Self {
@@ -277,12 +280,12 @@ impl Reorder {
         let stream = execute_stream(physical_plan, ctx.task_ctx())?;
         let schema_with_key = self.schema.to_record_schema_with_key();
         let stream = stream.map(move |batch| {
-            let batch = batch.context(FetchRecordBatch)?;
-            let data = RecordBatchData::try_from(batch).context(ConvertRecordBatchData)?;
+            let batch = batch.map_err(|e| Box::new(e) as GenericError)?;
+            let data = RecordBatchData::try_from(batch).map_err(|e| Box::new(e) as GenericError)?;
 
             Ok(RecordBatchWithKey::new(schema_with_key.clone(), data))
         });
 
-        Ok(Box::pin(stream))
+        Ok(Box::new(Box::pin(stream)))
     }
 }
