@@ -25,7 +25,9 @@ workspace = true
 workspace = true
 
 [features]
+default = ["wal-table-kv"]
 test = ["tempfile"]
+wal-table-kv = ["wal/wal-table-kv"]
 
 [dependencies]
 # In alphabetical order

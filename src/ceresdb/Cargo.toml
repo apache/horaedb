@@ -24,6 +24,12 @@ workspace = true
 [package.edition]
 workspace = true
 
+[features]
+default = ["wal-table-kv"]
+wal-table-kv = ["wal/wal-table-kv"]
+wal-message-queue = ["wal/wal-message-queue"]
+wal-rocksdb = ["wal/wal-rocksdb"]
+
 [dependencies]
 analytic_engine = { workspace = true }
 catalog = { workspace = true }
