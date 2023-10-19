@@ -200,6 +200,15 @@ pub enum Error {
         source: ParseIntError,
         backtrace: Backtrace,
     },
+
+    #[snafu(display(
+        "Primary key not found in schema, id:{id}, schema:{schema:?}\nBacktrace:\n{backtrace}",
+    ))]
+    PrimaryKeyIdNotFound {
+        id: u32,
+        schema: schema_pb::TableSchema,
+        backtrace: Backtrace,
+    },
 }
 
 pub type CatalogName = String;
@@ -665,35 +674,26 @@ impl Schema {
 
     /// Returns an immutable reference of the key column vector.
     pub fn key_columns(&self) -> Vec<ColumnSchema> {
-        let columns = self.column_schemas.columns();
-        let mut result = vec![];
-        for (idx, col) in columns.iter().enumerate() {
-            if idx == self.timestamp_index {
-                result.push(col.clone());
-                continue;
-            }
-
-            if self.primary_key_indexes.contains(&idx) {
-                result.push(col.clone());
-            }
-        }
-        result
+        self.primary_key_indexes
+            .iter()
+            .map(|i| self.column(*i).clone())
+            .collect()
     }
 
     /// Returns an immutable reference of the normal column vector.
     pub fn normal_columns(&self) -> Vec<ColumnSchema> {
-        let columns = self.column_schemas.columns();
-        let mut result = vec![];
-        for (idx, col) in columns.iter().enumerate() {
-            if idx == self.timestamp_index {
-                continue;
-            }
-
-            if !self.primary_key_indexes.contains(&idx) {
-                result.push(col.clone());
-            }
-        }
-        result
+        self.column_schemas
+            .columns()
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, col)| {
+                if self.primary_key_indexes.contains(&idx) {
+                    None
+                } else {
+                    Some(col.clone())
+                }
+            })
+            .collect()
     }
 
     /// Returns index of the tsid column.
@@ -757,6 +757,10 @@ impl Schema {
 
     pub fn primary_key_indexes(&self) -> &[usize] {
         &self.primary_key_indexes
+    }
+
+    pub fn reset_primary_key_indexes(&mut self, indexes: Vec<usize>) {
+        self.primary_key_indexes = indexes
     }
 
     /// Return the number of columns index in primary key
@@ -954,21 +958,62 @@ impl Schema {
 impl TryFrom<schema_pb::TableSchema> for Schema {
     type Error = Error;
 
+    // We can't use Builder directly here, since it will disorder columns.
     fn try_from(schema: schema_pb::TableSchema) -> Result<Self> {
-        let mut builder = Builder::with_capacity(schema.columns.len()).version(schema.version);
         let primary_key_ids = schema.primary_key_ids;
+        let column_schemas = schema
+            .columns
+            .into_iter()
+            .map(|column_schema_pb| {
+                ColumnSchema::try_from(column_schema_pb).context(ColumnSchemaDeserializeFailed)
+            })
+            .collect::<Result<Vec<_>>>()?;
 
-        for column_schema_pb in schema.columns.into_iter() {
-            let column =
-                ColumnSchema::try_from(column_schema_pb).context(ColumnSchemaDeserializeFailed)?;
-            if primary_key_ids.contains(&column.id) {
-                builder = builder.add_key_column(column)?;
-            } else {
-                builder = builder.add_normal_column(column)?;
+        let mut primary_key_indexes = Vec::with_capacity(primary_key_ids.len());
+        let mut timestamp_index = None;
+        for pk_id in &primary_key_ids {
+            for (idx, col) in column_schemas.iter().enumerate() {
+                if col.id == *pk_id {
+                    primary_key_indexes.push(idx);
+                    if DatumKind::Timestamp == col.data_type {
+                        // TODO: add a timestamp_id in schema_pb, so we can have two timestamp
+                        // columns in primary keys.
+                        if let Some(idx) = timestamp_index {
+                            let column_schema: &ColumnSchema = &column_schemas[idx];
+                            return TimestampKeyExists {
+                                timestamp_column: column_schema.name.to_string(),
+                                given_column: col.name.clone(),
+                            }
+                            .fail();
+                        }
+
+                        timestamp_index = Some(idx);
+                    }
+                    break;
+                }
             }
         }
 
-        builder.build()
+        let timestamp_index = timestamp_index.context(TimestampNotInPrimaryKey)?;
+        let tsid_index = Builder::find_tsid_index(&column_schemas);
+        let fields = column_schemas
+            .iter()
+            .map(|c| c.to_arrow_field())
+            .collect::<Vec<_>>();
+        let meta = Builder::build_arrow_schema_meta(
+            primary_key_indexes.clone(),
+            timestamp_index,
+            schema.version,
+        );
+
+        Ok(Schema {
+            arrow_schema: Arc::new(ArrowSchema::new_with_metadata(fields, meta)),
+            primary_key_indexes,
+            column_schemas: Arc::new(ColumnSchemas::new(column_schemas)),
+            version: schema.version,
+            tsid_index,
+            timestamp_index,
+        })
     }
 }
 
@@ -1183,21 +1228,22 @@ impl Builder {
     /// Build arrow schema meta data.
     ///
     /// Requires: the timestamp index is not None.
-    fn build_arrow_schema_meta(&self) -> HashMap<String, String> {
+    fn build_arrow_schema_meta(
+        primary_key_indexes: Vec<usize>,
+        timestamp_index: usize,
+        version: u32,
+    ) -> HashMap<String, String> {
         [
             (
                 ArrowSchemaMetaKey::PrimaryKeyIndexes.to_string(),
                 // TODO: change primary_key_indexes to `Indexes` type
-                Indexes(self.primary_key_indexes.clone()).to_string(),
+                Indexes(primary_key_indexes).to_string(),
             ),
             (
                 ArrowSchemaMetaKey::TimestampIndex.to_string(),
-                self.timestamp_index.unwrap().to_string(),
+                timestamp_index.to_string(),
             ),
-            (
-                ArrowSchemaMetaKey::Version.to_string(),
-                self.version.to_string(),
-            ),
+            (ArrowSchemaMetaKey::Version.to_string(), version.to_string()),
         ]
         .into_iter()
         .collect()
@@ -1221,19 +1267,16 @@ impl Builder {
         assert!(!self.primary_key_indexes.is_empty());
 
         let tsid_index = Self::find_tsid_index(&self.columns);
-        if tsid_index.is_some() {
-            ensure!(
-                self.primary_key_indexes.len() == 2,
-                InvalidPrimaryKeyWithTsid
-            );
-        }
-
         let fields = self
             .columns
             .iter()
             .map(|c| c.to_arrow_field())
             .collect::<Vec<_>>();
-        let meta = self.build_arrow_schema_meta();
+        let meta = Self::build_arrow_schema_meta(
+            self.primary_key_indexes.clone(),
+            timestamp_index,
+            self.version,
+        );
 
         Ok(Schema {
             arrow_schema: Arc::new(ArrowSchema::new_with_metadata(fields, meta)),
@@ -1546,6 +1589,9 @@ mod tests {
         assert!(builder.build().is_err());
     }
 
+    // Currently we allow null key column, maybe we can rename it to sorted column.
+    // Since we primary key in ceresdb isn't same with MySQL, and it only served for
+    // sort.
     #[test]
     fn test_null_key() {
         assert!(Builder::new()
@@ -1769,5 +1815,50 @@ mod tests {
         let idx = Indexes(vec![]);
         assert_eq!("", idx.to_string());
         assert_eq!(idx, Indexes::from_str("").unwrap());
+    }
+
+    #[test]
+    fn test_recovery_schema_from_pb() {
+        let columns = [
+            ("tsid", schema_pb::DataType::Double, 1, false, false, false),
+            ("ts", schema_pb::DataType::Timestamp, 2, false, false, false),
+            ("t1", schema_pb::DataType::String, 3, false, false, false),
+            ("t2", schema_pb::DataType::String, 4, false, false, false),
+            ("t3", schema_pb::DataType::String, 5, false, false, false),
+        ];
+        let columns = columns
+            .into_iter()
+            .map(|column_schema| schema_pb::ColumnSchema {
+                name: column_schema.0.to_string(),
+                data_type: column_schema.1 as i32,
+                id: column_schema.2,
+                is_nullable: column_schema.3,
+                is_tag: column_schema.4,
+                is_dictionary: column_schema.5,
+                comment: "".to_string(),
+                default_value: None,
+            })
+            .collect();
+        let pb_schema = schema_pb::TableSchema {
+            columns,
+            version: 123,
+            timestamp_id: 1,
+            primary_key_ids: vec![5, 4, 2],
+        };
+
+        let schema = Schema::try_from(pb_schema).unwrap();
+        assert_eq!(schema.primary_key_indexes, vec![4, 3, 1]);
+        assert_eq!(schema.timestamp_index, 1);
+        assert_eq!(schema.tsid_index, Some(0));
+        assert_eq!(schema.version, 123);
+        assert_eq!(
+            vec!["tsid", "ts", "t1", "t2", "t3"],
+            schema
+                .column_schemas
+                .columns
+                .iter()
+                .map(|col| col.name.as_str())
+                .collect::<Vec<_>>(),
+        );
     }
 }

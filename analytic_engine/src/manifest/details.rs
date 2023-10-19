@@ -757,7 +757,7 @@ mod tests {
             LoadRequest, Manifest,
         },
         sst::file::tests::FilePurgerMocker,
-        table::data::{tests::default_schema, TableData, TableShardInfo},
+        table::data::{tests::default_schema, TableConfig, TableData, TableDesc, TableShardInfo},
         MetricsOptions, TableOptions,
     };
 
@@ -833,17 +833,22 @@ mod tests {
             let purger = FilePurgerMocker::mock();
             let collector = Arc::new(NoopCollector);
             let test_data = TableData::new(
-                0,
-                TableId::new(0),
-                "test_table".to_string(),
-                default_schema(),
-                0,
+                TableDesc {
+                    space_id: 0,
+                    id: TableId::new(0),
+                    name: "test_table".to_string(),
+                    schema: default_schema(),
+                    shard_id: 0,
+                },
                 table_opts,
+                TableConfig {
+                    preflush_write_buffer_size_ratio: 0.75,
+                    manifest_snapshot_every_n_updates: NonZeroUsize::new(usize::MAX).unwrap(),
+                    metrics_opt: MetricsOptions::default(),
+                    enable_primary_key_sampling: false,
+                },
                 &purger,
-                0.75,
                 collector,
-                NonZeroUsize::new(usize::MAX).unwrap(),
-                MetricsOptions::default(),
             )
             .unwrap();
 

@@ -26,7 +26,7 @@ use common_types::{
 };
 use futures::{
     channel::{mpsc, mpsc::channel},
-    stream, SinkExt, TryStreamExt,
+    stream, SinkExt, StreamExt, TryStreamExt,
 };
 use generic_error::{BoxError, GenericError};
 use logger::{debug, error, info};
@@ -41,11 +41,11 @@ use wal::manager::WalLocation;
 use crate::{
     compaction::{CompactionInputFiles, CompactionTask, ExpiredFiles},
     instance::{
-        self, create_sst_read_option, serial_executor::TableFlushScheduler, ScanType, SpaceStore,
-        SpaceStoreRef,
+        self, create_sst_read_option, reorder_memtable::Reorder,
+        serial_executor::TableFlushScheduler, ScanType, SpaceStore, SpaceStoreRef,
     },
     manifest::meta_edit::{
-        AlterOptionsMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
+        AlterOptionsMeta, AlterSchemaMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
     },
     memtable::{ColumnarIterPtr, MemTableRef, ScanContext, ScanRequest},
     row_iter::{
@@ -76,6 +76,9 @@ pub enum Error {
     #[snafu(display("Failed to store version edit, err:{}", source))]
     StoreVersionEdit { source: GenericError },
 
+    #[snafu(display("Failed to store schema edit, err:{}", source))]
+    StoreSchemaEdit { source: GenericError },
+
     #[snafu(display(
         "Failed to purge wal, wal_location:{:?}, sequence:{}",
         wal_location,
@@ -89,6 +92,11 @@ pub enum Error {
 
     #[snafu(display("Failed to build mem table iterator, source:{}", source))]
     InvalidMemIter { source: GenericError },
+
+    #[snafu(display("Failed to reorder mem table iterator, source:{}", source))]
+    ReorderMemIter {
+        source: crate::instance::reorder_memtable::Error,
+    },
 
     #[snafu(display(
         "Failed to create sst writer, storage_format_hint:{:?}, err:{}",
@@ -314,6 +322,35 @@ impl FlushTask {
                 table_data.name, table_data.id, suggest_segment_duration
             );
             assert!(!suggest_segment_duration.is_zero());
+
+            if let Some(pk_idx) = current_version.suggest_primary_key() {
+                let mut schema = table_data.schema();
+                info!(
+                    "Update primary key, table:{}, table_id:{}, old:{:?}, new:{:?}",
+                    table_data.name,
+                    table_data.id,
+                    schema.primary_key_indexes(),
+                    pk_idx,
+                );
+
+                schema.reset_primary_key_indexes(pk_idx);
+                let pre_schema_version = schema.version();
+                let meta_update = MetaUpdate::AlterSchema(AlterSchemaMeta {
+                    space_id: table_data.space_id,
+                    table_id: table_data.id,
+                    schema,
+                    pre_schema_version,
+                });
+                let edit_req = MetaEditRequest {
+                    shard_info: table_data.shard_info,
+                    meta_edit: MetaEdit::Update(meta_update),
+                };
+                self.space_store
+                    .manifest
+                    .apply_edit(edit_req)
+                    .await
+                    .context(StoreSchemaEdit)?;
+            }
 
             let mut new_table_opts = (*table_data.table_options()).clone();
             new_table_opts.segment_duration = Some(ReadableDuration(suggest_segment_duration));
@@ -551,26 +588,51 @@ impl FlushTask {
         }
 
         let iter = build_mem_table_iter(sampling_mem.mem.clone(), &self.table_data)?;
-
         let timestamp_idx = self.table_data.schema().timestamp_index();
-
-        for data in iter {
-            for (idx, record_batch) in split_record_batch_with_time_ranges(
-                data.box_err().context(InvalidMemIter)?,
-                &time_ranges,
-                timestamp_idx,
-            )?
-            .into_iter()
-            .enumerate()
-            {
-                if !record_batch.is_empty() {
-                    batch_record_senders[idx]
-                        .send(Ok(record_batch))
-                        .await
-                        .context(ChannelSend)?;
+        if let Some(pk_idx) = self.table_data.current_version().suggest_primary_key() {
+            let reorder = Reorder {
+                iter,
+                schema: self.table_data.schema(),
+                order_by_col_indexes: pk_idx,
+            };
+            let mut stream = reorder.into_stream().await.context(ReorderMemIter)?;
+            while let Some(data) = stream.next().await {
+                for (idx, record_batch) in split_record_batch_with_time_ranges(
+                    data.box_err().context(InvalidMemIter)?,
+                    &time_ranges,
+                    timestamp_idx,
+                )?
+                .into_iter()
+                .enumerate()
+                {
+                    if !record_batch.is_empty() {
+                        batch_record_senders[idx]
+                            .send(Ok(record_batch))
+                            .await
+                            .context(ChannelSend)?;
+                    }
+                }
+            }
+        } else {
+            for data in iter {
+                for (idx, record_batch) in split_record_batch_with_time_ranges(
+                    data.box_err().context(InvalidMemIter)?,
+                    &time_ranges,
+                    timestamp_idx,
+                )?
+                .into_iter()
+                .enumerate()
+                {
+                    if !record_batch.is_empty() {
+                        batch_record_senders[idx]
+                            .send(Ok(record_batch))
+                            .await
+                            .context(ChannelSend)?;
+                    }
                 }
             }
         }
+
         batch_record_senders.clear();
 
         for (idx, sst_handler) in sst_handlers.into_iter().enumerate() {

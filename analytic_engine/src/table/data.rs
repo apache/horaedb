@@ -133,6 +133,21 @@ mod hack {
 
 use self::hack::{AtomicTableStatus, TableStatus};
 
+pub struct TableDesc {
+    pub id: TableId,
+    pub shard_id: ShardId,
+    pub space_id: SpaceId,
+    pub name: String,
+    pub schema: Schema,
+}
+
+pub struct TableConfig {
+    pub preflush_write_buffer_size_ratio: f32,
+    pub manifest_snapshot_every_n_updates: NonZeroUsize,
+    pub metrics_opt: MetricsOptions,
+    pub enable_primary_key_sampling: bool,
+}
+
 /// Data of a table
 pub struct TableData {
     /// Id of this table
@@ -192,6 +207,9 @@ pub struct TableData {
     /// Every n manifest updates to trigger a snapshot
     manifest_snapshot_every_n_updates: NonZeroUsize,
 
+    /// Whether enable primary key sampling
+    enable_primary_key_sampling: bool,
+
     /// Metrics of this table
     pub metrics: Metrics,
 
@@ -241,45 +259,52 @@ impl TableData {
     ///
     /// This function should only be called when a new table is creating and
     /// there is no existing data of the table
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        space_id: SpaceId,
-        table_id: TableId,
-        table_name: String,
-        table_schema: Schema,
-        shard_id: ShardId,
-        table_opts: TableOptions,
+        desc: TableDesc,
+        opts: TableOptions,
+        config: TableConfig,
         purger: &FilePurger,
-        preflush_write_buffer_size_ratio: f32,
         mem_usage_collector: CollectorRef,
-        manifest_snapshot_every_n_updates: NonZeroUsize,
-        metrics_opt: MetricsOptions,
     ) -> Result<Self> {
-        // FIXME(yingwen): Validate TableOptions, such as bucket_duration >=
+        // TODO: Validate TableOptions, such as bucket_duration >=
         // segment_duration and bucket_duration is aligned to segment_duration
 
-        let memtable_factory: MemTableFactoryRef = match table_opts.memtable_type {
+        let TableDesc {
+            space_id,
+            shard_id,
+            id,
+            name,
+            schema,
+        } = desc;
+        let TableConfig {
+            preflush_write_buffer_size_ratio,
+            manifest_snapshot_every_n_updates,
+            metrics_opt,
+            enable_primary_key_sampling,
+        } = config;
+
+        let memtable_factory: MemTableFactoryRef = match opts.memtable_type {
             MemtableType::SkipList => Arc::new(SkiplistMemTableFactory),
             MemtableType::Columnar => Arc::new(ColumnarMemTableFactory),
         };
 
-        let purge_queue = purger.create_purge_queue(space_id, table_id);
+        let purge_queue = purger.create_purge_queue(space_id, id);
         let current_version = TableVersion::new(purge_queue);
-        let metrics_ctx = MetricsContext::new(&table_name, metrics_opt);
+        let metrics_ctx = MetricsContext::new(&name, metrics_opt);
         let metrics = Metrics::new(metrics_ctx);
         let mutable_limit = AtomicU32::new(compute_mutable_limit(
-            table_opts.write_buffer_size,
+            opts.write_buffer_size,
             preflush_write_buffer_size_ratio,
         ));
 
         Ok(Self {
-            id: table_id,
-            name: table_name,
-            schema: Mutex::new(table_schema),
+            id,
+            name,
+            schema: Mutex::new(schema),
             space_id,
             mutable_limit,
             mutable_limit_write_buffer_ratio: preflush_write_buffer_size_ratio,
-            opts: ArcSwap::new(Arc::new(table_opts)),
+            opts: ArcSwap::new(Arc::new(opts)),
             memtable_factory,
             mem_usage_collector,
             current_version,
@@ -290,26 +315,30 @@ impl TableData {
             status: TableStatus::Ok.into(),
             metrics,
             shard_info: TableShardInfo::new(shard_id),
-            serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(table_id)),
+            serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(id)),
             manifest_updates: AtomicUsize::new(0),
             manifest_snapshot_every_n_updates,
+            enable_primary_key_sampling,
         })
     }
 
     /// Recover table from add table meta
     ///
     /// This wont recover sequence number, which will be set after wal replayed
-    #[allow(clippy::too_many_arguments)]
     pub fn recover_from_add(
         add_meta: AddTableMeta,
         purger: &FilePurger,
         shard_id: ShardId,
-        preflush_write_buffer_size_ratio: f32,
+        config: TableConfig,
         mem_usage_collector: CollectorRef,
         allocator: IdAllocator,
-        manifest_snapshot_every_n_updates: NonZeroUsize,
-        metrics_opt: MetricsOptions,
     ) -> Result<Self> {
+        let TableConfig {
+            preflush_write_buffer_size_ratio,
+            manifest_snapshot_every_n_updates,
+            metrics_opt,
+            enable_primary_key_sampling,
+        } = config;
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
         let current_version = TableVersion::new(purge_queue);
@@ -341,6 +370,7 @@ impl TableData {
             serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(add_meta.table_id)),
             manifest_updates: AtomicUsize::new(0),
             manifest_snapshot_every_n_updates,
+            enable_primary_key_sampling,
         })
     }
 
@@ -474,6 +504,9 @@ impl TableData {
             .create_memtable(memtable_opts)
             .context(CreateMemTable)?;
 
+        // Currently only do sample when segment duration is none.
+        // TODO: add a new flag to represent this since we may need to sample other
+        // info, such as primary keys.
         match table_options.segment_duration() {
             Some(segment_duration) => {
                 let time_range = TimeRange::bucket_of(timestamp, segment_duration).context(
@@ -494,7 +527,11 @@ impl TableData {
                 Ok(MemTableForWrite::Normal(mem_state))
             }
             None => {
-                let sampling_mem = SamplingMemTable::new(mem, self.alloc_memtable_id());
+                let mut sampling_mem = SamplingMemTable::new(mem, self.alloc_memtable_id());
+                if self.enable_primary_key_sampling && table_options.support_sample_pk() {
+                    sampling_mem.set_pk_sampler(table_schema);
+                }
+
                 debug!(
                     "create sampling mem table:{}, schema:{:#?}",
                     sampling_mem.id, table_schema
@@ -853,17 +890,22 @@ pub mod tests {
             let collector = Arc::new(NoopCollector);
 
             TableData::new(
-                space_id,
-                create_request.table_id,
-                create_request.params.table_name,
-                create_request.params.table_schema,
-                create_request.shard_id,
+                TableDesc {
+                    id: create_request.table_id,
+                    shard_id: create_request.shard_id,
+                    space_id,
+                    name: create_request.params.table_name,
+                    schema: create_request.params.table_schema,
+                },
                 table_opts,
+                TableConfig {
+                    preflush_write_buffer_size_ratio: 0.75,
+                    manifest_snapshot_every_n_updates: self.manifest_snapshot_every_n_updates,
+                    metrics_opt: MetricsOptions::default(),
+                    enable_primary_key_sampling: false,
+                },
                 &purger,
-                0.75,
                 collector,
-                self.manifest_snapshot_every_n_updates,
-                MetricsOptions::default(),
             )
             .unwrap()
         }

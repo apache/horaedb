@@ -39,11 +39,6 @@ CREATE TABLE `05_create_tables_t`(c1 int) ENGINE = Analytic;
 
 Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Table must contain timestamp constraint sql:CREATE TABLE `05_create_tables_t`(c1 int) ENGINE = Analytic;" })
 
--- TIMESTAMP column doesn't have NOT NULL constrain
-CREATE TABLE `05_create_tables_t`(c1 int, t timestamp, TIMESTAMP KEY(t)) ENGINE = Analytic;
-
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Failed to build schema, err:Key column cannot be nullable, name:t. sql:CREATE TABLE `05_create_tables_t`(c1 int, t timestamp, TIMESTAMP KEY(t)) ENGINE = Analytic;" })
-
 CREATE TABLE `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
 affected_rows: 0
@@ -258,15 +253,17 @@ affected_rows: 0
 
 CREATE TABLE `05_create_tables_t12`(c1 int not null, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(tsid, t1, c1)) ENGINE = Analytic;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Failed to build schema, err:Primary key with tsid should only contains tsid and timestamp key. sql:CREATE TABLE `05_create_tables_t12`(c1 int not null, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(tsid, t1, c1)) ENGINE = Analytic;" })
+affected_rows: 0
 
 show create table `05_create_tables_t12`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Table not found, table:05_create_tables_t12 sql:show create table `05_create_tables_t12`;" })
+Table,Create Table,
+String("05_create_tables_t12"),String("CREATE TABLE `05_create_tables_t12` (`tsid` uint64 NOT NULL, `t1` timestamp NOT NULL, `c1` int NOT NULL, PRIMARY KEY(tsid,t1,c1), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+
 
 drop table `05_create_tables_t12`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Table not found, table:05_create_tables_t12 sql:drop table `05_create_tables_t12`;" })
+affected_rows: 0
 
 -- Timestamp not in primary key
 CREATE TABLE `05_timestamp_not_in_primary_key`(c1 int NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t), PRIMARY KEY(c1)) ENGINE = Analytic;
