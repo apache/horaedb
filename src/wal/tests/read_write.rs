@@ -18,14 +18,15 @@ use common_types::{
     table::{TableId, DEFAULT_SHARD_ID},
     SequenceNumber,
 };
-
-use crate::{
+use util::{
+    KafkaWalBuilder, MemoryTableWalBuilder, RocksWalBuilder, TestEnv, TestTableData, WalBuilder,
+};
+use wal::{
     log_batch::MemoryPayload,
     manager::{ReadBoundary, ReadRequest, ScanRequest, WalLocation, WalManagerRef},
-    tests::util::{
-        KafkaWalBuilder, MemoryTableWalBuilder, RocksWalBuilder, TestEnv, TestTableData, WalBuilder,
-    },
 };
+
+pub mod util;
 
 #[test]
 fn test_rocksdb_wal() {

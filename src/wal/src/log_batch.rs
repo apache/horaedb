@@ -70,8 +70,8 @@ pub struct LogWriteEntry {
 /// A batch of `LogWriteEntry`s.
 #[derive(Debug)]
 pub struct LogWriteBatch {
-    pub(crate) location: WalLocation,
-    pub(crate) entries: Vec<LogWriteEntry>,
+    pub location: WalLocation,
+    pub entries: Vec<LogWriteEntry>,
 }
 
 impl LogWriteBatch {

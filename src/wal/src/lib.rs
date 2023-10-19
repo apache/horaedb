@@ -22,6 +22,3 @@ pub mod message_queue_impl;
 pub(crate) mod metrics;
 pub mod rocks_impl;
 pub mod table_kv_impl;
-
-#[cfg(test)]
-mod tests;
