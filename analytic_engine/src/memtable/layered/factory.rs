@@ -32,6 +32,15 @@ pub struct LayeredMemtableFactory {
     mutable_switch_threshold: usize,
 }
 
+impl LayeredMemtableFactory {
+    pub fn new(inner_memtable_factory: FactoryRef, mutable_switch_threshold: usize) -> Self {
+        Self {
+            inner_memtable_factory,
+            mutable_switch_threshold,
+        }
+    }
+}
+
 impl Factory for LayeredMemtableFactory {
     fn create_memtable(&self, opts: Options) -> Result<MemTableRef> {
         let memtable = LayeredMemTable::new(

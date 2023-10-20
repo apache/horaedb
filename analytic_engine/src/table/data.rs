@@ -54,6 +54,7 @@ use crate::{
     memtable::{
         columnar::factory::ColumnarMemTableFactory,
         factory::{FactoryRef as MemTableFactoryRef, Options as MemTableOptions},
+        layered::factory::LayeredMemtableFactory,
         skiplist::factory::SkiplistMemTableFactory,
         MemtableType,
     },
@@ -279,6 +280,21 @@ pub struct MemSizeOptions {
     pub size_sampling_interval: ReadableDuration,
 }
 
+#[inline]
+fn compute_mutable_switch_threshold(
+    write_buffer_size: u32,
+    mutable_limit_write_buffer_size_ratio: f32,
+    mutable_switch_threshold_ratio: f32,
+) -> u32 {
+    assert!((0.0..=1.0).contains(&mutable_switch_threshold_ratio));
+    let mutable_limit =
+        compute_mutable_limit(write_buffer_size, mutable_limit_write_buffer_size_ratio);
+
+    let threshold = mutable_limit as f32 * mutable_switch_threshold_ratio;
+
+    threshold as u32
+}
+
 impl TableData {
     /// Create a new TableData
     ///
@@ -315,6 +331,17 @@ impl TableData {
             MemtableType::SkipList => Arc::new(SkiplistMemTableFactory),
             MemtableType::Columnar => Arc::new(ColumnarMemTableFactory),
         };
+
+        // Wrap it by `LayeredMemtable`.
+        let mutable_switch_threshold = compute_mutable_switch_threshold(
+            opts.write_buffer_size,
+            preflush_write_buffer_size_ratio,
+            0.125,
+        );
+        let memtable_factory = Arc::new(LayeredMemtableFactory::new(
+            memtable_factory,
+            mutable_switch_threshold as usize,
+        ));
 
         let purge_queue = purger.create_purge_queue(space_id, id);
         let current_version =
