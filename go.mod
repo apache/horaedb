@@ -1,6 +1,6 @@
 module github.com/CeresDB/ceresmeta
 
-go 1.21.3
+go 1.21
 
 require (
 	github.com/CeresDB/ceresdbproto/golang v0.0.0-20231012091414-cdaeab9f7f4d
