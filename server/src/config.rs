@@ -14,10 +14,7 @@
 
 //! Server configs
 
-use std::{
-    collections::HashMap,
-    sync::{Arc},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use analytic_engine::DynamicConfig as EngineDynamicConfig;
 use cluster::config::SchemaConfig;
