@@ -25,9 +25,11 @@ workspace = true
 workspace = true
 
 [features]
-default = ["wal-table-kv"]
+default = ["wal-rocksdb"]
 test = ["tempfile"]
 wal-table-kv = ["wal/wal-table-kv"]
+wal-message-queue = ["wal/wal-message-queue"]
+wal-rocksdb = ["wal/wal-rocksdb"]
 
 [dependencies]
 # In alphabetical order
