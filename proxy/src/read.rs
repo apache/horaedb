@@ -24,6 +24,7 @@ use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use logger::{error, info, warn, SlowTimer};
+use notifier::notifier::{ExecutionGuard, RequestNotifiers, RequestResult};
 use query_frontend::{
     frontend,
     frontend::{Context as SqlContext, Frontend},
@@ -35,12 +36,14 @@ use tokio::sync::mpsc::{self, Sender};
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
-    dedup_requests::{ExecutionGuard, RequestNotifiers, RequestResult},
     error::{ErrNoCause, ErrWithCause, Error, Internal, InternalNoCause, Result},
     forward::{ForwardRequest, ForwardResult},
     metrics::GRPC_HANDLER_COUNTER_VEC,
     Context, Proxy,
 };
+
+const DEDUP_READ_CHANNEL_LEN: usize = 1;
+pub type ReadRequestNotifiers = Arc<RequestNotifiers<String, Sender<Result<SqlResponse>>>>;
 
 pub enum SqlResponse {
     Forwarded(SqlQueryResponse),
@@ -77,10 +80,10 @@ impl Proxy {
         ctx: &Context,
         schema: &str,
         sql: &str,
-        request_notifiers: Arc<RequestNotifiers<String, Sender<Result<SqlResponse>>>>,
+        request_notifiers: ReadRequestNotifiers,
         enable_partition_table_access: bool,
     ) -> Result<SqlResponse> {
-        let (tx, mut rx) = mpsc::channel(1);
+        let (tx, mut rx) = mpsc::channel(DEDUP_READ_CHANNEL_LEN);
         let mut guard = match request_notifiers.insert_notifier(sql.to_string(), tx) {
             RequestResult::First => ExecutionGuard::new(|| {
                 request_notifiers.take_notifiers(&sql.to_string());

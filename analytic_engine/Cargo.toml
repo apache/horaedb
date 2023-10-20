@@ -47,6 +47,7 @@ future_ext = { workspace = true }
 futures = { workspace = true }
 generic_error = { workspace = true }
 hex = { workspace = true }
+hyperloglog = { workspace = true }
 id_allocator = { workspace = true }
 lazy_static = { workspace = true }
 logger = { workspace = true }

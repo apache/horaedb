@@ -31,3 +31,6 @@ data_dir = "/tmp/ceresdb"
 [analytic.wal]
 type = "RocksDB"
 data_dir = "/tmp/ceresdb"
+
+[analytic]
+enable_primary_key_sampling = true

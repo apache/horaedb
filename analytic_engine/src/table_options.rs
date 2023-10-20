@@ -499,6 +499,14 @@ impl TableOptions {
         }
     }
 
+    // Only support sample primary key for APPEND.
+    pub fn support_sample_pk(&self) -> bool {
+        match self.update_mode {
+            UpdateMode::Overwrite => false,
+            UpdateMode::Append => true,
+        }
+    }
+
     pub fn is_expired(&self, timestamp: Timestamp) -> bool {
         self.enable_ttl && timestamp.is_expired(Timestamp::expire_time(self.ttl.0))
     }

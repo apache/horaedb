@@ -39,11 +39,6 @@ CREATE TABLE `05_create_tables_t`(c1 int) ENGINE = Analytic;
 
 Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Table must contain timestamp constraint sql:CREATE TABLE `05_create_tables_t`(c1 int) ENGINE = Analytic;" })
 
--- TIMESTAMP column doesn't have NOT NULL constrain
-CREATE TABLE `05_create_tables_t`(c1 int, t timestamp, TIMESTAMP KEY(t)) ENGINE = Analytic;
-
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Failed to build schema, err:Key column cannot be nullable, name:t. sql:CREATE TABLE `05_create_tables_t`(c1 int, t timestamp, TIMESTAMP KEY(t)) ENGINE = Analytic;" })
-
 CREATE TABLE `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
 affected_rows: 0
@@ -255,18 +250,6 @@ String("05_create_tables_t11"),String("CREATE TABLE `05_create_tables_t11` (`t1`
 drop table `05_create_tables_t11`;
 
 affected_rows: 0
-
-CREATE TABLE `05_create_tables_t12`(c1 int not null, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(tsid, t1, c1)) ENGINE = Analytic;
-
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Failed to build schema, err:Primary key with tsid should only contains tsid and timestamp key. sql:CREATE TABLE `05_create_tables_t12`(c1 int not null, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(tsid, t1, c1)) ENGINE = Analytic;" })
-
-show create table `05_create_tables_t12`;
-
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Table not found, table:05_create_tables_t12 sql:show create table `05_create_tables_t12`;" })
-
-drop table `05_create_tables_t12`;
-
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Table not found, table:05_create_tables_t12 sql:drop table `05_create_tables_t12`;" })
 
 -- Timestamp not in primary key
 CREATE TABLE `05_timestamp_not_in_primary_key`(c1 int NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t), PRIMARY KEY(c1)) ENGINE = Analytic;

@@ -112,6 +112,7 @@ futures = "0.3"
 generic_error = { path = "components/generic_error" }
 hash_ext = { path = "components/hash_ext" }
 hex = "0.4.3"
+hyperloglog = { git = "https://github.com/jedisct1/rust-hyperloglog.git", rev = "425487ce910f26636fbde8c4d640b538431aad50" }
 lz4_flex = { version = "0.11", default-features = false, features = ["frame"] }
 lazy_static = "1.4.0"
 logger = { path = "components/logger" }

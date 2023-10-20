@@ -32,7 +32,7 @@ chrono = { workspace = true }
 common_types = { workspace = true }
 datafusion = { workspace = true }
 generic_error = { workspace = true }
-hyperloglog = { git = "https://github.com/jedisct1/rust-hyperloglog.git", rev = "425487ce910f26636fbde8c4d640b538431aad50", features = ["with_serde"] }
+hyperloglog = { workspace = true, features = ["with_serde"] }
 macros = { workspace = true }
 smallvec = { workspace = true }
 snafu = { workspace = true }

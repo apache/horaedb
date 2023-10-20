@@ -368,6 +368,13 @@ pub struct RecordBatchWithKey {
 }
 
 impl RecordBatchWithKey {
+    pub fn new(schema_with_key: RecordSchemaWithKey, data: RecordBatchData) -> Self {
+        Self {
+            schema_with_key,
+            data,
+        }
+    }
+
     pub fn num_rows(&self) -> usize {
         self.data.num_rows()
     }
@@ -435,6 +442,10 @@ impl RecordBatchWithKey {
 
     pub fn as_arrow_record_batch(&self) -> &ArrowRecordBatch {
         &self.data.arrow_record_batch
+    }
+
+    pub fn into_arrow_record_batch(self) -> ArrowRecordBatch {
+        self.data.arrow_record_batch
     }
 
     #[inline]
