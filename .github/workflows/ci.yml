@@ -168,7 +168,7 @@ jobs:
           sudo apt install --yes protobuf-compiler
       - name: Build and Run CeresDB
         run: |
-          CARGO_FEATURE_FLAGS="--features wal-table-kv,wal-message-queue,wal-rocksdb" make build-debug
+          make build-debug
           nohup ./target/debug/ceresdb-server -c docs/minimal.toml > /tmp/ceresdb-stdout.log &
           sleep 10
       - name: Run Go SDK tests

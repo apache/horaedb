@@ -25,7 +25,7 @@ workspace = true
 workspace = true
 
 [features]
-default = ["wal-rocksdb"]
+default = ["wal-rocksdb", "wal-table-kv", "wal-message-queue"]
 wal-table-kv = ["wal/wal-table-kv"]
 wal-message-queue = ["wal/wal-message-queue"]
 wal-rocksdb = ["wal/wal-rocksdb"]
