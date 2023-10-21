@@ -26,7 +26,7 @@ export CLUSTER_CERESDB_STDOUT_FILE_1 ?= /tmp/ceresdb-stdout-1.log
 export RUST_BACKTRACE=1
 
 # Whether update related repos
-# We don't want to rebuild the binarie and data on sometimes(e.g. debugging in local),
+# We don't want to rebuild the binaries and data on sometimes(e.g. debugging in local),
 # and we can set it to false.
 export UPDATE_REPOS_TO_LATEST ?= true
 
