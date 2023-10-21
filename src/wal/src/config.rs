@@ -14,10 +14,23 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    message_queue_impl::config::KafkaStorageConfig, rocks_impl::config::RocksDBStorageConfig,
-    table_kv_impl::config::ObkvStorageConfig,
-};
+#[cfg(feature = "wal-rocksdb")]
+pub type RocksDBStorageConfig = crate::rocksdb_impl::config::RocksDBStorageConfig;
+#[cfg(not(feature = "wal-rocksdb"))]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct RocksDBStorageConfig;
+
+#[cfg(feature = "wal-table-kv")]
+pub type ObkvStorageConfig = crate::table_kv_impl::config::ObkvStorageConfig;
+#[cfg(not(feature = "wal-table-kv"))]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct ObkvStorageConfig;
+
+#[cfg(feature = "wal-message-queue")]
+pub type KafkaStorageConfig = crate::message_queue_impl::config::KafkaStorageConfig;
+#[cfg(not(feature = "wal-message-queue"))]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct KafkaStorageConfig;
 
 /// Options for wal storage backend
 #[derive(Debug, Clone, Deserialize, Serialize)]

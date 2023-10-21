@@ -744,7 +744,7 @@ mod tests {
     use object_store::LocalFileSystem;
     use runtime::Runtime;
     use table_engine::table::{SchemaId, TableId, TableSeqGenerator};
-    use wal::rocks_impl::manager::Builder as WalBuilder;
+    use wal::rocksdb_impl::manager::Builder as WalBuilder;
 
     use super::*;
     use crate::{

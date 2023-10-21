@@ -25,7 +25,11 @@ workspace = true
 workspace = true
 
 [features]
+default = ["wal-rocksdb", "wal-table-kv", "wal-message-queue"]
 test = ["tempfile"]
+wal-table-kv = ["wal/wal-table-kv"]
+wal-message-queue = ["wal/wal-message-queue"]
+wal-rocksdb = ["wal/wal-rocksdb"]
 
 [dependencies]
 # In alphabetical order
@@ -82,4 +86,4 @@ pin-project-lite = { workspace = true }
 rand = { workspace = true }
 tempfile = { workspace = true }
 test_util = { workspace = true }
-wal = { workspace = true }
+wal = { workspace = true, features = ["wal-message-queue", "wal-rocksdb", "wal-table-kv"] }

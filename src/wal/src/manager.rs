@@ -150,9 +150,11 @@ pub mod error {
             backtrace: Backtrace,
         },
 
+        #[cfg(feature = "wal-table-kv")]
         #[snafu(display("Failed to open obkv, err:{}", source))]
         OpenObkv { source: table_kv::obkv::Error },
 
+        #[cfg(feature = "wal-message-queue")]
         #[snafu(display("Failed to open kafka, err:{}", source))]
         OpenKafka {
             source: message_queue::kafka::kafka_impl::Error,
@@ -523,7 +525,7 @@ mod tests {
     use runtime::{self, Runtime};
 
     use super::*;
-    use crate::{log_batch::LogEntry, tests::util::TestPayloadDecoder};
+    use crate::log_batch::{LogEntry, MemoryPayloadDecoder};
 
     #[derive(Debug, Clone)]
     struct TestIterator {
@@ -605,7 +607,7 @@ mod tests {
 
         loop {
             buffer = iter
-                .next_log_entries(TestPayloadDecoder, buffer)
+                .next_log_entries(MemoryPayloadDecoder, buffer)
                 .await
                 .unwrap();
             for entry in buffer.iter() {
@@ -629,7 +631,7 @@ mod tests {
         let mut buffer = VecDeque::with_capacity(3);
         loop {
             buffer = iter
-                .next_log_entries(TestPayloadDecoder, buffer)
+                .next_log_entries(MemoryPayloadDecoder, buffer)
                 .await
                 .unwrap();
             for entry in buffer.iter() {

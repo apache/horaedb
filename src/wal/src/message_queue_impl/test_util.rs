@@ -21,13 +21,12 @@ use message_queue::MessageQueue;
 
 use crate::{
     kv_encoder::LogBatchEncoder,
-    log_batch::LogWriteBatch,
+    log_batch::{LogWriteBatch, MemoryPayload, MemoryPayloadDecoder},
     manager::WalLocation,
     message_queue_impl::{
         encoding::{format_wal_data_topic_name, format_wal_meta_topic_name},
         region::Region,
     },
-    tests::util::{TestPayload, TestPayloadDecoder},
 };
 
 pub struct TestContext<Mq: MessageQueue> {
@@ -35,7 +34,7 @@ pub struct TestContext<Mq: MessageQueue> {
     pub region_version: u64,
     pub table_id: TableId,
     pub test_datas: Vec<(TableId, TestDataOfTable)>,
-    pub test_payload_encoder: TestPayloadDecoder,
+    pub test_payload_encoder: MemoryPayloadDecoder,
     pub region: Region<Mq>,
     pub message_queue: Arc<Mq>,
     pub log_topic: String,
@@ -66,14 +65,14 @@ impl<Mq: MessageQueue> TestContext<Mq> {
         message_queue: Arc<Mq>,
     ) -> Self {
         // Test data
-        let test_payload_encoder = TestPayloadDecoder;
+        let test_payload_encoder = MemoryPayloadDecoder;
         let test_datas = test_datas
             .into_iter()
             .map(|(table_id, data)| {
                 let log_batch_encoder =
                     LogBatchEncoder::create(WalLocation::new(region_id, table_id));
                 let log_write_batch = log_batch_encoder
-                    .encode_batch::<TestPayload, u32>(&data)
+                    .encode_batch::<MemoryPayload, u32>(&data)
                     .unwrap();
 
                 (table_id, TestDataOfTable::new(data, log_write_batch))

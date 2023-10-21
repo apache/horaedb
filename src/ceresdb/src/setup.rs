@@ -45,9 +45,6 @@ use tracing_util::{
 use wal::{
     config::StorageConfig,
     manager::{WalRuntimes, WalsOpener},
-    message_queue_impl::wal::KafkaWalsOpener,
-    rocks_impl::manager::RocksDBWalsOpener,
-    table_kv_impl::wal::ObkvWalsOpener,
 };
 
 use crate::{
@@ -96,18 +93,54 @@ pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
     runtimes.default_runtime.block_on(async {
         match config.analytic.wal {
             StorageConfig::RocksDB(_) => {
-                run_server_with_runtimes::<RocksDBWalsOpener>(config, engine_runtimes, log_runtime)
+                #[cfg(feature = "wal-rocksdb")]
+                {
+                    use wal::rocksdb_impl::manager::RocksDBWalsOpener;
+                    run_server_with_runtimes::<RocksDBWalsOpener>(
+                        config,
+                        engine_runtimes,
+                        log_runtime,
+                    )
                     .await
+                }
+                #[cfg(not(feature = "wal-rocksdb"))]
+                {
+                    panic!("RocksDB WAL not bundled!");
+                }
             }
 
             StorageConfig::Obkv(_) => {
-                run_server_with_runtimes::<ObkvWalsOpener>(config, engine_runtimes, log_runtime)
+                #[cfg(feature = "wal-table-kv")]
+                {
+                    use wal::table_kv_impl::wal::ObkvWalsOpener;
+                    run_server_with_runtimes::<ObkvWalsOpener>(
+                        config,
+                        engine_runtimes,
+                        log_runtime,
+                    )
                     .await;
+                }
+                #[cfg(not(feature = "wal-table-kv"))]
+                {
+                    panic!("Table KV WAL not bundled!");
+                }
             }
 
             StorageConfig::Kafka(_) => {
-                run_server_with_runtimes::<KafkaWalsOpener>(config, engine_runtimes, log_runtime)
+                #[cfg(feature = "wal-message-queue")]
+                {
+                    use wal::message_queue_impl::wal::KafkaWalsOpener;
+                    run_server_with_runtimes::<KafkaWalsOpener>(
+                        config,
+                        engine_runtimes,
+                        log_runtime,
+                    )
                     .await;
+                }
+                #[cfg(not(feature = "wal-message-queue"))]
+                {
+                    panic!("Message Queue WAL not bundled!");
+                }
             }
         }
     });

@@ -16,10 +16,10 @@
 
 use std::fmt::Debug;
 
-use bytes_ext::{Buf, BufMut};
+use bytes_ext::{Buf, BufMut, SafeBuf, SafeBufMut};
 use common_types::{table::TableId, SequenceNumber};
 
-use crate::manager::WalLocation;
+use crate::manager::{Error, WalLocation};
 
 pub trait Payload: Send + Sync + Debug {
     type Error: std::error::Error + Send + Sync + 'static;
@@ -28,6 +28,30 @@ pub trait Payload: Send + Sync + Debug {
     fn encode_size(&self) -> usize;
     /// Append the encoded payload to the `buf`.
     fn encode_to<B: BufMut>(&self, buf: &mut B) -> Result<(), Self::Error>;
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MemoryPayload {
+    pub val: u32,
+}
+
+impl Payload for MemoryPayload {
+    type Error = Error;
+
+    fn encode_size(&self) -> usize {
+        4
+    }
+
+    fn encode_to<B: BufMut>(&self, buf: &mut B) -> Result<(), Self::Error> {
+        buf.try_put_u32(self.val).expect("must write");
+        Ok(())
+    }
+}
+
+impl From<&u32> for MemoryPayload {
+    fn from(v: &u32) -> Self {
+        Self { val: *v }
+    }
 }
 
 #[derive(Debug)]
@@ -46,8 +70,8 @@ pub struct LogWriteEntry {
 /// A batch of `LogWriteEntry`s.
 #[derive(Debug)]
 pub struct LogWriteBatch {
-    pub(crate) location: WalLocation,
-    pub(crate) entries: Vec<LogWriteEntry>,
+    pub location: WalLocation,
+    pub entries: Vec<LogWriteEntry>,
 }
 
 impl LogWriteBatch {
@@ -88,4 +112,16 @@ pub trait PayloadDecoder: Send + Sync {
     type Target: Send + Sync;
     /// Decode `Target` from the `bytes`.
     fn decode<B: Buf>(&self, buf: &mut B) -> Result<Self::Target, Self::Error>;
+}
+
+pub struct MemoryPayloadDecoder;
+
+impl PayloadDecoder for MemoryPayloadDecoder {
+    type Error = Error;
+    type Target = MemoryPayload;
+
+    fn decode<B: SafeBuf>(&self, buf: &mut B) -> Result<Self::Target, Self::Error> {
+        let val = buf.try_get_u32().expect("should succeed to read u32");
+        Ok(MemoryPayload { val })
+    }
 }
