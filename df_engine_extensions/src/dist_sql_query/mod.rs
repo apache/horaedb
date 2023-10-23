@@ -15,6 +15,7 @@
 use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
+use common_types::projected_schema::ProjectedSchema;
 use datafusion::{
     error::Result as DfResult,
     execution::TaskContext,
@@ -23,7 +24,7 @@ use datafusion::{
 use futures::future::BoxFuture;
 use table_engine::{
     remote::model::TableIdentifier,
-    table::{ReadRequest, TableRef},
+    table::{ReadRequest, TableRef}, predicate::PredicateRef,
 };
 
 pub mod codec;
@@ -53,8 +54,35 @@ pub trait ExecutableScanBuilder: fmt::Debug + Send + Sync + 'static {
     async fn build(
         &self,
         table: TableRef,
-        read_request: ReadRequest,
+        ctx: TableScanContext,
     ) -> DfResult<Arc<dyn ExecutionPlan>>;
 }
 
 type ExecutableScanBuilderRef = Box<dyn ExecutableScanBuilder>;
+
+pub struct TableScanContext {
+    pub batch_size: usize,
+    
+    /// Suggested read parallelism, the actual returned stream should equal to
+    /// `read_parallelism`.
+    pub read_parallelism: usize,
+    
+    /// The schema and projection for read, the output data should match this
+    /// schema.
+    pub projected_schema: ProjectedSchema,
+   
+    /// Predicate of the query.
+    pub predicate: PredicateRef,
+}
+
+impl TableScanContext {
+    pub fn new(batch_size: usize, read_parallelism: usize, projected_schema: ProjectedSchema,predicate: PredicateRef,) -> Self {
+        Self {
+            batch_size,
+            read_parallelism,
+            projected_schema,
+            predicate,
+        }
+    }
+}
+
