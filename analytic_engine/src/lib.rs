@@ -125,11 +125,20 @@ pub struct Config {
     pub metrics: MetricsOptions,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ParquetReaderOptions {
     enable_page_filter: bool,
     enable_lazy_row_filter: bool,
+}
+
+impl Default for ParquetReaderOptions {
+    fn default() -> Self {
+        Self {
+            enable_page_filter: true,
+            enable_lazy_row_filter: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
