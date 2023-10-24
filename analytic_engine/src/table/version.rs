@@ -659,6 +659,8 @@ impl TableVersion {
                 .unwrap()
                 .memtable_view
                 .total_memory_usage();
+
+            self.last_update.store(now, Ordering::Relaxed);
             self.last_mem_usize.store(new_size, Ordering::Relaxed);
             return new_size;
         }
