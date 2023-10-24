@@ -31,9 +31,12 @@ pub(crate) mod serial_executor;
 pub mod wal_replayer;
 pub(crate) mod write;
 
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicI64, AtomicUsize, Ordering},
+    Arc,
+};
 
-use common_types::{projected_schema::ProjectedSchema, table::TableId};
+use common_types::{projected_schema::ProjectedSchema, table::TableId, time::Timestamp};
 use generic_error::{BoxError, GenericError};
 use logger::{error, info};
 use macros::define_result;
@@ -104,6 +107,9 @@ pub struct SpaceStore {
     sst_factory: SstFactoryRef,
 
     meta_cache: Option<MetaCacheRef>,
+
+    last_update: AtomicI64,
+    last_mem_usize: AtomicUsize,
 }
 
 pub type SpaceStoreRef = Arc<SpaceStore>;
@@ -142,8 +148,18 @@ impl SpaceStore {
     /// The memory space used by all tables in the space.
     #[inline]
     fn total_memory_usage_space(&self) -> usize {
-        let spaces = self.spaces.read().unwrap().list_all_spaces();
-        spaces.into_iter().map(|t| t.memtable_memory_usage()).sum()
+        let last_update = self.last_update.load(Ordering::Relaxed);
+        let now = Timestamp::now().as_i64();
+        if now - last_update > 5_000 {
+            let spaces = self.spaces.read().unwrap().list_all_spaces();
+            let current_size = spaces.into_iter().map(|t| t.memtable_memory_usage()).sum();
+
+            self.last_update.store(now, Ordering::Relaxed);
+            self.last_mem_usize.store(current_size, Ordering::Relaxed);
+            return current_size;
+        }
+
+        self.last_mem_usize.load(Ordering::Relaxed)
     }
 }
 

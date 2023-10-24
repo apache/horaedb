@@ -96,6 +96,8 @@ impl Instance {
             store_picker: store_picker.clone(),
             sst_factory,
             meta_cache: ctx.meta_cache.clone(),
+            last_update: Default::default(),
+            last_mem_usize: Default::default(),
         });
 
         let scheduler_config = ctx.config.compaction.clone();
