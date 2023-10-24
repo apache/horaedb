@@ -18,11 +18,11 @@ build:
 
 build-wal-table-kv:
 	ls -alh
-	cd $(DIR); cargo build --release --no-default-features --features wal-table-kv
+	cd $(DIR)/src/ceresdb; cargo build --release --no-default-features --features wal-table-kv
 
 build-wal-message-queue:
 	ls -alh
-	cd $(DIR); cargo build --release --no-default-features --features wal-message-queue
+	cd $(DIR)/src/ceresdb; cargo build --release --no-default-features --features wal-message-queue
 
 build-slim:
 	ls -alh
