@@ -222,7 +222,7 @@ impl Proxy {
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to create plan"),
+                msg: "Failed to create plan",
             })?;
 
         let mut plan_maybe_expired = false;
@@ -244,7 +244,7 @@ impl Proxy {
         };
         let output = output.box_err().with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to execute plan"),
+            msg: "Failed to execute plan",
         })?;
 
         let cost = slow_timer.elapsed();

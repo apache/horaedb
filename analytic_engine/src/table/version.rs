@@ -19,7 +19,10 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt,
     ops::Bound,
-    sync::{Arc, RwLock},
+    sync::{
+        atomic::{AtomicI64, AtomicUsize, Ordering},
+        Arc, RwLock,
+    },
     time::Duration,
 };
 
@@ -616,6 +619,9 @@ impl TableVersionInner {
 /// should be done atomically.
 pub struct TableVersion {
     inner: RwLock<TableVersionInner>,
+
+    last_update: AtomicI64,
+    last_mem_usize: AtomicUsize,
 }
 
 impl TableVersion {
@@ -628,6 +634,8 @@ impl TableVersion {
                 flushed_sequence: 0,
                 max_file_id: 0,
             }),
+            last_update: Default::default(),
+            last_mem_usize: Default::default(),
         }
     }
 
@@ -642,11 +650,20 @@ impl TableVersion {
 
     /// See [MemTableView::total_memory_usage]
     pub fn total_memory_usage(&self) -> usize {
-        self.inner
-            .read()
-            .unwrap()
-            .memtable_view
-            .total_memory_usage()
+        let last_update = self.last_update.load(Ordering::Relaxed);
+        let now = Timestamp::now().as_i64();
+        if now - last_update > 5_000 {
+            let new_size = self
+                .inner
+                .read()
+                .unwrap()
+                .memtable_view
+                .total_memory_usage();
+            self.last_mem_usize.store(new_size, Ordering::Relaxed);
+            return new_size;
+        }
+
+        self.last_mem_usize.load(Ordering::Relaxed)
     }
 
     /// Return the suggested segment duration if sampling memtable is still
