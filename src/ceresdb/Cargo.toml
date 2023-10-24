@@ -26,9 +26,9 @@ workspace = true
 
 [features]
 default = ["wal-rocksdb", "wal-table-kv", "wal-message-queue"]
-wal-table-kv = ["wal/wal-table-kv"]
-wal-message-queue = ["wal/wal-message-queue"]
-wal-rocksdb = ["wal/wal-rocksdb"]
+wal-table-kv = ["wal/wal-table-kv", "analytic_engine/wal-table-kv"]
+wal-message-queue = ["wal/wal-message-queue", "analytic_engine/wal-message-queue"]
+wal-rocksdb = ["wal/wal-rocksdb", "analytic_engine/wal-rocksdb"]
 
 [dependencies]
 analytic_engine = { workspace = true }
