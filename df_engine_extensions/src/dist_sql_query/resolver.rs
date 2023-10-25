@@ -28,7 +28,7 @@ use crate::{
             ResolvedPartitionedScan, SubTablePlanContext, UnresolvedPartitionedScan,
             UnresolvedSubTableScan,
         },
-        ExecutableScanBuilderRef, RemotePhysicalPlanExecutorRef, TableScanContext,
+        ExecutableScanBuilderRef, RemotePhysicalPlanExecutorRef,
     },
     metrics::PUSH_DOWN_PLAN_COUNTER,
 };

@@ -24,7 +24,6 @@ use std::{
 };
 
 use arrow::{datatypes::SchemaRef as ArrowSchemaRef, record_batch::RecordBatch};
-use common_types::request_id::RequestId;
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     execution::TaskContext,
@@ -43,15 +42,10 @@ use datafusion::{
     },
 };
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
-use table_engine::{
-    remote::model::TableIdentifier,
-    table::{ReadOptions, ReadRequest},
-};
+use table_engine::{remote::model::TableIdentifier, table::ReadRequest};
 use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector, TraceMetricWhenDrop};
 
 use crate::dist_sql_query::{RemotePhysicalPlanExecutor, TableScanContext};
-
-const DEFAULT_REQUEST_ID: u64 = u64::MIN;
 
 /// Placeholder of partitioned table's scan plan
 /// It is inexecutable actually and just for carrying the necessary information

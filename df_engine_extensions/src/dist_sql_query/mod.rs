@@ -23,11 +23,7 @@ use datafusion::{
 };
 use futures::future::BoxFuture;
 use generic_error::BoxError;
-use table_engine::{
-    predicate::PredicateRef,
-    remote::model::TableIdentifier,
-    table::{ReadRequest, TableRef},
-};
+use table_engine::{predicate::PredicateRef, remote::model::TableIdentifier, table::TableRef};
 
 pub mod codec;
 pub mod physical_plan;
