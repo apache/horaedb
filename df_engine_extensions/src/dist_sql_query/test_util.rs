@@ -24,7 +24,9 @@ use arrow::{
 };
 use async_trait::async_trait;
 use catalog::{manager::ManagerRef, test_util::MockCatalogManagerBuilder};
-use common_types::{projected_schema::ProjectedSchema, tests::build_schema_for_cpu};
+use common_types::{
+    projected_schema::ProjectedSchema, request_id::RequestId, tests::build_schema_for_cpu,
+};
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     execution::{FunctionRegistry, TaskContext},
@@ -54,7 +56,7 @@ use trace_metric::MetricsCollector;
 use crate::dist_sql_query::{
     physical_plan::{PartitionedScanStream, UnresolvedPartitionedScan, UnresolvedSubTableScan},
     resolver::Resolver,
-    ExecutableScanBuilder, RemotePhysicalPlanExecutor,
+    ExecutableScanBuilder, RemotePhysicalPlanExecutor, TableScanContext,
 };
 
 // Test context
@@ -318,9 +320,16 @@ impl TestContext {
     //      Filter
     //          Scan
     pub fn build_basic_sub_table_plan(&self) -> Arc<dyn ExecutionPlan> {
+        let table_scan_ctx = TableScanContext {
+            batch_size: self.request.opts.batch_size,
+            read_parallelism: self.request.opts.read_parallelism,
+            projected_schema: self.request.projected_schema.clone(),
+            predicate: self.request.predicate.clone(),
+        };
+
         let unresolved_scan = Arc::new(UnresolvedSubTableScan {
             table: self.sub_table_groups[0][0].clone(),
-            read_request: self.request.clone(),
+            table_scan_ctx,
         });
 
         let filter: Arc<dyn ExecutionPlan> =
@@ -412,11 +421,21 @@ impl ExecutableScanBuilder for MockScanBuilder {
     async fn build(
         &self,
         _table: TableRef,
-        read_request: ReadRequest,
+        ctx: TableScanContext,
     ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
-        Ok(Arc::new(MockScan {
-            request: read_request,
-        }))
+        let request = ReadRequest {
+            request_id: RequestId::from(42),
+            opts: ReadOptions {
+                batch_size: ctx.batch_size,
+                read_parallelism: ctx.read_parallelism,
+                deadline: None,
+            },
+            projected_schema: ctx.projected_schema.clone(),
+            predicate: ctx.predicate.clone(),
+            metrics_collector: MetricsCollector::default(),
+        };
+
+        Ok(Arc::new(MockScan { request }))
     }
 }
 

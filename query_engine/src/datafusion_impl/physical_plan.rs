@@ -31,7 +31,6 @@ use snafu::{OptionExt, ResultExt};
 use table_engine::stream::{FromDfStream, SendableRecordBatchStream};
 
 use crate::{
-    datafusion_impl::task_context::{DatafusionTaskExecContext, Preprocessor},
     error::*,
     physical_planner::{PhysicalPlan, TaskExecContext},
 };

@@ -17,14 +17,16 @@ use std::{fmt, sync::Arc};
 use async_trait::async_trait;
 use common_types::projected_schema::ProjectedSchema;
 use datafusion::{
-    error::Result as DfResult,
+    error::{DataFusionError, Result as DfResult},
     execution::TaskContext,
     physical_plan::{ExecutionPlan, SendableRecordBatchStream},
 };
 use futures::future::BoxFuture;
+use generic_error::BoxError;
 use table_engine::{
+    predicate::PredicateRef,
     remote::model::TableIdentifier,
-    table::{ReadRequest, TableRef}, predicate::PredicateRef,
+    table::{ReadRequest, TableRef},
 };
 
 pub mod codec;
@@ -60,23 +62,29 @@ pub trait ExecutableScanBuilder: fmt::Debug + Send + Sync + 'static {
 
 type ExecutableScanBuilderRef = Box<dyn ExecutableScanBuilder>;
 
+#[derive(Clone)]
 pub struct TableScanContext {
     pub batch_size: usize,
-    
+
     /// Suggested read parallelism, the actual returned stream should equal to
     /// `read_parallelism`.
     pub read_parallelism: usize,
-    
+
     /// The schema and projection for read, the output data should match this
     /// schema.
     pub projected_schema: ProjectedSchema,
-   
+
     /// Predicate of the query.
     pub predicate: PredicateRef,
 }
 
 impl TableScanContext {
-    pub fn new(batch_size: usize, read_parallelism: usize, projected_schema: ProjectedSchema,predicate: PredicateRef,) -> Self {
+    pub fn new(
+        batch_size: usize,
+        read_parallelism: usize,
+        projected_schema: ProjectedSchema,
+        predicate: PredicateRef,
+    ) -> Self {
         Self {
             batch_size,
             read_parallelism,
@@ -86,3 +94,89 @@ impl TableScanContext {
     }
 }
 
+impl TryFrom<TableScanContext> for ceresdbproto::remote_engine::TableScanContext {
+    type Error = datafusion::error::DataFusionError;
+
+    fn try_from(value: TableScanContext) -> DfResult<Self> {
+        let pb_projected_schema = value
+            .projected_schema
+            .try_into()
+            .box_err()
+            .map_err(DataFusionError::External)?;
+
+        let pb_predicate = value
+            .predicate
+            .as_ref()
+            .try_into()
+            .box_err()
+            .map_err(DataFusionError::External)?;
+
+        Ok(Self {
+            batch_size: value.batch_size as u64,
+            read_parallelism: value.read_parallelism as u64,
+            projected_schema: Some(pb_projected_schema),
+            predicate: Some(pb_predicate),
+        })
+    }
+}
+
+impl TryFrom<ceresdbproto::remote_engine::TableScanContext> for TableScanContext {
+    type Error = datafusion::error::DataFusionError;
+
+    fn try_from(value: ceresdbproto::remote_engine::TableScanContext) -> DfResult<Self> {
+        let projected_schema = value
+            .projected_schema
+            .ok_or(DataFusionError::Internal(
+                "projected schema not found".to_string(),
+            ))?
+            .try_into()
+            .map_err(|e| {
+                DataFusionError::Internal(format!("failed to decode projected schema, err:{}", e))
+            })?;
+
+        let predicate = value
+            .predicate
+            .ok_or(DataFusionError::Internal("predicate not found".to_string()))?
+            .try_into()
+            .map_err(|e| {
+                DataFusionError::Internal(format!("failed to decode predicate, err:{}", e))
+            })?;
+
+        Ok(Self {
+            batch_size: value.batch_size as usize,
+            read_parallelism: value.read_parallelism as usize,
+            projected_schema,
+            predicate: Arc::new(predicate),
+        })
+    }
+}
+
+impl fmt::Debug for TableScanContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let exprs = self
+            .predicate
+            .exprs()
+            .iter()
+            .map(|expr| expr.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let predicate = format!("[{}]", exprs);
+
+        let all_fields = self
+            .projected_schema
+            .to_projected_arrow_schema()
+            .all_fields()
+            .iter()
+            .map(|f| f.name().clone())
+            .collect::<Vec<_>>()
+            .join(",");
+        let projected = format!("[{}]", all_fields);
+
+        f.debug_struct("TableScanContext")
+            .field("read_parallelism", &self.read_parallelism)
+            .field("batch_size", &self.batch_size)
+            .field("projected", &projected)
+            .field("predicate", &predicate)
+            .finish()
+    }
+}

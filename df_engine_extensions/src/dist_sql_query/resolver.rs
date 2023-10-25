@@ -28,7 +28,7 @@ use crate::{
             ResolvedPartitionedScan, SubTablePlanContext, UnresolvedPartitionedScan,
             UnresolvedSubTableScan,
         },
-        ExecutableScanBuilderRef, RemotePhysicalPlanExecutorRef,
+        ExecutableScanBuilderRef, RemotePhysicalPlanExecutorRef, TableScanContext,
     },
     metrics::PUSH_DOWN_PLAN_COUNTER,
 };
@@ -127,7 +127,7 @@ impl Resolver {
                 .map(|table| {
                     let plan = Arc::new(UnresolvedSubTableScan {
                         table: table.clone(),
-                        read_request: unresolved.read_request.clone(),
+                        table_scan_ctx: unresolved.table_scan_ctx.clone(),
                     });
                     let sub_metrics_collect = metrics_collector.span(table.table.clone());
 
@@ -201,15 +201,15 @@ impl Resolver {
         let build_scan_opt =
             if let Some(unresolved) = plan.as_any().downcast_ref::<UnresolvedSubTableScan>() {
                 let table = self.find_table(&unresolved.table)?;
-                let read_request = unresolved.read_request.clone();
+                let table_scan_ctx = unresolved.table_scan_ctx.clone();
 
-                Some((table, read_request))
+                Some((table, table_scan_ctx))
             } else {
                 None
             };
 
-        if let Some((table, request)) = build_scan_opt {
-            return self.scan_builder.build(table, request).await;
+        if let Some((table, table_scan_ctx)) = build_scan_opt {
+            return self.scan_builder.build(table, table_scan_ctx).await;
         }
 
         let children = plan.children().clone();

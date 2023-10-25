@@ -49,7 +49,7 @@ use table_engine::{
 };
 use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector, TraceMetricWhenDrop};
 
-use crate::dist_sql_query::RemotePhysicalPlanExecutor;
+use crate::dist_sql_query::{RemotePhysicalPlanExecutor, TableScanContext};
 
 const DEFAULT_REQUEST_ID: u64 = u64::MIN;
 
@@ -60,7 +60,7 @@ const DEFAULT_REQUEST_ID: u64 = u64::MIN;
 #[derive(Debug)]
 pub struct UnresolvedPartitionedScan {
     pub sub_tables: Vec<TableIdentifier>,
-    pub read_request: ReadRequest,
+    pub table_scan_ctx: TableScanContext,
     pub metrics_collector: MetricsCollector,
 }
 
@@ -71,31 +71,16 @@ impl UnresolvedPartitionedScan {
         read_request: ReadRequest,
     ) -> Self {
         let metrics_collector = MetricsCollector::new(table_name.to_string());
-
-        // We must keep the same plans have the same encoded bytes, so dynamic fields
-        // such as `deadline`, `request_id` should be rewritten to concrete
-        // values. FIXME: just send the useful fields for `ReadRequest` in dist
-        // query, rather than overwriting useless ones and send the whole
-        // `ReadRequest`...
-        let read_opts = ReadOptions {
+        let table_scan_ctx = TableScanContext {
             batch_size: read_request.opts.batch_size,
             read_parallelism: read_request.opts.read_parallelism,
-            // Overwrite it to `None`.
-            deadline: None,
-        };
-
-        let read_request = ReadRequest {
-            // Overwrite it to `DEFAULT_REQUEST_ID`.
-            request_id: RequestId::from(DEFAULT_REQUEST_ID),
-            opts: read_opts,
             projected_schema: read_request.projected_schema,
             predicate: read_request.predicate,
-            metrics_collector: read_request.metrics_collector,
         };
 
         Self {
             sub_tables,
-            read_request,
+            table_scan_ctx,
             metrics_collector,
         }
     }
@@ -107,7 +92,7 @@ impl ExecutionPlan for UnresolvedPartitionedScan {
     }
 
     fn schema(&self) -> ArrowSchemaRef {
-        self.read_request
+        self.table_scan_ctx
             .projected_schema
             .to_projected_arrow_schema()
     }
@@ -152,9 +137,9 @@ impl DisplayAs for UnresolvedPartitionedScan {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "UnresolvedPartitionedScan: sub_tables={:?}, read_request:{:?}, partition_count={}",
+            "UnresolvedPartitionedScan: sub_tables={:?}, table_scan_ctx:{:?}, partition_count={}",
             self.sub_tables,
-            self.read_request,
+            self.table_scan_ctx,
             self.output_partitioning().partition_count(),
         )
     }
@@ -517,7 +502,7 @@ impl DisplayAs for ResolvedPartitionedScan {
 #[derive(Debug, Clone)]
 pub struct UnresolvedSubTableScan {
     pub table: TableIdentifier,
-    pub read_request: ReadRequest,
+    pub table_scan_ctx: TableScanContext,
 }
 
 impl ExecutionPlan for UnresolvedSubTableScan {
@@ -526,13 +511,13 @@ impl ExecutionPlan for UnresolvedSubTableScan {
     }
 
     fn schema(&self) -> ArrowSchemaRef {
-        self.read_request
+        self.table_scan_ctx
             .projected_schema
             .to_projected_arrow_schema()
     }
 
     fn output_partitioning(&self) -> Partitioning {
-        Partitioning::UnknownPartitioning(self.read_request.opts.read_parallelism)
+        Partitioning::UnknownPartitioning(self.table_scan_ctx.read_parallelism)
     }
 
     fn output_ordering(&self) -> Option<&[PhysicalSortExpr]> {
@@ -571,9 +556,9 @@ impl DisplayAs for UnresolvedSubTableScan {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "UnresolvedSubTableScan: table:{:?}, request:{:?}, partition_count:{}",
+            "UnresolvedSubTableScan: table:{:?}, table_scan_ctx:{:?}, partition_count:{}",
             self.table,
-            self.read_request,
+            self.table_scan_ctx,
             self.output_partitioning().partition_count(),
         )
     }
@@ -585,25 +570,25 @@ impl TryFrom<ceresdbproto::remote_engine::UnresolvedSubScan> for UnresolvedSubTa
     fn try_from(
         value: ceresdbproto::remote_engine::UnresolvedSubScan,
     ) -> Result<Self, Self::Error> {
-        let table_ident: TableIdentifier = value
+        let table = value
             .table
             .ok_or(DataFusionError::Internal(
                 "table ident not found".to_string(),
             ))?
             .into();
-        let read_request: ReadRequest = value
-            .read_request
+        let table_scan_ctx = value
+            .table_scan_ctx
             .ok_or(DataFusionError::Internal(
-                "read request not found".to_string(),
+                "table scan context not found".to_string(),
             ))?
             .try_into()
             .map_err(|e| {
-                DataFusionError::Internal(format!("failed to decode read request, err:{e}"))
+                DataFusionError::Internal(format!("failed to decode table scan context, err:{e}"))
             })?;
 
         Ok(Self {
-            table: table_ident,
-            read_request,
+            table,
+            table_scan_ctx,
         })
     }
 }
@@ -612,15 +597,14 @@ impl TryFrom<UnresolvedSubTableScan> for ceresdbproto::remote_engine::Unresolved
     type Error = DataFusionError;
 
     fn try_from(value: UnresolvedSubTableScan) -> Result<Self, Self::Error> {
-        let table_ident: ceresdbproto::remote_engine::TableIdentifier = value.table.into();
-        let read_request: ceresdbproto::remote_engine::TableReadRequest =
-            value.read_request.try_into().map_err(|e| {
-                DataFusionError::Internal(format!("failed to encode read request, err:{e}"))
-            })?;
+        let table = value.table.into();
+        let table_scan_ctx = value.table_scan_ctx.try_into().map_err(|e| {
+            DataFusionError::Internal(format!("failed to encode read request, err:{e}"))
+        })?;
 
         Ok(Self {
-            table: Some(table_ident),
-            read_request: Some(read_request),
+            table: Some(table),
+            table_scan_ctx: Some(table_scan_ctx),
         })
     }
 }

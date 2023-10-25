@@ -92,7 +92,7 @@ bytes = "1"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-ceresdbproto = "1.0.18"
+ceresdbproto = "1.0.21"
 codec = { path = "components/codec" }
 notifier = { path = "components/notifier" }
 chrono = "0.4"
