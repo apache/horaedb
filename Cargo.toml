@@ -46,6 +46,7 @@ members = [
     "components/partitioned_lock",
     "components/profile",
     "components/runtime",
+    "components/sampling_cache",
     "components/size_ext",
     "components/skiplist",
     "components/table_kv",
@@ -147,9 +148,13 @@ query_engine = { path = "query_engine" }
 query_frontend = { path = "query_frontend" }
 rand = "0.7"
 remote_engine_client = { path = "remote_engine_client" }
-reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.11", default-features = false, features = [
+    "rustls-tls",
+    "json",
+] }
 router = { path = "router" }
 runtime = { path = "components/runtime" }
+sampling_cache = { path = "components/sampling_cache" }
 snafu = { version = "0.6.10", features = ["backtraces"] }
 serde = "1.0"
 serde_json = "1.0.60"
@@ -182,14 +187,14 @@ regex = "1"
 # This profile optimizes for good runtime performance.
 [profile.release]
 # reference: https://doc.rust-lang.org/rustc/codegen-options/index.html#codegen-units
-codegen-units = 1
-debug = true
+codegen-units   = 1
+debug           = true
 overflow-checks = true
 
 # This profile is used to produce a smaller (no symbols) binary with a little bit poorer performance,
 # but with a faster speed and low memory consumption required by compiling.
 [profile.release-slim]
-inherits = "release"
+inherits      = "release"
 codegen-units = 16
-debug = false
-strip = true
+debug         = false
+strip         = true

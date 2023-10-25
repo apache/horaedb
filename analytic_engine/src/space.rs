@@ -24,12 +24,15 @@ use std::{
 };
 
 use arena::CollectorRef;
+use sampling_cache::SamplingCachedUsize;
 use table_engine::table::TableId;
 
 use crate::{
     instance::mem_collector::MemUsageCollector,
     table::data::{TableDataRef, TableDataSet},
 };
+
+const DEFAULT_UPDATE_MEM_SIZE_CACHE_INTERVAL_MS: i64 = 3000;
 
 pub type SpaceId = u32;
 
@@ -109,6 +112,8 @@ pub struct Space {
     // TODO: engine should provide a repair method to fix those failed tables.
     open_failed_tables: RwLock<Vec<String>>,
 
+    cached_mem_size: SamplingCachedUsize,
+
     /// Space memtable memory usage collector
     pub mem_usage_collector: Arc<MemUsageCollector>,
     /// The maximum write buffer size used for single space.
@@ -127,6 +132,7 @@ impl Space {
             context,
             table_datas: Default::default(),
             open_failed_tables: Default::default(),
+            cached_mem_size: SamplingCachedUsize::new(DEFAULT_UPDATE_MEM_SIZE_CACHE_INTERVAL_MS),
             mem_usage_collector: Arc::new(MemUsageCollector::with_parent(engine_mem_collector)),
             write_buffer_size,
         }
@@ -151,7 +157,10 @@ impl Space {
 
     #[inline]
     pub fn memtable_memory_usage(&self) -> usize {
-        self.table_datas.read().unwrap().total_memory_usage()
+        let fetch_total_memory_usage = || -> std::result::Result<usize, ()> {
+            Ok(self.table_datas.read().unwrap().total_memory_usage())
+        };
+        self.cached_mem_size.read(fetch_total_memory_usage).unwrap()
     }
 
     /// Insert table data into space memory state if the table is

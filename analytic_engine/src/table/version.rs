@@ -19,10 +19,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt,
     ops::Bound,
-    sync::{
-        atomic::{AtomicI64, AtomicUsize, Ordering},
-        Arc, RwLock,
-    },
+    sync::{Arc, RwLock},
     time::Duration,
 };
 
@@ -33,6 +30,7 @@ use common_types::{
     SequenceNumber,
 };
 use macros::define_result;
+use sampling_cache::SamplingCachedUsize;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
@@ -51,6 +49,8 @@ use crate::{
         version_edit::{AddFile, VersionEdit},
     },
 };
+
+const DEFAULT_UPDATE_MEM_SIZE_CACHE_INTERVAL_MS: i64 = 3000;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -620,8 +620,7 @@ impl TableVersionInner {
 pub struct TableVersion {
     inner: RwLock<TableVersionInner>,
 
-    last_update: AtomicI64,
-    last_mem_usize: AtomicUsize,
+    cached_mem_size: SamplingCachedUsize,
 }
 
 impl TableVersion {
@@ -634,8 +633,8 @@ impl TableVersion {
                 flushed_sequence: 0,
                 max_file_id: 0,
             }),
-            last_update: Default::default(),
-            last_mem_usize: Default::default(),
+
+            cached_mem_size: SamplingCachedUsize::new(DEFAULT_UPDATE_MEM_SIZE_CACHE_INTERVAL_MS),
         }
     }
 
@@ -650,22 +649,18 @@ impl TableVersion {
 
     /// See [MemTableView::total_memory_usage]
     pub fn total_memory_usage(&self) -> usize {
-        let last_update = self.last_update.load(Ordering::Relaxed);
-        let now = Timestamp::now().as_i64();
-        if now - last_update > 5_000 {
-            let new_size = self
+        let fetch_total_memory_usage = || -> std::result::Result<usize, ()> {
+            let size = self
                 .inner
                 .read()
                 .unwrap()
                 .memtable_view
                 .total_memory_usage();
 
-            self.last_update.store(now, Ordering::Relaxed);
-            self.last_mem_usize.store(new_size, Ordering::Relaxed);
-            return new_size;
-        }
+            Ok(size)
+        };
 
-        self.last_mem_usize.load(Ordering::Relaxed)
+        self.cached_mem_size.read(fetch_total_memory_usage).unwrap()
     }
 
     /// Return the suggested segment duration if sampling memtable is still
