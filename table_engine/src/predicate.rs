@@ -80,7 +80,7 @@ impl<'a> fmt::Debug for DebugExpr<'a> {
 impl fmt::Debug for Predicate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("Predicate { exprs:")?;
-        let exprs = self.exprs.iter().map(|expr| DebugExpr(expr));
+        let exprs = self.exprs.iter().map(DebugExpr);
         f.debug_list().entries(exprs).finish()?;
         f.write_fmt(format_args!(", time_range:{:?} }}", self.time_range))
     }
@@ -103,20 +103,6 @@ impl Predicate {
 
     pub fn time_range(&self) -> TimeRange {
         self.time_range
-    }
-
-    /// Return a DataFusion [`Expr`] predicate representing the
-    /// combination of AND'ing all (`exprs`) and timestamp restriction
-    /// in this Predicate.
-    // FIXME: we should consider again, if filters of time range has been included
-    // in `exprs`.
-    pub fn to_df_expr(&self, time_column_name: impl AsRef<str>) -> Expr {
-        self.exprs
-            .iter()
-            .cloned()
-            .fold(self.time_range.to_df_expr(time_column_name), |acc, expr| {
-                acc.and(expr)
-            })
     }
 }
 
