@@ -1274,6 +1274,13 @@ impl<'a> DatumView<'a> {
         }
     }
 
+    pub fn as_time(&self) -> Option<Timestamp> {
+        match self {
+            DatumView::Time(v) => Some(Timestamp::new(*v)),
+            _ => None,
+        }
+    }
+
     pub fn as_f64(&self) -> Option<f64> {
         match self {
             DatumView::Double(v) => Some(*v),
