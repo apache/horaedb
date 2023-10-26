@@ -233,7 +233,7 @@ impl RecordBatchGroupWriter {
     }
 
     fn update_column_values(
-        column_values: &mut Vec<Option<ColumnValueSet>>,
+        column_values: &mut [Option<ColumnValueSet>],
         record_batch: &RecordBatchWithKey,
     ) {
         for (col_idx, col_values) in column_values.iter_mut().enumerate() {
@@ -338,8 +338,8 @@ impl RecordBatchGroupWriter {
                     datum_kind: column_block.datum_kind(),
                 })?;
                 self.update_time_range(ts_col.time_range());
-                if let Some(mut column_values) = self.column_values.as_mut() {
-                    Self::update_column_values(&mut column_values, &record_batch);
+                if let Some(column_values) = self.column_values.as_mut() {
+                    Self::update_column_values(column_values, &record_batch);
                 }
 
                 arrow_row_group.push(record_batch.into_record_batch().into_arrow_record_batch());
