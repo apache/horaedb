@@ -97,6 +97,8 @@ struct RecordBatchGroupWriter {
     input_exhausted: bool,
     // Time range of rows, not aligned to segment.
     real_time_range: Option<TimeRange>,
+    // `column_values` is used to collect distinct values in each columns,
+    // its order is the same with schema's columns.
     column_values: Option<Vec<Option<ColumnValueSet>>>,
 }
 
