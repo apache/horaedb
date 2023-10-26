@@ -23,16 +23,14 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use arena::CollectorRef;
 use sampling_cache::SamplingCachedUsize;
 use table_engine::table::TableId;
+use time_ext::ReadableDuration;
 
 use crate::{
-    instance::mem_collector::MemUsageCollector,
+    instance::mem_collector::{MemUsageCollector, MemUsageCollectorRef},
     table::data::{TableDataRef, TableDataSet},
 };
-
-const DEFAULT_UPDATE_MEM_SIZE_CACHE_INTERVAL_MS: i64 = 3000;
 
 pub type SpaceId = u32;
 
@@ -115,26 +113,34 @@ pub struct Space {
     cached_mem_size: SamplingCachedUsize,
 
     /// Space memtable memory usage collector
-    pub mem_usage_collector: Arc<MemUsageCollector>,
+    pub mem_usage_collector: MemUsageCollectorRef,
     /// The maximum write buffer size used for single space.
     pub write_buffer_size: usize,
+    /// The interval for sampling mem usage
+    pub mem_usage_sampling_interval: ReadableDuration,
+}
+
+pub struct MemSizeOptions {
+    pub write_buffer_size: usize,
+    pub usage_collector: MemUsageCollectorRef,
+    pub size_sampling_interval: ReadableDuration,
 }
 
 impl Space {
-    pub fn new(
-        id: SpaceId,
-        context: SpaceContext,
-        write_buffer_size: usize,
-        engine_mem_collector: CollectorRef,
-    ) -> Self {
+    pub fn new(id: SpaceId, context: SpaceContext, mem_size_options: MemSizeOptions) -> Self {
         Self {
             id,
             context,
             table_datas: Default::default(),
             open_failed_tables: Default::default(),
-            cached_mem_size: SamplingCachedUsize::new(DEFAULT_UPDATE_MEM_SIZE_CACHE_INTERVAL_MS),
-            mem_usage_collector: Arc::new(MemUsageCollector::with_parent(engine_mem_collector)),
-            write_buffer_size,
+            mem_usage_sampling_interval: mem_size_options.size_sampling_interval,
+            cached_mem_size: SamplingCachedUsize::new(
+                mem_size_options.size_sampling_interval.as_millis(),
+            ),
+            mem_usage_collector: Arc::new(MemUsageCollector::with_parent(
+                mem_size_options.usage_collector,
+            )),
+            write_buffer_size: mem_size_options.write_buffer_size,
         }
     }
 

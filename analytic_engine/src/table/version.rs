@@ -32,6 +32,7 @@ use common_types::{
 use macros::define_result;
 use sampling_cache::SamplingCachedUsize;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use time_ext::ReadableDuration;
 
 use crate::{
     compaction::{
@@ -49,8 +50,6 @@ use crate::{
         version_edit::{AddFile, VersionEdit},
     },
 };
-
-const DEFAULT_UPDATE_MEM_SIZE_CACHE_INTERVAL_MS: i64 = 3000;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -420,7 +419,7 @@ impl MemTableView {
         self.immutables.0.remove(&id);
     }
 
-    /// Collect memtables itersect with `time_range`
+    /// Collect memtables intersect with `time_range`
     fn memtables_for_read(
         &self,
         time_range: TimeRange,
@@ -625,7 +624,7 @@ pub struct TableVersion {
 
 impl TableVersion {
     /// Create an empty table version
-    pub fn new(purge_queue: FilePurgeQueue) -> Self {
+    pub fn new(mem_usage_sampling_interval: ReadableDuration, purge_queue: FilePurgeQueue) -> Self {
         Self {
             inner: RwLock::new(TableVersionInner {
                 memtable_view: MemTableView::new(),
@@ -634,7 +633,7 @@ impl TableVersion {
                 max_file_id: 0,
             }),
 
-            cached_mem_size: SamplingCachedUsize::new(DEFAULT_UPDATE_MEM_SIZE_CACHE_INTERVAL_MS),
+            cached_mem_size: SamplingCachedUsize::new(mem_usage_sampling_interval.as_millis()),
         }
     }
 
@@ -945,7 +944,7 @@ mod tests {
     fn new_table_version() -> TableVersion {
         let purger = FilePurgerMocker::mock();
         let queue = purger.create_purge_queue(1, table::new_table_id(2, 2));
-        TableVersion::new(queue)
+        TableVersion::new(ReadableDuration::millis(0), queue)
     }
 
     #[test]

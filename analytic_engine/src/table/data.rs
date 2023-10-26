@@ -43,6 +43,7 @@ use macros::define_result;
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
+use time_ext::ReadableDuration;
 
 use crate::{
     instance::serial_executor::TableOpSerialExecutor,
@@ -254,6 +255,11 @@ fn compute_mutable_limit(
     limit as u32
 }
 
+pub struct MemSizeOptions {
+    pub collector: CollectorRef,
+    pub size_sampling_interval: ReadableDuration,
+}
+
 impl TableData {
     /// Create a new TableData
     ///
@@ -264,7 +270,7 @@ impl TableData {
         opts: TableOptions,
         config: TableConfig,
         purger: &FilePurger,
-        mem_usage_collector: CollectorRef,
+        mem_size_options: MemSizeOptions,
     ) -> Result<Self> {
         // TODO: Validate TableOptions, such as bucket_duration >=
         // segment_duration and bucket_duration is aligned to segment_duration
@@ -289,7 +295,8 @@ impl TableData {
         };
 
         let purge_queue = purger.create_purge_queue(space_id, id);
-        let current_version = TableVersion::new(purge_queue);
+        let current_version =
+            TableVersion::new(mem_size_options.size_sampling_interval, purge_queue);
         let metrics_ctx = MetricsContext::new(&name, metrics_opt);
         let metrics = Metrics::new(metrics_ctx);
         let mutable_limit = AtomicU32::new(compute_mutable_limit(
@@ -306,7 +313,7 @@ impl TableData {
             mutable_limit_write_buffer_ratio: preflush_write_buffer_size_ratio,
             opts: ArcSwap::new(Arc::new(opts)),
             memtable_factory,
-            mem_usage_collector,
+            mem_usage_collector: mem_size_options.collector,
             current_version,
             last_sequence: AtomicU64::new(0),
             last_memtable_id: AtomicU64::new(0),
@@ -330,7 +337,7 @@ impl TableData {
         purger: &FilePurger,
         shard_id: ShardId,
         config: TableConfig,
-        mem_usage_collector: CollectorRef,
+        mem_size_options: MemSizeOptions,
         allocator: IdAllocator,
     ) -> Result<Self> {
         let TableConfig {
@@ -341,7 +348,8 @@ impl TableData {
         } = config;
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
-        let current_version = TableVersion::new(purge_queue);
+        let current_version =
+            TableVersion::new(mem_size_options.size_sampling_interval, purge_queue);
         let metrics_ctx = MetricsContext::new(&add_meta.table_name, metrics_opt);
         let metrics = Metrics::new(metrics_ctx);
         let mutable_limit = AtomicU32::new(compute_mutable_limit(
@@ -358,7 +366,7 @@ impl TableData {
             mutable_limit_write_buffer_ratio: preflush_write_buffer_size_ratio,
             opts: ArcSwap::new(Arc::new(add_meta.opts)),
             memtable_factory,
-            mem_usage_collector,
+            mem_usage_collector: mem_size_options.collector,
             current_version,
             last_sequence: AtomicU64::new(0),
             last_memtable_id: AtomicU64::new(0),
@@ -889,6 +897,11 @@ pub mod tests {
             let purger = FilePurgerMocker::mock();
             let collector = Arc::new(NoopCollector);
 
+            let mem_size_options = MemSizeOptions {
+                collector,
+                size_sampling_interval: Default::default(),
+            };
+
             TableData::new(
                 TableDesc {
                     id: create_request.table_id,
@@ -905,7 +918,7 @@ pub mod tests {
                     enable_primary_key_sampling: false,
                 },
                 &purger,
-                collector,
+                mem_size_options,
             )
             .unwrap()
         }

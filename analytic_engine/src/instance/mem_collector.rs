@@ -12,9 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 
 use arena::{Collector, CollectorRef};
+
+pub type MemUsageCollectorRef = Arc<MemUsageCollector>;
 
 /// Space memtable memory usage collector
 pub struct MemUsageCollector {

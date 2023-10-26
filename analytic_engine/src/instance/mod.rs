@@ -41,6 +41,7 @@ use mem_collector::MemUsageCollector;
 use runtime::Runtime;
 use snafu::{ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, predicate::PredicateRef, table::FlushRequest};
+use time_ext::ReadableDuration;
 use tokio::sync::oneshot::{self, error::RecvError};
 use wal::manager::{WalLocation, WalManagerRef};
 
@@ -179,6 +180,8 @@ pub struct Instance {
     pub(crate) max_retry_flush_limit: usize,
     /// Max bytes per write batch
     pub(crate) max_bytes_per_write_batch: Option<usize>,
+    /// The interval for sampling the mem size
+    pub(crate) mem_usage_sampling_interval: ReadableDuration,
     /// Options for scanning sst
     pub(crate) scan_options: ScanOptions,
     pub(crate) iter_options: Option<IterOptions>,

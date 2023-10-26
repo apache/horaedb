@@ -226,7 +226,7 @@ pub(crate) trait TableMetaSet: fmt::Debug + Send + Sync {
 ///
 /// Usually, it will recover the snapshot from storage(like disk, oss, etc).
 // TODO: remove `LogStore` and related operations, it should be called directly but not in the
-// `SnapshotReoverer`.
+// `SnapshotRecover`.
 #[derive(Debug, Clone)]
 struct SnapshotRecoverer<LogStore, SnapshotStore> {
     table_id: TableId,
@@ -532,13 +532,13 @@ impl Manifest for ManifestImpl {
             load_req.table_id,
             self.store.clone(),
         );
-        let reoverer = SnapshotRecoverer {
+        let recover = SnapshotRecoverer {
             table_id: load_req.table_id,
             space_id: load_req.space_id,
             log_store,
             snapshot_store,
         };
-        let meta_snapshot_opt = reoverer.recover().await?.and_then(|v| v.data);
+        let meta_snapshot_opt = recover.recover().await?.and_then(|v| v.data);
 
         // Apply it to table.
         if let Some(snapshot) = meta_snapshot_opt {
@@ -757,7 +757,10 @@ mod tests {
             LoadRequest, Manifest,
         },
         sst::file::tests::FilePurgerMocker,
-        table::data::{tests::default_schema, TableConfig, TableData, TableDesc, TableShardInfo},
+        table::data::{
+            tests::default_schema, MemSizeOptions, TableConfig, TableData, TableDesc,
+            TableShardInfo,
+        },
         MetricsOptions, TableOptions,
     };
 
@@ -832,6 +835,10 @@ mod tests {
             let table_opts = TableOptions::default();
             let purger = FilePurgerMocker::mock();
             let collector = Arc::new(NoopCollector);
+            let mem_size_options = MemSizeOptions {
+                collector,
+                size_sampling_interval: Default::default(),
+            };
             let test_data = TableData::new(
                 TableDesc {
                     space_id: 0,
@@ -848,7 +855,7 @@ mod tests {
                     enable_primary_key_sampling: false,
                 },
                 &purger,
-                collector,
+                mem_size_options,
             )
             .unwrap();
 

@@ -25,9 +25,9 @@ pub struct SamplingCachedUsize {
 }
 
 impl SamplingCachedUsize {
-    pub fn new(interval_ms: i64) -> Self {
+    pub fn new(interval_ms: u64) -> Self {
         Self {
-            interval_ms,
+            interval_ms: interval_ms as i64,
             last_updated_at: AtomicI64::default(),
             cached_val: AtomicUsize::default(),
         }
@@ -40,6 +40,11 @@ impl SamplingCachedUsize {
     where
         F: FnOnce() -> std::result::Result<usize, E>,
     {
+        // Fast path for no sampling.
+        if self.interval_ms == 0 {
+            return val_source();
+        }
+
         let now_ms = Utc::now().timestamp_millis();
         let last_updated_at = self.last_updated_at.load(Ordering::Relaxed);
         let deadline_ms = last_updated_at + self.interval_ms;
@@ -92,8 +97,8 @@ mod tests {
 
     #[test]
     fn test_normal_update() {
-        let interval_ms = 100i64;
-        let interval = Duration::from_millis(interval_ms as u64);
+        let interval_ms = 100u64;
+        let interval = Duration::from_millis(interval_ms);
         let updater = SamplingCachedUsize::new(interval_ms);
         let val_source = ValueSource::default();
 
