@@ -56,7 +56,7 @@ const MAX_TIMESTAMP_MS_FOR_DURATION: i64 =
 /// Minimun sample timestamps to compute duration.
 const MIN_SAMPLES: usize = 2;
 const HLL_ERROR_RATE: f64 = 0.01;
-pub const MAX_SUGGEST_PRIMARY_KEY_NUM: usize = 5;
+pub const MAX_SUGGEST_PRIMARY_KEY_NUM: usize = 2;
 
 #[derive(Debug, Snafu)]
 #[snafu(display(
