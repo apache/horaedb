@@ -97,7 +97,9 @@ struct RecordBatchGroupWriter {
     input_exhausted: bool,
     // Time range of rows, not aligned to segment.
     real_time_range: Option<TimeRange>,
-    column_values: Vec<Option<ColumnValueSet>>,
+    // `column_values` is used to collect distinct values in each columns,
+    // its order is the same with schema's columns.
+    column_values: Option<Vec<Option<ColumnValueSet>>>,
 }
 
 impl RecordBatchGroupWriter {
@@ -110,19 +112,26 @@ impl RecordBatchGroupWriter {
         compression: Compression,
         level: Level,
     ) -> Self {
-        let column_values: Vec<Option<ColumnValueSet>> = meta_data
-            .schema
-            .columns()
-            .iter()
-            .map(|col| {
-                // Only keep string values now.
-                if matches!(col.data_type, DatumKind::String) {
-                    Some(ColumnValueSet::StringValue(HashSet::new()))
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let column_values = if level.is_min() {
+            // There are not many rows in min level, so we don't record values for them.
+            None
+        } else {
+            let column_values = meta_data
+                .schema
+                .columns()
+                .iter()
+                .map(|col| {
+                    // Only keep string values now.
+                    if matches!(col.data_type, DatumKind::String) {
+                        Some(ColumnValueSet::StringValue(HashSet::new()))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            Some(column_values)
+        };
 
         Self {
             request_id,
@@ -225,8 +234,11 @@ impl RecordBatchGroupWriter {
         !self.level.is_min()
     }
 
-    fn update_column_values(&mut self, record_batch: &RecordBatchWithKey) {
-        for (col_idx, col_values) in self.column_values.iter_mut().enumerate() {
+    fn update_column_values(
+        column_values: &mut [Option<ColumnValueSet>],
+        record_batch: &RecordBatchWithKey,
+    ) {
+        for (col_idx, col_values) in column_values.iter_mut().enumerate() {
             let mut too_many_values = false;
             {
                 let col_values = match col_values {
@@ -328,7 +340,9 @@ impl RecordBatchGroupWriter {
                     datum_kind: column_block.datum_kind(),
                 })?;
                 self.update_time_range(ts_col.time_range());
-                self.update_column_values(&record_batch);
+                if let Some(column_values) = self.column_values.as_mut() {
+                    Self::update_column_values(column_values, &record_batch);
+                }
 
                 arrow_row_group.push(record_batch.into_record_batch().into_arrow_record_batch());
             }
@@ -353,7 +367,7 @@ impl RecordBatchGroupWriter {
             // TODO: when all compaction input SST files already have column_values, we can
             // merge them from meta_data directly, calculate them here waste CPU
             // cycles.
-            parquet_meta_data.column_values = Some(self.column_values);
+            parquet_meta_data.column_values = self.column_values;
             parquet_meta_data
         };
 
