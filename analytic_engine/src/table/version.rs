@@ -30,7 +30,9 @@ use common_types::{
     SequenceNumber,
 };
 use macros::define_result;
+use sampling_cache::SamplingCachedUsize;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use time_ext::ReadableDuration;
 
 use crate::{
     compaction::{
@@ -417,7 +419,7 @@ impl MemTableView {
         self.immutables.0.remove(&id);
     }
 
-    /// Collect memtables itersect with `time_range`
+    /// Collect memtables intersect with `time_range`
     fn memtables_for_read(
         &self,
         time_range: TimeRange,
@@ -616,11 +618,13 @@ impl TableVersionInner {
 /// should be done atomically.
 pub struct TableVersion {
     inner: RwLock<TableVersionInner>,
+
+    cached_mem_size: SamplingCachedUsize,
 }
 
 impl TableVersion {
     /// Create an empty table version
-    pub fn new(purge_queue: FilePurgeQueue) -> Self {
+    pub fn new(mem_usage_sampling_interval: ReadableDuration, purge_queue: FilePurgeQueue) -> Self {
         Self {
             inner: RwLock::new(TableVersionInner {
                 memtable_view: MemTableView::new(),
@@ -628,6 +632,8 @@ impl TableVersion {
                 flushed_sequence: 0,
                 max_file_id: 0,
             }),
+
+            cached_mem_size: SamplingCachedUsize::new(mem_usage_sampling_interval.as_millis()),
         }
     }
 
@@ -642,11 +648,18 @@ impl TableVersion {
 
     /// See [MemTableView::total_memory_usage]
     pub fn total_memory_usage(&self) -> usize {
-        self.inner
-            .read()
-            .unwrap()
-            .memtable_view
-            .total_memory_usage()
+        let fetch_total_memory_usage = || -> std::result::Result<usize, ()> {
+            let size = self
+                .inner
+                .read()
+                .unwrap()
+                .memtable_view
+                .total_memory_usage();
+
+            Ok(size)
+        };
+
+        self.cached_mem_size.read(fetch_total_memory_usage).unwrap()
     }
 
     /// Return the suggested segment duration if sampling memtable is still
@@ -931,7 +944,7 @@ mod tests {
     fn new_table_version() -> TableVersion {
         let purger = FilePurgerMocker::mock();
         let queue = purger.create_purge_queue(1, table::new_table_id(2, 2));
-        TableVersion::new(queue)
+        TableVersion::new(ReadableDuration::millis(0), queue)
     }
 
     #[test]

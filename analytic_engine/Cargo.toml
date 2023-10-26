@@ -64,6 +64,7 @@ prost = { workspace = true }
 remote_engine_client = { workspace = true }
 router = { workspace = true }
 runtime = { workspace = true }
+sampling_cache = { workspace = true }
 serde = { workspace = true }
 size_ext = { workspace = true }
 skiplist = { path = "../components/skiplist" }

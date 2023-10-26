@@ -138,6 +138,7 @@ impl Instance {
             replay_batch_size: ctx.config.replay_batch_size,
             write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_byte() as usize,
             max_retry_flush_limit: ctx.config.max_retry_flush_limit,
+            mem_usage_sampling_interval: ctx.config.mem_usage_sampling_interval,
             max_bytes_per_write_batch: ctx
                 .config
                 .max_bytes_per_write_batch

@@ -38,7 +38,8 @@ use crate::{
     sst::file::FilePurgerRef,
     table::{
         data::{
-            TableConfig, TableData, TableDataRef, TableDesc, TableShardInfo, DEFAULT_ALLOC_STEP,
+            MemSizeOptions, TableConfig, TableData, TableDataRef, TableDesc, TableShardInfo,
+            DEFAULT_ALLOC_STEP,
         },
         version::{TableVersionMeta, TableVersionSnapshot},
         version_edit::VersionEdit,
@@ -128,6 +129,10 @@ impl TableMetaSetImpl {
                             msg: format!("space not found, space_id:{space_id}"),
                         })?;
 
+                let mem_size_options = MemSizeOptions {
+                    collector: space.mem_usage_collector.clone(),
+                    size_sampling_interval: space.mem_usage_sampling_interval,
+                };
                 let table_data = Arc::new(
                     TableData::new(
                         TableDesc {
@@ -146,7 +151,7 @@ impl TableMetaSetImpl {
                             enable_primary_key_sampling: self.enable_primary_key_sampling,
                         },
                         &self.file_purger,
-                        space.mem_usage_collector.clone(),
+                        mem_size_options,
                     )
                     .box_err()
                     .with_context(|| ApplyUpdateToTableWithCause {
@@ -265,6 +270,10 @@ impl TableMetaSetImpl {
         };
 
         let table_name = table_meta.table_name.clone();
+        let mem_size_options = MemSizeOptions {
+            collector: space.mem_usage_collector.clone(),
+            size_sampling_interval: space.mem_usage_sampling_interval,
+        };
         let table_data = Arc::new(
             TableData::recover_from_add(
                 table_meta,
@@ -276,7 +285,7 @@ impl TableMetaSetImpl {
                     metrics_opt: self.metrics_opt.clone(),
                     enable_primary_key_sampling: self.enable_primary_key_sampling,
                 },
-                space.mem_usage_collector.clone(),
+                mem_size_options,
                 allocator,
             )
             .box_err()

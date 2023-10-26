@@ -30,7 +30,7 @@ use super::open::{TableContext, TablesOfShardContext};
 use crate::{
     engine::build_space_id,
     instance::{close::Closer, drop::Dropper, open::OpenTablesOfShardResult, Instance},
-    space::{Space, SpaceAndTable, SpaceContext, SpaceId, SpaceRef},
+    space::{MemSizeOptions, Space, SpaceAndTable, SpaceContext, SpaceId, SpaceRef},
 };
 
 #[derive(Debug, Snafu)]
@@ -313,12 +313,12 @@ impl Instance {
         // Now we are the one responsible to create and persist the space info into meta
 
         // Create space
-        let space = Arc::new(Space::new(
-            space_id,
-            context,
-            self.space_write_buffer_size,
-            self.mem_usage_collector.clone(),
-        ));
+        let mem_size_options = MemSizeOptions {
+            write_buffer_size: self.space_write_buffer_size,
+            usage_collector: self.mem_usage_collector.clone(),
+            size_sampling_interval: self.mem_usage_sampling_interval,
+        };
+        let space = Arc::new(Space::new(space_id, context, mem_size_options));
 
         spaces.insert(space.clone());
 
