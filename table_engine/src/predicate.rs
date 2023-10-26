@@ -69,11 +69,18 @@ pub struct Predicate {
     /// The time range involved by the query.
     time_range: TimeRange,
 }
+struct DebugExpr<'a>(&'a Expr);
+
+impl<'a> fmt::Debug for DebugExpr<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
 
 impl fmt::Debug for Predicate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("Predicate { exprs:")?;
-        let exprs = self.exprs.iter().map(|expr| expr.to_string());
+        let exprs = self.exprs.iter().map(|expr| DebugExpr(expr));
         f.debug_list().entries(exprs).finish()?;
         f.write_fmt(format_args!(", time_range:{:?} }}", self.time_range))
     }
