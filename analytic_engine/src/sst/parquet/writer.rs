@@ -111,7 +111,7 @@ impl RecordBatchGroupWriter {
         level: Level,
     ) -> Self {
         let column_values = if level.is_min() {
-            // There are not many rows in min level, so we don't record values.
+            // There are not many rows in min level, so we don't record values for them.
             None
         } else {
             let column_values = meta_data
@@ -120,13 +120,14 @@ impl RecordBatchGroupWriter {
                 .iter()
                 .map(|col| {
                     // Only keep string values now.
-                    if !level.is_min() && matches!(col.data_type, DatumKind::String) {
+                    if matches!(col.data_type, DatumKind::String) {
                         Some(ColumnValueSet::StringValue(HashSet::new()))
                     } else {
                         None
                     }
                 })
                 .collect();
+
             Some(column_values)
         };
 
