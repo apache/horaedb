@@ -15,7 +15,7 @@
 //! Predict for query table.
 //! Reference to: https://github.com/influxdata/influxdb_iox/blob/29b10413051f8c4a2193e8633aa133e45b0e505a/query/src/predicate.rs
 
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use common_types::{
     schema::Schema,
@@ -61,13 +61,22 @@ pub enum Error {
 define_result!(Error);
 
 /// Predicate helps determine whether specific row group should be read.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Predicate {
     /// Predicates in the query for filter out the columns that meet all the
     /// exprs.
     exprs: Vec<Expr>,
     /// The time range involved by the query.
     time_range: TimeRange,
+}
+
+impl fmt::Debug for Predicate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Predicate { exprs:")?;
+        let exprs = self.exprs.iter().map(|expr| expr.to_string());
+        f.debug_list().entries(exprs).finish()?;
+        f.write_fmt(format_args!(", time_range:{:?} }}", self.time_range))
+    }
 }
 
 pub type PredicateRef = Arc<Predicate>;
@@ -92,6 +101,8 @@ impl Predicate {
     /// Return a DataFusion [`Expr`] predicate representing the
     /// combination of AND'ing all (`exprs`) and timestamp restriction
     /// in this Predicate.
+    // FIXME: we should consider again, if filters of time range has been included
+    // in `exprs`.
     pub fn to_df_expr(&self, time_column_name: impl AsRef<str>) -> Expr {
         self.exprs
             .iter()

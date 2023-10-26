@@ -149,30 +149,13 @@ impl TryFrom<ceresdbproto::remote_engine::TableScanContext> for TableScanContext
 
 impl fmt::Debug for TableScanContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let exprs = self
-            .predicate
-            .exprs()
-            .iter()
-            .map(|expr| expr.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        let predicate = format!("[{}]", exprs);
-
-        let all_fields = self
-            .projected_schema
-            .to_projected_arrow_schema()
-            .all_fields()
-            .iter()
-            .map(|f| f.name().clone())
-            .collect::<Vec<_>>()
-            .join(",");
-        let projected = format!("[{}]", all_fields);
+        let projection = self.projected_schema.projection();
 
         f.debug_struct("TableScanContext")
             .field("read_parallelism", &self.read_parallelism)
             .field("batch_size", &self.batch_size)
-            .field("projected", &projected)
-            .field("predicate", &predicate)
+            .field("projection", &projection)
+            .field("predicate", &self.predicate)
             .finish()
     }
 }
