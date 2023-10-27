@@ -233,8 +233,6 @@ pub enum ShardRole {
     #[default]
     Leader,
     Follower,
-    PendingLeader,
-    PendingFollower,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -312,8 +310,6 @@ impl From<ShardRole> for cluster_pb::ShardRole {
         match shard_role {
             ShardRole::Leader => cluster_pb::ShardRole::Leader,
             ShardRole::Follower => cluster_pb::ShardRole::Follower,
-            ShardRole::PendingLeader => cluster_pb::ShardRole::PendingLeader,
-            ShardRole::PendingFollower => cluster_pb::ShardRole::PendingFollower,
         }
     }
 }
@@ -323,8 +319,6 @@ impl From<cluster_pb::ShardRole> for ShardRole {
         match pb_role {
             cluster_pb::ShardRole::Leader => ShardRole::Leader,
             cluster_pb::ShardRole::Follower => ShardRole::Follower,
-            cluster_pb::ShardRole::PendingLeader => ShardRole::PendingLeader,
-            cluster_pb::ShardRole::PendingFollower => ShardRole::PendingFollower,
         }
     }
 }
