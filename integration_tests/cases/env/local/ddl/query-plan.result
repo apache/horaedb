@@ -27,7 +27,7 @@ explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348001000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, metrics=[\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=1\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_1:\n\n\nPredicate { exprs: [BinaryExpr(BinaryExpr { left: Column(Column { relation: None, name: \"t\" }), op: Gt, right: Literal(TimestampMillisecond(1695348001000, None)) })], time_range: TimeRange { inclusive_start: Timestamp(1695348001001), exclusive_end: Timestamp(9223372036854775807) } }=0]\n"),
+String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, metrics=[\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=1\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_1:\n\n\nPredicate { exprs:[t > TimestampMillisecond(1695348001000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001001), exclusive_end: Timestamp(9223372036854775807) } }=0]\n"),
 
 
 -- This query should not include memtable
@@ -36,7 +36,7 @@ explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348002000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, metrics=[\nscan_table:\n    do_merge_sort=true\n    iter_num=0\n\n\nPredicate { exprs: [BinaryExpr(BinaryExpr { left: Column(Column { relation: None, name: \"t\" }), op: Gt, right: Literal(TimestampMillisecond(1695348002000, None)) })], time_range: TimeRange { inclusive_start: Timestamp(1695348002001), exclusive_end: Timestamp(9223372036854775807) } }=0]\n"),
+String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, metrics=[\nscan_table:\n    do_merge_sort=true\n    iter_num=0\n\n\nPredicate { exprs:[t > TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348002001), exclusive_end: Timestamp(9223372036854775807) } }=0]\n"),
 
 
 -- SQLNESS ARG pre_cmd=flush
@@ -47,7 +47,7 @@ explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348001000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, metrics=[\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=0\n        num_ssts=1\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_sst_1:\n            meta_data_cache_hit=false\n            parallelism=1\n            project_record_batch=xxs\n            read_meta_data_duration=xxs\n            row_mem=320\n            row_num=3\n            prune_row_groups:\n                pruned_by_custom_filter=0\n                pruned_by_min_max=0\n                row_groups_after_prune=1\n                total_row_groups=1\n                use_custom_filter=false\n\n\nPredicate { exprs: [BinaryExpr(BinaryExpr { left: Column(Column { relation: None, name: \"t\" }), op: Gt, right: Literal(TimestampMillisecond(1695348001000, None)) })], time_range: TimeRange { inclusive_start: Timestamp(1695348001001), exclusive_end: Timestamp(9223372036854775807) } }=0]\n"),
+String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, metrics=[\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=0\n        num_ssts=1\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_sst_1:\n            meta_data_cache_hit=false\n            parallelism=1\n            project_record_batch=xxs\n            read_meta_data_duration=xxs\n            row_mem=320\n            row_num=3\n            prune_row_groups:\n                pruned_by_custom_filter=0\n                pruned_by_min_max=0\n                row_groups_after_prune=1\n                total_row_groups=1\n                use_custom_filter=false\n\n\nPredicate { exprs:[t > TimestampMillisecond(1695348001000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001001), exclusive_end: Timestamp(9223372036854775807) } }=0]\n"),
 
 
 -- This query should not include SST
@@ -55,7 +55,7 @@ explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348002000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, metrics=[\nscan_table:\n    do_merge_sort=true\n    iter_num=0\n\n\nPredicate { exprs: [BinaryExpr(BinaryExpr { left: Column(Column { relation: None, name: \"t\" }), op: Gt, right: Literal(TimestampMillisecond(1695348002000, None)) })], time_range: TimeRange { inclusive_start: Timestamp(1695348002001), exclusive_end: Timestamp(9223372036854775807) } }=0]\n"),
+String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, metrics=[\nscan_table:\n    do_merge_sort=true\n    iter_num=0\n\n\nPredicate { exprs:[t > TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348002001), exclusive_end: Timestamp(9223372036854775807) } }=0]\n"),
 
 
 DROP TABLE `03_dml_select_real_time_range`;
