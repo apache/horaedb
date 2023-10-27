@@ -36,7 +36,7 @@ use logger::debug;
 use query_frontend::opentsdb::types::QueryRequest;
 use interpreters::interpreter::Output;
 use interpreters::{interpreter::Output, RecordBatchVec};
-use log::{debug, info};
+use logger::{debug, info};
 use query_frontend::{
     frontend::{Context as SqlContext, Frontend},
     opentsdb::types::QueryRequest,
