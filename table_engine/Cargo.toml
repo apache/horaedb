@@ -40,7 +40,7 @@ generic_error = { workspace = true }
 hash_ext = { workspace = true }
 itertools = { workspace = true }
 lazy_static = { workspace = true }
-log = { workspace = true }
+logger = { workspace = true }
 macros = { workspace = true }
 prost = { workspace = true }
 rand = { workspace = true }

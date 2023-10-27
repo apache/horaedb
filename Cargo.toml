@@ -46,6 +46,7 @@ members = [
     "components/partitioned_lock",
     "components/profile",
     "components/runtime",
+    "components/sampling_cache",
     "components/size_ext",
     "components/skiplist",
     "components/table_kv",
@@ -71,10 +72,10 @@ members = [
     "router",
     "server",
     "src/ceresdb",
+    "src/wal",
     "system_catalog",
     "table_engine",
     "tools",
-    "wal",
 ]
 
 [workspace.dependencies]
@@ -92,7 +93,7 @@ bytes = "1"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-ceresdbproto = "1.0.16"
+ceresdbproto = "1.0.18"
 codec = { path = "components/codec" }
 notifier = { path = "components/notifier" }
 chrono = "0.4"
@@ -106,15 +107,15 @@ datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", re
 df_operator = { path = "df_operator" }
 df_engine_extensions = { path = "df_engine_extensions" }
 future_ext = { path = "components/future_ext" }
-etcd-client = "0.10.3"
+etcd-client = { version = "0.10.3", features = ["tls"] }
 env_logger = "0.6"
 futures = "0.3"
 generic_error = { path = "components/generic_error" }
 hash_ext = { path = "components/hash_ext" }
 hex = "0.4.3"
+hyperloglog = { git = "https://github.com/jedisct1/rust-hyperloglog.git", rev = "425487ce910f26636fbde8c4d640b538431aad50" }
 lz4_flex = { version = "0.11", default-features = false, features = ["frame"] }
 lazy_static = "1.4.0"
-log = "0.4"
 logger = { path = "components/logger" }
 lru = "0.7.6"
 id_allocator = { path = "components/id_allocator" }
@@ -147,9 +148,13 @@ query_engine = { path = "query_engine" }
 query_frontend = { path = "query_frontend" }
 rand = "0.7"
 remote_engine_client = { path = "remote_engine_client" }
-reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.11", default-features = false, features = [
+    "rustls-tls",
+    "json",
+] }
 router = { path = "router" }
 runtime = { path = "components/runtime" }
+sampling_cache = { path = "components/sampling_cache" }
 snafu = { version = "0.6.10", features = ["backtraces"] }
 serde = "1.0"
 serde_json = "1.0.60"
@@ -174,7 +179,7 @@ trace_metric_derive = { path = "components/trace_metric_derive" }
 trace_metric_derive_tests = { path = "components/trace_metric_derive_tests" }
 tonic = "0.8.1"
 tokio = { version = "1.29", features = ["full"] }
-wal = { path = "wal" }
+wal = { path = "src/wal" }
 xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
 zstd = { version = "0.12", default-features = false }
 regex = "1"
@@ -182,14 +187,14 @@ regex = "1"
 # This profile optimizes for good runtime performance.
 [profile.release]
 # reference: https://doc.rust-lang.org/rustc/codegen-options/index.html#codegen-units
-codegen-units = 1
-debug = true
+codegen-units   = 1
+debug           = true
 overflow-checks = true
 
 # This profile is used to produce a smaller (no symbols) binary with a little bit poorer performance,
 # but with a faster speed and low memory consumption required by compiling.
 [profile.release-slim]
-inherits = "release"
+inherits      = "release"
 codegen-units = 16
-debug = false
-strip = true
+debug         = false
+strip         = true

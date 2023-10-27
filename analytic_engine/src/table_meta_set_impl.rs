@@ -18,7 +18,7 @@ use std::{fmt, num::NonZeroUsize, sync::Arc};
 
 use generic_error::BoxError;
 use id_allocator::IdAllocator;
-use log::debug;
+use logger::debug;
 use snafu::{OptionExt, ResultExt};
 use table_engine::table::TableId;
 
@@ -37,7 +37,10 @@ use crate::{
     space::{SpaceId, SpaceRef, SpacesRef},
     sst::file::FilePurgerRef,
     table::{
-        data::{TableData, TableDataRef, TableShardInfo, DEFAULT_ALLOC_STEP},
+        data::{
+            MemSizeOptions, TableConfig, TableData, TableDataRef, TableDesc, TableShardInfo,
+            DEFAULT_ALLOC_STEP,
+        },
         version::{TableVersionMeta, TableVersionSnapshot},
         version_edit::VersionEdit,
     },
@@ -51,6 +54,7 @@ pub(crate) struct TableMetaSetImpl {
     // TODO: maybe not suitable to place this parameter here?
     pub(crate) preflush_write_buffer_size_ratio: f32,
     pub(crate) manifest_snapshot_every_n_updates: NonZeroUsize,
+    pub(crate) enable_primary_key_sampling: bool,
     pub(crate) metrics_opt: MetricsOptions,
 }
 
@@ -125,19 +129,29 @@ impl TableMetaSetImpl {
                             msg: format!("space not found, space_id:{space_id}"),
                         })?;
 
+                let mem_size_options = MemSizeOptions {
+                    collector: space.mem_usage_collector.clone(),
+                    size_sampling_interval: space.mem_usage_sampling_interval,
+                };
                 let table_data = Arc::new(
                     TableData::new(
-                        space.id,
-                        table_id,
-                        table_name,
-                        schema,
-                        shard_info.shard_id,
+                        TableDesc {
+                            space_id: space.id,
+                            id: table_id,
+                            name: table_name,
+                            schema,
+                            shard_id: shard_info.shard_id,
+                        },
                         opts,
+                        TableConfig {
+                            preflush_write_buffer_size_ratio: self.preflush_write_buffer_size_ratio,
+                            manifest_snapshot_every_n_updates: self
+                                .manifest_snapshot_every_n_updates,
+                            metrics_opt: self.metrics_opt.clone(),
+                            enable_primary_key_sampling: self.enable_primary_key_sampling,
+                        },
                         &self.file_purger,
-                        self.preflush_write_buffer_size_ratio,
-                        space.mem_usage_collector.clone(),
-                        self.manifest_snapshot_every_n_updates,
-                        self.metrics_opt.clone(),
+                        mem_size_options,
                     )
                     .box_err()
                     .with_context(|| ApplyUpdateToTableWithCause {
@@ -256,16 +270,23 @@ impl TableMetaSetImpl {
         };
 
         let table_name = table_meta.table_name.clone();
+        let mem_size_options = MemSizeOptions {
+            collector: space.mem_usage_collector.clone(),
+            size_sampling_interval: space.mem_usage_sampling_interval,
+        };
         let table_data = Arc::new(
             TableData::recover_from_add(
                 table_meta,
                 &self.file_purger,
                 shard_info.shard_id,
-                self.preflush_write_buffer_size_ratio,
-                space.mem_usage_collector.clone(),
+                TableConfig {
+                    preflush_write_buffer_size_ratio: self.preflush_write_buffer_size_ratio,
+                    manifest_snapshot_every_n_updates: self.manifest_snapshot_every_n_updates,
+                    metrics_opt: self.metrics_opt.clone(),
+                    enable_primary_key_sampling: self.enable_primary_key_sampling,
+                },
+                mem_size_options,
                 allocator,
-                self.manifest_snapshot_every_n_updates,
-                self.metrics_opt.clone(),
             )
             .box_err()
             .with_context(|| ApplySnapshotToTableWithCause {

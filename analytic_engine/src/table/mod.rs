@@ -30,7 +30,7 @@ use datafusion::{common::Column, logical_expr::Expr};
 use future_ext::CancellationSafeFuture;
 use futures::TryStreamExt;
 use generic_error::BoxError;
-use log::{error, warn};
+use logger::{error, warn};
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
     partition::PartitionInfo,

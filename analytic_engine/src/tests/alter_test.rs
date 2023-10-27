@@ -23,11 +23,11 @@ use common_types::{
     schema::{self, Schema},
     time::Timestamp,
 };
-use log::info;
+use logger::info;
 use table_engine::table::AlterSchemaRequest;
+use wal::manager::WalsOpener;
 
 use crate::{
-    setup::WalsOpener,
     table_options::TableOptions,
     tests::{
         row_util,

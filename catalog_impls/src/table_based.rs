@@ -32,7 +32,7 @@ use catalog::{
     Catalog, CatalogRef,
 };
 use generic_error::BoxError;
-use log::{debug, info};
+use logger::{debug, info};
 use macros::define_result;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use system_catalog::sys_catalog_table::{

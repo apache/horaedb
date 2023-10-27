@@ -14,7 +14,7 @@
 
 use std::thread;
 
-use log::error;
+use logger::error;
 
 /// fork from https://github.com/tikv/tikv/blob/83d173a2c0058246631f0e71de74238ccff670fd/components/tikv_util/src/lib.rs#L429
 /// Exit the whole process when panic.
@@ -65,7 +65,7 @@ pub fn set_panic_hook(panic_abort: bool) {
         // When the old global async logger is replaced, the old async guard will be
         // taken and dropped. In the drop() the async guard, it waits for the
         // finish of the remaining logs in the async logger.
-        if let Some(level) = ::log::max_level().to_level() {
+        if let Some(level) = logger::max_level().to_level() {
             let drainer = logger::term_drainer();
             let _ = logger::init_log_from_drain(
                 drainer,

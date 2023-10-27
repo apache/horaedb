@@ -105,9 +105,10 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "hex",
+ "hyperloglog",
  "id_allocator",
  "lazy_static",
- "log",
+ "logger",
  "lru 0.7.8",
  "macros",
  "message_queue",
@@ -122,6 +123,7 @@ dependencies = [
  "remote_engine_client",
  "router",
  "runtime",
+ "sampling_cache",
  "serde",
  "size_ext",
  "skiplist",
@@ -880,7 +882,7 @@ dependencies = [
  "env_logger",
  "futures 0.3.28",
  "generic_error",
- "log",
+ "logger",
  "macros",
  "object_store 1.2.6-alpha",
  "parquet",
@@ -1224,7 +1226,7 @@ dependencies = [
  "async-trait",
  "common_types",
  "generic_error",
- "log",
+ "logger",
  "macros",
  "snafu 0.6.10",
  "table_engine",
@@ -1241,7 +1243,7 @@ dependencies = [
  "cluster",
  "common_types",
  "generic_error",
- "log",
+ "logger",
  "macros",
  "meta_client",
  "snafu 0.6.10",
@@ -1272,7 +1274,6 @@ dependencies = [
  "df_operator",
  "etcd-client",
  "interpreters",
- "log",
  "logger",
  "meta_client",
  "moka",
@@ -1289,6 +1290,7 @@ dependencies = [
  "toml_ext",
  "tracing_util",
  "vergen",
+ "wal",
 ]
 
 [[package]]
@@ -1326,9 +1328,9 @@ dependencies = [
 
 [[package]]
 name = "ceresdbproto"
-version = "1.0.16"
+version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39fca0a20131625263de118b8d09be05ffcc0d0ed6392f75d29e277f36b0d32c"
+checksum = "7fc99bdf6e40cee4545ba77eebe28bdf6e40c99595d895a8f3891fc748e57276"
 dependencies = [
  "prost",
  "protoc-bin-vendored",
@@ -1516,7 +1518,7 @@ dependencies = [
  "etcd-client",
  "future_ext",
  "generic_error",
- "log",
+ "logger",
  "macros",
  "meta_client",
  "prost",
@@ -3332,7 +3334,7 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "hash_ext",
- "log",
+ "logger",
  "macros",
  "meta_client",
  "query_engine",
@@ -3881,7 +3883,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "futures 0.3.28",
- "log",
+ "logger",
  "macros",
  "rskafka",
  "serde",
@@ -3900,7 +3902,7 @@ dependencies = [
  "common_types",
  "futures 0.3.28",
  "generic_error",
- "log",
+ "logger",
  "macros",
  "prost",
  "reqwest",
@@ -4429,7 +4431,7 @@ dependencies = [
  "generic_error",
  "hash_ext",
  "lazy_static",
- "log",
+ "logger",
  "lru 0.7.8",
  "macros",
  "notifier",
@@ -4553,7 +4555,6 @@ dependencies = [
  "backtrace",
  "gag",
  "libc",
- "log",
  "logger",
  "nix 0.22.3",
  "slog",
@@ -4659,7 +4660,7 @@ dependencies = [
  "datafusion",
  "futures 0.3.28",
  "generic_error",
- "log",
+ "logger",
  "object_store 1.2.6-alpha",
  "parquet",
  "tokio",
@@ -4688,7 +4689,7 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "lazy_static",
- "log",
+ "logger",
  "macros",
  "prometheus 0.12.0",
  "snafu 0.6.10",
@@ -5097,7 +5098,7 @@ dependencies = [
  "jemalloc-ctl",
  "jemalloc-sys",
  "jemallocator",
- "log",
+ "logger",
  "pprof",
 ]
 
@@ -5314,10 +5315,10 @@ dependencies = [
  "itertools 0.10.5",
  "json_pretty",
  "lazy_static",
- "log",
  "logger",
  "macros",
  "meta_client",
+ "notifier",
  "paste 1.0.12",
  "prom-remote-api",
  "prometheus 0.12.0",
@@ -5407,7 +5408,7 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "iox_query",
- "log",
+ "logger",
  "macros",
  "prost",
  "query_frontend",
@@ -5438,7 +5439,7 @@ dependencies = [
  "iox_query_influxql",
  "itertools 0.10.5",
  "lazy_static",
- "log",
+ "logger",
  "macros",
  "partition_table_engine",
  "paste 1.0.12",
@@ -5742,7 +5743,7 @@ dependencies = [
  "common_types",
  "futures 0.3.28",
  "generic_error",
- "log",
+ "logger",
  "macros",
  "router",
  "runtime",
@@ -5871,7 +5872,7 @@ dependencies = [
  "cluster",
  "common_types",
  "generic_error",
- "log",
+ "logger",
  "macros",
  "meta_client",
  "moka",
@@ -6088,6 +6089,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sampling_cache"
+version = "1.2.6-alpha"
+dependencies = [
+ "chrono",
+]
+
+[[package]]
 name = "saturating"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6241,6 +6249,7 @@ dependencies = [
  "common_types",
  "datafusion",
  "df_operator",
+ "flate2",
  "future_ext",
  "futures 0.3.28",
  "generic_error",
@@ -6248,7 +6257,6 @@ dependencies = [
  "influxdb-line-protocol",
  "interpreters",
  "lazy_static",
- "log",
  "logger",
  "macros",
  "meta_client",
@@ -6766,7 +6774,7 @@ dependencies = [
  "common_types",
  "futures 0.3.28",
  "generic_error",
- "log",
+ "logger",
  "macros",
  "prost",
  "snafu 0.6.10",
@@ -6793,7 +6801,7 @@ dependencies = [
  "hash_ext",
  "itertools 0.10.5",
  "lazy_static",
- "log",
+ "logger",
  "macros",
  "prost",
  "rand 0.7.3",
@@ -6812,7 +6820,7 @@ name = "table_kv"
 version = "1.2.6-alpha"
 dependencies = [
  "lazy_static",
- "log",
+ "logger",
  "macros",
  "obkv-table-client-rs",
  "prometheus 0.12.0",
@@ -7000,7 +7008,7 @@ dependencies = [
 name = "timed_task"
 version = "1.2.6-alpha"
 dependencies = [
- "log",
+ "logger",
  "runtime",
  "tokio",
 ]
@@ -7228,7 +7236,9 @@ dependencies = [
  "pin-project",
  "prost",
  "prost-derive",
+ "rustls-pemfile 1.0.2",
  "tokio",
+ "tokio-rustls 0.23.4",
  "tokio-stream",
  "tokio-util",
  "tower",
@@ -7643,7 +7653,7 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "lazy_static",
- "log",
+ "logger",
  "macros",
  "message_queue",
  "prometheus 0.12.0",

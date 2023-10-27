@@ -27,7 +27,7 @@ use datafusion::{
     prelude::{lit, Expr},
     scalar::ScalarValue,
 };
-use log::debug;
+use logger::debug;
 use parquet::file::metadata::RowGroupMetaData;
 use parquet_ext::prune::{
     equal::{self, ColumnPosition},

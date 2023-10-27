@@ -17,10 +17,10 @@
 use std::{thread, time};
 
 use common_types::time::Timestamp;
-use log::info;
+use logger::info;
+use wal::manager::WalsOpener;
 
 use crate::{
-    setup::WalsOpener,
     table_options,
     tests::util::{self, memory_ctxs, rocksdb_ctxs, EngineBuildContext, TestContext, TestEnv},
 };

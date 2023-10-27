@@ -28,7 +28,7 @@ use async_trait::async_trait;
 use ceresdbproto::manifest as manifest_pb;
 use generic_error::{BoxError, GenericError, GenericResult};
 use lazy_static::lazy_static;
-use log::{debug, info, warn};
+use logger::{debug, info, warn};
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
@@ -226,7 +226,7 @@ pub(crate) trait TableMetaSet: fmt::Debug + Send + Sync {
 ///
 /// Usually, it will recover the snapshot from storage(like disk, oss, etc).
 // TODO: remove `LogStore` and related operations, it should be called directly but not in the
-// `SnapshotReoverer`.
+// `SnapshotRecover`.
 #[derive(Debug, Clone)]
 struct SnapshotRecoverer<LogStore, SnapshotStore> {
     table_id: TableId,
@@ -532,13 +532,13 @@ impl Manifest for ManifestImpl {
             load_req.table_id,
             self.store.clone(),
         );
-        let reoverer = SnapshotRecoverer {
+        let recover = SnapshotRecoverer {
             table_id: load_req.table_id,
             space_id: load_req.space_id,
             log_store,
             snapshot_store,
         };
-        let meta_snapshot_opt = reoverer.recover().await?.and_then(|v| v.data);
+        let meta_snapshot_opt = recover.recover().await?.and_then(|v| v.data);
 
         // Apply it to table.
         if let Some(snapshot) = meta_snapshot_opt {
@@ -744,7 +744,7 @@ mod tests {
     use object_store::LocalFileSystem;
     use runtime::Runtime;
     use table_engine::table::{SchemaId, TableId, TableSeqGenerator};
-    use wal::rocks_impl::manager::Builder as WalBuilder;
+    use wal::rocksdb_impl::manager::Builder as WalBuilder;
 
     use super::*;
     use crate::{
@@ -757,7 +757,10 @@ mod tests {
             LoadRequest, Manifest,
         },
         sst::file::tests::FilePurgerMocker,
-        table::data::{tests::default_schema, TableData, TableShardInfo},
+        table::data::{
+            tests::default_schema, MemSizeOptions, TableConfig, TableData, TableDesc,
+            TableShardInfo,
+        },
         MetricsOptions, TableOptions,
     };
 
@@ -832,18 +835,27 @@ mod tests {
             let table_opts = TableOptions::default();
             let purger = FilePurgerMocker::mock();
             let collector = Arc::new(NoopCollector);
-            let test_data = TableData::new(
-                0,
-                TableId::new(0),
-                "test_table".to_string(),
-                default_schema(),
-                0,
-                table_opts,
-                &purger,
-                0.75,
+            let mem_size_options = MemSizeOptions {
                 collector,
-                NonZeroUsize::new(usize::MAX).unwrap(),
-                MetricsOptions::default(),
+                size_sampling_interval: Default::default(),
+            };
+            let test_data = TableData::new(
+                TableDesc {
+                    space_id: 0,
+                    id: TableId::new(0),
+                    name: "test_table".to_string(),
+                    schema: default_schema(),
+                    shard_id: 0,
+                },
+                table_opts,
+                TableConfig {
+                    preflush_write_buffer_size_ratio: 0.75,
+                    manifest_snapshot_every_n_updates: NonZeroUsize::new(usize::MAX).unwrap(),
+                    metrics_opt: MetricsOptions::default(),
+                    enable_primary_key_sampling: false,
+                },
+                &purger,
+                mem_size_options,
             )
             .unwrap();
 

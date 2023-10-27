@@ -20,7 +20,7 @@ use std::{
 };
 
 use common_types::table::ShardId;
-use log::{error, info};
+use logger::{error, info};
 use object_store::ObjectStoreRef;
 use snafu::ResultExt;
 use table_engine::{engine::TableDef, table::TableId};
@@ -77,6 +77,7 @@ impl Instance {
             file_purger: file_purger.clone(),
             preflush_write_buffer_size_ratio: ctx.config.preflush_write_buffer_size_ratio,
             manifest_snapshot_every_n_updates: ctx.config.manifest.snapshot_every_n_updates,
+            enable_primary_key_sampling: ctx.config.enable_primary_key_sampling,
             metrics_opt: ctx.config.metrics.clone(),
         });
         let manifest = ManifestImpl::open(
@@ -137,6 +138,7 @@ impl Instance {
             replay_batch_size: ctx.config.replay_batch_size,
             write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_byte() as usize,
             max_retry_flush_limit: ctx.config.max_retry_flush_limit,
+            mem_usage_sampling_interval: ctx.config.mem_usage_sampling_interval,
             max_bytes_per_write_batch: ctx
                 .config
                 .max_bytes_per_write_batch

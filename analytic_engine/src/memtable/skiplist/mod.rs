@@ -29,7 +29,7 @@ use common_types::{
     SequenceNumber,
 };
 use generic_error::BoxError;
-use log::{debug, trace};
+use logger::{debug, trace};
 use skiplist::{BytewiseComparator, Skiplist};
 use snafu::{ensure, OptionExt, ResultExt};
 
@@ -37,7 +37,7 @@ use crate::memtable::{
     key::{ComparableInternalKey, KeySequence},
     reversed_iter::ReversedColumnarIterator,
     skiplist::iter::ColumnarIterImpl,
-    ColumnarIterPtr, EncodeInternalKey, InvalidPutSequence, InvalidRow, MemTable,
+    ColumnarIterPtr, EncodeInternalKey, InvalidPutSequence, InvalidRow, KeyTooLarge, MemTable,
     Metrics as MemtableMetrics, PutContext, Result, ScanContext, ScanRequest, TimestampNotFound,
 };
 
@@ -49,7 +49,7 @@ struct Metrics {
 }
 
 /// MemTable implementation based on skiplist
-pub struct SkiplistMemTable<A: Arena<Stats = BasicStats> + Clone> {
+pub struct SkiplistMemTable<A> {
     /// Schema of this memtable, is immutable.
     schema: Schema,
     skiplist: Skiplist<BytewiseComparator, A>,
@@ -60,6 +60,16 @@ pub struct SkiplistMemTable<A: Arena<Stats = BasicStats> + Clone> {
     metrics: Metrics,
     min_time: AtomicI64,
     max_time: AtomicI64,
+}
+
+impl<A> Drop for SkiplistMemTable<A> {
+    fn drop(&mut self) {
+        logger::debug!(
+            "Drop skiplist memtable, last_seq:{}, schema:{:?}",
+            self.last_sequence.load(atomic::Ordering::Relaxed),
+            self.schema
+        );
+    }
 }
 
 impl<A: Arena<Stats = BasicStats> + Clone> SkiplistMemTable<A> {
@@ -131,6 +141,16 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
         key_encoder
             .encode(internal_key, row)
             .context(EncodeInternalKey)?;
+
+        // TODO: we should check row's primary key size at the beginning of write
+        // process, so WAL and memtable can keep in sync.
+        ensure!(
+            internal_key.len() <= skiplist::MAX_KEY_SIZE as usize,
+            KeyTooLarge {
+                current: internal_key.len(),
+                max: skiplist::MAX_KEY_SIZE,
+            }
+        );
 
         // Encode row value. The ContiguousRowWriter will clear the buf.
         let row_value = &mut ctx.value_buf;

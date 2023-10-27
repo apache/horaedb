@@ -32,7 +32,7 @@ use futures::{
     StreamExt,
 };
 use generic_error::{BoxError, GenericError};
-use log::debug;
+use logger::debug;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
 use tokio::{

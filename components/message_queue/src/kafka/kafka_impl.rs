@@ -22,7 +22,7 @@ use std::{
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use log::info;
+use logger::info;
 use macros::define_result;
 use rskafka::{
     client::{

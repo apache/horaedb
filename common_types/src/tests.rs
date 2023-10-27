@@ -261,6 +261,27 @@ pub fn build_row_for_dictionary(
 
     Row::from_datums(datums)
 }
+
+pub fn build_row_for_cpu(
+    tsid: u64,
+    ts: i64,
+    tag1: &str,
+    tag2: &str,
+    value: i8,
+    field2: f32,
+) -> Row {
+    let datums = vec![
+        Datum::UInt64(tsid),
+        Datum::Timestamp(Timestamp::new(ts)),
+        Datum::String(StringBytes::from(tag1)),
+        Datum::String(StringBytes::from(tag2)),
+        Datum::Int8(value),
+        Datum::Float(field2),
+    ];
+
+    Row::from_datums(datums)
+}
+
 pub fn build_projected_schema() -> ProjectedSchema {
     let schema = build_schema();
     assert!(schema.num_columns() > 1);

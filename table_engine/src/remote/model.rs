@@ -20,18 +20,21 @@ use std::{
 };
 
 use bytes_ext::{ByteVec, Bytes};
-use ceresdbproto::remote_engine::{self, execute_plan_request, row_group::Rows::Contiguous};
+use ceresdbproto::remote_engine::{
+    self, execute_plan_request, row_group::Rows::Contiguous, ColumnDesc,
+};
 use common_types::{
     request_id::RequestId,
     row::{
         contiguous::{ContiguousRow, ContiguousRowReader, ContiguousRowWriter},
         Row, RowGroup, RowGroupBuilder,
     },
-    schema::{IndexInWriterSchema, RecordSchema, Schema},
+    schema::{IndexInWriterSchema, RecordSchema, Schema, Version},
 };
 use generic_error::{BoxError, GenericError, GenericResult};
+use itertools::Itertools;
 use macros::define_result;
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
     partition::PartitionInfo,
@@ -62,6 +65,12 @@ pub enum Error {
 
     #[snafu(display("Empty table schema.\nBacktrace:\n{}", backtrace))]
     EmptyTableSchema { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Schema mismatch with the write request, msg:{msg}.\nBacktrace:\n{}",
+        backtrace
+    ))]
+    SchemaMismatch { msg: String, backtrace: Backtrace },
 
     #[snafu(display("Empty row group.\nBacktrace:\n{}", backtrace))]
     EmptyRowGroup { backtrace: Backtrace },
@@ -184,6 +193,8 @@ impl WriteRequest {
         payload: ceresdbproto::remote_engine::ContiguousRows,
         schema: &Schema,
     ) -> Result<RowGroup> {
+        validate_contiguous_payload_schema(schema, &payload.column_descs)?;
+
         let mut row_group_builder =
             RowGroupBuilder::with_capacity(schema.clone(), payload.encoded_rows.len());
         for encoded_row in payload.encoded_rows {
@@ -222,9 +233,15 @@ impl WriteRequest {
             encoded_rows.push(buf);
         }
 
+        let column_descs = table_schema
+            .columns()
+            .iter()
+            .map(ColumnDesc::from)
+            .collect_vec();
         let contiguous_rows = ceresdbproto::remote_engine::ContiguousRows {
             schema_version: table_schema.version(),
             encoded_rows,
+            column_descs,
         };
         let row_group_pb = ceresdbproto::remote_engine::RowGroup {
             min_timestamp,
@@ -242,9 +259,103 @@ impl WriteRequest {
     }
 }
 
+/// Validate the provided column descriptions with schema.
+fn validate_contiguous_payload_schema(schema: &Schema, column_descs: &[ColumnDesc]) -> Result<()> {
+    ensure!(
+        schema.num_columns() == column_descs.len(),
+        SchemaMismatch {
+            msg: format!(
+                "expect {} columns, but got {}",
+                schema.num_columns(),
+                column_descs.len(),
+            )
+        }
+    );
+
+    for (expect_column_schema, desc) in schema.columns().iter().zip(column_descs.iter()) {
+        ensure!(
+            expect_column_schema.is_correct_desc(desc),
+            SchemaMismatch {
+                msg: format!("expect column schema:{expect_column_schema:?}, but got {desc:?}")
+            }
+        );
+    }
+
+    Ok(())
+}
+
 pub struct WriteBatchResult {
     pub table_idents: Vec<TableIdentifier>,
     pub result: GenericResult<u64>,
+}
+
+#[derive(Debug)]
+pub struct AlterTableSchemaRequest {
+    pub table_ident: TableIdentifier,
+    pub table_schema: Schema,
+    /// Previous schema version before alteration.
+    pub pre_schema_version: Version,
+}
+
+impl TryFrom<ceresdbproto::remote_engine::AlterTableSchemaRequest> for AlterTableSchemaRequest {
+    type Error = Error;
+
+    fn try_from(value: remote_engine::AlterTableSchemaRequest) -> Result<Self> {
+        let table = value.table.context(EmptyTableIdentifier)?.into();
+        let table_schema = value
+            .table_schema
+            .context(EmptyTableSchema)?
+            .try_into()
+            .box_err()
+            .context(ConvertTableSchema)?;
+        Ok(Self {
+            table_ident: table,
+            table_schema,
+            pre_schema_version: value.pre_schema_version,
+        })
+    }
+}
+
+impl From<AlterTableSchemaRequest> for ceresdbproto::remote_engine::AlterTableSchemaRequest {
+    fn from(value: AlterTableSchemaRequest) -> Self {
+        let table = value.table_ident.into();
+        let table_schema = (&value.table_schema).into();
+        Self {
+            table: Some(table),
+            table_schema: Some(table_schema),
+            pre_schema_version: value.pre_schema_version,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct AlterTableOptionsRequest {
+    pub table_ident: TableIdentifier,
+    pub options: HashMap<String, String>,
+}
+
+impl TryFrom<ceresdbproto::remote_engine::AlterTableOptionsRequest> for AlterTableOptionsRequest {
+    type Error = Error;
+
+    fn try_from(value: remote_engine::AlterTableOptionsRequest) -> Result<Self> {
+        let table = value.table.context(EmptyTableIdentifier)?.into();
+        let options = value.options;
+        Ok(Self {
+            table_ident: table,
+            options,
+        })
+    }
+}
+
+impl From<AlterTableOptionsRequest> for ceresdbproto::remote_engine::AlterTableOptionsRequest {
+    fn from(value: AlterTableOptionsRequest) -> Self {
+        let table = value.table_ident.into();
+        let options = value.options;
+        Self {
+            table: Some(table),
+            options,
+        }
+    }
 }
 
 pub struct GetTableInfoRequest {

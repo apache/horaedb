@@ -50,7 +50,7 @@ use datafusion::{
 };
 use generic_error::GenericError;
 use influxql_parser::statement::Statement as InfluxqlStatement;
-use log::{debug, trace};
+use logger::{debug, trace};
 use macros::define_result;
 use prom_remote_api::types::Query as PromRemoteQuery;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};

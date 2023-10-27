@@ -34,6 +34,8 @@ const HEIGHT_INCREASE: u32 = u32::MAX / 3;
 type KeySize = u16;
 type ValueSize = u32;
 
+pub const MAX_KEY_SIZE: u16 = u16::MAX;
+
 /// The layout of Node
 /// 1. height: usize
 /// 2. tower: AtomicPtr<Node> x (height + 1)
@@ -211,7 +213,7 @@ impl Node {
     }
 }
 
-struct SkiplistCore<A: Arena<Stats = BasicStats>> {
+struct SkiplistCore<A> {
     height: AtomicUsize,
     head: NonNull<Node>,
     arena: A,
@@ -220,7 +222,7 @@ struct SkiplistCore<A: Arena<Stats = BasicStats>> {
 /// FIXME(yingwen): Modify the skiplist to support arena that supports growth,
 /// otherwise it is hard to avoid memory usage not out of the arena capacity
 #[derive(Clone)]
-pub struct Skiplist<C, A: Arena<Stats = BasicStats> + Clone> {
+pub struct Skiplist<C, A> {
     core: Arc<SkiplistCore<A>>,
     c: C,
 }

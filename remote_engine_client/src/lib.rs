@@ -41,8 +41,8 @@ use table_engine::{
     remote::{
         self,
         model::{
-            ExecutePlanRequest, GetTableInfoRequest, ReadRequest, TableInfo, WriteBatchResult,
-            WriteRequest,
+            AlterTableOptionsRequest, AlterTableSchemaRequest, ExecutePlanRequest,
+            GetTableInfoRequest, ReadRequest, TableInfo, WriteBatchResult, WriteRequest,
         },
         RemoteEngine,
     },
@@ -161,6 +161,22 @@ impl RemoteEngine for RemoteEngineImpl {
             .await
             .box_err()
             .context(remote::Write)
+    }
+
+    async fn alter_table_schema(&self, request: AlterTableSchemaRequest) -> remote::Result<()> {
+        self.client
+            .alter_table_schema(request)
+            .await
+            .box_err()
+            .context(remote::AlterSchema)
+    }
+
+    async fn alter_table_options(&self, request: AlterTableOptionsRequest) -> remote::Result<()> {
+        self.client
+            .alter_table_options(request)
+            .await
+            .box_err()
+            .context(remote::AlterOptions)
     }
 
     async fn get_table_info(&self, request: GetTableInfoRequest) -> remote::Result<TableInfo> {

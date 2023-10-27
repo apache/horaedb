@@ -26,6 +26,9 @@ workspace = true
 
 [features]
 test = ["tempfile"]
+wal-table-kv = ["wal/wal-table-kv"]
+wal-message-queue = ["wal/wal-message-queue"]
+wal-rocksdb = ["wal/wal-rocksdb"]
 
 [dependencies]
 # In alphabetical order
@@ -45,9 +48,10 @@ future_ext = { workspace = true }
 futures = { workspace = true }
 generic_error = { workspace = true }
 hex = { workspace = true }
+hyperloglog = { workspace = true }
 id_allocator = { workspace = true }
 lazy_static = { workspace = true }
-log = { workspace = true }
+logger = { workspace = true }
 lru = { workspace = true }
 macros = { workspace = true }
 message_queue = { workspace = true }
@@ -60,6 +64,7 @@ prost = { workspace = true }
 remote_engine_client = { workspace = true }
 router = { workspace = true }
 runtime = { workspace = true }
+sampling_cache = { workspace = true }
 serde = { workspace = true }
 size_ext = { workspace = true }
 skiplist = { path = "../components/skiplist" }
@@ -81,4 +86,4 @@ pin-project-lite = { workspace = true }
 rand = { workspace = true }
 tempfile = { workspace = true }
 test_util = { workspace = true }
-wal = { workspace = true, features = ["test"] }
+wal = { workspace = true, features = ["wal-message-queue", "wal-rocksdb", "wal-table-kv"] }

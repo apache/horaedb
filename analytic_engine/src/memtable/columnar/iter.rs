@@ -34,7 +34,7 @@ use common_types::{
     SequenceNumber,
 };
 use generic_error::BoxError;
-use log::trace;
+use logger::trace;
 use parquet::data_type::AsBytes;
 use skiplist::{ArenaSlice, BytewiseComparator, IterRef, Skiplist};
 use snafu::{OptionExt, ResultExt};

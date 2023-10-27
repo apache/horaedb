@@ -24,7 +24,7 @@ use datafusion::{
     prelude::{Column, Expr},
     scalar::ScalarValue,
 };
-use log::{error, trace};
+use logger::{error, trace};
 use parquet::file::{metadata::RowGroupMetaData, statistics::Statistics as ParquetStatistics};
 
 /// Filters row groups according to the predicate function, and returns the

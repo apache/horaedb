@@ -25,7 +25,10 @@ use model::{ReadRequest, WriteRequest};
 use snafu::Snafu;
 
 use crate::{
-    remote::model::{ExecutePlanRequest, GetTableInfoRequest, TableInfo, WriteBatchResult},
+    remote::model::{
+        AlterTableOptionsRequest, AlterTableSchemaRequest, ExecutePlanRequest, GetTableInfoRequest,
+        TableInfo, WriteBatchResult,
+    },
     stream::SendableRecordBatchStream,
 };
 
@@ -37,6 +40,12 @@ pub enum Error {
 
     #[snafu(display("Failed to write to remote, err:{}", source))]
     Write { source: GenericError },
+
+    #[snafu(display("Failed to alter schema, err:{}", source))]
+    AlterSchema { source: GenericError },
+
+    #[snafu(display("Failed to alter options, err:{}", source))]
+    AlterOptions { source: GenericError },
 
     #[snafu(display("Failed to get table info from remote, err:{}", source))]
     GetTableInfo { source: GenericError },
@@ -57,6 +66,10 @@ pub trait RemoteEngine: fmt::Debug + Send + Sync {
     async fn write(&self, request: WriteRequest) -> Result<usize>;
 
     async fn write_batch(&self, requests: Vec<WriteRequest>) -> Result<Vec<WriteBatchResult>>;
+
+    async fn alter_table_schema(&self, request: AlterTableSchemaRequest) -> Result<()>;
+
+    async fn alter_table_options(&self, request: AlterTableOptionsRequest) -> Result<()>;
 
     async fn get_table_info(&self, request: GetTableInfoRequest) -> Result<TableInfo>;
 

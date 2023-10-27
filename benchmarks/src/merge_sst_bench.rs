@@ -37,7 +37,7 @@ use analytic_engine::{
     table::sst_util,
 };
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
-use log::info;
+use logger::info;
 use object_store::{LocalFileSystem, ObjectStoreRef};
 use runtime::Runtime;
 use table_engine::{predicate::Predicate, table::TableId};

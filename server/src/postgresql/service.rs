@@ -14,7 +14,7 @@
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
-use log::{error, info};
+use logger::{error, info};
 use pgwire::api::{
     auth::noop::NoopStartupHandler, query::PlaceholderExtendedQueryHandler, MakeHandler,
     StatelessMakeHandler,

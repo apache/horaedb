@@ -26,6 +26,7 @@ pub mod flush_compaction;
 pub(crate) mod mem_collector;
 pub mod open;
 mod read;
+mod reorder_memtable;
 pub(crate) mod serial_executor;
 pub mod wal_replayer;
 pub(crate) mod write;
@@ -34,12 +35,13 @@ use std::sync::Arc;
 
 use common_types::{projected_schema::ProjectedSchema, table::TableId};
 use generic_error::{BoxError, GenericError};
-use log::{error, info};
+use logger::{error, info};
 use macros::define_result;
 use mem_collector::MemUsageCollector;
 use runtime::Runtime;
 use snafu::{ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, predicate::PredicateRef, table::FlushRequest};
+use time_ext::ReadableDuration;
 use tokio::sync::oneshot::{self, error::RecvError};
 use wal::manager::{WalLocation, WalManagerRef};
 
@@ -178,6 +180,8 @@ pub struct Instance {
     pub(crate) max_retry_flush_limit: usize,
     /// Max bytes per write batch
     pub(crate) max_bytes_per_write_batch: Option<usize>,
+    /// The interval for sampling the mem size
+    pub(crate) mem_usage_sampling_interval: ReadableDuration,
     /// Options for scanning sst
     pub(crate) scan_options: ScanOptions,
     pub(crate) iter_options: Option<IterOptions>,

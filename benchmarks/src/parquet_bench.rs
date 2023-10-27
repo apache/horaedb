@@ -19,7 +19,7 @@ use std::{io::Cursor, sync::Arc, time::Instant};
 use analytic_engine::sst::meta_data::cache::MetaCacheRef;
 use common_types::schema::Schema;
 use futures::StreamExt;
-use log::info;
+use logger::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
 use parquet::arrow::{
     arrow_reader::ParquetRecordBatchReaderBuilder, ParquetRecordBatchStreamBuilder,

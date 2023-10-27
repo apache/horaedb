@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Test suits and intergration tests.
+//! Test suits and integration tests.
 
 #[cfg(test)]
 mod alter_test;

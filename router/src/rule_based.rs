@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use ceresdbproto::storage::{self, Route};
 use cluster::config::SchemaConfig;
-use log::info;
+use logger::info;
 use meta_client::types::ShardId;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt};

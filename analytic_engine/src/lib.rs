@@ -37,16 +37,11 @@ pub mod table_meta_set_impl;
 pub mod tests;
 
 use manifest::details::Options as ManifestOptions;
-use message_queue::kafka::config::Config as KafkaConfig;
 use object_store::config::StorageOptions;
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
-use table_kv::config::ObkvConfig;
 use time_ext::ReadableDuration;
-use wal::{
-    message_queue_impl::config::Config as MessageQueueWalConfig,
-    rocks_impl::config::Config as RocksDBWalConfig, table_kv_impl::model::NamespaceConfig,
-};
+use wal::config::StorageConfig;
 
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
 
@@ -84,6 +79,7 @@ pub struct Config {
     /// The ratio of table's write buffer size to trigger preflush, and it
     /// should be in the range (0, 1].
     pub preflush_write_buffer_size_ratio: f32,
+    pub enable_primary_key_sampling: bool,
 
     // Iterator scanning options
     /// Batch size for iterator.
@@ -105,6 +101,8 @@ pub struct Config {
     ///
     /// If this is set, the atomicity of write request will be broken.
     pub max_bytes_per_write_batch: Option<ReadableSize>,
+    /// The interval for sampling the memory usage
+    pub mem_usage_sampling_interval: ReadableDuration,
 
     /// Wal storage config
     ///
@@ -112,7 +110,7 @@ pub struct Config {
     /// + RocksDB
     /// + OBKV
     /// + Kafka
-    pub wal: WalStorageConfig,
+    pub wal: StorageConfig,
 
     /// Recover mode
     ///
@@ -156,6 +154,7 @@ impl Default for Config {
             /// it.
             db_write_buffer_size: 0,
             preflush_write_buffer_size_ratio: 0.75,
+            enable_primary_key_sampling: false,
             scan_batch_size: None,
             sst_background_read_parallelism: 8,
             num_streams_to_prefetch: 2,
@@ -163,165 +162,11 @@ impl Default for Config {
             write_sst_max_buffer_size: ReadableSize::mb(10),
             max_retry_flush_limit: 0,
             max_bytes_per_write_batch: None,
-            wal: WalStorageConfig::RocksDB(Box::default()),
+            mem_usage_sampling_interval: ReadableDuration::secs(0),
+            wal: StorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
             recover_mode: RecoverMode::TableBased,
             metrics: MetricsOptions::default(),
         }
     }
-}
-
-/// Config of wal based on obkv
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
-#[serde(default)]
-pub struct ObkvWalConfig {
-    /// Obkv client config
-    pub obkv: ObkvConfig,
-    /// Namespace config for data.
-    pub data_namespace: WalNamespaceConfig,
-    /// Namespace config for meta data
-    pub meta_namespace: ManifestNamespaceConfig,
-}
-
-/// Config of obkv wal based manifest
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ManifestNamespaceConfig {
-    /// Decide how many wal data shards will be created
-    ///
-    /// NOTICE: it can just be set once, the later setting makes no effect.
-    pub shard_num: usize,
-
-    /// Decide how many wal meta shards will be created
-    ///
-    /// NOTICE: it can just be set once, the later setting makes no effect.
-    pub meta_shard_num: usize,
-
-    pub init_scan_timeout: ReadableDuration,
-    pub init_scan_batch_size: i32,
-    pub clean_scan_timeout: ReadableDuration,
-    pub clean_scan_batch_size: usize,
-    pub bucket_create_parallelism: usize,
-}
-
-impl Default for ManifestNamespaceConfig {
-    fn default() -> Self {
-        let namespace_config = NamespaceConfig::default();
-
-        Self {
-            shard_num: namespace_config.wal_shard_num,
-            meta_shard_num: namespace_config.table_unit_meta_shard_num,
-            init_scan_timeout: namespace_config.init_scan_timeout,
-            init_scan_batch_size: namespace_config.init_scan_batch_size,
-            clean_scan_timeout: namespace_config.clean_scan_timeout,
-            clean_scan_batch_size: namespace_config.clean_scan_batch_size,
-            bucket_create_parallelism: namespace_config.bucket_create_parallelism,
-        }
-    }
-}
-
-impl From<ManifestNamespaceConfig> for NamespaceConfig {
-    fn from(manifest_config: ManifestNamespaceConfig) -> Self {
-        NamespaceConfig {
-            wal_shard_num: manifest_config.shard_num,
-            table_unit_meta_shard_num: manifest_config.meta_shard_num,
-            ttl: None,
-            init_scan_timeout: manifest_config.init_scan_timeout,
-            init_scan_batch_size: manifest_config.init_scan_batch_size,
-            clean_scan_timeout: manifest_config.clean_scan_timeout,
-            clean_scan_batch_size: manifest_config.clean_scan_batch_size,
-            bucket_create_parallelism: manifest_config.bucket_create_parallelism,
-        }
-    }
-}
-
-/// Config of obkv wal based wal module
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct WalNamespaceConfig {
-    /// Decide how many wal data shards will be created
-    ///
-    /// NOTICE: it can just be set once, the later setting makes no effect.
-    pub shard_num: usize,
-
-    /// Decide how many wal meta shards will be created
-    ///
-    /// NOTICE: it can just be set once, the later setting makes no effect.
-    pub meta_shard_num: usize,
-
-    pub ttl: ReadableDuration,
-    pub init_scan_timeout: ReadableDuration,
-    pub init_scan_batch_size: i32,
-    pub bucket_create_parallelism: usize,
-}
-
-impl Default for WalNamespaceConfig {
-    fn default() -> Self {
-        let namespace_config = NamespaceConfig::default();
-
-        Self {
-            shard_num: namespace_config.wal_shard_num,
-            meta_shard_num: namespace_config.table_unit_meta_shard_num,
-            ttl: namespace_config.ttl.unwrap(),
-            init_scan_timeout: namespace_config.init_scan_timeout,
-            init_scan_batch_size: namespace_config.init_scan_batch_size,
-            bucket_create_parallelism: namespace_config.bucket_create_parallelism,
-        }
-    }
-}
-
-impl From<WalNamespaceConfig> for NamespaceConfig {
-    fn from(wal_config: WalNamespaceConfig) -> Self {
-        Self {
-            wal_shard_num: wal_config.shard_num,
-            table_unit_meta_shard_num: wal_config.meta_shard_num,
-            ttl: Some(wal_config.ttl),
-            init_scan_timeout: wal_config.init_scan_timeout,
-            init_scan_batch_size: wal_config.init_scan_batch_size,
-            bucket_create_parallelism: wal_config.bucket_create_parallelism,
-            ..Default::default()
-        }
-    }
-}
-
-/// Config of wal based on obkv
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
-#[serde(default)]
-pub struct KafkaWalConfig {
-    /// Kafka client config
-    pub kafka: KafkaConfig,
-
-    /// Namespace config for data.
-    pub data_namespace: MessageQueueWalConfig,
-    /// Namespace config for meta data
-    pub meta_namespace: MessageQueueWalConfig,
-}
-
-/// Config for wal based on RocksDB
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
-pub struct RocksDBConfig {
-    /// Data directory used by RocksDB.
-    pub data_dir: String,
-
-    pub data_namespace: RocksDBWalConfig,
-    pub meta_namespace: RocksDBWalConfig,
-}
-
-impl Default for RocksDBConfig {
-    fn default() -> Self {
-        Self {
-            data_dir: "/tmp/ceresdb".to_string(),
-            data_namespace: Default::default(),
-            meta_namespace: Default::default(),
-        }
-    }
-}
-/// Options for wal storage backend
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "type")]
-pub enum WalStorageConfig {
-    RocksDB(Box<RocksDBConfig>),
-    Obkv(Box<ObkvWalConfig>),
-    Kafka(Box<KafkaWalConfig>),
 }

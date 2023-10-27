@@ -19,7 +19,7 @@ use benchmarks::{
     util,
 };
 use clap::{App, Arg};
-use log::info;
+use logger::info;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]

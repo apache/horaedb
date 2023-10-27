@@ -30,7 +30,9 @@ use common_types::{
     SequenceNumber,
 };
 use macros::define_result;
+use sampling_cache::SamplingCachedUsize;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use time_ext::ReadableDuration;
 
 use crate::{
     compaction::{
@@ -38,7 +40,7 @@ use crate::{
         CompactionTask, ExpiredFiles,
     },
     memtable::{self, key::KeySequence, MemTableRef, PutContext},
-    sampler::{DefaultSampler, SamplerRef},
+    sampler::{DefaultSampler, PrimaryKeySampler, SamplerRef, MAX_SUGGEST_PRIMARY_KEY_NUM},
     sst::{
         file::{FileHandle, FilePurgeQueue, SST_LEVEL_NUM},
         manager::{FileId, LevelsController},
@@ -82,6 +84,7 @@ pub struct SamplingMemTable {
     /// data should ONLY write to this memtable instead of mutable memtable.
     pub freezed: bool,
     pub sampler: SamplerRef,
+    pub pk_sampler: Option<PrimaryKeySampler>,
 }
 
 impl SamplingMemTable {
@@ -91,7 +94,17 @@ impl SamplingMemTable {
             id,
             freezed: false,
             sampler: Arc::new(DefaultSampler::default()),
+            pk_sampler: None,
         }
+    }
+
+    // TODO: add a builder for SamplingMemTable
+    pub fn set_pk_sampler(&mut self, schema: &Schema) {
+        self.pk_sampler = Some(PrimaryKeySampler::new(
+            schema,
+            // Make this configurable
+            MAX_SUGGEST_PRIMARY_KEY_NUM,
+        ));
     }
 
     pub fn last_sequence(&self) -> SequenceNumber {
@@ -106,6 +119,20 @@ impl SamplingMemTable {
     /// default segment duration.
     fn suggest_segment_duration(&self) -> Duration {
         self.sampler.suggest_duration()
+    }
+
+    fn suggest_primary_key(&self) -> Option<Vec<usize>> {
+        self.pk_sampler.as_ref().and_then(|sampler| {
+            let new_pk_idx = sampler.suggest();
+            let old_pk_idx = self.mem.schema().primary_key_indexes();
+            // If new suggested idx is the same with old, return None to avoid unnecessary
+            // meta update.
+            if new_pk_idx == old_pk_idx {
+                None
+            } else {
+                Some(new_pk_idx)
+            }
+        })
     }
 }
 
@@ -190,6 +217,10 @@ impl MemTableForWrite {
 
                 // Collect the timestamp of this row.
                 v.sampler.collect(timestamp).context(CollectTimestamp)?;
+
+                if let Some(sampler) = &v.pk_sampler {
+                    sampler.collect(row);
+                }
 
                 Ok(())
             }
@@ -329,6 +360,20 @@ impl MemTableView {
         None
     }
 
+    fn suggest_primary_key(&mut self) -> Option<Vec<usize>> {
+        if let Some(v) = &mut self.sampling_mem {
+            if !v.freezed {
+                // Other memtable should be empty during sampling phase.
+                assert!(self.mutables.is_empty());
+                assert!(self.immutables.is_empty());
+
+                return v.suggest_primary_key();
+            }
+        }
+
+        None
+    }
+
     fn freeze_sampling_memtable(&mut self) -> Option<SequenceNumber> {
         if let Some(v) = &mut self.sampling_mem {
             v.freezed = true;
@@ -374,7 +419,7 @@ impl MemTableView {
         self.immutables.0.remove(&id);
     }
 
-    /// Collect memtables itersect with `time_range`
+    /// Collect memtables intersect with `time_range`
     fn memtables_for_read(
         &self,
         time_range: TimeRange,
@@ -573,11 +618,13 @@ impl TableVersionInner {
 /// should be done atomically.
 pub struct TableVersion {
     inner: RwLock<TableVersionInner>,
+
+    cached_mem_size: SamplingCachedUsize,
 }
 
 impl TableVersion {
     /// Create an empty table version
-    pub fn new(purge_queue: FilePurgeQueue) -> Self {
+    pub fn new(mem_usage_sampling_interval: ReadableDuration, purge_queue: FilePurgeQueue) -> Self {
         Self {
             inner: RwLock::new(TableVersionInner {
                 memtable_view: MemTableView::new(),
@@ -585,6 +632,8 @@ impl TableVersion {
                 flushed_sequence: 0,
                 max_file_id: 0,
             }),
+
+            cached_mem_size: SamplingCachedUsize::new(mem_usage_sampling_interval.as_millis()),
         }
     }
 
@@ -599,17 +648,32 @@ impl TableVersion {
 
     /// See [MemTableView::total_memory_usage]
     pub fn total_memory_usage(&self) -> usize {
-        self.inner
-            .read()
-            .unwrap()
-            .memtable_view
-            .total_memory_usage()
+        let fetch_total_memory_usage = || -> std::result::Result<usize, ()> {
+            let size = self
+                .inner
+                .read()
+                .unwrap()
+                .memtable_view
+                .total_memory_usage();
+
+            Ok(size)
+        };
+
+        self.cached_mem_size.read(fetch_total_memory_usage).unwrap()
     }
 
     /// Return the suggested segment duration if sampling memtable is still
     /// active.
     pub fn suggest_duration(&self) -> Option<Duration> {
         self.inner.write().unwrap().memtable_view.suggest_duration()
+    }
+
+    pub fn suggest_primary_key(&self) -> Option<Vec<usize>> {
+        self.inner
+            .write()
+            .unwrap()
+            .memtable_view
+            .suggest_primary_key()
     }
 
     /// Switch all mutable memtables
@@ -880,7 +944,7 @@ mod tests {
     fn new_table_version() -> TableVersion {
         let purger = FilePurgerMocker::mock();
         let queue = purger.create_purge_queue(1, table::new_table_id(2, 2));
-        TableVersion::new(queue)
+        TableVersion::new(ReadableDuration::millis(0), queue)
     }
 
     #[test]

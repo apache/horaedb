@@ -35,7 +35,7 @@ common_types = { workspace = true }
 env_logger = { workspace = true }
 futures = { workspace = true }
 generic_error = { workspace = true }
-log = { workspace = true }
+logger = { workspace = true }
 macros = { workspace = true }
 object_store = { workspace = true }
 parquet = { workspace = true }
@@ -52,7 +52,7 @@ time_ext = { workspace = true }
 tokio = { workspace = true }
 toml_ext = { workspace = true }
 trace_metric = { workspace = true }
-wal = { workspace = true }
+wal = { workspace = true, features = ["wal-rocksdb", "wal-message-queue", "wal-table-kv"] }
 zstd = { workspace = true }
 
 [dev-dependencies]

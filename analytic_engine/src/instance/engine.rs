@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-use common_types::schema::Version;
+use common_types::{schema::Version, SequenceNumber};
 use generic_error::GenericError;
 use macros::define_result;
 use snafu::{Backtrace, OptionExt, Snafu};
@@ -30,7 +30,7 @@ use super::open::{TableContext, TablesOfShardContext};
 use crate::{
     engine::build_space_id,
     instance::{close::Closer, drop::Dropper, open::OpenTablesOfShardResult, Instance},
-    space::{Space, SpaceAndTable, SpaceContext, SpaceId, SpaceRef},
+    space::{MemSizeOptions, Space, SpaceAndTable, SpaceContext, SpaceId, SpaceRef},
 };
 
 #[derive(Debug, Snafu)]
@@ -237,6 +237,17 @@ pub enum Error {
         "Try to create a random partition table in overwrite mode, table:{table}.\nBacktrace:\n{backtrace}",
     ))]
     TryCreateRandomPartitionTableInOverwriteMode { table: String, backtrace: Backtrace },
+
+    #[snafu(display(
+        "Failed to purge wal, wal_location:{:?}, sequence:{}",
+        wal_location,
+        sequence
+    ))]
+    PurgeWal {
+        wal_location: WalLocation,
+        sequence: SequenceNumber,
+        source: wal::manager::Error,
+    },
 }
 
 define_result!(Error);
@@ -273,6 +284,7 @@ impl From<Error> for table_engine::engine::Error {
             | Error::TableNotExist { .. }
             | Error::OpenTablesOfShard { .. }
             | Error::ReplayWalNoCause { .. }
+            | Error::PurgeWal { .. }
             | Error::ReplayWalWithCause { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
@@ -301,12 +313,12 @@ impl Instance {
         // Now we are the one responsible to create and persist the space info into meta
 
         // Create space
-        let space = Arc::new(Space::new(
-            space_id,
-            context,
-            self.space_write_buffer_size,
-            self.mem_usage_collector.clone(),
-        ));
+        let mem_size_options = MemSizeOptions {
+            write_buffer_size: self.space_write_buffer_size,
+            usage_collector: self.mem_usage_collector.clone(),
+            size_sampling_interval: self.mem_usage_sampling_interval,
+        };
+        let space = Arc::new(Space::new(space_id, context, mem_size_options));
 
         spaces.insert(space.clone());
 
@@ -368,7 +380,6 @@ impl Instance {
         let dropper = Dropper {
             space,
             space_store: self.space_store.clone(),
-            flusher: self.make_flusher(),
         };
 
         dropper.drop(request).await

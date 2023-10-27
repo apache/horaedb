@@ -24,7 +24,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use log::{info, SetLoggerError};
+pub use log::{
+    debug as log_debug, error as log_error, info as log_info, max_level, trace as log_trace,
+    warn as log_warn, SetLoggerError,
+};
 use serde::{Deserialize, Serialize};
 pub use slog::Level;
 use slog::{slog_o, Drain, Key, OwnedKVList, Record, KV};
@@ -34,7 +37,7 @@ use slog_term::{Decorator, PlainDecorator, RecordDecorator, TermDecorator};
 const ASYNC_CHAN_SIZE: usize = 102400;
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.3f";
 pub const SLOW_QUERY_TAG: &str = "slow";
-pub const FAILED_QUERY_TAG: &str = "failed";
+pub const DEFAULT_TAG: &str = "";
 
 // Thanks to tikv
 // https://github.com/tikv/tikv/blob/eaeb39a2c85684de08c48cf4b9426b3faf4defe6/components/tikv_util/src/logger/mod.rs
@@ -93,27 +96,21 @@ pub fn file_drainer(path: &Option<String>) -> Option<CeresFormat<PlainDecorator<
 }
 
 /// Dispatcher for logs
-pub struct LogDispatcher<N, S, F> {
+pub struct LogDispatcher<N, S> {
     normal: N,
     slow: Option<S>,
-    failed: Option<F>,
 }
 
-impl<N: Drain, S: Drain, F: Drain> LogDispatcher<N, S, F> {
-    pub fn new(normal: N, slow: Option<S>, failed: Option<F>) -> Self {
-        Self {
-            normal,
-            slow,
-            failed,
-        }
+impl<N: Drain, S: Drain> LogDispatcher<N, S> {
+    pub fn new(normal: N, slow: Option<S>) -> Self {
+        Self { normal, slow }
     }
 }
 
-impl<N, S, F> Drain for LogDispatcher<N, S, F>
+impl<N, S> Drain for LogDispatcher<N, S>
 where
     N: Drain<Ok = (), Err = io::Error>,
     S: Drain<Ok = (), Err = io::Error>,
-    F: Drain<Ok = (), Err = io::Error>,
 {
     type Err = io::Error;
     type Ok = ();
@@ -124,8 +121,6 @@ where
             self.normal.log(record, values)
         } else if self.slow.is_some() && tag == SLOW_QUERY_TAG {
             self.slow.as_ref().unwrap().log(record, values)
-        } else if self.failed.is_some() && tag == FAILED_QUERY_TAG {
-            self.failed.as_ref().unwrap().log(record, values)
         } else {
             Ok(())
         }
@@ -169,8 +164,7 @@ pub fn init_log(config: &Config) -> Result<RuntimeLevel, SetLoggerError> {
 
     let normal_drain = term_drainer();
     let slow_drain = file_drainer(&config.slow_query_path);
-    let failed_drain = file_drainer(&config.failed_query_path);
-    let drain = LogDispatcher::new(normal_drain, slow_drain, failed_drain);
+    let drain = LogDispatcher::new(normal_drain, slow_drain);
 
     // Use async and init stdlog
     init_log_from_drain(
@@ -288,7 +282,8 @@ impl RuntimeLevel {
         // Log level of std log is not changed unless we call `log::set_max_level`
         log::set_max_level(convert_slog_level_to_log_level(level).to_level_filter());
 
-        info!(
+        // We should not print things about logger use the logger...
+        println!(
             "RuntimeLevel::set_level log level changed to {}",
             get_string_by_level(level)
         );
@@ -462,7 +457,6 @@ pub fn init_test_logger() {
     let drain = LogDispatcher::new(
         term_drain,
         Option::<CeresFormat<PlainDecorator<File>>>::None,
-        Option::<CeresFormat<PlainDecorator<File>>>::None,
     );
 
     // Use async and init stdlog
@@ -471,45 +465,110 @@ pub fn init_test_logger() {
 
 /// Timer for collecting slow query
 #[derive(Debug)]
-pub struct SlowTimer {
+pub struct SlowTimer<'a> {
+    request_id: u64,
+    sql: &'a str,
     slow_threshold: Duration,
-    timer: Instant,
+    start_time: Instant,
 }
 
-impl SlowTimer {
-    pub fn new(threshold: Duration) -> SlowTimer {
+impl<'a> Drop for SlowTimer<'a> {
+    fn drop(&mut self) {
+        let cost = self.elapsed();
+        maybe_slow_query!(
+            self,
+            "RequestId:{}, elapsed:{:?}, sql:{}",
+            self.request_id,
+            cost,
+            self.sql,
+        );
+    }
+}
+
+impl<'a> SlowTimer<'a> {
+    pub fn new(request_id: u64, sql: &'a str, threshold: Duration) -> SlowTimer {
         SlowTimer {
+            request_id,
+            sql,
             slow_threshold: threshold,
-            timer: Instant::now(),
+            start_time: Instant::now(),
         }
     }
 
     pub fn elapsed(&self) -> Duration {
-        self.timer.elapsed()
+        self.start_time.elapsed()
     }
 
     pub fn is_slow(&self) -> bool {
         self.elapsed() >= self.slow_threshold
     }
 
-    pub fn now(&self) -> Instant {
-        self.timer
+    pub fn start_time(&self) -> Instant {
+        self.start_time
     }
 }
 
-#[macro_export]
-macro_rules! maybe_slow_query {
-    ($t:expr, $($args:tt)*) => {{
-        if $t.is_slow() {
-            info!(target: logger::SLOW_QUERY_TAG, $($args)*);
-        }
+#[macro_export(local_inner_macros)]
+macro_rules! error {
+    (target: $target:expr, $($arg:tt)+) => {{
+        log_error!(target: $target, $($arg)+);
+    }};
+
+    ($($arg:tt)+) => {{
+        log_error!(target: logger::DEFAULT_TAG, $($arg)+);
     }}
 }
 
-#[macro_export]
-macro_rules! failed_query {
-    ($($args:tt)*) => {{
-        info!(target: logger::FAILED_QUERY_TAG, $($args)*);
+#[macro_export(local_inner_macros)]
+macro_rules! warn {
+    (target: $target:expr, $($arg:tt)+) => {{
+        log_warn!(target: $target, $($arg)+);
+    }};
+
+    ($($arg:tt)+) => {{
+        log_warn!(target: logger::DEFAULT_TAG, $($arg)+);
+    }}
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! info {
+    (target: $target:expr, $($arg:tt)+) => {{
+        log_info!(target: $target, $($arg)+);
+    }};
+
+    ($($arg:tt)+) => {{
+        log_info!(target: logger::DEFAULT_TAG, $($arg)+);
+    }}
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! debug {
+    (target: $target:expr, $($arg:tt)+) => {{
+        log_debug!(target: $target, $($arg)+);
+    }};
+
+    ($($arg:tt)+) => {{
+        log_debug!(target: logger::DEFAULT_TAG, $($arg)+);
+    }}
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! trace {
+    (target: $target:expr, $($arg:tt)+) => {{
+        log_trace!(target: $target, $($arg)+);
+    }};
+
+    ($($arg:tt)+) => {{
+        log_trace!(target: logger::DEFAULT_TAG, $($arg)+);
+    }}
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! maybe_slow_query {
+    ($t:expr, $($args:tt)*) => {{
+        if $t.is_slow() {
+            info!(target: $crate::SLOW_QUERY_TAG, $($args)*);
+        }
     }}
 }
 

@@ -16,18 +16,16 @@
 
 use std::sync::Arc;
 
-use analytic_engine::setup::OpenedWals;
 use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
 use datafusion::execution::{runtime_env::RuntimeConfig, FunctionRegistry};
 use df_operator::registry::FunctionRegistryRef;
 use interpreters::table_manipulator::TableManipulatorRef;
-use log::{info, warn};
-use logger::RuntimeLevel;
+use logger::{info, warn, RuntimeLevel};
 use macros::define_result;
+use notifier::notifier::RequestNotifiers;
 use partition_table_engine::PartitionTableEngine;
 use proxy::{
-    dedup_requests::RequestNotifiers,
     hotspot::HotspotRecorder,
     instance::{DynamicConfig, Instance, InstanceRef},
     limiter::Limiter,
@@ -42,6 +40,7 @@ use table_engine::{
     engine::{EngineRuntimes, TableEngineRef},
     remote::RemoteEngineRef,
 };
+use wal::manager::OpenedWals;
 
 use crate::{
     config::ServerConfig,
@@ -441,11 +440,11 @@ impl Builder {
             timeout: self.server_config.timeout.map(|v| v.0),
         };
 
-        let request_notifiers = if self.server_config.query_dedup.enable {
-            Some(Arc::new(RequestNotifiers::default()))
-        } else {
-            None
-        };
+        let request_notifiers = self
+            .server_config
+            .query_dedup
+            .enable
+            .then(|| Arc::new(RequestNotifiers::default()));
 
         let proxy = Arc::new(Proxy::new(
             router.clone(),

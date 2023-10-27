@@ -10,28 +10,36 @@ init:
 
 build-debug:
 	ls -alh
-	cd $(DIR); cargo build
+	cd $(DIR); cargo build $(CARGO_FEATURE_FLAGS)
 
 build:
 	ls -alh
-	cd $(DIR); cargo build --release
+	cd $(DIR); cargo build --release $(CARGO_FEATURE_FLAGS)
+
+build-wal-table-kv:
+	ls -alh
+	cd $(DIR)/src/ceresdb; cargo build --release --no-default-features --features wal-table-kv
+
+build-wal-message-queue:
+	ls -alh
+	cd $(DIR)/src/ceresdb; cargo build --release --no-default-features --features wal-message-queue
 
 build-slim:
 	ls -alh
-	cd $(DIR); cargo build --profile release-slim
+	cd $(DIR); cargo build --profile release-slim $(CARGO_FEATURE_FLAGS)
 
 build-asan:
 	ls -alh
 	export RUSTFLAGS=-Zsanitizer=address RUSTDOCFLAGS=-Zsanitizer=address
-	cd $(DIR); cargo build -Zbuild-std --target x86_64-unknown-linux-gnu --release
+	cd $(DIR); cargo build -Zbuild-std --target x86_64-unknown-linux-gnu --release $(CARGO_FEATURE_FLAGS)
 
 build-arm64:
 	ls -alh
-	cd $(DIR); cargo build --release --no-default-features
+	cd $(DIR); cargo build --release --no-default-features $(CARGO_FEATURE_FLAGS)
 
 build-with-console:
 	ls -alh
-	cd $(DIR); RUSTFLAGS="--cfg tokio_unstable" cargo build --release
+	cd $(DIR); RUSTFLAGS="--cfg tokio_unstable" cargo build --release $(CARGO_FEATURE_FLAGS)
 
 test:
 	cd $(DIR); cargo test --workspace -- --test-threads=4

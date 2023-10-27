@@ -15,7 +15,7 @@
 use std::time::Instant;
 
 use generic_error::BoxError;
-use log::{error, info, warn};
+use logger::{error, info, warn};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{engine, table::TableRef};
 use time_ext::InstantExt;

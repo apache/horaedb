@@ -32,7 +32,7 @@ use common_types::{
     SequenceNumber,
 };
 use future_ext::{retry_async, RetryConfig};
-use log::{error, info, trace, warn};
+use logger::{error, info, trace, warn};
 use macros::define_result;
 use metric_ext::Meter;
 use object_store::{ObjectStoreRef, Path};

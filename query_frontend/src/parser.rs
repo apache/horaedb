@@ -16,7 +16,7 @@
 //!
 //! Some codes are copied from datafusion: <https://github.com/apache/arrow/blob/9d86440946b8b07e03abb94fad2da278affae08f/rust/datafusion/src/sql/parser.rs#L74>
 
-use log::debug;
+use logger::debug;
 use macros::define_result;
 use paste::paste;
 use sqlparser::{
@@ -418,7 +418,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        build_timestamp_key_constraint(&columns, &mut constraints);
+        build_or_infer_timestamp_key_constraint(&columns, &mut constraints);
 
         Ok((columns, constraints))
     }
@@ -791,6 +791,47 @@ fn check_column_expr_validity_in_hash(column: &Ident, columns: &[ColumnDef]) -> 
     valid_column.is_some()
 }
 
+/// Builds for the existence of a timestamp key constraint named
+/// __ts_key within the given list of table constraints first. If such a
+/// constraint does not exist, the function will try to search for a unique
+/// timestamp column and create a new constraint for it.
+fn build_or_infer_timestamp_key_constraint(
+    col_defs: &[ColumnDef],
+    constraints: &mut Vec<TableConstraint>,
+) {
+    // try to create timestamp key constraint from ColumnOption::DialectSpecific
+    // tokens
+    build_timestamp_key_constraint(col_defs, constraints);
+
+    // Now check if there's a __ts_key constraint
+    let no_timestamp_constraint = constraints
+        .iter()
+        .all(|constraint| !is_timestamp_key_constraint(constraint));
+
+    if no_timestamp_constraint {
+        // If a timestamp constraint doesn't exist, start looking for a unique timestamp
+        // column
+        let mut ts_column_iterator = col_defs
+            .iter()
+            .filter(|col_def| matches!(col_def.data_type, DataType::Timestamp(_, _)));
+
+        if let Some(ts_column) = ts_column_iterator.next() {
+            if ts_column_iterator.next().is_none() {
+                // Create a timestamp constraint if the column is unique
+                let constraint = TableConstraint::Unique {
+                    name: Some(Ident {
+                        value: TS_KEY.to_owned(),
+                        quote_style: None,
+                    }),
+                    columns: vec![ts_column.name.clone()],
+                    is_primary: false,
+                };
+                constraints.push(constraint);
+            }
+        }
+    }
+}
+
 // Build the tskey constraint from the column definitions if any.
 fn build_timestamp_key_constraint(col_defs: &[ColumnDef], constraints: &mut Vec<TableConstraint>) {
     for col_def in col_defs {
@@ -954,34 +995,80 @@ mod tests {
         expect_parse_ok(sql, expected).unwrap();
 
         // positive case, multiple columns
+        let columns = vec![
+            make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
+            make_column_def("c2", DataType::Double),
+            make_column_def("c3", DataType::String),
+        ];
+
         let sql = "CREATE TABLE mytbl(c1 timestamp, c2 double, c3 string,) ENGINE = XX";
         let expected = Statement::Create(Box::new(CreateTable {
             if_not_exists: false,
             table_name: make_table_name("mytbl"),
-            columns: vec![
-                make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
-                make_column_def("c2", DataType::Double),
-                make_column_def("c3", DataType::String),
-            ],
+            columns: columns.clone(),
             engine: "XX".to_string(),
-            constraints: vec![],
+            constraints: vec![TableConstraint::Unique {
+                name: Some(Ident {
+                    value: TS_KEY.to_owned(),
+                    quote_style: None,
+                }),
+                columns: vec![columns[0].name.clone()],
+                is_primary: false,
+            }],
             options: vec![],
             partition: None,
         }));
         expect_parse_ok(sql, expected).unwrap();
 
         // positive case, multiple columns with comment
+        let columns = vec![
+            make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
+            make_comment_column_def("c2", DataType::Double, "id".to_string()),
+            make_comment_column_def("c3", DataType::String, "name".to_string()),
+        ];
+
         let sql = "CREATE TABLE mytbl(c1 timestamp, c2 double comment 'id', c3 string comment 'name',) ENGINE = XX";
         let expected = Statement::Create(Box::new(CreateTable {
             if_not_exists: false,
             table_name: make_table_name("mytbl"),
-            columns: vec![
-                make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
-                make_comment_column_def("c2", DataType::Double, "id".to_string()),
-                make_comment_column_def("c3", DataType::String, "name".to_string()),
-            ],
+            columns: columns.clone(),
             engine: "XX".to_string(),
-            constraints: vec![],
+            constraints: vec![TableConstraint::Unique {
+                name: Some(Ident {
+                    value: TS_KEY.to_owned(),
+                    quote_style: None,
+                }),
+                columns: vec![columns[0].name.clone()],
+                is_primary: false,
+            }],
+            options: vec![],
+            partition: None,
+        }));
+        expect_parse_ok(sql, expected).unwrap();
+
+        // Explicitly declare `c2` as timestamp key column
+        let columns = vec![
+            make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
+            make_column_def("c2", DataType::Timestamp(None, TimezoneInfo::None)),
+            make_column_def("c3", DataType::String),
+            make_column_def("c4", DataType::Double),
+        ];
+
+        let sql =
+            "CREATE TABLE mytbl(c1 timestamp, c2 timestamp, c3 string, c4 double, timestamp key(c2),) ENGINE = XX";
+        let expected = Statement::Create(Box::new(CreateTable {
+            if_not_exists: false,
+            table_name: make_table_name("mytbl"),
+            columns: columns.clone(),
+            engine: "XX".to_string(),
+            constraints: vec![TableConstraint::Unique {
+                name: Some(Ident {
+                    value: TS_KEY.to_owned(),
+                    quote_style: None,
+                }),
+                columns: vec![columns[1].name.clone()],
+                is_primary: false,
+            }],
             options: vec![],
             partition: None,
         }));

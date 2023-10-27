@@ -24,6 +24,12 @@ workspace = true
 [package.edition]
 workspace = true
 
+[features]
+default = ["wal-rocksdb", "wal-table-kv", "wal-message-queue"]
+wal-table-kv = ["wal/wal-table-kv", "analytic_engine/wal-table-kv"]
+wal-message-queue = ["wal/wal-message-queue", "analytic_engine/wal-message-queue"]
+wal-rocksdb = ["wal/wal-rocksdb", "analytic_engine/wal-rocksdb"]
+
 [dependencies]
 analytic_engine = { workspace = true }
 catalog = { workspace = true }
@@ -34,7 +40,6 @@ datafusion = { workspace = true }
 df_operator = { workspace = true }
 etcd-client = { workspace = true }
 interpreters = { workspace = true }
-log = { workspace = true }
 logger = { workspace = true }
 meta_client = { workspace = true }
 moka = { version = "0.10", features = ["future"] }
@@ -50,6 +55,7 @@ table_engine = { workspace = true }
 toml = { workspace = true }
 toml_ext = { workspace = true }
 tracing_util = { workspace = true }
+wal = { workspace = true }
 
 [build-dependencies]
 vergen = { version = "8", default-features = false, features = ["build", "cargo", "git", "gitcl", "rustc"] }

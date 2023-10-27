@@ -16,7 +16,7 @@ use std::{sync::Arc, time::Instant};
 
 use async_trait::async_trait;
 use generic_error::BoxError;
-use log::info;
+use logger::info;
 use snafu::ResultExt;
 use table_engine::stream::SendableRecordBatchStream;
 use time_ext::InstantExt;

@@ -35,7 +35,7 @@ codec = { workspace = true }
 common_types = { workspace = true }
 futures = { workspace = true }
 generic_error = { workspace = true }
-log = { workspace = true }
+logger = { workspace = true }
 macros = { workspace = true }
 prost = { workspace = true }
 snafu = { workspace = true }
