@@ -30,7 +30,7 @@ use futures::{stream::FuturesOrdered, StreamExt};
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::{interpreter::Output, RecordBatchVec};
-use log::{debug, info};
+use logger::{debug, info};
 use query_frontend::{
     frontend::{Context as SqlContext, Frontend},
     opentsdb::types::QueryRequest,
