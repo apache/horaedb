@@ -610,52 +610,34 @@ impl RemoteEngineServiceImpl {
         )));
         let physical_plan_clone = Arc::clone(&physical_plan);
 
-        let mut res = self
+        let streams = self
             .runtimes
             .read_runtime
-            .spawn(async move { handle_execute_plan(ctx, physical_plan, query_engine).await })
+            .spawn(async move {
+                let stream = handle_execute_plan(ctx, physical_plan, query_engine).await?;
+                let metrics = handle_metrics(physical_plan_clone).await?;
+                Ok(PartitionedStreams {
+                    streams: vec![stream, metrics],
+                })
+            })
             .await
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::Internal,
-                msg: "failed to run execute physical plan task",
-            })??
-            .map(|result| {
-                result.box_err().context(ErrWithCause {
-                    code: StatusCode::Internal,
-                    msg: "failed to poll record batch for remote physical plan",
-                })
-            });
-
-        let mut metrics = self
-            .runtimes
-            .read_runtime
-            .spawn(async move { handle_metrics(physical_plan_clone).await })
-            .await
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::Internal,
-                msg: "failed to run handle metrics task",
-            })??
-            .map(|result| {
-                result.box_err().context(ErrWithCause {
-                    code: StatusCode::Internal,
-                    msg: "failed to poll record batch for remote metrics",
-                })
-            });
+                msg: "failed to run remote physical plan task",
+            })??;
 
         self.runtimes.read_runtime.spawn(async move {
-            let mut results = Vec::new();
-            while let Some(result) = res.next().await {
-                results.push(result);
-            }
-            while let Some(result) = metrics.next().await {
-                results.push(result);
-            }
-            for result in results {
-                if let Err(e) = tx.send(result).await {
-                    error!("Failed to send handler result, err:{}.", e);
-                    break;
+            for mut stream in streams.streams {
+                while let Some(result) = stream.next().await {
+                    let result = result.box_err().context(ErrWithCause {
+                        code: StatusCode::Internal,
+                        msg: "failed to poll record batch for remote physical plan",
+                    });
+                    if let Err(e) = tx.send(result).await {
+                        error!("Failed to send handler result, err:{}.", e);
+                        break;
+                    }
                 }
             }
         });
@@ -683,6 +665,7 @@ impl RemoteEngineServiceImpl {
         let physical_plan = Arc::new(DataFusionPhysicalPlanAdapter::new(TypedPlan::Remote(
             encoded_plan,
         )));
+        let physical_plan_clone = Arc::clone(&physical_plan);
 
         let QueryDedup {
             config,
@@ -695,9 +678,11 @@ impl RemoteEngineServiceImpl {
             // The first request, need to handle it, and then notify the other requests.
             RequestResult::First => {
                 let query = async move {
-                    handle_execute_plan(ctx, physical_plan, query_engine)
-                        .await
-                        .map(PartitionedStreams::one_stream)
+                    let stream = handle_execute_plan(ctx, physical_plan, query_engine).await?;
+                    let metrics = handle_metrics(physical_plan_clone).await?;
+                    Ok(PartitionedStreams {
+                        streams: vec![stream, metrics],
+                    })
                 };
                 self.read_and_send_dedupped_resps(
                     key,
@@ -1169,7 +1154,7 @@ async fn handle_metrics(physical_plan: PhysicalPlanPtr) -> Result<SendableRecord
             msg: "failed to handle metrics",
         })?;
 
-    return Ok(Box::pin(stream));
+    Ok(Box::pin(stream))
 }
 
 async fn handle_alter_table_schema(
