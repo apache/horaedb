@@ -507,6 +507,7 @@ impl RemotePhysicalPlanExecutor for MockRemotePhysicalPlanExecutor {
         _table: TableIdentifier,
         _task_context: &TaskContext,
         _plan: Arc<dyn ExecutionPlan>,
+        _metrics_collector: MetricsCollector,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         unimplemented!()
     }

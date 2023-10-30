@@ -45,7 +45,7 @@ pub trait PhysicalPlan: std::fmt::Debug + Sync + Send + 'static {
     fn metrics_to_string(&self) -> String;
 }
 
-pub type PhysicalPlanPtr = Box<dyn PhysicalPlan>;
+pub type PhysicalPlanPtr = Arc<dyn PhysicalPlan>;
 
 /// Task context, just a wrapper of datafusion task context now
 #[derive(Default)]

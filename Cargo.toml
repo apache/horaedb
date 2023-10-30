@@ -93,7 +93,7 @@ bytes = "1"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-ceresdbproto = "1.0.22"
+ceresdbproto = { git = "https://github.com/baojinri/ceresdbproto.git", rev = "ed7935df1223e888aa1f63c34ad43fb9ee9a7244" }
 codec = { path = "components/codec" }
 chrono = "0.4"
 clap = "3.0"

@@ -16,6 +16,7 @@
 
 use std::{
     collections::HashMap,
+    default::Default,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -29,7 +30,7 @@ use ceresdbproto::{
     remote_engine::{self, read_response::Output::Arrow, remote_engine_service_client::*},
     storage::arrow_payload,
 };
-use common_types::{record_batch::RecordBatch, schema::RecordSchema};
+use common_types::{datum::Datum, record_batch::RecordBatch, schema::RecordSchema};
 use futures::{Stream, StreamExt};
 use generic_error::BoxError;
 use logger::{error, info};
@@ -46,6 +47,7 @@ use table_engine::{
 use time_ext::ReadableDuration;
 use tokio::time::sleep;
 use tonic::{transport::Channel, Request, Streaming};
+use trace_metric::MetricsCollector;
 
 use crate::{cached_router::CachedRouter, config::Config, error::*, status_code};
 
@@ -82,6 +84,7 @@ impl Client {
     pub async fn read(&self, request: ReadRequest) -> Result<ClientReadRecordBatchStream> {
         // Find the channel from router firstly.
         let route_context = self.cached_router.route(&request.table).await?;
+        let metrics_collector = MetricsCollector::new("table_read".to_string());
 
         // Read from remote.
         let table_ident = request.table.clone();
@@ -115,8 +118,12 @@ impl Client {
         // When success to get the stream, table has been found in remote, not need to
         // evict cache entry.
         let response = response.into_inner();
-        let remote_read_record_batch_stream =
-            ClientReadRecordBatchStream::new(table_ident, response, record_schema);
+        let remote_read_record_batch_stream = ClientReadRecordBatchStream::new(
+            table_ident,
+            response,
+            record_schema,
+            metrics_collector,
+        );
 
         Ok(remote_read_record_batch_stream)
     }
@@ -444,6 +451,7 @@ impl Client {
     pub async fn execute_physical_plan(
         &self,
         request: ExecutePlanRequest,
+        metrics_collector: MetricsCollector,
     ) -> Result<ClientReadRecordBatchStream> {
         // Find the channel from router firstly.
         let table_ident = request.remote_request.table.clone();
@@ -482,7 +490,7 @@ impl Client {
         // evict cache entry.
         let response = response.into_inner();
         let remote_execute_plan_stream =
-            ClientReadRecordBatchStream::new(table_ident, response, plan_schema);
+            ClientReadRecordBatchStream::new(table_ident, response, plan_schema, metrics_collector);
 
         Ok(remote_execute_plan_stream)
     }
@@ -500,6 +508,7 @@ pub struct ClientReadRecordBatchStream {
     pub table_ident: TableIdentifier,
     pub response_stream: Streaming<remote_engine::ReadResponse>,
     pub record_schema: RecordSchema,
+    pub metrics_collector: MetricsCollector,
 }
 
 impl ClientReadRecordBatchStream {
@@ -507,11 +516,13 @@ impl ClientReadRecordBatchStream {
         table_ident: TableIdentifier,
         response_stream: Streaming<remote_engine::ReadResponse>,
         record_schema: RecordSchema,
+        metrics_collector: MetricsCollector,
     ) -> Self {
         Self {
             table_ident,
             response_stream,
             record_schema,
+            metrics_collector,
         }
     }
 }
@@ -530,6 +541,48 @@ impl Stream for ClientReadRecordBatchStream {
                         code: header.code,
                         msg: header.error,
                     }.fail()));
+                }
+
+                match response.metrics {
+                    None => {}
+                    Some(mut v) => {
+                        let compression = match v.compression() {
+                            arrow_payload::Compression::None => CompressionMethod::None,
+                            arrow_payload::Compression::Zstd => CompressionMethod::Zstd,
+                        };
+
+                        let metrics: Result<RecordBatch> = ipc::decode_record_batches(
+                            v.record_batches.swap_remove(0),
+                            compression,
+                        )
+                        .map_err(|e| Box::new(e) as _)
+                        .context(Convert {
+                            msg: "decode read record batch",
+                        })
+                        .and_then(|mut record_batch_vec| {
+                            ensure!(
+                                record_batch_vec.len() == 1,
+                                InvalidRecordBatchNumber {
+                                    batch_num: record_batch_vec.len()
+                                }
+                            );
+                            record_batch_vec
+                                .swap_remove(0)
+                                .try_into()
+                                .map_err(|e| Box::new(e) as _)
+                                .context(Convert {
+                                    msg: "convert read record batch",
+                                })
+                        });
+                        let metrics = match metrics {
+                            Ok(metrics) => match metrics.column(0).datum(0) {
+                                Datum::String(v) => v.as_str().to_string(),
+                                _ => "failed to obtain remote metrics".to_string(),
+                            },
+                            Err(e) => e.to_string(),
+                        };
+                        this.metrics_collector.span(metrics);
+                    }
                 }
 
                 match response.output {

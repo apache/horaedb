@@ -330,10 +330,12 @@ impl ExecutionPlan for ResolvedPartitionedScan {
         } = &self.remote_exec_ctx.plan_ctxs[partition];
 
         // Send plan for remote execution.
-        let stream_future =
-            self.remote_exec_ctx
-                .executor
-                .execute(sub_table.clone(), &context, plan.clone())?;
+        let stream_future = self.remote_exec_ctx.executor.execute(
+            sub_table.clone(),
+            &context,
+            plan.clone(),
+            metrics_collector.clone(),
+        )?;
         let record_stream =
             PartitionedScanStream::new(stream_future, plan.schema(), metrics_collector.clone());
 

@@ -23,6 +23,7 @@ use generic_error::GenericError;
 use macros::define_result;
 use model::{ReadRequest, WriteRequest};
 use snafu::Snafu;
+use trace_metric::MetricsCollector;
 
 use crate::{
     remote::model::{
@@ -76,6 +77,7 @@ pub trait RemoteEngine: fmt::Debug + Send + Sync {
     async fn execute_physical_plan(
         &self,
         request: ExecutePlanRequest,
+        metrics_collector: MetricsCollector,
     ) -> Result<SendableRecordBatchStream>;
 }
 

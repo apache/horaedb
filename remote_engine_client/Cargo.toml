@@ -41,3 +41,4 @@ table_engine = { workspace = true }
 time_ext = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
+trace_metric = { workspace = true }

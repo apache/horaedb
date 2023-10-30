@@ -88,6 +88,6 @@ impl PhysicalPlanner for DatafusionPhysicalPlannerImpl {
         };
         let physical_plan = DataFusionPhysicalPlanAdapter::new(typed_plan);
 
-        Ok(Box::new(physical_plan))
+        Ok(Arc::new(physical_plan))
     }
 }

@@ -175,6 +175,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
         table: TableIdentifier,
         task_context: &TaskContext,
         plan: Arc<dyn ExecutionPlan>,
+        metrics_collector: MetricsCollector,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         // Get the custom context to rebuild execution context.
         let ceresdb_options = task_context
@@ -225,7 +226,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
 
             // Remote execute.
             let stream = remote_engine
-                .execute_physical_plan(request)
+                .execute_physical_plan(request, metrics_collector)
                 .await
                 .map_err(|e| {
                     DataFusionError::Internal(format!(
