@@ -77,7 +77,6 @@ macro_rules! extract_updated_table_info {
             msg: "update shard info is missing",
         })?;
 
-        let prev_version = update_shard_info.prev_version;
         let shard_info = ShardInfo::from(&curr_shard_info);
         let table_info = TableInfo::try_from(table_info)
             .box_err()
@@ -87,7 +86,6 @@ macro_rules! extract_updated_table_info {
             })?;
 
         UpdatedTableInfo {
-            prev_version,
             shard_info,
             table_info,
         }

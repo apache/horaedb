@@ -166,7 +166,6 @@ pub type ShardRef = Arc<Shard>;
 
 #[derive(Debug, Clone)]
 pub struct UpdatedTableInfo {
-    pub prev_version: u64,
     pub shard_info: ShardInfo,
     pub table_info: TableInfo,
 }
@@ -231,7 +230,6 @@ impl ShardData {
 
     pub fn try_insert_table(&mut self, updated_info: UpdatedTableInfo) -> Result<()> {
         let UpdatedTableInfo {
-            prev_version: prev_shard_version,
             shard_info: curr_shard,
             table_info: new_table,
         } = updated_info;
@@ -244,10 +242,10 @@ impl ShardData {
         );
 
         ensure!(
-            self.shard_info.version == prev_shard_version,
+            self.shard_info.version == curr_shard.version,
             ShardVersionMismatch {
                 shard_info: self.shard_info.clone(),
-                expect_version: prev_shard_version,
+                expect_version: curr_shard.version,
             }
         );
 
@@ -268,7 +266,6 @@ impl ShardData {
 
     pub fn try_remove_table(&mut self, updated_info: UpdatedTableInfo) -> Result<()> {
         let UpdatedTableInfo {
-            prev_version: prev_shard_version,
             shard_info: curr_shard,
             table_info: new_table,
         } = updated_info;
@@ -281,10 +278,10 @@ impl ShardData {
         );
 
         ensure!(
-            self.shard_info.version == prev_shard_version,
+            self.shard_info.version == curr_shard.version,
             ShardVersionMismatch {
                 shard_info: self.shard_info.clone(),
-                expect_version: prev_shard_version,
+                expect_version: curr_shard.version,
             }
         );
 
