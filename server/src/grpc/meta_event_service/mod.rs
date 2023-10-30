@@ -38,7 +38,10 @@ use cluster::{
     shard_set::UpdatedTableInfo,
     ClusterRef,
 };
-use common_types::{schema::SchemaEncoder, table::ShardId};
+use common_types::{
+    schema::SchemaEncoder,
+    table::{ShardId, ShardVersion},
+};
 use future_ext::RetryConfig;
 use generic_error::BoxError;
 use logger::{error, info, warn};
@@ -184,18 +187,68 @@ macro_rules! handle_request {
     };
 }
 
+macro_rules! handle_request_with_version {
+    ($mod_name: ident, $req_ty: ident, $resp_ty: ident) => {
+        paste! {
+            async fn [<$mod_name _internal>] (
+                &self,
+                request: tonic::Request<$req_ty>,
+            ) -> std::result::Result<tonic::Response<$resp_ty>, tonic::Status> {
+                let instant = Instant::now();
+                let ctx = self.handler_ctx();
+                let handle = self.runtime.spawn(async move {
+                    // FIXME: Data race about the operations on the shards should be taken into
+                    // considerations.
+
+                    let request = request.into_inner();
+                    info!("Receive request from meta, req:{:?}", request);
+
+                    [<handle_ $mod_name>](ctx, request).await
+                });
+
+                let res = handle
+                    .await
+                    .box_err()
+                    .context(ErrWithCause {
+                        code: StatusCode::Internal,
+                        msg: "fail to join task",
+                    });
+
+                let mut resp = $resp_ty::default();
+                match res {
+                    Ok(Ok(cur_version)) => {
+                        resp.header = Some(error::build_ok_header());
+                        resp.cur_version = cur_version;
+                    }
+                    Ok(Err(e)) | Err(e) => {
+                        error!("Fail to process request from meta, err:{}", e);
+                        resp.header = Some(error::build_err_header(e));
+                    }
+                };
+
+                info!("Finish handling request from meta, resp:{:?}", resp);
+
+                META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+                    .$mod_name
+                    .observe(instant.saturating_elapsed().as_secs_f64());
+                Ok(Response::new(resp))
+            }
+        }
+    };
+}
+
 impl MetaServiceImpl {
     handle_request!(open_shard, OpenShardRequest, OpenShardResponse);
 
     handle_request!(close_shard, CloseShardRequest, CloseShardResponse);
 
-    handle_request!(
+    handle_request_with_version!(
         create_table_on_shard,
         CreateTableOnShardRequest,
         CreateTableOnShardResponse
     );
 
-    handle_request!(
+    handle_request_with_version!(
         drop_table_on_shard,
         DropTableOnShardRequest,
         DropTableOnShardResponse
@@ -422,7 +475,7 @@ async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> 
 async fn handle_create_table_on_shard(
     ctx: HandlerContext,
     request: CreateTableOnShardRequest,
-) -> Result<()> {
+) -> Result<ShardVersion> {
     let updated_table_info = extract_updated_table_info!(request);
 
     let shard = ctx
@@ -473,7 +526,7 @@ async fn handle_create_table_on_shard(
 async fn handle_drop_table_on_shard(
     ctx: HandlerContext,
     request: DropTableOnShardRequest,
-) -> Result<()> {
+) -> Result<ShardVersion> {
     let updated_table_info = extract_updated_table_info!(request);
 
     let shard = ctx

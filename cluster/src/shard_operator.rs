@@ -21,6 +21,7 @@ use catalog::{
     },
     table_operator::TableOperator,
 };
+use common_types::table::ShardVersion;
 use generic_error::BoxError;
 use logger::info;
 use snafu::ResultExt;
@@ -219,23 +220,13 @@ impl ShardOperator {
         Ok(())
     }
 
-    pub async fn create_table(&self, ctx: CreateTableContext) -> Result<()> {
+    pub async fn create_table(&self, ctx: CreateTableContext) -> Result<ShardVersion> {
         let shard_info = ctx.updated_table_info.shard_info.clone();
         let table_info = ctx.updated_table_info.table_info.clone();
 
         info!(
             "ShardOperator create table sequentially begin, shard_info:{shard_info:?}, table_info:{table_info:?}",
         );
-
-        // FIXME: maybe should insert table from cluster after having created table.
-        {
-            let mut data = self.data.write().unwrap();
-            data.try_insert_table(ctx.updated_table_info)
-                .box_err()
-                .with_context(|| CreateTableWithCause {
-                    msg: format!("shard_info:{shard_info:?}, table_info:{table_info:?}"),
-                })?;
-        }
 
         // Create the table by operator afterwards.
         let (table_engine, partition_info) = match table_info.partition_info.clone() {
@@ -278,26 +269,25 @@ impl ShardOperator {
             "ShardOperator create table sequentially finish, shard_info:{shard_info:?}, table_info:{table_info:?}",
         );
 
-        Ok(())
+        // FIXME: maybe should insert table from cluster after having created table.
+        let mut data = self.data.write().unwrap();
+        let latest_version = data
+            .try_insert_table(ctx.updated_table_info)
+            .box_err()
+            .with_context(|| CreateTableWithCause {
+                msg: format!("shard_info:{shard_info:?}, table_info:{table_info:?}"),
+            })?;
+
+        Ok(latest_version)
     }
 
-    pub async fn drop_table(&self, ctx: DropTableContext) -> Result<()> {
+    pub async fn drop_table(&self, ctx: DropTableContext) -> Result<ShardVersion> {
         let shard_info = ctx.updated_table_info.shard_info.clone();
         let table_info = ctx.updated_table_info.table_info.clone();
 
         info!(
             "ShardOperator drop table sequentially begin, shard_info:{shard_info:?}, table_info:{table_info:?}",
         );
-
-        // FIXME: maybe should insert table from cluster after having dropped table.
-        {
-            let mut data = self.data.write().unwrap();
-            data.try_remove_table(ctx.updated_table_info)
-                .box_err()
-                .with_context(|| DropTableWithCause {
-                    msg: format!("shard_info:{shard_info:?}, table_info:{table_info:?}"),
-                })?;
-        }
 
         // Drop the table by operator afterwards.
         let drop_table_request = DropTableRequest {
@@ -322,7 +312,16 @@ impl ShardOperator {
             "ShardOperator drop table sequentially finish, shard_info:{shard_info:?}, table_info:{table_info:?}",
         );
 
-        Ok(())
+        // FIXME: maybe should insert table from cluster after having dropped table.
+        let mut data = self.data.write().unwrap();
+        let latest_version = data
+            .try_remove_table(ctx.updated_table_info)
+            .box_err()
+            .with_context(|| DropTableWithCause {
+                msg: format!("shard_info:{shard_info:?}, table_info:{table_info:?}"),
+            })?;
+
+        Ok(latest_version)
     }
 
     pub async fn open_table(&self, ctx: OpenTableContext) -> Result<()> {

@@ -14,6 +14,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use common_types::table::ShardVersion;
 use generic_error::BoxError;
 use meta_client::types::{ShardId, ShardInfo, ShardStatus, TableInfo, TablesOfShard};
 use snafu::{ensure, OptionExt, ResultExt};
@@ -141,12 +142,12 @@ impl Shard {
         operator.close(ctx).await
     }
 
-    pub async fn create_table(&self, ctx: CreateTableContext) -> Result<()> {
+    pub async fn create_table(&self, ctx: CreateTableContext) -> Result<ShardVersion> {
         let operator = self.operator.lock().await;
         operator.create_table(ctx).await
     }
 
-    pub async fn drop_table(&self, ctx: DropTableContext) -> Result<()> {
+    pub async fn drop_table(&self, ctx: DropTableContext) -> Result<ShardVersion> {
         let operator = self.operator.lock().await;
         operator.drop_table(ctx).await
     }
@@ -224,11 +225,11 @@ impl ShardData {
     fn update_shard_info(&mut self, new_info: ShardInfo) {
         // TODO: refactor to move status out of ShardInfo
         self.shard_info.id = new_info.id;
-        self.shard_info.version = new_info.version;
+        self.shard_info.version = new_info.version + 1;
         self.shard_info.role = new_info.role;
     }
 
-    pub fn try_insert_table(&mut self, updated_info: UpdatedTableInfo) -> Result<()> {
+    pub fn try_insert_table(&mut self, updated_info: UpdatedTableInfo) -> Result<ShardVersion> {
         let UpdatedTableInfo {
             shard_info: curr_shard,
             table_info: new_table,
@@ -261,10 +262,10 @@ impl ShardData {
         self.update_shard_info(curr_shard);
         self.tables.push(new_table);
 
-        Ok(())
+        Ok(self.shard_info.version.clone())
     }
 
-    pub fn try_remove_table(&mut self, updated_info: UpdatedTableInfo) -> Result<()> {
+    pub fn try_remove_table(&mut self, updated_info: UpdatedTableInfo) -> Result<ShardVersion> {
         let UpdatedTableInfo {
             shard_info: curr_shard,
             table_info: new_table,
@@ -297,7 +298,7 @@ impl ShardData {
         self.update_shard_info(curr_shard);
         self.tables.swap_remove(table_idx);
 
-        Ok(())
+        Ok(self.shard_info.version.clone())
     }
 }
 

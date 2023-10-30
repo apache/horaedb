@@ -333,14 +333,6 @@ impl Schema for SchemaImpl {
                         request: request.clone(),
                         msg: "shard not found".to_string(),
                     })?;
-
-            // TODO: seems unnecessary?
-            let _ = shard
-                .find_table(&request.params.schema_name, &request.params.table_name)
-                .with_context(|| schema::CreateTable {
-                    request: request.clone(),
-                    msg: "table not found in shard".to_string(),
-                })?;
         }
         let request = request.into_engine_create_request(None, self.schema_id);
 
