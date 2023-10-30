@@ -262,7 +262,7 @@ impl ShardData {
         self.update_shard_info(curr_shard);
         self.tables.push(new_table);
 
-        Ok(self.shard_info.version.clone())
+        Ok(self.shard_info.clone().version)
     }
 
     pub fn try_remove_table(&mut self, updated_info: UpdatedTableInfo) -> Result<ShardVersion> {
@@ -298,7 +298,7 @@ impl ShardData {
         self.update_shard_info(curr_shard);
         self.tables.swap_remove(table_idx);
 
-        Ok(self.shard_info.version.clone())
+        Ok(self.shard_info.clone().version)
     }
 }
 
