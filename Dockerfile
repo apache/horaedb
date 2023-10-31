@@ -10,7 +10,7 @@ RUN apt update && apt install --yes gcc g++ libssl-dev pkg-config cmake && rm -r
 COPY . /ceresmeta
 WORKDIR /ceresmeta
 
-RUN go build -o ceresmeta ./cmd/meta/...
+RUN make build
 
 ## CeresMeta
 FROM ubuntu:20.04
@@ -21,7 +21,7 @@ RUN apt update && \
     apt install --yes curl gdb iotop cron vim less net-tools && \
     apt clean
 
-COPY --from=build /ceresmeta/ceresmeta /usr/bin/ceresmeta-server
+COPY --from=build /ceresmeta/bin/ceresmeta-server /usr/bin/ceresmeta-server
 RUN chmod +x /usr/bin/ceresmeta-server
 
 COPY ./docker/entrypoint.sh /entrypoint.sh

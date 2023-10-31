@@ -21,7 +21,7 @@ echo > $CERESDB_INTEGRATION_PATH/build_meta.sh
 # Copy Meta Binary to CeresDB Execution Directory.
 cd $CERESDB_INTEGRATION_PATH
 mkdir ceresmeta
-cp $CERESMETA_DIR_PATH/ceresmeta $CERESMETA_INTEGRATION_TEST_PATH/ceresmeta
+cp $CERESMETA_DIR_PATH/bin/ceresmeta-server $CERESMETA_INTEGRATION_TEST_PATH/ceresmeta
 
 # Run integration_test.
 make run-cluster
