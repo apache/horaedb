@@ -684,6 +684,23 @@ mod tests {
     }
 
     #[test]
+    fn test_u64() {
+        let datums = vec![
+            Datum::from(10u64),
+            Datum::from(1u64),
+            Datum::from(2u64),
+            Datum::from(18u64),
+            Datum::from(38u64),
+            Datum::from(48u64),
+            Datum::from(80u64),
+            Datum::from(81u64),
+            Datum::from(82u64),
+        ];
+
+        check_encode_end_decode(10, datums, DatumKind::UInt64);
+    }
+
+    #[test]
     fn test_timestamp() {
         let datums = vec![
             Datum::from(Timestamp::new(-10)),
