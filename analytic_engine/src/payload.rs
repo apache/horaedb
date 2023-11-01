@@ -31,7 +31,7 @@ use prost::Message;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use wal::log_batch::{Payload, PayloadDecodeContext, PayloadDecoder};
 
-use crate::{table_options, TableOptions};
+use crate::{instance::write::WalEncodeVersion, table_options, TableOptions};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -180,11 +180,13 @@ impl ReadPayload {
         let write_req_pb: table_requests::WriteRequest =
             Message::decode(buf).context(DecodeBody)?;
 
-        let version = write_req_pb.version;
+        let version = {
+            let version = write_req_pb.version;
+            WalEncodeVersion::try_from_u32(version).context(InvalidWriteReqVersion { version })?
+        };
         match version {
-            0 => Self::decode_rowwise_write_req(write_req_pb),
-            1 => Self::decode_columnar_write_req(schema, write_req_pb),
-            _ => InvalidWriteReqVersion { version }.fail(),
+            WalEncodeVersion::RowWise => Self::decode_rowwise_write_req(write_req_pb),
+            WalEncodeVersion::Columnar => Self::decode_columnar_write_req(schema, write_req_pb),
         }
     }
 

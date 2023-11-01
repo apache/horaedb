@@ -128,6 +128,32 @@ define_result!(Error);
 /// Max rows in a write request, must less than [u32::MAX]
 const MAX_ROWS_TO_WRITE: usize = 10_000_000;
 
+/// The version used for [`table_requests::WriteRequest.version`].
+#[derive(Clone, Copy, Debug)]
+pub enum WalEncodeVersion {
+    RowWise = 0,
+    Columnar,
+}
+
+impl WalEncodeVersion {
+    #[inline]
+    pub fn as_u32(self) -> u32 {
+        match self {
+            Self::RowWise => 0,
+            Self::Columnar => 1,
+        }
+    }
+
+    #[inline]
+    pub fn try_from_u32(v: u32) -> Option<Self> {
+        match v {
+            0 => Some(Self::RowWise),
+            1 => Some(Self::Columnar),
+            _ => None,
+        }
+    }
+}
+
 pub(crate) struct EncodeContext {
     pub row_group: RowGroup,
     pub index_in_writer: IndexInWriterSchema,
@@ -438,7 +464,7 @@ impl<'a> Writer<'a> {
 
     async fn write_to_wal_in_cols(&self, encoded_cols: Vec<ByteVec>) -> Result<SequenceNumber> {
         let write_req = table_requests::WriteRequest {
-            version: 1,
+            version: WalEncodeVersion::Columnar.as_u32(),
             schema: None,
             rows: vec![],
             cols: encoded_cols,
@@ -453,7 +479,7 @@ impl<'a> Writer<'a> {
         encoded_rows: Vec<ByteVec>,
     ) -> table_requests::WriteRequest {
         table_requests::WriteRequest {
-            version: 0,
+            version: WalEncodeVersion::RowWise.as_u32(),
             // Use the table schema instead of the schema in request to avoid schema
             // mismatch during replaying
             schema: Some(schema_pb::TableSchema::from(&self.table_data.schema())),
