@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
 
-set -e
+set -o errexit
+set -o nounset
+set -o pipefail
 
-SRC=/tmp/ceresmeta-src
+BIN_PATH=${BIN_PATH:-""}
+if [[ -z "${BIN_PATH}" ]]; then
+  echo "Fetch and install ceresmeta-server..."
+  go install github.com/CeresDB/ceresmeta/cmd/ceresmeta-server@HEAD
+  BIN_PATH="$(go env GOPATH)/bin/ceresmeta-server"
+fi
+
 TARGET=$(pwd)/ceresmeta
-
-if [[ -d ${SRC} ]] && [[ ${UPDATE_REPOS_TO_LATEST} == 'true' ]]; then
-  echo "Remove old meta..."
-  rm -rf ${SRC}
-fi
-
-if [[ ! -d ${SRC} ]]; then
-  echo "Pull meta repo..."
-  git clone --depth 1 https://github.com/ceresdb/ceresmeta.git ${SRC}
-fi
-
-cd ${SRC}
-go build -o ${TARGET}/ceresmeta ./cmd/meta/...
+mkdir -p ${TARGET}
+cp ${BIN_PATH} ${TARGET}/ceresmeta-server

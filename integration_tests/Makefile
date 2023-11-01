@@ -16,7 +16,7 @@ export CERESDB_STDOUT_FILE ?= /tmp/ceresdb-stdout.log
 export CERESDB_CONFIG_FILE ?= $(ROOT)/../docs/minimal.toml
 
 # Environment variables for cluster
-export CERESMETA_BINARY_PATH ?= $(ROOT)/ceresmeta/ceresmeta
+export CERESMETA_BINARY_PATH ?= $(ROOT)/ceresmeta/ceresmeta-server
 export CERESMETA_CONFIG_PATH ?= $(ROOT)/config/ceresmeta.toml
 export CERESMETA_STDOUT_FILE ?= /tmp/ceresmeta-stdout.log
 export CERESDB_CONFIG_FILE_0 ?= $(ROOT)/config/ceresdb-cluster-0.toml
