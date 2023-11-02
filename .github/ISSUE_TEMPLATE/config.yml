@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-blank_issues_enabled: false
 contact_links:
   - name: Ask a question or get support
     url: https://github.com/CeresDB/ceresdb/discussions/categories/q-a
