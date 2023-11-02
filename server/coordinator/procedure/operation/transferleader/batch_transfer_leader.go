@@ -111,7 +111,7 @@ func (p *BatchTransferLeaderProcedure) Start(ctx context.Context) error {
 		g.Go(func() error {
 			err := p.Start(ctx)
 			if err != nil {
-				log.Error("procedure start failed", zap.Error(err), zap.String("procedure", fmt.Sprintf("%v", p)), zap.Error(err))
+				log.Error("procedure start failed", zap.Error(err), zap.Uint64("procedureID", p.ID()), zap.Error(err))
 			}
 			return err
 		})

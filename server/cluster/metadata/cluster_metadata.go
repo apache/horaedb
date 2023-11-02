@@ -436,6 +436,8 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 		return nil
 	}
 	if exists && !needUpdate(oldCache, registeredNode) {
+		// Check whether the shard versions need to be corrected.
+		c.maybeCorrectShardVersion(ctx, registeredNode)
 		return nil
 	}
 
@@ -765,4 +767,27 @@ L1:
 	}
 
 	return true
+}
+
+func (c *ClusterMetadata) maybeCorrectShardVersion(ctx context.Context, node RegisteredNode) {
+	topology := c.topologyManager.GetTopology()
+	for _, shardInfo := range node.ShardInfos {
+		oldShardView, ok := topology.ShardViewsMapping[shardInfo.ID]
+		if !ok {
+			c.logger.Error("shard out found in topology", zap.Uint32("shardID", uint32(shardInfo.ID)))
+			return
+		}
+		if oldShardView.Version != shardInfo.Version {
+			c.logger.Warn("shard version mismatch", zap.Uint32("shardID", uint32(shardInfo.ID)), zap.Uint64("ceresmetaVersion", oldShardView.Version), zap.Uint64("nodeVersion", shardInfo.Version))
+		}
+		if oldShardView.Version < shardInfo.Version {
+			// Shard version in ceresMeta not equal to ceresDB, it is needed to be corrected.
+			// Update with expect value.
+			c.logger.Info("try to update shard version", zap.Uint32("shardID", uint32(shardInfo.ID)), zap.Uint64("expectVersion", oldShardView.Version), zap.Uint64("newVersion", shardInfo.Version))
+			if err := c.topologyManager.UpdateShardVersionWithExpect(ctx, shardInfo.ID, shardInfo.Version, oldShardView.Version); err != nil {
+				c.logger.Warn("update shard version with expect failed", zap.Uint32("shardID", uint32(shardInfo.ID)), zap.Uint64("expectVersion", oldShardView.Version), zap.Uint64("newVersion", shardInfo.Version))
+			}
+			// TODO: Maybe we need do some thing to ensure ceresDB status after update shard version.
+		}
+	}
 }

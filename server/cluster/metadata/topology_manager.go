@@ -63,6 +63,8 @@ type TopologyManager interface {
 	GetClusterView() storage.ClusterView
 	// CreateShardViews create shardViews.
 	CreateShardViews(ctx context.Context, shardViews []CreateShardView) error
+	// UpdateShardVersionWithExpect update shard version when pre version is same as expect version.
+	UpdateShardVersionWithExpect(ctx context.Context, shardID storage.ShardID, version uint64, expect uint64) error
 	// GetTopology get current topology snapshot.
 	GetTopology() Topology
 }
@@ -568,6 +570,29 @@ func (m *TopologyManagerImpl) CreateShardViews(ctx context.Context, createShardV
 	if err := m.loadShardViews(ctx); err != nil {
 		return errors.WithMessage(err, "load shard view")
 	}
+	return nil
+}
+
+func (m *TopologyManagerImpl) UpdateShardVersionWithExpect(ctx context.Context, shardID storage.ShardID, version uint64, expect uint64) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	shardView, ok := m.shardTablesMapping[shardID]
+	if !ok {
+		return ErrShardNotFound.WithCausef("shard id:%d", shardID)
+	}
+
+	newShardView := storage.NewShardView(shardID, version, shardView.TableIDs)
+	if err := m.storage.UpdateShardView(ctx, storage.UpdateShardViewRequest{
+		ClusterID:     m.clusterID,
+		ShardView:     newShardView,
+		LatestVersion: expect,
+	}); err != nil {
+		return errors.WithMessage(err, "storage update shard view")
+	}
+
+	m.updateShardView(shardID, newShardView)
+
 	return nil
 }
 
