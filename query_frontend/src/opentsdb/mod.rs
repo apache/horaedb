@@ -103,13 +103,8 @@ fn normalize_filters(
     Ok((groupby_col_names, exprs))
 }
 
-fn build_projection(
-    timestamp_col_name: &str,
-    tags: &HashMap<String, String>,
-    filters: &[Filter],
-) -> Vec<Expr> {
-    let mut projections = tags.keys().map(ident).collect::<HashSet<_>>();
-    projections.extend(filters.iter().map(|f| ident(&f.tagk)));
+fn build_projection(tags: &[String], timestamp_col_name: &str) -> Vec<Expr> {
+    let mut projections = tags.iter().map(ident).collect::<HashSet<_>>();
     projections.insert(ident(timestamp_col_name));
     projections.insert(ident(TSID_COLUMN));
     projections.insert(ident(DEFAULT_FIELD));
@@ -120,12 +115,12 @@ fn build_projection(
 fn build_aggr_expr(aggr: &str) -> Result<Option<Expr>> {
     // http://opentsdb.net/docs/build/html/user_guide/query/aggregators.html
     let aggr = match aggr {
-        "sum" => sum(ident(DEFAULT_FIELD)),
-        "count" => count(ident(DEFAULT_FIELD)),
-        "avg" => avg(ident(DEFAULT_FIELD)),
-        "min" => min(ident(DEFAULT_FIELD)),
-        "max" => max(ident(DEFAULT_FIELD)),
-        "dev" => stddev(ident(DEFAULT_FIELD)),
+        "sum" => sum(ident(DEFAULT_FIELD)).alias(DEFAULT_FIELD),
+        "count" => count(ident(DEFAULT_FIELD)).alias(DEFAULT_FIELD),
+        "avg" => avg(ident(DEFAULT_FIELD)).alias(DEFAULT_FIELD),
+        "min" => min(ident(DEFAULT_FIELD)).alias(DEFAULT_FIELD),
+        "max" => max(ident(DEFAULT_FIELD)).alias(DEFAULT_FIELD),
+        "dev" => stddev(ident(DEFAULT_FIELD)).alias(DEFAULT_FIELD),
         "none" => return Ok(None),
         _ => return InvalidAggregator { aggr }.fail(),
     };
@@ -144,9 +139,14 @@ pub fn subquery_to_plan<P: MetaProvider>(
         .context(TableProviderNotFound { name: &metric })?;
     let schema = Schema::try_from(table_provider.schema()).context(BuildTableSchema)?;
     let timestamp_col_name = schema.timestamp_name();
-    let projection_exprs =
-        build_projection(timestamp_col_name, &sub_query.tags, &sub_query.filters);
-    let (groupby_col_names, filter_exprs) = {
+    let mut tags = schema
+        .columns()
+        .iter()
+        .filter(|column| column.is_tag)
+        .map(|column| column.name.clone())
+        .collect::<Vec<_>>();
+    let projection_exprs = build_projection(&tags, timestamp_col_name);
+    let (mut groupby_col_names, filter_exprs) = {
         let (groupby, mut filters) = normalize_filters(sub_query.tags, sub_query.filters)?;
         filters.push(timerange_to_expr(query_range, timestamp_col_name));
         let anded_filters = conjunction(filters).expect("at least one filter(timestamp)");
@@ -159,9 +159,14 @@ pub fn subquery_to_plan<P: MetaProvider>(
         .project(projection_exprs)?
         .sort(sort_exprs)?;
 
-    if let Some(aggr_expr) = build_aggr_expr(&sub_query.aggregator)? {
-        let group_expr = groupby_col_names.iter().map(ident).collect::<Vec<_>>();
-        builder = builder.aggregate(group_expr, [aggr_expr])?;
+    match build_aggr_expr(&sub_query.aggregator)? {
+        Some(aggr_expr) => {
+            let mut group_expr = groupby_col_names.iter().map(ident).collect::<Vec<_>>();
+            group_expr.push(ident(timestamp_col_name));
+            builder = builder.aggregate(group_expr, [aggr_expr])?;
+            tags = groupby_col_names.clone();
+        }
+        None => groupby_col_names.clear(),
     }
 
     let df_plan = builder.build().context(BuildPlanError)?;
@@ -175,8 +180,10 @@ pub fn subquery_to_plan<P: MetaProvider>(
 
     Ok(OpentsdbSubPlan {
         plan: Plan::Query(QueryPlan { df_plan, tables }),
+        metric,
         timestamp_col_name: timestamp_col_name.to_string(),
         field_col_name: DEFAULT_FIELD.to_string(),
+        tags,
         aggregated_tags: groupby_col_names,
     })
 }

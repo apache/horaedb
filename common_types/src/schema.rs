@@ -505,6 +505,10 @@ impl RecordSchema {
     pub fn to_arrow_schema_ref(&self) -> ArrowSchemaRef {
         self.arrow_schema.clone()
     }
+
+    pub fn index_by_name(&self, name: &str) -> Option<usize> {
+        self.column_schemas.index_of(name)
+    }
 }
 
 impl TryFrom<ArrowSchemaRef> for RecordSchema {

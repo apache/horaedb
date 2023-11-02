@@ -16,20 +16,16 @@
 //! [1]: http://opentsdb.net/docs/build/html/api_http/put.html
 //! [2]: http://opentsdb.net/docs/build/html/api_http/query/index.html
 
-use std::time::Instant;
+use std::{collections::HashMap, time::Instant};
 
 use ceresdbproto::storage::{
     RequestContext as GrpcRequestContext, WriteRequest as GrpcWriteRequest,
 };
-use common_types::{
-    datum::DatumKind,
-    record_batch::RecordBatch,
-    schema::{RecordSchema, TSID_COLUMN},
-};
+use common_types::{datum::DatumKind, record_batch::RecordBatch, schema::RecordSchema};
 use futures::{stream::FuturesOrdered, StreamExt};
 use generic_error::BoxError;
 use http::StatusCode;
-use interpreters::{interpreter::Output, RecordBatchVec};
+use interpreters::interpreter::Output;
 use logger::{debug, info};
 use query_frontend::{
     frontend::{Context as SqlContext, Frontend},
@@ -159,8 +155,10 @@ impl Proxy {
 
                 convert_output_to_response(
                     output,
+                    plan.metric,
                     plan.field_col_name,
                     plan.timestamp_col_name,
+                    plan.tags,
                     plan.aggregated_tags,
                 )
             };
@@ -178,8 +176,10 @@ impl Proxy {
 
 fn convert_output_to_response(
     output: Output,
+    metric: String,
     field_col_name: String,
     timestamp_col_name: String,
+    tags: Vec<String>,
     aggregated_tags: Vec<String>,
 ) -> Result<Vec<QueryResponse>> {
     let records = match output {
@@ -192,7 +192,7 @@ fn convert_output_to_response(
         }
     };
 
-    let converter = match records.first() {
+    let mut converter = match records.first() {
         None => {
             return Ok(Vec::new());
         }
@@ -200,8 +200,10 @@ fn convert_output_to_response(
             let record_schema = batch.schema();
             QueryConverter::try_new(
                 record_schema,
+                metric,
                 &timestamp_col_name,
                 &field_col_name,
+                tags,
                 aggregated_tags,
             )?
         }
@@ -217,8 +219,11 @@ fn convert_output_to_response(
 struct QueryConverter {
     timestamp_idx: usize,
     value_idx: usize,
+    metric: String,
     // (column_name, index)
-    tags: Vec<(String, usize)>,
+    tags_idx: Vec<(String, usize)>,
+    tags: HashMap<String, HashMap<String, String>>,
+    values: HashMap<String, Vec<(String, f64)>>,
     aggregated_tags: Vec<String>,
 
     resp: Vec<QueryResponse>,
@@ -227,8 +232,10 @@ struct QueryConverter {
 impl QueryConverter {
     fn try_new(
         schema: &RecordSchema,
+        metric: String,
         timestamp_col_name: &str,
         field_col_name: &str,
+        tags: Vec<String>,
         aggregated_tags: Vec<String>,
     ) -> Result<Self> {
         let timestamp_idx = schema
@@ -239,20 +246,25 @@ impl QueryConverter {
         let value_idx = schema.index_of(field_col_name).context(InternalNoCause {
             msg: "Value column is missing in query response",
         })?;
-        let tags = schema
-            .columns()
+        let tags_idx = tags
             .iter()
-            .enumerate()
-            .filter(|(_, col)| col.is_tag)
-            .map(|(i, col)| {
+            .map(|tag| {
+                let column = schema.column_by_name(tag);
                 ensure!(
-                    matches!(col.data_type, DatumKind::String),
+                    column.is_some(),
                     InternalNoCause {
-                        msg: format!("Tag must be string type, current:{}", col.data_type)
+                        msg: format!("Tag can not be find in schema, tag:{}", tag)
                     }
                 );
-
-                Ok((col.name.to_string(), i))
+                let column = column.unwrap();
+                ensure!(
+                    matches!(column.data_type, DatumKind::String),
+                    InternalNoCause {
+                        msg: format!("Tag must be string type, current:{}", column.data_type)
+                    }
+                );
+                let index = schema.index_by_name(tag).unwrap();
+                Ok((column.name.to_string(), index))
             })
             .collect::<Result<Vec<_>>>()?;
 
@@ -278,17 +290,71 @@ impl QueryConverter {
         Ok(QueryConverter {
             timestamp_idx,
             value_idx,
-            tags,
+            metric,
+            tags_idx,
+            tags: Default::default(),
+            values: Default::default(),
             aggregated_tags,
             resp: Vec::new(),
         })
     }
 
-    fn add_batch(&self, record_batch: RecordBatch) -> Result<()> {
-        todo!()
+    fn add_batch(&mut self, record_batch: RecordBatch) -> Result<()> {
+        let row_num = record_batch.num_rows();
+        for row_idx in 0..row_num {
+            let mut tags = HashMap::with_capacity(self.tags.len());
+            let mut tags_key = String::new();
+            for (tag_key, index) in self.tags_idx.iter() {
+                let tag_value = record_batch
+                    .column(*index)
+                    .datum(row_idx)
+                    .as_str()
+                    .unwrap()
+                    .to_string();
+                tags_key += &tag_value;
+                tags.insert(tag_key.clone(), tag_value);
+            }
+            let timestamp = record_batch
+                .column(self.timestamp_idx)
+                .datum(row_idx)
+                .as_timestamp()
+                .unwrap()
+                .as_i64()
+                .to_string();
+            let value = record_batch
+                .column(self.value_idx)
+                .datum(row_idx)
+                .as_f64()
+                .unwrap();
+
+            if self.tags.contains_key(&tags_key) {
+                let values = self.values.get_mut(&tags_key).unwrap();
+                values.push((timestamp, value));
+            } else {
+                self.tags.insert(tags_key.clone(), tags);
+                self.values.insert(tags_key, vec![(timestamp, value)]);
+            }
+        }
+        Ok(())
     }
 
-    fn finish(self) -> Vec<QueryResponse> {
+    fn finish(mut self) -> Vec<QueryResponse> {
+        for (key, tags) in self.tags {
+            let values = self.values.get(&key).unwrap().clone();
+            let mut dps = HashMap::with_capacity(values.len());
+            for (time, value) in values {
+                dps.insert(time, value);
+            }
+
+            let resp = QueryResponse {
+                metric: self.metric.clone(),
+                tags,
+                aggregated_tags: self.aggregated_tags.clone(),
+                dps,
+            };
+            self.resp.push(resp);
+        }
+
         self.resp
     }
 }
