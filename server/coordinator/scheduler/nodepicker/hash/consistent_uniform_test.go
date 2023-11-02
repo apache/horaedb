@@ -1,4 +1,3 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 // Copyright (c) 2018 Burak Sezer
 // All rights reserved.
 //

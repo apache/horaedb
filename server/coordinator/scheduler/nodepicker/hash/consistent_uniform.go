@@ -1,5 +1,3 @@
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
-// This file fork from: https://github.com/buraksezer/consistent/blob/4516339c49db00f725fa89d0e3e7e970e4039af0/consistent.go
 // Copyright (c) 2018 Burak Sezer
 // All rights reserved.
 //
@@ -23,6 +21,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+// This file is copied from:
+// https://github.com/buraksezer/consistent/blob/4516339c49db00f725fa89d0e3e7e970e4039af0/consistent.go
 // Package hash provides a consistent hashing function with bounded loads.
 // For more information about the underlying algorithm, please take a look at
 // https://research.googleblog.com/2017/04/consistent-hashing-with-bounded-loads.html
