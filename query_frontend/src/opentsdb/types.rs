@@ -37,8 +37,10 @@ pub struct QueryRequest {
 
 pub struct OpentsdbSubPlan {
     pub plan: Plan,
+    pub metric: String,
     pub field_col_name: String,
     pub timestamp_col_name: String,
+    pub tags: Vec<String>,
     pub aggregated_tags: Vec<String>,
 }
 
