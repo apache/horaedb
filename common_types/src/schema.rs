@@ -967,17 +967,16 @@ impl TryFrom<schema_pb::TableSchema> for Schema {
 
         let primary_key_indexes = primary_key_ids
             .iter()
+            .cloned()
             .map(|id| {
-                if let Some(v) = schema
+                let col_idx = schema
                     .columns
                     .iter()
                     .enumerate()
-                    .find(|(_, col)| &col.id == id)
-                {
-                    Ok(v.0)
-                } else {
-                    ColumnIdMissing { id: *id }.fail()
-                }
+                    .find_map(|(idx, col)| if col.id == id { Some(idx) } else { None })
+                    .context(ColumnIdMissing { id })?;
+
+                Ok(col_idx)
             })
             .collect::<Result<Vec<_>>>()?;
         builder = builder.primary_key_indexes(primary_key_indexes);
