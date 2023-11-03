@@ -137,12 +137,26 @@ pub enum RecoverMode {
     ShardBased,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+pub enum WalEncodeFormat {
+    RowWise,
+    Columnar,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct WalEncodeConfig {
     /// The threshold of columnar bytes to do compression.
-    pub num_bytes_compress_threshold: usize,
+    pub num_bytes_compress_threshold: ReadableSize,
     /// Encode the data in a columnar layout if it is set.
-    pub enable_columnar_format: bool,
+    pub format: WalEncodeFormat,
+}
+
+impl Default for WalEncodeConfig {
+    fn default() -> Self {
+        Self {
+            num_bytes_compress_threshold: ReadableSize::kb(1),
+            format: WalEncodeFormat::RowWise,
+        }
+    }
 }
 
 impl Default for Config {

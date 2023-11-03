@@ -47,7 +47,7 @@ use crate::{
     payload::WritePayload,
     space::SpaceRef,
     table::{data::TableDataRef, version::MemTableForWrite},
-    WalEncodeConfig,
+    WalEncodeConfig, WalEncodeFormat,
 };
 
 #[derive(Debug, Snafu)]
@@ -176,10 +176,9 @@ impl EncodeContext {
         config: &WalEncodeConfig,
         table_schema: &Schema,
     ) -> Result<EncodedPayload> {
-        if config.enable_columnar_format {
-            self.encode_cols(config).map(EncodedPayload::Cols)
-        } else {
-            self.encode_rows(table_schema).map(EncodedPayload::Rows)
+        match config.format {
+            WalEncodeFormat::Columnar => self.encode_cols(config).map(EncodedPayload::Cols),
+            WalEncodeFormat::RowWise => self.encode_rows(table_schema).map(EncodedPayload::Rows),
         }
     }
 
@@ -190,7 +189,10 @@ impl EncodeContext {
         for col_idx in 0..row_group_schema.num_columns() {
             let col_schema = row_group_schema.column(col_idx);
             let col_iter = self.row_group.iter_column(col_idx).map(|v| v.as_view());
-            let enc = ColumnarEncoder::new(col_schema.id, config.num_bytes_compress_threshold);
+            let enc = ColumnarEncoder::new(
+                col_schema.id,
+                config.num_bytes_compress_threshold.as_byte() as usize,
+            );
             let mut hint = EncodeHint {
                 num_nulls: None,
                 num_datums: Some(self.row_group.num_rows()),
