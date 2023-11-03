@@ -724,6 +724,7 @@ fn new_sys_catalog_schema() -> schema::Result<Schema> {
                 .build()
                 .expect("Should succeed to build column schema of catalog"),
         )?
+        .primary_key_indexes(vec![0, 1])
         .build()
 }
 

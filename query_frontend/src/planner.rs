@@ -534,7 +534,10 @@ pub fn build_schema_from_write_table_request(
             .context(BuildTableSchema {})?;
     }
 
-    schema_builder.build().context(BuildTableSchema {})
+    schema_builder
+        .primary_key_indexes(vec![0, 1])
+        .build()
+        .context(BuildTableSchema {})
 }
 
 fn ensure_data_type_compatible(
@@ -647,6 +650,10 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             schema::Builder::with_capacity(columns_by_name.len()).auto_increment_column_id(true);
 
         // Collect the key columns.
+        // TODO: Here we put key column in front of all columns, this may change column
+        // order defined by users.
+        let primary_key_indexes = (0..primary_key_columns.len()).collect();
+        schema_builder = schema_builder.primary_key_indexes(primary_key_indexes);
         for key_col in primary_key_columns {
             let col_name = key_col.value.as_str();
             let col = columns_by_name

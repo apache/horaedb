@@ -132,7 +132,10 @@ async fn alter_schema_same_schema_version_case<T: WalsOpener>(
 
     let mut schema_builder = FixedSchemaTable::default_schema_builder();
     schema_builder = add_columns(schema_builder);
-    let new_schema = schema_builder.build().unwrap();
+    let new_schema = schema_builder
+        .primary_key_indexes(vec![0, 1])
+        .build()
+        .unwrap();
 
     let table = test_ctx.table(table_name);
     let old_schema = table.schema();
@@ -160,6 +163,7 @@ async fn alter_schema_old_pre_version_case<T: WalsOpener>(
 
     let new_schema = schema_builder
         .version(old_schema.version() + 1)
+        .primary_key_indexes(old_schema.primary_key_indexes().to_vec())
         .build()
         .unwrap();
 
@@ -190,6 +194,7 @@ async fn alter_schema_add_column_case<T: WalsOpener>(
 
     let new_schema = schema_builder
         .version(old_schema.version() + 1)
+        .primary_key_indexes(old_schema.primary_key_indexes().to_vec())
         .build()
         .unwrap();
 

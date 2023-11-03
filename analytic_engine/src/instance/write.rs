@@ -673,6 +673,7 @@ mod tests {
         let schema = SchemaBuilder::new()
             .add_key_column(column_schema)
             .unwrap()
+            .primary_key_indexes(vec![0])
             .build()
             .unwrap();
         let row_group = RowGroupBuilder::with_rows(schema, rows).unwrap().build();

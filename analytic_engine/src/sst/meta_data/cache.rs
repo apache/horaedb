@@ -307,6 +307,7 @@ mod tests {
                 .unwrap()
                 .add_key_column(timestamp_column_schema)
                 .unwrap()
+                .primary_key_indexes(vec![0, 1])
                 .build()
                 .unwrap()
         };

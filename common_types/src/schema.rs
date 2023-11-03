@@ -88,6 +88,16 @@ pub enum Error {
     },
 
     #[snafu(display(
+        "Column id is missing in schema, id:{}.\nBacktrace:\n{}",
+        id,
+        backtrace
+    ))]
+    ColumnIdMissing { id: ColumnId, backtrace: Backtrace },
+
+    #[snafu(display("Primary key indexes cannot be empty.\nBacktrace:\n{}", backtrace))]
+    EmptyPirmaryKeyIndexes { backtrace: Backtrace },
+
+    #[snafu(display(
         "Unsupported key column type, name:{}, type:{:?}.\nBacktrace:\n{}",
         name,
         kind,
@@ -113,13 +123,6 @@ pub enum Error {
 
     #[snafu(display("Timestamp not in primary key.\nBacktrace:\n{}", backtrace))]
     TimestampNotInPrimaryKey { backtrace: Backtrace },
-
-    #[snafu(display(
-        "Key column cannot be nullable, name:{}.\nBacktrace:\n{}",
-        name,
-        backtrace
-    ))]
-    NullKeyColumn { name: String, backtrace: Backtrace },
 
     #[snafu(display(
         "Invalid arrow field, field_name:{}, arrow_schema:{:?}, err:{}",
@@ -958,62 +961,38 @@ impl Schema {
 impl TryFrom<schema_pb::TableSchema> for Schema {
     type Error = Error;
 
-    // We can't use Builder directly here, since it will disorder columns.
     fn try_from(schema: schema_pb::TableSchema) -> Result<Self> {
+        let mut builder = Builder::with_capacity(schema.columns.len()).version(schema.version);
         let primary_key_ids = schema.primary_key_ids;
-        let column_schemas = schema
-            .columns
-            .into_iter()
-            .map(|column_schema_pb| {
-                ColumnSchema::try_from(column_schema_pb).context(ColumnSchemaDeserializeFailed)
+
+        let primary_key_indexes = primary_key_ids
+            .iter()
+            .map(|id| {
+                if let Some(v) = schema
+                    .columns
+                    .iter()
+                    .enumerate()
+                    .find(|(_, col)| &col.id == id)
+                {
+                    Ok(v.0)
+                } else {
+                    ColumnIdMissing { id: *id }.fail()
+                }
             })
             .collect::<Result<Vec<_>>>()?;
+        builder = builder.primary_key_indexes(primary_key_indexes);
 
-        let mut primary_key_indexes = Vec::with_capacity(primary_key_ids.len());
-        let mut timestamp_index = None;
-        for pk_id in &primary_key_ids {
-            for (idx, col) in column_schemas.iter().enumerate() {
-                if col.id == *pk_id {
-                    primary_key_indexes.push(idx);
-                    if DatumKind::Timestamp == col.data_type {
-                        // TODO: add a timestamp_id in schema_pb, so we can have two timestamp
-                        // columns in primary keys.
-                        if let Some(idx) = timestamp_index {
-                            let column_schema: &ColumnSchema = &column_schemas[idx];
-                            return TimestampKeyExists {
-                                timestamp_column: column_schema.name.to_string(),
-                                given_column: col.name.clone(),
-                            }
-                            .fail();
-                        }
-
-                        timestamp_index = Some(idx);
-                    }
-                    break;
-                }
+        for column_schema_pb in schema.columns.into_iter() {
+            let column =
+                ColumnSchema::try_from(column_schema_pb).context(ColumnSchemaDeserializeFailed)?;
+            if primary_key_ids.contains(&column.id) {
+                builder = builder.add_key_column(column)?;
+            } else {
+                builder = builder.add_normal_column(column)?;
             }
         }
 
-        let timestamp_index = timestamp_index.context(TimestampNotInPrimaryKey)?;
-        let tsid_index = Builder::find_tsid_index(&column_schemas);
-        let fields = column_schemas
-            .iter()
-            .map(|c| c.to_arrow_field())
-            .collect::<Vec<_>>();
-        let meta = Builder::build_arrow_schema_meta(
-            primary_key_indexes.clone(),
-            timestamp_index,
-            schema.version,
-        );
-
-        Ok(Schema {
-            arrow_schema: Arc::new(ArrowSchema::new_with_metadata(fields, meta)),
-            primary_key_indexes,
-            column_schemas: Arc::new(ColumnSchemas::new(column_schemas)),
-            version: schema.version,
-            tsid_index,
-            timestamp_index,
-        })
+        builder.build()
     }
 }
 
@@ -1090,8 +1069,6 @@ impl Builder {
         self.may_alloc_column_id(&mut column);
         self.validate_column(&column, true)?;
 
-        ensure!(!column.is_nullable, NullKeyColumn { name: column.name });
-
         // FIXME(xikai): it seems not reasonable to decide the timestamp column in this
         // way.
         let is_timestamp = DatumKind::Timestamp == column.data_type;
@@ -1106,7 +1083,6 @@ impl Builder {
             self.timestamp_index = Some(self.columns.len());
         }
 
-        self.primary_key_indexes.push(self.columns.len());
         self.insert_new_column(column);
 
         Ok(self)
@@ -1120,6 +1096,12 @@ impl Builder {
         self.insert_new_column(column);
 
         Ok(self)
+    }
+
+    /// Set primary key indexes of the schema
+    pub fn primary_key_indexes(mut self, indexes: Vec<usize>) -> Self {
+        self.primary_key_indexes = indexes;
+        self
     }
 
     /// Set version of the schema
@@ -1264,7 +1246,10 @@ impl Builder {
         let timestamp_index = self.timestamp_index.context(TimestampNotInPrimaryKey)?;
 
         // Timestamp key column is exists, so key columns should not be zero
-        assert!(!self.primary_key_indexes.is_empty());
+        ensure!(
+            !self.primary_key_indexes.is_empty(),
+            EmptyPirmaryKeyIndexes {}
+        );
 
         let tsid_index = Self::find_tsid_index(&self.columns);
         let fields = self
@@ -1373,6 +1358,7 @@ mod tests {
                     .expect("should succeed build column schema"),
             )
             .unwrap()
+            .primary_key_indexes(vec![0, 1])
             .build()
             .unwrap()
     }
@@ -1466,6 +1452,7 @@ mod tests {
                     .expect("should succeed build column schema"),
             )
             .unwrap()
+            .primary_key_indexes(vec![1, 2])
             .build()
             .unwrap();
 
@@ -1566,6 +1553,7 @@ mod tests {
                     .expect("should succeed build column schema"),
             )
             .unwrap()
+            .primary_key_indexes(vec![0])
             .build()
             .unwrap();
     }
@@ -1586,23 +1574,7 @@ mod tests {
                     .expect("should succeed build column schema"),
             )
             .unwrap();
-        assert!(builder.build().is_err());
-    }
-
-    // Currently we allow null key column, maybe we can rename it to sorted column.
-    // Since we primary key in ceresdb isn't same with MySQL, and it only served for
-    // sort.
-    #[test]
-    fn test_null_key() {
-        assert!(Builder::new()
-            .add_key_column(
-                column_schema::Builder::new("key1".to_string(), DatumKind::Varbinary)
-                    .id(1)
-                    .is_nullable(true)
-                    .build()
-                    .expect("should succeed build column schema")
-            )
-            .is_err());
+        assert!(builder.primary_key_indexes(vec![0]).build().is_err());
     }
 
     #[test]
@@ -1637,6 +1609,7 @@ mod tests {
                     .expect("should succeed build column schema"),
             )
             .unwrap()
+            .primary_key_indexes(vec![0])
             .build()
             .unwrap();
 
@@ -1690,6 +1663,7 @@ mod tests {
                     .expect("should succeed build column schema"),
             )
             .unwrap()
+            .primary_key_indexes(vec![0, 1])
             .build()
             .unwrap();
 
@@ -1796,6 +1770,7 @@ mod tests {
                     .expect("should succeed build column schema"),
             )
             .unwrap()
+            .primary_key_indexes(vec![0, 1])
             .build()
             .expect("should succeed to build schema");
 

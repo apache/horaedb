@@ -336,7 +336,8 @@ pub fn create_schema_builder(
     assert!(!key_tuples.is_empty());
 
     let mut schema_builder = schema::Builder::with_capacity(key_tuples.len() + normal_tuples.len())
-        .auto_increment_column_id(true);
+        .auto_increment_column_id(true)
+        .primary_key_indexes((0..key_tuples.len()).collect());
 
     for tuple in key_tuples {
         // Key column is not nullable.
