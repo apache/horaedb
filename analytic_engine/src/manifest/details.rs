@@ -856,6 +856,7 @@ mod tests {
                 },
                 &purger,
                 mem_size_options,
+                "test_catalog".to_string()
             )
             .unwrap();
 
@@ -949,6 +950,7 @@ mod tests {
                 table_name,
                 schema: common_types::tests::build_schema(),
                 opts: TableOptions::default(),
+                catalog_name: "test_catalog".to_string()
             })
         }
 

@@ -166,6 +166,8 @@ pub struct AddTableMeta {
     pub table_name: String,
     /// Schema of the table
     pub schema: Schema,
+    /// Name of catalog
+    pub catalog_name: String,
     // Options needed to persist
     pub opts: TableOptions,
 }

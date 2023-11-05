@@ -90,6 +90,7 @@ impl Instance {
                 space_id: space.id,
                 table_id: request.table_id,
                 table_name: request.params.table_name.clone(),
+                catalog_name: request.params.catalog_name.clone(),
                 schema: request.params.table_schema,
                 opts: table_opts,
             });
