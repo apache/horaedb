@@ -20,6 +20,7 @@ pub mod key;
 pub mod layered;
 mod reversed_iter;
 pub mod skiplist;
+pub mod test_util;
 
 use std::{ops::Bound, sync::Arc, time::Instant};
 
