@@ -310,7 +310,7 @@ mod tests {
             let mut ctx =
                 PutContext::new(IndexInWriterSchema::for_same_schema(schema.num_columns()));
             for (seq, row) in data {
-                memtable.put(&mut ctx, *seq, &row, &schema).unwrap();
+                memtable.put(&mut ctx, *seq, row, &schema).unwrap();
             }
 
             memtable

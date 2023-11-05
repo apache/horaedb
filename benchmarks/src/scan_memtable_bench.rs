@@ -25,7 +25,10 @@ use analytic_engine::{
     sst::meta_data::cache::MetaCacheRef,
 };
 use arena::NoopCollector;
-use common_types::projected_schema::{ProjectedSchema, RowProjectorBuilder};
+use common_types::{
+    projected_schema::{ProjectedSchema, RowProjectorBuilder},
+    time::TimeRange,
+};
 use logger::info;
 use object_store::{LocalFileSystem, Path};
 
@@ -103,6 +106,7 @@ impl ScanMemTableBench {
             reverse: false,
             metrics_collector: None,
             row_projector_builder,
+            time_range: TimeRange::min_to_max(),
         };
 
         let iter = self.memtable.scan(scan_ctx, scan_req).unwrap();

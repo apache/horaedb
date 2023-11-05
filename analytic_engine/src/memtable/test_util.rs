@@ -12,30 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{ops::Bound, sync::Arc};
-
-use arena::NoopCollector;
 use async_trait::async_trait;
-use bytes_ext::ByteVec;
-use codec::memcomparable::MemComparable;
-use common_types::{
-    datum::Datum,
-    projected_schema::ProjectedSchema,
-    record_batch::RecordBatchWithKey,
-    row::Row,
-    schema::IndexInWriterSchema,
-    tests::{build_row, build_schema},
-    time::Timestamp,
-};
+use common_types::{row::Row, tests::build_row};
 
 use super::*;
-use crate::{
-    memtable::{
-        factory::{Factory, Options},
-        skiplist::factory::SkiplistMemTableFactory,
-    },
-    table::data,
-};
 
 #[async_trait]
 pub trait TestMemtableBuilder {

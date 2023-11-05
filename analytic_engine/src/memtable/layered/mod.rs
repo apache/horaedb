@@ -18,38 +18,30 @@ pub mod factory;
 pub mod iter;
 
 use std::{
-    fmt::format,
     mem,
     ops::{Bound, Deref},
     sync::{
-        atomic::{self, AtomicI64, AtomicU64, AtomicUsize},
-        Arc, RwLock,
+        atomic::{self, AtomicU64, AtomicUsize},
+        RwLock,
     },
 };
 
-use arena::{Arena, BasicStats, CollectorRef};
+use arena::CollectorRef;
 use bytes_ext::Bytes;
-use codec::Encoder;
 use common_types::{
-    projected_schema::ProjectedSchema,
-    record_batch::RecordBatchWithKey,
-    row::{contiguous::ContiguousRowWriter, Row},
-    schema::Schema,
-    time::TimeRange,
-    SequenceNumber,
+    projected_schema::ProjectedSchema, record_batch::RecordBatchWithKey, row::Row, schema::Schema,
+    time::TimeRange, SequenceNumber,
 };
 use generic_error::BoxError;
-use logger::{debug, trace};
-use skiplist::{BytewiseComparator, KeyComparator, Skiplist};
-use snafu::{ensure, OptionExt, ResultExt};
+use skiplist::{BytewiseComparator, KeyComparator};
+use snafu::{OptionExt, ResultExt};
 
 use crate::memtable::{
     factory::{Factory, FactoryRef, Options},
-    key::{ComparableInternalKey, KeySequence},
+    key::KeySequence,
     layered::iter::ColumnarIterImpl,
-    ColumnarIterPtr, EncodeInternalKey, Internal, InternalNoCause, InvalidPutSequence, InvalidRow,
-    MemTable, MemTableRef, Metrics as MemtableMetrics, PutContext, Result, ScanContext,
-    ScanRequest, TimestampNotFound,
+    ColumnarIterPtr, Internal, InternalNoCause, MemTable, MemTableRef, Metrics as MemtableMetrics,
+    PutContext, Result, ScanContext, ScanRequest,
 };
 
 #[derive(Default, Debug)]
@@ -134,9 +126,9 @@ impl MemTable for LayeredMemTable {
     }
 
     fn set_last_sequence(&self, sequence: SequenceNumber) -> Result<()> {
-        Ok(self
-            .last_sequence
-            .store(sequence, atomic::Ordering::Relaxed))
+        self.last_sequence
+            .store(sequence, atomic::Ordering::Relaxed);
+        Ok(())
     }
 
     fn last_sequence(&self) -> SequenceNumber {
@@ -247,7 +239,7 @@ impl Inner {
     pub fn min_key(&self) -> Option<Bytes> {
         let comparator = BytewiseComparator;
 
-        let mut mutable_min_key = self.mutable_segment.min_key();
+        let mutable_min_key = self.mutable_segment.min_key();
 
         let immutable_min_key = if self.immutable_segments.is_empty() {
             None
@@ -278,7 +270,7 @@ impl Inner {
     pub fn max_key(&self) -> Option<Bytes> {
         let comparator = BytewiseComparator;
 
-        let mut mutable_max_key = self.mutable_segment.max_key();
+        let mutable_max_key = self.mutable_segment.max_key();
 
         let immutable_max_key = if self.immutable_segments.is_empty() {
             None

@@ -18,8 +18,6 @@ use std::{fmt, sync::Arc};
 
 use arena::CollectorRef;
 use common_types::{schema::Schema, SequenceNumber};
-use macros::define_result;
-use snafu::Snafu;
 
 use crate::memtable::{MemTableRef, Result};
 

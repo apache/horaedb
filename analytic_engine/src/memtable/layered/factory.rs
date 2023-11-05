@@ -14,15 +14,11 @@
 
 //! Skiplist memtable factory
 
-use std::sync::{atomic::AtomicU64, Arc};
-
-use arena::MonoIncArena;
-use skiplist::{BytewiseComparator, Skiplist};
+use std::sync::Arc;
 
 use crate::memtable::{
     factory::{Factory, FactoryRef, Options},
     layered::LayeredMemTable,
-    skiplist::SkiplistMemTable,
     MemTableRef, Result,
 };
 /// Factory to create memtable
