@@ -981,7 +981,7 @@ impl TryFrom<schema_pb::TableSchema> for Schema {
             .collect::<Result<Vec<_>>>()?;
         builder = builder.primary_key_indexes(primary_key_indexes);
 
-        for column_schema_pb in schema.columns.into_iter() {
+        for column_schema_pb in schema.columns {
             let column =
                 ColumnSchema::try_from(column_schema_pb).context(ColumnSchemaDeserializeFailed)?;
             if primary_key_ids.contains(&column.id) {
