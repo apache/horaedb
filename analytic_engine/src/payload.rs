@@ -176,7 +176,7 @@ pub enum ReadPayload {
 }
 
 impl ReadPayload {
-    fn decode_write_from_pb(schema: Schema, buf: &[u8]) -> Result<Self> {
+    fn decode_write_from_pb(schema: &Schema, buf: &[u8]) -> Result<Self> {
         let write_req_pb: table_requests::WriteRequest =
             Message::decode(buf).context(DecodeBody)?;
 
@@ -186,7 +186,9 @@ impl ReadPayload {
         };
         match version {
             WalEncodeVersion::RowWise => Self::decode_rowwise_write_req(write_req_pb),
-            WalEncodeVersion::Columnar => Self::decode_columnar_write_req(schema, write_req_pb),
+            WalEncodeVersion::Columnar => {
+                Self::decode_columnar_write_req(schema.clone(), write_req_pb)
+            }
         }
     }
 
@@ -322,7 +324,7 @@ where
             .table_schema(ctx.table_id)
             .context(TableSchemaNotFound)?;
         let payload = match header {
-            Header::Write => ReadPayload::decode_write_from_pb(schema, chunk)?,
+            Header::Write => ReadPayload::decode_write_from_pb(&schema, chunk)?,
             Header::AlterSchema => ReadPayload::decode_alter_schema_from_pb(chunk)?,
             Header::AlterOption => ReadPayload::decode_alter_option_from_pb(chunk)?,
         };

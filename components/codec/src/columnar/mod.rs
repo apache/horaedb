@@ -613,6 +613,26 @@ mod tests {
     }
 
     #[test]
+    fn test_with_empty_datums() {
+        check_encode_end_decode(1, vec![], DatumKind::Null);
+        check_encode_end_decode(1, vec![], DatumKind::Timestamp);
+        check_encode_end_decode(1, vec![], DatumKind::Double);
+        check_encode_end_decode(1, vec![], DatumKind::Float);
+        check_encode_end_decode(1, vec![], DatumKind::Varbinary);
+        check_encode_end_decode(1, vec![], DatumKind::String);
+        check_encode_end_decode(1, vec![], DatumKind::UInt64);
+        check_encode_end_decode(1, vec![], DatumKind::UInt32);
+        check_encode_end_decode(1, vec![], DatumKind::UInt8);
+        check_encode_end_decode(1, vec![], DatumKind::Int64);
+        check_encode_end_decode(1, vec![], DatumKind::Int32);
+        check_encode_end_decode(1, vec![], DatumKind::Int16);
+        check_encode_end_decode(1, vec![], DatumKind::Int8);
+        check_encode_end_decode(1, vec![], DatumKind::Boolean);
+        check_encode_end_decode(1, vec![], DatumKind::Date);
+        check_encode_end_decode(1, vec![], DatumKind::Time);
+    }
+
+    #[test]
     fn test_i32_with_null() {
         let datums = vec![
             Datum::from(10i32),

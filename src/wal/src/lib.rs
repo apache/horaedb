@@ -14,6 +14,8 @@
 
 //! Write Ahead Log
 
+#![feature(trait_alias)]
+
 pub mod config;
 pub mod kv_encoder;
 pub mod log_batch;

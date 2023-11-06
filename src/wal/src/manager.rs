@@ -33,6 +33,8 @@ use crate::{
     metrics::WAL_WRITE_BYTES_HISTOGRAM,
 };
 
+pub trait TableFilter = Fn(TableId) -> bool;
+
 pub mod error {
     use generic_error::GenericError;
     use macros::define_result;
@@ -408,7 +410,7 @@ impl BatchLogIteratorAdapter {
     ) -> Result<(VecDeque<LogEntry<D::Target>>, Option<LogIterator>)>
     where
         D: PayloadDecoder + Send + 'static,
-        F: Fn(TableId) -> bool + Send + 'static,
+        F: TableFilter + Send + 'static,
     {
         buffer.clear();
 
@@ -461,7 +463,7 @@ impl BatchLogIteratorAdapter {
     ) -> Result<(VecDeque<LogEntry<D::Target>>, Option<LogIterator>)>
     where
         D: PayloadDecoder + Send + 'static,
-        F: Fn(TableId) -> bool + Send + 'static,
+        F: TableFilter + Send + 'static,
     {
         buffer.clear();
 
@@ -506,7 +508,7 @@ impl BatchLogIteratorAdapter {
     ) -> Result<VecDeque<LogEntry<D::Target>>>
     where
         D: PayloadDecoder + Send + 'static,
-        F: Fn(TableId) -> bool + Send + 'static,
+        F: TableFilter + Send + 'static,
     {
         if self.iter.is_none() {
             return Ok(VecDeque::new());

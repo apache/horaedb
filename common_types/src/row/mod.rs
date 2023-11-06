@@ -428,7 +428,17 @@ impl RowGroupBuilderFromColumn {
     }
 
     pub fn build(mut self) -> RowGroup {
-        let num_rows = self.num_rows().unwrap_or(0);
+        let num_rows = self.num_rows();
+        if Some(0) == num_rows {
+            return RowGroup {
+                schema: self.schema,
+                rows: vec![],
+                min_timestamp: Timestamp::new(0),
+                max_timestamp: Timestamp::new(0),
+            };
+        };
+
+        let num_rows = num_rows.unwrap();
         let num_cols = self.schema.num_columns();
         let mut rows = Vec::with_capacity(num_rows);
 
@@ -462,17 +472,37 @@ impl RowGroupBuilderFromColumn {
 
         let rows = rows.into_iter().map(Row::from_datums).collect::<Vec<_>>();
 
+        let (min_timestamp, max_timestamp) = self
+            .collect_minmax_timestamps(&rows)
+            .unwrap_or_else(|| (Timestamp::default(), Timestamp::default()));
+
         RowGroup {
             schema: self.schema,
             rows,
-            min_timestamp: Timestamp::now(),
-            max_timestamp: Timestamp::now(),
+            min_timestamp,
+            max_timestamp,
         }
     }
 
     #[inline]
     fn num_rows(&self) -> Option<usize> {
         self.cols.iter().next().map(|(_, v)| v.len())
+    }
+
+    fn collect_minmax_timestamps(&self, rows: &[Row]) -> Option<(Timestamp, Timestamp)> {
+        let timestamp_idx = self.schema.timestamp_index();
+        if rows.is_empty() {
+            return None;
+        }
+
+        rows.iter()
+            .fold(None, |prev: Option<(Timestamp, Timestamp)>, row| {
+                let timestamp = row[timestamp_idx].as_timestamp()?;
+                match prev {
+                    None => Some((timestamp, timestamp)),
+                    Some((min_ts, max_ts)) => Some((min_ts.min(timestamp), max_ts.max(timestamp))),
+                }
+            })
     }
 }
 
