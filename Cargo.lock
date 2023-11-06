@@ -107,6 +107,7 @@ dependencies = [
  "hex",
  "hyperloglog",
  "id_allocator",
+ "itertools 0.10.5",
  "lazy_static",
  "logger",
  "lru 0.7.8",

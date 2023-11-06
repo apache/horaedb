@@ -1021,11 +1021,11 @@ impl<B: WalBuilder> TestEnv<B> {
         start: u32,
         end: u32,
     ) -> (Vec<MemoryPayload>, LogWriteBatch) {
-        let log_entries = (start..end).collect::<Vec<_>>();
+        let log_entries = start..end;
 
         let log_batch_encoder = LogBatchEncoder::create(location);
         let log_batch = log_batch_encoder
-            .encode_batch::<MemoryPayload, u32>(&log_entries)
+            .encode_batch(log_entries.map(|v| MemoryPayload { val: v }))
             .expect("should succeed to encode payloads");
 
         let payload_batch = self.build_payload_batch(start, end);
@@ -1047,7 +1047,7 @@ impl<B: WalBuilder> TestEnv<B> {
         loop {
             let dec = MemoryPayloadDecoder;
             let log_entries = iter
-                .next_log_entries(dec, VecDeque::new())
+                .next_log_entries(dec, |_| true, VecDeque::new())
                 .await
                 .expect("should succeed to fetch next log entry");
             if log_entries.is_empty() {

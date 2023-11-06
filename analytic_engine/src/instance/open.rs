@@ -146,6 +146,7 @@ impl Instance {
             iter_options,
             scan_options,
             recover_mode: ctx.config.recover_mode,
+            wal_encode: ctx.config.wal_encode,
         });
 
         Ok(instance)

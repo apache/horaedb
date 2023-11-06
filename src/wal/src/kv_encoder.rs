@@ -562,18 +562,16 @@ impl LogBatchEncoder {
     /// Consume LogBatchEncoder and encode raw payload batch to LogWriteBatch.
     /// Note: To build payload from raw payload in `encode_batch`, raw payload
     /// need implement From trait.
-    pub fn encode_batch<'a, P: Payload, I>(
-        self,
-        raw_payload_batch: &'a [I],
-    ) -> manager::Result<LogWriteBatch>
+    pub fn encode_batch<P, I>(self, raw_payloads: I) -> manager::Result<LogWriteBatch>
     where
-        &'a I: Into<P>,
+        I: Iterator<Item = P>,
+        P: Payload,
     {
         let mut write_batch = LogWriteBatch::new(self.location);
         let mut buf = BytesMut::new();
-        for raw_payload in raw_payload_batch.iter() {
+        for raw_payload in raw_payloads {
             self.log_encoding
-                .encode_value(&mut buf, &raw_payload.into())
+                .encode_value(&mut buf, &raw_payload)
                 .box_err()
                 .context(Encoding)?;
 
@@ -750,7 +748,7 @@ mod tests {
     use super::*;
     use crate::{
         kv_encoder::CommonLogKey,
-        log_batch::{MemoryPayload, MemoryPayloadDecoder, PayloadDecoder},
+        log_batch::{MemoryPayload, MemoryPayloadDecoder, PayloadDecodeContext, PayloadDecoder},
     };
 
     #[test]
@@ -777,7 +775,9 @@ mod tests {
             encoding.encode_value(&mut buf, &payload).unwrap();
 
             let mut value = encoding.decode_value(&buf).unwrap();
-            let decoded_value = decoder.decode(&mut value).unwrap();
+            let decoded_value = decoder
+                .decode(&PayloadDecodeContext::default(), &mut value)
+                .unwrap();
 
             assert_eq!(payload, decoded_value);
         }

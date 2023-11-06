@@ -192,7 +192,7 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
             let buffer = mem::take(&mut self.buffer);
             self.buffer = self
                 .iter
-                .next_log_entries(decoder, buffer)
+                .next_log_entries(decoder, |_| true, buffer)
                 .await
                 .context(ReadEntry)?;
         }

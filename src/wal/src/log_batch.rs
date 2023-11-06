@@ -107,11 +107,21 @@ impl LogWriteBatch {
     }
 }
 
+/// The context to decode payload.
+#[derive(Debug, Default, Clone)]
+pub struct PayloadDecodeContext {
+    pub table_id: TableId,
+}
+
 pub trait PayloadDecoder: Send + Sync {
     type Error: std::error::Error + Send + Sync + 'static;
     type Target: Send + Sync;
     /// Decode `Target` from the `bytes`.
-    fn decode<B: Buf>(&self, buf: &mut B) -> Result<Self::Target, Self::Error>;
+    fn decode<B: Buf>(
+        &self,
+        ctx: &PayloadDecodeContext,
+        buf: &mut B,
+    ) -> Result<Self::Target, Self::Error>;
 }
 
 pub struct MemoryPayloadDecoder;
@@ -120,7 +130,11 @@ impl PayloadDecoder for MemoryPayloadDecoder {
     type Error = Error;
     type Target = MemoryPayload;
 
-    fn decode<B: SafeBuf>(&self, buf: &mut B) -> Result<Self::Target, Self::Error> {
+    fn decode<B: SafeBuf>(
+        &self,
+        _ctx: &PayloadDecodeContext,
+        buf: &mut B,
+    ) -> Result<Self::Target, Self::Error> {
         let val = buf.try_get_u32().expect("should succeed to read u32");
         Ok(MemoryPayload { val })
     }

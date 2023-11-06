@@ -1640,7 +1640,7 @@ mod tests {
     use super::*;
     use crate::{
         kv_encoder::{LogBatchEncoder, LogEncoding},
-        log_batch::{MemoryPayload, MemoryPayloadDecoder, PayloadDecoder},
+        log_batch::{MemoryPayload, MemoryPayloadDecoder, PayloadDecodeContext, PayloadDecoder},
         table_kv_impl::consts,
     };
 
@@ -2001,7 +2001,10 @@ mod tests {
         while iter.valid() {
             let decoded_key = log_encoding.decode_key(iter.key()).unwrap();
             let mut raw_value = log_encoding.decode_value(iter.value()).unwrap();
-            let decoded_value = decoder.decode(&mut raw_value).unwrap();
+            let ctx = PayloadDecodeContext {
+                table_id: region_id,
+            };
+            let decoded_value = decoder.decode(&ctx, &mut raw_value).unwrap();
             key_values.push((decoded_key.1, decoded_value));
 
             iter.next().unwrap();
@@ -2025,7 +2028,7 @@ mod tests {
         let log_entries = (start_sequence..end_sequence).collect::<Vec<_>>();
         let wal_encoder = LogBatchEncoder::create(location);
         let log_batch = wal_encoder
-            .encode_batch::<MemoryPayload, u32>(&log_entries)
+            .encode_batch(log_entries.iter().map(|v| MemoryPayload { val: *v }))
             .expect("should succeed to encode payload batch");
         let write_ctx = manager::WriteContext::default();
         namespace
