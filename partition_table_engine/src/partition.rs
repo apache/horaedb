@@ -19,7 +19,7 @@ use std::{collections::HashMap, fmt};
 use analytic_engine::{table::support_pushdown, TableOptions};
 use async_trait::async_trait;
 use common_types::{
-    row::{Row, RowGroup, RowGroupBuilder},
+    row::{Row, RowGroup},
     schema::Schema,
 };
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -46,7 +46,7 @@ use table_engine::{
     table::{
         AlterOptions, AlterSchema, AlterSchemaRequest, CreatePartitionRule, FlushRequest,
         GetRequest, LocatePartitions, ReadRequest, Result, Scan, Table, TableId, TableStats,
-        UnexpectedWithMsg, UnsupportedMethod, Write, WriteBatch, WriteRequest,
+        UnexpectedWithMsg, UnsupportedMethod, WriteBatch, WriteRequest,
     },
 };
 
@@ -139,12 +139,9 @@ impl PartitionTableImpl {
         let mut request_batch = Vec::with_capacity(split_rows.len());
         for (partition, rows) in split_rows {
             let sub_table_ident = self.get_sub_table_ident(partition);
-            let row_group = RowGroupBuilder::with_rows(schema.clone(), rows)
-                .box_err()
-                .with_context(|| Write {
-                    table: sub_table_ident.table.clone(),
-                })?
-                .build();
+            // The rows should have the valid schema, so there is no need to do one more
+            // check here.
+            let row_group = RowGroup::new_unchecked(schema.clone(), rows);
 
             let request = RemoteWriteRequest {
                 table: sub_table_ident,

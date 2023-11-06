@@ -30,7 +30,7 @@ use common_types::{
     column_schema::ColumnSchema,
     datum::{Datum, DatumKind},
     request_id::RequestId,
-    row::{Row, RowGroupBuilder},
+    row::{Row, RowGroup},
     schema::Schema,
     time::Timestamp,
 };
@@ -808,7 +808,8 @@ fn write_table_request_to_insert_plan(
 ) -> Result<InsertPlan> {
     let schema = table.schema();
 
-    let mut rows_total = Vec::new();
+    // TODO: pre-allocate the memory for the row vector.
+    let mut total_rows = Vec::new();
     for write_entry in write_table_req.entries {
         let mut rows = write_entry_to_rows(
             &write_table_req.table,
@@ -817,16 +818,15 @@ fn write_table_request_to_insert_plan(
             &write_table_req.field_names,
             write_entry,
         )?;
-        rows_total.append(&mut rows);
+        total_rows.append(&mut rows);
     }
     // The row group builder will checks nullable.
-    let row_group = RowGroupBuilder::with_rows(schema, rows_total)
+    let row_group = RowGroup::new_checked(schema, total_rows)
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to build row group, table:{}", table.name()),
-        })?
-        .build();
+        })?;
     Ok(InsertPlan {
         table,
         rows: row_group,

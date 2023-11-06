@@ -22,7 +22,7 @@ use common_types::{
     projected_schema::ProjectedSchema,
     record_batch::RecordBatch,
     request_id::RequestId,
-    row::{Row, RowGroup, RowGroupBuilder},
+    row::{Row, RowGroup},
     schema::{self, Schema},
     table::DEFAULT_SHARD_ID,
     time::Timestamp,
@@ -122,9 +122,7 @@ impl FixedSchemaTable {
     }
 
     fn new_row_group(&self, rows: Vec<Row>) -> RowGroup {
-        RowGroupBuilder::with_rows(self.create_request.params.table_schema.clone(), rows)
-            .unwrap()
-            .build()
+        RowGroup::new_checked(self.create_request.params.table_schema.clone(), rows).unwrap()
     }
 
     fn new_row_opt(data: RowTupleOpt) -> Row {

@@ -22,7 +22,7 @@ use codec::{
     Decoder,
 };
 use common_types::{
-    row::{RowGroup, RowGroupBuilder, RowGroupBuilderFromColumn},
+    row::{RowGroup, RowGroupBuilderFromColumn},
     schema::Schema,
     table::TableId,
 };
@@ -202,18 +202,19 @@ impl ReadPayload {
 
         // Consume and convert rows in pb
         let encoded_rows = write_req_pb.rows;
-        let mut builder = RowGroupBuilder::with_capacity(schema.clone(), encoded_rows.len());
+        let mut rows = Vec::with_capacity(encoded_rows.len());
         let row_decoder = WalRowDecoder::new(&schema);
         for row_bytes in &encoded_rows {
             let row = row_decoder
                 .decode(&mut row_bytes.as_slice())
                 .context(DecodeRow)?;
             // We skip schema check here
-            builder.push_checked_row(row);
+            rows.push(row);
         }
 
-        let row_group = builder.build();
-
+        // The `rows` are decoded according to the schema, so there is no need to do one
+        // more check here.
+        let row_group = RowGroup::new_unchecked(schema, rows);
         Ok(Self::Write { row_group })
     }
 

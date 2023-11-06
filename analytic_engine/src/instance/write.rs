@@ -712,7 +712,7 @@ mod tests {
     use common_types::{
         column_schema::Builder as ColumnSchemaBuilder,
         datum::{Datum, DatumKind},
-        row::{Row, RowGroupBuilder},
+        row::Row,
         schema::Builder as SchemaBuilder,
         time::Timestamp,
     };
@@ -737,7 +737,7 @@ mod tests {
             .unwrap()
             .build()
             .unwrap();
-        let row_group = RowGroupBuilder::with_rows(schema, rows).unwrap().build();
+        let row_group = RowGroup::new_checked(schema, rows).unwrap();
 
         (encoded_rows, row_group)
     }

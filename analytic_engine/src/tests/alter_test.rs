@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, HashMap};
 use common_types::{
     column_schema,
     datum::DatumKind,
-    row::{RowGroup, RowGroupBuilder},
+    row::RowGroup,
     schema::{self, Schema},
     time::Timestamp,
 };
@@ -227,9 +227,7 @@ async fn alter_schema_add_column_case<T: WalsOpener>(
         ),
     ];
     let rows_vec = row_util::new_rows_8(&rows);
-    let row_group = RowGroupBuilder::with_rows(new_schema.clone(), rows_vec)
-        .unwrap()
-        .build();
+    let row_group = RowGroup::new_checked(new_schema.clone(), rows_vec).unwrap();
 
     // Write data with new schema.
     test_ctx.write_to_table(table_name, row_group).await;
@@ -283,9 +281,7 @@ async fn alter_schema_add_column_case<T: WalsOpener>(
         )),
     ];
     let new_schema_row_group =
-        RowGroupBuilder::with_rows(new_schema.clone(), new_schema_rows.to_vec())
-            .unwrap()
-            .build();
+        RowGroup::new_checked(new_schema.clone(), new_schema_rows.to_vec()).unwrap();
 
     // Read data using new schema.
     check_read_row_group(
@@ -332,9 +328,8 @@ async fn alter_schema_add_column_case<T: WalsOpener>(
         ),
     ];
     let old_schema_rows_vec = row_util::new_rows_6(&old_schema_rows);
-    let old_schema_row_group = RowGroupBuilder::with_rows(old_schema.clone(), old_schema_rows_vec)
-        .unwrap()
-        .build();
+    let old_schema_row_group =
+        RowGroup::new_checked(old_schema.clone(), old_schema_rows_vec).unwrap();
 
     // Read data using old schema.
     check_read_row_group(
