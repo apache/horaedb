@@ -521,6 +521,7 @@ impl Datum {
     /// Cast datum to timestamp.
     pub fn as_timestamp(&self) -> Option<Timestamp> {
         match self {
+            Datum::Time(v) => Some(Timestamp::new(*v)),
             Datum::Timestamp(v) => Some(*v),
             _ => None,
         }
@@ -1270,12 +1271,6 @@ impl<'a> DatumView<'a> {
     pub fn as_timestamp(&self) -> Option<Timestamp> {
         match self {
             DatumView::Timestamp(v) => Some(*v),
-            _ => None,
-        }
-    }
-
-    pub fn as_time(&self) -> Option<Timestamp> {
-        match self {
             DatumView::Time(v) => Some(Timestamp::new(*v)),
             _ => None,
         }

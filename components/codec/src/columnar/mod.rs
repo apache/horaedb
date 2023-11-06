@@ -307,7 +307,7 @@ impl ColumnarEncoder {
                 enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_date_i32()))
             }
             DatumKind::Time => {
-                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_time()))
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_timestamp()))
             }
         };
 
@@ -342,7 +342,7 @@ impl ColumnarEncoder {
             DatumKind::Int8 => enc.encode(buf, datums.filter_map(|v| v.as_i8())),
             DatumKind::Boolean => enc.encode(buf, datums.filter_map(|v| v.as_bool())),
             DatumKind::Date => enc.encode(buf, datums.filter_map(|v| v.as_date_i32())),
-            DatumKind::Time => enc.encode(buf, datums.filter_map(|v| v.as_time())),
+            DatumKind::Time => enc.encode(buf, datums.filter_map(|v| v.as_timestamp())),
         }
     }
 }
