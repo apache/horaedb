@@ -221,11 +221,13 @@ impl ShardOperator {
     }
 
     pub async fn create_table(&self, ctx: CreateTableContext) -> Result<ShardVersion> {
-        let shard_info = ctx.updated_table_info.shard_info.clone();
-        let table_info = ctx.updated_table_info.table_info.clone();
+        let shard_info = &ctx.updated_table_info.shard_info;
+        let table_info = &ctx.updated_table_info.table_info;
 
         info!(
-            "ShardOperator create table sequentially begin, shard_info:{shard_info:?}, table_info:{table_info:?}",
+            "ShardOperator create table sequentially begin, shard_id:{}, table:{}, shard_info:{shard_info:?}, table_info:{table_info:?}",
+            shard_info.id,
+            table_info.name,
         );
 
         // Create the table by operator afterwards.
@@ -266,27 +268,35 @@ impl ShardOperator {
             })?;
 
         info!(
-            "ShardOperator create table sequentially finish, shard_info:{shard_info:?}, table_info:{table_info:?}",
+            "ShardOperator table is created by operator, shard_id:{}, table:{}",
+            shard_info.id, table_info.name,
         );
 
-        // FIXME: maybe should insert table from cluster after having created table.
-        let mut data = self.data.write().unwrap();
-        let latest_version = data
-            .try_insert_table(ctx.updated_table_info)
-            .box_err()
-            .with_context(|| CreateTableWithCause {
-                msg: format!("shard_info:{shard_info:?}, table_info:{table_info:?}"),
-            })?;
+        let latest_version = {
+            let mut data = self.data.write().unwrap();
+            data.try_create_table(ctx.updated_table_info.clone())
+                .box_err()
+                .with_context(|| CreateTableWithCause {
+                    msg: format!("shard_info:{shard_info:?}, table_info:{table_info:?}"),
+                })?
+        };
+
+        info!(
+            "ShardOperator create table sequentially finish, shard_id:{}, shard_version:{}, table:{}",
+            shard_info.id, shard_info.version, table_info.name,
+        );
 
         Ok(latest_version)
     }
 
     pub async fn drop_table(&self, ctx: DropTableContext) -> Result<ShardVersion> {
-        let shard_info = ctx.updated_table_info.shard_info.clone();
-        let table_info = ctx.updated_table_info.table_info.clone();
+        let shard_info = &ctx.updated_table_info.shard_info;
+        let table_info = &ctx.updated_table_info.table_info;
 
         info!(
-            "ShardOperator drop table sequentially begin, shard_info:{shard_info:?}, table_info:{table_info:?}",
+            "ShardOperator drop table sequentially begin, shard_id:{}, table:{}, shard_info:{shard_info:?}, table_info:{table_info:?}",
+            shard_info.id,
+            table_info.name,
         );
 
         // Drop the table by operator afterwards.
@@ -309,40 +319,41 @@ impl ShardOperator {
             })?;
 
         info!(
-            "ShardOperator drop table sequentially finish, shard_info:{shard_info:?}, table_info:{table_info:?}",
+            "ShardOperator table is dropped, shard_id:{}, table:{}",
+            shard_info.id, table_info.name,
         );
 
-        // FIXME: maybe should insert table from cluster after having dropped table.
-        let mut data = self.data.write().unwrap();
-        let latest_version = data
-            .try_remove_table(ctx.updated_table_info)
-            .box_err()
-            .with_context(|| DropTableWithCause {
-                msg: format!("shard_info:{shard_info:?}, table_info:{table_info:?}"),
-            })?;
+        // Update the shard info after the table is dropped.
+        let latest_version = {
+            let mut data = self.data.write().unwrap();
+            data.try_drop_table(ctx.updated_table_info.clone())
+                .box_err()
+                .with_context(|| DropTableWithCause {
+                    msg: format!("shard_info:{shard_info:?}, table_info:{table_info:?}"),
+                })?
+        };
+
+        info!(
+            "ShardOperator drop table sequentially finish, latest_version:{latest_version}, shard_id:{}, old_shard_version:{}, table:{}",
+            shard_info.id,
+            shard_info.version,
+            table_info.name,
+        );
 
         Ok(latest_version)
     }
 
     pub async fn open_table(&self, ctx: OpenTableContext) -> Result<()> {
-        let shard_info = ctx.updated_table_info.shard_info.clone();
-        let table_info = ctx.updated_table_info.table_info.clone();
+        let shard_info = &ctx.updated_table_info.shard_info;
+        let table_info = &ctx.updated_table_info.table_info;
 
         info!(
-            "ShardOperator open table sequentially begin, shard_info:{shard_info:?}, table_info:{table_info:?}",
+            "ShardOperator open table sequentially begin, shard_id:{}, table:{}, shard_info:{shard_info:?}, table_info:{table_info:?}",
+            shard_info.id,
+            table_info.name,
         );
 
-        // FIXME: maybe should insert table from cluster after having opened table.
-        {
-            let mut data = self.data.write().unwrap();
-            data.try_insert_table(ctx.updated_table_info)
-                .box_err()
-                .with_context(|| OpenTableWithCause {
-                    msg: format!("shard_info:{shard_info:?}, table_info:{table_info:?}"),
-                })?;
-        }
-
-        // Open the table by operator afterwards.
+        // Open the table by operator.
         let open_table_request = OpenTableRequest {
             catalog_name: ctx.catalog,
             schema_name: table_info.schema_name.clone(),
@@ -365,27 +376,33 @@ impl ShardOperator {
             })?;
 
         info!(
-            "ShardOperator open table sequentially finish, shard_info:{shard_info:?}, table_info:{table_info:?}",
+            "ShardOperator table is opened by operator, shard_id:{}, table:{}",
+            shard_info.id, table_info.name
+        );
+
+        // Update the shard info after the table is opened.
+        {
+            let mut data = self.data.write().unwrap();
+            data.try_open_table(ctx.updated_table_info.clone())
+                .box_err()
+                .with_context(|| OpenTableWithCause {
+                    msg: format!("shard_info:{shard_info:?}, table_info:{table_info:?}"),
+                })?;
+        }
+
+        info!(
+            "ShardOperator open table sequentially finish, shard_id:{}, table:{}",
+            shard_info.id, table_info.name
         );
 
         Ok(())
     }
 
     pub async fn close_table(&self, ctx: CloseTableContext) -> Result<()> {
-        let shard_info = ctx.updated_table_info.shard_info.clone();
-        let table_info = ctx.updated_table_info.table_info.clone();
+        let shard_info = &ctx.updated_table_info.shard_info;
+        let table_info = &ctx.updated_table_info.table_info;
 
-        info!("ShardOperator close table sequentially begin, shard_info:{shard_info:?}, table_info:{table_info:?}");
-
-        // FIXME: maybe should remove table from cluster after having closed table.
-        {
-            let mut data = self.data.write().unwrap();
-            data.try_remove_table(ctx.updated_table_info)
-                .box_err()
-                .with_context(|| CloseTableWithCause {
-                    msg: format!("shard_info:{shard_info:?}, table_info:{table_info:?}"),
-                })?;
-        }
+        info!("ShardOperator close table sequentially begin, shard_id:{}, table:{}, shard_info:{shard_info:?}, table_info:{table_info:?}", shard_info.id, table_info.name);
 
         // Close the table by catalog manager afterwards.
         let close_table_request = CloseTableRequest {
@@ -408,7 +425,25 @@ impl ShardOperator {
                 msg: format!("shard_info:{shard_info:?}, table_info:{table_info:?}"),
             })?;
 
-        info!("ShardOperator close table sequentially finish, shard_info:{shard_info:?}, table_info:{table_info:?}");
+        info!(
+            "ShardOperator table is closed by operator, shard_id:{}, table:{}",
+            shard_info.id, table_info.name
+        );
+
+        // Update the shard info after the table is closed.
+        {
+            let mut data = self.data.write().unwrap();
+            data.try_close_table(ctx.updated_table_info.clone())
+                .box_err()
+                .with_context(|| CloseTableWithCause {
+                    msg: format!("shard_info:{shard_info:?}, table_info:{table_info:?}"),
+                })?;
+        }
+
+        info!(
+            "ShardOperator close table sequentially finish, shard_id:{}, table:{}",
+            shard_info.id, table_info.name
+        );
 
         Ok(())
     }

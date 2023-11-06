@@ -126,8 +126,8 @@ impl Shard {
             let mut data = self.data.write().unwrap();
             data.finish_open();
         }
-        // If open failed, shard status is unchanged(`Opening`), so it can be reschduled
-        // to open again.
+        // If open failed, shard status is unchanged(`Opening`), so it can be
+        // rescheduled to open again.
 
         ret
     }
@@ -222,31 +222,50 @@ impl ShardData {
     }
 
     #[inline]
-    fn update_shard_info(&mut self, new_info: ShardInfo) {
-        // TODO: refactor to move status out of ShardInfo
-        self.shard_info.id = new_info.id;
-        self.shard_info.version = new_info.version + 1;
-        self.shard_info.role = new_info.role;
+    fn inc_shard_version(&mut self) {
+        self.shard_info.version += 1;
     }
 
-    pub fn try_insert_table(&mut self, updated_info: UpdatedTableInfo) -> Result<ShardVersion> {
+    /// Create the table on the shard, whose version will be incremented.
+    #[inline]
+    pub fn try_create_table(&mut self, updated_info: UpdatedTableInfo) -> Result<ShardVersion> {
+        self.try_insert_table(updated_info, true)
+    }
+
+    /// Open the table on the shard, whose version won't change.
+    #[inline]
+    pub fn try_open_table(&mut self, updated_info: UpdatedTableInfo) -> Result<()> {
+        self.try_insert_table(updated_info, false)?;
+
+        Ok(())
+    }
+
+    /// Try to insert the table into the shard.
+    ///
+    /// The shard version may be incremented and the new version will be
+    /// returned.
+    fn try_insert_table(
+        &mut self,
+        updated_info: UpdatedTableInfo,
+        inc_version: bool,
+    ) -> Result<ShardVersion> {
         let UpdatedTableInfo {
-            shard_info: curr_shard,
+            shard_info: curr_shard_info,
             table_info: new_table,
         } = updated_info;
 
         ensure!(
             !self.is_frozen(),
             UpdateFrozenShard {
-                shard_id: curr_shard.id,
+                shard_id: curr_shard_info.id,
             }
         );
 
         ensure!(
-            self.shard_info.version == curr_shard.version,
+            self.shard_info.version == curr_shard_info.version,
             ShardVersionMismatch {
                 shard_info: self.shard_info.clone(),
-                expect_version: curr_shard.version,
+                expect_version: curr_shard_info.version,
             }
         );
 
@@ -258,31 +277,57 @@ impl ShardData {
             }
         );
 
-        // Update tables of shard.
-        self.update_shard_info(curr_shard);
+        // Insert the new table into the shard.
         self.tables.push(new_table);
 
-        Ok(self.shard_info.clone().version)
+        // Update the shard version if necessary.
+        if inc_version {
+            self.inc_shard_version();
+        }
+
+        Ok(self.shard_info.version)
     }
 
-    pub fn try_remove_table(&mut self, updated_info: UpdatedTableInfo) -> Result<ShardVersion> {
+    /// Drop the table from the shard, whose version will be incremented.
+    #[inline]
+    pub fn try_drop_table(&mut self, updated_info: UpdatedTableInfo) -> Result<ShardVersion> {
+        self.try_remove_table(updated_info, true)
+    }
+
+    /// Close the table from the shard, whose version won't change.
+    #[inline]
+    pub fn try_close_table(&mut self, updated_info: UpdatedTableInfo) -> Result<()> {
+        self.try_remove_table(updated_info, false)?;
+
+        Ok(())
+    }
+
+    /// Try to remove the table from the shard.
+    ///
+    /// The shard version may be incremented and the new version will be
+    /// returned.
+    fn try_remove_table(
+        &mut self,
+        updated_info: UpdatedTableInfo,
+        inc_version: bool,
+    ) -> Result<ShardVersion> {
         let UpdatedTableInfo {
-            shard_info: curr_shard,
+            shard_info: curr_shard_info,
             table_info: new_table,
         } = updated_info;
 
         ensure!(
             !self.is_frozen(),
             UpdateFrozenShard {
-                shard_id: curr_shard.id,
+                shard_id: curr_shard_info.id,
             }
         );
 
         ensure!(
-            self.shard_info.version == curr_shard.version,
+            self.shard_info.version == curr_shard_info.version,
             ShardVersionMismatch {
                 shard_info: self.shard_info.clone(),
-                expect_version: curr_shard.version,
+                expect_version: curr_shard_info.version,
             }
         );
 
@@ -294,11 +339,15 @@ impl ShardData {
                 msg: format!("the table to remove is not found, table:{new_table:?}"),
             })?;
 
-        // Update tables of shard.
-        self.update_shard_info(curr_shard);
+        // Remove the table from the shard.
         self.tables.swap_remove(table_idx);
 
-        Ok(self.shard_info.clone().version)
+        // Update the shard version if necessary.
+        if inc_version {
+            self.inc_shard_version();
+        }
+
+        Ok(self.shard_info.version)
     }
 }
 
