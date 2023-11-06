@@ -527,7 +527,8 @@ impl Proxy {
                 Err(e) => {
                     // TODO: remove this logic.
                     // Refer to https://github.com/CeresDB/ceresdb/issues/1248.
-                    if e.error_message().contains("No field named") {
+                    if e.error_message().contains("decode row group payload") {
+                        warn!("Evict partition table:{}", table.name());
                         self.evict_partition_table(table, catalog_name, &schema_name)
                             .await;
                     }
@@ -590,7 +591,22 @@ impl Proxy {
                 }
             }
 
-            let plan = write_table_request_to_insert_plan(table, write_table_req)?;
+            let table_clone = table.clone();
+            let plan = match write_table_request_to_insert_plan(table, write_table_req) {
+                Err(e) => {
+                    // TODO: remove this logic.
+                    // Refer to https://github.com/CeresDB/ceresdb/issues/1248.
+                    if e.error_message().contains("Can't find field")
+                        | e.error_message().contains("Can't find tag")
+                    {
+                        warn!("Evict partition table:{}", table_clone.name());
+                        self.evict_partition_table(table_clone, &catalog, &schema)
+                            .await;
+                    }
+                    return Err(e);
+                }
+                Ok(v) => v,
+            };
             plan_vec.push(plan);
         }
 
