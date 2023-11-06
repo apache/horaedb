@@ -31,6 +31,7 @@ pub enum Metric {
     Boolean(MetricValue<bool>),
     Number(MetricValue<usize>),
     Duration(MetricValue<Duration>),
+    String(MetricValue<String>),
 }
 
 impl Metric {
@@ -62,11 +63,21 @@ impl Metric {
     }
 
     #[inline]
+    pub fn string(name: String, val: String, aggregator: Option<MetricAggregator>) -> Self {
+        Metric::String(MetricValue {
+            name,
+            val,
+            aggregator,
+        })
+    }
+
+    #[inline]
     pub fn name(&self) -> &str {
         match self {
             Self::Boolean(v) => &v.name,
             Self::Number(v) => &v.name,
             Self::Duration(v) => &v.name,
+            Self::String(v) => &v.name,
         }
     }
 
@@ -76,6 +87,7 @@ impl Metric {
             Self::Boolean(v) => &v.aggregator,
             Self::Number(v) => &v.aggregator,
             Self::Duration(v) => &v.aggregator,
+            Self::String(v) => &v.aggregator,
         }
     }
 
@@ -106,6 +118,7 @@ impl fmt::Debug for Metric {
             Metric::Boolean(v) => write!(f, "{}={:?}", v.name, v.val),
             Metric::Number(v) => write!(f, "{}={:?}", v.name, v.val),
             Metric::Duration(v) => write!(f, "{}={:?}", v.name, v.val),
+            Metric::String(v) => write!(f, "{}", v.val),
         }
     }
 }

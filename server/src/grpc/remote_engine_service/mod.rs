@@ -32,18 +32,20 @@ use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::SchemaRef};
 use ceresdbproto::{
     remote_engine::{
-        execute_plan_request, read_response::Output::Arrow,
-        remote_engine_service_server::RemoteEngineService, row_group, AlterTableOptionsRequest,
-        AlterTableOptionsResponse, AlterTableSchemaRequest, AlterTableSchemaResponse, ExecContext,
-        ExecutePlanRequest, GetTableInfoRequest, GetTableInfoResponse, ReadRequest, ReadResponse,
-        WriteBatchRequest, WriteRequest, WriteResponse,
+        execute_plan_request,
+        read_response::Output::{Arrow, Metrics},
+        remote_engine_service_server::RemoteEngineService,
+        row_group, AlterTableOptionsRequest, AlterTableOptionsResponse, AlterTableSchemaRequest,
+        AlterTableSchemaResponse, ExecContext, ExecutePlanRequest, GetTableInfoRequest,
+        GetTableInfoResponse, ReadRequest, ReadResponse, WriteBatchRequest, WriteRequest,
+        WriteResponse,
     },
     storage::{arrow_payload, ArrowPayload},
 };
 use common_types::{record_batch::RecordBatch, request_id::RequestId};
 use datafusion::{error::DataFusionError, physical_plan::stream::RecordBatchStreamAdapter};
 use futures::{
-    stream::{self, BoxStream, FuturesUnordered, StreamExt},
+    stream::{self, BoxStream, FuturesOrdered, StreamExt},
     Future,
 };
 use generic_error::BoxError;
@@ -180,8 +182,9 @@ macro_rules! record_stream_to_response_stream {
             Ok(stream) => {
                 let new_stream: Self::$StreamType = Box::pin(stream.map(|res| match res {
                     Ok(record_batch) => {
+                        let schema = record_batch.schema().clone();
                         let resp = match ipc::encode_record_batch(
-                            &record_batch.clone().into_arrow_record_batch(),
+                            &record_batch.into_arrow_record_batch(),
                             CompressOptions {
                                 compress_min_length: DEFAULT_COMPRESS_MIN_LENGTH,
                                 method: CompressionMethod::Zstd,
@@ -202,23 +205,19 @@ macro_rules! record_stream_to_response_stream {
                                     CompressionMethod::Zstd => arrow_payload::Compression::Zstd,
                                 };
 
-                                match record_batch.schema().column_by_name(METRICS) {
-                                    Some(_) => ReadResponse {
-                                        header: Some(error::build_ok_header()),
-                                        output: None,
-                                        metrics: Some(ArrowPayload {
-                                            record_batches: vec![payload],
-                                            compression: compression as i32,
-                                        }),
-                                    },
-                                    None => ReadResponse {
-                                        header: Some(error::build_ok_header()),
-                                        output: Some(Arrow(ArrowPayload {
-                                            record_batches: vec![payload],
-                                            compression: compression as i32,
-                                        })),
-                                        metrics: None,
-                                    },
+                                let output = match schema.column_by_name(METRICS) {
+                                    Some(_) => Some(Metrics(ArrowPayload {
+                                        record_batches: vec![payload],
+                                        compression: compression as i32,
+                                    })),
+                                    None => Some(Arrow(ArrowPayload {
+                                        record_batches: vec![payload],
+                                        compression: compression as i32,
+                                    })),
+                                };
+                                ReadResponse {
+                                    header: Some(error::build_ok_header()),
+                                    output,
                                 }
                             }
                         };
@@ -388,7 +387,8 @@ impl RemoteEngineServiceImpl {
             msg: "fail to join task",
         })??;
 
-        let mut stream_read = FuturesUnordered::new();
+        // TODO: maybe have a better way to ensure the order of streams
+        let mut stream_read = FuturesOrdered::new();
         for stream in streams.streams {
             let mut stream = stream.map(|result| {
                 result.box_err().context(ErrWithCause {
@@ -405,7 +405,7 @@ impl RemoteEngineServiceImpl {
 
                 batches
             });
-            stream_read.push(handle);
+            stream_read.push_back(handle);
         }
 
         // Collect all the data from the stream to let more duplicate request query to
@@ -608,14 +608,13 @@ impl RemoteEngineServiceImpl {
         let physical_plan = Arc::new(DataFusionPhysicalPlanAdapter::new(TypedPlan::Remote(
             encoded_plan,
         )));
-        let physical_plan_clone = Arc::clone(&physical_plan);
 
         let streams = self
             .runtimes
             .read_runtime
             .spawn(async move {
-                let stream = handle_execute_plan(ctx, physical_plan, query_engine).await?;
-                let metrics = handle_metrics(physical_plan_clone).await?;
+                let stream = handle_execute_plan(ctx, physical_plan.clone(), query_engine).await?;
+                let metrics = handle_metrics(physical_plan).await?;
                 Ok(PartitionedStreams {
                     streams: vec![stream, metrics],
                 })
@@ -665,7 +664,6 @@ impl RemoteEngineServiceImpl {
         let physical_plan = Arc::new(DataFusionPhysicalPlanAdapter::new(TypedPlan::Remote(
             encoded_plan,
         )));
-        let physical_plan_clone = Arc::clone(&physical_plan);
 
         let QueryDedup {
             config,
@@ -678,8 +676,9 @@ impl RemoteEngineServiceImpl {
             // The first request, need to handle it, and then notify the other requests.
             RequestResult::First => {
                 let query = async move {
-                    let stream = handle_execute_plan(ctx, physical_plan, query_engine).await?;
-                    let metrics = handle_metrics(physical_plan_clone).await?;
+                    let stream =
+                        handle_execute_plan(ctx, physical_plan.clone(), query_engine).await?;
+                    let metrics = handle_metrics(physical_plan).await?;
                     Ok(PartitionedStreams {
                         streams: vec![stream, metrics],
                     })

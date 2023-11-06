@@ -27,8 +27,12 @@ use arrow_ext::{
     ipc::{CompressOptions, CompressionMethod},
 };
 use ceresdbproto::{
-    remote_engine::{self, read_response::Output::Arrow, remote_engine_service_client::*},
-    storage::arrow_payload,
+    remote_engine::{
+        self,
+        read_response::Output::{Arrow, Metrics},
+        remote_engine_service_client::*,
+    },
+    storage::{arrow_payload, ArrowPayload},
 };
 use common_types::{datum::Datum, record_batch::RecordBatch, schema::RecordSchema};
 use futures::{Stream, StreamExt};
@@ -47,7 +51,7 @@ use table_engine::{
 use time_ext::ReadableDuration;
 use tokio::time::sleep;
 use tonic::{transport::Channel, Request, Streaming};
-use trace_metric::MetricsCollector;
+use trace_metric::{metric::MetricValue, Metric, MetricsCollector};
 
 use crate::{cached_router::CachedRouter, config::Config, error::*, status_code};
 
@@ -84,7 +88,7 @@ impl Client {
     pub async fn read(&self, request: ReadRequest) -> Result<ClientReadRecordBatchStream> {
         // Find the channel from router firstly.
         let route_context = self.cached_router.route(&request.table).await?;
-        let metrics_collector = MetricsCollector::new("table_read".to_string());
+        let metrics_collector = MetricsCollector::default();
 
         // Read from remote.
         let table_ident = request.table.clone();
@@ -543,96 +547,44 @@ impl Stream for ClientReadRecordBatchStream {
                     }.fail()));
                 }
 
-                match response.metrics {
-                    None => {}
-                    Some(mut v) => {
-                        let compression = match v.compression() {
-                            arrow_payload::Compression::None => CompressionMethod::None,
-                            arrow_payload::Compression::Zstd => CompressionMethod::Zstd,
-                        };
-
-                        let metrics: Result<RecordBatch> = ipc::decode_record_batches(
-                            v.record_batches.swap_remove(0),
-                            compression,
-                        )
-                        .map_err(|e| Box::new(e) as _)
-                        .context(Convert {
-                            msg: "decode read record batch",
-                        })
-                        .and_then(|mut record_batch_vec| {
-                            ensure!(
-                                record_batch_vec.len() == 1,
-                                InvalidRecordBatchNumber {
-                                    batch_num: record_batch_vec.len()
-                                }
-                            );
-                            record_batch_vec
-                                .swap_remove(0)
-                                .try_into()
-                                .map_err(|e| Box::new(e) as _)
-                                .context(Convert {
-                                    msg: "convert read record batch",
-                                })
-                        });
-                        let metrics = match metrics {
-                            Ok(metrics) => match metrics.column(0).datum(0) {
-                                Datum::String(v) => v.as_str().to_string(),
-                                _ => "failed to obtain remote metrics".to_string(),
-                            },
-                            Err(e) => e.to_string(),
-                        };
-                        this.metrics_collector.span(metrics);
-                    }
-                }
-
                 match response.output {
                     None => Poll::Ready(None),
-                    Some(v) => {
-                        let record_batch = match v {
-                            Arrow(mut v) => {
-                                if v.record_batches.len() != 1 {
-                                    return Poll::Ready(Some(
-                                        InvalidRecordBatchNumber {
-                                            batch_num: v.record_batches.len(),
-                                        }
-                                        .fail(),
-                                    ));
-                                }
-
-                                let compression = match v.compression() {
-                                    arrow_payload::Compression::None => CompressionMethod::None,
-                                    arrow_payload::Compression::Zstd => CompressionMethod::Zstd,
-                                };
-
-                                ipc::decode_record_batches(
-                                    v.record_batches.swap_remove(0),
-                                    compression,
-                                )
-                                .map_err(|e| Box::new(e) as _)
-                                .context(Convert {
-                                    msg: "decode read record batch",
-                                })
-                                .and_then(
-                                    |mut record_batch_vec| {
-                                        ensure!(
-                                            record_batch_vec.len() == 1,
-                                            InvalidRecordBatchNumber {
-                                                batch_num: record_batch_vec.len()
-                                            }
-                                        );
-                                        record_batch_vec
-                                            .swap_remove(0)
-                                            .try_into()
-                                            .map_err(|e| Box::new(e) as _)
-                                            .context(Convert {
-                                                msg: "convert read record batch",
-                                            })
-                                    },
-                                )
+                    Some(v) => match v {
+                        Arrow(v) => {
+                            if v.record_batches.len() != 1 {
+                                return Poll::Ready(Some(
+                                    InvalidRecordBatchNumber {
+                                        batch_num: v.record_batches.len(),
+                                    }
+                                    .fail(),
+                                ));
                             }
-                        };
-                        Poll::Ready(Some(record_batch))
-                    }
+                            Poll::Ready(Some(convert_arrow_payload(v)))
+                        }
+                        Metrics(v) => {
+                            if v.record_batches.len() != 1 {
+                                return Poll::Ready(Some(
+                                    InvalidRecordBatchNumber {
+                                        batch_num: v.record_batches.len(),
+                                    }
+                                    .fail(),
+                                ));
+                            }
+                            let metrics = match convert_arrow_payload(v) {
+                                Ok(record_batch) => match record_batch.column(0).datum(0) {
+                                    Datum::String(v) => v.as_str().to_string(),
+                                    _ => "failed to obtain remote metrics".to_string(),
+                                },
+                                Err(e) => e.to_string(),
+                            };
+                            this.metrics_collector.collect(Metric::String(MetricValue {
+                                name: "metrics".to_string(),
+                                val: metrics,
+                                aggregator: None,
+                            }));
+                            Poll::Ready(None)
+                        }
+                    },
                 }
             }
 
@@ -646,4 +598,32 @@ impl Stream for ClientReadRecordBatchStream {
             Poll::Pending => Poll::Pending,
         }
     }
+}
+
+fn convert_arrow_payload(mut v: ArrowPayload) -> Result<RecordBatch> {
+    let compression = match v.compression() {
+        arrow_payload::Compression::None => CompressionMethod::None,
+        arrow_payload::Compression::Zstd => CompressionMethod::Zstd,
+    };
+
+    ipc::decode_record_batches(v.record_batches.swap_remove(0), compression)
+        .map_err(|e| Box::new(e) as _)
+        .context(Convert {
+            msg: "decode read record batch",
+        })
+        .and_then(|mut record_batch_vec| {
+            ensure!(
+                record_batch_vec.len() == 1,
+                InvalidRecordBatchNumber {
+                    batch_num: record_batch_vec.len()
+                }
+            );
+            record_batch_vec
+                .swap_remove(0)
+                .try_into()
+                .map_err(|e| Box::new(e) as _)
+                .context(Convert {
+                    msg: "convert read record batch",
+                })
+        })
 }
