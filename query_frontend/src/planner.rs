@@ -1892,12 +1892,6 @@ mod tests {
                     ],
                 },
             ],
-            min_timestamp: Timestamp(
-                1638428434000,
-            ),
-            max_timestamp: Timestamp(
-                1638428434000,
-            ),
         },
         default_value_map: {},
     },
