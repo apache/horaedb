@@ -21,15 +21,17 @@ String("partition_table_t"),String("CREATE TABLE `partition_table_t` (`tsid` uin
 SELECT * from system.public.tables where table_name like "%partition_table_t%" order by table_id;
 
 timestamp,catalog,schema,table_name,table_id,engine,partition_info,
-Timestamp(0),String("ceresdb"),String("public"),String("partition_table_t"),UInt64(42),String("Analytic"),String("PARTITION BY KEY(name) PARTITIONS 4"),
-Timestamp(0),String("ceresdb"),String("public"),String("__partition_table_t_1"),UInt64(44),String("Analytic"),String(""),
-Timestamp(0),String("ceresdb"),String("public"),String("__partition_table_t_2"),UInt64(46),String("Analytic"),String(""),
+Timestamp(0),String("ceresdb"),String("public"),String("partition_table_t"),UInt64(43),String("Analytic"),String("PARTITION BY KEY(name) PARTITIONS 4"),
+Timestamp(0),String("ceresdb"),String("public"),String("__partition_table_t_0"),UInt64(44),String("Analytic"),String(""),
+Timestamp(0),String("ceresdb"),String("public"),String("__partition_table_t_1"),UInt64(45),String("Analytic"),String(""),
+Timestamp(0),String("ceresdb"),String("public"),String("__partition_table_t_3"),UInt64(46),String("Analytic"),String(""),
+Timestamp(0),String("ceresdb"),String("public"),String("__partition_table_t_2"),UInt64(47),String("Analytic"),String(""),
 
 
 SELECT * from system.public.tables where partition_info is not null;
 
 timestamp,catalog,schema,table_name,table_id,engine,partition_info,
-Timestamp(0),String("ceresdb"),String("public"),String("partition_table_t"),UInt64(42),String("Analytic"),String("PARTITION BY KEY(name) PARTITIONS 4"),
+Timestamp(0),String("ceresdb"),String("public"),String("partition_table_t"),UInt64(43),String("Analytic"),String("PARTITION BY KEY(name) PARTITIONS 4"),
 
 
 INSERT INTO partition_table_t (t, name, value)
