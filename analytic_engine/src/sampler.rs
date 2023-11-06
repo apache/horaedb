@@ -292,7 +292,7 @@ impl PrimaryKeySampler {
             .iter()
             .enumerate()
             .map(|(idx, col)| {
-                if idx == timestamp_index {
+                if col.data_type.is_timestamp() {
                     return None;
                 }
 
