@@ -637,6 +637,7 @@ mod tests {
     ) -> WriteRequest {
         let schema = FixedSchemaTable::default_schema_builder()
             .version(schema_version)
+            .primary_key_indexes(vec![0, 1])
             .build()
             .unwrap();
         let mut schema_rows = Vec::with_capacity(num_rows);

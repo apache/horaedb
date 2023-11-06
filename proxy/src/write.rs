@@ -1112,6 +1112,7 @@ mod test {
                     .unwrap(),
             )
             .unwrap()
+            .primary_key_indexes(vec![0, 1, 2])
             .build()
             .unwrap()
     }
