@@ -16,7 +16,6 @@
 
 use std::{
     collections::HashMap,
-    default::Default,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -544,9 +543,9 @@ impl Stream for ClientReadRecordBatchStream {
                 }
 
                 if let Some(metrics) = response.metrics {
-                    this.metrics_collector.collect(Metric::String(MetricValue {
-                        name: "metrics".to_string(),
-                        val: metrics,
+                    this.metrics_collector.collect(Metric::Number(MetricValue {
+                        name: metrics,
+                        val: 0,
                         aggregator: None,
                     }));
                 }
@@ -554,17 +553,7 @@ impl Stream for ClientReadRecordBatchStream {
                 match response.output {
                     None => Poll::Ready(None),
                     Some(v) => match v {
-                        Arrow(v) => {
-                            if v.record_batches.len() != 1 {
-                                return Poll::Ready(Some(
-                                    InvalidRecordBatchNumber {
-                                        batch_num: v.record_batches.len(),
-                                    }
-                                    .fail(),
-                                ));
-                            }
-                            Poll::Ready(Some(convert_arrow_payload(v)))
-                        }
+                        Arrow(v) => Poll::Ready(Some(convert_arrow_payload(v))),
                     },
                 }
             }
@@ -582,6 +571,12 @@ impl Stream for ClientReadRecordBatchStream {
 }
 
 fn convert_arrow_payload(mut v: ArrowPayload) -> Result<RecordBatch> {
+    if v.record_batches.len() != 1 {
+        return InvalidRecordBatchNumber {
+            batch_num: v.record_batches.len(),
+        }
+        .fail();
+    }
     let compression = match v.compression() {
         arrow_payload::Compression::None => CompressionMethod::None,
         arrow_payload::Compression::Zstd => CompressionMethod::Zstd,
