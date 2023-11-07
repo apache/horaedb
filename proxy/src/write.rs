@@ -821,7 +821,7 @@ fn write_table_request_to_insert_plan(
         total_rows.append(&mut rows);
     }
     // The row group builder will checks nullable.
-    let row_group = RowGroup::new_checked(schema, total_rows)
+    let row_group = RowGroup::try_new(schema, total_rows)
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,

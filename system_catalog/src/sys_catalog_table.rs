@@ -875,7 +875,7 @@ impl CreateCatalogRequest {
             .finish()
             .context(BuildRow)?;
 
-        RowGroup::new_checked(schema, vec![row]).context(BuildRowGroup)
+        RowGroup::try_new(schema, vec![row]).context(BuildRowGroup)
     }
 
     fn to_key(&self) -> Result<Bytes> {

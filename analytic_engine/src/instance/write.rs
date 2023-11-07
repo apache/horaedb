@@ -737,7 +737,7 @@ mod tests {
             .unwrap()
             .build()
             .unwrap();
-        let row_group = RowGroup::new_checked(schema, rows).unwrap();
+        let row_group = RowGroup::try_new(schema, rows).unwrap();
 
         (encoded_rows, row_group)
     }

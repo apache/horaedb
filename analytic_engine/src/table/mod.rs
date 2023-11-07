@@ -651,7 +651,7 @@ mod tests {
             schema_rows.push(row);
         }
         let rows = row_util::new_rows_6(&schema_rows);
-        let row_group = RowGroup::new_checked(schema, rows).unwrap();
+        let row_group = RowGroup::try_new(schema, rows).unwrap();
         WriteRequest { row_group }
     }
 

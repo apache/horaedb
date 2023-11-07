@@ -122,7 +122,7 @@ impl FixedSchemaTable {
     }
 
     fn new_row_group(&self, rows: Vec<Row>) -> RowGroup {
-        RowGroup::new_checked(self.create_request.params.table_schema.clone(), rows).unwrap()
+        RowGroup::try_new(self.create_request.params.table_schema.clone(), rows).unwrap()
     }
 
     fn new_row_opt(data: RowTupleOpt) -> Row {

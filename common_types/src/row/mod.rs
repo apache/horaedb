@@ -268,7 +268,7 @@ impl RowGroup {
     /// [None] will be thrown if the rows have different schema from the
     /// provided one.
     #[inline]
-    pub fn new_checked(schema: Schema, rows: Vec<Row>) -> Result<Self> {
+    pub fn try_new(schema: Schema, rows: Vec<Row>) -> Result<Self> {
         rows.iter()
             .try_for_each(|row| check_row_schema(row, &schema))?;
 
