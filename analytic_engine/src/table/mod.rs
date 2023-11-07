@@ -22,7 +22,7 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::{
-    row::{Row, RowGroupBuilder},
+    row::{Row, RowGroup},
     schema::Schema,
     time::TimeRange,
 };
@@ -251,20 +251,19 @@ fn merge_pending_write_requests(
     assert!(!pending_writes.is_empty());
 
     let mut last_req = pending_writes.pop().unwrap();
-    let last_rows = last_req.row_group.take_rows();
-    let schema = last_req.row_group.into_schema();
-    let mut row_group_builder = RowGroupBuilder::with_capacity(schema, num_pending_rows);
-
-    for mut pending_req in pending_writes {
-        let rows = pending_req.row_group.take_rows();
-        for row in rows {
-            row_group_builder.push_checked_row(row)
+    let total_rows = {
+        let mut rows = Vec::with_capacity(num_pending_rows);
+        for mut pending_req in pending_writes {
+            let mut pending_rows = pending_req.row_group.take_rows();
+            rows.append(&mut pending_rows);
         }
-    }
-    for row in last_rows {
-        row_group_builder.push_checked_row(row);
-    }
-    let row_group = row_group_builder.build();
+        let mut last_rows = last_req.row_group.take_rows();
+        rows.append(&mut last_rows);
+        rows
+    };
+
+    let schema = last_req.row_group.into_schema();
+    let row_group = RowGroup::new_unchecked(schema, total_rows);
     WriteRequest { row_group }
 }
 
@@ -653,7 +652,7 @@ mod tests {
             schema_rows.push(row);
         }
         let rows = row_util::new_rows_6(&schema_rows);
-        let row_group = RowGroupBuilder::with_rows(schema, rows).unwrap().build();
+        let row_group = RowGroup::try_new(schema, rows).unwrap();
         WriteRequest { row_group }
     }
 

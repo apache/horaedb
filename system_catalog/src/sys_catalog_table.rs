@@ -27,7 +27,7 @@ use common_types::{
     projected_schema::ProjectedSchema,
     record_batch::RecordBatch,
     request_id::RequestId,
-    row::{Row, RowGroup, RowGroupBuilder},
+    row::{Row, RowBuilder, RowGroup},
     schema::{self, Schema},
     table::DEFAULT_SHARD_ID,
     time::Timestamp,
@@ -152,8 +152,11 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to build row for entry, err:{}", source))]
+    #[snafu(display("Failed to build row for entry, err:{source}"))]
     BuildRow { source: common_types::row::Error },
+
+    #[snafu(display("Failed to build row group, err:{source}"))]
+    BuildRowGroup { source: common_types::row::Error },
 
     #[snafu(display(
         "Failed to decode protobuf for entry, err:{}.\nBacktrace:\n{}",
@@ -860,9 +863,7 @@ impl CreateCatalogRequest {
     fn into_row_group(self, schema: Schema) -> Result<RowGroup> {
         let key = self.to_key()?;
         let value = self.into_bytes();
-        let mut builder = RowGroupBuilder::new(schema);
-        builder
-            .row_builder()
+        let row = RowBuilder::new(&schema)
             // key
             .append_datum(Datum::Varbinary(key))
             .context(BuildRow)?
@@ -875,7 +876,7 @@ impl CreateCatalogRequest {
             .finish()
             .context(BuildRow)?;
 
-        Ok(builder.build())
+        RowGroup::try_new(schema, vec![row]).context(BuildRowGroup)
     }
 
     fn to_key(&self) -> Result<Bytes> {
@@ -922,9 +923,7 @@ impl CreateSchemaRequest {
     fn into_row_group(self, schema: Schema) -> Result<RowGroup> {
         let key = self.to_key()?;
         let value = self.into_bytes();
-        let mut builder = RowGroupBuilder::new(schema);
-        builder
-            .row_builder()
+        let row = RowBuilder::new(&schema)
             // key
             .append_datum(Datum::Varbinary(key))
             .context(BuildRow)?
@@ -937,7 +936,7 @@ impl CreateSchemaRequest {
             .finish()
             .context(BuildRow)?;
 
-        Ok(builder.build())
+        Ok(RowGroup::new_unchecked(schema, vec![row]))
     }
 
     fn to_key(&self) -> Result<Bytes> {
@@ -1009,7 +1008,7 @@ impl TableWriter {
 
     /// Convert the table to write into [common_types::row::RowGroup].
     fn convert_table_info_to_row_group(&self) -> Result<RowGroup> {
-        let mut builder = RowGroupBuilder::new(self.catalog_table.schema());
+        let schema = self.catalog_table.schema();
         let key = Self::build_create_table_key(&self.table_to_write)?;
         let value = Self::build_create_table_value(self.table_to_write.clone(), self.typ)?;
 
@@ -1018,14 +1017,14 @@ impl TableWriter {
             key, value
         );
 
-        Self::build_row(&mut builder, key, value)?;
+        let row = Self::build_table_info_row(&schema, key, value)?;
+        let row_group = RowGroup::new_unchecked(schema, vec![row]);
 
-        Ok(builder.build())
+        Ok(row_group)
     }
 
-    fn build_row(builder: &mut RowGroupBuilder, key: Bytes, value: Bytes) -> Result<()> {
-        builder
-            .row_builder()
+    fn build_table_info_row(schema: &Schema, key: Bytes, value: Bytes) -> Result<Row> {
+        RowBuilder::new(schema)
             // key
             .append_datum(Datum::Varbinary(key))
             .context(BuildRow)?
@@ -1036,8 +1035,7 @@ impl TableWriter {
             .append_datum(Datum::Varbinary(value))
             .context(BuildRow)?
             .finish()
-            .context(BuildRow)?;
-        Ok(())
+            .context(BuildRow)
     }
 
     fn build_create_table_key(table_info: &TableInfo) -> Result<Bytes> {
