@@ -33,7 +33,6 @@ use common_types::{
 use futures::stream::Stream;
 use generic_error::BoxError;
 use snafu::{OptionExt, ResultExt};
-use trace_metric::MetricsCollector;
 
 use crate::{
     engine::{
@@ -383,7 +382,6 @@ impl RemoteEngine for MockRemoteEngine {
     async fn execute_physical_plan(
         &self,
         _request: ExecutePlanRequest,
-        _metrics_collector: MetricsCollector,
     ) -> remote::Result<SendableRecordBatchStream> {
         unimplemented!()
     }

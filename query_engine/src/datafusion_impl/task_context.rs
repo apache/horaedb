@@ -222,11 +222,12 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
             let request = ExecutePlanRequest {
                 plan_schema,
                 remote_request,
+                metrics_collector,
             };
 
             // Remote execute.
             let stream = remote_engine
-                .execute_physical_plan(request, metrics_collector)
+                .execute_physical_plan(request)
                 .await
                 .map_err(|e| {
                     DataFusionError::Internal(format!(

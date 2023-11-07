@@ -48,7 +48,6 @@ use table_engine::{
     },
     stream::{self, ErrWithSource, RecordBatchStream, SendableRecordBatchStream},
 };
-use trace_metric::MetricsCollector;
 
 use self::client::{Client, ClientReadRecordBatchStream};
 
@@ -191,11 +190,10 @@ impl RemoteEngine for RemoteEngineImpl {
     async fn execute_physical_plan(
         &self,
         request: ExecutePlanRequest,
-        metrics_collector: MetricsCollector,
     ) -> remote::Result<SendableRecordBatchStream> {
         let client_read_stream = self
             .client
-            .execute_physical_plan(request, metrics_collector)
+            .execute_physical_plan(request)
             .await
             .box_err()
             .context(remote::ExecutePhysicalPlan)?;

@@ -35,6 +35,7 @@ use generic_error::{BoxError, GenericError, GenericResult};
 use itertools::Itertools;
 use macros::define_result;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
+use trace_metric::MetricsCollector;
 
 use crate::{
     partition::PartitionInfo,
@@ -409,6 +410,9 @@ pub struct ExecutePlanRequest {
 
     /// Remote plan execution request
     pub remote_request: RemoteExecuteRequest,
+
+    /// Collect metrics of remote plan
+    pub metrics_collector: MetricsCollector,
 }
 
 impl ExecutePlanRequest {
@@ -417,6 +421,7 @@ impl ExecutePlanRequest {
         plan_schema: RecordSchema,
         context: ExecContext,
         physical_plan: PhysicalPlan,
+        metrics_collector: MetricsCollector,
     ) -> Self {
         let remote_request = RemoteExecuteRequest {
             table,
@@ -427,6 +432,7 @@ impl ExecutePlanRequest {
         Self {
             plan_schema,
             remote_request,
+            metrics_collector,
         }
     }
 }

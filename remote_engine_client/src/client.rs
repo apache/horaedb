@@ -450,7 +450,6 @@ impl Client {
     pub async fn execute_physical_plan(
         &self,
         request: ExecutePlanRequest,
-        metrics_collector: MetricsCollector,
     ) -> Result<ClientReadRecordBatchStream> {
         // Find the channel from router firstly.
         let table_ident = request.remote_request.table.clone();
@@ -488,8 +487,12 @@ impl Client {
         // When success to get the stream, table has been found in remote, not need to
         // evict cache entry.
         let response = response.into_inner();
-        let remote_execute_plan_stream =
-            ClientReadRecordBatchStream::new(table_ident, response, plan_schema, metrics_collector);
+        let remote_execute_plan_stream = ClientReadRecordBatchStream::new(
+            table_ident,
+            response,
+            plan_schema,
+            request.metrics_collector,
+        );
 
         Ok(remote_execute_plan_stream)
     }
