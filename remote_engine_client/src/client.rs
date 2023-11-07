@@ -27,14 +27,10 @@ use arrow_ext::{
     ipc::{CompressOptions, CompressionMethod},
 };
 use ceresdbproto::{
-    remote_engine::{
-        self,
-        read_response::Output::{Arrow, Metrics},
-        remote_engine_service_client::*,
-    },
+    remote_engine::{self, read_response::Output::Arrow, remote_engine_service_client::*},
     storage::{arrow_payload, ArrowPayload},
 };
-use common_types::{datum::Datum, record_batch::RecordBatch, schema::RecordSchema};
+use common_types::{record_batch::RecordBatch, schema::RecordSchema};
 use futures::{Stream, StreamExt};
 use generic_error::BoxError;
 use logger::{error, info};
@@ -547,6 +543,14 @@ impl Stream for ClientReadRecordBatchStream {
                     }.fail()));
                 }
 
+                if let Some(metrics) = response.metrics {
+                    this.metrics_collector.collect(Metric::String(MetricValue {
+                        name: "metrics".to_string(),
+                        val: metrics,
+                        aggregator: None,
+                    }));
+                }
+
                 match response.output {
                     None => Poll::Ready(None),
                     Some(v) => match v {
@@ -560,29 +564,6 @@ impl Stream for ClientReadRecordBatchStream {
                                 ));
                             }
                             Poll::Ready(Some(convert_arrow_payload(v)))
-                        }
-                        Metrics(v) => {
-                            if v.record_batches.len() != 1 {
-                                return Poll::Ready(Some(
-                                    InvalidRecordBatchNumber {
-                                        batch_num: v.record_batches.len(),
-                                    }
-                                    .fail(),
-                                ));
-                            }
-                            let metrics = match convert_arrow_payload(v) {
-                                Ok(record_batch) => match record_batch.column(0).datum(0) {
-                                    Datum::String(v) => v.as_str().to_string(),
-                                    _ => "failed to obtain remote metrics".to_string(),
-                                },
-                                Err(e) => e.to_string(),
-                            };
-                            this.metrics_collector.collect(Metric::String(MetricValue {
-                                name: "metrics".to_string(),
-                                val: metrics,
-                                aggregator: None,
-                            }));
-                            Poll::Ready(None)
                         }
                     },
                 }

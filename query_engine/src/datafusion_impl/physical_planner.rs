@@ -26,7 +26,7 @@ use crate::{
         DfContextBuilder,
     },
     error::*,
-    physical_planner::{PhysicalPlanPtr, PhysicalPlanner},
+    physical_planner::{PhysicalPlanRef, PhysicalPlanner},
 };
 
 /// Physical planner based on datafusion
@@ -58,7 +58,7 @@ impl DatafusionPhysicalPlannerImpl {
 #[async_trait]
 impl PhysicalPlanner for DatafusionPhysicalPlannerImpl {
     // TODO: we should modify `QueryPlan` to support create remote plan here.
-    async fn plan(&self, ctx: &Context, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr> {
+    async fn plan(&self, ctx: &Context, logical_plan: QueryPlan) -> Result<PhysicalPlanRef> {
         // Register catalogs to datafusion execution context.
         let catalogs = CatalogProviderAdapter::new_adapters(logical_plan.tables.clone());
         // TODO: maybe we should not build `SessionContext` in each physical plan's

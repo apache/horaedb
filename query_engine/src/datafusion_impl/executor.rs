@@ -29,7 +29,7 @@ use crate::{
     },
     error::*,
     executor::Executor,
-    physical_planner::{PhysicalPlanPtr, TaskExecContext},
+    physical_planner::{PhysicalPlanRef, TaskExecContext},
 };
 
 #[derive(Debug, Clone)]
@@ -68,7 +68,7 @@ impl Executor for DatafusionExecutorImpl {
     async fn execute(
         &self,
         ctx: &Context,
-        physical_plan: PhysicalPlanPtr,
+        physical_plan: PhysicalPlanRef,
     ) -> Result<SendableRecordBatchStream> {
         info!(
             "DatafusionExecutorImpl begin to execute plan, request_id:{}, physical_plan: {:?}",

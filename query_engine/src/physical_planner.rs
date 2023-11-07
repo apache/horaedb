@@ -29,7 +29,7 @@ use crate::{context::Context, datafusion_impl::task_context::DatafusionTaskExecC
 #[async_trait]
 pub trait PhysicalPlanner: fmt::Debug + Send + Sync + 'static {
     /// Create a physical plan from a logical plan
-    async fn plan(&self, ctx: &Context, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr>;
+    async fn plan(&self, ctx: &Context, logical_plan: QueryPlan) -> Result<PhysicalPlanRef>;
 }
 
 pub type PhysicalPlannerRef = Arc<dyn PhysicalPlanner>;
@@ -45,7 +45,7 @@ pub trait PhysicalPlan: std::fmt::Debug + Sync + Send + 'static {
     fn metrics_to_string(&self) -> String;
 }
 
-pub type PhysicalPlanPtr = Arc<dyn PhysicalPlan>;
+pub type PhysicalPlanRef = Arc<dyn PhysicalPlan>;
 
 /// Task context, just a wrapper of datafusion task context now
 #[derive(Default)]
