@@ -29,6 +29,7 @@ use query_frontend::{
     config::DynamicConfig, parser::Parser, plan::Plan, planner::Planner, provider::MetaProvider,
     tests::MockMetaProvider,
 };
+use runtime::{Builder, PriorityRuntime};
 use table_engine::{engine::TableEngineRef, memory::MockRemoteEngine};
 
 use crate::{
@@ -78,12 +79,14 @@ where
     M: MetaProvider,
 {
     async fn build_factory(&self) -> Factory {
+        let rt = Arc::new(Builder::default().build().unwrap());
         Factory::new(
             self.query_engine.executor(),
             self.query_engine.physical_planner(),
             self.catalog_manager.clone(),
             self.engine(),
             self.table_manipulator.clone(),
+            PriorityRuntime::new(rt.clone(), rt.clone()),
         )
     }
 
@@ -230,12 +233,14 @@ where
             .build();
         let table_operator = TableOperator::new(catalog_manager.clone());
         let table_manipulator = Arc::new(TableManipulatorImpl::new(table_operator));
+        let rt = Arc::new(Builder::default().build().unwrap());
         let insert_factory = Factory::new(
             self.query_engine.executor(),
             self.query_engine.physical_planner(),
             catalog_manager.clone(),
             self.engine(),
             table_manipulator.clone(),
+            PriorityRuntime::new(rt.clone(), rt.clone()),
         );
         let insert_sql = "INSERT INTO test_missing_columns_table(key1, key2, field4) VALUES('tagk', 1638428434000, 1), ('tagk2', 1638428434000, 10);";
 
@@ -250,12 +255,14 @@ where
         // Check data which just insert.
         let select_sql =
             "SELECT key1, key2, field1, field2, field3, field4, field5 from test_missing_columns_table";
+        let rt = Arc::new(Builder::default().build().unwrap());
         let select_factory = Factory::new(
             self.query_engine.executor(),
             self.query_engine.physical_planner(),
             catalog_manager,
             self.engine(),
             table_manipulator,
+            PriorityRuntime::new(rt.clone(), rt.clone()),
         );
         let ctx = Context::builder(RequestId::next_id(), None)
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())

@@ -503,6 +503,7 @@ impl Proxy {
             self.instance.catalog_manager.clone(),
             self.instance.table_engine.clone(),
             self.instance.table_manipulator.clone(),
+            self.instance.query_runtime.clone(),
         );
         interpreter_factory
             .create(interpreter_ctx, plan)

@@ -46,6 +46,7 @@ meta_client = { workspace = true }
 query_engine = { workspace = true }
 query_frontend = { workspace = true }
 regex = { workspace = true }
+runtime = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
 

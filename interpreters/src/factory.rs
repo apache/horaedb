@@ -17,6 +17,7 @@
 use catalog::manager::ManagerRef;
 use query_engine::{executor::ExecutorRef, physical_planner::PhysicalPlannerRef};
 use query_frontend::plan::Plan;
+use runtime::PriorityRuntime;
 use table_engine::engine::TableEngineRef;
 
 use crate::{
@@ -37,6 +38,7 @@ use crate::{
 /// A factory to create interpreters
 pub struct Factory {
     query_executor: ExecutorRef,
+    query_runtime: PriorityRuntime,
     physical_planner: PhysicalPlannerRef,
     catalog_manager: ManagerRef,
     table_engine: TableEngineRef,
@@ -50,9 +52,11 @@ impl Factory {
         catalog_manager: ManagerRef,
         table_engine: TableEngineRef,
         table_manipulator: TableManipulatorRef,
+        query_runtime: PriorityRuntime,
     ) -> Self {
         Self {
             query_executor,
+            query_runtime,
             physical_planner,
             catalog_manager,
             table_engine,
@@ -68,9 +72,13 @@ impl Factory {
         validator.validate(&plan)?;
 
         let interpreter = match plan {
-            Plan::Query(p) => {
-                SelectInterpreter::create(ctx, p, self.query_executor, self.physical_planner)
-            }
+            Plan::Query(p) => SelectInterpreter::create(
+                ctx,
+                p,
+                self.query_executor,
+                self.physical_planner,
+                self.query_runtime,
+            ),
             Plan::Insert(p) => InsertInterpreter::create(ctx, p),
             Plan::Create(p) => {
                 CreateInterpreter::create(ctx, p, self.table_engine, self.table_manipulator)

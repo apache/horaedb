@@ -412,6 +412,7 @@ impl Builder {
             let instance = Instance {
                 catalog_manager,
                 query_engine,
+                query_runtime: engine_runtimes.read_runtime.clone(),
                 table_engine,
                 partition_table_engine,
                 function_registry,

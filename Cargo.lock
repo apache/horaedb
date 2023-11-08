@@ -3344,6 +3344,7 @@ dependencies = [
  "query_engine",
  "query_frontend",
  "regex",
+ "runtime",
  "snafu 0.6.10",
  "table_engine",
  "test_util",
