@@ -324,7 +324,7 @@ impl TableImpl {
 
                 // We have ever observed that `rx` is closed in production but it is impossible
                 // in theory(especially after warping actual write by
-                // `CancellationSafeFuture`)... So we also warp `rx` by
+                // `CancellationSafeFuture`). So we also warp `rx` by
                 // `CancellationSafeFuture` for not just retrying but better observing.
                 match CancellationSafeFuture::new(
                     rx,
