@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,12 +27,17 @@ use std::{
 };
 
 use arena::CollectorRef;
+use arrow::record_batch::RecordBatch as ArrowRecordBatch;
 use bytes_ext::Bytes;
 use common_types::{
-    projected_schema::ProjectedSchema, record_batch::RecordBatchWithKey, row::Row, schema::Schema,
-    time::TimeRange, SequenceNumber,
+    projected_schema::{ProjectedSchema, RowProjectorBuilder},
+    row::Row,
+    schema::Schema,
+    time::TimeRange,
+    SequenceNumber,
 };
 use generic_error::BoxError;
+use logger::debug;
 use skiplist::{BytewiseComparator, KeyComparator};
 use snafu::{OptionExt, ResultExt};
 
@@ -80,6 +85,12 @@ impl LayeredMemTable {
             mutable_switch_threshold,
         })
     }
+
+    // Used for testing only
+    fn force_switch_mutable_segment(&self) -> Result<()> {
+        let inner = &mut *self.inner.write().unwrap();
+        inner.switch_mutable_segment(self.schema.clone())
+    }
 }
 
 impl MemTable for LayeredMemTable {
@@ -105,10 +116,14 @@ impl MemTable for LayeredMemTable {
         let memory_usage = {
             let inner = self.inner.read().unwrap();
             inner.put(ctx, sequence, row, schema)?;
-            inner.approximate_memory_usage()
+            inner.mutable_segment.0.approximate_memory_usage()
         };
 
         if memory_usage > self.mutable_switch_threshold {
+            debug!(
+                "LayeredMemTable put, memory_usage:{memory_usage}, mutable_switch_threshold:{}",
+                self.mutable_switch_threshold
+            );
             let inner = &mut *self.inner.write().unwrap();
             inner.switch_mutable_segment(self.schema.clone())?;
         }
@@ -117,8 +132,9 @@ impl MemTable for LayeredMemTable {
     }
 
     fn scan(&self, ctx: ScanContext, request: ScanRequest) -> Result<ColumnarIterPtr> {
+        debug!("LayeredMemTable scan");
         let inner = self.inner.read().unwrap();
-        inner.scan(ctx, request)
+        inner.scan(&self.schema, ctx, request)
     }
 
     fn approximate_memory_usage(&self) -> usize {
@@ -178,8 +194,14 @@ impl Inner {
 
     /// Scan batches including `mutable` and `immutable`s.
     #[inline]
-    fn scan(&self, ctx: ScanContext, request: ScanRequest) -> Result<ColumnarIterPtr> {
+    fn scan(
+        &self,
+        schema: &Schema,
+        ctx: ScanContext,
+        request: ScanRequest,
+    ) -> Result<ColumnarIterPtr> {
         let iter = ColumnarIterImpl::new(
+            schema,
             ctx,
             request,
             &self.mutable_segment,
@@ -200,26 +222,33 @@ impl Inner {
     }
 
     fn switch_mutable_segment(&mut self, schema: Schema) -> Result<()> {
+        let imm_num = self.immutable_segments.len();
+        debug!("LayeredMemTable switch_mutable_segment, imm_num:{imm_num}");
+
         // Build a new mutable segment, and replace current's.
         let new_mutable = self.mutable_segment_builder.build()?;
         let current_mutable = mem::replace(&mut self.mutable_segment, new_mutable);
+        let fetched_schema = schema.to_record_schema();
 
         // Convert current's to immutable.
         let scan_ctx = ScanContext::default();
+        let row_projector_builder = RowProjectorBuilder::new(fetched_schema, schema, None);
         let scan_req = ScanRequest {
             start_user_key: Bound::Unbounded,
             end_user_key: Bound::Unbounded,
             sequence: common_types::MAX_SEQUENCE_NUMBER,
-            projected_schema: ProjectedSchema::no_projection(schema),
             need_dedup: false,
             reverse: false,
             metrics_collector: None,
             time_range: TimeRange::min_to_max(),
+            row_projector_builder,
         };
 
         let immutable_batches = current_mutable
             .scan(scan_ctx, scan_req)?
+            .map(|batch_res| batch_res.map(|batch| batch.into_arrow_record_batch()))
             .collect::<Result<Vec<_>>>()?;
+
         let time_range = current_mutable.time_range().context(InternalNoCause {
             msg: "failed to get time range from mutable segment",
         })?;
@@ -308,7 +337,7 @@ impl Inner {
             let mut imm_iter = self.immutable_segments.iter();
             let _ = imm_iter.next();
             for imm in imm_iter {
-                time_range = time_range.intersected_range(imm.time_range()).unwrap();
+                time_range = time_range.merge_range(imm.time_range());
             }
 
             Some(time_range)
@@ -317,7 +346,7 @@ impl Inner {
         match (mutable_time_range, immutable_time_range) {
             (None, None) => None,
             (None, Some(range)) | (Some(range), None) => Some(range),
-            (Some(range1), Some(range2)) => Some(range1.intersected_range(range2).unwrap()),
+            (Some(range1), Some(range2)) => Some(range1.merge_range(range2)),
         }
     }
 
@@ -393,7 +422,7 @@ struct MutableBuilderOptions {
 /// Immutable batch
 pub(crate) struct ImmutableSegment {
     /// Record batch converted from `MutableBatch`    
-    record_batches: Vec<RecordBatchWithKey>,
+    record_batches: Vec<ArrowRecordBatch>,
 
     /// Min time of source `MutableBatch`
     time_range: TimeRange,
@@ -409,14 +438,14 @@ pub(crate) struct ImmutableSegment {
 
 impl ImmutableSegment {
     fn new(
-        record_batches: Vec<RecordBatchWithKey>,
+        record_batches: Vec<ArrowRecordBatch>,
         time_range: TimeRange,
         min_key: Bytes,
         max_key: Bytes,
     ) -> Self {
         let approximate_memory_size = record_batches
             .iter()
-            .map(|batch| batch.as_arrow_record_batch().get_array_memory_size())
+            .map(|batch| batch.get_array_memory_size())
             .sum();
 
         Self {
@@ -441,11 +470,206 @@ impl ImmutableSegment {
     }
 
     // TODO: maybe return a iterator?
-    pub fn record_batches(&self) -> &[RecordBatchWithKey] {
+    pub fn record_batches(&self) -> &[ArrowRecordBatch] {
         &self.record_batches
     }
 
     pub fn approximate_memory_usage(&self) -> usize {
         self.approximate_memory_size
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use std::{clone, ops::Bound, sync::Arc};
+
+    use arena::NoopCollector;
+    use async_trait::async_trait;
+    use bytes_ext::ByteVec;
+    use codec::{memcomparable::MemComparable, Encoder};
+    use common_types::{
+        datum::Datum,
+        projected_schema::{ProjectedSchema, RowProjectorBuilder},
+        record_batch::FetchedRecordBatch,
+        row::Row,
+        schema::IndexInWriterSchema,
+        tests::{build_row, build_schema},
+        time::Timestamp,
+    };
+    use itertools::Itertools;
+
+    use super::*;
+    use crate::memtable::{
+        factory::{Factory, Options},
+        skiplist::factory::SkiplistMemTableFactory,
+        test_util::{TestMemtableBuilder, TestUtil},
+        MemTableRef,
+    };
+
+    struct TestMemtableBuilderImpl;
+
+    impl TestMemtableBuilder for TestMemtableBuilderImpl {
+        fn build(&self, data: &[(KeySequence, Row)]) -> MemTableRef {
+            let schema = build_schema();
+            let factory = SkiplistMemTableFactory;
+            let opts = Options {
+                schema: schema.clone(),
+                arena_block_size: 512,
+                creation_sequence: 1,
+                collector: Arc::new(NoopCollector {}),
+            };
+            let memtable = LayeredMemTable::new(&opts, Arc::new(factory), usize::MAX).unwrap();
+
+            let mut ctx =
+                PutContext::new(IndexInWriterSchema::for_same_schema(schema.num_columns()));
+            let partitioned_data = data.chunks(3).collect::<Vec<_>>();
+            let chunk_num = partitioned_data.len();
+
+            for chunk_idx in 0..(chunk_num - 1) {
+                let chunk = partitioned_data[chunk_idx];
+                for (seq, row) in chunk {
+                    memtable.put(&mut ctx, *seq, &row, &schema).unwrap();
+                }
+                memtable.force_switch_mutable_segment().unwrap();
+            }
+
+            let last_chunk = partitioned_data[chunk_num - 1];
+            for (seq, row) in last_chunk {
+                memtable.put(&mut ctx, *seq, &row, &schema).unwrap();
+            }
+
+            Arc::new(memtable)
+        }
+    }
+
+    fn test_data() -> Vec<(KeySequence, Row)> {
+        vec![
+            (
+                KeySequence::new(1, 1),
+                build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
+            ),
+            (
+                KeySequence::new(1, 2),
+                build_row(b"b", 2, 10.0, "v2", 2000, 2_000_000),
+            ),
+            (
+                KeySequence::new(1, 4),
+                build_row(b"c", 3, 10.0, "v3", 3000, 3_000_000),
+            ),
+            (
+                KeySequence::new(2, 1),
+                build_row(b"d", 4, 10.0, "v4", 4000, 4_000_000),
+            ),
+            (
+                KeySequence::new(2, 1),
+                build_row(b"e", 5, 10.0, "v5", 5000, 5_000_000),
+            ),
+            (
+                KeySequence::new(2, 3),
+                build_row(b"f", 6, 10.0, "v6", 6000, 6_000_000),
+            ),
+            (
+                KeySequence::new(3, 4),
+                build_row(b"g", 7, 10.0, "v7", 7000, 7_000_000),
+            ),
+        ]
+    }
+
+    #[test]
+    fn test_memtable_scan() {
+        let builder = TestMemtableBuilderImpl;
+        let data = test_data();
+        let test_util = TestUtil::new(builder, data);
+        let memtable = test_util.memtable();
+        let schema = memtable.schema().clone();
+
+        // No projection.
+        let projection = (0..schema.num_columns()).into_iter().collect::<Vec<_>>();
+        let expected = test_util.data();
+        test_memtable_scan_internal(schema.clone(), projection, memtable.clone(), expected);
+
+        // Projection to first three.
+        let projection = vec![0, 1, 3];
+        let expected = test_util
+            .data()
+            .iter()
+            .map(|row| {
+                let datums = vec![row[0].clone(), row[1].clone(), row[3].clone()];
+                Row::from_datums(datums)
+            })
+            .collect();
+        test_memtable_scan_internal(schema.clone(), projection, memtable.clone(), expected);
+    }
+
+    fn test_memtable_scan_internal(
+        schema: Schema,
+        projection: Vec<usize>,
+        memtable: Arc<dyn MemTable + Send + Sync>,
+        expected: Vec<Row>,
+    ) {
+        let projected_schema = ProjectedSchema::new(schema, Some(projection)).unwrap();
+        // let projected_schema = ProjectedSchema::no_projection(schema);
+        let fetched_schema = projected_schema.to_record_schema();
+        let table_schema = projected_schema.table_schema();
+        let row_projector_builder =
+            RowProjectorBuilder::new(fetched_schema, table_schema.clone(), None);
+
+        // limited by sequence
+        let scan_request = ScanRequest {
+            start_user_key: Bound::Unbounded,
+            end_user_key: Bound::Unbounded,
+            sequence: SequenceNumber::MAX,
+            row_projector_builder,
+            need_dedup: false,
+            reverse: false,
+            metrics_collector: None,
+            time_range: TimeRange::min_to_max(),
+        };
+        let scan_ctx = ScanContext::default();
+        let iter = memtable.scan(scan_ctx, scan_request).unwrap();
+        check_iterator(iter, expected);
+    }
+
+    fn check_iterator<T: Iterator<Item = Result<FetchedRecordBatch>>>(
+        iter: T,
+        expected_rows: Vec<Row>,
+    ) {
+        // sort it first.
+        let mut rows = Vec::new();
+        for batch in iter {
+            let batch = batch.unwrap();
+            for row_idx in 0..batch.num_rows() {
+                rows.push(batch.clone_row_at(row_idx));
+            }
+        }
+
+        rows.sort_by(|a, b| {
+            let key1 = build_scan_key(
+                &String::from_utf8_lossy(a[0].as_varbinary().unwrap()),
+                a[1].as_timestamp().unwrap().as_i64(),
+            );
+            let key2 = build_scan_key(
+                &String::from_utf8_lossy(b[0].as_varbinary().unwrap()),
+                b[1].as_timestamp().unwrap().as_i64(),
+            );
+            BytewiseComparator.compare_key(&key1, &key2)
+        });
+
+        assert_eq!(rows, expected_rows);
+    }
+
+    fn build_scan_key(c1: &str, c2: i64) -> Bytes {
+        let mut buf = ByteVec::new();
+        let encoder = MemComparable;
+        encoder.encode(&mut buf, &Datum::from(c1)).unwrap();
+        encoder.encode(&mut buf, &Datum::from(c2)).unwrap();
+
+        Bytes::from(buf)
+    }
+
+    #[inline]
+    fn build_row_from_datums(datums: Vec<Datum>) -> Row {
+        Row::from_datums(datums)
     }
 }

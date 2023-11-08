@@ -224,7 +224,7 @@ impl RowProjector {
 
     /// The projected indexes of all columns(existed and not exist) in the
     /// projected source schema.
-    pub fn fetched_projected_source_column_indexes(&self) -> &[Option<usize>] {
+    pub fn target_record_projection_remapping(&self) -> &[Option<usize>] {
         &self.target_record_projection_remapping
     }
 

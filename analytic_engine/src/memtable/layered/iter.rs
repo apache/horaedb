@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,11 +14,18 @@
 
 //! Skiplist memtable iterator
 
-use common_types::{record_batch::RecordBatchWithKey, time::TimeRange};
+use arrow::ipc::RecordBatchBuilder;
+use common_types::{
+    record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
+    schema::Schema,
+    time::TimeRange,
+};
+use generic_error::BoxError;
+use snafu::ResultExt;
 
 use crate::memtable::{
     layered::{ImmutableSegment, MutableSegment},
-    ColumnarIterPtr, Result, ScanContext, ScanRequest,
+    ColumnarIterPtr, Internal, ProjectSchema, Result, ScanContext, ScanRequest,
 };
 
 /// Columnar iterator for [LayeredMemTable]
@@ -28,24 +35,49 @@ pub(crate) struct ColumnarIterImpl {
 
 impl ColumnarIterImpl {
     pub fn new(
+        memtable_schema: &Schema,
         ctx: ScanContext,
         request: ScanRequest,
         mutable: &MutableSegment,
         immutables: &[ImmutableSegment],
     ) -> Result<Self> {
+        // Create projection for the memtable schema
+        let row_projector = request
+            .row_projector_builder
+            .build(memtable_schema)
+            .context(ProjectSchema)?;
+
         let (maybe_mutable, selected_immutables) =
             Self::filter_by_time_range(mutable, immutables, request.time_range);
+
+        let immutable_batches = selected_immutables
+            .flat_map(|imm| {
+                imm.record_batches().iter().map(|batch| {
+                    // TODO: reduce clone here.
+                    let fetched_schema = row_projector.fetched_schema().clone();
+                    let primary_key_indexes = row_projector
+                        .primary_key_indexes()
+                        .map(|idxs| idxs.to_vec());
+                    let fetched_column_indexes = row_projector.fetched_source_column_indexes();
+                    FetchedRecordBatch::try_new(
+                        fetched_schema,
+                        primary_key_indexes,
+                        fetched_column_indexes,
+                        batch.clone(),
+                    )
+                    .box_err()
+                    .with_context(|| Internal {
+                        msg: format!("row_projector:{row_projector:?}",),
+                    })
+                })
+            })
+            .collect::<Vec<_>>();
+        let immutable_iter = immutable_batches.into_iter();
 
         let maybe_mutable_iter = match maybe_mutable {
             Some(mutable) => Some(mutable.scan(ctx, request)?),
             None => None,
         };
-
-        // TODO: reduce clone here.
-        let immutable_batches = selected_immutables
-            .flat_map(|imm| imm.record_batches().to_vec())
-            .collect::<Vec<_>>();
-        let immutable_iter = immutable_batches.into_iter().map(Result::Ok);
 
         let maybe_chained_iter = match maybe_mutable_iter {
             Some(mutable_iter) => Box::new(mutable_iter.chain(immutable_iter)) as _,
@@ -85,7 +117,7 @@ impl ColumnarIterImpl {
 }
 
 impl Iterator for ColumnarIterImpl {
-    type Item = Result<RecordBatchWithKey>;
+    type Item = Result<FetchedRecordBatch>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.selected_batch_iter.next()

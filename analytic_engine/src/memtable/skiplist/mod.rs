@@ -293,7 +293,6 @@ mod tests {
 
     struct TestMemtableBuilderImpl;
 
-    #[async_trait]
     impl TestMemtableBuilder for TestMemtableBuilderImpl {
         fn build(&self, data: &[(KeySequence, Row)]) -> MemTableRef {
             let schema = build_schema();
@@ -434,8 +433,9 @@ mod tests {
 
     #[test]
     fn test_memtable_scan() {
+        let data = test_data();
         let builder = TestMemtableBuilderImpl;
-        let test_util = TestUtil::new(builder);
+        let test_util = TestUtil::new(builder, data);
         let memtable = test_util.memtable();
         let schema = memtable.schema().clone();
 
@@ -475,5 +475,49 @@ mod tests {
         ];
 
         Row::from_datums(datums)
+    }
+
+    fn test_data() -> Vec<(KeySequence, Row)> {
+        vec![
+            (
+                KeySequence::new(1, 1),
+                build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
+            ),
+            (
+                KeySequence::new(1, 2),
+                build_row(b"b", 2, 10.0, "v2", 2000, 2_000_000),
+            ),
+            (
+                KeySequence::new(1, 3),
+                build_row(
+                    b"c",
+                    3,
+                    10.0,
+                    "primary_key same with next row",
+                    3000,
+                    3_000_000,
+                ),
+            ),
+            (
+                KeySequence::new(1, 4),
+                build_row(b"c", 3, 10.0, "v3", 3000, 3_000_000),
+            ),
+            (
+                KeySequence::new(2, 1),
+                build_row(b"d", 4, 10.0, "v4", 4000, 4_000_000),
+            ),
+            (
+                KeySequence::new(2, 1),
+                build_row(b"e", 5, 10.0, "v5", 5000, 5_000_000),
+            ),
+            (
+                KeySequence::new(2, 3),
+                build_row(b"f", 6, 10.0, "v6", 6000, 6_000_000),
+            ),
+            (
+                KeySequence::new(3, 4),
+                build_row(b"g", 7, 10.0, "v7", 7000, 7_000_000),
+            ),
+        ]
     }
 }
