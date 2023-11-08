@@ -46,7 +46,7 @@ pub struct CancellationSafeFuture<F, T>
 where
     F: Future + Send + 'static,
     F::Output: Send,
-    T: AsRef<str> + 'static,
+    T: AsRef<str> + 'static + Send + Unpin,
 {
     /// Token for metrics
     token: T,
@@ -73,12 +73,12 @@ impl<F, T> Drop for CancellationSafeFuture<F, T>
 where
     F: Future + Send + 'static,
     F::Output: Send,
-    T: AsRef<str> + 'static,
+    T: AsRef<str> + 'static + Send + Unpin,
 {
     fn drop(&mut self) {
         if !self.done {
             FUTURE_CANCEL_COUNTER
-                .with_label_values(&[self.token.as_str()])
+                .with_label_values(&[self.token.as_ref()])
                 .inc();
 
             let inner = self.inner.take().unwrap();
@@ -92,7 +92,7 @@ impl<F, T> CancellationSafeFuture<F, T>
 where
     F: Future + Send,
     F::Output: Send,
-    T: AsRef<str> + 'static,
+    T: AsRef<str> + 'static + Send + Unpin,
 {
     /// Create new future that is protected from cancellation.
     ///
@@ -113,7 +113,7 @@ impl<F, T> Future for CancellationSafeFuture<F, T>
 where
     F: Future + Send,
     F::Output: Send,
-    T: AsRef<str> + 'static,
+    T: AsRef<str> + 'static + Send + Unpin,
 {
     type Output = F::Output;
 
