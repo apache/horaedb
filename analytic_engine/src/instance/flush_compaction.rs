@@ -197,8 +197,8 @@ pub struct TableFlushRequest {
     /// Max sequence number to flush (inclusive).
     pub max_sequence: SequenceNumber,
 
-    /// We may suggest new primary keys in preflush. if suggest happens, we need
-    /// to ensure data is in new order.
+    /// We may suggest new primary keys in preflush. if suggestion happened, we
+    /// need to ensure data is in new order.
     need_reorder: bool,
 }
 
