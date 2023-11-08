@@ -26,7 +26,7 @@ use common_types::{
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::{interpreter::Output, RecordBatchVec};
-use logger::{error, info};
+use logger::error;
 use serde::{
     ser::{SerializeMap, SerializeSeq},
     Deserialize, Serialize,
@@ -158,7 +158,6 @@ fn convert_records(records: RecordBatchVec) -> Response {
         let num_cols = record_batch.num_columns();
         let num_rows = record_batch.num_rows();
         let schema = record_batch.schema();
-        info!("schema: {:?}", schema);
 
         for col_idx in 0..num_cols {
             let column_schema = schema.column(col_idx).clone();
