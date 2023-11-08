@@ -42,13 +42,14 @@ lazy_static! {
 ///
 /// When the future is dropped/cancelled, we'll spawn a tokio task to _rescue_
 /// it.
-pub struct CancellationSafeFuture<F>
+pub struct CancellationSafeFuture<F, T>
 where
     F: Future + Send + 'static,
     F::Output: Send,
+    T: AsRef<str> + 'static,
 {
     /// Token for metrics
-    token: String,
+    token: T,
 
     /// Mark if the inner future finished. If not, we must spawn a helper task
     /// on drop.
@@ -68,10 +69,11 @@ where
     runtime: RuntimeRef,
 }
 
-impl<F> Drop for CancellationSafeFuture<F>
+impl<F, T> Drop for CancellationSafeFuture<F, T>
 where
     F: Future + Send + 'static,
     F::Output: Send,
+    T: AsRef<str> + 'static,
 {
     fn drop(&mut self) {
         if !self.done {
@@ -86,17 +88,18 @@ where
     }
 }
 
-impl<F> CancellationSafeFuture<F>
+impl<F, T> CancellationSafeFuture<F, T>
 where
     F: Future + Send,
     F::Output: Send,
+    T: AsRef<str> + 'static,
 {
     /// Create new future that is protected from cancellation.
     ///
     /// If [`CancellationSafeFuture`] is cancelled (i.e. dropped) and there is
     /// still some external receiver of the state left, than we will drive
     /// the payload (`f`) to completion. Otherwise `f` will be cancelled.
-    pub fn new(fut: F, token: String, runtime: RuntimeRef) -> Self {
+    pub fn new(fut: F, token: T, runtime: RuntimeRef) -> Self {
         Self {
             token,
             done: false,
@@ -106,10 +109,11 @@ where
     }
 }
 
-impl<F> Future for CancellationSafeFuture<F>
+impl<F, T> Future for CancellationSafeFuture<F, T>
 where
     F: Future + Send,
     F::Output: Send,
+    T: AsRef<str> + 'static,
 {
     type Output = F::Output;
 
