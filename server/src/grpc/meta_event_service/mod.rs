@@ -216,9 +216,9 @@ macro_rules! handle_request_with_version {
 
                 let mut resp = $resp_ty::default();
                 match res {
-                    Ok(Ok(latest_version)) => {
+                    Ok(Ok(latest_shard_version)) => {
                         resp.header = Some(error::build_ok_header());
-                        resp.latest_version = latest_version;
+                        resp.latest_shard_version = latest_shard_version;
                     }
                     Ok(Err(e)) | Err(e) => {
                         error!("Fail to process request from meta, err:{}", e);

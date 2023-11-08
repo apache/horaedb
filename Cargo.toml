@@ -93,9 +93,8 @@ bytes = "1"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-ceresdbproto = { git = "https://github.com/ZuLiangWang/ceresdbproto.git", rev = "b7e1fc49a3defe280b3cc4282f060a46df56ed91" }
+ceresdbproto = "1.0.22"
 codec = { path = "components/codec" }
-notifier = { path = "components/notifier" }
 chrono = "0.4"
 clap = "3.0"
 clru = "0.6.1"
@@ -114,10 +113,6 @@ generic_error = { path = "components/generic_error" }
 hash_ext = { path = "components/hash_ext" }
 hex = "0.4.3"
 hyperloglog = { git = "https://github.com/jedisct1/rust-hyperloglog.git", rev = "425487ce910f26636fbde8c4d640b538431aad50" }
-lz4_flex = { version = "0.11", default-features = false, features = ["frame"] }
-lazy_static = "1.4.0"
-logger = { path = "components/logger" }
-lru = "0.7.6"
 id_allocator = { path = "components/id_allocator" }
 influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "iox_query_influxql" }
 influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "influxdb_influxql_parser" }
@@ -125,10 +120,15 @@ influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3
 influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "schema" }
 interpreters = { path = "interpreters" }
 itertools = "0.10.5"
+lz4_flex = { version = "0.11", default-features = false, features = ["frame"] }
+lazy_static = "1.4.0"
+logger = { path = "components/logger" }
+lru = "0.7.6"
 macros = { path = "components/macros" }
 message_queue = { path = "components/message_queue" }
 meta_client = { path = "meta_client" }
 metric_ext = { path = "components/metric_ext" }
+notifier = { path = "components/notifier" }
 object_store = { path = "components/object_store" }
 panic_ext = { path = "components/panic_ext" }
 partitioned_lock = { path = "components/partitioned_lock" }
