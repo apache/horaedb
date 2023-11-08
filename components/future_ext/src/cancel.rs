@@ -167,7 +167,7 @@ mod tests {
                 async move {
                     done_captured.store(true, Ordering::SeqCst);
                 },
-                "test".to_string(),
+                "test",
                 runtime_clone,
             );
 
@@ -190,7 +190,7 @@ mod tests {
                 async move {
                     done_captured.wait().await;
                 },
-                "test".to_string(),
+                "test",
                 runtime_clone,
             );
 

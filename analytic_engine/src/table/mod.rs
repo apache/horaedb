@@ -305,7 +305,7 @@ impl TableImpl {
 
                 match CancellationSafeFuture::new(
                     Self::write_requests(write_requests),
-                    "pending_queue_writer".to_string(),
+                    "pending_queue_writer",
                     self.instance.write_runtime().clone(),
                 )
                 .await
@@ -328,7 +328,7 @@ impl TableImpl {
                 // `CancellationSafeFuture` for not just retrying but better observing.
                 match CancellationSafeFuture::new(
                     rx,
-                    "pending_queue_waiter".to_string(),
+                    "pending_queue_waiter",
                     self.instance.write_runtime().clone(),
                 )
                 .await
