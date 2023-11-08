@@ -141,7 +141,8 @@ impl Instance {
             request.projected_schema.clone(),
             request.predicate.clone(),
             self.meta_cache.clone(),
-            self.read_runtime().clone(),
+            // FIXME
+            self.read_runtime().higher().clone(),
         );
 
         if need_merge_sort {

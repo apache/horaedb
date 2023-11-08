@@ -32,6 +32,7 @@ use proxy::{
     },
 };
 use router::{rule_based::ClusterView, ClusterBasedRouter, RuleBasedRouter};
+use runtime::PriorityRuntime;
 use server::{
     config::{StaticRouteConfig, StaticTopologyConfig},
     local_tables::LocalTablesRecoverer,
@@ -86,12 +87,20 @@ fn build_runtime(name: &str, threads_num: usize) -> runtime::Runtime {
 }
 
 fn build_engine_runtimes(config: &RuntimeConfig) -> EngineRuntimes {
+    let read_stack_size = config.read_thread_stack_size.as_byte() as usize;
     EngineRuntimes {
-        read_runtime: Arc::new(build_runtime_with_stack_size(
-            "ceres-read",
-            config.read_thread_num,
-            Some(config.read_thread_stack_size.as_byte() as usize),
-        )),
+        read_runtime: PriorityRuntime::new(
+            Arc::new(build_runtime_with_stack_size(
+                "read-low",
+                config.low_read_thread_num,
+                Some(read_stack_size),
+            )),
+            Arc::new(build_runtime_with_stack_size(
+                "read-high",
+                config.read_thread_num,
+                Some(read_stack_size),
+            )),
+        ),
         write_runtime: Arc::new(build_runtime("ceres-write", config.write_thread_num)),
         compact_runtime: Arc::new(build_runtime("ceres-compact", config.compact_thread_num)),
         meta_runtime: Arc::new(build_runtime("ceres-meta", config.meta_thread_num)),
@@ -266,7 +275,8 @@ async fn build_table_engine_proxy(engine_builder: EngineBuilder<'_>) -> Arc<Tabl
 fn make_wal_runtime(runtimes: Arc<EngineRuntimes>) -> WalRuntimes {
     WalRuntimes {
         write_runtime: runtimes.write_runtime.clone(),
-        read_runtime: runtimes.read_runtime.clone(),
+        // TODO: remove read_runtime from WalRuntimes
+        read_runtime: runtimes.read_runtime.higher().clone(),
         default_runtime: runtimes.default_runtime.clone(),
     }
 }

@@ -91,7 +91,7 @@ pub enum ClusterDeployment {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RuntimeConfig {
-    /// Runtime for reading data
+    /// High priority runtime for reading data
     pub read_thread_num: usize,
     /// The size of the stack used by the read thread
     ///
@@ -99,6 +99,8 @@ pub struct RuntimeConfig {
     /// TODO: this config may be removed in the future when the complex query
     /// won't overflow the stack.
     pub read_thread_stack_size: ReadableSize,
+    /// Low priority runtime for reading data
+    pub low_read_thread_num: usize,
     /// Runtime for writing data
     pub write_thread_num: usize,
     /// Runtime for communicating with meta cluster
@@ -116,6 +118,7 @@ impl Default for RuntimeConfig {
         Self {
             read_thread_num: 8,
             read_thread_stack_size: ReadableSize::mb(16),
+            low_read_thread_num: 1,
             write_thread_num: 8,
             meta_thread_num: 2,
             compact_thread_num: 4,

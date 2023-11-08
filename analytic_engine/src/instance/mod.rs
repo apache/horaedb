@@ -38,7 +38,7 @@ use generic_error::{BoxError, GenericError};
 use logger::{error, info};
 use macros::define_result;
 use mem_collector::MemUsageCollector;
-use runtime::Runtime;
+use runtime::{PriorityRuntime, Runtime};
 use snafu::{ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, predicate::PredicateRef, table::FlushRequest};
 use time_ext::ReadableDuration;
@@ -288,7 +288,7 @@ impl Instance {
     }
 
     #[inline]
-    fn read_runtime(&self) -> &Arc<Runtime> {
+    fn read_runtime(&self) -> &PriorityRuntime {
         &self.runtimes.read_runtime
     }
 
