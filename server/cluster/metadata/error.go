@@ -28,6 +28,7 @@ var (
 	ErrSchemaNotFound       = coderr.NewCodeError(coderr.NotFound, "schema not found")
 	ErrTableNotFound        = coderr.NewCodeError(coderr.NotFound, "table not found")
 	ErrShardNotFound        = coderr.NewCodeError(coderr.NotFound, "shard not found")
+	ErrVersionNotFound      = coderr.NewCodeError(coderr.NotFound, "version not found")
 	ErrNodeNotFound         = coderr.NewCodeError(coderr.NotFound, "NodeName not found")
 	ErrTableAlreadyExists   = coderr.NewCodeError(coderr.Internal, "table already exists")
 	ErrOpenTable            = coderr.NewCodeError(coderr.Internal, "open table")

@@ -289,13 +289,12 @@ func openNewShardCallback(event *fsm.Event) {
 		procedure.CancelEventWithLog(event, metadata.ErrShardNotFound, "shard not found in topology", zap.Uint64("shardID", uint64(req.p.params.ShardID)))
 		return
 	}
-	preVersion := shardView.Version
 
 	openShardRequest := eventdispatch.OpenShardRequest{
 		Shard: metadata.ShardInfo{
 			ID:      req.p.params.ShardID,
 			Role:    storage.ShardRoleLeader,
-			Version: preVersion + 1,
+			Version: shardView.Version,
 			Status:  storage.ShardStatusUnknown,
 		},
 	}

@@ -74,34 +74,34 @@ func (d *DispatchImpl) CloseShard(ctx context.Context, addr string, request Clos
 	return nil
 }
 
-func (d *DispatchImpl) CreateTableOnShard(ctx context.Context, addr string, request CreateTableOnShardRequest) error {
+func (d *DispatchImpl) CreateTableOnShard(ctx context.Context, addr string, request CreateTableOnShardRequest) (uint64, error) {
 	client, err := d.getMetaEventClient(ctx, addr)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	resp, err := client.CreateTableOnShard(ctx, convertCreateTableOnShardRequestToPB(request))
 	if err != nil {
-		return errors.WithMessagef(err, "create table on shard, addr:%s, request:%v", addr, request)
+		return 0, errors.WithMessagef(err, "create table on shard, addr:%s, request:%v", addr, request)
 	}
 	if resp.GetHeader().Code != 0 {
-		return ErrDispatch.WithCausef("create table on shard, addr:%s, request:%v, err:%s", addr, request, resp.GetHeader().GetError())
+		return 0, ErrDispatch.WithCausef("create table on shard, addr:%s, request:%v, err:%s", addr, request, resp.GetHeader().GetError())
 	}
-	return nil
+	return resp.GetLatestShardVersion(), nil
 }
 
-func (d *DispatchImpl) DropTableOnShard(ctx context.Context, addr string, request DropTableOnShardRequest) error {
+func (d *DispatchImpl) DropTableOnShard(ctx context.Context, addr string, request DropTableOnShardRequest) (uint64, error) {
 	client, err := d.getMetaEventClient(ctx, addr)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	resp, err := client.DropTableOnShard(ctx, convertDropTableOnShardRequestToPB(request))
 	if err != nil {
-		return errors.WithMessagef(err, "drop table on shard, addr:%s, request:%v", addr, request)
+		return 0, errors.WithMessagef(err, "drop table on shard, addr:%s, request:%v", addr, request)
 	}
 	if resp.GetHeader().Code != 0 {
-		return ErrDispatch.WithCausef("drop table on shard, addr:%s, request:%v, err:%s", addr, request, resp.GetHeader().GetError())
+		return 0, ErrDispatch.WithCausef("drop table on shard, addr:%s, request:%v, err:%s", addr, request, resp.GetHeader().GetError())
 	}
-	return nil
+	return resp.GetLatestShardVersion(), nil
 }
 
 func (d *DispatchImpl) OpenTableOnShard(ctx context.Context, addr string, request OpenTableOnShardRequest) error {
@@ -192,6 +192,5 @@ func convertOpenTableOnShardRequestToPB(request OpenTableOnShardRequest) *metaev
 func convertUpdateShardInfoToPB(updateShardInfo UpdateShardInfo) *metaeventpb.UpdateShardInfo {
 	return &metaeventpb.UpdateShardInfo{
 		CurrShardInfo: metadata.ConvertShardsInfoToPB(updateShardInfo.CurrShardInfo),
-		PrevVersion:   updateShardInfo.PrevVersion,
 	}
 }

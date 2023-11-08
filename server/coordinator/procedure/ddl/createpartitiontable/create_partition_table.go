@@ -282,17 +282,20 @@ func createDataTables(req *callbackRequest, shardID storage.ShardID, tableMetaDa
 		}
 
 		shardVersionUpdate := metadata.ShardVersionUpdate{
-			ShardID:     shardID,
-			CurrVersion: shardVersion + 1,
-			PrevVersion: shardVersion,
+			ShardID:       shardID,
+			LatestVersion: shardVersion,
 		}
 
-		if err := ddl.CreateTableOnShard(req.ctx, params.ClusterMetadata, params.Dispatch, shardID, ddl.BuildCreateTableRequest(result.Table, shardVersionUpdate, params.SourceReq)); err != nil {
+		latestShardVersion, err := ddl.CreateTableOnShard(req.ctx, params.ClusterMetadata, params.Dispatch, shardID, ddl.BuildCreateTableRequest(result.Table, shardVersionUpdate, params.SourceReq))
+		if err != nil {
 			errCh <- errors.WithMessage(err, "dispatch create table on shard")
 			return
 		}
 
-		_, err = params.ClusterMetadata.AddTableTopology(req.ctx, shardID, result.Table)
+		err = params.ClusterMetadata.AddTableTopology(req.ctx, metadata.ShardVersionUpdate{
+			ShardID:       shardID,
+			LatestVersion: latestShardVersion,
+		}, result.Table)
 		if err != nil {
 			errCh <- errors.WithMessage(err, "create table metadata")
 			return

@@ -282,9 +282,9 @@ func TestStorage_CreateAndListShardView(t *testing.T) {
 	for i := 0; i < defaultCount; i++ {
 		expectShardViews[i].Version = newVersion
 		err = s.UpdateShardView(ctx, UpdateShardViewRequest{
-			ClusterID:     defaultClusterID,
-			ShardView:     expectShardViews[i],
-			LatestVersion: defaultVersion,
+			ClusterID:   defaultClusterID,
+			ShardView:   expectShardViews[i],
+			PrevVersion: defaultVersion,
 		})
 		re.NoError(err)
 	}

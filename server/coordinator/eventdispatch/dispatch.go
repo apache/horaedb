@@ -25,8 +25,8 @@ import (
 type Dispatch interface {
 	OpenShard(context context.Context, address string, request OpenShardRequest) error
 	CloseShard(context context.Context, address string, request CloseShardRequest) error
-	CreateTableOnShard(context context.Context, address string, request CreateTableOnShardRequest) error
-	DropTableOnShard(context context.Context, address string, request DropTableOnShardRequest) error
+	CreateTableOnShard(context context.Context, address string, request CreateTableOnShardRequest) (uint64, error)
+	DropTableOnShard(context context.Context, address string, request DropTableOnShardRequest) (uint64, error)
 	OpenTableOnShard(ctx context.Context, address string, request OpenTableOnShardRequest) error
 	CloseTableOnShard(context context.Context, address string, request CloseTableOnShardRequest) error
 }
@@ -41,7 +41,6 @@ type CloseShardRequest struct {
 
 type UpdateShardInfo struct {
 	CurrShardInfo metadata.ShardInfo
-	PrevVersion   uint64
 }
 
 type CreateTableOnShardRequest struct {

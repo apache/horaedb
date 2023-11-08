@@ -33,6 +33,7 @@ import (
 )
 
 type Options struct {
+
 	// MaxScanLimit is the max limit of the number of keys in a scan.
 	MaxScanLimit int
 	// MinScanLimit is the min limit of the number of keys in a scan.
@@ -517,16 +518,14 @@ func (s *metaStorageImpl) UpdateShardView(ctx context.Context, req UpdateShardVi
 	}
 
 	key := makeShardViewKey(s.rootPath, uint32(req.ClusterID), shardViewPB.ShardId, fmtID(shardViewPB.GetVersion()))
-	oldTopologyKey := makeShardViewKey(s.rootPath, uint32(req.ClusterID), shardViewPB.ShardId, fmtID(req.LatestVersion))
+	oldTopologyKey := makeShardViewKey(s.rootPath, uint32(req.ClusterID), shardViewPB.ShardId, fmtID(req.PrevVersion))
 	latestVersionKey := makeShardViewLatestVersionKey(s.rootPath, uint32(req.ClusterID), shardViewPB.ShardId)
 
 	// Check whether the latest version is equal to that in etcd. If it is equal，update shard clusterView and latest version; Otherwise, return an error.
-	latestVersionEquals := clientv3.Compare(clientv3.Value(latestVersionKey), "=", fmtID(req.LatestVersion))
 	opPutLatestVersion := clientv3.OpPut(latestVersionKey, fmtID(shardViewPB.Version))
 	opPutShardTopology := clientv3.OpPut(key, string(value))
 
 	resp, err := s.client.Txn(ctx).
-		If(latestVersionEquals).
 		Then(opPutLatestVersion, opPutShardTopology).
 		Commit()
 	if err != nil {
@@ -537,9 +536,11 @@ func (s *metaStorageImpl) UpdateShardView(ctx context.Context, req UpdateShardVi
 	}
 
 	// Try to remove expired shard view.
-	opDelShardTopology := clientv3.OpDelete(oldTopologyKey)
-	if _, err := s.client.Do(ctx, opDelShardTopology); err != nil {
-		log.Warn("remove expired shard view failed", zap.Error(err), zap.String("oldTopologyKey", oldTopologyKey))
+	if req.PrevVersion != shardViewPB.Version {
+		opDelShardTopology := clientv3.OpDelete(oldTopologyKey)
+		if _, err := s.client.Do(ctx, opDelShardTopology); err != nil {
+			log.Warn("remove expired shard view failed", zap.Error(err), zap.String("oldTopologyKey", oldTopologyKey))
+		}
 	}
 
 	return nil

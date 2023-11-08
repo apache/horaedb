@@ -191,41 +191,37 @@ func (c *ClusterMetadata) GetShardTables(shardIDs []storage.ShardID) map[storage
 
 // DropTable will drop table metadata and all mapping of this table.
 // If the table to be dropped has been opened multiple times, all its mapping will be dropped.
-func (c *ClusterMetadata) DropTable(ctx context.Context, schemaName, tableName string) (DropTableResult, error) {
-	c.logger.Info("drop table start", zap.String("cluster", c.Name()), zap.String("schemaName", schemaName), zap.String("tableName", tableName))
+func (c *ClusterMetadata) DropTable(ctx context.Context, request DropTableRequest) error {
+	c.logger.Info("drop table start", zap.String("cluster", c.Name()), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
 
-	var dropRes DropTableResult
 	if !c.ensureClusterStable() {
-		return dropRes, errors.WithMessage(ErrClusterStateInvalid, "invalid cluster state, cluster state must be stable")
+		return errors.WithMessage(ErrClusterStateInvalid, "invalid cluster state, cluster state must be stable")
 	}
 
-	table, ok, err := c.tableManager.GetTable(schemaName, tableName)
+	table, ok, err := c.tableManager.GetTable(request.SchemaName, request.TableName)
 	if err != nil {
-		return dropRes, errors.WithMessage(err, "get table")
+		return errors.WithMessage(err, "get table")
 	}
 
 	if !ok {
-		return dropRes, ErrTableNotFound
+		return ErrTableNotFound
 	}
 
 	// Drop table.
-	err = c.tableManager.DropTable(ctx, schemaName, tableName)
+	err = c.tableManager.DropTable(ctx, request.SchemaName, request.TableName)
 	if err != nil {
-		return dropRes, errors.WithMessage(err, "table manager drop table")
+		return errors.WithMessage(err, "table manager drop table")
 	}
 
 	// Remove dropped table in shard view.
-	updateVersions, err := c.topologyManager.EvictTable(ctx, table.ID)
+	err = c.topologyManager.RemoveTable(ctx, request.ShardID, request.LatestVersion, []storage.TableID{table.ID})
 	if err != nil {
-		return dropRes, errors.WithMessage(err, "topology manager remove table")
+		return errors.WithMessage(err, "topology manager remove table")
 	}
 
-	dropRes = DropTableResult{
-		ShardVersionUpdate: updateVersions,
-	}
-	c.logger.Info("drop table success", zap.String("cluster", c.Name()), zap.String("schemaName", schemaName), zap.String("tableName", tableName), zap.String("dropResult", fmt.Sprintf("%+v", dropRes)))
+	c.logger.Info("drop table success", zap.String("cluster", c.Name()), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
 
-	return dropRes, nil
+	return nil
 }
 
 // MigrateTable used to migrate tables from old shard to new shard.
@@ -256,12 +252,12 @@ func (c *ClusterMetadata) MigrateTable(ctx context.Context, request MigrateTable
 		tableIDs = append(tableIDs, table.ID)
 	}
 
-	if _, err := c.topologyManager.RemoveTable(ctx, request.OldShardID, tableIDs); err != nil {
+	if err := c.topologyManager.RemoveTable(ctx, request.OldShardID, request.latestOldShardVersion, tableIDs); err != nil {
 		c.logger.Error("remove table from topology")
 		return err
 	}
 
-	if _, err := c.topologyManager.AddTable(ctx, request.NewShardID, tables); err != nil {
+	if err := c.topologyManager.AddTable(ctx, request.NewShardID, request.latestNewShardVersion, tables); err != nil {
 		c.logger.Error("add table from topology")
 		return err
 	}
@@ -310,25 +306,21 @@ func (c *ClusterMetadata) CreateTableMetadata(ctx context.Context, request Creat
 	return res, nil
 }
 
-func (c *ClusterMetadata) AddTableTopology(ctx context.Context, shardID storage.ShardID, table storage.Table) (CreateTableResult, error) {
+func (c *ClusterMetadata) AddTableTopology(ctx context.Context, shardVersionUpdate ShardVersionUpdate, table storage.Table) error {
 	c.logger.Info("add table topology start", zap.String("cluster", c.Name()), zap.String("tableName", table.Name))
 
 	if !c.ensureClusterStable() {
-		return CreateTableResult{}, errors.WithMessage(ErrClusterStateInvalid, "invalid cluster state, cluster state must be stable")
+		return errors.WithMessage(ErrClusterStateInvalid, "invalid cluster state, cluster state must be stable")
 	}
 
 	// Add table to topology manager.
-	result, err := c.topologyManager.AddTable(ctx, shardID, []storage.Table{table})
+	err := c.topologyManager.AddTable(ctx, shardVersionUpdate.ShardID, shardVersionUpdate.LatestVersion, []storage.Table{table})
 	if err != nil {
-		return CreateTableResult{}, errors.WithMessage(err, "topology manager add table")
+		return errors.WithMessage(err, "topology manager add table")
 	}
 
-	ret := CreateTableResult{
-		Table:              table,
-		ShardVersionUpdate: result,
-	}
-	c.logger.Info("add table topology succeed", zap.String("cluster", c.Name()), zap.String("result", fmt.Sprintf("%+v", ret)))
-	return ret, nil
+	c.logger.Info("add table topology succeed", zap.String("cluster", c.Name()), zap.String("table", fmt.Sprintf("%+v", table)), zap.String("shardVersionUpdate", fmt.Sprintf("%+v", shardVersionUpdate)))
+	return nil
 }
 
 func (c *ClusterMetadata) DropTableMetadata(ctx context.Context, schemaName, tableName string) (DropTableMetadataResult, error) {
@@ -381,14 +373,17 @@ func (c *ClusterMetadata) CreateTable(ctx context.Context, request CreateTableRe
 	}
 
 	// Add table to topology manager.
-	result, err := c.topologyManager.AddTable(ctx, request.ShardID, []storage.Table{table})
+	err = c.topologyManager.AddTable(ctx, request.ShardID, request.LatestVersion, []storage.Table{table})
 	if err != nil {
 		return CreateTableResult{}, errors.WithMessage(err, "topology manager add table")
 	}
 
 	ret := CreateTableResult{
-		Table:              table,
-		ShardVersionUpdate: result,
+		Table: table,
+		ShardVersionUpdate: ShardVersionUpdate{
+			ShardID:       request.ShardID,
+			LatestVersion: request.LatestVersion,
+		},
 	}
 	c.logger.Info("create table succeed", zap.String("cluster", c.Name()), zap.String("result", fmt.Sprintf("%+v", ret)))
 	return ret, nil

@@ -88,6 +88,7 @@ type CreateTableMetadataResult struct {
 
 type CreateTableRequest struct {
 	ShardID       storage.ShardID
+	LatestVersion uint64
 	SchemaName    string
 	TableName     string
 	PartitionInfo storage.PartitionInfo
@@ -98,8 +99,11 @@ type CreateTableResult struct {
 	ShardVersionUpdate ShardVersionUpdate
 }
 
-type DropTableResult struct {
-	ShardVersionUpdate []ShardVersionUpdate
+type DropTableRequest struct {
+	SchemaName    string
+	TableName     string
+	ShardID       storage.ShardID
+	LatestVersion uint64
 }
 
 type DropTableMetadataResult struct {
@@ -124,13 +128,15 @@ type MigrateTableRequest struct {
 	SchemaName string
 	TableNames []string
 	OldShardID storage.ShardID
-	NewShardID storage.ShardID
+	// TODO: refactor migrate table request, simplify params.
+	latestOldShardVersion uint64
+	NewShardID            storage.ShardID
+	latestNewShardVersion uint64
 }
 
 type ShardVersionUpdate struct {
-	ShardID     storage.ShardID
-	CurrVersion uint64
-	PrevVersion uint64
+	ShardID       storage.ShardID
+	LatestVersion uint64
 }
 
 type RouteEntry struct {

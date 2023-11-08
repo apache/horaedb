@@ -59,9 +59,10 @@ func TestLeastTableShardPicker(t *testing.T) {
 
 	// Create table on shard 0.
 	_, err = c.GetMetadata().CreateTable(ctx, metadata.CreateTableRequest{
-		ShardID:    0,
-		SchemaName: test.TestSchemaName,
-		TableName:  "test",
+		ShardID:       0,
+		LatestVersion: 0,
+		SchemaName:    test.TestSchemaName,
+		TableName:     "test",
 		PartitionInfo: storage.PartitionInfo{
 			Info: nil,
 		},

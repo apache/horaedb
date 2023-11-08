@@ -38,11 +38,9 @@ type TopologyManager interface {
 	// GetTableIDs get shardNode and tablesIDs with shardID and nodeName.
 	GetTableIDs(shardIDs []storage.ShardID) map[storage.ShardID]ShardTableIDs
 	// AddTable add table to cluster topology.
-	AddTable(ctx context.Context, shardID storage.ShardID, tables []storage.Table) (ShardVersionUpdate, error)
+	AddTable(ctx context.Context, shardID storage.ShardID, latestVersion uint64, tables []storage.Table) error
 	// RemoveTable remove table on target shards from cluster topology.
-	RemoveTable(ctx context.Context, shardID storage.ShardID, tableIDs []storage.TableID) (ShardVersionUpdate, error)
-	// EvictTable evict table from cluster topology.
-	EvictTable(ctx context.Context, tableID storage.TableID) ([]ShardVersionUpdate, error)
+	RemoveTable(ctx context.Context, shardID storage.ShardID, latestVersion uint64, tableIDs []storage.TableID) error
 	// GetShards get all shards in cluster topology.
 	GetShards() []storage.ShardID
 	// GetShardNodesByID get shardNodes with shardID.
@@ -130,7 +128,6 @@ type TopologyManagerImpl struct {
 	shardNodesMapping map[storage.ShardID][]storage.ShardNode // ShardID -> nodes of the shard
 	nodeShardsMapping map[string][]storage.ShardNode          // nodeName -> shards of the NodeName
 	// ShardView in memory.
-	shardViews         []storage.ShardView
 	shardTablesMapping map[storage.ShardID]*storage.ShardView // ShardID -> shardTopology
 	tableShardMapping  map[storage.TableID][]storage.ShardID  // tableID -> ShardID
 
@@ -148,7 +145,6 @@ func NewTopologyManagerImpl(logger *zap.Logger, storage storage.Storage, cluster
 		clusterView:        nil,
 		shardNodesMapping:  nil,
 		nodeShardsMapping:  nil,
-		shardViews:         nil,
 		shardTablesMapping: nil,
 		tableShardMapping:  nil,
 		nodes:              nil,
@@ -203,17 +199,14 @@ func (m *TopologyManagerImpl) GetTableIDs(shardIDs []storage.ShardID) map[storag
 	return shardTableIDs
 }
 
-func (m *TopologyManagerImpl) AddTable(ctx context.Context, shardID storage.ShardID, tables []storage.Table) (ShardVersionUpdate, error) {
+func (m *TopologyManagerImpl) AddTable(ctx context.Context, shardID storage.ShardID, latestVersion uint64, tables []storage.Table) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
 	shardView, ok := m.shardTablesMapping[shardID]
-	var emptyUpdate ShardVersionUpdate
 	if !ok {
-		return emptyUpdate, ErrShardNotFound.WithCausef("shard id:%d", shardID)
+		return ErrShardNotFound.WithCausef("shard id:%d", shardID)
 	}
-
-	prevVersion := shardView.Version
 
 	tableIDsToAdd := make([]storage.TableID, 0, len(tables))
 	for _, table := range tables {
@@ -224,16 +217,16 @@ func (m *TopologyManagerImpl) AddTable(ctx context.Context, shardID storage.Shar
 	tableIDs = append(tableIDs, shardView.TableIDs...)
 	tableIDs = append(tableIDs, tableIDsToAdd...)
 
-	newShardView := storage.NewShardView(shardID, prevVersion+1, tableIDs)
+	newShardView := storage.NewShardView(shardID, latestVersion, tableIDs)
 
 	// Update shard view in storage.
 	err := m.storage.UpdateShardView(ctx, storage.UpdateShardViewRequest{
-		ClusterID:     m.clusterID,
-		ShardView:     newShardView,
-		LatestVersion: prevVersion,
+		ClusterID:   m.clusterID,
+		ShardView:   newShardView,
+		PrevVersion: shardView.Version,
 	})
 	if err != nil {
-		return emptyUpdate, errors.WithMessage(err, "storage update shard view")
+		return errors.WithMessage(err, "storage update shard view")
 	}
 
 	// Update shard view in memory.
@@ -247,34 +240,17 @@ func (m *TopologyManagerImpl) AddTable(ctx context.Context, shardID storage.Shar
 		}
 	}
 
-	m.updateShardView(shardID, newShardView)
-
-	return ShardVersionUpdate{
-		ShardID:     shardID,
-		CurrVersion: prevVersion + 1,
-		PrevVersion: prevVersion,
-	}, nil
+	return nil
 }
 
-func (m *TopologyManagerImpl) updateShardView(shardID storage.ShardID, newShardView storage.ShardView) {
-	for i := range m.shardViews {
-		if m.shardViews[i].ShardID == shardID {
-			m.shardViews[i] = newShardView
-			break
-		}
-	}
-}
-
-func (m *TopologyManagerImpl) RemoveTable(ctx context.Context, shardID storage.ShardID, tableIDs []storage.TableID) (ShardVersionUpdate, error) {
+func (m *TopologyManagerImpl) RemoveTable(ctx context.Context, shardID storage.ShardID, latestVersion uint64, tableIDs []storage.TableID) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
 	shardView, ok := m.shardTablesMapping[shardID]
-	var emptyUpdate ShardVersionUpdate
 	if !ok {
-		return emptyUpdate, ErrShardNotFound.WithCausef("shard id:%d", shardID)
+		return ErrShardNotFound.WithCausef("shard id:%d", shardID)
 	}
-	prevVersion := shardView.Version
 
 	newTableIDs := make([]storage.TableID, 0, len(shardView.TableIDs))
 	for _, tableID := range shardView.TableIDs {
@@ -286,18 +262,18 @@ func (m *TopologyManagerImpl) RemoveTable(ctx context.Context, shardID storage.S
 	}
 
 	// Update shardView in storage.
-	newShardView := storage.NewShardView(shardView.ShardID, prevVersion+1, newTableIDs)
+	newShardView := storage.NewShardView(shardView.ShardID, latestVersion, newTableIDs)
 	if err := m.storage.UpdateShardView(ctx, storage.UpdateShardViewRequest{
-		ClusterID:     m.clusterID,
-		ShardView:     newShardView,
-		LatestVersion: prevVersion,
+		ClusterID:   m.clusterID,
+		ShardView:   newShardView,
+		PrevVersion: shardView.Version,
 	}); err != nil {
-		return emptyUpdate, errors.WithMessage(err, "storage update shard view")
+		return errors.WithMessage(err, "storage update shard view")
 	}
 
 	// Update shardView in memory.
-	shardView.Version = prevVersion + 1
-	shardView.TableIDs = tableIDs
+	shardView.Version = latestVersion
+	shardView.TableIDs = newTableIDs
 	for _, tableID := range tableIDs {
 		delete(m.tableShardMapping, tableID)
 	}
@@ -312,74 +288,15 @@ func (m *TopologyManagerImpl) RemoveTable(ctx context.Context, shardID storage.S
 		}
 	}
 
-	m.updateShardView(shardID, newShardView)
-
-	return ShardVersionUpdate{
-		ShardID:     shardID,
-		CurrVersion: prevVersion + 1,
-		PrevVersion: prevVersion,
-	}, nil
-}
-
-func (m *TopologyManagerImpl) EvictTable(ctx context.Context, tableID storage.TableID) ([]ShardVersionUpdate, error) {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-
-	shardIDs, ok := m.tableShardMapping[tableID]
-	if !ok {
-		return []ShardVersionUpdate{}, ErrTableNotFound.WithCausef("table id:%d", tableID)
-	}
-
-	result := []ShardVersionUpdate{}
-
-	for _, shardID := range shardIDs {
-		shardView, ok := m.shardTablesMapping[shardID]
-		if !ok {
-			return nil, ErrShardNotFound.WithCausef("shard id:%d", shardID)
-		}
-		prevVersion := shardView.Version
-
-		tableIDs := make([]storage.TableID, 0, len(shardView.TableIDs))
-		for _, id := range shardView.TableIDs {
-			if id != tableID {
-				tableIDs = append(tableIDs, id)
-			}
-		}
-
-		// Update shardView in storage.
-		// TODO: Move the code that modifies the version to the outside, and the actual version should be obtained from the call result of CeresDB.
-		newShardView := storage.NewShardView(shardView.ShardID, prevVersion+1, tableIDs)
-		if err := m.storage.UpdateShardView(ctx, storage.UpdateShardViewRequest{
-			ClusterID:     m.clusterID,
-			ShardView:     newShardView,
-			LatestVersion: prevVersion,
-		}); err != nil {
-			return nil, errors.WithMessage(err, "storage update shard view")
-		}
-
-		// Update shardView in memory.
-		shardView.Version = prevVersion + 1
-		shardView.TableIDs = tableIDs
-		delete(m.tableShardMapping, tableID)
-
-		m.updateShardView(shardView.ShardID, newShardView)
-
-		result = append(result, ShardVersionUpdate{
-			ShardID:     shardID,
-			CurrVersion: prevVersion + 1,
-			PrevVersion: prevVersion,
-		})
-	}
-
-	return result, nil
+	return nil
 }
 
 func (m *TopologyManagerImpl) GetShards() []storage.ShardID {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
-	shards := make([]storage.ShardID, 0, len(m.shardViews))
-	for _, shardView := range m.shardViews {
+	shards := make([]storage.ShardID, 0, len(m.shardTablesMapping))
+	for _, shardView := range m.shardTablesMapping {
 		shards = append(shards, shardView.ShardID)
 	}
 
@@ -584,14 +501,14 @@ func (m *TopologyManagerImpl) UpdateShardVersionWithExpect(ctx context.Context, 
 
 	newShardView := storage.NewShardView(shardID, version, shardView.TableIDs)
 	if err := m.storage.UpdateShardView(ctx, storage.UpdateShardViewRequest{
-		ClusterID:     m.clusterID,
-		ShardView:     newShardView,
-		LatestVersion: expect,
+		ClusterID:   m.clusterID,
+		ShardView:   newShardView,
+		PrevVersion: expect,
 	}); err != nil {
 		return errors.WithMessage(err, "storage update shard view")
 	}
 
-	m.updateShardView(shardID, newShardView)
+	m.shardTablesMapping[shardID] = shardView
 
 	return nil
 }
@@ -600,9 +517,14 @@ func (m *TopologyManagerImpl) GetTopology() Topology {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
-	shardViewsMapping := make(map[storage.ShardID]storage.ShardView, len(m.shardViews))
-	for i := 0; i < len(m.shardViews); i++ {
-		shardViewsMapping[m.shardViews[i].ShardID] = m.shardViews[i]
+	shardViewsMapping := make(map[storage.ShardID]storage.ShardView, len(m.shardTablesMapping))
+	for shardID, view := range m.shardTablesMapping {
+		shardViewsMapping[shardID] = storage.ShardView{
+			ShardID:   view.ShardID,
+			Version:   view.Version,
+			TableIDs:  view.TableIDs,
+			CreatedAt: view.CreatedAt,
+		}
 	}
 
 	return Topology{
@@ -642,7 +564,6 @@ func (m *TopologyManagerImpl) loadShardViews(ctx context.Context) error {
 	m.logger.Debug("load shard views", zap.Int32("clusterID", int32(m.clusterID)), zap.String("shardViews", fmt.Sprintf("%+v", shardViewsResult)))
 
 	// Reset data in memory.
-	m.shardViews = shardViewsResult.ShardViews
 	m.shardTablesMapping = make(map[storage.ShardID]*storage.ShardView, len(shardViewsResult.ShardViews))
 	m.tableShardMapping = make(map[storage.TableID][]storage.ShardID, 0)
 	for _, shardView := range shardViewsResult.ShardViews {

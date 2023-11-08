@@ -290,13 +290,47 @@ func (m *managerImpl) GetTablesByShardIDs(clusterName, _ string, shardIDs []stor
 	return shardTables, nil
 }
 
+// DropTable is only used for the HTTP interface.
+// It only deletes the table data in ETCD and does not initiate a table deletion request to CeresDB.
 func (m *managerImpl) DropTable(ctx context.Context, clusterName, schemaName, tableName string) error {
 	cluster, err := m.getCluster(clusterName)
 	if err != nil {
 		return errors.WithMessage(err, "get cluster")
 	}
 
-	_, err = cluster.metadata.DropTable(ctx, schemaName, tableName)
+	table, ok, err := cluster.metadata.GetTable(schemaName, tableName)
+	if !ok {
+		return metadata.ErrTableNotFound
+	}
+	if err != nil {
+		return errors.WithMessage(err, "get table")
+	}
+
+	getShardNodeResult, err := cluster.metadata.GetShardNodeByTableIDs([]storage.TableID{table.ID})
+	if err != nil {
+		return errors.WithMessage(err, "get shard node by tableID")
+	}
+
+	if _, ok := getShardNodeResult.ShardNodes[table.ID]; !ok {
+		return metadata.ErrShardNotFound
+	}
+
+	if len(getShardNodeResult.ShardNodes[table.ID]) != 1 || len(getShardNodeResult.Version) != 1 {
+		return metadata.ErrShardNotFound
+	}
+
+	shardID := getShardNodeResult.ShardNodes[table.ID][0].ID
+	version, ok := getShardNodeResult.Version[shardID]
+	if !ok {
+		return metadata.ErrVersionNotFound
+	}
+
+	err = cluster.metadata.DropTable(ctx, metadata.DropTableRequest{
+		SchemaName:    schemaName,
+		TableName:     tableName,
+		ShardID:       shardID,
+		LatestVersion: version,
+	})
 	if err != nil {
 		return errors.WithMessage(err, "cluster drop table")
 	}

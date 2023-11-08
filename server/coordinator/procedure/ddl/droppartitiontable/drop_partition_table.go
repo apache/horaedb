@@ -396,16 +396,21 @@ func dispatchDropDataTable(req *callbackRequest, dispatch eventdispatch.Dispatch
 		}
 
 		shardVersionUpdate := metadata.ShardVersionUpdate{
-			ShardID:     shardID,
-			CurrVersion: shardVersion + 1,
-			PrevVersion: shardVersion,
+			ShardID:       shardID,
+			LatestVersion: shardVersion,
 		}
 
-		if err := ddl.DispatchDropTable(req.ctx, clusterMetadata, dispatch, schema, table, shardVersionUpdate); err != nil {
+		latestShardVersion, err := ddl.DropTableOnShard(req.ctx, clusterMetadata, dispatch, schema, table, shardVersionUpdate)
+		if err != nil {
 			return errors.WithMessagef(err, "drop table, table:%s", tableName)
 		}
 
-		_, err = clusterMetadata.DropTable(req.ctx, req.schemaName(), tableName)
+		err = clusterMetadata.DropTable(req.ctx, metadata.DropTableRequest{
+			SchemaName:    req.schemaName(),
+			TableName:     tableName,
+			ShardID:       shardID,
+			LatestVersion: latestShardVersion,
+		})
 		if err != nil {
 			return errors.WithMessagef(err, "drop table, table:%s", tableName)
 		}

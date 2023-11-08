@@ -177,6 +177,7 @@ func testCreateTable(ctx context.Context, re *require.Assertions, manager cluste
 	re.NoError(err)
 	_, err = c.GetMetadata().CreateTable(ctx, metadata.CreateTableRequest{
 		ShardID:       shardID,
+		LatestVersion: 0,
 		SchemaName:    schema,
 		TableName:     tableName,
 		PartitionInfo: storage.PartitionInfo{Info: nil},

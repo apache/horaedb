@@ -18,7 +18,6 @@ package droptable
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
@@ -89,7 +88,13 @@ func prepareCallback(event *fsm.Event) {
 	// If the shard corresponding to this table does not exist, it means that the actual table creation failed.
 	// In order to ensure that the table can be deleted normally, we need to directly delete the metadata of the table.
 	if !shardExists {
-		_, err = params.ClusterMetadata.DropTable(req.ctx, params.SourceReq.GetSchemaName(), params.SourceReq.GetName())
+		// Try to drop table with the latest shard version.
+		err = params.ClusterMetadata.DropTable(req.ctx, metadata.DropTableRequest{
+			SchemaName:    params.SourceReq.GetSchemaName(),
+			TableName:     params.SourceReq.GetName(),
+			ShardID:       shardVersionUpdate.ShardID,
+			LatestVersion: shardVersionUpdate.LatestVersion,
+		})
 		if err != nil {
 			procedure.CancelEventWithLog(event, err, "drop table metadata", zap.String("tableName", params.SourceReq.GetName()))
 			return
@@ -97,7 +102,7 @@ func prepareCallback(event *fsm.Event) {
 		return
 	}
 
-	err = ddl.DispatchDropTable(req.ctx, params.ClusterMetadata, params.Dispatch, params.SourceReq.GetSchemaName(), table, shardVersionUpdate)
+	latestShardVersion, err := ddl.DropTableOnShard(req.ctx, params.ClusterMetadata, params.Dispatch, params.SourceReq.GetSchemaName(), table, shardVersionUpdate)
 	if err != nil {
 		procedure.CancelEventWithLog(event, err, "dispatch drop table on shard")
 		return
@@ -105,18 +110,17 @@ func prepareCallback(event *fsm.Event) {
 
 	log.Debug("dispatch dropTableOnShard finish", zap.String("tableName", params.SourceReq.GetName()), zap.Uint64("procedureID", params.ID))
 
-	result, err := params.ClusterMetadata.DropTable(req.ctx, params.SourceReq.GetSchemaName(), params.SourceReq.GetName())
-	if err != nil {
+	if err = params.ClusterMetadata.DropTable(req.ctx, metadata.DropTableRequest{
+		SchemaName:    params.SourceReq.GetSchemaName(),
+		TableName:     params.SourceReq.GetName(),
+		ShardID:       shardVersionUpdate.ShardID,
+		LatestVersion: latestShardVersion,
+	}); err != nil {
 		procedure.CancelEventWithLog(event, err, "cluster drop table")
 		return
 	}
 
 	log.Debug("drop table finish", zap.String("tableName", params.SourceReq.GetName()), zap.Uint64("procedureID", params.ID))
-
-	if len(result.ShardVersionUpdate) != 1 {
-		procedure.CancelEventWithLog(event, procedure.ErrDropTableResult, fmt.Sprintf("length of shardVersionResult is %d", len(result.ShardVersionUpdate)))
-		return
-	}
 }
 
 func successCallback(event *fsm.Event) {

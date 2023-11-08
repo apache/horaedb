@@ -153,9 +153,9 @@ type ListShardViewsResult struct {
 }
 
 type UpdateShardViewRequest struct {
-	ClusterID     ClusterID
-	ShardView     ShardView
-	LatestVersion uint64
+	ClusterID   ClusterID
+	ShardView   ShardView
+	PrevVersion uint64
 }
 
 type ListNodesRequest struct {
