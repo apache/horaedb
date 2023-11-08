@@ -329,17 +329,15 @@ impl ExecutionPlan for ResolvedPartitionedScan {
             metrics_collector,
         } = &self.remote_exec_ctx.plan_ctxs[partition];
 
-        let metrics_collector = metrics_collector.clone();
-
         // Send plan for remote execution.
         let stream_future = self.remote_exec_ctx.executor.execute(
             sub_table.clone(),
             &context,
             plan.clone(),
-            metrics_collector.span("remote metrics".to_string()),
+            metrics_collector.clone(),
         )?;
         let record_stream =
-            PartitionedScanStream::new(stream_future, plan.schema(), metrics_collector);
+            PartitionedScanStream::new(stream_future, plan.schema(), metrics_collector.clone());
 
         Ok(Box::pin(record_stream))
     }

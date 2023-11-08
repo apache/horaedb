@@ -83,11 +83,11 @@ impl Client {
     pub async fn read(&self, request: ReadRequest) -> Result<ClientReadRecordBatchStream> {
         // Find the channel from router firstly.
         let route_context = self.cached_router.route(&request.table).await?;
-        let metrics_collector = MetricsCollector::default();
 
         // Read from remote.
         let table_ident = request.table.clone();
         let record_schema = request.read_request.projected_schema.to_record_schema();
+        let metrics_collector = request.read_request.metrics_collector.clone();
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
         let request_pb = ceresdbproto::remote_engine::ReadRequest::try_from(request)
             .box_err()
