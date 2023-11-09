@@ -44,11 +44,24 @@ build-test:
 
 build: build-ceresdb build-test
 
-kill-old-process:
+kill-old-ceresmeta:
+	killall ceresmeta-server | true
+
+kill-old-ceresdb:
 	killall ceresdb-server | true
-	killall ceresmeta | true
+
+kill-old-process: kill-old-ceresmeta kill-old-ceresdb
 
 prepare: clean build kill-old-process
+
+run-ceresmeta: build-meta
+	nohup $(CERESMETA_BINARY_PATH) --config ${CERESMETA_CONFIG_PATH} > /tmp/ceresmeta-stdout.log 2>&1 &
+	sleep 10
+
+run-ceresdb-cluster: build-ceresdb
+	nohup ${CERESDB_BINARY_PATH} --config ${CERESDB_CONFIG_FILE_0} > ${CLUSTER_CERESDB_STDOUT_FILE_0} 2>&1 &
+	nohup ${CERESDB_BINARY_PATH} --config ${CERESDB_CONFIG_FILE_1} > ${CLUSTER_CERESDB_STDOUT_FILE_1} 2>&1 &
+	sleep 30
 
 run: prepare build-meta
 	$(CERESDB_TEST_BINARY)
