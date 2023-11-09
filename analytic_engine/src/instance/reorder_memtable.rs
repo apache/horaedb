@@ -39,7 +39,7 @@ use datafusion::{
         execute_stream, DisplayAs, DisplayFormatType, ExecutionPlan, Partitioning,
         RecordBatchStream as DfRecordBatchStream, SendableRecordBatchStream, Statistics,
     },
-    prelude::{col, Expr, SessionConfig, SessionContext},
+    prelude::{ident, Expr, SessionConfig, SessionContext},
     sql::TableReference,
 };
 use futures::{Stream, StreamExt};
@@ -241,7 +241,7 @@ impl Reorder {
         let columns = schema.columns();
         let sort_exprs = sort_by_col_idx
             .iter()
-            .map(|i| col(&columns[*i].name).sort(true, true))
+            .map(|i| ident(&columns[*i].name).sort(true, true))
             .collect::<Vec<_>>();
         let df_plan = LogicalPlanBuilder::scan(DUMMY_TABLE_NAME, source, None)?
             .sort(sort_exprs)?
