@@ -326,20 +326,12 @@ impl Schema for SchemaImpl {
         // Do real create table.
         // Partition table is not stored in ShardTableManager.
         if request.params.partition_info.is_none() {
-            let shard =
-                self.shard_set
-                    .get(request.shard_id)
-                    .with_context(|| schema::CreateTable {
-                        request: request.clone(),
-                        msg: "shard not found".to_string(),
-                    })?;
-
-            // TODO: seems unnecessary?
-            let _ = shard
-                .find_table(&request.params.schema_name, &request.params.table_name)
+            let _ = self
+                .shard_set
+                .get(request.shard_id)
                 .with_context(|| schema::CreateTable {
                     request: request.clone(),
-                    msg: "table not found in shard".to_string(),
+                    msg: "shard not found".to_string(),
                 })?;
         }
         let request = request.into_engine_create_request(None, self.schema_id);
