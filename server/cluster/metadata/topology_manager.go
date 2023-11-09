@@ -508,7 +508,8 @@ func (m *TopologyManagerImpl) UpdateShardVersionWithExpect(ctx context.Context, 
 		return errors.WithMessage(err, "storage update shard view")
 	}
 
-	m.shardTablesMapping[shardID] = shardView
+	// Update shard view into memory.
+	m.shardTablesMapping[shardID] = &newShardView
 
 	return nil
 }
