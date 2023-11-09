@@ -36,7 +36,7 @@ func main() {
 		panic(err)
 	}
 
-	if err = checkAddColumn(ctx, client); err != nil {
+	if err = checkPartitionTableAddColumn(ctx, client); err != nil {
 		panic(err)
 	}
 

@@ -7,56 +7,77 @@ import (
 	"github.com/CeresDB/ceresdb-client-go/ceresdb"
 )
 
-func checkAddColumn(ctx context.Context, client ceresdb.Client) error {
+const fieldName = "b"
+const tagName = "btag"
+const timestampName = "t"
+
+func checkPartitionTableAddColumn(ctx context.Context, client ceresdb.Client) error {
 	err := dropTable(ctx, client, partitionTable)
 	if err != nil {
 		return err
 	}
 
-	_, err = ddl(ctx, client, partitionTable, "CREATE TABLE `godemoPartition`(\n    `name`string TAG,\n    `id` int TAG,\n    `value` int64 NOT NULL,\n    `t` timestamp NOT NULL,\n    TIMESTAMP KEY(t)\n    ) PARTITION BY KEY(name) PARTITIONS 4 ENGINE = Analytic")
+	_, err = ddl(ctx, client, partitionTable, fmt.Sprintf(
+		"CREATE TABLE `%s`(   "+
+			"`name`string TAG,"+
+			"`id` int TAG,"+
+			"`value` int64 NOT NULL,"+
+			"`t` timestamp NOT NULL,"+
+			"TIMESTAMP KEY(t)) "+
+			"PARTITION BY KEY(name) PARTITIONS 4 ENGINE = Analytic", partitionTable))
 	if err != nil {
 		return err
 	}
 
-	_, err = ddl(ctx, client, partitionTable, "ALTER TABLE `godemoPartition` ADD COLUMN (b string);")
+	_, err = ddl(ctx, client, partitionTable, fmt.Sprintf("ALTER TABLE `%s` ADD COLUMN (%s string);", partitionTable, fieldName))
 	if err != nil {
 		return err
 	}
 
 	ts := currentMS()
-	writePartitionTable(ctx, client, ts)
 
-	if err := writePartitionTable(ctx, client, ts); err != nil {
+	// First write will fail, because the schema is not updated yet.
+	// Currently, write failed will update the schema.
+	err = writePartitionTableNewField(ctx, client, ts, fieldName)
+	if err == nil {
+		panic("first write should fail")
+	}
+
+	if err := writePartitionTableNewField(ctx, client, ts, fieldName); err != nil {
 		return err
 	}
 
-	_, err = ddl(ctx, client, partitionTable, "ALTER TABLE `godemoPartition` ADD COLUMN (bb string TAG);")
+	_, err = ddl(ctx, client, partitionTable, fmt.Sprintf("ALTER TABLE `%s` ADD COLUMN (%s string TAG);", partitionTable, tagName))
 	if err != nil {
 		return err
 	}
 
-	writePartitionTable2(ctx, client, ts)
+	// First write will fail, because the schema is not updated yet.
+	// Currently, write failed will update the schema.
+	err = writePartitionTableNewTag(ctx, client, ts, tagName)
+	if err == nil {
+		panic("first write should fail")
+	}
 
-	if err := writePartitionTable2(ctx, client, ts); err != nil {
+	if err := writePartitionTableNewTag(ctx, client, ts, tagName); err != nil {
 		return err
 	}
 
-	if err := queryPartitionTable(ctx, client, ts, "t"); err != nil {
+	if err := queryPartitionTable(ctx, client, ts, timestampName); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func writePartitionTable(ctx context.Context, client ceresdb.Client, ts int64) error {
+func writePartitionTableNewField(ctx context.Context, client ceresdb.Client, ts int64, fieldName string) error {
 	points := make([]ceresdb.Point, 0, 2)
 	for i := 0; i < 2; i++ {
 		builder := ceresdb.NewPointBuilder(partitionTable).
 			SetTimestamp(ts).
 			AddTag("name", ceresdb.NewStringValue(fmt.Sprintf("tag-%d", i))).
 			AddField("value", ceresdb.NewInt64Value(int64(i))).
-			//AddTag("bb", ceresdb.NewStringValue("sstag")).
-			AddField("b", ceresdb.NewStringValue("ss"))
+			AddField(fieldName, ceresdb.NewStringValue("ss"))
 
 		point, err := builder.Build()
 
@@ -79,15 +100,15 @@ func writePartitionTable(ctx context.Context, client ceresdb.Client, ts int64) e
 	return nil
 }
 
-func writePartitionTable2(ctx context.Context, client ceresdb.Client, ts int64) error {
+func writePartitionTableNewTag(ctx context.Context, client ceresdb.Client, ts int64, tagName string) error {
 	points := make([]ceresdb.Point, 0, 2)
 	for i := 0; i < 2; i++ {
 		builder := ceresdb.NewPointBuilder(partitionTable).
 			SetTimestamp(ts).
 			AddTag("name", ceresdb.NewStringValue(fmt.Sprintf("tag-%d", i))).
 			AddField("value", ceresdb.NewInt64Value(int64(i))).
-			AddTag("bb", ceresdb.NewStringValue("sstag")).
-			AddField("b", ceresdb.NewStringValue("ss"))
+			AddTag(tagName, ceresdb.NewStringValue("sstag")).
+			AddField(fieldName, ceresdb.NewStringValue("ss"))
 
 		point, err := builder.Build()
 
@@ -111,7 +132,7 @@ func writePartitionTable2(ctx context.Context, client ceresdb.Client, ts int64) 
 }
 
 func queryPartitionTable(ctx context.Context, client ceresdb.Client, ts int64, timestampName string) error {
-	sql := fmt.Sprintf("select t, name, value,b,bb from %s where %s = %d order by name,bb", partitionTable, timestampName, ts)
+	sql := fmt.Sprintf("select t, name, value,%s,%s from %s where %s = %d order by name,%s", fieldName, tagName, partitionTable, timestampName, ts, tagName)
 
 	resp, err := client.SQLQuery(ctx, ceresdb.SQLQueryRequest{
 		Tables: []string{partitionTable},
