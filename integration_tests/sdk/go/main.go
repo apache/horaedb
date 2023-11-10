@@ -36,6 +36,10 @@ func main() {
 		panic(err)
 	}
 
+	if err = checkPartitionTableAddColumn(ctx, client); err != nil {
+		panic(err)
+	}
+
 	fmt.Println("Test done")
 }
 
