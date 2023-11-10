@@ -186,6 +186,15 @@ impl Builder {
         self
     }
 
+    /// Sets the size of the stack allocated to the worker threads the Runtime
+    /// will use.
+    ///
+    /// This can be any number above 0.
+    pub fn stack_size(&mut self, val: usize) -> &mut Self {
+        self.builder.thread_stack_size(val);
+        self
+    }
+
     /// Sets name of threads spawned by the Runtime thread pool
     pub fn thread_name(&mut self, val: impl Into<String>) -> &mut Self {
         self.thread_name = val.into();

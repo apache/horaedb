@@ -154,7 +154,7 @@ impl Default for WalEncodeConfig {
     fn default() -> Self {
         Self {
             num_bytes_compress_threshold: ReadableSize::kb(1),
-            format: WalEncodeFormat::RowWise,
+            format: WalEncodeFormat::Columnar,
         }
     }
 }
