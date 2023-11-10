@@ -37,7 +37,7 @@ func checkPartitionTableAddColumn(ctx context.Context, client ceresdb.Client) er
 	ts := currentMS()
 
 	// First write will fail, because the schema is not updated yet.
-	// Currently, write failed will update the schema.
+	// Currently, ceresdb will update the schema when write failed.
 	err = writePartitionTableNewField(ctx, client, ts, fieldName)
 	if err == nil {
 		panic("first write should fail")

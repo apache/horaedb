@@ -527,7 +527,7 @@ impl Proxy {
                 Err(e) => {
                     // TODO: remove this logic.
                     // Refer to https://github.com/CeresDB/ceresdb/issues/1248.
-                    if e.error_message().contains("decode row group payload") {
+                    if need_evict_partition_table(e.error_message()) {
                         warn!("Evict partition table:{}", table.name());
                         self.evict_partition_table(table, catalog_name, &schema_name)
                             .await;
@@ -596,9 +596,7 @@ impl Proxy {
                 Err(e) => {
                     // TODO: remove this logic.
                     // Refer to https://github.com/CeresDB/ceresdb/issues/1248.
-                    if e.error_message().contains("Can't find field")
-                        | e.error_message().contains("Can't find tag")
-                    {
+                    if need_evict_partition_table(e.error_message()) {
                         warn!("Evict partition table:{}", table_clone.name());
                         self.evict_partition_table(table_clone, &catalog, &schema)
                             .await;
@@ -1014,6 +1012,12 @@ fn convert_proto_value_to_datum(
         }
             .fail(),
     }
+}
+
+fn need_evict_partition_table(msg: String) -> bool {
+    msg.contains("decode row group payload")
+        || msg.contains("Can't find field")
+        || msg.contains("Can't find tag")
 }
 
 #[cfg(test)]
