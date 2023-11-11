@@ -157,8 +157,6 @@ pub struct TableData {
     pub name: String,
     /// Schema of this table
     schema: Mutex<Schema>,
-    /// Name of catalog
-    pub catalog_name: String,
     /// Space id of this table
     pub space_id: SpaceId,
 
@@ -273,7 +271,6 @@ impl TableData {
         config: TableConfig,
         purger: &FilePurger,
         mem_size_options: MemSizeOptions,
-        catalog_name: String,
     ) -> Result<Self> {
         // TODO: Validate TableOptions, such as bucket_duration >=
         // segment_duration and bucket_duration is aligned to segment_duration
@@ -318,7 +315,6 @@ impl TableData {
             memtable_factory,
             mem_usage_collector: mem_size_options.collector,
             current_version,
-            catalog_name,
             last_sequence: AtomicU64::new(0),
             last_memtable_id: AtomicU64::new(0),
             allocator: IdAllocator::new(0, 0, DEFAULT_ALLOC_STEP),
@@ -365,7 +361,6 @@ impl TableData {
             id: add_meta.table_id,
             name: add_meta.table_name,
             schema: Mutex::new(add_meta.schema),
-            catalog_name: add_meta.catalog_name,
             space_id: add_meta.space_id,
             mutable_limit,
             mutable_limit_write_buffer_ratio: preflush_write_buffer_size_ratio,
@@ -924,7 +919,6 @@ pub mod tests {
                 },
                 &purger,
                 mem_size_options,
-                params.catalog_name.clone()
             )
             .unwrap()
         }

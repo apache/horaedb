@@ -118,7 +118,6 @@ impl TableMetaSetImpl {
                 space_id,
                 table_id,
                 table_name,
-                catalog_name,
                 schema,
                 opts,
             }) => {
@@ -153,7 +152,6 @@ impl TableMetaSetImpl {
                         },
                         &self.file_purger,
                         mem_size_options,
-                        catalog_name
                     )
                     .box_err()
                     .with_context(|| ApplyUpdateToTableWithCause {
@@ -345,7 +343,6 @@ impl TableMetaSet for TableMetaSetImpl {
                 space_id,
                 table_id,
                 table_name: table_data.name.to_string(),
-                catalog_name: table_data.catalog_name.to_string(),
                 schema: table_data.schema(),
                 opts: table_data.table_options().as_ref().clone(),
             };
