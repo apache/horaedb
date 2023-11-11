@@ -344,6 +344,7 @@ impl FlushTask {
                 let edit_req = MetaEditRequest {
                     shard_info: table_data.shard_info,
                     meta_edit: MetaEdit::Update(meta_update),
+                    schema_id: table_data.schema_id,
                 };
                 self.space_store
                     .manifest
@@ -364,6 +365,7 @@ impl FlushTask {
                 MetaEditRequest {
                     shard_info: table_data.shard_info,
                     meta_edit: MetaEdit::Update(meta_update),
+                    schema_id: table_data.schema_id,
                 }
             };
             self.space_store
@@ -466,6 +468,7 @@ impl FlushTask {
             MetaEditRequest {
                 shard_info: self.table_data.shard_info,
                 meta_edit: MetaEdit::Update(meta_update),
+                schema_id: self.table_data.schema_id,
             }
         };
         // Update manifest and remove immutable memtables
@@ -805,6 +808,7 @@ impl SpaceStore {
             MetaEditRequest {
                 shard_info: table_data.shard_info,
                 meta_edit: MetaEdit::Update(meta_update),
+                schema_id: table_data.schema_id,
             }
         };
         self.manifest

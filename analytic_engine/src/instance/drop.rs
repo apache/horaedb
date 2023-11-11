@@ -84,6 +84,7 @@ impl Dropper {
             MetaEditRequest {
                 shard_info: table_data.shard_info,
                 meta_edit: MetaEdit::Update(meta_update),
+                schema_id: request.schema_id,
             }
         };
         self.space_store

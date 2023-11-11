@@ -448,9 +448,11 @@ impl ShardOpener {
 
         // Load manifest, also create a new snapshot at startup.
         let table_id = table_def.id;
-        let space_id = engine::build_space_id(table_def.schema_id);
+        let schema_id = table_def.schema_id;
+        let space_id = engine::build_space_id(schema_id);
         let load_req = LoadRequest {
             space_id,
+            schema_id,
             table_id,
             shard_id,
         };

@@ -25,7 +25,7 @@ use common_types::{
 use macros::define_result;
 use prost::Message;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_engine::table::TableId;
+use table_engine::table::{SchemaId, TableId};
 use wal::log_batch::{Payload, PayloadDecoder};
 
 use crate::{
@@ -530,4 +530,5 @@ impl TryFrom<MetaEdit> for MetaSnapshot {
 pub struct MetaEditRequest {
     pub shard_info: TableShardInfo,
     pub meta_edit: MetaEdit,
+    pub schema_id: SchemaId,
 }

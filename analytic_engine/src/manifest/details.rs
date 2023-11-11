@@ -491,6 +491,7 @@ impl Manifest for ManifestImpl {
         let MetaEditRequest {
             shard_info,
             meta_edit,
+            schema_id: _,
         } = request.clone();
 
         let meta_update = MetaUpdate::try_from(meta_edit).box_err()?;
@@ -546,6 +547,7 @@ impl Manifest for ManifestImpl {
             let request = MetaEditRequest {
                 shard_info: TableShardInfo::new(load_req.shard_id),
                 meta_edit,
+                schema_id: load_req.schema_id,
             };
             self.table_meta_set.apply_edit_to_table(request)?;
         }
@@ -817,6 +819,7 @@ mod tests {
             let MetaEditRequest {
                 shard_info: _,
                 meta_edit,
+                schema_id,
             } = request;
 
             match meta_edit {
@@ -845,6 +848,7 @@ mod tests {
                     id: TableId::new(0),
                     name: "test_table".to_string(),
                     schema: default_schema(),
+                    schema_id,
                     shard_id: 0,
                 },
                 table_opts,
@@ -1012,6 +1016,7 @@ mod tests {
                 MetaEditRequest {
                     shard_info,
                     meta_edit: MetaEdit::Update(add_table.clone()),
+                    schema_id: self.schema_id,
                 }
             };
 
@@ -1036,6 +1041,7 @@ mod tests {
                 MetaEditRequest {
                     shard_info,
                     meta_edit: MetaEdit::Update(drop_table.clone()),
+                    schema_id: self.schema_id,
                 }
             };
             manifest.apply_edit(edit_req).await.unwrap();
@@ -1060,6 +1066,7 @@ mod tests {
                 MetaEditRequest {
                     shard_info,
                     meta_edit: MetaEdit::Update(version_edit.clone()),
+                    schema_id: self.schema_id,
                 }
             };
             manifest.apply_edit(edit_req).await.unwrap();
@@ -1115,6 +1122,7 @@ mod tests {
                 MetaEditRequest {
                     shard_info,
                     meta_edit: MetaEdit::Update(alter_options.clone()),
+                    schema_id: self.schema_id,
                 }
             };
             manifest.apply_edit(edit_req).await.unwrap();
@@ -1137,6 +1145,7 @@ mod tests {
                 MetaEditRequest {
                     shard_info,
                     meta_edit: MetaEdit::Update(alter_schema.clone()),
+                    schema_id: self.schema_id,
                 }
             };
 
@@ -1164,6 +1173,7 @@ mod tests {
                 table_id,
                 shard_id: DEFAULT_SHARD_ID,
                 space_id: ctx.schema_id.as_u32(),
+                schema_id: ctx.schema_id,
             };
             let expected_table_manifest_data = manifest_data_builder.build();
             ctx.check_table_manifest_data(&load_req, &expected_table_manifest_data)
@@ -1255,6 +1265,7 @@ mod tests {
             .await;
             let load_req = LoadRequest {
                 space_id: ctx.schema_id.as_u32(),
+                schema_id: ctx.schema_id,
                 table_id,
                 shard_id: DEFAULT_SHARD_ID,
             };
@@ -1275,6 +1286,7 @@ mod tests {
             let table_id = ctx.alloc_table_id();
             let load_req = LoadRequest {
                 space_id: ctx.schema_id.as_u32(),
+                schema_id: ctx.schema_id,
                 table_id,
                 shard_id: DEFAULT_SHARD_ID,
             };
@@ -1431,6 +1443,7 @@ mod tests {
         let log_store = MemLogStore::from_updates(&input_updates);
         let snapshot_store = MemSnapshotStore::new();
         let snapshot_data_provider = ctx.mock_provider.clone();
+        let schema_id = ctx.schema_id;
 
         ctx.runtime.block_on(async move {
             let log_store = log_store;
@@ -1445,6 +1458,7 @@ mod tests {
                 let request = MetaEditRequest {
                     shard_info: TableShardInfo::new(DEFAULT_SHARD_ID),
                     meta_edit: MetaEdit::Update(update.clone()),
+                    schema_id,
                 };
                 snapshot_provider.apply_edit_to_table(request).unwrap();
             }
@@ -1482,6 +1496,7 @@ mod tests {
                 let request = MetaEditRequest {
                     shard_info: TableShardInfo::new(DEFAULT_SHARD_ID),
                     meta_edit: MetaEdit::Update(update.clone()),
+                    schema_id,
                 };
                 snapshot_provider.apply_edit_to_table(request).unwrap();
             }

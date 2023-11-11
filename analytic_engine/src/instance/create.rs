@@ -96,6 +96,7 @@ impl Instance {
             MetaEditRequest {
                 shard_info: TableShardInfo::new(request.shard_id),
                 meta_edit: MetaEdit::Update(meta_update),
+                schema_id: request.schema_id,
             }
         };
         self.space_store
