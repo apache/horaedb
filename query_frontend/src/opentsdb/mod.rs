@@ -1,10 +1,7 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use common_types::{
-    schema::{Schema, TSID_COLUMN},
+    schema::Schema,
     time::{TimeRange, Timestamp},
 };
 use datafusion::{
@@ -27,7 +24,7 @@ use crate::{
 
 pub mod types;
 
-const DEFAULT_FIELD: &str = "value";
+pub const DEFAULT_FIELD: &str = "value";
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -103,15 +100,6 @@ fn normalize_filters(
     Ok((groupby_col_names, exprs))
 }
 
-fn build_projection(tags: &[String], timestamp_col_name: &str) -> Vec<Expr> {
-    let mut projections = tags.iter().map(ident).collect::<HashSet<_>>();
-    projections.insert(ident(timestamp_col_name));
-    projections.insert(ident(TSID_COLUMN));
-    projections.insert(ident(DEFAULT_FIELD));
-
-    projections.into_iter().collect()
-}
-
 fn build_aggr_expr(aggr: &str) -> Result<Option<Expr>> {
     // http://opentsdb.net/docs/build/html/user_guide/query/aggregators.html
     let aggr = match aggr {
@@ -145,7 +133,6 @@ pub fn subquery_to_plan<P: MetaProvider>(
         .filter(|column| column.is_tag)
         .map(|column| column.name.clone())
         .collect::<Vec<_>>();
-    let projection_exprs = build_projection(&tags, timestamp_col_name);
     let (mut groupby_col_names, filter_exprs) = {
         let (groupby, mut filters) = normalize_filters(sub_query.tags, sub_query.filters)?;
         filters.push(timerange_to_expr(query_range, timestamp_col_name));
@@ -156,7 +143,6 @@ pub fn subquery_to_plan<P: MetaProvider>(
     let sort_exprs = default_sort_exprs(timestamp_col_name);
     let mut builder = LogicalPlanBuilder::scan(metric.clone(), table_provider, None)?
         .filter(filter_exprs)?
-        .project(projection_exprs)?
         .sort(sort_exprs)?;
 
     match build_aggr_expr(&sub_query.aggregator)? {
