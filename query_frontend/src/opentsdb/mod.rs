@@ -1,3 +1,17 @@
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use std::{collections::HashMap, sync::Arc};
 
 use common_types::{
@@ -126,6 +140,7 @@ pub fn subquery_to_plan<P: MetaProvider>(
         .get_table_provider(TableReference::bare(&metric))
         .context(TableProviderNotFound { name: &metric })?;
     let schema = Schema::try_from(table_provider.schema()).context(BuildTableSchema)?;
+
     let timestamp_col_name = schema.timestamp_name();
     let mut tags = schema
         .columns()
@@ -139,8 +154,8 @@ pub fn subquery_to_plan<P: MetaProvider>(
         let anded_filters = conjunction(filters).expect("at least one filter(timestamp)");
         (groupby, anded_filters)
     };
-
     let sort_exprs = default_sort_exprs(timestamp_col_name);
+
     let mut builder = LogicalPlanBuilder::scan(metric.clone(), table_provider, None)?
         .filter(filter_exprs)?
         .sort(sort_exprs)?;
@@ -199,4 +214,193 @@ pub fn opentsdb_query_to_plan<P: MetaProvider>(
         .collect::<Result<Vec<_>>>()?;
 
     Ok(OpentsdbQueryPlan { plans })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use crate::tests::MockMetaProvider;
+
+    #[test]
+    fn test_normalize_filters() {
+        let mut tags = HashMap::new();
+        tags.insert("tag1".to_string(), "tag1_value".to_string());
+
+        let (groupby_col_names, exprs) = normalize_filters(tags.clone(), vec![]).unwrap();
+        assert_eq!(groupby_col_names, vec!["tag1"]);
+        assert_eq!(exprs.len(), 1);
+
+        let (groupby_col_names, exprs) = normalize_filters(
+            tags.clone(),
+            vec![Filter {
+                r#type: "literal_or".to_string(),
+                tagk: "tag2".to_string(),
+                filter: "tag2_value|tag2_value2".to_string(),
+                group_by: false,
+            }],
+        )
+        .unwrap();
+        assert_eq!(groupby_col_names, vec!["tag1"]);
+        assert_eq!(exprs.len(), 2);
+
+        let (groupby_col_names, exprs) = normalize_filters(
+            tags.clone(),
+            vec![Filter {
+                r#type: "literal_or".to_string(),
+                tagk: "tag2".to_string(),
+                filter: "tag2_value|tag2_value2".to_string(),
+                group_by: true,
+            }],
+        )
+        .unwrap();
+        assert_eq!(groupby_col_names, vec!["tag1", "tag2"]);
+        assert_eq!(exprs.len(), 2);
+
+        let (groupby_col_names, exprs) = normalize_filters(
+            tags.clone(),
+            vec![Filter {
+                r#type: "not_literal_or".to_string(),
+                tagk: "tag2".to_string(),
+                filter: "tag2_value|tag2_value2".to_string(),
+                group_by: false,
+            }],
+        )
+        .unwrap();
+        assert_eq!(groupby_col_names, vec!["tag1"]);
+        assert_eq!(exprs.len(), 2);
+    }
+
+    #[test]
+    fn test_build_aggr_expr() {
+        let aggr = build_aggr_expr("sum").unwrap().unwrap();
+        assert_eq!(aggr.to_string(), "SUM(value) AS value");
+
+        let aggr = build_aggr_expr("count").unwrap().unwrap();
+        assert_eq!(aggr.to_string(), "COUNT(value) AS value");
+
+        let aggr = build_aggr_expr("avg").unwrap().unwrap();
+        assert_eq!(aggr.to_string(), "AVG(value) AS value");
+
+        let aggr = build_aggr_expr("min").unwrap().unwrap();
+        assert_eq!(aggr.to_string(), "MIN(value) AS value");
+
+        let aggr = build_aggr_expr("max").unwrap().unwrap();
+        assert_eq!(aggr.to_string(), "MAX(value) AS value");
+
+        let aggr = build_aggr_expr("dev").unwrap().unwrap();
+        assert_eq!(aggr.to_string(), "STDDEV(value) AS value");
+
+        let aggr = build_aggr_expr("none").unwrap();
+        assert!(aggr.is_none());
+
+        let err = build_aggr_expr("invalid").unwrap_err();
+        assert!(err.to_string().contains("Invalid aggregator"));
+    }
+
+    #[test]
+    fn test_subquery_to_plan() {
+        let meta_provider = MockMetaProvider::default();
+
+        let query_range = TimeRange::new(Timestamp::new(0), Timestamp::new(100)).unwrap();
+        let sub_query = SubQuery {
+            metric: "metric".to_string(),
+            aggregator: "sum".to_string(),
+            rate: false,
+            downsample: None,
+            tags: vec![("tag1".to_string(), "tag1_value".to_string())]
+                .into_iter()
+                .collect(),
+            filters: vec![Filter {
+                r#type: "literal_or".to_string(),
+                tagk: "tag2".to_string(),
+                filter: "tag2_value|tag2_value2".to_string(),
+                group_by: true,
+            }],
+        };
+
+        let plan = subquery_to_plan(
+            ContextProviderAdapter::new(&meta_provider, 1, &Default::default()),
+            &query_range,
+            sub_query,
+        )
+        .unwrap();
+
+        assert_eq!(plan.metric, "metric");
+        assert_eq!(plan.field_col_name, "value");
+        assert_eq!(plan.timestamp_col_name, "timestamp");
+        assert_eq!(plan.tags, vec!["tag1", "tag2"]);
+        assert_eq!(plan.aggregated_tags, vec!["tag1", "tag2"]);
+
+        let df_plan = match plan.plan {
+            Plan::Query(QueryPlan { df_plan, .. }) => df_plan,
+            _ => panic!("expect query plan"),
+        };
+        assert_eq!(df_plan.schema().fields().len(), 4);
+    }
+
+    #[test]
+    fn test_opentsdb_query_to_plan() {
+        let meta_provider = MockMetaProvider::default();
+
+        let query = QueryRequest {
+            start: 0,
+            end: 100,
+            queries: vec![
+                SubQuery {
+                    metric: "metric".to_string(),
+                    aggregator: "none".to_string(),
+                    rate: false,
+                    downsample: None,
+                    tags: vec![("tag1".to_string(), "tag1_value".to_string())]
+                        .into_iter()
+                        .collect(),
+                    filters: vec![],
+                },
+                SubQuery {
+                    metric: "metric".to_string(),
+                    aggregator: "sum".to_string(),
+                    rate: false,
+                    downsample: None,
+                    tags: vec![("tag1".to_string(), "tag1_value".to_string())]
+                        .into_iter()
+                        .collect(),
+                    filters: vec![],
+                },
+            ],
+            ms_resolution: false,
+        };
+
+        let plan =
+            opentsdb_query_to_plan(query, &meta_provider, 1, &DynamicConfig::default()).unwrap();
+
+        assert_eq!(plan.plans.len(), 2);
+
+        let plan0 = &plan.plans[0];
+        assert_eq!(plan0.metric, "metric");
+        assert_eq!(plan0.field_col_name, "value");
+        assert_eq!(plan0.timestamp_col_name, "timestamp");
+        assert_eq!(plan0.tags, vec!["tag1", "tag2"]);
+        assert!(plan0.aggregated_tags.is_empty());
+
+        let df_plan = match &plan0.plan {
+            Plan::Query(QueryPlan { df_plan, .. }) => df_plan,
+            _ => panic!("expect query plan"),
+        };
+        assert_eq!(df_plan.schema().fields().len(), 5);
+
+        let plan1 = &plan.plans[1];
+        assert_eq!(plan1.metric, "metric");
+        assert_eq!(plan1.field_col_name, "value");
+        assert_eq!(plan1.timestamp_col_name, "timestamp");
+        assert_eq!(plan1.tags, vec!["tag1"]);
+        assert_eq!(plan1.aggregated_tags, vec!["tag1"]);
+
+        let df_plan = match &plan1.plan {
+            Plan::Query(QueryPlan { df_plan, .. }) => df_plan,
+            _ => panic!("expect query plan"),
+        };
+        assert_eq!(df_plan.schema().fields().len(), 3);
+    }
 }

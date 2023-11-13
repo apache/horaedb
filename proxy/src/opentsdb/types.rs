@@ -26,14 +26,13 @@ use common_types::{datum::DatumKind, record_batch::RecordBatch, schema::RecordSc
 use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
+use query_frontend::opentsdb::DEFAULT_FIELD;
 use serde::{Deserialize, Serialize};
 use serde_json::from_slice;
 use snafu::{ensure, OptionExt, ResultExt};
 use time_ext::try_to_millis;
 
 use crate::error::{ErrNoCause, ErrWithCause, InternalNoCause, Result};
-
-const OPENTSDB_DEFAULT_FIELD: &str = "value";
 
 #[derive(Debug)]
 pub struct PutRequest {
@@ -142,7 +141,7 @@ pub(crate) fn convert_put_request(req: PutRequest) -> Result<Vec<WriteTableReque
         let mut req = WriteTableRequest {
             table: metric,
             tag_names,
-            field_names: vec![String::from(OPENTSDB_DEFAULT_FIELD)],
+            field_names: vec![String::from(DEFAULT_FIELD)],
             entries: Vec::with_capacity(points.len()),
         };
 
@@ -439,7 +438,7 @@ mod tests {
 
     use super::*;
 
-    fn build_schema(tags: &[String]) -> Schema {
+    fn build_schema() -> Schema {
         schema::Builder::new()
             .auto_increment_column_id(true)
             .add_key_column(
@@ -461,14 +460,14 @@ mod tests {
             )
             .unwrap()
             .add_normal_column(
-                column_schema::Builder::new(tags[0].clone(), DatumKind::String)
+                column_schema::Builder::new("tag1".to_string(), DatumKind::String)
                     .is_tag(true)
                     .build()
                     .unwrap(),
             )
             .unwrap()
             .add_normal_column(
-                column_schema::Builder::new(tags[1].clone(), DatumKind::String)
+                column_schema::Builder::new("tag2".to_string(), DatumKind::String)
                     .is_tag(true)
                     .build()
                     .unwrap(),
@@ -501,7 +500,7 @@ mod tests {
     fn test_convert_output_to_response() {
         let metric = "test".to_string();
         let tags = vec!["tag1".to_string(), "tag2".to_string()];
-        let schema = build_schema(&tags);
+        let schema = build_schema();
         let record_batch = build_record_batch(&schema);
         let result = convert_output_to_response(
             Output::Records(record_batch),
