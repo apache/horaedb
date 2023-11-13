@@ -96,6 +96,8 @@ pub struct RuntimeConfig {
     /// The size of the stack used by the read thread
     ///
     /// The size should be a set as a large number if the complex query exists.
+    /// TODO: this config may be removed in the future when the complex query
+    /// won't overflow the stack.
     pub read_thread_stack_size: ReadableSize,
     /// Runtime for writing data
     pub write_thread_num: usize,
