@@ -143,7 +143,7 @@ impl Preprocessor {
         plan: &Arc<dyn ExecutionPlan>,
         ctx: &Context,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        let resolver = self.dist_query_resolver_builder.build(ctx);
+        let mut resolver = self.dist_query_resolver_builder.build(ctx);
         resolver
             .resolve_partitioned_scan(plan.clone())
             .box_err()

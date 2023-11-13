@@ -146,14 +146,14 @@ impl DisplayAs for UnresolvedPartitionedScan {
 pub(crate) struct ResolvedPartitionedScan {
     pub remote_exec_ctx: Arc<RemoteExecContext>,
     pub pushdown_continue: bool,
-    pub metrics_collector: MetricsCollector,
+    pub metrics_collector: Option<MetricsCollector>,
 }
 
 impl ResolvedPartitionedScan {
     pub fn new(
         remote_executor: Arc<dyn RemotePhysicalPlanExecutor>,
         sut_table_plan_ctxs: Vec<SubTablePlanContext>,
-        metrics_collector: MetricsCollector,
+        metrics_collector: Option<MetricsCollector>,
     ) -> Self {
         let remote_exec_ctx = Arc::new(RemoteExecContext {
             executor: remote_executor,
@@ -166,7 +166,7 @@ impl ResolvedPartitionedScan {
     pub fn new_with_details(
         remote_exec_ctx: Arc<RemoteExecContext>,
         pushdown_continue: bool,
-        metrics_collector: MetricsCollector,
+        metrics_collector: Option<MetricsCollector>,
     ) -> Self {
         Self {
             remote_exec_ctx,
@@ -295,6 +295,12 @@ impl ExecutionPlan for ResolvedPartitionedScan {
     }
 
     fn children(&self) -> Vec<Arc<dyn ExecutionPlan>> {
+        // If this is a analyze plan, we should not collect metrics of children
+        // which have been send to remote, So we just return empty children.
+        if self.metrics_collector.is_some() {
+            return vec![];
+        }
+
         self.remote_exec_ctx
             .plan_ctxs
             .iter()
@@ -347,20 +353,25 @@ impl ExecutionPlan for ResolvedPartitionedScan {
     }
 
     fn metrics(&self) -> Option<MetricsSet> {
-        let mut metric_set = MetricsSet::new();
+        match &self.metrics_collector {
+            None => None,
+            Some(metrics_collector) => {
+                let mut metric_set = MetricsSet::new();
 
-        let mut format_visitor = FormatCollectorVisitor::default();
-        self.metrics_collector.visit(&mut format_visitor);
-        let metrics_desc = format_visitor.into_string();
-        metric_set.push(Arc::new(Metric::new(
-            MetricValue::Count {
-                name: format!("\n{metrics_desc}").into(),
-                count: Count::new(),
-            },
-            None,
-        )));
+                let mut format_visitor = FormatCollectorVisitor::default();
+                metrics_collector.visit(&mut format_visitor);
+                let metrics_desc = format_visitor.into_string();
+                metric_set.push(Arc::new(Metric::new(
+                    MetricValue::Count {
+                        name: format!("\n{metrics_desc}").into(),
+                        count: Count::new(),
+                    },
+                    None,
+                )));
 
-        Some(metric_set)
+                Some(metric_set)
+            }
+        }
     }
 }
 

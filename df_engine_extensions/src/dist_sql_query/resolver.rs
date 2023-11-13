@@ -18,7 +18,7 @@ use async_recursion::async_recursion;
 use catalog::manager::ManagerRef as CatalogManagerRef;
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
-    physical_plan::ExecutionPlan,
+    physical_plan::{analyze::AnalyzeExec, ExecutionPlan},
 };
 use table_engine::{remote::model::TableIdentifier, table::TableRef};
 
@@ -45,6 +45,7 @@ pub struct Resolver {
     remote_executor: RemotePhysicalPlanExecutorRef,
     catalog_manager: CatalogManagerRef,
     scan_builder: ExecutableScanBuilderRef,
+    is_analyze: bool,
 }
 
 impl Resolver {
@@ -57,6 +58,7 @@ impl Resolver {
             remote_executor,
             catalog_manager,
             scan_builder,
+            is_analyze: false,
         }
     }
 
@@ -96,7 +98,7 @@ impl Resolver {
     ///                      UnresolvedSubTableScan (send to remote node)
     /// ```
     pub fn resolve_partitioned_scan(
-        &self,
+        &mut self,
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
         let resolved_plan = self.resolve_partitioned_scan_internal(plan)?;
@@ -115,9 +117,14 @@ impl Resolver {
     }
 
     pub fn resolve_partitioned_scan_internal(
-        &self,
+        &mut self,
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
+        // Check if this plan is `AnalyzeExec`, if it is, we should collect metrics.
+        if plan.as_any().downcast_ref::<AnalyzeExec>().is_some() {
+            self.is_analyze = true;
+        }
+
         // Leave node, let's resolve it and return.
         if let Some(unresolved) = plan.as_any().downcast_ref::<UnresolvedPartitionedScan>() {
             let metrics_collector = unresolved.metrics_collector.clone();
@@ -138,7 +145,7 @@ impl Resolver {
             return Ok(Arc::new(ResolvedPartitionedScan::new(
                 self.remote_executor.clone(),
                 remote_plans,
-                metrics_collector,
+                self.is_analyze.then_some(metrics_collector),
             )));
         }
 
@@ -259,7 +266,7 @@ mod test {
     fn test_basic_partitioned_scan() {
         let ctx = TestContext::new();
         let plan = ctx.build_basic_partitioned_table_plan();
-        let resolver = ctx.resolver();
+        let mut resolver = ctx.resolver();
         let new_plan = displayable(resolver.resolve_partitioned_scan(plan).unwrap().as_ref())
             .indent(true)
             .to_string();
@@ -281,7 +288,7 @@ mod test {
     async fn test_unprocessed_plan() {
         let ctx = TestContext::new();
         let plan = ctx.build_unprocessed_plan();
-        let resolver = ctx.resolver();
+        let mut resolver = ctx.resolver();
 
         let original_plan_display = displayable(plan.as_ref()).indent(true).to_string();
 
@@ -304,7 +311,7 @@ mod test {
     fn test_aggr_push_down() {
         let ctx = TestContext::new();
         let plan = ctx.build_aggr_push_down_plan();
-        let resolver = ctx.resolver();
+        let mut resolver = ctx.resolver();
         let new_plan = displayable(resolver.resolve_partitioned_scan(plan).unwrap().as_ref())
             .indent(true)
             .to_string();
@@ -315,7 +322,7 @@ mod test {
     fn test_compounded_aggr_push_down() {
         let ctx = TestContext::new();
         let plan = ctx.build_compounded_aggr_push_down_plan();
-        let resolver = ctx.resolver();
+        let mut resolver = ctx.resolver();
         let new_plan = displayable(resolver.resolve_partitioned_scan(plan).unwrap().as_ref())
             .indent(true)
             .to_string();
@@ -326,7 +333,7 @@ mod test {
     fn test_node_with_multiple_partitioned_scan_children() {
         let ctx = TestContext::new();
         let plan = ctx.build_union_plan();
-        let resolver = ctx.resolver();
+        let mut resolver = ctx.resolver();
         let new_plan = displayable(resolver.resolve_partitioned_scan(plan).unwrap().as_ref())
             .indent(true)
             .to_string();
