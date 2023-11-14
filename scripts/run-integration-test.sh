@@ -25,4 +25,5 @@ git clone --depth 1 https://github.com/ceresdb/ceresdb.git --branch main
 
 # Run integration_test
 cd ceresdb/integration_tests
-BIN_PATH=${CERESMETA_BIN_PATH} make run-cluster
+
+CERESMETA_BIN_PATH=$CERESMETA_BIN_PATH make run-cluster

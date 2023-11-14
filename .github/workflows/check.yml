@@ -58,4 +58,4 @@ jobs:
       - run: |
           make install-tools
           sudo apt install -y protobuf-compiler
-          make integration_test
+          make integration-test
