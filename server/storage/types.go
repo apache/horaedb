@@ -176,7 +176,6 @@ type Cluster struct {
 	Name                        string
 	MinNodeCount                uint32
 	ShardTotal                  uint32
-	EnableSchedule              bool
 	TopologyType                TopologyType
 	ProcedureExecutingBatchSize uint32
 	CreatedAt                   uint64
@@ -290,7 +289,6 @@ func convertClusterPB(cluster *clusterpb.Cluster) Cluster {
 		Name:                        cluster.Name,
 		MinNodeCount:                cluster.MinNodeCount,
 		ShardTotal:                  cluster.ShardTotal,
-		EnableSchedule:              cluster.EnableSchedule,
 		TopologyType:                convertTopologyTypePB(cluster.TopologyType),
 		ProcedureExecutingBatchSize: cluster.ProcedureExecutingBatchSize,
 		CreatedAt:                   cluster.CreatedAt,
@@ -300,11 +298,12 @@ func convertClusterPB(cluster *clusterpb.Cluster) Cluster {
 
 func convertClusterToPB(cluster Cluster) clusterpb.Cluster {
 	return clusterpb.Cluster{
-		Id:                          uint32(cluster.ID),
-		Name:                        cluster.Name,
-		MinNodeCount:                cluster.MinNodeCount,
-		ShardTotal:                  cluster.ShardTotal,
-		EnableSchedule:              cluster.EnableSchedule,
+		Id:           uint32(cluster.ID),
+		Name:         cluster.Name,
+		MinNodeCount: cluster.MinNodeCount,
+		ShardTotal:   cluster.ShardTotal,
+		// TODO: add EnableSchedule to cluster
+		EnableSchedule:              false,
 		TopologyType:                convertTopologyTypeToPB(cluster.TopologyType),
 		ProcedureExecutingBatchSize: cluster.ProcedureExecutingBatchSize,
 		CreatedAt:                   cluster.CreatedAt,

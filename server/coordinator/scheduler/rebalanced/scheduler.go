@@ -42,10 +42,10 @@ type schedulerImpl struct {
 	// The lock is used to protect following fields.
 	lock sync.Mutex
 	// latestShardNodeMapping is used to record last stable shard topology,
-	// when deployMode is true, rebalancedShardScheduler will recover cluster according to the topology.
+	// when enableSchedule is true, rebalancedShardScheduler will recover cluster according to the topology.
 	latestShardNodeMapping map[storage.ShardID]metadata.RegisteredNode
-	// The `latestShardNodeMapping` will be used directly, if deployMode is set.
-	deployMode bool
+	// The `latestShardNodeMapping` will be used directly, if enableSchedule is set.
+	enableSchedule bool
 	// shardAffinityRule is used to control the shard distribution.
 	shardAffinityRule map[storage.ShardID]scheduler.ShardAffinity
 }
@@ -58,7 +58,7 @@ func NewShardScheduler(logger *zap.Logger, factory *coordinator.Factory, nodePic
 		procedureExecutingBatchSize: procedureExecutingBatchSize,
 		lock:                        sync.Mutex{},
 		latestShardNodeMapping:      map[storage.ShardID]metadata.RegisteredNode{},
-		deployMode:                  false,
+		enableSchedule:              false,
 		shardAffinityRule:           map[storage.ShardID]scheduler.ShardAffinity{},
 	}
 }
@@ -67,8 +67,8 @@ func (r *schedulerImpl) Name() string {
 	return "rebalanced_scheduler"
 }
 
-func (r *schedulerImpl) UpdateDeployMode(_ context.Context, enable bool) {
-	r.updateDeployMode(enable)
+func (r *schedulerImpl) UpdateEnableSchedule(_ context.Context, enable bool) {
+	r.updateEnableSchedule(enable)
 }
 
 func (r *schedulerImpl) AddShardAffinityRule(_ context.Context, rule scheduler.ShardAffinityRule) error {
@@ -113,7 +113,7 @@ func (r *schedulerImpl) Schedule(ctx context.Context, clusterSnapshot metadata.S
 	var procedures []procedure.Procedure
 	var reasons strings.Builder
 
-	// ShardNodeMapping only update when deployMode is false.
+	// ShardNodeMapping only update when enableSchedule is false.
 	shardNodeMapping, err := r.generateLatestShardNodeMapping(ctx, clusterSnapshot)
 	if err != nil {
 		return emptySchedulerRes, nil
@@ -204,7 +204,7 @@ func (r *schedulerImpl) generateLatestShardNodeMapping(ctx context.Context, snap
 	defer r.lock.Unlock()
 	var err error
 	shardNodeMapping := r.latestShardNodeMapping
-	if !r.deployMode {
+	if !r.enableSchedule {
 		pickConfig := nodepicker.Config{
 			NumTotalShards:    numShards,
 			ShardAffinityRule: maps.Clone(r.shardAffinityRule),
@@ -219,9 +219,9 @@ func (r *schedulerImpl) generateLatestShardNodeMapping(ctx context.Context, snap
 	return shardNodeMapping, nil
 }
 
-func (r *schedulerImpl) updateDeployMode(deployMode bool) {
+func (r *schedulerImpl) updateEnableSchedule(enableSchedule bool) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	r.deployMode = deployMode
+	r.enableSchedule = enableSchedule
 }

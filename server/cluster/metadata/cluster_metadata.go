@@ -601,13 +601,6 @@ func (c *ClusterMetadata) GetTotalShardNum() uint32 {
 	return c.metaData.ShardTotal
 }
 
-func (c *ClusterMetadata) GetEnableSchedule() bool {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-
-	return c.metaData.EnableSchedule
-}
-
 func (c *ClusterMetadata) GetTopologyType() storage.TopologyType {
 	c.lock.RLock()
 	defer c.lock.RUnlock()

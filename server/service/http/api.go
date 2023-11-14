@@ -86,8 +86,8 @@ func (a *API) NewAPIRouter() *Router {
 	router.DebugGet("/pprof/threadCreate", a.pprofThreadCreate)
 	router.DebugGet(fmt.Sprintf("/diagnose/:%s/shards", clusterNameParam), wrap(a.diagnoseShards, true, a.forwardClient))
 	router.DebugGet("/leader", wrap(a.getLeader, false, a.forwardClient))
-	router.DebugGet(fmt.Sprintf("/clusters/:%s/deployMode", clusterNameParam), wrap(a.getDeployMode, true, a.forwardClient))
-	router.DebugPut(fmt.Sprintf("/clusters/:%s/deployMode", clusterNameParam), wrap(a.updateDeployMode, true, a.forwardClient))
+	router.DebugGet(fmt.Sprintf("/clusters/:%s/enableSchedule", clusterNameParam), wrap(a.getEnableSchedule, true, a.forwardClient))
+	router.DebugPut(fmt.Sprintf("/clusters/:%s/enableSchedule", clusterNameParam), wrap(a.updateEnableSchedule, true, a.forwardClient))
 
 	// Register ETCD API.
 	router.Post("/etcd/promoteLearner", wrap(a.etcdAPI.promoteLearner, false, a.forwardClient))
@@ -344,7 +344,6 @@ func (a *API) updateCluster(req *http.Request) apiFuncResult {
 	}
 
 	if err := a.clusterManager.UpdateCluster(req.Context(), clusterName, metadata.UpdateClusterOpts{
-		EnableSchedule:              updateClusterRequest.EnableSchedule,
 		TopologyType:                topologyType,
 		ProcedureExecutingBatchSize: updateClusterRequest.ProcedureExecutingBatchSize,
 	}); err != nil {
@@ -515,7 +514,7 @@ func (a *API) queryTable(r *http.Request) apiFuncResult {
 	return okResult(tables)
 }
 
-func (a *API) getDeployMode(r *http.Request) apiFuncResult {
+func (a *API) getEnableSchedule(r *http.Request) apiFuncResult {
 	ctx := r.Context()
 	clusterName := Param(ctx, clusterNameParam)
 	if len(clusterName) == 0 {
@@ -527,15 +526,15 @@ func (a *API) getDeployMode(r *http.Request) apiFuncResult {
 		return errResult(ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", clusterName, err.Error()))
 	}
 
-	deployMode, err := c.GetSchedulerManager().GetDeployMode(r.Context())
+	enableSchedule, err := c.GetSchedulerManager().GetEnableSchedule(r.Context())
 	if err != nil {
-		return errResult(ErrGetDeployMode, err.Error())
+		return errResult(ErrGetEnableSchedule, err.Error())
 	}
 
-	return okResult(deployMode)
+	return okResult(enableSchedule)
 }
 
-func (a *API) updateDeployMode(r *http.Request) apiFuncResult {
+func (a *API) updateEnableSchedule(r *http.Request) apiFuncResult {
 	ctx := r.Context()
 	clusterName := Param(ctx, clusterNameParam)
 	if len(clusterName) == 0 {
@@ -547,15 +546,15 @@ func (a *API) updateDeployMode(r *http.Request) apiFuncResult {
 		return errResult(ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", clusterName, err.Error()))
 	}
 
-	var req UpdateDeployModeRequest
+	var req UpdateEnableScheduleRequest
 	err = json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		return errResult(ErrParseRequest, err.Error())
 	}
 
-	err = c.GetSchedulerManager().UpdateDeployMode(r.Context(), req.Enable)
+	err = c.GetSchedulerManager().UpdateEnableSchedule(r.Context(), req.Enable)
 	if err != nil {
-		return errResult(ErrUpdateDeployMode, err.Error())
+		return errResult(ErrUpdateEnableSchedule, err.Error())
 	}
 
 	return okResult(req.Enable)

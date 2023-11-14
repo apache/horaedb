@@ -47,8 +47,8 @@ func (s schedulerImpl) Name() string {
 	return "static_scheduler"
 }
 
-func (s schedulerImpl) UpdateDeployMode(_ context.Context, _ bool) {
-	// StaticTopologyShardScheduler do not need deployMode.
+func (s schedulerImpl) UpdateEnableSchedule(_ context.Context, _ bool) {
+	// StaticTopologyShardScheduler do not need EnableSchedule.
 }
 
 func (s schedulerImpl) AddShardAffinityRule(_ context.Context, _ scheduler.ShardAffinityRule) error {

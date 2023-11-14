@@ -46,8 +46,8 @@ func (r schedulerImpl) Name() string {
 	return "reopen_scheduler"
 }
 
-func (r schedulerImpl) UpdateDeployMode(_ context.Context, _ bool) {
-	// ReopenShardScheduler do not need deployMode.
+func (r schedulerImpl) UpdateEnableSchedule(_ context.Context, _ bool) {
+	// ReopenShardScheduler do not need enableSchedule.
 }
 
 func (r schedulerImpl) AddShardAffinityRule(_ context.Context, _ scheduler.ShardAffinityRule) error {

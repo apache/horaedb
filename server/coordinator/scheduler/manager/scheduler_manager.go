@@ -54,14 +54,12 @@ type SchedulerManager interface {
 
 	Stop(ctx context.Context) error
 
-	UpdateEnableSchedule(ctx context.Context, enableSchedule bool)
+	// UpdateEnableSchedule can only be used in dynamic mode, it will throw error when topology type is static.
+	// when enableSchedule is true, shard topology will not be updated, it is usually used in scenarios such as cluster deploy.
+	UpdateEnableSchedule(ctx context.Context, enable bool) error
 
-	// UpdateDeployMode can only be used in dynamic mode, it will throw error when topology type is static.
-	// when deploy mode is true, shard topology will not be updated, it is usually used in scenarios such as cluster deploy.
-	UpdateDeployMode(ctx context.Context, enable bool) error
-
-	// GetDeployMode can only be used in dynamic mode, it will throw error when topology type is static.
-	GetDeployMode(ctx context.Context) (bool, error)
+	// GetEnableSchedule can only be used in dynamic mode, it will throw error when topology type is static.
+	GetEnableSchedule(ctx context.Context) (bool, error)
 
 	// AddShardAffinityRule adds a shard affinity rule to the manager, and then apply it to the underlying schedulers.
 	AddShardAffinityRule(ctx context.Context, rule scheduler.ShardAffinityRule) error
@@ -91,14 +89,13 @@ type schedulerManagerImpl struct {
 	registerSchedulers          []scheduler.Scheduler
 	shardWatch                  watch.ShardWatch
 	isRunning                   atomic.Bool
-	enableSchedule              bool
 	topologyType                storage.TopologyType
 	procedureExecutingBatchSize uint32
-	deployMode                  bool
+	enableSchedule              bool
 	shardAffinities             map[storage.ShardID]scheduler.ShardAffinityRule
 }
 
-func NewManager(logger *zap.Logger, procedureManager procedure.Manager, factory *coordinator.Factory, clusterMetadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string, enableSchedule bool, topologyType storage.TopologyType, procedureExecutingBatchSize uint32) SchedulerManager {
+func NewManager(logger *zap.Logger, procedureManager procedure.Manager, factory *coordinator.Factory, clusterMetadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string, topologyType storage.TopologyType, procedureExecutingBatchSize uint32) SchedulerManager {
 	var shardWatch watch.ShardWatch
 	switch topologyType {
 	case storage.TopologyTypeDynamic:
@@ -120,10 +117,9 @@ func NewManager(logger *zap.Logger, procedureManager procedure.Manager, factory 
 		registerSchedulers:          []scheduler.Scheduler{},
 		shardWatch:                  shardWatch,
 		isRunning:                   atomic.Bool{},
-		enableSchedule:              enableSchedule,
 		topologyType:                topologyType,
 		procedureExecutingBatchSize: procedureExecutingBatchSize,
-		deployMode:                  false,
+		enableSchedule:              false,
 		shardAffinities:             make(map[storage.ShardID]scheduler.ShardAffinityRule),
 	}
 }
@@ -170,11 +166,6 @@ func (m *schedulerManagerImpl) Start(ctx context.Context) error {
 			clusterSnapshot := m.clusterMetadata.GetClusterSnapshot()
 			m.logger.Debug("scheduler manager invoke", zap.String("clusterSnapshot", fmt.Sprintf("%v", clusterSnapshot)))
 
-			// TODO: Perhaps these codes related to schedulerOperator need to be refactored.
-			// If schedulerOperator is turned on, the scheduler will only be scheduled in the non-stable state.
-			if !m.enableSchedule && clusterSnapshot.Topology.ClusterView.State == storage.ClusterStateStable {
-				continue
-			}
 			if clusterSnapshot.Topology.IsPrepareFinished() {
 				m.logger.Info("try to update cluster state to stable")
 				if err := m.clusterMetadata.UpdateClusterView(ctx, storage.ClusterStateStable, clusterSnapshot.Topology.ClusterView.ShardNodes); err != nil {
@@ -270,15 +261,7 @@ func (m *schedulerManagerImpl) Scheduler(ctx context.Context, clusterSnapshot me
 	return results
 }
 
-func (m *schedulerManagerImpl) UpdateEnableSchedule(_ context.Context, enableSchedule bool) {
-	m.lock.Lock()
-	m.enableSchedule = enableSchedule
-	m.lock.Unlock()
-
-	m.logger.Info("scheduler manager update enableSchedule", zap.Bool("enableSchedule", enableSchedule))
-}
-
-func (m *schedulerManagerImpl) UpdateDeployMode(ctx context.Context, enable bool) error {
+func (m *schedulerManagerImpl) UpdateEnableSchedule(ctx context.Context, enable bool) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
@@ -286,15 +269,15 @@ func (m *schedulerManagerImpl) UpdateDeployMode(ctx context.Context, enable bool
 		return ErrInvalidTopologyType.WithCausef("deploy mode could only update when topology type is dynamic")
 	}
 
-	m.deployMode = enable
+	m.enableSchedule = enable
 	for _, scheduler := range m.registerSchedulers {
-		scheduler.UpdateDeployMode(ctx, enable)
+		scheduler.UpdateEnableSchedule(ctx, enable)
 	}
 
 	return nil
 }
 
-func (m *schedulerManagerImpl) GetDeployMode(_ context.Context) (bool, error) {
+func (m *schedulerManagerImpl) GetEnableSchedule(_ context.Context) (bool, error) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
@@ -302,7 +285,7 @@ func (m *schedulerManagerImpl) GetDeployMode(_ context.Context) (bool, error) {
 		return false, ErrInvalidTopologyType.WithCausef("deploy mode could only get when topology type is dynamic")
 	}
 
-	return m.deployMode, nil
+	return m.enableSchedule, nil
 }
 
 func (m *schedulerManagerImpl) AddShardAffinityRule(ctx context.Context, rule scheduler.ShardAffinityRule) error {

@@ -71,7 +71,6 @@ type CreateClusterOpts struct {
 }
 
 type UpdateClusterOpts struct {
-	EnableSchedule              bool
 	TopologyType                storage.TopologyType
 	ProcedureExecutingBatchSize uint32
 }

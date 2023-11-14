@@ -43,9 +43,9 @@ type Scheduler interface {
 	Name() string
 	// Schedule will generate procedure based on current cluster snapshot, which will be submitted to ProcedureManager, and whether it is actually executed depends on the current state of ProcedureManager.
 	Schedule(ctx context.Context, clusterSnapshot metadata.Snapshot) (ScheduleResult, error)
-	// UpdateDeployMode is used to update deployMode for scheduler,
-	// DeployMode means that the cluster topology is locked and the mapping between shards and nodes cannot be changed.
-	UpdateDeployMode(ctx context.Context, enable bool)
+	// UpdateEnableSchedule is used to update enableSchedule for scheduler,
+	// EnableSchedule means that the cluster topology is locked and the mapping between shards and nodes cannot be changed.
+	UpdateEnableSchedule(ctx context.Context, enable bool)
 	AddShardAffinityRule(ctx context.Context, rule ShardAffinityRule) error
 	RemoveShardAffinityRule(ctx context.Context, shardID storage.ShardID) error
 	ListShardAffinityRule(ctx context.Context) (ShardAffinityRule, error)

@@ -45,14 +45,14 @@ func TestSchedulerManager(t *testing.T) {
 	_, client, _ := etcdutil.PrepareEtcdServerAndClient(t)
 
 	// Create scheduler manager with enableScheduler equal to false.
-	schedulerManager := manager.NewManager(zap.NewNop(), procedureManager, f, c.GetMetadata(), client, "/rootPath", false, storage.TopologyTypeStatic, 1)
+	schedulerManager := manager.NewManager(zap.NewNop(), procedureManager, f, c.GetMetadata(), client, "/rootPath", storage.TopologyTypeStatic, 1)
 	err = schedulerManager.Start(ctx)
 	re.NoError(err)
 	err = schedulerManager.Stop(ctx)
 	re.NoError(err)
 
 	// Create scheduler manager with static topology.
-	schedulerManager = manager.NewManager(zap.NewNop(), procedureManager, f, c.GetMetadata(), client, "/rootPath", true, storage.TopologyTypeStatic, 1)
+	schedulerManager = manager.NewManager(zap.NewNop(), procedureManager, f, c.GetMetadata(), client, "/rootPath", storage.TopologyTypeStatic, 1)
 	err = schedulerManager.Start(ctx)
 	re.NoError(err)
 	schedulers := schedulerManager.ListScheduler()
@@ -61,7 +61,7 @@ func TestSchedulerManager(t *testing.T) {
 	re.NoError(err)
 
 	// Create scheduler manager with dynamic topology.
-	schedulerManager = manager.NewManager(zap.NewNop(), procedureManager, f, c.GetMetadata(), client, "/rootPath", true, storage.TopologyTypeDynamic, 1)
+	schedulerManager = manager.NewManager(zap.NewNop(), procedureManager, f, c.GetMetadata(), client, "/rootPath", storage.TopologyTypeDynamic, 1)
 	err = schedulerManager.Start(ctx)
 	re.NoError(err)
 	schedulers = schedulerManager.ListScheduler()

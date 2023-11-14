@@ -153,7 +153,7 @@ type UpdateFlowLimiterRequest struct {
 	Enable bool `json:"enable"`
 }
 
-type UpdateDeployModeRequest struct {
+type UpdateEnableScheduleRequest struct {
 	Enable bool `json:"enable"`
 }
 
