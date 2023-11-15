@@ -147,10 +147,11 @@ impl TableScanBuilder for NormalTableScanBuilder {
 #[derive(Debug)]
 pub struct TableProviderAdapter<B> {
     table: TableRef,
+
     /// The schema of the table when this adapter is created, used as schema
     /// snapshot for read to avoid the reader sees different schema during
     /// query
-    read_schema: Schema,
+    current_table_schema: Schema,
 
     /// Table scan builder
     builder: B,
@@ -159,11 +160,11 @@ pub struct TableProviderAdapter<B> {
 impl<B: TableScanBuilder> TableProviderAdapter<B> {
     pub fn new(table: TableRef, builder: B) -> Self {
         // Take a snapshot of the schema
-        let read_schema = table.schema();
+        let current_table_schema = table.schema();
 
         Self {
             table,
-            read_schema,
+            current_table_schema,
             builder,
         }
     }
@@ -199,12 +200,14 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
         );
 
         let predicate = self.check_and_build_predicate_from_filters(filters);
-        let projected_schema = ProjectedSchema::new(self.read_schema.clone(), projection.cloned())
-            .map_err(|e| {
-                DataFusionError::Internal(format!(
-                    "Invalid projection, plan:{self:?}, projection:{projection:?}, err:{e:?}"
-                ))
-            })?;
+        let projected_schema =
+            ProjectedSchema::new(self.current_table_schema.clone(), projection.cloned()).map_err(
+                |e| {
+                    DataFusionError::Internal(format!(
+                        "Invalid projection, plan:{self:?}, projection:{projection:?}, err:{e:?}"
+                    ))
+                },
+            )?;
 
         let opts = ReadOptions {
             deadline,
@@ -230,7 +233,9 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
             .filter_map(|filter| {
                 let filter_cols = visitor::find_columns_by_expr(filter);
 
-                let support_pushdown = self.table.support_pushdown(&self.read_schema, &filter_cols);
+                let support_pushdown = self
+                    .table
+                    .support_pushdown(&self.current_table_schema, &filter_cols);
                 if support_pushdown {
                     Some(filter.clone())
                 } else {
@@ -241,7 +246,7 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
 
         PredicateBuilder::default()
             .add_pushdown_exprs(&pushdown_filters)
-            .extract_time_range(&self.read_schema, filters)
+            .extract_time_range(&self.current_table_schema, filters)
             .build()
     }
 
@@ -251,7 +256,9 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
             .map(|filter| {
                 let filter_cols = visitor::find_columns_by_expr(filter);
 
-                let support_pushdown = self.table.support_pushdown(&self.read_schema, &filter_cols);
+                let support_pushdown = self
+                    .table
+                    .support_pushdown(&self.current_table_schema, &filter_cols);
                 if support_pushdown {
                     TableProviderFilterPushDown::Exact
                 } else {
@@ -270,7 +277,7 @@ impl<B: TableScanBuilder> TableProvider for TableProviderAdapter<B> {
 
     fn schema(&self) -> SchemaRef {
         // We use the `read_schema` as the schema of this `TableProvider`
-        self.read_schema.clone().into_arrow_schema_ref()
+        self.current_table_schema.clone().into_arrow_schema_ref()
     }
 
     async fn scan(
@@ -303,7 +310,7 @@ impl<B: TableScanBuilder> TableSource for TableProviderAdapter<B> {
 
     /// Get a reference to the schema for this table
     fn schema(&self) -> SchemaRef {
-        self.read_schema.clone().into_arrow_schema_ref()
+        self.current_table_schema.clone().into_arrow_schema_ref()
     }
 
     /// Get the type of this table for metadata/catalog purposes.

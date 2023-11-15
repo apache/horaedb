@@ -274,8 +274,8 @@ mod tests {
     use codec::memcomparable::MemComparable;
     use common_types::{
         datum::Datum,
-        projected_schema::ProjectedSchema,
-        record_batch::RecordBatchWithKey,
+        projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
+        record_batch::FetchingRecordBatch,
         row::Row,
         schema::IndexInWriterSchema,
         tests::{build_row, build_schema},
@@ -294,7 +294,10 @@ mod tests {
     ) {
         let projection: Vec<usize> = (0..schema.num_columns()).collect();
         let projected_schema = ProjectedSchema::new(schema, Some(projection)).unwrap();
-
+        let fetching_schema = projected_schema.to_record_schema();
+        let table_schema = projected_schema.table_schema();
+        let record_fetching_ctx_builder =
+            RecordFetchingContextBuilder::new(fetching_schema, table_schema.clone(), None);
         let testcases = vec![
             (
                 // limited by sequence
@@ -302,7 +305,7 @@ mod tests {
                     start_user_key: Bound::Unbounded,
                     end_user_key: Bound::Unbounded,
                     sequence: 2,
-                    projected_schema: projected_schema.clone(),
+                    record_fetching_ctx_builder: record_fetching_ctx_builder.clone(),
                     need_dedup: true,
                     reverse: false,
                     metrics_collector: None,
@@ -322,7 +325,7 @@ mod tests {
                     start_user_key: Bound::Included(build_scan_key("a", 1)),
                     end_user_key: Bound::Excluded(build_scan_key("e", 5)),
                     sequence: 2,
-                    projected_schema: projected_schema.clone(),
+                    record_fetching_ctx_builder: record_fetching_ctx_builder.clone(),
                     need_dedup: true,
                     reverse: false,
                     metrics_collector: None,
@@ -341,7 +344,7 @@ mod tests {
                     start_user_key: Bound::Included(build_scan_key("a", 1)),
                     end_user_key: Bound::Excluded(build_scan_key("e", 5)),
                     sequence: 1,
-                    projected_schema,
+                    record_fetching_ctx_builder,
                     need_dedup: true,
                     reverse: false,
                     metrics_collector: None,
@@ -367,13 +370,16 @@ mod tests {
     ) {
         let projection: Vec<usize> = (0..2).collect();
         let projected_schema = ProjectedSchema::new(schema, Some(projection)).unwrap();
-
+        let fetching_schema = projected_schema.to_record_schema();
+        let table_schema = projected_schema.table_schema();
+        let record_fetching_ctx_builder =
+            RecordFetchingContextBuilder::new(fetching_schema, table_schema.clone(), None);
         let testcases = vec![(
             ScanRequest {
                 start_user_key: Bound::Included(build_scan_key("a", 1)),
                 end_user_key: Bound::Excluded(build_scan_key("e", 5)),
                 sequence: 2,
-                projected_schema,
+                record_fetching_ctx_builder,
                 need_dedup: true,
                 reverse: false,
                 metrics_collector: None,
@@ -457,7 +463,7 @@ mod tests {
         test_memtable_scan_for_projection(schema, memtable);
     }
 
-    fn check_iterator<T: Iterator<Item = Result<RecordBatchWithKey>>>(
+    fn check_iterator<T: Iterator<Item = Result<FetchingRecordBatch>>>(
         iter: T,
         expected_rows: Vec<Row>,
     ) {

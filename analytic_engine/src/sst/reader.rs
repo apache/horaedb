@@ -15,7 +15,7 @@
 //! Sst reader trait definition.
 
 use async_trait::async_trait;
-use common_types::record_batch::RecordBatchWithKey;
+use common_types::record_batch::FetchingRecordBatch;
 
 use crate::{prefetchable_stream::PrefetchableStream, sst::meta_data::SstMetaData};
 
@@ -105,7 +105,7 @@ pub trait SstReader {
 
     async fn read(
         &mut self,
-    ) -> Result<Box<dyn PrefetchableStream<Item = Result<RecordBatchWithKey>>>>;
+    ) -> Result<Box<dyn PrefetchableStream<Item = Result<FetchingRecordBatch>>>>;
 }
 
 #[cfg(test)]
@@ -117,7 +117,7 @@ pub mod tests {
 
     pub async fn check_stream<S>(stream: &mut S, expected_rows: Vec<Row>)
     where
-        S: PrefetchableStream<Item = Result<RecordBatchWithKey>> + Unpin,
+        S: PrefetchableStream<Item = Result<FetchingRecordBatch>> + Unpin,
     {
         let mut visited_rows = 0;
         while let Some(batch) = stream.fetch_next().await {

@@ -23,8 +23,8 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::{
-    projected_schema::ProjectedSchema,
-    record_batch::{RecordBatchWithKey, RecordBatchWithKeyBuilder},
+    projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
+    record_batch::{FetchingRecordBatch, FetchingRecordBatchBuilder},
     request_id::RequestId,
     row::RowViewOnBatch,
     schema::RecordSchemaWithKey,
@@ -39,9 +39,12 @@ use table_engine::{predicate::PredicateRef, table::TableId};
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 use crate::{
+    instance::SstReadOptionsBuilder,
     row_iter::{
-        record_batch_stream,
-        record_batch_stream::{BoxedPrefetchableRecordBatchStream, SequencedRecordBatch},
+        record_batch_stream::{
+            self, BoxedPrefetchableRecordBatchStream, MemtableStreamContext, SequencedRecordBatch,
+            SstStreamContext,
+        },
         IterOptions, RecordBatchWithKeyIterator,
     },
     space::SpaceId,
@@ -108,7 +111,7 @@ pub struct MergeConfig<'a> {
     /// The predicate of the query.
     pub predicate: PredicateRef,
 
-    pub sst_read_options: SstReadOptions,
+    pub sst_read_options_builder: SstReadOptionsBuilder,
     /// Sst factory
     pub sst_factory: &'a SstFactoryRef,
     /// Store picker for persisting sst.
@@ -129,8 +132,10 @@ pub struct MergeBuilder<'a> {
 
     /// Sampling memtable to read.
     sampling_mem: Option<SamplingMemTable>,
+
     /// MemTables to read.
     memtables: MemTableVec,
+
     /// Ssts to read of each level.
     ssts: Vec<Vec<FileHandle>>,
 }
@@ -170,6 +175,34 @@ impl<'a> MergeBuilder<'a> {
     }
 
     pub async fn build(self) -> Result<MergeIterator> {
+        let fetching_schema = self.config.projected_schema.to_record_schema_with_key();
+        let primary_key_indexes = fetching_schema.primary_key_idx().to_vec();
+        let fetching_schema = fetching_schema.into_record_schema();
+        let table_schema = self.config.projected_schema.table_schema();
+        let record_fetching_ctx_builder = RecordFetchingContextBuilder::new(
+            fetching_schema.clone(),
+            table_schema.clone(),
+            Some(primary_key_indexes),
+        );
+        let sst_read_options = self
+            .config
+            .sst_read_options_builder
+            .build(record_fetching_ctx_builder.clone());
+
+        let memtable_stream_ctx = MemtableStreamContext {
+            record_fetching_ctx_builder,
+            fetching_schema: fetching_schema.clone(),
+            predicate: self.config.predicate,
+            need_dedup: self.config.need_dedup,
+            reverse: self.config.reverse,
+            deadline: self.config.deadline,
+        };
+
+        let sst_stream_ctx = SstStreamContext {
+            sst_read_options,
+            fetching_schema,
+        };
+
         let sst_streams_num: usize = self
             .ssts
             .iter()
@@ -192,12 +225,8 @@ impl<'a> MergeBuilder<'a> {
 
         if let Some(v) = &self.sampling_mem {
             let stream = record_batch_stream::filtered_stream_from_memtable(
-                self.config.projected_schema.clone(),
-                self.config.need_dedup,
                 &v.mem,
-                self.config.reverse,
-                self.config.predicate.as_ref(),
-                self.config.deadline,
+                &memtable_stream_ctx,
                 self.config.metrics_collector.clone(),
             )
             .context(BuildStreamFromMemtable)?;
@@ -206,12 +235,8 @@ impl<'a> MergeBuilder<'a> {
 
         for memtable in &self.memtables {
             let stream = record_batch_stream::filtered_stream_from_memtable(
-                self.config.projected_schema.clone(),
-                self.config.need_dedup,
                 &memtable.mem,
-                self.config.reverse,
-                self.config.predicate.as_ref(),
-                self.config.deadline,
+                &memtable_stream_ctx,
                 self.config.metrics_collector.clone(),
             )
             .context(BuildStreamFromMemtable)?;
@@ -226,8 +251,8 @@ impl<'a> MergeBuilder<'a> {
                     self.config.table_id,
                     f,
                     self.config.sst_factory,
-                    &self.config.sst_read_options,
                     self.config.store_picker,
+                    &sst_stream_ctx,
                     self.config.metrics_collector.clone(),
                 )
                 .await
@@ -324,7 +349,7 @@ impl BufferedStreamState {
     /// Returns number of rows added.
     fn append_rows_to(
         &mut self,
-        builder: &mut RecordBatchWithKeyBuilder,
+        builder: &mut FetchingRecordBatchBuilder,
         len: usize,
     ) -> Result<usize> {
         let added = builder
@@ -336,7 +361,7 @@ impl BufferedStreamState {
 
     /// Take record batch slice with at most `len` rows from cursor and advance
     /// the cursor.
-    fn take_record_batch_slice(&mut self, len: usize) -> RecordBatchWithKey {
+    fn take_record_batch_slice(&mut self, len: usize) -> FetchingRecordBatch {
         let len_to_fetch = cmp::min(
             self.buffered_record_batch.record_batch.num_rows() - self.cursor,
             len,
@@ -403,14 +428,14 @@ impl BufferedStream {
     /// REQUIRE: the buffer is not exhausted.
     fn append_rows_to(
         &mut self,
-        builder: &mut RecordBatchWithKeyBuilder,
+        builder: &mut FetchingRecordBatchBuilder,
         len: usize,
     ) -> Result<usize> {
         self.state.as_mut().unwrap().append_rows_to(builder, len)
     }
 
     /// REQUIRE: the buffer is not exhausted.
-    fn take_record_batch_slice(&mut self, len: usize) -> RecordBatchWithKey {
+    fn take_record_batch_slice(&mut self, len: usize) -> FetchingRecordBatch {
         self.state.as_mut().unwrap().take_record_batch_slice(len)
     }
 
@@ -634,7 +659,7 @@ pub struct MergeIterator {
     request_id: RequestId,
     inited: bool,
     schema: RecordSchemaWithKey,
-    record_batch_builder: RecordBatchWithKeyBuilder,
+    record_batch_builder: FetchingRecordBatchBuilder,
     origin_streams: Vec<BoxedPrefetchableRecordBatchStream>,
     /// ssts are kept here to avoid them from being purged.
     #[allow(dead_code)]
@@ -661,8 +686,14 @@ impl MergeIterator {
         metrics: Metrics,
     ) -> Self {
         let heap_cap = streams.len();
-        let record_batch_builder =
-            RecordBatchWithKeyBuilder::with_capacity(schema.clone(), iter_options.batch_size);
+        let primary_key_indexes = schema.primary_key_idx().to_vec();
+        let fetching_schema = schema.to_record_schema();
+        let record_batch_builder = FetchingRecordBatchBuilder::with_capacity(
+            fetching_schema,
+            Some(primary_key_indexes),
+            iter_options.batch_size,
+        );
+
         Self {
             table_id,
             request_id,
@@ -790,7 +821,7 @@ impl MergeIterator {
     async fn fetch_rows_from_one_stream(
         &mut self,
         num_rows_to_fetch: usize,
-    ) -> Result<Option<RecordBatchWithKey>> {
+    ) -> Result<Option<FetchingRecordBatch>> {
         assert_eq!(self.hot.len(), 1);
         self.metrics.times_fetch_rows_from_one += 1;
 
@@ -834,7 +865,7 @@ impl MergeIterator {
     /// Fetch the next batch from the streams.
     ///
     /// `init_if_necessary` should be finished before this method.
-    async fn fetch_next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
+    async fn fetch_next_batch(&mut self) -> Result<Option<FetchingRecordBatch>> {
         self.init_if_necessary().await?;
 
         self.record_batch_builder.clear();
@@ -876,7 +907,7 @@ impl RecordBatchWithKeyIterator for MergeIterator {
         &self.schema
     }
 
-    async fn next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
+    async fn next_batch(&mut self) -> Result<Option<FetchingRecordBatch>> {
         let record_batch = self.fetch_next_batch().await?;
 
         trace!("MergeIterator send next record batch:{:?}", record_batch);

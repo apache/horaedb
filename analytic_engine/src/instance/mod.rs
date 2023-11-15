@@ -33,7 +33,10 @@ pub(crate) mod write;
 
 use std::sync::Arc;
 
-use common_types::{projected_schema::ProjectedSchema, table::TableId};
+use common_types::{
+    projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
+    table::TableId,
+};
 use generic_error::{BoxError, GenericError};
 use logger::{error, info};
 use macros::define_result;
@@ -313,32 +316,58 @@ impl Instance {
     }
 }
 
-// TODO: make it a builder
-#[allow(clippy::too_many_arguments)]
-fn create_sst_read_option(
+#[derive(Debug, Clone)]
+pub struct SstReadOptionsBuilder {
     scan_type: ScanType,
     scan_options: ScanOptions,
     maybe_table_level_metrics: Arc<MaybeTableLevelMetrics>,
     num_rows_per_row_group: usize,
-    projected_schema: ProjectedSchema,
     predicate: PredicateRef,
     meta_cache: Option<MetaCacheRef>,
     runtime: Arc<Runtime>,
-) -> SstReadOptions {
-    SstReadOptions {
-        maybe_table_level_metrics,
-        num_rows_per_row_group,
-        frequency: scan_type.into(),
-        projected_schema,
-        predicate,
-        meta_cache,
-        scan_options,
-        runtime,
+}
+
+impl SstReadOptionsBuilder {
+    pub fn new(
+        scan_type: ScanType,
+        scan_options: ScanOptions,
+        maybe_table_level_metrics: Arc<MaybeTableLevelMetrics>,
+        num_rows_per_row_group: usize,
+        predicate: PredicateRef,
+        meta_cache: Option<MetaCacheRef>,
+        runtime: Arc<Runtime>,
+    ) -> Self {
+        Self {
+            scan_type,
+            scan_options,
+            maybe_table_level_metrics,
+            num_rows_per_row_group,
+            predicate,
+            meta_cache,
+            runtime,
+        }
+    }
+
+    pub fn build(
+        self,
+        record_fetching_ctx_builder: RecordFetchingContextBuilder,
+    ) -> SstReadOptions {
+        SstReadOptions {
+            maybe_table_level_metrics: self.maybe_table_level_metrics,
+            num_rows_per_row_group: self.num_rows_per_row_group,
+            frequency: self.scan_type.into(),
+            record_fetching_ctx_builder,
+            predicate: self.predicate,
+            meta_cache: self.meta_cache,
+            scan_options: self.scan_options,
+            runtime: self.runtime,
+        }
     }
 }
 
 /// Scan type which mapped to the low level `ReadFrequency` in sst reader.
-enum ScanType {
+#[derive(Debug, Clone, Copy)]
+pub enum ScanType {
     Query,
     Compaction,
 }

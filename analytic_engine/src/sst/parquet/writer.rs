@@ -18,7 +18,7 @@ use std::collections::HashSet;
 
 use async_trait::async_trait;
 use common_types::{
-    datum::DatumKind, record_batch::RecordBatchWithKey, request_id::RequestId, time::TimeRange,
+    datum::DatumKind, record_batch::FetchingRecordBatch, request_id::RequestId, time::TimeRange,
 };
 use datafusion::parquet::basic::Compression;
 use futures::StreamExt;
@@ -39,8 +39,9 @@ use crate::{
             meta_data::{ParquetFilter, ParquetMetaData, RowGroupFilterBuilder},
         },
         writer::{
-            self, BuildParquetFilter, EncodePbData, EncodeRecordBatch, ExpectTimestampColumn, Io,
-            MetaData, PollRecordBatch, RecordBatchStream, Result, SstInfo, SstWriter, Storage,
+            self, BuildParquetFilter, BuildParquetFilterNoCause, EncodePbData, EncodeRecordBatch,
+            ExpectTimestampColumn, Io, MetaData, PollRecordBatch, RecordBatchStream, Result,
+            SstInfo, SstWriter, Storage,
         },
     },
     table::sst_util,
@@ -154,8 +155,8 @@ impl RecordBatchGroupWriter {
     /// the left rows.
     async fn fetch_next_row_group(
         &mut self,
-        prev_record_batch: &mut Option<RecordBatchWithKey>,
-    ) -> Result<Vec<RecordBatchWithKey>> {
+        prev_record_batch: &mut Option<FetchingRecordBatch>,
+    ) -> Result<Vec<FetchingRecordBatch>> {
         let mut curr_row_group = vec![];
         // Used to record the number of remaining rows to fill `curr_row_group`.
         let mut remaining = self.num_rows_per_row_group;
@@ -212,9 +213,15 @@ impl RecordBatchGroupWriter {
     /// Build the parquet filter for the given `row_group`.
     fn build_row_group_filter(
         &self,
-        row_group_batch: &[RecordBatchWithKey],
+        row_group_batch: &[FetchingRecordBatch],
     ) -> Result<RowGroupFilter> {
-        let mut builder = RowGroupFilterBuilder::new(row_group_batch[0].schema_with_key());
+        let schema_with_key =
+            row_group_batch[0]
+                .schema_with_key()
+                .with_context(|| BuildParquetFilterNoCause {
+                    msg: "primary key indexes not exist",
+                })?;
+        let mut builder = RowGroupFilterBuilder::new(&schema_with_key);
 
         for partial_batch in row_group_batch {
             for (col_idx, column) in partial_batch.columns().iter().enumerate() {
@@ -236,7 +243,7 @@ impl RecordBatchGroupWriter {
 
     fn update_column_values(
         column_values: &mut [Option<ColumnValueSet>],
-        record_batch: &RecordBatchWithKey,
+        record_batch: &FetchingRecordBatch,
     ) {
         for (col_idx, col_values) in column_values.iter_mut().enumerate() {
             let mut too_many_values = false;
@@ -303,7 +310,7 @@ impl RecordBatchGroupWriter {
         sink: W,
         meta_path: &Path,
     ) -> Result<(usize, ParquetMetaData)> {
-        let mut prev_record_batch: Option<RecordBatchWithKey> = None;
+        let mut prev_record_batch: Option<FetchingRecordBatch> = None;
         let mut arrow_row_group = Vec::new();
         let mut total_num_rows = 0;
 
@@ -518,7 +525,7 @@ mod tests {
 
     use bytes_ext::Bytes;
     use common_types::{
-        projected_schema::ProjectedSchema,
+        projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
         tests::{build_row, build_row_for_dictionary, build_schema, build_schema_with_dictionary},
         time::{TimeRange, Timestamp},
     };
@@ -652,15 +659,20 @@ mod tests {
 
             let scan_options = ScanOptions::default();
             // read sst back to test
+            let record_fetching_ctx_builder = RecordFetchingContextBuilder::new(
+                reader_projected_schema.to_record_schema(),
+                reader_projected_schema.table_schema().clone(),
+                None,
+            );
             let sst_read_options = SstReadOptions {
                 maybe_table_level_metrics: Arc::new(MaybeTableLevelMetrics::new("test")),
                 frequency: ReadFrequency::Frequent,
                 num_rows_per_row_group: 5,
-                projected_schema: reader_projected_schema,
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: None,
                 scan_options,
                 runtime: runtime.clone(),
+                record_fetching_ctx_builder,
             };
 
             let mut reader: Box<dyn SstReader + Send> = {

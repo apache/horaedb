@@ -23,7 +23,10 @@ use arrow::{
     datatypes::{DataType as ArrowDataType, SchemaRef as ArrowSchemaRef},
 };
 use common_types::{
-    projected_schema::ProjectedSchema, record_batch::RecordBatchWithKey, SequenceNumber,
+    projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
+    record_batch::FetchingRecordBatch,
+    schema::RecordSchema,
+    SequenceNumber,
 };
 use datafusion::{
     common::ToDFSchema,
@@ -36,7 +39,10 @@ use futures::stream::{self, StreamExt};
 use generic_error::{BoxError, GenericResult};
 use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_engine::{predicate::Predicate, table::TableId};
+use table_engine::{
+    predicate::{Predicate, PredicateRef},
+    table::TableId,
+};
 use trace_metric::MetricsCollector;
 
 use crate::{
@@ -129,7 +135,7 @@ define_result!(Error);
 // struct? But what is the sequence after merge?
 #[derive(Debug)]
 pub struct SequencedRecordBatch {
-    pub record_batch: RecordBatchWithKey,
+    pub record_batch: FetchingRecordBatch,
     pub sequence: SequenceNumber,
 }
 
@@ -212,44 +218,27 @@ pub fn filter_stream(
 /// Build filtered (by `predicate`) [SequencedRecordBatchStream] from a
 /// memtable.
 pub fn filtered_stream_from_memtable(
-    projected_schema: ProjectedSchema,
-    need_dedup: bool,
     memtable: &MemTableRef,
-    reverse: bool,
-    predicate: &Predicate,
-    deadline: Option<Instant>,
+    ctx: &MemtableStreamContext,
     metrics_collector: Option<MetricsCollector>,
 ) -> Result<BoxedPrefetchableRecordBatchStream> {
-    stream_from_memtable(
-        projected_schema.clone(),
-        need_dedup,
-        memtable,
-        reverse,
-        deadline,
-        metrics_collector,
-    )
-    .and_then(|origin_stream| {
+    stream_from_memtable(memtable, ctx, metrics_collector).and_then(|origin_stream| {
         filter_stream(
             origin_stream,
-            projected_schema
-                .as_record_schema_with_key()
-                .to_arrow_schema_ref(),
-            predicate,
+            ctx.fetching_schema.to_arrow_schema_ref(),
+            &ctx.predicate,
         )
     })
 }
 
 /// Build [SequencedRecordBatchStream] from a memtable.
 pub fn stream_from_memtable(
-    projected_schema: ProjectedSchema,
-    need_dedup: bool,
     memtable: &MemTableRef,
-    reverse: bool,
-    deadline: Option<Instant>,
+    ctx: &MemtableStreamContext,
     metrics_collector: Option<MetricsCollector>,
 ) -> Result<BoxedPrefetchableRecordBatchStream> {
     let scan_ctx = ScanContext {
-        deadline,
+        deadline: ctx.deadline,
         ..Default::default()
     };
     let max_seq = memtable.last_sequence();
@@ -259,9 +248,9 @@ pub fn stream_from_memtable(
         start_user_key: Bound::Unbounded,
         end_user_key: Bound::Unbounded,
         sequence: max_seq,
-        projected_schema,
-        need_dedup,
-        reverse,
+        record_fetching_ctx_builder: ctx.record_fetching_ctx_builder.clone(),
+        need_dedup: ctx.need_dedup,
+        reverse: ctx.reverse,
         metrics_collector,
     };
 
@@ -277,6 +266,15 @@ pub fn stream_from_memtable(
     Ok(Box::new(NoopPrefetcher(Box::new(stream))))
 }
 
+pub struct MemtableStreamContext {
+    pub record_fetching_ctx_builder: RecordFetchingContextBuilder,
+    pub fetching_schema: RecordSchema,
+    pub predicate: PredicateRef,
+    pub need_dedup: bool,
+    pub reverse: bool,
+    pub deadline: Option<Instant>,
+}
+
 /// Build the filtered by `sst_read_options.predicate`
 /// [SequencedRecordBatchStream] from a sst.
 pub async fn filtered_stream_from_sst_file(
@@ -284,8 +282,8 @@ pub async fn filtered_stream_from_sst_file(
     table_id: TableId,
     sst_file: &FileHandle,
     sst_factory: &SstFactoryRef,
-    sst_read_options: &SstReadOptions,
     store_picker: &ObjectStorePickerRef,
+    ctx: &SstStreamContext,
     metrics_collector: Option<MetricsCollector>,
 ) -> Result<BoxedPrefetchableRecordBatchStream> {
     stream_from_sst_file(
@@ -293,19 +291,16 @@ pub async fn filtered_stream_from_sst_file(
         table_id,
         sst_file,
         sst_factory,
-        sst_read_options,
         store_picker,
+        ctx,
         metrics_collector,
     )
     .await
     .and_then(|origin_stream| {
         filter_stream(
             origin_stream,
-            sst_read_options
-                .projected_schema
-                .as_record_schema_with_key()
-                .to_arrow_schema_ref(),
-            sst_read_options.predicate.as_ref(),
+            ctx.fetching_schema.to_arrow_schema_ref(),
+            &ctx.sst_read_options.predicate,
         )
     })
 }
@@ -316,8 +311,8 @@ pub async fn stream_from_sst_file(
     table_id: TableId,
     sst_file: &FileHandle,
     sst_factory: &SstFactoryRef,
-    sst_read_options: &SstReadOptions,
     store_picker: &ObjectStorePickerRef,
+    ctx: &SstStreamContext,
     metrics_collector: Option<MetricsCollector>,
 ) -> Result<BoxedPrefetchableRecordBatchStream> {
     sst_file.read_meter().mark();
@@ -332,7 +327,7 @@ pub async fn stream_from_sst_file(
     let mut sst_reader = sst_factory
         .create_reader(
             &path,
-            sst_read_options,
+            &ctx.sst_read_options,
             read_hint,
             store_picker,
             metrics_collector,
@@ -351,6 +346,11 @@ pub async fn stream_from_sst_file(
     });
 
     Ok(Box::new(stream))
+}
+
+pub struct SstStreamContext {
+    pub sst_read_options: SstReadOptions,
+    pub fetching_schema: RecordSchema,
 }
 
 #[cfg(test)]

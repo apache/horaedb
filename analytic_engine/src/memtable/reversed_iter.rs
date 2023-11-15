@@ -14,7 +14,7 @@
 
 use std::iter::Rev;
 
-use common_types::record_batch::RecordBatchWithKey;
+use common_types::record_batch::FetchingRecordBatch;
 use generic_error::BoxError;
 use snafu::ResultExt;
 
@@ -26,13 +26,13 @@ use crate::memtable::{IterReverse, Result};
 // reverse  order naturally.
 pub struct ReversedColumnarIterator<I> {
     iter: I,
-    reversed_iter: Option<Rev<std::vec::IntoIter<Result<RecordBatchWithKey>>>>,
+    reversed_iter: Option<Rev<std::vec::IntoIter<Result<FetchingRecordBatch>>>>,
     num_record_batch: usize,
 }
 
 impl<I> ReversedColumnarIterator<I>
 where
-    I: Iterator<Item = Result<RecordBatchWithKey>>,
+    I: Iterator<Item = Result<FetchingRecordBatch>>,
 {
     pub fn new(iter: I, num_rows: usize, batch_size: usize) -> Self {
         Self {
@@ -57,9 +57,9 @@ where
 
 impl<I> Iterator for ReversedColumnarIterator<I>
 where
-    I: Iterator<Item = Result<RecordBatchWithKey>>,
+    I: Iterator<Item = Result<FetchingRecordBatch>>,
 {
-    type Item = Result<RecordBatchWithKey>;
+    type Item = Result<FetchingRecordBatch>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.init_if_necessary();

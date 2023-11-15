@@ -26,8 +26,8 @@ use arrow::{datatypes::SchemaRef, record_batch::RecordBatch as ArrowRecordBatch}
 use async_trait::async_trait;
 use bytes_ext::Bytes;
 use common_types::{
-    projected_schema::{ProjectedSchema, RowProjector},
-    record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
+    projected_schema::{RecordFetchingContext, RecordFetchingContextBuilder},
+    record_batch::FetchingRecordBatch,
 };
 use datafusion::{
     common::ToDFSchema,
@@ -73,7 +73,7 @@ use crate::{
 
 const PRUNE_ROW_GROUPS_METRICS_COLLECTOR_NAME: &str = "prune_row_groups";
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
-type RecordBatchWithKeyStream = Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>;
+type RecordBatchWithKeyStream = Box<dyn Stream<Item = Result<FetchingRecordBatch>> + Send + Unpin>;
 
 pub struct Reader<'a> {
     /// The path where the data is persisted.
@@ -83,14 +83,15 @@ pub struct Reader<'a> {
     /// The hint for the sst file size.
     file_size_hint: Option<usize>,
     num_rows_per_row_group: usize,
-    projected_schema: ProjectedSchema,
     meta_cache: Option<MetaCacheRef>,
     predicate: PredicateRef,
     /// Current frequency decides the cache policy.
     frequency: ReadFrequency,
     /// Init those fields in `init_if_necessary`
     meta_data: Option<MetaData>,
-    row_projector: Option<RowProjector>,
+
+    record_fetching_ctx_builder: RecordFetchingContextBuilder,
+    record_fetching_ctx: Option<RecordFetchingContext>,
 
     /// Options for `read_parallelly`
     metrics: Metrics,
@@ -131,12 +132,12 @@ impl<'a> Reader<'a> {
             store,
             file_size_hint,
             num_rows_per_row_group: options.num_rows_per_row_group,
-            projected_schema: options.projected_schema.clone(),
             meta_cache: options.meta_cache.clone(),
             predicate: options.predicate.clone(),
             frequency: options.frequency,
             meta_data: None,
-            row_projector: None,
+            record_fetching_ctx_builder: options.record_fetching_ctx_builder.clone(),
+            record_fetching_ctx: None,
             metrics,
             df_plan_metrics,
             table_level_sst_metrics: options.maybe_table_level_metrics.clone(),
@@ -155,11 +156,7 @@ impl<'a> Reader<'a> {
             return Ok(Vec::new());
         }
 
-        let row_projector = {
-            let row_projector = self.row_projector.take().unwrap();
-            ArrowRecordBatchProjector::from(row_projector)
-        };
-
+        let row_projector = self.record_fetching_ctx.take().unwrap();
         let streams: Vec<_> = streams
             .into_iter()
             .map(|stream| {
@@ -243,7 +240,7 @@ impl<'a> Reader<'a> {
         assert!(self.meta_data.is_some());
 
         let meta_data = self.meta_data.as_ref().unwrap();
-        let row_projector = self.row_projector.as_ref().unwrap();
+        let row_projector = self.record_fetching_ctx.as_ref().unwrap();
         let arrow_schema = meta_data.custom().schema.to_arrow_schema_ref();
         // Get target row groups.
         let target_row_groups = {
@@ -355,13 +352,15 @@ impl<'a> Reader<'a> {
             meta_data
         };
 
-        let row_projector = self
-            .projected_schema
-            .try_project_with_key(&meta_data.custom().schema)
+        let record_fetching_ctx = self
+            .record_fetching_ctx_builder
+            .build(&meta_data.custom().schema)
             .box_err()
             .context(Projection)?;
+
         self.meta_data = Some(meta_data);
-        self.row_projector = Some(row_projector);
+        self.record_fetching_ctx = Some(record_fetching_ctx);
+
         Ok(())
     }
 
@@ -483,7 +482,7 @@ pub(crate) struct ProjectorMetrics {
 
 struct RecordBatchProjector {
     stream: SendableRecordBatchStream,
-    row_projector: ArrowRecordBatchProjector,
+    record_fetching_ctx: RecordFetchingContext,
 
     metrics: ProjectorMetrics,
     start_time: Instant,
@@ -492,7 +491,7 @@ struct RecordBatchProjector {
 impl RecordBatchProjector {
     fn new(
         stream: SendableRecordBatchStream,
-        row_projector: ArrowRecordBatchProjector,
+        record_fetching_ctx: RecordFetchingContext,
         metrics_collector: Option<MetricsCollector>,
     ) -> Self {
         let metrics = ProjectorMetrics {
@@ -502,7 +501,7 @@ impl RecordBatchProjector {
 
         Self {
             stream,
-            row_projector,
+            record_fetching_ctx,
             metrics,
             start_time: Instant::now(),
         }
@@ -510,7 +509,7 @@ impl RecordBatchProjector {
 }
 
 impl Stream for RecordBatchProjector {
-    type Item = Result<RecordBatchWithKey>;
+    type Item = Result<FetchingRecordBatch>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let projector = self.get_mut();
@@ -531,11 +530,12 @@ impl Stream for RecordBatchProjector {
                         }
                         projector.metrics.row_num += record_batch.num_rows();
 
-                        let projected_batch = projector
-                            .row_projector
-                            .project_to_record_batch_with_key(record_batch)
-                            .box_err()
-                            .context(DecodeRecordBatch {});
+                        let projected_batch = FetchingRecordBatch::try_new(
+                            &projector.record_fetching_ctx,
+                            record_batch,
+                        )
+                        .box_err()
+                        .context(DecodeRecordBatch {});
 
                         Poll::Ready(Some(projected_batch))
                     }
@@ -566,7 +566,7 @@ impl<'a> SstReader for Reader<'a> {
 
     async fn read(
         &mut self,
-    ) -> Result<Box<dyn PrefetchableStream<Item = Result<RecordBatchWithKey>>>> {
+    ) -> Result<Box<dyn PrefetchableStream<Item = Result<FetchingRecordBatch>>>> {
         let mut streams = self.maybe_read_parallelly(1).await?;
         assert_eq!(streams.len(), 1);
         let stream = streams.pop().expect("impossible to fetch no stream");
@@ -577,7 +577,7 @@ impl<'a> SstReader for Reader<'a> {
 
 struct RecordBatchReceiver {
     bg_prefetch_tx: Option<watch::Sender<()>>,
-    rx_group: Vec<Receiver<Result<RecordBatchWithKey>>>,
+    rx_group: Vec<Receiver<Result<FetchingRecordBatch>>>,
     cur_rx_idx: usize,
     #[allow(dead_code)]
     drop_helper: AbortOnDropMany<()>,
@@ -585,7 +585,7 @@ struct RecordBatchReceiver {
 
 #[async_trait]
 impl PrefetchableStream for RecordBatchReceiver {
-    type Item = Result<RecordBatchWithKey>;
+    type Item = Result<FetchingRecordBatch>;
 
     async fn start_prefetch(&mut self) {
         // Start the prefetch work in background when first poll is called.
@@ -602,7 +602,7 @@ impl PrefetchableStream for RecordBatchReceiver {
 }
 
 impl Stream for RecordBatchReceiver {
-    type Item = Result<RecordBatchWithKey>;
+    type Item = Result<FetchingRecordBatch>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if self.rx_group.is_empty() {
@@ -682,8 +682,8 @@ impl<'a> ThreadedReader<'a> {
 
     fn read_record_batches_from_sub_reader(
         &mut self,
-        mut reader: Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>,
-        tx: Sender<Result<RecordBatchWithKey>>,
+        mut reader: Box<dyn Stream<Item = Result<FetchingRecordBatch>> + Send + Unpin>,
+        tx: Sender<Result<FetchingRecordBatch>>,
         mut rx: watch::Receiver<()>,
     ) -> JoinHandle<()> {
         self.runtime.spawn(async move {
@@ -710,7 +710,7 @@ impl<'a> SstReader for ThreadedReader<'a> {
 
     async fn read(
         &mut self,
-    ) -> Result<Box<dyn PrefetchableStream<Item = Result<RecordBatchWithKey>>>> {
+    ) -> Result<Box<dyn PrefetchableStream<Item = Result<FetchingRecordBatch>>>> {
         // Get underlying sst readers and channels.
         let sub_readers = self
             .inner
@@ -733,7 +733,7 @@ impl<'a> SstReader for ThreadedReader<'a> {
 
         let channel_cap_per_sub_reader = self.channel_cap / sub_readers.len();
         let (tx_group, rx_group): (Vec<_>, Vec<_>) = (0..read_parallelism)
-            .map(|_| mpsc::channel::<Result<RecordBatchWithKey>>(channel_cap_per_sub_reader))
+            .map(|_| mpsc::channel::<Result<FetchingRecordBatch>>(channel_cap_per_sub_reader))
             .unzip();
 
         let (bg_prefetch_tx, bg_prefetch_rx) = watch::channel(());

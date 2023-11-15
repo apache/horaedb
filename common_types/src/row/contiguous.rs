@@ -26,7 +26,7 @@ use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{
     datum::{Datum, DatumKind, DatumView},
-    projected_schema::RowProjector,
+    projected_schema::RecordFetchingContext,
     row::{
         bitset::{BitSet, RoBitSet},
         Row,
@@ -248,27 +248,24 @@ fn datum_view_at<'a>(
 /// schema of source row.
 pub struct ProjectedContiguousRow<'a, T> {
     source_row: T,
-    projector: &'a RowProjector,
+    ctx: &'a RecordFetchingContext,
 }
 
 impl<'a, T: ContiguousRow> ProjectedContiguousRow<'a, T> {
-    pub fn new(source_row: T, projector: &'a RowProjector) -> Self {
-        Self {
-            source_row,
-            projector,
-        }
+    pub fn new(source_row: T, ctx: &'a RecordFetchingContext) -> Self {
+        Self { source_row, ctx }
     }
 
     pub fn num_datum_views(&self) -> usize {
-        self.projector.source_projection().len()
+        self.ctx.fetching_source_column_indexes().len()
     }
 
     pub fn datum_view_at(&self, index: usize) -> DatumView {
-        let p = self.projector.source_projection()[index];
+        let p = self.ctx.fetching_source_column_indexes()[index];
 
         match p {
             Some(index_in_source) => {
-                let datum_kind = self.projector.datum_kind(index_in_source);
+                let datum_kind = self.ctx.datum_kind(index_in_source);
                 self.source_row.datum_view_at(index_in_source, datum_kind)
             }
             None => DatumView::Null,
@@ -801,7 +798,13 @@ mod tests {
         let projection: Vec<usize> = (0..schema.num_columns() - 1).collect();
         let projected_schema =
             ProjectedSchema::new(schema.clone(), Some(projection.clone())).unwrap();
-        let row_projected_schema = projected_schema.try_project_with_key(&schema).unwrap();
+        let ctx = RecordFetchingContext::new(
+            &projected_schema.to_record_schema(),
+            None,
+            &projected_schema.table_schema(),
+            &schema,
+        )
+        .unwrap();
         let rows = build_rows();
         let index_in_writer = IndexInWriterSchema::for_same_schema(schema.num_columns());
 
@@ -812,7 +815,7 @@ mod tests {
             writer.write_row(&row).unwrap();
 
             let source_row = ContiguousRowReader::try_new(&buf, &schema).unwrap();
-            let projected_row = ProjectedContiguousRow::new(source_row, &row_projected_schema);
+            let projected_row = ProjectedContiguousRow::new(source_row, &ctx);
 
             let range = projection.clone();
             for i in range {

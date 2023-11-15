@@ -79,7 +79,7 @@ impl PartitionedTableScanBuilder {
 impl TableScanBuilder for PartitionedTableScanBuilder {
     async fn build(&self, request: ReadRequest) -> Result<Arc<dyn ExecutionPlan>> {
         // Build partition rule.
-        let table_schema_snapshot = request.projected_schema.original_schema();
+        let table_schema_snapshot = request.projected_schema.table_schema();
         let df_partition_rule =
             DfPartitionRuleAdapter::new(self.partition_info.clone(), table_schema_snapshot)
                 .map_err(|e| {

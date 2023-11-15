@@ -24,7 +24,7 @@ use snafu::{ensure, Backtrace, OptionExt, Snafu};
 use crate::{
     column_schema::{ColumnId, ColumnSchema},
     datum::{Datum, DatumKind, DatumView},
-    record_batch::RecordBatchWithKey,
+    record_batch::FetchingRecordBatch,
     schema::{RecordSchemaWithKey, Schema},
     time::Timestamp,
 };
@@ -566,7 +566,7 @@ pub trait RowView {
 /// `row_idx < record_batch.num_rows()` is ensured.
 #[derive(Debug)]
 pub struct RowViewOnBatch<'a> {
-    pub record_batch: &'a RecordBatchWithKey,
+    pub record_batch: &'a FetchingRecordBatch,
     pub row_idx: usize,
 }
 
@@ -583,18 +583,18 @@ impl<'a> RowViewOnBatch<'a> {
 pub struct RowViewOnBatchColumnIter<'a> {
     next_column_idx: usize,
     row_idx: usize,
-    record_batch: &'a RecordBatchWithKey,
+    record_batch: &'a FetchingRecordBatch,
 }
 
 impl<'a> RowView for RowViewOnBatch<'a> {
     fn try_get_column_by_name(&self, column_name: &str) -> Result<Option<Datum>> {
-        let column_idx = self
-            .record_batch
-            .schema_with_key()
-            .index_of(column_name)
-            .context(ColumnNameNotFound {
-                column: column_name,
-            })?;
+        let column_idx =
+            self.record_batch
+                .schema()
+                .index_of(column_name)
+                .context(ColumnNameNotFound {
+                    column: column_name,
+                })?;
         Ok(Some(self.column_by_idx(column_idx)))
     }
 

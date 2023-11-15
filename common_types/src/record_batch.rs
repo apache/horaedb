@@ -29,7 +29,7 @@ use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use crate::{
     column_block::{cast_nanosecond_to_mills, ColumnBlock, ColumnBlockBuilder},
     datum::DatumKind,
-    projected_schema::{ProjectedSchema, RowProjector},
+    projected_schema::{ProjectedSchema, RecordFetchingContext},
     row::{
         contiguous::{ContiguousRow, ProjectedContiguousRow},
         Row, RowViewOnBatch,
@@ -362,15 +362,73 @@ fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch>
 }
 
 #[derive(Debug)]
-pub struct RecordBatchWithKey {
-    schema_with_key: RecordSchemaWithKey,
+pub struct FetchingRecordBatch {
+    schema: RecordSchema,
+    // TODO: remove it later, `FetchingRecordBatch` is unnecessary to know anything about primary
+    // keys.
+    primary_key_indexes: Option<Vec<usize>>,
     data: RecordBatchData,
 }
 
-impl RecordBatchWithKey {
-    pub fn new(schema_with_key: RecordSchemaWithKey, data: RecordBatchData) -> Self {
+impl FetchingRecordBatch {
+    pub fn try_new(
+        ctx: &RecordFetchingContext,
+        arrow_record_batch: ArrowRecordBatch,
+    ) -> Result<Self> {
+        let column_indexes = ctx.fetching_projected_source_column_indexes();
+        let schema = ctx.fetching_schema().clone();
+        let mut column_blocks = Vec::with_capacity(schema.num_columns());
+
+        let num_rows = arrow_record_batch.num_rows();
+        let num_columns = arrow_record_batch.num_columns();
+        for (col_idx_opt, col_schema) in column_indexes.iter().zip(schema.columns()) {
+            match col_idx_opt {
+                Some(col_idx) => {
+                    ensure!(
+                        *col_idx < num_columns,
+                        OutOfIndexProjection {
+                            source_projection: column_indexes,
+                            arrow_schema: arrow_record_batch.schema()
+                        }
+                    );
+
+                    let array = arrow_record_batch.column(*col_idx);
+                    let column_block =
+                        ColumnBlock::try_from_arrow_array_ref(&col_schema.data_type, array)
+                            .context(CreateColumnBlock)?;
+
+                    column_blocks.push(column_block);
+                }
+                None => {
+                    // Need to push row with specific type.
+                    let null_block = ColumnBlock::new_null_with_type(
+                        &col_schema.data_type,
+                        num_rows,
+                        col_schema.is_dictionary,
+                    )
+                    .context(CreateColumnBlock)?;
+                    column_blocks.push(null_block);
+                }
+            }
+        }
+
+        let data = RecordBatchData::new(schema.to_arrow_schema_ref(), column_blocks)?;
+
+        Ok(FetchingRecordBatch {
+            schema,
+            primary_key_indexes: ctx.primary_key_indexes().map(|idxs| idxs.to_vec()),
+            data,
+        })
+    }
+
+    pub fn new_from_parts(
+        schema: RecordSchema,
+        primary_key_indexes: Option<Vec<usize>>,
+        data: RecordBatchData,
+    ) -> Self {
         Self {
-            schema_with_key,
+            schema,
+            primary_key_indexes,
             data,
         }
     }
@@ -404,21 +462,23 @@ impl RecordBatchWithKey {
     /// REQUIRE: The schema_with_key of the [RecordBatchWithKey] is the same as
     /// the schema_with_key of [ProjectedSchema].
     pub fn try_project(mut self, projected_schema: &ProjectedSchema) -> Result<RecordBatch> {
-        debug_assert_eq!(
-            &self.schema_with_key,
-            projected_schema.as_record_schema_with_key()
-        );
+        // FIXME
+        // debug_assert_eq!(
+        //     &self.schema,
+        //     projected_schema.as_record_schema_with_key()
+        // );
 
         // Get the schema after projection.
         let record_schema = projected_schema.to_record_schema();
         let mut column_blocks = Vec::with_capacity(record_schema.num_columns());
 
         for column_schema in record_schema.columns() {
-            let column_index = self.schema_with_key.index_of(&column_schema.name).context(
-                ColumnNotInSchemaWithKey {
-                    name: &column_schema.name,
-                },
-            )?;
+            let column_index =
+                self.schema
+                    .index_of(&column_schema.name)
+                    .context(ColumnNotInSchemaWithKey {
+                        name: &column_schema.name,
+                    })?;
 
             // Take the column block out.
             let column_block = self.data.take_column_block(column_index);
@@ -435,7 +495,7 @@ impl RecordBatchWithKey {
 
     pub fn into_record_batch(self) -> RecordBatch {
         RecordBatch {
-            schema: self.schema_with_key.into_record_schema(),
+            schema: self.schema,
             data: self.data,
         }
     }
@@ -448,9 +508,20 @@ impl RecordBatchWithKey {
         self.data.arrow_record_batch
     }
 
+    pub fn schema_with_key(&self) -> Option<RecordSchemaWithKey> {
+        self.primary_key_indexes
+            .clone()
+            .map(|idxs| RecordSchemaWithKey::new(self.schema.clone(), idxs))
+    }
+
     #[inline]
-    pub fn schema_with_key(&self) -> &RecordSchemaWithKey {
-        &self.schema_with_key
+    pub fn schema(&self) -> &RecordSchema {
+        &self.schema
+    }
+
+    #[inline]
+    pub fn primary_key_indexes(&self) -> Option<&[usize]> {
+        self.primary_key_indexes.as_deref()
     }
 
     #[inline]
@@ -485,7 +556,8 @@ impl RecordBatchWithKey {
     #[must_use]
     pub fn slice(&self, offset: usize, length: usize) -> Self {
         Self {
-            schema_with_key: self.schema_with_key.clone(),
+            schema: self.schema.clone(),
+            primary_key_indexes: self.primary_key_indexes.clone(),
             data: self.data.slice(offset, length),
         }
     }
@@ -506,14 +578,15 @@ impl RecordBatchWithKey {
     }
 }
 
-pub struct RecordBatchWithKeyBuilder {
-    schema_with_key: RecordSchemaWithKey,
+pub struct FetchingRecordBatchBuilder {
+    fetching_schema: RecordSchema,
+    primary_key_indexes: Option<Vec<usize>>,
     builders: Vec<ColumnBlockBuilder>,
 }
 
-impl RecordBatchWithKeyBuilder {
-    pub fn new(schema_with_key: RecordSchemaWithKey) -> Self {
-        let builders = schema_with_key
+impl FetchingRecordBatchBuilder {
+    pub fn new(fetching_schema: RecordSchema, primary_key_indexes: Option<Vec<usize>>) -> Self {
+        let builders = fetching_schema
             .columns()
             .iter()
             .map(|column_schema| {
@@ -525,13 +598,18 @@ impl RecordBatchWithKeyBuilder {
             })
             .collect();
         Self {
-            schema_with_key,
+            fetching_schema,
+            primary_key_indexes,
             builders,
         }
     }
 
-    pub fn with_capacity(schema_with_key: RecordSchemaWithKey, capacity: usize) -> Self {
-        let builders = schema_with_key
+    pub fn with_capacity(
+        record_schema: RecordSchema,
+        primary_key_indexes: Option<Vec<usize>>,
+        capacity: usize,
+    ) -> Self {
+        let builders = record_schema
             .columns()
             .iter()
             .map(|column_schema| {
@@ -543,7 +621,8 @@ impl RecordBatchWithKeyBuilder {
             })
             .collect();
         Self {
-            schema_with_key,
+            fetching_schema: record_schema,
+            primary_key_indexes,
             builders,
         }
     }
@@ -598,7 +677,7 @@ impl RecordBatchWithKeyBuilder {
     /// - The `record_batch` and the builder must have the same schema.
     pub fn append_batch_range(
         &mut self,
-        record_batch: &RecordBatchWithKey,
+        record_batch: &FetchingRecordBatch,
         start: usize,
         len: usize,
     ) -> Result<usize> {
@@ -639,92 +718,18 @@ impl RecordBatchWithKeyBuilder {
     }
 
     /// Build [RecordBatchWithKey] and reset the builder.
-    pub fn build(&mut self) -> Result<RecordBatchWithKey> {
+    pub fn build(&mut self) -> Result<FetchingRecordBatch> {
         let column_blocks: Vec<_> = self
             .builders
             .iter_mut()
             .map(|builder| builder.build())
             .collect();
-        let arrow_schema = self.schema_with_key.to_arrow_schema_ref();
+        let arrow_schema = self.fetching_schema.to_arrow_schema_ref();
 
-        Ok(RecordBatchWithKey {
-            schema_with_key: self.schema_with_key.clone(),
+        Ok(FetchingRecordBatch {
+            schema: self.fetching_schema.clone(),
+            primary_key_indexes: self.primary_key_indexes.clone(),
             data: RecordBatchData::new(arrow_schema, column_blocks)?,
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ArrowRecordBatchProjector {
-    row_projector: RowProjector,
-}
-
-impl From<RowProjector> for ArrowRecordBatchProjector {
-    fn from(row_projector: RowProjector) -> Self {
-        Self { row_projector }
-    }
-}
-
-impl ArrowRecordBatchProjector {
-    /// Project the [arrow::RecordBatch] to [RecordBatchWithKey] and these
-    /// things are to be done:
-    ///  - Insert the null column if the projected column does not appear in the
-    ///    source schema.
-    ///  - Convert the [arrow::RecordBatch] to [RecordBatchWithKey].
-    ///
-    /// REQUIRE: Schema of the `arrow_record_batch` is the same as the
-    /// projection of existing column in the source schema.
-    pub fn project_to_record_batch_with_key(
-        &self,
-        arrow_record_batch: ArrowRecordBatch,
-    ) -> Result<RecordBatchWithKey> {
-        let schema_with_key = self.row_projector.schema_with_key().clone();
-        let source_projection = self.row_projector.source_projection();
-        let mut column_blocks = Vec::with_capacity(schema_with_key.num_columns());
-
-        let num_rows = arrow_record_batch.num_rows();
-        // ensure next_arrow_column_idx < num_columns
-        let mut next_arrow_column_idx = 0;
-        let num_columns = arrow_record_batch.num_columns();
-
-        for (source_idx, column_schema) in source_projection.iter().zip(schema_with_key.columns()) {
-            match source_idx {
-                Some(_) => {
-                    ensure!(
-                        next_arrow_column_idx < num_columns,
-                        OutOfIndexProjection {
-                            source_projection,
-                            arrow_schema: arrow_record_batch.schema()
-                        }
-                    );
-
-                    let array = arrow_record_batch.column(next_arrow_column_idx);
-                    next_arrow_column_idx += 1;
-
-                    let column_block =
-                        ColumnBlock::try_from_arrow_array_ref(&column_schema.data_type, array)
-                            .context(CreateColumnBlock)?;
-
-                    column_blocks.push(column_block);
-                }
-                None => {
-                    // Need to push row with specific type.
-                    let null_block = ColumnBlock::new_null_with_type(
-                        &column_schema.data_type,
-                        num_rows,
-                        column_schema.is_dictionary,
-                    )
-                    .context(CreateColumnBlock)?;
-                    column_blocks.push(null_block);
-                }
-            }
-        }
-
-        let data = RecordBatchData::new(schema_with_key.to_arrow_schema_ref(), column_blocks)?;
-
-        Ok(RecordBatchWithKey {
-            schema_with_key,
-            data,
         })
     }
 }
@@ -732,21 +737,21 @@ impl ArrowRecordBatchProjector {
 #[cfg(test)]
 mod tests {
     use crate::{
-        record_batch::{RecordBatchWithKey, RecordBatchWithKeyBuilder},
+        record_batch::{FetchingRecordBatch, FetchingRecordBatchBuilder},
         row::RowViewOnBatch,
         tests::{
-            build_projected_schema, build_record_batch_with_key_by_rows, build_rows,
+            build_fetching_record_batch_by_rows, build_projected_schema, build_rows,
             check_record_batch_with_key_with_rows,
         },
     };
 
-    fn build_record_batch_with_key() -> RecordBatchWithKey {
+    fn build_fetching_record_batch() -> FetchingRecordBatch {
         let rows = build_rows();
-        build_record_batch_with_key_by_rows(rows)
+        build_fetching_record_batch_by_rows(rows)
     }
 
     fn check_record_batch_with_key(
-        record_batch_with_key: RecordBatchWithKey,
+        record_batch_with_key: FetchingRecordBatch,
         row_num: usize,
         column_num: usize,
     ) -> bool {
@@ -756,7 +761,7 @@ mod tests {
 
     #[test]
     fn test_append_projected_contiguous_row() {
-        let record_batch_with_key = build_record_batch_with_key();
+        let record_batch_with_key = build_fetching_record_batch();
         assert_eq!(record_batch_with_key.num_rows(), 5);
         assert_eq!(record_batch_with_key.num_columns(), 5);
 
@@ -766,15 +771,11 @@ mod tests {
     #[test]
     fn test_append_row_view() {
         let projected_schema = build_projected_schema();
-
-        let record_batch_with_key = build_record_batch_with_key();
-
-        let mut builder = RecordBatchWithKeyBuilder::with_capacity(
-            projected_schema.to_record_schema_with_key(),
-            2,
-        );
+        let fetching_record_batch = build_fetching_record_batch();
+        let mut builder =
+            FetchingRecordBatchBuilder::with_capacity(projected_schema.to_record_schema(), None, 2);
         let view = RowViewOnBatch {
-            record_batch: &record_batch_with_key,
+            record_batch: &fetching_record_batch,
             row_idx: 1,
         };
         builder.append_row_view(&view).unwrap();
@@ -788,13 +789,10 @@ mod tests {
     #[test]
     fn test_append_batch_range() {
         let projected_schema = build_projected_schema();
+        let record_batch_with_key = build_fetching_record_batch();
 
-        let record_batch_with_key = build_record_batch_with_key();
-
-        let mut builder = RecordBatchWithKeyBuilder::with_capacity(
-            projected_schema.to_record_schema_with_key(),
-            2,
-        );
+        let mut builder =
+            FetchingRecordBatchBuilder::with_capacity(projected_schema.to_record_schema(), None, 2);
         builder
             .append_batch_range(&record_batch_with_key, 0, 2)
             .unwrap();

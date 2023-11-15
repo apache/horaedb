@@ -16,7 +16,7 @@
 
 use async_stream::try_stream;
 use async_trait::async_trait;
-use common_types::{record_batch::RecordBatchWithKey, schema::RecordSchemaWithKey};
+use common_types::{record_batch::FetchingRecordBatch, schema::RecordSchemaWithKey};
 use generic_error::BoxError;
 
 use crate::sst::writer::RecordBatchStream;
@@ -43,7 +43,8 @@ pub trait RecordBatchWithKeyIterator: Send {
 
     fn schema(&self) -> &RecordSchemaWithKey;
 
-    async fn next_batch(&mut self) -> std::result::Result<Option<RecordBatchWithKey>, Self::Error>;
+    async fn next_batch(&mut self)
+        -> std::result::Result<Option<FetchingRecordBatch>, Self::Error>;
 }
 
 pub fn record_batch_with_key_iter_to_stream<I: RecordBatchWithKeyIterator + Unpin + 'static>(

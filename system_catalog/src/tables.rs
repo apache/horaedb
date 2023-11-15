@@ -21,7 +21,8 @@ use catalog::{manager::ManagerRef, schema::SchemaRef, CatalogRef};
 use common_types::{
     column_schema,
     datum::{Datum, DatumKind},
-    record_batch::RecordBatchWithKeyBuilder,
+    projected_schema::RecordFetchingContext,
+    record_batch::FetchingRecordBatchBuilder,
     row::Row,
     schema,
     schema::Schema,
@@ -153,13 +154,22 @@ impl SystemTable for Tables {
             .all_catalogs()
             .box_err()
             .context(table_engine::table::Scan { table: self.name() })?;
-        let projected_record_schema = request.projected_schema.to_record_schema_with_key();
-        let mut builder = RecordBatchWithKeyBuilder::new(projected_record_schema);
+        let fetching_schema = request.projected_schema.to_record_schema_with_key();
+        let primary_key_indexes = fetching_schema.primary_key_idx().to_vec();
+        let fetching_schema = fetching_schema.to_record_schema();
+        let mut builder = FetchingRecordBatchBuilder::new(
+            fetching_schema.clone(),
+            Some(primary_key_indexes.clone()),
+        );
 
-        let projector = request
-            .projected_schema
-            .try_project_with_key(&self.schema)
-            .expect("Should succeed to try_project_key of sys_tables");
+        let table_schema = request.projected_schema.table_schema();
+        let record_fetching_ctx = RecordFetchingContext::new(
+            &fetching_schema,
+            Some(primary_key_indexes),
+            table_schema,
+            &self.schema,
+        )
+        .expect("Should succeed to try_project_key of sys_tables");
         for catalog in &catalogs {
             for schema in &catalog
                 .all_schemas()
@@ -172,7 +182,7 @@ impl SystemTable for Tables {
                     .context(table_engine::table::Scan { table: self.name() })?
                 {
                     let row = self.from_table(catalog.clone(), schema.clone(), table.clone());
-                    let projected_row = projector.project_row(&row, Vec::new());
+                    let projected_row = record_fetching_ctx.project_row(&row, Vec::new());
                     builder
                         .append_row(projected_row)
                         .box_err()
