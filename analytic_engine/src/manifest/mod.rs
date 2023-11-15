@@ -23,16 +23,18 @@ use std::{fmt, sync::Arc};
 use async_trait::async_trait;
 use common_types::table::ShardId;
 use generic_error::GenericResult;
-use table_engine::table::{SchemaId, TableId};
+use table_engine::table::TableId;
 
-use crate::{manifest::meta_edit::MetaEditRequest, space::SpaceId};
+use crate::{
+    manifest::meta_edit::MetaEditRequest, space::SpaceId, table::data::TableDataExtraneousInfo,
+};
 
 #[derive(Debug)]
 pub struct LoadRequest {
     pub space_id: SpaceId,
-    pub schema_id: SchemaId,
     pub table_id: TableId,
     pub shard_id: ShardId,
+    pub extr_info: TableDataExtraneousInfo,
 }
 
 pub type SnapshotRequest = LoadRequest;

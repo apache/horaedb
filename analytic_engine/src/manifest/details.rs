@@ -491,7 +491,7 @@ impl Manifest for ManifestImpl {
         let MetaEditRequest {
             shard_info,
             meta_edit,
-            schema_id: _,
+            extr_info: _,
         } = request.clone();
 
         let meta_update = MetaUpdate::try_from(meta_edit).box_err()?;
@@ -547,7 +547,7 @@ impl Manifest for ManifestImpl {
             let request = MetaEditRequest {
                 shard_info: TableShardInfo::new(load_req.shard_id),
                 meta_edit,
-                schema_id: load_req.schema_id,
+                extr_info: load_req.extr_info.clone(),
             };
             self.table_meta_set.apply_edit_to_table(request)?;
         }
@@ -760,8 +760,8 @@ mod tests {
         },
         sst::file::tests::FilePurgerMocker,
         table::data::{
-            tests::default_schema, MemSizeOptions, TableConfig, TableData, TableDesc,
-            TableShardInfo,
+            tests::default_schema, MemSizeOptions, TableConfig, TableData, TableDataExtraneousInfo,
+            TableDesc, TableShardInfo,
         },
         MetricsOptions, TableOptions,
     };
@@ -821,7 +821,7 @@ mod tests {
             let MetaEditRequest {
                 shard_info: _,
                 meta_edit,
-                schema_id,
+                extr_info,
             } = request;
 
             match meta_edit {
@@ -837,6 +837,11 @@ mod tests {
                 }
             }
 
+            let TableDataExtraneousInfo {
+                schema_id,
+                schema_name,
+                catalog_name,
+            } = extr_info;
             let table_opts = TableOptions::default();
             let purger = FilePurgerMocker::mock();
             let collector = Arc::new(NoopCollector);
@@ -851,6 +856,8 @@ mod tests {
                     name: "test_table".to_string(),
                     schema: default_schema(),
                     schema_id,
+                    schema_name,
+                    catalog_name,
                     shard_id: 0,
                 },
                 table_opts,
@@ -873,7 +880,7 @@ mod tests {
         dir: PathBuf,
         runtime: Arc<Runtime>,
         options: Options,
-        schema_id: SchemaId,
+        extr_info: TableDataExtraneousInfo,
         table_seq_gen: TableSeqGenerator,
         mock_provider: Arc<MockProviderImpl>,
     }
@@ -892,7 +899,11 @@ mod tests {
                 dir: dir.into_path(),
                 runtime,
                 options,
-                schema_id,
+                extr_info: TableDataExtraneousInfo {
+                    schema_id,
+                    catalog_name: "test_catalog".to_string(),
+                    schema_name: "public".to_string(),
+                },
                 table_seq_gen: TableSeqGenerator::default(),
                 mock_provider: Arc::new(MockProviderImpl::default()),
             }
@@ -900,7 +911,7 @@ mod tests {
 
         fn alloc_table_id(&self) -> TableId {
             TableId::with_seq(
-                self.schema_id,
+                self.extr_info.schema_id,
                 self.table_seq_gen.alloc_table_seq().unwrap(),
             )
             .unwrap()
@@ -950,7 +961,7 @@ mod tests {
         fn meta_update_add_table(&self, table_id: TableId) -> MetaUpdate {
             let table_name = Self::table_name_from_id(table_id);
             MetaUpdate::AddTable(AddTableMeta {
-                space_id: self.schema_id.as_u32(),
+                space_id: self.extr_info.schema_id.as_u32(),
                 table_id,
                 table_name,
                 schema: common_types::tests::build_schema(),
@@ -961,7 +972,7 @@ mod tests {
         fn meta_update_drop_table(&self, table_id: TableId) -> MetaUpdate {
             let table_name = Self::table_name_from_id(table_id);
             MetaUpdate::DropTable(DropTableMeta {
-                space_id: self.schema_id.as_u32(),
+                space_id: self.extr_info.schema_id.as_u32(),
                 table_id,
                 table_name,
             })
@@ -973,7 +984,7 @@ mod tests {
             flushed_seq: Option<SequenceNumber>,
         ) -> MetaUpdate {
             MetaUpdate::VersionEdit(VersionEditMeta {
-                space_id: self.schema_id.as_u32(),
+                space_id: self.extr_info.schema_id.as_u32(),
                 table_id,
                 flushed_sequence: flushed_seq.unwrap_or(100),
                 files_to_add: vec![],
@@ -985,7 +996,7 @@ mod tests {
 
         fn meta_update_alter_table_options(&self, table_id: TableId) -> MetaUpdate {
             MetaUpdate::AlterOptions(AlterOptionsMeta {
-                space_id: self.schema_id.as_u32(),
+                space_id: self.extr_info.schema_id.as_u32(),
                 table_id,
                 options: TableOptions {
                     enable_ttl: false,
@@ -996,7 +1007,7 @@ mod tests {
 
         fn meta_update_alter_table_schema(&self, table_id: TableId) -> MetaUpdate {
             MetaUpdate::AlterSchema(AlterSchemaMeta {
-                space_id: self.schema_id.as_u32(),
+                space_id: self.extr_info.schema_id.as_u32(),
                 table_id,
                 schema: build_altered_schema(&common_types::tests::build_schema()),
                 pre_schema_version: 1,
@@ -1018,7 +1029,7 @@ mod tests {
                 MetaEditRequest {
                     shard_info,
                     meta_edit: MetaEdit::Update(add_table.clone()),
-                    schema_id: self.schema_id,
+                    extr_info: self.extr_info.clone(),
                 }
             };
 
@@ -1043,7 +1054,7 @@ mod tests {
                 MetaEditRequest {
                     shard_info,
                     meta_edit: MetaEdit::Update(drop_table.clone()),
-                    schema_id: self.schema_id,
+                    extr_info: self.extr_info.clone(),
                 }
             };
             manifest.apply_edit(edit_req).await.unwrap();
@@ -1068,7 +1079,7 @@ mod tests {
                 MetaEditRequest {
                     shard_info,
                     meta_edit: MetaEdit::Update(version_edit.clone()),
-                    schema_id: self.schema_id,
+                    extr_info: self.extr_info.clone(),
                 }
             };
             manifest.apply_edit(edit_req).await.unwrap();
@@ -1124,7 +1135,7 @@ mod tests {
                 MetaEditRequest {
                     shard_info,
                     meta_edit: MetaEdit::Update(alter_options.clone()),
-                    schema_id: self.schema_id,
+                    extr_info: self.extr_info.clone(),
                 }
             };
             manifest.apply_edit(edit_req).await.unwrap();
@@ -1147,7 +1158,7 @@ mod tests {
                 MetaEditRequest {
                     shard_info,
                     meta_edit: MetaEdit::Update(alter_schema.clone()),
-                    schema_id: self.schema_id,
+                    extr_info: self.extr_info.clone(),
                 }
             };
 
@@ -1174,8 +1185,8 @@ mod tests {
             let load_req = LoadRequest {
                 table_id,
                 shard_id: DEFAULT_SHARD_ID,
-                space_id: ctx.schema_id.as_u32(),
-                schema_id: ctx.schema_id,
+                space_id: ctx.extr_info.schema_id.as_u32(),
+                extr_info: ctx.extr_info.clone(),
             };
             let expected_table_manifest_data = manifest_data_builder.build();
             ctx.check_table_manifest_data(&load_req, &expected_table_manifest_data)
@@ -1254,7 +1265,7 @@ mod tests {
                 .await;
 
             manifest
-                .do_snapshot_internal(ctx.schema_id.as_u32(), table_id, location)
+                .do_snapshot_internal(ctx.extr_info.schema_id.as_u32(), table_id, location)
                 .await
                 .unwrap();
 
@@ -1266,8 +1277,8 @@ mod tests {
             )
             .await;
             let load_req = LoadRequest {
-                space_id: ctx.schema_id.as_u32(),
-                schema_id: ctx.schema_id,
+                space_id: ctx.extr_info.schema_id.as_u32(),
+                extr_info: ctx.extr_info.clone(),
                 table_id,
                 shard_id: DEFAULT_SHARD_ID,
             };
@@ -1287,8 +1298,8 @@ mod tests {
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
             let load_req = LoadRequest {
-                space_id: ctx.schema_id.as_u32(),
-                schema_id: ctx.schema_id,
+                space_id: ctx.extr_info.schema_id.as_u32(),
+                extr_info: ctx.extr_info.clone(),
                 table_id,
                 shard_id: DEFAULT_SHARD_ID,
             };
@@ -1315,7 +1326,7 @@ mod tests {
 
             let location = WalLocation::new(DEFAULT_SHARD_ID as u64, table_id.as_u64());
             manifest
-                .do_snapshot_internal(ctx.schema_id.as_u32(), table_id, location)
+                .do_snapshot_internal(ctx.extr_info.schema_id.as_u32(), table_id, location)
                 .await
                 .unwrap();
             for i in 500..550 {
@@ -1445,7 +1456,7 @@ mod tests {
         let log_store = MemLogStore::from_updates(&input_updates);
         let snapshot_store = MemSnapshotStore::new();
         let snapshot_data_provider = ctx.mock_provider.clone();
-        let schema_id = ctx.schema_id;
+        let extr_info = ctx.extr_info.clone();
 
         ctx.runtime.block_on(async move {
             let log_store = log_store;
@@ -1460,7 +1471,7 @@ mod tests {
                 let request = MetaEditRequest {
                     shard_info: TableShardInfo::new(DEFAULT_SHARD_ID),
                     meta_edit: MetaEdit::Update(update.clone()),
-                    schema_id,
+                    extr_info: extr_info.clone(),
                 };
                 snapshot_provider.apply_edit_to_table(request).unwrap();
             }
@@ -1498,7 +1509,7 @@ mod tests {
                 let request = MetaEditRequest {
                     shard_info: TableShardInfo::new(DEFAULT_SHARD_ID),
                     meta_edit: MetaEdit::Update(update.clone()),
-                    schema_id,
+                    extr_info: extr_info.clone(),
                 };
                 snapshot_provider.apply_edit_to_table(request).unwrap();
             }

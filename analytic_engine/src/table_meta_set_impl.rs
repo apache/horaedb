@@ -20,7 +20,7 @@ use generic_error::BoxError;
 use id_allocator::IdAllocator;
 use logger::debug;
 use snafu::{OptionExt, ResultExt};
-use table_engine::table::{SchemaId, TableId};
+use table_engine::table::TableId;
 
 use crate::{
     manifest::{
@@ -38,8 +38,8 @@ use crate::{
     sst::file::FilePurgerRef,
     table::{
         data::{
-            MemSizeOptions, TableConfig, TableData, TableDataRef, TableDesc, TableShardInfo,
-            DEFAULT_ALLOC_STEP,
+            MemSizeOptions, TableConfig, TableData, TableDataExtraneousInfo, TableDataRef,
+            TableDesc, TableShardInfo, DEFAULT_ALLOC_STEP,
         },
         version::{TableVersionMeta, TableVersionSnapshot},
         version_edit::VersionEdit,
@@ -112,7 +112,7 @@ impl TableMetaSetImpl {
         &self,
         meta_update: MetaUpdate,
         shard_info: TableShardInfo,
-        schema_id: SchemaId,
+        extr_info: TableDataExtraneousInfo,
     ) -> crate::manifest::details::Result<TableDataRef> {
         match meta_update {
             MetaUpdate::AddTable(AddTableMeta {
@@ -138,7 +138,9 @@ impl TableMetaSetImpl {
                     TableData::new(
                         TableDesc {
                             space_id: space.id,
-                            schema_id,
+                            schema_id: extr_info.schema_id,
+                            schema_name: extr_info.schema_name,
+                            catalog_name: extr_info.catalog_name,
                             id: table_id,
                             name: table_name,
                             schema,
@@ -246,7 +248,7 @@ impl TableMetaSetImpl {
         &self,
         meta_snapshot: MetaSnapshot,
         shard_info: TableShardInfo,
-        schema_id: SchemaId,
+        extr_info: TableDataExtraneousInfo,
     ) -> crate::manifest::details::Result<TableDataRef> {
         debug!("TableMetaSet apply snapshot, snapshot :{:?}", meta_snapshot);
 
@@ -290,7 +292,7 @@ impl TableMetaSetImpl {
                 },
                 mem_size_options,
                 allocator,
-                schema_id,
+                extr_info,
             )
             .box_err()
             .with_context(|| ApplySnapshotToTableWithCause {
@@ -381,13 +383,13 @@ impl TableMetaSet for TableMetaSetImpl {
         let MetaEditRequest {
             shard_info,
             meta_edit,
-            schema_id,
+            extr_info,
         } = request;
 
         match meta_edit {
-            meta_edit::MetaEdit::Update(update) => self.apply_update(update, shard_info, schema_id),
+            meta_edit::MetaEdit::Update(update) => self.apply_update(update, shard_info, extr_info),
             meta_edit::MetaEdit::Snapshot(manifest_data) => {
-                self.apply_snapshot(manifest_data, shard_info, schema_id)
+                self.apply_snapshot(manifest_data, shard_info, extr_info)
             }
         }
     }

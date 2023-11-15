@@ -32,7 +32,7 @@ use crate::{
     },
     manifest::meta_edit::{AddTableMeta, MetaEdit, MetaEditRequest, MetaUpdate},
     space::SpaceRef,
-    table::data::{TableDataRef, TableShardInfo},
+    table::data::{TableDataExtraneousInfo, TableDataRef, TableShardInfo},
     table_options, TableOptions,
 };
 
@@ -96,7 +96,11 @@ impl Instance {
             MetaEditRequest {
                 shard_info: TableShardInfo::new(request.shard_id),
                 meta_edit: MetaEdit::Update(meta_update),
-                schema_id: request.schema_id,
+                extr_info: TableDataExtraneousInfo {
+                    schema_id: request.schema_id,
+                    schema_name: request.params.schema_name,
+                    catalog_name: request.params.catalog_name,
+                },
             }
         };
         self.space_store

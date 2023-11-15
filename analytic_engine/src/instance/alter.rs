@@ -146,7 +146,7 @@ impl<'a> Alterer<'a> {
             MetaEditRequest {
                 shard_info: self.table_data.shard_info,
                 meta_edit: MetaEdit::Update(meta_update),
-                schema_id: self.table_data.schema_id,
+                extr_info: self.table_data.extr_info.clone(),
             }
         };
         self.instance
@@ -280,7 +280,7 @@ impl<'a> Alterer<'a> {
             MetaEditRequest {
                 shard_info: self.table_data.shard_info,
                 meta_edit: MetaEdit::Update(meta_update),
-                schema_id: self.table_data.schema_id,
+                extr_info: self.table_data.extr_info.clone(),
             }
         };
         self.instance

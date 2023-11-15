@@ -25,7 +25,7 @@ use common_types::{
 use macros::define_result;
 use prost::Message;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_engine::table::{SchemaId, TableId};
+use table_engine::table::TableId;
 use wal::log_batch::{Payload, PayloadDecodeContext, PayloadDecoder};
 
 use crate::{
@@ -33,7 +33,7 @@ use crate::{
     space::SpaceId,
     sst::manager::FileId,
     table::{
-        data::{MemTableId, TableShardInfo},
+        data::{MemTableId, TableDataExtraneousInfo, TableShardInfo},
         version::TableVersionMeta,
         version_edit::{AddFile, DeleteFile, VersionEdit},
     },
@@ -530,5 +530,5 @@ impl TryFrom<MetaEdit> for MetaSnapshot {
 pub struct MetaEditRequest {
     pub shard_info: TableShardInfo,
     pub meta_edit: MetaEdit,
-    pub schema_id: SchemaId,
+    pub extr_info: TableDataExtraneousInfo,
 }

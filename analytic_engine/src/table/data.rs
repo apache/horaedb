@@ -139,6 +139,8 @@ pub struct TableDesc {
     pub shard_id: ShardId,
     pub space_id: SpaceId,
     pub schema_id: SchemaId,
+    pub schema_name: String,
+    pub catalog_name: String,
     pub name: String,
     pub schema: Schema,
 }
@@ -150,6 +152,23 @@ pub struct TableConfig {
     pub enable_primary_key_sampling: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct TableDataExtraneousInfo {
+    pub schema_id: SchemaId,
+    pub schema_name: String,
+    pub catalog_name: String,
+}
+
+impl TableDataExtraneousInfo {
+    pub fn new(schema_id: SchemaId, schema_name: String, catalog_name: String) -> Self {
+        Self {
+            schema_id,
+            schema_name,
+            catalog_name,
+        }
+    }
+}
+
 /// Data of a table
 pub struct TableData {
     /// Id of this table
@@ -158,7 +177,7 @@ pub struct TableData {
     pub name: String,
     /// Schema of this table
     schema: Mutex<Schema>,
-    pub schema_id: SchemaId,
+    pub extr_info: TableDataExtraneousInfo,
     /// Space id of this table
     pub space_id: SpaceId,
 
@@ -280,6 +299,8 @@ impl TableData {
         let TableDesc {
             space_id,
             schema_id,
+            schema_name,
+            catalog_name,
             shard_id,
             id,
             name,
@@ -311,7 +332,11 @@ impl TableData {
             id,
             name,
             schema: Mutex::new(schema),
-            schema_id,
+            extr_info: TableDataExtraneousInfo {
+                schema_id,
+                schema_name,
+                catalog_name,
+            },
             space_id,
             mutable_limit,
             mutable_limit_write_buffer_ratio: preflush_write_buffer_size_ratio,
@@ -343,7 +368,7 @@ impl TableData {
         config: TableConfig,
         mem_size_options: MemSizeOptions,
         allocator: IdAllocator,
-        schema_id: SchemaId,
+        extr_info: TableDataExtraneousInfo,
     ) -> Result<Self> {
         let TableConfig {
             preflush_write_buffer_size_ratio,
@@ -366,7 +391,7 @@ impl TableData {
             id: add_meta.table_id,
             name: add_meta.table_name,
             schema: Mutex::new(add_meta.schema),
-            schema_id,
+            extr_info,
             space_id: add_meta.space_id,
             mutable_limit,
             mutable_limit_write_buffer_ratio: preflush_write_buffer_size_ratio,
@@ -640,7 +665,7 @@ impl TableData {
             MetaEditRequest {
                 shard_info: self.shard_info,
                 meta_edit: MetaEdit::Update(meta_update),
-                schema_id: self.schema_id,
+                extr_info: self.extr_info.clone(),
             }
         };
         // table version's max file id will be update when apply this meta update.
@@ -917,6 +942,8 @@ pub mod tests {
                     shard_id: create_request.shard_id,
                     space_id,
                     schema_id,
+                    catalog_name: "test_catalog".to_string(),
+                    schema_name: "public".to_string(),
                     name: create_request.params.table_name,
                     schema: create_request.params.table_schema,
                 },
