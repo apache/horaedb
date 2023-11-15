@@ -94,6 +94,7 @@ fn build_new_schema(current_schema: &Schema, column_schemas: Vec<ColumnSchema>) 
 
     let mut builder =
         schema::Builder::with_capacity(current_schema.num_columns() + column_schemas.len())
+            .primary_key_indexes(current_schema.primary_key_indexes().to_vec())
             // Increment the schema version.
             .version(current_version + 1);
     for (idx, column) in current_schema.columns().iter().enumerate() {

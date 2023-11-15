@@ -15,14 +15,14 @@
 //! Row type
 
 use std::{
-    cmp,
-    ops::{Index, IndexMut, Range},
+    collections::HashMap,
+    ops::{Index, IndexMut},
 };
 
 use snafu::{ensure, Backtrace, OptionExt, Snafu};
 
 use crate::{
-    column_schema::ColumnSchema,
+    column_schema::{ColumnId, ColumnSchema},
     datum::{Datum, DatumKind, DatumView},
     record_batch::RecordBatchWithKey,
     schema::{RecordSchemaWithKey, Schema},
@@ -47,7 +47,19 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid column num of row, expect:{}, given:{}.\nBacktrace:\n{}",
+        "Invalid row num, expect:{}, given:{}.\nBacktrace:\n{}",
+        expect,
+        given,
+        backtrace
+    ))]
+    InvalidRowNum {
+        expect: usize,
+        given: usize,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Invalid column num, expect:{}, given:{}.\nBacktrace:\n{}",
         expect,
         given,
         backtrace
@@ -97,6 +109,14 @@ pub enum Error {
     ))]
     ColumnNotFoundInSchema {
         column: String,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Duplicate column id is found, column_id:{column_id}.\nBacktrace:\n{backtrace}",
+    ))]
+    DuplicateColumnId {
+        column_id: ColumnId,
         backtrace: Backtrace,
     },
 }
@@ -215,54 +235,6 @@ pub fn check_row_schema(row: &Row, schema: &Schema) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug)]
-pub struct RowGroupSlicer<'a> {
-    range: Range<usize>,
-    row_group: &'a RowGroup,
-}
-
-impl<'a> From<&'a RowGroup> for RowGroupSlicer<'a> {
-    fn from(value: &'a RowGroup) -> RowGroupSlicer<'a> {
-        Self {
-            range: 0..value.rows.len(),
-            row_group: value,
-        }
-    }
-}
-
-impl<'a> RowGroupSlicer<'a> {
-    pub fn new(range: Range<usize>, row_group: &'a RowGroup) -> Self {
-        Self { range, row_group }
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.range.is_empty()
-    }
-
-    #[inline]
-    pub fn schema(&self) -> &Schema {
-        self.row_group.schema()
-    }
-
-    #[inline]
-    pub fn iter(&self) -> IterRow<'a> {
-        IterRow {
-            iter: self.row_group.rows[self.range.start..self.range.end].iter(),
-        }
-    }
-
-    #[inline]
-    pub fn slice_range(&self) -> Range<usize> {
-        self.range.clone()
-    }
-
-    #[inline]
-    pub fn num_rows(&self) -> usize {
-        self.range.len()
-    }
-}
-
 // TODO(yingwen): For multiple rows that share the same schema, no need to store
 // Datum for each row element, we can store the whole row as a binary and
 // provide more efficient way to convert rows into columns
@@ -279,14 +251,30 @@ pub struct RowGroup {
     schema: Schema,
     /// Rows in the row group
     rows: Vec<Row>,
-    // TODO(yingwen): Maybe remove min/max timestamp
-    /// Min timestamp of all the rows
-    min_timestamp: Timestamp,
-    /// Max timestamp of all the rows
-    max_timestamp: Timestamp,
 }
 
 impl RowGroup {
+    /// Create [RowGroup] without any check.
+    ///
+    /// The caller should ensure all the rows share the same schema as the
+    /// provided one.
+    #[inline]
+    pub fn new_unchecked(schema: Schema, rows: Vec<Row>) -> Self {
+        Self { schema, rows }
+    }
+
+    /// Check and create row group.
+    ///
+    /// [None] will be thrown if the rows have different schema from the
+    /// provided one.
+    #[inline]
+    pub fn try_new(schema: Schema, rows: Vec<Row>) -> Result<Self> {
+        rows.iter()
+            .try_for_each(|row| check_row_schema(row, &schema))?;
+
+        Ok(Self { schema, rows })
+    }
+
     /// Returns true if the row group is empty
     #[inline]
     pub fn is_empty(&self) -> bool {
@@ -345,18 +333,6 @@ impl RowGroup {
             iter: self.rows.iter(),
         }
     }
-
-    /// Get the min timestamp of rows
-    #[inline]
-    pub fn min_timestamp(&self) -> Timestamp {
-        self.min_timestamp
-    }
-
-    /// Get the max timestamp of rows
-    #[inline]
-    pub fn max_timestamp(&self) -> Timestamp {
-        self.max_timestamp
-    }
 }
 
 impl<'a> IntoIterator for &'a RowGroup {
@@ -390,7 +366,7 @@ impl<'a> Iterator for IterRow<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct IterCol<'a> {
     rows: &'a Vec<Row>,
     row_index: usize,
@@ -421,88 +397,89 @@ impl<'a> Iterator for IterCol<'a> {
     }
 }
 
-/// RowGroup builder
-#[derive(Debug)]
-pub struct RowGroupBuilder {
+/// Build the [`RowGroup`] from the columns.
+pub struct RowGroupBuilderFromColumn {
     schema: Schema,
-    rows: Vec<Row>,
-    min_timestamp: Option<Timestamp>,
-    max_timestamp: Timestamp,
+    cols: HashMap<ColumnId, Vec<Datum>>,
 }
 
-impl RowGroupBuilder {
-    /// Create a new builder
-    pub fn new(schema: Schema) -> Self {
-        Self::with_capacity(schema, 0)
-    }
-
-    /// Create a new builder with given capacity
-    pub fn with_capacity(schema: Schema, capacity: usize) -> Self {
+impl RowGroupBuilderFromColumn {
+    pub fn with_capacity(schema: Schema, num_cols: usize) -> Self {
         Self {
             schema,
-            rows: Vec::with_capacity(capacity),
-            min_timestamp: None,
-            max_timestamp: Timestamp::new(0),
+            cols: HashMap::with_capacity(num_cols),
         }
     }
 
-    /// Create a new builder with schema and rows
-    ///
-    /// Return error if the `rows` do not matched the `schema`
-    pub fn with_rows(schema: Schema, rows: Vec<Row>) -> Result<Self> {
-        let mut row_group = Self::new(schema);
-
-        // Check schema and update min/max timestamp
-        for row in &rows {
-            check_row_schema(row, &row_group.schema)?;
-            row_group.update_timestamps(row);
+    /// The newly-added column should have the same elements as the
+    /// previously-added column's.
+    pub fn try_add_column(&mut self, col_id: ColumnId, col: Vec<Datum>) -> Result<()> {
+        if let Some(num_rows) = self.num_rows() {
+            ensure!(
+                num_rows == col.len(),
+                InvalidRowNum {
+                    expect: num_rows,
+                    given: col.len(),
+                }
+            );
         }
 
-        row_group.rows = rows;
+        let old = self.cols.insert(col_id, col);
+        ensure!(old.is_none(), DuplicateColumnId { column_id: col_id });
 
-        Ok(row_group)
+        Ok(())
     }
 
-    /// Add a schema checked row
-    ///
-    /// REQUIRE: Caller should ensure the schema of row must equal to the schema
-    /// of this builder
-    pub fn push_checked_row(&mut self, row: Row) {
-        self.update_timestamps(&row);
+    pub fn build(mut self) -> RowGroup {
+        let num_rows = self.num_rows();
+        if Some(0) == num_rows {
+            return RowGroup {
+                schema: self.schema,
+                rows: vec![],
+            };
+        };
 
-        self.rows.push(row);
-    }
+        let num_rows = num_rows.unwrap();
+        let num_cols = self.schema.num_columns();
+        let mut rows = Vec::with_capacity(num_rows);
 
-    /// Acquire builder to build next row of the row group
-    pub fn row_builder(&mut self) -> RowBuilder {
-        RowBuilder {
-            // schema: &self.schema,
-            cols: Vec::with_capacity(self.schema.num_columns()),
-            // rows: &mut self.rows,
-            group_builder: self,
+        // Pre-allocate the memory for column data in every row.
+        for _ in 0..num_rows {
+            let row = Vec::with_capacity(num_cols);
+            rows.push(row);
         }
-    }
 
-    /// Build the row group
-    pub fn build(self) -> RowGroup {
+        let mut add_column_to_row = |row_idx: usize, datum: Datum| {
+            rows[row_idx].push(datum);
+        };
+
+        for col_schema in self.schema.columns() {
+            let col_id = col_schema.id;
+            let datums = self.cols.remove(&col_id);
+
+            match datums {
+                Some(v) => {
+                    for (row_idx, datum) in v.into_iter().enumerate() {
+                        add_column_to_row(row_idx, datum);
+                    }
+                }
+                None => {
+                    for row_idx in 0..num_rows {
+                        add_column_to_row(row_idx, Datum::Null);
+                    }
+                }
+            }
+        }
+
         RowGroup {
             schema: self.schema,
-            rows: self.rows,
-            min_timestamp: self.min_timestamp.unwrap_or_else(|| Timestamp::new(0)),
-            max_timestamp: self.max_timestamp,
+            rows: rows.into_iter().map(Row::from_datums).collect::<Vec<_>>(),
         }
     }
 
-    /// Update min/max timestamp of the row group
-    fn update_timestamps(&mut self, row: &Row) {
-        // check_row_schema() ensures this datum is a timestamp, so we just unwrap here
-        let row_timestamp = row.timestamp(&self.schema).unwrap();
-
-        self.min_timestamp = match self.min_timestamp {
-            Some(min_timestamp) => Some(cmp::min(min_timestamp, row_timestamp)),
-            None => Some(row_timestamp),
-        };
-        self.max_timestamp = cmp::max(self.max_timestamp, row_timestamp);
+    #[inline]
+    fn num_rows(&self) -> Option<usize> {
+        self.cols.iter().next().map(|(_, v)| v.len())
     }
 }
 
@@ -530,16 +507,21 @@ pub fn check_datum_type(datum: &Datum, column_schema: &ColumnSchema) -> Result<(
     Ok(())
 }
 
-// TODO(yingwen): This builder is used to build RowGroup, need to provide a
-// builder to build one row
 /// Row builder for the row group
 #[derive(Debug)]
 pub struct RowBuilder<'a> {
-    group_builder: &'a mut RowGroupBuilder,
+    schema: &'a Schema,
     cols: Vec<Datum>,
 }
 
 impl<'a> RowBuilder<'a> {
+    pub fn new(schema: &'a Schema) -> RowBuilder<'a> {
+        Self {
+            schema,
+            cols: Vec::with_capacity(schema.num_columns()),
+        }
+    }
+
     /// Append a datum into the row
     pub fn append_datum(mut self, datum: Datum) -> Result<Self> {
         self.check_datum(&datum)?;
@@ -552,28 +534,23 @@ impl<'a> RowBuilder<'a> {
     /// Check whether the datum is valid
     fn check_datum(&self, datum: &Datum) -> Result<()> {
         let index = self.cols.len();
-        let schema = &self.group_builder.schema;
         ensure!(
-            index < schema.num_columns(),
+            index < self.schema.num_columns(),
             ColumnOutOfBound {
-                len: schema.num_columns(),
+                len: self.schema.num_columns(),
                 given: index,
             }
         );
 
-        let column = schema.column(index);
+        let column = self.schema.column(index);
         check_datum_type(datum, column)
     }
 
     /// Finish building this row and append this row into the row group
-    pub fn finish(self) -> Result<()> {
-        ensure!(
-            self.cols.len() == self.group_builder.schema.num_columns(),
-            MissingColumns
-        );
+    pub fn finish(self) -> Result<Row> {
+        ensure!(self.cols.len() == self.schema.num_columns(), MissingColumns);
 
-        self.group_builder.push_checked_row(Row { cols: self.cols });
-        Ok(())
+        Ok(Row { cols: self.cols })
     }
 }
 

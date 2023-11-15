@@ -22,7 +22,7 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::{
-    row::{Row, RowGroupBuilder},
+    row::{Row, RowGroup},
     schema::Schema,
     time::TimeRange,
 };
@@ -251,20 +251,19 @@ fn merge_pending_write_requests(
     assert!(!pending_writes.is_empty());
 
     let mut last_req = pending_writes.pop().unwrap();
-    let last_rows = last_req.row_group.take_rows();
-    let schema = last_req.row_group.into_schema();
-    let mut row_group_builder = RowGroupBuilder::with_capacity(schema, num_pending_rows);
-
-    for mut pending_req in pending_writes {
-        let rows = pending_req.row_group.take_rows();
-        for row in rows {
-            row_group_builder.push_checked_row(row)
+    let total_rows = {
+        let mut rows = Vec::with_capacity(num_pending_rows);
+        for mut pending_req in pending_writes {
+            let mut pending_rows = pending_req.row_group.take_rows();
+            rows.append(&mut pending_rows);
         }
-    }
-    for row in last_rows {
-        row_group_builder.push_checked_row(row);
-    }
-    let row_group = row_group_builder.build();
+        let mut last_rows = last_req.row_group.take_rows();
+        rows.append(&mut last_rows);
+        rows
+    };
+
+    let schema = last_req.row_group.into_schema();
+    let row_group = RowGroup::new_unchecked(schema, total_rows);
     WriteRequest { row_group }
 }
 
@@ -288,6 +287,11 @@ impl TableImpl {
 
         match queue_res {
             QueueResult::First => {
+                let _timer = self
+                    .table_data
+                    .metrics
+                    .start_table_write_queue_writer_timer();
+
                 // This is the first request in the queue, and we should
                 // take responsibilities for merging and writing the
                 // requests in the queue.
@@ -300,6 +304,7 @@ impl TableImpl {
 
                 match CancellationSafeFuture::new(
                     Self::write_requests(write_requests),
+                    "pending_queue_writer",
                     self.instance.write_runtime().clone(),
                 )
                 .await
@@ -311,7 +316,22 @@ impl TableImpl {
             QueueResult::Waiter(rx) => {
                 // The request is successfully pushed into the queue, and just wait for the
                 // write result.
-                match rx.await {
+                let _timer = self
+                    .table_data
+                    .metrics
+                    .start_table_write_queue_waiter_timer();
+
+                // We have ever observed that `rx` is closed in production but it is impossible
+                // in theory(especially after warping actual write by
+                // `CancellationSafeFuture`). So we also warp `rx` by
+                // `CancellationSafeFuture` for not just retrying but better observing.
+                match CancellationSafeFuture::new(
+                    rx,
+                    "pending_queue_waiter",
+                    self.instance.write_runtime().clone(),
+                )
+                .await
+                {
                     Ok(res) => {
                         res.box_err().context(Write { table: self.name() })?;
                         Ok(num_rows)
@@ -637,6 +657,7 @@ mod tests {
     ) -> WriteRequest {
         let schema = FixedSchemaTable::default_schema_builder()
             .version(schema_version)
+            .primary_key_indexes(vec![0, 1])
             .build()
             .unwrap();
         let mut schema_rows = Vec::with_capacity(num_rows);
@@ -652,7 +673,7 @@ mod tests {
             schema_rows.push(row);
         }
         let rows = row_util::new_rows_6(&schema_rows);
-        let row_group = RowGroupBuilder::with_rows(schema, rows).unwrap().build();
+        let row_group = RowGroup::try_new(schema, rows).unwrap();
         WriteRequest { row_group }
     }
 

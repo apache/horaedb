@@ -112,7 +112,7 @@ impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
         info!(
             "DatafusionExecutorImpl get the executable plan, request_id:{}, physical_plan:{}",
             df_task_ctx.ctx.request_id,
-            displayable(executable.as_ref()).indent(true).to_string()
+            displayable(executable.as_ref()).indent(true)
         );
 
         // Kept the executed plan.

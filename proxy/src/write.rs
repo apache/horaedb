@@ -30,7 +30,7 @@ use common_types::{
     column_schema::ColumnSchema,
     datum::{Datum, DatumKind},
     request_id::RequestId,
-    row::{Row, RowGroupBuilder},
+    row::{Row, RowGroup},
     schema::Schema,
     time::Timestamp,
 };
@@ -527,7 +527,8 @@ impl Proxy {
                 Err(e) => {
                     // TODO: remove this logic.
                     // Refer to https://github.com/CeresDB/ceresdb/issues/1248.
-                    if e.error_message().contains("No field named") {
+                    if need_evict_partition_table(e.error_message()) {
+                        warn!("Evict partition table:{}", table.name());
                         self.evict_partition_table(table, catalog_name, &schema_name)
                             .await;
                     }
@@ -590,7 +591,20 @@ impl Proxy {
                 }
             }
 
-            let plan = write_table_request_to_insert_plan(table, write_table_req)?;
+            let table_clone = table.clone();
+            let plan = match write_table_request_to_insert_plan(table, write_table_req) {
+                Err(e) => {
+                    // TODO: remove this logic.
+                    // Refer to https://github.com/CeresDB/ceresdb/issues/1248.
+                    if need_evict_partition_table(e.error_message()) {
+                        warn!("Evict partition table:{}", table_clone.name());
+                        self.evict_partition_table(table_clone, &catalog, &schema)
+                            .await;
+                    }
+                    return Err(e);
+                }
+                Ok(v) => v,
+            };
             plan_vec.push(plan);
         }
 
@@ -808,7 +822,8 @@ fn write_table_request_to_insert_plan(
 ) -> Result<InsertPlan> {
     let schema = table.schema();
 
-    let mut rows_total = Vec::new();
+    // TODO: pre-allocate the memory for the row vector.
+    let mut total_rows = Vec::new();
     for write_entry in write_table_req.entries {
         let mut rows = write_entry_to_rows(
             &write_table_req.table,
@@ -817,16 +832,15 @@ fn write_table_request_to_insert_plan(
             &write_table_req.field_names,
             write_entry,
         )?;
-        rows_total.append(&mut rows);
+        total_rows.append(&mut rows);
     }
     // The row group builder will checks nullable.
-    let row_group = RowGroupBuilder::with_rows(schema, rows_total)
+    let row_group = RowGroup::try_new(schema, total_rows)
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to build row group, table:{}", table.name()),
-        })?
-        .build();
+        })?;
     Ok(InsertPlan {
         table,
         rows: row_group,
@@ -1000,6 +1014,12 @@ fn convert_proto_value_to_datum(
     }
 }
 
+fn need_evict_partition_table(msg: String) -> bool {
+    msg.contains("decode row group payload")
+        || msg.contains("Can't find field")
+        || msg.contains("Can't find tag")
+}
+
 #[cfg(test)]
 mod test {
     use ceresdbproto::storage::{value, Field, FieldGroup, Tag, Value, WriteSeriesEntry};
@@ -1112,6 +1132,7 @@ mod test {
                     .unwrap(),
             )
             .unwrap()
+            .primary_key_indexes(vec![0, 1, 2])
             .build()
             .unwrap()
     }

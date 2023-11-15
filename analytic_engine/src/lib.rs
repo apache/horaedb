@@ -103,6 +103,8 @@ pub struct Config {
     pub max_bytes_per_write_batch: Option<ReadableSize>,
     /// The interval for sampling the memory usage
     pub mem_usage_sampling_interval: ReadableDuration,
+    /// The config for log in the wal.
+    pub wal_encode: WalEncodeConfig,
 
     /// Wal storage config
     ///
@@ -135,6 +137,28 @@ pub enum RecoverMode {
     ShardBased,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+pub enum WalEncodeFormat {
+    RowWise,
+    Columnar,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WalEncodeConfig {
+    /// The threshold of columnar bytes to do compression.
+    pub num_bytes_compress_threshold: ReadableSize,
+    /// Encode the data in a columnar layout if it is set.
+    pub format: WalEncodeFormat,
+}
+
+impl Default for WalEncodeConfig {
+    fn default() -> Self {
+        Self {
+            num_bytes_compress_threshold: ReadableSize::kb(1),
+            format: WalEncodeFormat::RowWise,
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -163,6 +187,7 @@ impl Default for Config {
             max_retry_flush_limit: 0,
             max_bytes_per_write_batch: None,
             mem_usage_sampling_interval: ReadableDuration::secs(0),
+            wal_encode: WalEncodeConfig::default(),
             wal: StorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
             recover_mode: RecoverMode::TableBased,

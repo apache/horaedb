@@ -278,8 +278,10 @@ fn test_alter_schema_drop_create<T: EngineBuildContext>(engine_context: T) {
                     .unwrap(),
             )
             .unwrap();
+
         let new_schema = schema_builder
             .version(old_schema.version() + 1)
+            .primary_key_indexes(old_schema.primary_key_indexes().to_vec())
             .build()
             .unwrap();
         let request = AlterSchemaRequest {

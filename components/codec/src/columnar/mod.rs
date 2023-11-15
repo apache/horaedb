@@ -88,6 +88,9 @@ pub enum Error {
 
     #[snafu(display("Bytes is not enough, length:{len}.\nBacktrace:\n{backtrace}"))]
     NotEnoughBytes { len: usize, backtrace: Backtrace },
+
+    #[snafu(display("Number operation overflowed, msg:{msg}.\nBacktrace:\n{backtrace}"))]
+    Overflow { msg: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -117,7 +120,7 @@ trait ValuesEncoder<T> {
 /// The decode context for decoding column.
 pub struct DecodeContext<'a> {
     /// Buffer for reuse during decoding.
-    buf: &'a mut Vec<u8>,
+    pub buf: &'a mut Vec<u8>,
 }
 
 /// The trait bound on the decoders for different types.
@@ -258,11 +261,9 @@ impl ColumnarEncoder {
         let enc = ValuesEncoderImpl::default();
         let data_size = match hint.datum_kind {
             DatumKind::Null => 0,
-            DatumKind::Timestamp => enc.estimated_encoded_size(
-                datums
-                    .clone()
-                    .filter_map(|v| v.as_timestamp().map(|v| v.as_i64())),
-            ),
+            DatumKind::Timestamp => {
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_timestamp()))
+            }
             DatumKind::Double => {
                 enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_f64()))
             }
@@ -305,7 +306,9 @@ impl ColumnarEncoder {
             DatumKind::Date => {
                 enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_date_i32()))
             }
-            DatumKind::Time => todo!(),
+            DatumKind::Time => {
+                enc.estimated_encoded_size(datums.clone().filter_map(|v| v.as_timestamp()))
+            }
         };
 
         Self::header_size() + bit_set_size + data_size
@@ -321,10 +324,7 @@ impl ColumnarEncoder {
         };
         match datum_kind {
             DatumKind::Null => Ok(()),
-            DatumKind::Timestamp => enc.encode(
-                buf,
-                datums.filter_map(|v| v.as_timestamp().map(|v| v.as_i64())),
-            ),
+            DatumKind::Timestamp => enc.encode(buf, datums.filter_map(|v| v.as_timestamp())),
             DatumKind::Double => enc.encode(buf, datums.filter_map(|v| v.as_f64())),
             DatumKind::Float => enc.encode(buf, datums.filter_map(|v| v.as_f32())),
             DatumKind::Varbinary => enc.encode(buf, datums.filter_map(|v| v.into_bytes())),
@@ -342,7 +342,7 @@ impl ColumnarEncoder {
             DatumKind::Int8 => enc.encode(buf, datums.filter_map(|v| v.as_i8())),
             DatumKind::Boolean => enc.encode(buf, datums.filter_map(|v| v.as_bool())),
             DatumKind::Date => enc.encode(buf, datums.filter_map(|v| v.as_date_i32())),
-            DatumKind::Time => todo!(),
+            DatumKind::Time => enc.encode(buf, datums.filter_map(|v| v.as_timestamp())),
         }
     }
 }
@@ -445,8 +445,8 @@ impl ColumnarDecoder {
         match datum_kind {
             DatumKind::Null => Ok(()),
             DatumKind::Timestamp => {
-                let with_i64 = |v| f(Datum::from(Timestamp::new(v)));
-                ValuesDecoderImpl.decode(ctx, buf, with_i64)
+                let with_timestamp = |v: Timestamp| f(Datum::from(v));
+                ValuesDecoderImpl.decode(ctx, buf, with_timestamp)
             }
             DatumKind::Double => {
                 let with_float = |v: f64| f(Datum::from(v));
@@ -531,7 +531,10 @@ impl ColumnarDecoder {
                 };
                 ValuesDecoderImpl.decode(ctx, buf, with_i32)
             }
-            DatumKind::Time => todo!(),
+            DatumKind::Time => {
+                let with_timestamp = |v: Timestamp| f(Datum::Time(v.as_i64()));
+                ValuesDecoderImpl.decode(ctx, buf, with_timestamp)
+            }
         }
     }
 }
@@ -610,6 +613,26 @@ mod tests {
     }
 
     #[test]
+    fn test_with_empty_datums() {
+        check_encode_end_decode(1, vec![], DatumKind::Null);
+        check_encode_end_decode(1, vec![], DatumKind::Timestamp);
+        check_encode_end_decode(1, vec![], DatumKind::Double);
+        check_encode_end_decode(1, vec![], DatumKind::Float);
+        check_encode_end_decode(1, vec![], DatumKind::Varbinary);
+        check_encode_end_decode(1, vec![], DatumKind::String);
+        check_encode_end_decode(1, vec![], DatumKind::UInt64);
+        check_encode_end_decode(1, vec![], DatumKind::UInt32);
+        check_encode_end_decode(1, vec![], DatumKind::UInt8);
+        check_encode_end_decode(1, vec![], DatumKind::Int64);
+        check_encode_end_decode(1, vec![], DatumKind::Int32);
+        check_encode_end_decode(1, vec![], DatumKind::Int16);
+        check_encode_end_decode(1, vec![], DatumKind::Int8);
+        check_encode_end_decode(1, vec![], DatumKind::Boolean);
+        check_encode_end_decode(1, vec![], DatumKind::Date);
+        check_encode_end_decode(1, vec![], DatumKind::Time);
+    }
+
+    #[test]
     fn test_i32_with_null() {
         let datums = vec![
             Datum::from(10i32),
@@ -678,6 +701,72 @@ mod tests {
         ];
 
         check_encode_end_decode(10, datums, DatumKind::Int64);
+    }
+
+    #[test]
+    fn test_u64() {
+        let datums = vec![
+            Datum::from(10u64),
+            Datum::from(1u64),
+            Datum::from(2u64),
+            Datum::from(18u64),
+            Datum::from(38u64),
+            Datum::from(48u64),
+            Datum::from(80u64),
+            Datum::from(81u64),
+            Datum::from(82u64),
+        ];
+
+        check_encode_end_decode(10, datums, DatumKind::UInt64);
+    }
+
+    #[test]
+    fn test_timestamp() {
+        let datums = vec![
+            Datum::from(Timestamp::new(-10)),
+            Datum::from(Timestamp::new(10)),
+            Datum::from(Timestamp::new(1024)),
+            Datum::from(Timestamp::new(1024)),
+            Datum::from(Timestamp::new(1025)),
+        ];
+
+        check_encode_end_decode(10, datums, DatumKind::Timestamp);
+    }
+
+    #[test]
+    fn test_time() {
+        let datums = vec![
+            Datum::Time(-10),
+            Datum::Time(10),
+            Datum::Time(1024),
+            Datum::Time(1024),
+            Datum::Time(1025),
+        ];
+
+        check_encode_end_decode(10, datums, DatumKind::Time);
+    }
+
+    #[test]
+    fn test_overflow_timestamp() {
+        let datums = vec![
+            Datum::from(Timestamp::new(i64::MIN)),
+            Datum::from(Timestamp::new(10)),
+            Datum::from(Timestamp::new(1024)),
+            Datum::from(Timestamp::new(1024)),
+            Datum::from(Timestamp::new(1025)),
+        ];
+
+        let encoder = ColumnarEncoder::new(0, 256);
+        let views = datums.iter().map(|v| v.as_view());
+        let mut hint = EncodeHint {
+            num_nulls: None,
+            num_datums: None,
+            datum_kind: DatumKind::Timestamp,
+        };
+
+        let mut buf = Vec::new();
+        let enc_res = encoder.encode(&mut buf, views, &mut hint);
+        assert!(enc_res.is_err());
     }
 
     #[test]

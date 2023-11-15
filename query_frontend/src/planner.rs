@@ -35,7 +35,7 @@ use common_types::{
     column_schema::{self, ColumnSchema},
     datum::{Datum, DatumKind},
     request_id::RequestId,
-    row::{RowGroup, RowGroupBuilder},
+    row::{RowBuilder, RowGroup},
     schema::{self, Builder as SchemaBuilder, Schema, TSID_COLUMN},
 };
 use datafusion::{
@@ -534,7 +534,10 @@ pub fn build_schema_from_write_table_request(
             .context(BuildTableSchema {})?;
     }
 
-    schema_builder.build().context(BuildTableSchema {})
+    schema_builder
+        .primary_key_indexes(vec![0, 1])
+        .build()
+        .context(BuildTableSchema {})
 }
 
 fn ensure_data_type_compatible(
@@ -647,6 +650,10 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             schema::Builder::with_capacity(columns_by_name.len()).auto_increment_column_id(true);
 
         // Collect the key columns.
+        // TODO: Here we put key column in front of all columns, this may change column
+        // order defined by users.
+        let primary_key_indexes = (0..primary_key_columns.len()).collect();
+        schema_builder = schema_builder.primary_key_indexes(primary_key_indexes);
         for key_col in primary_key_columns {
             let col_name = key_col.value.as_str();
             let col = columns_by_name
@@ -1138,12 +1145,12 @@ fn build_row_group(
     match *source.body {
         SetExpr::Values(Values {
             explicit_row: _,
-            rows,
+            rows: expr_rows,
         }) => {
-            let mut row_group_builder = RowGroupBuilder::with_capacity(schema.clone(), rows.len());
-            for mut exprs in rows {
+            let mut rows = Vec::with_capacity(expr_rows.len());
+            for mut exprs in expr_rows {
                 // Try to build row
-                let mut row_builder = row_group_builder.row_builder();
+                let mut row_builder = RowBuilder::new(&schema);
 
                 // For each column in schema, append datum into row builder
                 for (index_opt, column_schema) in
@@ -1176,11 +1183,12 @@ fn build_row_group(
                 }
 
                 // Finish this row and append into row group
-                row_builder.finish().context(BuildRow)?;
+                let row = row_builder.finish().context(BuildRow)?;
+                rows.push(row);
             }
 
             // Build the whole row group
-            Ok(row_group_builder.build())
+            Ok(RowGroup::new_unchecked(schema, rows))
         }
         _ => InsertSourceBodyNotSet.fail(),
     }
@@ -1891,12 +1899,6 @@ mod tests {
                     ],
                 },
             ],
-            min_timestamp: Timestamp(
-                1638428434000,
-            ),
-            max_timestamp: Timestamp(
-                1638428434000,
-            ),
         },
         default_value_map: {},
     },

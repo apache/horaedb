@@ -192,7 +192,7 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
             let buffer = mem::take(&mut self.buffer);
             self.buffer = self
                 .iter
-                .next_log_entries(decoder, buffer)
+                .next_log_entries(decoder, |_| true, buffer)
                 .await
                 .context(ReadEntry)?;
         }
@@ -768,6 +768,7 @@ mod tests {
 
     fn build_altered_schema(schema: &Schema) -> Schema {
         let mut builder = schema::Builder::new().auto_increment_column_id(true);
+        let old_pk_indexes = schema.primary_key_indexes();
         for column_schema in schema.key_columns() {
             builder = builder
                 .add_key_column(column_schema.clone())
@@ -785,6 +786,7 @@ mod tests {
                     .expect("should succeed build column schema"),
             )
             .unwrap()
+            .primary_key_indexes(old_pk_indexes.to_vec())
             .build()
             .unwrap()
     }

@@ -18,6 +18,7 @@ use cluster::config::ClusterConfig;
 use proxy::limiter::LimiterConfig;
 use serde::{Deserialize, Serialize};
 use server::config::{ServerConfig, StaticRouteConfig};
+use size_ext::ReadableSize;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
@@ -92,6 +93,12 @@ pub enum ClusterDeployment {
 pub struct RuntimeConfig {
     /// Runtime for reading data
     pub read_thread_num: usize,
+    /// The size of the stack used by the read thread
+    ///
+    /// The size should be a set as a large number if the complex query exists.
+    /// TODO: this config may be removed in the future when the complex query
+    /// won't overflow the stack.
+    pub read_thread_stack_size: ReadableSize,
     /// Runtime for writing data
     pub write_thread_num: usize,
     /// Runtime for communicating with meta cluster
@@ -108,6 +115,7 @@ impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
             read_thread_num: 8,
+            read_thread_stack_size: ReadableSize::mb(16),
             write_thread_num: 8,
             meta_thread_num: 2,
             compact_thread_num: 4,

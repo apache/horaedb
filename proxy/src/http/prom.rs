@@ -605,6 +605,7 @@ mod tests {
                     .unwrap(),
             )
             .unwrap()
+            .primary_key_indexes(vec![0, 1])
             .build()
             .unwrap()
     }
