@@ -1286,6 +1286,7 @@ dependencies = [
  "serde",
  "server",
  "signal-hook",
+ "size_ext",
  "table_engine",
  "toml 0.7.3",
  "toml_ext",

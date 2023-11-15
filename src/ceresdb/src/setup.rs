@@ -62,8 +62,18 @@ pub fn setup_tracing(config: &Config) -> WorkerGuard {
     tracing_util::init_tracing_with_file(&config.tracing, &config.node.addr, Rotation::NEVER)
 }
 
-fn build_runtime(name: &str, threads_num: usize) -> runtime::Runtime {
-    runtime::Builder::default()
+fn build_runtime_with_stack_size(
+    name: &str,
+    threads_num: usize,
+    stack_size: Option<usize>,
+) -> runtime::Runtime {
+    let mut builder = runtime::Builder::default();
+
+    if let Some(stack_size) = stack_size {
+        builder.stack_size(stack_size);
+    }
+
+    builder
         .worker_threads(threads_num)
         .thread_name(name)
         .enable_all()
@@ -71,9 +81,17 @@ fn build_runtime(name: &str, threads_num: usize) -> runtime::Runtime {
         .expect("Failed to create runtime")
 }
 
+fn build_runtime(name: &str, threads_num: usize) -> runtime::Runtime {
+    build_runtime_with_stack_size(name, threads_num, None)
+}
+
 fn build_engine_runtimes(config: &RuntimeConfig) -> EngineRuntimes {
     EngineRuntimes {
-        read_runtime: Arc::new(build_runtime("ceres-read", config.read_thread_num)),
+        read_runtime: Arc::new(build_runtime_with_stack_size(
+            "ceres-read",
+            config.read_thread_num,
+            Some(config.read_thread_stack_size.as_byte() as usize),
+        )),
         write_runtime: Arc::new(build_runtime("ceres-write", config.write_thread_num)),
         compact_runtime: Arc::new(build_runtime("ceres-compact", config.compact_thread_num)),
         meta_runtime: Arc::new(build_runtime("ceres-meta", config.meta_thread_num)),
