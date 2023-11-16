@@ -33,7 +33,7 @@ use crate::{
     space::SpaceId,
     sst::manager::FileId,
     table::{
-        data::{MemTableId, TableDataExtraneousInfo, TableShardInfo},
+        data::{MemTableId, TableCatalogInfo, TableShardInfo},
         version::TableVersionMeta,
         version_edit::{AddFile, DeleteFile, VersionEdit},
     },
@@ -530,5 +530,5 @@ impl TryFrom<MetaEdit> for MetaSnapshot {
 pub struct MetaEditRequest {
     pub shard_info: TableShardInfo,
     pub meta_edit: MetaEdit,
-    pub extr_info: TableDataExtraneousInfo,
+    pub extr_info: TableCatalogInfo,
 }

@@ -153,13 +153,13 @@ pub struct TableConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct TableDataExtraneousInfo {
+pub struct TableCatalogInfo {
     pub schema_id: SchemaId,
     pub schema_name: String,
     pub catalog_name: String,
 }
 
-impl TableDataExtraneousInfo {
+impl TableCatalogInfo {
     pub fn new(schema_id: SchemaId, schema_name: String, catalog_name: String) -> Self {
         Self {
             schema_id,
@@ -177,7 +177,7 @@ pub struct TableData {
     pub name: String,
     /// Schema of this table
     schema: Mutex<Schema>,
-    pub extr_info: TableDataExtraneousInfo,
+    pub extr_info: TableCatalogInfo,
     /// Space id of this table
     pub space_id: SpaceId,
 
@@ -332,7 +332,7 @@ impl TableData {
             id,
             name,
             schema: Mutex::new(schema),
-            extr_info: TableDataExtraneousInfo {
+            extr_info: TableCatalogInfo {
                 schema_id,
                 schema_name,
                 catalog_name,
@@ -368,7 +368,7 @@ impl TableData {
         config: TableConfig,
         mem_size_options: MemSizeOptions,
         allocator: IdAllocator,
-        extr_info: TableDataExtraneousInfo,
+        extr_info: TableCatalogInfo,
     ) -> Result<Self> {
         let TableConfig {
             preflush_write_buffer_size_ratio,

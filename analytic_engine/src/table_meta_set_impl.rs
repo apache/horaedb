@@ -38,7 +38,7 @@ use crate::{
     sst::file::FilePurgerRef,
     table::{
         data::{
-            MemSizeOptions, TableConfig, TableData, TableDataExtraneousInfo, TableDataRef,
+            MemSizeOptions, TableConfig, TableData, TableCatalogInfo, TableDataRef,
             TableDesc, TableShardInfo, DEFAULT_ALLOC_STEP,
         },
         version::{TableVersionMeta, TableVersionSnapshot},
@@ -112,7 +112,7 @@ impl TableMetaSetImpl {
         &self,
         meta_update: MetaUpdate,
         shard_info: TableShardInfo,
-        extr_info: TableDataExtraneousInfo,
+        extr_info: TableCatalogInfo,
     ) -> crate::manifest::details::Result<TableDataRef> {
         match meta_update {
             MetaUpdate::AddTable(AddTableMeta {
@@ -248,7 +248,7 @@ impl TableMetaSetImpl {
         &self,
         meta_snapshot: MetaSnapshot,
         shard_info: TableShardInfo,
-        extr_info: TableDataExtraneousInfo,
+        extr_info: TableCatalogInfo,
     ) -> crate::manifest::details::Result<TableDataRef> {
         debug!("TableMetaSet apply snapshot, snapshot :{:?}", meta_snapshot);
 

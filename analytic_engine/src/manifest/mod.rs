@@ -26,7 +26,7 @@ use generic_error::GenericResult;
 use table_engine::table::TableId;
 
 use crate::{
-    manifest::meta_edit::MetaEditRequest, space::SpaceId, table::data::TableDataExtraneousInfo,
+    manifest::meta_edit::MetaEditRequest, space::SpaceId, table::data::TableCatalogInfo,
 };
 
 #[derive(Debug)]
@@ -34,7 +34,7 @@ pub struct LoadRequest {
     pub space_id: SpaceId,
     pub table_id: TableId,
     pub shard_id: ShardId,
-    pub extr_info: TableDataExtraneousInfo,
+    pub extr_info: TableCatalogInfo,
 }
 
 pub type SnapshotRequest = LoadRequest;

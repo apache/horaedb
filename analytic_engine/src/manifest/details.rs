@@ -760,7 +760,7 @@ mod tests {
         },
         sst::file::tests::FilePurgerMocker,
         table::data::{
-            tests::default_schema, MemSizeOptions, TableConfig, TableData, TableDataExtraneousInfo,
+            tests::default_schema, MemSizeOptions, TableConfig, TableData, TableCatalogInfo,
             TableDesc, TableShardInfo,
         },
         MetricsOptions, TableOptions,
@@ -837,7 +837,7 @@ mod tests {
                 }
             }
 
-            let TableDataExtraneousInfo {
+            let TableCatalogInfo {
                 schema_id,
                 schema_name,
                 catalog_name,
@@ -880,7 +880,7 @@ mod tests {
         dir: PathBuf,
         runtime: Arc<Runtime>,
         options: Options,
-        extr_info: TableDataExtraneousInfo,
+        extr_info: TableCatalogInfo,
         table_seq_gen: TableSeqGenerator,
         mock_provider: Arc<MockProviderImpl>,
     }
@@ -899,7 +899,7 @@ mod tests {
                 dir: dir.into_path(),
                 runtime,
                 options,
-                extr_info: TableDataExtraneousInfo {
+                extr_info: TableCatalogInfo {
                     schema_id,
                     catalog_name: "test_catalog".to_string(),
                     schema_name: "public".to_string(),

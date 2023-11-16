@@ -44,7 +44,7 @@ use crate::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
     },
-    table::data::{TableDataExtraneousInfo, TableDataRef},
+    table::data::{TableCatalogInfo, TableDataRef},
     table_meta_set_impl::TableMetaSetImpl,
     RecoverMode,
 };
@@ -461,7 +461,7 @@ impl ShardOpener {
             space_id,
             table_id: id,
             shard_id,
-            extr_info: TableDataExtraneousInfo {
+            extr_info: TableCatalogInfo {
                 schema_id,
                 schema_name,
                 catalog_name,
