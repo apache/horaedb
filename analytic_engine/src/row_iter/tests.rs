@@ -68,15 +68,26 @@ impl RecordBatchWithKeyIterator for VectorIterator {
     }
 }
 
-pub fn build_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> FetchingRecordBatch {
+pub fn build_fetching_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> FetchingRecordBatch {
     assert!(schema.num_columns() > 1);
     let projection: Vec<usize> = (0..schema.num_columns()).collect();
     let projected_schema = ProjectedSchema::new(schema.clone(), Some(projection)).unwrap();
-    let fetching_schema = projected_schema.to_record_schema();
+    let fetching_schema = projected_schema.to_record_schema_with_key();
+    let primary_key_indexes = fetching_schema.primary_key_idx().to_vec();
+    let fetching_schema = fetching_schema.to_record_schema();
     let table_schema = projected_schema.table_schema();
-    let record_fetching_ctx =
-        RecordFetchingContext::new(&fetching_schema, None, table_schema, table_schema).unwrap();
-    let mut builder = FetchingRecordBatchBuilder::with_capacity(fetching_schema, None, 2);
+    let record_fetching_ctx = RecordFetchingContext::new(
+        &fetching_schema,
+        Some(primary_key_indexes),
+        table_schema,
+        table_schema,
+    )
+    .unwrap();
+    let primary_key_indexes = record_fetching_ctx
+        .primary_key_indexes()
+        .map(|idxs| idxs.to_vec());
+    let mut builder =
+        FetchingRecordBatchBuilder::with_capacity(fetching_schema, primary_key_indexes, 2);
     let index_in_writer = IndexInWriterSchema::for_same_schema(schema.num_columns());
 
     let mut buf = Vec::new();

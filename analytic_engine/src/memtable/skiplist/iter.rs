@@ -20,7 +20,7 @@ use arena::{Arena, BasicStats};
 use bytes_ext::{Bytes, BytesMut};
 use codec::row;
 use common_types::{
-    projected_schema::{RecordFetchingContext},
+    projected_schema::RecordFetchingContext,
     record_batch::{FetchingRecordBatch, FetchingRecordBatchBuilder},
     row::contiguous::{ContiguousRowReader, ProjectedContiguousRow},
     schema::Schema,

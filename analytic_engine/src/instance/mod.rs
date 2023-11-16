@@ -33,10 +33,7 @@ pub(crate) mod write;
 
 use std::sync::Arc;
 
-use common_types::{
-    projected_schema::{RecordFetchingContextBuilder},
-    table::TableId,
-};
+use common_types::{projected_schema::RecordFetchingContextBuilder, table::TableId};
 use generic_error::{BoxError, GenericError};
 use logger::{error, info};
 use macros::define_result;

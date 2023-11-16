@@ -26,10 +26,7 @@ use analytic_engine::{
     },
     space::SpaceId,
     sst::{
-        factory::{
-            FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef,
-            ScanOptions,
-        },
+        factory::{FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::{FileHandle, FilePurgeQueue, Level, Request},
         meta_data::cache::MetaCacheRef,
         metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
@@ -37,11 +34,7 @@ use analytic_engine::{
     table::sst_util,
     ScanType, SstReadOptionsBuilder,
 };
-use common_types::{
-    projected_schema::{ProjectedSchema},
-    request_id::RequestId,
-    schema::Schema,
-};
+use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
 use logger::info;
 use object_store::{LocalFileSystem, ObjectStoreRef};
 use runtime::Runtime;

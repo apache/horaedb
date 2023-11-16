@@ -18,9 +18,7 @@ use std::{cmp, sync::Arc, time::Instant};
 
 use analytic_engine::{
     sst::{
-        factory::{
-            Factory, FactoryImpl, ObjectStorePickerRef, ScanOptions, SstReadHint,
-        },
+        factory::{Factory, FactoryImpl, ObjectStorePickerRef, ScanOptions, SstReadHint},
         meta_data::cache::{MetaCache, MetaCacheRef},
         metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
     },

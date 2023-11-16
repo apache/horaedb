@@ -537,7 +537,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        row_iter::tests::build_record_batch_with_key,
+        row_iter::tests::build_fetching_record_batch_with_key,
         sst::{
             factory::{
                 Factory, FactoryImpl, ReadFrequency, ScanOptions, SstReadOptions, SstWriteOptions,
@@ -633,7 +633,7 @@ mod tests {
                         "tagv2",
                     ),
                 ];
-                let batch = build_record_batch_with_key(schema.clone(), rows);
+                let batch = build_fetching_record_batch_with_key(schema.clone(), rows);
                 Poll::Ready(Some(Ok(batch)))
             }));
 
@@ -805,7 +805,7 @@ mod tests {
                 .map(|_| build_row(b"a", 100, 10.0, "v4", 1000, 1_000_000))
                 .collect::<Vec<_>>();
 
-            let batch = build_record_batch_with_key(schema_clone.clone(), rows);
+            let batch = build_fetching_record_batch_with_key(schema_clone.clone(), rows);
             poll_cnt += 1;
 
             Poll::Ready(Some(Ok(batch)))

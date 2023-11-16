@@ -24,7 +24,7 @@ use std::{ops::Bound, sync::Arc, time::Instant};
 
 use bytes_ext::{ByteVec, Bytes};
 use common_types::{
-    projected_schema::{RecordFetchingContextBuilder},
+    projected_schema::RecordFetchingContextBuilder,
     record_batch::FetchingRecordBatch,
     row::Row,
     schema::{IndexInWriterSchema, Schema},

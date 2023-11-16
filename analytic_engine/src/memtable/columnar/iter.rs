@@ -27,7 +27,7 @@ use common_types::{
     column::Column,
     column_schema::ColumnId,
     datum::Datum,
-    projected_schema::{RecordFetchingContext},
+    projected_schema::RecordFetchingContext,
     record_batch::{FetchingRecordBatch, FetchingRecordBatchBuilder},
     row::Row,
     schema::Schema,

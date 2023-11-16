@@ -23,10 +23,8 @@ use arrow::{
     datatypes::{DataType as ArrowDataType, SchemaRef as ArrowSchemaRef},
 };
 use common_types::{
-    projected_schema::{RecordFetchingContextBuilder},
-    record_batch::FetchingRecordBatch,
-    schema::RecordSchema,
-    SequenceNumber,
+    projected_schema::RecordFetchingContextBuilder, record_batch::FetchingRecordBatch,
+    schema::RecordSchema, SequenceNumber,
 };
 use datafusion::{
     common::ToDFSchema,
@@ -369,7 +367,7 @@ pub mod tests {
             .into_iter()
             .map(|(seq, rows)| {
                 let batch = SequencedRecordBatch {
-                    record_batch: row_iter::tests::build_record_batch_with_key(
+                    record_batch: row_iter::tests::build_fetching_record_batch_with_key(
                         schema.clone(),
                         rows,
                     ),

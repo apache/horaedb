@@ -28,10 +28,7 @@ use analytic_engine::{
     },
     space::SpaceId,
     sst::{
-        factory::{
-            FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef,
-            ScanOptions,
-        },
+        factory::{FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         meta_data::cache::MetaCacheRef,
         metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
     },

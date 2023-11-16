@@ -214,7 +214,9 @@ mod tests {
     use common_types::tests::{build_row, build_schema};
 
     use super::*;
-    use crate::row_iter::tests::{build_record_batch_with_key, check_iterator, VectorIterator};
+    use crate::row_iter::tests::{
+        build_fetching_record_batch_with_key, check_iterator, VectorIterator,
+    };
 
     #[tokio::test]
     async fn test_dedup_iterator() {
@@ -223,7 +225,7 @@ mod tests {
         let iter = VectorIterator::new(
             schema.to_record_schema_with_key(),
             vec![
-                build_record_batch_with_key(
+                build_fetching_record_batch_with_key(
                     schema.clone(),
                     vec![
                         build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -231,7 +233,7 @@ mod tests {
                         build_row(b"a", 2, 10.0, "v2", 2000, 2_000_000),
                     ],
                 ),
-                build_record_batch_with_key(
+                build_fetching_record_batch_with_key(
                     schema,
                     vec![
                         build_row(b"a", 2, 10.0, "v", 2000, 2_000_000),
