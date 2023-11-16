@@ -16,15 +16,21 @@
 
 use std::{cmp, sync::Arc, time::Instant};
 
-use analytic_engine::sst::{
-    factory::{
-        Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, ScanOptions, SstReadHint,
-        SstReadOptions,
+use analytic_engine::{
+    sst::{
+        factory::{
+            Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, ScanOptions, SstReadHint,
+            SstReadOptions,
+        },
+        meta_data::cache::{MetaCache, MetaCacheRef},
+        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
     },
-    meta_data::cache::{MetaCache, MetaCacheRef},
-    metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
+    ScanType, SstReadOptionsBuilder,
 };
-use common_types::{projected_schema::ProjectedSchema, schema::Schema};
+use common_types::{
+    projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
+    schema::Schema,
+};
 use logger::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
 use runtime::Runtime;
@@ -36,7 +42,8 @@ pub struct SstBench {
     pub sst_file_name: String,
     max_projections: usize,
     schema: Schema,
-    sst_read_options: SstReadOptions,
+    projected_schema: Option<ProjectedSchema>,
+    sst_read_options_builder: SstReadOptionsBuilder,
     runtime: Arc<Runtime>,
 }
 
@@ -57,16 +64,16 @@ impl SstBench {
             max_record_batches_in_flight: 1024,
             num_streams_to_prefetch: 0,
         };
-        let sst_read_options = SstReadOptions {
-            maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench")),
-            frequency: ReadFrequency::Frequent,
-            num_rows_per_row_group: config.num_rows_per_row_group,
-            projected_schema,
+        let maybe_table_level_metrics = Arc::new(SstMaybeTableLevelMetrics::new("bench"));
+        let sst_read_options_builder = SstReadOptionsBuilder::new(
+            ScanType::Query,
+            scan_options,
+            maybe_table_level_metrics,
+            config.num_rows_per_row_group,
             predicate,
             meta_cache,
-            scan_options,
-            runtime: runtime.clone(),
-        };
+            runtime.clone(),
+        );
         let max_projections = cmp::min(config.max_projections, schema.num_columns());
 
         SstBench {
@@ -74,7 +81,8 @@ impl SstBench {
             sst_file_name: config.sst_file_name,
             max_projections,
             schema,
-            sst_read_options,
+            projected_schema: Some(projected_schema),
+            sst_read_options_builder: sst_read_options_builder.clone(),
             runtime,
         }
     }
@@ -88,7 +96,7 @@ impl SstBench {
         let projected_schema =
             util::projected_schema_by_number(&self.schema, i, self.max_projections);
 
-        self.sst_read_options.projected_schema = projected_schema;
+        self.projected_schema = Some(projected_schema);
     }
 
     pub fn run_bench(&self) {
@@ -97,11 +105,24 @@ impl SstBench {
         let sst_factory = FactoryImpl;
         let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
 
+        let fetching_schema = self.projected_schema.as_ref().unwrap().to_record_schema();
+        let table_schema = self
+            .projected_schema
+            .as_ref()
+            .unwrap()
+            .table_schema()
+            .clone();
+        let record_fetching_ctx_builder =
+            RecordFetchingContextBuilder::new(fetching_schema, table_schema, None);
+        let sst_read_options = self
+            .sst_read_options_builder
+            .clone()
+            .build(record_fetching_ctx_builder);
         self.runtime.block_on(async {
             let mut sst_reader = sst_factory
                 .create_reader(
                     &sst_path,
-                    &self.sst_read_options,
+                    &sst_read_options,
                     SstReadHint::default(),
                     &store_picker,
                     None,

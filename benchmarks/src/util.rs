@@ -35,7 +35,7 @@ use analytic_engine::{
 };
 use bytes_ext::{BufMut, SafeBufMut};
 use common_types::{
-    projected_schema::ProjectedSchema,
+    projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
     schema::{IndexInWriterSchema, Schema},
 };
 use macros::define_result;
@@ -123,15 +123,21 @@ pub async fn load_sst_to_memtable(
         max_record_batches_in_flight: 1024,
         num_streams_to_prefetch: 0,
     };
+    let projected_schema = ProjectedSchema::no_projection(schema.clone());
+
+    let fetching_schema = projected_schema.to_record_schema();
+    let table_schema = projected_schema.table_schema().clone();
+    let record_fetching_ctx_builder =
+        RecordFetchingContextBuilder::new(fetching_schema, table_schema, None);
     let sst_read_options = SstReadOptions {
         maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench")),
         frequency: ReadFrequency::Frequent,
         num_rows_per_row_group: 8192,
-        projected_schema: ProjectedSchema::no_projection(schema.clone()),
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
         scan_options,
         runtime,
+        record_fetching_ctx_builder,
     };
     let sst_factory = FactoryImpl;
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());

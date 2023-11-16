@@ -43,7 +43,11 @@ use size_ext::ReadableSize;
 use time_ext::ReadableDuration;
 use wal::config::StorageConfig;
 
-pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
+pub use crate::{
+    compaction::scheduler::SchedulerConfig,
+    instance::{ScanType, SstReadOptionsBuilder},
+    table_options::TableOptions,
+};
 
 /// Config of analytic engine
 #[derive(Debug, Clone, Deserialize, Serialize)]

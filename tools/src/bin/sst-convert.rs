@@ -30,7 +30,10 @@ use analytic_engine::{
 };
 use anyhow::{Context, Result};
 use clap::Parser;
-use common_types::{projected_schema::ProjectedSchema, request_id::RequestId};
+use common_types::{
+    projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
+    request_id::RequestId,
+};
 use generic_error::BoxError;
 use object_store::{LocalFileSystem, Path};
 use runtime::Runtime;
@@ -92,15 +95,21 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     let sst_meta = sst_util::meta_from_sst(&store, &input_path).await;
     let factory = FactoryImpl;
     let scan_options = ScanOptions::default();
+    let projected_schema = ProjectedSchema::no_projection(sst_meta.schema.clone());
+
+    let fetching_schema = projected_schema.to_record_schema();
+    let table_schema = projected_schema.table_schema().clone();
+    let record_fetching_ctx_builder =
+        RecordFetchingContextBuilder::new(fetching_schema, table_schema, None);
     let reader_opts = SstReadOptions {
         maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("tool")),
         frequency: ReadFrequency::Once,
         num_rows_per_row_group: 8192,
-        projected_schema: ProjectedSchema::no_projection(sst_meta.schema.clone()),
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
         scan_options,
         runtime,
+        record_fetching_ctx_builder,
     };
     let store_picker: ObjectStorePickerRef = Arc::new(store);
     let mut reader = factory
