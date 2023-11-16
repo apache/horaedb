@@ -145,34 +145,6 @@ impl CollectorVisitor for FormatCollectorVisitor {
     }
 }
 
-/// A collector for metrics of remote plan.
-///
-/// It can be cloned and shared among threads.
-#[derive(Clone, Debug, Default)]
-pub struct RemoteMetricsCollector {
-    name: String,
-    metrics: Arc<Mutex<String>>,
-}
-
-impl RemoteMetricsCollector {
-    pub fn new(name: String) -> Self {
-        Self {
-            name,
-            metrics: Arc::new(Mutex::new(String::new())),
-        }
-    }
-
-    pub fn collect(&self, metric: String) {
-        let mut metrics = self.metrics.lock().unwrap();
-        metrics.push_str(metric.as_str());
-    }
-
-    pub fn display(&self) -> String {
-        let metrics = self.metrics.lock().unwrap();
-        format!("{}:\n{}", self.name, metrics)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::time::Duration;

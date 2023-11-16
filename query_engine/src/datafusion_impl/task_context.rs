@@ -14,7 +14,7 @@
 
 use std::{
     fmt,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -50,7 +50,7 @@ use table_engine::{
     stream::ToDfStream,
     table::{ReadOptions, ReadRequest, TableRef},
 };
-use trace_metric::{collector::RemoteMetricsCollector, MetricsCollector};
+use trace_metric::MetricsCollector;
 
 use crate::{context::Context, datafusion_impl::physical_plan::TypedPlan, error::*};
 
@@ -175,7 +175,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
         table: TableIdentifier,
         task_context: &TaskContext,
         plan: Arc<dyn ExecutionPlan>,
-        remote_metrics_collector: RemoteMetricsCollector,
+        remote_metrics: Arc<Mutex<String>>,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         // Get the custom context to rebuild execution context.
         let ceresdb_options = task_context
@@ -222,7 +222,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
             let request = ExecutePlanRequest {
                 plan_schema,
                 remote_request,
-                remote_metrics_collector,
+                remote_metrics,
             };
 
             // Remote execute.

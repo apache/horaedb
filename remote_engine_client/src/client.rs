@@ -17,7 +17,7 @@
 use std::{
     collections::HashMap,
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, Mutex},
     task::{Context, Poll},
 };
 
@@ -46,7 +46,6 @@ use table_engine::{
 use time_ext::ReadableDuration;
 use tokio::time::sleep;
 use tonic::{transport::Channel, Request, Streaming};
-use trace_metric::collector::RemoteMetricsCollector;
 
 use crate::{cached_router::CachedRouter, config::Config, error::*, status_code};
 
@@ -120,7 +119,7 @@ impl Client {
             table_ident,
             response,
             record_schema,
-            RemoteMetricsCollector::default(),
+            Arc::new(Mutex::new(String::new())),
         );
 
         Ok(remote_read_record_batch_stream)
@@ -490,7 +489,7 @@ impl Client {
             table_ident,
             response,
             plan_schema,
-            request.remote_metrics_collector,
+            request.remote_metrics,
         );
 
         Ok(remote_execute_plan_stream)
@@ -509,7 +508,7 @@ pub struct ClientReadRecordBatchStream {
     pub table_ident: TableIdentifier,
     pub response_stream: Streaming<remote_engine::ReadResponse>,
     pub record_schema: RecordSchema,
-    pub remote_metrics_collector: RemoteMetricsCollector,
+    pub remote_metrics: Arc<Mutex<String>>,
 }
 
 impl ClientReadRecordBatchStream {
@@ -517,13 +516,13 @@ impl ClientReadRecordBatchStream {
         table_ident: TableIdentifier,
         response_stream: Streaming<remote_engine::ReadResponse>,
         record_schema: RecordSchema,
-        remote_metrics_collector: RemoteMetricsCollector,
+        remote_metrics: Arc<Mutex<String>>,
     ) -> Self {
         Self {
             table_ident,
             response_stream,
             record_schema,
-            remote_metrics_collector,
+            remote_metrics,
         }
     }
 }
@@ -545,7 +544,7 @@ impl Stream for ClientReadRecordBatchStream {
                 }
 
                 if let Some(metrics) = response.metrics {
-                    this.remote_metrics_collector.collect(metrics);
+                    this.remote_metrics.lock().unwrap().push_str(&metrics);
                 }
 
                 match response.output {

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::{Arc, Mutex};
 
 use async_recursion::async_recursion;
 use catalog::manager::ManagerRef as CatalogManagerRef;
@@ -21,7 +21,6 @@ use datafusion::{
     physical_plan::{analyze::AnalyzeExec, ExecutionPlan},
 };
 use table_engine::{remote::model::TableIdentifier, table::TableRef};
-use trace_metric::collector::RemoteMetricsCollector;
 
 use crate::{
     dist_sql_query::{
@@ -101,7 +100,7 @@ impl Resolver {
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
         // Check if this plan is `AnalyzeExec`, if it is, we should collect metrics.
-        let is_analyze = plan.as_any().downcast_ref::<AnalyzeExec>().is_some();
+        let is_analyze = plan.as_any().is::<AnalyzeExec>();
 
         let resolved_plan = self.resolve_partitioned_scan_internal(plan, is_analyze)?;
         PUSH_DOWN_PLAN_COUNTER
@@ -127,7 +126,6 @@ impl Resolver {
         if let Some(unresolved) = plan.as_any().downcast_ref::<UnresolvedPartitionedScan>() {
             let metrics_collector = unresolved.metrics_collector.clone();
             let sub_tables = unresolved.sub_tables.clone();
-            let mut remote_metrics_collector = HashMap::with_capacity(sub_tables.len());
             let remote_plans = sub_tables
                 .into_iter()
                 .map(|table| {
@@ -136,12 +134,13 @@ impl Resolver {
                         table_scan_ctx: unresolved.table_scan_ctx.clone(),
                     });
                     let sub_metrics_collect = metrics_collector.span(table.table.clone());
-                    remote_metrics_collector.insert(
-                        table.table.clone(),
-                        RemoteMetricsCollector::new(table.table.clone()),
-                    );
 
-                    SubTablePlanContext::new(table, plan, sub_metrics_collect)
+                    SubTablePlanContext::new(
+                        table,
+                        plan,
+                        sub_metrics_collect,
+                        Arc::new(Mutex::new(String::new())),
+                    )
                 })
                 .collect::<Vec<_>>();
 
@@ -149,7 +148,6 @@ impl Resolver {
                 self.remote_executor.clone(),
                 remote_plans,
                 metrics_collector,
-                remote_metrics_collector,
                 is_analyze,
             )));
         }

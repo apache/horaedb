@@ -16,6 +16,7 @@
 
 use std::{
     collections::HashMap,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -35,7 +36,6 @@ use generic_error::{BoxError, GenericError, GenericResult};
 use itertools::Itertools;
 use macros::define_result;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
-use trace_metric::collector::RemoteMetricsCollector;
 
 use crate::{
     partition::PartitionInfo,
@@ -412,7 +412,7 @@ pub struct ExecutePlanRequest {
     pub remote_request: RemoteExecuteRequest,
 
     /// Collect metrics of remote plan
-    pub remote_metrics_collector: RemoteMetricsCollector,
+    pub remote_metrics: Arc<Mutex<String>>,
 }
 
 impl ExecutePlanRequest {
@@ -421,7 +421,7 @@ impl ExecutePlanRequest {
         plan_schema: RecordSchema,
         context: ExecContext,
         physical_plan: PhysicalPlan,
-        remote_metrics_collector: RemoteMetricsCollector,
+        remote_metrics: Arc<Mutex<String>>,
     ) -> Self {
         let remote_request = RemoteExecuteRequest {
             table,
@@ -432,7 +432,7 @@ impl ExecutePlanRequest {
         Self {
             plan_schema,
             remote_request,
-            remote_metrics_collector,
+            remote_metrics,
         }
     }
 }

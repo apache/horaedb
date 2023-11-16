@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{fmt, sync::Arc};
+use std::{
+    fmt,
+    sync::{Arc, Mutex},
+};
 
 use async_trait::async_trait;
 use common_types::projected_schema::ProjectedSchema;
@@ -24,7 +27,6 @@ use datafusion::{
 use futures::future::BoxFuture;
 use generic_error::BoxError;
 use table_engine::{predicate::PredicateRef, remote::model::TableIdentifier, table::TableRef};
-use trace_metric::collector::RemoteMetricsCollector;
 
 pub mod codec;
 pub mod physical_plan;
@@ -39,7 +41,7 @@ pub trait RemotePhysicalPlanExecutor: fmt::Debug + Send + Sync + 'static {
         table: TableIdentifier,
         task_context: &TaskContext,
         plan: Arc<dyn ExecutionPlan>,
-        remote_metrics_collector: RemoteMetricsCollector,
+        remote_metrics: Arc<Mutex<String>>,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>>;
 }
 
