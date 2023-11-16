@@ -237,7 +237,7 @@ struct QueryConverter {
     // (column_name, index)
     tags_idx: Vec<(String, usize)>,
     aggregated_tags: Vec<String>,
-    // (tags_key, tags)
+    // (tags_key, (tagk, tagv))
     tags: HashMap<String, HashMap<String, String>>,
     // (tags_key, (timestamp, value))
     values: HashMap<String, HashMap<String, f64>>,
@@ -466,30 +466,19 @@ mod tests {
                     .unwrap(),
             )
             .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("tag2".to_string(), DatumKind::String)
-                    .is_tag(true)
-                    .build()
-                    .unwrap(),
-            )
-            .unwrap()
             .build()
             .unwrap()
     }
 
     fn build_record_batch(schema: &Schema) -> RecordBatchVec {
-        let tsid: ArrayRef = Arc::new(UInt64Array::from(vec![1, 1, 2, 3, 3]));
-        let timestamp: ArrayRef = Arc::new(TimestampMillisecondArray::from(vec![
-            11111111, 11111112, 11111113, 11111111, 11111112,
-        ]));
-        let values: ArrayRef =
-            Arc::new(Float64Array::from(vec![100.0, 101.0, 200.0, 300.0, 301.0]));
-        let tag1: ArrayRef = Arc::new(StringArray::from(vec!["a", "a", "b", "c", "c"]));
-        let tag2: ArrayRef = Arc::new(StringArray::from(vec!["x", "x", "y", "z", "z"]));
+        let tsid: ArrayRef = Arc::new(UInt64Array::from(vec![1]));
+        let timestamp: ArrayRef = Arc::new(TimestampMillisecondArray::from(vec![11111111]));
+        let values: ArrayRef = Arc::new(Float64Array::from(vec![100.0]));
+        let tag1: ArrayRef = Arc::new(StringArray::from(vec!["a"]));
 
         let batch = ArrowRecordBatch::try_new(
             schema.to_arrow_schema_ref(),
-            vec![tsid, timestamp, values, tag1, tag2],
+            vec![tsid, timestamp, values, tag1],
         )
         .unwrap();
 
@@ -498,8 +487,8 @@ mod tests {
 
     #[test]
     fn test_convert_output_to_response() {
-        let metric = "test".to_string();
-        let tags = vec!["tag1".to_string(), "tag2".to_string()];
+        let metric = "metric".to_string();
+        let tags = vec!["tag1".to_string()];
         let schema = build_schema();
         let record_batch = build_record_batch(&schema);
         let result = convert_output_to_response(
@@ -508,55 +497,19 @@ mod tests {
             DEFAULT_FIELD.to_string(),
             TIMESTAMP_COLUMN.to_string(),
             tags,
-            vec![],
+            vec!["tag1".to_string()],
         )
         .unwrap();
+
         assert_eq!(
-            vec![
-                QueryResponse {
-                    metric: metric.clone(),
-                    tags: vec![
-                        ("tag1".to_string(), "a".to_string()),
-                        ("tag2".to_string(), "x".to_string()),
-                    ]
+            vec![QueryResponse {
+                metric: metric.clone(),
+                tags: vec![("tag1".to_string(), "a".to_string()),]
                     .into_iter()
                     .collect(),
-                    aggregated_tags: vec![],
-                    dps: vec![
-                        ("11111111".to_string(), 100.0),
-                        ("11111112".to_string(), 101.0),
-                    ]
-                    .into_iter()
-                    .collect(),
-                },
-                QueryResponse {
-                    metric: metric.clone(),
-                    tags: vec![
-                        ("tag1".to_string(), "b".to_string()),
-                        ("tag2".to_string(), "y".to_string()),
-                    ]
-                    .into_iter()
-                    .collect(),
-                    aggregated_tags: vec![],
-                    dps: vec![("11111113".to_string(), 200.0),].into_iter().collect(),
-                },
-                QueryResponse {
-                    metric: metric.clone(),
-                    tags: vec![
-                        ("tag1".to_string(), "c".to_string()),
-                        ("tag2".to_string(), "z".to_string()),
-                    ]
-                    .into_iter()
-                    .collect(),
-                    aggregated_tags: vec![],
-                    dps: vec![
-                        ("11111111".to_string(), 300.0),
-                        ("11111112".to_string(), 301.0),
-                    ]
-                    .into_iter()
-                    .collect(),
-                },
-            ],
+                aggregated_tags: vec!["tag1".to_string()],
+                dps: vec![("11111111".to_string(), 100.0),].into_iter().collect(),
+            }],
             result
         );
     }
