@@ -75,7 +75,7 @@ pub fn build_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> FetchingRe
     let fetching_schema = projected_schema.to_record_schema();
     let table_schema = projected_schema.table_schema();
     let record_fetching_ctx =
-        RecordFetchingContext::new(&fetching_schema, None, &table_schema, &table_schema).unwrap();
+        RecordFetchingContext::new(&fetching_schema, None, table_schema, table_schema).unwrap();
     let mut builder = FetchingRecordBatchBuilder::with_capacity(fetching_schema, None, 2);
     let index_in_writer = IndexInWriterSchema::for_same_schema(schema.num_columns());
 

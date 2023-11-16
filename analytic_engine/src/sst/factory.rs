@@ -18,7 +18,7 @@ use std::{fmt::Debug, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::projected_schema::{
-    ProjectedSchema, RecordFetchingContext, RecordFetchingContextBuilder,
+    RecordFetchingContextBuilder,
 };
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};

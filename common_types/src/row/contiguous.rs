@@ -801,7 +801,7 @@ mod tests {
         let ctx = RecordFetchingContext::new(
             &projected_schema.to_record_schema(),
             None,
-            &projected_schema.table_schema(),
+            projected_schema.table_schema(),
             &schema,
         )
         .unwrap();

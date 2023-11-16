@@ -271,7 +271,7 @@ impl RecordFetchingContextBuilder {
             &self.fetching_schema,
             self.primary_key_indexes.clone(),
             &self.table_schema,
-            &source_schema,
+            source_schema,
         )
     }
 }

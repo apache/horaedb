@@ -34,7 +34,7 @@ pub(crate) mod write;
 use std::sync::Arc;
 
 use common_types::{
-    projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
+    projected_schema::{RecordFetchingContextBuilder},
     table::TableId,
 };
 use generic_error::{BoxError, GenericError};

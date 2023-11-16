@@ -27,8 +27,8 @@ use analytic_engine::{
     space::SpaceId,
     sst::{
         factory::{
-            FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
-            ScanOptions, SstReadOptions,
+            FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef,
+            ScanOptions,
         },
         file::{FileHandle, FilePurgeQueue, Level, Request},
         meta_data::cache::MetaCacheRef,
@@ -38,7 +38,7 @@ use analytic_engine::{
     ScanType, SstReadOptionsBuilder,
 };
 use common_types::{
-    projected_schema::{ProjectedSchema, RecordFetchingContext, RecordFetchingContextBuilder},
+    projected_schema::{ProjectedSchema},
     request_id::RequestId,
     schema::Schema,
 };
@@ -80,7 +80,7 @@ impl MergeSstBench {
         let schema = runtime.block_on(util::schema_from_sst(&store, &sst_path, &meta_cache));
 
         let predicate = config.predicate.into_predicate();
-        let projected_schema = ProjectedSchema::no_projection(schema.clone());
+        let _projected_schema = ProjectedSchema::no_projection(schema.clone());
         let scan_options = ScanOptions {
             background_read_parallelism: 1,
             max_record_batches_in_flight: 1024,

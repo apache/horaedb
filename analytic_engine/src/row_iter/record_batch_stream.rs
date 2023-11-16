@@ -23,7 +23,7 @@ use arrow::{
     datatypes::{DataType as ArrowDataType, SchemaRef as ArrowSchemaRef},
 };
 use common_types::{
-    projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
+    projected_schema::{RecordFetchingContextBuilder},
     record_batch::FetchingRecordBatch,
     schema::RecordSchema,
     SequenceNumber,

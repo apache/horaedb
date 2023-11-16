@@ -29,8 +29,8 @@ use analytic_engine::{
     space::SpaceId,
     sst::{
         factory::{
-            FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
-            ScanOptions, SstReadOptions,
+            FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef,
+            ScanOptions,
         },
         meta_data::cache::MetaCacheRef,
         metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
@@ -210,7 +210,7 @@ impl MergeMemTableBench {
 }
 
 fn mock_sst_read_options_builder(
-    projected_schema: ProjectedSchema,
+    _projected_schema: ProjectedSchema,
     runtime: Arc<Runtime>,
 ) -> SstReadOptionsBuilder {
     let scan_options = ScanOptions {
