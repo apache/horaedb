@@ -46,7 +46,7 @@ use table_engine::{
 use time_ext::ReadableDuration;
 use tokio::time::sleep;
 use tonic::{transport::Channel, Request, Streaming};
-use trace_metric::{metric::MetricValue, Metric, MetricsCollector};
+use trace_metric::collector::RemoteMetricsCollector;
 
 use crate::{cached_router::CachedRouter, config::Config, error::*, status_code};
 
@@ -87,7 +87,6 @@ impl Client {
         // Read from remote.
         let table_ident = request.table.clone();
         let record_schema = request.read_request.projected_schema.to_record_schema();
-        let metrics_collector = request.read_request.metrics_collector.clone();
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
         let request_pb = ceresdbproto::remote_engine::ReadRequest::try_from(request)
             .box_err()
@@ -121,7 +120,7 @@ impl Client {
             table_ident,
             response,
             record_schema,
-            metrics_collector,
+            RemoteMetricsCollector::default(),
         );
 
         Ok(remote_read_record_batch_stream)
@@ -491,7 +490,7 @@ impl Client {
             table_ident,
             response,
             plan_schema,
-            request.metrics_collector,
+            request.remote_metrics_collector,
         );
 
         Ok(remote_execute_plan_stream)
@@ -510,7 +509,7 @@ pub struct ClientReadRecordBatchStream {
     pub table_ident: TableIdentifier,
     pub response_stream: Streaming<remote_engine::ReadResponse>,
     pub record_schema: RecordSchema,
-    pub metrics_collector: MetricsCollector,
+    pub remote_metrics_collector: RemoteMetricsCollector,
 }
 
 impl ClientReadRecordBatchStream {
@@ -518,13 +517,13 @@ impl ClientReadRecordBatchStream {
         table_ident: TableIdentifier,
         response_stream: Streaming<remote_engine::ReadResponse>,
         record_schema: RecordSchema,
-        metrics_collector: MetricsCollector,
+        remote_metrics_collector: RemoteMetricsCollector,
     ) -> Self {
         Self {
             table_ident,
             response_stream,
             record_schema,
-            metrics_collector,
+            remote_metrics_collector,
         }
     }
 }
@@ -546,11 +545,7 @@ impl Stream for ClientReadRecordBatchStream {
                 }
 
                 if let Some(metrics) = response.metrics {
-                    this.metrics_collector.collect(Metric::Number(MetricValue {
-                        name: metrics,
-                        val: 0,
-                        aggregator: None,
-                    }));
+                    this.remote_metrics_collector.collect(metrics);
                 }
 
                 match response.output {

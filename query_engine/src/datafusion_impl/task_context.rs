@@ -50,7 +50,7 @@ use table_engine::{
     stream::ToDfStream,
     table::{ReadOptions, ReadRequest, TableRef},
 };
-use trace_metric::MetricsCollector;
+use trace_metric::{collector::RemoteMetricsCollector, MetricsCollector};
 
 use crate::{context::Context, datafusion_impl::physical_plan::TypedPlan, error::*};
 
@@ -143,7 +143,7 @@ impl Preprocessor {
         plan: &Arc<dyn ExecutionPlan>,
         ctx: &Context,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        let mut resolver = self.dist_query_resolver_builder.build(ctx);
+        let resolver = self.dist_query_resolver_builder.build(ctx);
         resolver
             .resolve_partitioned_scan(plan.clone())
             .box_err()
@@ -175,7 +175,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
         table: TableIdentifier,
         task_context: &TaskContext,
         plan: Arc<dyn ExecutionPlan>,
-        metrics_collector: MetricsCollector,
+        remote_metrics_collector: RemoteMetricsCollector,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         // Get the custom context to rebuild execution context.
         let ceresdb_options = task_context
@@ -222,7 +222,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
             let request = ExecutePlanRequest {
                 plan_schema,
                 remote_request,
-                metrics_collector,
+                remote_metrics_collector,
             };
 
             // Remote execute.

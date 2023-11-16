@@ -49,7 +49,7 @@ use proxy::{
 };
 use query_engine::{
     datafusion_impl::physical_plan::{DataFusionPhysicalPlanAdapter, TypedPlan},
-    physical_planner::{PhysicalPlan, PhysicalPlanRef},
+    physical_planner::PhysicalPlanRef,
     QueryEngineRef, QueryEngineType,
 };
 use snafu::{OptionExt, ResultExt};
@@ -106,7 +106,7 @@ impl StreamReadReqKey {
 }
 
 pub type StreamReadRequestNotifiers =
-    Arc<RequestNotifiers<StreamReadReqKey, mpsc::Sender<Result<RecordBatchWithMetrics>>>>;
+    Arc<RequestNotifiers<StreamReadReqKey, mpsc::Sender<Result<RecordBatch>>>>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PhysicalPlanKey {
@@ -114,7 +114,7 @@ pub struct PhysicalPlanKey {
 }
 
 pub type PhysicalPlanNotifiers =
-    Arc<RequestNotifiers<PhysicalPlanKey, mpsc::Sender<Result<RecordBatchWithMetrics>>>>;
+    Arc<RequestNotifiers<PhysicalPlanKey, mpsc::Sender<Result<RecordBatch>>>>;
 
 /// Stream metric
 trait MetricCollector: 'static + Send + Unpin {
@@ -143,14 +143,20 @@ impl MetricCollector for ExecutePlanMetricCollector {
 
 /// Stream with metric
 struct StreamWithMetric<M: MetricCollector> {
-    inner: BoxStream<'static, Result<RecordBatchWithMetrics>>,
+    inner: BoxStream<'static, Result<RecordBatch>>,
+    physical_plan: Option<PhysicalPlanRef>,
     metric: Option<M>,
 }
 
 impl<M: MetricCollector> StreamWithMetric<M> {
-    fn new(inner: BoxStream<'static, Result<RecordBatchWithMetrics>>, metric: M) -> Self {
+    fn new(
+        inner: BoxStream<'static, Result<RecordBatch>>,
+        physical_plan: Option<PhysicalPlanRef>,
+        metric: M,
+    ) -> Self {
         Self {
             inner,
+            physical_plan,
             metric: Some(metric),
         }
     }
@@ -160,7 +166,19 @@ impl<M: MetricCollector> Stream for StreamWithMetric<M> {
     type Item = Result<RecordBatchWithMetrics>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.get_mut().inner.poll_next_unpin(cx)
+        let this = self.get_mut();
+        match this.inner.poll_next_unpin(cx) {
+            Poll::Ready(Some(res)) => {
+                Poll::Ready(Some(res.map(RecordBatchWithMetrics::RecordBatch)))
+            }
+            Poll::Ready(None) => match &this.physical_plan {
+                Some(physical_plan) => Poll::Ready(Some(Ok(RecordBatchWithMetrics::Metrics(
+                    physical_plan.metrics_to_string(),
+                )))),
+                None => Poll::Ready(None),
+            },
+            Poll::Pending => Poll::Pending,
+        }
     }
 }
 
@@ -293,10 +311,7 @@ impl RemoteEngineServiceImpl {
                     if let Ok(record_batch) = &batch {
                         num_rows += record_batch.num_rows();
                     }
-                    if let Err(e) = tx
-                        .send(batch.map(RecordBatchWithMetrics::RecordBatch))
-                        .await
-                    {
+                    if let Err(e) = tx.send(batch).await {
                         error!("Failed to send handler result, err:{}.", e);
                         break;
                     }
@@ -309,6 +324,7 @@ impl RemoteEngineServiceImpl {
 
         Ok(StreamWithMetric::new(
             Box::pin(ReceiverStream::new(rx)),
+            None,
             metric,
         ))
     }
@@ -352,7 +368,6 @@ impl RemoteEngineServiceImpl {
                     query,
                     request_notifiers.clone(),
                     config.notify_timeout.0,
-                    None,
                 )
                 .await?;
             }
@@ -365,6 +380,7 @@ impl RemoteEngineServiceImpl {
 
         Ok(StreamWithMetric::new(
             Box::pin(ReceiverStream::new(rx)),
+            None,
             metric,
         ))
     }
@@ -373,9 +389,8 @@ impl RemoteEngineServiceImpl {
         &self,
         request_key: K,
         query: F,
-        notifiers: Arc<RequestNotifiers<K, mpsc::Sender<Result<RecordBatchWithMetrics>>>>,
+        notifiers: Arc<RequestNotifiers<K, mpsc::Sender<Result<RecordBatch>>>>,
         notify_timeout: Duration,
-        physical_plan: Option<PhysicalPlanRef>,
     ) -> Result<()>
     where
         K: Hash + PartialEq + Eq,
@@ -394,13 +409,10 @@ impl RemoteEngineServiceImpl {
         let mut stream_read = FuturesUnordered::new();
         for stream in streams.streams {
             let mut stream = stream.map(|result| {
-                result
-                    .map(RecordBatchWithMetrics::RecordBatch)
-                    .box_err()
-                    .context(ErrWithCause {
-                        code: StatusCode::Internal,
-                        msg: "record batch failed",
-                    })
+                result.box_err().context(ErrWithCause {
+                    code: StatusCode::Internal,
+                    msg: "record batch failed",
+                })
             });
 
             let handle = self.runtimes.read_runtime.spawn(async move {
@@ -425,11 +437,6 @@ impl RemoteEngineServiceImpl {
             resps.extend(batch);
         }
 
-        if let Some(physical_plan) = physical_plan {
-            let metrics = physical_plan.metrics_to_string();
-            resps.push(Ok(RecordBatchWithMetrics::Metrics(metrics)));
-        }
-
         // We should set cancel to guard, otherwise the key will be removed twice.
         guard.cancel();
         let notifiers = notifiers.take_notifiers(&request_key).unwrap();
@@ -444,17 +451,15 @@ impl RemoteEngineServiceImpl {
 
     /// Send the response to the queriers that share the same query request.
     async fn send_dedupped_resps(
-        resps: Vec<Result<RecordBatchWithMetrics>>,
-        notifiers: Vec<Sender<Result<RecordBatchWithMetrics>>>,
+        resps: Vec<Result<RecordBatch>>,
+        notifiers: Vec<Sender<Result<RecordBatch>>>,
         notify_timeout: Duration,
     ) {
         let mut num_rows = 0;
         for resp in resps {
             match resp {
                 Ok(batch) => {
-                    if let RecordBatchWithMetrics::RecordBatch(batch) = batch.clone() {
-                        num_rows += batch.num_rows();
-                    }
+                    num_rows += batch.num_rows();
                     for notifier in &notifiers {
                         if let Err(e) = notifier
                             .send_timeout(Ok(batch.clone()), notify_timeout)
@@ -613,7 +618,6 @@ impl RemoteEngineServiceImpl {
         request: Request<ExecutePlanRequest>,
     ) -> Result<StreamWithMetric<ExecutePlanMetricCollector>> {
         let metric = ExecutePlanMetricCollector(Instant::now());
-        let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let request = request.into_inner();
         let query_engine = self.instance.query_engine.clone();
         let (ctx, encoded_plan) = extract_plan_from_req(request)?;
@@ -623,39 +627,26 @@ impl RemoteEngineServiceImpl {
         )));
         let physical_plan_clone = physical_plan.clone();
 
-        let mut stream = self
+        let stream = self
             .runtimes
             .read_runtime
-            .spawn(async move { handle_execute_plan(ctx, physical_plan_clone, query_engine).await })
+            .spawn(async move { handle_execute_plan(ctx, physical_plan, query_engine).await })
             .await
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::Internal,
                 msg: "failed to run execute physical plan task",
-            })??;
-
-        self.runtimes.read_runtime.spawn(async move {
-            while let Some(result) = stream.next().await {
-                let result = result
-                    .map(RecordBatchWithMetrics::RecordBatch)
-                    .box_err()
-                    .context(ErrWithCause {
-                        code: StatusCode::Internal,
-                        msg: "failed to poll record batch for remote physical plan",
-                    });
-                if let Err(e) = tx.send(result).await {
-                    error!("Failed to send handler result, err:{}.", e);
-                    break;
-                }
-            }
-            let metrics = physical_plan.metrics_to_string();
-            if let Err(e) = tx.send(Ok(RecordBatchWithMetrics::Metrics(metrics))).await {
-                error!("Failed to send handler result, err:{}.", e);
-            }
-        });
+            })??
+            .map(|result| {
+                result.box_err().context(ErrWithCause {
+                    code: StatusCode::Internal,
+                    msg: "failed to poll record batch for remote physical plan",
+                })
+            });
 
         Ok(StreamWithMetric::new(
-            Box::pin(ReceiverStream::new(rx)),
+            Box::pin(stream),
+            Some(physical_plan_clone),
             metric,
         ))
     }
@@ -677,6 +668,7 @@ impl RemoteEngineServiceImpl {
         let physical_plan = Arc::new(DataFusionPhysicalPlanAdapter::new(TypedPlan::Remote(
             encoded_plan,
         )));
+
         let physical_plan_clone = physical_plan.clone();
 
         let QueryDedup {
@@ -690,7 +682,7 @@ impl RemoteEngineServiceImpl {
             // The first request, need to handle it, and then notify the other requests.
             RequestResult::First => {
                 let query = async move {
-                    handle_execute_plan(ctx, physical_plan_clone, query_engine)
+                    handle_execute_plan(ctx, physical_plan, query_engine)
                         .await
                         .map(PartitionedStreams::one_stream)
                 };
@@ -699,7 +691,6 @@ impl RemoteEngineServiceImpl {
                     query,
                     physical_plan_notifiers,
                     config.notify_timeout.0,
-                    Some(physical_plan),
                 )
                 .await?;
             }
@@ -712,6 +703,7 @@ impl RemoteEngineServiceImpl {
 
         Ok(StreamWithMetric::new(
             Box::pin(ReceiverStream::new(rx)),
+            Some(physical_plan_clone),
             metric,
         ))
     }

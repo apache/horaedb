@@ -51,7 +51,7 @@ use table_engine::{
     table::{ReadOptions, ReadRequest, TableId, TableRef},
     ANALYTIC_ENGINE_TYPE,
 };
-use trace_metric::MetricsCollector;
+use trace_metric::{collector::RemoteMetricsCollector, MetricsCollector};
 
 use crate::dist_sql_query::{
     physical_plan::{PartitionedScanStream, UnresolvedPartitionedScan, UnresolvedSubTableScan},
@@ -507,7 +507,7 @@ impl RemotePhysicalPlanExecutor for MockRemotePhysicalPlanExecutor {
         _table: TableIdentifier,
         _task_context: &TaskContext,
         _plan: Arc<dyn ExecutionPlan>,
-        _metrics_collector: MetricsCollector,
+        _remote_metrics_collector: RemoteMetricsCollector,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         unimplemented!()
     }

@@ -16,6 +16,7 @@
 
 use std::{
     any::Any,
+    collections::HashMap,
     fmt,
     pin::Pin,
     sync::Arc,
@@ -43,7 +44,10 @@ use datafusion::{
 };
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use table_engine::{remote::model::TableIdentifier, table::ReadRequest};
-use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector, TraceMetricWhenDrop};
+use trace_metric::{
+    collector::{FormatCollectorVisitor, RemoteMetricsCollector},
+    MetricsCollector, TraceMetricWhenDrop,
+};
 
 use crate::dist_sql_query::{RemotePhysicalPlanExecutor, TableScanContext};
 
@@ -146,32 +150,46 @@ impl DisplayAs for UnresolvedPartitionedScan {
 pub(crate) struct ResolvedPartitionedScan {
     pub remote_exec_ctx: Arc<RemoteExecContext>,
     pub pushdown_continue: bool,
-    pub metrics_collector: Option<MetricsCollector>,
+    pub metrics_collector: MetricsCollector,
+    pub remote_metrics_collector: HashMap<String, RemoteMetricsCollector>,
+    pub is_analyze: bool,
 }
 
 impl ResolvedPartitionedScan {
     pub fn new(
         remote_executor: Arc<dyn RemotePhysicalPlanExecutor>,
         sut_table_plan_ctxs: Vec<SubTablePlanContext>,
-        metrics_collector: Option<MetricsCollector>,
+        metrics_collector: MetricsCollector,
+        remote_metrics_collector: HashMap<String, RemoteMetricsCollector>,
+        is_analyze: bool,
     ) -> Self {
         let remote_exec_ctx = Arc::new(RemoteExecContext {
             executor: remote_executor,
             plan_ctxs: sut_table_plan_ctxs,
         });
 
-        Self::new_with_details(remote_exec_ctx, true, metrics_collector)
+        Self::new_with_details(
+            remote_exec_ctx,
+            true,
+            metrics_collector,
+            remote_metrics_collector,
+            is_analyze,
+        )
     }
 
     pub fn new_with_details(
         remote_exec_ctx: Arc<RemoteExecContext>,
         pushdown_continue: bool,
-        metrics_collector: Option<MetricsCollector>,
+        metrics_collector: MetricsCollector,
+        remote_metrics_collector: HashMap<String, RemoteMetricsCollector>,
+        is_analyze: bool,
     ) -> Self {
         Self {
             remote_exec_ctx,
             pushdown_continue,
             metrics_collector,
+            remote_metrics_collector,
+            is_analyze,
         }
     }
 
@@ -180,6 +198,8 @@ impl ResolvedPartitionedScan {
             remote_exec_ctx: self.remote_exec_ctx.clone(),
             pushdown_continue: false,
             metrics_collector: self.metrics_collector.clone(),
+            remote_metrics_collector: self.remote_metrics_collector.clone(),
+            is_analyze: self.is_analyze,
         })
     }
 
@@ -227,6 +247,8 @@ impl ResolvedPartitionedScan {
             remote_exec_ctx,
             can_push_down_more,
             self.metrics_collector.clone(),
+            self.remote_metrics_collector.clone(),
+            self.is_analyze,
         );
 
         Ok(Arc::new(plan))
@@ -297,7 +319,7 @@ impl ExecutionPlan for ResolvedPartitionedScan {
     fn children(&self) -> Vec<Arc<dyn ExecutionPlan>> {
         // If this is a analyze plan, we should not collect metrics of children
         // which have been send to remote, So we just return empty children.
-        if self.metrics_collector.is_some() {
+        if self.is_analyze {
             return vec![];
         }
 
@@ -334,13 +356,14 @@ impl ExecutionPlan for ResolvedPartitionedScan {
             plan,
             metrics_collector,
         } = &self.remote_exec_ctx.plan_ctxs[partition];
+        let remote_metrics_collector = self.remote_metrics_collector.get(&sub_table.table).unwrap();
 
         // Send plan for remote execution.
         let stream_future = self.remote_exec_ctx.executor.execute(
             sub_table.clone(),
             &context,
             plan.clone(),
-            metrics_collector.clone(),
+            remote_metrics_collector.clone(),
         )?;
         let record_stream =
             PartitionedScanStream::new(stream_future, plan.schema(), metrics_collector.clone());
@@ -353,25 +376,31 @@ impl ExecutionPlan for ResolvedPartitionedScan {
     }
 
     fn metrics(&self) -> Option<MetricsSet> {
-        match &self.metrics_collector {
-            None => None,
-            Some(metrics_collector) => {
-                let mut metric_set = MetricsSet::new();
+        let mut metric_set = MetricsSet::new();
 
-                let mut format_visitor = FormatCollectorVisitor::default();
-                metrics_collector.visit(&mut format_visitor);
-                let metrics_desc = format_visitor.into_string();
-                metric_set.push(Arc::new(Metric::new(
-                    MetricValue::Count {
-                        name: format!("\n{metrics_desc}").into(),
-                        count: Count::new(),
-                    },
-                    None,
-                )));
-
-                Some(metric_set)
-            }
+        for remote_metrics_collector in self.remote_metrics_collector.values() {
+            let metrics_desc = remote_metrics_collector.display();
+            metric_set.push(Arc::new(Metric::new(
+                MetricValue::Count {
+                    name: format!("\n{metrics_desc}").into(),
+                    count: Count::new(),
+                },
+                None,
+            )));
         }
+
+        let mut format_visitor = FormatCollectorVisitor::default();
+        self.metrics_collector.visit(&mut format_visitor);
+        let metrics_desc = format_visitor.into_string();
+        metric_set.push(Arc::new(Metric::new(
+            MetricValue::Count {
+                name: format!("\n{metrics_desc}").into(),
+                count: Count::new(),
+            },
+            None,
+        )));
+
+        Some(metric_set)
     }
 }
 
