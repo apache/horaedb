@@ -38,8 +38,8 @@ use crate::{
     sst::file::FilePurgerRef,
     table::{
         data::{
-            MemSizeOptions, TableConfig, TableData, TableCatalogInfo, TableDataRef,
-            TableDesc, TableShardInfo, DEFAULT_ALLOC_STEP,
+            MemSizeOptions, TableCatalogInfo, TableConfig, TableData, TableDataRef, TableDesc,
+            TableShardInfo, DEFAULT_ALLOC_STEP,
         },
         version::{TableVersionMeta, TableVersionSnapshot},
         version_edit::VersionEdit,

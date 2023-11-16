@@ -25,9 +25,7 @@ use common_types::table::ShardId;
 use generic_error::GenericResult;
 use table_engine::table::TableId;
 
-use crate::{
-    manifest::meta_edit::MetaEditRequest, space::SpaceId, table::data::TableCatalogInfo,
-};
+use crate::{manifest::meta_edit::MetaEditRequest, space::SpaceId, table::data::TableCatalogInfo};
 
 #[derive(Debug)]
 pub struct LoadRequest {

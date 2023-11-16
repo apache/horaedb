@@ -760,7 +760,7 @@ mod tests {
         },
         sst::file::tests::FilePurgerMocker,
         table::data::{
-            tests::default_schema, MemSizeOptions, TableConfig, TableData, TableCatalogInfo,
+            tests::default_schema, MemSizeOptions, TableCatalogInfo, TableConfig, TableData,
             TableDesc, TableShardInfo,
         },
         MetricsOptions, TableOptions,
