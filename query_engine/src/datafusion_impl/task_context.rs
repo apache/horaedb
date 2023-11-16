@@ -40,7 +40,7 @@ use generic_error::BoxError;
 use prost::Message;
 use snafu::ResultExt;
 use table_engine::{
-    provider::{CeresdbOptions, ScanTable},
+    provider::{CeresdbOptions, ScanTable, SCAN_TABLE_METRICS_COLLECTOR_NAME},
     remote::{
         model::{
             ExecContext, ExecutePlanRequest, PhysicalPlan, RemoteExecuteRequest, TableIdentifier,
@@ -288,7 +288,7 @@ impl ExecutableScanBuilder for ExecutableScanBuilderImpl {
             opts: read_opts,
             projected_schema: ctx.projected_schema,
             predicate: ctx.predicate,
-            metrics_collector: MetricsCollector::default(),
+            metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
         };
 
         let mut scan = ScanTable::new(table, read_request);
