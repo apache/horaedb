@@ -19,7 +19,7 @@ package limiter
 import (
 	"sync"
 
-	"github.com/CeresDB/ceresmeta/server/config"
+	"github.com/CeresDB/horaemeta/server/config"
 	"golang.org/x/time/rate"
 )
 

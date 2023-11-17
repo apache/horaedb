@@ -16,6 +16,6 @@
 
 package manager
 
-import "github.com/CeresDB/ceresmeta/pkg/coderr"
+import "github.com/CeresDB/horaemeta/pkg/coderr"
 
 var ErrInvalidTopologyType = coderr.NewCodeError(coderr.InvalidParams, "invalid topology type")

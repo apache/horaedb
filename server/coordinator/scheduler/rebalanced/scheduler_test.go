@@ -20,10 +20,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/CeresDB/ceresmeta/server/coordinator"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/test"
-	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/nodepicker"
-	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/rebalanced"
+	"github.com/CeresDB/horaemeta/server/coordinator"
+	"github.com/CeresDB/horaemeta/server/coordinator/procedure/test"
+	"github.com/CeresDB/horaemeta/server/coordinator/scheduler/nodepicker"
+	"github.com/CeresDB/horaemeta/server/coordinator/scheduler/rebalanced"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )

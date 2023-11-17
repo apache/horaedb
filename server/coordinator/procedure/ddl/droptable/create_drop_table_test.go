@@ -22,13 +22,13 @@ import (
 	"testing"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
-	"github.com/CeresDB/ceresmeta/server/cluster"
-	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
-	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/ddl/createtable"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/ddl/droptable"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/test"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/server/cluster"
+	"github.com/CeresDB/horaemeta/server/cluster/metadata"
+	"github.com/CeresDB/horaemeta/server/coordinator/eventdispatch"
+	"github.com/CeresDB/horaemeta/server/coordinator/procedure/ddl/createtable"
+	"github.com/CeresDB/horaemeta/server/coordinator/procedure/ddl/droptable"
+	"github.com/CeresDB/horaemeta/server/coordinator/procedure/test"
+	"github.com/CeresDB/horaemeta/server/storage"
 	"github.com/stretchr/testify/require"
 )
 

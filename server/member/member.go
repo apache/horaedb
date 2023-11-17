@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metastoragepb"
-	"github.com/CeresDB/ceresmeta/pkg/log"
-	"github.com/CeresDB/ceresmeta/server/etcdutil"
+	"github.com/CeresDB/horaemeta/pkg/log"
+	"github.com/CeresDB/horaemeta/server/etcdutil"
 	"github.com/pkg/errors"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -34,7 +34,7 @@ import (
 
 const leaderCheckInterval = time.Duration(100) * time.Millisecond
 
-// Member manages the leadership and the role of the node in the ceresmeta cluster.
+// Member manages the leadership and the role of the node in the horaemeta cluster.
 type Member struct {
 	ID               uint64
 	Name             string

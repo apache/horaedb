@@ -19,11 +19,11 @@ package http
 import (
 	"net/http"
 
-	"github.com/CeresDB/ceresmeta/pkg/coderr"
-	"github.com/CeresDB/ceresmeta/server/cluster"
-	"github.com/CeresDB/ceresmeta/server/limiter"
-	"github.com/CeresDB/ceresmeta/server/status"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/pkg/coderr"
+	"github.com/CeresDB/horaemeta/server/cluster"
+	"github.com/CeresDB/horaemeta/server/limiter"
+	"github.com/CeresDB/horaemeta/server/status"
+	"github.com/CeresDB/horaemeta/server/storage"
 )
 
 const (

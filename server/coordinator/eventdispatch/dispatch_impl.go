@@ -21,9 +21,9 @@ import (
 	"sync"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaeventpb"
-	"github.com/CeresDB/ceresmeta/pkg/coderr"
-	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
-	"github.com/CeresDB/ceresmeta/server/service"
+	"github.com/CeresDB/horaemeta/pkg/coderr"
+	"github.com/CeresDB/horaemeta/server/cluster/metadata"
+	"github.com/CeresDB/horaemeta/server/service"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 )

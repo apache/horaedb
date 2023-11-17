@@ -17,7 +17,7 @@ peer-urls = "http://127.0.0.1:12380"
 advertise-client-urls = "http://127.0.0.1:12379"
 advertise-peer-urls = "http://127.0.0.1:12380"
 client-urls = "http://127.0.0.1:12379"
-data-dir = "/tmp/ceresmeta1"
+data-dir = "/tmp/meta1"
 node-name = "meta1"
 initial-cluster = "meta0=http://127.0.0.1:2380,meta1=http://127.0.0.1:12380,meta2=http://127.0.0.1:22380"
 default-cluster-node-count = 2

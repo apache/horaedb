@@ -26,18 +26,18 @@ import (
 	"time"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
-	"github.com/CeresDB/ceresmeta/pkg/coderr"
-	"github.com/CeresDB/ceresmeta/pkg/log"
-	"github.com/CeresDB/ceresmeta/server/cluster"
-	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
-	"github.com/CeresDB/ceresmeta/server/config"
-	"github.com/CeresDB/ceresmeta/server/etcdutil"
-	"github.com/CeresDB/ceresmeta/server/limiter"
-	"github.com/CeresDB/ceresmeta/server/member"
-	metagrpc "github.com/CeresDB/ceresmeta/server/service/grpc"
-	"github.com/CeresDB/ceresmeta/server/service/http"
-	"github.com/CeresDB/ceresmeta/server/status"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/pkg/coderr"
+	"github.com/CeresDB/horaemeta/pkg/log"
+	"github.com/CeresDB/horaemeta/server/cluster"
+	"github.com/CeresDB/horaemeta/server/cluster/metadata"
+	"github.com/CeresDB/horaemeta/server/config"
+	"github.com/CeresDB/horaemeta/server/etcdutil"
+	"github.com/CeresDB/horaemeta/server/limiter"
+	"github.com/CeresDB/horaemeta/server/member"
+	metagrpc "github.com/CeresDB/horaemeta/server/service/grpc"
+	"github.com/CeresDB/horaemeta/server/service/http"
+	"github.com/CeresDB/horaemeta/server/status"
+	"github.com/CeresDB/horaemeta/server/storage"
 	"github.com/pkg/errors"
 	"go.etcd.io/etcd/client/pkg/v3/transport"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -59,7 +59,7 @@ type Server struct {
 	clusterManager cluster.Manager
 	flowLimiter    *limiter.FlowLimiter
 
-	// member describes membership in ceresmeta cluster.
+	// member describes membership in horaemeta cluster.
 	member  *member.Member
 	etcdCli *clientv3.Client
 	etcdSrv *embed.Etcd

@@ -56,4 +56,4 @@ linters-settings:
     confidence: 3
   exhaustruct:
     include:
-      - 'github.com.CeresDB.ceresmeta.*'
+      - 'github.com.CeresDB.horaemeta.*'

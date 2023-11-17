@@ -21,9 +21,9 @@ import (
 	"time"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metastoragepb"
-	"github.com/CeresDB/ceresmeta/pkg/assert"
-	"github.com/CeresDB/ceresmeta/pkg/log"
-	"github.com/CeresDB/ceresmeta/server/etcdutil"
+	"github.com/CeresDB/horaemeta/pkg/assert"
+	"github.com/CeresDB/horaemeta/pkg/log"
+	"github.com/CeresDB/horaemeta/server/etcdutil"
 	"go.uber.org/zap"
 )
 
@@ -41,7 +41,7 @@ type WatchContext interface {
 	ShouldStop() bool
 }
 
-// LeaderWatcher watches the changes of the CeresMeta cluster's leadership.
+// LeaderWatcher watches the changes of the HoraeMeta cluster's leadership.
 type LeaderWatcher struct {
 	watchCtx    WatchContext
 	self        *Member
@@ -55,13 +55,13 @@ type LeadershipEventCallbacks interface {
 	BeforeTransfer(ctx context.Context)
 }
 
-// LeadershipChecker tells which member should campaign the CeresMeta cluster's leadership, and whether the current leader is valid.
+// LeadershipChecker tells which member should campaign the HoraeMeta cluster's leadership, and whether the current leader is valid.
 type LeadershipChecker interface {
 	ShouldCampaign(self *Member) bool
 	IsValidLeader(memLeader *metastoragepb.Member) bool
 }
 
-// embeddedEtcdLeadershipChecker ensures the CeresMeta cluster's leader as the embedded ETCD cluster's leader.
+// embeddedEtcdLeadershipChecker ensures the HoraeMeta cluster's leader as the embedded ETCD cluster's leader.
 type embeddedEtcdLeadershipChecker struct {
 	etcdLeaderGetter etcdutil.EtcdLeaderGetter
 }
@@ -78,7 +78,7 @@ func (c embeddedEtcdLeadershipChecker) IsValidLeader(memLeader *metastoragepb.Me
 	return memLeader.Id == etcdLeaderID
 }
 
-// externalEtcdLeadershipChecker has no preference over the leadership of the CeresMeta cluster, that is to say, the leadership is random.
+// externalEtcdLeadershipChecker has no preference over the leadership of the HoraeMeta cluster, that is to say, the leadership is random.
 type externalEtcdLeadershipChecker struct{}
 
 func (c externalEtcdLeadershipChecker) ShouldCampaign(_ *Member) bool {

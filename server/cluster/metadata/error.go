@@ -16,7 +16,7 @@
 
 package metadata
 
-import "github.com/CeresDB/ceresmeta/pkg/coderr"
+import "github.com/CeresDB/horaemeta/pkg/coderr"
 
 var (
 	ErrCreateCluster        = coderr.NewCodeError(coderr.BadRequest, "create cluster")

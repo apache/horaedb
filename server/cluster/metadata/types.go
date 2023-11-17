@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/server/storage"
 	"github.com/pkg/errors"
 )
 

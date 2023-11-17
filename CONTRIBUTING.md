@@ -8,14 +8,14 @@ However, if you want to contribute documentation or code then you will need to s
 
 ## Submitting Issues and Feature Requests
 
-Before you file an [issue](https://github.com/CeresDB/ceresmeta/issues/new), please search existing issues in case the same or similar issues have already been filed.
+Before you file an [issue](https://github.com/CeresDB/horaemeta/issues/new), please search existing issues in case the same or similar issues have already been filed.
 If you find an existing open ticket covering your issue then please avoid adding "👍" or "me too" comments; Github notifications can cause a lot of noise for the project maintainers who triage the back-log.
 However, if you have a new piece of information for an existing ticket and you think it may help the investigation or resolution, then please do add it as a comment!
 You can signal to the team that you're experiencing an existing issue with one of Github's emoji reactions (these are a good way to add "weight" to an issue from a prioritisation perspective).
 
 ### Submitting an Issue
 
-The [New Issue]((https://github.com/CeresDB/ceresmeta/issues/new)) page has templates for both bug reports and feature requests.
+The [New Issue]((https://github.com/CeresDB/horaemeta/issues/new)) page has templates for both bug reports and feature requests.
 Please fill one of them out!
 The issue templates provide details on what information we will find useful to help us fix an issue.
 In short though, the more information you can provide us about your environment and what behaviour you're seeing, the easier we can fix the issue.
@@ -32,8 +32,8 @@ Please see the [Style Guide](docs/style_guide.md) for more details.
 ### Making a PR
 
 To open a PR you will need to have a Github account.
-Fork the `ceresmeta` repo and work on a branch on your fork.
-When you have completed your changes, or you want some incremental feedback make a Pull Request to CeresDB [here](https://github.com/CeresDB/ceresmeta/compare).
+Fork the `horaemeta` repo and work on a branch on your fork.
+When you have completed your changes, or you want some incremental feedback make a Pull Request to CeresDB [here](https://github.com/CeresDB/horaemeta/compare).
 
 If you want to discuss some work in progress then please prefix `[WIP]` to the
 PR title.

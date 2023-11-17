@@ -21,10 +21,10 @@ import (
 	"path"
 	"testing"
 
-	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
-	"github.com/CeresDB/ceresmeta/server/etcdutil"
-	"github.com/CeresDB/ceresmeta/server/id"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/server/cluster/metadata"
+	"github.com/CeresDB/horaemeta/server/etcdutil"
+	"github.com/CeresDB/horaemeta/server/id"
+	"github.com/CeresDB/horaemeta/server/storage"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )

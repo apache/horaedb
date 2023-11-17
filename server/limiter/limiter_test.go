@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CeresDB/ceresmeta/server/config"
+	"github.com/CeresDB/horaemeta/server/config"
 	"github.com/stretchr/testify/require"
 )
 

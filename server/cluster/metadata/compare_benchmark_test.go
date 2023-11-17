@@ -19,7 +19,7 @@ package metadata
 import (
 	"testing"
 
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/server/storage"
 )
 
 func buildRegisterNode(shardNumber int) RegisteredNode {

@@ -21,9 +21,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
-	"github.com/CeresDB/ceresmeta/server/coordinator/lock"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/server/cluster/metadata"
+	"github.com/CeresDB/horaemeta/server/coordinator/lock"
+	"github.com/CeresDB/horaemeta/server/storage"
 	"go.uber.org/zap"
 )
 

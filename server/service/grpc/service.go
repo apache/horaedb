@@ -26,14 +26,14 @@ import (
 	"github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/golang/pkg/commonpb"
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
-	"github.com/CeresDB/ceresmeta/pkg/coderr"
-	"github.com/CeresDB/ceresmeta/pkg/log"
-	"github.com/CeresDB/ceresmeta/server/cluster"
-	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
-	"github.com/CeresDB/ceresmeta/server/coordinator"
-	"github.com/CeresDB/ceresmeta/server/limiter"
-	"github.com/CeresDB/ceresmeta/server/member"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/pkg/coderr"
+	"github.com/CeresDB/horaemeta/pkg/log"
+	"github.com/CeresDB/horaemeta/server/cluster"
+	"github.com/CeresDB/horaemeta/server/cluster/metadata"
+	"github.com/CeresDB/horaemeta/server/coordinator"
+	"github.com/CeresDB/horaemeta/server/limiter"
+	"github.com/CeresDB/horaemeta/server/member"
+	"github.com/CeresDB/horaemeta/server/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -65,16 +65,16 @@ type Handler interface {
 	// TODO: define the methods for handling other grpc requests.
 }
 
-// NodeHeartbeat implements gRPC CeresmetaServer.
+// NodeHeartbeat implements gRPC HoraeMetaServer.
 func (s *Service) NodeHeartbeat(ctx context.Context, req *metaservicepb.NodeHeartbeatRequest) (*metaservicepb.NodeHeartbeatResponse, error) {
-	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
+	metaClient, err := s.getForwardedMetaClient(ctx)
 	if err != nil {
 		return &metaservicepb.NodeHeartbeatResponse{Header: responseHeader(err, "grpc heartbeat")}, nil
 	}
 
 	// Forward request to the leader.
-	if ceresmetaClient != nil {
-		return ceresmetaClient.NodeHeartbeat(ctx, req)
+	if metaClient != nil {
+		return metaClient.NodeHeartbeat(ctx, req)
 	}
 
 	shardInfos := make([]metadata.ShardInfo, 0, len(req.Info.ShardInfos))
@@ -107,16 +107,16 @@ func (s *Service) NodeHeartbeat(ctx context.Context, req *metaservicepb.NodeHear
 	}, nil
 }
 
-// AllocSchemaID implements gRPC CeresmetaServer.
+// AllocSchemaID implements gRPC HoraeMetaServer.
 func (s *Service) AllocSchemaID(ctx context.Context, req *metaservicepb.AllocSchemaIdRequest) (*metaservicepb.AllocSchemaIdResponse, error) {
-	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
+	metaClient, err := s.getForwardedMetaClient(ctx)
 	if err != nil {
 		return &metaservicepb.AllocSchemaIdResponse{Header: responseHeader(err, "grpc alloc schema id")}, nil
 	}
 
 	// Forward request to the leader.
-	if ceresmetaClient != nil {
-		return ceresmetaClient.AllocSchemaID(ctx, req)
+	if metaClient != nil {
+		return metaClient.AllocSchemaID(ctx, req)
 	}
 
 	log.Info("[AllocSchemaID]", zap.String("schemaName", req.GetName()), zap.String("clusterName", req.GetHeader().GetClusterName()))
@@ -133,16 +133,16 @@ func (s *Service) AllocSchemaID(ctx context.Context, req *metaservicepb.AllocSch
 	}, nil
 }
 
-// GetTablesOfShards implements gRPC CeresmetaServer.
+// GetTablesOfShards implements gRPC HoraeMetaServer.
 func (s *Service) GetTablesOfShards(ctx context.Context, req *metaservicepb.GetTablesOfShardsRequest) (*metaservicepb.GetTablesOfShardsResponse, error) {
-	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
+	metaClient, err := s.getForwardedMetaClient(ctx)
 	if err != nil {
 		return &metaservicepb.GetTablesOfShardsResponse{Header: responseHeader(err, "grpc get tables of shards")}, nil
 	}
 
 	// Forward request to the leader.
-	if ceresmetaClient != nil {
-		return ceresmetaClient.GetTablesOfShards(ctx, req)
+	if metaClient != nil {
+		return metaClient.GetTablesOfShards(ctx, req)
 	}
 
 	log.Info("[GetTablesOfShards]", zap.String("clusterName", req.GetHeader().GetClusterName()), zap.String("shardIDs", fmt.Sprint(req.ShardIds)))
@@ -161,7 +161,7 @@ func (s *Service) GetTablesOfShards(ctx context.Context, req *metaservicepb.GetT
 	return result, nil
 }
 
-// CreateTable implements gRPC CeresmetaServer.
+// CreateTable implements gRPC HoraeMetaServer.
 func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTableRequest) (*metaservicepb.CreateTableResponse, error) {
 	start := time.Now()
 	// Since there may be too many table creation requests, a flow limiter is added here.
@@ -169,14 +169,14 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table grpc request is rejected by flow limiter")}, nil
 	}
 
-	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
+	metaClient, err := s.getForwardedMetaClient(ctx)
 	if err != nil {
 		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
 	}
 
 	// Forward request to the leader.
-	if ceresmetaClient != nil {
-		return ceresmetaClient.CreateTable(ctx, req)
+	if metaClient != nil {
+		return metaClient.CreateTable(ctx, req)
 	}
 
 	log.Info("[CreateTable]", zap.String("schemaName", req.SchemaName), zap.String("clusterName", req.GetHeader().ClusterName), zap.String("tableName", req.GetName()))
@@ -240,7 +240,7 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 	}
 }
 
-// DropTable implements gRPC CeresmetaServer.
+// DropTable implements gRPC HoraeMetaServer.
 func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableRequest) (*metaservicepb.DropTableResponse, error) {
 	start := time.Now()
 	// Since there may be too many table dropping requests, a flow limiter is added here.
@@ -248,14 +248,14 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table grpc request is rejected by flow limiter")}, nil
 	}
 
-	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
+	metaClient, err := s.getForwardedMetaClient(ctx)
 	if err != nil {
 		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table")}, nil
 	}
 
 	// Forward request to the leader.
-	if ceresmetaClient != nil {
-		return ceresmetaClient.DropTable(ctx, req)
+	if metaClient != nil {
+		return metaClient.DropTable(ctx, req)
 	}
 
 	log.Info("[DropTable]", zap.String("schemaName", req.SchemaName), zap.String("clusterName", req.GetHeader().ClusterName), zap.String("tableName", req.Name))
@@ -313,14 +313,14 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 	}
 }
 
-// RouteTables implements gRPC CeresmetaServer.
+// RouteTables implements gRPC HoraeMetaServer.
 func (s *Service) RouteTables(ctx context.Context, req *metaservicepb.RouteTablesRequest) (*metaservicepb.RouteTablesResponse, error) {
 	// Since there may be too many table routing requests, a flow limiter is added here.
 	if ok, err := s.allow(); !ok {
 		return &metaservicepb.RouteTablesResponse{Header: responseHeader(err, "routeTables grpc request is rejected by flow limiter")}, nil
 	}
 
-	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
+	metaClient, err := s.getForwardedMetaClient(ctx)
 	if err != nil {
 		return &metaservicepb.RouteTablesResponse{Header: responseHeader(err, "grpc routeTables")}, nil
 	}
@@ -328,8 +328,8 @@ func (s *Service) RouteTables(ctx context.Context, req *metaservicepb.RouteTable
 	log.Debug("[RouteTable]", zap.String("schemaName", req.SchemaName), zap.String("clusterName", req.GetHeader().ClusterName), zap.String("tableNames", strings.Join(req.TableNames, ",")))
 
 	// Forward request to the leader.
-	if ceresmetaClient != nil {
-		return ceresmetaClient.RouteTables(ctx, req)
+	if metaClient != nil {
+		return metaClient.RouteTables(ctx, req)
 	}
 
 	routeTableResult, err := s.h.GetClusterManager().RouteTables(ctx, req.GetHeader().GetClusterName(), req.GetSchemaName(), req.GetTableNames())
@@ -340,16 +340,16 @@ func (s *Service) RouteTables(ctx context.Context, req *metaservicepb.RouteTable
 	return convertRouteTableResult(routeTableResult), nil
 }
 
-// GetNodes implements gRPC CeresmetaServer.
+// GetNodes implements gRPC HoraeMetaServer.
 func (s *Service) GetNodes(ctx context.Context, req *metaservicepb.GetNodesRequest) (*metaservicepb.GetNodesResponse, error) {
-	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
+	metaClient, err := s.getForwardedMetaClient(ctx)
 	if err != nil {
 		return &metaservicepb.GetNodesResponse{Header: responseHeader(err, "grpc get nodes")}, nil
 	}
 
 	// Forward request to the leader.
-	if ceresmetaClient != nil {
-		return ceresmetaClient.GetNodes(ctx, req)
+	if metaClient != nil {
+		return metaClient.GetNodes(ctx, req)
 	}
 
 	log.Info("[GetNodes]", zap.String("clusterName", req.GetHeader().ClusterName))

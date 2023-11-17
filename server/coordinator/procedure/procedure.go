@@ -19,7 +19,7 @@ package procedure
 import (
 	"context"
 
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/server/storage"
 )
 
 type State string

@@ -16,7 +16,7 @@
 
 package etcdutil
 
-import "github.com/CeresDB/ceresmeta/pkg/coderr"
+import "github.com/CeresDB/horaemeta/pkg/coderr"
 
 var (
 	ErrEtcdKVGet         = coderr.NewCodeError(coderr.Internal, "etcd KV get failed")

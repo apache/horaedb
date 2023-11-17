@@ -22,9 +22,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/test"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/server/cluster/metadata"
+	"github.com/CeresDB/horaemeta/server/coordinator/procedure/test"
+	"github.com/CeresDB/horaemeta/server/storage"
 	"github.com/stretchr/testify/require"
 )
 

@@ -20,11 +20,11 @@ import (
 	"context"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
-	"github.com/CeresDB/ceresmeta/pkg/log"
-	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
-	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/pkg/log"
+	"github.com/CeresDB/horaemeta/server/cluster/metadata"
+	"github.com/CeresDB/horaemeta/server/coordinator/eventdispatch"
+	"github.com/CeresDB/horaemeta/server/coordinator/procedure"
+	"github.com/CeresDB/horaemeta/server/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )

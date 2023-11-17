@@ -20,11 +20,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
-	"github.com/CeresDB/ceresmeta/server/coordinator"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/test"
-	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/reopen"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/server/cluster/metadata"
+	"github.com/CeresDB/horaemeta/server/coordinator"
+	"github.com/CeresDB/horaemeta/server/coordinator/procedure/test"
+	"github.com/CeresDB/horaemeta/server/coordinator/scheduler/reopen"
+	"github.com/CeresDB/horaemeta/server/storage"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )

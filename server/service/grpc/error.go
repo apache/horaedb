@@ -17,7 +17,7 @@
 package grpc
 
 import (
-	"github.com/CeresDB/ceresmeta/pkg/coderr"
+	"github.com/CeresDB/horaemeta/pkg/coderr"
 )
 
 var (

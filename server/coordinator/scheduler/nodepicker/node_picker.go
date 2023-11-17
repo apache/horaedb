@@ -20,11 +20,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/CeresDB/ceresmeta/pkg/assert"
-	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
-	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler"
-	"github.com/CeresDB/ceresmeta/server/coordinator/scheduler/nodepicker/hash"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/pkg/assert"
+	"github.com/CeresDB/horaemeta/server/cluster/metadata"
+	"github.com/CeresDB/horaemeta/server/coordinator/scheduler"
+	"github.com/CeresDB/horaemeta/server/coordinator/scheduler/nodepicker/hash"
+	"github.com/CeresDB/horaemeta/server/storage"
 	"github.com/spaolacci/murmur3"
 	"go.uber.org/zap"
 )

@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CeresDB/ceresmeta/server/etcdutil"
+	"github.com/CeresDB/horaemeta/server/etcdutil"
 	"github.com/stretchr/testify/require"
 )
 

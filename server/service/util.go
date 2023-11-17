@@ -21,7 +21,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/CeresDB/ceresmeta/pkg/coderr"
+	"github.com/CeresDB/horaemeta/pkg/coderr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

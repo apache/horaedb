@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaeventpb"
-	"github.com/CeresDB/ceresmeta/server/etcdutil"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/server/etcdutil"
+	"github.com/CeresDB/horaemeta/server/storage"
 	"github.com/stretchr/testify/require"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"

@@ -16,14 +16,14 @@
 
 set -exo
 
-CERESMETA_BIN_PATH="$(pwd)/bin/ceresmeta-server"
+META_BIN_PATH="$(pwd)/bin/ceresmeta-server"
 INTEGRATION_TEST_PATH=$(mktemp -d)
 
-# Download CeresDB Code
+# Download HoraeDB Code
 cd $INTEGRATION_TEST_PATH
-git clone --depth 1 https://github.com/ceresdb/ceresdb.git --branch main
+git clone --depth 1 https://github.com/ceresdb/horaedb.git --branch main
 
 # Run integration_test
-cd ceresdb/integration_tests
+cd horaedb/integration_tests
 
-CERESMETA_BIN_PATH=$CERESMETA_BIN_PATH make run-cluster
+CERESMETA_BIN_PATH=$META_BIN_PATH make run-cluster

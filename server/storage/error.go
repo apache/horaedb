@@ -16,7 +16,7 @@
 
 package storage
 
-import "github.com/CeresDB/ceresmeta/pkg/coderr"
+import "github.com/CeresDB/horaemeta/pkg/coderr"
 
 var (
 	ErrEncode = coderr.NewCodeError(coderr.Internal, "storage encode")

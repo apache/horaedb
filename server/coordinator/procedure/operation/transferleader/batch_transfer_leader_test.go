@@ -20,9 +20,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/operation/transferleader"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/server/coordinator/procedure"
+	"github.com/CeresDB/horaemeta/server/coordinator/procedure/operation/transferleader"
+	"github.com/CeresDB/horaemeta/server/storage"
 	"github.com/stretchr/testify/require"
 )
 

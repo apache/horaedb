@@ -19,9 +19,9 @@ package scheduler
 import (
 	"context"
 
-	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/server/cluster/metadata"
+	"github.com/CeresDB/horaemeta/server/coordinator/procedure"
+	"github.com/CeresDB/horaemeta/server/storage"
 )
 
 type ScheduleResult struct {

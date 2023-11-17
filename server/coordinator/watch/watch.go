@@ -24,7 +24,7 @@ import (
 	"sync"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaeventpb"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/server/storage"
 	"github.com/pkg/errors"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"

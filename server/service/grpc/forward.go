@@ -20,34 +20,34 @@ import (
 	"context"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
-	"github.com/CeresDB/ceresmeta/pkg/log"
-	"github.com/CeresDB/ceresmeta/server/service"
+	"github.com/CeresDB/horaemeta/pkg/log"
+	"github.com/CeresDB/horaemeta/server/service"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
-// getForwardedCeresmetaClient get forwarded ceresmeta client. When current node is the leader, this func will return (nil,nil).
-func (s *Service) getForwardedCeresmetaClient(ctx context.Context) (metaservicepb.CeresmetaRpcServiceClient, error) {
+// getForwardedMetaClient get forwarded horaemeta client. When current node is the leader, this func will return (nil,nil).
+func (s *Service) getForwardedMetaClient(ctx context.Context) (metaservicepb.CeresmetaRpcServiceClient, error) {
 	forwardedAddr, _, err := s.getForwardedAddr(ctx)
 	if err != nil {
-		return nil, errors.WithMessage(err, "get forwarded ceresmeta client")
+		return nil, errors.WithMessage(err, "get forwarded horaemeta client")
 	}
 
 	if forwardedAddr != "" {
-		ceresmetaClient, err := s.getCeresmetaClient(ctx, forwardedAddr)
+		horaeClient, err := s.getMetaClient(ctx, forwardedAddr)
 		if err != nil {
-			return nil, errors.WithMessagef(err, "get forwarded ceresmeta client, addr:%s", forwardedAddr)
+			return nil, errors.WithMessagef(err, "get forwarded horaemeta client, addr:%s", forwardedAddr)
 		}
-		return ceresmetaClient, nil
+		return horaeClient, nil
 	}
 	return nil, nil
 }
 
-func (s *Service) getCeresmetaClient(ctx context.Context, addr string) (metaservicepb.CeresmetaRpcServiceClient, error) {
+func (s *Service) getMetaClient(ctx context.Context, addr string) (metaservicepb.CeresmetaRpcServiceClient, error) {
 	client, err := s.getForwardedGrpcClient(ctx, addr)
 	if err != nil {
-		return nil, errors.WithMessagef(err, "get ceresmeta client, addr:%s", addr)
+		return nil, errors.WithMessagef(err, "get horaemeta client, addr:%s", addr)
 	}
 	return metaservicepb.NewCeresmetaRpcServiceClient(client), nil
 }
@@ -55,7 +55,7 @@ func (s *Service) getCeresmetaClient(ctx context.Context, addr string) (metaserv
 func (s *Service) getForwardedGrpcClient(ctx context.Context, forwardedAddr string) (*grpc.ClientConn, error) {
 	client, ok := s.conns.Load(forwardedAddr)
 	if !ok {
-		log.Info("try to create ceresmeta client", zap.String("addr", forwardedAddr))
+		log.Info("try to create horaemeta client", zap.String("addr", forwardedAddr))
 		cc, err := service.GetClientConn(ctx, forwardedAddr)
 		if err != nil {
 			return nil, err

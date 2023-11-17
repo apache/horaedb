@@ -21,10 +21,10 @@ import (
 	"testing"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
-	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
-	"github.com/CeresDB/ceresmeta/server/coordinator"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
-	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/test"
+	"github.com/CeresDB/horaemeta/server/cluster/metadata"
+	"github.com/CeresDB/horaemeta/server/coordinator"
+	"github.com/CeresDB/horaemeta/server/coordinator/procedure"
+	"github.com/CeresDB/horaemeta/server/coordinator/procedure/test"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )

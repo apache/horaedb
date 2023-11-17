@@ -22,8 +22,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CeresDB/ceresmeta/server/id"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/server/id"
+	"github.com/CeresDB/horaemeta/server/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )

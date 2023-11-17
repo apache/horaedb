@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CeresDB/ceresmeta/pkg/log"
+	"github.com/CeresDB/horaemeta/pkg/log"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )

@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CeresDB/ceresmeta/pkg/log"
+	"github.com/CeresDB/horaemeta/pkg/log"
 	"github.com/caarlos0/env/v6"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/pkg/errors"
@@ -54,13 +54,13 @@ const (
 	// GrpcServiceKeepAlivePingMinIntervalSec controls the min interval for one keepalive ping.
 	defaultGrpcServiceKeepAlivePingMinIntervalSec int = 20
 
-	defaultNodeNamePrefix          = "ceresmeta"
+	defaultNodeNamePrefix          = "horaemeta"
 	defaultEndpoint                = "127.0.0.1"
 	defaultRootPath                = "/ceresdb"
 	defaultClientUrls              = "http://0.0.0.0:2379"
 	defaultPeerUrls                = "http://0.0.0.0:2380"
 	defaultInitialClusterState     = embed.ClusterStateFlagNew
-	defaultInitialClusterToken     = "ceresmeta-cluster" //#nosec G101
+	defaultInitialClusterToken     = "horaemeta-cluster" //#nosec G101
 	defaultCompactionMode          = "periodic"
 	defaultAutoCompactionRetention = "1h"
 
@@ -79,7 +79,7 @@ const (
 	defaultClusterNodeCount  = 2
 	defaultClusterShardTotal = 8
 	enableSchedule           = true
-	// topologyType is used to determine the scheduling cluster strategy of CeresMeta. It should be determined according to the storage method of CeresDB. The default is static to support local storage.
+	// topologyType is used to determine the scheduling cluster strategy of HoraeMeta. It should be determined according to the storage method of HoraeDB. The default is static to support local storage.
 	defaultTopologyType                = "static"
 	defaultProcedureExecutingBatchSize = math.MaxUint32
 
@@ -162,9 +162,9 @@ type Config struct {
 	DefaultClusterNodeCount  int    `toml:"default-cluster-node-count" env:"DEFAULT_CLUSTER_NODE_COUNT"`
 	DefaultClusterShardTotal int    `toml:"default-cluster-shard-total" env:"DEFAULT_CLUSTER_SHARD_TOTAL"`
 
-	// When the EnableSchedule is turned on, the failover scheduling will be turned on, which is used for CeresDB cluster publishing and using local storage.
+	// When the EnableSchedule is turned on, the failover scheduling will be turned on, which is used for HoraeDB cluster publishing and using local storage.
 	EnableSchedule bool `toml:"enable-schedule" env:"ENABLE_SCHEDULE"`
-	// TopologyType indicates the schedule type used by the CeresDB cluster, it will determine the strategy of CeresMeta scheduling cluster.
+	// TopologyType indicates the schedule type used by the HoraeDB cluster, it will determine the strategy of HoraeMeta scheduling cluster.
 	TopologyType string `toml:"topology-type" env:"TOPOLOGY_TYPE"`
 	// ProcedureExecutingBatchSize determines the maximum number of shards in a single batch when opening shards concurrently.
 	ProcedureExecutingBatchSize uint32 `toml:"procedure-executing-batch-size" env:"PROCEDURE_EXECUTING_BATCH_SIZE"`

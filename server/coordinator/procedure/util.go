@@ -17,7 +17,7 @@
 package procedure
 
 import (
-	"github.com/CeresDB/ceresmeta/pkg/log"
+	"github.com/CeresDB/horaemeta/pkg/log"
 	"github.com/looplab/fsm"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"

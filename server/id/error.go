@@ -16,7 +16,7 @@
 
 package id
 
-import "github.com/CeresDB/ceresmeta/pkg/coderr"
+import "github.com/CeresDB/horaemeta/pkg/coderr"
 
 var (
 	ErrTxnPutEndID         = coderr.NewCodeError(coderr.Internal, "put end id in txn")

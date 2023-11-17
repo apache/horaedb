@@ -16,7 +16,7 @@
 
 package http
 
-import "github.com/CeresDB/ceresmeta/pkg/coderr"
+import "github.com/CeresDB/horaemeta/pkg/coderr"
 
 var (
 	ErrParseRequest                  = coderr.NewCodeError(coderr.BadRequest, "parse request params")

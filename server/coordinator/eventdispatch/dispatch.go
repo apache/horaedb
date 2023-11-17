@@ -19,7 +19,7 @@ package eventdispatch
 import (
 	"context"
 
-	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
+	"github.com/CeresDB/horaemeta/server/cluster/metadata"
 )
 
 type Dispatch interface {

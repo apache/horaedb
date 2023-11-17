@@ -23,7 +23,7 @@ import (
 	"math"
 	"path"
 
-	"github.com/CeresDB/ceresmeta/server/etcdutil"
+	"github.com/CeresDB/horaemeta/server/etcdutil"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )

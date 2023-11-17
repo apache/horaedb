@@ -23,10 +23,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/CeresDB/ceresmeta/pkg/coderr"
-	"github.com/CeresDB/ceresmeta/pkg/log"
-	"github.com/CeresDB/ceresmeta/server"
-	"github.com/CeresDB/ceresmeta/server/config"
+	"github.com/CeresDB/horaemeta/pkg/coderr"
+	"github.com/CeresDB/horaemeta/pkg/log"
+	"github.com/CeresDB/horaemeta/server"
+	"github.com/CeresDB/horaemeta/server/config"
 	"github.com/pelletier/go-toml/v2"
 	"go.uber.org/zap"
 )
@@ -38,7 +38,7 @@ var (
 )
 
 func buildVersion() string {
-	return fmt.Sprintf("CeresMeta Server\nGit commit:%s\nGit branch:%s\nBuild date:%s", commitID, branchName, buildDate)
+	return fmt.Sprintf("HoraeMeta Server\nGit commit:%s\nGit branch:%s\nBuild date:%s", commitID, branchName, buildDate)
 }
 
 func panicf(format string, args ...any) {

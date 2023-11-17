@@ -16,7 +16,7 @@
 
 package procedure
 
-import "github.com/CeresDB/ceresmeta/pkg/coderr"
+import "github.com/CeresDB/horaemeta/pkg/coderr"
 
 var (
 	ErrShardLeaderNotFound     = coderr.NewCodeError(coderr.Internal, "shard leader not found")

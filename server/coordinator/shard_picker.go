@@ -20,9 +20,9 @@ import (
 	"context"
 	"sort"
 
-	"github.com/CeresDB/ceresmeta/pkg/assert"
-	"github.com/CeresDB/ceresmeta/server/cluster/metadata"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/horaemeta/pkg/assert"
+	"github.com/CeresDB/horaemeta/server/cluster/metadata"
+	"github.com/CeresDB/horaemeta/server/storage"
 	"github.com/pkg/errors"
 )
 

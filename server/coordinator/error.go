@@ -16,7 +16,7 @@
 
 package coordinator
 
-import "github.com/CeresDB/ceresmeta/pkg/coderr"
+import "github.com/CeresDB/horaemeta/pkg/coderr"
 
 var (
 	ErrNodeNumberNotEnough = coderr.NewCodeError(coderr.Internal, "node number not enough")

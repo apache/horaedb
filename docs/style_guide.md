@@ -1,5 +1,5 @@
 # Style Guide
-CeresMeta is written in Golang so the basic code style we adhere to is the [CodeReviewComments](https://github.com/golang/go/wiki/CodeReviewComments).
+HoraeMeta is written in Golang so the basic code style we adhere to is the [CodeReviewComments](https://github.com/golang/go/wiki/CodeReviewComments).
 
 Besides the [CodeReviewComments](https://github.com/golang/go/wiki/CodeReviewComments), there are also some custom rules for the project:
 - Error Handling
@@ -10,12 +10,12 @@ Besides the [CodeReviewComments](https://github.com/golang/go/wiki/CodeReviewCom
 - Global error code:
   - Any error defined in the repo should be assigned an error code,
   - An error code can be used by multiple different errors,
-  - The error codes are defined in the single global package [coderr](https://github.com/CeresDB/ceresmeta/tree/main/pkg/coderr).
-- Construct: define leaf errors on package level (often in a separate `error.go` file) by package [coderr](https://github.com/CeresDB/ceresmeta/tree/main/pkg/coderr).
+  - The error codes are defined in the single global package [coderr](https://github.com/CeresDB/horaemeta/tree/main/pkg/coderr).
+- Construct: define leaf errors on package level (often in a separate `error.go` file) by package [coderr](https://github.com/CeresDB/horaemeta/tree/main/pkg/coderr).
 - Wrap: wrap errors by `errors.WithMessage` or `errors.WithMessagef`.
 - Check: test the error identity by calling `coderr.Is`.
 - Log: only log the error on the top level package.
-- Respond: respond the `CodeError`(defined in package [coderr](https://github.com/CeresDB/ceresmeta/tree/main/pkg/coderr)) unwrapped by `errors.Cause` to client on service level.
+- Respond: respond the `CodeError`(defined in package [coderr](https://github.com/CeresDB/horaemeta/tree/main/pkg/coderr)) unwrapped by `errors.Cause` to client on service level.
 
 ### Example
 `errors.go` in the package `server`:
@@ -70,13 +70,13 @@ func main() {
 ## Logging
 ### Principles
 - Structured log by [zap](https://github.com/uber-go/zap).
-- Use the package `github.com/ceresmeta/pkg/log` which is based on [zap](https://github.com/uber-go/zap).
+- Use the package `github.com/horaemeta/pkg/log` which is based on [zap](https://github.com/uber-go/zap).
 - Create local logger with common fields if necessary.
 
 ### Example
 Normal usage:
 ```go
-import "github.com/ceresmeta/pkg/log"
+import "github.com/horaemeta/pkg/log"
 
 func main() {
   if err := srv.Run(); err != nil {
@@ -88,7 +88,7 @@ func main() {
 
 Local logger:
 ```go
-import "github.com/ceresmeta/pkg/log"
+import "github.com/horaemeta/pkg/log"
 
 type lease struct {
     ID int64

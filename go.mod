@@ -1,4 +1,4 @@
-module github.com/CeresDB/ceresmeta
+module github.com/CeresDB/horaemeta
 
 go 1.21
 

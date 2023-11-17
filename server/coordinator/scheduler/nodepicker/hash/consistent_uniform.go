@@ -38,8 +38,8 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/CeresDB/ceresmeta/pkg/assert"
-	"github.com/CeresDB/ceresmeta/pkg/log"
+	"github.com/CeresDB/horaemeta/pkg/assert"
+	"github.com/CeresDB/horaemeta/pkg/log"
 	"go.uber.org/zap"
 )
 
