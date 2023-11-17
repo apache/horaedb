@@ -118,6 +118,8 @@ impl ValuesEncoder<u64> for ValuesEncoderImpl {
         B: BufMut,
         I: Iterator<Item = u64>,
     {
+        buf.put_u8(VERSION);
+
         for v in values {
             varint::encode_uvarint(buf, v).context(Varint)?;
         }

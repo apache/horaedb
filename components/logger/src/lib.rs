@@ -117,12 +117,13 @@ where
 
     fn log(&self, record: &Record, values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
         let tag = record.tag();
-        if tag.is_empty() {
+        if tag == DEFAULT_TAG {
             self.normal.log(record, values)
         } else if self.slow.is_some() && tag == SLOW_QUERY_TAG {
             self.slow.as_ref().unwrap().log(record, values)
         } else {
-            Ok(())
+            // For crates outside ceresdb
+            self.normal.log(record, values)
         }
     }
 }

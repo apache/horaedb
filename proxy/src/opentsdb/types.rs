@@ -441,6 +441,7 @@ mod tests {
     fn build_schema() -> Schema {
         schema::Builder::new()
             .auto_increment_column_id(true)
+            .primary_key_indexes(vec![0, 1])
             .add_key_column(
                 column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
                     .build()

@@ -80,7 +80,7 @@ impl WalWriteBench {
             let wal = WalNamespaceImpl::open(
                 MemoryImpl::default(),
                 runtimes.clone(),
-                "ceresedb",
+                "ceresdb",
                 NamespaceConfig::default(),
             )
             .await
@@ -88,8 +88,9 @@ impl WalWriteBench {
 
             let values = self.build_value_vec();
             let wal_encoder = LogBatchEncoder::create(WalLocation::new(1, 1));
+            let payloads = values.iter().map(|v| WritePayload(v));
             let log_batch = wal_encoder
-                .encode_batch::<WritePayload, Vec<u8>>(values.as_slice())
+                .encode_batch(payloads)
                 .expect("should succeed to encode payload batch");
 
             // Write to wal manager

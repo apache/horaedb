@@ -796,6 +796,7 @@ mod tests {
                     .expect("should succeed build column schema"),
             )
             .unwrap()
+            .primary_key_indexes(vec![0])
             .build()
             .unwrap();
 

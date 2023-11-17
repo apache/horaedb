@@ -21,6 +21,7 @@ use common_types::request_id::RequestId;
 pub type ContextRef = Arc<Context>;
 
 /// Query context
+#[derive(Debug, Clone)]
 pub struct Context {
     pub request_id: RequestId,
     pub deadline: Option<Instant>,

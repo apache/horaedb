@@ -29,9 +29,11 @@ use snafu::ResultExt;
 
 use crate::{
     config::StorageConfig,
-    log_batch::{LogEntry, LogWriteBatch, PayloadDecoder},
+    log_batch::{LogEntry, LogWriteBatch, PayloadDecodeContext, PayloadDecoder},
     metrics::WAL_WRITE_BYTES_HISTOGRAM,
 };
+
+pub trait TableFilter = Fn(TableId) -> bool;
 
 pub mod error {
     use generic_error::GenericError;
@@ -398,24 +400,36 @@ impl BatchLogIteratorAdapter {
         }
     }
 
-    async fn simulated_async_next<D: PayloadDecoder + Send + 'static>(
+    async fn simulated_async_next<D, F>(
         &mut self,
         decoder: D,
+        filter: F,
         runtime: Arc<Runtime>,
         sync_iter: Box<dyn SyncLogIterator>,
         mut buffer: VecDeque<LogEntry<D::Target>>,
-    ) -> Result<(VecDeque<LogEntry<D::Target>>, Option<LogIterator>)> {
+    ) -> Result<(VecDeque<LogEntry<D::Target>>, Option<LogIterator>)>
+    where
+        D: PayloadDecoder + Send + 'static,
+        F: TableFilter + Send + 'static,
+    {
         buffer.clear();
 
         let mut iter = sync_iter;
         let batch_size = self.batch_size;
         let (log_entries, iter_opt) = runtime
             .spawn_blocking(move || {
-                for _ in 0..batch_size {
+                while buffer.len() < batch_size {
                     if let Some(raw_log_entry) = iter.next_log_entry()? {
+                        if !filter(raw_log_entry.table_id) {
+                            continue;
+                        }
+
                         let mut raw_payload = raw_log_entry.payload;
+                        let ctx = PayloadDecodeContext {
+                            table_id: raw_log_entry.table_id,
+                        };
                         let payload = decoder
-                            .decode(&mut raw_payload)
+                            .decode(&ctx, &mut raw_payload)
                             .box_err()
                             .context(error::Decoding)?;
                         let log_entry = LogEntry {
@@ -440,20 +454,31 @@ impl BatchLogIteratorAdapter {
         }
     }
 
-    async fn async_next<D: PayloadDecoder + Send + 'static>(
+    async fn async_next<D, F>(
         &mut self,
         decoder: D,
+        filter: F,
         async_iter: Box<dyn AsyncLogIterator>,
         mut buffer: VecDeque<LogEntry<D::Target>>,
-    ) -> Result<(VecDeque<LogEntry<D::Target>>, Option<LogIterator>)> {
+    ) -> Result<(VecDeque<LogEntry<D::Target>>, Option<LogIterator>)>
+    where
+        D: PayloadDecoder + Send + 'static,
+        F: TableFilter + Send + 'static,
+    {
         buffer.clear();
 
         let mut async_iter = async_iter;
-        for _ in 0..self.batch_size {
+        while buffer.len() < self.batch_size {
             if let Some(raw_log_entry) = async_iter.next_log_entry().await? {
+                if !filter(raw_log_entry.table_id) {
+                    continue;
+                }
                 let mut raw_payload = raw_log_entry.payload;
+                let ctx = PayloadDecodeContext {
+                    table_id: raw_log_entry.table_id,
+                };
                 let payload = decoder
-                    .decode(&mut raw_payload)
+                    .decode(&ctx, &mut raw_payload)
                     .box_err()
                     .context(error::Decoding)?;
                 let log_entry = LogEntry {
@@ -470,11 +495,21 @@ impl BatchLogIteratorAdapter {
         Ok((buffer, Some(LogIterator::Async(async_iter))))
     }
 
-    pub async fn next_log_entries<D: PayloadDecoder + Send + 'static>(
+    /// Read the next batch of wal logs.
+    ///
+    /// The `filter` will be used to determine whether a log is needed anymore,
+    /// so unnecessary decoding work can be avoided.
+    /// NOTE: the logs will be accepted if the return result of filter is true.
+    pub async fn next_log_entries<D, F>(
         &mut self,
         decoder: D,
+        filter: F,
         buffer: VecDeque<LogEntry<D::Target>>,
-    ) -> Result<VecDeque<LogEntry<D::Target>>> {
+    ) -> Result<VecDeque<LogEntry<D::Target>>>
+    where
+        D: PayloadDecoder + Send + 'static,
+        F: TableFilter + Send + 'static,
+    {
         if self.iter.is_none() {
             return Ok(VecDeque::new());
         }
@@ -482,10 +517,10 @@ impl BatchLogIteratorAdapter {
         let iter = self.iter.take().unwrap();
         let (log_entries, iter) = match iter {
             LogIterator::Sync { iter, runtime } => {
-                self.simulated_async_next(decoder, runtime, iter, buffer)
+                self.simulated_async_next(decoder, filter, runtime, iter, buffer)
                     .await?
             }
-            LogIterator::Async(iter) => self.async_next(decoder, iter, buffer).await?,
+            LogIterator::Async(iter) => self.async_next(decoder, filter, iter, buffer).await?,
         };
 
         self.iter = iter;
@@ -607,7 +642,7 @@ mod tests {
 
         loop {
             buffer = iter
-                .next_log_entries(MemoryPayloadDecoder, buffer)
+                .next_log_entries(MemoryPayloadDecoder, |_| true, buffer)
                 .await
                 .unwrap();
             for entry in buffer.iter() {
@@ -631,7 +666,7 @@ mod tests {
         let mut buffer = VecDeque::with_capacity(3);
         loop {
             buffer = iter
-                .next_log_entries(MemoryPayloadDecoder, buffer)
+                .next_log_entries(MemoryPayloadDecoder, |_| true, buffer)
                 .await
                 .unwrap();
             for entry in buffer.iter() {

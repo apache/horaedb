@@ -158,6 +158,9 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.21
       - run: |
           rustup set auto-self-update disable
           rustup toolchain install ${RUST_VERSION} --profile minimal
@@ -169,11 +172,12 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
-      - name: Build and Run CeresDB
+      - name: Build and Run CeresDB-Cluster
+        working-directory: integration_tests
         run: |
-          make build-debug
-          nohup ./target/debug/ceresdb-server -c docs/minimal.toml > /tmp/ceresdb-stdout.log &
-          sleep 10
+          make prepare
+          make run-ceresmeta
+          make run-ceresdb-cluster
       - name: Run Go SDK tests
         working-directory: integration_tests
         run: |

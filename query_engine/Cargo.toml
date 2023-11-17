@@ -48,3 +48,4 @@ snafu = { workspace = true }
 table_engine = { workspace = true }
 time_ext = { workspace = true }
 tokio = { workspace = true }
+trace_metric = { workspace = true }

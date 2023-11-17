@@ -27,7 +27,7 @@ use common_types::{
     request_id::RequestId,
     row::{
         contiguous::{ContiguousRow, ContiguousRowReader, ContiguousRowWriter},
-        Row, RowGroup, RowGroupBuilder,
+        Row, RowGroup,
     },
     schema::{IndexInWriterSchema, RecordSchema, Schema, Version},
 };
@@ -195,8 +195,7 @@ impl WriteRequest {
     ) -> Result<RowGroup> {
         validate_contiguous_payload_schema(schema, &payload.column_descs)?;
 
-        let mut row_group_builder =
-            RowGroupBuilder::with_capacity(schema.clone(), payload.encoded_rows.len());
+        let mut rows = Vec::with_capacity(payload.encoded_rows.len());
         for encoded_row in payload.encoded_rows {
             let reader = ContiguousRowReader::try_new(&encoded_row, schema)
                 .box_err()
@@ -209,16 +208,17 @@ impl WriteRequest {
                 // from the DatumView.
                 datums.push(datum_view.to_datum());
             }
-            row_group_builder.push_checked_row(Row::from_datums(datums));
+            rows.push(Row::from_datums(datums));
         }
-        Ok(row_group_builder.build())
+
+        // The rows is decoded according to the schema, so there is no need to do a
+        // more check here.
+        Ok(RowGroup::new_unchecked(schema.clone(), rows))
     }
 
     pub fn convert_into_pb(self) -> Result<ceresdbproto::remote_engine::WriteRequest> {
         let row_group = self.write_request.row_group;
         let table_schema = row_group.schema();
-        let min_timestamp = row_group.min_timestamp().as_i64();
-        let max_timestamp = row_group.max_timestamp().as_i64();
 
         let mut encoded_rows = Vec::with_capacity(row_group.num_rows());
         // TODO: The schema of the written row group may be different from the original
@@ -244,8 +244,9 @@ impl WriteRequest {
             column_descs,
         };
         let row_group_pb = ceresdbproto::remote_engine::RowGroup {
-            min_timestamp,
-            max_timestamp,
+            // Deprecated: the two timestamps are not used anymore.
+            min_timestamp: 0,
+            max_timestamp: 0,
             rows: Some(Contiguous(contiguous_rows)),
         };
 

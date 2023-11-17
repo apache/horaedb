@@ -73,11 +73,13 @@ fn base_schema_builder() -> schema::Builder {
                 .expect("should succeed build column schema"),
         )
         .unwrap()
+        .primary_key_indexes(vec![0, 1])
 }
 
 fn default_value_schema_builder() -> schema::Builder {
     schema::Builder::new()
         .auto_increment_column_id(true)
+        .primary_key_indexes(vec![0, 1])
         .add_key_column(
             column_schema::Builder::new("key1".to_string(), DatumKind::Varbinary)
                 .build()
@@ -233,7 +235,7 @@ pub fn build_schema_for_cpu() -> Schema {
         )
         .unwrap();
 
-    builder.build().unwrap()
+    builder.primary_key_indexes(vec![0, 1]).build().unwrap()
 }
 
 /// Build a schema for testing:
@@ -274,7 +276,7 @@ pub fn build_schema_for_metric() -> Schema {
         )
         .unwrap();
 
-    builder.build().unwrap()
+    builder.primary_key_indexes(vec![0, 1]).build().unwrap()
 }
 
 #[allow(clippy::too_many_arguments)]

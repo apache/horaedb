@@ -31,7 +31,6 @@ use snafu::{OptionExt, ResultExt};
 use table_engine::stream::{FromDfStream, SendableRecordBatchStream};
 
 use crate::{
-    datafusion_impl::task_context::Preprocessor,
     error::*,
     physical_planner::{PhysicalPlan, TaskExecContext},
 };
@@ -40,15 +39,6 @@ pub enum TypedPlan {
     Normal(Arc<dyn ExecutionPlan>),
     Partitioned(Arc<dyn ExecutionPlan>),
     Remote(Vec<u8>),
-}
-
-impl TypedPlan {
-    async fn maybe_preprocess(
-        &self,
-        preprocessor: &Preprocessor,
-    ) -> Result<Arc<dyn ExecutionPlan>> {
-        preprocessor.process(self).await
-    }
 }
 
 impl fmt::Debug for TypedPlan {
@@ -106,9 +96,9 @@ impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
                 })?;
 
         // Maybe need preprocess for getting executable plan.
-        let executable = self
-            .original_plan
-            .maybe_preprocess(&df_task_ctx.preprocessor)
+        let executable = df_task_ctx
+            .preprocessor
+            .process(&self.original_plan, &df_task_ctx.ctx)
             .await?;
 
         // Coalesce the multiple outputs plan.
@@ -121,8 +111,8 @@ impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
 
         info!(
             "DatafusionExecutorImpl get the executable plan, request_id:{}, physical_plan:{}",
-            df_task_ctx.request_id,
-            displayable(executable.as_ref()).indent(true).to_string()
+            df_task_ctx.ctx.request_id,
+            displayable(executable.as_ref()).indent(true)
         );
 
         // Kept the executed plan.

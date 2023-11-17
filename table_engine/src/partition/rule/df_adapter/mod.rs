@@ -78,7 +78,7 @@ mod tests {
     use common_types::{
         column_schema,
         datum::{Datum, DatumKind},
-        row::RowGroupBuilder,
+        row::RowBuilder,
         schema::{Builder, Schema, TSID_COLUMN},
         string::StringBytes,
         time::Timestamp,
@@ -199,9 +199,7 @@ mod tests {
             ],
         ];
 
-        let mut row_group_builder = RowGroupBuilder::new(schema.clone());
-        row_group_builder
-            .row_builder()
+        let row0 = RowBuilder::new(&schema)
             .append_datum(Datum::UInt64(0))
             .unwrap()
             .append_datum(Datum::Timestamp(Timestamp::new(0)))
@@ -214,8 +212,7 @@ mod tests {
             .unwrap()
             .finish()
             .unwrap();
-        row_group_builder
-            .row_builder()
+        let row1 = RowBuilder::new(&schema)
             .append_datum(Datum::UInt64(1))
             .unwrap()
             .append_datum(Datum::Timestamp(Timestamp::new(1)))
@@ -228,7 +225,7 @@ mod tests {
             .unwrap()
             .finish()
             .unwrap();
-        let row_group = row_group_builder.build();
+        let row_group = RowGroup::new_unchecked(schema.clone(), vec![row0, row1]);
 
         // Basic flow
         let key_rule_adapter =
@@ -286,6 +283,7 @@ mod tests {
                     .expect("should succeed build column schema"),
             )
             .unwrap()
+            .primary_key_indexes(vec![0, 1])
             .build()
             .expect("should succeed to build schema")
     }

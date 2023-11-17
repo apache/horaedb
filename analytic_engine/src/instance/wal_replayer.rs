@@ -18,10 +18,14 @@ use std::{
     collections::{HashMap, VecDeque},
     fmt::Display,
     ops::Range,
+    sync::Arc,
 };
 
 use async_trait::async_trait;
-use common_types::{schema::IndexInWriterSchema, table::ShardId};
+use common_types::{
+    schema::{IndexInWriterSchema, Schema},
+    table::ShardId,
+};
 use generic_error::BoxError;
 use lazy_static::lazy_static;
 use logger::{debug, error, info, trace, warn};
@@ -44,7 +48,7 @@ use crate::{
         serial_executor::TableOpSerialExecutor,
         write::MemTableWriter,
     },
-    payload::{ReadPayload, WalDecoder},
+    payload::{ReadPayload, SingleSchemaProviderAdapter, TableSchemaProvider, WalDecoder},
     table::data::TableDataRef,
 };
 
@@ -173,7 +177,7 @@ impl Replay for TableBasedReplay {
     ) -> Result<FailedTables> {
         debug!("Replay wal logs on table mode, context:{context}, tables:{table_datas:?}",);
 
-        let mut faileds = HashMap::new();
+        let mut failed_tables = HashMap::new();
         let read_ctx = ReadContext {
             batch_size: context.wal_replay_batch_size,
             ..Default::default()
@@ -181,11 +185,11 @@ impl Replay for TableBasedReplay {
         for table_data in table_datas {
             let table_id = table_data.id;
             if let Err(e) = Self::recover_table_logs(context, table_data, &read_ctx).await {
-                faileds.insert(table_id, e);
+                failed_tables.insert(table_id, e);
             }
         }
 
-        Ok(faileds)
+        Ok(failed_tables)
     }
 }
 
@@ -217,9 +221,14 @@ impl TableBasedReplay {
         loop {
             // fetch entries to log_entry_buf
             let _timer = PULL_LOGS_DURATION_HISTOGRAM.start_timer();
-            let decoder = WalDecoder;
+            let adapter = SingleSchemaProviderAdapter {
+                schema: table_data.schema(),
+            };
+            let decoder = WalDecoder::new(adapter);
+            // All the logs should belong the table, so no need to check again.
+            let filter = |_| true;
             log_entry_buf = log_iter
-                .next_log_entries(decoder, log_entry_buf)
+                .next_log_entries(decoder, filter, log_entry_buf)
                 .await
                 .box_err()
                 .context(ReplayWalWithCause { msg: None })?;
@@ -257,15 +266,26 @@ impl Replay for RegionBasedReplay {
         debug!("Replay wal logs on region mode, context:{context}, tables:{table_datas:?}",);
 
         // Init all table results to be oks, and modify to errs when failed to replay.
-        let mut faileds = FailedTables::new();
+        let mut failed_tables = FailedTables::new();
         let scan_ctx = ScanContext {
             batch_size: context.wal_replay_batch_size,
             ..Default::default()
         };
 
-        Self::replay_region_logs(context, table_datas, &scan_ctx, &mut faileds).await?;
+        Self::replay_region_logs(context, table_datas, &scan_ctx, &mut failed_tables).await?;
 
-        Ok(faileds)
+        Ok(failed_tables)
+    }
+}
+
+#[derive(Clone)]
+struct TableSchemaProviderAdapter {
+    table_datas: Arc<HashMap<common_types::table::TableId, TableDataRef>>,
+}
+
+impl TableSchemaProvider for TableSchemaProviderAdapter {
+    fn table_schema(&self, table_id: common_types::table::TableId) -> Option<Schema> {
+        self.table_datas.get(&table_id).map(|v| v.schema())
     }
 }
 
@@ -280,7 +300,7 @@ impl RegionBasedReplay {
         context: &ReplayContext,
         table_datas: &[TableDataRef],
         scan_ctx: &ScanContext,
-        faileds: &mut FailedTables,
+        failed_tables: &mut FailedTables,
     ) -> Result<()> {
         // Scan all wal logs of current shard.
         let scan_req = ScanRequest {
@@ -297,6 +317,7 @@ impl RegionBasedReplay {
 
         // Lock all related tables.
         let mut serial_exec_ctxs = HashMap::with_capacity(table_datas.len());
+        let mut table_datas_by_id = HashMap::with_capacity(table_datas.len());
         for table_data in table_datas {
             let serial_exec = table_data.serial_exec.lock().await;
             let serial_exec_ctx = SerialExecContext {
@@ -304,14 +325,21 @@ impl RegionBasedReplay {
                 serial_exec,
             };
             serial_exec_ctxs.insert(table_data.id, serial_exec_ctx);
+            table_datas_by_id.insert(table_data.id.as_u64(), table_data.clone());
         }
 
+        let table_datas_by_id = Arc::new(table_datas_by_id);
+        let schema_provider = TableSchemaProviderAdapter {
+            table_datas: table_datas_by_id.clone(),
+        };
         // Split and replay logs.
         loop {
             let _timer = PULL_LOGS_DURATION_HISTOGRAM.start_timer();
-            let decoder = WalDecoder;
+            let decoder = WalDecoder::new(schema_provider.clone());
+            let table_datas_for_filter = table_datas_by_id.clone();
+            let log_filter = move |log_table_id| table_datas_for_filter.contains_key(&log_table_id);
             log_entry_buf = log_iter
-                .next_log_entries(decoder, log_entry_buf)
+                .next_log_entries(decoder, log_filter, log_entry_buf)
                 .await
                 .box_err()
                 .context(ReplayWalWithCause { msg: None })?;
@@ -321,8 +349,13 @@ impl RegionBasedReplay {
             }
 
             let _timer = APPLY_LOGS_DURATION_HISTOGRAM.start_timer();
-            Self::replay_single_batch(context, &log_entry_buf, &mut serial_exec_ctxs, faileds)
-                .await?;
+            Self::replay_single_batch(
+                context,
+                &log_entry_buf,
+                &mut serial_exec_ctxs,
+                failed_tables,
+            )
+            .await?;
         }
 
         Ok(())
@@ -332,7 +365,7 @@ impl RegionBasedReplay {
         context: &ReplayContext,
         log_batch: &VecDeque<LogEntry<ReadPayload>>,
         serial_exec_ctxs: &mut HashMap<TableId, SerialExecContext<'_>>,
-        faileds: &mut FailedTables,
+        failed_tables: &mut FailedTables,
     ) -> Result<()> {
         let mut table_batches = Vec::new();
         // TODO: No `group_by` method in `VecDeque`, so implement it manually here...
@@ -341,7 +374,7 @@ impl RegionBasedReplay {
         // TODO: Replay logs of different tables in parallel.
         for table_batch in table_batches {
             // Some tables may have failed in previous replay, ignore them.
-            if faileds.contains_key(&table_batch.table_id) {
+            if failed_tables.contains_key(&table_batch.table_id) {
                 continue;
             }
 
@@ -359,7 +392,7 @@ impl RegionBasedReplay {
 
                 // If occur error, mark this table as failed and store the cause.
                 if let Err(e) = result {
-                    faileds.insert(table_batch.table_id, e);
+                    failed_tables.insert(table_batch.table_id, e);
                 }
             }
         }
@@ -489,8 +522,8 @@ async fn replay_table_log_entries(
                 let index_in_writer =
                     IndexInWriterSchema::for_same_schema(row_group.schema().num_columns());
                 let memtable_writer = MemTableWriter::new(table_data.clone(), serial_exec);
-                let memtable_write_ret = memtable_writer
-                    .write(sequence, &row_group.into(), index_in_writer)
+                let write_res = memtable_writer
+                    .write(sequence, row_group, index_in_writer)
                     .box_err()
                     .context(ReplayWalWithCause {
                         msg: Some(format!(
@@ -498,7 +531,7 @@ async fn replay_table_log_entries(
                             table_data.space_id, table_data.name, table_data.id
                         )),
                     });
-                if let Err(e) = memtable_write_ret {
+                if let Err(e) = write_res {
                     // TODO: find a better way to match this.
                     if e.to_string().contains(crate::memtable::TOO_LARGE_MESSAGE) {
                         // ignore this error

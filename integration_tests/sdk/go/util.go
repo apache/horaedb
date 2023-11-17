@@ -8,9 +8,10 @@ import (
 )
 
 const table = "godemo"
+const partitionTable = "godemoPartition"
 
 func createTable(ctx context.Context, client ceresdb.Client, timestampName string) error {
-	_, err := ddl(ctx, client, fmt.Sprintf("create table %s (`%s` timestamp not null, name string tag, value int64,TIMESTAMP KEY(%s))", table, timestampName, timestampName))
+	_, err := ddl(ctx, client, table, fmt.Sprintf("create table %s (`%s` timestamp not null, name string tag, value int64,TIMESTAMP KEY(%s))", table, timestampName, timestampName))
 	return err
 }
 
@@ -100,9 +101,9 @@ func query(ctx context.Context, client ceresdb.Client, ts int64, timestampName s
 	return ensureRow(row1, resp.Rows[1].Columns())
 }
 
-func ddl(ctx context.Context, client ceresdb.Client, sql string) (uint32, error) {
+func ddl(ctx context.Context, client ceresdb.Client, tableName string, sql string) (uint32, error) {
 	resp, err := client.SQLQuery(ctx, ceresdb.SQLQueryRequest{
-		Tables: []string{table},
+		Tables: []string{tableName},
 		SQL:    sql,
 	})
 	if err != nil {
@@ -138,8 +139,8 @@ func writeAndQueryWithNewColumns(ctx context.Context, client ceresdb.Client, tim
 	return nil
 }
 
-func dropTable(ctx context.Context, client ceresdb.Client) error {
-	affected, err := ddl(ctx, client, "drop table if exists "+table)
+func dropTable(ctx context.Context, client ceresdb.Client, table string) error {
+	affected, err := ddl(ctx, client, table, "drop table if exists "+table)
 	if err != nil {
 		return err
 	}

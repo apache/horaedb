@@ -61,7 +61,7 @@ use crate::{
         metrics::MaybeTableLevelMetrics,
     },
     table::data::{TableDataRef, TableShardInfo},
-    RecoverMode, TableOptions,
+    RecoverMode, TableOptions, WalEncodeConfig,
 };
 
 #[allow(clippy::enum_variant_names)]
@@ -186,6 +186,7 @@ pub struct Instance {
     pub(crate) scan_options: ScanOptions,
     pub(crate) iter_options: Option<IterOptions>,
     pub(crate) recover_mode: RecoverMode,
+    pub(crate) wal_encode: WalEncodeConfig,
 }
 
 impl Instance {

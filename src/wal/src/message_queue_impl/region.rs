@@ -957,7 +957,7 @@ mod tests {
     };
 
     use crate::{
-        log_batch::PayloadDecoder,
+        log_batch::{PayloadDecodeContext, PayloadDecoder},
         manager::{ReadContext, WriteContext},
         message_queue_impl::{encoding::MetaEncoding, test_util::TestContext},
     };
@@ -1033,9 +1033,12 @@ mod tests {
             .unwrap();
         while let Some(log_entry) = msg_iter.next_log_entry().await.unwrap() {
             let mut payload = log_entry.payload;
+            let ctx = PayloadDecodeContext {
+                table_id: log_entry.table_id,
+            };
             let decoded_payload = test_context
                 .test_payload_encoder
-                .decode(&mut payload)
+                .decode(&ctx, &mut payload)
                 .unwrap();
             mixed_decoded_res.push(decoded_payload.val);
         }

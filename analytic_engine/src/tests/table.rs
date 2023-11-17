@@ -22,7 +22,7 @@ use common_types::{
     projected_schema::ProjectedSchema,
     record_batch::RecordBatch,
     request_id::RequestId,
-    row::{Row, RowGroup, RowGroupBuilder},
+    row::{Row, RowGroup},
     schema::{self, Schema},
     table::DEFAULT_SHARD_ID,
     time::Timestamp,
@@ -122,9 +122,7 @@ impl FixedSchemaTable {
     }
 
     fn new_row_group(&self, rows: Vec<Row>) -> RowGroup {
-        RowGroupBuilder::with_rows(self.create_request.params.table_schema.clone(), rows)
-            .unwrap()
-            .build()
+        RowGroup::try_new(self.create_request.params.table_schema.clone(), rows).unwrap()
     }
 
     fn new_row_opt(data: RowTupleOpt) -> Row {
@@ -336,7 +334,8 @@ pub fn create_schema_builder(
     assert!(!key_tuples.is_empty());
 
     let mut schema_builder = schema::Builder::with_capacity(key_tuples.len() + normal_tuples.len())
-        .auto_increment_column_id(true);
+        .auto_increment_column_id(true)
+        .primary_key_indexes((0..key_tuples.len()).collect());
 
     for tuple in key_tuples {
         // Key column is not nullable.

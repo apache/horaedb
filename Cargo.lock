@@ -107,6 +107,7 @@ dependencies = [
  "hex",
  "hyperloglog",
  "id_allocator",
+ "itertools 0.10.5",
  "lazy_static",
  "logger",
  "lru 0.7.8",
@@ -1285,6 +1286,7 @@ dependencies = [
  "serde",
  "server",
  "signal-hook",
+ "size_ext",
  "table_engine",
  "toml 0.7.3",
  "toml_ext",
@@ -1328,9 +1330,9 @@ dependencies = [
 
 [[package]]
 name = "ceresdbproto"
-version = "1.0.18"
+version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fc99bdf6e40cee4545ba77eebe28bdf6e40c99595d895a8f3891fc748e57276"
+checksum = "aabe958e8ea5fd3da1a2449b7d49c8f8dcaa87195a1498bc7a0215794d3f236e"
 dependencies = [
  "prost",
  "protoc-bin-vendored",
@@ -2699,6 +2701,8 @@ name = "future_ext"
 version = "1.2.6-alpha"
 dependencies = [
  "futures 0.3.28",
+ "lazy_static",
+ "prometheus 0.12.0",
  "runtime",
  "tokio",
 ]
@@ -5417,6 +5421,7 @@ dependencies = [
  "table_engine",
  "time_ext",
  "tokio",
+ "trace_metric",
 ]
 
 [[package]]

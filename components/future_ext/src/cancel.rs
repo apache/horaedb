@@ -25,17 +25,32 @@ use std::{
 };
 
 use futures::future::BoxFuture;
+use lazy_static::lazy_static;
+use prometheus::{register_int_counter_vec, IntCounterVec};
 use runtime::RuntimeRef;
+
+lazy_static! {
+    static ref FUTURE_CANCEL_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "future_cancel_counter",
+        "Counter of future cancel",
+        &["token"]
+    )
+    .unwrap();
+}
 
 /// Wrapper around a future that cannot be cancelled.
 ///
 /// When the future is dropped/cancelled, we'll spawn a tokio task to _rescue_
 /// it.
-pub struct CancellationSafeFuture<F>
+pub struct CancellationSafeFuture<F, T>
 where
     F: Future + Send + 'static,
     F::Output: Send,
+    T: AsRef<str> + 'static + Send + Unpin,
 {
+    /// Token for metrics
+    token: T,
+
     /// Mark if the inner future finished. If not, we must spawn a helper task
     /// on drop.
     done: bool,
@@ -54,13 +69,18 @@ where
     runtime: RuntimeRef,
 }
 
-impl<F> Drop for CancellationSafeFuture<F>
+impl<F, T> Drop for CancellationSafeFuture<F, T>
 where
     F: Future + Send + 'static,
     F::Output: Send,
+    T: AsRef<str> + 'static + Send + Unpin,
 {
     fn drop(&mut self) {
         if !self.done {
+            FUTURE_CANCEL_COUNTER
+                .with_label_values(&[self.token.as_ref()])
+                .inc();
+
             let inner = self.inner.take().unwrap();
             let handle = self.runtime.spawn(inner);
             drop(handle);
@@ -68,18 +88,20 @@ where
     }
 }
 
-impl<F> CancellationSafeFuture<F>
+impl<F, T> CancellationSafeFuture<F, T>
 where
     F: Future + Send,
     F::Output: Send,
+    T: AsRef<str> + 'static + Send + Unpin,
 {
     /// Create new future that is protected from cancellation.
     ///
     /// If [`CancellationSafeFuture`] is cancelled (i.e. dropped) and there is
     /// still some external receiver of the state left, than we will drive
     /// the payload (`f`) to completion. Otherwise `f` will be cancelled.
-    pub fn new(fut: F, runtime: RuntimeRef) -> Self {
+    pub fn new(fut: F, token: T, runtime: RuntimeRef) -> Self {
         Self {
+            token,
             done: false,
             inner: Some(Box::pin(fut)),
             runtime,
@@ -87,10 +109,11 @@ where
     }
 }
 
-impl<F> Future for CancellationSafeFuture<F>
+impl<F, T> Future for CancellationSafeFuture<F, T>
 where
     F: Future + Send,
     F::Output: Send,
+    T: AsRef<str> + 'static + Send + Unpin,
 {
     type Output = F::Output;
 
@@ -144,6 +167,7 @@ mod tests {
                 async move {
                     done_captured.store(true, Ordering::SeqCst);
                 },
+                "test",
                 runtime_clone,
             );
 
@@ -166,6 +190,7 @@ mod tests {
                 async move {
                     done_captured.wait().await;
                 },
+                "test",
                 runtime_clone,
             );
 

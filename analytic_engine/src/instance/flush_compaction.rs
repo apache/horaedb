@@ -196,6 +196,10 @@ pub struct TableFlushRequest {
     pub table_data: TableDataRef,
     /// Max sequence number to flush (inclusive).
     pub max_sequence: SequenceNumber,
+
+    /// We may suggest new primary keys in preflush. if suggestion happened, we
+    /// need to ensure data is in new order.
+    need_reorder: bool,
 }
 
 #[derive(Clone)]
@@ -287,7 +291,7 @@ impl FlushTask {
         // Start flush duration timer.
         let local_metrics = self.table_data.metrics.local_flush_metrics();
         let _timer = local_metrics.start_flush_timer();
-        self.dump_memtables(request_id, &mems_to_flush)
+        self.dump_memtables(request_id, &mems_to_flush, flush_req.need_reorder)
             .await
             .box_err()
             .context(FlushJobWithCause {
@@ -316,6 +320,7 @@ impl FlushTask {
         let mut last_sequence = table_data.last_sequence();
         // Switch (freeze) all mutable memtables. And update segment duration if
         // suggestion is returned.
+        let mut need_reorder = false;
         if let Some(suggest_segment_duration) = current_version.suggest_duration() {
             info!(
                 "Update segment duration, table:{}, table_id:{}, segment_duration:{:?}",
@@ -324,6 +329,7 @@ impl FlushTask {
             assert!(!suggest_segment_duration.is_zero());
 
             if let Some(pk_idx) = current_version.suggest_primary_key() {
+                need_reorder = true;
                 let mut schema = table_data.schema();
                 info!(
                     "Update primary key, table:{}, table_id:{}, old:{:?}, new:{:?}",
@@ -388,6 +394,7 @@ impl FlushTask {
         Ok(TableFlushRequest {
             table_data: table_data.clone(),
             max_sequence: last_sequence,
+            need_reorder,
         })
     }
 
@@ -401,6 +408,7 @@ impl FlushTask {
         &self,
         request_id: RequestId,
         mems_to_flush: &FlushableMemTables,
+        need_reorder: bool,
     ) -> Result<()> {
         let local_metrics = self.table_data.metrics.local_flush_metrics();
         let mut files_to_level0 = Vec::with_capacity(mems_to_flush.memtables.len());
@@ -410,7 +418,12 @@ impl FlushTask {
         // process sampling memtable and frozen memtable
         if let Some(sampling_mem) = &mems_to_flush.sampling_mem {
             if let Some(seq) = self
-                .dump_sampling_memtable(request_id, sampling_mem, &mut files_to_level0)
+                .dump_sampling_memtable(
+                    request_id,
+                    sampling_mem,
+                    &mut files_to_level0,
+                    need_reorder,
+                )
                 .await?
             {
                 flushed_sequence = seq;
@@ -500,6 +513,7 @@ impl FlushTask {
         request_id: RequestId,
         sampling_mem: &SamplingMemTable,
         files_to_level0: &mut Vec<AddFile>,
+        need_reorder: bool,
     ) -> Result<Option<SequenceNumber>> {
         let (min_key, max_key) = match (sampling_mem.mem.min_key(), sampling_mem.mem.max_key()) {
             (Some(min_key), Some(max_key)) => (min_key, max_key),
@@ -589,11 +603,13 @@ impl FlushTask {
 
         let iter = build_mem_table_iter(sampling_mem.mem.clone(), &self.table_data)?;
         let timestamp_idx = self.table_data.schema().timestamp_index();
-        if let Some(pk_idx) = self.table_data.current_version().suggest_primary_key() {
+        if need_reorder {
+            let schema = self.table_data.schema();
+            let primary_key_indexes = schema.primary_key_indexes();
             let reorder = Reorder {
                 iter,
                 schema: self.table_data.schema(),
-                order_by_col_indexes: pk_idx,
+                order_by_col_indexes: primary_key_indexes.to_vec(),
             };
             let mut stream = reorder.into_stream().await.context(ReorderMemIter)?;
             while let Some(data) = stream.next().await {
