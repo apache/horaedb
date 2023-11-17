@@ -370,9 +370,9 @@ func (a *API) updateFlowLimiter(req *http.Request) apiFuncResult {
 	log.Info("update flow limiter request", zap.String("request", fmt.Sprintf("%+v", updateFlowLimiterRequest)))
 
 	newLimiterConfig := config.LimiterConfig{
+		Enable: updateFlowLimiterRequest.Enable,
 		Limit:  updateFlowLimiterRequest.Limit,
 		Burst:  updateFlowLimiterRequest.Burst,
-		Enable: updateFlowLimiterRequest.Enable,
 	}
 
 	if err := a.flowLimiter.UpdateLimiter(newLimiterConfig); err != nil {

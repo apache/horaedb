@@ -148,9 +148,9 @@ type UpdateClusterRequest struct {
 }
 
 type UpdateFlowLimiterRequest struct {
+	Enable bool `json:"enable"`
 	Limit  int  `json:"limit"`
 	Burst  int  `json:"burst"`
-	Enable bool `json:"enable"`
 }
 
 type UpdateEnableScheduleRequest struct {

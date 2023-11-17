@@ -38,9 +38,9 @@ const (
 	defaultEtcdKeyPath          = ""
 	defaultEtcdCertPath         = ""
 
+	defaultEnableLimiter          bool  = true
 	defaultInitialLimiterCapacity int   = 100 * 1000
 	defaultInitialLimiterRate     int   = 10 * 1000
-	defaultEnableLimiter          bool  = false
 	defaultEtcdStartTimeoutMs     int64 = 60 * 1000
 	defaultCallTimeoutMs                = 5 * 1000
 	defaultEtcdMaxTxnOps                = 128
@@ -95,12 +95,12 @@ const (
 )
 
 type LimiterConfig struct {
+	// Enable is used to control the switch of the limiter.
+	Enable bool `toml:"enable" env:"FLOW_LIMITER_ENABLE"`
 	// Limit is the updated rate of tokens.
 	Limit int `toml:"limit" env:"FLOW_LIMITER_LIMIT"`
 	// Burst is the maximum number of tokens.
 	Burst int `toml:"burst" env:"FLOW_LIMITER_BURST"`
-	// Enable is used to control the switch of the limiter.
-	Enable bool `toml:"enable" env:"FLOW_LIMITER_ENABLE"`
 }
 
 // Config is server start config, it has three input modes:
@@ -294,9 +294,9 @@ func MakeConfigParser() (*Parser, error) {
 			File:  log.DefaultLogFile,
 		},
 		FlowLimiter: LimiterConfig{
+			Enable: defaultEnableLimiter,
 			Limit:  defaultInitialLimiterRate,
 			Burst:  defaultInitialLimiterCapacity,
-			Enable: defaultEnableLimiter,
 		},
 
 		EnableEmbedEtcd: defaultEnableEmbedEtcd,
