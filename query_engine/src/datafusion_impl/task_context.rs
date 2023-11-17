@@ -14,7 +14,7 @@
 
 use std::{
     fmt,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -33,7 +33,7 @@ use datafusion_proto::{
 };
 use df_engine_extensions::dist_sql_query::{
     resolver::Resolver, ExecutableScanBuilder, RemotePhysicalPlanExecutor,
-    RemotePhysicalPlanExecutorRef, TableScanContext,
+    RemotePhysicalPlanExecutorRef, RemoteTaskContext, TableScanContext,
 };
 use futures::future::BoxFuture;
 use generic_error::BoxError;
@@ -42,9 +42,7 @@ use snafu::ResultExt;
 use table_engine::{
     provider::{CeresdbOptions, ScanTable, SCAN_TABLE_METRICS_COLLECTOR_NAME},
     remote::{
-        model::{
-            ExecContext, ExecutePlanRequest, PhysicalPlan, RemoteExecuteRequest, TableIdentifier,
-        },
+        model::{ExecContext, ExecutePlanRequest, PhysicalPlan, RemoteExecuteRequest},
         RemoteEngineRef,
     },
     stream::ToDfStream,
@@ -172,13 +170,12 @@ struct RemotePhysicalPlanExecutorImpl {
 impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
     fn execute(
         &self,
-        table: TableIdentifier,
-        task_context: &TaskContext,
+        task_context: RemoteTaskContext,
         plan: Arc<dyn ExecutionPlan>,
-        remote_metrics: Arc<Mutex<String>>,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         // Get the custom context to rebuild execution context.
         let ceresdb_options = task_context
+            .task_ctx
             .session_config()
             .options()
             .extensions
@@ -214,7 +211,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
         let remote_engine = self.remote_engine.clone();
         let future = Box::pin(async move {
             let remote_request = RemoteExecuteRequest {
-                table,
+                table: task_context.table,
                 context: exec_ctx,
                 physical_plan: PhysicalPlan::Datafusion(encoded_plan),
             };
@@ -222,7 +219,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
             let request = ExecutePlanRequest {
                 plan_schema,
                 remote_request,
-                remote_metrics,
+                remote_metrics: task_context.remote_metrics,
             };
 
             // Remote execute.

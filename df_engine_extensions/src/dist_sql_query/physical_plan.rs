@@ -45,7 +45,7 @@ use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use table_engine::{remote::model::TableIdentifier, table::ReadRequest};
 use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector, TraceMetricWhenDrop};
 
-use crate::dist_sql_query::{RemotePhysicalPlanExecutor, TableScanContext};
+use crate::dist_sql_query::{RemotePhysicalPlanExecutor, RemoteTaskContext, TableScanContext};
 
 /// Placeholder of partitioned table's scan plan
 /// It is inexecutable actually and just for carrying the necessary information
@@ -346,13 +346,14 @@ impl ExecutionPlan for ResolvedPartitionedScan {
             remote_metrics,
         } = &self.remote_exec_ctx.plan_ctxs[partition];
 
+        let remote_task_ctx =
+            RemoteTaskContext::new(context, sub_table.clone(), remote_metrics.clone());
+
         // Send plan for remote execution.
-        let stream_future = self.remote_exec_ctx.executor.execute(
-            sub_table.clone(),
-            &context,
-            plan.clone(),
-            remote_metrics.clone(),
-        )?;
+        let stream_future = self
+            .remote_exec_ctx
+            .executor
+            .execute(remote_task_ctx, plan.clone())?;
         let record_stream =
             PartitionedScanStream::new(stream_future, plan.schema(), metrics_collector.clone());
 

@@ -144,25 +144,53 @@ impl MetricCollector for ExecutePlanMetricCollector {
 /// Stream with metric
 struct StreamWithMetric<M: MetricCollector> {
     inner: BoxStream<'static, Result<RecordBatch>>,
-    physical_plan: Option<PhysicalPlanRef>,
     metric: Option<M>,
 }
 
 impl<M: MetricCollector> StreamWithMetric<M> {
-    fn new(
-        inner: BoxStream<'static, Result<RecordBatch>>,
-        physical_plan: Option<PhysicalPlanRef>,
-        metric: M,
-    ) -> Self {
+    fn new(inner: BoxStream<'static, Result<RecordBatch>>, metric: M) -> Self {
         Self {
             inner,
-            physical_plan,
             metric: Some(metric),
         }
     }
 }
 
 impl<M: MetricCollector> Stream for StreamWithMetric<M> {
+    type Item = Result<RecordBatch>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.get_mut().inner.poll_next_unpin(cx)
+    }
+}
+
+impl<M: MetricCollector> Drop for StreamWithMetric<M> {
+    fn drop(&mut self) {
+        let metric = self.metric.take();
+        if let Some(metric) = metric {
+            metric.collect();
+        }
+    }
+}
+
+struct StreamRecordBatchWithMetrics {
+    inner: BoxStream<'static, Result<RecordBatch>>,
+    physical_plan: Option<PhysicalPlanRef>,
+}
+
+impl StreamRecordBatchWithMetrics {
+    fn new(
+        inner: BoxStream<'static, Result<RecordBatch>>,
+        physical_plan: Option<PhysicalPlanRef>,
+    ) -> Self {
+        Self {
+            inner,
+            physical_plan,
+        }
+    }
+}
+
+impl Stream for StreamRecordBatchWithMetrics {
     type Item = Result<RecordBatchWithMetrics>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -178,15 +206,6 @@ impl<M: MetricCollector> Stream for StreamWithMetric<M> {
                 None => Poll::Ready(None),
             },
             Poll::Pending => Poll::Pending,
-        }
-    }
-}
-
-impl<M: MetricCollector> Drop for StreamWithMetric<M> {
-    fn drop(&mut self) {
-        let metric = self.metric.take();
-        if let Some(metric) = metric {
-            metric.collect();
         }
     }
 }
@@ -283,7 +302,7 @@ impl RemoteEngineServiceImpl {
     async fn stream_read_internal(
         &self,
         request: Request<ReadRequest>,
-    ) -> Result<StreamWithMetric<StreamReadMetricCollector>> {
+    ) -> Result<StreamRecordBatchWithMetrics> {
         let metric = StreamReadMetricCollector(Instant::now());
 
         let ctx = self.handler_ctx();
@@ -322,18 +341,15 @@ impl RemoteEngineServiceImpl {
             });
         }
 
-        Ok(StreamWithMetric::new(
-            Box::pin(ReceiverStream::new(rx)),
-            None,
-            metric,
-        ))
+        let stream = StreamWithMetric::new(Box::pin(ReceiverStream::new(rx)), metric);
+        Ok(StreamRecordBatchWithMetrics::new(Box::pin(stream), None))
     }
 
     async fn dedup_stream_read_internal(
         &self,
         query_dedup: QueryDedup,
         request: Request<ReadRequest>,
-    ) -> Result<StreamWithMetric<StreamReadMetricCollector>> {
+    ) -> Result<StreamRecordBatchWithMetrics> {
         let metric = StreamReadMetricCollector(Instant::now());
 
         let request = request.into_inner();
@@ -378,11 +394,8 @@ impl RemoteEngineServiceImpl {
             }
         }
 
-        Ok(StreamWithMetric::new(
-            Box::pin(ReceiverStream::new(rx)),
-            None,
-            metric,
-        ))
+        let stream = StreamWithMetric::new(Box::pin(ReceiverStream::new(rx)), metric);
+        Ok(StreamRecordBatchWithMetrics::new(Box::pin(stream), None))
     }
 
     async fn read_and_send_dedupped_resps<K, F>(
@@ -616,7 +629,7 @@ impl RemoteEngineServiceImpl {
     async fn execute_physical_plan_internal(
         &self,
         request: Request<ExecutePlanRequest>,
-    ) -> Result<StreamWithMetric<ExecutePlanMetricCollector>> {
+    ) -> Result<StreamRecordBatchWithMetrics> {
         let metric = ExecutePlanMetricCollector(Instant::now());
         let request = request.into_inner();
         let query_engine = self.instance.query_engine.clone();
@@ -644,10 +657,10 @@ impl RemoteEngineServiceImpl {
                 })
             });
 
-        Ok(StreamWithMetric::new(
+        let stream = StreamWithMetric::new(Box::pin(stream), metric);
+        Ok(StreamRecordBatchWithMetrics::new(
             Box::pin(stream),
             Some(physical_plan_clone),
-            metric,
         ))
     }
 
@@ -655,7 +668,7 @@ impl RemoteEngineServiceImpl {
         &self,
         query_dedup: QueryDedup,
         request: Request<ExecutePlanRequest>,
-    ) -> Result<StreamWithMetric<ExecutePlanMetricCollector>> {
+    ) -> Result<StreamRecordBatchWithMetrics> {
         let metric = ExecutePlanMetricCollector(Instant::now());
         let request = request.into_inner();
 
@@ -701,10 +714,10 @@ impl RemoteEngineServiceImpl {
             }
         }
 
-        Ok(StreamWithMetric::new(
-            Box::pin(ReceiverStream::new(rx)),
+        let stream = StreamWithMetric::new(Box::pin(ReceiverStream::new(rx)), metric);
+        Ok(StreamRecordBatchWithMetrics::new(
+            Box::pin(stream),
             Some(physical_plan_clone),
-            metric,
         ))
     }
 

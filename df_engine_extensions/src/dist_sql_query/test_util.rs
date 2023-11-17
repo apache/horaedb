@@ -14,7 +14,7 @@
 
 use std::{
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::Arc,
     task::{Context, Poll},
 };
 
@@ -29,7 +29,7 @@ use common_types::{
 };
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
-    execution::{FunctionRegistry, TaskContext},
+    execution::FunctionRegistry,
     logical_expr::{expr_fn, Literal, Operator},
     physical_plan::{
         aggregates::{AggregateExec, AggregateMode, PhysicalGroupBy},
@@ -56,7 +56,7 @@ use trace_metric::MetricsCollector;
 use crate::dist_sql_query::{
     physical_plan::{PartitionedScanStream, UnresolvedPartitionedScan, UnresolvedSubTableScan},
     resolver::Resolver,
-    ExecutableScanBuilder, RemotePhysicalPlanExecutor, TableScanContext,
+    ExecutableScanBuilder, RemotePhysicalPlanExecutor, RemoteTaskContext, TableScanContext,
 };
 
 // Test context
@@ -504,10 +504,8 @@ struct MockRemotePhysicalPlanExecutor;
 impl RemotePhysicalPlanExecutor for MockRemotePhysicalPlanExecutor {
     fn execute(
         &self,
-        _table: TableIdentifier,
-        _task_context: &TaskContext,
+        _task_context: RemoteTaskContext,
         _plan: Arc<dyn ExecutionPlan>,
-        _remote_metriccollector: Arc<Mutex<String>>,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         unimplemented!()
     }
