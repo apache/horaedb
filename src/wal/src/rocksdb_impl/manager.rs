@@ -971,12 +971,12 @@ impl fmt::Debug for RocksImpl {
 pub struct RocksDBWalsOpener;
 
 impl RocksDBWalsOpener {
-    fn build_rocks_impl(
+    fn build_manager(
         wal_path: PathBuf,
         runtime: Arc<Runtime>,
         config: RocksDBConfig,
     ) -> Result<WalManagerRef> {
-        let data_wal = Builder::new(wal_path, runtime)
+        let rocks = Builder::new(wal_path, runtime)
             .max_subcompactions(config.max_subcompactions)
             .max_background_jobs(config.max_background_jobs)
             .enable_statistics(config.enable_statistics)
@@ -988,7 +988,7 @@ impl RocksDBWalsOpener {
             .fifo_compaction_max_table_files_size(config.fifo_compaction_max_table_files_size.0)
             .build()?;
 
-        Ok(Arc::new(data_wal))
+        Ok(Arc::new(rocks))
     }
 }
 
@@ -1012,9 +1012,9 @@ impl WalsOpener for RocksDBWalsOpener {
 
         // Build data wal
         let data_wal = if rocksdb_wal_config.disable_data {
-            Arc::new(crate::dummy::DoNothing) as Arc<_>
+            Arc::new(crate::dummy::DoNothing)
         } else {
-            Self::build_rocks_impl(
+            Self::build_manager(
                 data_path.join(WAL_DIR_NAME),
                 write_runtime.clone(),
                 rocksdb_wal_config.data_namespace,
@@ -1022,9 +1022,9 @@ impl WalsOpener for RocksDBWalsOpener {
         };
 
         // Build manifest wal
-        let manifest_wal = Self::build_rocks_impl(
+        let manifest_wal = Self::build_manager(
             data_path.join(MANIFEST_DIR_NAME),
-            write_runtime.clone(),
+            write_runtime,
             rocksdb_wal_config.meta_namespace,
         )?;
 

@@ -28,13 +28,10 @@ pub struct DoNothing;
 
 #[async_trait]
 impl WalManager for DoNothing {
-    /// Get current sequence number.
     async fn sequence_num(&self, _location: WalLocation) -> Result<SequenceNumber> {
         Ok(0)
     }
 
-    /// Mark the entries whose sequence number is in [0, `sequence_number`] to
-    /// be deleted in the future.
     async fn mark_delete_entries_up_to(
         &self,
         _location: WalLocation,
@@ -43,17 +40,14 @@ impl WalManager for DoNothing {
         Ok(())
     }
 
-    /// Close a region.
     async fn close_region(&self, _region: RegionId) -> Result<()> {
         Ok(())
     }
 
-    /// Close the wal gracefully.
     async fn close_gracefully(&self) -> Result<()> {
         Ok(())
     }
 
-    /// Provide iterator on necessary entries according to `ReadRequest`.
     async fn read_batch(
         &self,
         _ctx: &ReadContext,
