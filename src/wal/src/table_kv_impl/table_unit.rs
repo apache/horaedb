@@ -39,8 +39,10 @@ use tokio::sync::Mutex;
 
 use crate::{
     kv_encoder::{CommonLogEncoding, CommonLogKey},
-    log_batch::{LogEntry, LogWriteBatch},
-    manager::{self, ReadContext, ReadRequest, SequenceNumber, SyncLogIterator, WalRuntimes},
+    log_batch::{LogEntry, LogWriteBatch, LogWriteEntry},
+    manager::{
+        self, ReadContext, ReadRequest, RegionId, SequenceNumber, SyncLogIterator, WalRuntimes,
+    },
     table_kv_impl::{encoding, model::TableUnitEntry, namespace::BucketRef},
 };
 
@@ -65,6 +67,18 @@ pub enum Error {
         key: String,
         meta_table: String,
         source: crate::table_kv_impl::model::Error,
+    },
+
+    #[snafu(display("Try to split empty logs.\nBacktrace\n:{backtrace}"))]
+    SplitEmptyLogs { backtrace: Backtrace },
+
+    #[snafu(display("The size limit of one write batch is not enough for just one key-value pair, size_limit:{limit}.\nBacktrace\n:{backtrace}"))]
+    TooSmallSizeLimitPerBatch { limit: usize, backtrace: Backtrace },
+
+    #[snafu(display("Too large payload, payload_len:{payload_size}.\nBacktrace\n:{backtrace}"))]
+    TooLargePayload {
+        payload_size: usize,
+        backtrace: Backtrace,
     },
 
     #[snafu(display("Failed to do log codec, err:{}.", source))]
@@ -940,44 +954,37 @@ impl TableUnitWriter {
             log_batch.entries.len()
         );
 
-        let log_encoding = CommonLogEncoding::newest();
-        let entries_num = log_batch.len() as u64;
         let region_id = log_batch.location.region_id;
         let table_id = log_batch.location.table_id;
-        let (wb, max_sequence_num) = {
-            let mut wb = T::WriteBatch::with_capacity(log_batch.len());
-            let mut next_sequence_num = self.alloc_sequence_num(table_unit_state, entries_num)?;
-            let mut key_buf = BytesMut::new();
 
-            for entry in &log_batch.entries {
-                log_encoding
-                    .encode_key(
-                        &mut key_buf,
-                        &CommonLogKey::new(region_id, table_id, next_sequence_num),
-                    )
-                    .context(LogCodec)?;
-                wb.insert(&key_buf, &entry.payload);
+        let splitter = LogBatchSplitEncoder {
+            log_value_size_limit: 1000,
+            write_batch_size_limit: 1000 * 1000,
 
-                next_sequence_num += 1;
-            }
-
-            (wb, next_sequence_num - 1)
+            region_id,
+            table_id,
         };
-
+        let next_seq = self.alloc_sequence_num(table_unit_state, log_batch.entries.len() as u64)?;
+        let (write_batches, max_seq_num) = splitter.encode(&log_batch.entries, next_seq)?;
         let table_kv = table_kv.clone();
         let bucket = bucket.clone();
         runtime
             .spawn_blocking(move || {
                 let table_name = bucket.wal_shard_table(region_id);
-                table_kv
-                    .write(WriteContext::default(), table_name, wb)
-                    .box_err()
-                    .context(WriteLog { region_id })
+
+                for wb in write_batches {
+                    table_kv
+                        .write(WriteContext::default(), table_name, wb)
+                        .box_err()
+                        .context(WriteLog { region_id })?
+                }
+
+                Ok(())
             })
             .await
             .context(RuntimeExec)??;
 
-        Ok(max_sequence_num)
+        Ok(max_seq_num)
     }
 
     /// Delete entries in the range `[0, sequence_num]`.
@@ -1026,5 +1033,369 @@ impl TableUnitWriter {
         table_unit_state.set_start_sequence(table_unit_entry.start_sequence);
 
         Ok(())
+    }
+}
+
+/// The location in the original log entry slice.
+#[derive(Clone, Debug)]
+enum LogEntryLocation {
+    Integrate {
+        index: usize,
+    },
+    Splitted {
+        index: usize,
+        /// The element in the vector is (offset, len).
+        sub_entry_offsets: Vec<(usize, usize)>,
+    },
+}
+
+struct SplittedEntriesInserter<'a, W> {
+    write_batches_builder: &'a mut WriteBatchesBuilder<W>,
+}
+
+impl<'a, W: WriteBatch> SplittedEntriesInserter<'a, W> {
+    fn insert(&mut self, key: &[u8], val: &[u8]) -> Result<()> {
+        self.write_batches_builder.insert_entry(key, val)
+    }
+
+    fn finish(&mut self) {
+        self.write_batches_builder.next_seq_num += 1;
+    }
+}
+/// A write batch builder considering the size limit of a write batch, that is
+/// to say, the built write batches's size won't exceed the
+/// `size_limit_per_batch`.
+struct WriteBatchesBuilder<W> {
+    write_batches: Vec<W>,
+    index_of_curr_batch: usize,
+    size_of_curr_batch: usize,
+    next_seq_num: u64,
+    num_inserted_kvs: usize,
+
+    size_limit_per_batch: usize,
+    num_total_kvs: usize,
+}
+
+impl<W: WriteBatch> WriteBatchesBuilder<W> {
+    fn new(num_total_kvs: usize, size_limit_per_batch: usize, next_seq_num: u64) -> Self {
+        Self {
+            write_batches: vec![W::with_capacity(num_total_kvs)],
+            index_of_curr_batch: 0,
+            size_of_curr_batch: 0,
+            next_seq_num,
+            num_inserted_kvs: 0,
+
+            size_limit_per_batch,
+            num_total_kvs,
+        }
+    }
+
+    fn insert_entry(&mut self, key: &[u8], val: &[u8]) -> Result<()> {
+        ensure!(
+            key.len() + val.len() < self.size_limit_per_batch,
+            TooSmallSizeLimitPerBatch {
+                limit: self.size_limit_per_batch
+            }
+        );
+
+        if !self.is_enough(key, val) {
+            self.prepare_next_write_batch();
+        }
+
+        let curr_batch = &mut self.write_batches[self.index_of_curr_batch];
+        curr_batch.insert(key, val);
+        self.size_of_curr_batch += key.len() + val.len();
+        self.num_inserted_kvs += 1;
+
+        Ok(())
+    }
+
+    fn insert_splitted_entries(&mut self) -> SplittedEntriesInserter<'_, W> {
+        SplittedEntriesInserter {
+            write_batches_builder: self,
+        }
+    }
+
+    fn insert_integrate_entry(&mut self, key: &[u8], val: &[u8]) -> Result<()> {
+        self.insert_entry(key, val)?;
+        self.next_seq_num += 1;
+
+        Ok(())
+    }
+
+    #[inline]
+    fn is_enough(&self, key: &[u8], val: &[u8]) -> bool {
+        self.size_of_curr_batch + key.len() + val.len() < self.size_limit_per_batch
+    }
+
+    #[inline]
+    fn next_seq_num(&self) -> u64 {
+        self.next_seq_num
+    }
+
+    /// Return the sequence number of the last key/value pair.
+    ///
+    /// Return None if no entry is inserted.
+    #[inline]
+    fn last_seq_num(&self) -> Option<u64> {
+        (self.num_inserted_kvs > 0).then_some(self.next_seq_num - 1)
+    }
+
+    fn prepare_next_write_batch(&mut self) {
+        let remaining_kvs = self.num_total_kvs - self.num_inserted_kvs;
+        let next_write_batch = W::with_capacity(remaining_kvs);
+        self.index_of_curr_batch = self.write_batches.len();
+        self.size_of_curr_batch = 0;
+
+        self.write_batches.push(next_write_batch);
+    }
+
+    #[inline]
+    fn build(self) -> Vec<W> {
+        self.write_batches
+    }
+}
+
+/// An encoder to encode logs into [WriteBatch], considering:
+/// - The size limit for every log value
+/// - The size limit for every write batch
+struct LogBatchSplitEncoder {
+    log_value_size_limit: usize,
+    write_batch_size_limit: usize,
+
+    region_id: RegionId,
+    table_id: TableId,
+}
+
+impl LogBatchSplitEncoder {
+    fn encode<W: WriteBatch>(
+        &self,
+        entries: &[LogWriteEntry],
+        start_seq: u64,
+    ) -> Result<(Vec<W>, SequenceNumber)> {
+        ensure!(!entries.is_empty(), SplitEmptyLogs);
+        let num_kvs: usize = entries
+            .iter()
+            .map(|v| (v.payload.len() + self.log_value_size_limit - 1) / self.log_value_size_limit)
+            .sum();
+        let mut write_batch_builder =
+            WriteBatchesBuilder::<W>::new(num_kvs, self.write_batch_size_limit, start_seq);
+
+        let mut key_buf = BytesMut::new();
+        let log_encoding = CommonLogEncoding::newest();
+        let locations = self.log_entry_locations(entries);
+        for location in locations {
+            match location {
+                LogEntryLocation::Integrate { index } => {
+                    let key = CommonLogKey::new(
+                        self.region_id,
+                        self.table_id,
+                        write_batch_builder.next_seq_num(),
+                    );
+                    log_encoding
+                        .encode_key(&mut key_buf, &key)
+                        .context(LogCodec)?;
+                    write_batch_builder
+                        .insert_integrate_entry(&key_buf, &entries[index].payload)?;
+                }
+                LogEntryLocation::Splitted {
+                    index,
+                    sub_entry_offsets,
+                } => {
+                    let next_seq_num = write_batch_builder.next_seq_num;
+                    let mut inserter = write_batch_builder.insert_splitted_entries();
+                    for (offset, len) in sub_entry_offsets {
+                        // The offset and len has been ensured to be in the valid range.
+                        let key = CommonLogKey::with_offset(
+                            self.region_id,
+                            self.table_id,
+                            next_seq_num,
+                            Some(offset as u32),
+                        );
+                        log_encoding
+                            .encode_key(&mut key_buf, &key)
+                            .context(LogCodec)?;
+
+                        let val = &entries[index].payload[offset..offset + len];
+                        inserter.insert(&key_buf, val)?;
+                    }
+                    inserter.finish();
+                }
+            }
+        }
+
+        let last_seq_num = write_batch_builder.last_seq_num().unwrap();
+        Ok((write_batch_builder.build(), last_seq_num))
+    }
+
+    fn log_entry_locations<'a>(
+        &'a self,
+        entries: &'a [LogWriteEntry],
+    ) -> impl Iterator<Item = LogEntryLocation> + 'a {
+        entries.iter().enumerate().map(|(index, entry)| {
+            let payload_size = entry.payload.len();
+            if payload_size > self.log_value_size_limit {
+                let offsets = self.compute_sub_entry_offsets(payload_size);
+                LogEntryLocation::Splitted {
+                    index,
+                    sub_entry_offsets: offsets,
+                }
+            } else {
+                LogEntryLocation::Integrate { index }
+            }
+        })
+    }
+
+    #[inline]
+    fn compute_sub_entry_offsets(&self, total_size: usize) -> Vec<(usize, usize)> {
+        let num_sub_entries =
+            (total_size + self.log_value_size_limit - 1) / self.log_value_size_limit;
+
+        let mut sub_entry_offsets = Vec::with_capacity(num_sub_entries);
+        for idx in 0..num_sub_entries {
+            let offset = idx * self.log_value_size_limit;
+            let len = if offset + self.log_value_size_limit > total_size {
+                total_size - offset
+            } else {
+                self.log_value_size_limit
+            };
+            sub_entry_offsets.push((offset, len))
+        }
+
+        sub_entry_offsets
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[derive(Default)]
+    struct MockWriteBatch {
+        key_values: Vec<(Vec<u8>, Vec<u8>)>,
+    }
+
+    impl WriteBatch for MockWriteBatch {
+        fn with_capacity(capacity: usize) -> Self {
+            Self {
+                key_values: Vec::with_capacity(capacity),
+            }
+        }
+
+        fn insert(&mut self, key: &[u8], value: &[u8]) {
+            self.key_values.push((key.to_vec(), value.to_vec()))
+        }
+
+        fn insert_or_update(&mut self, _key: &[u8], _value: &[u8]) {
+            todo!()
+        }
+
+        fn delete(&mut self, _key: &[u8]) {
+            todo!()
+        }
+    }
+
+    fn check_encoded_write_batches(
+        entries: &[LogWriteEntry],
+        encoded_write_batches: &[MockWriteBatch],
+        payload_size_limit: usize,
+        write_batch_size_limit: usize,
+    ) {
+        let mut decoded_payloads = Vec::with_capacity(entries.len());
+        let mut curr_payload: Vec<u8> = Vec::new();
+        let mut prev_seq = None;
+
+        let encoding = CommonLogEncoding::newest();
+        for write_batch in encoded_write_batches {
+            let mut write_batch_size = 0;
+
+            for (key, val) in &write_batch.key_values {
+                assert!(val.len() <= payload_size_limit);
+                write_batch_size += key.len() + val.len();
+
+                let log_key = encoding.decode_key(key).unwrap();
+
+                match prev_seq {
+                    None => curr_payload.extend_from_slice(val),
+                    Some(prev_seq) => {
+                        if prev_seq != log_key.sequence_num {
+                            decoded_payloads.push(std::mem::take(&mut curr_payload));
+                        }
+                        curr_payload.extend_from_slice(val);
+                    }
+                }
+
+                prev_seq = Some(log_key.sequence_num);
+            }
+
+            assert!(write_batch_size <= write_batch_size_limit);
+        }
+        decoded_payloads.push(std::mem::take(&mut curr_payload));
+
+        let expect_payloads: Vec<_> = entries.iter().map(|v| v.payload.clone()).collect();
+        assert_eq!(decoded_payloads, expect_payloads);
+    }
+
+    fn split_encode_and_check(
+        payloads: Vec<Vec<u8>>,
+        log_value_size_limit: usize,
+        write_batch_size_limit: usize,
+    ) {
+        let entries: Vec<_> = payloads
+            .into_iter()
+            .map(|v| LogWriteEntry { payload: v })
+            .collect();
+
+        let encoder = LogBatchSplitEncoder {
+            log_value_size_limit,
+            write_batch_size_limit,
+            region_id: 0,
+            table_id: 0,
+        };
+
+        let next_seq = 100;
+        let (write_batches, max_seq): (Vec<MockWriteBatch>, _) =
+            encoder.encode(&entries, next_seq).unwrap();
+
+        assert_eq!(max_seq, next_seq + entries.len() as u64 - 1);
+        check_encoded_write_batches(
+            &entries,
+            &write_batches,
+            log_value_size_limit,
+            write_batch_size_limit,
+        );
+    }
+
+    #[test]
+    fn no_split_encode() {
+        let payloads = vec![b"111000".to_vec(), b"00000".to_vec()];
+        split_encode_and_check(payloads, 1000, 1000);
+    }
+
+    #[test]
+    fn split_encode_large_payload() {
+        let payloads = vec![
+            b"111000".to_vec(),
+            b"00000".to_vec(),
+            b"000000xxxxxxxxxxxxxx".to_vec(),
+        ];
+        split_encode_and_check(payloads, 5, 1000);
+    }
+
+    #[test]
+    fn split_encode_large_payload_and_large_write_batch() {
+        let payloads = vec![
+            b"111000".to_vec(),
+            b"00000".to_vec(),
+            b"000000xxxxxxxxxxxxxx".to_vec(),
+            b"000000xxxxxxxxxxxxxx".to_vec(),
+            b"000000xxxxxxxxxxxxxx".to_vec(),
+            b"000000xxxxxxxxxxxxxx".to_vec(),
+            b"000000xxxxxxxxxxxxxx".to_vec(),
+            b"000000xxxxxxxxxxxxxx".to_vec(),
+            b"000000xxxxxxxxxxxxxx".to_vec(),
+        ];
+        split_encode_and_check(payloads, 5, 40);
     }
 }

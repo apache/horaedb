@@ -24,52 +24,52 @@ workspace = true
 [package.authors]
 workspace = true
 
-[dependencies.rocksdb]
-git = "https://github.com/tikv/rust-rocksdb.git"
-rev = "f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f"
-features = ["portable"]
-optional = true
-
 [package.edition]
 workspace = true
 
 [features]
 wal-message-queue = ["dep:message_queue"]
-wal-table-kv = ["dep:table_kv"]
-wal-rocksdb = ["dep:rocksdb"]
+wal-table-kv      = ["dep:table_kv"]
+wal-rocksdb       = ["dep:rocksdb"]
 
 [[test]]
-name = "read_write"
+name              = "read_write"
 required-features = ["wal-message-queue", "wal-table-kv", "wal-rocksdb"]
 
+[dependencies.rocksdb]
+git      = "https://github.com/tikv/rust-rocksdb.git"
+rev      = "f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f"
+features = ["portable"]
+optional = true
+
 [dependencies]
-async-trait = { workspace = true }
-bytes_ext = { workspace = true }
-ceresdbproto = { workspace = true }
-chrono = { workspace = true }
-codec = { workspace = true }
-common_types = { workspace = true }
-futures = { workspace = true, features = ["async-await"], optional = true }
+async-trait   = { workspace = true }
+bytes_ext     = { workspace = true }
+ceresdbproto  = { workspace = true }
+chrono        = { workspace = true }
+codec         = { workspace = true }
+common_types  = { workspace = true }
+futures       = { workspace = true, features = ["async-await"], optional = true }
 generic_error = { workspace = true }
-lazy_static = { workspace = true }
-logger = { workspace = true }
-macros = { workspace = true }
+lazy_static   = { workspace = true }
+logger        = { workspace = true }
+macros        = { workspace = true }
 message_queue = { workspace = true, optional = true }
-prometheus = { workspace = true }
-prost = { workspace = true }
-runtime = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-size_ext = { workspace = true }
-smallvec = { workspace = true }
-snafu = { workspace = true }
-table_kv = { workspace = true, optional = true }
-time_ext = { workspace = true }
-timed_task = { workspace = true }
-tokio = { workspace = true }
+prometheus    = { workspace = true }
+prost         = { workspace = true }
+runtime       = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+size_ext      = { workspace = true }
+smallvec      = { workspace = true }
+snafu         = { workspace = true }
+table_kv      = { workspace = true, optional = true }
+time_ext      = { workspace = true }
+timed_task    = { workspace = true }
+tokio         = { workspace = true }
 
 [dev-dependencies]
-futures = { workspace = true, features = ["async-await"] }
-rand = "0.8.5"
+futures  = { workspace = true, features = ["async-await"] }
+rand     = "0.8.5"
 tempfile = { workspace = true }
-uuid = { version = "1.3", features = ["v4"] }
+uuid     = { version = "1.3", features = ["v4"] }

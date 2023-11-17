@@ -592,14 +592,25 @@ pub struct CommonLogKey {
     pub region_id: u64,
     pub table_id: TableId,
     pub sequence_num: SequenceNumber,
+    pub offset: Option<u32>,
 }
 
 impl CommonLogKey {
     pub fn new(region_id: u64, table_id: TableId, sequence_num: SequenceNumber) -> Self {
+        Self::with_offset(region_id, table_id, sequence_num, None)
+    }
+
+    pub fn with_offset(
+        region_id: u64,
+        table_id: TableId,
+        sequence_num: SequenceNumber,
+        offset: Option<u32>,
+    ) -> Self {
         Self {
             region_id,
             table_id,
             sequence_num,
+            offset,
         }
     }
 }
@@ -632,9 +643,9 @@ impl Encoder<CommonLogKey> for CommonLogKeyEncoder {
     /// Key format:
     ///
     /// ```text
-    /// +---------------+----------------+---------------+-------------------+--------------------+
-    /// | namespace(u8) | region_id(u64) | table_id(u64) | sequence_num(u64) | version header(u8) |
-    /// +---------------+----------------+---------------+-------------------+--------------------+
+    /// +---------------+----------------+---------------+-------------------+--------------------+------------------------+
+    /// | namespace(u8) | region_id(u64) | table_id(u64) | sequence_num(u64) | version header(u8) | offset[optional] (u32) |
+    /// +---------------+----------------+---------------+-------------------+--------------------+------------------------+
     /// ```
     ///
     /// More information can be extended after the incremented `version header`.
@@ -645,13 +656,16 @@ impl Encoder<CommonLogKey> for CommonLogKeyEncoder {
         buf.try_put_u64(log_key.sequence_num)
             .context(EncodeLogKey)?;
         buf.try_put_u8(self.version).context(EncodeLogKey)?;
+        if let Some(offset) = log_key.offset {
+            buf.try_put_u32(offset).context(EncodeLogKey)?;
+        }
 
         Ok(())
     }
 
     fn estimate_encoded_size(&self, _log_key: &CommonLogKey) -> usize {
         // Refer to key format.
-        1 + 8 + 8 + 8 + 1
+        1 + 8 + 8 + 8 + 1 + 1
     }
 }
 
@@ -669,11 +683,9 @@ impl Decoder<CommonLogKey> for CommonLogKeyEncoder {
             }
         );
 
-        let log_key = CommonLogKey {
-            region_id: buf.try_get_u64().context(DecodeLogKey)?,
-            table_id: buf.try_get_u64().context(DecodeLogKey)?,
-            sequence_num: buf.try_get_u64().context(DecodeLogKey)?,
-        };
+        let region_id = buf.try_get_u64().context(DecodeLogKey)?;
+        let table_id = buf.try_get_u64().context(DecodeLogKey)?;
+        let sequence_num = buf.try_get_u64().context(DecodeLogKey)?;
 
         // Check version
         let version = buf.try_get_u8().context(DecodeLogKey)?;
@@ -684,6 +696,14 @@ impl Decoder<CommonLogKey> for CommonLogKeyEncoder {
                 given: version
             }
         );
+
+        let offset = buf.try_get_u32().map(Some).unwrap_or_default();
+        let log_key = CommonLogKey {
+            region_id,
+            table_id,
+            sequence_num,
+            offset,
+        };
 
         Ok(log_key)
     }
@@ -716,6 +736,11 @@ impl CommonLogEncoding {
         self.key_enc.encode(buf, log_key)?;
 
         Ok(())
+    }
+
+    #[inline]
+    pub fn estimate_key_size(&self, log_key: &CommonLogKey) -> usize {
+        self.key_enc.estimate_encoded_size(log_key)
     }
 
     pub fn encode_value(&self, buf: &mut BytesMut, payload: &impl Payload) -> Result<()> {
@@ -796,6 +821,7 @@ mod tests {
                 region_id,
                 table_id,
                 sequence_num: seq,
+                offset: None,
             };
 
             encoding.encode_key(&mut buf, &common_log_key).unwrap();
