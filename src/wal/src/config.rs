@@ -40,3 +40,13 @@ pub enum StorageConfig {
     Obkv(Box<ObkvStorageConfig>),
     Kafka(Box<KafkaStorageConfig>),
 }
+
+impl StorageConfig {
+    pub fn data_disabled(&self) -> bool {
+        match self {
+            Self::RocksDB(c) => c.disable_data,
+            Self::Obkv(c) => c.disable_data,
+            Self::Kafka(c) => c.disable_data,
+        }
+    }
+}
