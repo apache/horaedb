@@ -1,19 +1,19 @@
-![CeresDB](docs/logo/CeresDB.png)
+![HoraeDB](docs/logo/CeresDB.png)
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
-[![CI](https://github.com/CeresDB/ceresdb/actions/workflows/ci.yml/badge.svg)](https://github.com/CeresDB/ceresdb/actions/workflows/ci.yml)
-[![OpenIssue](https://img.shields.io/github/issues/CeresDB/ceresdb)](https://github.com/CeresDB/ceresdb/issues)
+[![CI](https://github.com/CeresDB/horaedb/actions/workflows/ci.yml/badge.svg)](https://github.com/CeresDB/horaedb/actions/workflows/ci.yml)
+[![OpenIssue](https://img.shields.io/github/issues/CeresDB/horaedb)](https://github.com/CeresDB/horaedb/issues)
 [![Slack](https://badgen.net/badge/Slack/Join%20CeresDB/0abd59?icon=slack)](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1dcbv8yq8-Fv8aVUb6ODTL7kxbzs9fnA)
 [![Docker](https://img.shields.io/docker/v/ceresdb/ceresdb-server?logo=docker)](https://hub.docker.com/r/ceresdb/ceresdb-server)
 
 [中文](./README-CN.md)
 
-CeresDB is a high-performance, distributed, cloud native time-series database.
+HoraeDB is a high-performance, distributed, cloud native time-series database.
 
 ## Documentation
-- [User Guide](https://docs.ceresdb.io/)
-- [Development Guide](https://docs.ceresdb.io/dev/compile_run.html)
-- [Roadmap](https://docs.ceresdb.io/dev/roadmap.html)
+- [User Guide](https://ceresdb.github.io/docs)
+- [Development Guide](https://ceresdb.github.io/docs/dev/compile_run.html)
+- [Roadmap](https://ceresdb.github.io/docs/dev/roadmap.html)
 
 ## Contributing
 Any contribution is welcome!
@@ -21,12 +21,12 @@ Any contribution is welcome!
 Read our [Contributing Guide](CONTRIBUTING.md) and make your first contribution!
 
 ## Acknowledgment
-When develop CeresDB, we benefit a lot from several other open source projects,  such as [influxdb_iox](https://github.com/influxdata/influxdb_iox), [tikv](https://github.com/tikv/tikv) etc, thanks for their awesome work.
+When develop HoraeDB, we benefit a lot from several other open source projects,  such as [influxdb_iox](https://github.com/influxdata/influxdb_iox), [tikv](https://github.com/tikv/tikv) etc, thanks for their awesome work.
 
 In our production usage, we heavily use [OceanBase](https://github.com/oceanbase/oceanbase) as implementation of both WAL and ObjectStorage, and OceanBase team help us maintain stability of our cluster, thanks for their kindly support.
 
 ## License
-CeresDB is under [Apache License 2.0](./LICENSE).
+HoraeDB is under [Apache License 2.0](./LICENSE).
 
 ## Community and support
 - Check our community [roles](docs/community/ROLES.md)
