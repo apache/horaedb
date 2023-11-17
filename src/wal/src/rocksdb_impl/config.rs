@@ -22,6 +22,8 @@ use size_ext::ReadableSize;
 pub struct RocksDBStorageConfig {
     /// Data directory used by RocksDB.
     pub data_dir: String,
+    /// If true, data wal will return Ok directly, without any IO operations.
+    pub disable_data: bool,
     /// Namespace config for data.
     pub data_namespace: RocksDBConfig,
     /// Namespace config for meta.
@@ -32,6 +34,7 @@ impl Default for RocksDBStorageConfig {
     fn default() -> Self {
         Self {
             data_dir: "/tmp/ceresdb".to_string(),
+            disable_data: false,
             data_namespace: Default::default(),
             meta_namespace: Default::default(),
         }

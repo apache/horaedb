@@ -156,12 +156,17 @@ impl WalsOpener for KafkaWalsOpener {
         let kafka = KafkaImpl::new(kafka_wal_config.kafka.clone())
             .await
             .context(OpenKafka)?;
-        let data_wal = MessageQueueImpl::new(
-            WAL_DIR_NAME.to_string(),
-            kafka.clone(),
-            default_runtime.clone(),
-            kafka_wal_config.data_namespace,
-        );
+        let data_wal = if kafka_wal_config.disable_data {
+            Arc::new(crate::dummy::DoNothing) as Arc<_>
+        } else {
+            let data_wal = MessageQueueImpl::new(
+                WAL_DIR_NAME.to_string(),
+                kafka.clone(),
+                default_runtime.clone(),
+                kafka_wal_config.data_namespace,
+            );
+            Arc::new(data_wal) as Arc<_>
+        };
 
         let manifest_wal = MessageQueueImpl::new(
             MANIFEST_DIR_NAME.to_string(),
@@ -171,7 +176,7 @@ impl WalsOpener for KafkaWalsOpener {
         );
 
         Ok(OpenedWals {
-            data_wal: Arc::new(data_wal),
+            data_wal,
             manifest_wal: Arc::new(manifest_wal),
         })
     }

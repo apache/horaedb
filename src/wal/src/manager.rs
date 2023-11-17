@@ -400,6 +400,13 @@ impl BatchLogIteratorAdapter {
         }
     }
 
+    pub fn empty() -> Self {
+        Self {
+            iter: None,
+            batch_size: 1,
+        }
+    }
+
     async fn simulated_async_next<D, F>(
         &mut self,
         decoder: D,

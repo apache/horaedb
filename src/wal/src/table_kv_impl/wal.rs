@@ -267,13 +267,18 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
     runtimes: WalRuntimes,
     table_kv: T,
 ) -> Result<OpenedWals> {
-    let data_wal = WalNamespaceImpl::open(
-        table_kv.clone(),
-        runtimes.clone(),
-        WAL_DIR_NAME,
-        config.data_namespace.clone().into(),
-    )
-    .await?;
+    let data_wal = if config.disable_data {
+        Arc::new(crate::dummy::DoNothing) as Arc<_>
+    } else {
+        let data_wal = WalNamespaceImpl::open(
+            table_kv.clone(),
+            runtimes.clone(),
+            WAL_DIR_NAME,
+            config.data_namespace.clone().into(),
+        )
+        .await?;
+        Arc::new(data_wal) as Arc<_>
+    };
 
     let manifest_wal = WalNamespaceImpl::open(
         table_kv,
@@ -284,7 +289,7 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
     .await?;
 
     Ok(OpenedWals {
-        data_wal: Arc::new(data_wal),
+        data_wal,
         manifest_wal: Arc::new(manifest_wal),
     })
 }

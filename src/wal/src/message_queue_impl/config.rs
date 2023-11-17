@@ -23,6 +23,8 @@ use time_ext::ReadableDuration;
 pub struct KafkaStorageConfig {
     /// Kafka client config
     pub kafka: KafkaConfig,
+    /// If true, data wal will return Ok directly, without any IO operations.
+    pub disable_data: bool,
     /// Namespace config for data.
     pub data_namespace: KafkaWalConfig,
     /// Namespace config for meta data

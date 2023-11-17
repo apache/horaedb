@@ -24,6 +24,8 @@ use crate::table_kv_impl::model::NamespaceConfig;
 pub struct ObkvStorageConfig {
     /// Obkv client config
     pub obkv: ObkvConfig,
+    /// If true, data wal will return Ok directly, without any IO operations.
+    pub disable_data: bool,
     /// Namespace config for data.
     pub data_namespace: WalNamespaceConfig,
     /// Namespace config for meta data
