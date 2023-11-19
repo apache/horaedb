@@ -35,6 +35,7 @@ use datafusion::{
 };
 use futures::stream::{self, StreamExt};
 use generic_error::{BoxError, GenericResult};
+use itertools::Itertools;
 use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{
@@ -240,7 +241,14 @@ pub fn stream_from_memtable(
         ..Default::default()
     };
     let max_seq = memtable.last_sequence();
-    let scan_memtable_desc = format!("scan_memtable_{max_seq}");
+    let fetching_cols = ctx
+        .fetching_schema
+        .columns()
+        .iter()
+        .format_with(",", |col, f| f(&format_args!("{}", col.name)));
+    let scan_memtable_desc = format!(
+        "scan_memtable_{max_seq}, fetching_columns:[{fetching_cols}]",
+    );
     let metrics_collector = metrics_collector.map(|v| v.span(scan_memtable_desc));
     let scan_req = ScanRequest {
         start_user_key: Bound::Unbounded,
@@ -320,7 +328,15 @@ pub async fn stream_from_sst_file(
         file_size: Some(sst_file.size() as usize),
         file_format: Some(sst_file.storage_format()),
     };
-    let scan_sst_desc = format!("scan_sst_{}", sst_file.id());
+    let fetching_cols = ctx
+        .fetching_schema
+        .columns()
+        .iter()
+        .format_with(",", |col, f| f(&format_args!("{}", col.name)));
+    let scan_sst_desc = format!(
+        "scan_sst_{}, fetching_columns:[{fetching_cols}]",
+        sst_file.id()
+    );
     let metrics_collector = metrics_collector.map(|v| v.span(scan_sst_desc));
     let mut sst_reader = sst_factory
         .create_reader(
