@@ -24,7 +24,7 @@ use runtime::Runtime;
 use snafu::ResultExt;
 
 use crate::{
-    config::StorageConfig,
+    config::{Config, StorageConfig},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
         self, error::*, AsyncLogIterator, BatchLogIteratorAdapter, OpenedWals, ReadContext,
@@ -138,8 +138,8 @@ pub struct KafkaWalsOpener;
 
 #[async_trait]
 impl WalsOpener for KafkaWalsOpener {
-    async fn open_wals(&self, config: &StorageConfig, runtimes: WalRuntimes) -> Result<OpenedWals> {
-        let kafka_wal_config = match config {
+    async fn open_wals(&self, config: &Config, runtimes: WalRuntimes) -> Result<OpenedWals> {
+        let kafka_wal_config = match &config.storage {
             StorageConfig::Kafka(config) => config.clone(),
             _ => {
                 return InvalidWalConfig {
@@ -156,12 +156,17 @@ impl WalsOpener for KafkaWalsOpener {
         let kafka = KafkaImpl::new(kafka_wal_config.kafka.clone())
             .await
             .context(OpenKafka)?;
-        let data_wal = MessageQueueImpl::new(
-            WAL_DIR_NAME.to_string(),
-            kafka.clone(),
-            default_runtime.clone(),
-            kafka_wal_config.data_namespace,
-        );
+        let data_wal = if config.disable_data {
+            Arc::new(crate::dummy::DoNothing) as Arc<_>
+        } else {
+            let data_wal = MessageQueueImpl::new(
+                WAL_DIR_NAME.to_string(),
+                kafka.clone(),
+                default_runtime.clone(),
+                kafka_wal_config.data_namespace,
+            );
+            Arc::new(data_wal) as Arc<_>
+        };
 
         let manifest_wal = MessageQueueImpl::new(
             MANIFEST_DIR_NAME.to_string(),
@@ -171,7 +176,7 @@ impl WalsOpener for KafkaWalsOpener {
         );
 
         Ok(OpenedWals {
-            data_wal: Arc::new(data_wal),
+            data_wal,
             manifest_wal: Arc::new(manifest_wal),
         })
     }

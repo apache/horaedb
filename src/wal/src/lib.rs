@@ -17,6 +17,7 @@
 #![feature(trait_alias)]
 
 pub mod config;
+mod dummy;
 pub mod kv_encoder;
 pub mod log_batch;
 pub mod manager;

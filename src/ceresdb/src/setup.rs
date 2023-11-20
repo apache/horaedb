@@ -100,6 +100,16 @@ fn build_engine_runtimes(config: &RuntimeConfig) -> EngineRuntimes {
     }
 }
 
+fn validate_config(config: &Config) {
+    let is_data_wal_disabled = config.analytic.wal.disable_data;
+    if is_data_wal_disabled {
+        let is_cluster = config.cluster_deployment.is_some();
+        if !is_cluster {
+            panic!("Invalid config, we can only disable data wal in cluster deployments")
+        }
+    }
+}
+
 /// Run a server, returns when the server is shutdown by user
 pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
     let runtimes = Arc::new(build_engine_runtimes(&config.runtime));
@@ -108,8 +118,10 @@ pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
 
     info!("Server starts up, config:{:#?}", config);
 
+    validate_config(&config);
+
     runtimes.default_runtime.block_on(async {
-        match config.analytic.wal {
+        match config.analytic.wal.storage {
             StorageConfig::RocksDB(_) => {
                 #[cfg(feature = "wal-rocksdb")]
                 {

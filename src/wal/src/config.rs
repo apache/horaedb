@@ -32,6 +32,27 @@ pub type KafkaStorageConfig = crate::message_queue_impl::config::KafkaStorageCon
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct KafkaStorageConfig;
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Config {
+    // The flatten attribute inlines keys from a field into the parent struct.
+    // That's to say `storage` has no real usage, it's just a placeholder.
+    #[serde(flatten)]
+    pub storage: StorageConfig,
+    /// If true, data wal will return Ok directly, without any IO operations.
+    // Note: this is only used for test, we shouldn't enable this in production.
+    #[serde(default)]
+    pub disable_data: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            storage: StorageConfig::RocksDB(Box::default()),
+            disable_data: false,
+        }
+    }
+}
+
 /// Options for wal storage backend
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
