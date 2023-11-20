@@ -26,4 +26,4 @@ git clone --depth 1 https://github.com/ceresdb/horaedb.git --branch main
 # Run integration_test
 cd horaedb/integration_tests
 
-CERESMETA_BIN_PATH=$META_BIN_PATH make run-cluster
+META_BIN_PATH=$META_BIN_PATH make run-cluster
