@@ -28,7 +28,7 @@ use runtime::Runtime;
 use snafu::ResultExt;
 
 use crate::{
-    config::StorageConfig,
+    config::Config,
     log_batch::{LogEntry, LogWriteBatch, PayloadDecodeContext, PayloadDecoder},
     metrics::WAL_WRITE_BYTES_HISTOGRAM,
 };
@@ -556,7 +556,7 @@ pub(crate) const MANIFEST_DIR_NAME: &str = "manifest";
 
 #[async_trait]
 pub trait WalsOpener: Send + Sync + Default {
-    async fn open_wals(&self, config: &StorageConfig, runtimes: WalRuntimes) -> Result<OpenedWals>;
+    async fn open_wals(&self, config: &Config, runtimes: WalRuntimes) -> Result<OpenedWals>;
 }
 
 #[cfg(test)]

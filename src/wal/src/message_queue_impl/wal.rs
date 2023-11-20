@@ -24,7 +24,7 @@ use runtime::Runtime;
 use snafu::ResultExt;
 
 use crate::{
-    config::StorageConfig,
+    config::{Config, StorageConfig},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
         self, error::*, AsyncLogIterator, BatchLogIteratorAdapter, OpenedWals, ReadContext,
@@ -138,8 +138,8 @@ pub struct KafkaWalsOpener;
 
 #[async_trait]
 impl WalsOpener for KafkaWalsOpener {
-    async fn open_wals(&self, config: &StorageConfig, runtimes: WalRuntimes) -> Result<OpenedWals> {
-        let kafka_wal_config = match config {
+    async fn open_wals(&self, config: &Config, runtimes: WalRuntimes) -> Result<OpenedWals> {
+        let kafka_wal_config = match &config.storage {
             StorageConfig::Kafka(config) => config.clone(),
             _ => {
                 return InvalidWalConfig {
@@ -156,7 +156,7 @@ impl WalsOpener for KafkaWalsOpener {
         let kafka = KafkaImpl::new(kafka_wal_config.kafka.clone())
             .await
             .context(OpenKafka)?;
-        let data_wal = if kafka_wal_config.disable_data {
+        let data_wal = if config.disable_data {
             Arc::new(crate::dummy::DoNothing) as Arc<_>
         } else {
             let data_wal = MessageQueueImpl::new(

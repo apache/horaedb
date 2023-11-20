@@ -40,7 +40,7 @@ use tokio::sync::Mutex;
 
 use super::config::RocksDBConfig;
 use crate::{
-    config::StorageConfig,
+    config::{Config, StorageConfig},
     kv_encoder::{CommonLogEncoding, CommonLogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
@@ -994,8 +994,8 @@ impl RocksDBWalsOpener {
 
 #[async_trait]
 impl WalsOpener for RocksDBWalsOpener {
-    async fn open_wals(&self, config: &StorageConfig, runtimes: WalRuntimes) -> Result<OpenedWals> {
-        let rocksdb_wal_config = match &config {
+    async fn open_wals(&self, config: &Config, runtimes: WalRuntimes) -> Result<OpenedWals> {
+        let rocksdb_wal_config = match &config.storage {
             StorageConfig::RocksDB(config) => config.clone(),
             _ => {
                 return InvalidWalConfig {
@@ -1011,7 +1011,7 @@ impl WalsOpener for RocksDBWalsOpener {
         let data_path = Path::new(&rocksdb_wal_config.data_dir);
 
         // Build data wal
-        let data_wal = if rocksdb_wal_config.disable_data {
+        let data_wal = if config.disable_data {
             Arc::new(crate::dummy::DoNothing)
         } else {
             Self::build_manager(

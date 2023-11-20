@@ -24,7 +24,7 @@ use snafu::ResultExt;
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 
 use crate::{
-    config::StorageConfig,
+    config::{Config, StorageConfig},
     log_batch::LogWriteBatch,
     manager::{
         self, error::*, BatchLogIteratorAdapter, OpenedWals, ReadContext, ReadRequest, RegionId,
@@ -211,8 +211,8 @@ pub struct ObkvWalsOpener;
 
 #[async_trait]
 impl WalsOpener for ObkvWalsOpener {
-    async fn open_wals(&self, config: &StorageConfig, runtimes: WalRuntimes) -> Result<OpenedWals> {
-        let obkv_wal_config = match config {
+    async fn open_wals(&self, config: &Config, runtimes: WalRuntimes) -> Result<OpenedWals> {
+        let obkv_wal_config = match &config.storage {
             StorageConfig::Obkv(config) => config.clone(),
             _ => {
                 return InvalidWalConfig {
@@ -232,7 +232,8 @@ impl WalsOpener for ObkvWalsOpener {
             .await
             .context(RuntimeExec)??;
 
-        open_wal_and_manifest_with_table_kv(*obkv_wal_config, runtimes, obkv).await
+        open_wal_and_manifest_with_table_kv(*obkv_wal_config, runtimes, obkv, config.disable_data)
+            .await
     }
 }
 
@@ -245,8 +246,8 @@ pub struct MemWalsOpener {
 
 #[async_trait]
 impl WalsOpener for MemWalsOpener {
-    async fn open_wals(&self, config: &StorageConfig, runtimes: WalRuntimes) -> Result<OpenedWals> {
-        let obkv_wal_config = match config {
+    async fn open_wals(&self, config: &Config, runtimes: WalRuntimes) -> Result<OpenedWals> {
+        let obkv_wal_config = match &config.storage {
             StorageConfig::Obkv(config) => config.clone(),
             _ => {
                 return InvalidWalConfig {
@@ -258,7 +259,13 @@ impl WalsOpener for MemWalsOpener {
             }
         };
 
-        open_wal_and_manifest_with_table_kv(*obkv_wal_config, runtimes, self.table_kv.clone()).await
+        open_wal_and_manifest_with_table_kv(
+            *obkv_wal_config,
+            runtimes,
+            self.table_kv.clone(),
+            config.disable_data,
+        )
+        .await
     }
 }
 
@@ -266,8 +273,9 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
     config: ObkvStorageConfig,
     runtimes: WalRuntimes,
     table_kv: T,
+    disable_data: bool,
 ) -> Result<OpenedWals> {
-    let data_wal = if config.disable_data {
+    let data_wal = if disable_data {
         Arc::new(crate::dummy::DoNothing) as Arc<_>
     } else {
         let data_wal = WalNamespaceImpl::open(

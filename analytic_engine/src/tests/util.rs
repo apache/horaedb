@@ -40,7 +40,7 @@ use table_engine::{
 use tempfile::TempDir;
 use time_ext::ReadableDuration;
 use wal::{
-    config::StorageConfig,
+    config::{Config as WalConfig, StorageConfig},
     manager::{OpenedWals, WalRuntimes, WalsOpener},
     rocksdb_impl::{config::RocksDBStorageConfig, manager::RocksDBWalsOpener},
     table_kv_impl::wal::MemWalsOpener,
@@ -506,10 +506,13 @@ impl Builder {
                     data_dir: dir.path().to_str().unwrap().to_string(),
                 }),
             },
-            wal: StorageConfig::RocksDB(Box::new(RocksDBStorageConfig {
-                data_dir: dir.path().to_str().unwrap().to_string(),
-                ..Default::default()
-            })),
+            wal: WalConfig {
+                storage: StorageConfig::RocksDB(Box::new(RocksDBStorageConfig {
+                    data_dir: dir.path().to_str().unwrap().to_string(),
+                    ..Default::default()
+                })),
+                disable_data: false,
+            },
             ..Default::default()
         };
 
@@ -581,11 +584,13 @@ impl Default for RocksDBEngineBuildContext {
                     data_dir: dir.path().to_str().unwrap().to_string(),
                 }),
             },
-
-            wal: StorageConfig::RocksDB(Box::new(RocksDBStorageConfig {
-                data_dir: dir.path().to_str().unwrap().to_string(),
-                ..Default::default()
-            })),
+            wal: WalConfig {
+                storage: StorageConfig::RocksDB(Box::new(RocksDBStorageConfig {
+                    data_dir: dir.path().to_str().unwrap().to_string(),
+                    ..Default::default()
+                })),
+                disable_data: false,
+            },
             ..Default::default()
         };
 
@@ -614,11 +619,13 @@ impl Clone for RocksDBEngineBuildContext {
         };
 
         config.storage = storage;
-        config.wal = StorageConfig::RocksDB(Box::new(RocksDBStorageConfig {
-            data_dir: dir.path().to_str().unwrap().to_string(),
-            ..Default::default()
-        }));
-
+        config.wal = WalConfig {
+            storage: StorageConfig::RocksDB(Box::new(RocksDBStorageConfig {
+                data_dir: dir.path().to_str().unwrap().to_string(),
+                ..Default::default()
+            })),
+            disable_data: false,
+        };
         Self {
             config,
             open_method: self.open_method,
@@ -674,7 +681,10 @@ impl Default for MemoryEngineBuildContext {
                     data_dir: dir.path().to_str().unwrap().to_string(),
                 }),
             },
-            wal: StorageConfig::Obkv(Box::default()),
+            wal: WalConfig {
+                storage: StorageConfig::Obkv(Box::default()),
+                disable_data: false,
+            },
             ..Default::default()
         };
 

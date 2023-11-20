@@ -41,7 +41,7 @@ use object_store::config::StorageOptions;
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
 use time_ext::ReadableDuration;
-use wal::config::StorageConfig;
+use wal::config::Config as WalConfig;
 
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
 
@@ -112,7 +112,7 @@ pub struct Config {
     /// + RocksDB
     /// + OBKV
     /// + Kafka
-    pub wal: StorageConfig,
+    pub wal: WalConfig,
 
     /// Recover mode
     ///
@@ -188,7 +188,7 @@ impl Default for Config {
             max_bytes_per_write_batch: None,
             mem_usage_sampling_interval: ReadableDuration::secs(0),
             wal_encode: WalEncodeConfig::default(),
-            wal: StorageConfig::RocksDB(Box::default()),
+            wal: WalConfig::default(),
             remote_engine_client: remote_engine_client::config::Config::default(),
             recover_mode: RecoverMode::TableBased,
             metrics: MetricsOptions::default(),
