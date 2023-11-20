@@ -44,9 +44,39 @@ pub enum StorageConfig {
 impl StorageConfig {
     pub fn data_disabled(&self) -> bool {
         match self {
-            Self::RocksDB(c) => c.disable_data,
-            Self::Obkv(c) => c.disable_data,
-            Self::Kafka(c) => c.disable_data,
+            Self::RocksDB(c) => {
+                #[cfg(feature = "wal-rocksdb")]
+                {
+                    c.disable_data
+                }
+                #[cfg(not(feature = "wal-rocksdb"))]
+                {
+                    _ = c;
+                    false
+                }
+            }
+            Self::Obkv(c) => {
+                #[cfg(feature = "wal-table-kv")]
+                {
+                    c.disable_data
+                }
+                #[cfg(not(feature = "wal-table-kv"))]
+                {
+                    _ = c;
+                    false
+                }
+            }
+            Self::Kafka(c) => {
+                #[cfg(feature = "wal-message-queue")]
+                {
+                    c.disable_data
+                }
+                #[cfg(not(feature = "wal-message-queue"))]
+                {
+                    _ = c;
+                    false
+                }
+            }
         }
     }
 }
