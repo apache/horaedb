@@ -1265,7 +1265,11 @@ mod tests {
                 .await;
 
             manifest
-                .do_snapshot_internal(ctx.table_catalog_info.schema_id.as_u32(), table_id, location)
+                .do_snapshot_internal(
+                    ctx.table_catalog_info.schema_id.as_u32(),
+                    table_id,
+                    location,
+                )
                 .await
                 .unwrap();
 
@@ -1326,7 +1330,11 @@ mod tests {
 
             let location = WalLocation::new(DEFAULT_SHARD_ID as u64, table_id.as_u64());
             manifest
-                .do_snapshot_internal(ctx.table_catalog_info.schema_id.as_u32(), table_id, location)
+                .do_snapshot_internal(
+                    ctx.table_catalog_info.schema_id.as_u32(),
+                    table_id,
+                    location,
+                )
                 .await
                 .unwrap();
             for i in 500..550 {

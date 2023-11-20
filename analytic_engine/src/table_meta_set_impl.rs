@@ -387,7 +387,9 @@ impl TableMetaSet for TableMetaSetImpl {
         } = request;
 
         match meta_edit {
-            meta_edit::MetaEdit::Update(update) => self.apply_update(update, shard_info, table_catalog_info),
+            meta_edit::MetaEdit::Update(update) => {
+                self.apply_update(update, shard_info, table_catalog_info)
+            }
             meta_edit::MetaEdit::Snapshot(manifest_data) => {
                 self.apply_snapshot(manifest_data, shard_info, table_catalog_info)
             }
