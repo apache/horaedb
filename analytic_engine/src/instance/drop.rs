@@ -85,7 +85,7 @@ impl Dropper {
             MetaEditRequest {
                 shard_info: table_data.shard_info,
                 meta_edit: MetaEdit::Update(meta_update),
-                extr_info: TableCatalogInfo {
+                table_catalog_info: TableCatalogInfo {
                     schema_id: request.schema_id,
                     schema_name: request.schema_name,
                     catalog_name: request.catalog_name,

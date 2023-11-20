@@ -32,7 +32,7 @@ pub struct LoadRequest {
     pub space_id: SpaceId,
     pub table_id: TableId,
     pub shard_id: ShardId,
-    pub extr_info: TableCatalogInfo,
+    pub table_catalog_info: TableCatalogInfo,
 }
 
 pub type SnapshotRequest = LoadRequest;

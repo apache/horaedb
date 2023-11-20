@@ -177,7 +177,7 @@ pub struct TableData {
     pub name: String,
     /// Schema of this table
     schema: Mutex<Schema>,
-    pub extr_info: TableCatalogInfo,
+    pub table_catalog_info: TableCatalogInfo,
     /// Space id of this table
     pub space_id: SpaceId,
 
@@ -332,7 +332,7 @@ impl TableData {
             id,
             name,
             schema: Mutex::new(schema),
-            extr_info: TableCatalogInfo {
+            table_catalog_info: TableCatalogInfo {
                 schema_id,
                 schema_name,
                 catalog_name,
@@ -368,7 +368,7 @@ impl TableData {
         config: TableConfig,
         mem_size_options: MemSizeOptions,
         allocator: IdAllocator,
-        extr_info: TableCatalogInfo,
+        table_catalog_info: TableCatalogInfo,
     ) -> Result<Self> {
         let TableConfig {
             preflush_write_buffer_size_ratio,
@@ -391,7 +391,7 @@ impl TableData {
             id: add_meta.table_id,
             name: add_meta.table_name,
             schema: Mutex::new(add_meta.schema),
-            extr_info,
+            table_catalog_info,
             space_id: add_meta.space_id,
             mutable_limit,
             mutable_limit_write_buffer_ratio: preflush_write_buffer_size_ratio,
@@ -665,7 +665,7 @@ impl TableData {
             MetaEditRequest {
                 shard_info: self.shard_info,
                 meta_edit: MetaEdit::Update(meta_update),
-                extr_info: self.extr_info.clone(),
+                table_catalog_info: self.table_catalog_info.clone(),
             }
         };
         // table version's max file id will be update when apply this meta update.

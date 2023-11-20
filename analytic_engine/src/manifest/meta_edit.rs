@@ -530,5 +530,5 @@ impl TryFrom<MetaEdit> for MetaSnapshot {
 pub struct MetaEditRequest {
     pub shard_info: TableShardInfo,
     pub meta_edit: MetaEdit,
-    pub extr_info: TableCatalogInfo,
+    pub table_catalog_info: TableCatalogInfo,
 }

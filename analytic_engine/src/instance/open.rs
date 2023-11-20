@@ -461,7 +461,7 @@ impl ShardOpener {
             space_id,
             table_id: id,
             shard_id,
-            extr_info: TableCatalogInfo {
+            table_catalog_info: TableCatalogInfo {
                 schema_id,
                 schema_name,
                 catalog_name,
