@@ -246,9 +246,8 @@ pub fn stream_from_memtable(
         .columns()
         .iter()
         .format_with(",", |col, f| f(&format_args!("{}", col.name)));
-    let scan_memtable_desc = format!(
-        "scan_memtable_{max_seq}, fetching_columns:[{fetching_cols}]",
-    );
+    let scan_memtable_desc =
+        format!("scan_memtable_{max_seq}, fetching_columns:[{fetching_cols}]",);
     let metrics_collector = metrics_collector.map(|v| v.span(scan_memtable_desc));
     let scan_req = ScanRequest {
         start_user_key: Bound::Unbounded,
